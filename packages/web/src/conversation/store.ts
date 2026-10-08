@@ -42,7 +42,6 @@ import {
   createdConversationSchema,
   conversationUpdateSchema,
   transcriptSchema,
-  type AttachHost,
   type AttachedHosts,
   type ConversationBatch,
   type ConversationDraft,
@@ -52,7 +51,6 @@ import {
   type CreateConversation,
   type DraftFile,
   type ReadRequest,
-  type RenameHost,
   type SidebarReorder,
   type Transcript,
 } from '../api/generated/web-api'
@@ -66,7 +64,6 @@ import type { Conversation, ProductAttachment } from '../state/types'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 import { createDraftSync, hasUnsavedDraft } from './draft-sync'
 import { transcriptTerminals } from './terminals'
-import { executionFor } from '../targets/execution'
 import {
   deleteDraft,
   readDraft,
@@ -390,9 +387,6 @@ export const useConversations = defineStore('conversations', () => {
           ? null
           : {
               phase: conversation.persistence,
-              hosts: conversation.attachedHosts.map(
-                ({ deviceId, name, cwd }) => ({ deviceId, name, cwd }),
-              ),
               conversation: {
                 id: conversation.id,
                 title: conversation.title,
@@ -553,7 +547,6 @@ export const useConversations = defineStore('conversations', () => {
           unread: false,
         })
         conversation.persistence = draft.local.phase
-        conversation.attachedHosts = draft.local.hosts.map((host) => ({ ...host }))
         conversation.load = 'ready'
         items.value.unshift(conversation)
         const restoredConversation = items.value.find(
@@ -1059,26 +1052,20 @@ export const useConversations = defineStore('conversations', () => {
 
   async function applyBatch(
     ids: string[],
-    changes: Pick<ConversationPatch, 'pinned' | 'archived' | 'target'>,
+    changes: Pick<ConversationPatch, 'pinned' | 'archived' | 'target' | 'notifyAgent'>,
   ): Promise<boolean> {
+    // A draft has no agent to tell: the first send creates what the user sees.
+    const { notifyAgent: _told, ...fields } = changes
     for (const conversation of items.value) {
       if (
         ids.includes(conversation.id) &&
         conversation.persistence !== 'synced'
       ) {
-        Object.assign(conversation, changes)
+        Object.assign(conversation, fields)
         conversation.projectId =
           conversation.target.kind === 'workspace'
             ? conversation.target.workspaceId
             : null
-        // The device the draft now runs on is its primary and leaves its
-        // attached hosts, as a switch of a conversation's target does
-        // (`sessions-and-targets.md` § Switch the primary target): the last
-        // choice wins, and the first send creates what the user sees.
-        const primary = executionFor(conversation).deviceId
-        conversation.attachedHosts = conversation.attachedHosts.filter(
-          (host) => host.deviceId !== primary,
-        )
       }
     }
     ids = ids.filter(
@@ -1274,7 +1261,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Creates the conversation's record with one request that carries its
-   * settings and its hosts (`web-api.md` § Conversation creation and Fork):
+   * target and its settings (`web-api.md` § Conversation creation and Fork):
    * for a part its model no longer offers, the model's first effort and the
    * vendor's default tier. The page shows what the answer says; a record
    * this request made is opened without reading it back.
@@ -1296,7 +1283,6 @@ export const useConversations = defineStore('conversations', () => {
       pinned: conversation.pinned,
       target: conversation.target,
       ...(settings ? settingsPatch(settings) : {}),
-      hosts: conversation.attachedHosts.map(({ deviceId, name }) => ({ deviceId, name })),
     }
     const response = await apiRequest('/conversations', {
       method: 'POST',
@@ -1309,7 +1295,6 @@ export const useConversations = defineStore('conversations', () => {
     conversation.persistence = 'synced'
     Object.assign(conversation, metadata(result.conversation))
     followRecordModel(conversation, result.conversation)
-    conversation.attachedHosts = result.hosts
     conversation.hostsRevision = result.conversation.hostsRevision
     cache.delete(conversation.id)
     // A retry that found the record an earlier attempt made reads it.
@@ -1435,41 +1420,6 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  async function attachHost(
-    conversation: Conversation,
-    deviceId: string,
-  ): Promise<void> {
-    if (conversation.persistence !== 'synced') {
-      const device = resources.devices.find((item) => item.id === deviceId)
-      if (
-        device &&
-        !conversation.attachedHosts.some((host) => host.deviceId === deviceId)
-      ) {
-        conversation.attachedHosts.push({
-          deviceId,
-          name: device.name,
-          cwd: null,
-        })
-        saveDrafts()
-      }
-      return
-    }
-    try {
-      const response = await apiRequest(
-        `/conversations/${encodeURIComponent(conversation.id)}/hosts`,
-        {
-          method: 'POST',
-          signal: lifetime.signal,
-          ...jsonBody({ deviceId } satisfies AttachHost),
-        },
-      )
-      // The answer lists the hosts as the attach left them.
-      conversation.attachedHosts = (await readResponse(response, attachedHostsSchema)).hosts
-    } catch (error) {
-      report('Could Not Attach the Device', error)
-    }
-  }
-
   /**
    * Opens the conversation's tree again with the plugins the user has on
    * (`web-api.md` § A user's plugins); its socket is closed and reconnects,
@@ -1486,17 +1436,11 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
+  /** Detaches a device the conversation's agents attached; a draft has none. */
   async function detachHost(
     conversation: Conversation,
     deviceId: string,
   ): Promise<void> {
-    if (conversation.persistence !== 'synced') {
-      conversation.attachedHosts = conversation.attachedHosts.filter(
-        (host) => host.deviceId !== deviceId,
-      )
-      saveDrafts()
-      return
-    }
     try {
       await apiRequest(
         `/conversations/${encodeURIComponent(
@@ -1513,39 +1457,6 @@ export const useConversations = defineStore('conversations', () => {
       )
     } catch (error) {
       report('Could Not Detach the Device', error)
-    }
-  }
-
-  async function renameHost(
-    conversation: Conversation,
-    deviceId: string,
-    name: string,
-  ): Promise<void> {
-    if (conversation.persistence !== 'synced') {
-      const host = conversation.attachedHosts.find(
-        (item) => item.deviceId === deviceId,
-      )
-      if (host) {
-        host.name = name
-        saveDrafts()
-      }
-      return
-    }
-    try {
-      const response = await apiRequest(
-        `/conversations/${encodeURIComponent(
-          conversation.id,
-        )}/hosts/${encodeURIComponent(deviceId)}`,
-        {
-          method: 'PATCH',
-          signal: lifetime.signal,
-          ...jsonBody({ name } satisfies RenameHost),
-        },
-      )
-      // The answer lists the hosts as the rename left them.
-      conversation.attachedHosts = (await readResponse(response, attachedHostsSchema)).hosts
-    } catch (error) {
-      report('Could Not Rename the Host', error)
     }
   }
 
@@ -1782,24 +1693,13 @@ export const useConversations = defineStore('conversations', () => {
     archive,
     restore,
     remove,
-    move: (ids: string[], projectId: string | null) =>
-      batch(ids, {
-        target: projectId
-          ? {
-              kind: 'workspace',
-              workspaceId: projectId,
-            }
-          : { kind: 'cloud' },
-      }),
-    switchTarget: (id: string, target: ConversationSummary['target']) =>
-      batch([id], { target }),
+    /**
+     * Moves the conversation to run on `target` (`product.md` § Where a
+     * conversation runs); with `notifyAgent`, the backend tells its agent.
+     */
+    switchTarget: (id: string, target: ConversationSummary['target'], notifyAgent = false) =>
+      batch([id], notifyAgent ? { target, notifyAgent } : { target }),
     pendingChanges,
-    attachHost: (conversation: Conversation, deviceId: string) =>
-      changeConversations(
-        [conversation.id],
-        () => attachHost(conversation, deviceId),
-        undefined,
-      ),
     detachHost: (conversation: Conversation, deviceId: string) =>
       changeConversations(
         [conversation.id],
@@ -1810,12 +1710,6 @@ export const useConversations = defineStore('conversations', () => {
       changeConversations(
         [conversation.id],
         () => reloadPlugins(conversation),
-        undefined,
-      ),
-    renameHost: (conversation: Conversation, deviceId: string, name: string) =>
-      changeConversations(
-        [conversation.id],
-        () => renameHost(conversation, deviceId, name),
         undefined,
       ),
     changeModel,

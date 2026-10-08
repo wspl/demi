@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { isValidEntryName, joinPath, normalizePath, parentPath, pathSegments, relativePath } from '../paths'
+import { homePath, isValidEntryName, joinPath, normalizePath, parentPath, pathSegments, relativePath } from '../paths'
 
 test('normalizePath collapses slashes and resolves dot segments from the root', () => {
   expect(normalizePath('/Users//zan/./Projects/')).toBe('/Users/zan/Projects')
@@ -40,4 +40,11 @@ test('relativePath reads a path from a root, and leaves one outside it whole', (
   expect(relativePath('/work/demi/', '/work/demi')).toBe('')
   expect(relativePath('/work/demi', '/work/demi-other/a.ts')).toBe('/work/demi-other/a.ts')
   expect(relativePath('/', '/etc/hosts')).toBe('etc/hosts')
+})
+
+test('homePath reads a path under the home from ~, and leaves one outside it or without a home whole', () => {
+  expect(homePath('/Users/zan/code/ledable-app', '/Users/zan')).toBe('~/code/ledable-app')
+  expect(homePath('/Users/zan', '/Users/zan/')).toBe('~')
+  expect(homePath('/Users/zan2/notes', '/Users/zan')).toBe('/Users/zan2/notes')
+  expect(homePath('/srv/app', null)).toBe('/srv/app')
 })

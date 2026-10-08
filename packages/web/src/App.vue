@@ -268,7 +268,6 @@ useAppShortcuts(
           @remove-project="removeProject"
           @rename="conversations.rename"
           @pin="conversations.pin"
-          @move-to-project="conversations.move"
           @archive="conversations.archive"
           @delete="conversations.remove"
           @open-settings="settingsAddress.open"

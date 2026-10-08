@@ -81,7 +81,7 @@ pub(super) async fn list(
 /// nothing, 200; 409 `id_unavailable` when another user's conversation
 /// holds the id or a Fork reserved it. A part of the request that is refused
 /// answers its own status and code, and nothing is created. Both answer the
-/// conversation and its attached hosts.
+/// conversation.
 pub(super) async fn create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -104,14 +104,12 @@ pub(super) async fn create(
             ));
         }
     };
-    let id = record.id.clone();
     let conversation = state
         .shards
         .of(&user.id)
         .call(move |shard, _| async move { shard.conversation_summary(record).await })
         .await??;
-    let hosts = hosts::hosts(&state, &user.id, id).await?.hosts;
-    Ok((status, Json(CreatedConversation { conversation, hosts })))
+    Ok((status, Json(CreatedConversation { conversation })))
 }
 
 /// `GET /conversations/:id/transcript`: the history as the conversation's

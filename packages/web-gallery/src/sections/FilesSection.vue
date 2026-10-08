@@ -58,7 +58,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'New project',
-    'The working-environment dialog: Cloud or Device as two cards, Cloud first and chosen the first time, then the kind and device chosen last; a device asks which one, with Add Device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Switching between projects is the sidebar’s Move To and the header’s workspace control, not a dialog.'
+    'The working-environment dialog: Cloud or Device as two cards, Cloud first and chosen the first time, then the kind and device chosen last; a device asks which one, with Add Device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Moving a conversation between projects is the header’s menus, not a dialog.'
   ],
   [
     'New folder',

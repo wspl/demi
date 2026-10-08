@@ -391,21 +391,16 @@ async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_
 
     // A change of the attached hosts alone is news of its own.
     let path = format!("/api/conversations/{FIRST}/hosts/{}", alpha.id());
-    let renamed = backend
-        .patch(&path, &master, json!({ "name": "first" }))
-        .await;
+    let detached = backend.delete(&path, &master).await;
     assert_eq!(
-        renamed.status,
-        StatusCode::OK,
+        detached.status,
+        StatusCode::NO_CONTENT,
         "{}",
-        String::from_utf8_lossy(&renamed.body)
+        String::from_utf8_lossy(&detached.body)
     );
     let noted = work.turn(vec![say("noted")]).await.first_request();
     assert!(noted.contains("[Attached hosts changed]"), "{noted}");
-    assert!(
-        noted.contains("\\\"first\\\" (online, shells start in"),
-        "{noted}"
-    );
+    assert!(noted.contains("Attached hosts: none."), "{noted}");
     assert_eq!(noted.matches(SWITCHED).count(), switches, "{noted}");
 
     // Back on the first device: the one left is attached under its name,

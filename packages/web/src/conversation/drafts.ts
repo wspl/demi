@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { attachedHostSchema, conversationSummarySchema } from '../api/generated/web-api'
+import { conversationSummarySchema } from '../api/generated/web-api'
 import { messageEditStateSchema } from '@demicodes/web-ui/agent/message-editing'
 import { modelSettingsSchema } from '@demicodes/web-ui/agent/model-selection'
 
@@ -55,7 +55,6 @@ export const draftSchema = z.object({
         createdAt: true,
         updatedAt: true,
       }),
-      hosts: z.array(attachedHostSchema.pick({ deviceId: true, name: true, cwd: true })),
     })
     .nullable(),
   /** The composer's text, when the backend does not have it. */
