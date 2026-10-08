@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Cloud, Link, Monitor, Plus, Unlink } from '@lucide/vue'
+import { Cloud, Link, Plus, Unlink } from '@lucide/vue'
 import Dropdown from '../ui/Dropdown.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import MenuGroup from '../ui/MenuGroup.vue'
 import MenuDivider from '../ui/MenuDivider.vue'
 import Button from '../ui/Button.vue'
-import CornerDot from '../ui/CornerDot.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { ICON_PX } from '../ui/icon-metrics'
 import { COMPACT_LABEL_CLASS, useRoomLabel } from '../ui/label-room'
@@ -15,7 +14,9 @@ import Tooltip from '../ui/Tooltip.vue'
 import { isTextCut } from '../ui/truncation'
 import HostPicker from './HostPicker.vue'
 import type { HostDeviceOption, HostMenuHost } from './types'
+import DeviceIcon from '../devices/DeviceIcon.vue'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
+import { DEVICE_ICON } from './icons'
 
 const props = defineProps<{
   primaryHost: HostMenuHost
@@ -85,17 +86,8 @@ function connect() {
           aria-label="Manage conversation hosts"
           :loading="pending"
         >
-          <span class="relative flex shrink-0">
-            <component
-              :is="primaryHost.kind === 'cloud' ? Cloud : Monitor"
-              :size="ICON_PX.in28"
-            />
-            <CornerDot
-              v-if="primaryHost.kind === 'device'"
-              :tone="DEVICE_STATE_TONE[primaryHost.state]"
-              :label="DEVICE_STATE_LABEL[primaryHost.state]"
-            />
-          </span>
+          <Cloud v-if="primaryHost.kind === 'cloud'" :size="ICON_PX.in28" class="shrink-0" />
+          <DeviceIcon v-else :state="primaryHost.state" />
           <span
             ref="hostLabel"
             class="max-w-28 truncate"
@@ -110,7 +102,7 @@ function connect() {
     <template #content>
       <Menu>
         <MenuItem
-          :icon="primaryHost.kind === 'cloud' ? Cloud : Monitor"
+          :icon="primaryHost.kind === 'cloud' ? Cloud : DEVICE_ICON"
           label="Primary Host"
           :indicator="primaryHost.kind === 'cloud' ? undefined : DEVICE_STATE_TONE[primaryHost.state]"
           :indicator-label="DEVICE_STATE_LABEL[primaryHost.state]"
@@ -132,7 +124,7 @@ function connect() {
           <MenuItem
             v-for="host in attachedHosts"
             :key="host.id"
-            :icon="host.kind === 'cloud' ? Cloud : Monitor"
+            :icon="host.kind === 'cloud' ? Cloud : DEVICE_ICON"
             :label="host.name"
             :indicator="host.kind === 'cloud' ? undefined : DEVICE_STATE_TONE[host.state]"
             :indicator-label="DEVICE_STATE_LABEL[host.state]"
@@ -143,7 +135,7 @@ function connect() {
               <Menu>
                 <MenuItem
                   label="Use as Primary Environment…"
-                  :icon="host.kind === 'cloud' ? Cloud : Monitor"
+                  :icon="host.kind === 'cloud' ? Cloud : DEVICE_ICON"
                   :disabled="primaryLocked || (host.kind === 'device' && host.state !== 'online')"
                   @select="selectPrimary(host.id)"
                 />
