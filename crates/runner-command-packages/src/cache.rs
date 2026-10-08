@@ -25,6 +25,7 @@ use demi_shared_artifacts::{
     Archive, ArchiveInstall, Digest, Mode, Permissions, Publication, Staged,
 };
 use serde::{Deserialize, Serialize};
+use demi_runner_process::backend::Backend;
 use demi_runner_protocol::wire::HostArtifact;
 use tokio::io::AsyncWrite;
 use tokio::sync::watch;
@@ -55,6 +56,9 @@ pub struct ArtifactCache {
     image: Option<PathBuf>,
     checked: Mutex<Checked>,
     http: reqwest::Client,
+    /// The backend that hands out the artifacts' URLs, with the client that
+    /// reaches it, when that takes its own way, as a Cloud's socket does.
+    backend: Option<(Backend, reqwest::Client)>,
     holds: Holds,
     /// What the cache holds, which the connection reports to the backend
     /// (`native-runtime.md` § Installed artifacts).
@@ -128,7 +132,18 @@ impl Drop for Hold {
 impl ArtifactCache {
     /// A cache in `root` that takes the artifacts preinstalled in `image`,
     /// when given, before it downloads one.
-    pub async fn new(root: PathBuf, image: Option<PathBuf>) -> Result<Self, RuntimeError> {
+    pub async fn new(
+        root: PathBuf,
+        image: Option<PathBuf>,
+        backend: Option<Backend>,
+    ) -> Result<Self, RuntimeError> {
+        let backend = match backend {
+            Some(backend) => {
+                let http = demi_shared_artifacts::client_through(|builder| backend.http(builder))?;
+                Some((backend, http))
+            }
+            None => None,
+        };
         tokio::fs::create_dir_all(&root).await?;
         chmod(&root, 0o700).await?;
         let cache = Self {
@@ -139,6 +154,7 @@ impl ArtifactCache {
             // authenticated connection, so a backend on plain HTTP may serve
             // its artifacts itself.
             http: demi_shared_artifacts::client_allowing_http()?,
+            backend,
             holds: Holds::default(),
             contents: watch::Sender::new(Vec::new()),
         };
@@ -526,8 +542,15 @@ impl ArtifactCache {
                         refreshed = true;
                         continue;
                     }
+                    // The backend's own store is fetched the way the runner
+                    // reaches the backend.
+                    let local = self.backend.as_ref().and_then(|(backend, http)| {
+                        let local = backend.local(&reqwest::Url::parse(&url).ok()?)?;
+                        Some((http, local.to_string()))
+                    });
+                    let (http, url) = local.unwrap_or((&self.http, url));
                     let downloaded = demi_shared_artifacts::download(
-                        &self.http,
+                        http,
                         &url,
                         &expected,
                         &mut output,

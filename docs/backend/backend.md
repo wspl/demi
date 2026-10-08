@@ -523,8 +523,9 @@ the same flag.
 | `DEMI_RELEASE` | The [server release](../delivery/builds-and-releases.md#server-release) root. The backend serves its `web/` when it has one, installs runners from its `runners/` (without it, the installer routes answer 503), and publishes its `commands/`. Default: the directory above the one that holds the running executable, its real path with every symbolic link resolved, so `/opt/demi/current/bin/demi-backend` uses `/opt/demi/releases/0.2.0` while `current` points there. A server leaves it out, so that the backend and the machine manager run the release of their own executables ([One release on a server](../delivery/upgrades.md#one-release-on-a-server)). The machine manager reads it too. | [Builds and releases](../delivery/builds-and-releases.md#server-release) |
 | `DEMI_BACKEND_DATA` | The data directory. Default `~/.demi/backend`. | [Storage](storage.md#ownership-and-layout) |
 | `DEMI_BACKEND_LISTEN` | The address and port the backend listens on, as `<address>:<port>`. Default `0.0.0.0:3271`. | [Public URL and listening address](#public-url-and-listening-address) |
-| `DEMI_BACKEND_PUBLIC_URL` | The URL at which browsers, runners and Cloud guests reach the backend: installers embed it, the page's install command fetches them from it, and a local store's downloads are on it. Required. The machine manager reads it too, as the one endpoint its Clouds may reach on the host or a private address. | [Public URL and listening address](#public-url-and-listening-address) |
+| `DEMI_BACKEND_PUBLIC_URL` | The URL at which browsers and paired runners reach the backend: installers embed it, the page's install command fetches them from it, and a local store's downloads are on it. Required. The machine manager reads it too, as the URL every Cloud's boot record names. | [Public URL and listening address](#public-url-and-listening-address) |
 | `DEMI_MACHINE_MANAGER_SOCKET` | The machine manager's Unix socket, which the manager listens on and the backend connects to. Default `/run/demi-cloud/machines.sock`. | [Cloud setup](../cloud/setup.md#configuration) |
+| `DEMI_BACKEND_RUNNER_SOCKET` | The Unix socket the backend serves its Clouds' runners on, and whose directory the machine manager mounts into each Cloud. Default `/run/demi-backend/runners.sock`. | [Backend socket](../cloud/managed-hosts.md#backend-socket) |
 | `DEMI_INSTANCE_MODE` | `shared` or `isolated`. Required: whoever deploys decides it, and nothing chooses for them. | [Product](../product/product.md#instance-mode-shared-vs-isolated) |
 | `DEMI_STORAGE` | `local` or `s3`: where the one object store lives. Default `local`. With `s3`, the `DEMI_S3_*` settings name the bucket. | [Storage](storage.md#the-object-store) |
 | `DEMI_INSTANCE_SECRET` | The instance secret as 64 hexadecimal digits. Optional: generated into the data directory otherwise. | [Storage](storage.md#passwords-and-credentials-at-rest) |
@@ -574,12 +575,10 @@ Development is the exception: there the page is on `localhost`, and the public
 URL may be `http://127.0.0.1:<port>` or a LAN address that the runners reach
 ([Development backend](#development-backend)).
 
-A Cloud reaches the backend through the public URL too. Behind a CDN, its
-connection leaves the server as ordinary public traffic to Cloudflare and
-comes back through it. Behind a local reverse proxy, the URL resolves to the
-server's own public address, which a Cloud may reach only because the machine
-manager opens exactly that address and port for it
-([Networking](../cloud/managed-hosts.md#networking)).
+A Cloud does not reach the backend at the public URL: its runner connects
+through the backend's runner socket on the server, whichever proxy fronts the
+backend ([Backend socket](../cloud/managed-hosts.md#backend-socket)); the URL
+only names the origin its requests carry.
 
 ## Development backend
 
@@ -611,10 +610,9 @@ Cloud guest, and both run `x86_64-unknown-linux-musl`:
    ([guest image build](../../cloud-guest-image/README.md)), and install the
    machine manager from the root
    ([Storage and service setup](../cloud/setup.md#storage-and-service-setup)).
-   The configuration file's public URL is the backend's URL at the machine's
-   address that the Cloud guest reaches, such as the address of the machine's
-   route to the internet; a loopback address does not reach the machine from
-   the guest. The Cloud's runner comes from the Cloud image, so a runner
+   The Cloud's runner reaches the backend through its runner socket, which
+   the backend makes in `/run/demi-backend/`: create that directory, mode
+   0755, owned by the user who runs the backend. The Cloud's runner comes from the Cloud image, so a runner
    change reaches the Cloud through a
    [Cloud image refresh](../delivery/builds-and-releases.md#cloud-image-refresh);
    a command program's change reaches it through the object store.

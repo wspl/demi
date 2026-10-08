@@ -22,6 +22,7 @@ use demi_command_protocol::{
     ArtifactForm, ConversationRequest, ConversationStatus, PackageDescriptor, Record, ServiceInfo,
 };
 use demi_command_sdk::{Client, ServiceError};
+use demi_runner_process::backend::Backend;
 use demi_runner_protocol::wire::HostArtifact;
 use tokio::{
     sync::{mpsc, oneshot, watch},
@@ -85,14 +86,16 @@ pub struct ServiceRegistry {
 impl ServiceRegistry {
     /// Services start in `cwd` with exactly `env`; their artifacts are
     /// cached in `cache`, or taken from the copies the Host's image
-    /// preinstalled in `image`, when given.
+    /// preinstalled in `image`, when given, and those the backend serves
+    /// itself come the way `backend` reaches it.
     pub async fn new(
         cache: PathBuf,
         image: Option<PathBuf>,
+        backend: Option<Backend>,
         cwd: PathBuf,
         env: BTreeMap<String, String>,
     ) -> Result<Self, RuntimeError> {
-        let cache = Arc::new(ArtifactCache::new(cache, image).await?);
+        let cache = Arc::new(ArtifactCache::new(cache, image, backend).await?);
         let contents = cache.contents();
         let invocations = Invocations::default();
         let (requests, receiver) = mpsc::channel(REQUESTS);

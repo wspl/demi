@@ -98,6 +98,15 @@ pub struct Config {
         default_value = "/run/demi-cloud/machines.sock"
     )]
     pub machines_socket: PathBuf,
+    /// The Unix socket the backend serves its Clouds' runners on, which the
+    /// machine manager mounts into each Cloud
+    #[arg(
+        long,
+        env = "DEMI_BACKEND_RUNNER_SOCKET",
+        value_name = "DEMI_BACKEND_RUNNER_SOCKET",
+        default_value = "/run/demi-backend/runners.sock"
+    )]
+    pub runner_socket: PathBuf,
     /// Where the one object store lives: `local`, the data directory, or `s3`
     #[arg(
         long,
@@ -272,6 +281,7 @@ impl Config {
             self.machines_socket.clone(),
         );
         config.instance_secret = instance_secret;
+        config.runner_socket = Some(self.runner_socket.clone());
         config.storage = self.storage()?;
         // A root serves the parts it holds: a developer's has no web app,
         // which Vite serves instead.
@@ -296,6 +306,10 @@ pub struct BackendConfig {
     /// The machine manager's Unix socket (`managed-hosts.md` § Control and
     /// ownership): every deployment has Cloud.
     pub machines_socket: PathBuf,
+    /// The Unix socket the backend serves its Clouds' runners on
+    /// (`managed-hosts.md` § Backend socket); none serves them only on the
+    /// network, as a test's backend does.
+    pub runner_socket: Option<PathBuf>,
     /// Where the listener binds; port 0 picks a free port.
     pub address: SocketAddr,
     /// Who configures providers (`product.md` § Instance mode).
@@ -365,6 +379,7 @@ impl BackendConfig {
         Self {
             data_dir,
             machines_socket,
+            runner_socket: None,
             address,
             mode,
             web_directory: None,

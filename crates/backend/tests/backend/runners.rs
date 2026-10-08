@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
 use demi_backend_user_shard::holds::HelloStep;
+use demi_runner_process::backend::Backend;
 use demi_command_protocol::ServiceSequence;
 use demi_conversation_socket_protocol::ClientFrame;
 use demi_runner_protocol::values::DeviceToken;
@@ -994,5 +995,48 @@ async fn a_device_shows_its_system_and_runner_release_and_a_paired_one_takes_a_n
             .refusal(),
         (StatusCode::CONFLICT, ErrorCode::DeviceManaged)
     );
+    backend.close().await;
+}
+
+/// A Cloud's runner reaches its backend through the runner socket the
+/// machine manager mounts into the Cloud (`managed-hosts.md` § Backend
+/// socket), with the backend's public URL as the origin: the socket answers
+/// the runner's socket and pipes, and nothing a browser uses.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_runner_socket_serves_runners_and_nothing_a_browser_uses() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("runners.sock");
+    let mut harness = Harness::new();
+    harness.runner_socket = Some(path.clone());
+    let backend = harness.start().await;
+    let through = Backend::through(backend.url.parse().unwrap(), path);
+
+    let (mut socket, _) = through
+        .websocket(
+            backend.ws_url("/api/runner"),
+            tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default(),
+        )
+        .await
+        .unwrap();
+    let hello = wire::encode(&hello(wire::VERSION, None, None)).unwrap();
+    socket
+        .send(Message::Binary(hello.into_bytes().into()))
+        .await
+        .unwrap();
+    let answer = loop {
+        if let Message::Binary(frame) = socket.next().await.unwrap().unwrap() {
+            break wire::decode::<Inbound>(&frame).unwrap();
+        }
+    };
+    assert!(matches!(answer, Inbound::ClaimPending { .. }), "{answer:?}");
+
+    let http = through.http(reqwest::Client::builder()).build().unwrap();
+    let origin = through.origin().unwrap();
+    let pipe = http.get(origin.join("/api/pipes/unknown").unwrap()).send().await.unwrap();
+    assert_eq!(pipe.status(), StatusCode::UNAUTHORIZED);
+    let setup = http.get(origin.join("/api/setup").unwrap()).send().await.unwrap();
+    assert_eq!(setup.status(), StatusCode::NOT_FOUND);
+    // The network still serves the web app.
+    assert_eq!(backend.get("/api/setup", None).await.status, StatusCode::OK);
     backend.close().await;
 }

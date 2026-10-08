@@ -8,9 +8,10 @@
 use std::{io, time::Duration};
 
 use demi_command_protocol::host_target;
+use demi_runner_process::backend::Backend;
 use demi_runner_protocol::{
     release::{RELEASE_HEADER, RunnerUpdate, TARGET_HEADER, TOKEN_HEADER},
-    values::{BackendUrl, DeviceToken},
+    values::DeviceToken,
     wire::{self, Frame, Inbound},
 };
 use futures_util::{SinkExt, StreamExt};
@@ -48,12 +49,12 @@ pub struct Transport {
     owner: Option<JoinHandle<io::Result<()>>>,
 }
 
-/// The backend's runner socket: its `ws`/`wss` form, at `/api/runner` unless
-/// the URL names another path.
-pub fn socket_url(backend: &BackendUrl) -> io::Result<url::Url> {
-    let mut url = backend.url().clone();
-    let scheme = match url.scheme() {
-        "http" | "ws" => "ws",
+/// The backend's runner WebSocket: its `ws`/`wss` form, at `/api/runner`
+/// unless the URL names another path.
+pub fn socket_url(backend: &Backend) -> io::Result<url::Url> {
+    let mut url = backend.url().url().clone();
+    let scheme = match backend.origin()?.scheme() {
+        "http" => "ws",
         _ => "wss",
     };
     url.set_scheme(scheme)
@@ -76,7 +77,7 @@ impl Transport {
     /// backend checks before it opens it; a paired runner names its device
     /// with `token`.
     pub async fn connect(
-        backend: &BackendUrl,
+        backend: &Backend,
         release: &str,
         token: Option<&DeviceToken>,
         cancel: CancellationToken,
@@ -102,7 +103,7 @@ impl Transport {
             .max_frame_size(Some(wire::MAX_MESSAGE_BYTES));
         let connected = tokio::select! {
             _ = cancel.cancelled() => return Err(io::Error::new(io::ErrorKind::Interrupted, "connection cancelled")),
-            result = tokio::time::timeout(HANDSHAKE_TIMEOUT, tokio_tungstenite::connect_async_with_config(request, Some(config), true)) => {
+            result = tokio::time::timeout(HANDSHAKE_TIMEOUT, backend.websocket(request, config)) => {
                 result.map_err(io::Error::other)?
             }
         };

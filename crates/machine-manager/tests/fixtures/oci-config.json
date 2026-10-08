@@ -79,6 +79,12 @@
       "options": ["bind", "ro", "nodev"]
     },
     {
+      "destination": "/run/demi-backend",
+      "type": "bind",
+      "source": "/run/demi-backend",
+      "options": ["bind", "ro", "nodev", "nosuid", "noexec"]
+    },
+    {
       "destination": "/etc/resolv.conf",
       "type": "bind",
       "source": "/run/demi-machine-manager/demi-00000000-0000-4000-8000-000000000000/credentials/resolv.conf",

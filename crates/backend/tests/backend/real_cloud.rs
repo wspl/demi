@@ -59,6 +59,8 @@ const WATCH_MS: u64 = 240_000;
 struct Environment {
     /// The manager's socket.
     socket: PathBuf,
+    /// The runner socket the manager mounts into its Clouds.
+    runner_socket: PathBuf,
     /// The backend URL the manager allows.
     url: url::Url,
     /// The manager's state directory, which the suite only reads.
@@ -77,6 +79,7 @@ impl Environment {
         };
         Self {
             socket: variable("DEMI_TEST_MACHINES_SOCKET").into(),
+            runner_socket: variable("DEMI_TEST_RUNNER_SOCKET").into(),
             url: variable("DEMI_TEST_CLOUD_URL")
                 .parse()
                 .expect("DEMI_TEST_CLOUD_URL is a URL"),
@@ -85,8 +88,8 @@ impl Environment {
         }
     }
 
-    /// The address the backend listens on: the URL's own, since the
-    /// manager lets the Clouds reach only that one.
+    /// The address the backend listens on: the URL's own, which the
+    /// Clouds' runners name as their backend's origin.
     fn address(&self) -> SocketAddr {
         let host: IpAddr = self
             .url
@@ -102,13 +105,14 @@ impl Environment {
     }
 
     /// A harness whose backends use the real manager, load the image's
-    /// command releases, and give the Clouds' runners the URL the manager
-    /// allows. A Cloud stops a moment after the test lets go of its
+    /// command releases, serve the Clouds' runners on the runner socket the
+    /// manager mounts, and give them the URL the manager allows. A Cloud stops a moment after the test lets go of its
     /// conversation's file gate, whose lease is the conversation's work
     /// (`scenarios.md` § System under test).
     fn harness(&self) -> Harness {
         let mut harness = Harness::new();
         harness.machines = Some(self.socket.clone());
+        harness.runner_socket = Some(self.runner_socket.clone());
         harness.server_release = Some(self.release.clone());
         harness.public_url = Some(self.url.clone());
         harness.lifecycle = idle_after(Duration::from_secs(2));

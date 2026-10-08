@@ -22,8 +22,10 @@ use crate::{
 /// image), shared file access so the images can be saved while the sandbox
 /// is paused, setuid programs for sudo, and only the sidecar programs
 /// beside runsc: without the strict policy runsc downloads a missing one or
-/// falls back to a deprecated embedded copy.
-pub const PROFILE_FLAGS: [&str; 8] = [
+/// falls back to a deprecated embedded copy. The sandbox may connect to the
+/// host's Unix sockets its mounts show, of which there is one: the backend's
+/// runner socket (`managed-hosts.md` § Backend socket).
+pub const PROFILE_FLAGS: [&str; 9] = [
     "--platform=systrap",
     "--network=sandbox",
     "--overlay2=none",
@@ -32,6 +34,7 @@ pub const PROFILE_FLAGS: [&str; 8] = [
     "--allow-suid=true",
     "--directfs=true",
     "--sidecar-usage-policy=STRICT",
+    "--host-uds=open",
 ];
 
 /// A runsc command that does not finish in this time has hung.
@@ -302,6 +305,7 @@ mod tests {
                 "--allow-suid=true",
                 "--directfs=true",
                 "--sidecar-usage-policy=STRICT",
+                "--host-uds=open",
                 "pause",
                 "demi-a",
             ]

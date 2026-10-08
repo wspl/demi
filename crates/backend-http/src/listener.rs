@@ -6,7 +6,9 @@
 //! (`sessions-and-targets.md` § Host operations): a connection on which no
 //! byte moves for the deadline is closed, whoever stopped moving them. The
 //! edge serves its connections itself, with hyper's HTTP/1 server, since
-//! axum's `serve` gives a connection neither a control nor a deadline.
+//! axum's `serve` gives a connection neither a control nor a deadline. The
+//! same listener serves the network's connections and those of the
+//! backend's runner socket.
 
 use std::convert::Infallible;
 use std::future::Future;
@@ -24,26 +26,25 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::net::{TcpListener, TcpStream};
 use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
 
-pub(super) struct EdgeListener {
+pub(super) struct EdgeListener<L> {
     /// Dropped, which closes the socket, once shutdown starts.
-    tcp: Option<TcpListener>,
+    listener: Option<L>,
     closing: CancellationToken,
     connections: CancellationToken,
 }
 
-impl EdgeListener {
+impl<L: axum::serve::Listener> EdgeListener<L> {
     pub(super) fn new(
-        tcp: TcpListener,
+        listener: L,
         closing: CancellationToken,
         connections: CancellationToken,
     ) -> Self {
         Self {
-            tcp: Some(tcp),
+            listener: Some(listener),
             closing,
             connections,
         }
@@ -51,25 +52,28 @@ impl EdgeListener {
 
     /// The next connection, until shutdown starts; then the socket closes
     /// and this never resolves.
-    async fn accept(&mut self) -> ConnectionIo {
-        if let Some(tcp) = self.tcp.as_mut() {
+    async fn accept(&mut self) -> ConnectionIo<L::Io> {
+        if let Some(listener) = self.listener.as_mut() {
             tokio::select! {
                 biased;
                 () = self.closing.cancelled() => {}
                 // axum's own accept, which waits out and logs transient errors.
-                (stream, peer) = axum::serve::Listener::accept(tcp) => {
-                    // Small frames leave at once (`backend.md` § Runtime
-                    // model). A connection that keeps Nagle's algorithm
-                    // still works, only later, so it is served anyway.
-                    if let Err(error) = stream.set_nodelay(true) {
-                        tracing::debug!("a connection from {peer} keeps Nagle's algorithm: {error}");
-                    }
+                (stream, _) = listener.accept() => {
                     return ConnectionIo::new(stream, &self.connections);
                 }
             }
-            self.tcp = None;
+            self.listener = None;
         }
         std::future::pending().await
+    }
+}
+
+/// Small frames leave a network connection at once (`backend.md` § Runtime
+/// model). A connection that keeps Nagle's algorithm still works, only
+/// later, so it is served anyway.
+pub(super) fn without_delay(stream: &mut tokio::net::TcpStream) {
+    if let Err(error) = stream.set_nodelay(true) {
+        tracing::debug!("a connection keeps Nagle's algorithm: {error}");
     }
 }
 
@@ -78,8 +82,12 @@ impl EdgeListener {
 /// the open ones finish the requests they serve, and this resolves once
 /// they closed. A connection's upgraded stream, such as a WebSocket, lives
 /// on without it.
-pub(super) async fn serve<R, F>(mut listener: EdgeListener, stop: CancellationToken, respond: R)
-where
+pub(super) async fn serve<L, R, F>(
+    mut listener: EdgeListener<L>,
+    stop: CancellationToken,
+    respond: R,
+) where
+    L: axum::serve::Listener,
     R: Fn(Peer, Request<Incoming>) -> F + Clone + Send + 'static,
     F: Future<Output = Response> + Send + 'static,
 {
@@ -106,8 +114,9 @@ where
 
 /// Serves one connection until it closes; once `stop` is cancelled it
 /// closes after the request it serves.
-async fn serve_connection<S>(io: ConnectionIo, service: S, stop: CancellationToken)
+async fn serve_connection<I, S>(io: ConnectionIo<I>, service: S, stop: CancellationToken)
 where
+    I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     S: hyper::service::Service<Request<Incoming>, Response = Response, Error = Infallible>,
 {
     let connection = http1::Builder::new()
@@ -136,8 +145,8 @@ where
 /// An accepted connection, whose IO fails once the edge closes its
 /// connections or its control closes it: hyper then drops it, even when it
 /// is blocked writing to a peer that stopped reading.
-pub(super) struct ConnectionIo {
-    stream: TcpStream,
+pub(super) struct ConnectionIo<I> {
+    stream: I,
     /// Read and write each wait on their own, so a connection whose halves
     /// two tasks drive wakes both.
     read_closed: Pin<Box<WaitForCancellationFutureOwned>>,
@@ -145,8 +154,8 @@ pub(super) struct ConnectionIo {
     control: ConnectionControl,
 }
 
-impl ConnectionIo {
-    fn new(stream: TcpStream, connections: &CancellationToken) -> Self {
+impl<I> ConnectionIo<I> {
+    fn new(stream: I, connections: &CancellationToken) -> Self {
         let closed = connections.child_token();
         Self {
             stream,
@@ -263,7 +272,7 @@ fn closed_by_the_backend() -> io::Error {
     )
 }
 
-impl AsyncRead for ConnectionIo {
+impl<I: AsyncRead + Unpin> AsyncRead for ConnectionIo<I> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -282,7 +291,7 @@ impl AsyncRead for ConnectionIo {
     }
 }
 
-impl AsyncWrite for ConnectionIo {
+impl<I: AsyncWrite + Unpin> AsyncWrite for ConnectionIo<I> {
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,

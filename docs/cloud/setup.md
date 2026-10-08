@@ -1,8 +1,9 @@
 # Set up managed Cloud hosts
 
 Cloud runs on a Linux execution host. The backend reaches the manager over a
-restricted Unix socket and the sandbox's runner connects to the configured
-backend endpoint. For development on a Mac, the optional
+restricted Unix socket, and the sandbox's runner reaches the backend over the
+backend's runner socket, which the manager mounts into the sandbox
+([Backend socket](managed-hosts.md#backend-socket)). For development on a Mac, the optional
 [Develop on a Mac with Lima](../guides/mac-development.md) guide runs the
 manager in a Lima VM.
 
@@ -70,16 +71,17 @@ public egress and private destination refusal through a real sandbox.
 The manager reads the deployment's one configuration file,
 `/opt/demi/config/demi.env`, which the backend reads too
 ([Backend configuration](../backend/backend.md#configuration)). It reads
-three of the backend's settings, and the backend's definition of each holds:
+four of the backend's settings, and the backend's definition of each holds:
 
 - `DEMI_RELEASE`, the [server release](../delivery/builds-and-releases.md#server-release)
   root: the manager imports the Cloud image in its `image/`. A server leaves
   it out, so the manager takes the release of its own executable, as the
   backend does.
-- `DEMI_BACKEND_PUBLIC_URL`: the one endpoint, address and port, that a Cloud
-  may reach on the host or a private address, and the URL every boot record
-  must name.
+- `DEMI_BACKEND_PUBLIC_URL`: the URL every boot record must name, the origin
+  a Cloud's runner names to its backend.
 - `DEMI_MACHINE_MANAGER_SOCKET`: the socket the manager listens on.
+- `DEMI_BACKEND_RUNNER_SOCKET`: the backend's runner socket, whose directory
+  the manager mounts into each Cloud.
 
 Its own settings carry the prefix `DEMI_MANAGED_`, and it refuses a
 `DEMI_MANAGED_*` variable it does not read. Unknown or malformed settings

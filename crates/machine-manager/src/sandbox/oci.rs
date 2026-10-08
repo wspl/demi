@@ -4,10 +4,10 @@
 //! cgroup and its limits. The profile is code, not configuration: only the
 //! paths, the slot and the limits vary.
 
-use std::collections::HashSet;
+use std::{collections::HashSet, path::Path};
 
 use demi_machine_manager_protocol::image::{INIT_PATH, PROGRAMS_PATH, RUNNER_PATH};
-use demi_runner_protocol::release::RELEASE_ENV;
+use demi_runner_protocol::{boot::BACKEND_SOCKET, release::RELEASE_ENV};
 use oci_spec::{
     OciSpecError,
     runtime::{
@@ -57,6 +57,10 @@ pub struct Boot<'a> {
     /// The release of the runner the sandbox runs, which the runner names
     /// to the backend (`runner.md` § Runner updates).
     pub runner_release: &'a str,
+    /// The directory of the backend's runner socket, which the sandbox sees
+    /// where its runner looks for the socket (`managed-hosts.md` § Backend
+    /// socket).
+    pub backend_socket: &'a Path,
 }
 
 /// A sandbox's cgroup under `demi-cloud`, named by the sandbox id, and its
@@ -186,7 +190,7 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
         )
         .process(process)
         .hostname("demi-cloud")
-        .mounts(mounts(boot.directory)?)
+        .mounts(mounts(boot.directory, boot.backend_socket)?)
         .linux(linux)
         .build()?;
     // The builder starts from oci-spec's default, which carries an empty
@@ -195,7 +199,11 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
     Ok(spec)
 }
 
-fn mounts(directory: &RuntimeDirectory) -> Result<Vec<Mount>, OciSpecError> {
+fn mounts(directory: &RuntimeDirectory, backend_socket: &Path) -> Result<Vec<Mount>, OciSpecError> {
+    let guest_socket = Path::new(BACKEND_SOCKET)
+        .parent()
+        .and_then(Path::to_str)
+        .expect("the runner's socket lies in a directory");
     let mount = |destination: &str, typ: &str, source: &str, options: &[&str]| {
         MountBuilder::default()
             .destination(destination)
@@ -272,6 +280,11 @@ fn mounts(directory: &RuntimeDirectory) -> Result<Vec<Mount>, OciSpecError> {
         bind(directory.programs(), PROGRAMS_PATH, &["bind", "ro", "nodev"])?,
         bind(directory.boot(), BOOT_RECORD, &["bind", "ro", "nodev"])?,
         bind(
+            backend_socket.to_owned(),
+            guest_socket,
+            &["bind", "ro", "nodev", "nosuid", "noexec"],
+        )?,
+        bind(
             directory.resolver(),
             "/etc/resolv.conf",
             &["bind", "ro", "nodev"],
@@ -301,6 +314,7 @@ mod tests {
                 },
             }),
             runner_release: "release-of-the-runner",
+            backend_socket: std::path::Path::new("/run/demi-backend"),
         })
         .unwrap();
         let expected: Spec =

@@ -18,7 +18,20 @@ additionalDisks:
 portForwards:
   - guestSocket: "/run/user/{{.UID}}/demi-machine-manager.sock"
     hostSocket: "{{.Dir}}/sock/demi-machine-manager.sock"
+  # The other way: the backend on the Mac serves its Clouds' runners on this
+  # socket, which appears in the VM where the manager mounts it into each
+  # Cloud (managed-hosts.md § Backend socket).
+  - guestSocket: "/run/demi-backend/runners.sock"
+    hostSocket: "{{.Dir}}/sock/runners.sock"
+    reverse: true
 provision:
+  # The directory of the backend's runner socket, which Lima's forward
+  # makes as the VM's user.
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+      install -d -m 0755 -o "{{.User}}" /run/demi-backend
   # Lima mounts the data disk in cloud-init's final stage, after
   # multi-user.target, and runs these scripts on every boot after that. The
   # manager's unit waits for the mount (lima-machines.sh) and starts here.

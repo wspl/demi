@@ -19,7 +19,7 @@ use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::reset::recover_resets;
 use demi_backend_database::StorageError;
-use demi_backend_http::{AppState, Edge, Site, WebBuildError, web_build};
+use demi_backend_http::{AppState, Edge, Site, WebBuildError, runner_socket, web_build};
 use demi_backend_user_shard::conversation::search::index_at_start;
 use demi_backend_user_shard::conversation::{
     finish_deletions, rearm_wakeups, recover_forks, settle_pending,
@@ -69,6 +69,11 @@ pub enum StartError {
     #[error("the backend cannot listen on {address}: {source}")]
     Listen {
         address: SocketAddr,
+        source: io::Error,
+    },
+    #[error("the backend cannot listen on its runner socket {}: {source}", path.display())]
+    RunnerSocket {
+        path: std::path::PathBuf,
         source: io::Error,
     },
     /// The machine manager did not reconcile, or an interrupted reset could
@@ -292,7 +297,18 @@ impl Backend {
                 origin_dropped: AtomicBool::new(false),
             }),
         };
-        let edge = match Edge::start(config.address, state, config.web_directory).await {
+        let runner_socket = match config.runner_socket.as_deref().map(runner_socket).transpose() {
+            Ok(socket) => socket.flatten(),
+            Err(source) => {
+                shards.close().await;
+                services.close_providers().await;
+                return Err(StartError::RunnerSocket {
+                    path: config.runner_socket.unwrap_or_default(),
+                    source,
+                });
+            }
+        };
+        let edge = match Edge::start(config.address, runner_socket, state, config.web_directory).await {
             Ok(edge) => edge,
             Err(source) => {
                 shards.close().await;

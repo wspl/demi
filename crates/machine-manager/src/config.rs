@@ -1,6 +1,7 @@
 //! The manager's configuration (`setup.md` § Configuration): its command line,
 //! its own `DEMI_MANAGED_*` variables and the backend's settings it shares
-//! (`DEMI_RELEASE`, `DEMI_BACKEND_PUBLIC_URL`, `DEMI_MACHINE_MANAGER_SOCKET`),
+//! (`DEMI_RELEASE`, `DEMI_BACKEND_PUBLIC_URL`, `DEMI_MACHINE_MANAGER_SOCKET`,
+//! `DEMI_BACKEND_RUNNER_SOCKET`),
 //! all read from the deployment's one configuration file and validated at
 //! startup. An invalid or unknown setting stops the manager with an error
 //! that names the variable.
@@ -23,6 +24,10 @@ pub const RUNTIME_DIRECTORY: &str = "/run/demi-machine-manager";
 /// The socket the manager listens on unless `DEMI_MACHINE_MANAGER_SOCKET`
 /// names another, the backend's default too.
 const SOCKET: &str = "/run/demi-cloud/machines.sock";
+
+/// The backend's runner socket unless `DEMI_BACKEND_RUNNER_SOCKET` names
+/// another, the backend's default too.
+const RUNNER_SOCKET: &str = "/run/demi-backend/runners.sock";
 
 /// Where the host's own resolvers are named: systemd-resolved's upstream
 /// file, which a host running it has, else the classic one.
@@ -65,6 +70,17 @@ struct Cli {
         value_parser = absolute
     )]
     socket: PathBuf,
+    /// The backend's runner socket, whose directory each sandbox gets as its
+    /// way to the backend; its file name is the one a Cloud's runner looks
+    /// for.
+    #[arg(
+        long,
+        env = "DEMI_BACKEND_RUNNER_SOCKET",
+        value_name = "DEMI_BACKEND_RUNNER_SOCKET",
+        default_value = RUNNER_SOCKET,
+        value_parser = runner_socket
+    )]
+    runner_socket: PathBuf,
     /// The persistent state directory, on one filesystem.
     #[arg(
         long,
@@ -158,6 +174,8 @@ pub struct Config {
     pub runsc: PathBuf,
     pub image: PathBuf,
     pub backend_url: url::Url,
+    /// The backend's runner socket (`managed-hosts.md` § Backend socket).
+    pub runner_socket: PathBuf,
     /// Each sandbox's cgroup limits; `None` with `DEMI_MANAGED_LIMITS=off`,
     /// which runs sandboxes without cgroups.
     pub limits: Option<Limits>,
@@ -277,6 +295,7 @@ impl Config {
             runsc,
             image: release.join("image"),
             backend_url: cli.backend_url,
+            runner_socket: cli.runner_socket,
             limits,
             system_mib: cli.system_mib,
             home_mib: cli.home_mib,
@@ -383,6 +402,20 @@ fn absolute(value: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+/// An absolute path in a directory of its own, named as a Cloud's runner
+/// looks for it.
+fn runner_socket(value: &str) -> Result<PathBuf, String> {
+    let path = absolute(value)?;
+    let expected = Path::new(demi_runner_protocol::boot::BACKEND_SOCKET);
+    if path.file_name() != expected.file_name() || path.parent() == Some(Path::new("/")) {
+        return Err(format!(
+            "must be a file named {} in a directory of its own",
+            expected.file_name().unwrap_or_default().display()
+        ));
+    }
+    Ok(path)
+}
+
 fn backend_url(value: &str) -> Result<url::Url, String> {
     let url = url::Url::parse(value).map_err(|error| error.to_string())?;
     if !matches!(url.scheme(), "http" | "https") {
@@ -485,6 +518,10 @@ mod tests {
         assert_eq!(config.image, PathBuf::from("/opt/demi/0.1.3/image"));
         assert_eq!(config.data, PathBuf::from("/opt/demi/data/cloud"));
         assert_eq!(
+            config.runner_socket,
+            PathBuf::from("/run/demi-backend/runners.sock")
+        );
+        assert_eq!(
             config.working(),
             PathBuf::from("/opt/demi/data/cloud/working")
         );
@@ -503,7 +540,7 @@ mod tests {
 
     #[test]
     fn obsolete_malformed_and_insufficient_settings_are_refused() {
-        let refused: [&[(&str, &str)]; 21] = [
+        let refused: [&[(&str, &str)]; 23] = [
             &[("DEMI_MANAGED_FIRECRACKER", "/old")],
             &[("DEMI_MANAGED_SUBNET", "172.30.1.0/16")],
             &[("DEMI_MANAGED_SUBNET", "172.30.0.0/31")],
@@ -529,6 +566,10 @@ mod tests {
             &[("DEMI_RELEASE", "release")],
             &[("DEMI_BACKEND_PUBLIC_URL", "file:///tmp/backend")],
             &[("DEMI_MANAGED_LIMITS", "yes")],
+            // A Cloud's runner looks for `runners.sock`, in a directory the
+            // manager mounts whole.
+            &[("DEMI_BACKEND_RUNNER_SOCKET", "/run/demi-backend/backend.sock")],
+            &[("DEMI_BACKEND_RUNNER_SOCKET", "/runners.sock")],
         ];
         for settings in refused {
             assert!(parse(&[], settings).is_err(), "{settings:?} was accepted");

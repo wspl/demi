@@ -12,12 +12,12 @@ the Mac, and the Mac is also a paired device:
 ```text
 Mac
   backend, web application, runner (paired device)
-    | Unix socket forwarded by Lima
+    | two Unix sockets forwarded by Lima: the manager's, into the Mac,
+    | and the backend's runner socket, into the VM
     v
 Lima VM (Linux, the Mac's architecture)
   machine manager -> gVisor/systrap sandboxes -> Cloud guest runner
-    |
-    +---- outbound connection to the backend at the Mac's address
+                                                   (through the runner socket)
 ```
 
 ## Hosts in use
@@ -76,19 +76,21 @@ bash crates/machine-manager/scripts/lima-machines.sh \
   --public-url http://<the Mac's address>:3271
 ```
 
-`--public-url` is the backend's public URL. The Cloud guests connect to it
-through Lima's network, and the Mac's own runner connects to it directly, so
-it names the Mac's address on its network, such as Wi-Fi's
-`192.168.75.36`. Lima's gateway address, `host.lima.internal` or
-`192.168.5.2`, exists only inside the VM: the Mac cannot reach it. For
-Wi-Fi, this prints the address:
+`--public-url` is the backend's public URL. The Cloud guests reach the
+backend through its runner socket, which Lima forwards into the VM at
+`/run/demi-backend/runners.sock`
+([Backend socket](../cloud/managed-hosts.md#backend-socket)), and name the
+URL only as the backend's origin. The Mac's own runner connects to the URL
+directly, so it names the Mac's address on its network, such as Wi-Fi's
+`192.168.75.36`. For Wi-Fi, this prints the address:
 
 ```sh
 ipconfig getifaddr en0
 ```
 
-The script prints the backend's two settings: the forwarded socket and the
-public URL. When the Mac joins another network, its address changes: run the
+The script prints the backend's three settings: the manager's forwarded
+socket, the runner socket Lima forwards into the VM, and the public URL. When
+the Mac joins another network, its address changes: run the
 script again with the new URL and restart the backend with it. The Clouds use
 the VM's own upstream resolver, the manager's default, unless `--dns
 <addresses>` names others. A proxy on the Mac that answers name lookups with
@@ -134,13 +136,14 @@ state directory to make a start succeed.
 ## Backend on the Mac
 
 Follow the [Development backend](../backend/backend.md#development-backend)
-steps with the root above, and start the backend with the two settings the
+steps with the root above, and start the backend with the three settings the
 script printed:
 
 ```sh
 DEMI_RELEASE=.cache/release-<build> \
 DEMI_BACKEND_PUBLIC_URL=http://<the Mac's address>:3271 \
 DEMI_MACHINE_MANAGER_SOCKET=~/.lima/demi-machine-manager/sock/demi-machine-manager.sock \
+DEMI_BACKEND_RUNNER_SOCKET=~/.lima/demi-machine-manager/sock/runners.sock \
 ...
 ```
 

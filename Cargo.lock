@@ -1657,6 +1657,7 @@ dependencies = [
  "demi-provider-openai-api",
  "demi-runner-command-packages",
  "demi-runner-direct",
+ "demi-runner-process",
  "demi-runner-protocol",
  "demi-shared-artifacts",
  "demi-shared-cli",

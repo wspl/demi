@@ -5,6 +5,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::values::{BackendUrl, DeviceToken};
 
+/// Where a managed runner reaches its backend: the backend's runner socket,
+/// whose directory the machine manager mounts into the sandbox
+/// (`managed-hosts.md` § Backend socket). The record's URL still names the
+/// backend's origin.
+pub const BACKEND_SOCKET: &str = "/run/demi-backend/runners.sock";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ManagedBoot {

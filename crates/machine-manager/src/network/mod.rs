@@ -16,7 +16,7 @@ pub use linux::{CloudNetwork, NetworkError};
 mod linux {
     use std::{
         io,
-        net::{IpAddr, Ipv4Addr},
+        net::Ipv4Addr,
         os::fd::AsRawFd,
         path::PathBuf,
     };
@@ -51,10 +51,6 @@ mod linux {
         Firewall(String),
         #[error("DEMI_MANAGED_SUBNET overlaps host route {0}")]
         Overlap(Ipv4Net),
-        #[error("Backend has no reachable IPv4 address")]
-        NoBackendAddress,
-        #[error("Backend URL must be reachable from Cloud, not host loopback")]
-        LoopbackBackend,
     }
 
     /// Applies `ruleset` as one `nft` transaction; a refusal carries what
@@ -77,32 +73,20 @@ mod linux {
     pub struct CloudNetwork {
         pool: Ipv4Net,
         dns: Vec<Ipv4Addr>,
-        backend: url::Url,
         nft: PathBuf,
     }
 
     impl CloudNetwork {
-        pub fn new(pool: Ipv4Net, dns: Vec<Ipv4Addr>, backend: url::Url, nft: PathBuf) -> Self {
-            Self {
-                pool,
-                dns,
-                backend,
-                nft,
-            }
+        pub fn new(pool: Ipv4Net, dns: Vec<Ipv4Addr>, nft: PathBuf) -> Self {
+            Self { pool, dns, nft }
         }
 
-        /// Checks that the pool overlaps no host route, resolves the
-        /// backend, enables forwarding, and installs the firewall table.
+        /// Checks that the pool overlaps no host route, enables forwarding,
+        /// and installs the firewall table.
         pub async fn prepare(&self) -> Result<(), NetworkError> {
-            let backend = self.check().await?;
-            let port = self
-                .backend
-                .port_or_known_default()
-                .expect("an http URL has a port");
+            self.check().await?;
             let table = ruleset::table(&Policy {
                 pool: self.pool,
-                backend: &backend,
-                backend_port: port,
                 dns: &self.dns,
             });
             let nft = self.nft.clone();
@@ -113,10 +97,8 @@ mod linux {
             .await
         }
 
-        /// Checks that the pool overlaps no host route and that the backend
-        /// resolves to addresses a sandbox can reach, changing nothing;
-        /// answers those addresses.
-        pub async fn check(&self) -> Result<Vec<Ipv4Addr>, NetworkError> {
+        /// Checks that the pool overlaps no host route, changing nothing.
+        pub async fn check(&self) -> Result<(), NetworkError> {
             let routes =
                 netlink::session(|handle| async move { netlink::main_routes(&handle).await })
                     .await?;
@@ -131,39 +113,7 @@ mod linux {
                     return Err(NetworkError::Overlap(network));
                 }
             }
-            self.backend_addresses().await
-        }
-
-        /// The backend's IPv4 addresses, none of them loopback or
-        /// unspecified: a sandbox reaches the backend over the network.
-        async fn backend_addresses(&self) -> Result<Vec<Ipv4Addr>, NetworkError> {
-            let port = self
-                .backend
-                .port_or_known_default()
-                .expect("an http URL has a port");
-            let mut addresses: Vec<Ipv4Addr> = match self.backend.host() {
-                Some(url::Host::Ipv4(address)) => vec![address],
-                Some(url::Host::Domain(host)) => tokio::net::lookup_host((host, port))
-                    .await?
-                    .filter_map(|address| match address.ip() {
-                        IpAddr::V4(address) => Some(address),
-                        IpAddr::V6(_) => None,
-                    })
-                    .collect(),
-                Some(url::Host::Ipv6(_)) | None => Vec::new(),
-            };
-            addresses.sort();
-            addresses.dedup();
-            if addresses.is_empty() {
-                return Err(NetworkError::NoBackendAddress);
-            }
-            if addresses
-                .iter()
-                .any(|address| address.is_loopback() || address.octets()[0] == 0)
-            {
-                return Err(NetworkError::LoopbackBackend);
-            }
-            Ok(addresses)
+            Ok(())
         }
 
         /// Creates `slot`'s namespace and veth pair, gives both ends their
@@ -268,7 +218,6 @@ mod linux {
             let network = CloudNetwork::new(
                 "172.30.0.0/16".parse().unwrap(),
                 vec![Ipv4Addr::new(1, 1, 1, 1), Ipv4Addr::new(8, 8, 8, 8)],
-                "http://203.0.113.10:3271".parse().unwrap(),
                 nft,
             );
             network.prepare().await.unwrap();
@@ -324,7 +273,7 @@ mod linux {
 
         #[tokio::test]
         #[ignore = "needs root: run the Linux suite with --ignored as root"]
-        async fn a_pool_that_overlaps_a_host_route_or_a_loopback_backend_is_refused() {
+        async fn a_pool_that_overlaps_a_host_route_is_refused() {
             isolate();
             output("ip", &["link", "set", "lo", "up"]);
             // A veth pair, which the manager needs anyway: a kernel may lack
@@ -341,27 +290,13 @@ mod linux {
             let overlapping = CloudNetwork::new(
                 "172.30.0.0/16".parse().unwrap(),
                 vec![Ipv4Addr::new(1, 1, 1, 1)],
-                "http://203.0.113.10:3271".parse().unwrap(),
-                nft.clone(),
+                nft,
             );
             let error = overlapping.prepare().await.unwrap_err();
             assert_eq!(
                 error.to_string(),
                 "DEMI_MANAGED_SUBNET overlaps host route 172.30.5.0/24"
             );
-            for backend in ["http://127.0.0.1:3271", "http://0.1.2.3:3271"] {
-                let loopback = CloudNetwork::new(
-                    "10.99.0.0/16".parse().unwrap(),
-                    vec![Ipv4Addr::new(1, 1, 1, 1)],
-                    backend.parse().unwrap(),
-                    nft.clone(),
-                );
-                let error = loopback.prepare().await.unwrap_err();
-                assert_eq!(
-                    error.to_string(),
-                    "Backend URL must be reachable from Cloud, not host loopback"
-                );
-            }
         }
     }
 }

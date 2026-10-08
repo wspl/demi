@@ -11,7 +11,6 @@
 //!   chain forward { filter hook forward -10; iifname "demih*" jump ingress;
 //!                   oifname "demih*" ct state established,related accept; oifname "demih*" drop }
 //!   chain ingress { meta nfproto != ipv4 drop; iifname . ip saddr != @slots drop;
-//!                   ip daddr {backend} tcp dport <port> accept;
 //!                   ip daddr {dns} meta l4proto {tcp, udp} th dport 53 accept;
 //!                   fib daddr type local drop; ip daddr {denied} drop; accept }
 //!   chain nat     { nat hook postrouting srcnat; ip saddr <pool> oifname != "demih*" masquerade }
@@ -63,11 +62,11 @@ const DENIED: [(Ipv4Addr, u32); 14] = [
     (Ipv4Addr::new(240, 0, 0, 0), 4),
 ];
 
-/// The allowed endpoints besides public destinations.
+/// The allowed endpoints besides public destinations. The backend is none
+/// of them: a Cloud reaches it through its runner socket
+/// (`managed-hosts.md` § Backend socket).
 pub struct Policy<'a> {
     pub pool: Ipv4Net,
-    pub backend: &'a [Ipv4Addr],
-    pub backend_port: u16,
     pub dns: &'a [Ipv4Addr],
 }
 
@@ -153,17 +152,6 @@ pub fn table(policy: &Policy<'_>) -> Nftables<'static> {
                     text(&format!("@{SET}")),
                 ),
                 Statement::Drop(None),
-            ],
-        ),
-        (
-            "ingress",
-            vec![
-                matches(payload("ip", "daddr"), addresses(policy.backend)),
-                matches(
-                    payload("tcp", "dport"),
-                    Expression::Number(u32::from(policy.backend_port)),
-                ),
-                Statement::Accept(None),
             ],
         ),
         (

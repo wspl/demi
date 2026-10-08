@@ -24,7 +24,8 @@ pub use coding::{
 };
 pub use digest::{Digest, Verifier, digest};
 pub use download::{
-    client, client_allowing_http, client_following_redirects, copy, download, download_measured,
+    client, client_allowing_http, client_following_redirects, client_through, copy, download,
+    download_measured,
 };
 pub use lock::InstallLock;
 pub use publish::{

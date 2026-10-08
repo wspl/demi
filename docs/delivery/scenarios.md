@@ -285,10 +285,13 @@ Deployment prerequisites are in [Cloud setup](../cloud/setup.md).
 The Cloud suite is `real_cloud` in the backend's scenario binary; an ordinary
 run ignores its tests. Its world is the backend scenarios'
 ([System under test](#system-under-test)) with the real manager in place of
-the scripted one, configured by four variables:
+the scripted one, configured by five variables:
 
 - `DEMI_TEST_MACHINES_SOCKET`: the manager's socket, which the backend
   connects to.
+- `DEMI_TEST_RUNNER_SOCKET`: the backend's runner socket, the manager's
+  `DEMI_BACKEND_RUNNER_SOCKET`, which the backend serves the Clouds' runners
+  on ([Backend socket](../cloud/managed-hosts.md#backend-socket)).
 - `DEMI_TEST_CLOUD_URL`: the backend URL the manager allows, the
   `DEMI_BACKEND_PUBLIC_URL` of its configuration. The backend listens on that
   address and port and gives the URL to the Clouds' runners as its public URL.
@@ -322,7 +325,7 @@ sudo bash crates/machine-manager/scripts/cloud-suite.sh --release <root> \
   --work <directory>
 ```
 
-The script gives the suite the four variables. By default it runs the suite
+The script gives the suite the five variables. By default it runs the suite
 with `cargo test` and takes the manager and `demi-server` from the
 workspace's build (`target/debug`). A machine without the workspace's
 toolchain, such as the Lima VM of a Mac, runs programs built for it
@@ -335,13 +338,14 @@ The script starts the manager, with the
 pinned `runsc` that its `demi-server runtime` fetches unless
 `--runsc` names another, and with its resource limits off, in a stand-in execution host: the init of a throwaway PID
 and mount namespace with its own `/run` and an empty, read-only cgroup root,
-sharing the machine's network namespace so that the Clouds reach the backend.
+sharing the machine's network namespace.
 Like a host's init, it reaps the processes it adopts, such as the Sentry of a
 sandbox that died, which `runsc` would otherwise take for a running one.
 Nothing in the stand-in can create a cgroup, so a boot that asked for one
 would fail, and the machine's cgroup hierarchies stay untouched. The backend
-URL is the machine's address toward the Clouds with a free port; the state
-directory, socket, and logs are beneath the work directory. After the run,
+URL is the machine's address with a free port; the state directory, both
+sockets, and logs are beneath the work directory, the runner socket in a
+directory of its own outside the stand-in's `/run`. After the run,
 also when it fails or is interrupted, the script stops the manager, which
 saves every Cloud, ends the stand-in, deletes the manager's nftables table,
 restores IP forwarding, and removes the state directory. It then compares the
