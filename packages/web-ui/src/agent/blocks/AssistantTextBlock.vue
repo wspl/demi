@@ -24,10 +24,6 @@ withDefaults(defineProps<{
       :streaming="isStreaming"
       class="text-conversation text-fg-body"
     />
-    <!-- What ends the reply's content, above its footer: the request's changed-files button. -->
-    <div v-if="$slots.end" class="mt-2">
-      <slot name="end" />
-    </div>
     <AssistantMessageFooter
       v-if="showFooter && !isStreaming"
       :content="content"

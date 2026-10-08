@@ -7,9 +7,9 @@ export type EditSelectionHandler = (selection: RequestEditSelection) => void
 const editSelectionKey: InjectionKey<() => EditSelectionHandler | undefined> = Symbol('edit-selection')
 
 /**
- * Where the transcript below sends a picked file pill or a request's line,
- * read at each render: none while no plugin the user has on opens the edit,
- * and the pills and lines are then no controls.
+ * Where the transcript below sends a picked file pill, read at each render:
+ * none while no plugin the user has on opens the edit, and the pills are
+ * then no controls.
  */
 export function provideEditSelection(handler: () => EditSelectionHandler | undefined): void {
   provide(editSelectionKey, handler)
@@ -22,8 +22,8 @@ export function useEditSelection(): () => EditSelectionHandler | undefined {
 const editReadsKey: InjectionKey<() => ReadCallChange | undefined> = Symbol('edit-reads')
 
 /**
- * How the transcript below reads a retained edit's two sides, for a
- * request's line counts; none, and the line names its files alone.
+ * How the transcript below reads a retained edit's two sides, for a work
+ * group's file counts; none, and its pills name their files alone.
  */
 export function provideEditReads(read: () => ReadCallChange | undefined): void {
   provide(editReadsKey, read)

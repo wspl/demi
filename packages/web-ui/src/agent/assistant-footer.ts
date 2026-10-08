@@ -1,5 +1,4 @@
 import type { Block, SessionPhase } from '@demicodes/protocol'
-import type { TranscriptRequest } from '../files/request-changes'
 import { isCompactionDivider } from './visible-blocks'
 
 /**
@@ -36,26 +35,4 @@ export function assistantFooterIds(
   ends: ReadonlySet<string>,
 ): Set<string> {
   return new Set(visibleBlocks.filter((block) => block.type === 'text' && ends.has(block.id)).map((block) => block.id))
-}
-
-/**
- * Where each request's Files Changed line goes (`edit-tracking.md` § What
- * the conversation shows): under the request's last row, by that row's id,
- * for a request whose calls changed a file, and only once that row ends the
- * reply (`replyEndIds`), as Copy and Fork wait for it. While the request
- * still works, in its turn or a later one it continues, it has no line.
- */
-export function requestLineIds(
-  rows: readonly Pick<Block, 'id'>[],
-  requestOf: ReadonlyMap<string, TranscriptRequest>,
-  ends: ReadonlySet<string>,
-): Map<string, TranscriptRequest> {
-  const last = new Map<TranscriptRequest, string>()
-  for (const row of rows) {
-    const request = requestOf.get(row.id)
-    if (request && request.files.length > 0) {
-      last.set(request, row.id)
-    }
-  }
-  return new Map([...last].filter(([, id]) => ends.has(id)).map(([request, id]) => [id, request]))
 }
