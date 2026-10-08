@@ -3,10 +3,11 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import {
+  terminalPromptColors,
   useTerminalTheme,
   xtermThemeFromElement,
 } from '../composables/useTerminalTheme'
-import { liveOutputDelta } from './terminals'
+import { promptLine, terminalWrite, type TerminalShown } from './terminals'
 import '@xterm/xterm/css/xterm.css'
 
 const props = defineProps<{
@@ -17,6 +18,8 @@ const props = defineProps<{
    */
   chars?: number
   running?: boolean
+  /** The command's script, which the terminal opens with after a prompt; the page's line, not the output's. */
+  script?: string
 }>()
 
 const hostRef = ref<HTMLElement | null>(null)
@@ -24,9 +27,10 @@ const { terminalTheme } = useTerminalTheme()
 
 let term: Terminal | undefined
 let fit: FitAddon | undefined
-/** The output the terminal shows, and the live view's count at its end. */
-let written = ''
-let shownChars: number | undefined
+/** The output the terminal shows, and the live view's count at its end; null before anything. */
+let shown: TerminalShown | null = null
+/** The prompt line, in the colors of the theme it was last drawn in. */
+let prompt = ''
 let resize: ResizeObserver | undefined
 let appearance: MutationObserver | undefined
 
@@ -38,31 +42,44 @@ function applyTheme(): void {
   const theme = xtermThemeFromElement(host, terminalTheme.value)
   term.options.theme = theme
   host.style.setProperty('--xterm-selection', theme.selectionBackground)
+  applyPrompt()
 }
 
-/** What whole `output` adds to the output written: its rest, or all of it anew. */
-function continuation(output: string): { anew: boolean; text: string } {
-  return output.startsWith(written)
-    ? { anew: false, text: output.slice(written.length) }
-    : { anew: true, text: output }
+/**
+ * Takes the prompt line for the script in the live colors. Its colors are
+ * written into the terminal, so a new theme or script draws it, and the
+ * output after it, anew.
+ */
+function applyPrompt(): void {
+  const host = hostRef.value
+  if (!term || !host) {
+    return
+  }
+  const next = promptLine(props.script, terminalPromptColors(host, terminalTheme.value))
+  if (next === prompt) {
+    return
+  }
+  prompt = next
+  if (shown) {
+    const { output, chars } = shown
+    shown = null
+    term.reset()
+    show(output, chars)
+  }
 }
 
 /**
  * Writes what `output` adds to what the terminal shows, so it keeps its
- * scrollback: for a live view, the characters beyond those shown, by the
- * view's count (`runtime.md` § Rendering boundary); for whole output, what
- * continues it. Anything else is shown anew.
+ * scrollback, and opens it with the prompt line each time it starts anew
+ * (`terminalWrite`).
  */
 function show(output: string, chars: number | undefined): void {
   if (!term) {
     return
   }
-  const { anew, text } = chars === undefined
-    ? continuation(output)
-    : liveOutputDelta(shownChars, output, chars)
-  written = output
-  shownChars = chars
-  if (anew) {
+  const { reset, text } = terminalWrite(shown, output, chars, prompt)
+  shown = { output, chars }
+  if (reset) {
     term.reset()
   }
   if (!text) {
@@ -127,6 +144,7 @@ watch(
   (running) => applyCursor(running === true),
 )
 watch(terminalTheme, applyTheme)
+watch(() => props.script, applyPrompt)
 
 onBeforeUnmount(() => {
   resize?.disconnect()

@@ -8,14 +8,16 @@ import {
   firstRunningTerminalId,
   followLiveOutput,
   liveOutputDelta,
+  promptLine,
   runningTerminals,
   terminalPanelTabs,
   terminalStatus,
+  terminalWrite,
   type TerminalRecord,
 } from '../terminals'
 
 function terminal(
-  partial: Pick<TerminalRecord, 'id' | 'name' | 'phase'> & Partial<TerminalRecord>,
+  partial: Pick<TerminalRecord, 'id' | 'title' | 'phase'> & Partial<TerminalRecord>,
 ): TerminalRecord {
   return {
     startedAt: '2026-09-09T00:00:00.000Z',
@@ -28,19 +30,19 @@ test('running terminals are oldest first', () => {
   const terminals = [
     terminal({
       id: 'a',
-      name: 'A',
+      title: 'A',
       phase: 'running',
       startedAt: '2026-09-09T00:02:00.000Z',
     }),
     terminal({
       id: 'b',
-      name: 'B',
+      title: 'B',
       phase: 'exited',
       startedAt: '2026-09-09T00:00:00.000Z',
     }),
     terminal({
       id: 'c',
-      name: 'C',
+      title: 'C',
       phase: 'running',
       startedAt: '2026-09-09T00:01:00.000Z',
     }),
@@ -60,19 +62,19 @@ test('a running inspect lists every running job; an exited inspect is that job o
   const terminals = [
     terminal({
       id: 'run-old',
-      name: 'Old',
+      title: 'Old',
       phase: 'running',
       startedAt: '2026-09-09T00:01:00.000Z',
     }),
     terminal({
       id: 'run-new',
-      name: 'New',
+      title: 'New',
       phase: 'running',
       startedAt: '2026-09-09T00:02:00.000Z',
     }),
     terminal({
       id: 'done',
-      name: 'Done',
+      title: 'Done',
       phase: 'exited',
     }),
   ]
@@ -128,9 +130,9 @@ function call(toolUseId: string, status: 'executing' | 'completed'): Block {
 }
 
 test('a command shows under its running call, and in the dock once the call returned', () => {
-  const rootCommand = terminal({ id: 'root', name: 'R', phase: 'running', toolUseId: 'call-1' })
-  const childCommand = terminal({ id: 'child', name: 'C', phase: 'running', toolUseId: 'call-1', subagentId: 'agent' })
-  const stored = terminal({ id: 'stored', name: 'S', phase: 'exited' })
+  const rootCommand = terminal({ id: 'root', title: 'R', phase: 'running', toolUseId: 'call-1' })
+  const childCommand = terminal({ id: 'child', title: 'C', phase: 'running', toolUseId: 'call-1', subagentId: 'agent' })
+  const stored = terminal({ id: 'stored', title: 'S', phase: 'exited' })
   const terminals = [stored, rootCommand, childCommand]
   const root = [call('call-1', 'executing')]
   const child = [call('call-1', 'completed')]
@@ -141,9 +143,35 @@ test('a command shows under its running call, and in the dock once the call retu
   // The root's call still runs; the child's returned, and its command is the dock's.
   expect(dockTerminals(terminals, blocksOf).map((item) => item.id)).toEqual(['stored', 'child'])
   // A model that reuses a call's id: the latest call and the latest command are the ones that run.
-  const again = terminal({ id: 'again', name: 'R2', phase: 'running', toolUseId: 'call-1' })
+  const again = terminal({ id: 'again', title: 'R2', phase: 'running', toolUseId: 'call-1' })
   expect(callTerminal([rootCommand, again], undefined, 'call-1')?.id).toBe('again')
   expect(
     dockTerminals([again], () => [call('call-1', 'executing'), call('call-1', 'completed')]).map((item) => item.id),
   ).toEqual(['again'])
+})
+
+// `runtime.md` § Rendering boundary: a command's terminal opens with its
+// script as a terminal shows what was typed, the page's own line.
+const COLORS = { prompt: '<p>', script: '<s>' }
+const R = '\x1b[0m'
+
+test('the prompt line shows the script after $, and each further line after >', () => {
+  expect(promptLine('cd web\nbun test \\\n  --watch\n', COLORS)).toBe(
+    `<p>$${R} <s>cd web${R}\n<p>>${R} <s>bun test \\${R}\n<p>>${R} <s>  --watch${R}\n`,
+  )
+  expect(promptLine(undefined, COLORS)).toBe('')
+})
+
+test('the prompt line opens the terminal once, and again only when it starts anew', () => {
+  const prompt = promptLine('npm test', COLORS)
+  // The first frame opens with the prompt, then the output.
+  const first = terminalWrite(null, 'one\n', 4, prompt)
+  expect(first).toEqual({ reset: false, text: `${prompt}one\n` })
+  // A frame that adds output writes only what it adds: the prompt is not part of the count.
+  expect(terminalWrite({ output: 'one\n', chars: 4 }, 'one\ntwo\n', 8, prompt)).toEqual({ reset: false, text: 'two\n' })
+  // After a gap the tail shows anew, under the prompt again.
+  expect(terminalWrite({ output: 'one\ntwo\n', chars: 8 }, 'ninety\n', 100, prompt))
+    .toEqual({ reset: true, text: `${prompt}ninety\n` })
+  // Whole output, as after a reload, continues what was shown.
+  expect(terminalWrite({ output: 'a\n', chars: undefined }, 'a\nb\n', undefined, prompt)).toEqual({ reset: false, text: 'b\n' })
 })

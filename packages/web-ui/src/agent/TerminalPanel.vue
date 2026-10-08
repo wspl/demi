@@ -55,7 +55,7 @@ function closeTab(terminal: TerminalRecord): void {
       <TabItem
         v-for="terminal in tabs"
         :key="terminal.id"
-        :title="terminal.name"
+        :title="terminal.title"
         :is-active="terminal.id === active?.id"
         :status="terminalStatus(terminal.phase)"
         mark="terminal"
@@ -69,6 +69,7 @@ function closeTab(terminal: TerminalRecord): void {
       :output="active.output"
       :chars="active.chars"
       :running="active.phase === 'running'"
+      :script="active.script"
     />
   </SessionOverlay>
 </template>
