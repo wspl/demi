@@ -390,8 +390,10 @@ CLI's inference goes to the scripted Anthropic-compatible endpoint the other
 suites use, which the Cloud's runner names in `ANTHROPIC_BASE_URL`. That
 runner's environment is the suite's alone, so no proxy of the machine's
 reaches the CLI; the CLI's non-essential traffic, telemetry and error
-reporting are off, and the account's token is made up, so nothing reaches the
-vendor. The scenarios cover what the product relies on from the CLI:
+reporting are off, and the account is seeded in the vault with made-up
+tokens (`Backend::seed_subscription`, a hook of the tests alone), since a
+sign-in needs the vendor, so nothing reaches the vendor. The suite runs on
+Linux, the Cloud's platform. The scenarios cover what the product relies on from the CLI:
 
 - the install and its verification;
 - the `initialize` request with the SDK MCP server, which offers the model
@@ -402,7 +404,9 @@ vendor. The scenarios cover what the product relies on from the CLI:
 - Stop in the middle of a stream;
 - a new process that replays the transcript, and a change of model and
   effort, which needs one;
-- a vendor error as the request's failure.
+- a vendor error as the request's failure;
+- the token on a file descriptor, the process's private directory and its
+  removal, and a refused token refreshed and the request sent again.
 
 Each scenario asserts what the product observes: the transcript, the frames,
 the usage ledger and what the scripted endpoint received. What the suite cannot
