@@ -186,18 +186,19 @@ async fn a_process_is_never_started_without_the_accounts_token_or_when_the_place
     assert_eq!(refused.message, "No Claude Code account is signed in");
     assert_eq!(placement.starts(), 0);
 
-    // A placement that cannot start the CLI says why.
+    // A placement that cannot start the CLI says why, as a request that got
+    // no answer, which the agent retries.
     let provider = provider().await;
     let mut runtime = runtime_of(&provider, &placement);
-    placement.fail_next("Claude Code 2.1.3 could not be installed: the disk is full");
+    placement.fail_next("Claude Code 2.1.3 could not be installed: failed to lookup address information");
     let events = all_events(runtime.run(request(vec![user("hi")]))).await;
     assert_eq!(events.len(), 1);
     let failed = failure(&events[0]);
     assert_eq!(
         failed.message,
-        "Claude Code 2.1.3 could not be installed: the disk is full"
+        "Claude Code 2.1.3 could not be installed: failed to lookup address information"
     );
-    assert_eq!(failed.code, None);
+    assert_eq!(failed.code, Some(ErrorCode::Overloaded));
 }
 
 // 0.04 s. The run goes on its own thread and runtime: a
@@ -484,6 +485,29 @@ async fn a_process_that_ended_while_kept_is_replaced_by_one_that_replays_the_tra
     );
     assert_eq!(events, [usage(2, 2)]);
     assert_eq!(placement.starts(), 2);
+}
+
+// A fixed bug: a subagent's request failed for good when its Cloud's runner
+// reconnected under it.
+#[tokio::test(flavor = "local")]
+async fn a_run_whose_machine_went_away_got_no_answer_and_is_retried() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let (events, ()) = tokio::join!(
+        all_events(runtime.run(request_without_tools(vec![user("hi")]))),
+        async {
+            let mut cli = starts.next().await;
+            cli.read().await;
+            cli.exit(ProcessEnd::Lost("replaced by a new connection of the device's runner".into()));
+        }
+    );
+    let lost = failure(&events[0]);
+    assert_eq!(
+        lost.message,
+        "Claude Code's machine went away: replaced by a new connection of the device's runner"
+    );
+    assert_eq!(lost.code, Some(ErrorCode::Overloaded));
 }
 
 #[tokio::test(flavor = "local", start_paused = true)]
