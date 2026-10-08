@@ -25,7 +25,8 @@ use demi_command_protocol::{CommandCaller, CommandContext};
 use demi_host_interface::{
     ByteRange, Call, CommandSet, CommandState, CommandStatus, ExecRequest, FileContents, FileKind,
     GroupBuilder, Host, HostError, HostErrorKind, JobCaller, LeafBuilder, ObservationWindow,
-    Process, ProcessEnd, ProcessOutput, RpcError, RpcPort, Seen, ShellEnvironment, ShellTarget,
+    Process, ProcessEnd, ProcessOutput, RpcError, RpcPort, Seen, ShellEnvironment, ShellError,
+    ShellTarget,
     Signal, SpawnEnv, SpawnRequest, Streams, TypedRpc, WriteOptions,
     testing::{CountingNumbers, TestPages, host_conformance_cases, test_command_context},
 };
@@ -48,13 +49,37 @@ pub(crate) fn caller() -> JobCaller {
     }
 }
 
-pub(crate) fn exec(script: &str, window: u64) -> ExecRequest {
-    ExecRequest {
-        script: script.into(),
-        shell: ShellTarget::Default,
-        window: ObservationWindow::from_millis(window).unwrap(),
-        caller: caller(),
-        tool_use_id: "call".into(),
+/// An exec and how long a call watches it.
+pub(crate) struct Exec {
+    pub(crate) request: ExecRequest,
+    /// In milliseconds.
+    pub(crate) window: u64,
+}
+
+/// An exec of `script` in the default shell, watched for up to `window`
+/// milliseconds.
+pub(crate) fn exec(script: &str, window: u64) -> Exec {
+    Exec {
+        request: ExecRequest {
+            script: script.into(),
+            shell: ShellTarget::Default,
+            caller: caller(),
+            tool_use_id: "call".into(),
+        },
+        window,
+    }
+}
+
+/// Starts an exec and watches it, as a `shell_exec` call does.
+pub(crate) trait Watched {
+    async fn exec(&self, exec: Exec, cancel: CancellationToken) -> Result<CommandStatus, ShellError>;
+}
+
+impl<E: ShellEnvironment> Watched for E {
+    async fn exec(&self, exec: Exec, cancel: CancellationToken) -> Result<CommandStatus, ShellError> {
+        let command = self.start(exec.request, cancel).await?;
+        let window = ObservationWindow::from_millis(exec.window);
+        demi_host_interface::watch(self, &command, window, std::future::pending()).await
     }
 }
 
@@ -447,24 +472,25 @@ async fn the_working_directory_carries_between_a_shells_jobs_and_nothing_else_do
     // A script that does not parse leaves the directory as it was.
     assert_eq!(exited(&run(&shell, "cd sub; do").await), 2);
     assert_eq!(run(&shell, "pwd").await.stdout.delta, format!("{home}\n"));
-    // An ephemeral shell starts where it is told and leaves the default one
-    // alone.
-    let ephemeral = shell
+    // A new shell starts where it is told and leaves the default one alone.
+    let beside = shell
         .exec(
-            ExecRequest {
-                script: "pwd".into(),
-                shell: ShellTarget::Ephemeral {
-                    cwd: Some(format!("{home}/sub")),
+            Exec {
+                request: ExecRequest {
+                    script: "pwd".into(),
+                    shell: ShellTarget::New {
+                        cwd: Some(format!("{home}/sub")),
+                    },
+                    caller: caller(),
+                    tool_use_id: "call".into(),
                 },
-                window: ObservationWindow::from_millis(10_000).unwrap(),
-                caller: caller(),
-                tool_use_id: "call".into(),
+                window: 10_000,
             },
             CancellationToken::new(),
         )
         .await
         .unwrap();
-    assert_eq!(ephemeral.stdout.delta, format!("{home}/sub\n"));
+    assert_eq!(beside.stdout.delta, format!("{home}/sub\n"));
     assert_eq!(run(&shell, "pwd").await.stdout.delta, format!("{home}\n"));
     fixture.stop().await;
 }
@@ -497,12 +523,14 @@ async fn a_job_whose_directory_went_with_the_last_job_starts_in_the_conversation
     // A new shell told to start there does the same.
     let fresh = shell
         .exec(
-            ExecRequest {
-                script: "pwd".into(),
-                shell: ShellTarget::Ephemeral { cwd: Some(gone) },
-                window: ObservationWindow::from_millis(10_000).unwrap(),
-                caller: caller(),
-                tool_use_id: "call".into(),
+            Exec {
+                request: ExecRequest {
+                    script: "pwd".into(),
+                    shell: ShellTarget::New { cwd: Some(gone) },
+                    caller: caller(),
+                    tool_use_id: "call".into(),
+                },
+                window: 10_000,
             },
             CancellationToken::new(),
         )

@@ -27,7 +27,7 @@ const VIDEO_CAP_BYTES: u64 = 16 * 1024 * 1024;
 /// How many of a running command's newest lines its result points to.
 const NEWEST_LINES: u64 = 50;
 
-const RUNNING_NEXT: &str = "next: command is still running; check again with shell_status, or call yield to end this turn and be woken later, or shell_abort to stop it.";
+const RUNNING_NEXT: &str = "next: command is still running; look again with shell_status, call yield with its commandId to end this turn and be woken when it ends, or stop it with demi shell stop <commandId>.";
 
 /// A shell tool's outcome for `status`: its text, the media it attaches and
 /// the lines about them, and its view. `model` is the call's, and its
@@ -954,12 +954,12 @@ mod tests {
             .join("\n")
         );
         running.state = CommandState::Running {
-            hint: Some("waiting for input: answer with shell_write".into()),
+            hint: Some("waiting for input: answer with shell_status and stdin".into()),
         };
         assert!(
             result(&running)
                 .await
-                .ends_with("\nwaiting for input: answer with shell_write")
+                .ends_with("\nwaiting for input: answer with shell_status and stdin")
         );
         let mut aborted = exited("");
         aborted.state = CommandState::Aborted;
