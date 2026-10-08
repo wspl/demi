@@ -11,7 +11,8 @@ import type { MoveQuestion } from './move-question'
  * Agent is the default and moves it and wakes the agent; Move moves it only.
  * While the host carries the move out, `busy` keeps the dialog open;
  * `useMoveQuestion` holds its state. It stacks on a directory picker it is
- * asked from, which stays for another choice when the move is cancelled.
+ * asked from, which stays for another choice when the move is cancelled,
+ * and replaces the host menu it is asked from.
  */
 defineProps<{
   isOpen: boolean
