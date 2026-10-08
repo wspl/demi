@@ -25,7 +25,8 @@ export type ProductAttachment =
   | (ComposerFileAttachment & Pick<SavedFile, 'file' | 'upload'>)
   | (ComposerRemoteAttachment & { deviceId: string })
 
-export interface Conversation extends SidebarConversation {
+/** The sidebar's `device` is derived from `target` and the devices for the row (`App.vue`), never kept. */
+export interface Conversation extends Omit<SidebarConversation, 'device'> {
   persistence: 'draft' | 'pending' | 'synced'
   target: ConversationTarget
   revision: number

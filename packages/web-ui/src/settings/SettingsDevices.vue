@@ -1,11 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Monitor } from '@lucide/vue'
 import AsyncRegion from '../ui/AsyncRegion.vue'
 import Button from '../ui/Button.vue'
-import CornerDot from '../ui/CornerDot.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
-import { ICON_PX } from '../ui/icon-metrics'
 import type { SentenceText } from '../ui/ui-text'
 import CloudSettings from '../cloud/CloudSettings.vue'
 import type { CloudState } from '../cloud/types'
@@ -13,7 +10,8 @@ import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
 import { directReason, type DeviceRoute } from '../devices/direct'
 import type { DeviceInstallation } from '../devices/installation'
 import { useDevicePairing, type PairingResult } from '../devices/pairing'
-import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
+import DeviceIcon from '../devices/DeviceIcon.vue'
+import { DEVICE_STATE_LABEL } from '../devices/state'
 import type { OverlayStore } from '../overlay/overlayStore'
 import SettingsDevicePage from './SettingsDevicePage.vue'
 import SettingsGroup from './SettingsGroup.vue'
@@ -148,13 +146,7 @@ const pageProjects = computed(() =>
             <template v-if="device.os">{{ device.os.name }} · </template>{{ reachedAs(device) }}<template v-if="device.state === 'offline' && device.seen"> · Last seen <RelativeTime :timestamp="device.seen" /></template>
           </template>
           <template #leading>
-            <span class="relative flex">
-              <Monitor :size="ICON_PX.in28" />
-              <CornerDot
-                :tone="DEVICE_STATE_TONE[device.state]"
-                :label="DEVICE_STATE_LABEL[device.state]"
-              />
-            </span>
+            <DeviceIcon :state="device.state" />
           </template>
         </SettingsRow>
         <div

@@ -74,3 +74,32 @@ test("a device project's row follows its device online, updating, offline and go
   product.snapshot = productState({ devices: [cloud], workspaces })
   expect(resources.projects[0]).toMatchObject({ host: 'Unavailable device', hostKind: 'device', state: 'offline' })
 })
+
+test("a conversation outside a project shows its paired device with its state, or that it was removed; the Cloud and a project show none", () => {
+  const product = useProduct()
+  const resources = useResources()
+  const device = {
+    id: 'laptop',
+    name: 'MacBook Pro',
+    kind: 'user' as const,
+    platform: 'darwin' as const,
+    claimedAt: '2026-09-10T00:00:00.000Z',
+    lastSeenAt: null,
+    state: 'offline' as const,
+    home: null,
+    installed: [],
+    startCommand: null,
+    os: null,
+    runnerVersion: null,
+    route: 'automatic' as const,
+  }
+  const onLaptop = { kind: 'device' as const, deviceId: 'laptop', path: '/Users/zan' }
+
+  product.snapshot = productState({ devices: [device] })
+  expect(resources.conversationDevice(onLaptop)).toEqual({ kind: 'paired', name: 'MacBook Pro', state: 'offline' })
+  expect(resources.conversationDevice({ kind: 'cloud' })).toBeUndefined()
+  expect(resources.conversationDevice({ kind: 'workspace', workspaceId: 'ledger' })).toBeUndefined()
+
+  product.snapshot = productState({ devices: [] })
+  expect(resources.conversationDevice(onLaptop)).toEqual({ kind: 'removed' })
+})

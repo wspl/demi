@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   workspaceAnswerSchema,
+  type ConversationTarget,
   type CreateWorkspace,
   type DeviceDto,
   type SidebarReorder,
@@ -14,6 +15,7 @@ import { modelInfo, providerView, wireApi } from './catalog'
 import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
 import type { PairingDevice } from '@demicodes/web-ui/devices/pairing'
+import type { SidebarConversationDevice } from '@demicodes/web-ui/sidebar/types'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
 import { emptyLocalState, readLocalState, writeLocalState } from './local'
@@ -117,6 +119,18 @@ export const useResources = defineStore('resources', () => {
   function deviceById(id: string | null): Device | null {
     const device = product.snapshot?.devices.find((candidate) => candidate.id === id)
     return device ? productDevice(device) : null
+  }
+  /**
+   * The device a conversation's sidebar row shows (`product.md` § Conversations and projects):
+   * for one outside a project on a paired device, its name and state, or that it was removed;
+   * none on the Cloud, in a project, or before the first snapshot names the devices.
+   */
+  function conversationDevice(target: ConversationTarget): SidebarConversationDevice | undefined {
+    if (target.kind !== 'device' || !product.snapshot) {
+      return undefined
+    }
+    const device = product.snapshot.devices.find((candidate) => candidate.id === target.deviceId)
+    return device ? { kind: 'paired', name: device.name, state: device.state } : { kind: 'removed' }
   }
   const projects = computed<Project[]>(() =>
     (product.snapshot?.workspaces ?? []).map((workspace): Project => {
@@ -280,6 +294,7 @@ export const useResources = defineStore('resources', () => {
     sidebarWidth,
     asideShare,
     deviceById,
+    conversationDevice,
     recentProjectIds,
     rememberProject,
     hideProvider,

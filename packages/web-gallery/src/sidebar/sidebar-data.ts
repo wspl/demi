@@ -90,7 +90,9 @@ export function demoConversations(): SidebarConversation[] {
       status: 'done',
       projectId: null,
       pinned: false,
-      unread: true
+      unread: true,
+      // Runs on a paired device that is online: the row's end shows it.
+      device: { kind: 'paired', name: 'zan-mbp', state: 'online' },
     },
     {
       id: 'c-skills',
@@ -109,8 +111,10 @@ export function demoConversations(): SidebarConversation[] {
       updatedAt: ago(5 * HOUR),
       status: 'idle',
       projectId: null,
-      pinned: false,
-      unread: false
+      // Pinned on an offline device: the device's mark stands left of the pin.
+      pinned: true,
+      unread: false,
+      device: { kind: 'paired', name: 'build-01', state: 'offline' },
     },
     {
       id: 'c-regex',
@@ -119,7 +123,9 @@ export function demoConversations(): SidebarConversation[] {
       status: 'idle',
       projectId: null,
       pinned: false,
-      unread: false
+      unread: false,
+      // Its device was removed since: the mark has no dot.
+      device: { kind: 'removed' },
     },
     // demi
     {

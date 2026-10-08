@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Cloud, Monitor, Plus } from '@lucide/vue'
+import { Cloud, Plus } from '@lucide/vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import type { MenuListItem } from '@demicodes/web-ui/ui/menu-context'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 import type { HostDeviceOption } from './types'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
+import { DEVICE_ICON } from './icons'
 
 const props = defineProps<{
   devices: HostDeviceOption[]
@@ -22,7 +23,7 @@ const items = computed((): MenuListItem[] =>
   props.devices.map((device) => ({
     ...device,
     label: device.name,
-    icon: Monitor,
+    icon: DEVICE_ICON,
     note: device.state === 'online' ? undefined : DEVICE_STATE_LABEL[device.state],
     indicator: DEVICE_STATE_TONE[device.state],
     indicatorLabel: DEVICE_STATE_LABEL[device.state],
