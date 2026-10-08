@@ -36,19 +36,33 @@ export function workingTreeReads(conversationId: string): ChangeReads {
 }
 
 /**
+ * The texts of the blobs read so far, for the page's lifetime: a blob's bytes
+ * never change, so the Change view and a request's line counts read each
+ * once. A read that fails is dropped, so the next one tries again.
+ */
+const blobTexts = new Map<string, Promise<string>>()
+
+function blobText(blob: string): Promise<string> {
+  let text = blobTexts.get(blob)
+  if (!text) {
+    text = apiRequest(`/blobs/${encodeURIComponent(blob)}`).then((response) => response.text())
+    blobTexts.set(blob, text)
+    text.catch(() => blobTexts.delete(blob))
+  }
+  return text
+}
+
+/**
  * Reads both sides of a tool call's edit from the blob route, by the blobs
  * its view names (`edit-tracking.md` § Edit copies), without the Host; null
  * when the user's namespace no longer holds one of them. The copies are
- * text, since only text is stored.
+ * text, since only text is stored. The read itself is shared and kept, so
+ * `signal` only stops this caller's wait.
  */
 export const readEditCopies: ReadCallChange = async (copies, signal) => {
   try {
-    const [original, modified] = await Promise.all(
-      [copies.original, copies.modified].map(async (blob) => {
-        const response = await apiRequest(`/blobs/${encodeURIComponent(blob)}`, { signal })
-        return response.text()
-      }),
-    )
+    const [original, modified] = await Promise.all([blobText(copies.original), blobText(copies.modified)])
+    signal?.throwIfAborted()
     return { original, modified }
   } catch (error) {
     if (error instanceof ApiError && error.code === 'not_found') {
