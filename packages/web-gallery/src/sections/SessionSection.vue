@@ -103,6 +103,7 @@ import {
   screenshotTool,
   screenshotsTool,
   shellTool,
+  returnedShellTool,
   smallImageTool,
   statusImageTool,
   thinkingText,
@@ -224,6 +225,22 @@ const exhibitAgentId = ref<string | null>(
   runningSubagents(agents)[0]?.id ?? agents[0]?.id ?? null,
 )
 const exhibitTerminalId = ref<string | null>(firstRunningTerminalId(terminals))
+/** The returned call's command, which the specimen's button ends and runs again, as its end would arrive. */
+const returnedCommand = computed(() => terminals.find((terminal) => terminal.toolUseId === returnedShellTool.toolUseId))
+
+function toggleReturnedCommand(): void {
+  const command = returnedCommand.value
+  if (!command) {
+    return
+  }
+  if (command.phase === 'running') {
+    command.phase = 'exited'
+    command.endedAt = new Date().toISOString()
+    return
+  }
+  command.phase = 'running'
+  delete command.endedAt
+}
 const fillPane = computed(() => view.value === 'session')
 const editVersion = computed(() => ({ epoch: 'gallery-session', revision: editRevision.value }))
 
@@ -1542,7 +1559,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="FunctionalBlock"
-        note="Thinking, shell (collapsed and expanded), loading, and error. A shell call shows its command and output in one box: the command stays at the top and only the output under it scrolls once it fills the box. Command and output wrap as a terminal wraps: each line fills to the box’s edge and breaks at any character, never earlier at a hyphen, as the live output’s flags show. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
+        note="Thinking, shell (collapsed and expanded), loading, and error. A shell call shows its command and output in one box: the command stays at the top and only the output under it scrolls once it fills the box. Command and output wrap as a terminal wraps: each line fills to the box’s edge and breaks at any character, never earlier at a hyphen, as the live output’s flags show. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. A shell row shimmers while its command runs, also after its call returned with the command running on as one of the conversation’s running commands, until the command’s end arrives (End Command). While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -1620,6 +1637,18 @@ onBeforeUnmount(() => {
                 :block="runningShellTool"
                 :input="parseToolInput(runningShellTool.input)"
               />
+            </GallerySpecimen>
+            <GallerySpecimen
+              variant="shell · returned, its command still runs"
+              wide
+            >
+              <ToolShellBlock
+                :block="returnedShellTool"
+                :input="parseToolInput(returnedShellTool.input)"
+              />
+              <Button size="sm" variant="ghost" class="mt-1" @click="toggleReturnedCommand">
+                {{ returnedCommand?.phase === 'running' ? 'End Command' : 'Run Again' }}
+              </Button>
             </GallerySpecimen>
             <GallerySpecimen
               variant="shell · long command"

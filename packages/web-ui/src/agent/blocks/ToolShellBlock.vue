@@ -13,6 +13,7 @@ import { getToolErrorText, shellTerminalOutputChunks, storedShellView } from '..
 import { commandEndMark, commandEndWords } from '../command-end'
 import CommandEndTag from './CommandEndTag.vue'
 import { useLiveCalls } from '../live-calls'
+import { shellRowRunning } from '../terminals'
 import { standardToolTitle } from '../tool-rendering'
 
 const props = defineProps<{
@@ -29,10 +30,14 @@ const endView = computed(() => (props.block.status === 'executing' ? null : stor
 const endMark = computed(() => commandEndMark(endView.value))
 const endWords = computed(() => commandEndWords(endView.value))
 const liveCalls = useLiveCalls()
+/** The command the call started, as its live frames show it. */
+const started = computed(() => liveCalls(props.block.toolUseId))
 /** While the call runs, its command's output as it comes (`runtime.md` § Rendering boundary). */
 const liveOutput = computed(() =>
-  props.block.status === 'executing' ? liveCalls(props.block.toolUseId)?.output ?? '' : '',
+  props.block.status === 'executing' ? started.value?.output ?? '' : '',
 )
+/** The row shimmers while its call runs and, after, while its command still does. */
+const running = computed(() => shellRowRunning(props.block.status, started.value))
 // Once the call returned, the view its result stored.
 const terminalOutputText = computed(
   () => liveOutput.value
@@ -81,7 +86,7 @@ function toggleCommand(): void {
 <template>
   <FunctionalBlock
     v-model:open="isOpen"
-    :loading="block.status === 'executing'"
+    :loading="running"
     :tone="block.status === 'error' ? 'danger' : undefined"
     :error-text="errorText"
     :stick-bottom="block.status === 'executing'"

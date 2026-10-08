@@ -10,6 +10,7 @@ import {
   liveOutputDelta,
   promptLine,
   runningTerminals,
+  shellRowRunning,
   terminalPanelTabs,
   terminalStatus,
   terminalWrite,
@@ -174,4 +175,20 @@ test('the prompt line opens the terminal once, and again only when it starts ane
     .toEqual({ reset: true, text: `${prompt}ninety\n` })
   // Whole output, as after a reload, continues what was shown.
   expect(terminalWrite({ output: 'a\n', chars: undefined }, 'a\nb\n', undefined, prompt)).toEqual({ reset: false, text: 'b\n' })
+})
+
+// `runtime.md` § Rendering boundary: a shell row shimmers as long as its
+// command runs, also after its call returned, until the command's end arrives.
+test('a shell row runs while its call runs, and after it returned until its command ends', () => {
+  // The call runs; its command's first frame has not come yet.
+  expect(shellRowRunning('executing', undefined)).toBe(true)
+  // The call returned and the command runs on as one of the running commands.
+  const command = terminal({ id: 'cmd', title: 'Watch', phase: 'running', toolUseId: 'call-1' })
+  expect(shellRowRunning('completed', command)).toBe(true)
+  // The command's end arrives: exited, or stopped.
+  expect(shellRowRunning('completed', { ...command, phase: 'exited' })).toBe(false)
+  expect(shellRowRunning('completed', { ...command, phase: 'aborted' })).toBe(false)
+  // A call that returned with no command the page knows of is done, failed or not.
+  expect(shellRowRunning('completed', undefined)).toBe(false)
+  expect(shellRowRunning('error', undefined)).toBe(false)
 })

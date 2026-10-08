@@ -4,7 +4,8 @@ import type { TerminalRecord } from './terminals'
 /**
  * The command a `shell_exec` call started, by the call's tool-use id, in the
  * transcript a list shows: while the call runs, its live output shows under
- * it (`runtime.md` § Rendering boundary).
+ * it, and while the command runs, also after the call returned, its row
+ * shimmers (`runtime.md` § Rendering boundary).
  */
 export type LiveCallLookup = (toolUseId: string) => TerminalRecord | undefined
 
