@@ -324,10 +324,11 @@ seen 3 days ago*. The reason belongs to the device's page, which the row
 opens, `/settings/devices/<id>`, as a row of macOS's System Settings opens
 its detail.
 
-The page keeps state and settings apart, as macOS's Network settings do: the
-header names the device and its state, a section of its own says how the
-P2P connection fares, and a grouped row is only something the user can
-change or a fact about the device, never a status dressed as a setting.
+The page is grouped rows, as every page of macOS's System Settings is, and
+lays the connection out as its Wi-Fi settings do: the switch, then the
+network's own row with its state under its name and Details… at its end,
+then facts as labels and values. The header names the device and its state;
+nothing sits outside a group.
 The page calls the direct channel *P2P* and the backend's path the *relay*,
 the pair of words users know from other software, as Tailscale shows a
 peer as direct or relayed. It says little, by the [Writing page's brevity rules](../../packages/web-gallery/src/sections/WritingSection.vue):
@@ -345,11 +346,12 @@ Connection
 ┌──────────────────────────────────────────────────────────────┐
 │ Route                                        [Automatic   ⌄] │
 │ Uses the faster path.                                        │
+├──────────────────────────────────────────────────────────────┤
+│ P2P                                  [Try Again]  [Details…] │
+│ Your networks block P2P connections.                         │
+├──────────────────────────────────────────────────────────────┤
+│ Latency                        P2P 620 ms, 6% lost · Relay 480 ms │
 └──────────────────────────────────────────────────────────────┘
-  P2P 620 ms, 6% lost · Relay 480 ms
-
-P2P Connection                            [Details…]  [Try Again]
-  Your networks block P2P connections.
 
 Device
 ┌──────────────────────────────────────────────────────────────┐
@@ -370,30 +372,33 @@ Device
   centred on the status text and has the colour of the device's state, as
   the devices list's dot does: green while it is online, whichever path the
   page takes, since the words say the path, *Connected via P2P* or
-  *Connected via relay*. The status carries no figure, since the footnote
-  under Connection gives both paths'. While the device is offline, one line
+  *Connected via relay*. The status carries no figure, since the Latency
+  row gives both paths'. While the device is offline, one line
   under the status says how to bring it back: *Start Demi on the device:*
   and the command that starts its runner, the one the composer's notice of
   an offline Host gives.
-- **Connection.** The route, a pop-up button of *Automatic*, *Prefer
-  P2P* and *Relay Only*, described in one line by the chosen one:
-  *Uses the faster path.*, *P2P whenever it connects.*, *Never uses P2P.* Under the group, as the footnote macOS writes under a group,
-  the two paths' latency from [Measuring the paths](#measuring-the-paths):
-  *P2P 2 ms · Relay 480 ms*; a P2P path that loses probes adds its
-  loss, *P2P 620 ms, 6% lost*; without a peer, *Relay 480 ms* alone.
-- **P2P Connection**, a section of its own while the device is online
-  and its route allows a peer, says how this browser's P2P connection
-  fares, under its heading as the devices list's Your Devices does, not as
-  grouped rows. Its text is one sentence: the reason it is not connected
-  (the table below), or, when it is, the device's address in use,
-  *Connected through 127.0.0.1*. The heading holds its buttons, as Your
-  Devices holds Add Device…: **Details…**, which opens the sheet below, and
-  **Try Again**, which makes a new peer at once, only while the page has no
-  connected peer. The attempts Demi makes by itself show nothing. Only Try
-  Again shows its attempt: the button takes its loading state when clicked
-  and keeps it until the attempt ends. Clicked while an attempt Demi
-  started is running, it starts no second one and shows that one until it
-  ends. Before any attempt has ended the section shows its heading alone.
+- **Connection** is one group of three rows:
+  - **Route**, a pop-up button of *Automatic*, *Prefer P2P* and *Relay
+    Only*, described in one line by the chosen one: *Uses the faster
+    path.*, *P2P whenever it connects.*, *Never uses P2P.*
+  - **P2P**, while the device is online and its route allows a peer, as
+    macOS's Wi-Fi shows the network it joined: its subtitle is one sentence,
+    the reason it is not connected (the table below), or, when it is, the
+    device's address in use, *Connected through 127.0.0.1*; before any
+    attempt has ended it has none. Its end holds **Details…**, which opens
+    the sheet below, and before it **Try Again**, which makes a new peer at
+    once, only while the page has no connected peer, both in the row's
+    trailing slot. The attempts Demi makes by itself show nothing. Only Try
+    Again shows its attempt: the button takes its loading state when clicked
+    and keeps it until the attempt ends. Clicked while an attempt Demi
+    started is running, it starts no second one and shows that one until it
+    ends.
+  - **Latency**, a label and its value, as the Device group's facts are:
+    the two paths' from [Measuring the paths](#measuring-the-paths),
+    *P2P 2 ms · Relay 480 ms*; a P2P path that loses probes adds its loss,
+    *P2P 620 ms, 6% lost*; without a peer, *Relay 480 ms* alone. While
+    nothing is measured yet, or the device is offline, the row is not
+    shown.
 - **Device** holds the facts, as macOS's About settings do: the name with
   Rename…; the system by its name and version, such as *macOS 26.5* or
   *Ubuntu 26.04*, with the chip family, *Apple silicon*, *Intel* or *ARM*,
@@ -414,11 +419,11 @@ page's own addresses, shows as *Hidden by the browser*. Where the reason has
 something to do, the sheet says it: for a blocked permission, where the
 site's settings allow it.
 
-The P2P Connection section's sentence, from what the attempt saw, word for word:
+The P2P row's subtitle, from what the attempt saw, word for word:
 
 | Reason | When | The header says |
 | --- | --- | --- |
-| Relay Only | The device's route is Relay Only | Nothing: the section is not shown, and the route says it |
+| Relay Only | The device's route is Relay Only | Nothing: the row is not shown, and the route says it |
 | Slower right now | Automatic, the peer is connected, and its loss or latency is worse than the relay's ([Measuring the paths](#measuring-the-paths)) | *P2P is slower right now.* |
 | Blocked by this browser | The browser reports its local network permission blocked | *This browser blocks local network access.* |
 | Not reachable | Every pair was checked and none answered, and both sides found their public address | *Your networks block P2P connections.* |
@@ -433,8 +438,8 @@ attempt minutes old.
 
 The Cloud is always reached through the server, since it runs beside the
 backend: its header says *Connected via relay* and nothing more, and its page
-has neither the Connection nor the P2P Connection section. An offline device's page keeps the route, which
-applies when it is back, and shows no footnote. A user who blocks the browser's local
+has no Connection group. An offline device's page keeps the route, which
+applies when it is back, and shows neither the P2P nor the Latency row. A user who blocks the browser's local
 network permission sees no prompt again and stays on the relay.
 
 ## Failure and limits
@@ -458,7 +463,7 @@ network permission sees no prompt again and stays on the relay.
 | `runner` | Composing `runner-direct` with the Host operations and service streams, and closing every peer when the backend connection ends |
 | `backend-http` | The signaling route, with the device access check |
 | `web` | The peer, the measurements and the choice of path, the operations' clients, the service worker, and the user streams and file reads the page context supplies over either path |
-| `web-ui` | The devices list's rows and the device's page: its header, Connection section with the paths' footnote, Device section and Details sheet |
+| `web-ui` | The devices list's rows and the device's page: its header, its Connection group with the Route, P2P and Latency rows, its Device group and the Details sheet |
 
 ## Rationale
 
