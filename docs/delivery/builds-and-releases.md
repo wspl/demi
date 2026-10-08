@@ -467,24 +467,28 @@ so that no runner compiles two targets or two groups one after the other:
 The jobs after them each start once their inputs exist:
 
 ```text
-programs (12 jobs) ─┬─▶ server release ──▶ image amd64 ─┬─▶ publish
-server (2 jobs) ────┤        │                          │
-web ────────────────┘        └───────────▶ image arm64 ─┘
+programs (12 jobs) ─┬─▶ server release amd64: root, files, image ─┬─▶ publish
+server (2 jobs) ────┤                                             │
+web ────────────────┴─▶ server release arm64: root, files, image ─┘
 ```
 
-- **Server release** (`ubuntu-26.04`): assembles the release of each Linux
-  target, whose `release.json` names this release's GitHub location, and the
-  release's files, which every target's release shares.
-- **Image amd64, image arm64** (`ubuntu-26.04`, `ubuntu-26.04-arm`): builds the
-  Cloud image of its architecture from that release and its files
-  ([guest image build](../../cloud-guest-image/README.md)).
-- **Publish** (`ubuntu-26.04`): uploads the assets below with their SHA-256
-  sums.
+- **Server release amd64, server release arm64** (`ubuntu-26.04`,
+  `ubuntu-26.04-arm`): assembles the release of its Linux target, whose
+  `release.json` names this release's GitHub location, and the release's
+  files, then builds the Cloud image of its architecture from them at once
+  ([guest image build](../../cloud-guest-image/README.md)), with the `xtask`
+  of its own architecture. One job per architecture, not an assembly job and
+  an image job, because a job cannot wait for one leg of another matrix: an
+  image job would wait for both architectures' roots.
+- **Publish** (`ubuntu-26.04`): checks that both architectures' release files
+  are the same bytes, which they are by construction, and fails before
+  publishing anything if they are not; then uploads one copy of them, the
+  rest of the assets below and `install.sh`, with their SHA-256 sums.
 
-No job compiles what another already compiled. A job of command programs
-also packages them for its target, which compresses them; the server release
-job reuses those compressed copies instead of compressing every target's
-programs itself. The Linux runner jobs keep the `xtask` they built for
+No job compiles or compresses what another already did. A job of command
+programs packages them for its target, which compresses them, and a runner
+job compresses its runner; the server release jobs reuse those compressed
+copies and compress nothing. The Linux runner jobs keep the `xtask` they built for
 running `bun xtask native build`, and the server release and image jobs of
 the same architecture run that `xtask` instead of compiling their own. The
 `xtask` a CI job builds leaves out the commands that only a developer runs,
@@ -500,9 +504,24 @@ out, since every release changes their version and none would be reused; the
 vendored crates in `vendor/`, which are path dependencies, are kept. A job
 that fails keeps what it compiled too. The repository's cache holds up to
 50 GB, paid beyond the free 10 GB, and keeps an entry for 90 days after its
-last use, so an entry survives the time between releases. The image job
-compiles nothing; its package downloads take half a minute and are not
-cached.
+last use, so an entry survives the time between releases.
+
+BoringSSL, a C library of the vendored btls-sys, has a cache entry of its
+own per target: the libraries and headers its build exports
+(`BORING_BSSL_INSTALL_DIR`), which a hit builds against
+(`BORING_BSSL_PATH`) instead of running CMake. The key is the target, the
+contents of `vendor/btls/btls-sys`, BoringSSL's source and patches included,
+the native build's code that sets its flags, the C compiler's and CMake's
+versions, the release profile and the `cc` and `cmake` crates' versions, so
+a change to any of them misses. There is no fallback key: a miss builds in a
+fresh CMake build directory, as every build did before, and only a build
+that produced the libraries is saved. A broken entry stays until its key
+changes; `gh cache delete` removes it.
+
+The image's packages come from GitHub's own Ubuntu mirror,
+`azure.archive.ubuntu.com`: from Ubuntu's archive they took from half a
+minute to five minutes, as its speed varied. The image's own apt sources
+still name Ubuntu's archive.
 
 Each step is a command of the repository that a developer runs too, a
 `bun xtask` command, `bun run build` or the image build script; only
@@ -649,7 +668,10 @@ Every Windows build of BoringSSL uses CMake's Ninja generator, so it compiles
 with the compiler and the MSVC toolset the final link uses: Visual Studio's
 own generator would pick its newest installed toolset, and objects compiled
 with a newer toolset than the link's call library functions the older one
-lacks (on GitHub's Windows ARM runner, 14.51 against 14.44). Ninja comes with
+lacks (on GitHub's Windows ARM runner, 14.51 against 14.44). A build of
+BoringSSL exports its libraries for the release workflow's cache
+([Release workflow](#release-workflow)), `crypto.lib` and `ssl.lib` from an
+MSVC build and `libcrypto.a` and `libssl.a` from the others. Ninja comes with
 Visual Studio's developer environment on Windows, and cross builds with
 cargo-xwin need it installed (`brew install ninja`).
 BoringSSL builds for Windows without its assembly, from any build machine, as
