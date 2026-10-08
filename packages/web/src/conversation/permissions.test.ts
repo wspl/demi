@@ -68,7 +68,7 @@ function answer(revision: number, waiting: number): () => Response {
       revision,
       requests: Array.from({ length: waiting }, (_, index) => ({
         id: `pr-${index}`,
-        category: { id: 'skills.manage', action: 'manage skills', description: 'Manage skills.' },
+        categories: [{ id: 'skills.manage', action: 'manage skills', description: 'Manage skills.' }],
         command: 'demi skills add acme/tools',
         agent: null,
         createdAt: '2026-10-05T00:00:00.000Z',

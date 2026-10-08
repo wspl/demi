@@ -41,15 +41,16 @@ pub struct RequestingAgent {
     pub description: String,
 }
 
-/// One undecided request: the command an agent ran without the grant of its
-/// category.
+/// One undecided request: the command an agent ran without the grants of
+/// its categories, one or more (`permissions.md` § Several categories).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionRequest {
     #[garde(skip)]
     pub id: PermissionRequestId,
-    #[garde(dive)]
-    pub category: PermissionCategory,
+    /// The categories the call lacked, ordered by id.
+    #[garde(length(min = 1), dive)]
+    pub categories: Vec<PermissionCategory>,
     /// The command line as the agent ran it, quoted for a POSIX shell.
     #[garde(skip)]
     pub command: String,
@@ -77,8 +78,8 @@ pub struct ConversationPermissions {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PermissionDecision {
-    /// Grants the category for the conversation, deciding each of its
-    /// requests.
+    /// Grants the request's categories for the conversation, deciding each
+    /// request whose categories are then all granted.
     Allow,
     /// Decides this request alone and remembers nothing.
     Deny,

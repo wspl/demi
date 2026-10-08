@@ -2285,6 +2285,7 @@ dependencies = [
  "percent-encoding",
  "rand 0.9.5",
  "reqwest",
+ "schemars",
  "serde",
  "serde_json",
  "sha2",
@@ -2294,6 +2295,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "typed-path",
  "url",
  "uuid",
 ]
