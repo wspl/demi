@@ -1,10 +1,21 @@
 import { expect, test } from 'bun:test'
-import { directReason, pathsLatency, shownAddress, type DirectAttempt, type DirectReason, type DirectStatus } from '../direct'
+import {
+  directReason,
+  pathKind,
+  pathSentence,
+  pathsLatency,
+  shownAddress,
+  statusPath,
+  type DirectAttempt,
+  type DirectReason,
+  type DirectStatus,
+  type PathKind,
+} from '../direct'
 
 // The reason a device's page gives for going via the relay, from its
 // route, its peer and what the last attempt saw (`direct-channel.md`
-// § What the user sees), and the Latency row that compares the two paths.
-// Pure; milliseconds.
+// § What the user sees), the kind of path the address in use names, and
+// the Latency row that compares the two paths. Pure; milliseconds.
 
 const failed: DirectAttempt = {
   startedAt: '2026-10-08T09:00:00.000Z',
@@ -28,6 +39,12 @@ const status: DirectStatus = {
   attempt: failed,
   nextAt: null,
   figures: { direct: null, relay: null },
+  measuring: false,
+}
+
+/** A peer standing on the device's address `address`. */
+function connected(address: string): DirectStatus {
+  return { ...status, peer: true, chosen: true, attempt: { ...failed, outcome: 'connected', stage: 'connected', inUse: { address, port: 51820 } } }
 }
 
 const slow = { latencyMs: 90, loss: 0 }
@@ -81,19 +98,19 @@ test('a browser’s random .local name for its own address shows as hidden; a re
 
 const latencies: { scenario: string; status: DirectStatus; latency: string | null }[] = [
   {
-    scenario: 'both paths measured',
-    status: { ...status, peer: true, figures: { direct: { latencyMs: 1.8, loss: 0 }, relay: { latencyMs: 480.4, loss: null } } },
-    latency: 'P2P 2 ms · Relay 480 ms',
+    scenario: 'both paths measured, the peer on the local network',
+    status: { ...connected('192.168.1.20'), figures: { direct: { latencyMs: 1.8, loss: 0 }, relay: { latencyMs: 480.4, loss: null } } },
+    latency: 'LAN 2 ms · Relay 480 ms',
   },
   {
-    scenario: 'the direct path loses probes',
-    status: { ...status, peer: true, figures: { direct: { latencyMs: 620, loss: 0.06 }, relay } },
-    latency: 'P2P 620 ms, 6% lost · Relay 30 ms',
+    scenario: 'a peer across the internet loses probes',
+    status: { ...connected('203.0.113.9'), figures: { direct: { latencyMs: 620, loss: 0.1 }, relay } },
+    latency: 'P2P 620 ms, 10% lost · Relay 30 ms',
   },
   {
-    scenario: 'a direct path on a local network loses one probe in two hundred',
-    status: { ...status, peer: true, figures: { direct: { latencyMs: 0.42, loss: 0.005 }, relay } },
-    latency: 'P2P 0.4 ms, 0.5% lost · Relay 30 ms',
+    scenario: 'a peer on this computer loses one probe in twenty',
+    status: { ...connected('127.0.0.1'), figures: { direct: { latencyMs: 0.42, loss: 0.05 }, relay } },
+    latency: 'This Computer 0.4 ms, 5% lost · Relay 30 ms',
   },
   {
     scenario: 'there is no peer',
@@ -108,3 +125,39 @@ for (const { scenario, status: given, latency } of latencies) {
     expect(pathsLatency(given)).toBe(latency)
   })
 }
+
+const kinds: { address: string; kind: PathKind }[] = [
+  { address: '127.0.0.1', kind: 'thisComputer' },
+  { address: '::1', kind: 'thisComputer' },
+  { address: '10.0.0.7', kind: 'localNetwork' },
+  { address: '172.16.4.2', kind: 'localNetwork' },
+  { address: '172.32.0.1', kind: 'internet' },
+  { address: '192.168.1.20', kind: 'localNetwork' },
+  { address: '169.254.10.1', kind: 'localNetwork' },
+  { address: '100.64.0.1', kind: 'localNetwork' },
+  { address: '100.127.255.254', kind: 'localNetwork' },
+  { address: '100.128.0.1', kind: 'internet' },
+  { address: '203.0.113.9', kind: 'internet' },
+  { address: 'fd7a:115c:a1e0::1', kind: 'localNetwork' },
+  { address: 'fe80::1c2d:3e4f', kind: 'localNetwork' },
+  { address: '2001:db8::5', kind: 'internet' },
+  { address: '::ffff:192.168.1.20', kind: 'localNetwork' },
+  { address: '::ffff:203.0.113.9', kind: 'internet' },
+]
+
+for (const { address, kind } of kinds) {
+  test(`${address} is a path of kind ${kind}`, () => {
+    expect(pathKind(address)).toBe(kind)
+  })
+}
+
+test('the path in use is the peer’s kind while the choice uses it, the relay otherwise', () => {
+  expect(statusPath(connected('100.101.102.103'))).toBe('localNetwork')
+  expect(statusPath({ ...connected('100.101.102.103'), chosen: false })).toBe('relay')
+  expect(statusPath(status)).toBe('relay')
+})
+
+test('the P2P row names the kind and the address in use', () => {
+  expect(pathSentence('192.168.1.20')).toBe('LAN · 192.168.1.20')
+  expect(pathSentence('127.0.0.1')).toBe('This Computer · 127.0.0.1')
+})
