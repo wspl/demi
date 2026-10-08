@@ -206,7 +206,7 @@ test('a peer the backend closed is made again at once, in place of an attempt wi
   expect(direct.choice).toBe('direct')
 })
 
-test('Server Only closes the peer and nothing tries again until the route allows one', async () => {
+test('Relay Only closes the peer and nothing tries again until the route allows one', async () => {
   const { direct, attempts, timers, choices } = device()
   direct.tryNow()
   const peer = new Peer()
@@ -233,7 +233,7 @@ test('Server Only closes the peer and nothing tries again until the route allows
   expect(attempts).toHaveLength(2)
 })
 
-test('Server Only while an attempt runs leaves its peer unused', async () => {
+test('Relay Only while an attempt runs leaves its peer unused', async () => {
   const { direct, attempts } = device()
   direct.tryNow()
   direct.setRoute('server')
@@ -248,7 +248,7 @@ test('Server Only while an attempt runs leaves its peer unused', async () => {
   expect(closed).toBe(true)
 })
 
-test('under Automatic a slower direct path leaves its peer standing but unused; Prefer Direct uses it all the same', async () => {
+test('under Automatic a slower direct path leaves its peer standing but unused; Prefer P2P uses it all the same', async () => {
   const { direct, attempts, choices } = device()
   direct.tryNow()
   const peer = new Peer()

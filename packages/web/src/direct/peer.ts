@@ -319,8 +319,8 @@ async function countPairs(connection: RTCPeerConnection, attempt: DirectAttempt)
         selected = report
     }
     const remote = reports.get(selected?.remoteCandidateId ?? '')
-    if (remote?.address)
-      attempt.inUse = `${remote.address}:${remote.port}`
+    if (remote?.address && remote.port !== undefined)
+      attempt.inUse = { address: remote.address, port: remote.port }
     attempt.pairs = { tried, answered }
   } catch {
     // A closed connection has no statistics left; the counts stay as they were.
