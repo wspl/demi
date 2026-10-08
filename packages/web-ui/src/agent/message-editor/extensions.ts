@@ -30,11 +30,8 @@ import ImageNodeView from './ImageNodeView.vue'
  * the file itself (`capsules.ts` § `MessageCapsule`), so the document says
  * what the message's files are without asking anyone.
  */
-const AttachmentNode = Node.create<AttachmentOptions>({
+const AttachmentNode = Node.create({
   name: 'attachment',
-  addOptions() {
-    return { thumbnails: false }
-  },
   group: 'inline',
   inline: true,
   atom: true,
@@ -58,15 +55,6 @@ const AttachmentNode = Node.create<AttachmentOptions>({
     return VueNodeViewRenderer(AttachmentNodeView)
   },
 })
-
-interface AttachmentOptions {
-  /**
-   * An image or a video shows as its thumbnail where its capsule stands, as
-   * a sent message shows it (`product.md` § Attachments); in the composer
-   * every file is a capsule, edited as one character.
-   */
-  thumbnails: boolean
-}
 
 /** `![alt](target)`: the image, loaded as `file-previews.md` § Files named in messages says. */
 const ImageNode = Node.create({
@@ -412,11 +400,11 @@ const MessageFormat = Extension.create({
 
 /** A message as the conversation shows it: what it holds and how it looks, one schema with the composer's. */
 export function readOnlyExtensions(): AnyExtension[] {
-  return messageExtensions(true)
+  return messageExtensions()
 }
 
-/** What a message holds and how it looks, sent or written; a sent one shows its pictures as thumbnails. */
-function messageExtensions(thumbnails: boolean): AnyExtension[] {
+/** What a message holds and how it looks, sent or written: every file a capsule, a picture's too. */
+function messageExtensions(): AnyExtension[] {
   return [
     Document,
     Paragraph,
@@ -431,7 +419,7 @@ function messageExtensions(thumbnails: boolean): AnyExtension[] {
     CodeBlock,
     LinkMark,
     ImageNode,
-    AttachmentNode.configure({ thumbnails }),
+    AttachmentNode,
     MessageDecorations,
   ]
 }
@@ -439,7 +427,7 @@ function messageExtensions(thumbnails: boolean): AnyExtension[] {
 /** The composer: the same message, with formatting as it is typed and the composer's keys. */
 export function composerExtensions(options: MessageKeyOptions & { placeholder: string }): AnyExtension[] {
   return [
-    ...messageExtensions(false),
+    ...messageExtensions(),
     MessageFormat,
     MessageKeys.configure({ submit: options.submit, cancel: options.cancel, editLast: options.editLast }),
     Placeholder.configure({ placeholder: options.placeholder }),

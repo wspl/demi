@@ -23,23 +23,11 @@ export interface MessageCapsule {
   host?: string
   /** Where the file is: on the Host, or on `host`. */
   path?: string
-  /**
-   * An image or a video, which a sent message shows as its thumbnail where
-   * the capsule stands (`product.md` § Attachments).
-   */
-  medium?: CapsuleMedium
 }
 
-/** The picture a sent message shows for an image or a video it carries. */
-export interface CapsuleMedium {
-  kind: 'image' | 'video'
-  source: ContentMediaSource
-}
-
-/** The medium a file of `mediaType` is, from its bytes in the user's blobs; none for a file of another kind. */
-function blobMedium(mediaType: string, sha256: string): CapsuleMedium | undefined {
-  const kind = mediaType.startsWith('image/') ? 'image' : mediaType.startsWith('video/') ? 'video' : null
-  return kind ? { kind, source: { type: 'ref', ref: sha256, mediaType } } : undefined
+/** An image file's picture, from its bytes in the user's blobs; none for a file of another kind. */
+function blobImage(mediaType: string, sha256: string): ContentMediaSource | undefined {
+  return mediaType.startsWith('image/') ? { type: 'ref', ref: sha256, mediaType } : undefined
 }
 
 /** What is happening to a file the composer is still carrying to the Host. */
@@ -113,7 +101,7 @@ export function composerCapsule(item: ComposerAttachment): MessageCapsule {
   return {
     id: item.id,
     name: item.name,
-    ...(item.src ? { image: item.src, medium: { kind: 'image', source: { type: 'url', url: item.src } } } : {}),
+    ...(item.src ? { image: item.src } : {}),
     ...(item.snippet ? { snippet: item.snippet } : {}),
   }
 }
@@ -149,7 +137,7 @@ export function contentCapsule(id: string, blocks: readonly MessageEditContent[]
         name: block.name,
         path: block.path,
         snippet: block.snippet,
-        medium: capsule.medium ?? blobMedium(block.mediaType, block.sha256),
+        image: capsule.image ?? blobImage(block.mediaType, block.sha256),
       }
     } else if (block.type === 'document') {
       capsule = { ...capsule, name: block.source.fileName }
@@ -158,16 +146,13 @@ export function contentCapsule(id: string, blocks: readonly MessageEditContent[]
         ...capsule,
         name: mediaName(block),
         image: block.type === 'image' ? block.source : undefined,
-        medium: { kind: block.type, source: block.source },
       }
     } else if (block.type === 'upload') {
-      const medium = blobMedium(block.mediaType, block.sha256)
       capsule = {
         ...capsule,
         name: block.fileName,
         snippet: block.snippet,
-        image: medium?.kind === 'image' ? medium.source : undefined,
-        medium,
+        image: blobImage(block.mediaType, block.sha256),
       }
     }
   }

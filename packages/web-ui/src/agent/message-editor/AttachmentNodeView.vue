@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import { NodeViewWrapper, nodeViewProps } from '@tiptap/vue-3'
 import { useMessageFiles } from '../../markdown/message-files'
-import MediumThumbnail from '../MediumThumbnail.vue'
 import AttachmentCapsule from './AttachmentCapsule.vue'
 import { useTransfers, type MessageCapsule } from './capsules'
 
@@ -14,8 +13,6 @@ const capsule = computed<MessageCapsule | null>(() => {
   const saved: MessageCapsule | null = props.node.attrs['capsule'] ?? null
   return saved && (transfers?.current(saved.id) ?? saved)
 })
-/** A sent message's image or video, which shows as its thumbnail where the capsule would stand. */
-const thumbnail = computed(() => props.extension.options.thumbnails ? capsule.value?.medium ?? null : null)
 /** How far the file is on its way, while the composer still carries it. */
 const transfer = computed(() => {
   const id = capsule.value?.id
@@ -41,15 +38,8 @@ function open(): void {
     as="span"
     style="white-space: inherit"
   >
-    <MediumThumbnail
-      v-if="thumbnail && capsule"
-      class="message-thumbnail"
-      :kind="thumbnail.kind"
-      :source="thumbnail.source"
-      :name="capsule.name"
-    />
     <AttachmentCapsule
-      v-else-if="capsule"
+      v-if="capsule"
       :capsule="capsule"
       :transfer="transfer"
       :selected="selected"
