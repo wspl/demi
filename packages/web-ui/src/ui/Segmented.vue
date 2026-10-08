@@ -132,9 +132,14 @@ function choose(clicked: T | undefined) {
 </template>
 
 <style scoped>
-/* The thumb takes the button's fill from the theme's tokens, in both modes,
-   and no edge: its fill alone parts it from the track. */
+/* The thumb has no edge: its fill alone parts it from the track. In light
+   mode it is a button on the track; in dark mode a light button would glare,
+   so it takes the selected wash a menu's current row has, over the track. */
 .segmented-thumb {
   background: color-mix(in srgb, var(--surface-current), var(--btn-mix));
+}
+
+html[data-theme="dark"] .segmented-thumb {
+  background: color-mix(in srgb, var(--surface-current), var(--active-mix));
 }
 </style>
