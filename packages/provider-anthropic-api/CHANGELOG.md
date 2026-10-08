@@ -1,5 +1,14 @@
 # @demicodes/provider-anthropic-api
 
+## 0.25.7
+
+### Patch Changes
+
+- 08a5209: Map cross-provider tool IDs to collision-free Anthropic wire IDs while preserving tool-result pairing and original session history.
+  - @demicodes/core@0.25.7
+  - @demicodes/provider@0.25.7
+  - @demicodes/utils@0.25.7
+
 ## 0.25.6
 
 ### Patch Changes
