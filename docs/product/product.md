@@ -138,10 +138,10 @@ level, as a Wi-Fi menu lists networks:
 
 ```text
 Run On
-  ☁ Cloud                 Relay
-  🖥• MacBook Pro   This Computer  ✓
-  🖥• Studio PC     Local Network
-  🖥• Old Laptop          Offline   (cannot be chosen)
+  ☁ Cloud
+  🖥• MacBook Pro  This Computer 1 ms  ✓
+  🖥• Studio PC             LAN 3 ms
+  🖥• Old Laptop             Offline   (cannot be chosen)
   + Add Device…
 ─────────
 Attached
@@ -152,11 +152,13 @@ Attached
   primary Host is checked, and an offline device cannot be chosen. **Add
   Device…** pairs a new one.
 - **How this browser reaches each one.** An online device's row ends with
-  the path the page uses for it, *This Computer*, *Local Network*,
-  *Internet* or *Relay*
+  the path the page uses for it, *This Computer*, *LAN*, *P2P* or *Relay*
   ([Where the P2P path runs](../execution/direct-channel.md#what-the-user-sees)),
-  as Wi-Fi menus show each network's security; the Cloud's always reads
-  *Relay*, and an offline device's *Offline*. The page knows the path of a
+  with its latency from the last
+  [measurement](../execution/direct-channel.md#measuring-the-paths) when
+  there is one, *LAN 2 ms*, as Wi-Fi menus show each network's security.
+  The Cloud's row shows nothing, since it is always reached the same way,
+  and an offline device's reads *Offline*. The page knows the path of a
   device it has connected to, as it does while it shows a conversation on
   it or its page, and keeps the last it found until the page closes; a
   device it has not tried this time shows no path, since opening a menu
