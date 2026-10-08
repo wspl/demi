@@ -55,7 +55,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
 | Usage | `GET /usage` for the caller; `GET /usage/instance` for admins in shared mode |
-| Devices | `GET /devices`, `POST /devices/claim { code }`, `PATCH /devices/:id { name?, direct? }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=<absolute>`, `POST /devices/:id/fs { path }` |
+| Devices | `GET /devices`, `POST /devices/claim { code }`, `PATCH /devices/:id { name?, route? }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=<absolute>`, `POST /devices/:id/fs { path }`, `GET /devices/:id/speed?bytes=` |
 | Workspaces | `GET/POST /workspaces`, `PATCH /workspaces/:id { name }`, `DELETE /workspaces/:id` |
 | Cloud | `GET /cloud`, `POST /cloud/reset { operationId }` |
 | Attachments | `POST /attachments` with raw bytes; `GET /blobs/:sha256?type=...` |
@@ -192,15 +192,17 @@ runner.
 A device in `GET /devices` and in the product state carries, besides its
 name and online state, `os`, the operating system and architecture its runner
 last reported, and `runnerVersion`, the runner release it last reported, such
-as `0.1.16`; both are null before its runner first connected, and `direct`,
-whether pages may reach it over a [direct channel](../execution/direct-channel.md#choosing-the-path),
-true for a new device. Settings shows them on the device's page, the Cloud's
+as `0.1.16`; both are null before its runner first connected, and `route`,
+how pages reach it: `automatic`, `direct` or `server`, the routes
+Automatic, Prefer Direct and Server Only of a
+[direct channel](../execution/direct-channel.md#choosing-the-path),
+`automatic` for a new device. Settings shows them on the device's page, the Cloud's
 included ([What the user sees](../execution/direct-channel.md#what-the-user-sees)).
-`PATCH /devices/:id { name?, direct? }` renames a paired device or turns its
-direct connections on or off, each field applied when present: the name is
+`PATCH /devices/:id { name?, route? }` renames a paired device or sets its
+route, each field applied when present: the name is
 trimmed and has 1 to 64 characters, and the answer is `{ device }`, 200, as
 for a claim. The Cloud's device keeps its
-name: renaming it answers 409 `device_managed`, and a device the caller does
+name and has no route: changing either answers 409 `device_managed`, and a device the caller does
 not have 404 `device_not_found`. A rename reaches every page of the user in
 the product state; the names a conversation gives its attached hosts are its
 own and do not change with it.
@@ -1091,7 +1093,10 @@ archived conversations, the Cloud's state, `subagents`, the user's
 [Subagent switch and profiles](#subagents), `plugins`, the plugin list, and
 `pluginStates`, the user state of each plugin the user has on that declares
 one, by plugin id, `publicUrl`,
-the URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`), `webBuild`, the
+the URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`), `stunUrls`, the
+STUN servers a page's direct channel asks (`DEMI_STUN_URLS`), `runnerRelease`,
+the runner release this backend serves, which a device's page compares with
+the device's `runnerVersion` to say whether it is up to date, `webBuild`, the
 build of the web app the backend serves, or null when it serves none
 ([A page of another build](web-application.md#a-page-of-another-build)),
 `preview`, `{ scheme, domain, namespace }` of the
@@ -1467,12 +1472,16 @@ The page sends:
 | Message | Carries | Sent when |
 | --- | --- | --- |
 | `offer` | `sdp` | The page makes a peer: at first, and on each new attempt |
+| `candidate` | `candidate` | The browser found another address for the peer, such as its public one once the STUN server answered |
+| `ping` | `id` | Once a second while the page uses the device, to measure the relay path ([Measuring the paths](../execution/direct-channel.md#measuring-the-paths)) |
 
 The backend sends:
 
 | Message | Carries | Sent when |
 | --- | --- | --- |
 | `answer` | `sdp` | The runner answered the offer |
+| `candidate` | `candidate` | The runner learned another address, such as its public one |
+| `pong` | `id` | The runner answered the page's `ping` |
 | `unanswered` | `code` | The runner refused the offer (`busy`) or did not answer within 10 seconds |
 | `closed` | Nothing | The runner closed the socket's peer because the user turned a plugin on or off; the page offers again at once |
 | `heartbeat` | Nothing | 30 seconds pass without another message |
@@ -1480,6 +1489,11 @@ The backend sends:
 A new `offer` replaces the socket's peer: the runner closes the old one. The
 socket closes with 1011 `host_unreachable` when the runner's connection
 ends, and 1003 `invalid_message` for a message the page should not have sent.
+
+`GET /api/devices/:deviceId/speed?bytes=<n>` answers `n` random bytes, at
+most 64 MiB, which the device's runner sends through the backend, for the
+relay half of Test Speed ([Measuring the paths](../execution/direct-channel.md#measuring-the-paths)).
+It takes device access and answers the signaling route's errors.
 
 ## Serving the web app build
 
