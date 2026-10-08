@@ -9,7 +9,7 @@ import { useProduct } from '../state/product'
 import { claimDevice, useDeviceInstallation } from '../devices/pairing'
 import { useDeviceSettings } from './devices'
 import { useSettingsAddress } from './address'
-import { directStatus, measureDirect, testSpeed, tryDirect, watchDirect } from '../direct'
+import { directStatus, measureDirect, tryDirect, watchDirect } from '../direct'
 import { changeDeviceSchema } from '../api/generated/web-api'
 
 const resources = useResources()
@@ -87,7 +87,6 @@ watch(
     @show="address.show('devices', $event)"
     @set-route="setRoute"
     @try-now="tryDirect"
-    @test-speed="testSpeed"
     @rename="rename"
     @revoke="revoke"
   />

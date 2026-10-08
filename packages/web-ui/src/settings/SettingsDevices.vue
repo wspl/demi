@@ -56,7 +56,6 @@ const emit = defineEmits<{
   show: [id: string | null]
   setRoute: [id: string, route: DeviceRoute]
   tryNow: [id: string]
-  testSpeed: [id: string]
   rename: [id: string, name: string]
   revoke: [id: string]
   resetCloud: [operationId: string]
@@ -116,7 +115,6 @@ const pageProjects = computed(() =>
     @back="emit('show', null)"
     @set-route="emit('setRoute', shown!, $event)"
     @try-now="emit('tryNow', shown!)"
-    @test-speed="emit('testSpeed', shown!)"
     @rename="emit('rename', shown!, $event)"
     @revoke="emit('revoke', shown!)"
   />
