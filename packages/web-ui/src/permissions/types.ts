@@ -1,3 +1,5 @@
+import { upperFirst } from '@demicodes/utils'
+
 /**
  * Conversation permissions as the page shows them (`permissions.md` § What
  * the user sees): a request an agent's command raised and the user's answer
@@ -35,7 +37,7 @@ export function categoryTitle(category: PermissionCategoryView): string {
   if (category.action === null) {
     return category.id
   }
-  return category.action.charAt(0).toUpperCase() + category.action.slice(1)
+  return upperFirst(category.action)
 }
 
 /**
