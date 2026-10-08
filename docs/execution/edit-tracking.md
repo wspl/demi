@@ -190,7 +190,7 @@ asking starts no request and belongs to the request it continues:
 | `user`: a message sent, edited or regenerated | Yes |
 | `steer`: the user adds to the running turn | No |
 | `wakeup`: a yield's wakeup | No |
-| `agent_message`: a receipt or a message from another agent, which can start a continuation | No |
+| `agent_message`: a receipt, a message from another agent, or the user's permission decision or move notice, which can start a continuation | No |
 | `resume`: Resume, or a turn continued after compaction or a model switch | No |
 
 So a request's turns may be several, and its changes are those of all of

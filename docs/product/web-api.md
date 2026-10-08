@@ -59,7 +59,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Workspaces | `GET/POST /workspaces`, `PATCH /workspaces/:id { name }`, `DELETE /workspaces/:id` |
 | Cloud | `GET /cloud`, `POST /cloud/reset { operationId }` |
 | Attachments | `POST /attachments` with raw bytes; `GET /blobs/:sha256?type=...` |
-| Attached hosts | `GET /conversations/:id/hosts`, `POST .../hosts { deviceId }`, `PATCH .../hosts/:deviceId { name }`, `DELETE .../hosts/:deviceId` |
+| Attached hosts | `GET /conversations/:id/hosts`, `DELETE .../hosts/:deviceId`; agents attach with `demi host attach` ([What the agent can change](../execution/sessions-and-targets.md#what-the-agent-can-change)) |
 | Runner transport | `WS /runner`; device-authenticated pipes at `/pipes/:id`: `PUT` for a content pipe and `WS` for a stream pipe from the runner, `GET` for a pipe to it ([Host operations](../execution/runner.md#host-operations)) |
 | Public installation | `GET /install.sh`, `GET /install.ps1`, `GET /runner-artifacts/:release/:target/:file`, and, with a local object store, the command artifacts, `GET /native-artifacts/:sha256` ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)) (root paths, outside `/api`) |
 
@@ -130,13 +130,11 @@ the blob as a download.
 Cloud as its target without waking a machine. The body may also carry what a
 new conversation starts with, so creating it is one request: the fields
 `PATCH /conversations/:id` takes except `archived` (`title`, `pinned`,
-`target` and the model settings), and `hosts`, the devices to attach, each
-`{ deviceId, name? }` as `POST .../hosts` attaches it. They apply as part of
+`target` and the model settings). They apply as part of
 the creation: one that fails refuses the creation with its status and
 `{ code, message }`, and nothing is created. Retrying the same ID for the same
 owner returns the existing record (200 instead of 201) and applies nothing.
-Both answer `{ conversation }`, the conversation as the list shows it, and
-`hosts`, its attached hosts as `GET .../hosts` lists them. An ID owned by
+Both answer `{ conversation }`, the conversation as the list shows it. An ID owned by
 another user or reserved for a Fork returns 409 `id_unavailable`.
 
 `POST /conversations/:id/fork` takes a destination UUID and an assistant block ID.
@@ -208,10 +206,7 @@ the product state; the names a conversation gives its attached hosts are its
 own and do not change with it.
 
 Attached-host responses contain device identity, name, cwd, online state, and
-attachment time. A conversation's primary device cannot also be attached: attaching
-it answers 409 `host_is_primary`. Names are unique within the conversation; a
-conflicting rename returns 409 `name_taken`, and renaming a device that is not
-attached answers 404 `host_not_attached`. A detach is a transition, like a target
+attachment time. A detach is a transition, like a target
 change; detaching a device that is not attached answers 204.
 Changes follow [Attached hosts](../execution/sessions-and-targets.md#attached-hosts).
 
@@ -504,8 +499,8 @@ GET /api/conversations/c_81/permissions
 
 200 { "revision": 12,
       "requests": [ { "id": "pr_3k9",
-                      "category": { "id": "skills.manage", "action": "manage skills",
-                                    "description": "..." },
+                      "categories": [ { "id": "skills.manage", "action": "manage skills",
+                                        "description": "..." } ],
                       "command": "demi skills add vercel-labs/agent-skills --skill web-design-guidelines",
                       "agent": null, "createdAt": "..." } ] }
 
@@ -517,11 +512,11 @@ POST /api/conversations/c_81/permissions/requests/pr_3k9
 
 | Route | Body | Does |
 | --- | --- | --- |
-| `GET /api/conversations/:id/permissions` | None | Returns `{ revision, requests }`: the undecided requests, oldest first, each with its agent as null for the root or `{ number, description }`; a category no longer in the user's command set has its `id` alone |
+| `GET /api/conversations/:id/permissions` | None | Returns `{ revision, requests }`: the undecided requests, oldest first, each with its categories, one or more ([Several categories](../agent/permissions.md#several-categories)), and its agent as null for the root or `{ number, description }`; a category no longer in the user's command set has its `id` alone |
 | `POST /api/conversations/:id/permissions/requests/:request` | `{ decision: "allow" \| "deny" }` | Decides the request ([Requests](../agent/permissions.md#requests)), sends its message to the agent, and answers 204 |
 
 A request that is no longer undecided, because another page decided it, an
-Allow of its category decided it, or a newer request replaced it, answers 404
+Allow of its categories decided it, or a newer request replaced it, answers 404
 `permission_request_not_found`; the page shows the outcome from the
 conversation's summary. An archived conversation has no requests and
 refuses a decision with 409 `conversation_archived`. The page takes an answer only when its revision is
@@ -832,8 +827,10 @@ vendor login of the machine it runs on.
 ## Sidebar mutations and read state
 
 The backend applies the fields of `PATCH /api/conversations/:id` independently:
-`title` (trimmed, 1 to 256 characters), `archived`, `pinned`, `target`, and
-the model settings: `model`, the provider entry and model as
+`title` (trimmed, 1 to 256 characters), `archived`, `pinned`, `target` with
+`notifyAgent`, true to tell the agent of the switch
+([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)),
+and the model settings: `model`, the provider entry and model as
 `{ providerId, modelId }`, `thinkingEffort` and `serviceTierId`. A patch whose
 only field fails answers that field's status with `{ code, message }`;
 otherwise the answer is the current conversation with
