@@ -43,7 +43,7 @@ const router = createRouter({
       component: ChatPage,
     },
     {
-      path: '/settings/:section?',
+      path: '/settings/:section?/:detail?',
       name: SETTINGS_ROUTE,
       component: ChatPage,
     },

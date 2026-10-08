@@ -10,6 +10,8 @@ import { useRoute, useRouter, type RouteLocationNormalizedLoaded, type Router } 
  * since the history keeps what each entry says it opened over. A link opens
  * its section over the chat. `/settings` alone is settings with no section
  * chosen: the list of sections on a phone, the first section elsewhere.
+ * A section's own page of one thing, such as a device's, is
+ * `/settings/<section>/<id>`, a step of the history as a section is.
  */
 export const SETTINGS_ROUTE = 'settings'
 
@@ -21,6 +23,8 @@ const settingsEntrySchema = z.object({
   settingsDepth: z.number().int().positive(),
   /** The entry before this one is the list of sections, which a phone's back button returns to. */
   settingsFromList: z.boolean(),
+  /** The entry before this one is the section this page of one thing is in, which its back button returns to. */
+  settingsFromSection: z.boolean(),
 })
 type SettingsEntry = z.infer<typeof settingsEntrySchema>
 
@@ -42,15 +46,27 @@ export function routeSection(route: RouteLocationNormalizedLoaded): string | nul
   return typeof section === 'string' && section !== '' ? section : null
 }
 
+/** The thing whose page the route opens inside its section, such as a device; null for the section itself. */
+export function routeDetail(route: RouteLocationNormalizedLoaded): string | null {
+  if (route.name !== SETTINGS_ROUTE) {
+    return null
+  }
+  const detail = route.params.detail
+  return typeof detail === 'string' && detail !== '' ? detail : null
+}
+
 /** The address of the page under settings, which the window shows behind the dialog. */
 export function pageUnderSettings(router: Router): string {
   return currentEntry(router)?.settingsOver ?? DEFAULT_PAGE
 }
 
-function location(section: string | null) {
-  return section === null
-    ? { name: SETTINGS_ROUTE }
-    : { name: SETTINGS_ROUTE, params: { section } }
+function location(section: string | null, detail: string | null = null) {
+  if (section === null) {
+    return { name: SETTINGS_ROUTE }
+  }
+  return detail === null
+    ? { name: SETTINGS_ROUTE, params: { section } }
+    : { name: SETTINGS_ROUTE, params: { section, detail } }
 }
 
 /**
@@ -62,7 +78,7 @@ export async function openSettings(router: Router, section: string | null = null
   if (routeSection(route) === undefined) {
     await router.push({
       ...location(section),
-      state: { settingsOver: route.fullPath, settingsDepth: 1, settingsFromList: false } satisfies SettingsEntry,
+      state: { settingsOver: route.fullPath, settingsDepth: 1, settingsFromList: false, settingsFromSection: false } satisfies SettingsEntry,
     })
     return
   }
@@ -70,16 +86,23 @@ export async function openSettings(router: Router, section: string | null = null
 }
 
 /**
- * Shows `section` in open settings, as a new entry. Going back to the list,
- * as a phone's back button does, returns to the list's entry when it is the
- * one before, and otherwise takes this entry's place.
+ * Shows `section` in open settings, or the page of `detail` inside it, as a
+ * new entry. Going back to the list, as a phone's back button does, returns
+ * to the list's entry when it is the one before, and otherwise takes this
+ * entry's place; going back from a page to its section returns to the
+ * section's entry when it is the one before.
  */
-export async function showSection(router: Router, section: string | null): Promise<void> {
+export async function showSection(router: Router, section: string | null, detail: string | null = null): Promise<void> {
   const route = router.currentRoute.value
-  if (routeSection(route) === section) {
+  const fromDetail = routeDetail(route)
+  if (routeSection(route) === section && fromDetail === detail) {
     return
   }
-  const entry = currentEntry(router) ?? { settingsOver: DEFAULT_PAGE, settingsDepth: 1, settingsFromList: false }
+  const entry = currentEntry(router) ?? { settingsOver: DEFAULT_PAGE, settingsDepth: 1, settingsFromList: false, settingsFromSection: false }
+  if (section !== null && routeSection(route) === section && detail === null && entry.settingsFromSection) {
+    router.back()
+    return
+  }
   if (section === null && entry.settingsFromList) {
     router.back()
     return
@@ -89,11 +112,12 @@ export async function showSection(router: Router, section: string | null): Promi
     return
   }
   await router.push({
-    ...location(section),
+    ...location(section, detail),
     state: {
       settingsOver: entry.settingsOver,
       settingsDepth: entry.settingsDepth + 1,
       settingsFromList: routeSection(route) === null,
+      settingsFromSection: detail !== null && routeSection(route) === section && fromDetail === null,
     } satisfies SettingsEntry,
   })
 }
@@ -119,8 +143,10 @@ export function useSettingsAddress() {
   return {
     /** The open section: undefined while settings are closed, null for none chosen. */
     section: computed(() => routeSection(route)),
+    /** The thing whose page is open inside the section; null for the section itself. */
+    detail: computed(() => routeDetail(route)),
     open: (section?: string) => openSettings(router, section ?? null),
-    show: (section: string | null) => showSection(router, section),
+    show: (section: string | null, detail: string | null = null) => showSection(router, section, detail),
     close: () => closeSettings(router),
   }
 }

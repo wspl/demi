@@ -1,8 +1,11 @@
 //! One peer: a page's WebRTC connection to the runner (`direct-channel.md`
 //! § Making the channel). It owns its UDP sockets, its str0m connection and
-//! its channels, each an operation; it gives up when it has not connected
-//! within [`CONNECT_TIMEOUT`], and ends when its connection fails or the
-//! runner closes it. Its end closes its sockets and ends its operations.
+//! its channels, each an operation; it learns the addresses the internet
+//! sees its sockets at and offers them to the page, and checks the
+//! candidates the page trickles after its offer. It gives up when it has
+//! not connected within [`CONNECT_TIMEOUT`], and ends when its connection
+//! fails or the runner closes it. Its end closes its sockets and ends its
+//! operations.
 
 use std::collections::HashMap;
 use std::future::poll_fn;
@@ -13,7 +16,7 @@ use std::task::Poll;
 use bytes::Bytes;
 use demi_runner_protocol::direct::{
     CONNECT_TIMEOUT, ChannelError, ChannelErrorCode, ChannelHeader, Introduction, MAX_CHANNELS,
-    QUEUE_BYTES, WriteEnd,
+    QUEUE_BYTES, StunUrl, WriteEnd,
 };
 use demi_runner_protocol::files::FileWatchRequest;
 use garde::Validate;
@@ -29,6 +32,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 
+use crate::gathering::{self, Gathering};
 use crate::operation::{self, Input as PageInput, OUTPUT_MESSAGES, Operations, Output, refusal};
 
 /// The most bytes str0m queues on all of a peer's channels together: room
@@ -52,6 +56,15 @@ pub(crate) struct Peer {
     sockets: Vec<Arc<UdpSocket>>,
     operations: Arc<dyn Operations>,
     introduction: Arc<Introduction>,
+    stun: Vec<StunUrl>,
+}
+
+/// What a served peer hears from the page and tells it after the answer.
+pub(crate) struct Trickle {
+    /// The candidates the page found after its offer.
+    pub(crate) remote: mpsc::UnboundedReceiver<String>,
+    /// The candidates the peer finds after its answer.
+    pub(crate) found: mpsc::UnboundedSender<String>,
 }
 
 /// Why an offer made no peer.
@@ -65,13 +78,15 @@ pub(crate) enum OfferError {
 
 impl Peer {
     /// Binds one socket on each of `addresses`, on a port the system picks,
-    /// and answers `offer` with them as its candidates.
+    /// and answers `offer` with them as its candidates; once it serves, it
+    /// asks the STUN servers `stun` for more.
     pub(crate) async fn answer(
         offer: &str,
         addresses: Vec<Ipv4Addr>,
         provider: Arc<CryptoProvider>,
         operations: Arc<dyn Operations>,
         introduction: Arc<Introduction>,
+        stun: Vec<StunUrl>,
     ) -> Result<(Self, String), OfferError> {
         let offer =
             SdpOffer::from_sdp_string(offer).map_err(|error| OfferError::Invalid(error.to_string()))?;
@@ -112,18 +127,31 @@ impl Peer {
             sockets,
             operations,
             introduction,
+            stun,
         };
         Ok((peer, answer.to_sdp_string()))
     }
 
     /// Serves the peer until it gives up, fails or `cancel` closes it.
-    pub(crate) async fn serve(self, cancel: CancellationToken) {
+    pub(crate) async fn serve(self, cancel: CancellationToken, trickle: Trickle) {
         let Self {
             mut rtc,
             sockets,
             operations,
             introduction,
+            stun,
         } = self;
+        let Trickle { mut remote, found } = trickle;
+        let mut remote_open = true;
+        // The servers' addresses, resolved beside the peer's start; the
+        // requests go once they are known.
+        let (resolved, mut resolving) = tokio::sync::oneshot::channel();
+        let _resolver = AbortOnDropHandle::new(tokio::spawn(async move {
+            // A peer that ended no longer waits for the addresses.
+            let _ = resolved.send(gathering::resolve(stun).await);
+        }));
+        let mut gathering = Gathering::default();
+        let mut servers_known = false;
         let (datagrams, mut received) = mpsc::channel(DATAGRAMS);
         let _readers: Vec<AbortOnDropHandle<()>> = sockets
             .iter()
@@ -155,6 +183,7 @@ impl Peer {
                 }
                 continue;
             }
+            let resend = gathering.next();
             let woke = tokio::select! {
                 biased;
                 () = cancel.cancelled() => break "the runner closed it",
@@ -165,10 +194,39 @@ impl Peer {
                     Some(datagram) => Wake::Datagram(datagram),
                     None => break "its sockets closed",
                 },
+                servers = &mut resolving, if !servers_known => {
+                    servers_known = true;
+                    // A resolver that ended without an answer found nothing.
+                    gathering.start(&servers.unwrap_or_default(), &sockets).await;
+                    continue;
+                }
+                () = async { tokio::time::sleep_until(resend.unwrap_or_else(Instant::now)).await }, if resend.is_some() => {
+                    gathering.resend().await;
+                    continue;
+                }
+                candidate = remote.recv(), if remote_open => match candidate {
+                    Some(candidate) => Wake::Remote(candidate),
+                    None => {
+                        remote_open = false;
+                        continue;
+                    }
+                },
                 () = tokio::time::sleep_until(Instant::from_std(timeout)) => Wake::Timeout,
                 () = served.output_ready() => Wake::Output,
             };
             let input = match &woke {
+                Wake::Remote(candidate) => {
+                    match Candidate::from_sdp_string(candidate) {
+                        Ok(candidate) => rtc.add_remote_candidate(candidate),
+                        // A candidate ICE cannot use, such as a browser's
+                        // name for its address, is passed over.
+                        Err(error) => tracing::debug!("a page's candidate is passed over: {error}"),
+                    }
+                    Input::Timeout(now())
+                }
+                Wake::Datagram(datagram) if datagram_is_answer(&mut gathering, datagram, &mut rtc, &found) => {
+                    Input::Timeout(now())
+                }
                 Wake::Datagram(datagram) => {
                     let Ok(contents) = datagram.contents.as_slice().try_into() else {
                         // Not a datagram of the connection's.
@@ -209,8 +267,35 @@ impl Peer {
 /// What woke a peer's loop.
 enum Wake {
     Datagram(Datagram),
+    /// A candidate the page trickled.
+    Remote(String),
     Timeout,
     Output,
+}
+
+/// Whether `datagram` is a STUN server's answer to the peer's gathering;
+/// the address it names is the peer's, offered to the page when it is new.
+fn datagram_is_answer(
+    gathering: &mut Gathering,
+    datagram: &Datagram,
+    rtc: &mut Rtc,
+    found: &mpsc::UnboundedSender<String>,
+) -> bool {
+    let Some(mapped) = gathering.answer(datagram.destination, &datagram.contents) else {
+        return false;
+    };
+    match Candidate::server_reflexive(mapped, datagram.destination, "udp") {
+        // A candidate the peer had already, such as the same address another
+        // server named, is not offered again.
+        Ok(candidate) => {
+            if let Some(added) = rtc.add_local_candidate(candidate) {
+                // A page that went no longer needs it.
+                let _ = found.send(added.to_sdp_string());
+            }
+        }
+        Err(error) => tracing::debug!("{mapped} is not offered: {error}"),
+    }
+    true
 }
 
 struct Datagram {

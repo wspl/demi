@@ -29,6 +29,8 @@ str0m = { version = "0.24.1", default-features = false, features = ["aws-lc-rs"]
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
+# A STUN request's transaction id, which only has to be unpredictable.
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 demi-runner-direct = { path = ".", features = ["testing"] }
