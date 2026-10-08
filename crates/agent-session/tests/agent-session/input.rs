@@ -738,6 +738,42 @@ async fn yield_ends_the_turn_and_its_wakeup_opens_a_continuation_once_the_action
     assert!(store.checkpoint(&root()).unwrap().state.wakeups.is_empty());
 }
 
+// A fixed bug: an agent that yielded again each time a subagent's message
+// woke it left every earlier wakeup scheduled, and each later woke it to
+// say it had nothing to do.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_new_yield_replaces_the_wakeup_scheduled_before_it() {
+    let provider = ScriptedRuntime::new([
+        yield_call(600_000),
+        yield_call(60_000),
+        Turn::Events(vec![event::text("checked"), event::response(1, 1)]),
+    ]);
+    let store = MemoryTreeStore::new();
+    let session = start_at(
+        &provider,
+        test_runtime(vec![yield_tool()]),
+        &store,
+        SessionConfig::default(),
+        Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
+    )
+    .await;
+    session.send(text("wait for it"), turn("t1")).unwrap().await.unwrap();
+    session.send(text("any news?"), turn("t2")).unwrap().await.unwrap();
+
+    let scheduled = store.checkpoint(&root()).unwrap().state.wakeups;
+    assert!(
+        matches!(scheduled.as_slice(), [ScheduledWakeup { duration_ms: 60_000, .. }]),
+        "only the newest yield's wakeup is scheduled: {scheduled:?}"
+    );
+    tokio::time::sleep(Duration::from_secs(61)).await;
+    until(|| provider.requests().len() == 3).await;
+    session.settled().await;
+    // The replaced wakeup's time passes and nothing wakes: a request past
+    // the script would panic.
+    tokio::time::sleep(Duration::from_secs(600)).await;
+    assert_eq!(provider.requests().len(), 3);
+}
+
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn stop_cancels_the_oldest_scheduled_wakeup_once_nothing_runs() {
     let provider = ScriptedRuntime::new([yield_call(60_000)]);
