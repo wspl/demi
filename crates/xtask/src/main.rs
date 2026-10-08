@@ -15,6 +15,9 @@ mod dev;
 mod native;
 mod preview_runtime;
 mod server_release;
+// Reads Unix file metadata: the sweep runs where development builds do.
+#[cfg(unix)]
+mod sweep;
 mod vendor;
 
 use std::path::{Path, PathBuf};
@@ -50,6 +53,9 @@ enum Command {
     /// Compares the vendored crates with their upstream releases.
     #[command(subcommand)]
     Vendor(vendor::Command),
+    /// Removes the build products no current build of the checkout uses.
+    #[cfg(unix)]
+    Sweep(sweep::Options),
     /// Runs a development backend with a scripted Cloud and the models `.env` turns on.
     #[cfg(all(unix, feature = "developer"))]
     Dev(dev::Options),
@@ -182,6 +188,14 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("xtask vendor: {error}");
+                ExitCode::FAILURE
+            }
+        },
+        #[cfg(unix)]
+        Command::Sweep(options) => match sweep::run(options) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("xtask sweep: {error}");
                 ExitCode::FAILURE
             }
         },
