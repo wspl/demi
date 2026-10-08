@@ -8,7 +8,8 @@ import type { HeadlineText, TitleText } from './ui-text'
  * The question before something the user set up goes, as macOS asks before
  * it deletes: the title asks it ("Remove “OpenAI API”?"), the body says what
  * happens, and `goes` names what goes with it, one line each. Cancel is the
- * safe answer and closes; the action is the danger button. Nothing the user
+ * safe answer, the default button, and closes; the action is the danger
+ * button, which takes a click (Dialog). Nothing the user
  * set up disappears on one click (`product.md`). While the host carries the
  * action out, `busy` keeps the dialog open with its action loading.
  */
@@ -52,8 +53,8 @@ const emit = defineEmits<{
     </div>
     <template #footer>
       <!-- Cancel is the default: Return and the opening focus never destroy (Dialog). -->
-      <Button :disabled="busy" default-action @click="emit('close')">Cancel</Button>
-      <Button variant="destructive" :loading="busy" @click="emit('confirm')">{{ action }}</Button>
+      <Button :disabled="busy" variant="primary" @click="emit('close')">Cancel</Button>
+      <Button variant="danger" :loading="busy" @click="emit('confirm')">{{ action }}</Button>
     </template>
   </Dialog>
 </template>

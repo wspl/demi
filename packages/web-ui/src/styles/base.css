@@ -98,9 +98,6 @@
   --tint-highlight-mix: rgb(234 179 8) 20%;
   --on-danger: #f87171;
   --on-danger-muted: rgba(248, 113, 113, 0.6);
-  /* A destructive confirmation's button: red under white text in both schemes, as
-     macOS's destructive button and GitHub's danger button are. */
-  --danger-fill: #dc2626;
   --on-success: #34d399;
   --on-warning: #fbbf24;
   /* A conversation that needs the user to decide: yellow, apart from the orange of a failed or stopped one. */
@@ -191,7 +188,6 @@
   --tint-highlight-mix: rgb(202 138 4) 12%;
   --on-danger: #dc2626;
   --on-danger-muted: rgba(220, 38, 38, 0.6);
-  --danger-fill: #dc2626;
   --on-success: #16a34a;
   --on-warning: #d97706;
   --on-attention: #ca8a04;
@@ -418,10 +414,6 @@ svg.lucide {
 
 .btn-primary {
   background: var(--accent-fill);
-}
-
-.btn-destructive {
-  background: var(--danger-fill);
 }
 
 /* Floating layers. A layer that floats over another is lighter than what it sits on, as

@@ -232,7 +232,7 @@ useAppShortcuts(
           v-model:collapsed-projects="folded"
           :account="account"
           :projects="resources.projects"
-          :conversations="conversations.items.filter((c) => !c.archived)"
+          :conversations="conversations.listed"
           :active-id="activeId"
           :list-status="conversations.listStatus"
           :pending-ids="conversations.pendingChanges"

@@ -8,7 +8,7 @@ import ConfirmDialog from '../ui/ConfirmDialog.vue'
  * § Conversations and projects): one is named in the title, several are
  * counted. The body says what goes with them, that it cannot be undone, and
  * that the files they changed in their projects stay. Delete is the
- * destructive button; Cancel closes.
+ * danger button; Cancel, the default, closes.
  */
 const props = defineProps<{
   isOpen: boolean

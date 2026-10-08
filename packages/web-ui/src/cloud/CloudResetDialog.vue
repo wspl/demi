@@ -80,10 +80,10 @@ const ready = computed(() => props.submitted && !failed.value && props.phase ===
     </div>
     <template #footer>
       <!-- Cancel, or Close once the reset is under way, is the default: Return never resets (Dialog). -->
-      <Button default-action @click="emit('close')">{{ submitted ? 'Close' : 'Cancel' }}</Button>
+      <Button variant="primary" @click="emit('close')">{{ submitted ? 'Close' : 'Cancel' }}</Button>
       <Button
         v-if="!submitted || failed"
-        variant="destructive"
+        variant="danger"
         :disabled="busy"
         @click="emit('reset')"
         >{{ submitted ? 'Retry Reset' : 'Reset Environment' }}</Button
