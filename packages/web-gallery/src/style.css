@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "@demicodes/web-ui/styles/base.css";
 @import '@demicodes/web-ui/styles/product-appearance.css';
+@import "@fontsource-variable/figtree";
 @import "./paradigms.css";
 
 @source "../../web-ui/src";
