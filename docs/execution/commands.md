@@ -231,11 +231,11 @@ in their own section and in a quoted heredoc template. `--json` appears only
 on commands with a JSON output schema. Usage templates are generated from the
 declaration; declarations do not carry separate examples to keep in sync.
 
-For example, the generated structure for file creation is:
+For example, the generated structure for a patch is:
 
 ```sh
-demi file create <path> <<'EOF'
-<content>
+demi file patch <<'EOF'
+<patch>
 EOF
 ```
 
@@ -247,8 +247,7 @@ arguments. The agent substitutes actual values and quotes shell arguments.
 | Command | Positional input | Named options | Stdin |
 | --- | --- | --- | --- |
 | `file read` | path | none | unused |
-| `file create` | path | none | file content |
-| `file edit` | path | old, new, occurrence or context | SEARCH/REPLACE blocks, read only without `--old` |
+| `file edit` | path, optional | old, new, occurrence or context | SEARCH/REPLACE blocks with their files' paths, read only without `--old` |
 | `file patch` | none | none | unified diff |
 | `agent spawn` | none | profile, description, JSON output | task brief |
 | `agent send`, `resume` | id | JSON output | message |
@@ -511,58 +510,136 @@ bytes into the file.
 
 ## File commands
 
-`demi file read`, `create`, `edit`, and `patch` run in the native `demi.file`
-service, beside the file. Each resolves relative paths against the invocation's
-cwd and stops at the invocation's cancellation. Mutations run one at a time in a
-service: one mutation's planning and writes finish before the next begins. Each
-replaced file is published atomically, from a temporary file beside it whose
-name says it is Demi's ([File contents](runner.md#file-contents)), and a patch
-that changes several files restores the files it already changed when a later
-write fails. Create, edit, and patch record their writes for
+`demi file read`, `edit`, and `patch` run in the native `demi.file` service,
+beside the file. Each resolves relative paths against the invocation's cwd
+and stops at the invocation's cancellation. Mutations run one at a time in a
+service: one mutation's planning and writes finish before the next begins.
+Each replaced file is published atomically, from a temporary file beside it
+whose name says it is Demi's ([File contents](runner.md#file-contents)), and
+an edit or a patch that changes several files restores the files it already
+changed when a later write fails. Edit and patch record their writes for
 [edit tracking](edit-tracking.md).
 
-`demi file edit <path>` replaces text it finds exactly once. For example,
-the model changes a function whose text has quotes, a backslash and several
-lines:
+### Editing files
+
+`demi file edit` is the way an agent changes the files of its task, made to
+do what models otherwise write a Python script for. In this project's own
+Claude Code transcripts of two weeks, models changed files 8,061 times with a
+Python script against 717 times with the Edit tool beside it: 93% of the
+scripts replaced exact text, 63% checked that the text was there, 36%
+changed two files or more, 20% replaced a section found between two anchors,
+and 84% built or tested in the same call. A script does all of that in one
+call, which a one-replacement tool cannot; but `str.replace` changes nothing,
+silently, when the text is not there, and the conversation cannot show what
+the script wrote. `demi file edit` does the same in one call, fails loudly,
+and records every change.
+
+For example, the agent adds a module, registers it, renames a call in a
+long function without copying its body, and builds, in one call:
 
 ```text
-demi file edit src/slugify.mjs <<'EOF'
+demi file edit <<'EOF' && cargo check
+crates/backend/src/conversation/stream.rs
 <<<<<<< SEARCH
-export function slugify(text) {
-  return text.toLowerCase().replace(/\s+/g, '-');
+=======
+//! The conversation's stream of frames.
+
+pub(crate) struct Stream;
+>>>>>>> REPLACE
+
+crates/backend/src/conversation/mod.rs
+<<<<<<< SEARCH
+mod socket;
+=======
+mod socket;
+pub(crate) mod stream;
+>>>>>>> REPLACE
+
+crates/backend/src/conversation/socket.rs
+<<<<<<< SEARCH
+pub(crate) async fn serve(socket: Socket) {
+.......
+    send_frames(&socket).await;
 }
 =======
-export function slugify(text) {
-  return text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+pub(crate) async fn serve(socket: Socket) {
+.......
+    stream::send(&socket).await;
 }
 >>>>>>> REPLACE
 EOF
 ```
 
-- **Stdin, not arguments.** The replacements come on stdin as SEARCH/REPLACE
-  blocks, the form Aider and Cline give models and that models write
-  reliably. A quoted heredoc passes the text byte for byte, so no quote, `$`
-  or backslash needs escaping. Text passed as an argument does: a model that
-  edited this function with `--old $'…'` wrote each quote as `\x27`, and a
-  command substitution, `"$(cat <<'EOF' … EOF)"`, drops the text's last
-  newlines. `--old` and `--new` stay for a one-line change, `--old beta --new
-  gamma`, with `--occurrence` and `--context` to choose among several matches.
-- **Whole lines.** The markers are whole lines. A block's SEARCH is the lines
-  between `<<<<<<< SEARCH` and `=======`, each with its line ending, and it
-  matches whole lines of the file; its REPLACE, the lines up to
-  `>>>>>>> REPLACE`, takes their place, and an empty one deletes them. The
-  file's own line endings are kept.
+It prints what it did, and each change as the file now reads:
+
+```text
+Created crates/backend/src/conversation/stream.rs (3 lines)
+Edited crates/backend/src/conversation/mod.rs (+1)
+  14  mod socket;
+  15  pub(crate) mod stream;
+  16  mod state;
+Edited crates/backend/src/conversation/socket.rs (+1 −1)
+  88      }
+  89      stream::send(&socket).await;
+  90  }
+```
+
+- **Files.** On stdin, outside the blocks, a line names the file the blocks
+  after it change, as Aider writes it; blank lines may stand between blocks,
+  and nothing else. `demi file edit <path>` with blocks and no path lines
+  changes that one file; a path argument together with path lines is
+  refused.
+- **Stdin, not arguments.** A quoted heredoc passes the text byte for byte,
+  so no quote, `$` or backslash needs escaping. Text passed as an argument
+  does: a model that edited a function with `--old $'…'` wrote each quote as
+  `\x27`, and a command substitution, `"$(cat <<'EOF' … EOF)"`, drops the
+  text's last newlines. `--old` and `--new` stay for a one-line change to the
+  path argument, `--old beta --new gamma`, with `--occurrence` or
+  `--context`, not both, to choose among several matches; with `--old` the
+  command reads no stdin. Blocks and `--old` together are refused.
+- **Whole lines.** The markers `<<<<<<< SEARCH`, `=======` and
+  `>>>>>>> REPLACE` are whole lines and may carry trailing spaces or tabs. A
+  block's SEARCH is the lines between the first two, each with its line
+  ending, and it matches whole lines of the file; its REPLACE, the lines up
+  to the third, takes their place, written with the file's own line endings,
+  and an empty REPLACE deletes them.
+- **A new file.** An empty SEARCH creates its file with the REPLACE as its
+  content, and fails when the file exists, so an edit never overwrites a
+  file it did not read. A file that is not to be created must exist. Writing
+  a whole file the agent means to replace is `cat > file <<'EOF'`, which edit
+  tracking records as well.
+- **A section.** A SEARCH line of seven dots, `.......`, stands for any run
+  of lines, none included, as short as the rest of the block allows: the
+  agent names a function by its first and last lines without copying its
+  body. Seven dots, the markers' width, because a line of three is Python's
+  `...` and a placeholder in many files. The REPLACE holds either no such
+  line, and replaces the whole section, or as many as the SEARCH, in order,
+  each keeping the lines its SEARCH line stood for, as the example keeps the
+  function's body.
 - **Exactly once.** A SEARCH must match exactly one place. One that matches
-  nowhere fails, naming the block and the lines of the file that come
-  closest; one that matches several fails, naming the lines of each match,
-  so the model adds a line of context.
-- **Together or not at all.** Several blocks in one call each match the file
-  as it was, must not overlap, and are applied together; a failing block
-  changes nothing.
-- A marker line may carry trailing spaces or tabs. An empty SEARCH is refused:
-  `demi file create` makes a file. A text with a line that is exactly a
-  marker cannot be written as a block; `--old` and `--new`, or
-  `demi file patch`, write it.
+  nowhere fails, naming its file, its block and the lines of the file that
+  come closest; one that matches several fails, naming the lines of each
+  match, so the agent adds a line of context.
+- **Together or not at all.** Every block of every file is matched against
+  the files as they were before the call, blocks of one file must not
+  overlap, and nothing is written until every block matched; then the files
+  are written, and a write that fails restores the files written before it.
+- **What it prints.** A line for each file, `Created <path> (<n> lines)` or
+  `Edited <path> (+<added> −<removed>)`, in the order of stdin, and under an
+  edited file each change as the file now reads, numbered as `cat -n`
+  numbers, with one line of context on each side, as Claude Code's Edit
+  shows its result. Changes that would print more than 60 lines in all
+  print their first 60 and one line saying how to read the rest:
+  `[… 140 more lines changed; read them: sed -n 120,260p <path>]`. The agent
+  sees its result without reading the file again.
+- A text with a line that is exactly a marker, or a line of seven dots,
+  cannot be written as a block; `--old` and `--new`, or `demi file patch`,
+  write it.
+
+The capability index entry for `demi file` says to use it whenever the
+agent changes the files of its task, and shows the shape of the example
+above, two files and a build in one call, since a model takes up a tool by
+the example it has seen.
 
 `demi file patch` applies a unified diff from stdin, as `git diff` writes it,
 to one or more files. It ignores the line counts of each hunk's header, as
