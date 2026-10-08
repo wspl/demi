@@ -1422,8 +1422,13 @@ Live frames add to the transcript; they do not replace it:
   (`toolUseId`, in the subagent's transcript when `subagentId` is set). Once
   the call has returned, a command that still runs is one of the
   conversation's running commands: the dock's Running chip counts it, its
-  panel shows it under its script, and its output keeps coming there, while
-  the call keeps the view its result stored. A page adds to what it shows
+  panel shows it in a tab titled by the call's `description` (cut at the
+  end, whole in its tooltip), and its output keeps coming there, while
+  the call keeps the view its result stored. The panel's terminal opens with
+  the script as a terminal shows what was typed: `$ ` and the first line, a
+  continuation line `> ` for each further line, wrapped at the terminal's
+  width, the prompt muted and the script in the emphasized text color, then
+  the output; the line is the page's, not part of the command's output. A page adds to what it shows
   only the characters beyond those it has shown (`chars`), so a terminal
   keeps its scrollback; after a gap it shows the `tail` anew. A command's tab
   shows its status as its last frame, or after a reload its stored view,
