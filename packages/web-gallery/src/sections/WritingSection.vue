@@ -273,14 +273,14 @@ const brevityRules: readonly TextRule[] = [
   {
     title: 'Every word earns its place',
     rule: 'Check each word to be sure it needs to be there, and use fewer when fewer say the same. Give just enough for the reader to decide with confidence; the mechanism behind a state is not part of it.',
-    right: ['Your networks block a direct connection.'],
-    wrong: ['Your network and the device’s don’t let a direct connection through, as a strict NAT or a firewall does.'],
+    right: ['Your networks block P2P connections.'],
+    wrong: ['Your network and the device’s don’t let a P2P connection through, as a strict NAT or a firewall does.'],
     source: 'Apple HIG: Writing, Be clear; Microsoft Style Guide: Be brief',
   },
   {
     title: 'The most important thing first',
     rule: 'Lead with what the reader came for: the state, then what to do. Background and figures follow, or wait behind Details…, where the reader asks for them.',
-    right: ['Through the server', 'Your networks block a direct connection.'],
+    right: ['Connected via relay', 'Your networks block P2P connections.'],
     wrong: ['Measured once a second over the last 30 probes, the server’s path is in use.'],
     source: 'Apple HIG: Writing, Consider each screen’s purpose; Microsoft Style Guide: Get to the point fast',
   },
@@ -301,8 +301,8 @@ const brevityRules: readonly TextRule[] = [
   {
     title: 'A screen says a thing once',
     rule: 'A fact the header or a row shows is not said again in a sentence, a footnote or a list row; a list row names the item and its state, and the reason waits on the item’s page.',
-    right: ['macOS 26.5 · Through the server'],
-    wrong: ['macOS 26.5 · Through the server, the networks don’t allow direct'],
+    right: ['macOS 26.5 · Connected via relay'],
+    wrong: ['macOS 26.5 · Connected via relay, the networks don’t allow P2P'],
     source: 'Microsoft Style Guide: Be brief, prune every excess word',
   },
 ]

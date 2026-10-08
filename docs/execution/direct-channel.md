@@ -211,13 +211,13 @@ says how the page makes it:
 | --- | --- | --- |
 | Automatic, the default | Yes | The peer is connected and its path is not worse than the relay's ([Measuring the paths](#measuring-the-paths)) |
 | Prefer P2P | Yes | The peer is connected |
-| Server Only | No, and it closes the one it has | Never |
+| Relay Only | No, and it closes the one it has | Never |
 
 Automatic exists because a connected peer is not always the better path. On
 one machine or one network it is far faster, but across networks the pair
 that answered may run over a congested or lossy link, and then the server's
 path serves the live view better. Prefer P2P is the switch for a user who
-knows the direct path suits them; Server Only for one whose network or
+knows the direct path suits them; Relay Only for one whose network or
 policy makes the attempts unwelcome.
 
 - **Each operation chooses as it starts.** A read, a text, a listing or a
@@ -319,7 +319,7 @@ connection state is `failed` or `closed`.
 
 Nothing changes but speed, and the user can see why. In Settings → Devices
 each row names a device and says its system and its state in a few words:
-*macOS 26.5 · Through the server*, *Connected via P2P*, or *Offline · Last
+*macOS 26.5 · Connected via relay*, *Connected via P2P*, or *Offline · Last
 seen 3 days ago*. The reason belongs to the device's page, which the row
 opens, `/settings/devices/<id>`, as a row of macOS's System Settings opens
 its detail.
@@ -328,8 +328,9 @@ The page keeps state and settings apart, as macOS's Network settings do: the
 header names the device and its state, a section of its own says how the
 P2P connection fares, and a grouped row is only something the user can
 change or a fact about the device, never a status dressed as a setting.
-The page calls the direct channel *P2P*, the word users know from other
-software for a connection that skips the server. It says little, by the [Writing page's brevity rules](../../packages/web-gallery/src/sections/WritingSection.vue):
+The page calls the direct channel *P2P* and the backend's path the *relay*,
+the pair of words users know from other software, as Tailscale shows a
+peer as direct or relayed. It says little, by the [Writing page's brevity rules](../../packages/web-gallery/src/sections/WritingSection.vue):
 a state in a few words, at most one short sentence, the rest behind
 Details….
 
@@ -337,7 +338,7 @@ Details….
 ‹ Devices
 
 ┌────┐ zan-mbp
-│ 🖥 │ ● Through the server
+│ 🖥 │ ● Connected via relay
 └────┘
 
 Connection
@@ -345,7 +346,7 @@ Connection
 │ Route                                        [Automatic   ⌄] │
 │ Uses the faster path.                                        │
 └──────────────────────────────────────────────────────────────┘
-  P2P 620 ms, 6% lost · Server 480 ms
+  P2P 620 ms, 6% lost · Relay 480 ms
 
 P2P Connection                            [Details…]  [Try Again]
   Your networks block P2P connections.
@@ -369,17 +370,17 @@ Device
   centred on the status text and has the colour of the device's state, as
   the devices list's dot does: green while it is online, whichever path the
   page takes, since the words say the path, *Connected via P2P* or
-  *Through the server*. The status carries no figure, since the footnote
+  *Connected via relay*. The status carries no figure, since the footnote
   under Connection gives both paths'. While the device is offline, one line
   under the status says how to bring it back: *Start Demi on the device:*
   and the command that starts its runner, the one the composer's notice of
   an offline Host gives.
 - **Connection.** The route, a pop-up button of *Automatic*, *Prefer
-  P2P* and *Server Only*, described in one line by the chosen one:
+  P2P* and *Relay Only*, described in one line by the chosen one:
   *Uses the faster path.*, *P2P whenever it connects.*, *Never uses P2P.* Under the group, as the footnote macOS writes under a group,
   the two paths' latency from [Measuring the paths](#measuring-the-paths):
-  *P2P 2 ms · Server 480 ms*; a P2P path that loses probes adds its
-  loss, *P2P 620 ms, 6% lost*; without a peer, *Server 480 ms* alone.
+  *P2P 2 ms · Relay 480 ms*; a P2P path that loses probes adds its
+  loss, *P2P 620 ms, 6% lost*; without a peer, *Relay 480 ms* alone.
 - **P2P Connection**, a section of its own while the device is online
   and its route allows a peer, says how this browser's P2P connection
   fares, under its heading as the devices list's Your Devices does, not as
@@ -417,7 +418,7 @@ The P2P Connection section's sentence, from what the attempt saw, word for word:
 
 | Reason | When | The header says |
 | --- | --- | --- |
-| Server Only | The device's route is Server Only | Nothing: the section is not shown, and the route says it |
+| Relay Only | The device's route is Relay Only | Nothing: the section is not shown, and the route says it |
 | Slower right now | Automatic, the peer is connected, and its loss or latency is worse than the relay's ([Measuring the paths](#measuring-the-paths)) | *P2P is slower right now.* |
 | Blocked by this browser | The browser reports its local network permission blocked | *This browser blocks local network access.* |
 | Not reachable | Every pair was checked and none answered, and both sides found their public address | *Your networks block P2P connections.* |
@@ -431,7 +432,7 @@ allows one, starts an attempt, so the header speaks of now and not of an
 attempt minutes old.
 
 The Cloud is always reached through the server, since it runs beside the
-backend: its header says *Through the server* and nothing more, and its page
+backend: its header says *Connected via relay* and nothing more, and its page
 has neither the Connection nor the P2P Connection section. An offline device's page keeps the route, which
 applies when it is back, and shows no footnote. A user who blocks the browser's local
 network permission sees no prompt again and stays on the relay.
