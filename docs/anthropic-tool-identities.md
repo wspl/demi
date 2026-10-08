@@ -1,0 +1,5 @@
+# Anthropic Tool Identities
+
+The Anthropic Messages wire format accepts tool IDs matching `[a-zA-Z0-9_-]+`. Demi inference items retain each originating provider’s IDs, including Codex composite `call_id|item_id` identities. The Anthropic request mapper allocates short legal IDs for incompatible values and applies the same mapping to tool uses and results. It reserves all already valid IDs before allocation, including IDs later in the request. Different source IDs never collapse to one wire ID, even if their text differs only in punctuation. Mapping is deterministic for the same request and does not mutate inference items or persisted transcripts.
+
+`packages/provider-anthropic-api/src/__tests__/provider.test.ts` covers composite, punctuation, Unicode and empty IDs; collisions with existing legal IDs; reversed parallel tool results; repeat serialization; runtime clone requests and a following native Anthropic tool round. It also serializes the original items through the Codex request builder before and after Anthropic conversion to verify that switching back preserves Codex identity. The provider SSE test preserves incoming native tool IDs.
