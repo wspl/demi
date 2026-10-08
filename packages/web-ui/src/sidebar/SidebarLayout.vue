@@ -16,6 +16,9 @@ import { ASIDE_SHARE, SIDEBAR_WIDTH, asideBounds, asideShareFor, asideWidthFor }
  * `asideResizeEnd` when one has settled, which is the moment to persist it.
  * The aside is only there while `asideOpen` is true and the host gave the slot.
  *
+ * Each of the three panes is a region (`data-region`, `ui/region.ts`): a
+ * menu opened from a trigger in it grows toward its inside.
+ *
  * Below the medium breakpoint each side pane is an overlay at the same width
  * with no divider, and only one of them is open at a time: opening one closes
  * the other, and the scrim closes whichever is open.
@@ -72,6 +75,7 @@ function closeOverlays(): void {
     />
     <div
       ref="sidebar"
+      data-region
       class="h-full shrink-0"
       :class="open ? 'fixed inset-y-0 left-0 z-40 md:static md:z-auto' : 'hidden md:block'"
       :style="{ '--sidebar-width': `${shownWidth}px` }"
@@ -87,7 +91,7 @@ function closeOverlays(): void {
       label="Sidebar width"
       @commit="emit('resizeEnd', $event)"
     />
-    <main class="flex min-w-0 flex-1 flex-col overflow-hidden">
+    <main data-region class="flex min-w-0 flex-1 flex-col overflow-hidden">
       <div class="flex select-none items-center px-2 md:hidden">
         <IconButton
           :icon="PanelLeft"
@@ -115,6 +119,7 @@ function closeOverlays(): void {
       <!-- A flex item honors z-index even when static, so the overlay's z-40 must end at md:
            otherwise the panel covers the right half of the resize handle beside it. -->
       <div
+        data-region
         class="fixed inset-y-0 right-0 z-40 h-full max-w-full shrink-0 md:static md:z-auto"
         :style="{ width: `${shownAsideWidth}px` }"
       >
