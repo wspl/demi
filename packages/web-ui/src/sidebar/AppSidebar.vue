@@ -366,6 +366,12 @@ function submitRename(id: string, title: string): void {
   listRef.value?.focus()
 }
 
+// A cancelled rename gives the keys back to the list too, as a submitted one does.
+function cancelRename(): void {
+  renamingId.value = null
+  listRef.value?.focus()
+}
+
 function selectProjectConversations(project: SidebarProject): void {
   const group = groups.value.find((candidate) => candidate.project.id === project.id)
   if (!group || group.items.length === 0)
@@ -537,7 +543,7 @@ function selectProjectConversations(project: SidebarProject): void {
               @archive="emit('archive', [entry.id])"
               @rename-start="renamingId = entry.id"
               @rename-submit="(title) => submitRename(entry.id, title)"
-              @rename-cancel="renamingId = null"
+              @rename-cancel="cancelRename"
               @toggle-pin="togglePin([entry.id])"
             />
           </div>
