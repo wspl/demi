@@ -50,6 +50,7 @@ impl Shard {
             .control
             .subagent_settings(self.user().clone())
             .await?;
+        let instructions = services.control.instructions(self.user().clone()).await?;
         let plugins = self.plugins().entries().await?;
         let plugin_states = self.plugins().page_states().await?;
         Ok(ProductState {
@@ -73,6 +74,7 @@ impl Shard {
             conversations,
             cloud,
             subagents,
+            instructions,
             plugins,
             plugin_states,
             web_build: services.web_build.clone(),
@@ -124,6 +126,9 @@ impl Shard {
             },
             Part::Subagents => SyncEvent::Subagents {
                 subagents: control.subagent_settings(self.user().clone()).await?,
+            },
+            Part::Instructions => SyncEvent::Instructions {
+                instructions: control.instructions(self.user().clone()).await?,
             },
             Part::Plugins => SyncEvent::Plugins {
                 plugins: self.plugins().entries().await?,

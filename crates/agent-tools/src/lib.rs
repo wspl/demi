@@ -41,7 +41,7 @@ use environments::Handle;
 pub use frames::{shell_output, stored_running_commands};
 use input::{DelayMs, ShellExecInput, StatusFields, StatusInput, YieldInput, parse};
 pub use product::{
-    ContextSource, HostResolver, NodeContext, Profile, ProfileModel, SubagentSettings,
+    ContextAnswer, ContextSource, HostResolver, NodeContext, Profile, ProfileModel, SubagentSettings,
     SubagentSource, Toolset, ToolsetSource, Unavailable,
 };
 pub use prompt::{ModelIdentity, system_prompt};

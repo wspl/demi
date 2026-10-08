@@ -2,6 +2,8 @@
 //! available to a node, sorted by name, in the format other agents and the
 //! Agent Skills guide use, in at most 8,000 characters.
 
+use demi_shared_types::xml_escaped;
+
 /// The most characters of a catalog block.
 const CATALOG_MAX_CHARS: usize = 8_000;
 
@@ -76,15 +78,15 @@ fn block(entries: &[Entry], length: Option<usize>, left_out: usize) -> String {
     let mut text = String::from(HEADER);
     for entry in entries {
         text.push_str("  <skill>\n    <name>");
-        text.push_str(&escape(&entry.name));
+        text.push_str(&xml_escaped(&entry.name));
         text.push_str("</name>\n");
         if let Some(length) = length {
             text.push_str("    <description>");
-            text.push_str(&escape(&shortened(&entry.description, length)));
+            text.push_str(&xml_escaped(&shortened(&entry.description, length)));
             text.push_str("</description>\n");
         }
         text.push_str("    <location>");
-        text.push_str(&escape(&entry.location));
+        text.push_str(&xml_escaped(&entry.location));
         text.push_str("</location>\n  </skill>\n");
     }
     text.push_str(FOOTER);
@@ -106,21 +108,6 @@ fn shortened(text: &str, length: usize) -> String {
         _ => kept.as_str(),
     };
     format!("{}…", at_word.trim_end())
-}
-
-fn escape(text: &str) -> String {
-    let mut escaped = String::with_capacity(text.len());
-    for character in text.chars() {
-        match character {
-            '&' => escaped.push_str("&amp;"),
-            '<' => escaped.push_str("&lt;"),
-            '>' => escaped.push_str("&gt;"),
-            '"' => escaped.push_str("&quot;"),
-            '\'' => escaped.push_str("&apos;"),
-            character => escaped.push(character),
-        }
-    }
-    escaped
 }
 
 fn chars(text: &str) -> usize {

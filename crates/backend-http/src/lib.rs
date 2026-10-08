@@ -22,6 +22,7 @@ mod files;
 mod gate;
 mod hosts;
 mod install;
+mod instructions;
 mod listener;
 mod models;
 mod panel;
@@ -317,6 +318,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route("/plugins/{plugin}/calls/{method}", post(plugins::user_call))
         .route("/plugins/{plugin}", put(plugins::switch))
+        .route("/instructions", put(instructions::replace))
         .route("/subagents", put(subagents::switch))
         .route("/subagents/profiles", post(subagents::create))
         .route(

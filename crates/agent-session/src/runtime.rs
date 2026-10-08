@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
 use demi_shared_gates::{GateLease, Reservation};
-use demi_shared_types::{CommandId, ModelSelection, ToolView, TurnId, WakeupCommand};
+use demi_shared_types::{CommandId, InstructionEntry, ModelSelection, ToolView, TurnId, WakeupCommand};
 use futures_util::{future::LocalBoxFuture, stream::LocalBoxStream};
 use serde_json::Value;
 use tokio::sync::watch;
@@ -95,11 +95,13 @@ pub struct SeenContext<'a> {
     pub text: &'a str,
 }
 
-/// What one context source answered: a new block's source and text.
+/// What one context source answered: a new block's source and text, and
+/// for the instructions source what the text holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewContext {
     pub source: String,
     pub text: String,
+    pub instructions: Vec<InstructionEntry>,
 }
 
 /// One call of a tool.

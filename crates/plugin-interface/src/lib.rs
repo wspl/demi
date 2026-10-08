@@ -10,6 +10,7 @@
 mod manifest;
 mod plugin;
 mod port;
+pub mod project;
 mod request;
 #[cfg(feature = "testing")]
 pub mod testing;

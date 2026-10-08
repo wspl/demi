@@ -15,7 +15,8 @@ import type { OverlayStore } from '../overlay/overlayStore'
  *
  * The card is one row: what it says, and an optional `action` at its end,
  * one `sm` Button, which keeps the same inset from the card's top, end and
- * bottom.
+ * bottom. Optional `details` follow below a divider, such as a list whose
+ * entries act; they get `close`, for an entry whose action leaves the card.
  */
 const props = withDefaults(defineProps<{
   /** Whether the card opens above the trigger or below it; it grows toward the inside of the trigger's region (Popover). */
@@ -116,17 +117,22 @@ onBeforeUnmount(clearTimers)
   >
     <div
       ref="cardRef"
-      class="hover-card overlay-shell rounded-md text-xs text-fg"
+      class="overlay-shell rounded-md text-xs text-fg"
       :style="{ '--elevation': elevation }"
       @mouseenter="clearTimers"
       @mouseleave="scheduleClose"
       @focusout="onFocusOut"
     >
-      <div class="hover-card-body min-w-0">
-        <slot name="card" />
+      <div class="hover-card">
+        <div class="hover-card-body min-w-0 flex-1">
+          <slot name="card" />
+        </div>
+        <div v-if="slots.action" class="hover-card-action">
+          <slot name="action" />
+        </div>
       </div>
-      <div v-if="slots.action" class="hover-card-action">
-        <slot name="action" />
+      <div v-if="slots.details" class="border-t border-line">
+        <slot name="details" :close="close" />
       </div>
     </div>
   </Popover>

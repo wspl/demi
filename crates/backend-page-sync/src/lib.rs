@@ -31,6 +31,8 @@ pub enum Part {
     Cloud,
     /// The Subagent switch and the subagent profiles.
     Subagents,
+    /// The personal instructions.
+    Instructions,
     /// The plugin list: whether the user has each plugin on.
     Plugins,
     /// A plugin's state, by the plugin's id.

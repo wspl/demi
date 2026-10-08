@@ -138,11 +138,53 @@ pub struct ContextBlock {
     pub created_at: Timestamp,
     #[garde(dive)]
     pub model: ModelSelection,
-    /// The source that answered: `execution`, or a plugin's id.
+    /// The source that answered: `execution`, [`INSTRUCTIONS_SOURCE`], or a
+    /// plugin's id.
     #[garde(length(chars, min = 1, max = 64))]
     pub source: String,
     #[garde(skip)]
     pub text: String,
+    /// What an instructions block's text holds, in its order, which the
+    /// page lists (`instructions.md` § What the card lists); empty for
+    /// another source's block.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(dive)]
+    pub instructions: Vec<InstructionEntry>,
+}
+
+/// The context source of the user's personal instructions and the
+/// project's instruction files (`instructions.md`), whose block replay
+/// sends whole.
+pub const INSTRUCTIONS_SOURCE: &str = "instructions";
+
+/// One part of an instructions block's text (`instructions.md` § What the
+/// card lists).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum InstructionEntry {
+    /// The user's personal instructions, with their token estimate.
+    Personal {
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        tokens: u64,
+    },
+    /// A project file, by its path on the Host, with the token estimate of
+    /// its text.
+    File {
+        #[garde(skip)]
+        path: String,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        tokens: u64,
+    },
+    /// A project file too large to include, by its path on the Host.
+    TooLarge {
+        #[garde(skip)]
+        path: String,
+    },
 }
 
 /// A fired yield wakeup. The model receives the wakeup text as a user

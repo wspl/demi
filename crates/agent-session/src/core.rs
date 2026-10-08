@@ -1157,10 +1157,10 @@ impl SessionCore {
         self.commit();
     }
 
-    pub(super) fn push_context(&mut self, source: String, text: String) {
+    pub(super) fn push_context(&mut self, news: crate::runtime::NewContext) {
         let turn = self.turn();
         self.transcript
-            .push_context(turn, &self.model, source, text);
+            .push_context(turn, &self.model, news.source, news.text, news.instructions);
         self.commit();
     }
 

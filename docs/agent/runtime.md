@@ -1075,7 +1075,7 @@ Words used for session data:
 | Block | Written by | The model receives | The user sees it |
 | --- | --- | --- | --- |
 | `user` | A send or an edit: the submitted content and, for a subagent, its identity (`preamble`, [Child context](subagents.md#child-context)) | A user message: the preamble, then the content | Yes; the only editable block ([Message editing](message-editing.md)) |
-| `context` | The session before a provider request, with the text one context source answered ([Context](#context)), and the source's name (`source`) | A user message with its text | No |
+| `context` | The session before a provider request, with the text one context source answered ([Context](#context)), the source's name (`source`), and for the instructions source the list of what the text holds (`instructions`, [What the card lists](instructions.md#what-the-card-lists)) | A user message with its text | No |
 | `wakeup` | A fired yield wakeup, with the placement `new_turn` or `steer` | The fixed wakeup text, as a user message or as a steer | No |
 | `steer` | A human steer, at a continuation boundary | A steer in the current turn | Yes |
 | `agent_message` | Another agent of the tree ([Communication](subagents.md#communication)) | A steer holding the message's source envelope | As a receipt row |
@@ -1132,10 +1132,14 @@ the product supplies, in the product's order:
   the node's working directory and the id of its current input turn, and
   answers new text or nothing. After a compaction, a source therefore tells
   the model again what the summary may have left out.
+- The product's order is the execution context, then the instructions, then
+  each plugin that is a context source.
 - Each answer becomes one `context` block that names its source: `execution`
   for the conversation's execution context
   ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)),
-  or the id of the plugin that answered
+  `instructions` for the user's personal instructions and the project's
+  instruction files ([Instructions](instructions.md)), which also lists what
+  its text holds, or the id of the plugin that answered
   ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)).
 - The blocks are appended before the request and saved at once, so a request
   never carries a context its transcript does not hold.

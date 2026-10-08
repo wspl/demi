@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ContextUsage } from '@demicodes/protocol'
+import { FileText, UserRound } from '@lucide/vue'
+import type { ContextUsage, InstructionEntry } from '@demicodes/protocol'
 import Button from '../ui/Button.vue'
 import HoverCard from '../ui/HoverCard.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import { formatTokens } from '../ui/token-count'
 import { compactionRefusal, contextPercent, contextRatio } from './context-usage'
+import { instructionRows } from './instructions'
 
 /**
  * The composer's context meter: a ring of how full the next request is, as
  * the backend estimates it. Pointing at it or focusing it opens a card with
- * the numbers and Compact; a click on the ring itself does nothing.
+ * the numbers and Compact; a click on the ring itself does nothing. Below
+ * them it lists the instructions the model holds (`instructions.md` § What
+ * the card lists), each of which opens where it is written.
  */
 const props = defineProps<{
   usage?: ContextUsage | null
@@ -19,11 +23,23 @@ const props = defineProps<{
   unavailableReason?: string | null
   /** The card shows without the pointer, as a gallery specimen pins it. */
   pinned?: boolean
+  /** What the newest instructions block holds, in its order; absent where the card lists no instructions. */
+  instructions?: readonly InstructionEntry[]
 }>()
 
 const emit = defineEmits<{
   compact: []
+  /** Opens where an entry is written: the settings for the personal instructions, the file for a project file. */
+  openInstruction: [entry: InstructionEntry]
 }>()
+
+const rows = computed(() => instructionRows(props.instructions ?? []))
+const instructionTokens = computed(() => rows.value.reduce((sum, row) => sum + (row.tokens ?? 0), 0))
+
+function openRow(entry: InstructionEntry, close: () => void): void {
+  close()
+  emit('openInstruction', entry)
+}
 
 const percent = computed(() => contextPercent(props.usage ?? null))
 const ratio = computed(() => contextRatio(props.usage ?? null) ?? 0)
@@ -95,6 +111,30 @@ const ringColor = computed(() => {
       >
         Compact
       </Button>
+    </template>
+    <template v-if="instructions" #details="{ close }">
+      <div class="flex items-center justify-between gap-6 px-3 pt-2 pb-1 text-[11px] font-medium text-fg-subtle">
+        <span>Instructions</span>
+        <span v-if="rows.length" class="tabular-nums">{{ formatTokens(instructionTokens) }}</span>
+      </div>
+      <ul v-if="rows.length" class="px-1 pb-1">
+        <li v-for="row in rows" :key="row.path ?? 'personal'">
+          <button
+            type="button"
+            :title="row.path ?? undefined"
+            class="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-hover"
+            @click="openRow(row.entry, close)"
+          >
+            <UserRound v-if="row.path === null" :size="14" class="shrink-0 text-fg-subtle" />
+            <FileText v-else :size="14" class="shrink-0 text-fg-subtle" />
+            <span class="min-w-0 flex-1 truncate text-fg-body">{{ row.label }}</span>
+            <span v-if="row.tokens === null" class="shrink-0 text-on-warning">Too large</span>
+            <span v-else class="shrink-0 tabular-nums text-fg-subtle">{{ formatTokens(row.tokens) }}</span>
+          </button>
+        </li>
+      </ul>
+      <!-- As wide as the usage above it, never wider: the sentence wraps. -->
+      <p v-else class="w-0 min-w-full px-3 pb-2 text-fg-subtle">No personal instructions, AGENTS.md or CLAUDE.md</p>
     </template>
   </HoverCard>
 </template>
