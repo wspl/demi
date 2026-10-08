@@ -10,9 +10,10 @@ import { gfmHeadingId } from 'marked-gfm-heading-id'
 import { utf8Bytes } from '@demicodes/utils'
 import { joinPath, parentPath } from '../files/paths'
 import { decodedTarget } from './filePath'
-import { codeToHtml } from './highlight'
+import { codeBlockHtml } from './highlight'
 import { escapeHtml } from './html'
 import { mathExtensions } from './math'
+import { scrollingTable } from './table'
 
 /** Where a document sits, and how an image it names on the Host loads. */
 export interface DocumentPlace {
@@ -60,7 +61,7 @@ const ALLOWED_ATTR = [
   'valign', 'width',
 ]
 /** The classes the renderer gives; any other class a document names is dropped. */
-const RENDERER_CLASS = /^(math|math-inline|math-display|language-[\w+#.-]+)$/
+const RENDERER_CLASS = /^(math|math-inline|math-display|table-scroll|language-[\w+#.-]+)$/
 
 // Math placeholders keep the messages' math syntax and hold the TeX as text
 // until sanitizing is done.
@@ -76,7 +77,7 @@ const mathPlaceholders: MarkedExtension = {
   })),
 }
 
-const documentMarked = new Marked({ gfm: true, breaks: false }, gfmHeadingId(), mathPlaceholders)
+const documentMarked = new Marked({ gfm: true, breaks: false }, gfmHeadingId(), mathPlaceholders, scrollingTable)
 
 // Hooks belong to a DOMPurify instance, and sanitizing is synchronous, so the
 // hooks read the place of the render in progress.
@@ -193,7 +194,7 @@ function renderAfterSanitizing(fragment: DocumentFragment): void {
       continue
     }
     const highlighted = document.createElement('template')
-    highlighted.innerHTML = codeToHtml(text, language)
+    highlighted.innerHTML = codeBlockHtml(text, language)
     pre.replaceWith(highlighted.content)
   }
 }

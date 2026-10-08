@@ -5,7 +5,7 @@ import { attachScrollbars } from '../ui/scrollbars'
 import { useScrollFades } from './useScrollFades'
 
 /** The sideways scrollers of rendered Markdown: a code block, a wide table or equation. */
-const CONTENT_SCROLLERS = '.markdown-body :is(pre, table, .katex-display)'
+const CONTENT_SCROLLERS = '.markdown-body :is(pre, .table-scroll, .katex-display)'
 
 /**
  * The sideways scrollers of rendered text under `root`, which a render

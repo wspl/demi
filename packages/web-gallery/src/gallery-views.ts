@@ -150,10 +150,6 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
       value: 'markdown',
       label: 'Markdown',
     },
-    {
-      value: 'long-text',
-      label: 'Long Text',
-    },
   ],
   '/roadmap': [
     {
