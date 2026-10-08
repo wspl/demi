@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
+import GalleryLongText from '../components/GalleryLongText.vue'
+import { useGalleryView } from '../gallery-views'
 import { alignedMarkdown, dollarMarkdown, overlongMarkdown, previewMarkdown, scriptsMarkdown } from '../fixtures/previews'
+
+const { view } = useGalleryView()
 </script>
 
 <template>
-  <ScrollArea class="flex-1 bg-surface-editor text-conversation text-fg-body" viewport-class="p-4">
+  <GalleryLongText v-if="view === 'long-text'" />
+  <ScrollArea v-else class="flex-1 bg-surface-editor text-conversation text-fg-body" viewport-class="p-4">
     <!-- One message at full width, rendered by the transcript's own component. -->
     <StreamedMarkdown :content="previewMarkdown" />
     <!-- Prices and math in one reply: a dollar sign before an amount stays text, and math
