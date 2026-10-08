@@ -56,7 +56,10 @@ html[data-theme="dark"][data-tone="ink"] {
   --surface: #242424;
   --surface-editor: #1c1c1c;
   --surface-raised: #313131;
-  --surface-float: #3c3c3c;
+  /* A menu or popover a step above a card, as Flat's are, not a bright slab;
+     each floating layer over another adds a smaller step. */
+  --surface-float: #353535;
+  --elevation-step: 5%;
   --overlay: white;
   --fg-emphasis: #e6e6e6;
   --fg: #e6e6e6;
