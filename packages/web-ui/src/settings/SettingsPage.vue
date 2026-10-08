@@ -17,12 +17,12 @@ import { settingsLevelKey, settingsPageKey, type SettingsLevel } from './navigat
  * goes back to it instead, as System Settings and iOS do.
  *
  * A page of one thing says its state in its header, never in rows: an
- * `icon` beside the title, a `status` line under it (a dot of
- * `statusTone` and a few words), the `description` that explains it, and
- * `actions` on a line of their own, as macOS's Network settings head a
- * service's page. The icon is exactly as tall as the title and status lines
- * together and centred on them; the description and the actions start where
- * the title starts. A row below is only a setting or a fact.
+ * `icon` beside the title, a `status` line under it (a dot of `statusTone`
+ * and a few words), and a `description` under them where the state needs
+ * one, such as how to bring an offline device back. The icon is exactly as
+ * tall as the title and status lines together and centred on them; the
+ * description starts where the title starts. A row below is only a setting
+ * or a fact.
  */
 const props = defineProps<{
   title: TitleText
@@ -106,10 +106,6 @@ onBeforeUnmount(leaveBar)
         <!-- A block, so the explanation may hold more than a sentence, such as a command to copy. -->
         <div v-if="description || $slots.description" :class="[$slots.icon ? 'col-start-2' : '', $slots.status ? 'mt-2' : 'mt-1']" class="min-w-0 text-[13px] leading-5 text-fg-muted">
           <slot name="description">{{ description }}</slot>
-        </div>
-        <!-- The header's buttons: a line of their own, in every state, so they never move with the text. -->
-        <div v-if="$slots.actions" :class="$slots.icon ? 'col-start-2' : ''" class="mt-3 flex flex-wrap items-center gap-2">
-          <slot name="actions" />
         </div>
       </div>
     </header>

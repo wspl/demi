@@ -969,7 +969,7 @@ async fn a_device_shows_its_system_and_runner_release_and_a_paired_one_takes_a_n
     );
     assert_eq!(backend.devices(&master).await[0].name, longest);
 
-    // A new device's route is Automatic; Server Only keeps its name, and
+    // A new device's route is Automatic; Relay Only keeps its name, and
     // every page hears it. The Cloud has no route.
     assert_eq!(backend.devices(&master).await[0].route, DeviceRoute::Automatic);
     let server = backend

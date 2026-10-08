@@ -52,7 +52,7 @@ const directScenario = computed({
   get: () => directDevices.scenarios.value['mac'] ?? 'connected',
   set: (scenario: DirectScenario) => directDevices.setScenario('mac', scenario),
 })
-/** The Cloud beside them, whose page says it is always reached through the server. */
+/** The Cloud beside them, whose page says it is always connected via the relay. */
 const directCloud: CloudState = {
   state: 'running',
   operationId: null,
@@ -213,7 +213,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Devices · Direct Channel"
-        note="A device’s row names it and says its system and its state; the reason waits on the device’s own page, which the row opens and whose back button returns to the list. The page’s header gives the state and, in the design table’s words, why not directly; its icon is as tall as the name and status lines together. While the device is online and its route allows a direct connection, Details… opens Connection Details, ending with the next attempt, and Try Again, there without a direct connection, runs an attempt that ends as the device’s path says. Connection holds the route with one line for the chosen one, and a footnote gives both paths’ latency. Rename… renames; Revoke… asks first, and the device leaves the list. build-01 is offline: its header gives the command that starts it, with Copy. Set zan-mbp’s path to see each reason; the Cloud’s page says only that it goes through the server."
+        note="A device’s row names it and says its system and its state; the reason waits on the device’s own page, which the row opens and whose back button returns to the list. The page’s header names the device and its state, Connected via P2P or Connected via relay, its dot the state’s colour, green while online whichever path; its icon is as tall as the name and status lines together. Connection holds the route, Automatic, Prefer P2P or Relay Only, with one line for the chosen one, and a footnote gives both paths’ latency. P2P Connection, while the device is online and not Relay Only, says in one sentence why it is not connected, in the design table’s words, or the address it is connected through; Details… opens Connection Details, ending with the next attempt, and Try Again, there without a P2P connection, is loading only for the attempt it started, which ends as the device’s path says. Rename… renames; Revoke… asks first, and the device leaves the list. build-01 is offline: its header gives the command that starts it, with Copy. Set zan-mbp’s path to see each state; the Cloud’s page says only that it is connected via relay."
       >
         <div class="flex w-full max-w-2xl flex-col gap-4">
           <Segmented v-model="directScenario" :options="DIRECT_SCENARIOS" size="sm" />

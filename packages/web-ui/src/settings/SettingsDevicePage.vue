@@ -13,10 +13,12 @@ import { formatDay, formatMoment, useTimeUntil } from '../composables/useRelativ
 import DeviceRenameDialog from '../devices/DeviceRenameDialog.vue'
 import DeviceRevokeDialog from '../devices/DeviceRevokeDialog.vue'
 import DeviceStartHint from '../devices/DeviceStartHint.vue'
+import { useTryAgain } from '../devices/useTryAgain'
 import {
   DEVICE_ROUTE_DESCRIPTION,
   DEVICE_ROUTE_LABEL,
   DIRECT_STAGE_LABEL,
+  addressWithPort,
   directReason,
   pathsFootnote,
   reasonSentence,
@@ -36,14 +38,14 @@ import type { SettingsDevice } from './types'
 
 /**
  * A device's own page (`direct-channel.md` § What the user sees), which its
- * row in Devices opens. Its header says how this page reaches it now and,
- * in the table's words, why not directly, with Details… for the last
- * attempt's diagnostics and Try Again; an offline device's header gives the
- * command that starts its runner. Connection holds the route, with a
- * footnote comparing the two paths' latency from this browser; Device holds
- * the facts, with Rename…; Revoke… ends the page. The Cloud's header says
- * only that it is reached through the server, and its page has no
- * Connection.
+ * row in Devices opens. Its header names the device and its state, and an
+ * offline device's header gives the command that starts its runner.
+ * Connection holds the route, with a footnote comparing the two paths'
+ * latency from this browser. P2P Connection, while the device is online
+ * and its route allows a peer, says in a sentence how the P2P connection
+ * fares, with Details… for the last attempt's diagnostics and Try Again.
+ * Device holds the facts, with Rename…; Revoke… ends the page. The Cloud's
+ * page has neither Connection nor P2P Connection.
  */
 const props = defineProps<{
   /** A paired device, or the Cloud with what its runner reported. */
@@ -87,13 +89,13 @@ const attempt = computed(() => direct.value?.attempt ?? null)
 const status = computed<{ tone: StatusDotTone; words: SentenceText }>(() => {
   const shown = device.value
   if (!shown) {
-    return { tone: 'muted', words: 'Through the server' }
+    return { tone: 'muted', words: 'Connected via relay' }
   }
   const tone = DEVICE_STATE_TONE[shown.state]
   if (shown.state !== 'online') {
     return { tone, words: DEVICE_STATE_LABEL[shown.state] }
   }
-  return { tone, words: reason.value === null ? 'Connected directly' : 'Through the server' }
+  return { tone, words: reason.value === null ? 'Connected via P2P' : 'Connected via relay' }
 })
 
 /** How to start the runner again, which the header gives while the device is offline. */
@@ -104,21 +106,24 @@ const footnote = computed(() => (direct.value && online.value ? pathsFootnote(di
 
 const nextIn = useTimeUntil(() => direct.value?.nextAt ?? new Date().toISOString())
 
-/** The sentence under the status, as the design's table words the reason; none on Server Only. */
-const explanation = computed(() => (reason.value ? reasonSentence(reason.value) : null))
-
-/** Whether the page may have a peer to the device: it is online and its route is not Server Only. */
+/** The P2P Connection section is there while the device is online and its route allows a peer. */
 const peerAllowed = computed(() => online.value && !!direct.value && direct.value.route !== 'server')
 
-/** Details… shows the last attempt, while a peer is allowed and the page has an attempt to show. */
-const canShowDetails = computed(() => peerAllowed.value && attempt.value !== null)
-
 /**
- * Try Again is there only while a peer is allowed and the page has no
- * connected peer; a peer that stands but is slower right now needs no new
- * attempt.
+ * P2P Connection's sentence: the reason in the design table's words, or
+ * the device's address in use while connected; none before an attempt ended.
  */
-const canTryAgain = computed(() => peerAllowed.value && !direct.value?.peer)
+const directSentence = computed<SentenceText | null>(() => {
+  if (reason.value) {
+    return reasonSentence(reason.value)
+  }
+  const inUse = attempt.value?.inUse
+  return inUse ? `Connected through ${inUse.address}` : null
+})
+
+/** Try Again is there only while the page has no connected peer; one that stands but is slower needs no new attempt. */
+const canTryAgain = computed(() => !direct.value?.peer)
+const tryAgain = useTryAgain(() => direct.value?.trying ?? false, () => emit('tryNow'))
 
 /** How long an attempt took, as a person reads it. */
 function took(ms: number): string {
@@ -169,7 +174,7 @@ const details = computed(() => {
     { label: 'This browser', value: addressLines(seen.browser) },
     { label: 'The device', value: addressLines(seen.device) },
     { label: 'Paths', value: `${seen.pairs.tried} tried, ${seen.pairs.answered} answered` },
-    ...(seen.inUse ? [{ label: 'Path in use', value: seen.inUse }] : []),
+    ...(seen.inUse ? [{ label: 'Path in use', value: addressWithPort(seen.inUse) }] : []),
     { label: 'Local network access', value: permission(seen.permission) },
     ...(direct.value?.nextAt ? [{ label: 'Next attempt', value: upperFirst(nextIn.value) }] : []),
   ]
@@ -198,13 +203,8 @@ function revoke() {
     <template #status>
       {{ status.words }}<span v-if="device?.state === 'offline' && device.seen" class="text-fg-subtle"> · Last seen <RelativeTime :timestamp="device.seen" /></span>
     </template>
-    <template v-if="offlineStart || explanation" #description>
-      <DeviceStartHint v-if="offlineStart" sentence="Start Demi on the device:" :start="offlineStart" />
-      <template v-else>{{ explanation }}</template>
-    </template>
-    <template v-if="canShowDetails || canTryAgain" #actions>
-      <Button v-if="canShowDetails" size="sm" @click="detailsOpen = true">Details…</Button>
-      <Button v-if="canTryAgain" size="sm" :loading="direct?.trying" @click="emit('tryNow')">Try Again</Button>
+    <template v-if="offlineStart" #description>
+      <DeviceStartHint sentence="Start Demi on the device:" :start="offlineStart" />
     </template>
 
     <SettingsGroup v-if="device" title="Connection">
@@ -232,6 +232,14 @@ function revoke() {
         </Dropdown>
       </SettingsRow>
       <template v-if="footnote" #footer>{{ footnote }}</template>
+    </SettingsGroup>
+
+    <SettingsGroup v-if="peerAllowed" title="P2P Connection" plain>
+      <template v-if="attempt || canTryAgain" #actions>
+        <Button v-if="attempt" size="sm" @click="detailsOpen = true">Details…</Button>
+        <Button v-if="canTryAgain" size="sm" :loading="tryAgain.loading.value" @click="tryAgain.click">Try Again</Button>
+      </template>
+      <p v-if="directSentence">{{ directSentence }}</p>
     </SettingsGroup>
 
     <SettingsGroup title="Device">
