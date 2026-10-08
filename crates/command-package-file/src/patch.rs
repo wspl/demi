@@ -1,9 +1,12 @@
-use std::{collections::HashSet, fs, path::PathBuf, sync::LazyLock};
+use std::{collections::HashSet, fs, sync::LazyLock};
 
 use regex::Regex;
 use tokio_util::sync::CancellationToken;
 
-use crate::files::{FileError, Unchosen, atomic_write, check_cancelled, nearest, resolve};
+use crate::{
+    changes::{self, Change},
+    files::{FileError, Unchosen, check_cancelled, nearest, resolve},
+};
 
 /// Why a patch does not apply; its message is what the agent reads.
 #[derive(Debug, thiserror::Error)]
@@ -93,18 +96,11 @@ struct Line {
     newline: bool,
 }
 
-struct Change {
-    path: PathBuf,
-    before: Option<Vec<u8>>,
-    after: Option<Vec<u8>>,
-    permissions: Option<fs::Permissions>,
-}
-
 pub fn apply(
     cwd: &str,
     diff: &str,
     cancellation: &CancellationToken,
-    mut recording: Option<&mut demi_command_sdk::edits::Recording>,
+    recording: Option<&mut demi_command_sdk::edits::Recording>,
 ) -> Result<String, FileError> {
     let patches = parse(diff, cancellation)?;
     let mut changes = Vec::new();
@@ -179,65 +175,8 @@ pub fn apply(
         }
     }
     changes.retain(|change| change.before != change.after);
-    if let Some(recording) = &mut recording {
-        for change in &changes {
-            recording.track(&change.path);
-        }
-    }
-    commit_changes(&changes, cancellation, write_change, recording)?;
+    changes::commit(&changes, cancellation, recording)?;
     Ok(format!("Patched {} file(s)\n", patches.len()))
-}
-
-fn commit_changes(
-    changes: &[Change],
-    cancellation: &CancellationToken,
-    mut write: impl FnMut(&Change) -> Result<(), FileError>,
-    mut recording: Option<&mut demi_command_sdk::edits::Recording>,
-) -> Result<(), FileError> {
-    for (index, change) in changes.iter().enumerate() {
-        let result = check_cancelled(cancellation).and_then(|()| write(change));
-        if let Err(error) = result {
-            let mut rollbacks = Vec::new();
-            for change in changes[..index].iter().rev() {
-                match restore(change) {
-                    Err(rollback) => rollbacks.push(rollback),
-                    Ok(()) => {
-                        if let Some(recording) = &mut recording {
-                            recording.restored(&change.path);
-                        }
-                    }
-                }
-            }
-            if rollbacks.is_empty() {
-                return Err(error);
-            }
-            return Err(FileError::Rollback {
-                error: Box::new(error),
-                rollbacks,
-            });
-        }
-    }
-    Ok(())
-}
-
-fn write_change(change: &Change) -> Result<(), FileError> {
-    match &change.after {
-        Some(bytes) => atomic_write(&change.path, bytes, change.before.is_none()),
-        None => Ok(fs::remove_file(&change.path)?),
-    }
-}
-
-fn restore(change: &Change) -> Result<(), FileError> {
-    match &change.before {
-        Some(bytes) => {
-            atomic_write(&change.path, bytes, change.after.is_none())?;
-            if let Some(permissions) = &change.permissions {
-                fs::set_permissions(&change.path, permissions.clone())?;
-            }
-            Ok(())
-        }
-        None => Ok(fs::remove_file(&change.path)?),
-    }
 }
 
 /// `original` with `hunks` applied in order. A hunk's header gives no line
