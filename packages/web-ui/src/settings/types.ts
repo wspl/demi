@@ -6,6 +6,7 @@ import type { TagTone } from '../ui/Tag.vue'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 import type { DeviceStart } from '../devices/installation'
 import type { DeviceState } from '../devices/state'
+import type { DirectStatus } from '../devices/direct'
 import type { DeviceReport } from '../devices/report'
 
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */
@@ -68,12 +69,10 @@ export interface SettingsDevice extends DeviceReport {
   seen?: string
   /** How to start its runner again; shown while it is offline. */
   start?: DeviceStart | null
-  /**
-   * The page's direct channel to the device (`direct-channel.md`):
-   * `connected` while this page has one, `blocked` while this browser
-   * blocks direct connections to devices on this computer and network.
-   */
-  direct?: 'connected' | 'blocked'
+  /** When it was paired, as an ISO 8601 timestamp. */
+  pairedAt: string
+  /** How this page reaches it (`direct-channel.md` § What the user sees). */
+  direct: DirectStatus
 }
 
 /** A plugin as the Plugins page lists it. */

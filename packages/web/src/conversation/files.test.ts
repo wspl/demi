@@ -32,6 +32,7 @@ function laptop(name: string) {
     startCommand: null,
     os: null,
     runnerVersion: null,
+    direct: true,
   }
 }
 

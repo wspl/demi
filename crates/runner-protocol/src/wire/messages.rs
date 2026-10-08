@@ -666,6 +666,20 @@ pub enum Inbound {
         sdp: String,
         #[garde(dive)]
         introduction: crate::direct::Introduction,
+        /// The STUN servers the runner asks, from its local network
+        /// sockets, for the address the internet sees it at; none keeps
+        /// the peer to one network.
+        #[garde(length(max = crate::direct::MAX_STUN_URLS))]
+        stun: Vec<crate::direct::StunUrl>,
+    },
+    /// A candidate the page found after its offer, which the runner checks
+    /// too (`direct-channel.md` § Making the channel): the `candidate:` line
+    /// as the browser gives it.
+    DirectCandidate {
+        #[garde(length(min = 1))]
+        peer: String,
+        #[garde(length(min = 1, max = crate::direct::CANDIDATE_CHARS))]
+        candidate: String,
     },
     /// The page's signaling socket closed: the runner closes the peer.
     DirectClose {
@@ -1012,6 +1026,14 @@ pub enum Outbound {
         id: String,
         #[garde(length(min = 1))]
         sdp: String,
+    },
+    /// A candidate of peer `peer`'s that the runner found after its
+    /// answer, such as the address a STUN server saw it at, for the page.
+    DirectCandidate {
+        #[garde(length(min = 1))]
+        peer: String,
+        #[garde(length(min = 1, max = crate::direct::CANDIDATE_CHARS))]
+        candidate: String,
     },
     /// The runner did not answer a `direct_offer`.
     DirectRefused {

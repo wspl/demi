@@ -9,13 +9,14 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_database::accounts::TokenHash;
-use demi_backend_database::devices::DeviceRecord;
+use demi_backend_database::devices::{DeviceChange, DeviceRecord};
+use demi_web_api_protocol::text::Trimmed;
 use demi_backend_runners::codes::{ClaimCode, new_device_token};
 use demi_backend_runners::files::browse_directory;
 use demi_host_interface::{HostError, HostErrorKind, MkdirOptions};
 use demi_web_api_protocol::devices::{
     Claim, DeviceAnswer, DeviceKind, DeviceLog, DeviceLogLine, DeviceLogQuery, Devices,
-    RenameDevice, RevokedDevice,
+    ChangeDevice, RevokedDevice,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{
@@ -94,29 +95,33 @@ fn invalid_code() -> ApiError {
     )
 }
 
-/// Renames a paired device; the Cloud keeps its name.
-pub(super) async fn rename(
+/// Renames a paired device, or turns its direct connections on or off; the
+/// Cloud keeps its name and is always reached through the server.
+pub(super) async fn change(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-    JsonBody(RenameDevice { name }): JsonBody<RenameDevice>,
+    JsonBody(ChangeDevice { name, direct }): JsonBody<ChangeDevice>,
 ) -> Result<Json<DeviceAnswer>, ApiError> {
     let device = owned_device(&state, &user.id, &id, None).await?;
     if device.kind == DeviceKind::Managed {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
             ErrorCode::DeviceManaged,
-            "The Cloud keeps its name",
+            "The Cloud keeps its name and is always reached through the server",
         ));
     }
-    let name = name.into_string();
-    let renamed = state
+    let change = DeviceChange {
+        name: name.map(Trimmed::into_string),
+        direct,
+    };
+    let changed = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.rename_device(device.id, name).await })
+        .call(move |shard, _| async move { shard.change_device(device.id, change).await })
         .await??;
-    // A revocation between the lookup and the rename took the device.
-    let device = renamed.ok_or_else(device_not_found)?;
+    // A revocation between the lookup and the change took the device.
+    let device = changed.ok_or_else(device_not_found)?;
     Ok(Json(DeviceAnswer { device }))
 }
 

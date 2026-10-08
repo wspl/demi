@@ -36,6 +36,16 @@ impl Shard {
         let mut conversations = self.conversation_summaries(false).await?;
         conversations.extend(self.conversation_summaries(true).await?);
         let cloud = self.cloud_shard().cloud_status().await?;
+        let runner_release = match services.runner_releases.current().await {
+            Ok(release) => release.map(|release| release.release),
+            Err(error) => {
+                // The installers and the runners' updates report the
+                // deployment's broken record; the pages show the runners'
+                // releases as unknown meanwhile.
+                tracing::warn!("the current runner release cannot be read: {error}");
+                None
+            }
+        };
         let subagents = services
             .control
             .subagent_settings(self.user().clone())
@@ -58,6 +68,8 @@ impl Shard {
                 .expect("the backend listens before it serves a request")
                 .as_str()
                 .to_owned(),
+            stun_urls: services.stun.clone(),
+            runner_release,
             conversations,
             cloud,
             subagents,

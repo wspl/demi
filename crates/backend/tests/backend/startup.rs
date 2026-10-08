@@ -102,6 +102,24 @@ fn an_unusable_preview_domain_or_origin_stops_startup_naming_the_variable() {
     refused_naming(&start(&variables), "DEMI_PREVIEW_ORIGINS");
 }
 
+/// `DEMI_STUN_URLS` names `stun:` URLs, or nothing, which keeps direct
+/// channels to one network: an empty value passes the check, and the start
+/// goes on to the next step, the release root that does not exist.
+#[test]
+fn stun_urls_are_stun_urls_or_nothing() {
+    let mut variables = REQUIRED.to_vec();
+    variables.push(("DEMI_STUN_URLS", "https://stun.example.com"));
+    refused_naming(&start(&variables), "DEMI_STUN_URLS");
+    for passing in ["", "stun:stun.example.com,stun:[2001:db8::1]:3479"] {
+        let mut variables = REQUIRED.to_vec();
+        variables.push(("DEMI_STUN_URLS", passing));
+        let output = start(&variables);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!stderr.contains("DEMI_STUN_URLS"), "{passing:?}: {stderr}");
+        assert!(stderr.contains("/nonexistent/release/release.json"), "{stderr}");
+    }
+}
+
 #[test]
 fn a_missing_public_url_stops_startup_naming_the_variable() {
     let variables: Vec<_> = REQUIRED

@@ -10,7 +10,7 @@ use serde_json::Value;
 use crate::auth::UserDto;
 use crate::cloud::CloudStatus;
 use crate::conversations::ConversationSummary;
-use crate::devices::DeviceDto;
+use crate::devices::{DeviceDto, StunUrl};
 use crate::ids::{ConversationId, PreviewNamespace};
 use crate::plugins::PluginEntry;
 use crate::providers::ProviderState;
@@ -40,6 +40,15 @@ pub struct ProductState {
     /// serves the installers: the page's install command names it, since
     /// the page's own origin may be another server's, as in development.
     pub public_url: String,
+    /// The STUN servers the page's peers ask for the address the internet
+    /// sees the browser at (`DEMI_STUN_URLS`, `direct-channel.md` § Making
+    /// the channel); none keeps direct channels to one network.
+    pub stun_urls: Vec<StunUrl>,
+    /// The runner release paired devices follow, the one the backend's
+    /// `runners/` names; none for a backend without runner releases, as in
+    /// development, whose runners are development builds
+    /// (`direct-channel.md` § What the user sees).
+    pub runner_release: Option<String>,
     pub conversations: Vec<ConversationSummary>,
     pub cloud: CloudStatus,
     pub subagents: SubagentSettings,

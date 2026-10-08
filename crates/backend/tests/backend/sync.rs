@@ -147,6 +147,10 @@ async fn the_snapshot_is_the_users_product_state() {
             // The URL runners connect to: without a configured one, the
             // backend's own address.
             public_url: format!("{}/", backend.url),
+            // A test's backend names no STUN server and has no runner
+            // releases.
+            stun_urls: Vec::new(),
+            runner_release: None,
             conversations: Vec::new(),
             // A Cloud no work used yet is not made.
             cloud: CloudStatus {

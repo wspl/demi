@@ -31,7 +31,9 @@ use demi_backend_providers::vault::seal::VaultKey;
 use demi_backend_runners::claims::PendingClaims;
 use demi_backend_runners::devices::Returning;
 use demi_backend_runners::native::NativeCatalog;
+use demi_backend_runners::install::RunnerReleases;
 use demi_backend_runners::public_url::PublicUrl;
+use demi_runner_protocol::direct::StunUrl;
 use demi_plugin_interface::PluginFactory;
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_shared_types::Clock;
@@ -89,6 +91,11 @@ pub struct Services {
     pub public_url: PublicUrl,
     /// The build of the web app the backend serves, if it serves one.
     pub web_build: Option<String>,
+    /// The runner releases paired devices follow.
+    pub runner_releases: RunnerReleases,
+    /// The STUN servers pages and runners ask for their public address
+    /// (`direct-channel.md` § Making the channel).
+    pub stun: Vec<StunUrl>,
     /// The deployment's namespace at the preview domain, once registered.
     pub preview: CurrentPreview,
     /// This run of the backend, chosen when the services start: the
@@ -138,6 +145,8 @@ pub struct ServiceSettings {
     pub mode: InstanceMode,
     /// The build of the web app the backend serves, if it serves one.
     pub web_build: Option<String>,
+    pub runner_releases: RunnerReleases,
+    pub stun: Vec<StunUrl>,
     pub mail: Option<Arc<dyn AccountMail>>,
     pub runners: RunnerTuning,
     pub conversations: ConversationTuning,
@@ -326,6 +335,8 @@ impl Services {
             cloud: settings.cloud,
             public_url: PublicUrl::default(),
             web_build: settings.web_build,
+            runner_releases: settings.runner_releases,
+            stun: settings.stun,
             preview: CurrentPreview::default(),
             run: uuid::Uuid::new_v4().to_string(),
             lifecycle: settings.lifecycle,
@@ -384,6 +395,8 @@ impl Services {
         let settings = ServiceSettings {
             mode: InstanceMode::Shared,
             web_build: None,
+            runner_releases: RunnerReleases::default(),
+            stun: Vec::new(),
             mail: None,
             runners: RunnerTuning::default(),
             conversations: ConversationTuning::default(),

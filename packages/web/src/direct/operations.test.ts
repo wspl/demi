@@ -3,6 +3,7 @@ import type { FileReads } from '@demicodes/web-ui/files/kept-source'
 import { FileBrowserError } from '@demicodes/web-ui/files/types'
 import type { UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
 import { waitToReconnect } from '@demicodes/web-ui/transport/liveness'
+import type { DirectAttempt } from '@demicodes/web-ui/devices/direct'
 import type { ChannelHeader } from '../api/generated/web-api'
 import { DeviceDirect } from './device'
 import type { DirectRoute } from '.'
@@ -33,7 +34,21 @@ class ScriptedPeer implements DirectPeer {
   readonly sent: (string | Uint8Array)[] = []
   readonly ended = Promise.withResolvers<void>()
   readonly closed = this.ended.promise
+  readonly attempt: DirectAttempt = {
+    startedAt: '2026-10-08T09:00:00.000Z',
+    durationMs: 20,
+    outcome: 'connected',
+    stage: null,
+    browser: { local: [], public: [] },
+    device: { local: ['127.0.0.1'], public: [] },
+    pairs: { tried: 1, answered: 1 },
+    permission: null,
+  }
   constructor(private readonly scripts: Script[]) {}
+
+  roundTrip(): Promise<number | null> {
+    return Promise.resolve(null)
+  }
 
   async open<T>(header: ChannelHeader): Promise<OperationChannel<T>> {
     this.headers.push(header)
