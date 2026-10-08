@@ -33,8 +33,14 @@ standard input and output. Which CLI that is, and which machine, are defined
 below: Demi's own verified copy, on the user's Cloud, whatever the
 conversation's execution target is.
 
-The provider reads its account's setup token from the vault and sets it as
-`CLAUDE_CODE_OAUTH_TOKEN` in the spawn environment. The runner and the CLI
+The provider reads its account's Claude sign-in from the vault, refreshed
+first when its access token expires within 5 minutes
+([Token refresh](providers.md#token-refresh)), and sets the access token as
+`CLAUDE_CODE_OAUTH_TOKEN` in the spawn environment; the refresh token never
+leaves the backend, so the CLI never refreshes and never races Demi's
+refresher for a single-use token. A kept CLI process whose access token the
+backend has since replaced is closed, as an account switch closes it, and the
+next request starts one with the new token. The runner and the CLI
 therefore receive this credential: the user's Cloud is trusted with that
 account's token, which on a shared instance means every user
 ([Scope](providers.md#scope)). When the token cannot be read, the request fails
@@ -43,8 +49,8 @@ with the authentication error; the CLI is never started without a token.
 The CLI sends its inference traffic directly to the vendor. Demi adds no
 inference proxy and no remote-inference call. The quota probe is a backend
 operation that needs no CLI and no machine
-([Vendor quota](usage-and-quota.md#vendor-quota)), and a setup token needs no
-refresh. The runner keeps no credential of its own: the token exists on the
+([Vendor quota](usage-and-quota.md#vendor-quota)); the token's refresh is the
+backend's as well. The runner keeps no credential of its own: the token exists on the
 Cloud only in the CLI process's environment.
 
 The provider replays the transcript itself and turns the CLI's session
@@ -453,7 +459,7 @@ a failed installation. The routes are listed in
 - The real CLI, against a scripted vendor, does what the product relies on in
   the [Claude Code suite](../delivery/scenarios.md#claude-code-suite).
 - A real account, driven by hand during acceptance, runs against the vendor:
-  its setup token installs the CLI from the official distribution and passes
+  its Claude sign-in installs the CLI from the official distribution and passes
   **Test connection**, a message and a two-tool batch complete, and the wire
   trace shows what a batch's results sent together with a steer make the CLI
   print (one `result` or two), the quota shows the windows of the vendor's
