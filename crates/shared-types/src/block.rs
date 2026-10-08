@@ -174,11 +174,6 @@ pub enum InstructionEntry {
         #[garde(skip)]
         path: String,
     },
-    /// A project file too large to include, by its path on the Host.
-    TooLarge {
-        #[garde(skip)]
-        path: String,
-    },
 }
 
 /// A fired yield wakeup. The model receives the wakeup text as a user

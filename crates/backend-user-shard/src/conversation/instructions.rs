@@ -23,9 +23,6 @@ use crate::shard::Shard;
 /// The names read in each directory, the first that is a file taken.
 const NAMES: [&str; 2] = ["AGENTS.md", "CLAUDE.md"];
 
-/// The largest file sent; a larger one is named, not read.
-const FILE_MAX_BYTES: u64 = 256 * 1024;
-
 const PREAMBLE: &str = "These are the user's personal instructions and the project's instruction files. Follow them in this conversation together with your other instructions; this block replaces any earlier one. Where they conflict, the user's messages come first, then a file nearer the working directory over one further up, then the personal instructions.";
 
 /// What the source answers once the newest block held something and there
@@ -34,9 +31,9 @@ const NONE_LEFT: &str = "There are no longer any personal instructions or projec
 
 /// A project file the search found.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum ProjectFile {
-    Text { path: String, text: String },
-    TooLarge { path: String },
+struct ProjectFile {
+    path: String,
+    text: String,
 }
 
 /// The last search for a conversation and a working directory, and the
@@ -137,8 +134,13 @@ impl ContextSource for Instructions {
     }
 }
 
-/// The project files for a node in `cwd`, root first, read with one
-/// request: `.git` and each name in every directory from `cwd` up.
+/// How many times a file that grew while it was read is read again.
+const REREADS: usize = 3;
+
+/// The project files for a node in `cwd`, root first, whole: one request
+/// finds `.git` and each name in every directory from `cwd` up with their
+/// sizes, and one more reads the files taken at those sizes; a file that
+/// grew meanwhile is read again.
 async fn search(
     shard: &Shard,
     conversation: &ConversationId,
@@ -151,7 +153,7 @@ async fn search(
         for name in NAMES {
             reads.push(HostRead {
                 path: join(directory, name),
-                limit: FILE_MAX_BYTES + 1,
+                limit: 0,
             });
         }
     }
@@ -161,12 +163,12 @@ async fn search(
         .await?;
     let (git, named) = found.split_at(ancestors.len());
     let searched = project::searched(&ancestors, git).len();
-    let mut files = Vec::new();
+    let mut taken: Vec<HostRead> = Vec::new();
     for (directory, answers) in ancestors.iter().zip(named.chunks(NAMES.len())).take(searched) {
-        let taken = NAMES.iter().zip(answers).find_map(|(name, answer)| {
+        let file = NAMES.iter().zip(answers).find_map(|(name, answer)| {
             let path = join(directory, name);
             match answer {
-                HostFile::File { bytes, size } => Some(project_file(path, bytes.as_bytes(), *size)),
+                HostFile::File { size, .. } => Some(HostRead { path, limit: *size }),
                 HostFile::Unreadable { message } => {
                     tracing::info!(%path, %message, "a project instruction file cannot be read");
                     None
@@ -174,20 +176,43 @@ async fn search(
                 HostFile::Missing | HostFile::Directory { .. } | HostFile::Other => None,
             }
         });
-        files.extend(taken.flatten());
+        taken.extend(file);
     }
-    files.reverse();
+    taken.reverse();
+    let mut texts: Vec<Option<String>> = vec![None; taken.len()];
+    for _ in 0..=REREADS {
+        let pending: Vec<usize> = (0..taken.len()).filter(|&index| texts[index].is_none()).collect();
+        if pending.is_empty() {
+            break;
+        }
+        let reads: Vec<HostRead> = pending.iter().map(|&index| taken[index].clone()).collect();
+        let answers = shard
+            .host_shard()
+            .read_files(conversation, &reads, cancel)
+            .await?;
+        for (index, answer) in pending.into_iter().zip(answers) {
+            match answer {
+                HostFile::File { bytes, size } if size <= taken[index].limit => {
+                    texts[index] = Some(String::from_utf8_lossy(bytes.as_bytes()).into_owned());
+                }
+                // It grew since its size was read: read it again at its new size.
+                HostFile::File { size, .. } => taken[index].limit = size,
+                // Gone or changed into something else since: it is left out.
+                _ => texts[index] = Some(String::new()),
+            }
+        }
+    }
+    let mut files = Vec::new();
+    for (read, text) in taken.into_iter().zip(texts) {
+        let Some(text) = text else {
+            tracing::info!(path = %read.path, "a project instruction file kept growing while it was read; it is left out until the next turn");
+            continue;
+        };
+        if !text.trim().is_empty() {
+            files.push(ProjectFile { path: read.path, text });
+        }
+    }
     Ok(files)
-}
-
-/// The file at `path` whose first bytes are `bytes`, of `size` bytes; none
-/// when it holds only white space.
-fn project_file(path: String, bytes: &[u8], size: u64) -> Option<ProjectFile> {
-    if size > FILE_MAX_BYTES {
-        return Some(ProjectFile::TooLarge { path });
-    }
-    let text = String::from_utf8_lossy(bytes).into_owned();
-    (!text.trim().is_empty()).then_some(ProjectFile::Text { path, text })
 }
 
 /// The block for `personal` and `files`; none when both are empty.
@@ -204,22 +229,14 @@ fn render(personal: &str, files: &[ProjectFile]) -> Option<ContextAnswer> {
         instructions.push(InstructionEntry::Personal);
     }
     for file in files {
-        match file {
-            ProjectFile::Text { path, text: file } => {
-                text.push_str(&format!(
-                    "\n\n<project_instructions path=\"{}\">\n{file}\n</project_instructions>",
-                    xml_escaped(path)
-                ));
-                instructions.push(InstructionEntry::File { path: path.clone() });
-            }
-            ProjectFile::TooLarge { path } => {
-                text.push_str(&format!(
-                    "\n\n<project_instructions path=\"{}\">\nThis file is larger than 256 KiB and is not included. Read the parts the task needs with your commands.\n</project_instructions>",
-                    xml_escaped(path)
-                ));
-                instructions.push(InstructionEntry::TooLarge { path: path.clone() });
-            }
-        }
+        text.push_str(&format!(
+            "\n\n<project_instructions path=\"{}\">\n{}\n</project_instructions>",
+            xml_escaped(&file.path),
+            file.text
+        ));
+        instructions.push(InstructionEntry::File {
+            path: file.path.clone(),
+        });
     }
     Some(ContextAnswer { text, instructions })
 }

@@ -7,12 +7,6 @@ export const demoInstructions: InstructionEntry[] = [
   { kind: 'file', path: '/Users/zan/Projects/demi/packages/web/CLAUDE.md' },
 ]
 
-/** The same with a file too large to include. */
-export const demoInstructionsTooLarge: InstructionEntry[] = [
-  { kind: 'file', path: '/Users/zan/Projects/demi/AGENTS.md' },
-  { kind: 'too_large', path: '/Users/zan/Projects/demi/packages/web/AGENTS.md' },
-]
-
 /** The personal instructions the Instructions section starts with. */
 export const DEMO_PERSONAL_INSTRUCTIONS = 'Reply in Chinese.\nWrite commit messages in English, with Conventional Commit subjects.'
 

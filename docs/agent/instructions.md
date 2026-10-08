@@ -56,13 +56,11 @@ repository, only the working directory is searched.
 - Names are matched exactly. A symbolic link is followed.
 - A file that is empty or holds only white space is left out.
 - A file the Host cannot read is left out and logged.
-- A file larger than 256 KiB is not read. Its entry tells the model the file
-  exists and is too large to include, so the model reads what it needs with
-  its own commands, and the card marks it.
 - A file's bytes are decoded as UTF-8, an invalid sequence replaced by U+FFFD.
 
-Nothing is cut: a file up to 256 KiB is sent whole, and the replay bound does
-not apply to the instructions block
+There is no size limit and nothing is cut: every file is read whole, its
+size first and then its bytes at that size, read again when it grew in
+between, and the replay bound does not apply to the instructions block
 ([Text bounds](compaction.md#text-bounds)). A large file costs its size in
 every request, which the context usage above the card's list includes.
 
@@ -112,7 +110,6 @@ Instructions. Each entry is one row in the block's order:
 | --- | --- | --- |
 | Personal instructions | `Personal instructions` | Opens Settings › Instructions |
 | A project file | Its path from the directory of the block's outermost file, as `AGENTS.md` and `web/CLAUDE.md`; its full path as a tip | Shows the file in the work panel, through the `file` intent ([Files named in messages](../product/file-previews.md#files-named-in-messages)) |
-| A file too large | As a project file, marked `Too large` | As a project file |
 
 The card shows no token count for an entry: Demi has no tokenizer of the
 model, and an estimate, which can be off by a large part for Chinese text or
@@ -123,8 +120,7 @@ rather than a line about what is missing.
 
 The card reads the transcript the page already holds: the instructions block
 carries, beside its text, the list of its entries (`instructions`, each
-`{ kind: "personal" }`, `{ kind: "file", path }` or
-`{ kind: "too_large", path }`), so the page never parses the model's text and
+`{ kind: "personal" }` or `{ kind: "file", path }`), so the page never parses the model's text and
 never asks the backend for anything more. The block itself stays hidden from
 the transcript, as every context block is.
 
@@ -143,6 +139,6 @@ the transcript, as every context block is.
   above the project; OpenCode does outside a repository.
 - **No cut.** Codex cuts the files at 32 KiB in total, and the others send
   them whole. A cut that drops the end of a project's rules without telling
-  anyone is worse than a large request the context usage shows. The 256 KiB bound only
-  keeps a mistaken file, such as a generated one, out of every request, as
-  Claude Code skips a file over its own bound.
+  anyone is worse than a large request the context usage shows, and a file
+  left out for its size is the same loss. A file is the project's to keep
+  small.
