@@ -1,8 +1,10 @@
 //! The `preview` stream (`preview.md` § The stream): the relay's requests and
 //! WebSockets in, the engine's answers out, over one byte stream with the
 //! live view's framing. Several requests share the stream, each with the id
-//! the relay chose. A body moves one chunk per pull, both ways, so a slow
-//! page holds the Host back rather than filling memory. Page states move
+//! the relay chose. A request's body moves one chunk per pull; an answer's
+//! goes [`BODY_WINDOW`] chunks ahead of the relay's pulls, so a small
+//! answer takes one round trip, and a slow page holds the Host back rather
+//! than filling memory. Page states move
 //! over it too, between the user's browser and the conversation's
 //! ([`PageStates`]).
 
@@ -11,7 +13,7 @@ use std::sync::Arc;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use demi_command_package_browser_protocol::preview::{
-    BODY_CHUNK_BYTES, BodyHeader, CHUNK_FRAME, CONTROL_FRAME, MAX_FRAME_BYTES, MAX_STORAGE_BYTES,
+    BODY_CHUNK_BYTES, BODY_WINDOW, BodyHeader, CHUNK_FRAME, CONTROL_FRAME, MAX_FRAME_BYTES, MAX_STORAGE_BYTES,
     PageStorage, PreviewClient, PreviewEngineMessage, PreviewEnvironment, PreviewHeader,
     PreviewRelayMessage, PreviewRequest, REQUEST_BODY_FRAME, SOCKET_MESSAGE_FRAME, SocketHeader,
 };
@@ -341,7 +343,8 @@ impl Served {
                 }
                 self.generation += 1;
                 let generation = self.generation;
-                let pulls = Arc::new(Semaphore::new(0));
+                // The answer's first chunks go without a pull.
+                let pulls = Arc::new(Semaphore::new(BODY_WINDOW));
                 let (body, chunks) = if request.body {
                     let (body, chunks) = mpsc::channel(1);
                     (Some(body), Some(chunks))
@@ -506,7 +509,8 @@ struct Requested {
 }
 
 /// Answers one request: reads its body on the engine's pulls, fetches it,
-/// and sends its body on the relay's.
+/// and sends its body as far ahead of the relay's pulls as the window
+/// lets it.
 async fn answer(
     engine: Arc<Engine>,
     place: Arc<Place>,
