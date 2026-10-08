@@ -43,7 +43,7 @@ const cases: { scenario: string; status: DirectStatus; reason: DirectReason | nu
   {
     scenario: 'a peer stands but Automatic finds it slower',
     status: { ...status, peer: true, figures: { direct: slow, relay } },
-    reason: { kind: 'slower', direct: slow, relay },
+    reason: { kind: 'slower' },
   },
   { scenario: 'the browser blocks local network access', status: { ...status, permission: 'denied' }, reason: { kind: 'blocked' } },
   { scenario: 'an attempt stopped at the permission', status: { ...status, attempt: { ...failed, stage: 'permission' } }, reason: { kind: 'blocked' } },
@@ -51,8 +51,8 @@ const cases: { scenario: string; status: DirectStatus; reason: DirectReason | nu
   { scenario: 'the runner was busy', status: { ...status, attempt: { ...failed, outcome: 'busy' } }, reason: { kind: 'busy' } },
   {
     scenario: 'a channel that stood dropped',
-    status: { ...status, attempt: { ...failed, outcome: 'dropped', endedAt: '2026-10-08T09:30:00.000Z' } },
-    reason: { kind: 'dropped', endedAt: '2026-10-08T09:30:00.000Z' },
+    status: { ...status, attempt: { ...failed, outcome: 'dropped' } },
+    reason: { kind: 'dropped' },
   },
   { scenario: 'crossing networks is off', status: { ...status, crossing: false }, reason: { kind: 'notOffered' } },
   {
@@ -65,7 +65,7 @@ const cases: { scenario: string; status: DirectStatus; reason: DirectReason | nu
     status: { ...status, attempt: { ...failed, device: { local: ['192.168.1.20'], public: [] } } },
     reason: { kind: 'network', side: 'device' },
   },
-  { scenario: 'both found their public address and no pair answered', status, reason: { kind: 'unreachable', pairs: 4 } },
+  { scenario: 'both found their public address and no pair answered', status, reason: { kind: 'unreachable' } },
 ]
 
 for (const { scenario, status: given, reason } of cases) {
@@ -83,22 +83,22 @@ const footnotes: { scenario: string; status: DirectStatus; footnote: string | nu
   {
     scenario: 'both paths measured',
     status: { ...status, peer: true, figures: { direct: { latencyMs: 1.8, loss: 0 }, relay: { latencyMs: 480.4, loss: null } } },
-    footnote: 'From this browser: directly 2 ms, through the server 480 ms.',
+    footnote: 'Direct 2 ms · Server 480 ms',
   },
   {
     scenario: 'the direct path loses probes',
     status: { ...status, peer: true, figures: { direct: { latencyMs: 620, loss: 0.06 }, relay } },
-    footnote: 'From this browser: directly 620 ms with 6% lost, through the server 30 ms.',
+    footnote: 'Direct 620 ms, 6% lost · Server 30 ms',
   },
   {
     scenario: 'a direct path on a local network loses one probe in two hundred',
     status: { ...status, peer: true, figures: { direct: { latencyMs: 0.42, loss: 0.005 }, relay } },
-    footnote: 'From this browser: directly 0.4 ms with 0.5% lost, through the server 30 ms.',
+    footnote: 'Direct 0.4 ms, 0.5% lost · Server 30 ms',
   },
   {
     scenario: 'there is no peer',
     status: { ...status, figures: { direct: null, relay: { latencyMs: 480, loss: null } } },
-    footnote: 'From this browser: through the server 480 ms; no direct connection.',
+    footnote: 'Server 480 ms',
   },
   { scenario: 'nothing is measured yet', status, footnote: null },
 ]

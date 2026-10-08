@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { upperFirst } from '@demicodes/utils'
 import { showToast } from '../infra/toast'
 import {
   Brain,
@@ -321,7 +322,6 @@ const testBlockReason = computed(() => {
 })
 
 const modelFilter = ref('')
-const cap = (word: string) => word.charAt(0).toUpperCase() + word.slice(1)
 
 const isUnknown = (m: SettingsProviderModel) => m.contextWindow === null
 
@@ -957,7 +957,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     ></Tooltip>
                     <Tooltip
                       v-if="m.efforts.length"
-                      :content="`Reasoning · ${m.efforts.map(cap).join(', ')}`"
+                      :content="`Reasoning · ${m.efforts.map(upperFirst).join(', ')}`"
                       ><Tag><Brain :size="12" /></Tag
                     ></Tooltip>
                     <Tooltip v-if="m.fastTier" content="Has a fast tier"
