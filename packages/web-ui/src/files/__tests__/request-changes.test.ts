@@ -8,6 +8,7 @@ import {
   offersAllChanges,
   findRequest,
   pillSelection,
+  requestLineCounts,
   requestLineSelection,
   selectionCopies,
   transcriptRequests,
@@ -166,6 +167,33 @@ describe('the Change view on a request', () => {
     expect(diffLineCounts('a\nb\nc\n', 'a\nB2\nc\nd\n')).toEqual({ added: 2, removed: 1 })
     expect(diffLineCounts('', 'x\ny\n')).toEqual({ added: 2, removed: 0 })
     expect(diffLineCounts('same\n', 'same\n')).toEqual({ added: 0, removed: 0 })
+  })
+
+  test('the button counts each file’s All Changes, not the sum of its calls’, when two calls change one line', async () => {
+    // Blob n holds version n of a.ts: one line, x = n.
+    const texts = (n: number) => `const x = ${n}\n`
+    const read = async (copies: { original: string; modified: string }) => ({
+      original: texts(parseInt(copies.original, 16)),
+      modified: texts(parseInt(copies.modified, 16)),
+    })
+    const { requests } = transcriptRequests([
+      userBlock('u', 't', 'Set x'),
+      shellCall('one', 'Set x to 1', [edited('/w/a.ts', 0)]),
+      shellCall('two', 'Set x to 2', [edited('/w/a.ts', 1)]),
+    ])
+    expect(await requestLineCounts(requests[0]!, read)).toEqual({ added: 1, removed: 1 })
+  })
+
+  test('the button has no counts when a file’s first original was not kept', async () => {
+    const lost = shellCall('lost', 'Edit without copies', [{ path: '/w/a.ts', kind: 'modified', added: 1, removed: 1, edits: [{}] }])
+    const { requests } = transcriptRequests([userBlock('u', 't', 'Edit'), lost, shellCall('kept', 'Edit again', [edited('/w/a.ts', 5)])])
+    let reads = 0
+    const read = async () => {
+      reads += 1
+      return { original: '', modified: '' }
+    }
+    expect(await requestLineCounts(requests[0]!, read)).toBeNull()
+    expect(reads).toBe(0)
   })
 
   test('a pill selects its file at that call’s first edit', () => {
