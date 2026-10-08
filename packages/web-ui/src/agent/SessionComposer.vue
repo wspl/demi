@@ -467,6 +467,8 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             v-bind="attachOpen ? { open: true } : {}"
           >
             <template #trigger="{ isOpen }">
+              <!-- A press on + takes no focus, as on the send button: the message keeps it until the
+                   menu takes it, and gets it back when the menu closes. -->
               <Tooltip content="Attach">
                 <IconButton
                   :icon="Plus"
@@ -474,6 +476,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
                   circle
                   :pressed="isOpen"
                   aria-label="Attach"
+                  @mousedown.prevent
                 />
               </Tooltip>
             </template>
