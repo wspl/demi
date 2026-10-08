@@ -13,8 +13,6 @@ const brightRed = '\x1b[91m'
 const brightGreen = '\x1b[92m'
 const brightYellow = '\x1b[93m'
 export const DEMO_BUN_TEST = [
-  `${dim}$${reset} bun test src/auth.test.ts`,
-  '',
   `${bold}bun test${reset} ${dim}v1.3.14${reset}`,
   '',
   `${cyan}src/auth.test.ts:${reset}`,
@@ -30,8 +28,6 @@ export const DEMO_BUN_TEST = [
 ].join('\n')
 
 export const DEMO_RG = [
-  `${dim}$${reset} rg sid packages/web/src`,
-  '',
   `${magenta}packages/web/src/auth.test.ts${reset}`,
   `${green}18${reset}:    expect(cookie.name).toBe("${bold}${red}sid${reset}")`,
   `${green}42${reset}:    // legacy ${bold}${red}sid${reset} header`,
@@ -42,8 +38,6 @@ export const DEMO_RG = [
 ].join('\n')
 
 export const DEMO_GIT_DIFF = [
-  `${dim}$${reset} git diff --stat && git diff packages/web/src/auth.test.ts`,
-  '',
   ` packages/web/src/auth.test.ts | 12 ${green}++++++${reset}${red}------${reset}`,
   ` packages/web/src/cookie.ts    |  4 ${green}++++${reset}`,
   ` ${bold}2 files changed, 10 insertions(+), 6 deletions(-)${reset}`,

@@ -213,19 +213,58 @@ export const shellTool = toolCall({
   }),
 })
 
+/**
+ * A call that returned while its command runs on, one of the conversation's
+ * running commands (the gallery's `Run the auth tests` job): its row
+ * shimmers until the command's end arrives.
+ */
+export const returnedShellTool = toolCall({
+  id: 'tool-shell-returned',
+  toolName: 'shell_exec',
+  status: 'completed',
+  input: JSON.stringify({ script: 'bun test src/auth.test.ts', description: 'Run the auth tests' }),
+  view: shellView({
+    commandId: '12',
+    status: 'running',
+    chunks: [{ stream: 'stdout', text: 'bun test v1.3.14\n' }],
+  }),
+})
+
+/**
+ * Another call that returned while its command runs on; its command, which
+ * the gallery runs beside the Running jobs, exits 1.
+ */
+export const returnedFailingShellTool = toolCall({
+  id: 'tool-shell-returned-failing',
+  toolName: 'shell_exec',
+  status: 'completed',
+  input: JSON.stringify({ script: 'bun run typecheck --watch', description: 'Watch the type check' }),
+  view: shellView({
+    commandId: '13',
+    status: 'running',
+    chunks: [{ stream: 'stdout', text: 'Watching for changes…\n' }],
+  }),
+})
+
+/**
+ * The running call's script: long enough to wrap over more than two lines,
+ * so the command shows two above the output, which scrolls under it. Its
+ * flags' hyphens show the wrap a terminal makes: each line fills to the
+ * box's edge.
+ */
+export const RUNNING_SHELL_SCRIPT = [
+  'DEMI_LOG=auth=debug,cookie=debug,session=info bun test --watch --timeout 20000 --rerun-each 1 --bail 5 packages/web/src/auth.test.ts packages/web/src/cookie.test.ts packages/web/src/session.test.ts \\',
+  '  2>&1 | tee target/auth-watch.log',
+].join('\n')
+export const RUNNING_SHELL_DESCRIPTION = 'Run the login test'
+
 export const runningShellTool = toolCall({
   id: 'tool-shell-run',
   toolName: 'shell_exec',
   status: 'executing',
   input: JSON.stringify({
-    // Long enough to wrap over more than two lines: the command shows two
-    // above the output, which scrolls under it. Its flags' hyphens show the
-    // wrap a terminal makes: each line fills to the box's edge.
-    script: [
-      'DEMI_LOG=auth=debug,cookie=debug,session=info bun test --watch --timeout 20000 --rerun-each 1 --bail 5 packages/web/src/auth.test.ts packages/web/src/cookie.test.ts packages/web/src/session.test.ts \\',
-      '  2>&1 | tee target/auth-watch.log',
-    ].join('\n'),
-    description: 'Run the login test',
+    script: RUNNING_SHELL_SCRIPT,
+    description: RUNNING_SHELL_DESCRIPTION,
   }),
   view: shellView({
     commandId: '17',
