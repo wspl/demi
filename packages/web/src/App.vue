@@ -7,7 +7,7 @@ import { reportError } from '@demicodes/web-ui/infra/errors'
 import { reloadFor } from '@demicodes/web-ui/infra/build-reload'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
-import type { SidebarReorder } from '@demicodes/web-ui/sidebar/types'
+import type { SidebarConversation, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
 import { APP_BAR_PX, CONNECTION_BANNER_PX } from '@demicodes/web-ui/ui/app-bar'
@@ -61,6 +61,26 @@ const mediaViewer = provideMediaViewer()
 const session = useSession()
 const conversations = useConversations()
 const resources = useResources()
+/**
+ * The sidebar's rows: each conversation's own fields and the device it runs on. Every field is
+ * named, so a field the row type gains fails to compile here, and a row reads none of the
+ * conversation's other state, which changes as it streams.
+ */
+const sidebarConversations = computed(() =>
+  conversations.listed.map(
+    (conversation): { [Field in keyof Required<SidebarConversation>]: SidebarConversation[Field] } => ({
+      id: conversation.id,
+      title: conversation.title,
+      updatedAt: conversation.updatedAt,
+      status: conversation.status,
+      projectId: conversation.projectId,
+      pinned: conversation.pinned,
+      unread: conversation.unread,
+      needsYou: conversation.needsYou,
+      device: resources.conversationDevice(conversation.target),
+    }),
+  ),
+)
 // The widths follow the dividers frame by frame; the preference takes them when a resize settles.
 const sidebarWidth = ref(resources.sidebarWidth)
 watch(() => resources.sidebarWidth, (width) => { sidebarWidth.value = width })
@@ -232,7 +252,7 @@ useAppShortcuts(
           v-model:collapsed-projects="folded"
           :account="account"
           :projects="resources.projects"
-          :conversations="conversations.listed"
+          :conversations="sidebarConversations"
           :active-id="activeId"
           :list-status="conversations.listStatus"
           :pending-ids="conversations.pendingChanges"
