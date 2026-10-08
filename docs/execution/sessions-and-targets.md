@@ -138,10 +138,28 @@ the switch as the conversation's **pending move** and answers at once; the
 backend makes it, as above, when the tree is next idle, before it admits
 anything else, so the next turn, the user's or a wakeup's, runs in the new
 place and reads it from its block. A newer pending move replaces an older
-one; an archive drops it. A pending move that fails when it is made, such as
-to a device that has gone offline, leaves the conversation where it was and
-reaches the root as a message from the backend that names the reason, which
-wakes it.
+one; an archive drops it, and an agent's pending detaches with it. A pending move is stored with the conversation
+([Storage](../backend/storage.md#control-records)), so a restart does not
+lose it. Making it checks what any switch checks, not whether the device is
+online, as the user's own switch does not: a move to an offline device is
+made, and the next turn finds the device offline as any conversation there
+does. A pending move that fails when it is made, such as into a project
+deleted meanwhile, leaves the conversation where it was and wakes the root
+with an agent message through the same entry, event `move_failed`, id
+`move-failed:<move id>`, whose envelope names Demi as the sender, a notice of
+the product's and not agent-originated context. The model reads:
+
+```text
+Demi could not make the move this conversation's agent asked for: the
+project no longer exists. The conversation still runs on Cloud
+(/home/demi/sessions/0f4e…).
+```
+
+The notice names no project: the agent's own transcript holds the command it
+ran, and a deleted project's name is gone with it. The transcript shows the
+notice as a receipt row, *Move failed*, which expands to the message, for a
+move into a project and out of one alike. A move that succeeds sends nothing: the agent
+asked for it, and its next block names the new place.
 
 Each node observes the latest execution-context revision before its next inference,
 the first one included: a node's first inference is preceded by a block of
@@ -230,9 +248,14 @@ The categories:
 `move` and `create-project` change where the conversation runs, and make a
 [pending move](#switch-the-primary-target) that applies when the tree is next
 idle; they print that the move applies when this conversation's work ends.
-`rename`, `attach` and `detach` apply at once; an attach or detach is
-announced to every node in its next execution-context block, as one the user
-makes. A move into a project on a paired device that is neither the primary
+`detach` is a transition too, which the command's own job and its working
+tree would always find busy, so it waits the same way: it marks the
+attachment to end, prints that the device is detached when this
+conversation's work ends, and the backend detaches it then, in the same
+transition as a pending move; the device stays usable until then, and an
+`attach` of it before then cancels the mark. `rename` and `attach` apply at
+once. An attach or detach is announced to every node in its next
+execution-context block, as one the user makes. A move into a project on a paired device that is neither the primary
 Host nor attached brings that device into the conversation, so it also needs Manage
 Devices, and one request asks for both
 ([Several categories](../agent/permissions.md#several-categories)).

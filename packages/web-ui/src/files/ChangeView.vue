@@ -332,7 +332,7 @@ onBeforeUnmount(() => {
           <Tooltip content="Previous edit">
             <IconButton :icon="ChevronLeft" variant="ghost" aria-label="Previous edit" :disabled="previousEdit === undefined" @click="showEdit(previousEdit)" />
           </Tooltip>
-          <Dropdown :overlay-store="appOverlayStore" variant="ghost" size="sm" placement="bottom-end">
+          <Dropdown :overlay-store="appOverlayStore" variant="ghost" size="sm">
             <template #trigger>
               <span class="whitespace-nowrap text-xs">{{ editLabel }}</span>
             </template>

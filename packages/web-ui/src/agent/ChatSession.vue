@@ -283,7 +283,6 @@ watch(() => props.conversation.id, close)
           <!-- Two ways to name the conversation behind one button. -->
           <Dropdown
             :overlay-store="appOverlayStore"
-            placement="bottom-start"
             :disabled="conversation.archived"
           >
             <template #trigger="{ isOpen }">
