@@ -129,16 +129,19 @@ impl SessionRuntime for TestRuntime {
             .collect()
     }
 
-    fn invoke_tool(
+    fn invoke_step(
         &self,
-        call: ToolInvocation,
-    ) -> LocalBoxFuture<'_, Result<ToolOutcome, ToolFailure>> {
-        let (_, invoke) = self
-            .tools
-            .iter()
-            .find(|(name, _)| *name == call.tool_name)
-            .expect("the session invokes only the tools it was given");
-        invoke(call)
+        calls: Vec<ToolInvocation>,
+    ) -> LocalBoxFuture<'_, Vec<Result<ToolOutcome, ToolFailure>>> {
+        let calls = calls.into_iter().map(|call| {
+            let (_, invoke) = self
+                .tools
+                .iter()
+                .find(|(name, _)| *name == call.tool_name)
+                .expect("the session invokes only the tools it was given");
+            invoke(call)
+        });
+        Box::pin(futures_util::future::join_all(calls))
     }
 }
 
@@ -195,16 +198,25 @@ fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>)
     (invoke, releases, started_rx)
 }
 
-/// A `yield` of `duration_ms`.
+/// A `yield` of `durationMs`, and of the commands `commandIds` names.
 fn yield_tool() -> (String, Invoke) {
     tool("yield", |call| {
         let duration_ms = call.input["durationMs"]
             .as_u64()
             .and_then(|duration| u32::try_from(duration).ok())
             .expect("the test's yield names its duration");
+        let commands = call.input["commandIds"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|id| demi_shared_types::CommandId::try_from(id.to_string()).unwrap())
+            .collect();
         Box::pin(async move {
             Ok(ToolOutcome {
-                effect: Some(ToolEffect::ScheduleYield { duration_ms }),
+                effect: Some(ToolEffect::ScheduleYield {
+                    duration_ms,
+                    commands,
+                }),
                 ..output("")
             })
         })

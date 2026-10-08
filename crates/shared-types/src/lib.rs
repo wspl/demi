@@ -36,10 +36,10 @@ pub use agent_message::{
     PermissionOutcome, Sender,
 };
 pub use block::{
-    AbortBlock, AgentMessageBlock, Block, CompactionBoundaryBlock, CompactionMarkerBlock,
+    AbortBlock, AgentMessageBlock, Block, CommandEnd, CompactionBoundaryBlock, CompactionMarkerBlock,
     ContextBlock, ErrorBlock, RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock,
     TextBlock, ThinkingBlock, ToolCallBlock, ToolCallStatus, UserBlock, WakeupBlock,
-    WakeupPlacement,
+    WakeupCommand, WakeupPlacement,
 };
 pub use bytes::B64Bytes;
 pub use catalog::{ModelCost, ProviderModel, ProviderModelList, ServiceTier, UnavailableSetting};

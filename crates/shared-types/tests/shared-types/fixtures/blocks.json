@@ -278,7 +278,14 @@
       "serviceTierId": null
     },
     "turnId": "turn-4",
-    "placement": "steer"
+    "placement": "steer",
+    "command": {
+      "commandId": "17",
+      "end": {
+        "kind": "exited",
+        "exitCode": 1
+      }
+    }
   },
   {
     "type": "steer",
@@ -1329,7 +1336,7 @@
     },
     "toolUseId": "toolu_05",
     "toolName": "yield",
-    "input": "{\"durationMs\":120000}",
+    "input": "{\"durationMs\":120000,\"commandIds\":[17]}",
     "status": "completed",
     "output": [
       {
@@ -1340,7 +1347,10 @@
     "view": {
       "kind": "yield_wakeup",
       "wakeupId": "wk-1",
-      "durationMs": 120000
+      "durationMs": 120000,
+      "commandIds": [
+        "17"
+      ]
     }
   },
   {

@@ -19,9 +19,9 @@ use demi_command_protocol::{
     PackageDescriptor, ServiceSequence, host_target,
 };
 use demi_host_interface::{
-    Call, CommandMedium, CommandSet, CommandState, ExecRequest, GroupBuilder, HostError, HostErrorKind,
-    HostProcess, JobCaller, LeafBuilder, ObservationWindow, OutputRecord, PageState, Process,
-    ProcessEnd, RpcError, RpcInvocation, RpcPort, Seen, ShellEnvironment, ShellTarget, SpawnEnv,
+    Call, CommandMedium, CommandSet, CommandState, GroupBuilder, HostError, HostErrorKind,
+    HostProcess, JobCaller, LeafBuilder, OutputRecord, PageState, Process,
+    ProcessEnd, RpcError, RpcInvocation, RpcPort, Seen, ShellEnvironment, SpawnEnv,
     SpawnRequest, Streams, TypedRpc, WholeOutput,
     testing::{CountingNumbers, TestPages, test_command_context},
 };
@@ -37,6 +37,8 @@ use demi_shared_types::{
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
+
+use crate::runner::Watched;
 
 fn device() -> TestDevice {
     TestDevice::new(CommandPolicy::new(CommandSet::new()))
@@ -87,14 +89,9 @@ fn watched_environment(host: RemoteHost, pages: Rc<TestPages>) -> RemoteShellEnv
     ))
 }
 
-fn exec(script: &str) -> ExecRequest {
-    ExecRequest {
-        script: script.into(),
-        shell: ShellTarget::Default,
-        window: ObservationWindow::from_millis(1).unwrap(),
-        caller: caller(),
-        tool_use_id: "call".into(),
-    }
+/// An exec of `script` in the default shell, watched for a millisecond.
+fn exec(script: &str) -> crate::runner::Exec {
+    crate::runner::exec(script, 1)
 }
 
 /// Answers the backend's read of `job`'s kept output with `kept`, as a

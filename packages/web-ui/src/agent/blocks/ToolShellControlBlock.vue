@@ -25,8 +25,6 @@ const errorSummary = computed(() => {
 const iconComponent = computed(() => {
   switch (props.toolName) {
     case 'shell_status':
-    case 'shell_write':
-    case 'shell_abort':
       return SquareTerminal
     case 'yield':
       return History

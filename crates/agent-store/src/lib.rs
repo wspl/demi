@@ -26,7 +26,7 @@ use demi_conversation_socket_protocol::{JobPhase, SubagentJob};
 use demi_host_interface::{StoredMedium, WholeOutput};
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, CommandId, CompletionId, ModelSelection, NodeId,
-    OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId, WakeupId,
+    OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId, WakeupCommand, WakeupId,
 };
 use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
@@ -306,6 +306,15 @@ pub struct ScheduledWakeup {
     /// How long after the scheduling action ended it fires.
     #[garde(range(min = 1))]
     pub duration_ms: u32,
+    /// The commands whose first end fires it sooner.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(skip)]
+    pub command_ids: Vec<CommandId>,
+    /// The first of them that ended, and how; the text the wakeup gives
+    /// the model names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub ended: Option<WakeupCommand>,
     /// When it is due, in wall-clock time; null until the action that
     /// scheduled it ended.
     #[serde(deserialize_with = "Option::deserialize")]
