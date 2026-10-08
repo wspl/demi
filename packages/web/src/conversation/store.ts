@@ -78,6 +78,14 @@ import {
   type SavedFile,
 } from './drafts'
 
+/**
+ * A new conversation whose draft holds nothing yet, no character and no
+ * file: the sidebar does not list it, and leaving it drops it.
+ */
+function isEmptyDraft(conversation: Conversation): boolean {
+  return conversation.persistence === 'draft' && !conversation.draft.trim() && !conversation.attachmentIds.length
+}
+
 export const useConversations = defineStore('conversations', () => {
   const product = useProduct()
   const preferences = usePreferences()
@@ -97,6 +105,13 @@ export const useConversations = defineStore('conversations', () => {
    */
   const restoringLocalDrafts = ref(false)
   const listStatus = computed(() => restoringLocalDrafts.value ? 'loading' : product.load)
+  /**
+   * What the sidebar lists: every conversation not archived, but no new
+   * conversation whose draft holds nothing yet, even while it is open; it
+   * shows once the user types a character or adds a file (`product.md`
+   * § Conversations and projects).
+   */
+  const listed = computed(() => items.value.filter((item) => !item.archived && !isEmptyDraft(item)))
   const writes = new SerialQueue()
   const restored = new Set<string>()
   /** Each conversation's draft as this page last saved or restored it, in the shape `changedDraft` compares. */
@@ -730,13 +745,7 @@ export const useConversations = defineStore('conversations', () => {
     const previous = items.value.find(
       (item) => item.id === product.activeConversationId,
     )
-    if (
-      previous &&
-      previous.id !== id &&
-      previous.persistence === 'draft' &&
-      !previous.draft.trim() &&
-      !previous.attachmentIds.length
-    ) {
+    if (previous && previous.id !== id && isEmptyDraft(previous)) {
       saveDrafts()
       items.value = items.value.filter((item) => item !== previous)
       restored.delete(previous.id)
@@ -1212,12 +1221,7 @@ export const useConversations = defineStore('conversations', () => {
 
   function create(projectId: string | null = null): string {
     const empty = items.value.find(
-      (item) =>
-        item.persistence === 'draft' &&
-        !item.archived &&
-        item.projectId === projectId &&
-        !item.draft.trim() &&
-        !item.attachmentIds.length,
+      (item) => isEmptyDraft(item) && !item.archived && item.projectId === projectId,
     )
     if (empty) {
       return empty.id
@@ -1760,6 +1764,7 @@ export const useConversations = defineStore('conversations', () => {
 
   return {
     items,
+    listed,
     deleted,
     listStatus,
     composerFocusRequests,
