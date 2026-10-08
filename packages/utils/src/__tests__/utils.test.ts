@@ -6,6 +6,7 @@ import {
   asRecord,
   asString,
   clamp,
+  decodeUtf8CutTail,
   concatBytes,
   createId,
   decodeUtf8,
@@ -116,4 +117,11 @@ test('toWellFormedText', () => {
 
 test('createId is unique-ish', () => {
   expect(createId()).not.toBe(createId())
+})
+
+test('decodeUtf8CutTail keeps text cut mid-character and rejects earlier invalid bytes', () => {
+  const bytes = new TextEncoder().encode('a你好')
+  expect(decodeUtf8CutTail(bytes)).toEqual({ text: 'a你好', droppedBytes: 0 })
+  expect(decodeUtf8CutTail(bytes.slice(0, 6))).toEqual({ text: 'a你', droppedBytes: 2 })
+  expect(decodeUtf8CutTail(new Uint8Array([0xff, 0x61]))).toBeNull()
 })

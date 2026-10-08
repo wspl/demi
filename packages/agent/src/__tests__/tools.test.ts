@@ -145,6 +145,13 @@ test('shell command handles are required only for running or over-budget output'
   expect(shellCommandHandleRequired(shellSnapshot('x'.repeat(4_001)), 1_000)).toBe(true)
 })
 
+test('shell command handles stay for binary streams so their .bin files survive', () => {
+  const stdout = { ...shellSnapshot('<binary stdout: 4 bytes>\n'), binaryStdout: { data: new Uint8Array(4), truncated: false, totalBytes: 4, limitBytes: 1024 } }
+  const stderr = { ...shellSnapshot(''), binaryStderr: { totalBytes: 4 } }
+  expect(shellCommandHandleRequired(stdout, 1_000)).toBe(true)
+  expect(shellCommandHandleRequired(stderr, 1_000)).toBe(true)
+})
+
 const PNG_STREAM = new Uint8Array(readFileSync(new URL('../../../utils/src/__tests__/fixtures/images/valid.png', import.meta.url)))
 const MP4_STREAM = new Uint8Array([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0xff, 0xfe])
 const OPAQUE_STREAM = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 0xff, 0xfe, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05])
