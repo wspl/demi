@@ -29,6 +29,7 @@ export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] 
       title: call?.title ?? view.shellId,
       script: call?.script,
       phase: view.status === 'aborted' ? 'aborted' : 'exited',
+      exitCode: view.status === 'exited' ? view.exitCode : undefined,
       startedAt: previous?.startedAt ?? block.createdAt,
       ...(view.status !== 'running'
         ? {

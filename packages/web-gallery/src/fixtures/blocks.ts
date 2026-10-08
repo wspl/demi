@@ -223,6 +223,22 @@ export const returnedShellTool = toolCall({
 })
 
 /**
+ * Another call that returned while its command runs on; its command, which
+ * the gallery runs beside the Running jobs, exits 1.
+ */
+export const returnedFailingShellTool = toolCall({
+  id: 'tool-shell-returned-failing',
+  toolName: 'shell_exec',
+  status: 'completed',
+  input: JSON.stringify({ script: 'bun run typecheck --watch', description: 'Watch the type check' }),
+  view: shellView({
+    commandId: '13',
+    status: 'running',
+    chunks: [{ stream: 'stdout', text: 'Watching for changes…\n' }],
+  }),
+})
+
+/**
  * The running call's script: long enough to wrap over more than two lines,
  * so the command shows two above the output, which scrolls under it. Its
  * flags' hyphens show the wrap a terminal makes: each line fills to the
