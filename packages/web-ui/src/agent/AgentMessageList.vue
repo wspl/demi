@@ -5,7 +5,7 @@ import { useElementSize } from '@vueuse/core'
 import type { Block, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { BLOCK_GAP, useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { compactionSummaryTokens, getVisibleBlocks } from './visible-blocks'
-import { assistantFooterIds } from './assistant-footer'
+import { assistantFooterIds, replyEndIds, requestLineIds } from './assistant-footer'
 import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streaming'
 import type { MessageListBlock } from './pending-steers'
 import { listTailBlocks } from './list-tail'
@@ -87,7 +87,9 @@ const emit = defineEmits<{
 const { states: forkStates, run: forkMessage } = useMessageForks(() => props.fork, () => props.conversationId)
 
 const visibleBlocks = computed(() => getVisibleBlocks(props.blocks))
-const footerIds = computed(() => assistantFooterIds(visibleBlocks.value, props.phase))
+/** The blocks that end their reply, after which its work is done: Copy and Fork, and the request's Files Changed line, wait for one. */
+const replyEnds = computed(() => replyEndIds(visibleBlocks.value, props.phase))
+const footerIds = computed(() => assistantFooterIds(visibleBlocks.value, replyEnds.value))
 // A recovery hides the record it recovers from: the tail row names the recovery, then the turn running.
 const transcriptBlocks = computed(() => {
   const visible = visibleBlocks.value
@@ -172,16 +174,7 @@ provideTranscript({
   requests: () => requests.value,
 })
 const editSelection = useEditSelection()
-const requestLines = computed(() => {
-  const last = new Map<TranscriptRequest, string>()
-  for (const block of visibleTranscriptBlocks.value) {
-    const request = requests.value.requestOf.get(block.id)
-    if (request && request.files.length > 0) {
-      last.set(request, block.id)
-    }
-  }
-  return new Map([...last].map(([request, id]) => [id, request]))
-})
+const requestLines = computed(() => requestLineIds(visibleTranscriptBlocks.value, requests.value.requestOf, replyEnds.value))
 
 function openRequest(request: TranscriptRequest): void {
   const selection = requestLineSelection(props.node ?? null, request)
@@ -379,7 +372,7 @@ defineExpose({
                   />
                 </template>
               </AgentMessageVirtualBlock>
-              <!-- A request that ends on anything else, as while a call still runs, has the button under its last row. -->
+              <!-- A request that ends on anything else, as one stopped during a call, has the button under its last row. -->
               <div
                 v-if="renderBlocks[item.index]!.type !== 'text' && requestLines.has(renderBlocks[item.index]!.id)"
                 class="px-[var(--agent-pad-x,2rem)] py-1"
