@@ -517,7 +517,6 @@ fn a_leaf_names_a_permission_category_one_of_its_groups_declares_and_its_help_sa
         "permission": "skills.manage"});
     let declared = tree(json!([manage.clone()]), add.clone());
     declared.validate().unwrap();
-    assert_eq!(declared.categories()[0].title(), "Manage skills");
     let help = help(&declared, &["skills", "add"]);
     assert!(
         help.contains("    Permission: needs the user's permission (skills.manage) in each conversation; without it, the command fails at once and the user is asked."),

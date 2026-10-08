@@ -103,18 +103,6 @@ pub struct Category {
     pub description: String,
 }
 
-impl Category {
-    /// The category's title: its action with its first letter capitalized,
-    /// such as "Manage skills".
-    pub fn title(&self) -> String {
-        let mut characters = self.action.chars();
-        match characters.next() {
-            Some(first) => first.to_uppercase().chain(characters).collect(),
-            None => String::new(),
-        }
-    }
-}
-
 /// A command: its help texts, the JSON Schema of its input object, where its
 /// input comes from on the command line, and how it runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

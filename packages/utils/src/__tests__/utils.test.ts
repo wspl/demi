@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { baseName, clientPlatform, delay, keepComposition, sliceHead, truncate } from '../index'
+import { baseName, clientPlatform, delay, keepComposition, sliceHead, titleCase, truncate } from '../index'
 
 test('an aborted delay ends at once instead of after its time', async () => {
   const stop = new AbortController()
@@ -12,6 +12,15 @@ test('the platform comes from the web browser that reports it', () => {
   expect(clientPlatform({ platform: 'Win32', userAgent: 'Mozilla/5.0 (Windows NT 10.0)' })).toBe('windows')
   expect(clientPlatform({ platform: '', userAgent: 'Mozilla/5.0 (X11; Linux x86_64)' })).toBe('linux')
   expect(clientPlatform({ platform: '', userAgent: 'Mozilla/5.0 (SomethingElse)' })).toBe('other')
+})
+
+test('a phrase in title case keeps its short inner words lowercase, as the Writing page says', () => {
+  expect(titleCase('organize conversations')).toBe('Organize Conversations')
+  expect(titleCase('manage skills')).toBe('Manage Skills')
+  expect(titleCase('export a document as a file')).toBe('Export a Document as a File')
+  expect(titleCase('what to do if it is lost')).toBe('What to Do If It Is Lost')
+  expect(titleCase('reach the command-line tool for')).toBe('Reach the Command-Line Tool For')
+  expect(titleCase('use built-in tools')).toBe('Use Built-in Tools')
 })
 
 test('surrogate-safe slicing', () => {

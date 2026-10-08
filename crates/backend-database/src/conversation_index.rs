@@ -459,9 +459,14 @@ impl ControlService {
                     // An archive withdraws the permission requests, decided
                     // ones whose message was not delivered among them, and
                     // keeps the grants (`permissions.md` § Requests).
-                    // It drops the move an agent asked for as well
-                    // (`sessions-and-targets.md` § Switch the primary target).
+                    // It drops the move and the detaches an agent asked for
+                    // as well (`sessions-and-targets.md` § Switch the primary
+                    // target).
                     if *archived {
+                        transaction.execute(
+                            "UPDATE conversation_hosts SET detaching = 0 WHERE conversation_id = ?1",
+                            [id.as_str()],
+                        )?;
                         transaction.execute(
                             "DELETE FROM permission_requests WHERE conversation_id = ?1",
                             [id.as_str()],
@@ -1656,4 +1661,67 @@ mod tests {
         );
         control.close().await.unwrap();
     }
+
+    /// An archive drops what an agent asked for to happen once its
+    /// conversation's work ends: the pending move and the pending detaches
+    /// (`sessions-and-targets.md` § Switch the primary target). A restore
+    /// brings neither back.
+    #[tokio::test]
+    async fn an_archive_drops_the_pending_move_and_the_pending_detaches() {
+        let data = tempfile::tempdir().unwrap();
+        let control = ControlService::open(
+            &data.path().join("control.sqlite"),
+            Arc::new(demi_shared_types::SystemClock),
+        )
+        .await
+        .unwrap();
+        let master = testing::master(&control).await.id;
+        let id = created(
+            control
+                .create_conversation(master.clone(), conversation(1), ConversationStart::default())
+                .await
+                .unwrap(),
+        )
+        .id;
+        let laptop = control
+            .create_device(
+                master.clone(),
+                "laptop".into(),
+                RunnerPlatform::Linux,
+                crate::accounts::TokenHash::of("laptop"),
+            )
+            .await
+            .unwrap()
+            .id;
+        let attach = RecordChange::Attach(AttachedHostRecord {
+            device: laptop.clone(),
+            name: "laptop".into(),
+            cwd: None,
+        });
+        control.change_conversation(id.clone(), attach).await.unwrap();
+        let to = ConversationTarget::Device {
+            device_id: laptop.clone(),
+            path: "/work".into(),
+        };
+        control.set_pending_move(id.clone(), to).await.unwrap().unwrap();
+        assert_eq!(
+            control.mark_detach(id.clone(), laptop.clone()).await.unwrap(),
+            ChangeOutcome::Applied
+        );
+        let pending = control.pending_changes(id.clone()).await.unwrap();
+        assert!(pending.moving.is_some() && pending.detaching == [laptop.clone()], "{pending:?}");
+
+        for archived in [true, false] {
+            control
+                .change_conversation(id.clone(), RecordChange::Archived(archived))
+                .await
+                .unwrap();
+        }
+        assert_eq!(control.pending_changes(id.clone()).await.unwrap(), PendingChanges::default());
+        // The device stays attached: only the detach waiting for it is gone.
+        let attached = control.attached_hosts(id.clone()).await.unwrap();
+        assert_eq!(attached.len(), 1);
+        assert!(control.conversations_pending().await.unwrap().is_empty());
+    }
+
 }

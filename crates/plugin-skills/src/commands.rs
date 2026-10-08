@@ -1,6 +1,6 @@
 //! `demi skills` (`skills.md` § Commands): the agent's only way to manage
 //! the user's skills, acting as the page's methods do and failing as they
-//! would. Every command but `list` names the category Manage skills, so the
+//! would. Every command but `list` names the category Manage Skills, so the
 //! backend's dispatch runs it only in a conversation the user allowed it for
 //! (`permissions.md`); the plugin never sees a permission.
 
@@ -29,7 +29,7 @@ const SUMMARY: &str = "The user's skills, which every conversation of the user r
 /// § Capability index).
 const ENTRY: &str = "Manages the user's skills, packaged instructions and scripts that extend what you can do in every conversation of the user: list, add from a source, update, remove, turn on or off. Use it when the user asks to install or change a skill, and install skills only this way, never with npx or by copying files, so the user sees and controls them.";
 
-const MANAGE_DESCRIPTION: &str = "Manage skills lets the agents of this conversation add, update and remove skill sources and turn skills on or off. Your skills reach every conversation, and the skills that are on are installed on every Host your conversations use.";
+const MANAGE_DESCRIPTION: &str = "Manage Skills lets the agents of this conversation add, update and remove skill sources and turn skills on or off. Your skills reach every conversation, and the skills that are on are installed on every Host your conversations use.";
 
 const REFUSED_OUTPUT: &str =
     "writes the reason to stderr and exits non-zero, having changed nothing the reason does not name";

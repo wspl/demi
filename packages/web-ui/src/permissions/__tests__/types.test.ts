@@ -7,7 +7,7 @@ import {
   type PermissionRequestView,
 } from '../types'
 
-const skills: PermissionCategoryView = { id: 'skills.manage', action: 'manage skills', description: 'Manage skills.' }
+const skills: PermissionCategoryView = { id: 'skills.manage', action: 'manage skills', description: 'Manage Skills.' }
 const retired: PermissionCategoryView = { id: 'conversations.read', action: null, description: null }
 
 const organize: PermissionCategoryView = { id: 'conversation.organize', action: 'organize conversations', description: 'Organize.' }
@@ -36,6 +36,7 @@ test('a request of several categories asks for their actions joined with "and"',
 })
 
 test('a category is titled by its action, and by its id once the command set no longer declares it', () => {
-  expect(categoryTitle(skills)).toBe('Manage skills')
+  expect(categoryTitle(skills)).toBe('Manage Skills')
+  expect(categoryTitle(organize)).toBe('Organize Conversations')
   expect(categoryTitle(retired)).toBe('conversations.read')
 })

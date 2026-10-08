@@ -1,11 +1,11 @@
 import type { PermissionCategoryView, PermissionRequestView } from '@demicodes/web-ui/permissions/types'
 
-/** Manage skills, as `plugin-skills` declares it. */
+/** Manage Skills, as `plugin-skills` declares it. */
 export const manageSkills: PermissionCategoryView = {
   id: 'skills.manage',
   action: 'manage skills',
   description:
-    'Manage skills lets the agents of this conversation add, update and remove skill sources and turn skills on or off. Your skills reach every conversation, and the skills that are on are installed on every Host your conversations use.',
+    'Manage Skills lets the agents of this conversation add, update and remove skill sources and turn skills on or off. Your skills reach every conversation, and the skills that are on are installed on every Host your conversations use.',
 }
 
 /** A category the user's command set no longer declares: the page knows its id alone. */
@@ -61,7 +61,7 @@ export function subagentRequest(): PermissionRequestView {
   }
 }
 
-/** Three requests waiting at once: two of Manage skills, from the root and a subagent, and one of a category no longer declared. */
+/** Three requests waiting at once: two of Manage Skills, from the root and a subagent, and one of a category no longer declared. */
 export function queuedRequests(): PermissionRequestView[] {
   return [
     rootRequest(),
