@@ -606,7 +606,7 @@ the family's requests and refreshes need:
 |---|---|
 | `codex` | The ChatGPT sign-in's tokens, the account they act for, and the time of the last refresh |
 | `grok-build` | The OAuth tokens and their expiry, the issuer and client that issued them, the team or organization the tokens act for, and the user's ID and email |
-| `claude-code` | The Claude sign-in's access token, its refresh token, the access token's expiry and the scopes granted |
+| `claude-code` | What the CLI's login wrote: the access token, the refresh token, the access token's expiry, the scopes granted and the subscription type, with the account's ID and email |
 
 A field the type does not name is an error, as is a missing required one. The
 provider
@@ -663,7 +663,7 @@ refresh turn only saves needless vendor calls within one backend.
 |---|---|
 | `codex` | A request was refused with HTTP 401 and its access token is still the stored one, or the stored access token expires within 5 minutes, or the sign-in was last refreshed 8 or more days ago |
 | `grok-build` | A request was refused with HTTP 401 and its access token is still the stored one, or the stored access token expires within 5 minutes; a sign-in without a refresh token is used as it is |
-| `claude-code` | A request was refused with HTTP 401 and its access token is still the stored one, or the stored access token expires within 5 minutes, which a CLI process's start also checks |
+| `claude-code` | The CLI asks for a fresh access token after a 401 and its token is still the stored one, or the stored access token expires within 5 minutes when a CLI process starts ([Accounts and sign-in](claude-code.md#accounts-and-sign-in)) |
 
 A refused request names the token it was refused with, so a refresher that
 waited behind another finds the other's new tokens no longer due and uses
@@ -700,11 +700,12 @@ An account enters an entry in one of three ways:
 |---|---|
 | `codex` | Codex device login: the user opens `https://auth.openai.com/codex/device` on any device and enters a one-time code |
 | `grok-build` | OAuth device authorization (RFC 8628) at `https://auth.x.ai`: the user opens the verification address and approves |
-| `claude-code` | Claude sign-in: the user opens Claude's sign-in page on any device, signs in, and pastes the code the page shows back into Demi |
+| `claude-code` | The CLI's own sign-in: Demi runs `claude auth login` on the user's Cloud, shows the link it prints, and gives it the code the user pastes |
 
-A device login, and Claude's sign-in with its pasted code, work on a
-headless or remote backend, because the user completes them in their own
-browser on any device; Demi never starts a vendor CLI to log in. The flows are written by hand on shared OAuth pieces, not with
+Each login works on a headless or remote backend, because the user
+completes it in their own browser on any device. Demi starts a vendor CLI to
+log in only for Claude Code, whose CLI owns its sign-in; it keeps nothing of
+that login but the tokens it wrote. The flows are written by hand on shared OAuth pieces, not with
 the `oauth2` crate, which refuses the vendors' token responses: they omit
 `token_type` and state `expires_in` as a string.
 
@@ -723,21 +724,9 @@ the `oauth2` crate, which refuses the vendors' token responses: they omit
   confirms, it reads the user's ID and email from the chat proxy's `/v1/user`
   when that answers. When the tokens act for a team or organization, the team
   or organization is the account's user, and the account has no email.
-- **Claude Code** signs in as the Claude Code CLI does on a machine without a
-  browser, the flow its `claude auth login` prints: OAuth authorization code
-  with PKCE (S256), Claude Code's public client
-  (`9d1c250a-e61b-44d9-88ed-5944d1962f5e`) and its scopes, `user:profile`
-  and `user:inference` among them, and the manual redirect
-  `https://platform.claude.com/oauth/code/callback`, whose page shows the user
-  a code. The login names `https://claude.com/cai/oauth/authorize` with
-  `code=true`, the challenge and a random state as its verification address
-  and waits for the code. The user pastes it into Demi; Demi sends it with the
-  verifier and the state to `https://platform.claude.com/v1/oauth/token` as
-  an `authorization_code` grant, in JSON, and stores the tokens. A refresh is
-  a `refresh_token` grant at the same address, with the client and the scopes.
-  The login ends after 15 minutes without a code, and a code the vendor
-  refuses ends it with the vendor's reason. These are the CLI's own
-  endpoints and client, read from Claude Code 2.1.294.
+- **Claude Code** signs in with the CLI's own login, which Demi starts and
+  relays but does not reimplement
+  ([Accounts and sign-in](claude-code.md#accounts-and-sign-in)).
 
 A flow authenticates against a staged pool held in memory; nothing is stored
 until it completes. Completion is one control-store transaction:
