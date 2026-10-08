@@ -37,7 +37,7 @@ pub use agent_message::{
 };
 pub use block::{
     AbortBlock, AgentMessageBlock, Block, CommandEnd, CompactionBoundaryBlock, CompactionMarkerBlock,
-    ContextBlock, ErrorBlock, RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock,
+    ContextBlock, ErrorBlock, INSTRUCTIONS_SOURCE, InstructionEntry, RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock,
     TextBlock, ThinkingBlock, ToolCallBlock, ToolCallStatus, UserBlock, WakeupBlock,
     WakeupCommand, WakeupPlacement,
 };
@@ -45,7 +45,8 @@ pub use bytes::B64Bytes;
 pub use catalog::{ModelCost, ProviderModel, ProviderModelList, ServiceTier, UnavailableSetting};
 pub use content::{
     Attachment, BlobRef, DocumentSource, GoneCause, MediaSource, PixelSize, ToolMediaSource,
-    ToolResultContentBlock, UserContentBlock, attachment_tag, char_offset, is_blank, trim,
+    ToolResultContentBlock, UserContentBlock, attachment_tag, char_offset, is_blank, push_escaped, trim,
+    xml_escaped,
 };
 pub use failure::{FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts};
 pub use context_limit::{

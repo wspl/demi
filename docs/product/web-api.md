@@ -39,6 +39,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Page synchronization | `WS /sync` sends the product state, then each part of it that changes ([Page synchronization](#page-synchronization)) |
 | Settings | `GET /settings` returns fixed instance mode; `GET/PATCH /settings/preferences` |
 | Subagents | `PUT /subagents { enabled }`; `POST /subagents/profiles`, `PATCH /subagents/profiles/:id`, `DELETE /subagents/profiles/:id`; the switch and the profiles are part of the product state ([Subagents](#subagents)) |
+| Instructions | `PUT /instructions { text }`; the text is part of the product state ([Instructions](#instructions)) |
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id, ... }`, `PATCH /conversations/:id`, `DELETE /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
 | Search | `GET /search?q=<query>` finds the caller's conversations ([Search](#search)) |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](../backend/backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
@@ -688,6 +689,19 @@ and the next spawn of every conversation, an open one included
 both instance modes; on a shared instance a profile's model names one of the
 master's entries, as every model a user picks does.
 
+## Instructions
+
+The caller's [personal instructions](../agent/instructions.md#personal-instructions),
+which the settings page's Instructions section shows, are part of the
+product state, as `instructions`: their text, empty for a user who has none.
+
+`PUT /api/instructions { text }` replaces them and answers 204; an empty text,
+or one of only white space, removes them. A text longer than 65,536
+characters answers 400 `invalid_body`. Each change reaches every page of the
+user as the `instructions` message of the
+[synchronization channel](#page-synchronization), and the next request of
+every node of the user's conversations.
+
 ## Model configuration and provider inspection
 
 `POST /api/providers` takes
@@ -1081,6 +1095,7 @@ later one is the current value of one part of it that changed:
 | `cloud` | `cloud` | The Cloud's lifecycle or its reset moves |
 | `plugins` | `plugins`, the plugin list below | The user turns a plugin on or off |
 | `subagents` | `subagents`, the user's [Subagent switch and profiles](#subagents) | The switch is turned on or off; a profile is created, changed, enabled, disabled or deleted |
+| `instructions` | `instructions`, the user's [personal instructions](#instructions) | The user saves them |
 | `plugin` | `plugin`, the plugin's id, and `state`, its user state | The plugin marks its user state changed ([The page](../architecture/plugins.md#the-page)) |
 | `heartbeat` | Nothing | 30 seconds pass without another message |
 
@@ -1094,7 +1109,8 @@ reported them and kept while it is away, each as `{ package, name, version }`
 ([Installed artifacts](../execution/native-runtime.md#installed-artifacts))),
 the summaries of the active and then the
 archived conversations, the Cloud's state, `subagents`, the user's
-[Subagent switch and profiles](#subagents), `plugins`, the plugin list, and
+[Subagent switch and profiles](#subagents), `instructions`, the user's
+[personal instructions](#instructions), `plugins`, the plugin list, and
 `pluginStates`, the user state of each plugin the user has on that declares
 one, by plugin id, `publicUrl`,
 the URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`), `stunUrls`, the

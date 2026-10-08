@@ -116,6 +116,7 @@ impl SessionRuntime for TestRuntime {
             .map(|text| NewContext {
                 source: "execution".into(),
                 text: text.into(),
+                instructions: Vec::new(),
             });
         Box::pin(async move { news.into_iter().collect() })
     }

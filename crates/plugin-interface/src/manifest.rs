@@ -4,6 +4,7 @@
 use std::fmt;
 
 use demi_command_declarations::{NativeOperation, Node, Schema};
+use demi_shared_types::INSTRUCTIONS_SOURCE;
 use schemars::{JsonSchema, generate::SchemaSettings};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -29,7 +30,7 @@ pub struct PluginId(String);
 /// Why a text is not a plugin's id.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error(
-    "\"{0}\" is not a plugin id: 1 to 32 lowercase letters, digits and hyphens, not \"{EXECUTION_SOURCE}\""
+    "\"{0}\" is not a plugin id: 1 to 32 lowercase letters, digits and hyphens, not \"{EXECUTION_SOURCE}\" or \"{INSTRUCTIONS_SOURCE}\""
 )]
 pub struct PluginIdError(String);
 
@@ -47,7 +48,8 @@ impl TryFrom<String> for PluginId {
             && id
                 .bytes()
                 .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-            && id != EXECUTION_SOURCE;
+            && id != EXECUTION_SOURCE
+            && id != INSTRUCTIONS_SOURCE;
         if valid {
             Ok(Self(id))
         } else {
