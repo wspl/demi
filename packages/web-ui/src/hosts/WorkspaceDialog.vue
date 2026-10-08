@@ -303,7 +303,7 @@ function selectDevice(id: string, close: () => void): void {
                         :label="entry.name"
                         :indicator="DEVICE_STATE_TONE[entry.state]"
                         :indicator-label="DEVICE_STATE_LABEL[entry.state]"
-                        :note="entry.state === 'online' ? undefined : DEVICE_STATE_LABEL[entry.state]"
+                        :value="entry.state === 'online' ? undefined : DEVICE_STATE_LABEL[entry.state]"
                         :disabled="entry.state !== 'online'"
                         disabled-reason="This device is offline."
                         choice

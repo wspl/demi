@@ -6,6 +6,7 @@ import type { Conversation } from '../state/types'
 import { useResources } from '../state/resources'
 import { executionFor } from './execution'
 import { useConversations } from '../conversation/store'
+import { directPath } from '../direct'
 
 /**
  * The header's host menu over the product's data (`product.md` § Where a
@@ -31,11 +32,14 @@ const primaryHost = computed<HostMenuHost>(() => {
     state: execution.state,
   }
 })
-// The path this page reaches each device by comes with the direct channel's
-// state of each device, which this page does not keep yet: until it does, a
-// device shows no path.
+// Each device with the path this page last reached it by; none for one it has not used this session.
 const devices = computed<HostDeviceOption[]>(() =>
-  resources.devices.map((device) => ({ id: device.id, name: device.name, state: device.state })),
+  resources.devices.map((device) => ({
+    id: device.id,
+    name: device.name,
+    state: device.state,
+    path: directPath(device.id),
+  })),
 )
 const attachedHosts = computed<HostMenuHost[]>(() =>
   props.conversation.attachedHosts.map((host) => {

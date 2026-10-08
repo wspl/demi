@@ -48,6 +48,7 @@ const hostStatusItems = hostDevices.map((device) => ({
   label: device.name,
   indicator: DEVICE_STATE_TONE[device.state],
   indicatorLabel: DEVICE_STATE_LABEL[device.state],
+  value: device.state === 'online' ? undefined : DEVICE_STATE_LABEL[device.state],
 }))
 /**
  * The devices the host menu specimens list: one for each path this page
@@ -55,9 +56,9 @@ const hostStatusItems = hostDevices.map((device) => ({
  * offline.
  */
 const menuDevices: HostDeviceOption[] = [
-  { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'this-computer' },
-  { id: 'studio', name: 'Studio PC', state: 'online', path: 'lan' },
-  { id: 'build', name: 'build-box', state: 'online', path: 'p2p' },
+  { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer' },
+  { id: 'studio', name: 'Studio PC', state: 'online', path: 'localNetwork' },
+  { id: 'build', name: 'build-box', state: 'online', path: 'internet' },
   { id: 'office', name: 'Office Mac mini', state: 'online', path: 'relay' },
   { id: 'lab', name: 'lab-workstation-with-a-long-hostname', state: 'online' },
   { id: 'old', name: 'Old Laptop', state: 'offline' },

@@ -179,9 +179,10 @@ export function usePathCompletion(options: PathCompletionOptions) {
   /**
    * A key pressed in the field. While the menu shows, a row is always
    * selected, the first when it opens or its rows change: the arrows move
-   * the selection, Tab and Enter accept the selected row, and Escape puts
-   * the menu away. Every other key, and every key while no menu shows, is
-   * the field's, so Tab then moves the focus as it does anywhere.
+   * the selection, Tab accepts the selected row, and Escape puts the menu
+   * away. Every other key, Return among them, is the field's, and every key
+   * while no menu shows, so Return submits what the field holds and Tab
+   * then moves the focus as it does anywhere.
    */
   function keydown(key: string, text: string, caret: number): PathCompletionKey {
     if (!isOpen.value)
@@ -195,7 +196,7 @@ export function usePathCompletion(options: PathCompletionOptions) {
       highlighted.value = highlighted.value > 0 ? highlighted.value - 1 : count - 1
       return { kind: 'handled' }
     }
-    if (key === 'Tab' || key === 'Enter')
+    if (key === 'Tab')
       return accept(highlighted.value, text, caret)
     if (key === 'Escape') {
       dismissed.value = true

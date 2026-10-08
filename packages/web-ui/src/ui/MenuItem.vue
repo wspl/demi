@@ -29,12 +29,14 @@ defineOptions({ inheritAttrs: false })
 const props = defineProps<{
   icon?: Component
   label?: TitleText
+  /**
+   * A muted word at the row's end, right-aligned, with no parentheses: a
+   * setting's value (`Medium`), a state (`Offline`) or a path (`LAN`).
+   */
   value?: string
   /** A status dot: alone in the gutter, or on the icon's corner when there is one. */
   indicator?: MenuIndicator
   indicatorLabel?: SentenceText
-  /** A quiet qualifier after the label, in parentheses: `Offline`, `Read-Only`. */
-  note?: TitleText
   isDanger?: boolean
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
@@ -232,8 +234,6 @@ const toneClass = computed(() => {
         <slot>
           <span class="min-w-0 truncate"><HighlightText :text="label ?? ''" :indexes="typedPrefix" /></span>
         </slot>
-        <!-- The note follows the name; the label cell is the grid column, so nothing needs to stretch. -->
-        <span v-if="note" class="shrink-0 pl-1 text-fg-subtle">({{ note }})</span>
       </span>
       <span
         v-if="value"
