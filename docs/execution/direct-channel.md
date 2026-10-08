@@ -209,7 +209,7 @@ says how the page makes it:
 
 | Route | The page makes a peer | The choice is `direct` while |
 | --- | --- | --- |
-| Automatic, the default | Yes | The peer is connected and its path is not worse than the relay's ([Measuring the paths](#measuring-the-paths)) |
+| Automatic, the default | Yes | The peer is connected and its last measurement found it no worse than the relay ([Measuring the paths](#measuring-the-paths)) |
 | Prefer P2P | Yes | The peer is connected |
 | Relay Only | No, and it closes the one it has | Never |
 
@@ -248,9 +248,19 @@ back to it without waiting.
 
 ## Measuring the paths
 
-While a page uses a device, that is while it shows a conversation whose
-primary Host is the device or the device's own page, it measures both paths
-once a second, with probes too small to cost anything:
+A page measures the two paths to a device only when something reads the
+result, never on a timer, so an idle page sends nothing and the figures it
+shows hold still:
+
+- **When a peer connects**, for Automatic to decide.
+- **When the device's page becomes visible**: it opens, or the browser's tab
+  that shows it comes to the front again.
+- **When the user selects Measure** on the page's Latency row.
+
+A measurement sends 20 probes on each path, 100 ms apart, and counts a probe
+not answered within 2 seconds as lost, so it ends within 4 seconds. A
+measurement asked for while one runs joins it. The probes are too small to
+cost anything:
 
 - **The direct path.** The peer has one more data channel, `probe`,
   unordered and never retransmitted, so a lost probe stays lost as a lost
@@ -264,21 +274,22 @@ once a second, with probes too small to cost anything:
   `pong { id }` back. The probe crosses the same two connections, page to
   backend and backend to runner, that every relayed byte crosses.
 
-Over the last 30 probes of each path the page computes:
+From each measurement the page computes, per path:
 
 | Figure | What it is |
 | --- | --- |
-| Latency | The median round trip |
+| Latency | The median round trip of the answered probes |
 | Loss | The share of probes not answered within 2 seconds; the relay runs over TCP, which loses nothing but arrives late instead, so the relay has none |
 
 Under Automatic the choice is `direct` while the peer is connected, unless
-over the last 10 seconds its loss was above 2% or its latency more than
-20 ms above the relay's. The choice changes only when the condition has
-held for 10 seconds, so one slow probe never moves an open live view. A
-newly connected peer is used at once, before the figures exist, since a
-peer that connects is almost always the faster path; the figures then
-confirm or overturn it. A slightly slower direct path still wins, because
-it keeps the bytes off the server and its link.
+the last measurement lost more than one of the peer's 20 probes or found
+its latency more than 20 ms above the relay's. A newly connected peer is
+used at once, before its measurement ends, since a peer that connects is
+almost always the faster path; the measurement then confirms or overturns
+it, and each later one decides again. A slightly slower direct path still
+wins, because it keeps the bytes off the server and its link. Between
+measurements nothing moves the choice but a failure
+([Liveness](#liveness)), so a slow moment never moves an open live view.
 
 Demi measures no throughput. Latency and loss are what decide the route,
 and a speed test would move megabytes through the user's server to show a
@@ -350,7 +361,7 @@ Connection
 │ P2P                                  [Try Again]  [Details…] │
 │ Your networks block P2P connections.                         │
 ├──────────────────────────────────────────────────────────────┤
-│ Latency                        P2P 620 ms, 6% lost · Relay 480 ms │
+│ Latency          P2P 620 ms, 10% lost · Relay 480 ms  [Measure] │
 └──────────────────────────────────────────────────────────────┘
 
 Device
@@ -394,10 +405,14 @@ Device
     started is running, it starts no second one and shows that one until it
     ends.
   - **Latency**, a label and its value, as the Device group's facts are:
-    the two paths' from [Measuring the paths](#measuring-the-paths),
-    *P2P 2 ms · Relay 480 ms*; a P2P path that loses probes adds its loss,
-    *P2P 620 ms, 6% lost*; without a peer, *Relay 480 ms* alone. While
-    nothing is measured yet, or the device is offline, the row is not
+    the two paths' from the last [measurement](#measuring-the-paths),
+    *P2P 2 ms · Relay 480 ms*; a P2P path that lost probes adds its loss,
+    *P2P 620 ms, 10% lost*; without a peer, *Relay 480 ms* alone. Opening
+    the page measures; until the first measurement ends the value reads
+    *Measuring…*, and later ones keep the figures shown until theirs
+    replace them. Its trailing slot holds **Measure**, which measures at
+    once and, like Try Again, alone shows a loading state, from the click
+    until the measurement ends. While the device is offline, the row is not
     shown.
 - **Device** holds the facts, as macOS's About settings do: the name with
   Rename…; the system by its name and version, such as *macOS 26.5* or
@@ -424,7 +439,7 @@ The P2P row's subtitle, from what the attempt saw, word for word:
 | Reason | When | The header says |
 | --- | --- | --- |
 | Relay Only | The device's route is Relay Only | Nothing: the row is not shown, and the route says it |
-| Slower right now | Automatic, the peer is connected, and its loss or latency is worse than the relay's ([Measuring the paths](#measuring-the-paths)) | *P2P is slower right now.* |
+| Slower right now | Automatic, the peer is connected, and its last measurement found it worse than the relay ([Measuring the paths](#measuring-the-paths)) | *P2P is slower right now.* |
 | Blocked by this browser | The browser reports its local network permission blocked | *This browser blocks local network access.* |
 | Not reachable | Every pair was checked and none answered, and both sides found their public address | *Your networks block P2P connections.* |
 | This network blocks it | One side found no public address: its network blocks UDP or the STUN server | *Your network blocks it.* or *The device’s network blocks it.* |
