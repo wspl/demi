@@ -5,7 +5,7 @@ import Button from '../ui/Button.vue'
 import HoverCard from '../ui/HoverCard.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import { formatTokens } from '../ui/token-count'
-import { compactionRefusal, contextPercent } from './context-usage'
+import { compactionRefusal, contextPercent, contextRatio } from './context-usage'
 
 /**
  * The composer's context meter: a ring of how full the next request is, as
@@ -26,7 +26,7 @@ const emit = defineEmits<{
 }>()
 
 const percent = computed(() => contextPercent(props.usage ?? null))
-const ratio = computed(() => (percent.value ?? 0) / 100)
+const ratio = computed(() => contextRatio(props.usage ?? null) ?? 0)
 const blockedReason = computed(() => props.unavailableReason ?? compactionRefusal(props.usage ?? null))
 
 const radius = 5.5
@@ -81,7 +81,7 @@ const ringColor = computed(() => {
     <template #card>
       <span v-if="isCompacting" class="text-fg-body">Compacting context…</span>
       <span v-else-if="usage && percent != null" class="whitespace-nowrap">
-        {{ percent }}% used
+        {{ percent }} used
         <span class="text-fg-subtle">({{ formatTokens(usage.tokens) }} / {{ formatTokens(usage.window) }})</span>
       </span>
       <span v-else class="text-fg-muted">Context usage unavailable</span>
