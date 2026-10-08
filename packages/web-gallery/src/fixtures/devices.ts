@@ -61,7 +61,7 @@ export function demoAttempt(scenario: DirectScenario, startedAt: number): Direct
     browser: { local: ['7c1e4a52-9b0d-4c1e-8e3e-1a2b3c4d5e6f.local'], public: browserPublic },
     device: { local: ['192.168.1.20', '127.0.0.1'], public: devicePublic },
     pairs: { tried: connected ? 2 : 6, answered: connected ? 2 : 0 },
-    pair: connected ? { browser: null, device: '192.168.1.20:61204' } : null,
+    inUse: connected ? '192.168.1.20:61204' : null,
     permission: scenario === 'blocked' ? 'denied' : 'granted',
   }
 }
