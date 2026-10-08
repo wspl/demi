@@ -29,17 +29,16 @@ function sampleThinkingEndedAt(index: number): string | null {
       </p>
       <p>
         The appearance menu switches the theme, the mode and the accent, so the same session can be
-        judged under the product's theme and under Flat, the one on trial.
+        judged under the product's two tones, Ink and Warm, and under Flat, the one on trial.
       </p>
       <p class="text-fg-muted">
         Current: <span class="text-fg">{{ galleryState.paradigm }}</span>
         · {{ galleryState.mode }}
-        · tone {{ galleryState.tone }}
         · accent {{ galleryState.accent }}
       </p>
     </div>
 
-    <div class="grid gap-3 md:grid-cols-2">
+    <div class="grid gap-3 md:grid-cols-3">
       <button
         v-for="item in PARADIGMS"
         :key="item.id"
