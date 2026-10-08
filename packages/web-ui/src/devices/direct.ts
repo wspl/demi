@@ -73,7 +73,7 @@ export interface DirectAttempt {
 }
 
 /**
- * One path's figures over its last probes (`direct-channel.md` § Measuring
+ * One path's figures from a measurement (`direct-channel.md` § Measuring
  * the paths), in milliseconds; `loss` is a share from 0 to 1, null for the
  * relay, which runs over TCP and loses nothing.
  */
@@ -95,15 +95,17 @@ export interface DirectStatus {
   /**
    * An attempt runs now, whoever started it. The host sets it as it starts
    * one, before the page next renders, so Try Again knows whether its click
-   * started an attempt (`useTryAgain`).
+   * started an attempt (`useAsked`).
    */
   trying: boolean
   /** The last attempt; null before the first. */
   attempt: DirectAttempt | null
   /** When the next attempt runs, as an ISO 8601 timestamp; null when none is planned. */
   nextAt: string | null
-  /** Each path's figures, null before its first probes are answered. */
+  /** Each path's figures from the last measurement, null before one found any. */
   figures: { direct: PathFigures | null; relay: PathFigures | null }
+  /** A measurement runs, whoever asked for it; the host sets it as it starts one, as `trying`. */
+  measuring: boolean
 }
 
 /**
@@ -183,16 +185,17 @@ function formatLoss(loss: number): string {
 
 /**
  * The Latency row's value, which compares the two paths' latency from this
- * browser: "Direct 2 ms · Server 480 ms". A direct path
- * that loses probes adds its loss, "Direct 620 ms, 6% lost"; without a peer
- * only the server's path is given. Null before either path has figures.
+ * browser's last measurement, the peer's path by its kind: "LAN 2 ms ·
+ * Relay 480 ms". A peer's path that lost probes adds its loss, "P2P 620 ms,
+ * 10% lost"; without a peer only the relay is given. Null before either
+ * path has figures.
  */
 export function pathsLatency(status: DirectStatus): SentenceText | null {
   const { direct, relay } = status.figures
   const parts: string[] = []
   if (status.peer && direct) {
     const lost = direct.loss ? `, ${formatLoss(direct.loss)} lost` : ''
-    parts.push(`P2P ${formatLatency(direct.latencyMs)}${lost}`)
+    parts.push(`${DEVICE_PATH_LABEL[peerKind(status) ?? 'internet']} ${formatLatency(direct.latencyMs)}${lost}`)
   }
   if (relay) {
     parts.push(`Relay ${formatLatency(relay.latencyMs)}`)
@@ -232,6 +235,100 @@ export function reasonSentence(reason: DirectReason): SentenceText | null {
 export function addressWithPort(inUse: { address: string; port: number }): string {
   return inUse.address.includes(':') ? `[${inUse.address}]:${inUse.port}` : `${inUse.address}:${inUse.port}`
 }
+
+/** The kind of path a P2P connection runs on (`direct-channel.md` § What the user sees). */
+export type PathKind = 'thisComputer' | 'localNetwork' | 'internet'
+/** The path the page uses for a device: a P2P one of its kind, or the relay. */
+export type DevicePath = PathKind | 'relay'
+
+/** Each path as its label names it, wherever the path is named: "Connected via LAN". */
+export const DEVICE_PATH_LABEL: Record<DevicePath, TitleText> = {
+  thisComputer: 'This Computer',
+  localNetwork: 'LAN',
+  internet: 'P2P',
+  relay: 'Relay',
+}
+
+/** The 16-bit groups of an IPv6 address, or null for any other text. */
+function ipv6Groups(address: string): number[] | null {
+  // The URL parser expands and checks an IPv6 address; a zone (`%en0`) belongs to no URL.
+  const host = URL.parse(`http://[${address.replace(/^\[|\]$/g, '').split('%')[0]}]/`)?.hostname
+  if (!host) {
+    return null
+  }
+  const [head = '', tail = ''] = host.slice(1, -1).split('::')
+  const part = (text: string) => (text ? text.split(':').map((group) => Number.parseInt(group, 16)) : [])
+  const before = part(head)
+  const after = part(tail)
+  return host.includes('::') ? [...before, ...Array(8 - before.length - after.length).fill(0), ...after] : before
+}
+
+/** The four bytes of an IPv4 address, or null for any other text. */
+function ipv4Bytes(address: string): number[] | null {
+  const parts = address.split('.')
+  if (parts.length !== 4 || !parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)) {
+    return null
+  }
+  return parts.map(Number)
+}
+
+/**
+ * The kind of path the device's address in use names: a loopback address is
+ * this computer; a private, link-local or shared one, `100.64/10` included,
+ * which VPNs such as Tailscale use, is the local network; any other is the
+ * internet.
+ */
+export function pathKind(address: string): PathKind {
+  const ipv6 = ipv4Bytes(address) === null ? ipv6Groups(address) : null
+  // An IPv4 address in IPv6 form (`::ffff:a.b.c.d`) is that IPv4 address.
+  const mapped = ipv6 && ipv6.slice(0, 5).every((group) => group === 0) && ipv6[5] === 0xffff
+    ? [ipv6[6]! >> 8, ipv6[6]! & 0xff, ipv6[7]! >> 8, ipv6[7]! & 0xff]
+    : null
+  const v4 = ipv4Bytes(address) ?? mapped
+  if (v4) {
+    const [a = 0, b = 0] = v4
+    if (a === 127) {
+      return 'thisComputer'
+    }
+    const local = a === 10
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 168)
+      || (a === 169 && b === 254)
+      || (a === 100 && b >= 64 && b <= 127)
+    return local ? 'localNetwork' : 'internet'
+  }
+  if (ipv6) {
+    if (ipv6.slice(0, 7).every((group) => group === 0) && ipv6[7] === 1) {
+      return 'thisComputer'
+    }
+    const first = ipv6[0]!
+    return (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80 ? 'localNetwork' : 'internet'
+  }
+  return 'internet'
+}
+
+/** How an online device is reached, as its row and its page's header say: "Connected via LAN", "Connected via relay". */
+export function connectedVia(status: DirectStatus): SentenceText {
+  const path = statusPath(status)
+  return path === 'relay' ? 'Connected via relay' : `Connected via ${DEVICE_PATH_LABEL[path]}`
+}
+
+/** The P2P row's subtitle while connected: "LAN · 192.168.1.20". */
+export function pathSentence(address: string): SentenceText {
+  return `${DEVICE_PATH_LABEL[pathKind(address)]} · ${address}`
+}
+
+/** The kind of the connected peer's path, from its address in use; null without a peer. */
+function peerKind(status: DirectStatus): PathKind | null {
+  const inUse = status.attempt?.inUse
+  return status.peer && inUse ? pathKind(inUse.address) : null
+}
+
+/** The path a page reaching a device with `status` uses: its peer's kind while it uses the peer, the relay otherwise. */
+export function statusPath(status: DirectStatus): DevicePath {
+  return (status.chosen && peerKind(status)) || 'relay'
+}
+
 
 /**
  * An address as the details show it: the random `….local` name a browser
