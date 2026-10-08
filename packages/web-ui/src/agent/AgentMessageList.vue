@@ -345,13 +345,27 @@ defineExpose({
                 @send-queued="(id) => emit('sendQueued', id)"
                 @edit-user="(id) => emit('editUser', id)"
                 @retry-submission="emit('retrySubmission')"
-              />
-              <RequestChangesLine
-                v-if="requestLines.has(renderBlocks[item.index]!.id)"
-                :request="requestLines.get(renderBlocks[item.index]!.id)!"
-                :selectable="editSelection() !== undefined"
-                @open="openRequest(requestLines.get(renderBlocks[item.index]!.id)!)"
-              />
+              >
+                <!-- A request's reply ends with its changed-files button, above Copy and Fork. -->
+                <template v-if="renderBlocks[item.index]!.type === 'text' && requestLines.has(renderBlocks[item.index]!.id)" #replyEnd>
+                  <RequestChangesLine
+                    :request="requestLines.get(renderBlocks[item.index]!.id)!"
+                    :selectable="editSelection() !== undefined"
+                    @open="openRequest(requestLines.get(renderBlocks[item.index]!.id)!)"
+                  />
+                </template>
+              </AgentMessageVirtualBlock>
+              <!-- A request that ends on anything else, as while a call still runs, has the button under its last row. -->
+              <div
+                v-if="renderBlocks[item.index]!.type !== 'text' && requestLines.has(renderBlocks[item.index]!.id)"
+                class="px-[var(--agent-pad-x,2rem)] py-1"
+              >
+                <RequestChangesLine
+                  :request="requestLines.get(renderBlocks[item.index]!.id)!"
+                  :selectable="editSelection() !== undefined"
+                  @open="openRequest(requestLines.get(renderBlocks[item.index]!.id)!)"
+                />
+              </div>
             </MessageEditRegion>
           </div>
         </div>
