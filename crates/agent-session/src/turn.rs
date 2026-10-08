@@ -12,6 +12,7 @@ use std::rc::Rc;
 
 use demi_agent_store::media;
 use demi_agent_transcript::{
+    PendingCall,
     estimate::{context_tokens, request_size},
     replay_start, resume_point, tool_input,
 };
@@ -369,8 +370,8 @@ fn complete_text(s: &SessionShared) {
 /// executing, in steps (`runtime.md` § Dispatch and failures): consecutive
 /// calls of a tool that runs together start together, and each other call
 /// is a step of its own. A step ends when each of its calls has returned;
-/// its results are recorded in the order of the calls, and a Stop keeps
-/// those of the calls that returned before it. Input that arrives
+/// each result is recorded as its call returns, in its call's place, and a
+/// Stop keeps those of the calls that returned before it. Input that arrives
 /// meanwhile is written after each step, unless the turn is about to
 /// compact.
 async fn run_tools(
@@ -402,7 +403,6 @@ async fn run_tools(
             }
         }
         let before = s.read(|core| core.inputs.arrivals());
-        let mut outcomes: Vec<Option<ToolOutcome>> = step.iter().map(|_| None).collect();
         let ran = if tools.iter().any(|tool| tool.name == step[0].tool_name) {
             let (model, request_limits) =
                 s.read(|core| (core.model.clone(), core.request_limits()));
@@ -419,49 +419,30 @@ async fn run_tools(
                 })
                 .collect();
             let mut returned = s.runtime.invoke_step(invocations);
-            cancel
-                .guard(async {
-                    while let Some((index, outcome)) = returned.next().await {
-                        outcomes[index] = Some(outcome.unwrap_or_else(|failure| {
+            // Each result is recorded as its call returns, so the page shows
+            // a call's end, its changed files among it, while the step's
+            // other calls run. Only the wait is cancelled: a Stop during the
+            // step ends the calls still running, and one that returned keeps
+            // its result, even one that returned as the Stop came.
+            loop {
+                match cancel.guard(returned.next()).await {
+                    Ok(Some((index, outcome))) => {
+                        let outcome = outcome.unwrap_or_else(|failure| {
                             ToolOutcome::error(format!("Tool failed: {}", failure.0))
-                        }));
+                        });
+                        record_result(s, &step[index], outcome, &mut round).await;
                     }
-                })
-                .await
+                    Ok(None) => break Ok(()),
+                    Err(stopped) => break Err(stopped),
+                }
+            }
         } else {
-            for (outcome, call) in outcomes.iter_mut().zip(&step) {
-                *outcome = Some(ToolOutcome::error(format!(
-                    "Tool not found: {}",
-                    call.tool_name
-                )));
+            for call in &step {
+                let outcome = ToolOutcome::error(format!("Tool not found: {}", call.tool_name));
+                record_result(s, call, outcome, &mut round).await;
             }
             Ok(())
         };
-        // Results are recorded in the order of the calls. A Stop during the
-        // step ends the calls still running; one that returned keeps its
-        // result.
-        for (call, outcome) in step.iter().zip(outcomes) {
-            let Some(outcome) = outcome else {
-                continue;
-            };
-            let outcome = match outcome.effect {
-                Some(ToolEffect::ScheduleYield {
-                    duration_ms,
-                    commands,
-                }) => {
-                    round.stop_after_result = true;
-                    schedule_yield(s, duration_ms, commands)
-                }
-                None => outcome,
-            };
-            // The result's media are stored before it enters the transcript,
-            // and the session holds their bytes (`runtime.md` § Media).
-            let (output, held) = media::store_result(outcome.output, s.store.blobs()).await;
-            s.update(|core| {
-                core.media.absorb(held);
-                core.complete_tool_call(&call.tool_use_id, output, outcome.is_error, outcome.view);
-            });
-        }
         ran?;
         if !defer_input {
             write_inputs_since(s, before).await?;
@@ -469,6 +450,27 @@ async fn run_tools(
     }
     s.update(|core| core.set_stage(TurnStage::Preparing));
     Ok(round)
+}
+
+/// Records the result of `call`, applying its effect first; its media are
+/// stored before it enters the transcript, and the session holds their bytes
+/// (`runtime.md` § Media).
+async fn record_result(s: &Rc<SessionShared>, call: &PendingCall, outcome: ToolOutcome, round: &mut ToolRound) {
+    let outcome = match outcome.effect {
+        Some(ToolEffect::ScheduleYield {
+            duration_ms,
+            commands,
+        }) => {
+            round.stop_after_result = true;
+            schedule_yield(s, duration_ms, commands)
+        }
+        None => outcome,
+    };
+    let (output, held) = media::store_result(outcome.output, s.store.blobs()).await;
+    s.update(|core| {
+        core.media.absorb(held);
+        core.complete_tool_call(&call.tool_use_id, output, outcome.is_error, outcome.view);
+    });
 }
 
 /// Schedules the wakeup a `yield` asked for and, when it names commands,
