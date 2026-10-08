@@ -47,35 +47,13 @@ pub(crate) enum ControlRequest<'a> {
 #[derive(Serialize)]
 #[serde(tag = "subtype", rename_all = "snake_case")]
 pub(crate) enum ControlResponse<'a> {
-    /// The answer to a request Demi serves.
+    /// The SDK MCP server's reply to the message the request carried.
     Success {
         request_id: &'a str,
-        response: Answer<'a>,
+        response: McpReply<'a>,
     },
     /// A request Demi does not serve.
     Error { request_id: &'a str, error: String },
-}
-
-/// What a request Demi serves is answered with.
-#[derive(Serialize)]
-#[serde(untagged)]
-pub(crate) enum Answer<'a> {
-    /// The SDK MCP server's reply to the message an `mcp_message` carried.
-    Mcp(McpReply<'a>),
-    /// The account's access token, for an `oauth_token_refresh`.
-    Token(TokenAnswer<'a>),
-}
-
-/// The answer to `oauth_token_refresh`, as the CLI reads it (Claude Code
-/// 2.1.294): a fresh access token, or none with why not.
-#[derive(Serialize)]
-pub(crate) struct TokenAnswer<'a> {
-    #[serde(rename = "accessToken")]
-    pub(crate) access_token: Option<&'a str>,
-    /// One of the CLI's reasons: `signed_out`, `identity_changed`,
-    /// `transient` or `refresh_failed`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) reason: Option<&'static str>,
 }
 
 #[derive(Serialize)]

@@ -87,6 +87,7 @@ impl GrokKit {
         pending(LoginPending {
             verification_url: device.verification_url.clone(),
             user_code: Some(device.user_code.clone()),
+            code_error: None,
         });
         let tokens = self.poll(&device).await?;
         let secret = self.secret(tokens).await;

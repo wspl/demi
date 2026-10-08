@@ -65,7 +65,11 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
         <h3 class="text-[15px] font-medium text-fg-emphasis">
           Sign In to {{ vendorName }}
         </h3>
-        <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
+        <!-- While it starts, the body alone says so. -->
+        <p
+          v-if="phase.kind !== 'starting'"
+          class="mt-0.5 text-[13px] leading-5 text-fg-muted"
+        >
           <template v-if="phase.kind === 'device'"
             >Enter this code on the vendor’s page. Demi keeps waiting
             here.</template
@@ -82,10 +86,7 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
             >Signed in. {{ vendorName }} keeps using its active account;
             activate this one to switch.</template
           >
-          <template v-else-if="phase.kind === 'failed'"
-            >The sign-in did not complete.</template
-          >
-          <template v-else>Contacting {{ vendorName }}…</template>
+          <template v-else>The sign-in did not complete.</template>
         </p>
       </header>
 
@@ -94,7 +95,7 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
         class="flex items-center gap-2 py-4 text-chrome text-fg-muted"
       >
         <IndeterminateSpinner :size="ICON_PX.in24" />
-        Starting the sign-in…
+        Contacting {{ vendorName }}…
       </div>
 
       <div v-else-if="phase.kind === 'device'" class="flex flex-col gap-4">
@@ -169,6 +170,8 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
             >Continue</Button
           >
         </div>
+        <!-- The vendor's own words for a code it refused; the sign-in waits for another. -->
+        <InlineError v-if="phase.error && !phase.submitted" :message="phase.error" />
         <span class="flex items-center gap-1.5 text-[12px] text-fg-subtle">
           <IndeterminateSpinner :size="ICON_PX.in20" />
           <template v-if="phase.submitted">Signing in…</template>
