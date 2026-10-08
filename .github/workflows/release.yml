@@ -20,6 +20,13 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Cargo judges a source file by its checksum rather than its mtime, which a
+  # fresh checkout sets to the checkout's time: by mtime, every vendored crate
+  # restored from the previous release's cache compiled again. The unstable
+  # flag only lets Cargo accept the setting, so both are needed. These are in
+  # the workflow, not .cargo/config.toml, so a developer's builds keep mtimes.
+  CARGO_UNSTABLE_CHECKSUM_FRESHNESS: true
+  CARGO_BUILD_FINGERPRINT: content
 
 jobs:
   version:
