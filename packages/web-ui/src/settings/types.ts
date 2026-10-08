@@ -7,6 +7,7 @@ import type { SentenceText, TitleText } from '../ui/ui-text'
 import type { DeviceState } from '../devices/state'
 import type { DirectStatus } from '../devices/direct'
 import type { DeviceReport } from '../devices/report'
+import type { DeviceStart } from '../devices/installation'
 
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */
 export type SettingsTab = string
@@ -66,6 +67,8 @@ export interface SettingsDevice extends DeviceReport {
   state: DeviceState
   /** When the host was last seen, as an ISO 8601 timestamp; shown while it is offline. */
   seen?: string
+  /** How to start its runner again; its page's header gives it while it is offline. */
+  start?: DeviceStart | null
   /** When it was paired, as an ISO 8601 timestamp. */
   pairedAt: string
   /** How this page reaches it (`direct-channel.md` § What the user sees). */

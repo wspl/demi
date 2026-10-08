@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { upperFirst } from '@demicodes/utils'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
@@ -61,7 +62,6 @@ const title = computed(() =>
       : draft.value.name || draft.value.id,
 )
 
-const cap = (word: string) => word.charAt(0).toUpperCase() + word.slice(1)
 
 function toggleEffort(effort: string) {
   const list = draft.value.efforts
@@ -202,11 +202,11 @@ const canSave = computed(() => {
                 "
                 @click="toggleEffort(effort)"
               >
-                {{ cap(effort) }}
+                {{ upperFirst(effort) }}
               </button>
             </template>
             <span v-else class="text-chrome text-fg">{{
-              draft.efforts.length ? draft.efforts.map(cap).join(' · ') : 'None'
+              draft.efforts.length ? draft.efforts.map(upperFirst).join(' · ') : 'None'
             }}</span>
           </SettingsRow>
           <SettingsRow
