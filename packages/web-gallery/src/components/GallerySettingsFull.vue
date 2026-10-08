@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { demoDeviceInstallation, demoDeviceReport } from '../fixtures/device-installation'
+import { demoDeviceInstallation, demoDeviceReport, demoDeviceStart } from '../fixtures/device-installation'
+import { DEMO_RUNNER_RELEASE, galleryDevices, useGalleryDevices } from '../fixtures/devices'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -45,7 +46,8 @@ const cloud = ref<CloudState>(
     // The server was upgraded since this Cloud's last reset; a reset moves
     // its system to the new image.
     newerImage: true,
-    report: demoDeviceReport('linux'),
+    deviceId: 'cloud',
+    report: demoDeviceReport('linux', DEMO_RUNNER_RELEASE),
   }
 )
 // The request is pending until the server accepts it; every second request is refused, so the failed state has a page.
@@ -223,32 +225,12 @@ function restoreArchived(id: string) {
   s.value.archived = s.value.archived.filter((entry) => entry.id !== id)
 }
 
+/** The paired devices, whose controls act on them as the product's do. */
+const devices = useGalleryDevices(() => galleryDevices(demoDeviceStart))
 /** A revoked device leaves the list, and its projects go with it, as the product's do. */
 function revokeDevice(id: string) {
-  s.value.devices = s.value.devices.filter((d) => d.id !== id)
+  devices.revoke(id)
   s.value.deviceProjects = s.value.deviceProjects.filter((project) => project.deviceId !== id)
-}
-
-/** A renamed device's row takes its new name, as the product's state brings it. */
-function renameDevice(id: string, name: string) {
-  const device = s.value.devices.find((candidate) => candidate.id === id)
-  if (device) {
-    device.name = name
-  }
-}
-
-async function claimDevice(_code: string) {
-  await new Promise((resolve) => window.setTimeout(resolve, 900))
-  const n = s.value.devices.length + 1
-  const device = {
-    id: `device-${Date.now()}`,
-    name: `host-${n}`,
-    state: 'online' as const,
-    seen: new Date().toISOString(),
-    ...demoDeviceReport('macos'),
-  }
-  s.value.devices.push(device)
-  return { ok: true as const, device }
 }
 
 /** A change the keyboard settings accepted: the row takes the keys, as the product's preference does. */
@@ -341,14 +323,20 @@ function resetShortcuts() {
     :reset-pending="reset.status === 'pending'"
     :reset-error="reset.status === 'failed' ? reset.message : null"
     @reset-cloud="resetCloud"
-    :devices="s.devices"
+    :devices="devices.devices.value"
+    :shown="devices.shown.value"
+    :runner-release="DEMO_RUNNER_RELEASE"
+    :round-trip-ms="devices.roundTripMs()"
     :projects="s.deviceProjects"
     :overlay-store="appOverlayStore"
     :installation="demoDeviceInstallation"
-    :claim-device="claimDevice"
+    :claim-device="devices.claim"
     :name-max-length="64"
+    @show="devices.shown.value = $event"
+    @set-direct="devices.setDirect"
+    @try-now="devices.tryNow"
     @revoke="revokeDevice"
-    @rename="renameDevice"
+    @rename="devices.rename"
   />
 
   <SettingsKeyboard

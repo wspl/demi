@@ -8,6 +8,7 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use demi_web_api_protocol::devices::{NotAStunUrl, StunUrl};
 use demi_shared_types::{Clock, SystemClock};
 use demi_web_api_protocol::settings::InstanceMode;
 use tracing_subscriber::filter::Targets;
@@ -30,6 +31,27 @@ use demi_backend_user_shard::tuning::{
 };
 
 use self::secret::InstanceSecret;
+
+/// The STUN server a backend names when its configuration names none:
+/// Cloudflare's public one.
+const DEFAULT_STUN_URLS: &str = "stun:stun.cloudflare.com:3478";
+
+/// `DEMI_STUN_URLS`: comma-separated `stun:` URLs, or nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StunUrls(pub Vec<StunUrl>);
+
+impl std::str::FromStr for StunUrls {
+    type Err = NotAStunUrl;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        text.split(',')
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+            .map(str::parse)
+            .collect::<Result<_, _>>()
+            .map(Self)
+    }
+}
 
 /// The configuration as flags or `DEMI_*` variables. Each value's name in
 /// `--help` and in every error is its variable, so an unusable value stops
@@ -133,6 +155,16 @@ pub struct Config {
         value_delimiter = ','
     )]
     pub preview_origins: Vec<PageOrigin>,
+    /// The STUN servers pages and runners ask for their public address, so
+    /// that a direct channel crosses networks, comma-separated `stun:` URLs;
+    /// empty keeps direct channels to one network
+    #[arg(
+        long,
+        env = "DEMI_STUN_URLS",
+        value_name = "DEMI_STUN_URLS",
+        default_value = DEFAULT_STUN_URLS
+    )]
+    pub stun_urls: StunUrls,
     /// What the backend logs: a level, and a level per target, comma-separated,
     /// such as `info,demi::provider::claude_code::wire=trace`
     #[arg(
@@ -267,6 +299,7 @@ impl Config {
             .map_err(|_| ConfigError::PublicUrl)?;
         config.public_url = Some(public_url);
         config.claude_releases = self.claude_releases_url.clone();
+        config.stun = self.stun_urls.0.clone();
         config.preview = Some(PreviewSettings {
             domain: self.preview_domain.clone(),
             origins: self.preview_origins.clone(),
@@ -330,6 +363,9 @@ pub struct BackendConfig {
     pub lifecycle: LifecycleTuning,
     /// How the Cloud is run.
     pub cloud: CloudTuning,
+    /// The STUN servers pages and runners ask for their public address;
+    /// none keeps direct channels to one network, as a test's are.
+    pub stun: Vec<StunUrl>,
     /// The preview domain the backend keeps its namespace at; without it,
     /// none is registered and the pages are told none, as in a test that
     /// serves no preview domain.
@@ -381,6 +417,7 @@ impl BackendConfig {
             native: NativeCatalog::unpublished(),
             lifecycle: LifecycleTuning::default(),
             cloud: CloudTuning::default(),
+            stun: Vec::new(),
             preview: None,
             #[cfg(feature = "testing")]
             object_counts: None,

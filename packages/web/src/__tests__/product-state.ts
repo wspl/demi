@@ -22,6 +22,8 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
     workspaces: [],
     devices: [],
     publicUrl: 'http://127.0.0.1:3271/',
+    stunUrls: [],
+    runnerRelease: null,
     conversations: [],
     cloud: {
       device: null,
