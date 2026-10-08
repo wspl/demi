@@ -28,7 +28,7 @@ use demi_provider_common::{
     ToolDefinition,
 };
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, BlobRef, Block, BlockId, Clock, CommandId, FailureSource,
+    AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, FailureSource,
     ModelSelection, NodeId, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
     ToolResultContentBlock, ToolView, TurnId, UserContentBlock, WakeupCommand, WakeupId,
     WakeupPlacement,
@@ -957,7 +957,7 @@ impl SessionCore {
             Activity::Running(run) => run.turn.clone(),
             _ => TurnId::try_from(message.id.as_str()).expect("a message id is never empty"),
         };
-        let decided = matches!(message.event, AgentMessageEvent::Permission { .. });
+        let decided = message.event.is_from_product();
         self.inputs.add(Input::Agent(PendingAgentInput {
             turn_id,
             model: self.model.clone(),

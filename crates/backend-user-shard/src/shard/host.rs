@@ -9,7 +9,9 @@ use std::sync::Arc;
 use demi_backend_blobs::blobs::UserBlobs;
 use demi_backend_cloud::CloudShard;
 use demi_backend_database::control::ControlService;
+use demi_backend_database::conversation_index::ConversationChange;
 use demi_backend_database::conversations::ConversationDb;
+use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_host_access::HostShard;
 use demi_backend_host_access::access::Conversations;
 use demi_backend_host_access::plugin_files::{DirectorySets, PluginInstalls};
@@ -107,6 +109,18 @@ impl HostShard for Shard {
 
     fn hosts_changed(&self, conversation: &ConversationId) {
         self.mark(Part::Conversation(conversation.clone()));
+    }
+
+    fn transition<'a>(
+        &'a self,
+        conversation: &'a ConversationId,
+        change: ConversationChange,
+    ) -> LocalBoxFuture<'a, Result<(), ChangeRefusal>> {
+        Box::pin(Shard::transition(self, conversation, change))
+    }
+
+    fn settle_when_idle(&self, conversation: &ConversationId) {
+        Shard::settle_when_idle(self, conversation);
     }
 }
 

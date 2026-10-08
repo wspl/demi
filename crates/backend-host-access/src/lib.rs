@@ -35,6 +35,7 @@ use demi_backend_runners::devices::Devices;
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::public_url::PublicUrl;
 use demi_backend_runners::router::CommandRouter;
+use demi_backend_database::conversation_index::ConversationChange;
 use demi_shared_types::{Clock, NodeId};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use tokio_util::task::TaskTracker;
@@ -43,6 +44,7 @@ use futures_util::future::LocalBoxFuture;
 
 use self::access::Conversations;
 use self::plugin_files::{DirectorySets, PluginInstalls};
+use self::transition::ChangeRefusal;
 
 /// What host access needs of its user's shard: the handles its operations
 /// use, and the conversation's idle watch, which every Host admission starts.
@@ -90,6 +92,18 @@ pub trait HostShard {
     /// summary goes to the user's pages (`web-api.md` § Page
     /// synchronization).
     fn hosts_changed(&self, conversation: &ConversationId);
+    /// Applies `change` to the conversation through the shard's one entry
+    /// for its changes, and shows it on the user's pages, as a change the
+    /// user makes.
+    fn transition<'a>(
+        &'a self,
+        conversation: &'a ConversationId,
+        change: ConversationChange,
+    ) -> LocalBoxFuture<'a, Result<(), ChangeRefusal>>;
+    /// Makes the conversation's pending changes, a move or a detach an agent
+    /// asked for, once its tree is next idle (`sessions-and-targets.md`
+    /// § Switch the primary target).
+    fn settle_when_idle(&self, conversation: &ConversationId);
 }
 
 /// The root node of a conversation's tree, whose id is the conversation's in
