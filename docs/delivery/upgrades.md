@@ -224,7 +224,10 @@ current release serves:
    data directory that the configuration names and compares it with the new backend's; it knows them,
    being built from the same workspace. The databases whose versions differ
    will be migrated, so they will be copied, and the file system must have
-   room for the copy.
+   room for the copy. A database whose version is neither the new schema's
+   nor in its history, as one a development build of another unpublished
+   schema made, stops the upgrade here, naming the file, before anything is
+   interrupted: the new backend could not open it.
 5. **Manager state.** It reads the format of the manager's state directory.
    A release that changes the format is marked as one a rollback cannot
    cross ([Rollback](#rollback)), and `demi-server` says so before it goes
@@ -270,6 +273,59 @@ rename, a migration commits in one transaction
 ([Schemas and migrations](../backend/storage.md#schemas-and-migrations)), and
 a server that loses power after step 4 boots into the new release, whose
 services migrate and start as they would have.
+
+## A development build on a server
+
+For example, a batch of work is merged and the user wants to try it on their
+own server before anything is published. The developer runs:
+
+```sh
+bun xtask deploy
+```
+
+and the server moves to the build of the checkout, as an upgrade moves it to
+a published release, without a release, a tag or a version change in the
+repository. Pages reload into the new web app, the user's paired devices
+replace their runners, and Clouds wake with the new programs, exactly as
+after an upgrade.
+
+- **Which server.** The SSH host `DEMI_DEPLOY_HOST` names in the developer's
+  `.env`, or `--host`. The server must already run Demi
+  ([Installation](installation.md)); the SSH user may use `sudo`.
+- **The version.** The next patch version after the workspace's, as a
+  pre-release named by the build's time:
+  `0.1.22-dev.20261008T0930Z` after `0.1.21`. It sorts after every published
+  release before it and before the next one, so the next published release
+  upgrades the server as usual, and each deploy is newer than the last. The
+  build carries it as its workspace version, set for that build only; the
+  device page shows such a runner as *Development build*.
+- **What it builds.** On the developer's machine, with its own toolchain and
+  cross tools ([Cross builds](builds-and-releases.md#cross-builds)): the
+  server's Linux target, its backend, machine manager, `demi-server`,
+  runner and command programs; the runner and command programs of each
+  `--target`, by default the developer's own machine's target; and the web
+  app. A paired device of a target not built cannot take the new runner and
+  stays disconnected until a deploy with its target or a published release.
+- **The release.** `xtask server-release` assembles the root and the files
+  for those targets ([Server release](builds-and-releases.md#server-release)),
+  and the deploy copies them to the server with `rsync` over SSH. The Cloud
+  image is built on the server itself, from that root, with the same script
+  the release workflow runs, since it needs Linux and root, which the server
+  has. The archives and their `SHA256SUMS` then lie in one directory there.
+- **The move.** `sudo demi-server upgrade <version> --from <directory>`
+  carries it out ([The upgrade](#the-upgrade)): the checks, the database
+  copies, the switch and the return on failure are an upgrade's.
+  `demi-server rollback` returns to the release before it.
+- **Data.** A deploy that changes a schema migrates the server's databases
+  as an upgrade does. A schema changed again after a deploy shipped it, in
+  the same unpublished batch, leaves the server's databases at a version the
+  next build does not know: the Data check of [Prepare](#prepare) then stops
+  the deploy before anything is interrupted, and names the databases. The
+  developer resolves it before deploying again; nothing is migrated by
+  guesswork.
+
+A deploy prints what it built, the server's release afterwards
+(`demi-server status`) and how long each stage took.
 
 ## Rollback
 
