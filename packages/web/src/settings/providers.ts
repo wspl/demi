@@ -209,7 +209,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       apiKey: '',
       modelSource: 'catalog',
       catalogFetched: null,
-      stale: false,
       state: 'unconfigured',
       enabled: true,
       models: [],

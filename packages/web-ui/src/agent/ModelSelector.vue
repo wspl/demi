@@ -92,7 +92,6 @@ const compact = useRoomLabel(label, () => labelText.value)
       :overlay-store="appOverlayStore"
       variant="ghost"
       trigger-label="Model"
-      placement="bottom-end"
     >
       <template #trigger="{ isOpen }">
         <span class="relative inline-flex items-center overflow-hidden">

@@ -18,7 +18,7 @@ root agent runs:
 demi skills add vercel-labs/agent-skills --skill web-design-guidelines
 ```
 
-1. The command's leaf declares the category `skills.manage`, Manage skills.
+1. The command's leaf declares the category `skills.manage`, Manage Skills.
    This conversation has no grant of it, so the backend's dispatch records a
    **permission request** and ends the call before any handler runs. The
    command exits 1 at once and prints:
@@ -44,7 +44,7 @@ demi skills add vercel-labs/agent-skills --skill web-design-guidelines
      |   demi skills add vercel-labs/agent-skills \                  |
      |     --skill web-design-guidelines                             |
      |                                                               |
-     | Manage skills lets the agents of this conversation add,       |
+     | Manage Skills lets the agents of this conversation add,       |
      | update and remove skill sources and turn skills on or off.    |
      | Your skills reach every conversation, and the skills that are |
      | on are installed on every Host your conversations use.        |
@@ -83,7 +83,7 @@ new request.
 ## Categories
 
 A category is one power over Demi, broad enough that a user can judge it once
-for a conversation: Manage skills covers adding, updating and removing skill
+for a conversation: Manage Skills covers adding, updating and removing skill
 sources and turning skills on or off, not each of these on its own.
 
 A category is declared with the commands that need it, in the
@@ -92,10 +92,10 @@ plugin's group and a product's own group declare one the same way. A group
 declares the categories its leaves use, and a leaf that needs one names it as
 its `permission`:
 
-| Field | Meaning | For Manage skills |
+| Field | Meaning | For Manage Skills |
 | --- | --- | --- |
 | `id` | The category's id, unique in the command set; it starts with its group's name | `skills.manage` |
-| `action` | A lowercase verb phrase that completes "Allow this conversation to …"; with its first letter capitalized, it is the category's title | `manage skills` |
+| `action` | A lowercase verb phrase that completes "Allow this conversation to …"; in title case, as macOS labels are, it is the category's title, which its description also names it by | `manage skills`, titled Manage Skills |
 | `description` | What a grant allows, including its reach beyond the conversation, in one to three sentences | As on the card above |
 
 The command set's registration refuses a leaf whose `permission` names a
@@ -331,7 +331,7 @@ calls a real model.
 | The user denies it | The agent receives the denied message; no grant is stored; the next attempt raises a new request |
 | `demi conversation move` into a project on a device the conversation lacks, without either grant | One request of both categories; the card shows both; Allow grants both and the command then runs; with Organize Conversations granted before, the request holds Manage Devices alone |
 | The agent runs the command twice before a decision | One request, with the newer command line; a subagent's request of the same category stays beside it |
-| Two subagents' requests of Manage skills and one of another category; the user allows the first | Both subagents receive the allowed message; the other request stays |
+| Two subagents' requests of Manage Skills and one of another category; the user allows the first | Both subagents receive the allowed message; the other request stays |
 | A subagent asked and closed before the decision | Its parent receives the message, naming the subagent |
 | The backend restarts with a request undecided | After the start the request is listed; a decision then reaches the agent |
 | The backend stops after a decision is stored and before its message is admitted | At the start, the message is delivered once |

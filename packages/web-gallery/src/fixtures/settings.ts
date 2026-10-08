@@ -164,7 +164,6 @@ export function provider(
     apiKey: '',
     modelSource: 'catalog',
     catalogFetched: null,
-    stale: false,
     state: 'ready',
     enabled: true,
     models: [],
@@ -524,7 +523,7 @@ export function mockProviders(): MockProvider[] {
     provider({
       id: 'openai', name: 'OpenAI', kind: 'api_key', family: 'openai', vendorId: 'openai', logo: '/logos/openai.svg',
       baseUrl: 'https://api.openai.com/v1', wireApi: 'openai-responses', apiKey: 'sk-proj-91ce4a7b2d8f6e1c3a5b9d7f',
-      state: 'error', detail: '401 · Incorrect API key provided', catalogFetched: '3 days ago', stale: true,
+      state: 'error', detail: '401 · Incorrect API key provided', catalogFetched: '3 days ago',
       models: [
         model(
           {

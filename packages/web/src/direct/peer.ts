@@ -189,10 +189,15 @@ export async function connectPeer(options: PeerOptions): Promise<DirectPeer> {
     if (connection.iceConnectionState === 'connected' || connection.iceConnectionState === 'completed')
       iceConnected = true
   })
+  // The probe channel measures the direct path (`direct-channel.md`
+  // § Measuring the paths): a probe lost stays lost, as a video packet would.
+  // Made before the offer, which so carries the data channels' section, it
+  // opens with the connection, and the peer is ready once it is open: a
+  // measurement starts as the peer connects, and a probe sent before would be
+  // counted lost.
+  const probes = connection.createDataChannel(DIRECT_PROBE_LABEL, { ordered: false, maxRetransmits: 0 })
   signal?.addEventListener('abort', end, { once: true })
   try {
-    // A first channel, so that the offer carries the data channels' section.
-    connection.createDataChannel('direct')
     await connection.setLocalDescription(await connection.createOffer())
     const sdp = connection.localDescription?.sdp
     if (!sdp)
@@ -205,6 +210,7 @@ export async function connectPeer(options: PeerOptions): Promise<DirectPeer> {
     for (const candidate of waiting.splice(0))
       add(candidate)
     await connected(connection)
+    await opened(probes, DIRECT_CONNECT_MS)
   } catch (error) {
     attempt.permission = options.permission()
     attempt.durationMs = Date.now() - started
@@ -227,9 +233,6 @@ export async function connectPeer(options: PeerOptions): Promise<DirectPeer> {
     if (connection.connectionState === 'failed' || connection.connectionState === 'closed')
       end()
   })
-  // The probe channel measures the direct path (`direct-channel.md`
-  // § Measuring the paths): a probe lost stays lost, as a video packet would.
-  const probes = connection.createDataChannel(DIRECT_PROBE_LABEL, { ordered: false, maxRetransmits: 0 })
   const probed = new Set<(id: number) => void>()
   probes.addEventListener('message', (event: MessageEvent) => {
     const id = probeId(event.data)
@@ -391,6 +394,28 @@ class Inbox {
   }
 }
 
+/** Waits for `channel` to open, at most `limitMs` when given; one that closes first did not open. */
+function opened(channel: RTCDataChannel, limitMs?: number): Promise<void> {
+  if (channel.readyState === 'open')
+    return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const settle = (error: ChannelFailed | null) => {
+      clearTimeout(timer)
+      channel.removeEventListener('open', open)
+      channel.removeEventListener('close', close)
+      if (error)
+        reject(error)
+      else
+        resolve()
+    }
+    const open = () => settle(null)
+    const close = () => settle(new ChannelFailed('The direct channel did not open'))
+    const timer = limitMs === undefined ? undefined : setTimeout(() => settle(new ChannelFailed('The direct channel did not open in time')), limitMs)
+    channel.addEventListener('open', open)
+    channel.addEventListener('close', close)
+  })
+}
+
 async function openChannel<T>(
   connection: RTCPeerConnection,
   header: ChannelHeader,
@@ -419,10 +444,7 @@ async function openChannel<T>(
     inbox.finish(lost ? new ChannelFailed('The direct connection went') : 'closed')
   })
   channel.addEventListener('error', () => inbox.finish(new ChannelFailed('The direct channel failed')))
-  await new Promise<void>((resolve, reject) => {
-    channel.addEventListener('open', () => resolve(), { once: true })
-    channel.addEventListener('close', () => reject(new ChannelFailed('The direct channel did not open')), { once: true })
-  })
+  await opened(channel)
   let answered: Promise<T> | null = null
   const answer = () => {
     answered ??= inbox.next().then((first) => {

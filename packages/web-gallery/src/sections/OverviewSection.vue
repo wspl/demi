@@ -28,19 +28,17 @@ function sampleThinkingEndedAt(index: number): string | null {
         Every specimen is the same component the product mounts.
       </p>
       <p>
-        The appearance menu remaps token values so the same session can be judged under each paradigm.
-        Product still ships one light/dark pair.
+        The appearance menu switches the theme, the mode and the accent, so the same session can be
+        judged under the product's two tones, Ink and Warm, and under Flat, the one on trial.
       </p>
       <p class="text-fg-muted">
         Current: <span class="text-fg">{{ galleryState.paradigm }}</span>
         · {{ galleryState.mode }}
-        · tone {{ galleryState.tone }}
         · accent {{ galleryState.accent }}
-        · {{ galleryState.density }} / {{ galleryState.radius }} / {{ galleryState.shadow }}
       </p>
     </div>
 
-    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <div class="grid gap-3 md:grid-cols-3">
       <button
         v-for="item in PARADIGMS"
         :key="item.id"

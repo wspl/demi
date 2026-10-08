@@ -10,7 +10,6 @@ import { toolRenderKind } from '../tool-rendering'
 
 const props = defineProps<{
   block: ToolCallBlock
-  isStreaming: boolean
 }>()
 
 const parsedInput = computed(() => parseToolCallInput(props.block))
@@ -22,7 +21,6 @@ const renderKind = computed(() => toolRenderKind(props.block.toolName))
     v-if="renderKind === 'shell_exec'"
     :block="block"
     :input="parsedInput"
-    :is-streaming="isStreaming"
   />
   <ToolShellStatusBlock
     v-else-if="renderKind === 'shell_status'"

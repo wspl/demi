@@ -10,7 +10,7 @@ import { defaultWindow, useEventListener } from '@vueuse/core'
 import { useConversations } from '../conversation/store'
 import { useProduct } from '../state/product'
 import { executionFor } from '../targets/execution'
-import type { DeviceRoute, DirectStatus } from '@demicodes/web-ui/devices/direct'
+import { statusPath, type DevicePath, type DeviceRoute, type DirectStatus } from '@demicodes/web-ui/devices/direct'
 import { DeviceDirect, directState, type DirectState, type Permission } from './device'
 import { DeviceMeter, meterState, type MeterState } from './meter'
 import { connectPeer } from './peer'
@@ -84,21 +84,28 @@ export function directStatus(deviceId: string): DirectStatus {
     attempt: state.attempt,
     nextAt: state.nextAt === null ? null : new Date(state.nextAt).toISOString(),
     figures: measured.figures,
+    measuring: measured.measuring,
   }
 }
 
 /**
- * Measures paired device `deviceId`'s paths while its page shows, starting
- * its use while its runner is connected; the answer ends the measuring.
+ * The path this page uses for paired device `deviceId`, as the host menu
+ * names it (`DEVICE_PATH_LABEL`): "LAN". The last path found stays while
+ * the page lives; none for a device this page never used.
  */
-export function measureDirect(deviceId: string): () => void {
+export function directPath(deviceId: string): DevicePath | null {
+  return states.has(deviceId) ? statusPath(directStatus(deviceId)) : null
+}
+
+/**
+ * Measures paired device `deviceId`'s paths once, starting its use while
+ * its runner is connected, as its page shows or Measure asks
+ * (`direct-channel.md` § Measuring the paths). A measurement that runs is
+ * joined.
+ */
+export function measureDirect(deviceId: string): void {
   watchDirect(deviceId)
-  const device = used.get(deviceId)
-  if (!device)
-    return () => {}
-  // A page shown speaks of now: with no peer, an attempt starts at once.
-  device.direct.tryNow()
-  return device.meter.use()
+  void used.get(deviceId)?.meter.measure()
 }
 
 /** Makes a new attempt to device `deviceId` at once, as Try Again asks. */
@@ -134,13 +141,15 @@ function use(deviceId: string): DeviceDirect {
         const timer = setTimeout(run, ms)
         return () => clearTimeout(timer)
       },
+      // Automatic decides from a measurement of the new peer's path.
+      connected: () => void meter.measure(),
     },
     state,
   )
   const route = (): DeviceRoute => product.snapshot?.devices.find((device) => device.id === deviceId)?.route ?? 'automatic'
   const measured = meters.get(deviceId) ?? reactive(meterState())
   meters.set(deviceId, measured)
-  const meter = new DeviceMeter(deviceId, direct, signaling, route, measured)
+  const meter = new DeviceMeter(direct, signaling, route, measured)
   direct.setPermission(permission.value)
   direct.setRoute(route())
   used.set(deviceId, { direct, signaling, meter })
@@ -190,8 +199,8 @@ function follow(): void {
           used.get(deviceId)?.direct.setRoute(route)
       },
     )
-    // The conversation the page shows measures its device's paths while it
-    // shows (`direct-channel.md` § Measuring the paths).
+    // The conversation the page shows makes its device's peer before its
+    // first operation needs it.
     const conversations = useConversations()
     watch(
       () => {
@@ -199,9 +208,9 @@ function follow(): void {
         const execution = summary ? executionFor(summary) : null
         return execution?.kind === 'device' && execution.state === 'online' ? execution.deviceId : null
       },
-      (deviceId, _, onCleanup) => {
+      (deviceId) => {
         if (deviceId)
-          onCleanup(measureDirect(deviceId))
+          watchDirect(deviceId)
       },
       { immediate: true },
     )
