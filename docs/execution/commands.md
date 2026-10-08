@@ -96,8 +96,12 @@ as `permission`, such as `skills.manage` for `demi skills add`, and one of its
 groups declares that category with its `action` and `description`. The
 declaration is all a command does about permissions: the backend's dispatch
 checks the conversation's grant before the handler runs
-([The check](../agent/permissions.md#the-check)). The runner ignores both
-fields.
+([The check](../agent/permissions.md#the-check)). A leaf whose input field
+names a device or a project that the call may bring into the conversation
+declares that field as `bringsHost`, as `demi conversation move` declares its
+project, and the dispatch adds Manage Devices when it does
+([Several categories](../agent/permissions.md#several-categories)). The
+runner ignores these fields.
 
 A group contains subcommands and does not execute a handler. A command name
 starts with an ASCII letter or digit and continues with letters, digits,
@@ -113,6 +117,8 @@ these declarations:
 - a `permission` on a `native` leaf, a `permission` that names a category
   none of the leaf's groups declares, and a category declared twice in the
   command set;
+- a `bringsHost` on a `native` leaf, or one that names no string field of the
+  input;
 - a `stdinField` that is not a string, or a `restField` that is not an array of
   strings;
 - a field schema outside the [input subset](#the-input-subset).

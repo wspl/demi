@@ -3,8 +3,9 @@
 Demi has no general permission system: the agent runs commands on its Host,
 edits files and opens pages without asking, because the user chose the Host
 and the working directory. It asks only before an agent acts on Demi itself,
-on what the user owns beyond the conversation: today, managing the user's
-skills; later, for example, reading another conversation. Each such power is
+on what the user owns beyond the conversation: managing the user's skills,
+organizing conversations and projects, managing the devices a conversation
+reaches; later, for example, reading another conversation. Each such power is
 one broad **category**, and a user who allows a category allows it for one
 conversation ([Grants](#grants)).
 
@@ -121,13 +122,18 @@ The check is the same for a plugin's command, the product's `demi host` and
 the agent runtime's `demi agent`; no handler takes part in it, and a handler
 never sees a permission.
 
-- **A leaf without `permission`** is dispatched.
-- **A grant of its category in the call's conversation**, whichever agent of
-  the tree runs it: the call is dispatched.
-- **No grant**: the backend records a request, ends the call with exit status
-  1 and the message `demi: this conversation needs the user's permission to
-  <action>; the request was sent to the user, and you will be told when the
-  user decides`, and dispatches nothing. Nothing waits: the command ends as
+- **The categories the call needs**: its leaf's `permission`, and Manage
+  Devices when the call brings a paired device into the conversation
+  ([Several categories](#several-categories)). A call that needs none is
+  dispatched.
+- **A grant of each in the call's conversation**, whichever agent of the
+  tree runs it: the call is dispatched.
+- **A category without a grant**: the backend records one request for every
+  category the call needs and the conversation lacks, ends the call with exit
+  status 1 and the message `demi: this conversation needs the user's
+  permission to <action>; the request was sent to the user, and you will be
+  told when the user decides`, the actions joined with "and", and dispatches
+  nothing. Nothing waits: the command ends as
   any failing command does, so the observation window, the turn and the
   Host's idle rules are those of any command.
 
@@ -138,7 +144,7 @@ A request records one refused call:
 | Field | Meaning |
 | --- | --- |
 | `id` | The request's id |
-| `category` | The category's id |
+| `categories` | The ids of the categories the call lacked, one or more |
 | `command` | The command line as the agent ran it: the call's argv, quoted for a POSIX shell, such as `demi skills add vercel-labs/agent-skills --skill web-design-guidelines` |
 | `agent` | The agent that ran it: the root, or a subagent's number and description |
 | `createdAt` | When the call was refused |
@@ -149,12 +155,12 @@ oldest first, with its place in the queue ("1 of 3"), and the next one once
 that is decided.
 
 **Replacement.** A new request replaces an undecided request of the same
-category from the same agent: the agent ran the command again, and its newest
+categories from the same agent: the agent ran the command again, and its newest
 command line is the one to show. Requests of other agents stay.
 
-**Allow** records the conversation's grant of the category and decides every
-request of that category in the conversation as allowed: each agent that asked
-is told so. **Deny** decides that one request as denied and records nothing
+**Allow** records the conversation's grant of each of the request's
+categories and decides as allowed every request in the conversation whose
+categories are now all granted: each agent that asked is told so. **Deny** decides that one request as denied and records nothing
 else, so the next attempt raises a new request; another request of the
 category stays in the queue.
 
@@ -171,8 +177,8 @@ entry as a subagent's message, so it follows the same delivery rules: it
 joins a running turn at its next continuation boundary, and otherwise wakes
 the agent with a continuation ([Delivery and
 scheduling](subagents.md#delivery-and-scheduling)). Its event is
-`permission`, with the outcome `allowed` or `denied` and the category's
-action, and its content one of:
+`permission`, with the outcome `allowed` or `denied` and the actions of the
+request's categories, joined with "and", and its content one of:
 
 ```text
 The user allowed this conversation to <action>; the command `<command>` can now run.
@@ -199,6 +205,43 @@ after reporting the refusal, the message goes to its nearest live ancestor,
 the root at last, which owns the work the subagent was doing. The message then
 names the subagent that asked.
 
+### Several categories
+
+One command can need two categories: `demi conversation move ledable-app`
+needs Organize Conversations, and when ledable-app is on a paired device the
+conversation neither runs on nor has attached, moving there brings that
+device in, which is Manage Devices. The user decides once for the command:
+
+```text
++---------------------------------------------------------------+
+| Allow this conversation to organize conversations and manage  |
+| devices?                                                      |
+|                                                               |
+| The agent ran                                                 |
+|   demi conversation move ledable-app                          |
+|                                                               |
+| ▸ Organize Conversations                                      |
+|   Organize Conversations lets the agents of this ...          |
+| ▸ Manage Devices                                              |
+|   Manage Devices lets the agents of this conversation ...     |
+|                                                               |
+|                     [ Deny ]  [ Allow for This Conversation ] |
++---------------------------------------------------------------+
+```
+
+The request holds only the categories the conversation lacks, so a
+conversation that already organizes conversations is asked about Manage
+Devices alone, with the one-category card. Allow grants them all and Deny
+none: a grant of one would not let the command run. The decision's message
+joins the actions with "and" as the title does.
+
+Which device a call brings is the dispatch's to resolve, not a handler's: a
+leaf whose argument names a device or a project declares that argument as
+`bringsHost`, and the check resolves it, a project to its device, and adds
+Manage Devices when it is a paired device that is neither the conversation's
+primary Host nor attached. `demi conversation move` declares its project, and
+`demi host attach` needs Manage Devices as its own `permission`.
+
 ## Grants
 
 A grant is one category allowed in one conversation. It covers every agent
@@ -220,11 +263,11 @@ card pinned above the composer, below the transcript and above the dock's
 chips. It is not a modal: the user can read the transcript, write a message
 or a steer while it is there. The card shows:
 
-- its title, "Allow this conversation to `<action>`?", and "1 of N" when
-  several requests wait;
+- its title, "Allow this conversation to `<action>`?", its categories'
+  actions joined with "and", and "1 of N" when several requests wait;
 - the command line the agent ran, as a code line;
 - for a subagent's request, the subagent that ran it, by its description;
-- the category's description;
+- each category's description, under its title when there are several;
 - two buttons, **Deny** and **Allow for This Conversation**.
 
 A decision another page made, on another tab or device, removes the card on
@@ -286,6 +329,7 @@ calls a real model.
 | A second `demi skills` change in the same conversation, by a subagent | It runs without a request |
 | The same command in another conversation | It raises a request |
 | The user denies it | The agent receives the denied message; no grant is stored; the next attempt raises a new request |
+| `demi conversation move` into a project on a device the conversation lacks, without either grant | One request of both categories; the card shows both; Allow grants both and the command then runs; with Organize Conversations granted before, the request holds Manage Devices alone |
 | The agent runs the command twice before a decision | One request, with the newer command line; a subagent's request of the same category stays beside it |
 | Two subagents' requests of Manage skills and one of another category; the user allows the first | Both subagents receive the allowed message; the other request stays |
 | A subagent asked and closed before the decision | Its parent receives the message, naming the subagent |

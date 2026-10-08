@@ -110,6 +110,39 @@ device does not add a duplicate attachment. Previous paths continue to refer to
 their original device; another directory on the same Cloud machine remains
 locally accessible.
 
+**Telling the agent.** A switch the user makes may tell the agent at once
+([Where a conversation runs](../product/product.md#where-a-conversation-runs)):
+with `notifyAgent`, the backend commits the switch and then admits a message
+from the user into the root, through the entry a permission decision uses
+([The decision's message](../agent/permissions.md#the-decisions-message)), so
+it wakes the idle root with a turn. Like a decision, it is an agent message
+whose sender is the user, so it continues the work so far and starts no
+request ([Edit tracking](edit-tracking.md#a-request)). Its event is `moved`,
+and the model reads:
+
+```text
+The user moved this conversation from Cloud (/home/demi/sessions/0f4e…) to
+MacBook Pro (/Users/zan/code/ledable-app). Files did not move. Check what this
+means for the work so far, and tell the user.
+```
+
+followed, as before any inference, by the new execution-context block. The
+message's id is `moved:<revision>`, the execution-context revision the switch
+made, so delivering it again changes nothing. Without `notifyAgent` nothing
+is admitted, and the agent reads the switch from the block at its next turn.
+
+**A switch the agent asks for.** An agent's command that moves its own
+conversation ([What the agent can change](#what-the-agent-can-change)) runs
+while its tree works, which a switch refuses. The command therefore records
+the switch as the conversation's **pending move** and answers at once; the
+backend makes it, as above, when the tree is next idle, before it admits
+anything else, so the next turn, the user's or a wakeup's, runs in the new
+place and reads it from its block. A newer pending move replaces an older
+one; an archive drops it. A pending move that fails when it is made, such as
+to a device that has gone offline, leaves the conversation where it was and
+reaches the root as a message from the backend that names the reason, which
+wakes it.
+
 Each node observes the latest execution-context revision before its next inference,
 the first one included: a node's first inference is preceded by a block of
 the current revision, so the agent never has to probe where it runs. For
@@ -138,19 +171,23 @@ its shells start in.
 
 ## Attached hosts
 
-The user grants access by attaching devices; the agent cannot attach a device
-for itself. Each device appears once across the primary and attached bindings.
-Aliases begin with device names and use numeric suffixes for collisions. The
-host API supports alias changes, promotion through target exchange, and detach.
+The conversation's agents attach the devices their work needs, with
+`demi host attach`, which the user allows once per conversation
+([What the agent can change](#what-the-agent-can-change)); the product offers
+no way to attach one by hand, and the user detaches one from the header's
+menu ([Where a conversation runs](../product/product.md#where-a-conversation-runs)).
+Each device appears once across the primary and attached bindings.
+Aliases begin with device names, or the name `demi host attach --name`
+gives, and use numeric suffixes for collisions. Choosing an attached device
+as the primary Host exchanges the two.
 
 `demi host list` reports accessible primary and attached hosts.
 `demi host shell --host <name|id> <script>` verifies ownership and the conversation
 binding before starting a job. A sleeping Cloud device wakes for work; attachment
-alone does not keep it running. The product picker offers paired devices, while
-Cloud can become attached when it is a departed primary target. A new
-conversation's draft, which has no record before its first send, keeps the
-same rule: a device it makes its primary leaves its attached hosts. The
-target it leaves is not attached, since nothing has run there.
+alone does not keep it running. `demi host attach` attaches a paired
+device; the Cloud becomes attached when it is a departed primary target. A
+new conversation's draft has no attached hosts, and the target it leaves
+when the user moves it is not attached, since nothing has run there.
 
 Attached cwd is a starting directory, not a permission boundary. It is updated
 from completed cross-host jobs. Files can be transferred explicitly with ordinary
@@ -164,6 +201,41 @@ demi host shell --host ci 'tar c -C /work .' | tar x
 The backend brokers the byte streams. Attachment changes advance execution context
 for each node. Revoking a paired device terminates its connection, which ends every
 conversation's state on it.
+
+## What the agent can change
+
+The agent can change where its own conversation runs, its title and the
+devices it reaches, with commands of two [permission
+categories](../agent/permissions.md#categories), each allowed once per
+conversation:
+
+| Command | Does | Category |
+| --- | --- | --- |
+| `demi conversation rename "<title>"` | Renames this conversation ([Conversation titles](../product/product.md#conversation-titles)) | `conversation.organize` |
+| `demi conversation projects` | Lists the user's projects: name, Host, directory | `conversation.organize` |
+| `demi conversation move <project>` | Moves this conversation into a project, by name or id | `conversation.organize` |
+| `demi conversation move --out` | Moves it out of its project, to the same directory on the same Host | `conversation.organize` |
+| `demi conversation create-project <name> [<directory>]` | Makes a project of a directory on the primary Host, its shell's directory by default, and moves this conversation into it | `conversation.organize` |
+| `demi host devices` | Lists the user's paired devices and the Cloud, with their states | `host.devices` |
+| `demi host attach <device> [--name <alias>]` | Attaches a device to this conversation | `host.devices` |
+| `demi host detach <host>` | Detaches one | `host.devices` |
+
+The categories:
+
+| Id | Action | Description |
+| --- | --- | --- |
+| `conversation.organize` | organize conversations | Organize Conversations lets the agents of this conversation rename it, list your projects, make a project of a directory, and move this conversation into or out of one. Projects show in your sidebar on every device. |
+| `host.devices` | manage devices | Manage Devices lets the agents of this conversation list your devices, and attach them to this conversation or detach them. The agents run commands as you on an attached device. |
+
+`move` and `create-project` change where the conversation runs, and make a
+[pending move](#switch-the-primary-target) that applies when the tree is next
+idle; they print that the move applies when this conversation's work ends.
+`rename`, `attach` and `detach` apply at once; an attach or detach is
+announced to every node in its next execution-context block, as one the user
+makes. A move into a project on a paired device that is neither the primary
+Host nor attached brings that device into the conversation, so it also needs Manage
+Devices, and one request asks for both
+([Several categories](../agent/permissions.md#several-categories)).
 
 ## Host operations
 

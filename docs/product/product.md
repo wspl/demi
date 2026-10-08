@@ -130,6 +130,67 @@ Conversation does: an immediately typeable draft, which the first send makes a
 conversation, so a project the user only wanted to set up leaves no empty
 conversation behind.
 
+### Where a conversation runs
+
+The conversation's header shows the Host it runs on, the primary Host, with
+the number of attached devices beside it (*MacBook Pro +1*). Its menu is one
+level, as a Wi-Fi menu lists networks:
+
+```text
+Run On
+  ☁ Cloud
+  🖥• MacBook Pro          ✓
+  🖥• Studio PC      Offline   (cannot be chosen)
+  + Add Device…
+─────────
+Attached
+  🖥• build-box       [Detach]
+```
+
+- **Run On** lists the Cloud and every paired device with its state; the
+  primary Host is checked, and an offline device cannot be chosen. **Add
+  Device…** pairs a new one.
+- **Choosing a Host.** In a conversation outside a project, a click moves it
+  there at once: to the device's home directory, or the Cloud's directory of
+  the conversation. In a project, each Host but the checked one reads
+  *Cloud…*, *Studio PC…*: choosing it opens that Host's directory picker,
+  and choosing a directory moves the conversation there, into the project
+  whose directory it is, or out of its project otherwise. The header's
+  directory menu chooses another directory on the same Host the same way.
+- **Attached** lists the devices the conversation's agents attached, by name
+  and state. An attached device has no directory or project of its own to
+  show: it is a machine the agents may run commands on. The user cannot
+  attach one here, since the agents attach what their work needs
+  ([What the agent can change](../execution/sessions-and-targets.md#what-the-agent-can-change));
+  each row has **Detach**, so the user can always take a device back.
+
+**Telling the agent.** Moving a conversation that has messages asks first,
+since the agent's work so far was done in the old place:
+
+```text
+  Move this conversation to MacBook Pro?
+
+  It will run in ~/code/ledable-app. Files on the Cloud stay there.
+  The agent learns of the move when it next works, or now if you tell it.
+
+                    [ Cancel ]  [ Move ]  [ Move and Tell Agent ]
+```
+
+*Move and Tell Agent*, the default, moves it and wakes the agent with a
+message from the user that names the old and the new place, so it checks what
+the move means for its work and says so; the transcript shows it as a receipt
+row, *You moved this conversation to MacBook Pro · ~/code/ledable-app*. *Move*
+moves it only, and the agent reads the move from its execution context at its
+next turn ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)).
+A new conversation that has sent nothing moves without asking. A conversation
+moves only while its work is idle, as the header's menus say by being
+unavailable while it runs.
+
+A conversation enters or leaves a project only through where it runs: its
+header's menus, or its agent's commands. The sidebar's menus have no Move To,
+since a project is a directory on a Host, and moving a conversation into one
+moves where it runs.
+
 Conversations can be archived and restored, or deleted. Archiving is refused
 while root or child work or conflicting operations are active. Archiving says
 so in a toast with Undo, as Gmail and Linear do. Archived history remains
