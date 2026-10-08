@@ -615,6 +615,8 @@ useGalleryTranscripts(() => ({ blocks: changesFlow.state.blocks, subagents: [] }
 /** The requests of the Request’s Changes specimens, which the panel under them reads as the product reads a conversation. */
 const signInBlocks = signInRequestBlocks('sign-in')
 const signInOffBlocks = signInRequestBlocks('sign-in-off')
+/** The same request still working, its last call ended and no reply yet. */
+const signInRunningBlocks = signInRequestBlocks('sign-in-running').slice(0, -1)
 const uncopiedBlocks = uncopiedRequestBlocks()
 const parentBlocks = helperParentBlocks()
 const childBlocks = helperBlocks()
@@ -1792,7 +1794,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Request’s Changes"
-        note="A request runs from the user’s message to their next one, through yields, receipts and steers. Once one of its calls changed a file, its reply ends, above Copy and Fork, with a button naming how many files and the lines of their All Changes, which grows as later calls end; the counts arrive once the button is in view, and a request whose files’ ends were not kept, as the logo’s, names its files alone. It opens the Change view below on the first file’s All Changes; a file pill opens its file at that call’s first edit. A subagent’s changes show only in its own transcript. With the changes plugin off, the button and the pills are no controls."
+        note="A request runs from the user’s message to their next one, through yields, receipts and steers. Once it has ended and one of its calls changed a file, its reply ends, above Copy and Fork, with a button naming how many files and the lines of their All Changes; while it still works, in its turn or a later one it continues, the button waits, as Copy and Fork do, and the pills under each call show its files. The counts arrive once the button is in view, and a request whose files’ ends were not kept, as the logo’s, names its files alone. It opens the Change view below on the first file’s All Changes; a file pill opens its file at that call’s first edit. A subagent’s changes show only in its own transcript. With the changes plugin off, the button and the pills are no controls."
       >
         <GallerySpecimen variant="two files, login.ts edited three times across a yield" wide>
           <div class="gallery-frame h-[30rem] bg-surface">
@@ -1803,6 +1805,21 @@ onBeforeUnmount(() => {
               :pending-steers="[]"
               :queue="[]"
               phase="idle"
+              :bottom-offset="0"
+              :persisted-scroll-state="undefined"
+              read-only
+            />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="still working · the same request before its reply, with no button yet" wide>
+          <div class="gallery-frame h-[30rem] bg-surface">
+            <AgentMessageList
+              class="h-full"
+              conversation-id="gallery-request-running"
+              :blocks="signInRunningBlocks"
+              :pending-steers="[]"
+              :queue="[]"
+              phase="running"
               :bottom-offset="0"
               :persisted-scroll-state="undefined"
               read-only
@@ -2536,7 +2553,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Change View"
-        note="Diffs from one of two sources, the switch in the header picks. A changed image, video, audio file or PDF shows its committed version beside the working tree’s instead, each with its sizes, a new file only the second; a binary file with no preview shows a card per side with Download, and a committed version over 8 MiB says it is too large, with no Download. Markdown and SVG switch between the text diff and Preview, which renders both sides, labeled “Committed” and “Working tree”, or “Before” and “After” in Conversation. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of the files git status lists, each ending its row with its line counts and the letter VS Code’s Git marks it with, by VS Code’s own rules from git’s two status letters: “U” untracked, “A” added, “M” modified, “D” deleted (its name struck through), “R” renamed, “T” type changed, and an exclamation mark in conflict, in VS Code’s colors and with VS Code’s words as the tooltip; where git has a letter for both the index and the working tree, the working tree’s shows, so a staged new file edited again is M. The fixtures hold every mark. The files and lines are summed up in the tree’s caption. Conversation shows one request: its files in the order it first changed them, and under them a line that files other programs wrote aren’t listed, with Show Uncommitted. A file shows All Changes, from before the request’s first edit to after its last, when both were kept, and otherwise opens at its first edit with contents; a file edited more than once steps through its edits, Edit 2 of 3, each named by its call’s title. A file without contents has no diff, and a request an edit removed says it is no longer in the conversation. Back and Forward walk what the view has shown. The header also opens the selected file itself. Either sidebar has a toggle, and in a narrow view it hides and shows over the diff the way the File view’s tree does; its tree’s caption lists the changes again, its control turning while the list is on its way. A header over the diff names the file shown, in either mode, as GitHub’s diff header does: its icon, its folder from the workspace, its name, where a renamed file came from, and the line counts of the diff under it; a request’s files list no counts of their own. A request’s button opens Conversation on its first file’s All Changes, a file pill on its file at that call’s first edit; the Change tab picked again shows the view as it was left; with nothing picked, Conversation says how to fill it. Under Uncommitted, a workspace outside a Git repository shows no file tree or toggle, only “Not a git repository.” It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory’s name, as the product does for the Cloud’s own session directory. The tree takes the keyboard as the File View’s does: typing a name moves to the first row shown that starts with it, and Enter selects a file."
+        note="Diffs from one of two sources, the switch in the header picks. A changed image, video, audio file or PDF shows its committed version beside the working tree’s instead, each with its sizes, a new file only the second; a binary file with no preview shows a card per side with Download, and a committed version over 8 MiB says it is too large, with no Download. Markdown and SVG switch between the text diff and Preview, which renders both sides, labeled “Committed” and “Working tree”, or “Before” and “After” in Conversation. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of the files git status lists, each ending its row with its line counts and the letter VS Code’s Git marks it with, by VS Code’s own rules from git’s two status letters: “U” untracked, “A” added, “M” modified, “D” deleted (its name struck through), “R” renamed, “T” type changed, and an exclamation mark in conflict, in VS Code’s colors and with VS Code’s words as the tooltip; where git has a letter for both the index and the working tree, the working tree’s shows, so a staged new file edited again is M. The fixtures hold every mark. The files and lines are summed up in the tree’s caption. Conversation shows one request: its files in the order it first changed them. A file shows All Changes, from before the request’s first edit to after its last, when both were kept, and otherwise opens at its first edit with contents; a file edited more than once steps through its edits, Edit 2 of 3, each named by its call’s title. A file without contents has no diff, and a request an edit removed says it is no longer in the conversation. Back and Forward walk what the view has shown. The header also opens the selected file itself. Either sidebar has a toggle, and in a narrow view it hides and shows over the diff the way the File view’s tree does; its tree’s caption lists the changes again, its control turning while the list is on its way. A header over the diff names the file shown, in either mode, as GitHub’s diff header does: its icon, its folder from the workspace, its name, where a renamed file came from, and the line counts of the diff under it; a request’s files list no counts of their own. A request’s button opens Conversation on its first file’s All Changes, a file pill on its file at that call’s first edit; the Change tab picked again shows the view as it was left; with nothing picked, Conversation says how to fill it. Under Uncommitted, a workspace outside a Git repository shows no file tree or toggle, only “Not a git repository.” It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory’s name, as the product does for the Cloud’s own session directory. The tree takes the keyboard as the File View’s does: typing a name moves to the first row shown that starts with it, and Enter selects a file."
       >
         <GallerySpecimen
           v-for="specimen in [
