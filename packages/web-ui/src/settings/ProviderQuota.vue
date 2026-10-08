@@ -2,6 +2,7 @@
 import { computed, useTemplateRef, watch } from 'vue'
 import { useElementVisibility } from '@vueuse/core'
 import Meter from '../ui/Meter.vue'
+import { formatPercent } from '../ui/percent'
 import type { SettingsQuotaWindow } from './types'
 
 /** Displays an account's quota and requests a free refresh each time it becomes visible. */
@@ -43,7 +44,7 @@ watch(computed(() => visible.value && props.autoRefresh), (shown) => {
           :max="window.max"
           :label="window.label"
         />
-        <span class="ml-auto wrap-anywhere @xs:ml-0">{{ window.used }}%<template v-if="window.resets"> · resets {{ window.resets }}</template></span>
+        <span class="ml-auto wrap-anywhere @xs:ml-0">{{ formatPercent(window.used, window.max) }}<template v-if="window.resets"> · resets {{ window.resets }}</template></span>
       </div>
     </div>
   </div>

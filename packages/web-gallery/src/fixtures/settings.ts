@@ -313,10 +313,13 @@ export function mockProviders(): MockProvider[] {
           label: 'zan@family.example',
           plan: '',
           active: false,
-          // A vendor names its windows as it likes; the label column fits the longest.
+          // A vendor names its windows as it likes; the label column fits the longest. Its
+          // usage comes as used ÷ limit × 100 in floating point, which reads in whole percent,
+          // rounded down, so a window shows full only once it is.
           quota: [
-            { id: 'requests', label: 'Requests (short window)', used: 12, max: 100, resets: 'in 40 s' },
-            { id: 'tokens', label: 'Tokens (short window)', used: 3, max: 100, resets: 'in 40 s' },
+            { id: 'requests', label: 'Requests (short window)', used: 7.000000000000001, max: 100, resets: 'in 40 s' },
+            { id: 'tokens', label: 'Tokens (short window)', used: 0.4, max: 100, resets: 'in 40 s' },
+            { id: 'daily', label: 'Daily', used: 98.6, max: 100, resets: 'tomorrow' },
           ],
         },
         // Long text everywhere: the tags move under the name, which is cut only where the line

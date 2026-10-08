@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { formatPercent } from './percent'
 
 /** A quota bar. Turns warning past 80 percent and danger when full. */
 const props = withDefaults(defineProps<{
@@ -26,6 +27,7 @@ const tone = computed(
     :aria-valuenow="value"
     :aria-valuemin="0"
     :aria-valuemax="max"
+    :aria-valuetext="formatPercent(value, max)"
     :aria-label="label"
   >
     <div
