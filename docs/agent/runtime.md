@@ -1461,6 +1461,44 @@ commands, until its end arrives. The expanded row says the end in words above th
 output. Component structure, expansion, icons, typography, motion and the
 presentation of changed files are shown in the gallery, not here.
 
+### Work groups
+
+An agent often takes many steps in a row: it thinks, runs a command, thinks
+briefly, runs three more. Listed one per row, such a run pushes the answer
+off the screen. The transcript shows each run of consecutive steps as one
+row, as Cursor and Claude's own apps do. For example, the user asks to fix
+failing tests, and the agent checks a directory, runs the tests, sets a
+script's execute bit, patches a status file and runs the suite again, with
+thinking between. While it works, one row shows the newest step, each new one
+rolling over the one before; once the answer comes, the row reads *Ran 5
+commands*, and a click opens it to every step.
+
+- A step is a `thinking` block, a `tool_call` block or a call being written
+  ([Calls being written](#calls-being-written)). A run is the steps between
+  two other blocks, such as the user's message and the answer's text.
+- Thinking without text shows only before the answer's text, or while it is
+  the newest block; any later step covers it.
+- The run at the end of a running turn is always one row. Folded, the row is
+  its newest step, shimmering while it runs: a step that arrives rolls over
+  the one before, a call being written rolls over to its description once
+  written, and the call's block, which then takes its place, keeps that face.
+  Opened, the row stands still as a stack and what runs, *Running 4
+  commands*, with the steps under it; opening and folding change the row at
+  once rather than rolling it. The run's first step rolls into the tail row
+  first, as any block does, and a running row is the turn's activity, so no
+  Requesting row shows under it.
+- An ended run stays one row when it holds a call and another step, and a
+  lone thinking stays its own row; a lone call is its own row. The row reads
+  what the run did: *Ran 5 commands*, counting the shell runs. A failed
+  command shows its tag on its own row inside, not on the group's.
+- Folded, the files the run's calls changed show under the row, each once,
+  counted from its two ends within the run ([What the conversation
+  shows](../execution/edit-tracking.md#what-the-conversation-shows)); open,
+  each call shows its own.
+- A reader who opens or folds a row keeps it where it is: the rows after it
+  move, and the transcript neither follows its end nor corrects for the new
+  height until the fold has ended.
+
 ### Calls being written
 
 A model writes a call's input before Demi can run it, and a command with a
@@ -1484,8 +1522,9 @@ is whole, the row becomes the call's block, and the command runs.
   call twice or not at all; the request's end, failure or cancellation empties
   the list. A page that opens the conversation receives the list after
   `pending_steers`.
-- The page shows each call after the transcript's last block as its tool's
-  row, shimmering, titled by its `description`. Until that is written the
+- The page shows each call as the newest step of the run at the transcript's
+  end ([Work groups](#work-groups)), its tool's row, shimmering, titled by its
+  `description`. Until that is written the
   title is by tool: *Preparing a command…* for `shell_exec`, *Checking a
   command…* for `shell_status` and *Waiting…* for `yield`. A page drops a
   pending call whose `toolUseId` it already holds as a block.

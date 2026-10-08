@@ -635,13 +635,16 @@ session.queue = [
 ]
 const streamFlow = useTurnFlow({ id: 'gallery-stream' })
 const turnFlow = useTurnFlow({ id: 'gallery-turn' })
+const workFlow = useTurnFlow({ id: 'gallery-work' })
+workFlow.settleWork()
 // The specimens' calls show their commands' output while they run: the live
 // call's and the Turn's, whose flow runs its own command.
 provideLiveCalls((toolUseId) =>
-  callTerminal([...terminals, ...turnFlow.state.terminals, returnedFailingCommand], undefined, toolUseId),
+  callTerminal([...terminals, ...turnFlow.state.terminals, ...workFlow.state.terminals, returnedFailingCommand], undefined, toolUseId),
 )
 const changesFlow = useTurnFlow({ id: 'gallery-changes', title: 'Cookie rename', blocks: changesDemoBlocks() })
 useGalleryTranscripts(() => ({ blocks: changesFlow.state.blocks, subagents: [] }))
+useGalleryTranscripts(() => ({ blocks: workFlow.state.blocks, subagents: [] }))
 /** The requests of the Request’s Changes specimens, which the panel under them reads as the product reads a conversation. */
 const signInBlocks = signInRequestBlocks('sign-in')
 const signInOffBlocks = signInRequestBlocks('sign-in-off')
@@ -665,6 +668,8 @@ const changesSurface = ref<{ dockHeight: number }>()
 const changesList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
 const turnSurface = ref<{ dockHeight: number }>()
 const turnList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
+const workSurface = ref<{ dockHeight: number }>()
+const workList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
 const streamSurface = ref<{ dockHeight: number }>()
 const streamList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
 
@@ -1851,6 +1856,43 @@ onBeforeUnmount(() => {
     </template>
 
     <template v-if="view === 'changes'">
+      <GallerySection
+        title="Work Groups"
+        note="Consecutive steps show as one row. While they run, each new step rolls over the one before, shimmering while it runs: Requesting, thinking, a call being written and its description, the call. Thinking without text is covered by the step after it. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did; a failure shows on its own call inside. Folded, the files the steps changed show under it, each once; open, each call shows its own."
+      >
+        <div class="mb-3 flex flex-wrap gap-2">
+          <Button variant="ghost" size="sm" @click="workFlow.play('work')">Replay</Button>
+          <Button variant="ghost" size="sm" @click="workFlow.settleWork()">Show Ended</Button>
+        </div>
+        <div class="gallery-frame h-[26rem] bg-surface">
+          <SessionSurface ref="workSurface">
+            <div class="flex h-full min-h-0 flex-col">
+              <AgentMessageList
+                ref="workList"
+                class="min-h-0 flex-1"
+                :conversation-id="workFlow.state.id"
+                :blocks="workFlow.state.blocks"
+                :pending-steers="[]"
+                :queue="[]"
+                :phase="workFlow.state.phase"
+                :load="workFlow.state.load"
+                :pending-action="workFlow.state.pendingAction"
+                :pending-submission="workFlow.pendingSubmission.value"
+                :pending-calls="workFlow.state.pendingCalls"
+                :bottom-offset="workSurface?.dockHeight ?? 0"
+                :persisted-scroll-state="undefined"
+                read-only
+              />
+            </div>
+            <template #dock>
+              <SessionDock
+                :show-scroll-to-bottom="!!workList && !workList.isAtBottom"
+                @scroll-to-bottom="workList?.scrollToBottom()"
+              />
+            </template>
+          </SessionSurface>
+        </div>
+      </GallerySection>
       <GallerySection
         title="A Heavy Turn"
         note="One refactor turn as the transcript shows it: a dozen shell calls in a row, most touching one or two files, one sweeping forty, the last still running."
