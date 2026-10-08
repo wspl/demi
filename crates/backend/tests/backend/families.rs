@@ -1,6 +1,6 @@
 //! Scripted provider families: an API-key family whose directory the test
-//! answers, and a subscription family whose device login, token import and
-//! quota probe the test scripts, both over the account operations and the
+//! answers, and a subscription family whose device login and quota probe the
+//! test scripts, both over the account operations and the
 //! quota every family shares. No test calls a real vendor.
 
 use std::collections::VecDeque;
@@ -13,7 +13,7 @@ use demi_backend_providers::llm::families::{
 };
 use demi_provider_claude_code::Placement;
 use demi_provider_common::credentials::{
-    AccountKit, AccountLabel, Accounts, AccountsCapability, AccountsError, AddAccount, LoginError,
+    AccountKit, AccountLabel, Accounts, AccountsCapability, LoginError, LoginIo, LoginKind,
     NewAccount, SubscriptionAccounts,
 };
 use demi_provider_common::quota::{
@@ -127,6 +127,7 @@ impl ProviderFamily for ScriptedKey {
     fn process_runtime(
         &self,
         _: FamilyArgs,
+        _: RuntimeEnv,
         _: Rc<dyn Placement>,
     ) -> Option<Result<Box<dyn ProviderRuntime>, FamilyError>> {
         self.process_host.then(|| Ok(answers_ok()))
@@ -135,10 +136,12 @@ impl ProviderFamily for ScriptedKey {
 
 /// What a scripted subscription family's device login does: it reports
 /// its code, then waits until the test approves it, counting logins that
-/// were cancelled first.
+/// were cancelled first. An approved login signs in the account the script
+/// names, `device` unless the test names another.
 pub struct LoginScript {
     approved: watch::Sender<bool>,
     pub cancelled: AtomicUsize,
+    account: Mutex<String>,
 }
 
 impl Default for LoginScript {
@@ -146,6 +149,7 @@ impl Default for LoginScript {
         Self {
             approved: watch::Sender::new(false),
             cancelled: AtomicUsize::new(0),
+            account: Mutex::new("device".into()),
         }
     }
 }
@@ -153,6 +157,11 @@ impl Default for LoginScript {
 impl LoginScript {
     pub fn approve(&self, approved: bool) {
         self.approved.send_replace(approved);
+    }
+
+    /// The account the next approved login signs in.
+    pub fn signs_in(&self, account: &str) {
+        *self.account.lock().unwrap() = account.into();
     }
 }
 
@@ -175,8 +184,8 @@ impl QuotaScript {
     }
 }
 
-/// A subscription family over the entry's pool: device login and setup
-/// tokens both add accounts, and the account's quota comes from the script.
+/// A subscription family over the entry's pool: a device login adds
+/// accounts, and the account's quota comes from the script.
 pub struct ScriptedSubscription {
     pub login: Arc<LoginScript>,
     pub quota: Arc<QuotaScript>,
@@ -231,52 +240,37 @@ impl Drop for Cancelled {
 impl AccountKit for Kit {
     fn capability(&self) -> AccountsCapability {
         AccountsCapability {
-            login: true,
-            add: true,
+            login: Some(LoginKind::Device),
         }
     }
 
     fn login<'a>(
         &'a self,
-        pending: &'a (dyn Fn(LoginPending) + Send + Sync),
+        io: LoginIo<'a>,
     ) -> Option<BoxFuture<'a, Result<NewAccount, LoginError>>> {
         let script = self.script.clone();
         Some(Box::pin(async move {
-            pending(LoginPending {
-                verification_url: "https://verify.example/device".into(),
-                user_code: Some("ABCD-1234".into()),
-            });
-            let mut guard = Cancelled(Some(script.clone()));
-            let mut approved = script.approved.subscribe();
-            let _ = approved.wait_for(|approved| *approved).await;
-            guard.0 = None;
-            Ok(NewAccount {
-                secret: r#"{"token":"login-secret"}"#.into(),
-                label: AccountLabel {
-                    label: "device@example.test".into(),
-                    detail: None,
-                    identity_key: Some("device".into()),
-                },
-            })
-        }))
-    }
-
-    fn add(&self, input: AddAccount) -> Option<Result<NewAccount, AccountsError>> {
-        let AddAccount::SetupToken(token) = input;
-        let token = token.expose();
-        if token.starts_with("bad") {
-            // A family's own message may quote what it was given.
-            return Some(Err(AccountsError::Invalid(format!(
-                "{token} is not a setup token"
-            ))));
-        }
-        Some(Ok(NewAccount {
-            secret: serde_json::json!({ "setupToken": token }).to_string(),
-            label: AccountLabel {
-                label: format!("Account {}", &token[token.len() - 1..]),
-                detail: None,
-                identity_key: Some(token.to_owned()),
-            },
+            let login = async {
+                (io.pending)(LoginPending {
+                    verification_url: "https://verify.example/device".into(),
+                    user_code: Some("ABCD-1234".into()),
+                });
+                let mut guard = Cancelled(Some(script.clone()));
+                let mut approved = script.approved.subscribe();
+                let _ = approved.wait_for(|approved| *approved).await;
+                guard.0 = None;
+                let account = script.account.lock().unwrap().clone();
+                Ok(NewAccount {
+                    secret: serde_json::json!({ "token": format!("login-secret-{account}") })
+                        .to_string(),
+                    label: AccountLabel {
+                        label: format!("{account}@example.test"),
+                        detail: None,
+                        identity_key: Some(account),
+                    },
+                })
+            };
+            LoginIo::until_stopped(&io.stop, login).await
         }))
     }
 }

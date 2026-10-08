@@ -69,6 +69,7 @@ fn spawn(command: &str, retained: bool) -> SpawnRequest {
         args: Vec::new(),
         cwd: None,
         env: SpawnEnv::Inherit,
+        descriptors: Vec::new(),
         retained,
     }
 }

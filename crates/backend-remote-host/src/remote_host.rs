@@ -1410,6 +1410,16 @@ impl HostProcess for RemoteHost {
                 env,
                 inherit_env,
                 kill_process_group: None,
+                descriptors: (!request.descriptors.is_empty()).then(|| {
+                    request
+                        .descriptors
+                        .into_iter()
+                        .map(|descriptor| wire::Descriptor {
+                            fd: descriptor.fd,
+                            bytes: wire::WireBytes(descriptor.bytes.to_vec()),
+                        })
+                        .collect()
+                }),
             };
             if let Err(error) = link.send(&spawn).await {
                 link.with_state(|state| state.remove_spawn(&id));

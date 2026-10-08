@@ -1,9 +1,11 @@
 //! A CLI process a runtime keeps across the turns of a session
 //! (`claude-code.md` § Process lifetime): its input and output, its SDK MCP
 //! server, what it has received of the transcript, and the tool calls it
-//! holds. Its standard error is drained all the time, keeping the last
-//! 64 KiB. Dropping it asks the Host to kill the process without waiting;
-//! [`LiveCli::close`] ends it and waits.
+//! holds, and the account's access token it holds, which it asks Demi to
+//! refresh after a 401. Its standard error is drained all the time, keeping
+//! the last 64 KiB. Dropping it asks the Host to kill the process without
+//! waiting, and its configuration directory goes once it ended;
+//! [`LiveCli::close`] ends it, removes the directory and waits.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -14,10 +16,12 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use demi_host_interface::{Process, ProcessControl, ProcessEnd, ProcessOutput, Signal};
+use demi_provider_common::credentials::{AuthFailure, AuthReason};
 use demi_provider_common::quota::Observation;
 use demi_provider_common::wire::Tagged;
 use demi_provider_common::{
-    InferenceItem, InferenceRequest, ProviderFailure, ResultPart, ToolCall, UserPart, encode_body,
+    InferenceItem, InferenceRequest, ProviderFailure, ResultPart, Secret, ToolCall, UserPart,
+    encode_body,
 };
 use demi_shared_types::{StreamKind, ThinkingConfig};
 use futures_channel::mpsc;
@@ -31,10 +35,12 @@ use tokio_util::io::StreamReader;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 
-use crate::input::{self, ControlRequest, ControlResponse, Input, MCP_SERVER, McpReply};
+use crate::input::{
+    self, Answer, ControlRequest, ControlResponse, Input, MCP_SERVER, McpReply, TokenAnswer,
+};
 use crate::mcp::{self, Mcp, McpEvent};
 use crate::output::{ControlRequestLine, Line};
-use crate::placement::{CliSite, Placement};
+use crate::placement::{CliSite, ConfigDir, Placed, Placement};
 use crate::{FAMILY, Shared, cli};
 
 /// The `tracing` target of the raw stream-json exchange, at trace level.
@@ -133,7 +139,14 @@ pub(crate) enum Next {
 
 pub(crate) struct LiveCli {
     shared: Arc<Shared>,
+    /// The client of the shard the runtime runs on, for the token's refresh.
+    http: reqwest::Client,
     key: ProcessKey,
+    /// The access token the process holds: the one it started with, or the
+    /// last one Demi answered its refresh with.
+    token: Secret,
+    /// The process's configuration directory, which goes with it.
+    config: Option<Box<dyn ConfigDir>>,
     control: Box<dyn ProcessControl>,
     /// How the process ended, awaited as often as needed.
     exit: SharedFuture<LocalBoxFuture<'static, ProcessEnd>>,
@@ -155,20 +168,24 @@ pub(crate) struct LiveCli {
 
 impl LiveCli {
     /// Starts a new process for `request` through `placement`, with the
-    /// account's token; the CLI is never started without one.
+    /// account's access token, refreshed first when it expires within five
+    /// minutes; the CLI is never started without one.
     pub(crate) async fn start(
         shared: &Arc<Shared>,
+        http: &reqwest::Client,
         placement: &dyn Placement,
         request: &InferenceRequest,
     ) -> Result<Self, ProviderFailure> {
         let secret = shared
             .auth
-            .stored()
+            .credentials(http, None)
             .await
             .map_err(|failure| failure.failure())?;
+        let token = secret.access_token;
         let spawn = |site: &CliSite| {
-            let spawn = cli::spawn_request(site, request, &secret.access_token);
-            // The environment holds the token, so the record leaves it out.
+            let spawn = cli::spawn_request(site, request, &token);
+            // The environment and the descriptors are left out: a
+            // descriptor holds the token.
             tracing::trace!(
                 target: WIRE,
                 direction = "spawn",
@@ -178,21 +195,25 @@ impl LiveCli {
             );
             spawn
         };
+        let Placed { process, config } = placement
+            .start(&spawn)
+            .await
+            .map_err(|error| failure(error.0))?;
         let Process {
             output,
             control,
             exit,
-        } = placement
-            .start(&spawn)
-            .await
-            .map_err(|error| failure(error.0))?;
+        } = process;
         let (stdout, lines) = mpsc::unbounded();
         let stderr = Rc::new(RefCell::new(Tail::default()));
         let drain = tokio::task::spawn_local(drain(output, stdout, stderr.clone()));
         let mcp = (!request.tools.is_empty()).then(|| Mcp::start(request.tools.clone()));
         Ok(Self {
             shared: shared.clone(),
+            http: http.clone(),
             key: ProcessKey::of(request),
+            token,
+            config: Some(config),
             control,
             exit: exit.shared(),
             lines: FramedRead::new(
@@ -401,7 +422,8 @@ impl LiveCli {
     }
 
     /// Answers a control request of the CLI's: an MCP message goes to the
-    /// SDK MCP server, and any other request is refused.
+    /// SDK MCP server, a request for a fresh access token gets the account's,
+    /// and any other request is refused.
     pub(crate) async fn control_request(
         &mut self,
         line: ControlRequestLine,
@@ -410,6 +432,9 @@ impl LiveCli {
             request_id,
             request,
         } = line;
+        if request.subtype == "oauth_token_refresh" {
+            return self.refresh_token(&request_id).await;
+        }
         let answer = if request.subtype != "mcp_message" {
             Err(format!(
                 "Demi does not serve the control request {}",
@@ -448,6 +473,46 @@ impl LiveCli {
         }
     }
 
+    /// Answers the CLI's request for a fresh access token after a 401: the
+    /// account's token, refreshed first when it is still the one the
+    /// process holds, or none with the reason. The line holds the token, so
+    /// the wire trace records only that it was answered.
+    async fn refresh_token(&mut self, request_id: &str) -> Result<(), ProviderFailure> {
+        let refreshed = self
+            .shared
+            .auth
+            .credentials(&self.http, Some(&self.token))
+            .await;
+        let answer = match &refreshed {
+            Ok(secret) => TokenAnswer {
+                access_token: Some(secret.access_token.expose()),
+                reason: None,
+            },
+            Err(failure) => {
+                tracing::warn!(provider = %self.shared.id, "Claude Code's access token was not refreshed: {}", failure.message());
+                TokenAnswer {
+                    access_token: None,
+                    reason: Some(refresh_reason(failure)),
+                }
+            }
+        };
+        let response = Input::ControlResponse {
+            response: ControlResponse::Success {
+                request_id,
+                response: Answer::Token(answer),
+            },
+        };
+        tracing::trace!(target: WIRE, direction = "in", line = "the answer to oauth_token_refresh, token withheld");
+        self.control
+            .write_stdin(Bytes::from(input::line(&response)))
+            .await
+            .map_err(|error| failure(format!("Claude Code's input could not be written: {error}")))?;
+        if let Ok(secret) = refreshed {
+            self.token = secret.access_token;
+        }
+        Ok(())
+    }
+
     /// Writes the SDK MCP server's `reply` as the answer to control request
     /// `request_id`. A reply may carry a tool's images, so it is serialized
     /// off the shard.
@@ -460,9 +525,9 @@ impl LiveCli {
             let response = Input::ControlResponse {
                 response: ControlResponse::Success {
                     request_id: &request_id,
-                    response: McpReply {
+                    response: Answer::Mcp(McpReply {
                         mcp_response: &reply,
-                    },
+                    }),
                 },
             };
             input::line(&response)
@@ -558,11 +623,14 @@ impl LiveCli {
     /// The failure of a process whose output ended: results it was given and
     /// never asked for, or an exit other than success, told by the tail of
     /// its standard error when it wrote one.
-    pub(crate) async fn end(self) -> Option<ProviderFailure> {
+    pub(crate) async fn end(mut self) -> Option<ProviderFailure> {
         let unasked = self.mcp.as_ref().map(Mcp::unasked).unwrap_or_default();
         let stderr = self.stderr.borrow().text();
         let exit = self.exit.clone().await;
         tracing::trace!(target: WIRE, direction = "exit", end = ?exit);
+        if let Some(config) = self.config.take() {
+            config.remove().await;
+        }
         if !unasked.is_empty() {
             return Some(failure(format!(
                 "Claude Code exited before requesting SDK MCP tool result for {}",
@@ -593,7 +661,11 @@ impl LiveCli {
     /// SIGKILL follows after five seconds; either way its end is awaited.
     pub(crate) async fn close(self) {
         let LiveCli {
-            control, exit, mcp, ..
+            control,
+            exit,
+            mcp,
+            config,
+            ..
         } = self;
         drop(mcp);
         // A process that already ended, or whose machine went away, takes no
@@ -607,6 +679,9 @@ impl LiveCli {
             }
         };
         tracing::trace!(target: WIRE, direction = "exit", end = ?end);
+        if let Some(config) = config {
+            config.remove().await;
+        }
     }
 }
 
@@ -656,23 +731,33 @@ async fn drain(
 
 /// The last bytes of a stream.
 #[derive(Default)]
-struct Tail(Vec<u8>);
+pub(crate) struct Tail(Vec<u8>);
 
 impl Tail {
-    fn push(&mut self, bytes: &[u8]) {
+    pub(crate) fn push(&mut self, bytes: &[u8]) {
         self.0.extend_from_slice(bytes);
         let excess = self.0.len().saturating_sub(STDERR_TAIL_BYTES);
         self.0.drain(..excess);
     }
 
     /// The tail as text, trimmed; a character the cut split is left out.
-    fn text(&self) -> String {
+    pub(crate) fn text(&self) -> String {
         let start = self
             .0
             .iter()
             .position(|byte| byte & 0b1100_0000 != 0b1000_0000)
             .unwrap_or(self.0.len());
         String::from_utf8_lossy(&self.0[start..]).trim().to_owned()
+    }
+}
+
+/// Why an account's access token could not be refreshed, as the CLI's
+/// `oauth_token_refresh` answer names it.
+fn refresh_reason(failure: &AuthFailure) -> &'static str {
+    match failure.reason {
+        AuthReason::Missing | AuthReason::Invalid(_) => "signed_out",
+        AuthReason::Store(_) => "transient",
+        AuthReason::Refresh(_) => "refresh_failed",
     }
 }
 
@@ -694,7 +779,7 @@ fn undecodable(error: &dyn std::fmt::Display, text: String) -> ProviderFailure {
     )
 }
 
-fn exit_message(end: &ProcessEnd) -> String {
+pub(crate) fn exit_message(end: &ProcessEnd) -> String {
     match end {
         ProcessEnd::Exited(code) => format!("Claude Code exited with code {code}"),
         ProcessEnd::Signalled(signal) => format!("Claude Code was ended by {signal}"),

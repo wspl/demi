@@ -706,6 +706,7 @@ impl Owner<'_> {
                 env,
                 kill_process_group,
                 inherit_env,
+                descriptors,
             } => {
                 let mut values = if env.is_none() || inherit_env == &Some(true) {
                     registered.env.clone()
@@ -734,6 +735,13 @@ impl Owner<'_> {
                         command: command.clone(),
                         args: args.clone().unwrap_or_default(),
                         process_group: kill_process_group.unwrap_or(false),
+                        descriptors: descriptors
+                            .iter()
+                            .flatten()
+                            .map(|descriptor| {
+                                (descriptor.fd, bytes::Bytes::from(descriptor.bytes.0.clone()))
+                            })
+                            .collect(),
                     },
                 })
             }
