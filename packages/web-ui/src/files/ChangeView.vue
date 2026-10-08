@@ -23,6 +23,7 @@ import MarkdownDocument from './MarkdownDocument.vue'
 import PreviewPair from './PreviewPair.vue'
 import TreeFrame from './TreeFrame.vue'
 import { emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources } from './changes'
+import { diffLineCounts } from './diff-counts'
 import { editIndex, offersAllChanges, selectionCopies, type RequestEditRef } from './request-changes'
 import { TREE_WIDTH } from './file-view'
 import { baseName } from '@demicodes/utils'
@@ -90,9 +91,8 @@ const COMMITTED_TOO_LARGE = 'Over 8 MiB: too large to show.'
 const workingTree = computed(() => props.changes.uncommitted)
 const request = computed(() => mode.value === 'conversation' ? props.changes.conversation : null)
 const requestFile = computed(() => request.value?.files.find((file) => file.path === selected.value) ?? null)
-const selectedChange = computed(() => mode.value === 'conversation'
-  ? requestFile.value
-  : workingTree.value.files.find((file) => file.path === selected.value) ?? null)
+const workingChange = computed(() => workingTree.value.files.find((file) => file.path === selected.value) ?? null)
+const selectedChange = computed(() => mode.value === 'conversation' ? requestFile.value : workingChange.value)
 const edits = computed(() => requestFile.value?.edits ?? [])
 /** Whether the file offers All Changes: both its ends were kept. */
 const allChanges = computed(() => requestFile.value !== null && offersAllChanges(requestFile.value))
@@ -281,6 +281,17 @@ async function readCall(): Promise<void> {
 watch(() => [request.value !== null, requestFile.value?.path, requestKey.value], readCall, { immediate: true })
 
 const state = computed<State>(() => mode.value === 'conversation' ? callState.value : workingState.value)
+/**
+ * The header's line counts: a working-tree file's as git counts them, and in
+ * Conversation those of the diff shown, All Changes or one edit, once its
+ * sides are read; none without them.
+ */
+const counts = computed(() => {
+  if (mode.value === 'uncommitted')
+    return workingChange.value
+  const shown = callState.value
+  return shown.phase === 'ready' ? diffLineCounts(shown.sides.original, shown.sides.modified) : null
+})
 
 function retry(): void {
   if (mode.value === 'conversation')
@@ -373,7 +384,7 @@ onBeforeUnmount(() => {
             <span class="min-w-0 truncate text-fg-muted [direction:rtl]"><bdi>{{ heading.folder }}</bdi></span>
             <span class="shrink-0" :class="heading.deleted ? 'text-fg-muted line-through' : 'text-fg'">{{ heading.name }}</span>
           </span>
-          <LineCounts :added="selectedChange.added" :removed="selectedChange.removed" />
+          <LineCounts v-if="counts" :added="counts.added" :removed="counts.removed" />
         </span>
         <!-- The edit shown is named by its call's title; the file's name keeps its width first. -->
         <span v-if="editAt !== null" class="ml-auto min-w-0 truncate pl-2 text-fg-subtle" :title="edits[editAt]?.title">{{ edits[editAt]?.title }}</span>

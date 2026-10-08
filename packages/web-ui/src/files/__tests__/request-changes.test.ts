@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import type { Block, EditedFile } from '@demicodes/protocol'
 import type { ToolCallBlock } from '../../agent/block-types'
 import { createdAt, model, userBlock } from '../../agent/__tests__/agent-harness'
+import { diffLineCounts } from '../diff-counts'
 import {
   editIndex,
   offersAllChanges,
@@ -104,7 +105,6 @@ describe('a request', () => {
       'c1:1 Fix the sign-in check',
       'c2:0 Tighten the check',
     ])
-    expect({ added: login.added, removed: login.removed }).toEqual({ added: 3, removed: 3 })
     expect(requestLineSelection(null, fix)).toEqual({ node: null, request: 'u1', file: '/w/login.ts', edit: null })
   })
 
@@ -151,7 +151,7 @@ describe('the Change view on a request', () => {
   test('All Changes is offered only when both its ends were kept; otherwise the file opens at its first edit with contents', () => {
     const kept = (from: number) => ({ original: blob(from), modified: blob(from + 1) })
     const edit = (segment: number, copies?: ReturnType<typeof kept>) => ({ call: 'c', title: 'Edit', segment, created: false, ...(copies ? { copies } : {}) })
-    const firstLost = { path: '/w/a.ts', kind: 'modified' as const, added: 2, removed: 2, edits: [edit(0), edit(1, kept(2)), edit(2, kept(3))] }
+    const firstLost = { path: '/w/a.ts', kind: 'modified' as const, edits: [edit(0), edit(1, kept(2)), edit(2, kept(3))] }
     expect(offersAllChanges(firstLost)).toBe(false)
     expect(editIndex(firstLost, null)).toBe(1)
     const nothingKept = { ...firstLost, edits: [edit(0), edit(1)] }
@@ -159,6 +159,13 @@ describe('the Change view on a request', () => {
     expect(selectionCopies(nothingKept, editIndex(nothingKept, null))).toBeNull()
     expect(offersAllChanges(login)).toBe(true)
     expect(editIndex(login, null)).toBeNull()
+  })
+
+  test('the header counts the lines of the diff it shows, not the calls’ sums', () => {
+    // A line changed twice across two calls is one line changed from the first original to the last result.
+    expect(diffLineCounts('a\nb\nc\n', 'a\nB2\nc\nd\n')).toEqual({ added: 2, removed: 1 })
+    expect(diffLineCounts('', 'x\ny\n')).toEqual({ added: 2, removed: 0 })
+    expect(diffLineCounts('same\n', 'same\n')).toEqual({ added: 0, removed: 0 })
   })
 
   test('a pill selects its file at that call’s first edit', () => {

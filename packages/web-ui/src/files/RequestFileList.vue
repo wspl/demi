@@ -3,7 +3,6 @@ import { computed } from 'vue'
 import { baseName } from '@demicodes/utils'
 import HighlightText from '../ui/HighlightText.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
-import LineCounts from './LineCounts.vue'
 import Tree from './Tree.vue'
 import { relativePath, resolveHostPath } from './paths'
 import type { RequestFile } from './request-changes'
@@ -12,8 +11,9 @@ import type { TreeRow } from './tree'
 /**
  * A request's files beside the diff, in the order the request first changed
  * them, on a `Tree` of one level: each row the file's name, its folder from
- * the workspace after it, as VS Code's source control list shows them, and
- * its line counts. Under the rows, one line says that files other programs
+ * the workspace after it, as VS Code's source control list shows them,
+ * without line counts: only the diff a file shows can tell them right, and
+ * the view's header gives them. Under the rows, one line says that files other programs
  * wrote are not here, and offers Uncommitted, which shows everything
  * uncommitted.
  */
@@ -68,11 +68,6 @@ const rootName = computed(() => props.rootName ?? (baseName(props.root) || '/'))
       <span class="flex min-w-0 items-baseline gap-1.5">
         <span class="shrink-0"><HighlightText :text="row.name" :indexes="highlight" /></span>
         <TruncatedText v-if="row.folder" class="text-[11px] text-fg-subtle" :text="row.folder" />
-      </span>
-    </template>
-    <template #trailing="{ row }">
-      <span class="ml-auto flex shrink-0 items-center pl-2">
-        <LineCounts :added="row.file.added" :removed="row.file.removed" />
       </span>
     </template>
     <template #empty>
