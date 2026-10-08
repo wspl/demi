@@ -1,5 +1,6 @@
 import type { Block, ShellViewStatus } from '@demicodes/protocol'
 import type { ConversationStatus } from './conversation-status'
+import type { ToolCallBlock } from './block-types'
 
 /** Where a command is, as its frames and stored views say: running, exited, or stopped (`aborted`). */
 export type TerminalPhase = ShellViewStatus
@@ -173,6 +174,19 @@ export function dockTerminals(
 
 export function isTerminalRunning(phase: TerminalPhase): boolean {
   return phase === 'running'
+}
+
+/**
+ * Whether a `shell_exec` row shimmers (`runtime.md` § Rendering boundary):
+ * while its call runs, and after the call returned for as long as the
+ * command it started runs, as the command's live frames say, until its end
+ * arrives.
+ */
+export function shellRowRunning(
+  callStatus: ToolCallBlock['status'],
+  command: TerminalRecord | undefined,
+): boolean {
+  return callStatus === 'executing' || (command !== undefined && isTerminalRunning(command.phase))
 }
 
 export function runningTerminals(
