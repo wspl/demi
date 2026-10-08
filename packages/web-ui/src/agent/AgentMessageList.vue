@@ -30,9 +30,14 @@ import { messageEditSuffixIds, offeredEditId } from './message-editing'
 import { useMessageForks, type MessageForkHandler } from './message-fork'
 import { useFollowSentMessages } from './useFollowSentMessages'
 import { highlightFound } from '../ui/found-highlight'
+import RequestChangesLine from './blocks/RequestChangesLine.vue'
+import { provideTranscript, useEditSelection } from './edit-selection'
+import { requestLineSelection, transcriptRequests, type TranscriptRequest } from '../files/request-changes'
 
 const props = defineProps<{
   conversationId: string
+  /** The agent whose transcript this is: null for the conversation's own, a subagent's id otherwise. */
+  node?: string | null
   blocks: Block[]
   pendingSteers: PendingSteerMessage[]
   queue: QueuedMessage[]
@@ -155,6 +160,32 @@ const paneStatus = computed(() =>
 )
 const mutedIds = computed(() => messageEditSuffixIds(renderBlocks.value, props.editTargetId))
 // Every streamed delta re-renders the visible rows; the lookup must not rescan the transcript per row.
+// The transcript's requests, and the line at the end of each that changed files: under the last of its rows.
+const requests = computed(() => transcriptRequests(props.blocks))
+provideTranscript({
+  get node() {
+    return props.node ?? null
+  },
+  requests: () => requests.value,
+})
+const editSelection = useEditSelection()
+const requestLines = computed(() => {
+  const last = new Map<TranscriptRequest, string>()
+  for (const block of visibleTranscriptBlocks.value) {
+    const request = requests.value.requestOf.get(block.id)
+    if (request && request.files.length > 0) {
+      last.set(request, block.id)
+    }
+  }
+  return new Map([...last].map(([request, id]) => [id, request]))
+})
+
+function openRequest(request: TranscriptRequest): void {
+  const selection = requestLineSelection(props.node ?? null, request)
+  if (selection) {
+    editSelection()?.(selection)
+  }
+}
 const transcriptIndexById = computed(
   () =>
     new Map(visibleTranscriptBlocks.value.map((block, index) => [block.id, index]))
@@ -314,7 +345,27 @@ defineExpose({
                 @send-queued="(id) => emit('sendQueued', id)"
                 @edit-user="(id) => emit('editUser', id)"
                 @retry-submission="emit('retrySubmission')"
-              />
+              >
+                <!-- A request's reply ends with its changed-files button, above Copy and Fork. -->
+                <template v-if="renderBlocks[item.index]!.type === 'text' && requestLines.has(renderBlocks[item.index]!.id)" #replyEnd>
+                  <RequestChangesLine
+                    :request="requestLines.get(renderBlocks[item.index]!.id)!"
+                    :selectable="editSelection() !== undefined"
+                    @open="openRequest(requestLines.get(renderBlocks[item.index]!.id)!)"
+                  />
+                </template>
+              </AgentMessageVirtualBlock>
+              <!-- A request that ends on anything else, as while a call still runs, has the button under its last row. -->
+              <div
+                v-if="renderBlocks[item.index]!.type !== 'text' && requestLines.has(renderBlocks[item.index]!.id)"
+                class="px-[var(--agent-pad-x,2rem)] py-1"
+              >
+                <RequestChangesLine
+                  :request="requestLines.get(renderBlocks[item.index]!.id)!"
+                  :selectable="editSelection() !== undefined"
+                  @open="openRequest(requestLines.get(renderBlocks[item.index]!.id)!)"
+                />
+              </div>
             </MessageEditRegion>
           </div>
         </div>
