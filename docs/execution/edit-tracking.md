@@ -174,7 +174,7 @@ the view, without involving the Host; an added segment's original is empty.
 For example, the user asks "fix the sign-in page". The agent edits
 `login.ts` and `form.css`, starts a build and yields until it ends; woken,
 it edits `login.ts` again and replies. Under the reply a line reads
-*2 files changed*, with the lines added and removed. It opens the Change
+*2 Files Changed*. It opens the Change
 view on that request: a sidebar lists `login.ts` and `form.css`, and
 `login.ts` shows its change from before the first edit to after the second.
 
@@ -210,11 +210,12 @@ parent's own commands changed.
 
 - **The pills.** Under a shell call, its files, from the block's view
   ([Rendering boundary](../agent/runtime.md#rendering-boundary)).
-- **The request's line.** At the end of a request's reply, once one of its
-  calls has changed a file, one line: how many files and the lines added and
-  removed, *2 files changed +18 −4*. It grows as later calls of the request
+- **The request's line.** At the end of a request's reply, above its Copy
+  and Fork, once one of its calls has changed a file, a button that names
+  how many files: *2 Files Changed*. It grows as later calls of the request
   end. It counts files the request's calls changed and that still exist when
-  each call ended.
+  each call ended. It gives no line counts: adding up each call's would
+  disagree with All Changes, whose counts the Change view shows.
 - **The Change view.** The line and a pill open the `edit` intent, which the
   work panel's Change view opens in Conversation mode on the request
   ([Intents](../architecture/plugin-pages.md#intents)); with the `changes`
@@ -222,8 +223,12 @@ parent's own commands changed.
   the order they were first changed. A file shows **All Changes**, from its
   contents before the request's first edit to after its last, and a control
   steps through each edit of the request in order, `Edit 2 of 3`, each named
-  by its call's title. The line opens the first file's All Changes; a pill
-  opens its file at that call's first edit. Picking another file or edit
+  by its call's title. All Changes is offered when the first edit's original
+  and the last edit's result were both kept; otherwise the file opens at its
+  first edit with contents. The line opens the first file's All Changes; a
+  pill opens its file at that call's first edit. A request that an edit or
+  a regenerate removed says *These changes are no longer in the
+  conversation.* Picking another file or edit
   replaces the selection; Back and Forward revisit selections. A file whose
   every edit is without contents is listed without a diff. Under the list,
   one line says that files other programs wrote are not here, with a link to

@@ -246,7 +246,7 @@ export class DeviceDirect {
       return
     this.peer = null
     this.state.peer = false
-    this.state.attempt = { ...peer.attempt, outcome: 'dropped', endedAt: new Date().toISOString() }
+    this.state.attempt = { ...peer.attempt, outcome: 'dropped' }
     this.choose()
     this.failures += 1
     this.schedule()

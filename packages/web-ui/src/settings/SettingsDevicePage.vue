@@ -1,28 +1,29 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Cloud, Monitor } from '@lucide/vue'
+import { upperFirst } from '@demicodes/utils'
 import Button from '../ui/Button.vue'
 import DetailsSheet from '../ui/DetailsSheet.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
-import StatusDot from '../ui/StatusDot.vue'
-import { formatDay, formatMoment, formatWhen, useTimeUntil } from '../composables/useRelativeTime'
+import type { StatusDotTone } from '../ui/StatusDot.vue'
+import { formatDay, formatMoment, useTimeUntil } from '../composables/useRelativeTime'
 import DeviceRenameDialog from '../devices/DeviceRenameDialog.vue'
 import DeviceRevokeDialog from '../devices/DeviceRevokeDialog.vue'
+import DeviceStartHint from '../devices/DeviceStartHint.vue'
 import {
   DEVICE_ROUTE_DESCRIPTION,
   DEVICE_ROUTE_LABEL,
   DIRECT_STAGE_LABEL,
   directReason,
-  formatLatency,
   pathsFootnote,
   reasonSentence,
   shownAddress,
   type DeviceRoute,
   type DirectAddresses,
-  type PathFigures,
+  type DirectPermission,
 } from '../devices/direct'
 import { RUNNER_STATE_LABEL, runnerState, systemName, type DeviceReport } from '../devices/report'
 import { DEVICE_STATE_LABEL } from '../devices/state'
@@ -35,12 +36,14 @@ import type { SettingsDevice } from './types'
 
 /**
  * A device's own page (`direct-channel.md` § What the user sees), which its
- * row in Devices opens. Its header says how this page reaches it now, why
- * not directly and when Demi tries again, with Details… for the last
- * attempt's diagnostics and Try Again; Connection holds the route, with a
- * footnote comparing the two paths' latency from this browser; Device holds the
- * facts, with Rename…; Revoke… ends the page. The Cloud's page says it is
- * always reached through the server and has no Connection.
+ * row in Devices opens. Its header says how this page reaches it now and,
+ * in the table's words, why not directly, with Details… for the last
+ * attempt's diagnostics and Try Again; an offline device's header gives the
+ * command that starts its runner. Connection holds the route, with a
+ * footnote comparing the two paths' latency from this browser; Device holds
+ * the facts, with Rename…; Revoke… ends the page. The Cloud's header says
+ * only that it is reached through the server, and its page has no
+ * Connection.
  */
 const props = defineProps<{
   /** A paired device, or the Cloud with what its runner reported. */
@@ -76,17 +79,8 @@ const online = computed(() => device.value?.state === 'online')
 const reason = computed(() => (direct.value && online.value ? directReason(direct.value) : null))
 const attempt = computed(() => direct.value?.attempt ?? null)
 
-/** The figures of the path in use. */
-const inUse = computed<PathFigures | null>(() => {
-  const status = direct.value
-  if (!status) {
-    return null
-  }
-  return status.chosen ? status.figures.direct : status.figures.relay
-})
-
 /** The header's dot and its words: how this page reaches the device now. */
-const status = computed<{ tone: 'success' | 'warning' | 'muted'; words: SentenceText }>(() => {
+const status = computed<{ tone: StatusDotTone; words: SentenceText }>(() => {
   const shown = device.value
   if (!shown) {
     return { tone: 'muted', words: 'Through the server' }
@@ -102,37 +96,29 @@ const status = computed<{ tone: 'success' | 'warning' | 'muted'; words: Sentence
     : { tone: 'muted', words: 'Through the server' }
 })
 
+/** How to start the runner again, which the header gives while the device is offline. */
+const offlineStart = computed(() => (device.value?.state === 'offline' ? (device.value.start ?? null) : null))
+
 /** The line under Connection that compares the paths; none while the device is offline. */
 const footnote = computed(() => (direct.value && online.value ? pathsFootnote(direct.value) : null))
 
 const nextIn = useTimeUntil(() => direct.value?.nextAt ?? new Date().toISOString())
 
-/** The sentence under the status: why the server's path is used, then when Demi tries again. */
-const explanation = computed<SentenceText | null>(() => {
-  const status = direct.value
-  if (!status || !online.value) {
-    return null
-  }
-  if (status.trying && reason.value?.kind === 'notYet') {
-    return 'Demi is trying a direct connection.'
-  }
-  const sentence = reason.value ? reasonSentence(reason.value, formatWhen) : null
-  if (!sentence) {
-    return null
-  }
-  const retries = reason.value?.kind !== 'serverOnly' && reason.value?.kind !== 'slower' && status.nextAt !== null
-  return retries ? `${sentence} Demi tries again ${nextIn.value}.` : sentence
-})
+/** The sentence under the status, as the design's table words the reason; none on Server Only. */
+const explanation = computed(() => (reason.value ? reasonSentence(reason.value) : null))
+
+/** Whether the page may have a peer to the device: it is online and its route is not Server Only. */
+const peerAllowed = computed(() => online.value && !!direct.value && direct.value.route !== 'server')
+
+/** Details… shows the last attempt, while a peer is allowed and the page has an attempt to show. */
+const canShowDetails = computed(() => peerAllowed.value && attempt.value !== null)
 
 /**
- * Try Again is there only while the route allows a peer and the page is not
- * connected directly; a peer that stands but is slower right now needs no new
- * attempt, so it has none to offer.
+ * Try Again is there only while a peer is allowed and the page has no
+ * connected peer; a peer that stands but is slower right now needs no new
+ * attempt.
  */
-const canTryAgain = computed(() => {
-  const status = direct.value
-  return !!status && online.value && status.route !== 'server' && !status.chosen && !status.peer
-})
+const canTryAgain = computed(() => peerAllowed.value && !direct.value?.peer)
 
 /** How long an attempt took, as a person reads it. */
 function took(ms: number): string {
@@ -151,7 +137,18 @@ const PERMISSION_LABEL = {
   denied: 'Blocked',
 } as const
 
-/** The last attempt's diagnostics, as the Details sheet lists them. */
+/**
+ * The browser's local network permission as the attempt saw it; blocked, it
+ * says where to allow it, since that is the reason's remedy.
+ */
+function permission(seen: DirectPermission | null): string | string[] {
+  if (seen === null) {
+    return 'Not asked by this browser'
+  }
+  return seen === 'denied' ? [PERMISSION_LABEL.denied, 'Allow it in this site’s settings.'] : PERMISSION_LABEL[seen]
+}
+
+/** The last attempt's diagnostics, as the Details sheet lists them, ending with when Demi tries next. */
 const details = computed(() => {
   const seen = attempt.value
   if (!seen) {
@@ -171,11 +168,10 @@ const details = computed(() => {
     { label: 'Ended at', value: ended },
     { label: 'This browser', value: addressLines(seen.browser) },
     { label: 'The device', value: addressLines(seen.device) },
-    { label: 'Paths tried', value: `${seen.pairs.tried}, of which ${seen.pairs.answered} answered` },
-    ...(seen.pair
-      ? [{ label: 'Path in use', value: `${seen.pair.browser === null ? 'Hidden by the browser' : shownAddress(seen.pair.browser)} to ${seen.pair.device}` }]
-      : []),
-    { label: 'Local network access', value: seen.permission ? PERMISSION_LABEL[seen.permission] : 'Not asked by this browser' },
+    { label: 'Paths', value: `${seen.pairs.tried} tried, ${seen.pairs.answered} answered` },
+    ...(seen.inUse ? [{ label: 'Path in use', value: seen.inUse }] : []),
+    { label: 'Local network access', value: permission(seen.permission) },
+    ...(direct.value?.nextAt ? [{ label: 'Next attempt', value: upperFirst(nextIn.value) }] : []),
   ]
 })
 
@@ -192,25 +188,22 @@ function revoke() {
   <SettingsPage
     :title="device?.name ?? 'Cloud'"
     back="Devices"
+    :status-tone="status.tone"
     @back="emit('back')"
   >
     <template #icon>
-      <Monitor v-if="device" :size="20" aria-hidden="true" />
-      <Cloud v-else :size="20" aria-hidden="true" />
+      <Monitor v-if="device" :size="24" aria-hidden="true" />
+      <Cloud v-else :size="24" aria-hidden="true" />
     </template>
     <template #status>
-      <StatusDot :tone="status.tone" />
-      <span>{{ status.words }}</span>
-      <template v-if="device?.state === 'offline' && device.seen">
-        <span class="text-fg-subtle">· Last seen <RelativeTime :timestamp="device.seen" /></span>
-      </template>
-      <span v-else-if="online && inUse" class="text-fg-subtle">· {{ formatLatency(inUse.latencyMs) }}</span>
+      {{ status.words }}<span v-if="device?.state === 'offline' && device.seen" class="text-fg-subtle"> · Last seen <RelativeTime :timestamp="device.seen" /></span>
     </template>
-    <template v-if="!device || explanation" #description>
-      {{ device ? explanation : 'The Cloud runs beside the server, so this browser always reaches it through the server.' }}
+    <template v-if="offlineStart || explanation" #description>
+      <DeviceStartHint v-if="offlineStart" sentence="Start Demi on the device:" :start="offlineStart" />
+      <template v-else>{{ explanation }}</template>
     </template>
-    <template v-if="attempt || canTryAgain" #actions>
-      <Button v-if="attempt" size="sm" @click="detailsOpen = true">Details…</Button>
+    <template v-if="canShowDetails || canTryAgain" #actions>
+      <Button v-if="canShowDetails" size="sm" @click="detailsOpen = true">Details…</Button>
       <Button v-if="canTryAgain" size="sm" :loading="direct?.trying" @click="emit('tryNow')">Try Again</Button>
     </template>
 
@@ -261,10 +254,7 @@ function revoke() {
     </SettingsGroup>
 
     <SettingsGroup v-if="device">
-      <SettingsRow
-        label="Revoke this device"
-        description="It leaves your devices, and its runner removes itself if it is connected."
-      >
+      <SettingsRow label="Revoke this device">
         <Button size="sm" variant="danger" :loading="revoking" @click="revokeOpen = true">Revoke…</Button>
       </SettingsRow>
     </SettingsGroup>
@@ -273,7 +263,6 @@ function revoke() {
       :is-open="detailsOpen"
       :overlay-store="overlayStore"
       title="Connection Details"
-      description="What the last attempt at a direct connection saw."
       :entries="details"
       @close="detailsOpen = false"
     />
