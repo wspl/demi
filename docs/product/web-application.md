@@ -276,7 +276,9 @@ work allows, and never one per item:
   them; the transcript does not wait for the hosts. The first load starts the
   synchronization channel beside the session check, and opens the
   conversation its URL names by its id, without waiting for the channel's
-  first state.
+  first state, unless the URL is a new conversation the browser made and has
+  not sent yet, which has nothing to read: the page knows it by the history
+  entry's mark and opens its saved draft instead.
 - **An action that changes several things is one request.** Creating a
   conversation carries its settings and its hosts in its own request
   ([Conversation creation and Fork](web-api.md#conversation-creation-and-fork)),
