@@ -334,6 +334,7 @@ function resetShortcuts() {
     @show="devices.shown.value = $event"
     @set-route="devices.setRoute"
     @try-now="devices.tryNow"
+    @measure="devices.measure"
     @revoke="revokeDevice"
     @rename="devices.rename"
   />
