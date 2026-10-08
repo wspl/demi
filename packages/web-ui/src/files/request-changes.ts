@@ -156,12 +156,6 @@ export const requestEditSelectionSchema = z.object({
 })
 export type RequestEditSelection = z.infer<typeof requestEditSelectionSchema>
 
-/** What a request's line opens: its first file's All Changes. */
-export function requestLineSelection(node: string | null, request: TranscriptRequest): RequestEditSelection | null {
-  const first = request.files[0]
-  return first ? { node, request: request.id, file: first.path, edit: null } : null
-}
-
 /** What a file pill under a call opens: the file at that call's first edit, in the call's request. */
 export function pillSelection(
   node: string | null,

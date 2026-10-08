@@ -438,7 +438,7 @@ const editWork = useWorkTabs('change')
 // The gallery's own conversation browser stands behind every specimen's `browser`
 // kind, which lists its tabs as it is made.
 provideEditSelection(() => editWork.selectEdit)
-// A request's line counts read its files' ends from the gallery's blobs, as the product's from the blob route.
+// A work group's file counts read its files' ends from the gallery's blobs, as the product's from the blob route.
 provideEditReads(() => readGalleryEdit)
 // A presented page's card stands alone among the blocks, with no panel to open it in: its Open says what the product does.
 providePageOpening(() => (page) => productWould(`Open ${page.title} in Your Browser`))
@@ -1926,7 +1926,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Request’s Changes"
-        note="A request runs from the user’s message to their next one, through yields, receipts and steers. Once it has ended and one of its calls changed a file, its reply ends, above Copy and Fork, with a button naming how many files and the lines of their All Changes; while it still works, in its turn or a later one it continues, the button waits, as Copy and Fork do, and the pills under each call show its files. The counts arrive once the button is in view, and a request whose files’ ends were not kept, as the logo’s, names its files alone. It opens the Change view below on the first file’s All Changes; a file pill opens its file at that call’s first edit. A subagent’s changes show only in its own transcript. With the changes plugin off, the button and the pills are no controls."
+        note="A request runs from the user’s message to their next one, through yields, receipts and steers. The pills under each call name its files, and a work group’s pills each file once; a pill opens the Change view below on its file at that call’s first edit. A subagent’s changes show only in its own transcript. With the changes plugin off, the pills are no controls."
       >
         <GallerySpecimen variant="two files, login.ts edited three times across a yield" wide>
           <div class="gallery-frame h-[30rem] bg-surface">

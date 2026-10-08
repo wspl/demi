@@ -173,10 +173,10 @@ the view, without involving the Host; an added segment's original is empty.
 
 For example, the user asks "fix the sign-in page". The agent edits
 `login.ts` and `form.css`, starts a build and yields until it ends; woken,
-it edits `login.ts` again and replies. Under the reply a line reads
-*2 Files Changed +10 −0*. It opens the Change
-view on that request: a sidebar lists `login.ts` and `form.css`, and
-`login.ts` shows its change from before the first edit to after the second.
+it edits `login.ts` again and replies. The pills under its work name
+`login.ts` and `form.css`; a click on `login.ts` opens the Change view on
+that request: a sidebar lists both files, and `login.ts` shows its change
+from before the first edit to after the second.
 
 ### A request
 
@@ -212,37 +212,23 @@ parent's own commands changed.
   ([Rendering boundary](../agent/runtime.md#rendering-boundary)). Under a
   folded work group ([Work groups](../agent/runtime.md#work-groups)), the
   files its calls changed, each once in the order first changed, with each
-  file's lines counted as the request's line counts them, from its first
-  edit's original to its last edit's result within the group, so a line two
-  calls changed counts once. They are read when the pills come into view, and
+  file's lines counted as the Change view's All Changes counts them, from its
+  first edit's original to its last edit's result within the group, so a line
+  two calls changed counts once. They are read when the pills come into view, and
   only a file whose ends a later call changed is counted again; until counted,
   or when its ends were not kept, a pill names its file alone. A pill opens
   its file at the first of the group's calls that changed it.
-- **The request's line.** At the end of a request's reply, above its Copy
-  and Fork, once the request has ended and one of its calls changed a file, a
-  button that names how many files and the lines added and removed across
-  them: *2 Files Changed +10 −0*, as GitHub and Cursor sum a change. While
-  the request still works, its turn or a later one it continues, the line is
-  not shown, as Copy and Fork are not: the reply is not done, and its pills
-  already show each call's files. It counts files the request's calls
-  changed and that still exist when each call ended. The lines are each
-  file's All Changes, counted as the Change view counts them, not the sum of
-  each call's counts, which counts a line twice when two calls change it:
-  when the line comes into view, the page reads each file's first original
-  and last result, which never change, so once a page. Until they are
-  counted, or when a file's ends were not kept, the line shows the files
-  alone.
-- **The Change view.** The line and a pill open the `edit` intent, which the
-  work panel's Change view opens in Conversation mode on the request
+- **The Change view.** A pill opens the `edit` intent, which the work panel's
+  Change view opens in Conversation mode on the request
   ([Intents](../architecture/plugin-pages.md#intents)); with the `changes`
-  plugin off, neither is a control. The sidebar lists the request's files in
+  plugin off, a pill is no control. The sidebar lists the request's files in
   the order they were first changed. A file shows **All Changes**, from its
   contents before the request's first edit to after its last, and a control
   steps through each edit of the request in order, `Edit 2 of 3`, each named
   by its call's title. All Changes is offered when the first edit's original
   and the last edit's result were both kept; otherwise the file opens at its
-  first edit with contents. The line opens the first file's All Changes; a
-  pill opens its file at that call's first edit. A request that an edit or
+  first edit with contents. A pill opens its file at that call's first
+  edit. A request that an edit or
   a regenerate removed says *These changes are no longer in the
   conversation.* Picking another file or edit
   replaces the selection; Back and Forward revisit selections. A file whose
@@ -275,7 +261,7 @@ Uncommitted mode lists the working tree's files and has a refresh.
 | `crates/runner-protocol`, `crates/host-interface`, `crates/backend-remote-host` | Carry the report through command completion. |
 | `crates/backend-user-shard` | Store the copies as blobs before tool completion; the blob route serves them. |
 | `crates/shared-types`, `crates/agent-tools` | Define the shell tool view with its small file and segment list, and carry it in the transcript, exclusively for the user. |
-| `packages/web-ui` | Deriving a request's changes from the transcript, the request's line, and shared file selection, edit selection and diff behavior. |
+| `packages/web-ui` | Deriving a request's changes from the transcript, the file pills and their counts, and shared file selection, edit selection and diff behavior. |
 | `packages/web`, `packages/web-gallery` | Product data adapters and matching specimens. |
 
 ## Rationale

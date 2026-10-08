@@ -53,7 +53,7 @@ const props = withDefaults(defineProps<{
   editVersion?: TranscriptVersion | null
   messageEdit?: MessageEditState | null
   selectEdit?: EditSelectionHandler
-  /** Reads a retained edit's two sides, for a request's line counts. */
+  /** Reads a retained edit's two sides, for a work group's file counts. */
   readEdit?: ReadCallChange
   /** Opens a page the agent presented; without it, its card offers no Open. */
   openPage?: PageOpeningHandler

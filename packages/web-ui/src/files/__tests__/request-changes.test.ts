@@ -10,7 +10,6 @@ import {
   pillSelection,
   callFiles,
   fileLineCounts,
-  requestLineSelection,
   selectionCopies,
   transcriptRequests,
 } from '../request-changes'
@@ -107,7 +106,6 @@ describe('a request', () => {
       'c1:1 Fix the sign-in check',
       'c2:0 Tighten the check',
     ])
-    expect(requestLineSelection(null, fix)).toEqual({ node: null, request: 'u1', file: '/w/login.ts', edit: null })
   })
 
   test('a steer does not split it', () => {
