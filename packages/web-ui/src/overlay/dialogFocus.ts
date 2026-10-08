@@ -14,8 +14,8 @@ const FIELD = [
   '[role=searchbox]',
 ].join(',')
 
-/** What a dialog opens on when it has no field: its primary button (`Button` marks it). */
-const DEFAULT_ACTION = '[data-default-action]:not([aria-disabled=true])'
+/** A dialog's default button, which Return presses and the dialog opens on when it has no field (`Button` marks it). */
+export const DEFAULT_ACTION = '[data-default-action]:not([aria-disabled=true])'
 
 /** Whether the element can take the focus now: shown, enabled, and not in an inert subtree. */
 function canFocus(el: Element): el is HTMLElement {
