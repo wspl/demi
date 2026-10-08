@@ -286,6 +286,25 @@ export const presentingShellTool = toolCall({
   }),
 })
 
+/** One command presents two pages: they are two rows of one list. */
+export const presentingPagesShellTool = toolCall({
+  id: 'tool-shell-present-two',
+  toolName: 'shell_exec',
+  status: 'completed',
+  input: JSON.stringify({
+    script: 'demi browser present t1 && demi browser present t2',
+    description: 'Hand the orders and settings pages to the user',
+  }),
+  view: shellView({
+    commandId: 'cmd-present-two',
+    chunks: [{ stream: 'stdout', text: 'Presented t1 to the user · Orders — Example\nURL: https://example.test/orders\nPresented t2 to the user · Account settings — Example\nURL: https://example.test/settings/account?tab=security\n' }],
+    presented: [
+      { tab: 't1', title: 'Orders — Example', url: 'https://example.test/orders' },
+      { tab: 't2', title: 'Account settings — Example', url: 'https://example.test/settings/account?tab=security' },
+    ],
+  }),
+})
+
 /** The line a command's output shows for its binary stdout (`runtime.md` § What a result attaches). */
 function binaryLine(bytes: number): string {
   return `<binary stdout: ${bytes} bytes>\n`
@@ -829,6 +848,14 @@ export function transcriptDemoBlocks(): Block[] {
     },
     runningShellTool as Block,
     editingShellTool as Block,
+    presentingShellTool as Block,
+    {
+      type: 'text',
+      id: 'assistant-presented',
+      createdAt: iso(60_000),
+      model: demoModel,
+      text: 'The login test passes. The orders page is open in my browser, signed in as the test user: **Open** it above to try it in yours.',
+    },
     statusTool as Block,
     writeTool as Block,
     yieldTool as Block,

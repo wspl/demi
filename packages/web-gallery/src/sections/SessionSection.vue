@@ -86,6 +86,7 @@ import {
   changesDemoBlocks,
   editingShellTool,
   presentingShellTool,
+  presentingPagesShellTool,
   fileChangeCases,
   fullPageTool,
   longScriptShellTool,
@@ -1589,6 +1590,16 @@ onBeforeUnmount(() => {
               <ToolShellBlock
                 :block="presentingShellTool"
                 :input="parseToolInput(presentingShellTool.input)"
+                :is-streaming="false"
+              />
+            </GallerySpecimen>
+            <GallerySpecimen
+              variant="shell · presented two pages"
+              wide
+            >
+              <ToolShellBlock
+                :block="presentingPagesShellTool"
+                :input="parseToolInput(presentingPagesShellTool.input)"
                 :is-streaming="false"
               />
             </GallerySpecimen>
