@@ -1,6 +1,7 @@
 import { onBeforeUnmount, watch, type Ref } from 'vue'
 import { onKeyStroke } from '@vueuse/core'
 import { useAutofocus } from '../ui/autofocus'
+import { useFocusReturn } from './focusReturn'
 
 /** A field the user types in or picks a value from: what a dialog opens on first. */
 const FIELD = [
@@ -74,34 +75,18 @@ export function useDialogFocus(options: {
   isTop: () => boolean
 }): void {
   const autofocus = useAutofocus()
-  let opener: HTMLElement | null = null
-
-  /** Gives the focus back to the opener, if the dialog still holds it or nothing does. */
-  function giveBack(): void {
-    const target = opener
-    opener = null
-    if (!target?.isConnected) {
-      return
-    }
-    const active = document.activeElement
-    const panel = options.panel.value
-    if (active !== null && active !== document.body && !panel?.contains(active)) {
-      return
-    }
-    target.focus({ preventScroll: true })
-  }
+  const focusReturn = useFocusReturn((active) => options.panel.value?.contains(active) === true)
 
   // Runs before the panel renders, so the opener is what had the focus, not what the dialog's content took.
   watch(options.isOpen, (open) => {
-    if (!open) {
-      giveBack()
-      return
+    if (open) {
+      focusReturn.open()
+    } else {
+      focusReturn.close()
     }
-    const active = document.activeElement
-    opener = active instanceof HTMLElement && active !== document.body ? active : null
   }, { immediate: true })
 
-  onBeforeUnmount(giveBack)
+  onBeforeUnmount(() => focusReturn.close())
 
   watch(options.panel, (panel) => {
     // Content that took the focus itself (a field marked `focused`) keeps it.
