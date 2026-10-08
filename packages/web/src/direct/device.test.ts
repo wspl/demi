@@ -20,7 +20,7 @@ class Peer implements DirectPeer {
     browser: { local: ['3f2a.local'], public: [] },
     device: { local: ['127.0.0.1'], public: [] },
     pairs: { tried: 1, answered: 1 },
-    pair: null,
+    inUse: null,
     permission: null,
   }
   probe(): void {}
