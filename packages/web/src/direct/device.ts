@@ -35,6 +35,8 @@ export interface DeviceDirectDeps {
   connect(signal: AbortSignal): Promise<DirectPeer>
   /** Calls `run` after `ms`, unless the answer is called first. */
   after(ms: number, run: () => void): () => void
+  /** A peer connected, which Automatic measures to decide (`direct-channel.md` § Measuring the paths). */
+  connected(): void
 }
 
 /** What the page shows of a device's path. */
@@ -222,10 +224,11 @@ export class DeviceDirect {
         this.failures = 0
         this.peer = peer
         this.state.peer = true
-        // A new peer is used at once, before its figures exist.
+        // A new peer is used at once, before its measurement ends.
         this.slower = false
         this.choose()
         void peer.closed.then(() => this.lost(peer))
+        this.deps.connected()
       },
       (error: unknown) => {
         if (this.attempt !== attempt)
