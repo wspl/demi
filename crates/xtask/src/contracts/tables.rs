@@ -127,6 +127,11 @@ pub fn module(header: &str) -> String {
             u64::try_from(direct::CONNECT_TIMEOUT.as_millis()).expect("a timeout fits"),
         ),
         (
+            "DIRECT_SPEED_MAX_BYTES",
+            "The most bytes one speed test asks for, on either path (`direct-channel.md` § Measuring the paths).",
+            direct::SPEED_MAX_BYTES,
+        ),
+        (
             "DIRECT_WATCH_HEARTBEAT_MS",
             "How long a direct channel's watch stays silent before its heartbeat.",
             u64::try_from(direct::WATCH_HEARTBEAT.as_millis()).expect("a timeout fits"),
@@ -136,6 +141,13 @@ pub fn module(header: &str) -> String {
         push_doc(&mut source, Some(description), 0);
         writeln!(source, "export const {name} = {value}").expect("writing to a string");
     }
+    source.push('\n');
+    push_doc(
+        &mut source,
+        Some("The label of a direct channel's probe channel, on which the runner sends back each message (`direct-channel.md` § Measuring the paths)."),
+        0,
+    );
+    writeln!(source, "export const DIRECT_PROBE_LABEL = {:?}", direct::PROBE_LABEL).expect("writing to a string");
 
     source
 }

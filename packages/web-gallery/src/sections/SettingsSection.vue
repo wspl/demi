@@ -213,7 +213,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Devices · Direct Channel"
-        note="A device’s row names it and says in one line its system and how this page reaches it, or when an offline one was last seen; the row opens the device’s own page, whose back button returns to the list. There, Connection has the switch for direct connections, the status with its reason when it goes through the server, the last attempt with Try Now, which runs one and ends as the device’s path says, and Details, folded, with what the attempt saw. Device names the system by name and chip family and the runner as up to date or not. Rename… changes the name everywhere; Revoke… asks first, and the device leaves the list. Set zan-mbp’s path to see each reason its page gives; the Cloud’s page has no switch."
+        note="A device’s row names it and says in one line its system and how this page reaches it, or when an offline one was last seen; the row opens the device’s own page, whose back button returns to the list. Its header says how this page reaches the device now, with the latency of the path in use, why not directly and when Demi tries again, with Details…, a sheet of what the last attempt saw, and Try Again, which runs an attempt that ends as the device’s path says. Connection holds the route, Automatic, Prefer Direct or Server Only; under it the two paths’ figures, the one in use marked, and Test Speed, which measures for a moment. Device holds the facts with Rename…; Revoke… asks first, and the device leaves the list. Set zan-mbp’s path to see each state its header gives; the Cloud’s page says it is always reached through the server."
       >
         <div class="flex w-full max-w-2xl flex-col gap-4">
           <Segmented v-model="directScenario" :options="DIRECT_SCENARIOS" size="sm" />
@@ -223,14 +223,14 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
               :devices="directDevices.devices.value"
               :shown="directDevices.shown.value"
               :runner-release="DEMO_RUNNER_RELEASE"
-              :round-trip-ms="directDevices.roundTripMs()"
               :overlay-store="appOverlayStore"
               :installation="demoDeviceInstallation"
               :claim-device="directDevices.claim"
               :name-max-length="64"
               @show="directDevices.shown.value = $event"
-              @set-direct="directDevices.setDirect"
+              @set-route="directDevices.setRoute"
               @try-now="directDevices.tryNow"
+              @test-speed="directDevices.testSpeed"
               @revoke="directDevices.revoke"
               @rename="directDevices.rename"
               @reset-cloud="productWould('Reset the Cloud Environment')"

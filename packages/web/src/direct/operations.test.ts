@@ -42,12 +42,14 @@ class ScriptedPeer implements DirectPeer {
     browser: { local: [], public: [] },
     device: { local: ['127.0.0.1'], public: [] },
     pairs: { tried: 1, answered: 1 },
+    pair: null,
     permission: null,
   }
   constructor(private readonly scripts: Script[]) {}
 
-  roundTrip(): Promise<number | null> {
-    return Promise.resolve(null)
+  probe(): void {}
+  onProbe(): () => void {
+    return () => {}
   }
 
   async open<T>(header: ChannelHeader): Promise<OperationChannel<T>> {

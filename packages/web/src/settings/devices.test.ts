@@ -29,7 +29,7 @@ beforeEach(async () => {
         startCommand: null,
         os: null,
         runnerVersion: null,
-        direct: true,
+        route: 'automatic',
       },
     ],
     cloud: {

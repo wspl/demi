@@ -681,6 +681,24 @@ pub enum Inbound {
         #[garde(length(min = 1, max = crate::direct::CANDIDATE_CHARS))]
         candidate: String,
     },
+    /// A page's probe of the relay path (`direct-channel.md` § Measuring the
+    /// paths): the runner answers `direct_pong` with the same `id` at once,
+    /// whether or not it holds the peer.
+    DirectPing {
+        #[garde(length(min = 1))]
+        peer: String,
+        #[garde(skip)]
+        id: u32,
+    },
+    /// The relay half of Test Speed: `bytes` random bytes into `output`,
+    /// after the runner says `speed_started`.
+    Speed {
+        id: String,
+        #[garde(range(min = 1, max = crate::direct::SPEED_MAX_BYTES))]
+        bytes: u64,
+        #[garde(skip)]
+        output: PipeRef,
+    },
     /// The page's signaling socket closed: the runner closes the peer.
     DirectClose {
         #[garde(length(min = 1))]
@@ -1034,6 +1052,17 @@ pub enum Outbound {
         peer: String,
         #[garde(length(min = 1, max = crate::direct::CANDIDATE_CHARS))]
         candidate: String,
+    },
+    /// The answer to a `direct_ping`.
+    DirectPong {
+        #[garde(length(min = 1))]
+        peer: String,
+        #[garde(skip)]
+        id: u32,
+    },
+    /// The runner took a `speed` request; its bytes follow in its pipe.
+    SpeedStarted {
+        id: String,
     },
     /// The runner did not answer a `direct_offer`.
     DirectRefused {

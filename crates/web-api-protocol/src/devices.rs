@@ -29,6 +29,21 @@ pub enum DeviceKind {
 serde_plain::derive_display_from_serialize!(DeviceKind);
 serde_plain::derive_fromstr_from_deserialize!(DeviceKind);
 
+/// How pages reach a paired device (`direct-channel.md` § Choosing the
+/// path): `automatic`, over a direct channel while its path is not worse
+/// than the server's; `direct`, over one whenever it connects, Prefer
+/// Direct; `server`, never over one, Server Only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceRoute {
+    Automatic,
+    Direct,
+    Server,
+}
+
+serde_plain::derive_display_from_serialize!(DeviceRoute);
+serde_plain::derive_fromstr_from_deserialize!(DeviceRoute);
+
 /// Whether a device's runner serves it: `online` while its runner is
 /// connected, `updating` while it replaces itself with the backend's runner
 /// release (`runner.md` § Runner updates), `offline` otherwise.
@@ -48,8 +63,8 @@ pub enum DeviceState {
 /// (`native-runtime.md` § Installed artifacts); `os` and `runner_version`
 /// are the operating system and the runner release its runner last
 /// reported, null before its runner first connected; `direct` is whether
-/// pages may reach it over a direct channel (`direct-channel.md` § Choosing
-/// the path); `start_command` is what a person types in a terminal on a
+/// `route` is how pages reach it (`direct-channel.md` § Choosing the
+/// path); `start_command` is what a person types in a terminal on a
 /// paired device to start its runner again, null for the Cloud.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -73,7 +88,7 @@ pub struct DeviceDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub runner_version: Option<String>,
-    pub direct: bool,
+    pub route: DeviceRoute,
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub start_command: Option<String>,
@@ -94,8 +109,8 @@ pub struct Claim {
     pub code: String,
 }
 
-/// `PATCH /devices/:id`: a paired device's new name, whether pages may
-/// reach it directly, or both; each applies when present.
+/// `PATCH /devices/:id`: a paired device's new name, its route, or both;
+/// each applies when present.
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChangeDevice {
@@ -104,7 +119,7 @@ pub struct ChangeDevice {
     pub name: Option<Trimmed>,
     #[serde(default)]
     #[garde(skip)]
-    pub direct: Option<bool>,
+    pub route: Option<DeviceRoute>,
 }
 
 /// `{ device }`: the answer of a claim and of a change.
@@ -194,6 +209,37 @@ impl TryFrom<u64> for LogLimit {
     }
 }
 
+/// `?bytes=` of `GET /devices/:id/speed`, the relay half of Test Speed.
+/// Queries are the backend's alone and are not emitted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub struct SpeedQuery {
+    pub bytes: SpeedBytes,
+}
+
+/// How many random bytes a speed test asks for: 1 to 64 MiB.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "u64")]
+pub struct SpeedBytes(u64);
+
+impl SpeedBytes {
+    pub fn get(self) -> u64 {
+        self.0
+    }
+}
+
+impl TryFrom<u64> for SpeedBytes {
+    type Error = String;
+
+    fn try_from(bytes: u64) -> Result<Self, String> {
+        let most = demi_runner_protocol::direct::SPEED_MAX_BYTES;
+        if (1..=most).contains(&bytes) {
+            Ok(Self(bytes))
+        } else {
+            Err(format!("bytes must be 1 to {most}"))
+        }
+    }
+}
+
 /// The one source a device log read keeps, such as `runner`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "String")]
@@ -233,6 +279,12 @@ pub enum DirectRequest {
         #[garde(length(min = 1, max = CANDIDATE_CHARS))]
         candidate: String,
     },
+    /// A probe of the relay path, once a second while the page uses the
+    /// device (`direct-channel.md` § Measuring the paths).
+    Ping {
+        #[garde(skip)]
+        id: u32,
+    },
 }
 
 /// The most bytes of an offer: a data channel's offer is a few kilobytes.
@@ -247,6 +299,8 @@ pub enum DirectMessage {
     /// A candidate the runner found after its answer, such as the address a
     /// STUN server saw it at; it may come before the answer.
     Candidate { candidate: String },
+    /// The runner's answer to the page's probe `id`.
+    Pong { id: u32 },
     /// The runner did not answer the page's last offer.
     Unanswered { code: Unanswered },
     /// Nothing else was sent for 30 seconds: the socket is quiet, not dead.

@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch, watchEffect } from 'vue'
+import { computed, watch, watchEffect } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useIntervalFn } from '@vueuse/core'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import type { SettingsDevice } from '@demicodes/web-ui/settings/types'
@@ -10,7 +9,7 @@ import { useProduct } from '../state/product'
 import { claimDevice, useDeviceInstallation } from '../devices/pairing'
 import { useDeviceSettings } from './devices'
 import { useSettingsAddress } from './address'
-import { directRoundTrip, directStatus, tryDirect, watchDirect } from '../direct'
+import { directStatus, measureDirect, testSpeed, tryDirect, watchDirect } from '../direct'
 import { changeDeviceSchema } from '../api/generated/web-api'
 
 const resources = useResources()
@@ -19,7 +18,7 @@ const settings = useDeviceSettings()
 const installation = useDeviceInstallation()
 const address = useSettingsAddress()
 const { cloud, reset, revoking, renaming, changing } = storeToRefs(settings)
-const { revoke, rename, setDirect, resetCloud } = settings
+const { revoke, rename, setRoute, resetCloud } = settings
 /** The backend's limit on a device's name, as its schema states it. */
 const nameMaxLength = changeDeviceSchema.shape.name.unwrap().unwrap().maxLength
 
@@ -50,17 +49,18 @@ watch(
       void address.show('devices')
   },
 )
-
-/** The shown device's direct round trip, measured while its page shows and its channel stands. */
-const roundTripMs = ref<number | null>(null)
-async function measure(): Promise<void> {
-  const id = shown.value
-  roundTripMs.value = id ? await directRoundTrip(id) : null
-}
-useIntervalFn(() => void measure(), 2000)
+// The shown device's paths are measured while its page shows and its runner
+// is connected.
 watch(
-  () => [shown.value, shown.value ? directStatus(shown.value).connected : false],
-  () => void measure(),
+  () => {
+    const id = shown.value
+    const device = id ? resources.devices.find((candidate) => candidate.id === id) : undefined
+    return device?.state === 'online' ? device.id : null
+  },
+  (id, _, onCleanup) => {
+    if (id)
+      onCleanup(measureDirect(id))
+  },
   { immediate: true },
 )
 </script>
@@ -70,7 +70,6 @@ watch(
     :devices="devices"
     :shown="shown"
     :runner-release="product.snapshot?.runnerRelease ?? null"
-    :round-trip-ms="roundTripMs"
     :projects="resources.projects"
     :load="product.load"
     :changing-ids="changing"
@@ -86,8 +85,9 @@ watch(
     @retry="product.reconnect"
     @reset-cloud="resetCloud"
     @show="address.show('devices', $event)"
-    @set-direct="setDirect"
+    @set-route="setRoute"
     @try-now="tryDirect"
+    @test-speed="testSpeed"
     @rename="rename"
     @revoke="revoke"
   />

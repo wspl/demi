@@ -6,7 +6,7 @@
 
 use demi_runner_protocol::wire::{HostArtifact, OperatingSystem, RunnerPlatform};
 use demi_shared_types::Timestamp;
-use demi_web_api_protocol::devices::DeviceKind;
+use demi_web_api_protocol::devices::{DeviceKind, DeviceRoute};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
@@ -53,20 +53,19 @@ pub struct DeviceRecord {
     /// The runner release its runner last reported, such as `0.1.16`; none
     /// before its runner first connected.
     pub runner_version: Option<String>,
-    /// Whether pages may reach it over a direct channel
-    /// (`direct-channel.md` § Choosing the path).
-    pub direct: bool,
+    /// How pages reach it (`direct-channel.md` § Choosing the path).
+    pub route: DeviceRoute,
 }
 
 /// What a change of a device sets: each field that is present.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DeviceChange {
     pub name: Option<String>,
-    pub direct: Option<bool>,
+    pub route: Option<DeviceRoute>,
 }
 
 const DEVICE_COLUMNS: &str =
-    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version, direct";
+    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version, route";
 
 /// The name and platform of the one device a user's Cloud is.
 pub const CLOUD_NAME: &str = "Cloud";
@@ -108,7 +107,7 @@ impl ControlService {
                 installed: Vec::new(),
                 os: None,
                 runner_version: None,
-                direct: true,
+                route: DeviceRoute::Automatic,
             })
         })
         .await
@@ -324,11 +323,11 @@ impl ControlService {
     ) -> Result<Option<DeviceRecord>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(&format!(
-                "UPDATE devices SET name = coalesce(?1, name), direct = coalesce(?2, direct)
+                "UPDATE devices SET name = coalesce(?1, name), route = coalesce(?2, route)
                  WHERE id = ?3 RETURNING {DEVICE_COLUMNS}"
             ))?;
             statement
-                .query_row(params![change.name, change.direct, device.as_str()], |row| {
+                .query_row(params![change.name, change.route.map(|route| route.to_string()), device.as_str()], |row| {
                     Ok(device_row(row))
                 })
                 .optional()?
@@ -443,6 +442,10 @@ fn device_row(row: &Row<'_>) -> Result<DeviceRecord, StorageError> {
             None => None,
         },
         runner_version: row.get("runner_version")?,
-        direct: row.get("direct")?,
+        route: decode(
+            "devices",
+            "route",
+            row.get::<_, String>("route")?.parse::<DeviceRoute>(),
+        )?,
     })
 }

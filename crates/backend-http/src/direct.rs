@@ -2,8 +2,8 @@
 //! channel, `direct-channel.md` § Making the channel): the backend
 //! introduces the page to its paired device's runner, through device
 //! access, and is the only check. It relays each offer to the runner and
-//! its answer to the page, and each side's candidates found after them to
-//! the other; the socket's close closes the runner's peer, and
+//! its answer to the page, each side's candidates found after them to the
+//! other, and the page's probes of the relay path and their answers; the socket's close closes the runner's peer, and
 //! so does the user turning a plugin on or off, which the socket tells the
 //! page so that it offers again with the new introduction.
 
@@ -14,7 +14,7 @@ use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
-use demi_backend_remote_host::DirectAnswer;
+use demi_backend_remote_host::{DirectAnswer, PeerEvent};
 use demi_backend_runners::command_context::{Reported, reported};
 use demi_backend_user_shard::shard::page_socket::PageSocket;
 use demi_runner_protocol::direct::{CONNECT_TIMEOUT, Introduction, OfferRefusal};
@@ -100,8 +100,6 @@ struct Offered {
     message: DirectMessage,
     /// Cancelled once the introduction is out of date.
     switched: CancellationToken,
-    /// The candidates the runner finds after its answer.
-    candidates: mpsc::UnboundedReceiver<String>,
 }
 
 /// How a signaling socket ended, which it closes with.
@@ -123,8 +121,16 @@ impl Signaling {
         // What ends the introduction the runner's peer was made with: the
         // user's next turn of a plugin on or off.
         let mut introduced: Option<CancellationToken> = None;
-        // The candidates the runner finds for the peer after its answer.
-        let mut found: Option<mpsc::UnboundedReceiver<String>> = None;
+        // What the runner says of the peer: its candidates found after its
+        // answer, and its answers to the page's probes.
+        let Some(mut said) = self.peer_events().await else {
+            page.close(CloseFrame {
+                code: 1011,
+                reason: "host_unreachable".into(),
+            })
+            .await;
+            return;
+        };
         let end = loop {
             let switched = introduced.clone();
             let request = tokio::select! {
@@ -139,25 +145,24 @@ impl Signaling {
                     // The peer's streams are no longer the user's: the
                     // runner closes it, and the page offers again.
                     introduced = None;
-                    found = None;
                     self.close_peer().await;
                     if page.send(text(&DirectMessage::Closed)).await.is_err() {
                         break End::PageClosed;
                     }
                     continue;
                 }
-                candidate = async {
-                    match &mut found {
-                        Some(found) => found.recv().await,
-                        None => std::future::pending().await,
-                    }
-                } => {
-                    let Some(candidate) = candidate else {
-                        // The peer ended: the runner finds nothing more.
-                        found = None;
-                        continue;
+                event = said.recv() => {
+                    let message = match event {
+                        Some(PeerEvent::Candidate(candidate)) => DirectMessage::Candidate { candidate },
+                        Some(PeerEvent::Pong(id)) => DirectMessage::Pong { id },
+                        // The runner's connection ended, which the link's
+                        // end says next.
+                        None => {
+                            link_ended.as_mut().await;
+                            break End::HostUnreachable;
+                        }
                     };
-                    if page.send(text(&DirectMessage::Candidate { candidate })).await.is_err() {
+                    if page.send(text(&message)).await.is_err() {
                         break End::PageClosed;
                     }
                     continue;
@@ -187,6 +192,10 @@ impl Signaling {
                     }
                     continue;
                 }
+                DirectRequest::Ping { id } => {
+                    self.ping(id).await;
+                    continue;
+                }
             };
             offered = true;
             let answer = tokio::select! {
@@ -195,12 +204,11 @@ impl Signaling {
                 answer = self.offer(sdp) => answer,
             };
             let message = match answer {
-                Some(Offered { message, switched, candidates }) => {
+                Some(Offered { message, switched }) => {
                     // A new offer replaced the peer, and only an answered
                     // one made another.
                     let answered = matches!(message, DirectMessage::Answer { .. });
                     introduced = answered.then_some(switched);
-                    found = answered.then_some(candidates);
                     message
                 }
                 None => break End::HostUnreachable,
@@ -212,6 +220,7 @@ impl Signaling {
         if offered {
             self.close_peer().await;
         }
+        self.forget_peer().await;
         let close = match end {
             End::HostUnreachable => Some((1011, "host_unreachable")),
             End::Refused => Some((1003, "invalid_message")),
@@ -286,21 +295,18 @@ impl Signaling {
                     color_scheme,
                 };
                 let link = shard.devices().link(&device)?;
-                // Listening before the offer goes, so nothing the runner
-                // finds is missed.
-                let candidates = link.direct_candidates(&peer);
                 let offer = link.direct_offer(&peer, sdp, introduction, stun);
                 let answered = match tokio::time::timeout(ANSWER_TIMEOUT, offer).await {
                     Ok(Ok(answer)) => Ok(answer),
                     Ok(Err(_)) => return None,
                     Err(_) => Err(Unanswered::Timeout),
                 };
-                Some((answered, switched, candidates))
+                Some((answered, switched))
             })
             .await
             .ok()
             .flatten()?;
-        let (answered, switched, candidates) = answered;
+        let (answered, switched) = answered;
         let message = match answered {
             Ok(DirectAnswer::Answer(sdp)) => DirectMessage::Answer { sdp },
             Ok(DirectAnswer::Refused(code, message)) => {
@@ -313,11 +319,40 @@ impl Signaling {
             }
             Err(code) => DirectMessage::Unanswered { code },
         };
-        Some(Offered {
-            message,
-            switched,
-            candidates,
-        })
+        Some(Offered { message, switched })
+    }
+
+    /// What the runner says of this socket's peer from now on; none when the
+    /// device's runner is no longer connected.
+    async fn peer_events(&self) -> Option<mpsc::UnboundedReceiver<PeerEvent>> {
+        let device = self.device.clone();
+        let peer = self.peer.clone();
+        self.state
+            .shards
+            .of(&self.user)
+            .call(move |shard, _| async move { Some(shard.devices().link(&device)?.direct_peer(&peer)) })
+            .await
+            .ok()
+            .flatten()
+    }
+
+    /// Relays the page's probe `id` of the relay path to the runner.
+    async fn ping(&self, id: u32) {
+        let device = self.device.clone();
+        let peer = self.peer.clone();
+        let relayed = self
+            .state
+            .shards
+            .of(&self.user)
+            .call(move |shard, _| async move {
+                if let Some(link) = shard.devices().link(&device) {
+                    link.direct_ping(&peer, id);
+                }
+            })
+            .await;
+        // A shard that is gone has no runner connection left to probe; the
+        // page counts the probe as late.
+        let _ = relayed;
     }
 
     /// Relays a candidate the page found after its offer to the runner's
@@ -337,6 +372,24 @@ impl Signaling {
             .await;
         // A shard that is gone has no runner connection left to tell.
         let _ = relayed;
+    }
+
+    /// The socket ended: what the runner says of its peer goes nowhere.
+    async fn forget_peer(&self) {
+        let device = self.device.clone();
+        let peer = self.peer.clone();
+        let forgot = self
+            .state
+            .shards
+            .of(&self.user)
+            .call(move |shard, _| async move {
+                if let Some(link) = shard.devices().link(&device) {
+                    link.direct_forget(&peer);
+                }
+            })
+            .await;
+        // A shard that is gone holds no link to forget it in.
+        let _ = forgot;
     }
 
     /// The page went: the runner closes its peer.

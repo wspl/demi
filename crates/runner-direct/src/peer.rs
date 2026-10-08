@@ -7,7 +7,7 @@
 //! fails or the runner closes it. Its end closes its sockets and ends its
 //! operations.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::poll_fn;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -16,7 +16,7 @@ use std::task::Poll;
 use bytes::Bytes;
 use demi_runner_protocol::direct::{
     CONNECT_TIMEOUT, ChannelError, ChannelErrorCode, ChannelHeader, Introduction, MAX_CHANNELS,
-    QUEUE_BYTES, StunUrl, WriteEnd,
+    PROBE_LABEL, QUEUE_BYTES, StunUrl, WriteEnd,
 };
 use demi_runner_protocol::files::FileWatchRequest;
 use garde::Validate;
@@ -160,6 +160,7 @@ impl Peer {
         drop(datagrams);
         let mut served = Served {
             channels: HashMap::new(),
+            probes: HashSet::new(),
             tasks: JoinSet::new(),
             operations,
             introduction,
@@ -334,6 +335,8 @@ async fn read(socket: Arc<UdpSocket>, datagrams: mpsc::Sender<Datagram>) {
 /// A peer's channels and the operations they carry.
 struct Served {
     channels: HashMap<ChannelId, Channel>,
+    /// The page's probe channels, which echo what they carry.
+    probes: HashSet<ChannelId>,
     /// Each operation's task, which aborts with the peer.
     tasks: JoinSet<()>,
     operations: Arc<dyn Operations>,
@@ -442,6 +445,12 @@ impl Served {
             Event::Connected => self.connected = true,
             Event::IceConnectionStateChange(IceConnectionState::Disconnected) => return false,
             Event::Closed => return false,
+            // The page's probe channel carries no operation: each message
+            // goes back as it came (`direct-channel.md` § Measuring the
+            // paths).
+            Event::ChannelOpen(id, label) if label == PROBE_LABEL => {
+                self.probes.insert(id);
+            }
             Event::ChannelOpen(id, _) => {
                 if self.channels.len() >= MAX_CHANNELS {
                     let busy = ChannelError::new(
@@ -464,10 +473,18 @@ impl Served {
                     channel.set_buffered_amount_low_threshold(QUEUE_BYTES / 2);
                 }
             }
+            Event::ChannelData(data) if self.probes.contains(&data.id) => {
+                if let Some(mut probe) = rtc.channel(data.id) {
+                    // A probe the queue cannot take now is lost, as an
+                    // unanswered probe is; the page counts it so.
+                    let _ = probe.write(data.binary, &data.data);
+                }
+            }
             Event::ChannelData(data) => self.data(data),
             // The page closed it: its operation ends.
             Event::ChannelClose(id) => {
                 self.channels.remove(&id);
+                self.probes.remove(&id);
             }
             _ => {}
         }
