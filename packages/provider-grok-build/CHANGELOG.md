@@ -1,5 +1,13 @@
 # @demicodes/provider-grok-build
 
+## 0.25.7
+
+### Patch Changes
+
+- @demicodes/core@0.25.7
+- @demicodes/provider@0.25.7
+- @demicodes/utils@0.25.7
+
 ## 0.25.6
 
 ### Patch Changes
