@@ -437,7 +437,7 @@ test('a command\'s live frames build what the page shows of it, until its end', 
     { title: 'Run the unit tests', script: 'npm test', output: 'ninety\n', chars: 100, phase: 'running' },
   ])
   applyConversationEvent(conversation, frame('exited', 'ninety\nend\n', 104))
-  expect(toRaw(conversation.terminals)).toMatchObject([{ phase: 'exited', output: 'ninety\nend\n' }])
+  expect(toRaw(conversation.terminals)).toMatchObject([{ phase: 'exited', exitCode: 0, output: 'ninety\nend\n' }])
   expect(conversation.terminals[0]?.endedAt).toBeDefined()
 
   // A subagent's command takes its call from the child's transcript; a call without a description is titled by its script.
