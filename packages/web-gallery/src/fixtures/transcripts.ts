@@ -3,7 +3,7 @@ import { findRequest, type ConversationTranscripts, type TranscriptRequest } fro
 
 /**
  * The gallery's conversation holds every specimen's transcript: what a
- * request's line or a file pill names, the gallery's files service finds in
+ * file pill names, the gallery's files service finds in
  * the transcripts specimens register here, as the product's finds it in the
  * conversation's.
  */

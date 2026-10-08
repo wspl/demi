@@ -5,7 +5,7 @@ import { useElementSize } from '@vueuse/core'
 import type { Block, PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { BLOCK_GAP, useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { compactionSummaryTokens, getVisibleBlocks } from './visible-blocks'
-import { assistantFooterIds, replyEndIds, requestLineIds } from './assistant-footer'
+import { assistantFooterIds, replyEndIds } from './assistant-footer'
 import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streaming'
 import type { MessageListBlock } from './pending-steers'
 import { listTailBlocks } from './list-tail'
@@ -34,9 +34,8 @@ import { highlightFound } from '../ui/found-highlight'
 import { provideBlockJump } from './block-jump'
 import { commandCalls, provideCommandReferences, useCommandReferences } from './command-references'
 import { toolCallTitle } from './block-helpers'
-import RequestChangesLine from './blocks/RequestChangesLine.vue'
-import { provideTranscript, useEditSelection } from './edit-selection'
-import { requestLineSelection, transcriptRequests, type TranscriptRequest } from '../files/request-changes'
+import { provideTranscript } from './edit-selection'
+import { transcriptRequests } from '../files/request-changes'
 
 const props = defineProps<{
   conversationId: string
@@ -90,7 +89,7 @@ const emit = defineEmits<{
 const { states: forkStates, run: forkMessage } = useMessageForks(() => props.fork, () => props.conversationId)
 
 const visibleBlocks = computed(() => getVisibleBlocks(props.blocks))
-/** The blocks that end their reply, after which its work is done: Copy and Fork, and the request's Files Changed line, wait for one. */
+/** The blocks that end their reply, after which its work is done: Copy and Fork wait for one. */
 const replyEnds = computed(() => replyEndIds(visibleBlocks.value, props.phase))
 const footerIds = computed(() => assistantFooterIds(visibleBlocks.value, replyEnds.value))
 // A recovery hides the record it recovers from: the tail row names the recovery, then the turn running.
@@ -189,15 +188,6 @@ provideTranscript({
   },
   requests: () => requests.value,
 })
-const editSelection = useEditSelection()
-const requestLines = computed(() => requestLineIds(visibleTranscriptBlocks.value, requests.value.requestOf, replyEnds.value))
-
-function openRequest(request: TranscriptRequest): void {
-  const selection = requestLineSelection(props.node ?? null, request)
-  if (selection) {
-    editSelection()?.(selection)
-  }
-}
 const transcriptIndexById = computed(
   () =>
     new Map(visibleTranscriptBlocks.value.map((block, index) => [block.id, index]))
@@ -260,10 +250,6 @@ let revealing: AbortController | null = null
 /** The row that shows each block: a step's work group, or the block's own. */
 const rowOf = computed(() => new Map(renderBlocks.value.flatMap((row) =>
   row.type === 'work_group' ? row.steps.map((step) => [step.id, row.id] as const) : [[row.id, row.id] as const])))
-/** The block a row ends with: a work group's last step, or the row's block. */
-function rowEnd(row: MessageListBlock): string {
-  return row.type === 'work_group' ? row.steps.at(-1)!.id : row.id
-}
 /** Brings the block `id`'s row into view and marks it for a moment; false when the list does not hold it. */
 function revealAndMark(id: string): boolean {
   const scroller = scrollContainer.value
@@ -387,26 +373,7 @@ defineExpose({
                 @edit-user="(id) => emit('editUser', id)"
                 @retry-submission="emit('retrySubmission')"
               >
-                <!-- A request's reply ends with its changed-files button, above Copy and Fork. -->
-                <template v-if="renderBlocks[item.index]!.type === 'text' && requestLines.has(renderBlocks[item.index]!.id)" #replyEnd>
-                  <RequestChangesLine
-                    :request="requestLines.get(renderBlocks[item.index]!.id)!"
-                    :selectable="editSelection() !== undefined"
-                    @open="openRequest(requestLines.get(renderBlocks[item.index]!.id)!)"
-                  />
-                </template>
               </AgentMessageVirtualBlock>
-              <!-- A request that ends on anything else, as one stopped during a call, has the button under its last row. -->
-              <div
-                v-if="renderBlocks[item.index]!.type !== 'text' && requestLines.has(rowEnd(renderBlocks[item.index]!))"
-                class="px-[var(--agent-pad-x,2rem)] py-1"
-              >
-                <RequestChangesLine
-                  :request="requestLines.get(rowEnd(renderBlocks[item.index]!))!"
-                  :selectable="editSelection() !== undefined"
-                  @open="openRequest(requestLines.get(rowEnd(renderBlocks[item.index]!))!)"
-                />
-              </div>
             </MessageEditRegion>
           </div>
         </div>

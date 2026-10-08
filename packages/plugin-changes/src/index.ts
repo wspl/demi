@@ -1,6 +1,6 @@
 // The `changes` plugin's page (`plugin-pages.md`, `file-previews.md`
 // § Changes): the pinned `change` kind, the Change view, which opens the
-// `edit` intent of a request's line and a tool call's file pills.
+// `edit` intent of the file pills.
 import { defineComponent, h } from 'vue'
 import { FileDiff } from '@lucide/vue'
 import { ICON_PX, definePage, type PanelKind } from '@demicodes/plugin-sdk'
