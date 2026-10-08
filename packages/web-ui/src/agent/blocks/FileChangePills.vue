@@ -3,12 +3,13 @@ import LineCounts from '../../files/LineCounts.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { baseName } from '@demicodes/utils'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
-import CornerDot from '../../ui/CornerDot.vue'
+import CornerPlus from '../../ui/CornerPlus.vue'
 import type { ChangeFile } from '../../files/changes'
 
 /**
  * The files a tool call changed, as pills that wrap: icon, name, and the
- * line counts. A new file carries a green dot on its icon; a deleted file is
+ * line counts. A new file carries a green plus at its icon's lower right
+ * corner, as a file added in an editor's tree does; a deleted file is
  * struck through; a renamed file names its old path in the tooltip.
  * Collapsed, the pills stop after `maxRows` rows and a "+N files" pill at
  * the end of the last row shows the rest; "Show Less" folds them again.
@@ -94,14 +95,16 @@ watch([() => props.files, expanded], () => { void measure() })
       v-show="index < visibleCount"
       :key="file.path"
       ref="pillEls"
-      class="inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full bg-btn pl-1.5 pr-2 text-xs leading-4 text-fg-body shadow-[var(--shadow-btn)]"
-      :class="selectable ? 'btn' : ''"
+      class="group/pill inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full bg-btn pl-1.5 pr-2 text-xs leading-4 text-fg-muted [--shadow-btn:var(--shadow-pill)] shadow-[var(--shadow-pill)] transition-colors duration-200 ease-out"
+      :class="selectable ? 'btn hover:text-fg-body' : ''"
       @click="selectable && emit('select', file.path)"
       :title="file.from ? `${file.from} → ${file.path}` : file.path"
     >
-      <span class="relative inline-flex shrink-0">
+      <!-- The pills stand under the row they belong to, quieter than it: the
+        icon a step back too, never so faint it reads as unavailable. -->
+      <span class="relative inline-flex shrink-0 opacity-80 transition-opacity duration-200 ease-out group-hover/pill:opacity-100">
         <FileIcon :name="baseName(file.path)" :is-directory="false" :size="14" />
-        <CornerDot v-if="file.kind === 'added'" tone="success" size="xs" />
+        <CornerPlus v-if="file.kind === 'added'" label="New file" />
       </span>
       <!-- Name and counts use different fonts and sizes: align them on the baseline, not the box. -->
       <span class="inline-flex min-w-0 items-baseline gap-1.5">

@@ -6,7 +6,7 @@ import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { ChatSessionState, ConversationState, PendingSubmissionState } from '@demicodes/web-ui/agent/types'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
-import { demoModel, shellView } from './fixtures/blocks'
+import { demoModel, editedFile, shellView, type ShellView } from './fixtures/blocks'
 import { usageAt } from './fixtures/catalog'
 import { printLive } from './live-command'
 
@@ -16,11 +16,12 @@ import { printLive } from './live-command'
  * sends it again; `offline` is a message sent while the backend cannot be
  * reached, which waits and goes once it can; `resume` and `retry` recover an aborted or failed tail;
  * `connect` opens over a dropped socket; `stream` is thinking then reply with
- * nothing waited for. Every fixture only changes conversation state,
+ * nothing waited for; `work` is a turn of many steps, thinking without text
+ * and commands in a row, one failing, two changing files. Every fixture only changes conversation state,
  * the way the product's runtime does: the transcript's tail row, its faces and
  * the handoff into a block are `web-ui`'s.
  */
-export type TurnFlowKind = 'turn' | 'undelivered' | 'offline' | 'resume' | 'retry' | 'connect' | 'stream'
+export type TurnFlowKind = 'turn' | 'undelivered' | 'offline' | 'resume' | 'retry' | 'connect' | 'stream' | 'work'
 
 /** A sent message as the composer showed it: what the page holds until the server confirms it. */
 export type SentMessage = Pick<PendingSubmissionState, 'text' | 'attachments'>
@@ -58,6 +59,38 @@ const TOOL_RUN_MS = 1400
 const COMPACT_MS = 1200
 const FEED_CHARS = 4
 const FEED_MS = 90
+
+/** A step of the `work` turn: thinking, without text or with it, or a command. */
+type WorkStep =
+  | { kind: 'think', text: string }
+  | { kind: 'call', description: string, script: string, lines: string[], exitCode?: number, files?: ShellView['files'] }
+
+const WORK_TEXT = 'The wasm mjsunit tests fail on d8. Fix them.'
+const WORK_STEPS: WorkStep[] = [
+  { kind: 'think', text: '' },
+  { kind: 'call', description: 'Check the tests directory contents', script: 'ls test/mjsunit | head -3', lines: ['array-sort.js', 'array-splice.js', 'regress'] },
+  { kind: 'think', text: '' },
+  { kind: 'call', description: 'Trial-run three mjsunit tests on d8.wasm', script: 'tools/run-tests.sh mjsunit/array-sort', lines: ['tools/run-tests.sh: Permission denied'], exitCode: 126 },
+  { kind: 'think', text: 'The runner script has no execute bit. Set it, then point the status file at the new suite paths.' },
+  {
+    kind: 'call',
+    description: 'Make the runner script executable',
+    script: 'chmod +x tools/run-tests.sh && demi file edit tools/run-tests.sh',
+    lines: ['edited tools/run-tests.sh'],
+    files: [editedFile({ path: 'tools/run-tests.sh', kind: 'modified', added: 1, removed: 1 })],
+  },
+  {
+    kind: 'call',
+    description: 'Patch the test status file',
+    script: 'demi file edit test/mjsunit/mjsunit.status',
+    lines: ['edited test/mjsunit/mjsunit.status'],
+    files: [editedFile({ path: 'test/mjsunit/mjsunit.status', kind: 'modified', added: 12, removed: 3 })],
+  },
+  { kind: 'think', text: '' },
+  { kind: 'call', description: 'Run the full mjsunit suite', script: 'tools/run-tests.sh mjsunit', lines: ['[00:04|%  25|+ 103|-   0]', '[00:09|%  60|+ 247|-   0]', '[00:15|% 100|+ 412|-   0]: Done'] },
+  { kind: 'think', text: '' },
+]
+const WORK_REPLY = 'The runner script lacked its execute bit and the status file still listed the old suite paths. All 412 mjsunit tests pass now.'
 
 export interface TurnFlowOptions {
   id?: string
@@ -323,6 +356,100 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     thinkThenReply(run, toolDone + WAIT_MS, THINK_2)
   }
 
+  function workCall(id: string, createdAt: string, step: Extract<WorkStep, { kind: 'call' }>, status: ToolCallBlock['status']): ToolCallBlock {
+    const text = `${step.lines.join('\n')}\n`
+    return {
+      type: 'tool_call',
+      id,
+      createdAt,
+      model: demoModel,
+      toolUseId: `${id}-use`,
+      toolName: 'shell_exec',
+      status,
+      input: JSON.stringify({ script: step.script, description: step.description }),
+      output: status === 'completed' ? [{ type: 'text', text }] : [],
+      view: status === 'executing'
+        ? null
+        : shellView({ commandId: `cmd-${id}`, chunks: [{ stream: 'stdout', text }], exitCode: step.exitCode, files: step.files }),
+    }
+  }
+
+  /**
+   * The `work` turn: each step as the product's runtime brings it. Thinking
+   * arrives empty and streams its text, a command's call runs with its
+   * output coming live and ends with its result, and the reply streams last.
+   */
+  function runWork(run: number): void {
+    state.phase = 'running'
+    state.pendingCalls = []
+    let t = FIRST_OUTPUT_MS
+    for (const step of WORK_STEPS) {
+      if (step.kind === 'think') {
+        t = think(run, t, step.text) + (step.text ? 300 : 700)
+        continue
+      }
+      const id = nextId('tool')
+      let startedAt = ''
+      // The model writes the call first: its row shows as it opens, takes its
+      // description once written, and becomes the call's block when whole.
+      at(run, t, () => {
+        state.pendingCalls = [{ toolUseId: `${id}-use`, toolName: 'shell_exec', description: null }]
+      })
+      at(run, t + 400, () => {
+        state.pendingCalls = [{ toolUseId: `${id}-use`, toolName: 'shell_exec', description: step.description }]
+      })
+      t += 900
+      at(run, t, () => {
+        startedAt = now()
+        state.pendingCalls = []
+        append(workCall(id, startedAt, step, 'executing'))
+        state.terminals.push({
+          id: `cmd-${id}`,
+          title: step.description,
+          script: step.script,
+          phase: 'running',
+          startedAt,
+          output: '',
+          chars: 0,
+          toolUseId: `${id}-use`,
+        })
+      })
+      step.lines.forEach((line, index) => {
+        at(run, t + (index + 1) * 300, () => {
+          const terminal = command(id)
+          if (terminal)
+            printLive(terminal, `${line}\n`)
+        })
+      })
+      const done = t + TOOL_RUN_MS
+      at(run, done, () => {
+        const terminal = command(id)
+        if (terminal && step.exitCode !== undefined)
+          terminal.exitCode = step.exitCode
+        endTerminal(terminal, 'exited')
+        replace(id, workCall(id, startedAt, step, 'completed'))
+      })
+      t = done + WAIT_MS
+    }
+    reply(run, t, WORK_REPLY)
+  }
+
+  /** The `work` turn as it stands once it ended, as a page opened later shows it. */
+  function settleWork(): void {
+    cancel()
+    pendingSubmission.value = null
+    state.pendingCalls = []
+    state.phase = 'idle'
+    const at = now()
+    state.blocks = [
+      userBlock([{ type: 'text', text: WORK_TEXT }]),
+      ...WORK_STEPS.map((step): Block => step.kind === 'think'
+        ? thinkingBlock(nextId('think'), at, step.text)
+        : workCall(nextId('tool'), at, step, 'completed')),
+      textBlock(nextId('text'), at, WORK_REPLY),
+    ]
+  }
+
   /** The server acknowledges a recovery: the recovered record settles, the turn runs. */
   function acknowledgeRecovery(): void {
     const tail = state.blocks.at(-1)
@@ -356,7 +483,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    * writes the message, which confirms it. A delivery that fails is answered
    * with the failure alone.
    */
-  function deliver(run: number, fails: boolean): void {
+  function deliver(run: number, fails: boolean, body: (run: number) => void = runTurn): void {
     if (fails) {
       at(run, CONFIRM_MS, () => {
         undeliver(DELIVERY_ERROR)
@@ -368,7 +495,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     })
     at(run, CONFIRM_MS, () => {
       confirmMessage()
-      runTurn(run)
+      body(run)
     })
   }
 
@@ -629,6 +756,11 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       })
       return
     }
+    if (kind === 'work') {
+      holdMessage([{ type: 'text', text: WORK_TEXT }], { text: WORK_TEXT, attachments: [] }, null)
+      deliver(run, false, runWork)
+      return
+    }
     holdMessage([{ type: 'text', text: USER_TEXT }], { text: USER_TEXT, attachments: [] }, null)
     deliver(run, kind === 'undelivered')
   }
@@ -639,6 +771,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     state,
     pendingSubmission,
     play,
+    settleWork,
     turn,
     retrySubmission,
     undelivered,

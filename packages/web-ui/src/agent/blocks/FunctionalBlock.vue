@@ -29,6 +29,12 @@ const props = defineProps<{
   rollKey?: string
   /** When this stays put, the icon does not roll with the label. */
   iconKey?: string
+  /** When this changes, the face changes at once, without a roll (ChromeRoll's `cutKey`). */
+  cutKey?: string
+  /** The body is rows of their own, as a work group's steps: in flow, unbounded, never scrolled. */
+  flow?: boolean
+  /** Show the chevron of the row this face hands over to, without being a control itself (the tail row's face). */
+  chevron?: boolean
 }>()
 
 const slots = useSlots()
@@ -105,6 +111,7 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
         class="min-w-0"
         :face-key="rollKey ?? 'static'"
         :icon-key="iconKey ?? 'icon'"
+        :cut-key="cutKey"
       >
         <template v-if="showIcon()" #icon>
           <div
@@ -128,15 +135,15 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
             class="min-w-0 truncate font-mono text-fg-body group-hover:text-fg-emphasis"
             :class="loading ? 'thinking-shimmer' : ''"
           >{{ detail }}</span>
+          <!-- The chevron is part of the face: it follows the label's end, so it rolls with it rather than jumping to the new label's width. -->
+          <span v-if="isExpandable || chevron" class="-ml-1 shrink-0 text-xs">
+            <FoldChevron
+              :open="isOpen"
+              :class="tone === 'danger' ? 'text-on-danger-muted group-hover:text-on-danger' : 'text-fg-faint group-hover:text-fg-muted'"
+            />
+          </span>
         </div>
       </ChromeRoll>
-      <span class="-ml-1 shrink-0 text-xs">
-        <FoldChevron
-          v-if="isExpandable"
-          :open="isOpen"
-          :class="tone === 'danger' ? 'text-on-danger-muted group-hover:text-on-danger' : 'text-fg-faint group-hover:text-fg-muted'"
-        />
-      </span>
       <div class="flex-1"></div>
     </div>
     <Fold v-if="isExpandable" :open="isOpen">
@@ -149,7 +156,11 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
         <!-- The body is bounded and does not scroll: the pinned part (a call's
           input) stays at its top, under its own bound, and only the part
           below it scrolls. -->
-        <div class="flex max-h-80 min-w-0 flex-1 flex-col py-0.5">
+        <!-- Rows of their own start where the label starts, so each row's icon stands under the title, clear of the rail. -->
+        <div v-if="flow" class="min-w-0 flex-1 py-0.5 pl-2">
+          <slot name="body" />
+        </div>
+        <div v-else class="flex max-h-80 min-w-0 flex-1 flex-col py-0.5">
           <div
             class="flex min-h-0 flex-col"
             :class="framed ? 'mx-3 my-1 rounded-md border border-line-subtle bg-surface-base py-2' : ''"

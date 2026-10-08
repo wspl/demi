@@ -67,13 +67,27 @@ export function transcriptRequests(blocks: readonly Block[]): TranscriptRequests
     }
     requestOf.set(block.id, current.request)
     if (block.type === 'tool_call') {
-      addCall(current.request, current.byPath, block)
+      addCall(current.request.files, current.byPath, block)
     }
   }
   return { requests, requestOf }
 }
 
-function addCall(request: TranscriptRequest, byPath: Map<string, RequestFile>, block: ToolCallBlock): void {
+/**
+ * The files `calls` changed, in the order first changed, each with its edits
+ * in order: a request's, or a run of its calls the transcript shows as one
+ * row, whose files are counted from the same two ends.
+ */
+export function callFiles(calls: readonly ToolCallBlock[]): RequestFile[] {
+  const files: RequestFile[] = []
+  const byPath = new Map<string, RequestFile>()
+  for (const call of calls) {
+    addCall(files, byPath, call)
+  }
+  return files
+}
+
+function addCall(files: RequestFile[], byPath: Map<string, RequestFile>, block: ToolCallBlock): void {
   const view = storedShellView(block)
   if (!view?.files) {
     return
@@ -84,7 +98,7 @@ function addCall(request: TranscriptRequest, byPath: Map<string, RequestFile>, b
     if (!entry) {
       entry = { path: file.path, kind: file.kind, edits: [] }
       byPath.set(file.path, entry)
-      request.files.push(entry)
+      files.push(entry)
     }
     file.edits.forEach((edit, segment) => {
       entry.edits.push({
@@ -201,36 +215,25 @@ export function selectionCopies(file: RequestFile, index: number | null): EditCo
 }
 
 /**
- * The lines a request added and removed: the sum over its files of each
- * one's All Changes, counted as the Change view's header counts it; null
- * when a file's ends were not kept or cannot be read.
+ * The lines `file` added and removed across its edits, its All Changes as
+ * the Change view's header counts it; null when its ends were not kept.
  */
-export async function requestLineCounts(
-  request: TranscriptRequest,
+export async function fileLineCounts(
+  file: RequestFile,
   read: ReadCallChange,
   signal?: AbortSignal,
 ): Promise<{ added: number; removed: number } | null> {
-  const ends = request.files.map((file) => selectionCopies(file, null))
-  if (ends.some((copies) => copies === null)) {
+  const copies = selectionCopies(file, null)
+  if (!copies) {
     return null
   }
-  const sides = await Promise.all(ends.map((copies) => read(copies!, signal)))
-  let added = 0
-  let removed = 0
-  for (const pair of sides) {
-    if (!pair) {
-      return null
-    }
-    const counts = diffLineCounts(pair.original, pair.modified)
-    added += counts.added
-    removed += counts.removed
-  }
-  return { added, removed }
+  const pair = await read(copies, signal)
+  return pair ? diffLineCounts(pair.original, pair.modified) : null
 }
 
-/** Names a request's files' ends, which its counts follow: they change only when a later call changes a file. */
-export function requestEndsKey(request: TranscriptRequest): string {
-  return request.files.map((file) => {
+/** Names files' ends, which their counts follow: they change only when a later call changes a file. */
+export function filesEndsKey(files: readonly RequestFile[]): string {
+  return files.map((file) => {
     const copies = selectionCopies(file, null)
     return copies ? `${copies.original}:${copies.modified}` : `${file.path}:-`
   }).join(',')

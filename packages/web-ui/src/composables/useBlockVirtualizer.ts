@@ -1,6 +1,7 @@
-import { computed, nextTick, ref, type Ref, watch } from 'vue'
+import { computed, nextTick, onScopeDispose, ref, type Ref, watch } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { BOTTOM_THRESHOLD_PX, distanceFromBottom } from './scroll-bottom'
+import { FOLD_MS } from '../ui/fold'
 
 type ScrollIntent = 'up' | 'down' | null
 interface VirtualizedBlock {
@@ -12,6 +13,12 @@ const OVERSCAN = 8
 /** Space between transcript rows; a row placed after the list keeps it too. */
 export const BLOCK_GAP = 4
 const AUTO_SCROLL_REENGAGE_THRESHOLD = 1
+/**
+ * How long a click or key press in the list holds the view still: a row the
+ * reader opens or folds changes its height over a fold, and what they acted
+ * on stays where it is meanwhile.
+ */
+const READER_LAYOUT_MS = FOLD_MS + 150
 
 const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   user: 40,
@@ -95,6 +102,31 @@ export function useBlockVirtualizer(
   let touchStartY = 0
   let furthestDistanceSinceDisengage = 0
 
+  // The reader opened or folded something: until the fold ends, the view
+  // neither follows the end nor corrects for the row's new height, so the row
+  // they acted on stays put and what follows it moves, as a browser keeps a
+  // <details> the reader opens in place. Then the list is at its end or not
+  // by where it is.
+  let readerLayoutUntil = 0
+  let readerLayoutTimer: ReturnType<typeof setTimeout> | undefined
+  function holdsView(): boolean {
+    return performance.now() < readerLayoutUntil
+  }
+  function readerChangesLayout(): void {
+    readerLayoutUntil = performance.now() + READER_LAYOUT_MS
+    clearTimeout(readerLayoutTimer)
+    readerLayoutTimer = setTimeout(() => {
+      readerLayoutTimer = undefined
+      const el = scrollContainer.value
+      if (!el)
+        return
+      const dist = distanceFromBottom(el)
+      isAtBottom.value = dist <= BOTTOM_THRESHOLD_PX
+      shouldAutoScroll.value = isAtBottom.value
+    }, READER_LAYOUT_MS)
+  }
+  onScopeDispose(() => clearTimeout(readerLayoutTimer))
+
   function scrollToBottom() {
     isProgrammaticScroll = true
     virtualizer.value.scrollToIndex(blocks.value.length - 1, { align: 'end' })
@@ -168,10 +200,18 @@ export function useBlockVirtualizer(
           pendingIntent = 'down'
         touchStartY = touchY
       }
+      const onKeydown = (e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ')
+          readerChangesLayout()
+      }
+      el.addEventListener('click', readerChangesLayout, { capture: true })
+      el.addEventListener('keydown', onKeydown, { capture: true })
       el.addEventListener('wheel', onWheel, { passive: true })
       el.addEventListener('touchstart', onTouchStart, { passive: true })
       el.addEventListener('touchmove', onTouchMove, { passive: true })
       onCleanup(() => {
+        el.removeEventListener('click', readerChangesLayout, { capture: true })
+        el.removeEventListener('keydown', onKeydown, { capture: true })
         el.removeEventListener('wheel', onWheel)
         el.removeEventListener('touchstart', onTouchStart)
         el.removeEventListener('touchmove', onTouchMove)
@@ -183,7 +223,7 @@ export function useBlockVirtualizer(
   watch(
     () => virtualizer.value.getTotalSize(),
     () => {
-      if (!isRestored.value || !shouldAutoScroll.value)
+      if (!isRestored.value || !shouldAutoScroll.value || holdsView())
         return
       scrollToBottom()
     },
@@ -201,6 +241,8 @@ export function useBlockVirtualizer(
         // Before the first measurement the virtualizer states no offset; the
         // top of the list is where it starts, which is what its own private
         // getter also falls back to.
+        if (holdsView())
+          return false
         const offset = currentInstance.scrollOffset ?? 0
         const isStreamingTail = item.index === blocks.value.length - 1
         const allowCorrection = shouldAutoScroll.value || !isStreamingTail

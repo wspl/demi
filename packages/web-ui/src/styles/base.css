@@ -284,8 +284,16 @@ svg.lucide {
    a status dot's ring) takes it from there, the controls through an on-fill slot. Translucency
    is for scrims, shadows and edges only. */
 :root {
+  /* A file pill's edge: a button's, except in light, below. */
+  --shadow-pill: var(--shadow-btn);
   --surface-current: var(--surface-base);
   --fill-color: var(--surface-base);
+}
+
+/* In light a file pill's edge is a step lighter than a button's: pills stand
+   quieter under the row they belong to. */
+html[data-theme="light"] {
+  --shadow-pill: 0 0 0 0.5px rgba(0, 0, 0, 0.07);
 }
 
 .bg-surface-base {

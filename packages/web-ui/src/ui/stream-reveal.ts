@@ -4,10 +4,14 @@ import { sliceHead } from '@demicodes/utils'
 export const STREAM_REVEAL = {
   /** Comfortable writing pace. Bursts catch up instead of waiting out this rate. */
   charsPerSec: 36,
-  /** Never linger more than this far behind a dumped chunk. */
-  maxLagMs: 420,
+  /**
+   * Never linger more than this far behind a dumped chunk: text shows as
+   * fast as it arrives, smoothed over a few frames, never held back to a
+   * writing pace the model outruns.
+   */
+  maxLagMs: 120,
   /** Finish the last units quickly when the block is no longer live. */
-  flushLagMs: 180,
+  flushLagMs: 80,
 } as const
 
 const TRAILING_OPENERS = /(?:^|[\s(])(?:\*{1,3}|_{1,3}|~{1,2}|`{1,3}|\\)$/
