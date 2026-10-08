@@ -25,6 +25,8 @@ cookie = "0.18"
 cookie_store = { version = "0.22", default-features = false, features = ["serde"] }
 demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 demi-preview-rewrite = { path = "../preview-rewrite", features = ["public-suffix"] }
+# The workspace version the page runtime is named by.
+demi-shared-artifacts = { path = "../shared-artifacts" }
 # Text bodies in the charset their content type names (MIT/Apache-2.0).
 encoding_rs = "0.8"
 futures-util.workspace = true

@@ -139,7 +139,7 @@ impl CodexProvider {
     ) -> Self {
         let user_agent = format!(
             "demi-codex-provider/{} ({}; {})",
-            env!("CARGO_PKG_VERSION"),
+            demi_shared_artifacts::WORKSPACE_VERSION,
             std::env::consts::OS,
             std::env::consts::ARCH
         );

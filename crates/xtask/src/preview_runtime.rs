@@ -17,12 +17,14 @@ const CRATE: &str = "demi-preview-rewrite-wasm";
 const MODULE: &str = "demi_preview_rewrite_wasm.wasm";
 /// The stem of the generated files, which `src/rewriter.js` imports.
 const GLUE: &str = "preview_rewrite_wasm";
-const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(clap::Args)]
 pub struct Options {
-    /// The release the runtime is named by [default: the workspace version].
-    #[arg(long, value_name = "VERSION", value_parser = release)]
+    /// The release the runtime is named by, which the web app's build
+    /// carries: the workspace version a build names in
+    /// DEMI_WORKSPACE_VERSION, as `xtask deploy` names a development build's
+    /// [default: the workspace version].
+    #[arg(long, env = "DEMI_WORKSPACE_VERSION", value_name = "VERSION", value_parser = release)]
     release: Option<String>,
     /// Keeps names and adds an inline source map, for reading stacks in a
     /// page.
@@ -65,7 +67,9 @@ pub fn run(options: Options) -> Result<(), Error> {
         _ => {}
     }
     std::fs::create_dir_all(&directory)?;
-    let release = options.release.unwrap_or_else(|| VERSION.to_owned());
+    let release = options
+        .release
+        .unwrap_or_else(|| demi_shared_artifacts::WORKSPACE_VERSION.to_owned());
     let output = directory.join(format!("{release}.js"));
     let mut bundle = Command::new("bun");
     bundle.arg(package.join("bundle.ts")).arg(&output).current_dir(&package);
