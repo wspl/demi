@@ -894,6 +894,55 @@ async fn a_stop_during_a_step_keeps_the_result_of_a_call_that_returned() {
     assert_eq!(tool_output(&blocks[2]).1, texts(&["Tool call aborted: work"]));
 }
 
+/// A call of a step completes in the transcript as soon as it returns, while
+/// the step's other call still runs, so the page shows its end and its
+/// changed files at once (`edit-tracking.md` § What the conversation shows).
+#[tokio::test(flavor = "local")]
+async fn a_call_of_a_step_completes_as_it_returns_while_the_other_runs() {
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![
+            event::tool_call("call-1", "work", json!({ "slow": false })),
+            event::tool_call("call-2", "work", json!({ "slow": true })),
+            event::response(1, 1),
+        ]),
+        Turn::Events(vec![event::text("done"), event::response(1, 1)]),
+    ]);
+    let store = MemoryTreeStore::new();
+    let (release, released) = oneshot::channel::<()>();
+    let released = Rc::new(RefCell::new(Some(released)));
+    let work = tool("work", move |call| {
+        let slow = call.input["slow"] == true;
+        let released = if slow { released.borrow_mut().take() } else { None };
+        Box::pin(async move {
+            if let Some(released) = released {
+                let _ = released.await;
+                return Ok(output("slow"));
+            }
+            Ok(output("quick"))
+        })
+    });
+    let runtime = TestRuntime {
+        together: vec!["work"],
+        ..test_runtime(vec![work])
+    };
+    let session = start_on(&provider, runtime, &store, SessionConfig::default()).await;
+    let running = session.send(text("go"), turn("t1")).unwrap();
+    until(|| kinds(&session.transcript().blocks).contains(&"tool_call:completed".to_owned())).await;
+
+    // The quick call is complete while the slow one still runs.
+    let blocks = session.transcript().blocks;
+    assert_eq!(
+        kinds(&blocks)[..3],
+        ["user", "tool_call:completed", "tool_call:executing"]
+    );
+    assert_eq!(tool_output(&blocks[1]).1, texts(&["quick"]));
+
+    release.send(()).unwrap();
+    running.await.unwrap();
+    let blocks = session.transcript().blocks;
+    assert_eq!(tool_output(&blocks[2]).1, texts(&["slow"]));
+}
+
 #[tokio::test(flavor = "local")]
 async fn stop_while_a_hook_hangs_records_the_stop_without_waiting_for_the_hook() {
     let provider = ScriptedRuntime::new(Vec::new());
