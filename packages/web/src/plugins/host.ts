@@ -76,18 +76,6 @@ export function productPageHost(): PageHost {
       const host = primaryHost(plugin, conversation)
       return host ? packageInstalled(product.snapshot, host.deviceId, host.packages) : []
     },
-    preview(conversation) {
-      const state = product.snapshot
-      const summary = state?.conversations.find((entry) => entry.id === conversation)
-      const release = import.meta.env.DEMI_PREVIEW_RUNTIME
-      const host = summary ? executionFor(summary).deviceId : null
-      if (!state?.preview || !host || !release) {
-        return null
-      }
-      const { scheme, domain, namespace } = state.preview
-      const url = new URL(`/runtime/${release}.js`, window.location.href).href
-      return { scheme, domain, namespace, host, runtime: { release, url } }
-    },
     hostStarting(conversation) {
       const state = product.snapshot
       const summary = state?.conversations.find((entry) => entry.id === conversation)

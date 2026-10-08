@@ -44,7 +44,6 @@ mod outputs;
 mod panel;
 mod permissions;
 mod plugins;
-mod preview;
 mod providers;
 mod real_browser;
 mod real_cloud;

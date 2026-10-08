@@ -1,6 +1,5 @@
 //! The runner-owned file interface through which a native command reports
-//! the files it edited (`edit-tracking.md`), and the pages it presented to
-//! the user (`preview.md` § Presenting a page).
+//! the files it edited (`edit-tracking.md`).
 
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
@@ -15,22 +14,6 @@ pub const EDIT_JOB_BYTES: u64 = 64 * 1024 * 1024;
 pub const EDIT_JOB_FILES: usize = 500;
 /// The most edit segments a job's edit record holds.
 pub const EDIT_JOB_SEGMENTS: u64 = 1000;
-/// The most pages a job's commands present; a later one is left out.
-pub const PRESENTED_JOB_PAGES: usize = 32;
-
-/// A page a job's command presented with `demi browser present`: the card
-/// the command's block shows (`preview.md` § Presenting a page).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
-#[serde(deny_unknown_fields)]
-pub struct PresentedPage {
-    /// The tab of the agent's browser.
-    #[garde(length(min = 1, max = 64))]
-    pub tab: String,
-    #[garde(length(max = 4096))]
-    pub title: String,
-    #[garde(length(min = 1, max = 4096))]
-    pub url: String,
-}
 
 /// Where an invoked command records its edits: the job's edit directory and
 /// the lock that serializes writers to it. Both paths are absolute.
@@ -101,10 +84,6 @@ pub struct EditJournal {
     pub next_segment: u64,
     #[garde(skip)]
     pub files_truncated: bool,
-    /// The pages the job's commands presented, the latest of each tab.
-    #[serde(default)]
-    #[garde(length(max = PRESENTED_JOB_PAGES), dive)]
-    pub presented: Vec<PresentedPage>,
 }
 
 impl EditJournal {

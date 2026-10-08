@@ -201,30 +201,3 @@ async fn a_stopped_host_lists_no_tabs_and_a_tab_the_browser_lacks_is_refused_to_
     // pages read nothing again.
     assert_eq!(demi.changes(), 1);
 }
-
-#[tokio::test(flavor = "local")]
-async fn opening_a_tab_of_the_users_browser_asks_the_host_and_wakes_a_stopped_cloud() {
-    let opened = json!({
-        "label": "selbnt2qp6d94in3",
-        "environment": { "origin": "http://localhost:5173", "top": "http://localhost", "cross": false },
-        "origin": "https://k3f9a2ab--selbnt2qp6d94in3.demi-preview.dev",
-    });
-    let answer = opened.clone();
-    let (plugin, demi) = world(Box::new(move |operation, args| {
-        assert_eq!(operation, "browser.preview_open");
-        assert_eq!(args["url"], json!("http://localhost:5173/editor"));
-        Ok(answer.clone())
-    }));
-    let params = json!({
-        "url": "http://localhost:5173/editor",
-        "scheme": "https",
-        "domain": "demi-preview.dev",
-        "namespace": "k3f9a2ab",
-        "host": "device-1",
-    });
-    assert_eq!(call(&plugin, &demi, "preview_open", params).await, Ok(opened));
-    let calls: Vec<CallKind> = demi.called.borrow().iter().map(|call| call.kind).collect();
-    assert_eq!(calls, [CallKind::Starts]);
-    // The agent's tab list did not change.
-    assert_eq!(demi.changes(), 0);
-}

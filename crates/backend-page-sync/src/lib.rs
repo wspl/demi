@@ -35,9 +35,6 @@ pub enum Part {
     Plugins,
     /// A plugin's state, by the plugin's id.
     Plugin(String),
-    /// The deployment's namespace at the preview domain, which every user's
-    /// pages embed previews from.
-    Preview,
 }
 
 /// Every user's open channels. Cloning it shares it.

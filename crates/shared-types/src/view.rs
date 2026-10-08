@@ -91,30 +91,6 @@ pub struct ShellToolView {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub files_truncated: Option<bool>,
-    /// The pages the command presented with `demi browser present`, once it
-    /// exited having presented some (`preview.md` § Presenting a page).
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "Vec<PresentedPage>")]
-    #[garde(dive)]
-    pub presented: Option<Vec<PresentedPage>>,
-}
-
-/// A page a command presented to the user: the card its block shows, whose
-/// Open opens it in the user's own browser.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct PresentedPage {
-    /// The tab of the agent's browser it shows.
-    #[garde(length(chars, min = 1))]
-    pub tab: String,
-    #[garde(skip)]
-    pub title: String,
-    #[garde(length(chars, min = 1))]
-    pub url: String,
 }
 
 /// Where a command is: running, exited, or stopped.
