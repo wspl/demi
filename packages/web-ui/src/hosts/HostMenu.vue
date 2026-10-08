@@ -16,7 +16,8 @@ import type { SentenceText } from '../ui/ui-text'
 import DeviceIcon from '../devices/DeviceIcon.vue'
 import { DEVICE_GLYPHS } from '../devices/device-glyphs'
 import { DEVICE_STATE_LABEL } from '../devices/state'
-import { HOST_PATH_LABEL, type HostDeviceOption, type HostMenuHost } from './types'
+import { DEVICE_PATH_LABEL } from '../devices/direct'
+import type { HostDeviceOption, HostMenuHost } from './types'
 
 /**
  * Where a conversation runs, as the header shows it and its one-level menu
@@ -70,7 +71,7 @@ function choiceLabel(device: HostDeviceOption): string {
 function deviceNote(device: HostDeviceOption): string | undefined {
   if (device.state !== 'online')
     return DEVICE_STATE_LABEL[device.state]
-  return device.path ? HOST_PATH_LABEL[device.path] : undefined
+  return device.path ? DEVICE_PATH_LABEL[device.path] : undefined
 }
 
 function deviceChecked(id: string): boolean {

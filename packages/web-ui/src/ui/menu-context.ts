@@ -1,7 +1,7 @@
 import { readonly, ref } from 'vue'
 import type { Component, ComputedRef, InjectionKey, Ref } from 'vue'
 import type { MenuIndicator } from './MenuItem.vue'
-import type { SentenceText, TitleText } from './ui-text'
+import type { SentenceText } from './ui-text'
 
 /** A row of a Menu's `items`: what the row shows, as MenuItem's props of the same names. */
 export interface MenuListItem {
@@ -9,7 +9,7 @@ export interface MenuListItem {
   /** Often content, such as a device's name, so its style is the caller's. */
   label: string
   icon?: Component
-  note?: TitleText
+  /** A muted word at the row's end: a state or a setting's value. */
   value?: string
   indicator?: MenuIndicator
   indicatorLabel?: SentenceText

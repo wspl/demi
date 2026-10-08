@@ -357,7 +357,7 @@ onBeforeUnmount(() => pending?.abort())
                     : DEVICE_STATE_TONE[host.state]
                 "
                 :indicator-label="DEVICE_STATE_LABEL[host.state]"
-                :note="
+                :value="
                   host.id !== CLOUD_HOST_ID && !host.canWake && host.state !== 'online'
                     ? DEVICE_STATE_LABEL[host.state]
                     : undefined
