@@ -17,8 +17,9 @@ import type { FileBrowserEntry, FileBrowserSource } from './types'
  * it, best matches first with the matched letters marked. A row is always
  * selected while it shows, the first when it opens or its rows change; the
  * arrows and the moving pointer move the selection, which is the one lit
- * row, Tab and Enter complete it, a click the clicked one; Escape puts the
- * menu away, and Tab is then the focus's and a second Escape the field's. A directory completes as its name and a
+ * row, Tab completes it, a click the clicked one; Return is the field's,
+ * which submits what it holds; Escape puts the menu away, and Tab is then
+ * the focus's and a second Escape the field's. A directory completes as its name and a
  * slash, the menu then listing it; a file completes as its name and is
  * reported (`completeFile`). Every key the menu does not take is the
  * field's own (`keydown`).
