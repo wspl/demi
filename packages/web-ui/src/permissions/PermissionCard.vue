@@ -47,7 +47,7 @@ const ran = computed(() => {
 <template>
   <section
     v-if="request"
-    class="permission-card flex w-full flex-col gap-2.5 rounded-lg border border-line bg-surface-raised p-3 text-chrome"
+    class="permission-card flex w-full flex-col gap-2.5 rounded-lg border border-line bg-surface-raised p-3 text-chrome shadow-(--shadow-window)"
     role="alertdialog"
     :aria-label="title"
   >
