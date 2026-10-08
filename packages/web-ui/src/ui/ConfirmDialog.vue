@@ -51,7 +51,8 @@ const emit = defineEmits<{
       </ul>
     </div>
     <template #footer>
-      <Button :disabled="busy" @click="emit('close')">Cancel</Button>
+      <!-- Cancel is the default: Return and the opening focus never destroy (Dialog). -->
+      <Button :disabled="busy" default-action @click="emit('close')">Cancel</Button>
       <Button variant="destructive" :loading="busy" @click="emit('confirm')">{{ action }}</Button>
     </template>
   </Dialog>
