@@ -6,23 +6,17 @@ import type { SentenceText, TitleText } from '../ui/ui-text'
  * Device…, centred on it. A `header` slot replaces the title when the group's
  * subject needs its own controls, such as an editable name beside its
  * actions; an `aside` slot puts something beside the card, such as a live
- * preview of what the rows change. A `footer` slot is the line macOS writes
- * under a group: small, secondary, about what the rows above decide.
- *
- * A `plain` group is text under its title rather than a card of rows: a
- * section that says how something fares, such as a device's P2P
- * Connection; without content it is its title alone.
+ * preview of what the rows change.
  */
 defineProps<{
   title?: TitleText
   description?: SentenceText
-  plain?: boolean
 }>()
 </script>
 
 <template>
   <!-- The group is the container its aside is placed by: the page's width, not the dialog's. -->
-  <section class="@container flex flex-col" :class="plain ? 'gap-1' : 'gap-3'">
+  <section class="@container flex flex-col gap-3">
     <slot name="header">
       <header v-if="title" class="select-none">
         <!-- With buttons, the title's line is as tall as they are, and they are centred on it. -->
@@ -38,21 +32,12 @@ defineProps<{
         >{{ description }}</p>
       </header>
     </slot>
-    <div v-if="plain" class="text-[13px] leading-5 text-fg-muted">
-      <slot />
-    </div>
     <!-- An aside (a preview, a legend) sits beside the card where there is room, under it where not. -->
-    <div v-else class="@container flex flex-col gap-4 @lg:flex-row @lg:items-stretch">
-      <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-        <div
-          class="settings-card @container min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface-float"
-        >
-          <slot />
-        </div>
-        <!-- The footnote starts where the rows' text starts. -->
-        <p v-if="$slots.footer" class="select-none px-4 text-[12px] leading-4 text-fg-muted">
-          <slot name="footer" />
-        </p>
+    <div class="@container flex flex-col gap-4 @lg:flex-row @lg:items-stretch">
+      <div
+        class="settings-card @container min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface-float"
+      >
+        <slot />
       </div>
       <div v-if="$slots.aside" class="flex shrink-0">
         <slot name="aside" />
