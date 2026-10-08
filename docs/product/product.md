@@ -585,7 +585,7 @@ window that every conversation of the user with that model then uses
 
 | Path | User input and result |
 |---|---|
-| Subscription | Claude setup-token import, or Codex/Grok device login; additional accounts go into the existing family entry |
+| Subscription | Claude sign-in, or Codex/Grok device login; additional accounts go into the existing family entry |
 | Vendor catalog | Select vendor, label, key, and optional endpoint/model overrides; the family is derived from supported vendor metadata |
 | Custom endpoint | Select family and protocol, then label, endpoint, key, and model configuration |
 

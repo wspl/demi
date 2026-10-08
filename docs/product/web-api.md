@@ -792,14 +792,8 @@ refused with 403 `forbidden` ([Scope](../providers/providers.md#scope)).
 
 ## Subscription accounts
 
-A Claude subscription account comes from importing a setup token.
-`POST /api/providers/setup-token` with `{ token, label }` creates the entry
-(409 `provider_exists` when the scope has one), and
-`POST /api/providers/:id/accounts` with `{ token }` adds another account to an
-existing one; each answers 201. An imported token becomes an account record of
-the [credential vault](../providers/providers.md#credential-vault) and is never
-returned; a token the family refuses answers 400 `token_import_failed` with a
-message that does not repeat it. `GET /api/providers/:id/accounts` lists public
+Every subscription account comes from a sign-in, below.
+`GET /api/providers/:id/accounts` lists public
 account metadata and the active account as `{ accounts, active }`.
 `PUT …/accounts/active` takes `{ credentialId }` and answers `{ active }`.
 `DELETE …/accounts/:credentialId` refuses the active account with 409
@@ -807,7 +801,7 @@ account metadata and the active account as `{ accounts, active }`.
 account. An entry that does not take accounts this way answers 400
 `accounts_unsupported`.
 
-Codex/Grok use `POST /api/providers/subscription-login { providerType, label? }`
+Codex, Grok Build and Claude Code use `POST /api/providers/subscription-login { providerType, label? }`
 for the first account and
 `POST /api/providers/:id/accounts/login` for another account on an existing
 provider. A start returns 202 with `{ login: { id, status: "pending" } }`; a
@@ -815,7 +809,11 @@ family without a device login answers 400 `no_login_flow`. Poll
 `GET /api/providers/subscription-login/:id`, which answers `{ login }` with
 `{ status: "pending", verificationUrl, userCode, expiresAt }`, the first two
 null until the vendor names them and `expiresAt` the moment the login ends
-unless the user finishes it, then `{ status: "completed", providerId,
+unless the user finishes it, and for Claude Code `needsCode: true` and no
+`userCode`: the user signs in at `verificationUrl` and pastes the code the
+page shows, which `POST /api/providers/subscription-login/:id/code { code }`
+hands to the login (204; 409 `login_not_waiting` when it waits for none). The
+login then continues as a device login does, `{ status: "completed", providerId,
 credentialId }` with the account the login added, or `{ status: "failed",
 message }`. Cancel with DELETE at the same path. A login is its starter's to
 read and cancel; another id answers 404 `login_not_found`. Terminal results are
@@ -1128,8 +1126,8 @@ older than an earlier one.
 commits; no part changes with time alone. A provider entry's `details`
 report each account's sign-in as it is stored, whether or not the vendor
 would still take it: an API key the vendor revoked, a Codex or Grok Build
-sign-in whose refresh the vendor refuses, and a Claude Code setup token past
-its life all read as they were stored. The backend learns of such a lapse
+or Claude Code sign-in whose refresh the vendor refuses all read as they
+were stored. The backend learns of such a lapse
 only when a request uses the credential. That request fails with the
 provider's reason, in the conversation that sent it, and the stored sign-in,
 with the entry's `details`, stays as it was. So a lapse changes nothing a
