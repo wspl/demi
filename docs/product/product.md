@@ -66,6 +66,13 @@ A conversation owns one agent tree, including its root and subagents, plus
 product metadata such as title, target, model selection, archive state, pin and
 read state. A project is a named directory on a device; the API calls it a
 workspace. It groups conversations without creating a separate execution machine.
+The sidebar's Conversations list holds every conversation outside a project,
+on the Cloud and on a device alike. One that runs on a paired device shows
+that device at its row's end, a computer with a dot for the device's state,
+as a project's row shows its device, so a row without the mark runs on the
+Cloud. The mark names the device and its state in its tooltip; for a device
+since removed, it has no dot and says *Removed device*. A row in a project
+shows no mark: its project's row already shows where it runs.
 
 ```text
 User
