@@ -764,8 +764,12 @@ existing entry reserves the entry until the login completes or fails; another
 change to the entry meanwhile is refused as busy. A code the user pastes is
 never repeated in a response or a log.
 
-Selecting an account is explicit. Removing the active account is refused:
-select another account first, or delete the provider. Deleting a provider
+Selecting an account is explicit. Removing the active account is allowed, as
+removing the signed-in account of a mail or browser app is: in the same
+transaction the entry's first remaining account in the list's order becomes
+active, and removing its last account leaves the entry with none, which asks
+the user to add one before it infers again. A request already running
+finishes with the account it started with. Deleting a provider
 deletes its accounts in the same transaction. Public provider responses expose
 configuration metadata, account metadata and usage, never token material. The
 routes are listed in [Web API](../product/web-api.md#subscription-accounts).

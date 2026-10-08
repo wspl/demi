@@ -796,9 +796,10 @@ Every subscription account comes from a sign-in, below.
 `GET /api/providers/:id/accounts` lists public
 account metadata and the active account as `{ accounts, active }`.
 `PUT …/accounts/active` takes `{ credentialId }` and answers `{ active }`.
-`DELETE …/accounts/:credentialId` refuses the active account with 409
-`active_account`: switch first, or delete the provider to remove its last
-account. An entry that does not take accounts this way answers 400
+`DELETE …/accounts/:credentialId` removes any account, the active one
+included, and answers `{ active }`, the account now active or null when the
+entry has none left
+([Login and publication](../providers/providers.md#login-and-publication)). An entry that does not take accounts this way answers 400
 `accounts_unsupported`.
 
 Codex, Grok Build and Claude Code use `POST /api/providers/subscription-login { providerType, label? }`
