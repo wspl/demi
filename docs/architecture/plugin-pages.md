@@ -214,7 +214,7 @@ by who shows it. The SDK defines each intent and its payload:
 | Intent | Payload | Opened by the shell from |
 | --- | --- | --- |
 | `file` | `{ path }`, an absolute path on the conversation's Host | A file a message names ([Files named in messages](../product/file-previews.md#files-named-in-messages)), an attachment's capsule, a Host image |
-| `edit` | One call's edit of one file, as the transcript's tool block names it | A tool call's file pill, a message edit's selection |
+| `edit` | A request's changes: the agent (`node`, null for the conversation's own), the request, and a file with one call's edit of it (`{ call, segment }`) or null for All Changes ([A request](../execution/edit-tracking.md#a-request)) | A tool call's file pill, a request's changed-files line |
 
 To open an intent, the panel takes the first kind, in registration order, of
 a page the user has on that declares it. A pinned kind's tab takes the data
@@ -305,6 +305,7 @@ for whichever page shows them. `usePage().files(conversation)` gives:
 | `root` | Where the conversation's work runs, which a retained edit's paths are relative to |
 | `changes` | The working tree's uncommitted changes: the list, each file's two sides and the committed contents, with whether a listing is on its way or failed |
 | `edit(copies)` | The two sides of one call's retained edit |
+| `request(node, request)` | A request's changes, derived from that agent's transcript: its files in first-changed order, each with its edits ([A request](../execution/edit-tracking.md#a-request)) |
 | `showChanges()` | The calling component shows the working tree: the service follows the Host's reports for it and keeps `changes` current until the component's scope ends ([What the service keeps](#what-the-service-keeps)) |
 
 `changes` and `file-browser` show these; any other page may read them.

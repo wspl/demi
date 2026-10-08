@@ -76,7 +76,7 @@ reaches the next spawn ([Profiles](subagents.md#profiles)).
 
 A node's system prompt is therefore its identity (the instructions, or a
 profile's, which replace them), the harness guide, the runtime's rules for
-its five tools, the capability index of the node's commands and the model
+its three tools, the capability index of the node's commands and the model
 identity, in that order ([System prompt](system-prompt.md)). It is rendered once, when the node is
 assembled, and holds no time, id, Host or state
 ([Prompt cache](../providers/providers.md#prompt-cache)).
@@ -424,9 +424,12 @@ have fired at fifteen minutes.
   with the placement `new_turn`. Either way, the model receives the text
   "Scheduled yield wakeup fired. Continue the previous work and inspect any
   running command with shell_status when needed." when the time came, and
-  "Command 17 ended with exit code 1. Read its end with shell_status 17 and
-  continue the previous work." when a command ended first; a command that was
-  stopped says so instead of its exit code. A wakeup never appears in the
+  "Command 17 ended with exit code 1. Continue the previous work; read its
+  output with demi shell output 17." when a command ended first, with the
+  exit code the conversation's record of the command holds, whichever agent
+  ran it; a command that was stopped, or that a restore found gone, says
+  "Command 17 was stopped." instead. `demi shell output` reads any command of
+  the conversation, where `shell_status` reads only the node's own. A wakeup never appears in the
   queue or among the pending steers.
 - A wakeup belongs to its session, not to the turn that scheduled it: a turn
   the user started meanwhile receives it like its own.
@@ -992,7 +995,10 @@ What keeps the output coming, and where each part is released:
   environment as they are when the step starts. Only the default shell's
   directory carries over to the next command there. Calls of one step that
   name the same `shellId` run one after another, each when the previous has
-  returned.
+  returned, and a shell a call of the step names is never given to a call
+  that names none.
+- A Stop during a step ends the calls still running; a call that had
+  already returned keeps its result.
 - Each call takes its own lease of the conversation's file gate, so a step's
   calls never take a lease while holding another
   ([Host operations](../execution/sessions-and-targets.md#host-operations)).
@@ -1388,8 +1394,10 @@ Renderers read them directly; there is no separate render model.
 1. A `tool_call` block is the stored envelope of a call, not a render type.
 2. A renderer dispatches on the block's `type` first and, for `tool_call`, on
    its `toolName`.
-3. Each of the five tools has its own rendering; none falls through to the
-   generic tool card.
+3. Each of the three tools has its own rendering; none falls through to the
+   generic tool card. A call to a tool the runtime no longer has, such as
+   `shell_write` or `shell_abort` in a transcript from before they were
+   removed, renders as the generic card.
 4. The generic tool card is only for a tool name the runtime does not have. A
    model can request one; its call then ends with `Tool not found`.
 5. The renderers live in `web-ui`. `web` and `web-gallery` feed them the same
@@ -1427,8 +1435,11 @@ Live frames add to the transcript; they do not replace it:
 
 A patch replaces a block at its index, and renderers key blocks by their id,
 so an update never shows a second record. Renderers tell shell execution,
-status reads, stdin delivery, command cancellation and waiting apart by tool
-name. Component structure, expansion, icons, typography, motion and the
+a look at a command, with or without input, and waiting apart by tool
+name and input. A look or a wait without a `description` takes the title of
+the command it names, quoted: *Check “Run the test suite”*, *Wait for “Run
+the test suite”*, never a bare number; a look shows the command's state as
+it found it, `aborted` included. Component structure, expansion, icons, typography, motion and the
 presentation of changed files are shown in the gallery, not here.
 
 ### Tool descriptions
@@ -1774,7 +1785,7 @@ where a tool runs; no test calls a real model.
 | A model switch while an edit is being prepared | The switch is not refused; the replacement turn's first request carries the model it was prepared with, and its next request the new one |
 | A client stops reading | The connection closes as lagging; a reconnect adopts the running tree and its turn completes |
 | Frames of an open | The handshake order above; patch revisions increase by one; a stale patch after a reset is ignored; a gap triggers `sync_transcript` |
-| Scripted tool events | Each of the five tools renders with its own component and its `description` title; updates replace the block in place; an unknown tool name renders as a generic card |
+| Scripted tool events | Each of the three tools renders with its own component and its `description` title; updates replace the block in place; an unknown tool name renders as a generic card |
 | A tool's result carries an image, a video, or a medium that is gone | The page shows each under the call's row, the media loaded from the blob route and a gone medium as what it was and why it is gone; a click on the image opens it large |
 | Tool calls | Input refusals, the repeat guard, the cut of a result, handle release and binary stdout verdicts match [Tools](#tools) |
 | A loop of three `demi browser screenshot` calls, its stdout the job's | The output holds each command's text and its line `[medium n: …]` in order; the result attaches the three images after the output, in that order |

@@ -1,13 +1,13 @@
 // The `changes` plugin's page (`plugin-pages.md`, `file-previews.md`
 // § Changes): the pinned `change` kind, the Change view, which opens the
-// `edit` intent of a tool call's file pills.
+// `edit` intent of a request's line and a tool call's file pills.
 import { defineComponent, h } from 'vue'
 import { FileDiff } from '@lucide/vue'
 import { ICON_PX, definePage, type PanelKind } from '@demicodes/plugin-sdk'
 import { PLUGIN } from './generated/plugin'
 import ChangeBadge from './ChangeBadge.vue'
 import ChangeTab from './ChangeTab.vue'
-import { changeDataSchema, firstChangeData, showCallEdit, type ChangeData } from './data'
+import { changeDataSchema, firstChangeData, showRequestEdit, type ChangeData } from './data'
 
 const ChangeMark = defineComponent({
   setup: () => () => h(FileDiff, { size: ICON_PX.markIn28 }),
@@ -23,7 +23,7 @@ export const changeKind: PanelKind<ChangeData> = {
   badge: ChangeBadge,
   pinned: { data: firstChangeData },
   intents: {
-    edit: (payload, current) => showCallEdit(current ?? firstChangeData(), payload),
+    edit: (payload, current) => showRequestEdit(current ?? firstChangeData(), payload),
   },
 }
 
