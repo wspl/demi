@@ -13,9 +13,7 @@ import type { TreeRow } from './tree'
  * them, on a `Tree` of one level: each row the file's name, its folder from
  * the workspace after it, as VS Code's source control list shows them,
  * without line counts: only the diff a file shows can tell them right, and
- * the view's header gives them. Under the rows, one line says that files other programs
- * wrote are not here, and offers Uncommitted, which shows everything
- * uncommitted.
+ * the view's header gives them.
  */
 const props = defineProps<{
   files: readonly RequestFile[]
@@ -29,8 +27,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   select: [path: string]
-  /** Show the working tree's changes instead. */
-  uncommitted: []
 }>()
 
 interface RequestRow extends TreeRow {
@@ -74,12 +70,6 @@ const rootName = computed(() => props.rootName ?? (baseName(props.root) || '/'))
       <div class="flex flex-1 select-none items-center justify-center px-4 py-10 text-center text-[13px] text-fg-subtle">
         These changes are no longer in the conversation.
       </div>
-    </template>
-    <template #after>
-      <p class="select-none px-2 py-2 text-[11px] text-fg-faint">
-        Files other programs wrote aren’t listed.
-        <button type="button" class="text-on-accent hover:underline" @click="emit('uncommitted')">Show Uncommitted</button>
-      </p>
     </template>
   </Tree>
 </template>
