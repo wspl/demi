@@ -24,6 +24,13 @@ const props = withDefaults(defineProps<{
    * a terminal or a web page adds around a copy is dropped as it arrives.
    */
   trim?: boolean
+  /**
+   * The value is literal text, not prose: a path, an address, a key, a code
+   * or an identifier. The browser neither marks its spelling nor corrects or
+   * capitalizes it, as macOS's Terminal and a browser's address bar do not.
+   * A `secret` or `trim` field is literal too.
+   */
+  literal?: boolean
   /** Height family: lg is 36px, md is 28px, sm is 24px. Match the surface's other controls. */
   size?: 'sm' | 'md' | 'lg'
   /**
@@ -52,11 +59,14 @@ const layoutAttrs = computed(() => ({
   class: attrs['class'],
   style: attrs['style']
 }))
-const inputAttrs = computed(
-  () => Object.fromEntries(
+const inputAttrs = computed(() => ({
+  ...(props.literal || props.secret || props.trim
+    ? { spellcheck: false, autocorrect: 'off', autocapitalize: 'off' }
+    : {}),
+  ...Object.fromEntries(
     Object.entries(attrs).filter(([key]) => key !== 'class' && key !== 'style')
-  )
-)
+  ),
+}))
 const inputRef = ref<HTMLInputElement>()
 const isFocused = ref(false)
 const autofocus = useAutofocus()

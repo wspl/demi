@@ -4,7 +4,7 @@
  * become a menu, and accepting one writes its name in place of the query.
  * Gallery: Files › Address Bar, and the New Project dialog's Directory.
  */
-import { computed, ref } from 'vue'
+import { computed, ref, type ComputedRef } from 'vue'
 import fuzzysort from 'fuzzysort'
 import { compareFileNames } from './file-browser-state'
 import { isHiddenName, normalizePath, resolveHostPath } from './paths'
@@ -97,6 +97,14 @@ export function completeWith(text: string, caret: number, spot: CompletionSpot, 
   }
 }
 
+/** Shows the listing of `directory` while it is the one asked for; a source without listings shows none. */
+function useListing(
+  source: () => Partial<Pick<FileBrowserSource, 'showListing'>>,
+  directory: () => string | undefined,
+) {
+  return useShowing(source, directory, (shown, path) => shown.showListing?.(path))
+}
+
 export interface PathCompletionOptions {
   /** Lists the directories and names the home; without `showListing` nothing is offered. */
   source: () => Pick<FileBrowserSource, 'home'> & Partial<Pick<FileBrowserSource, 'showListing'>>
@@ -123,11 +131,7 @@ export function usePathCompletion(options: PathCompletionOptions) {
   const highlighted = ref(-1)
   // Escape put the menu away until the caret's spot changes.
   const dismissed = ref(false)
-  const listing = useShowing(
-    () => options.source(),
-    () => spot.value?.directory,
-    (source, directory) => source.showListing?.(directory),
-  )
+  const listing = useListing(options.source, () => spot.value?.directory)
 
   const rows = computed(() => {
     const at = spot.value
@@ -188,4 +192,30 @@ export function usePathCompletion(options: PathCompletionOptions) {
   }
 
   return { rows, highlighted, isOpen, follow, keydown, accept }
+}
+
+/**
+ * Whether the directory `text` names exists, as the listing the field's menu
+ * shows with the caret at the text's end tells, so the field and what reads
+ * this share one listing: `/Users/zan/Projects/demi/` exists when its own
+ * listing reads, and `/Users/zan/Projects/demi` when `/Users/zan/Projects`
+ * lists a folder `demi`. A listing that finds its directory gone says no.
+ * Null while it is not known: the listing is on its way or failed for
+ * another reason, or the text is not a path the field completes.
+ */
+export function useDirectoryExistence(options: Pick<PathCompletionOptions, 'source' | 'base'> & { text: () => string }): ComputedRef<boolean | null> {
+  const spot = computed(() => {
+    const text = options.text()
+    return completionSpot(text, text.length, { home: options.source().home, base: options.base() })
+  })
+  const listing = useListing(options.source, () => spot.value?.directory)
+  return computed(() => {
+    const at = spot.value
+    const shown = listing.entry.value
+    if (!at || !shown)
+      return null
+    if (shown.value === undefined)
+      return shown.failure?.kind === 'not-found' ? false : null
+    return at.query === '' || shown.value.some((entry) => entry.isDirectory && entry.name === at.query)
+  })
 }

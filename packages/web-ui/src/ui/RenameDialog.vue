@@ -88,7 +88,7 @@ function submit() {
         v-model="draft"
         :aria-label="label"
         :maxlength="maxLength ?? undefined"
-        spellcheck="false"
+        literal
         autocomplete="off"
         @keydown.enter="submit"
       />

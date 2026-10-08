@@ -84,6 +84,7 @@ async function submit() {
             class="w-72 max-w-full"
             placeholder="vercel-labs/agent-skills"
             aria-label="Repository"
+            literal
             :readonly="busy"
             @keydown.enter="submit"
           />

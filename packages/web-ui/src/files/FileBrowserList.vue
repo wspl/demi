@@ -294,7 +294,7 @@ defineExpose({
               :disabled="createPending"
               size="sm"
               aria-label="New folder name"
-              spellcheck="false"
+              literal
               @keydown="onNewNameKeydown"
               @blur="!createPending && emit('cancelCreate')"
             />
