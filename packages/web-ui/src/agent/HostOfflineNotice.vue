@@ -20,6 +20,6 @@ defineProps<{
     role="status"
   >
     <span class="min-w-0 break-words">{{ name }} is offline.</span>
-    <DeviceStartHint :start="start" />
+    <DeviceStartHint class="text-[12px] leading-4 text-fg-subtle" :start="start" />
   </div>
 </template>

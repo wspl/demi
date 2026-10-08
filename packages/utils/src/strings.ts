@@ -3,6 +3,11 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
 
+/** `text` with its first letter capitalized, for a word or phrase that starts a label: "in 7 minutes" as "In 7 minutes". */
+export function upperFirst(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
 /**
  * Slices the first `maxChars` UTF-16 units of `text` without splitting a
  * surrogate pair: a cut that would leave a trailing lone high surrogate moves

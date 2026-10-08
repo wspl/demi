@@ -153,7 +153,7 @@ export async function connectPeer(options: PeerOptions): Promise<DirectPeer> {
     browser: { local: [], public: [] },
     device: { local: [], public: [] },
     pairs: { tried: 0, answered: 0 },
-    pair: null,
+    inUse: null,
     permission: options.permission(),
   }
   let iceConnected = false
@@ -297,7 +297,7 @@ interface StatsReport {
   selectedCandidatePairId?: string
 }
 
-/** Counts the address pairs the browser checked and those that answered, and the pair in use. */
+/** Counts the address pairs the browser checked and those that answered, and the device's address in use. */
 async function countPairs(connection: RTCPeerConnection, attempt: DirectAttempt): Promise<void> {
   try {
     const stats = await connection.getStats()
@@ -318,13 +318,9 @@ async function countPairs(connection: RTCPeerConnection, attempt: DirectAttempt)
       if (!selected && report.nominated && report.state === 'succeeded')
         selected = report
     }
-    const local = reports.get(selected?.localCandidateId ?? '')
     const remote = reports.get(selected?.remoteCandidateId ?? '')
-    if (remote?.address) {
-      // A browser may keep its own address from its statistics, as it hides it behind a name.
-      const browser = local?.address ? `${local.address}:${local.port}` : null
-      attempt.pair = { browser, device: `${remote.address}:${remote.port}` }
-    }
+    if (remote?.address)
+      attempt.inUse = `${remote.address}:${remote.port}`
     attempt.pairs = { tried, answered }
   } catch {
     // A closed connection has no statistics left; the counts stay as they were.

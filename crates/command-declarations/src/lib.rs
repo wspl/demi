@@ -133,6 +133,10 @@ pub struct Leaf<B = Binding> {
     pub input: Option<Schema>,
     pub positionals: Option<Vec<String>>,
     pub stdin_field: Option<String>,
+    /// The options whose presence means the stdin field is not read, so
+    /// stdin stays with the calling process, as a `while read` loop's
+    /// input does (`commands.md` § Demi command inputs).
+    pub stdin_unless: Vec<String>,
     pub rest_field: Option<String>,
     pub output: Option<LeafOutput>,
     /// Whether the command may return media (`commands.md` § Return media).
@@ -423,6 +427,7 @@ impl Node<NativeOperation> {
                 input: leaf.input.clone(),
                 positionals: leaf.positionals.clone(),
                 stdin_field: leaf.stdin_field.clone(),
+                stdin_unless: leaf.stdin_unless.clone(),
                 rest_field: leaf.rest_field.clone(),
                 output: leaf.output.clone(),
                 media: leaf.media,
@@ -536,6 +541,18 @@ impl<B> Leaf<B> {
         {
             return Err(invalid("stdin input must be a string".into()));
         }
+        if !self.stdin_unless.is_empty() && self.stdin_field.is_none() {
+            return Err(invalid("stdinUnless without a stdin field".into()));
+        }
+        if let Some(option) = self
+            .stdin_unless
+            .iter()
+            .find(|option| !is_option(self, option))
+        {
+            return Err(invalid(format!(
+                "stdinUnless names {option}, which is no option"
+            )));
+        }
         if let Some(field) = &self.rest_field {
             let items = self
                 .properties()
@@ -567,6 +584,18 @@ impl<B> Leaf<B> {
         Ok(())
     }
 
+    /// The stdin field the dispatcher reads stdin into, given the values
+    /// the command line filled: the leaf's, unless one of the options that
+    /// skip it is given.
+    pub fn stdin_read(&self, values: &serde_json::Map<String, Value>) -> Option<&str> {
+        self.stdin_field.as_deref().filter(|_| {
+            !self
+                .stdin_unless
+                .iter()
+                .any(|option| values.contains_key(option))
+        })
+    }
+
     /// The JSON type a declared input property has.
     fn property_type(&self, field: &str) -> Option<&str> {
         self.properties()?.get(field)?.get("type")?.as_str()
@@ -581,6 +610,20 @@ pub fn is_command_name(name: &str) -> bool {
         .next()
         .is_some_and(|byte| byte.is_ascii_alphanumeric())
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+}
+
+/// Whether `field` is one of `leaf`'s named options: a declared input that
+/// no other source fills.
+fn is_option<B>(leaf: &Leaf<B>, field: &str) -> bool {
+    leaf.properties()
+        .is_some_and(|properties| properties.contains_key(field))
+        && leaf.stdin_field.as_deref() != Some(field)
+        && leaf.rest_field.as_deref() != Some(field)
+        && !leaf
+            .positionals
+            .iter()
+            .flatten()
+            .any(|positional| positional == field)
 }
 
 fn invalid(message: String) -> DeclarationError {
@@ -634,6 +677,8 @@ struct RawLeaf<B> {
         with = "unwrap_or_skip"
     )]
     stdin_field: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    stdin_unless: Vec<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -689,6 +734,7 @@ impl<B> TryFrom<RawLeaf<B>> for Leaf<B> {
             input: raw.input,
             positionals: raw.positionals,
             stdin_field: raw.stdin_field,
+            stdin_unless: raw.stdin_unless,
             rest_field: raw.rest_field,
             output: raw.output,
             media: raw.media,
@@ -713,6 +759,7 @@ impl<B> From<Leaf<B>> for RawLeaf<B> {
             input: leaf.input,
             positionals: leaf.positionals,
             stdin_field: leaf.stdin_field,
+            stdin_unless: leaf.stdin_unless,
             rest_field: leaf.rest_field,
             output: leaf.output,
             media: leaf.media,
