@@ -40,7 +40,7 @@ impl ProviderAssembly {
             && entry.active().is_none();
         let auth = if missing_account {
             AuthState::Unauthenticated {
-                message: Some("No subscription account configured".into()),
+                message: Some(crate::vault::accounts::NO_ACCOUNT.into()),
             }
         } else {
             provider.auth_status().await

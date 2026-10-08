@@ -178,7 +178,7 @@ async fn the_quota_is_probed_with_the_accounts_token_and_observed_on_the_clis_li
         Some("2026-09-24T10:00:00Z".parse().unwrap())
     );
     let scoped = &snapshot.windows[1];
-    assert_eq!(scoped.label, "weekly_scoped (Fable)");
+    assert_eq!(scoped.label, "7d Fable");
     assert_eq!(scoped.severity, Some(QuotaSeverity::Critical));
     assert_eq!(
         scoped.scope,
@@ -261,6 +261,36 @@ async fn the_quota_is_probed_with_the_accounts_token_and_observed_on_the_clis_li
     );
     // The probe's limits stay; a window Demi does not name is left out.
     assert_eq!(observed.windows.len(), 5);
+}
+
+/// A limit of the probe is named by its period and its model, never by the
+/// vendor's kind (`usage-and-quota.md` § Claude Code).
+#[tokio::test(flavor = "local")]
+async fn a_probed_limit_is_named_by_its_period_and_model() {
+    let vendor = MockVendor::start().await;
+    let usage = vendor.url("/api/oauth/usage");
+    let urls = Urls {
+        usage: &usage,
+        ..NOWHERE
+    };
+    let (provider, _) = provider_with(TOKEN, &urls).await;
+    let on = |model: &str| json!({ "model": { "display_name": model } });
+    vendor.respond(json_answer(json!({
+        "limits": [
+            { "kind": "weekly_scoped", "percent": 10, "scope": on("Fable") },
+            { "kind": "session_scoped", "percent": 20, "scope": on("Fable") },
+            { "kind": "weekly_extra", "percent": 30 },
+            { "kind": "monthly_credits", "percent": 40, "scope": on("Opus") },
+            { "kind": "monthly_credits", "percent": 50 },
+        ],
+    })));
+    let snapshot = provider.quota().unwrap().probe().await.unwrap();
+    let labels: Vec<&str> = snapshot
+        .windows
+        .iter()
+        .map(|window| window.label.as_str())
+        .collect();
+    assert_eq!(labels, ["7d Fable", "5h Fable", "7d", "Opus", "Other limit"]);
 }
 
 #[tokio::test(flavor = "local")]

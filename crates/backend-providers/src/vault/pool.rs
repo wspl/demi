@@ -384,7 +384,7 @@ mod tests {
         );
         pool.set_active("b").await.unwrap();
         pool.remove("b").await.unwrap();
-        assert_eq!(pool.active().await, Ok(None));
+        assert_eq!(pool.active().await, Ok(Some("a".into())));
         vault.delete(&entry).await.unwrap();
         assert_eq!(
             control.credentials(entry.id.clone()).await.unwrap(),

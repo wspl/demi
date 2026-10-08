@@ -1289,14 +1289,14 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
 /// What the keyed family's runtimes saw: how many were built, and each
 /// request's key and its place among its runtime's requests. The first
 /// request waits until the test releases it.
-struct Runs {
-    runtimes: AtomicUsize,
+pub(crate) struct Runs {
+    pub(crate) runtimes: AtomicUsize,
     calls: Mutex<Vec<(String, usize)>>,
-    released: watch::Sender<bool>,
+    pub(crate) released: watch::Sender<bool>,
 }
 
 impl Runs {
-    fn new() -> Arc<Self> {
+    pub(crate) fn new() -> Arc<Self> {
         Arc::new(Self {
             runtimes: AtomicUsize::new(0),
             calls: Mutex::new(Vec::new()),
@@ -1304,7 +1304,7 @@ impl Runs {
         })
     }
 
-    fn calls(&self) -> Vec<(String, usize)> {
+    pub(crate) fn calls(&self) -> Vec<(String, usize)> {
         self.calls.lock().unwrap().clone()
     }
 }
@@ -1360,19 +1360,29 @@ impl Provider for KeyedProvider {
     }
 
     fn runtime(&self, _: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {
-        self.runs.runtimes.fetch_add(1, Ordering::SeqCst);
-        Ok(Box::new(KeyedRuntime {
-            key: self.key.clone(),
-            requests: 0,
-            runs: self.runs.clone(),
-        }))
+        Ok(Box::new(KeyedRuntime::new(
+            self.key.clone(),
+            self.runs.clone(),
+        )))
     }
 }
 
-struct KeyedRuntime {
+pub(crate) struct KeyedRuntime {
     key: String,
     requests: usize,
     runs: Arc<Runs>,
+}
+
+impl KeyedRuntime {
+    /// A runtime that answers with `key`, counted among `runs`' runtimes.
+    pub(crate) fn new(key: String, runs: Arc<Runs>) -> Self {
+        runs.runtimes.fetch_add(1, Ordering::SeqCst);
+        Self {
+            key,
+            requests: 0,
+            runs,
+        }
+    }
 }
 
 impl ProviderRuntime for KeyedRuntime {

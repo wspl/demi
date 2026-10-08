@@ -17,7 +17,7 @@ use demi_backend_user_shard::conversation::claude_cli::ShardMachine;
 use demi_provider_common::Secret;
 use demi_web_api_protocol::providers::{
     Accounts, ActivateAccount, ActiveAccount, CredentialKind, LoginAnswer, LoginCode,
-    LoginStarted, PendingStatus, StartedLogin, SubscriptionLogin,
+    LoginStarted, PendingStatus, RemovedAccount, StartedLogin, SubscriptionLogin,
 };
 
 use super::body::JsonBody;
@@ -54,18 +54,19 @@ pub(super) async fn activate(
     Ok(Json(ActiveAccount { active }))
 }
 
-/// Removes an account other than the active one.
+/// Removes an account, the active one included, and answers the account the
+/// entry now infers with.
 pub(super) async fn remove(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
     Path((id, account)): Path<(String, String)>,
-) -> Result<StatusCode, ApiError> {
+) -> Result<Json<RemovedAccount>, ApiError> {
     configures(&services, &user)?;
     let entry = scoped(&services, &user, &id).await?;
     let _held = reserve(&services, &entry)?;
     let account = CredentialId::try_from(account).map_err(|_| ApiError::account_not_found())?;
-    accounts::remove(&services.assembly, &entry, account).await?;
-    Ok(StatusCode::NO_CONTENT)
+    let active = accounts::remove(&services.assembly, &entry, account).await?;
+    Ok(Json(RemovedAccount { active }))
 }
 
 fn started(id: LoginId) -> (StatusCode, Json<LoginStarted>) {

@@ -1,6 +1,6 @@
 //! The account operations of a subscription family (`providers.md` §
-//! Credential vault): listing, selecting, logging in and removing the
-//! accounts of the provider's entry. One implementation, [`Accounts`], serves
+//! Credential vault): listing, selecting and logging in the accounts of the
+//! provider's entry; the vault removes them. One implementation, [`Accounts`], serves
 //! every family over its credential pool; a family supplies only what differs,
 //! its [`AccountKit`]: how it logs in, and how an account names itself.
 
@@ -35,10 +35,6 @@ pub trait SubscriptionAccounts: Send + Sync {
     /// as soon as it has released what it holds. Dropping the future cancels
     /// it as well. A login that does not complete stores nothing.
     fn login<'a>(&'a self, io: LoginIo<'a>) -> BoxFuture<'a, Result<AccountInfo, LoginError>>;
-
-    /// Removes an account other than the active one: the entry keeps
-    /// inferring with its active account until another is selected.
-    fn remove<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), AccountsError>>;
 }
 
 /// How a family adds an account.
@@ -90,9 +86,6 @@ impl LoginIo<'_> {
 pub enum AccountsError {
     #[error("no account {0}")]
     NotFound(String),
-    /// Removing the active account is refused.
-    #[error("the active account cannot be removed; select another account first")]
-    Active,
     /// The account store failed.
     #[error("{0}")]
     Store(String),
@@ -229,18 +222,6 @@ impl<K: AccountKit> SubscriptionAccounts for Accounts<K> {
             };
             let account = login.await?;
             self.import(account).await
-        })
-    }
-
-    fn remove<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), AccountsError>> {
-        Box::pin(async move {
-            if self.pool.active().await?.as_deref() == Some(id) {
-                return Err(AccountsError::Active);
-            }
-            if self.pool.meta(id).await?.is_none() {
-                return Err(AccountsError::NotFound(id.to_owned()));
-            }
-            Ok(self.pool.remove(id).await?)
         })
     }
 }

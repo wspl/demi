@@ -306,14 +306,18 @@ async fn a_memory_pool_keeps_accounts_by_id_with_a_versioned_document_and_an_act
     );
     pool.set_active("b").await.unwrap();
     assert_eq!(pool.active().await.unwrap().as_deref(), Some("b"));
+    // The active account's removal selects the first remaining one, and the
+    // last one's leaves none.
     pool.remove("b").await.unwrap();
-    assert_eq!(pool.active().await.unwrap(), None);
+    assert_eq!(pool.active().await.unwrap().as_deref(), Some("a"));
     let entries: Vec<(String, String)> = pool
         .entries()
         .into_iter()
         .map(|(meta, secret)| (meta.id, secret))
         .collect();
     assert_eq!(entries, [("a".to_owned(), "two".to_owned())]);
+    pool.remove("a").await.unwrap();
+    assert_eq!(pool.active().await.unwrap(), None);
 }
 
 #[test]
@@ -448,25 +452,10 @@ async fn a_login_stores_its_account_by_identity_and_the_first_one_becomes_active
         "login:device"
     );
 
-    // The active account cannot be removed; another one can.
-    assert_eq!(accounts.remove(&first.id).await, Err(AccountsError::Active));
-    accounts.remove(&other.id).await.unwrap();
-    assert_eq!(
-        accounts.remove("cred-absent").await,
-        Err(AccountsError::NotFound("cred-absent".into()))
-    );
     assert_eq!(
         accounts.set_active("cred-absent").await,
         Err(AccountsError::NotFound("cred-absent".into()))
     );
-    let listed: Vec<String> = accounts
-        .list()
-        .await
-        .unwrap()
-        .into_iter()
-        .map(|info| info.id)
-        .collect();
-    assert_eq!(listed, [first.id]);
 }
 
 #[tokio::test(start_paused = true)]
