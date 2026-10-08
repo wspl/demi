@@ -31,7 +31,11 @@ import type { SentenceText } from '../ui/ui-text'
  * right after the name, after the `tags`. The name tells rows apart, so it
  * keeps its width: where the tags do not fit beside it they move under it,
  * and only a name wider than the whole line is cut, whole in its tooltip
- * (the Writing page's rule for long text).
+ * (the Writing page's rule for long text). The `below` slot holds what needs
+ * the row's whole width, such as an account's usage bars: it takes a line of
+ * its own under the name and the controls at every width, from the row's
+ * start to its end, and the controls then align with the name's line, as
+ * they do beside `detail`.
  */
 const props = defineProps<{
   label: SentenceText
@@ -54,6 +58,9 @@ const faded = computed(() => props.muted === true || props.disabled === true)
 const slots = useSlots()
 const clickable = computed(() => props.interactive === true || props.navigable === true)
 const accessory = computed(() => props.navigable === true || slots['accessory'] !== undefined)
+const below = computed(() => slots['below'] !== undefined)
+/** The controls align with the name's line rather than the row's middle. */
+const topAligned = computed(() => slots['detail'] !== undefined || below.value)
 // The accessory's square: as wide as the row is tall. CSS cannot size a
 // stretched flex item's width from its height, so the row is measured.
 const rowElement = ref<HTMLElement>()
@@ -82,17 +89,19 @@ const emit = defineEmits<{
       @keydown.enter.self="!disabled && navigable && emit('click')"
       @keydown.space.self.prevent="!disabled && navigable && emit('click')"
     >
+    <!-- Wraps under @sm, where the controls drop under the text, and always with `below`, whose line is its own. -->
     <div
-      class="flex min-w-0 flex-1 items-center gap-y-2 @sm:flex-nowrap"
+      class="flex min-w-0 flex-1 items-center gap-y-2"
       :class="[
-      inset ? 'min-h-9 flex-nowrap gap-x-3 bg-(--fill-color) py-1.5 pl-7 pr-4 [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_2.5%)] *:on-fill' : compact ? 'min-h-10 flex-wrap gap-x-3 px-3 py-1.5' : 'min-h-14 flex-wrap gap-x-4 px-4 py-3',
+      inset ? 'min-h-9 gap-x-3 bg-(--fill-color) py-1.5 pl-7 pr-4 [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_2.5%)] *:on-fill' : compact ? 'min-h-10 gap-x-3 px-3 py-1.5' : 'min-h-14 gap-x-4 px-4 py-3',
+      below ? 'flex-wrap' : inset ? 'flex-nowrap' : 'flex-wrap @sm:flex-nowrap',
       accessory ? 'pr-0!' : '',
     ]"
     >
       <div
         v-if="$slots.leading"
         class="flex h-5 shrink-0 items-center text-fg-muted"
-        :style="{ alignSelf: description || $slots.description || $slots.detail ? 'flex-start' : 'center' }"
+        :style="{ alignSelf: description || $slots.description || topAligned ? 'flex-start' : 'center' }"
         :class="faded ? 'opacity-60' : ''"
       >
         <slot name="leading" />
@@ -137,11 +146,14 @@ const emit = defineEmits<{
         class="flex min-w-0 items-center justify-end gap-2 self-stretch @sm:basis-auto @sm:max-w-[66%]"
         :class="[
         inset ? 'shrink-0' : 'basis-full @max-sm:*:data-field:flex-1',
-        $slots.detail ? '@sm:h-5 @sm:self-start' : '',
+        topAligned ? '@sm:h-5 @sm:self-start' : '',
         disabled ? 'pointer-events-none' : '',
       ]"
       >
         <slot />
+      </div>
+      <div v-if="below" class="order-last min-w-0 basis-full" :class="faded ? 'opacity-60' : ''">
+        <slot name="below" />
       </div>
     </div>
     <!-- A square as tall as the row: its mark is as far from the row's end as from its top and bottom. -->

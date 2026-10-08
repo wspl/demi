@@ -4,8 +4,8 @@
 /* ── tone: paper (Flat — near-neutral layers with a warm tint) ────────
    Dark values are measured from the host's design tokens: four layers from
    #0b0b0b to #20201f, white hairlines at 10, 20 and 40%, hover and selected
-   washes at 7.5 and 15%, and warm secondary text. Light values are still
-   estimated. */
+   washes at 7.5 and 15%, and warm secondary text. Flat's light mode takes
+   Ink's colours (gallery-state.ts), so paper has no light values. */
 
 html[data-theme="dark"][data-tone="paper"] {
   /* Measured from the host's own tokens (surface-0…3, text, border, fills). */
@@ -34,30 +34,6 @@ html[data-theme="dark"][data-tone="paper"] {
   --btn-hover-mix: rgb(255 255 255) 7.5%;
 }
 
-html[data-theme="light"][data-tone="paper"] {
-  --surface-base: oklch(95.5% 0.006 95);
-  --surface: oklch(98.4% 0.004 95);
-  --surface-editor: oklch(98.4% 0.004 95);
-  --surface-raised: oklch(100% 0 0);
-  --surface-float: oklch(100% 0 0);
-  --overlay: black;
-  --fg-emphasis: oklch(17% 0.005 95);
-  --fg: oklch(21% 0.005 95);
-  --fg-body: oklch(27% 0.005 95);
-  --fg-muted: oklch(43% 0.005 95);
-  --fg-subtle: oklch(55% 0.005 95);
-  --fg-faint: oklch(70% 0.005 95);
-  --fg-ghost: oklch(88% 0.005 95);
-  --hover-mix: oklch(20% 0.005 95) 5%;
-  --active-mix: oklch(20% 0.005 95) 8%;
-  --line-subtle: oklch(20% 0.005 95 / 0.06);
-  --line: oklch(20% 0.005 95 / 0.11);
-  --line-strong: oklch(20% 0.005 95 / 0.17);
-  --line-focus: oklch(20% 0.005 95 / 0.32);
-  --line-overlay: oklch(20% 0.005 95 / 0.14);
-  --btn-mix: oklch(100% 0 0) 100%;
-  --btn-hover-mix: oklch(97% 0.004 95) 100%;
-}
 
 /* ── shadow: flat ─────────────────────────────────────────────────────
    In-flow surfaces (cards, groups, buttons, fields) have a 0.5px hairline and
@@ -91,13 +67,13 @@ html[data-theme="light"][data-shadow="flat"] {
     0 2px 6px rgba(0, 0, 0, 0.05);
   --shadow-overlay-ring: none;
   --shadow-btn: 0 0 0 0.5px var(--line-strong);
-  --shadow-btn-hover: 0 0 0 0.5px oklch(20% 0.005 95 / 0.26);
+  --shadow-btn-hover: 0 0 0 0.5px oklch(20% 0.005 95 / 0.16);
 }
 
 /* ── Flat's marks ─────────────────────────────────────────────────────
    Icons take a 2px stroke, so marks hold their weight on the quiet surfaces. */
 
-html[data-tone="paper"] {
+html[data-shadow="flat"] {
   --icon-stroke-width: 2;
 }
 
@@ -114,6 +90,9 @@ html[data-font="inter"] {
   --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans", sans-serif;
   font-size-adjust: 0.52;
   letter-spacing: -0.006em;
+  /* Inter's 500 reads heavier than the system face's; medium labels such as
+     buttons' take 450 of its variable axis. */
+  --font-weight-medium: 450;
 }
 
 html[data-font="geist"] {

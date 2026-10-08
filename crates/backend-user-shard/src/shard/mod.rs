@@ -48,6 +48,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::conversation::claude_cli::ClaudeCli;
+use crate::conversation::pending::PendingWatches;
 use crate::conversation::search::SearchIndexer;
 use crate::conversation::titles::Titles;
 use crate::conversation::{self, ConversationParts, ShardHosts};
@@ -124,6 +125,9 @@ pub struct Shard {
     /// How many times each conversation's permission requests changed
     /// since the shard started.
     permission_revisions: demi_backend_permissions::Revisions,
+    /// Each conversation's watch for its tree to be idle, which makes the
+    /// changes its agent asked for then.
+    pending_watches: PendingWatches,
 }
 
 impl Shard {
@@ -179,6 +183,7 @@ impl Shard {
             plugins,
             plugin_installs: PluginInstalls::default(),
             permission_revisions: demi_backend_permissions::Revisions::default(),
+            pending_watches: PendingWatches::default(),
         }
     }
 
@@ -197,6 +202,10 @@ impl Shard {
 
     pub(crate) fn claude_cli(&self) -> &ClaudeCli {
         &self.claude_cli
+    }
+
+    pub(crate) fn pending_watches(&self) -> &PendingWatches {
+        &self.pending_watches
     }
 
     pub(crate) fn idle_watches(&self) -> &ConversationWatches {
@@ -297,6 +306,7 @@ impl Shard {
         self.sync_channels.close();
         self.sync_channels.wait().await;
         self.stop_idle_watches();
+        self.pending_watches.clear();
         self.cloud.stop();
         self.titles.abort_all();
         self.tree_openers.close();
