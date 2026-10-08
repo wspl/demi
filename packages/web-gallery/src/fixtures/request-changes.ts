@@ -95,14 +95,19 @@ export function signInRequestBlocks(prefix: string): Block[] {
   ]
 }
 
-/** A request whose calls changed a file without keeping its contents, a binary one, beside a text file. */
+/**
+ * A request whose calls kept no contents of a binary file, and none of the
+ * readme's first edit: the logo is listed without a diff, and the readme,
+ * with no original to start All Changes from, opens at its second edit.
+ */
 export function uncopiedRequestBlocks(): Block[] {
   return [
     user('uncopied-user', 400_000, 'Replace the logo and say so in the readme.'),
     shell('uncopied-logo', 390_000, 'demi file create assets/logo.png < new-logo.png', 'Replace the logo', [
       uncopiedFile({ path: `${WORKSPACE_ROOT}/assets/logo.png`, kind: 'modified', added: 0, removed: 0 }),
+      uncopiedFile({ path: `${WORKSPACE_ROOT}/README.md`, kind: 'modified', added: 1, removed: 1 }),
     ]),
-    shell('uncopied-readme', 380_000, 'demi file edit README.md', 'Note the new logo', [
+    shell('uncopied-readme', 380_000, 'demi file edit README.md', 'Say when the logo changed', [
       file('README.md', 'modified', README, { added: 1, removed: 1 }),
     ]),
     text('uncopied-reply', 370_000, 'The logo is replaced and the readme says so.'),

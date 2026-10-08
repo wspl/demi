@@ -169,13 +169,25 @@ export function pillSelection(
   return { node, request: request.id, file: path, edit: { call: first.call, segment: first.segment } }
 }
 
-/** Where `edit` stands among the file's edits; null for All Changes or an edit the file no longer has. */
+/** Whether the file offers All Changes: its first edit's original and its last edit's result were both kept. */
+export function offersAllChanges(file: RequestFile): boolean {
+  return selectionCopies(file, null) !== null
+}
+
+/**
+ * Where the edit the view shows stands among the file's edits; null for All
+ * Changes. `edit` names one; null asks for All Changes, which a file that
+ * does not offer it answers with its first edit with contents, or its first.
+ */
 export function editIndex(file: RequestFile, edit: RequestEditRef | null): number | null {
-  if (!edit) {
+  const index = edit ? file.edits.findIndex((entry) => entry.call === edit.call && entry.segment === edit.segment) : -1
+  if (index >= 0) {
+    return index
+  }
+  if (offersAllChanges(file)) {
     return null
   }
-  const index = file.edits.findIndex((entry) => entry.call === edit.call && entry.segment === edit.segment)
-  return index < 0 ? null : index
+  return Math.max(0, file.edits.findIndex((entry) => entry.copies !== undefined))
 }
 
 /**
