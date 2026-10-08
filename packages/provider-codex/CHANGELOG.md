@@ -1,5 +1,13 @@
 # @demicodes/provider-codex
 
+## 0.25.8
+
+### Patch Changes
+
+- @demicodes/core@0.25.8
+- @demicodes/provider@0.25.8
+- @demicodes/utils@0.25.8
+
 ## 0.25.7
 
 ### Patch Changes
