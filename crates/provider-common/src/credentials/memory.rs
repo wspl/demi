@@ -132,8 +132,10 @@ impl CredentialPool for MemoryCredentialPool {
         {
             let mut held = self.shared.lock();
             held.accounts.remove(id);
+            // As the vault does: the first remaining account, in id order,
+            // takes the removed active one's place.
             if held.active.as_deref() == Some(id) {
-                held.active = None;
+                held.active = held.accounts.keys().next().cloned();
             }
         }
         Box::pin(async { Ok(()) })

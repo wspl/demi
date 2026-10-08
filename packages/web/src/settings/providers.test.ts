@@ -321,7 +321,7 @@ test('a failed save is a toast; the input stays and the next change resends it',
   )
   await idle()
   expect(toasts.at(-1)).toMatchObject({
-    title: 'Provider Operation Failed',
+    title: 'Could Not Save the Provider',
     message: 'offline',
     tone: 'danger',
   })
