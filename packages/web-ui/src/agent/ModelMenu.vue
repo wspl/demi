@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
-import { buildReasoningState, reasoningOptionIndex } from './reasoning'
+import { buildReasoningState, reasoningOptionIndex, reasoningOptionLabel } from './reasoning'
 import { fastServiceTier, isFastMode } from './fast-mode'
 import {
   contextLimitOptions,
@@ -11,6 +11,7 @@ import {
 import { formatTokens } from '../ui/token-count'
 import {
   availableProviders,
+  composerModel,
   modelSwitch,
   resolveSelectedModel,
   type ModelSettings,
@@ -51,6 +52,14 @@ const selected = computed(
     props.settings?.modelId,
   )
 )
+const selectedModelLabel = computed(
+  () => selected.value?.model.name ?? composerModel(
+    props.providers,
+    props.models,
+    props.settings?.providerId,
+    props.settings?.modelId,
+  ).label
+)
 
 const effort = computed(() => props.settings?.thinkingEffort ?? null)
 const reasoningState = computed(() => buildReasoningState(selected.value?.model ?? null))
@@ -66,6 +75,11 @@ const contextLabel = computed(() => formatTokens(contextWindowInUse(selected.val
 const reasoningIndex = computed(() => {
   const state = reasoningState.value
   return state ? reasoningOptionIndex(state, effort.value) : 0
+})
+
+const reasoningLabel = computed(() => {
+  const state = reasoningState.value
+  return state ? reasoningOptionLabel(state, effort.value) : ''
 })
 
 function isSelectedModel(providerId: string, modelId: string): boolean {
@@ -99,37 +113,39 @@ function selectModel(providerId: string, model: ModelInfo) {
 </script>
 
 <template>
-  <!-- One level, as a chat app's model picker is: the models straight away, and the thinking
-       effort in the same menu under them; only the user's context limit opens a submenu. -->
   <Menu iconless>
-    <MenuGroup
-      v-for="provider in providersWithModels"
-      :key="provider.id"
-      :label="provider.label"
+    <MenuItem
+      v-if="fastTier"
+      label="Fast Mode"
+      @select="setFast(!fast)"
     >
-      <MenuItem
-        v-for="model in models[provider.id] ?? []"
-        :key="`${provider.id}:${model.id}`"
-        :label="model.name"
-        choice
-        :is-selected="isSelectedModel(provider.id, model.id)"
-        @select="selectModel(provider.id, model)"
-      />
-    </MenuGroup>
-    <template v-if="reasoningState">
-      <MenuDivider />
-      <MenuGroup label="Reasoning">
-        <MenuItem
-          v-for="(option, index) in reasoningState.options"
-          :key="option.label"
-          :label="option.label"
-          choice
-          :is-selected="reasoningIndex === index"
-          @select="setEffort(option.effort)"
+      <template #suffix>
+        <Switch
+          :model-value="fast"
+          size="sm"
+          @click.stop
+          @update:model-value="setFast"
         />
-      </MenuGroup>
-    </template>
-    <MenuDivider v-if="contextOptions.length || fastTier" />
+      </template>
+    </MenuItem>
+    <MenuItem
+      v-if="reasoningState"
+      label="Reasoning"
+      :value="reasoningLabel"
+    >
+      <template #submenu>
+        <Menu iconless>
+          <MenuItem
+            v-for="(option, index) in reasoningState.options"
+            :key="option.label"
+            :label="option.label"
+            choice
+            :is-selected="reasoningIndex === index"
+            @select="setEffort(option.effort)"
+          />
+        </Menu>
+      </template>
+    </MenuItem>
     <MenuItem
       v-if="contextOptions.length"
       label="Context"
@@ -148,18 +164,25 @@ function selectModel(providerId: string, model: ModelInfo) {
         </Menu>
       </template>
     </MenuItem>
-    <MenuItem
-      v-if="fastTier"
-      label="Fast Mode"
-      @select="setFast(!fast)"
-    >
-      <template #suffix>
-        <Switch
-          :model-value="fast"
-          size="sm"
-          @click.stop
-          @update:model-value="setFast"
-        />
+    <MenuDivider v-if="fastTier || reasoningState || contextOptions.length" />
+    <MenuItem label="Model" :value="selectedModelLabel">
+      <template #submenu>
+        <Menu iconless>
+          <MenuGroup
+            v-for="provider in providersWithModels"
+            :key="provider.id"
+            :label="provider.label"
+          >
+            <MenuItem
+              v-for="model in models[provider.id] ?? []"
+              :key="`${provider.id}:${model.id}`"
+              :label="model.name"
+              choice
+              :is-selected="isSelectedModel(provider.id, model.id)"
+              @select="selectModel(provider.id, model)"
+            />
+          </MenuGroup>
+        </Menu>
       </template>
     </MenuItem>
   </Menu>
