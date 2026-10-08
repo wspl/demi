@@ -25,6 +25,7 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { reactive, ref } from 'vue'
 import HostPicker from '@demicodes/web-ui/hosts/HostPicker.vue'
+import AutofocusScope from '@demicodes/web-ui/ui/AutofocusScope.vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
@@ -225,11 +226,11 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="Menu"
-        note="Actions, choices, submenus, tall, and filter. Enabled choices use normal text; being unselected does not dim them. Disabled rows keep their status dot and explain why they cannot be chosen. Paired devices show online status. Cloud shows no connection or lifecycle status and remains selectable while asleep; operations wake it automatically."
+        note="Actions, choices, submenus, tall, and filter. Enabled choices use normal text; being unselected does not dim them. Disabled rows keep their status dot and explain why they cannot be chosen. Paired devices show online status. Cloud shows no connection or lifecycle status and remains selectable while asleep; operations wake it automatically. Keys: Up and Down Arrow move, typing a name jumps to it, Return chooses; Right Arrow or Return opens a submenu, Left Arrow or Escape closes it. A group’s first row scrolls into view with its heading. When a menu closes, the focus returns to its opener, or to what had it before when the opener takes no focus; a click on another control keeps it."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="actions">
-            <Menu>
+            <Menu :autofocus="false">
               <MenuItem
                 :icon="Pencil"
                 label="Rename"
@@ -258,7 +259,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             </Menu>
           </GallerySpecimen>
           <GallerySpecimen variant="choices">
-            <Menu iconless>
+            <Menu :autofocus="false" iconless>
               <MenuGroup label="Paradigm">
                 <MenuItem
                   label="Neutral"
@@ -302,7 +303,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             </Menu>
           </GallerySpecimen>
           <GallerySpecimen variant="choice · icon · focus">
-            <Menu>
+            <Menu :autofocus="false">
               <MenuItem
                 :icon="Pencil"
                 label="Hairline"
@@ -332,7 +333,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
         </div>
         <GalleryOverlayWell size="wide">
           <GallerySpecimen variant="iconless · submenu">
-            <Menu iconless>
+            <Menu :autofocus="false" iconless>
               <MenuItem label="Fast Mode" @select="submenuFast = !submenuFast">
                 <template #suffix>
                   <Switch
@@ -390,15 +391,19 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
           </GallerySpecimen>
         </GalleryOverlayWell>
         <GallerySpecimen variant="host picker · online, bound and offline">
-          <HostPicker
-            :devices="hostDevices"
-            :bound-ids="['build']"
-            @select="productWould(`Selected ${$event}`)"
-            @connect="productWould('Add Device')"
-          />
+          <!-- A picker shown open beside the others: it would take the keys as it does in its popover. -->
+          <AutofocusScope :enabled="false">
+            <HostPicker
+              :devices="hostDevices"
+              :bound-ids="['build']"
+              @select="productWould(`Selected ${$event}`)"
+              @connect="productWould('Add Device')"
+            />
+          </AutofocusScope>
         </GallerySpecimen>
         <GallerySpecimen variant="status dots · virtual list without icons">
           <Menu
+            :autofocus="false"
             :items="hostStatusItems"
             :item-height="28"
             :selected-id="statusSelected"
@@ -440,7 +445,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
         </GallerySpecimen>
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="label/value · columns">
-            <Menu iconless>
+            <Menu :autofocus="false" iconless>
               <MenuItem
                 label="Reasoning"
                 :value="itemLabel(columnsEffort, effortItems)"
@@ -488,7 +493,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             </Menu>
           </GallerySpecimen>
           <GallerySpecimen variant="shortcuts · columns">
-            <Menu iconless>
+            <Menu :autofocus="false" iconless>
               <MenuItem label="Rename" shortcut="↵" @select="productWould('Rename')" />
               <MenuItem
                 label="Duplicate Conversation"
@@ -502,7 +507,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
         </div>
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="tall">
-            <Menu iconless>
+            <Menu :autofocus="false" iconless>
               <MenuItem
                 v-for="label in tallActions"
                 :key="label"

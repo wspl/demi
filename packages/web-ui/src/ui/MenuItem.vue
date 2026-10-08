@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import CornerDot from './CornerDot.vue'
 import StatusDot from './StatusDot.vue'
-import { computed, inject, onBeforeUnmount, ref, useSlots } from 'vue'
+import { computed, inject, onBeforeUnmount, provide, readonly, ref, useSlots, watch } from 'vue'
 import type { Component } from 'vue'
 import { Check, ChevronRight } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
@@ -17,6 +17,7 @@ import {
   menuRootKey,
   menuSlotKeyboardKey,
   menuSubmenuKey,
+  menuSubmenuKeysKey,
   shouldDismissMenuTree,
   type MenuSlotRow
 } from './menu-context'
@@ -75,7 +76,7 @@ const triggerRef = ref<HTMLElement | null>(null)
 
 // In a Menu that lays out its slot, the row its keyboard reaches: focused there, its typed prefix marked.
 const keyboard = inject(menuSlotKeyboardKey, null)
-const slotRow: MenuSlotRow = { label: () => props.label, el: () => triggerRef.value }
+const slotRow: MenuSlotRow = { label: () => props.label, el: () => triggerRef.value, enter: enterSubmenu }
 const unregister = keyboard?.register(slotRow)
 const keyboardFocused = computed(() => keyboard?.focused.value === slotRow)
 const isFocused = computed(() => props.isFocused || keyboardFocused.value)
@@ -89,6 +90,39 @@ const ownSubmenus = injectedSubmenus ? null : createSubmenuController()
 const submenus = injectedSubmenus ?? ownSubmenus!
 const submenuId = Symbol('submenu')
 const submenuOpen = computed(() => pinnedOpen.value || submenus.activeId.value === submenuId)
+/** The keyboard opened the submenu: its menu holds the keys until it closes. */
+const submenuKeys = ref(false)
+
+/** Opens the submenu and hands it the keys, as Right Arrow or Return does on a macOS menu row. */
+function enterSubmenu(): boolean {
+  if (!showsSubmenu.value || isDisabled.value)
+    return false
+  submenus.open(submenuId)
+  submenuKeys.value = true
+  return true
+}
+
+/** Gives the keys back to this row's menu, the panel still showing once the submenu closes. */
+function focusOwnMenu(): void {
+  triggerRef.value?.closest<HTMLElement>('[role=menu]')?.focus({ preventScroll: true })
+}
+
+// However the submenu that held the keys closes (Left Arrow, Escape, the pointer opening another),
+// the keys come back to this row's menu.
+watch(submenuOpen, (open) => {
+  if (open || !submenuKeys.value)
+    return
+  submenuKeys.value = false
+  focusOwnMenu()
+})
+
+provide(menuSubmenuKeysKey, {
+  entered: readonly(submenuKeys),
+  leave: () => {
+    closeSubmenu()
+    focusOwnMenu()
+  },
+})
 
 function openSubmenu() {
   if (!showsSubmenu.value || isDisabled.value)
