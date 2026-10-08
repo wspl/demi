@@ -1,6 +1,6 @@
 import { DEMO_BUN_TEST, DEMO_GIT_DIFF, DEMO_RG } from './terminal-output'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-import { RUNNING_SHELL_DESCRIPTION, RUNNING_SHELL_SCRIPT, runningShellTool } from './blocks'
+import { RUNNING_SHELL_DESCRIPTION, RUNNING_SHELL_SCRIPT, returnedShellTool, runningShellTool } from './blocks'
 import { ago } from './time'
 
 /**
@@ -19,6 +19,7 @@ export function galleryTerminals(): TerminalRecord[] {
       phase: 'running',
       startedAt: ago(60_000),
       output: DEMO_BUN_TEST,
+      toolUseId: returnedShellTool.toolUseId,
     },
     {
       id: 'term-rg',

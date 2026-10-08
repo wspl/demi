@@ -206,6 +206,23 @@ export const shellTool = toolCall({
 })
 
 /**
+ * A call that returned while its command runs on, one of the conversation's
+ * running commands (the gallery's `Run the auth tests` job): its row
+ * shimmers until the command's end arrives.
+ */
+export const returnedShellTool = toolCall({
+  id: 'tool-shell-returned',
+  toolName: 'shell_exec',
+  status: 'completed',
+  input: JSON.stringify({ script: 'bun test src/auth.test.ts', description: 'Run the auth tests' }),
+  view: shellView({
+    commandId: '12',
+    status: 'running',
+    chunks: [{ stream: 'stdout', text: 'bun test v1.3.14\n' }],
+  }),
+})
+
+/**
  * The running call's script: long enough to wrap over more than two lines,
  * so the command shows two above the output, which scrolls under it. Its
  * flags' hyphens show the wrap a terminal makes: each line fills to the
