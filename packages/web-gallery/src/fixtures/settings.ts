@@ -320,8 +320,8 @@ export function mockProviders(): MockProvider[] {
           ],
         },
         // Long text everywhere: the tags move under the name, which is cut only where the line
-        // cannot hold it, and the window names and reset times wrap inside the text column
-        // instead of running under the buttons.
+        // cannot hold it, and the window names and reset times wrap inside the usage's own
+        // line under the buttons.
         {
           id: 'a4',
           label: 'release-automation@platform-infrastructure.example.com',

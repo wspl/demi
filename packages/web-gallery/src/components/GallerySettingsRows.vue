@@ -1,18 +1,23 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Monitor, Moon, Sun } from '@lucide/vue'
+import { Monitor, Moon, RefreshCw, Sun } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
+import ProviderQuota from '@demicodes/web-ui/settings/ProviderQuota.vue'
 import SettingsRow from '@demicodes/web-ui/settings/SettingsRow.vue'
+import type { SettingsQuotaWindow } from '@demicodes/web-ui/settings/types'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import CommitTextInput from '@demicodes/web-ui/ui/CommitTextInput.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
+import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import Segmented, { type SegmentedOption } from '@demicodes/web-ui/ui/Segmented.vue'
 import Slider from '@demicodes/web-ui/ui/Slider.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
+import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
+import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { productWould } from '../product-would'
 
 /**
@@ -33,6 +38,14 @@ const protocol = ref<(typeof protocols)[number]>('Responses')
 const fontSize = ref(14)
 const theme = ref<Theme>('system')
 const sound = ref(true)
+/** The account row's usage, which Refresh reads again: each window a little further used. */
+const usage = ref<SettingsQuotaWindow[]>([
+  { id: 'five_hour', label: '5h session', used: 62, max: 100, resets: 'in 2 h 10 min' },
+  { id: 'seven_day', label: '7d all models', used: 31, max: 100, resets: 'Monday' },
+])
+function refreshUsage(): void {
+  usage.value = usage.value.map((window) => ({ ...window, used: Math.min(window.max, window.used + 3) }))
+}
 </script>
 
 <template>
@@ -87,6 +100,15 @@ const sound = ref(true)
     </SettingsRow>
     <SettingsRow label="Export" description="A copy of every conversation, sent by email.">
       <Button size="sm" @click="productWould('Request an Export')">Request Export</Button>
+    </SettingsRow>
+    <SettingsRow label="zan@example.com">
+      <template #tags><Tag>Max 5×</Tag></template>
+      <Tooltip content="Refresh usage">
+        <IconButton size="sm" :icon="RefreshCw" aria-label="Refresh usage" spin-on-click @click="refreshUsage" />
+      </Tooltip>
+      <template #below>
+        <ProviderQuota :windows="usage" :auto-refresh="false" @refresh="refreshUsage" />
+      </template>
     </SettingsRow>
   </SettingsGroup>
 </template>
