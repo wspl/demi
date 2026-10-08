@@ -1,6 +1,8 @@
 import type { Block, ShellViewStatus } from '@demicodes/protocol'
 import type { ConversationStatus } from './conversation-status'
 import type { ToolCallBlock } from './block-types'
+import type { CommandEnd } from './command-end'
+import { storedShellView } from './block-helpers'
 
 /** Where a command is, as its frames and stored views say: running, exited, or stopped (`aborted`). */
 export type TerminalPhase = ShellViewStatus
@@ -26,6 +28,8 @@ export interface TerminalRecord {
    * output from the transcript.
    */
   chars?: number
+  /** Its exit code, once it exited and a live frame or a stored view said so. */
+  exitCode?: number
   /** The `shell_exec` call that started it, known from its live frames. */
   toolUseId?: string
   /** The subagent that runs it; absent for the root's commands. */
@@ -187,6 +191,26 @@ export function shellRowRunning(
   command: TerminalRecord | undefined,
 ): boolean {
   return callStatus === 'executing' || (command !== undefined && isTerminalRunning(command.phase))
+}
+
+/**
+ * How a `shell_exec` row's command ended (`runtime.md` § Rendering
+ * boundary): none while its call runs; after, the end the command's record
+ * has, from its live frames or a stored view, and otherwise the view the
+ * call stored, unless that view saw the command still running, which says
+ * nothing of its end.
+ */
+export function shellRowEnd(call: ToolCallBlock, command: TerminalRecord | undefined): CommandEnd | null {
+  if (call.status === 'executing') {
+    return null
+  }
+  if (command !== undefined && !isTerminalRunning(command.phase)) {
+    return command.exitCode === undefined
+      ? { status: command.phase }
+      : { status: command.phase, exitCode: command.exitCode }
+  }
+  const stored = storedShellView(call)
+  return stored?.status === 'running' ? null : stored
 }
 
 export function runningTerminals(

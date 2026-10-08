@@ -10,12 +10,15 @@ import {
   liveOutputDelta,
   promptLine,
   runningTerminals,
+  shellRowEnd,
   shellRowRunning,
   terminalPanelTabs,
   terminalStatus,
   terminalWrite,
   type TerminalRecord,
 } from '../terminals'
+import { commandEndMark } from '../command-end'
+import type { ToolCallBlock } from '../block-types'
 
 function terminal(
   partial: Pick<TerminalRecord, 'id' | 'title' | 'phase'> & Partial<TerminalRecord>,
@@ -191,4 +194,30 @@ test('a shell row runs while its call runs, and after it returned until its comm
   // A call that returned with no command the page knows of is done, failed or not.
   expect(shellRowRunning('completed', undefined)).toBe(false)
   expect(shellRowRunning('error', undefined)).toBe(false)
+})
+
+// `runtime.md` § Rendering boundary: every shell row marks how its command
+// ended, also a command that ran on after its call returned.
+test('a returned call marks its command\'s end once the end arrives, and not from its own running view', () => {
+  const returned: ToolCallBlock = {
+    type: 'tool_call', id: 'call', createdAt, model, toolUseId: 'call-1', toolName: 'shell_exec',
+    input: '{"script":"make watch"}', status: 'completed', output: [],
+    view: {
+      kind: 'shell', status: 'running', shellId: 'sh', commandId: 'cmd', runningMs: 10, idleMs: 0,
+      chunks: [], viewTruncated: false,
+    },
+  }
+  const command = terminal({ id: 'cmd', title: 'Watch', phase: 'running', toolUseId: 'call-1' })
+  // It runs on: no end yet, whatever the call stored.
+  expect(commandEndMark(shellRowEnd(returned, command))).toBeNull()
+  // Its end arrives in a frame: exit 1 is Failed, a stop is Stopped, exit 0 is nothing.
+  expect(commandEndMark(shellRowEnd(returned, { ...command, phase: 'exited', exitCode: 1 })))
+    .toEqual({ kind: 'failed', exitCode: 1 })
+  expect(commandEndMark(shellRowEnd(returned, { ...command, phase: 'aborted' }))).toEqual({ kind: 'stopped' })
+  expect(commandEndMark(shellRowEnd(returned, { ...command, phase: 'exited', exitCode: 0 }))).toBeNull()
+  // A call that returned with its command ended keeps the end it stored.
+  const ended = { ...returned, view: { ...returned.view!, status: 'exited' as const, exitCode: 2 } }
+  expect(commandEndMark(shellRowEnd(ended, undefined))).toEqual({ kind: 'failed', exitCode: 2 })
+  // While the call runs there is no end.
+  expect(shellRowEnd({ ...ended, status: 'executing' }, undefined)).toBeNull()
 })

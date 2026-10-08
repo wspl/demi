@@ -9,11 +9,11 @@ import ShellEditPills from './ShellEditPills.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
 import ToolMedia from './ToolMedia.vue'
 import type { ToolCallBlock } from '../block-types'
-import { getToolErrorText, shellTerminalOutputChunks, storedShellView } from '../block-helpers'
+import { getToolErrorText, shellTerminalOutputChunks } from '../block-helpers'
 import { commandEndMark, commandEndWords } from '../command-end'
 import CommandEndTag from './CommandEndTag.vue'
 import { useLiveCalls } from '../live-calls'
-import { shellRowRunning } from '../terminals'
+import { shellRowEnd, shellRowRunning } from '../terminals'
 import { standardToolTitle } from '../tool-rendering'
 
 const props = defineProps<{
@@ -24,14 +24,13 @@ const props = defineProps<{
 const command = computed(() => (props.input['script'] as string) ?? '')
 const title = computed(() => standardToolTitle('shell_exec', props.input))
 const errorText = computed(() => getToolErrorText(props.block))
-// The end of a call that returned with its command ended; while the call
-// runs, or once it returned with the command still running, there is none.
-const endView = computed(() => (props.block.status === 'executing' ? null : storedShellView(props.block)))
-const endMark = computed(() => commandEndMark(endView.value))
-const endWords = computed(() => commandEndWords(endView.value))
 const liveCalls = useLiveCalls()
 /** The command the call started, as its live frames show it. */
 const started = computed(() => liveCalls(props.block.toolUseId))
+// How the command ended, also when it ran on after the call returned; none while it runs.
+const end = computed(() => shellRowEnd(props.block, started.value))
+const endMark = computed(() => commandEndMark(end.value))
+const endWords = computed(() => commandEndWords(end.value))
 /** While the call runs, its command's output as it comes (`runtime.md` § Rendering boundary). */
 const liveOutput = computed(() =>
   props.block.status === 'executing' ? started.value?.output ?? '' : '',
