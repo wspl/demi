@@ -24,7 +24,7 @@ html[data-theme="dark"][data-tone="paper"] {
   --fg-faint: #5f5e5a;
   --fg-ghost: #3a3a38;
   --hover-mix: rgb(255 255 255) 7.5%;
-  --active-mix: rgb(255 255 255) 15%;
+  --active-mix: rgb(255 255 255) 10%;
   --line-subtle: rgb(255 255 255 / 0.06);
   --line: rgb(255 255 255 / 0.1);
   --line-strong: rgb(255 255 255 / 0.2);
