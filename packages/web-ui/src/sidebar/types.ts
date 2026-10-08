@@ -36,7 +36,17 @@ export interface SidebarConversation {
   unread: boolean
   /** A permission request waits for the user's decision (`permissions.md` § What the user sees). */
   needsYou?: boolean
+  /**
+   * The paired device a conversation outside a project runs on, which its row's end shows
+   * (`product.md` § Conversations and projects); absent on the Cloud and in a project.
+   */
+  device?: SidebarConversationDevice
 }
+
+/** A conversation's device as its row shows it: by name and state, or as one since removed. */
+export type SidebarConversationDevice =
+  | { kind: 'paired'; name: string; state: DeviceState }
+  | { kind: 'removed' }
 
 /** The signed-in account the sidebar's foot shows. */
 export interface SidebarAccount {
