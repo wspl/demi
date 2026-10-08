@@ -1,34 +1,50 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { Cloud, Link, Plus, Unlink } from '@lucide/vue'
+import { ref } from 'vue'
+import { Cloud, Plus, Unlink } from '@lucide/vue'
 import Dropdown from '../ui/Dropdown.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import MenuGroup from '../ui/MenuGroup.vue'
-import MenuDivider from '../ui/MenuDivider.vue'
 import Button from '../ui/Button.vue'
+import IconButton from '../ui/IconButton.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { ICON_PX } from '../ui/icon-metrics'
 import { COMPACT_LABEL_CLASS, useRoomLabel } from '../ui/label-room'
 import Tooltip from '../ui/Tooltip.vue'
 import { isTextCut } from '../ui/truncation'
-import HostPicker from './HostPicker.vue'
-import type { HostDeviceOption, HostMenuHost } from './types'
+import type { SentenceText } from '../ui/ui-text'
 import DeviceIcon from '../devices/DeviceIcon.vue'
-import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
-import { DEVICE_ICON } from './icons'
+import { DEVICE_GLYPHS } from '../devices/device-glyphs'
+import { DEVICE_STATE_LABEL } from '../devices/state'
+import { DEVICE_PATH_LABEL } from '../devices/direct'
+import type { HostDeviceOption, HostMenuHost } from './types'
 
+/**
+ * Where a conversation runs, as the header shows it and its one-level menu
+ * changes it (`product.md` § Where a conversation runs): Run On lists the
+ * Cloud and every paired device, each online device with the path this page
+ * reaches it by, the primary Host checked; Attached lists the devices the
+ * conversation's agents attached, each with Detach. Choosing a Host is the
+ * host's to carry out: a conversation outside a project moves there, one in
+ * a project opens that device's directory picker, which `chooseDirectory`
+ * marks with an ellipsis on each device but the checked one. The Cloud
+ * lists no directories to a page, so it moves the conversation to its own
+ * directory there and never opens a picker.
+ */
 const props = defineProps<{
   primaryHost: HostMenuHost
-  attachedHosts: HostMenuHost[]
+  /** The user's paired devices, which Run On lists after the Cloud. */
   devices: HostDeviceOption[]
+  attachedHosts: HostMenuHost[]
+  /** In a project: choosing a Host opens its directory picker. */
+  chooseDirectory?: boolean
+  /** The conversation's work runs, or it is archived: nothing here can change it. */
+  locked?: boolean
   pending?: boolean
-  primaryLocked?: boolean
-  attachmentsLocked?: boolean
 }>()
 const emit = defineEmits<{
-  switchPrimary: [id: string]
-  attach: [id: string]
+  /** A Host chosen to run on: the Cloud, or a device by its id. */
+  choose: [host: { kind: 'cloud' } | { kind: 'device'; id: string }]
   detach: [id: string]
   connect: []
 }>()
@@ -42,22 +58,44 @@ const hostCompact = useRoomLabel(hostLabel, () => props.primaryHost.name, 0)
 function nameHidden(): boolean {
   return hostCompact.value || (hostLabel.value != null && isTextCut(hostLabel.value))
 }
-const boundIds = computed(() => [
-  props.primaryHost.id,
-  ...props.attachedHosts.map((host) => host.id),
-])
 
-function selectPrimary(id: string) {
-  if (props.primaryLocked) {
-    return
-  }
-  open.value = false
-  emit('switchPrimary', id)
+const LOCKED: SentenceText = 'This conversation can move once its work ends.'
+
+/** A device's name in Run On: with an ellipsis where choosing it opens a picker first. */
+function choiceLabel(device: HostDeviceOption): string {
+  const opensPicker = props.chooseDirectory && device.state === 'online' && !deviceChecked(device.id)
+  return opensPicker ? `${device.name}…` : device.name
 }
 
-function attach(id: string) {
+/** The end of a device's row: the path this page reaches it by while it is online, otherwise its state. */
+function deviceNote(device: HostDeviceOption): string | undefined {
+  if (device.state !== 'online')
+    return DEVICE_STATE_LABEL[device.state]
+  return device.path ? DEVICE_PATH_LABEL[device.path] : undefined
+}
+
+function deviceChecked(id: string): boolean {
+  return props.primaryHost.kind === 'device' && props.primaryHost.id === id
+}
+
+function choose(host: { kind: 'cloud' } | { kind: 'device'; id: string }) {
+  if (props.locked)
+    return
   open.value = false
-  emit('attach', id)
+  emit('choose', host)
+}
+
+/**
+ * An attached Host chosen to run on, as in Run On. An offline device is
+ * drawn faded and cannot be chosen, but its row stays enabled, since Detach
+ * takes it back whatever its state.
+ */
+function chooseAttached(host: HostMenuHost) {
+  if (host.kind === 'cloud') {
+    choose({ kind: 'cloud' })
+  } else if (host.state === 'online') {
+    choose({ kind: 'device', id: host.id })
+  }
 }
 
 function detach(id: string) {
@@ -83,7 +121,7 @@ function connect() {
         <Button
           variant="ghost"
           class="max-w-full"
-          aria-label="Manage conversation hosts"
+          aria-label="Where this conversation runs"
           :loading="pending"
         >
           <Cloud v-if="primaryHost.kind === 'cloud'" :size="ICON_PX.in28" class="shrink-0" />
@@ -100,73 +138,56 @@ function connect() {
       </Tooltip>
     </template>
     <template #content>
-      <Menu>
-        <MenuItem
-          :icon="primaryHost.kind === 'cloud' ? Cloud : DEVICE_ICON"
-          label="Primary Host"
-          :indicator="primaryHost.kind === 'cloud' ? undefined : DEVICE_STATE_TONE[primaryHost.state]"
-          :indicator-label="DEVICE_STATE_LABEL[primaryHost.state]"
-          :value="primaryHost.name"
-          :disabled="primaryLocked"
-          has-submenu
-        >
-          <template #submenu>
-            <HostPicker
-              :devices="devices"
-              include-cloud
-              :selected-id="primaryHost.id"
-              @select="selectPrimary"
-              @connect="connect"
-            />
-          </template>
-        </MenuItem>
-        <MenuGroup v-if="attachedHosts.length" label="Attached Hosts">
+      <Menu class="max-w-80">
+        <MenuGroup label="Run On">
+          <MenuItem
+            :icon="Cloud"
+            label="Cloud"
+            choice
+            :is-selected="primaryHost.kind === 'cloud'"
+            :disabled="locked"
+            :disabled-reason="LOCKED"
+            @select="choose({ kind: 'cloud' })"
+          />
+          <MenuItem
+            v-for="device in devices"
+            :key="device.id"
+            :icon="DEVICE_GLYPHS[device.state]"
+            :label="choiceLabel(device)"
+            :value="deviceNote(device)"
+            choice
+            :is-selected="deviceChecked(device.id)"
+            :disabled="locked || device.state !== 'online'"
+            :disabled-reason="locked ? LOCKED : 'This device is offline.'"
+            @select="choose({ kind: 'device', id: device.id })"
+          />
+          <MenuItem label="Add Device…" :icon="Plus" @select="connect" />
+        </MenuGroup>
+        <MenuGroup v-if="attachedHosts.length" label="Attached">
           <MenuItem
             v-for="host in attachedHosts"
             :key="host.id"
-            :icon="host.kind === 'cloud' ? Cloud : DEVICE_ICON"
+            :icon="host.kind === 'cloud' ? Cloud : DEVICE_GLYPHS[host.state]"
             :label="host.name"
-            :indicator="host.kind === 'cloud' ? undefined : DEVICE_STATE_TONE[host.state]"
-            :indicator-label="DEVICE_STATE_LABEL[host.state]"
-            :note="host.kind === 'device' && host.state !== 'online' ? DEVICE_STATE_LABEL[host.state] : undefined"
-            has-submenu
+            :faded="host.kind === 'device' && host.state !== 'online'"
+            :disabled="locked"
+            :disabled-reason="LOCKED"
+            @select="chooseAttached(host)"
           >
-            <template #submenu>
-              <Menu>
-                <MenuItem
-                  label="Use as Primary Environment…"
-                  :icon="host.kind === 'cloud' ? Cloud : DEVICE_ICON"
-                  :disabled="primaryLocked || (host.kind === 'device' && host.state !== 'online')"
-                  @select="selectPrimary(host.id)"
-                />
-
-                <MenuItem
-                  label="Detach"
+            <template #actions>
+              <Tooltip content="Detach" class="inline-flex">
+                <IconButton
                   :icon="Unlink"
-                  :disabled="attachmentsLocked"
-                  @select="detach(host.id)"
+                  variant="ghost"
+                  size="xs"
+                  aria-label="Detach"
+                  :disabled="locked"
+                  @click.stop="detach(host.id)"
                 />
-              </Menu>
+              </Tooltip>
             </template>
           </MenuItem>
         </MenuGroup>
-        <MenuDivider />
-        <MenuItem
-          label="Attach Device"
-          :icon="Plus"
-          has-submenu
-          :disabled="attachmentsLocked"
-        >
-          <template #submenu>
-            <HostPicker
-              :devices="devices"
-              :bound-ids="boundIds"
-              @select="attach"
-              @connect="connect"
-            />
-          </template>
-        </MenuItem>
-        <MenuItem label="Add Device…" :icon="Link" @select="connect" />
       </Menu>
     </template>
   </Dropdown>
