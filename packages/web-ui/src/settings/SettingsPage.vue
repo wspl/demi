@@ -90,9 +90,10 @@ onBeforeUnmount(leaveBar)
           <div v-if="$slots.status" class="mt-0.5 flex items-center gap-1.5 text-[13px] leading-5 text-fg-body">
             <slot name="status" />
           </div>
-          <p v-if="description || $slots.description" class="mt-1 text-[13px] leading-5 text-fg-muted">
+          <!-- A block, so the explanation may hold more than a sentence, such as a command to copy. -->
+          <div v-if="description || $slots.description" class="mt-1 text-[13px] leading-5 text-fg-muted">
             <slot name="description">{{ description }}</slot>
-          </p>
+          </div>
           <!-- The header's buttons: a line of their own, in every state, so they never move with the text. -->
           <div v-if="$slots.actions" class="mt-3 flex flex-wrap items-center gap-2">
             <slot name="actions" />
