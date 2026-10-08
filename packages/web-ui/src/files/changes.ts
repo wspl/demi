@@ -1,16 +1,15 @@
-import { editedFileSchema, type EditCopies } from '@demicodes/protocol'
-import { z } from 'zod'
+import type { EditCopies } from '@demicodes/protocol'
 import { compareFileNames } from './file-browser-state'
 import { baseName } from '@demicodes/utils'
 import type { Showing } from './file-cache'
 import type { TreeRow } from './tree'
+import type { RequestChangeSource } from './request-changes'
 import type { FileContents, FileWatchNote } from './types'
 
 /**
  * One changed file as the change view lists it: its path, how it changed,
- * and its line counts. A working-tree listing has every kind; a call's
- * retained edit (`EditedFile`) is one of these with `added` or
- * `modified` only.
+ * and its line counts. A working-tree listing has every kind; a request's
+ * file (`RequestFile`) is `added` or `modified` only.
  */
 export interface ChangeFile {
   path: string
@@ -66,28 +65,6 @@ export interface ChangeSides { original: string; modified: string }
  */
 export type ReadCallChange = (copies: EditCopies, signal?: AbortSignal) => Promise<ChangeSides | null>
 
-/** One file picked under a shell call, independent of the call's other files. */
-export const callEditSelectionSchema = z.object({
-  commandId: z.string(),
-  file: editedFileSchema,
-})
-export type CallEditSelection = z.infer<typeof callEditSelectionSchema>
-
-export interface CallChangeSource extends CallEditSelection {
-  /** The two sides of segment `edit`; null when it has no copies or one of them is gone. */
-  read(edit: number, signal?: AbortSignal): Promise<ChangeSides | null>
-}
-
-export function callChangeSource(selection: CallEditSelection, read: ReadCallChange): CallChangeSource {
-  return {
-    ...selection,
-    read: async (edit, signal) => {
-      const copies = selection.file.edits[edit]?.copies
-      return copies ? read(copies, signal) : null
-    },
-  }
-}
-
 /** What an empty change set says in place of its files, by why it is empty. */
 export function emptyChangeSetText(source: ChangeSetSource): string {
   if (source.unavailable === 'no-repository') {
@@ -100,16 +77,16 @@ export function emptyChangeSetText(source: ChangeSetSource): string {
 }
 
 /**
- * Where a change view's diffs come from: files picked from the conversation
- * (each a snapshot around one tool call, nothing to do with git) or the
- * workspace's uncommitted changes against its last commit.
+ * Where a change view's diffs come from: a request of the conversation (the
+ * files its calls changed, nothing to do with git) or the workspace's
+ * uncommitted changes against its last commit.
  */
 export type ChangeMode = 'conversation' | 'uncommitted'
 
-/** A live working-tree list and, independently, one retained file edit. */
+/** A live working-tree list and, independently, the request the view shows; null while it shows none. */
 export interface ChangeSources {
   uncommitted: ChangeSetSource
-  conversation: CallChangeSource | null
+  conversation: RequestChangeSource | null
 }
 
 /** The working-tree placeholder when no workspace is available: it lists nothing, so no side is shown. */

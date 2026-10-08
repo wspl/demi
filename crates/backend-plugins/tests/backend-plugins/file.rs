@@ -99,7 +99,7 @@ async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
     .await;
 }
 
-// Several seconds: eleven scripts run a shell job each, and the first
+// Several seconds: thirteen scripts run a shell job each, and the first
 // `demi file` starts the `demi.file` service. The files the edits and the
 // failed patch start from are written by the test, and it reads what they
 // leave itself, so every job runs a command under test.
@@ -114,6 +114,12 @@ async fn demi_file_edit_and_patch_change_what_they_name_whole_or_not_at_all() {
                 "demi file edit context.txt --old target --new changed --context 2",
                 "cat context.txt && demi file edit context.txt --old target --new changed --context 3 && cat context.txt",
                 "demi file edit empty-old.txt --old \"\" --new changed",
+                // Blocks in a quoted heredoc pass quotes, `$` and
+                // backslashes as they are, and a REPLACE's last empty line.
+                QUOTED_EDIT,
+                // With --old, an edit reads no stdin: the loop keeps its
+                // input for its next turn.
+                "printf 'loop-a.txt\\nloop-b.txt\\n' | while read f; do demi file edit \"$f\" --old one --new two; done; cat loop-a.txt loop-b.txt",
                 // Patches apply whole unified diffs.
                 "demi file create patch.txt <<'EOF'\none\ntwo\nEOF\ndemi file patch <<'PATCH' && cat patch.txt\n--- a/patch.txt\n+++ b/patch.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+three\nPATCH",
                 "demi file create timed.txt <<'EOF'\nold\nEOF\ndemi file patch <<'PATCH' && cat timed.txt\n--- a/timed.txt 2026-06-17 00:00:00.000000000 +0800\n+++ b/timed.txt 2026-06-17 00:00:01.000000000 +0800\n@@ -1 +1 @@\n-old\n+new\nPATCH",
@@ -127,6 +133,9 @@ async fn demi_file_edit_and_patch_change_what_they_name_whole_or_not_at_all() {
                     ("file.txt", "one\ntwo\ntwo\n"),
                     ("context.txt", "target\nmiddle\ntarget\n"),
                     ("empty-old.txt", "content\n"),
+                    ("quoted.js", QUOTED_BEFORE),
+                    ("loop-a.txt", "one\n"),
+                    ("loop-b.txt", "one\n"),
                     ("first.txt", "first\n"),
                     ("second.txt", "second\n"),
                 ] {
@@ -151,19 +160,25 @@ async fn demi_file_edit_and_patch_change_what_they_name_whole_or_not_at_all() {
         assert_exit(&results[4], "1");
         assert_shows(&results[4], &["Invalid command arguments: \"old\" is shorter than 1 character"]);
         assert_eq!(read("empty-old.txt"), "content\n");
-
-        assert_eq!(shown_output(&results[5]), "Created patch.txt\nPatched 1 file(s)\none\nthree\n");
-        assert_eq!(shown_output(&results[6]), "Created timed.txt\nPatched 1 file(s)\nnew\n");
+        assert_eq!(shown_output(&results[5]), "Edited quoted.js\n");
+        assert_eq!(read("quoted.js"), QUOTED_AFTER);
         assert_eq!(
-            shown_output(&results[7]),
+            shown_output(&results[6]),
+            "Edited loop-a.txt\nEdited loop-b.txt\ntwo\ntwo\n"
+        );
+
+        assert_eq!(shown_output(&results[7]), "Created patch.txt\nPatched 1 file(s)\none\nthree\n");
+        assert_eq!(shown_output(&results[8]), "Created timed.txt\nPatched 1 file(s)\nnew\n");
+        assert_eq!(
+            shown_output(&results[9]),
             "Created existing.txt\nPatched 2 file(s)\nchanged\nnew\nfile\n"
         );
-        assert_eq!(shown_output(&results[8]), "Created doomed.txt\nPatched 1 file(s)\ngone\n");
+        assert_eq!(shown_output(&results[10]), "Created doomed.txt\nPatched 1 file(s)\ngone\n");
         // One file that does not apply leaves every file as it was.
-        assert_exit(&results[9], "1");
-        assert_shows(&results[9], &["Patch does not apply to second.txt"]);
+        assert_exit(&results[11], "1");
+        assert_shows(&results[11], &["Patch does not apply to second.txt"]);
         assert_eq!(read("first.txt"), "first\n");
-        assert_eq!(shown_output(&results[10]), "Created inside.txt\nPatched 2 file(s)\nchanged\n");
+        assert_eq!(shown_output(&results[12]), "Created inside.txt\nPatched 2 file(s)\nchanged\n");
         assert_eq!(
             std::fs::read_to_string(format!("{}/outside.txt", fixture.runner.home())).unwrap(),
             "outside\n"
@@ -172,3 +187,30 @@ async fn demi_file_edit_and_patch_change_what_they_name_whole_or_not_at_all() {
     })
     .await;
 }
+
+/// A file whose text a shell would change unless quoted: quotes, `$` and
+/// backslashes.
+const QUOTED_BEFORE: &str = r#"// head
+const greeting = "hello";
+const path = 'C:\temp';
+// tail
+"#;
+
+/// The edit of [`QUOTED_BEFORE`], as the model writes it.
+const QUOTED_EDIT: &str = r#"demi file edit quoted.js <<'EOF'
+<<<<<<< SEARCH
+const greeting = "hello";
+const path = 'C:\temp';
+=======
+const greeting = "it's $HOME, \"quoted\"";
+const path = 'C:\new\temp';
+
+>>>>>>> REPLACE
+EOF"#;
+
+const QUOTED_AFTER: &str = r#"// head
+const greeting = "it's $HOME, \"quoted\"";
+const path = 'C:\new\temp';
+
+// tail
+"#;

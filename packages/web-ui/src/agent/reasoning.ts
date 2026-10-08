@@ -1,3 +1,4 @@
+import { upperFirst } from '@demicodes/utils'
 import type { ModelInfo } from '../transport/protocol'
 import { firstEffort, THINKING_OFF } from './model-selection'
 import type { TitleText } from '../ui/ui-text'
@@ -24,7 +25,7 @@ export function buildReasoningState(model: ModelInfo | null | undefined): Reason
   if (!model?.reasoning || first === null)
     return null
   const effortOptions = model.reasoning.efforts.map((effort): ReasoningOption => ({
-    label: effortLabel(effort),
+    label: upperFirst(effort),
     effort,
   }))
   const options: ReasoningOption[] = model.reasoning.canDisable
@@ -49,8 +50,3 @@ export function reasoningOptionLabel(state: ReasoningState, effort: string | nul
   return state.options[reasoningOptionIndex(state, effort)]?.label ?? ''
 }
 
-function effortLabel(effort: string): string {
-  if (effort.length === 0)
-    return effort
-  return effort.charAt(0).toUpperCase() + effort.slice(1)
-}
