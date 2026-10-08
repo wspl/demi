@@ -107,18 +107,34 @@ async fn a_whole_batch_reaches_the_agent_before_any_answer_and_a_later_call_is_a
         cli.handshake().await;
         cli.message_start();
         cli.text("running both");
+        // Each call is reported as the model writes it, before the batch.
+        cli.streamed_tool_use(1, "toolu_alpha", &["{\"script\": ", "\"printf alpha\"}"]);
         cli.tool_use("toolu_alpha", "printf alpha");
         // The CLI runs a tool as soon as its block is whole, before the
         // message ends; the second call stays blocked behind the first.
         cli.call("call-alpha", 2, "toolu_alpha", "printf alpha");
+        cli.streamed_tool_use(2, "toolu_beta", &["{\"script\": \"printf beta\"}"]);
         cli.tool_use("toolu_beta", "printf beta");
         cli.message_stop();
         cli
     });
+    let start = |id: &str| ProviderEvent::ToolCallStart {
+        tool_use_id: id.into(),
+        tool_name: "shell_exec".into(),
+    };
+    let input = |id: &str, piece: &str| ProviderEvent::ToolCallInput {
+        tool_use_id: id.into(),
+        partial_json: piece.into(),
+    };
     assert_eq!(
         events,
         [
             ProviderEvent::TextDelta("running both".into()),
+            start("toolu_alpha"),
+            input("toolu_alpha", "{\"script\": "),
+            input("toolu_alpha", "\"printf alpha\"}"),
+            start("toolu_beta"),
+            input("toolu_beta", "{\"script\": \"printf beta\"}"),
             call("toolu_alpha", "printf alpha"),
             call("toolu_beta", "printf beta"),
         ]

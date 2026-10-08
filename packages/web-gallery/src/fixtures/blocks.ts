@@ -1023,3 +1023,31 @@ export function transcriptDemoBlocks(): Block[] {
     },
   ]
 }
+
+/**
+ * A turn whose model has finished its sentence and goes on writing a call
+ * (`runtime.md` § Calls being written): the user's message and the finished
+ * text, which the specimens follow with a call being written or with
+ * Requesting.
+ */
+export function callBeingWrittenBlocks(): Block[] {
+  return [
+    {
+      type: 'user',
+      id: 'writing-user',
+      turnId: 'writing-turn',
+      createdAt: '2026-10-08T12:00:00.000Z',
+      model: demoModel,
+      content: [{ type: 'text', text: 'Sort the downloads into folders by kind.' }],
+      preamble: null,
+    },
+    {
+      type: 'text',
+      id: 'writing-text',
+      createdAt: '2026-10-08T12:00:04.000Z',
+      model: demoModel,
+      text: 'Now I have everything needed to classify. Let me write a categorizer.',
+      forkable: true,
+    },
+  ]
+}

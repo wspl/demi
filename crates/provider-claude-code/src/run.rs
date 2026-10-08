@@ -237,6 +237,7 @@ fn run(
                             continue;
                         };
                         if let StreamEvent::MessageStop(_) = event {
+                            live.writing.clear();
                             if live.collecting.is_empty() {
                                 continue;
                             }
@@ -254,7 +255,7 @@ fn run(
                             }
                             return;
                         }
-                        for event in event.events() {
+                        for event in event.events(&mut live.writing) {
                             yielded = true;
                             yield event;
                         }

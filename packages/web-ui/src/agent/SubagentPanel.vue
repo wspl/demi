@@ -104,6 +104,7 @@ function closeTab(agent: SubagentRecord): void {
       :conversation-id="active.id"
       :node="active.id"
       :blocks="active.blocks"
+      :pending-calls="active.pendingCalls"
       :failures="active.failures"
       :pending-steers="[]"
       :queue="[]"

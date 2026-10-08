@@ -59,7 +59,9 @@ export interface ActivitySlotInput {
 
 /**
  * The tail row's kind, or null when the tail is content (streaming thinking or
- * text, an executing tool) or nothing is happening. A lost socket wins over
+ * text, a call being written or executing) or nothing is happening. Text the
+ * model finished, with nothing after it yet, is followed by Requesting
+ * (`product.md` § Recovering an unfinished turn). A lost socket wins over
  * everything, since a recovery or a turn cannot progress without it: the row
  * says Connecting while the page still reaches the backend, and nothing while
  * the connection banner says the backend is away.
@@ -86,6 +88,9 @@ function isWaitingForProvider(input: ActivitySlotInput): boolean {
   if (last.type === 'tool_call') {
     return last.status !== 'executing'
   }
+  if (last.type === 'text') {
+    return last.forkable === true
+  }
   return WAITING_TAIL_TYPES.has(last.type)
 }
 
@@ -106,7 +111,7 @@ function hasActiveOutput(blocks: readonly MessageListBlock[]): boolean {
   const last = blocks[blocks.length - 1]
   return (
     last?.type === 'thinking'
-    || last?.type === 'text'
+    || (last?.type === 'text' && !last.forkable)
     || (last?.type === 'tool_call' && last.status === 'executing')
   )
 }

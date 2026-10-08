@@ -53,6 +53,7 @@ function state(
     blocks: [],
     queue: [],
     pendingSteers: [],
+    pendingCalls: [],
     phase: 'idle',
     load: 'ready',
     lastError: null,

@@ -599,6 +599,23 @@ impl Cli {
         }));
     }
 
+    /// A tool use streamed as the model writes it: its block's start at
+    /// `index`, then each piece of its input.
+    pub fn streamed_tool_use(&self, index: u64, id: &str, pieces: &[&str]) {
+        self.say(json!({ "type": "stream_event", "event": {
+            "type": "content_block_start",
+            "index": index,
+            "content_block": { "type": "tool_use", "id": id, "name": "mcp__main__shell_exec", "input": {} },
+        } }));
+        for piece in pieces {
+            self.say(json!({ "type": "stream_event", "event": {
+                "type": "content_block_delta",
+                "index": index,
+                "delta": { "type": "input_json_delta", "partial_json": piece },
+            } }));
+        }
+    }
+
     pub fn message_start(&self) {
         self.say(
             json!({ "type": "stream_event", "event": { "type": "message_start", "message": {} } }),

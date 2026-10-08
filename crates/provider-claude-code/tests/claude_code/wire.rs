@@ -86,7 +86,11 @@ async fn streamed_pieces_become_events_and_the_whole_message_after_them_repeats_
         json!({ "type": "stream_event", "event": { "type": "content_block_delta", "delta": { "type": "signature_delta", "signature": "sig" } } }),
         json!({ "type": "stream_event", "event": { "type": "content_block_start", "content_block": { "type": "text", "text": "" } } }),
         json!({ "type": "stream_event", "event": { "type": "content_block_delta", "delta": { "type": "text_delta", "text": "hi" } } }),
-        json!({ "type": "stream_event", "event": { "type": "content_block_delta", "delta": { "type": "input_json_delta", "partial_json": "{" } } }),
+        // A tool use streams its start and input pieces, which name its
+        // block by index; a piece of a block never opened is skipped.
+        json!({ "type": "stream_event", "event": { "type": "content_block_start", "index": 2, "content_block": { "type": "tool_use", "id": "toolu_1", "name": "mcp__main__shell_exec", "input": {} } } }),
+        json!({ "type": "stream_event", "event": { "type": "content_block_delta", "index": 2, "delta": { "type": "input_json_delta", "partial_json": "{\"descr" } } }),
+        json!({ "type": "stream_event", "event": { "type": "content_block_delta", "index": 3, "delta": { "type": "input_json_delta", "partial_json": "{" } } }),
         json!({ "type": "stream_event", "event": { "type": "message_delta", "usage": { "output_tokens": 3 } } }),
         json!({ "type": "assistant", "message": { "content": [{ "type": "text", "text": "hi" }] } }),
         json!({ "type": "stream_event", "event": { "type": "message_stop" } }),
@@ -101,6 +105,14 @@ async fn streamed_pieces_become_events_and_the_whole_message_after_them_repeats_
             ProviderEvent::ThinkingDelta("hmm".into()),
             ProviderEvent::ThinkingSignature("sig".into()),
             ProviderEvent::TextDelta("hi".into()),
+            ProviderEvent::ToolCallStart {
+                tool_use_id: "toolu_1".into(),
+                tool_name: "shell_exec".into(),
+            },
+            ProviderEvent::ToolCallInput {
+                tool_use_id: "toolu_1".into(),
+                partial_json: "{\"descr".into(),
+            },
             response(),
         ]
     );

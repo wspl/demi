@@ -43,7 +43,7 @@ use demi_conversation_socket_protocol::{AbortResult, TranscriptPatch, Transcript
 use demi_provider_common::{ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
 use demi_shared_types::{
-    AgentMessage, Block, BlockId, Clock, ContextUsage, ModelSelection, NodeId, PendingSteer,
+    AgentMessage, Block, BlockId, Clock, ContextUsage, ModelSelection, NodeId, PendingCall, PendingSteer,
     ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock, TurnId,
     UserContentBlock,
 };
@@ -301,6 +301,11 @@ pub enum SessionEvent {
     /// The human steers waiting for a boundary changed.
     PendingSteersChanged {
         pending_steers: Vec<PendingSteer>,
+    },
+    /// The calls the model is writing changed (`runtime.md` § Calls being
+    /// written).
+    PendingCallsChanged {
+        pending_calls: Vec<PendingCall>,
     },
     /// A transient provider failure is retried after `delay_ms`.
     RetryScheduled {
@@ -668,6 +673,11 @@ impl AgentSession {
     /// The human steers accepted and not yet written.
     pub fn pending_steers(&self) -> Vec<PendingSteer> {
         self.shared.read(SessionCore::pending_steers)
+    }
+
+    /// The calls the model is writing.
+    pub fn pending_calls(&self) -> Vec<PendingCall> {
+        self.shared.read(SessionCore::pending_calls)
     }
 
     /// The text of the last `text` block, the result a child closes with.

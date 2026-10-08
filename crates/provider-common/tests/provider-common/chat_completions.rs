@@ -50,6 +50,19 @@ fn call(id: &str, name: &str, input: Value) -> ProviderEvent {
     })
 }
 
+/// The events without the starts and input pieces of calls being written.
+fn whole(events: Vec<ProviderEvent>) -> Vec<ProviderEvent> {
+    events
+        .into_iter()
+        .filter(|event| {
+            !matches!(
+                event,
+                ProviderEvent::ToolCallStart { .. } | ProviderEvent::ToolCallInput { .. }
+            )
+        })
+        .collect()
+}
+
 fn failure_of(events: Vec<ProviderEvent>) -> ProviderFailure {
     match <[ProviderEvent; 1]>::try_from(events) {
         Ok([ProviderEvent::Error(failure)]) => failure,
@@ -80,7 +93,20 @@ async fn a_stream_maps_split_text_tool_call_arguments_and_usage() {
         events,
         [
             ProviderEvent::TextDelta("hi ".into()),
+            // The call as the model writes it, for display, then whole.
+            ProviderEvent::ToolCallStart {
+                tool_use_id: "call-1".into(),
+                tool_name: "read_file".into(),
+            },
+            ProviderEvent::ToolCallInput {
+                tool_use_id: "call-1".into(),
+                partial_json: "{\"path\"".into(),
+            },
             ProviderEvent::TextDelta("there".into()),
+            ProviderEvent::ToolCallInput {
+                tool_use_id: "call-1".into(),
+                partial_json: ":\"a.ts\"}".into(),
+            },
             call("call-1", "read_file", json!({ "path": "a.ts" })),
             ProviderEvent::Response(usage),
         ]
@@ -111,14 +137,14 @@ async fn reasoning_content_is_thinking_that_starts_once() {
 
 #[tokio::test]
 async fn tool_calls_assemble_by_index_and_flush_at_the_end_of_the_stream() {
-    let assembled = events(&[
+    let assembled = whole(events(&[
         // Arguments that are not JSON stay the string the vendor sent.
         json!({ "choices": [{ "delta": { "tool_calls": [{ "index": 1, "id": "call-2", "function": { "name": "bad", "arguments": "{" } }] } }] }),
         json!({ "choices": [{ "delta": { "tool_calls": [{ "index": 0, "function": { "name": "no_id" } }] } }] }),
         // A call that never names its tool is dropped.
         json!({ "choices": [{ "delta": { "tool_calls": [{ "index": 2, "id": "call-3", "function": { "arguments": "{}" } }] } }] }),
     ])
-    .await;
+    .await);
     assert_eq!(
         assembled,
         [
@@ -128,12 +154,12 @@ async fn tool_calls_assemble_by_index_and_flush_at_the_end_of_the_stream() {
         ]
     );
     // A vendor that omits `index` sends one call at a time, in order.
-    let sequential = events(&[
+    let sequential = whole(events(&[
         json!({ "choices": [{ "delta": { "tool_calls": [{ "id": "a", "function": { "name": "first", "arguments": "{}" } }] } }] }),
         json!({ "choices": [{ "delta": { "tool_calls": [{ "id": "b", "function": { "name": "second", "arguments": "{}" } }] } }] }),
         json!("[DONE]"),
     ])
-    .await;
+    .await);
     assert_eq!(
         sequential[..2],
         [

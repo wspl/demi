@@ -1,5 +1,6 @@
 import type {
   Block,
+  PendingCall,
   PendingSteer,
   ProviderFailureFacts,
   ServerFrame,
@@ -50,6 +51,13 @@ export type ClientSessionEvent =
       type: 'pending_steers'
       /** The accepted steers not yet in the transcript. */
       pendingSteers: PendingSteer[]
+    }
+  | {
+      type: 'pending_calls'
+      /** The subagent whose calls they are; absent for the root's. */
+      subagentId?: string
+      /** The calls the model is writing (`runtime.md` § Calls being written). */
+      pendingCalls: PendingCall[]
     }
   | {
       type: 'subagent_transcript_reset'

@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
-import { agentReceiptMessages, editedFile, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
+import { agentReceiptMessages, callBeingWrittenBlocks, editedFile, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
 import { HELPER, helperBlocks, helperParentBlocks, signInRequestBlocks, standaloneRequest, uncopiedRequestBlocks } from '../fixtures/request-changes'
 import { useGalleryTranscripts } from '../fixtures/transcripts'
 import GalleryTranscript from '../components/GalleryTranscript.vue'
@@ -619,6 +619,14 @@ const signInBlocks = signInRequestBlocks('sign-in')
 const signInOffBlocks = signInRequestBlocks('sign-in-off')
 /** The same request still working, its last call ended and no reply yet. */
 const signInRunningBlocks = signInRequestBlocks('sign-in-running').slice(0, -1)
+// The calls being written: a finished sentence, then a call without its title
+// yet, one with it, and none, where Requesting follows the text.
+const writingBlocks = callBeingWrittenBlocks()
+const writingSpecimens = [
+  { variant: 'being written, no description yet', calls: [{ toolUseId: 'writing-1', toolName: 'shell_exec', description: null }] },
+  { variant: 'being written, with its description', calls: [{ toolUseId: 'writing-1', toolName: 'shell_exec', description: 'Write the categorizer' }] },
+  { variant: 'finished text, then Requesting', calls: [] },
+]
 const uncopiedBlocks = uncopiedRequestBlocks()
 const parentBlocks = helperParentBlocks()
 const childBlocks = helperBlocks()
@@ -1751,6 +1759,34 @@ onBeforeUnmount(() => {
                 kind="requesting"
                 :incoming="runningShellTool"
                 :since="activitySince"
+              />
+            </div>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+      <GallerySection
+        title="Calls Being Written"
+        note="A call the model is still writing shows from its start as its tool’s row, shimmering, after the transcript’s last block: titled by its description once the model has written it, and by its tool until then, Preparing a command… for a shell run. The call’s own block takes its place once the call is whole. A vendor that sends its calls only whole has nothing to show meanwhile: the finished text is followed by Requesting, counting from the text’s end, so a running turn never looks finished."
+      >
+        <div class="specimen-stack">
+          <GallerySpecimen
+            v-for="specimen in writingSpecimens"
+            :key="specimen.variant"
+            :variant="specimen.variant"
+            wide
+          >
+            <div class="gallery-frame h-[13rem] bg-surface">
+              <AgentMessageList
+                class="h-full"
+                :conversation-id="`gallery-writing-${specimen.variant}`"
+                :blocks="writingBlocks"
+                :pending-calls="specimen.calls"
+                :pending-steers="[]"
+                :queue="[]"
+                phase="running"
+                :bottom-offset="0"
+                :persisted-scroll-state="undefined"
+                read-only
               />
             </div>
           </GallerySpecimen>

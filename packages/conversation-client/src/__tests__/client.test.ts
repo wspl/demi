@@ -195,6 +195,22 @@ test('the pending steers the client answers are its own copies', () => {
   expect(h.client.pendingSteers()).toEqual([pendingSteer('first')])
 })
 
+test("the calls being written are the root's list until the next one, a subagent's go to its record, and an open starts over", () => {
+  const h = harness()
+  const writing = { toolUseId: 'call-1', toolName: 'shell_exec', description: null }
+  h.receive({ type: 'pending_calls', pendingCalls: [writing] })
+  h.receive({ type: 'pending_calls', subagentId: 'child', pendingCalls: [{ ...writing, toolUseId: 'call-9' }] })
+  expect(h.client.pendingCalls()).toEqual([writing])
+  expect(h.events.filter((event) => event.type === 'pending_calls')).toEqual([
+    { type: 'pending_calls', pendingCalls: [writing] },
+    { type: 'pending_calls', subagentId: 'child', pendingCalls: [{ ...writing, toolUseId: 'call-9' }] },
+  ])
+  h.receive({ type: 'pending_calls', pendingCalls: [{ ...writing, description: 'Write the categorizer' }] })
+  expect(h.client.pendingCalls()[0]?.description).toBe('Write the categorizer')
+  h.receive({ type: 'opened' })
+  expect(h.client.pendingCalls()).toEqual([])
+})
+
 test('a frame the contract does not allow disconnects the client before anything acts on it', () => {
   for (const frame of [
     { type: 'pending_steers', pendingSteers: [{ id: 7 }] },

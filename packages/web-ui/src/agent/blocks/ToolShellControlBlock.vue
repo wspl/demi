@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { History, SquareTerminal } from '@lucide/vue'
+import { toolRowIcon } from './tool-row-icon'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Reference from '@demicodes/web-ui/ui/Reference.vue'
 import PresentedPages from './PresentedPages.vue'
@@ -54,14 +54,7 @@ const errorSummary = computed(() => {
   const text = errorText.value
   return text ? trimToolSummary(text, 160) : ''
 })
-const iconComponent = computed(() => {
-  switch (props.toolName) {
-    case 'shell_status':
-      return SquareTerminal
-    case 'yield':
-      return History
-  }
-})
+const iconComponent = computed(() => toolRowIcon(props.toolName))
 </script>
 
 <template>
