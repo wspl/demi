@@ -260,7 +260,6 @@ watch(() => props.path, () => {
       :is-open="menuCrumb !== null"
       :anchor-el="menuCrumb?.el ?? null"
       :ignore-els="menuCrumb ? [menuCrumb.el] : []"
-      placement="bottom-start"
       :offset="4"
       @close="closeMenu"
     >

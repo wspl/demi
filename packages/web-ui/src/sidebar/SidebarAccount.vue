@@ -34,9 +34,10 @@ const initials = computed(() =>
 </script>
 
 <template>
+  <!-- The account sits at the sidebar's foot, so its menu opens above it. -->
   <Dropdown
     :overlay-store="appOverlayStore"
-    placement="top-start"
+    side="top"
     :offset="8"
     width="fill"
   >
