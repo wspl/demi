@@ -1,9 +1,11 @@
 //! The `demi.file` package (`crates-and-packages.md` § command-package-file): reading,
-//! creating, editing and patching files beside them, as a resident command
+//! editing and patching files beside them, as a resident command
 //! service. It holds no conversation state, so the SDK's empty conversation
 //! status, release and close stand, and the service ends with its last
 //! lease.
 
+mod changes;
+mod edit;
 mod files;
 mod patch;
 

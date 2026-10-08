@@ -3,25 +3,58 @@
 //! `command-package-file-protocol` types (`commands.md` § File commands).
 
 use demi_command_declarations::NativeOperation;
-use demi_command_package_file_protocol::{CreateArgs, EditArgs, PACKAGE, PatchArgs, ReadArgs};
+use demi_command_package_file_protocol::{EditArgs, PACKAGE, PatchArgs, ReadArgs};
 use demi_host_interface::{GroupBuilder, LeafBuilder};
 
 /// The group's entry in the model's capability index (`system-prompt.md`
-/// § Capability index).
-const ENTRY: &str = "Edits, patches and creates the task's files exactly, so the user can review each change, and shows you images and videos. Use it for every change to a file and whenever you need to see an image; plain shell tools are fine for looking around.";
+/// § Capability index): when to use it, and the shape of a call, since a
+/// model takes up a tool by the example it has seen. Its example starts at
+/// the margin, as `demi file edit`'s help says why.
+const ENTRY: &str = "Use it whenever you change the task's files, so each change is exact and the user sees it; `read` shows you an image or video. One `edit` creates and changes several files, then you build:
+demi file edit <<'EOF' && cargo check
+src/stream.rs
+<<<<<<< SEARCH
+=======
+pub struct Stream;
+>>>>>>> REPLACE
+src/lib.rs
+<<<<<<< SEARCH
+mod socket;
+=======
+mod socket;
+mod stream;
+>>>>>>> REPLACE
+EOF";
 
 /// The help of `demi file edit`'s stdin: the blocks, with an example the
 /// model can copy. Its lines start at the margin, since a marker is a whole
 /// line and indentation copied with it would make it text.
-const EDIT_BLOCKS: &str = "SEARCH/REPLACE blocks. Each SEARCH is whole lines copied exactly from the file and must match one place; its REPLACE takes their place, and an empty one deletes them. Several blocks apply together or not at all. For a one-line change, pass --old and --new instead. Pass blocks in a quoted heredoc, so quotes, $ and backslashes need no escaping, for example:
-demi file edit src/slugify.mjs <<'EOF'
+const EDIT_BLOCKS: &str = r"SEARCH/REPLACE blocks, each after a line naming its file, or all for the path argument. A SEARCH is whole lines copied exactly from the file and must match one place; its REPLACE takes their place, and an empty REPLACE deletes them. An empty SEARCH creates its file, which must not exist. A SEARCH line of seven dots ....... stands for the lines between the ones around it: give the REPLACE as many to keep those lines, or none to replace them. Every block of every file applies, or none does. For a one-line change, pass the path, --old and --new instead. Pass blocks in a quoted heredoc, so quotes, $ and backslashes need no escaping, for example:
+demi file edit <<'EOF' && cargo check
+src/stream.rs
 <<<<<<< SEARCH
-export function slugify(text) {
-  return text.toLowerCase().replace(/\\s+/g, '-');
+=======
+pub struct Stream;
+>>>>>>> REPLACE
+
+src/lib.rs
+<<<<<<< SEARCH
+mod socket;
+=======
+mod socket;
+mod stream;
+>>>>>>> REPLACE
+
+src/socket.rs
+<<<<<<< SEARCH
+pub async fn serve(socket: Socket) {
+.......
+    send_frames(&socket).await;
 }
 =======
-export function slugify(text) {
-  return text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+pub async fn serve(socket: Socket) {
+.......
+    stream::send(&socket).await;
 }
 >>>>>>> REPLACE
 EOF";
@@ -29,7 +62,7 @@ EOF";
 pub(crate) fn file_group() -> GroupBuilder {
     GroupBuilder::new(
         "file",
-        "Read, create, edit, and patch workspace files (text, images, and video).",
+        "Read, edit, and patch workspace files (text, images, and video).",
     )
     .index_entry(ENTRY)
     .leaf(
@@ -48,19 +81,9 @@ pub(crate) fn file_group() -> GroupBuilder {
         ),
     )
     .leaf(
-        leaf("create", "Create a new file. Fails if the file exists.")
-            .input::<CreateArgs>()
-            .positionals(["path"])
-            .stdin_field("content")
-            .success_output("writes \"Created <path>\" to stdout")
-            .failure_output(
-                "writes the reason to stderr and exits non-zero without overwriting existing files",
-            ),
-    )
-    .leaf(
         leaf(
             "edit",
-            "Replace text in an existing file: SEARCH/REPLACE blocks on stdin, or --old and --new for one line.",
+            "Change files: SEARCH/REPLACE blocks on stdin for one or several files, new ones included, or --old and --new for one line.",
         )
         .input::<EditArgs>()
         .positionals(["path"])
@@ -69,11 +92,13 @@ pub(crate) fn file_group() -> GroupBuilder {
         .describe("blocks", EDIT_BLOCKS)
         .describe(
             "old",
-            "Exact text to replace, without stdin; with several matches, --occurrence or --context chooses one",
+            "Exact text to replace in the path argument's file, without stdin; with several matches, --occurrence or --context chooses one",
         )
-        .success_output("writes \"Edited <path>\" to stdout")
+        .success_output(
+            "a line for each file, \"Created <path> (<n> lines)\" or \"Edited <path> (+<added> −<removed>)\", and under an edited file each change as the file now reads, numbered, with a line of context on each side",
+        )
         .failure_output(
-            "names a block that matches nowhere with the file's closest lines, or one that matches several places with each place's lines, and exits non-zero without changing the file",
+            "names the file and block that match nowhere, with the file's closest lines, or that match several places, with each place's lines, and exits non-zero without changing any file",
         ),
     )
     .leaf(

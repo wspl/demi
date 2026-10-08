@@ -222,7 +222,7 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
 
     let heredoc =
-        "mkdir src && cd src && demi file create notes.md <<'EOF'\nalpha\nbeta\ngamma\nEOF";
+        "mkdir src && cd src && demi file edit <<'EOF'\nnotes.md\n<<<<<<< SEARCH\n=======\nalpha\nbeta\ngamma\n>>>>>>> REPLACE\nEOF";
     let created = work
         .turn(vec![shell("t1", heredoc, 10_000), say("created")])
         .await;
@@ -232,7 +232,7 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
         created.received[0]
     );
     assert!(
-        created.received[0].contains("Created notes.md"),
+        created.received[0].contains("Created notes.md (3 lines)"),
         "{}",
         created.received[0]
     );
@@ -244,7 +244,7 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
     // backend's own.
     let system = created.requests[0]["system"].to_string();
     assert!(
-        system.contains("demi file\\nEdits, patches") && system.contains("demi host\\nLists"),
+        system.contains("demi file\\nUse it whenever you change the task's files") && system.contains("demi host\\nLists"),
         "{system}"
     );
 
@@ -264,7 +264,7 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
         .turn(vec![shell("t3", script, 10_000), say("edited")])
         .await;
     assert!(
-        edited.received[0].contains("Edited notes.md\nalpha\ndelta\ngamma"),
+        edited.received[0].contains("Edited notes.md (+1 \u{2212}1)\n   1  alpha\n   2  delta\n   3  gamma\nalpha\ndelta\ngamma"),
         "{}",
         edited.received[0]
     );
@@ -307,12 +307,12 @@ async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_
     let on_beta = directory(&beta, "project");
     switch(&backend, &master, FIRST, &alpha, &on_alpha).await;
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/work").await;
-    let notes = "demi file create notes.md <<'EOF'\nalpha\nbeta\ngamma\nEOF";
+    let notes = "demi file edit <<'EOF'\nnotes.md\n<<<<<<< SEARCH\n=======\nalpha\nbeta\ngamma\n>>>>>>> REPLACE\nEOF";
     let created = work
         .turn(vec![shell("t1", notes, 10_000), say("created")])
         .await;
     assert!(
-        created.received[0].contains("Created notes.md"),
+        created.received[0].contains("Created notes.md (3 lines)"),
         "{}",
         created.received[0]
     );
@@ -359,7 +359,7 @@ async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_
         moved.received[0]
     );
     assert!(
-        moved.received[1].contains("Created notes.md"),
+        moved.received[1].contains("Created notes.md (3 lines)"),
         "{}",
         moved.received[1]
     );
@@ -604,7 +604,7 @@ async fn a_commands_edits_are_kept_as_its_call_history_and_outlive_its_runner() 
     let home = paired.runner.home_dir().to_owned();
     switch(&backend, &master, FIRST, &paired, &home).await;
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/paired").await;
-    let create_files = "set -e\nprintf 'before\\n' > note.txt\nprintf 'created\\n' | demi file create native.txt\nprintf '\\0binary' > asset.bin\nprintf 'temporary' > removed.txt\nrm removed.txt";
+    let create_files = "set -e\nprintf 'before\\n' > note.txt\ndemi file edit <<'EOF'\nnative.txt\n<<<<<<< SEARCH\n=======\ncreated\n>>>>>>> REPLACE\nEOF\nprintf '\\0binary' > asset.bin\nprintf 'temporary' > removed.txt\nrm removed.txt";
     work.turn(vec![
         shell("create", create_files, 10_000),
         say("Created the files."),
