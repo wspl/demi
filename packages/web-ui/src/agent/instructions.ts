@@ -24,8 +24,8 @@ export interface InstructionRow {
   label: string
   /** The full path of a file; none for the personal instructions. */
   path: string | null
-  /** The token estimate; null for a file too large to include. */
-  tokens: number | null
+  /** Whether the file is too large to include, which the row marks. */
+  tooLarge: boolean
 }
 
 /** The rows for `entries`, each file named from the directory of the outermost one, as `AGENTS.md` and `web/CLAUDE.md`. */
@@ -39,9 +39,9 @@ export function instructionRows(entries: readonly InstructionEntry[]): Instructi
   }
   return entries.map((entry) => {
     if (entry.kind === 'personal') {
-      return { entry, label: 'Personal instructions', path: null, tokens: entry.tokens }
+      return { entry, label: 'Personal instructions', path: null, tooLarge: false }
     }
     const label = base === null ? baseName(entry.path) : relativePath(base, entry.path)
-    return { entry, label, path: entry.path, tokens: entry.kind === 'file' ? entry.tokens : null }
+    return { entry, label, path: entry.path, tooLarge: entry.kind === 'too_large' }
   })
 }
