@@ -46,7 +46,7 @@ async fn a_documents_addresses_map_to_the_labels_its_answer_lists() {
     // The document starts with the client script and the runtime of the
     // engine's release, and its boot data says what device it runs on.
     assert!(body.contains("/__demi/v1/client.js"), "{body}");
-    assert!(body.contains(&format!("/__demi/page/runtime/{}.js", env!("CARGO_PKG_VERSION"))), "{body}");
+    assert!(body.contains(&format!("/__demi/page/runtime/{}.js", demi_shared_artifacts::WORKSPACE_VERSION)), "{body}");
     assert!(body.contains(CHROME_154), "{body}");
     assert_eq!(opened.header("content-type"), Some("text/html; charset=utf-8"));
     // A redirect to another site goes through its boot page too.
