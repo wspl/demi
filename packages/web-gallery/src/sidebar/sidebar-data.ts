@@ -33,17 +33,27 @@ export function demoProjects(): SidebarProject[] {
       path: '/Users/alex/Projects/demi'
     },
     {
+      id: 'p-shop',
+      // A short name on a long device's name: the device's name takes half of the text and is cut there.
+      name: 'shop-app',
+      host: 'Alexs-MacBook-Pro.local',
+      hostKind: 'device',
+      state: 'online',
+      path: '/Users/alex/Projects/shop-app'
+    },
+    {
       id: 'p-assets',
-      name: 'renderfarm',
+      // A long name on a short device's name: the device's name shows whole and the project's name is cut.
+      name: 'renderfarm-render-pipeline',
       host: 'build-01',
       hostKind: 'device',
       state: 'offline',
-      path: '/srv/renderfarm'
+      path: '/srv/renderfarm-render-pipeline'
     },
     {
       id: 'p-dotfiles',
-      // Both longer than the sidebar holds: the device's name gives way first, at 30% of the row;
-      // each is cut at its end, the project's name whole on hover.
+      // Both long: the device's name is cut at half of the text, the project's name in the rest;
+      // each shows whole on hover.
       name: 'dotfiles-and-machine-setup-scripts',
       host: 'Alexs-MacBook-Pro.local',
       hostKind: 'device',
