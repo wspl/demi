@@ -8,6 +8,7 @@ import {
   NO_BROWSER,
   BrowserTabsController,
   BrowserTabsError,
+  refusalSentence,
   type BrowserTabList,
   type BrowserTabsApi,
   type BrowserTabsOptions,
@@ -354,6 +355,27 @@ test('the agent’s navigation shows the tab loading while the tab list says it 
   report(6, false)
   expect(controller.busy('p1', ORDERS)).toBe(false)
   end()
+})
+
+test('a tab that could not open says what happened on the Host, never the generic sentence when the cause is known', () => {
+  // The codes the plugin records in a tab's failure when the Host refused or broke off the open.
+  const said = {
+    device_offline: refusalSentence('device_offline'),
+    host_stopped: refusalSentence('host_stopped'),
+    cloud_unavailable: refusalSentence('cloud_unavailable'),
+    cloud_capacity: refusalSentence('cloud_capacity'),
+    cloud_resetting: refusalSentence('cloud_resetting'),
+    cloud_crash_loop: refusalSentence('cloud_crash_loop'),
+    device_not_found: refusalSentence('device_not_found'),
+    host_operation_failed: refusalSentence('host_operation_failed'),
+    browser_unavailable: refusalSentence('browser_unavailable'),
+    browser_lost: refusalSentence('browser_lost'),
+  }
+  const generic = refusalSentence('failed')
+  expect(Object.values(said).filter((sentence) => sentence === generic)).toEqual([])
+  // Each cause has words of its own.
+  expect(new Set(Object.values(said)).size).toBe(Object.keys(said).length)
+  expect(said.device_offline).toBe('The device is offline.')
 })
 
 test('Retry of a tab that could not open loads in the same call, and a failure that comes back ends it', async () => {
