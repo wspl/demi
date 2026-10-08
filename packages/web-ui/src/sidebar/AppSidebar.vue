@@ -28,6 +28,7 @@ import SidebarProjectHeader from './SidebarProjectHeader.vue'
 import SidebarProjectMenu from './SidebarProjectMenu.vue'
 import SidebarRow from './SidebarRow.vue'
 import SidebarSelectionMenu from './SidebarSelectionMenu.vue'
+import { useRevealOpen } from './reveal-open'
 import ConversationDeleteDialog from './ConversationDeleteDialog.vue'
 
 /**
@@ -62,7 +63,6 @@ const emit = defineEmits<{
   removeProject: [id: string]
   rename: [id: string, title: string]
   pin: [ids: string[], pinned: boolean]
-  moveToProject: [ids: string[], projectId: string | null]
   archive: [ids: string[]]
   /** Delete, once its dialog was answered: the conversations go for good. */
   delete: [ids: string[]]
@@ -237,6 +237,12 @@ watch(
     entry.scrollIntoView(SCROLL_IN_LIST)
   },
 )
+
+useRevealOpen({
+  openProject: () => (props.activeId ? byId.value.get(props.activeId)?.projectId ?? null : null),
+  isFolded,
+  unfold: (projectId) => setFolded(projectId, false),
+})
 
 // The open conversation is the selection until the user makes a wider one.
 watch(() => props.activeId, (id) => {
@@ -592,7 +598,6 @@ function selectProjectConversations(project: SidebarProject): void {
     >
       <SidebarSelectionMenu
         :targets="menuTargets"
-        :projects="projects"
         @open="(id) => {
           rowMenu.close()
           emit('select', id)
@@ -608,10 +613,6 @@ function selectProjectConversations(project: SidebarProject): void {
         @pin="(ids, pinned) => {
           rowMenu.close()
           emit('pin', ids, pinned)
-        }"
-        @move-to="(ids, projectId) => {
-          rowMenu.close()
-          emit('moveToProject', ids, projectId)
         }"
         @archive="(ids) => {
           rowMenu.close()

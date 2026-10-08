@@ -18,7 +18,8 @@
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::{ConversationChange, RecordChange, SettingsChange};
 use demi_backend_host_access::root_of;
-use demi_backend_host_access::transition::ChangeRefusal;
+use demi_backend_host_access::transition::{ChangeRefusal, Switched};
+use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId};
 use demi_backend_page_sync::Part;
 use demi_shared_gates::{Purpose, Reservation};
 use demi_web_api_protocol::conversations::{
@@ -44,23 +45,33 @@ impl Shard {
         id: &ConversationId,
         change: ConversationChange,
     ) -> Result<(), ChangeRefusal> {
+        self.transition_switching(id, change).await.map(drop)
+    }
+
+    /// `transition`, answering the switch it made when `change` is a target
+    /// switch that moved the conversation.
+    async fn transition_switching(
+        &self,
+        id: &ConversationId,
+        change: ConversationChange,
+    ) -> Result<Option<Switched>, ChangeRefusal> {
         let reorders = matches!(
             change,
             ConversationChange::Record(RecordChange::Pinned(_) | RecordChange::Archived(_))
         );
-        self.apply_change(id, change).await?;
+        let switched = self.apply_change(id, change).await?;
         self.mark(Part::Conversation(id.clone()));
         if reorders {
             self.mark(Part::ConversationOrder);
         }
-        Ok(())
+        Ok(switched)
     }
 
     async fn apply_change(
         &self,
         id: &ConversationId,
         change: ConversationChange,
-    ) -> Result<(), ChangeRefusal> {
+    ) -> Result<Option<Switched>, ChangeRefusal> {
         let host = self.host_shard();
         let record = self.services().control.conversation(id.clone()).await?;
         let Some(record) = record.filter(|record| record.owner == *self.user()) else {
@@ -78,7 +89,7 @@ impl Shard {
         }
         match &change {
             // The conversation's own target is no change.
-            ConversationChange::Target(to) if record.target == *to => return Ok(()),
+            ConversationChange::Target(to) if record.target == *to => return Ok(None),
             ConversationChange::Target(to) => host.check_destination(&record.owner, to).await?,
             _ => {}
         }
@@ -90,7 +101,7 @@ impl Shard {
                 let slot = self.conversations().slot(&record.id);
                 let _admitted = slot.file_gate().enter(Purpose::Demand).await;
                 let _turn = slot.settings.acquire().await;
-                return self.change_settings(&record.id, change).await;
+                return self.change_settings(&record.id, change).await.map(|()| None);
             }
             ConversationChange::Record(change) if !change_is_transition(&change) => {
                 // A field update waits while a transition holds the
@@ -107,7 +118,7 @@ impl Shard {
                         return Err(ChangeRefusal::HostIsPrimary);
                     }
                 }
-                return host.commit(&record.id, change).await;
+                return host.commit(&record.id, change).await.map(|()| None);
             }
             change => change,
         };
@@ -120,7 +131,7 @@ impl Shard {
                 if switched.is_ok() {
                     self.restart_idle(&record.id);
                 }
-                switched
+                switched.map(Some)
             }
             ConversationChange::Record(RecordChange::Archived(true)) => {
                 let archived = host.archive(&record).await;
@@ -131,12 +142,12 @@ impl Shard {
                     self.stop_idle(&record.id);
                     demi_backend_permissions::changed(self.permission_shard(), &record.id);
                 }
-                archived
+                archived.map(|()| None)
             }
             ConversationChange::Record(RecordChange::Detach(device)) => {
-                host.detach(&record, device).await
+                host.detach(&record, device).await.map(|()| None)
             }
-            ConversationChange::Record(change) => host.commit(&record.id, change).await,
+            ConversationChange::Record(change) => host.commit(&record.id, change).await.map(|()| None),
             ConversationChange::Settings(_) => {
                 unreachable!("a settings change is applied before the hold")
             }
@@ -224,10 +235,17 @@ impl Shard {
         }
         let mut results = Vec::new();
         for (fields, change) in changes {
-            let outcome = self.transition(id, change).await;
+            let outcome = self.transition_switching(id, change).await;
+            // The switch is made; the user's message about it wakes the
+            // root, which reads it with the new context block.
+            if patch.notify_agent
+                && let Ok(Some(switched)) = &outcome
+            {
+                self.tell_of_move(id, switched).await;
+            }
             for field in fields {
                 let result = match &outcome {
-                    Ok(()) => FieldResult::Applied { field },
+                    Ok(_) => FieldResult::Applied { field },
                     Err(refusal) => failed(field, refusal),
                 };
                 results.push(result);
@@ -241,6 +259,43 @@ impl Shard {
             conversation,
             results,
         }))
+    }
+}
+
+impl Shard {
+    /// Tells the conversation's root of the user's move `switched`, through
+    /// the entry a permission decision's message takes, which opens a closed
+    /// tree and wakes an idle root (`sessions-and-targets.md` § Switch the
+    /// primary target). The message's id is the revision the move made, so
+    /// delivering it again changes nothing. A message that is not admitted
+    /// leaves the move made, and the agent reads it from its next context
+    /// block.
+    async fn tell_of_move(&self, id: &ConversationId, switched: &Switched) {
+        let (from, to) = (&switched.switch.from, &switched.switch.to);
+        let content = format!(
+            "The user moved this conversation from {} to {}. Files did not move. Check what this means for the work so far, and tell the user.",
+            self.place(from).await,
+            self.place(to).await,
+        );
+        let host = self.target_host(to).await;
+        let home = to.device().and_then(|device| self.devices().home(device));
+        let at = self.services().clock.now();
+        let message = |recipient: &NodeId| AgentMessage {
+            id: BlockId::try_from(format!("moved:{}", switched.revision))
+                .expect("a move's message id is not empty"),
+            sender: None,
+            recipient_id: recipient.clone(),
+            timestamp: at,
+            content: content.clone(),
+            event: AgentMessageEvent::Moved {
+                host: host.clone(),
+                path: to.path().to_owned(),
+                home: home.clone(),
+            },
+        };
+        if let Err(error) = self.permission_shard().admit(id, &root_of(id), &message).await {
+            tracing::warn!(conversation = %id, "the agent was not told of the move; it reads it from its next context block: {error}");
+        }
     }
 }
 

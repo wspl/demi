@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
-import { agentReceiptMessages, editedFile, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
+import { agentReceiptMessages, editedFile, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
 import { HELPER, helperBlocks, helperParentBlocks, signInRequestBlocks, standaloneRequest, uncopiedRequestBlocks } from '../fixtures/request-changes'
 import { useGalleryTranscripts } from '../fixtures/transcripts'
 import GalleryTranscript from '../components/GalleryTranscript.vue'
@@ -169,6 +169,8 @@ function receiptVariant(message: AgentMessage): string {
   switch (event.type) {
     case 'message':
       return 'update'
+    case 'moved':
+      return 'moved, the agent told'
     case 'move_failed':
       return 'move failed'
     case 'permission':
@@ -1525,11 +1527,11 @@ onBeforeUnmount(() => {
         </div>
       </GallerySection>
 
-      <GallerySection title="AgentReceiptBlock" note="Agent updates, completion receipts, the user’s decisions on permission requests as the agent that asked received them, and Demi’s notice that a move the agent asked for failed. Expand to read the message; these rows have no human message controls.">
+      <GallerySection title="AgentReceiptBlock" note="Agent updates, completion receipts, the user’s decisions on permission requests as the agent that asked received them, a move the user told the agent of, and Demi’s notice that a move the agent asked for failed. Expand to read the message; these rows have no human message controls.">
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
             <GallerySpecimen
-              v-for="(message, index) in [...agentReceiptMessages, ...permissionReceiptMessages, ...organizeReceiptMessages]"
+              v-for="(message, index) in [...agentReceiptMessages, ...permissionReceiptMessages, movedReceiptMessage, ...organizeReceiptMessages]"
               :key="message.id"
               :variant="receiptVariant(message)"
               wide

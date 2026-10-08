@@ -1,7 +1,8 @@
 //! Input one agent of a tree sends another (`subagents.md` § Message
 //! identity): an explicit message, or a child's completion receipt; the
 //! user's decision on a permission request, which reaches the agent that
-//! asked the same way (`permissions.md` § The decision's message); and
+//! asked the same way (`permissions.md` § The decision's message); the
+//! user's move of the conversation, which the user tells the root of; and
 //! Demi's notice that a move the agent asked for failed
 //! (`sessions-and-targets.md` § Switch the primary target).
 
@@ -19,13 +20,15 @@ use crate::{BlockId, MAX_SAFE_INTEGER, NodeId, Timestamp, is_blank};
 pub struct AgentMessage {
     /// The id of the `agent_message` block the message becomes. A
     /// completion's id is its [`CompletionId`]; a permission decision's is
-    /// `permission:<request id>`; a failed move's `move-failed:<move id>`.
+    /// `permission:<request id>`; a move the user told of `moved:<revision>`,
+    /// the execution-context revision the move made; a failed move's
+    /// `move-failed:<move id>`.
     #[garde(custom(names_completed_round(&self.sender, &self.event)))]
     pub id: BlockId,
     /// The agent that sent it; none for the user's permission decision and
-    /// Demi's notice of a failed move.
+    /// move, and Demi's notice of a failed move.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[garde(custom(sent_by_an_agent_unless_decided(&self.event)), dive)]
+    #[garde(custom(sent_by_an_agent_unless_the_products(&self.event)), dive)]
     pub sender: Option<Sender>,
     #[garde(skip)]
     pub recipient_id: NodeId,
@@ -79,6 +82,21 @@ pub enum AgentMessageEvent {
         #[garde(length(min = 1))]
         action: String,
     },
+    /// The user's move of the conversation, which the user told the root
+    /// of; the receipt row names where it now runs.
+    Moved {
+        /// The Host it runs on now, by the name the user knows it by.
+        #[garde(length(min = 1))]
+        host: String,
+        /// The directory its work starts in there.
+        #[garde(length(min = 1))]
+        path: String,
+        /// The Host's home directory as its runner reported it, under which
+        /// the receipt shortens the path to `~`; none before it reported one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(skip)]
+        home: Option<String>,
+    },
     /// Demi's notice that a move the recipient asked for failed, which left
     /// the conversation where it was.
     MoveFailed {},
@@ -86,10 +104,10 @@ pub enum AgentMessageEvent {
 
 impl AgentMessageEvent {
     /// Whether the user or Demi sends it rather than an agent: a permission
-    /// decision or a failed move, which wake the recipient while it is idle
-    /// even after the user stopped its last turn.
+    /// decision, a move the user told of or a failed move, which wake the
+    /// recipient while it is idle even after the user stopped its last turn.
     pub fn is_from_product(&self) -> bool {
-        matches!(self, Self::Permission { .. } | Self::MoveFailed { .. })
+        matches!(self, Self::Permission { .. } | Self::Moved { .. } | Self::MoveFailed { .. })
     }
 }
 
@@ -167,15 +185,15 @@ impl FromStr for CompletionId {
     }
 }
 
-/// The user sends a permission decision, Demi a failed move's notice, and
-/// an agent every other message.
-fn sent_by_an_agent_unless_decided(
+/// The user sends a permission decision and a move, Demi a failed move's
+/// notice, and an agent every other message.
+fn sent_by_an_agent_unless_the_products(
     event: &AgentMessageEvent,
 ) -> impl FnOnce(&Option<Sender>, &()) -> garde::Result + '_ {
     move |sender, _| {
         match (sender, event.is_from_product()) {
             (Some(_), true) => Err(garde::Error::new(
-                "a permission decision or a failed move's notice names no agent sender",
+                "a permission decision, a move or a failed move's notice names no agent sender",
             )),
             (None, false) => Err(garde::Error::new("an agent message names its sender")),
             _ => Ok(()),
@@ -208,7 +226,7 @@ fn names_completed_round<'a>(
     }
 }
 
-/// An explicit message and a permission decision have a body.
+/// An explicit message, a permission decision and a move have a body.
 fn has_body_when_explicit(
     event: &AgentMessageEvent,
 ) -> impl FnOnce(&str, &()) -> garde::Result + '_ {
