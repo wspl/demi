@@ -115,7 +115,7 @@ describe('a path field\'s menu', () => {
     completion.follow(text, 14)
     await answer()
     expect(completion.rows.value.map((row) => row.entry.name)).toEqual(['Projects'])
-    // Tab with nothing highlighted takes the first row; what follows the caret stays.
+    // The list opens with its first row selected, which Tab takes; what follows the caret stays.
     const accepted = completion.keydown('Tab', text, 14)
     expect(accepted).toEqual({
       kind: 'accept',
@@ -131,17 +131,43 @@ describe('a path field\'s menu', () => {
     expect(completion.isOpen.value).toBe(true)
   })
 
-  test('Enter with no row highlighted is the field\'s; with one, it accepts it', async () => {
+  test('the first row is selected as the list opens and as its rows change, and Tab and Enter take the selected row', async () => {
     const { source, answer } = fakeSource(tree)
     const completion = usePathCompletion({ source: () => source, base: () => undefined, kind: () => 'any' })
     const text = '/Users/zan/'
     completion.follow(text, 11)
     await answer()
-    expect(completion.isOpen.value).toBe(true)
-    expect(completion.keydown('Enter', text, 11)).toEqual({ kind: 'pass' })
-    expect(completion.keydown('ArrowDown', text, 11)).toEqual({ kind: 'handled' })
+    expect(completion.rows.value.map((row) => row.entry.name)).toEqual(['Documents', 'Projects', 'notes.md'])
+    expect(completion.highlighted.value).toBe(0)
     expect(completion.keydown('ArrowDown', text, 11)).toEqual({ kind: 'handled' })
     expect(completion.keydown('Enter', text, 11)).toMatchObject({ kind: 'accept', edit: { text: '/Users/zan/Projects/' } })
+    expect(completion.keydown('ArrowUp', text, 11)).toEqual({ kind: 'handled' })
+    expect(completion.keydown('ArrowUp', text, 11)).toEqual({ kind: 'handled' })
+    expect(completion.keydown('Tab', text, 11)).toMatchObject({ kind: 'accept', edit: { text: '/Users/zan/notes.md' } })
+    // The pointer moves the selection too.
+    completion.highlight(1)
+    expect(completion.keydown('Tab', text, 11)).toMatchObject({ kind: 'accept', edit: { text: '/Users/zan/Projects/' } })
+    // Typing changes the rows, and the first of them is selected again.
+    completion.follow('/Users/zan/no', 13)
+    expect(completion.rows.value.map((row) => row.entry.name)).toEqual(['notes.md'])
+    expect(completion.highlighted.value).toBe(0)
+    expect(completion.keydown('Tab', '/Users/zan/no', 13)).toMatchObject({ kind: 'accept', edit: { text: '/Users/zan/notes.md' } })
+  })
+
+  test('with no list showing, Tab and Enter are the field\'s', async () => {
+    const { source, answer } = fakeSource(tree)
+    const completion = usePathCompletion({ source: () => source, base: () => undefined, kind: () => 'any' })
+    // A query that matches nothing shows no list.
+    completion.follow('/Users/zan/xyz', 14)
+    await answer()
+    expect(completion.isOpen.value).toBe(false)
+    expect(completion.keydown('Tab', '/Users/zan/xyz', 14)).toEqual({ kind: 'pass' })
+    // A list the user put away with Escape leaves Tab and Enter to the field.
+    completion.follow('/Users/zan/', 11)
+    await answer()
+    expect(completion.keydown('Escape', '/Users/zan/', 11)).toEqual({ kind: 'handled' })
+    expect(completion.keydown('Tab', '/Users/zan/', 11)).toEqual({ kind: 'pass' })
+    expect(completion.keydown('Enter', '/Users/zan/', 11)).toEqual({ kind: 'pass' })
   })
 
   test('Escape puts the menu away, and the next Escape is the field\'s', async () => {
