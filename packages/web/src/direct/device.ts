@@ -9,7 +9,7 @@
  * device's runner or the signaling socket connected again), and otherwise
  * after 1, 2 and 5 minutes and then every 10. One attempt runs at a time.
  * A browser that blocks local network access gets no attempt until the
- * permission changes, and a device whose route is Server Only gets none, and
+ * permission changes, and a device whose route is Relay Only gets none, and
  * loses its peer, until the route allows one again. Each attempt leaves what
  * it saw for the device's page.
  */
@@ -112,9 +112,9 @@ export class DeviceDirect {
   }
 
   /**
-   * The device's route: Server Only stops the attempt, closes the peer and
+   * The device's route: Relay Only stops the attempt, closes the peer and
    * tries nothing more; a route that allows a peer again tries at once; and
-   * Prefer Direct uses a connected peer whatever Automatic found.
+   * Prefer P2P uses a connected peer whatever Automatic found.
    */
   setRoute(route: DeviceRoute): void {
     if (route === this.route)

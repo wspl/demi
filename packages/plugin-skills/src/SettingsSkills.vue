@@ -156,14 +156,9 @@ function confirmRemove(): void {
     title="Skills"
     description="Packaged workflows the agent can follow. Off keeps the files but hides them from the agent."
   >
-    <SettingsGroup>
-      <template #header>
-        <header class="flex items-start justify-between gap-3">
-          <div class="select-none">
-            <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">Sources</h3>
-          </div>
-          <Button size="sm" @click="addOpen = true">Add Source…</Button>
-        </header>
+    <SettingsGroup title="Sources">
+      <template #actions>
+        <Button size="sm" @click="addOpen = true">Add Source…</Button>
       </template>
       <div v-for="source in sources" :key="source.id">
         <SettingsRow
