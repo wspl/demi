@@ -77,7 +77,7 @@ import {
 
 /**
  * A new conversation whose draft holds nothing yet, no character and no
- * file: the sidebar does not list it, and leaving it drops it.
+ * file: the sidebar lists it only while it is open, and leaving it drops it.
  */
 function isEmptyDraft(conversation: Conversation): boolean {
   return conversation.persistence === 'draft' && !conversation.draft.trim() && !conversation.attachmentIds.length
@@ -103,12 +103,13 @@ export const useConversations = defineStore('conversations', () => {
   const restoringLocalDrafts = ref(false)
   const listStatus = computed(() => restoringLocalDrafts.value ? 'loading' : product.load)
   /**
-   * What the sidebar lists: every conversation not archived, but no new
-   * conversation whose draft holds nothing yet, even while it is open; it
-   * shows once the user types a character or adds a file (`product.md`
-   * § Conversations and projects).
+   * What the sidebar lists: every conversation not archived; a new
+   * conversation whose draft holds nothing yet only while it is the open
+   * one, so it shows the moment it opens and goes when it is left empty
+   * (`product.md` § Conversations and projects).
    */
-  const listed = computed(() => items.value.filter((item) => !item.archived && !isEmptyDraft(item)))
+  const listed = computed(() => items.value.filter((item) =>
+    !item.archived && (!isEmptyDraft(item) || item.id === product.activeConversationId)))
   const writes = new SerialQueue()
   const restored = new Set<string>()
   /** Each conversation's draft as this page last saved or restored it, in the shape `changedDraft` compares. */
