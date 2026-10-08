@@ -115,12 +115,26 @@ function orderedSlotRows(): MenuSlotRow[] {
     .map(({ row }) => row)
 }
 
+/**
+ * Brings a slot row into view, and with a group's first row the group's
+ * heading, so a provider's first model never shows without its provider.
+ */
+function revealSlotRow(el: HTMLElement): void {
+  const item = el.closest('[data-menu-item]')
+  const group = item?.parentElement
+  if (group?.classList.contains('menu-group') && group.querySelector('[data-menu-item]') === item)
+    group.querySelector('[data-menu-group-label]')?.scrollIntoView({ block: 'nearest' })
+  el.scrollIntoView({ block: 'nearest' })
+}
+
 /** Moves the keyboard to the row at `index` of the rows shown, and brings it into view. */
 function focusRow(index: number): void {
   if (props.items == null) {
     const row = orderedSlotRows()[index] ?? null
     focusedSlotRow.value = row
-    row?.el()?.scrollIntoView({ block: 'nearest' })
+    const el = row?.el()
+    if (el)
+      revealSlotRow(el)
     return
   }
   focusedIndex.value = index

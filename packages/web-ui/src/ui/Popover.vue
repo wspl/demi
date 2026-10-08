@@ -187,6 +187,45 @@ watch(floatingRef, (el, _prev, onCleanup) => {
   onCleanup(family.register(el))
 })
 
+/**
+ * The focus goes back to where it was when the panel opened, the control that
+ * opened it, as a menu button's does in WAI-ARIA and on macOS, once a panel
+ * that held the focus closes: by a choice, Escape, or a click outside on
+ * nothing that takes the focus. A click outside on a control leaves the focus
+ * there, and a panel that never held it, such as a hover card, gives none
+ * back. A submenu gives the keys back to its own menu (MenuItem).
+ */
+let opener: HTMLElement | null = null
+let heldFocus = false
+
+function inFamily(el: EventTarget | null): boolean {
+  return el instanceof Node && family.panels.some((panel) => panel.contains(el))
+}
+
+function panelFocusIn(): void {
+  heldFocus = true
+}
+
+function panelFocusOut(event: FocusEvent): void {
+  // Focus that moved to a control outside the tree stays there; into a submenu or to nothing, it was still the panel's.
+  if (event.relatedTarget !== null && !inFamily(event.relatedTarget))
+    heldFocus = false
+}
+
+watch(() => props.isOpen, (open) => {
+  if (open) {
+    opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    heldFocus = false
+    return
+  }
+  const active = document.activeElement
+  const focusWithPanel = active === null || active === document.body || inFamily(active)
+  if (!nested && heldFocus && focusWithPanel && opener?.isConnected)
+    opener.focus({ preventScroll: true })
+  opener = null
+  heldFocus = false
+}, { flush: 'sync' })
+
 onClickOutside(floatingRef, () => {
   if (props.isOpen)
     emit('close')
@@ -238,6 +277,8 @@ const overlayMotion = {
         class="popover-floating z-50 w-max"
         :style="{ ...floatingStyles, transformOrigin: transformOrigin }"
         @keydown="closeOnEscape"
+        @focusin="panelFocusIn"
+        @focusout="panelFocusOut"
       >
         <slot />
       </div>
