@@ -150,13 +150,15 @@ with an agent message through the same entry, event `move_failed`, id
 the product's and not agent-originated context. The model reads:
 
 ```text
-Demi could not move this conversation into ledable-app: the project no
-longer exists. The conversation still runs on Cloud
+Demi could not make the move this conversation's agent asked for: the
+project no longer exists. The conversation still runs on Cloud
 (/home/demi/sessions/0f4e…).
 ```
 
-The transcript shows it as a receipt row, *Move to ledable-app failed*,
-which expands to the message. A move that succeeds sends nothing: the agent
+The notice names no project: the agent's own transcript holds the command it
+ran, and a deleted project's name is gone with it. The transcript shows the
+notice as a receipt row, *Move failed*, which expands to the message, for a
+move into a project and out of one alike. A move that succeeds sends nothing: the agent
 asked for it, and its next block names the new place.
 
 Each node observes the latest execution-context revision before its next inference,
