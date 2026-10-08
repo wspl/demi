@@ -194,6 +194,7 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
               :focused="mode === 'create'"
               class="w-48 max-w-full"
               placeholder="explore"
+              literal
               aria-label="Name"
               @keydown.enter="save"
             />

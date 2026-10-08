@@ -364,7 +364,9 @@ function selectDevice(id: string, close: () => void): void {
               </div>
             </template>
             <InlineError v-if="message" :message="message" />
-            <div>
+            <!-- The actions end the form at its trailing edge, Cancel before the default button, as every dialog's do. -->
+            <div class="flex justify-end gap-2">
+              <Button @click="emit('close')">Cancel</Button>
               <Button
                 variant="primary"
                 :disabled="!canCreate && !pending"

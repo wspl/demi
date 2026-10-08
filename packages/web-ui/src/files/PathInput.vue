@@ -176,6 +176,7 @@ defineExpose({
     aria-autocomplete="list"
     :aria-expanded="completion.isOpen.value"
     autocomplete="off"
+    literal
     @update:model-value="onInput"
     @keydown="onKeydown"
     @click="follow"
