@@ -42,7 +42,7 @@ class ScriptedPeer implements DirectPeer {
     browser: { local: [], public: [] },
     device: { local: ['127.0.0.1'], public: [] },
     pairs: { tried: 1, answered: 1 },
-    pair: null,
+    inUse: null,
     permission: null,
   }
   constructor(private readonly scripts: Script[]) {}

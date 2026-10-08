@@ -18,14 +18,12 @@ import {
   DEVICE_ROUTE_LABEL,
   DIRECT_STAGE_LABEL,
   directReason,
-  formatLatency,
   pathsFootnote,
   reasonSentence,
   shownAddress,
   type DeviceRoute,
   type DirectAddresses,
   type DirectPermission,
-  type PathFigures,
 } from '../devices/direct'
 import { RUNNER_STATE_LABEL, runnerState, systemName, type DeviceReport } from '../devices/report'
 import { DEVICE_STATE_LABEL } from '../devices/state'
@@ -81,15 +79,6 @@ const online = computed(() => device.value?.state === 'online')
 const reason = computed(() => (direct.value && online.value ? directReason(direct.value) : null))
 const attempt = computed(() => direct.value?.attempt ?? null)
 
-/** The figures of the path in use. */
-const inUse = computed<PathFigures | null>(() => {
-  const status = direct.value
-  if (!status) {
-    return null
-  }
-  return status.chosen ? status.figures.direct : status.figures.relay
-})
-
 /** The header's dot and its words: how this page reaches the device now. */
 const status = computed<{ tone: StatusDotTone; words: SentenceText }>(() => {
   const shown = device.value
@@ -118,15 +107,18 @@ const nextIn = useTimeUntil(() => direct.value?.nextAt ?? new Date().toISOString
 /** The sentence under the status, as the design's table words the reason; none on Server Only. */
 const explanation = computed(() => (reason.value ? reasonSentence(reason.value) : null))
 
+/** Whether the page may have a peer to the device: it is online and its route is not Server Only. */
+const peerAllowed = computed(() => online.value && !!direct.value && direct.value.route !== 'server')
+
+/** Details… shows the last attempt, while a peer is allowed and the page has an attempt to show. */
+const canShowDetails = computed(() => peerAllowed.value && attempt.value !== null)
+
 /**
- * Try Again is there only while the route allows a peer and the page is not
- * connected directly; a peer that stands but is slower right now needs no new
- * attempt, so it has none to offer.
+ * Try Again is there only while a peer is allowed and the page has no
+ * connected peer; a peer that stands but is slower right now needs no new
+ * attempt.
  */
-const canTryAgain = computed(() => {
-  const status = direct.value
-  return !!status && online.value && status.route !== 'server' && !status.chosen && !status.peer
-})
+const canTryAgain = computed(() => peerAllowed.value && !direct.value?.peer)
 
 /** How long an attempt took, as a person reads it. */
 function took(ms: number): string {
@@ -177,9 +169,7 @@ const details = computed(() => {
     { label: 'This browser', value: addressLines(seen.browser) },
     { label: 'The device', value: addressLines(seen.device) },
     { label: 'Paths', value: `${seen.pairs.tried} tried, ${seen.pairs.answered} answered` },
-    ...(seen.pair
-      ? [{ label: 'Path in use', value: `${seen.pair.browser === null ? 'Hidden by the browser' : shownAddress(seen.pair.browser)} to ${seen.pair.device}` }]
-      : []),
+    ...(seen.inUse ? [{ label: 'Path in use', value: seen.inUse }] : []),
     { label: 'Local network access', value: permission(seen.permission) },
     ...(direct.value?.nextAt ? [{ label: 'Next attempt', value: upperFirst(nextIn.value) }] : []),
   ]
@@ -207,14 +197,13 @@ function revoke() {
     </template>
     <template #status>
       {{ status.words }}<span v-if="device?.state === 'offline' && device.seen" class="text-fg-subtle"> · Last seen <RelativeTime :timestamp="device.seen" /></span>
-      <span v-else-if="online && inUse" class="text-fg-subtle"> · {{ formatLatency(inUse.latencyMs) }}</span>
     </template>
     <template v-if="offlineStart || explanation" #description>
       <DeviceStartHint v-if="offlineStart" sentence="Start Demi on the device:" :start="offlineStart" />
       <template v-else>{{ explanation }}</template>
     </template>
-    <template v-if="attempt || canTryAgain" #actions>
-      <Button v-if="attempt" size="sm" @click="detailsOpen = true">Details…</Button>
+    <template v-if="canShowDetails || canTryAgain" #actions>
+      <Button v-if="canShowDetails" size="sm" @click="detailsOpen = true">Details…</Button>
       <Button v-if="canTryAgain" size="sm" :loading="direct?.trying" @click="emit('tryNow')">Try Again</Button>
     </template>
 

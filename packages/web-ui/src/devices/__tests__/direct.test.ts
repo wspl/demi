@@ -14,7 +14,7 @@ const failed: DirectAttempt = {
   browser: { local: ['3f2a.local'], public: ['198.51.100.4'] },
   device: { local: ['192.168.1.20'], public: ['203.0.113.9'] },
   pairs: { tried: 4, answered: 0 },
-  pair: null,
+  inUse: null,
   permission: 'granted',
 }
 
