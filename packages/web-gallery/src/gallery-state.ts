@@ -14,93 +14,66 @@ import {
 } from '@demicodes/web-ui/theme/appTheme'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 
-const paradigmIdSchema = z.enum([
-  'demi',
-  'neutral',
-  'hairline',
-  'carved',
-  'overlay',
-])
-const toneIdSchema = z.enum(['zinc', 'cool', 'warm', 'ink'])
+const paradigmIdSchema = z.enum(['ink', 'warm', 'flat'])
+/** The faces on trial for the product, beside the system's. */
+const fontIdSchema = z.enum(['system', 'inter', 'geist'])
 const accentIdSchema = z.literal(PRODUCT_ACCENTS.map((accent) => accent.id))
-const densityIdSchema = z.enum(['compact', 'regular', 'comfortable'])
-const radiusIdSchema = z.enum(['tight', 'medium', 'soft'])
-const shadowIdSchema = z.enum(['hairline', 'soft', 'carved'])
 
 export type ParadigmId = z.infer<typeof paradigmIdSchema>
-export type ToneId = z.infer<typeof toneIdSchema>
 export type AccentId = ProductAccent
-export type DensityId = z.infer<typeof densityIdSchema>
-export type RadiusId = z.infer<typeof radiusIdSchema>
-export type ShadowId = z.infer<typeof shadowIdSchema>
+export type FontId = z.infer<typeof fontIdSchema>
+export const FONT_IDS = fontIdSchema.options
 
 export const ACCENTS = PRODUCT_ACCENTS
 
+/**
+ * A theme the gallery can show: the product's two tones, Ink and Warm, and
+ * Flat, the one on trial. A theme fixes every token axis but the mode and the
+ * accent.
+ */
 export interface Paradigm {
   id: ParadigmId
   name: string
   summary: SentenceText
-  tone: ToneId
-  density: DensityId
-  radius: RadiusId
-  shadow: ShadowId
+  tone: 'ink' | 'warm' | 'paper'
+  density: 'regular'
+  radius: 'medium'
+  shadow: 'hairline' | 'flat'
 }
 
 export const PARADIGMS: readonly Paradigm[] = [
   {
-    id: 'demi',
-    name: 'Demi',
-    summary: 'Product appearance: Ink, regular density, medium radius and hairline shadows.',
-    ...productAppearance
-  },
-  {
-    id: 'neutral',
-    name: 'Neutral',
-    summary: 'Demi’s own achromatic work surface: near-black / paper layers, carved shadow, 8/12 radius, a blue accent used sparingly.',
-    tone: 'zinc',
-    density: 'compact',
-    radius: 'medium',
-    shadow: 'carved',
-  },
-  {
-    id: 'hairline',
-    name: 'Hairline',
-    summary: 'Cool near-black, 28px hits, 0.5px hairline, almost no drop.',
-    tone: 'cool',
-    density: 'compact',
-    radius: 'tight',
-    shadow: 'hairline',
-  },
-  {
-    id: 'carved',
-    name: 'Carved',
-    summary: 'Warm black, carved shadow, larger radius, session and user bubble on one surface.',
-    tone: 'warm',
-    density: 'comfortable',
-    radius: 'soft',
-    shadow: 'carved',
-  },
-  {
-    id: 'overlay',
-    name: 'Overlay',
-    summary: 'Charcoal plus white washes, double stroke, step-row rhythm.',
+    id: 'ink',
+    name: 'Ink',
+    summary: 'The product’s default: neutral grays, regular density, medium radius and hairline shadows.',
+    ...productAppearance,
     tone: 'ink',
+  },
+  {
+    id: 'warm',
+    name: 'Warm',
+    summary: 'The product’s warm tone: the same layout and shadows over warm grays.',
+    ...productAppearance,
+    tone: 'warm',
+  },
+  {
+    id: 'flat',
+    name: 'Flat',
+    summary: 'Warm paper neutrals, flat surfaces parted by 0.5px hairlines, quiet buttons, and a drop only under what floats.',
+    tone: 'paper',
     density: 'regular',
     radius: 'medium',
-    shadow: 'carved',
+    shadow: 'flat',
   },
 ]
 
 const STORAGE_KEY = 'demi-gallery-style'
 
 export interface GalleryState {
-  paradigm: ParadigmId | 'custom'
+  paradigm: ParadigmId
   mode: ThemeMode
-  tone: ToneId
   accent: AccentId
-  density: DensityId
-  radius: RadiusId
-  shadow: ShadowId
+  font: FontId
 }
 
 function paradigmById(id: ParadigmId): Paradigm {
@@ -110,28 +83,16 @@ function paradigmById(id: ParadigmId): Paradigm {
   return found
 }
 
-function matchesParadigm(state: GalleryState, paradigm: Paradigm): boolean {
-  return (
-    state.tone === paradigm.tone
-    && state.density === paradigm.density
-    && state.radius === paradigm.radius
-    && state.shadow === paradigm.shadow
-  )
-}
-
 /**
  * What `persistGalleryState` wrote. The gallery writes the whole state at once,
  * so a record that no longer matches is style, not data: it is dropped whole
- * and the gallery opens on its default paradigm.
+ * and the gallery opens on its default theme.
  */
 const storedGalleryStateSchema = z.object({
-  paradigm: z.union([paradigmIdSchema, z.literal('custom')]),
+  paradigm: paradigmIdSchema,
   mode: themeModeSchema,
-  tone: toneIdSchema,
   accent: accentIdSchema,
-  density: densityIdSchema,
-  radius: radiusIdSchema,
-  shadow: shadowIdSchema,
+  font: fontIdSchema,
 })
 
 function readStored(): GalleryState | null {
@@ -148,74 +109,38 @@ function readStored(): GalleryState | null {
   }
 }
 
-/** A stored paradigm carries its own axes; only `custom` keeps the stored axes as they are. */
 function initialState(): GalleryState {
-  const stored = readStored()
-  if (stored?.paradigm === 'custom')
-    return stored
-  const base = paradigmById(stored ? stored.paradigm : 'demi')
-  return {
-    paradigm: base.id,
-    mode: stored?.mode ?? 'dark',
-    tone: base.tone,
-    accent: stored?.accent ?? DEFAULT_ACCENT,
-    density: base.density,
-    radius: base.radius,
-    shadow: base.shadow,
+  return readStored() ?? {
+    paradigm: productAppearance.tone,
+    mode: 'dark',
+    accent: DEFAULT_ACCENT,
+    font: 'system',
   }
 }
 
 export const galleryState = reactive<GalleryState>(initialState())
 
 export function applyParadigm(id: ParadigmId): void {
-  const paradigm = paradigmById(id)
-  galleryState.paradigm = paradigm.id
-  galleryState.tone = paradigm.tone
-  galleryState.density = paradigm.density
-  galleryState.radius = paradigm.radius
-  galleryState.shadow = paradigm.shadow
-}
-
-export function syncParadigmLabel(): void {
-  const match = PARADIGMS.find((paradigm) => matchesParadigm(galleryState, paradigm))
-  galleryState.paradigm = match?.id ?? 'custom'
+  galleryState.paradigm = id
 }
 
 function writeAttributes(): void {
   const root = document.documentElement
+  const paradigm = paradigmById(galleryState.paradigm)
   root.setAttribute('data-theme', galleryState.mode)
-  root.setAttribute('data-tone', galleryState.tone)
+  root.setAttribute('data-tone', paradigm.tone)
   root.setAttribute('data-accent', galleryState.accent)
-  root.setAttribute('data-density', galleryState.density)
-  root.setAttribute('data-radius', galleryState.radius)
-  root.setAttribute('data-shadow', galleryState.shadow)
+  root.setAttribute('data-font', galleryState.font)
+  root.setAttribute('data-density', paradigm.density)
+  root.setAttribute('data-radius', paradigm.radius)
+  root.setAttribute('data-shadow', paradigm.shadow)
   setTheme(galleryState.mode)
 }
 
 export function persistGalleryState(): void {
   writeAttributes()
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    paradigm: galleryState.paradigm,
-    mode: galleryState.mode,
-    tone: galleryState.tone,
-    accent: galleryState.accent,
-    density: galleryState.density,
-    radius: galleryState.radius,
-    shadow: galleryState.shadow,
-  }))
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(galleryState))
 }
-
-watch(
-  () => [
-    galleryState.tone,
-    galleryState.density,
-    galleryState.radius,
-    galleryState.shadow
-  ] as const,
-  () => {
-    syncParadigmLabel()
-  },
-)
 
 watch(galleryState, persistGalleryState, { deep: true })
 
