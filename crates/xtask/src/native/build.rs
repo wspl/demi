@@ -34,27 +34,35 @@ const CONTAINER_CHECKOUT: &str = "/work";
 const CONTAINER_ARTIFACTS: &str = "/build";
 const CONTAINER_SDK: &str = "/sdk";
 
+/// The variable that names the workspace version a build carries in place
+/// of `Cargo.toml`'s, which `demi_shared_artifacts::WORKSPACE_VERSION` reads.
+const WORKSPACE_VERSION: &str = "DEMI_WORKSPACE_VERSION";
+
 #[derive(clap::Args)]
 pub struct Options {
     /// An executable to build; repeat for several [default: the runner and
     /// the command programs].
     #[arg(long = "package", value_name = "CRATE")]
-    packages: Vec<Executable>,
+    pub(crate) packages: Vec<Executable>,
     /// A target to build for; repeat for several [default: every target of
     /// each executable].
     #[arg(long = "target", value_name = "TRIPLE", value_parser = super::target)]
-    targets: Vec<&'static str>,
+    pub(crate) targets: Vec<&'static str>,
     /// The Cargo target directory the builds write [default:
     /// .cache/native-target in the repository].
     #[arg(long, value_name = "DIRECTORY")]
-    artifacts: Option<PathBuf>,
+    pub(crate) artifacts: Option<PathBuf>,
     /// The Apple SDK, which the Apple targets need.
     #[arg(long, env = "SDKROOT", value_name = "DIRECTORY")]
-    sdk: Option<PathBuf>,
+    pub(crate) sdk: Option<PathBuf>,
     /// Builds inside this image of scripts/native/Dockerfile, for a machine
     /// without the cross tools.
     #[arg(long, value_name = "IMAGE")]
-    container: Option<String>,
+    pub(crate) container: Option<String>,
+    /// The workspace version the executables carry, which `xtask deploy`
+    /// names for a development build [default: the workspace version].
+    #[arg(skip)]
+    pub(crate) version: Option<String>,
 }
 
 pub fn run(options: Options) -> Result<(), Error> {
@@ -91,6 +99,7 @@ pub fn run(options: Options) -> Result<(), Error> {
         artifacts: &artifacts,
         sdk: sdk.as_deref(),
         host,
+        version: options.version.as_deref(),
     };
     for target in targets {
         let built: Vec<Executable> = executables
@@ -99,9 +108,10 @@ pub fn run(options: Options) -> Result<(), Error> {
             .filter(|executable| executable.targets().contains(&target))
             .collect();
         println!("Native build: {target}");
+        let packages = Packages::Executables(&built);
         let mut command = match &options.container {
-            Some(image) => build.in_container(image, target, &built)?,
-            None => build.here(target, &built),
+            Some(image) => build.in_container(image, target, packages)?,
+            None => build.here(target, packages),
         };
         let status = command.status()?;
         if !status.success() {
@@ -198,17 +208,51 @@ impl Tool {
     }
 }
 
+/// Builds `xtask` for the Linux `target` with this machine's cross tools,
+/// for a Linux builder of the Cloud image, without the commands only a
+/// developer runs, as the release workflow builds it
+/// (`builds-and-releases.md` § Executables and targets); with the workspace
+/// version `version` when named. Returns the executable's path.
+pub fn xtask(target: &'static str, version: Option<&str>) -> Result<PathBuf, Error> {
+    let repository = crate::repository();
+    let artifacts = super::artifacts(None)?;
+    std::fs::create_dir_all(&artifacts)?;
+    let build = Build {
+        repository: &repository,
+        artifacts: &artifacts,
+        sdk: None,
+        host: Platform::HOST,
+        version,
+    };
+    println!("Native build: xtask for {target}");
+    let status = build.here(target, Packages::Xtask).status()?;
+    if !status.success() {
+        return Err(Error::Build { target, status });
+    }
+    Ok(artifacts.join(target).join("release").join("xtask"))
+}
+
+/// What a build compiles.
+#[derive(Debug, Clone, Copy)]
+enum Packages<'a> {
+    Executables(&'a [Executable]),
+    /// `xtask` without its default features, the developer's commands.
+    Xtask,
+}
+
 /// What every target's build shares.
 struct Build<'a> {
     repository: &'a Path,
     artifacts: &'a Path,
     sdk: Option<&'a Path>,
     host: Platform,
+    /// The workspace version the build carries, unless `Cargo.toml`'s.
+    version: Option<&'a str>,
 }
 
 impl Build<'_> {
-    /// Cargo's arguments for `target`'s release build of `executables`.
-    fn arguments(&self, target: &str, executables: &[Executable]) -> Vec<OsString> {
+    /// Cargo's arguments for `target`'s release build of `packages`.
+    fn arguments(&self, target: &str, packages: Packages<'_>) -> Vec<OsString> {
         let mut arguments: Vec<OsString> = match Tool::of(self.host, target) {
             Tool::Cargo => vec!["build".into()],
             Tool::Zig => vec!["zigbuild".into()],
@@ -217,9 +261,18 @@ impl Build<'_> {
         for argument in ["--release", "--locked", "--target", target] {
             arguments.push(argument.into());
         }
-        for executable in executables {
-            arguments.push("-p".into());
-            arguments.push(executable.name().into());
+        match packages {
+            Packages::Executables(executables) => {
+                for executable in executables {
+                    arguments.push("-p".into());
+                    arguments.push(executable.name().into());
+                }
+            }
+            Packages::Xtask => {
+                for argument in ["-p", "xtask", "--no-default-features"] {
+                    arguments.push(argument.into());
+                }
+            }
         }
         arguments
     }
@@ -279,13 +332,13 @@ impl Build<'_> {
     }
 
     /// The build with this machine's cross tools.
-    fn here(&self, target: &str, executables: &[Executable]) -> Command {
+    fn here(&self, target: &str, packages: Packages<'_>) -> Command {
         // `cargo run` names the toolchain's cargo; `bun xtask` takes the one
         // on PATH.
         let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
         let mut command = Command::new(cargo);
         command
-            .args(self.arguments(target, executables))
+            .args(self.arguments(target, packages))
             .current_dir(self.repository)
             .envs(self.pins(target))
             .env("CARGO_TARGET_DIR", self.artifacts)
@@ -298,6 +351,10 @@ impl Build<'_> {
             Some(sdk) => command.env("SDKROOT", sdk),
             None => command.env_remove("SDKROOT"),
         };
+        match self.version {
+            Some(version) => command.env(WORKSPACE_VERSION, version),
+            None => command.env_remove(WORKSPACE_VERSION),
+        };
         command
     }
 
@@ -307,7 +364,7 @@ impl Build<'_> {
         &self,
         image: &str,
         target: &str,
-        executables: &[Executable],
+        packages: Packages<'_>,
     ) -> Result<Command, Error> {
         let cache = self.repository.join(".cache");
         let registry = cache.join("native-registry");
@@ -336,6 +393,9 @@ impl Build<'_> {
         }
         if let Some(sdk) = sdk {
             environment.push(("SDKROOT", sdk.into()));
+        }
+        if let Some(version) = self.version {
+            environment.push((WORKSPACE_VERSION, version.into()));
         }
         let mount = |source: &Path, destination: &str| {
             let mut volume = source.as_os_str().to_owned();
@@ -367,7 +427,7 @@ impl Build<'_> {
         command
             .arg(image)
             .arg("cargo")
-            .args(self.arguments(target, executables));
+            .args(self.arguments(target, packages));
         Ok(command)
     }
 }

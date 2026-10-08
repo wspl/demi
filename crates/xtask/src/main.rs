@@ -6,6 +6,7 @@
 mod boundaries;
 mod browser;
 mod cloud_image;
+mod deploy;
 // Generating the contracts reads the backend's plugins, whose library builds
 // only where the backend runs; on Windows xtask builds the native releases.
 #[cfg(all(unix, feature = "developer"))]
@@ -45,6 +46,9 @@ enum Command {
     PreviewRuntime(preview_runtime::Options),
     /// Assembles a server release root from the built executables.
     ServerRelease(server_release::Options),
+    /// Moves the server DEMI_DEPLOY_HOST names to a build of the checkout,
+    /// without a release.
+    Deploy(deploy::Options),
     /// Pins a Chrome for Testing version: writes its release record.
     BrowserRelease(browser::Options),
     /// Completes a Cloud image release on its Linux builder.
@@ -167,6 +171,13 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("xtask server-release: {error}");
+                ExitCode::FAILURE
+            }
+        },
+        Command::Deploy(options) => match deploy::run(options) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("xtask deploy: {error}");
                 ExitCode::FAILURE
             }
         },
