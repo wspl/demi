@@ -20,7 +20,7 @@ import {
   DIRECT_STAGE_LABEL,
   addressWithPort,
   directReason,
-  pathsFootnote,
+  pathsLatency,
   reasonSentence,
   shownAddress,
   type DeviceRoute,
@@ -40,12 +40,12 @@ import type { SettingsDevice } from './types'
  * A device's own page (`direct-channel.md` § What the user sees), which its
  * row in Devices opens. Its header names the device and its state, and an
  * offline device's header gives the command that starts its runner.
- * Connection holds the route, with a footnote comparing the two paths'
- * latency from this browser. P2P Connection, while the device is online
- * and its route allows a peer, says in a sentence how the P2P connection
- * fares, with Details… for the last attempt's diagnostics and Try Again.
- * Device holds the facts, with Rename…; Revoke… ends the page. The Cloud's
- * page has neither Connection nor P2P Connection.
+ * Connection is one group of rows, as macOS's Wi-Fi settings lay it out:
+ * the route; P2P, while the device is online and its route allows a peer,
+ * saying in a sentence how the P2P connection fares, with Try Again and
+ * Details… for the last attempt's diagnostics; and the two paths' latency
+ * from this browser. Device holds the facts, with Rename…; Revoke… ends the
+ * page. The Cloud's page has no Connection.
  */
 const props = defineProps<{
   /** A paired device, or the Cloud with what its runner reported. */
@@ -101,16 +101,16 @@ const status = computed<{ tone: StatusDotTone; words: SentenceText }>(() => {
 /** How to start the runner again, which the header gives while the device is offline. */
 const offlineStart = computed(() => (device.value?.state === 'offline' ? (device.value.start ?? null) : null))
 
-/** The line under Connection that compares the paths; none while the device is offline. */
-const footnote = computed(() => (direct.value && online.value ? pathsFootnote(direct.value) : null))
+/** The Latency row's value, comparing the paths; none before either is measured, or while the device is offline. */
+const latency = computed(() => (direct.value && online.value ? pathsLatency(direct.value) : null))
 
 const nextIn = useTimeUntil(() => direct.value?.nextAt ?? new Date().toISOString())
 
-/** The P2P Connection section is there while the device is online and its route allows a peer. */
+/** The P2P row is there while the device is online and its route allows a peer. */
 const peerAllowed = computed(() => online.value && !!direct.value && direct.value.route !== 'server')
 
 /**
- * P2P Connection's sentence: the reason in the design table's words, or
+ * The P2P row's subtitle: the reason in the design table's words, or
  * the device's address in use while connected; none before an attempt ended.
  */
 const directSentence = computed<SentenceText | null>(() => {
@@ -231,15 +231,13 @@ function revoke() {
           </template>
         </Dropdown>
       </SettingsRow>
-      <template v-if="footnote" #footer>{{ footnote }}</template>
-    </SettingsGroup>
-
-    <SettingsGroup v-if="peerAllowed" title="P2P Connection" plain>
-      <template v-if="attempt || canTryAgain" #actions>
-        <Button v-if="attempt" size="sm" @click="detailsOpen = true">Details…</Button>
+      <SettingsRow v-if="peerAllowed" label="P2P" :description="directSentence ?? undefined">
         <Button v-if="canTryAgain" size="sm" :loading="tryAgain.loading.value" @click="tryAgain.click">Try Again</Button>
-      </template>
-      <p v-if="directSentence">{{ directSentence }}</p>
+        <Button v-if="attempt" size="sm" @click="detailsOpen = true">Details…</Button>
+      </SettingsRow>
+      <SettingsRow v-if="latency" label="Latency">
+        <span class="text-chrome text-fg-muted">{{ latency }}</span>
+      </SettingsRow>
     </SettingsGroup>
 
     <SettingsGroup title="Device">

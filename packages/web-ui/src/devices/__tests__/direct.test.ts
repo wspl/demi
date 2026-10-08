@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test'
-import { directReason, pathsFootnote, shownAddress, type DirectAttempt, type DirectReason, type DirectStatus } from '../direct'
+import { directReason, pathsLatency, shownAddress, type DirectAttempt, type DirectReason, type DirectStatus } from '../direct'
 
 // The reason a device's page gives for going via the relay, from its
 // route, its peer and what the last attempt saw (`direct-channel.md`
-// § What the user sees), and the footnote that compares the two paths.
+// § What the user sees), and the Latency row that compares the two paths.
 // Pure; milliseconds.
 
 const failed: DirectAttempt = {
@@ -79,32 +79,32 @@ test('a browser’s random .local name for its own address shows as hidden; a re
   expect(shownAddress('192.168.1.20')).toBe('192.168.1.20')
 })
 
-const footnotes: { scenario: string; status: DirectStatus; footnote: string | null }[] = [
+const latencies: { scenario: string; status: DirectStatus; latency: string | null }[] = [
   {
     scenario: 'both paths measured',
     status: { ...status, peer: true, figures: { direct: { latencyMs: 1.8, loss: 0 }, relay: { latencyMs: 480.4, loss: null } } },
-    footnote: 'P2P 2 ms · Relay 480 ms',
+    latency: 'P2P 2 ms · Relay 480 ms',
   },
   {
     scenario: 'the direct path loses probes',
     status: { ...status, peer: true, figures: { direct: { latencyMs: 620, loss: 0.06 }, relay } },
-    footnote: 'P2P 620 ms, 6% lost · Relay 30 ms',
+    latency: 'P2P 620 ms, 6% lost · Relay 30 ms',
   },
   {
     scenario: 'a direct path on a local network loses one probe in two hundred',
     status: { ...status, peer: true, figures: { direct: { latencyMs: 0.42, loss: 0.005 }, relay } },
-    footnote: 'P2P 0.4 ms, 0.5% lost · Relay 30 ms',
+    latency: 'P2P 0.4 ms, 0.5% lost · Relay 30 ms',
   },
   {
     scenario: 'there is no peer',
     status: { ...status, figures: { direct: null, relay: { latencyMs: 480, loss: null } } },
-    footnote: 'Relay 480 ms',
+    latency: 'Relay 480 ms',
   },
-  { scenario: 'nothing is measured yet', status, footnote: null },
+  { scenario: 'nothing is measured yet', status, latency: null },
 ]
 
-for (const { scenario, status: given, footnote } of footnotes) {
-  test(`the footnote when ${scenario}`, () => {
-    expect(pathsFootnote(given)).toBe(footnote)
+for (const { scenario, status: given, latency } of latencies) {
+  test(`the Latency row when ${scenario}`, () => {
+    expect(pathsLatency(given)).toBe(latency)
   })
 }
