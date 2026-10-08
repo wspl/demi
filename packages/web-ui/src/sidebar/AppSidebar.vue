@@ -62,7 +62,6 @@ const emit = defineEmits<{
   removeProject: [id: string]
   rename: [id: string, title: string]
   pin: [ids: string[], pinned: boolean]
-  moveToProject: [ids: string[], projectId: string | null]
   archive: [ids: string[]]
   /** Delete, once its dialog was answered: the conversations go for good. */
   delete: [ids: string[]]
@@ -592,7 +591,6 @@ function selectProjectConversations(project: SidebarProject): void {
     >
       <SidebarSelectionMenu
         :targets="menuTargets"
-        :projects="projects"
         @open="(id) => {
           rowMenu.close()
           emit('select', id)
@@ -608,10 +606,6 @@ function selectProjectConversations(project: SidebarProject): void {
         @pin="(ids, pinned) => {
           rowMenu.close()
           emit('pin', ids, pinned)
-        }"
-        @move-to="(ids, projectId) => {
-          rowMenu.close()
-          emit('moveToProject', ids, projectId)
         }"
         @archive="(ids) => {
           rowMenu.close()

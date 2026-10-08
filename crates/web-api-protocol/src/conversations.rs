@@ -57,8 +57,8 @@ pub enum ConversationTarget {
 
 /// `POST /conversations`: the id the web app chose for a new conversation,
 /// and what it starts with, so creating it is one request: the fields
-/// [`ConversationPatch`] takes except `archived`, and the devices to attach.
-/// They apply as part of the creation, and one that is refused refuses it.
+/// [`ConversationPatch`] takes except `archived` and `notifyAgent`. They
+/// apply as part of the creation, and one that is refused refuses it.
 #[derive(
     Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate,
 )]
@@ -117,36 +117,13 @@ pub struct CreateConversation {
     #[schemars(with = "ConversationTarget")]
     #[garde(dive)]
     pub target: Option<ConversationTarget>,
-    /// The devices to attach, as `POST /conversations/:id/hosts` attaches
-    /// each.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[garde(dive)]
-    pub hosts: Vec<NewHost>,
-}
-
-/// A device a new conversation attaches: one of the user's, under `name`,
-/// or the device's own name when it names none.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct NewHost {
-    #[garde(skip)]
-    pub device_id: DeviceId,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "Trimmed")]
-    #[garde(length(chars, min = 1, max = crate::hosts::HOST_NAME_MAX))]
-    pub name: Option<Trimmed>,
 }
 
 /// What `POST /conversations` answers: the conversation as the list shows
-/// it, and its attached hosts as `GET /conversations/:id/hosts` lists them.
+/// it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CreatedConversation {
     pub conversation: ConversationSummary,
-    pub hosts: Vec<crate::hosts::AttachedHost>,
 }
 
 /// A conversation as the web app lists it: its record, with the directory
@@ -443,6 +420,24 @@ pub struct ConversationPatch {
     #[schemars(with = "ConversationTarget")]
     #[garde(dive)]
     pub target: Option<ConversationTarget>,
+    /// With `target`, tells the agent of the switch once it is made: the
+    /// user's message wakes the root (`sessions-and-targets.md` § Switch the
+    /// primary target).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[garde(custom(names_a_switch(&self.target)))]
+    pub notify_agent: bool,
+}
+
+/// Only a switch can be told to the agent.
+fn names_a_switch(
+    target: &Option<ConversationTarget>,
+) -> impl FnOnce(&bool, &()) -> garde::Result + '_ {
+    move |notify, _| {
+        if *notify && target.is_none() {
+            return Err(garde::Error::new("notifyAgent tells the agent of a target switch, and the patch names none"));
+        }
+        Ok(())
+    }
 }
 
 /// A provider entry of the user's scope and one of its models.

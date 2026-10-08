@@ -1,21 +1,17 @@
 //! A conversation's attached hosts (`web-api.md` § Workspaces, devices, and
 //! attached hosts; `sessions-and-targets.md` § Attached hosts): the list,
-//! with each device's connection, an attach of one of the user's devices, a
-//! rename, and a detach, which is a transition. Every change reaches the
-//! conversation's nodes at their next context block.
+//! with each device's connection, and a detach, which is a transition and
+//! reaches the conversation's nodes at their next context block. The
+//! conversation's agents attach the devices.
 
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::conversation_index::{
-    AttachedHostRecord, ConversationChange, RecordChange,
-};
-use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::hosts::{AttachHost, AttachedHost, AttachedHosts, RenameHost};
+use demi_backend_database::conversation_index::{ConversationChange, RecordChange};
+use demi_web_api_protocol::hosts::{AttachedHost, AttachedHosts};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 
 use super::AppState;
-use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use demi_backend_host_access::transition::ChangeRefusal;
@@ -26,57 +22,6 @@ pub(super) async fn list(
     Path(id): Path<String>,
 ) -> Result<Json<AttachedHosts>, ApiError> {
     let id = conversation_id(&id)?;
-    Ok(Json(hosts(&state, &user.id, id).await?))
-}
-
-/// Attaches one of the user's devices other than the primary Host; attached
-/// already, it stays as it is.
-pub(super) async fn attach(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-    JsonBody(AttachHost { device_id }): JsonBody<AttachHost>,
-) -> Result<(StatusCode, Json<AttachedHosts>), ApiError> {
-    let id = conversation_id(&id)?;
-    let device = state
-        .services
-        .control
-        .device(device_id)
-        .await?
-        .filter(|device| device.user == user.id)
-        .ok_or_else(|| {
-            ApiError::new(
-                StatusCode::NOT_FOUND,
-                ErrorCode::DeviceNotFound,
-                "No such device",
-            )
-        })?;
-    let host = AttachedHostRecord {
-        device: device.id,
-        name: device.name,
-        cwd: None,
-    };
-    change(&state, &user.id, &id, RecordChange::Attach(host).into()).await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(hosts(&state, &user.id, id).await?),
-    ))
-}
-
-/// Renames an attached host, uniquely within the conversation.
-pub(super) async fn rename(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path((id, device)): Path<(String, String)>,
-    JsonBody(RenameHost { name }): JsonBody<RenameHost>,
-) -> Result<Json<AttachedHosts>, ApiError> {
-    let id = conversation_id(&id)?;
-    let device = DeviceId::try_from(device).map_err(|_| refused(ChangeRefusal::NotAttached))?;
-    let renamed = RecordChange::Rename {
-        device,
-        name: name.into_string(),
-    };
-    change(&state, &user.id, &id, renamed.into()).await?;
     Ok(Json(hosts(&state, &user.id, id).await?))
 }
 

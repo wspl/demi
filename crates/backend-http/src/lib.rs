@@ -334,11 +334,11 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route(
             "/conversations/{id}/hosts",
-            get(hosts::list).post(hosts::attach),
+            get(hosts::list),
         )
         .route(
             "/conversations/{id}/hosts/{device}",
-            patch(hosts::rename).delete(hosts::detach),
+            delete(hosts::detach),
         )
         .route(
             "/conversations/{id}/hosts/{device}/fs",

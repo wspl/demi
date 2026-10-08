@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
-import { agentReceiptMessages, editedFile, permissionReceiptMessages } from '../fixtures/blocks'
+import { agentReceiptMessages, editedFile, movedReceiptMessage, permissionReceiptMessages } from '../fixtures/blocks'
 import { HELPER, helperBlocks, helperParentBlocks, signInRequestBlocks, standaloneRequest, uncopiedRequestBlocks } from '../fixtures/request-changes'
 import { useGalleryTranscripts } from '../fixtures/transcripts'
 import GalleryTranscript from '../components/GalleryTranscript.vue'
@@ -1508,13 +1508,13 @@ onBeforeUnmount(() => {
         </div>
       </GallerySection>
 
-      <GallerySection title="AgentReceiptBlock" note="Agent updates, completion receipts, and the user’s decisions on permission requests as the agent that asked received them. Expand to read the message; these rows have no human message controls.">
+      <GallerySection title="AgentReceiptBlock" note="Agent updates, completion receipts, the user’s decisions on permission requests as the agent that asked received them, and a move the user told the agent of. Expand to read the message; these rows have no human message controls.">
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
             <GallerySpecimen
-              v-for="(message, index) in [...agentReceiptMessages, ...permissionReceiptMessages]"
+              v-for="(message, index) in [...agentReceiptMessages, ...permissionReceiptMessages, movedReceiptMessage]"
               :key="message.id"
-              :variant="message.event.type === 'message' ? 'update' : message.event.outcome"
+              :variant="message.event.type === 'message' ? 'update' : message.event.type === 'moved' ? 'moved' : message.event.outcome"
               wide
             >
               <AgentReceiptBlock :message="message" :open="index === 1" />

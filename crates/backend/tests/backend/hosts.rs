@@ -3,9 +3,10 @@
 //! `web-api.md` § Workspaces, devices, and attached hosts): a target switch
 //! moves the work and attaches the device it leaves, a switch ends the
 //! conversation's open transfers instead of waiting for them, attached
-//! hosts are attached, renamed and detached, and each change of them, the
-//! directory a host's shell recorded included, raises the revision a page
-//! reads them by. The devices are real runners.
+//! hosts are detached, and each change of them, the directory a host's
+//! shell recorded included, raises the revision a page reads them by. The
+//! conversation's agents attach devices, which these tests write to
+//! storage. The devices are real runners.
 
 use std::path::PathBuf;
 
@@ -287,12 +288,12 @@ async fn a_switch_ends_the_open_download_instead_of_waiting_for_it() {
 }
 
 #[tokio::test]
-async fn an_attached_host_is_attached_once_named_uniquely_and_detached() {
+async fn a_detach_takes_the_host_from_the_conversation_and_a_device_not_attached_detaches_as_nothing() {
     let harness = Harness::new();
     let (backend, master) = conversation(&harness).await;
     let laptop = backend.pair(&master, "laptop").await;
     let ci = backend.pair(&master, "ci").await;
-    let spare = backend.pair(&master, "ci").await;
+    let spare = backend.pair(&master, "spare").await;
     assert_eq!(
         switch(
             &backend,
@@ -303,72 +304,14 @@ async fn an_attached_host_is_attached_once_named_uniquely_and_detached() {
         .status,
         StatusCode::OK
     );
-    let route = format!("/api/conversations/{CONVERSATION}/hosts");
-    let attach = |device: &str| backend.post(&route, Some(&master), json!({ "deviceId": device }));
-
-    let attached = attach(ci.id()).await;
+    harness.attach(CONVERSATION, ci.id(), "ci");
+    harness.attach(CONVERSATION, spare.id(), "spare");
+    let listed = hosts(&backend, &master).await;
     assert_eq!(
-        attached.status,
-        StatusCode::CREATED,
-        "{}",
-        String::from_utf8_lossy(&attached.body)
-    );
-    let first = attached.json::<Value>()["hosts"].clone();
-    assert_eq!(
-        (&first[0]["name"], &first[0]["cwd"], &first[0]["state"]),
+        (&listed[0]["name"], &listed[0]["cwd"], &listed[0]["state"]),
         (&json!("ci"), &Value::Null, &json!("online"))
     );
-    let context = summary(&backend, &master).await["contextVersion"].clone();
-    // Attached already, it stays as it is.
-    assert_eq!(attach(ci.id()).await.json::<Value>()["hosts"], first);
-    assert_eq!(summary(&backend, &master).await["contextVersion"], context);
-    assert_eq!(
-        attach(laptop.id()).await.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::HostIsPrimary)
-    );
-    assert_eq!(
-        attach("nothing").await.refusal(),
-        (StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound)
-    );
-    // A second device of the same name gets a free one.
-    let both = attach(spare.id()).await.json::<Value>()["hosts"].clone();
-    let names: Vec<&Value> = both
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|host| &host["name"])
-        .collect();
-    assert_eq!(names, [&json!("ci"), &json!("ci-2")]);
-
-    let rename = |device: &str, name: &str| {
-        let path = format!("{route}/{device}");
-        let body = json!({ "name": name });
-        let (backend, master) = (&backend, &master);
-        async move { backend.patch(&path, master, body).await }
-    };
-    let renamed = rename(ci.id(), "  builder ").await;
-    assert_eq!(
-        renamed.status,
-        StatusCode::OK,
-        "{}",
-        String::from_utf8_lossy(&renamed.body)
-    );
-    assert_eq!(
-        renamed.json::<Value>()["hosts"][0]["name"],
-        json!("builder")
-    );
-    assert_eq!(
-        rename(spare.id(), "builder").await.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::NameTaken)
-    );
-    assert_eq!(
-        rename(laptop.id(), "primary").await.refusal(),
-        (StatusCode::NOT_FOUND, ErrorCode::HostNotAttached)
-    );
-    assert_eq!(
-        rename(ci.id(), "   ").await.refusal(),
-        (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody)
-    );
+    let route = format!("/api/conversations/{CONVERSATION}/hosts");
 
     // A detach is a transition; a device that is not attached detaches as
     // nothing.
@@ -427,21 +370,11 @@ async fn each_change_of_the_attached_hosts_reaches_a_page_as_a_higher_hosts_revi
         switch(&backend, &master, target(&laptop, &work)).await.status,
         StatusCode::OK
     );
+    harness.attach(CONVERSATION, ci.id(), "builder");
     let mut page = backend.sync(&master).await;
     let state = page.snapshot().await;
-    assert_eq!(state.conversations[0].hosts_revision, 0);
+    assert_eq!(state.conversations[0].hosts_revision, 1);
     let route = format!("/api/conversations/{CONVERSATION}/hosts");
-
-    let attached = backend
-        .post(&route, Some(&master), json!({ "deviceId": ci.id() }))
-        .await;
-    assert_eq!(attached.status, StatusCode::CREATED);
-    until_hosts_revision(&mut page, 1).await;
-    let renamed = backend
-        .patch(&format!("{route}/{}", ci.id()), &master, json!({ "name": "builder" }))
-        .await;
-    assert_eq!(renamed.status, StatusCode::OK);
-    until_hosts_revision(&mut page, 2).await;
 
     // The first shell ends in another directory, which the hosts list
     // records; the second ends where it started, which changes nothing.
@@ -457,14 +390,103 @@ async fn each_change_of_the_attached_hosts_reaches_a_page_as_a_higher_hosts_revi
         "{}",
         ran.received[0]
     );
-    until_hosts_revision(&mut page, 3).await;
-    assert_eq!(summary(&backend, &master).await["hostsRevision"], json!(3));
+    until_hosts_revision(&mut page, 2).await;
+    assert_eq!(summary(&backend, &master).await["hostsRevision"], json!(2));
     // The shell reports where it ended with links resolved.
     let resolved = std::fs::canonicalize(&sub).unwrap();
     assert_eq!(hosts(&backend, &master).await[0]["cwd"], json!(resolved.to_str().unwrap()));
 
     let detached = backend.delete(&format!("{route}/{}", ci.id()), &master).await;
     assert_eq!(detached.status, StatusCode::NO_CONTENT);
-    until_hosts_revision(&mut page, 4).await;
+    until_hosts_revision(&mut page, 3).await;
+    backend.close().await;
+}
+
+// About a second: a real device runs two turns of the scripted model, the
+// second woken by the move the user told the agent of.
+#[tokio::test]
+async fn a_move_told_to_the_agent_wakes_the_root_with_one_message_and_a_move_alone_admits_none() {
+    use demi_shared_types::{AgentMessageEvent, Block};
+
+    use crate::conversations::{FIRST, Socket, summary as listed, transcript};
+    use crate::subagents::{Scripts, say as answer, tree_on};
+
+    let scripts = std::sync::Arc::new(Scripts::default());
+    let (_harness, backend, master, paired, root, _provider) = tree_on(&scripts, Harness::new()).await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    scripts.root(FIRST, vec![answer("ready")]);
+    socket.chat("m1", "Start").await;
+    let moves = |path: &str, notify: bool| {
+        let quiet = format!("{root}/{path}");
+        std::fs::create_dir_all(&quiet).unwrap();
+        let mut body = json!({
+            "target": { "kind": "device", "deviceId": paired.id(), "path": quiet }
+        });
+        if notify {
+            body["notifyAgent"] = json!(true);
+        }
+        let (backend, master) = (&backend, &master);
+        async move {
+            backend
+                .patch(&format!("/api/conversations/{FIRST}"), master, body)
+                .await
+        }
+    };
+    let agent_messages = |blocks: &[Block]| -> Vec<demi_shared_types::AgentMessage> {
+        blocks
+            .iter()
+            .filter_map(|block| match block {
+                Block::AgentMessage(block) => Some(block.message.clone()),
+                _ => None,
+            })
+            .collect()
+    };
+
+    // Telling the agent needs a switch to tell.
+    let alone = backend
+        .patch(
+            &format!("/api/conversations/{FIRST}"),
+            &master,
+            json!({ "notifyAgent": true }),
+        )
+        .await;
+    assert_eq!(
+        alone.refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody)
+    );
+
+    // A move alone: the answer comes once the switch is made, and nothing
+    // reached the agent.
+    let quiet = moves("quiet", false).await;
+    assert_eq!(quiet.status, StatusCode::OK, "{}", String::from_utf8_lossy(&quiet.body));
+    let blocks = transcript(&backend, &master, FIRST).await.blocks;
+    assert!(agent_messages(&blocks).is_empty(), "{blocks:?}");
+    let asked = scripts.asked(|session| session == FIRST).len();
+    assert_eq!(asked, 1);
+
+    // Told: one message from the user, under the revision the move made,
+    // wakes the idle root, which reads where it was and where it is.
+    scripts.root(FIRST, vec![answer("noted")]);
+    let told = moves("told", true).await;
+    assert_eq!(told.status, StatusCode::OK, "{}", String::from_utf8_lossy(&told.body));
+    socket.until_idle().await;
+    let woken = scripts.asked(|session| session == FIRST);
+    assert_eq!(woken.len(), 2);
+    let expected = format!(
+        "The user moved this conversation from laptop ({root}/quiet) to laptop ({root}/told). Files did not move. Check what this means for the work so far, and tell the user."
+    );
+    assert!(woken[1].contains(&expected), "{}", woken[1]);
+    let revision = listed(&backend, &master, FIRST).await.context_version;
+    let messages = agent_messages(&transcript(&backend, &master, FIRST).await.blocks);
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    let message = &messages[0];
+    assert_eq!(message.id.as_str(), format!("moved:{revision}"));
+    assert_eq!(message.sender, None);
+    let AgentMessageEvent::Moved { host, path, home } = &message.event else {
+        panic!("{message:?}");
+    };
+    assert_eq!((host.as_str(), path.as_str()), ("laptop", format!("{root}/told").as_str()));
+    assert!(home.as_deref().is_some_and(|home| path.starts_with(home)), "{home:?}");
     backend.close().await;
 }
