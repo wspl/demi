@@ -15,6 +15,12 @@ const newConversationEntrySchema = z.object({
   newConversation: z.object({ projectId: z.string().nullable() }),
 })
 
+/** The project of the new conversation the history entry shown was made for; undefined for any other entry. */
+function newConversationEntry(state: unknown): { projectId: string | null } | undefined {
+  const entry = newConversationEntrySchema.safeParse(state)
+  return entry.success ? entry.data.newConversation : undefined
+}
+
 /** The address of the new conversation `id`, with the mark its history entry keeps. */
 function newConversationAt(id: string, projectId: string | null): RouteLocationRaw {
   return { path: `/chat/${id}`, state: { newConversation: { projectId } } }
@@ -30,10 +36,19 @@ export function useConversationNavigation() {
   const resources = useResources()
   const conversations = useConversations()
 
-  /** Shows the conversation; on a narrow layout the sidebar gives way to it. */
+  /**
+   * Shows the conversation; on a narrow layout the sidebar gives way to it.
+   * One without a record yet is a new conversation, and its entry says so,
+   * as New's does.
+   */
   function open(id: string): void {
     resources.sidebarOpen = false
-    void router.push(`/chat/${id}`)
+    const conversation = conversations.items.find((item) => item.id === id)
+    void router.push(
+      conversation && conversation.persistence !== 'synced'
+        ? newConversationAt(id, conversation.projectId)
+        : `/chat/${id}`,
+    )
   }
 
   /**
@@ -76,13 +91,21 @@ export function useConversationNavigation() {
    * the project is gone. Answers whether one did.
    */
   function reopenNew(): boolean {
-    const entry = newConversationEntrySchema.safeParse(router.options.history.state)
-    if (!entry.success) {
+    const entry = newConversationEntry(router.options.history.state)
+    if (!entry) {
       return false
     }
-    const { projectId } = entry.data.newConversation
+    const { projectId } = entry
     replaceWithNew(resources.projects.some((project) => project.id === projectId) ? projectId : null)
     return true
+  }
+
+  /**
+   * Whether the history entry shown was made for a new conversation, which
+   * has no record before its first send: a reload of it finds nothing to read.
+   */
+  function showsNewConversation(): boolean {
+    return newConversationEntry(router.options.history.state) !== undefined
   }
 
   /**
@@ -93,5 +116,5 @@ export function useConversationNavigation() {
     create(await resources.createProject(draft))
   }
 
-  return { open, openFound, create, replaceWithNew, reopenNew, createProject }
+  return { open, openFound, create, replaceWithNew, reopenNew, showsNewConversation, createProject }
 }

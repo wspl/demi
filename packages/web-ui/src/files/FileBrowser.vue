@@ -540,7 +540,9 @@ onBeforeUnmount(() => pending?.abort())
           </template>
         </div>
       </div>
+      <!-- Cancel before the default button, as a dialog's footer has them (Dialog). -->
       <div class="flex shrink-0 items-center justify-end gap-2">
+        <Button @click="emit('cancel')">Cancel</Button>
         <Button
           variant="primary"
           :disabled="!canConfirm && !confirmPending"
@@ -548,7 +550,6 @@ onBeforeUnmount(() => pending?.abort())
           @click="confirm"
           >{{ confirmLabel }}</Button
         >
-        <Button @click="emit('cancel')">Cancel</Button>
       </div>
     </div>
   </div>

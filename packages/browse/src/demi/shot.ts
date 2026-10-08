@@ -13,6 +13,7 @@
 // the browser's `capture` takes them instead.
 import { writeFileSync } from 'node:fs'
 import type { Locator } from 'playwright'
+import { z } from 'zod'
 import { pngSize, shotPath, type Clip } from '../shots'
 import { Failure, type Tool } from '../tool'
 
@@ -24,6 +25,9 @@ export interface ShotOptions {
   full?: boolean
   now?: boolean
 }
+
+/** A region as a script gives it, in CSS pixels. */
+const regionSchema = z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive() })
 
 /** The longest a picture waits for the page to settle; a page that never does is taken as it is. */
 const SETTLE_MS = 2000
@@ -38,7 +42,12 @@ export async function shot(tool: Tool, name: string | undefined, options: ShotOp
   if (!options.now) {
     await settle(tool)
   }
-  let clip = options.region
+  // A script is plain JavaScript: a region of another shape would reach the browser as its bare refusal.
+  const region = options.region === undefined ? undefined : regionSchema.safeParse(options.region)
+  if (region && !region.success) {
+    throw new Failure(`demi.shot's region is { x, y, width, height } in CSS pixels, not ${JSON.stringify(options.region)}`)
+  }
+  let clip: Clip | undefined = region?.data
   if (options.element !== undefined) {
     await options.element.scrollIntoViewIfNeeded()
     const box = await options.element.boundingBox()

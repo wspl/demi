@@ -9,8 +9,7 @@ import type { HeadlineText, SentenceText } from './ui-text'
 
 /**
  * A new name, asked for as macOS asks in a sheet: the field opens on the
- * current name, selected, so typing replaces it. Rename, or Return in the
- * field, hands over the name trimmed and closes; Cancel or Escape keeps the
+ * current name, selected, so typing replaces it. Rename, or Return, hands over the name trimmed and closes; Cancel or Escape keeps the
  * old one. An empty name cannot be taken, and the field holds at most
  * `maxLength` characters. An unchanged name closes without a rename. The
  * host says a refusal in a toast.
@@ -81,7 +80,7 @@ function submit() {
     :label="title"
     @close="emit('close')"
   >
-    <div class="flex flex-col gap-4 p-5">
+    <div class="flex flex-col gap-4 px-5 pt-5">
       <h3 class="select-none pr-8 text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
       <TextInput
         ref="field"
@@ -90,12 +89,11 @@ function submit() {
         :maxlength="maxLength ?? undefined"
         literal
         autocomplete="off"
-        @keydown.enter="submit"
       />
-      <div class="flex justify-end gap-2">
-        <Button @click="emit('close')">Cancel</Button>
-        <Button variant="primary" :disabled="!trimmed" @click="submit">Rename</Button>
-      </div>
     </div>
+    <template #footer>
+      <Button @click="emit('close')">Cancel</Button>
+      <Button variant="primary" :disabled="!trimmed" @click="submit">Rename</Button>
+    </template>
   </Dialog>
 </template>

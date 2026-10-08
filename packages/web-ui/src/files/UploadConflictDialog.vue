@@ -74,14 +74,14 @@ const body = computed(() => {
     :label="title"
     @close="emit('cancel')"
   >
-    <div class="flex flex-col gap-4 p-5">
+    <div class="flex flex-col gap-4 px-5 pt-5">
       <h3 class="pr-8 text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
       <p class="text-[13px] leading-5 text-fg-muted">{{ body }}</p>
-      <div class="flex justify-end gap-2">
-        <Button @click="emit('skip')">Skip</Button>
-        <Button v-if="merges" @click="emit('merge')">Merge</Button>
-        <Button variant="destructive" @click="emit('replace')">Replace</Button>
-      </div>
     </div>
+    <template #footer>
+      <Button @click="emit('skip')">Skip</Button>
+      <Button v-if="merges" @click="emit('merge')">Merge</Button>
+      <Button variant="danger" @click="emit('replace')">Replace</Button>
+    </template>
   </Dialog>
 </template>

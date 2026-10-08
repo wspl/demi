@@ -58,7 +58,7 @@ function submit() {
     :stack="stack"
     @close="emit('close')"
   >
-    <div class="flex flex-col gap-4 p-5">
+    <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Add Device</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
@@ -107,7 +107,6 @@ function submit() {
               literal
               class="w-60 max-w-full font-mono"
               :disabled="phase.kind === 'pairing'"
-              @keydown.enter="submit"
             />
           </SettingsRow>
         </div>
@@ -123,34 +122,34 @@ function submit() {
         <Check :size="14" class="shrink-0 text-on-success" />
         <TruncatedText :text="phase.device.name" />
       </div>
-      <div class="flex justify-end gap-2">
-        <Button
-          v-if="phase.kind === 'done'"
-          variant="primary"
-          @click="emit('close')"
-          >Done</Button
-        >
-        <template v-else>
-          <Button v-if="phase.kind === 'code'" @click="emit('back')"
-            >Back</Button
-          >
-          <Button @click="emit('close')">Cancel</Button>
-          <Button
-            v-if="phase.kind === 'setup'"
-            variant="primary"
-            @click="emit('next')"
-            >Continue</Button
-          >
-          <Button
-            v-else
-            variant="primary"
-            :disabled="!code.trim()"
-            :loading="phase.kind === 'pairing'"
-            @click="submit"
-            >Pair Device</Button
-          >
-        </template>
-      </div>
     </div>
+    <template #footer>
+      <Button
+        v-if="phase.kind === 'done'"
+        variant="primary"
+        @click="emit('close')"
+        >Done</Button
+      >
+      <template v-else>
+        <Button v-if="phase.kind === 'code'" @click="emit('back')"
+          >Back</Button
+        >
+        <Button @click="emit('close')">Cancel</Button>
+        <Button
+          v-if="phase.kind === 'setup'"
+          variant="primary"
+          @click="emit('next')"
+          >Continue</Button
+        >
+        <Button
+          v-else
+          variant="primary"
+          :disabled="!code.trim()"
+          :loading="phase.kind === 'pairing'"
+          @click="submit"
+          >Pair Device</Button
+        >
+      </template>
+    </template>
   </Dialog>
 </template>

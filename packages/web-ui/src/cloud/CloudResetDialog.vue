@@ -49,7 +49,7 @@ const ready = computed(() => props.submitted && !failed.value && props.phase ===
     label="Reset Cloud Environment"
     @close="emit('close')"
   >
-    <div class="flex flex-col gap-4 p-5">
+    <div class="flex flex-col gap-4 px-5 pt-5">
       <h3 class="pr-8 text-[15px] font-medium text-fg-emphasis">
         Reset Cloud Environment
       </h3>
@@ -77,16 +77,17 @@ const ready = computed(() => props.submitted && !failed.value && props.phase ===
         {{ resetPhaseLabels.ready }}
       </p>
       <InlineError v-else-if="failed" :message="error ?? resetPhaseLabels.failed" />
-      <div class="flex justify-end gap-2">
-        <Button @click="emit('close')">{{ submitted ? 'Close' : 'Cancel' }}</Button>
-        <Button
-          v-if="!submitted || failed"
-          variant="destructive"
-          :disabled="busy"
-          @click="emit('reset')"
-          >{{ submitted ? 'Retry Reset' : 'Reset Environment' }}</Button
-        >
-      </div>
     </div>
+    <template #footer>
+      <!-- Cancel, or Close once the reset is under way, is the default: Return never resets (Dialog). -->
+      <Button variant="primary" @click="emit('close')">{{ submitted ? 'Close' : 'Cancel' }}</Button>
+      <Button
+        v-if="!submitted || failed"
+        variant="danger"
+        :disabled="busy"
+        @click="emit('reset')"
+        >{{ submitted ? 'Retry Reset' : 'Reset Environment' }}</Button
+      >
+    </template>
   </Dialog>
 </template>

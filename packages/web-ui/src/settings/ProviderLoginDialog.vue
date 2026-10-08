@@ -60,7 +60,7 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
     :label="`Sign In to ${vendorName}`"
     @close="emit('close')"
   >
-    <div class="flex flex-col gap-5 p-5">
+    <div class="flex flex-col gap-5 px-5 pt-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">
           Sign In to {{ vendorName }}
@@ -192,21 +192,20 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
       </div>
 
       <InlineError v-else :message="phase.message" />
-
-      <div class="flex justify-end gap-2">
-        <Button
-          v-if="phase.kind === 'done'"
-          variant="primary"
-          @click="emit('close')"
-          >Done</Button
-        >
-        <template v-else>
-          <Button @click="emit('close')">Cancel</Button>
-          <Button v-if="phase.kind === 'failed'" @click="emit('retry')"
-            >Try Again</Button
-          >
-        </template>
-      </div>
     </div>
+    <template #footer>
+      <Button
+        v-if="phase.kind === 'done'"
+        variant="primary"
+        @click="emit('close')"
+        >Done</Button
+      >
+      <template v-else>
+        <Button @click="emit('close')">Cancel</Button>
+        <Button v-if="phase.kind === 'failed'" @click="emit('retry')"
+          >Try Again</Button
+        >
+      </template>
+    </template>
   </Dialog>
 </template>

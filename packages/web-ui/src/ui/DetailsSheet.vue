@@ -22,7 +22,7 @@ const emit = defineEmits<{
 
 <template>
   <Dialog :is-open="isOpen" :overlay-store="overlayStore" :label="title" @close="emit('close')">
-    <div class="flex flex-col gap-4 p-5">
+    <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-8">
         <h3 class="text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
       </header>
@@ -35,9 +35,9 @@ const emit = defineEmits<{
           </dd>
         </template>
       </dl>
-      <div class="flex justify-end">
-        <Button variant="primary" @click="emit('close')">Done</Button>
-      </div>
     </div>
+    <template #footer>
+      <Button variant="primary" @click="emit('close')">Done</Button>
+    </template>
   </Dialog>
 </template>
