@@ -21,6 +21,7 @@ import TokenInput from '@demicodes/web-ui/ui/TokenInput.vue'
 import HighlightText from '@demicodes/web-ui/ui/HighlightText.vue'
 import ThemeToggle from '@demicodes/web-ui/ui/ThemeToggle.vue'
 import ConversationStatusDot from '@demicodes/web-ui/agent/ConversationStatusDot.vue'
+import DeviceIcon from '@demicodes/web-ui/devices/DeviceIcon.vue'
 import ContextUsageIndicator from '@demicodes/web-ui/agent/ContextUsageIndicator.vue'
 import ProviderIcon from '@demicodes/web-ui/agent/providers/ProviderIcon.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -655,6 +656,21 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
             <div class="relative size-6 rounded-md bg-surface-raised">
               <ConversationStatusDot status="aborted" />
             </div>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="DeviceIcon"
+        note="The product’s one device glyph with its state’s dot: green online, amber updating, faint offline, and no dot for a device since removed. The devices list, the host menu and the sidebar draw a device with it."
+      >
+        <div class="specimen-row">
+          <GallerySpecimen
+            v-for="specimen in ([['online', 'online'], ['updating', 'updating'], ['offline', 'offline'], ['removed', null]] as const)"
+            :key="specimen[0]"
+            :variant="specimen[0]"
+          >
+            <DeviceIcon :state="specimen[1]" />
           </GallerySpecimen>
         </div>
       </GallerySection>
