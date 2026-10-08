@@ -29,7 +29,7 @@ use super::{
     input::{InputQueue, Wakeups},
     media::{held, model_view},
     persist,
-    runtime::{NewContext, SeenContext, SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome},
+    runtime::{NewContext, SeenContext, SessionRuntime, StepOutcomes, ToolInvocation},
     turn,
 };
 
@@ -518,10 +518,7 @@ impl SessionRuntime for CopyRuntime {
         self.session.runs_together(tool)
     }
 
-    fn invoke_step(
-        &self,
-        calls: Vec<ToolInvocation>,
-    ) -> LocalBoxFuture<'_, Vec<Result<ToolOutcome, ToolFailure>>> {
+    fn invoke_step(&self, calls: Vec<ToolInvocation>) -> StepOutcomes<'_> {
         self.session.invoke_step(calls)
     }
 

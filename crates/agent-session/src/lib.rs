@@ -59,7 +59,7 @@ pub use editing::{
 };
 pub use retry::RetryPolicy;
 pub use runtime::{
-    InputArrival, NewContext, SeenContext, SessionRuntime, ToolEffect, ToolFailure,
+    InputArrival, NewContext, SeenContext, SessionRuntime, StepOutcomes, ToolEffect, ToolFailure,
     ToolInvocation, ToolOutcome,
 };
 

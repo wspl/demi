@@ -915,7 +915,7 @@ async fn a_restored_wakeup_whose_command_ended_with_the_shells_is_due_at_once() 
         later.requests()[0].items.last(),
         Some(&InferenceItem::UserMessage {
             content: sent_text(
-                "Command 17 was stopped. Read its end with shell_status 17 and continue the previous work."
+                "Command 17 was stopped. Continue the previous work; read its output with demi shell output 17."
             ),
         })
     );

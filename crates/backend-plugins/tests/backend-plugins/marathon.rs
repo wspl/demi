@@ -347,11 +347,11 @@ async fn the_shell_tools_feed_a_waiting_command_and_a_yield_wakes_at_a_commands_
             );
             assert_eq!(
                 model.wakeup.as_deref(),
-                Some(format!("Command {reader} ended with exit code 0. Read its end with shell_status {reader} and continue the previous work.").as_str())
+                Some(format!("Command {reader} ended with exit code 0. Continue the previous work; read its output with demi shell output {reader}.").as_str())
             );
             assert_eq!(
                 model.stop_wakeup.as_deref(),
-                Some(format!("Command {long} was stopped. Read its end with shell_status {long} and continue the previous work.").as_str())
+                Some(format!("Command {long} was stopped. Continue the previous work; read its output with demi shell output {long}.").as_str())
             );
             let aborted = model.seen.last().unwrap();
             assert!(aborted.starts_with("status: aborted\n"), "{aborted}");
