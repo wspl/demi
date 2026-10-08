@@ -1404,7 +1404,10 @@ demi-backend (executable: configuration, composition)
 
 #### `xtask`
 
-- **Owns:** the repository's development commands: `xtask contracts` (the
+- **Owns:** the repository's development commands: `xtask sweep`, which
+  removes the build products no current selection uses
+  ([Stale build products](../delivery/builds-and-releases.md#stale-build-products));
+  `xtask contracts` (the
   TypeScript emitter, with the page types of each plugin whose manifest
   names a page package, read from the manifests of the backend's plugins,
   and the plugin page registry of `web` and `web-gallery`, which
