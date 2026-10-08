@@ -38,7 +38,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Address',
-    'Crumbs from the root, each a jump. A bar too narrow for every name turns crumbs into their glyphs, one at a time from the left, each name kept in a tooltip, so the crumbs nearest the end keep their names longest; when even the glyphs overflow, the bar keeps its right end and clips its left. A click anywhere on the bar but a crumb turns it into a text field with the full path, and Enter goes there. The field completes the path: the text before the caret names a folder, ~ the home, and what follows its last slash filters that folder’s entries in a menu under the field, fuzzily, so abc finds a_b_c.txt, best matches first with the matched letters marked; dot entries show once the query starts with a dot. ↓ and ↑ move through the menu, Tab completes the highlighted row or the first, Enter the highlighted one, a click the clicked one, and Escape puts the menu away. A folder completes with a slash and the menu goes on to list it; a file completes and goes there as Enter would.'
+    'Crumbs from the root, each a jump. A bar too narrow for every name turns crumbs into their glyphs, one at a time from the left, each name kept in a tooltip, so the crumbs nearest the end keep their names longest; when even the glyphs overflow, the bar keeps its right end and clips its left. A click anywhere on the bar but a crumb turns it into a text field with the full path, and Enter goes there. The field completes the path: the text before the caret names a folder, ~ the home, and what follows its last slash filters that folder’s entries in a menu under the field, fuzzily, so abc finds a_b_c.txt, best matches first with the matched letters marked; dot entries show once the query starts with a dot. The menu opens with its first row selected, and again whenever its rows change; ↓ and ↑ and the moving pointer move the selection, the one lit row, Tab completes it, a click the clicked one, Enter goes to the typed path, and Escape puts the menu away, after which Tab moves the focus. A folder completes with a slash and the menu goes on to list it; a file completes and goes there as Enter would.'
   ],
   [
     'Icons',
@@ -58,7 +58,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'New project',
-    'The working-environment dialog: Cloud or Device as two cards, Cloud first and chosen the first time, then the kind and device chosen last; a device asks which one, with Add Device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Switching between projects is the sidebar’s Move To and the header’s workspace control, not a dialog.'
+    'The working-environment dialog: Cloud or Device as two cards, Cloud first and chosen the first time, then the kind and device chosen last; a device asks which one, with Add Device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Moving a conversation between projects is the header’s menus, not a dialog.'
   ],
   [
     'New folder',

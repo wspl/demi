@@ -4,7 +4,7 @@
  * become a menu, and accepting one writes its name in place of the query.
  * Gallery: Files › Address Bar, and the New Project dialog's Directory.
  */
-import { computed, ref, type ComputedRef } from 'vue'
+import { computed, ref, watch, type ComputedRef } from 'vue'
 import fuzzysort from 'fuzzysort'
 import { compareFileNames } from './file-browser-state'
 import { isHiddenName, normalizePath, resolveHostPath } from './paths'
@@ -140,6 +140,15 @@ export function usePathCompletion(options: PathCompletionOptions) {
     return at && entries ? rankCompletions(entries, at.query, options.kind()) : []
   })
   const isOpen = computed(() => !dismissed.value && rows.value.length > 0)
+  // The list opens, or its rows change, with its first row selected: the one Tab takes.
+  watch(
+    () => rows.value.map((row) => row.entry.name).join('\0'),
+    () => {
+      highlighted.value = rows.value.length > 0 ? 0 : -1
+    },
+    // At once, so a key pressed right after the rows changed reads the new selection.
+    { flush: 'sync' },
+  )
 
   /** Follows the caret: `caret` is null while the field has no caret, a range selected or focus gone. */
   function follow(text: string, caret: number | null): void {
@@ -149,7 +158,6 @@ export function usePathCompletion(options: PathCompletionOptions) {
     if (next?.directory === current?.directory && next?.query === current?.query && next?.start === current?.start)
       return
     spot.value = next
-    highlighted.value = -1
     dismissed.value = false
   }
 
@@ -162,11 +170,19 @@ export function usePathCompletion(options: PathCompletionOptions) {
     return { kind: 'accept', edit: completeWith(text, caret, at, row.entry), entry: row.entry }
   }
 
+  /** Selects the row at `index`, as a pointer moving over it does. */
+  function highlight(index: number): void {
+    if (index >= 0 && index < rows.value.length)
+      highlighted.value = index
+  }
+
   /**
-   * A key pressed in the field. While the menu shows, the arrows move the
-   * highlight, Tab accepts the highlighted row or the first, Enter the
-   * highlighted one, and Escape puts the menu away; every other key, and
-   * Enter with nothing highlighted, is the field's.
+   * A key pressed in the field. While the menu shows, a row is always
+   * selected, the first when it opens or its rows change: the arrows move
+   * the selection, Tab accepts the selected row, and Escape puts the menu
+   * away. Every other key, Return among them, is the field's, and every key
+   * while no menu shows, so Return submits what the field holds and Tab
+   * then moves the focus as it does anywhere.
    */
   function keydown(key: string, text: string, caret: number): PathCompletionKey {
     if (!isOpen.value)
@@ -181,8 +197,6 @@ export function usePathCompletion(options: PathCompletionOptions) {
       return { kind: 'handled' }
     }
     if (key === 'Tab')
-      return accept(Math.max(0, highlighted.value), text, caret)
-    if (key === 'Enter' && highlighted.value >= 0)
       return accept(highlighted.value, text, caret)
     if (key === 'Escape') {
       dismissed.value = true
@@ -191,7 +205,7 @@ export function usePathCompletion(options: PathCompletionOptions) {
     return { kind: 'pass' }
   }
 
-  return { rows, highlighted, isOpen, follow, keydown, accept }
+  return { rows, highlighted, isOpen, follow, keydown, accept, highlight }
 }
 
 /**

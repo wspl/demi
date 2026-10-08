@@ -236,8 +236,6 @@ pub enum ErrorCode {
     /// The device is the conversation's primary Host, which is never attached
     /// as well.
     HostIsPrimary,
-    /// Another attached host of the conversation has that name.
-    NameTaken,
     /// Another target change of the conversation came first.
     TargetConflict,
     /// One field of a conversation patch failed in a way the request could

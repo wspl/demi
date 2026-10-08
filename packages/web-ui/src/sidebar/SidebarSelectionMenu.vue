@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Archive, ArrowRight, Copy, FolderInput, Pin, PinOff, TextCursorInput, Trash2 } from '@lucide/vue'
+import { Archive, ArrowRight, Copy, Pin, PinOff, TextCursorInput, Trash2 } from '@lucide/vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
-import type { SidebarConversation, SidebarProject } from './types'
+import type { SidebarConversation } from './types'
 
-/** One row gets open, rename and copy ID; any count gets pin, move, archive and delete, which asks first. */
+/**
+ * One row gets open, rename and copy ID; any count gets pin, archive and
+ * delete, which asks first. A conversation enters or leaves a project only
+ * through where it runs, so there is no Move To (`product.md` § Where a
+ * conversation runs).
+ */
 const props = defineProps<{
   targets: SidebarConversation[]
-  projects: SidebarProject[]
 }>()
 
 const emit = defineEmits<{
@@ -17,7 +21,6 @@ const emit = defineEmits<{
   rename: [id: string]
   copyId: [id: string]
   pin: [ids: string[], pinned: boolean]
-  moveTo: [ids: string[], projectId: string | null]
   archive: [ids: string[]]
   /** Delete…: the host asks before anything goes. */
   delete: [ids: string[]]
@@ -30,12 +33,6 @@ const single = computed(() => (props.targets.length === 1
 const allPinned = computed(
   () => props.targets.length > 0 && props.targets.every((target) => target.pinned)
 )
-const sharedProjectId = computed(() => {
-  const first = props.targets[0]?.projectId ?? null
-  return props.targets.every((target) => target.projectId === first)
-    ? first
-    : undefined
-})
 const many = computed(
   () => (props.targets.length > 1
     ? ` ${props.targets.length} Conversations`
@@ -70,27 +67,6 @@ const many = computed(
       shortcut="⌘⇧P"
       @select="emit('pin', ids, !allPinned)"
     />
-    <MenuItem :icon="FolderInput" label="Move To">
-      <template #submenu>
-        <Menu iconless>
-          <MenuItem
-            label="No Project"
-            choice
-            :is-selected="sharedProjectId === null"
-            @select="emit('moveTo', ids, null)"
-          />
-          <MenuDivider />
-          <MenuItem
-            v-for="project in projects"
-            :key="project.id"
-            :label="project.name"
-            choice
-            :is-selected="sharedProjectId === project.id"
-            @select="emit('moveTo', ids, project.id)"
-          />
-        </Menu>
-      </template>
-    </MenuItem>
     <MenuItem
       :icon="Archive"
       :label="`Archive${many}`"

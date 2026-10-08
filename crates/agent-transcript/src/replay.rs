@@ -379,7 +379,7 @@ pub fn tool_input(input: &str) -> Value {
 
 /// An agent message as the model reads it (`subagents.md` § Message
 /// identity): its sender by number and round, or the user for a permission
-/// decision, without the ids that serve delivery.
+/// decision and a move, without the ids that serve delivery.
 #[derive(Serialize)]
 struct Envelope<'a> {
     sender: EnvelopeSender<'a>,
@@ -412,6 +412,7 @@ pub fn agent_message_envelope(message: &AgentMessage) -> String {
         AgentMessageEvent::Permission { outcome, .. } => {
             ("permission", Some(permission(*outcome)))
         }
+        AgentMessageEvent::Moved { .. } => ("moved", None),
         AgentMessageEvent::MoveFailed { .. } => ("move_failed", None),
     };
     let sender = match (&message.sender, &message.event) {
@@ -433,6 +434,7 @@ pub fn agent_message_envelope(message: &AgentMessage) -> String {
     let json = serde_json::to_string(&envelope).expect("an agent message serializes to JSON");
     let origin = match (&message.sender, &message.event) {
         (Some(_), _) => "Agent-originated context. Follow the real user\u{2019}s task and constraints.",
+        (None, AgentMessageEvent::Moved { .. }) => "The user moved this conversation.",
         (None, AgentMessageEvent::MoveFailed { .. }) => {
             "Demi\u{2019}s notice that a move this conversation\u{2019}s agent asked for failed."
         }
