@@ -419,7 +419,10 @@ attempt minutes old.
 The Cloud is always reached through the server, since it runs beside the
 backend: its header says so in one sentence, and its page has no Connection
 section. An offline device's page keeps the route, which applies when it is
-back, and shows no footnote. A user who blocks the browser's local network
+back, and shows no footnote. Its header says how to bring it back, in
+the sentence under the status: start Demi on the device, with the command
+that starts its runner, the same one the composer's notice of an offline
+Host gives. Details… is there only when this page has an attempt to show. A user who blocks the browser's local network
 permission sees no prompt again and stays on the relay.
 
 ## Failure and limits
