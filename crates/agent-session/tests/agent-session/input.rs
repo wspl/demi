@@ -694,11 +694,13 @@ async fn yield_ends_the_turn_and_its_wakeup_opens_a_continuation_once_the_action
     let Some(demi_shared_types::ToolView::YieldWakeup {
         wakeup_id,
         duration_ms: 120_000,
+        command_ids,
     }) = &call.view
     else {
         panic!("{call:?}");
     };
     // The result names no wakeup: no tool takes one.
+    assert!(command_ids.is_empty());
     assert_eq!(call.output, texts(&["yield scheduled\ndurationMs: 120000"]));
     // The wait started when the action ended, and the checkpoint keeps it.
     let scheduled = store.checkpoint(&root()).unwrap().state.wakeups;
@@ -706,7 +708,9 @@ async fn yield_ends_the_turn_and_its_wakeup_opens_a_continuation_once_the_action
         ScheduledWakeup {
             id,
             duration_ms: 120_000,
+            ended: None,
             due_at: Some(_),
+            ..
         },
     ] = scheduled.as_slice()
     else {
@@ -850,6 +854,70 @@ async fn a_wakeup_survives_dispose_and_one_due_meanwhile_fires_once_the_session_
     assert_eq!(
         kinds(&restored.transcript().blocks[3..]),
         ["wakeup", "text", "response"]
+    );
+}
+
+// A command a yield waits for ends with the shells of the session that is
+// disposed; the restored session does not wait out the yield's time.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_restored_wakeup_whose_command_ended_with_the_shells_is_due_at_once() {
+    let provider = ScriptedRuntime::new([Turn::Events(vec![
+        event::tool_call(
+            "yield-1",
+            "yield",
+            json!({ "durationMs": 600_000, "commandIds": [17] }),
+        ),
+        event::response(1, 1),
+    ])]);
+    let store = MemoryTreeStore::new();
+    let clock: Arc<dyn demi_shared_types::Clock> = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
+    let session = start_at(
+        &provider,
+        test_runtime(vec![yield_tool()]),
+        &store,
+        SessionConfig::default(),
+        clock.clone(),
+    )
+    .await;
+    session
+        .send(text("wait for the build"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+    let blocks = session.transcript().blocks;
+    let Block::ToolCall(call) = &blocks[1] else {
+        panic!("{blocks:?}");
+    };
+    assert_eq!(
+        call.output,
+        texts(&["yield scheduled\ndurationMs: 600000\ncommandIds: 17"])
+    );
+    session.dispose().await.unwrap();
+    drop(session);
+
+    let started = tokio::time::Instant::now();
+    let later = ScriptedRuntime::new([Turn::Events(vec![
+        event::text("the build is gone"),
+        event::response(1, 1),
+    ])]);
+    let (restored, _) = restore_session(
+        store.checkpoint(&root()).unwrap(),
+        &store,
+        &later,
+        test_runtime(Vec::new()),
+        clock,
+    );
+    until(|| later.requests().len() == 1).await;
+    restored.settled().await;
+
+    assert!(started.elapsed() < Duration::from_secs(600));
+    assert_eq!(
+        later.requests()[0].items.last(),
+        Some(&InferenceItem::UserMessage {
+            content: sent_text(
+                "Command 17 was stopped. Continue the previous work; read its output with demi shell output 17."
+            ),
+        })
     );
 }
 

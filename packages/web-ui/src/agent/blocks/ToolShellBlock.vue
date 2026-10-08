@@ -9,7 +9,9 @@ import ShellEditPills from './ShellEditPills.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
 import ToolMedia from './ToolMedia.vue'
 import type { ToolCallBlock } from '../block-types'
-import { getToolErrorText, shellTerminalOutputChunks } from '../block-helpers'
+import { getToolErrorText, shellTerminalOutputChunks, storedShellView } from '../block-helpers'
+import { commandEndMark, commandEndWords } from '../command-end'
+import CommandEndTag from './CommandEndTag.vue'
 import { useLiveCalls } from '../live-calls'
 import { standardToolTitle } from '../tool-rendering'
 
@@ -22,6 +24,11 @@ const props = defineProps<{
 const command = computed(() => (props.input['script'] as string) ?? '')
 const title = computed(() => standardToolTitle('shell_exec', props.input))
 const errorText = computed(() => getToolErrorText(props.block))
+// The end of a call that returned with its command ended; while the call
+// runs, or once it returned with the command still running, there is none.
+const endView = computed(() => (props.block.status === 'executing' ? null : storedShellView(props.block)))
+const endMark = computed(() => commandEndMark(endView.value))
+const endWords = computed(() => commandEndWords(endView.value))
 const liveCalls = useLiveCalls()
 /** While the call runs, its command's output as it comes (`runtime.md` § Rendering boundary). */
 const liveOutput = computed(() =>
@@ -101,6 +108,7 @@ function toggleCommand(): void {
 
     <template #default="{ loading }">
       <span class="min-w-0 truncate" :class="loading ? 'thinking-shimmer' : ''">{{ title }}</span>
+      <CommandEndTag v-if="endMark" :mark="endMark" />
     </template>
 
     <template #pinned>
@@ -126,8 +134,9 @@ function toggleCommand(): void {
       </div>
     </template>
 
-    <template v-if="terminalOutputText" #body>
-      <AnsiText class="px-3" :content="terminalOutputText" />
+    <template v-if="terminalOutputText || endWords" #body>
+      <div v-if="endWords" class="px-3 text-xs leading-5 text-fg-subtle">{{ endWords }}</div>
+      <AnsiText v-if="terminalOutputText" class="px-3" :content="terminalOutputText" />
     </template>
   </FunctionalBlock>
   <ToolMedia :output="block.output" :title="title" />

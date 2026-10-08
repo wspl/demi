@@ -1,5 +1,5 @@
-//! The standard tools (`runtime.md` § Tools): `shell_exec`, `shell_status`,
-//! `shell_write`, `shell_abort` and `yield`, and only these. The shell tools
+//! The standard tools (`runtime.md` § Tools): `shell_exec`, `shell_status`
+//! and `yield`, and only these. The shell tools
 //! reach the conversation's current Host through the product's resolver and
 //! run in the node's shell environment for that Host, which the product
 //! makes; `yield` returns an effect for the session to apply. A tool never
@@ -22,20 +22,24 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_agent_session::{ToolEffect, ToolFailure, ToolInvocation, ToolOutcome};
+use demi_agent_session::{StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome};
 use demi_agent_store::AgentTreeStore;
 use demi_host_interface::{
-    CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller, Numbers,
-    ObservationWindow, PageFeed, ShellEnvironment, ShellError, ShellTarget,
+    CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller,
+    Numbers, ObservationWindow, PageFeed, ShellEnvironment, ShellError, ShellTarget, watch,
 };
 use demi_provider_common::{RequestLimits, ToolDefinition};
-use demi_shared_types::{CommandId, ModelSelection, NodeId, Sequence};
-use futures_util::future::LocalBoxFuture;
+use demi_shared_types::{CommandId, ModelSelection, NodeId, Sequence, ShellId};
+use futures_util::{
+    StreamExt,
+    future::LocalBoxFuture,
+    stream::{self, FuturesUnordered},
+};
 
 pub use environments::Environments;
 use environments::Handle;
 pub use frames::{shell_output, stored_running_commands};
-use input::{CommandInput, ShellExecInput, ShellWriteInput, YieldInput, parse};
+use input::{DelayMs, ShellExecInput, StatusFields, StatusInput, YieldInput, parse};
 pub use product::{
     ContextSource, HostResolver, NodeContext, Profile, ProfileModel, SubagentSettings,
     SubagentSource, Toolset, ToolsetSource, Unavailable,
@@ -92,31 +96,21 @@ pub trait ShellEnvironmentFactory<H> {
     ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>>;
 }
 
-/// The five tools, in the order the model is given them.
+/// The three tools, in the order the model is given them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StandardTool {
     ShellExec,
     ShellStatus,
-    ShellWrite,
-    ShellAbort,
     Yield,
 }
 
 impl StandardTool {
-    const ALL: [Self; 5] = [
-        Self::ShellExec,
-        Self::ShellStatus,
-        Self::ShellWrite,
-        Self::ShellAbort,
-        Self::Yield,
-    ];
+    const ALL: [Self; 3] = [Self::ShellExec, Self::ShellStatus, Self::Yield];
 
     fn name(self) -> &'static str {
         match self {
             Self::ShellExec => "shell_exec",
             Self::ShellStatus => "shell_status",
-            Self::ShellWrite => "shell_write",
-            Self::ShellAbort => "shell_abort",
             Self::Yield => "yield",
         }
     }
@@ -128,23 +122,15 @@ impl StandardTool {
     fn definition(self) -> ToolDefinition {
         let (description, input_schema) = match self {
             Self::ShellExec => (
-                "Start a shell script and observe it for up to timeoutMs. timeoutMs is an observation window, not a kill deadline: at timeoutMs the command keeps running and a command handle (commandId) is returned. Completed short output is returned directly. shell_exec never ends the turn or schedules a wakeup on its own.",
+                "Start a shell script and watch it for up to timeoutMs. timeoutMs is how long to watch, not a deadline: when it passes, or when the user steers, the command keeps running and the result carries its commandId. Completed short output is returned directly. The shell_exec calls of one response run at the same time.",
                 input::schema::<ShellExecInput>(),
             ),
             Self::ShellStatus => (
-                "Read a running command handle status and any new budgeted output preview. Does not wait or write stdin.",
-                input::schema::<CommandInput>(),
-            ),
-            Self::ShellWrite => (
-                "Write non-empty stdin to a running foreground command and return status with new budgeted output preview. Include a newline for line-oriented prompts.",
-                input::schema::<ShellWriteInput>(),
-            ),
-            Self::ShellAbort => (
-                "Stop a running foreground command by commandId.",
-                input::schema::<CommandInput>(),
+                "Look at a command by its commandId: write stdin to it first when given (description is then required), then watch it for up to timeoutMs, or look at once without timeoutMs. Returns its status and the output since your last look.",
+                input::schema::<StatusFields>(),
             ),
             Self::Yield => (
-                "End this turn and schedule a one-shot wakeup. Does not touch shell commands.",
+                "End this turn and be woken after durationMs, or as soon as the first of the commands commandIds names ends, whichever comes first. The user can talk to you meanwhile.",
                 input::schema::<YieldInput>(),
             ),
         };
@@ -163,6 +149,20 @@ pub fn definitions() -> Arc<[ToolDefinition]> {
     DEFINITIONS.clone()
 }
 
+/// Whether consecutive calls of `tool` in one round run together as one
+/// step: `shell_exec`'s do (`runtime.md` § Dispatch and failures).
+pub fn runs_together(tool: &str) -> bool {
+    StandardTool::named(tool) == Some(StandardTool::ShellExec)
+}
+
+/// The conversation's commands, whichever agent of it ran them, which a
+/// `yield` may name (`runtime.md` § Yield wakeups).
+pub trait ConversationCommands {
+    /// Whether `command` is a command of the conversation, running or
+    /// ended.
+    fn knows<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<bool, String>>;
+}
+
 /// A node's access to its shells: the resolver that names the current Host,
 /// the product's factory, the environments made so far, and the node they
 /// belong to.
@@ -178,9 +178,28 @@ pub struct ShellAccess<'a, H: HostResolver> {
     pub feed: &'a Rc<dyn PageFeed>,
     /// The conversation's numbers, which its environments are made with.
     pub numbers: &'a Rc<dyn Numbers>,
+    /// The conversation's commands, which a `yield` names.
+    pub conversation: &'a dyn ConversationCommands,
 }
 
-impl<H: HostResolver> ShellAccess<'_, H> {
+// Every field is a reference or a number, so a step's tasks each hold a
+// copy; derived, the copy would ask the same of the resolver `H`.
+impl<H: HostResolver> Clone for ShellAccess<'_, H> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<H: HostResolver> Copy for ShellAccess<'_, H> {}
+
+/// A `shell_exec` call of a step, with the shell it runs in.
+struct PlannedExec {
+    call: ToolInvocation,
+    input: ShellExecInput,
+    target: ShellTarget,
+}
+
+impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// The environment for the conversation's current Host, which `handle`
     /// must belong to.
     async fn environment(
@@ -207,120 +226,250 @@ impl<H: HostResolver> ShellAccess<'_, H> {
             .map_err(CallError::Failed)
     }
 
-    /// Runs one call of a standard tool. A refused input completes the call
-    /// as an error that names the offending field; a failure of the Host or
-    /// its shells completes it as `Tool failed: <message>`.
-    pub async fn invoke(&self, call: ToolInvocation) -> Result<ToolOutcome, ToolFailure> {
+    /// Runs one step of a round (`runtime.md` § Dispatch and failures): a
+    /// call of `shell_status` or `yield`, or `shell_exec` calls, which start
+    /// together. Yields each call's outcome, by its index, as the call
+    /// returns. A refused input completes its call as an error that names
+    /// the offending field; a failure of the Host or its shells completes
+    /// it as `Tool failed: <message>`.
+    pub fn invoke_step(self, calls: Vec<ToolInvocation>) -> StepOutcomes<'a> {
+        if !calls.is_empty() && calls.iter().all(|call| runs_together(&call.tool_name)) {
+            return Box::pin(stream::once(self.exec_step(calls)).flatten());
+        }
+        let calls: FuturesUnordered<_> = calls
+            .into_iter()
+            .enumerate()
+            .map(|(index, call)| async move { (index, self.invoke(call).await) })
+            .collect();
+        Box::pin(calls)
+    }
+
+    /// Runs one call of a standard tool.
+    async fn invoke(self, call: ToolInvocation) -> Result<ToolOutcome, ToolFailure> {
         let Some(tool) = StandardTool::named(&call.tool_name) else {
             return Ok(ToolOutcome::error(format!(
                 "Tool not found: {}",
                 call.tool_name
             )));
         };
-        match self.run(tool, call).await {
-            Ok(outcome) => Ok(outcome),
-            Err(CallError::Refused(text)) => Ok(ToolOutcome::error(text)),
-            Err(CallError::Failed(message)) => Err(ToolFailure(message)),
+        match tool {
+            StandardTool::ShellExec => {
+                let mut ran = self.exec_step(vec![call]).await;
+                ran.next().await.expect("one call").1
+            }
+            StandardTool::ShellStatus => outcome(self.status(call).await),
+            StandardTool::Yield => outcome(self.yield_wakeup(call).await),
         }
     }
 
-    async fn run(
-        &self,
-        tool: StandardTool,
-        call: ToolInvocation,
-    ) -> Result<ToolOutcome, CallError> {
-        let name = tool.name();
-        let ToolInvocation {
-            tool_use_id,
-            input,
-            model,
-            request_limits,
-            cancel,
-            ..
-        } = call;
-        let called = Called {
-            model: &model,
-            limits: request_limits,
+    /// Plans a step's `shell_exec` calls and runs them together, yielding
+    /// each call's outcome as it returns. The first without a `shellId`
+    /// runs in the default shell, unless a call of the step names that
+    /// shell, and each other one without a `shellId` in a new shell that
+    /// starts in the default shell's directory as it is when the step
+    /// starts; calls that name the same shell run one after another.
+    async fn exec_step(self, calls: Vec<ToolInvocation>) -> StepOutcomes<'a> {
+        let count = calls.len();
+        let mut refused = Vec::new();
+        let mut planned: Vec<Option<(ToolInvocation, ShellExecInput)>> = Vec::with_capacity(count);
+        for (index, call) in calls.into_iter().enumerate() {
+            match parse::<ShellExecInput>(StandardTool::ShellExec.name(), call.input.clone()) {
+                Ok(input) => planned.push(Some((call, input))),
+                Err(refusal) => {
+                    refused.push((index, Ok(ToolOutcome::error(refusal))));
+                    planned.push(None);
+                }
+            }
+        }
+        let unnamed = planned
+            .iter()
+            .flatten()
+            .filter(|(_, input)| input.shell_id.is_none())
+            .count();
+        let named: Vec<&ShellId> = planned
+            .iter()
+            .flatten()
+            .filter_map(|(_, input)| input.shell_id.as_ref())
+            .collect();
+        // Only a step with a call without a shell beside another call needs
+        // to know the default shell: where a second such call starts, and
+        // whether a call of the step names it.
+        let default = if unnamed > 1 || (unnamed == 1 && !named.is_empty()) {
+            match self.environment(Handle::None).await {
+                Ok((_, environment)) => environment.default_shell(),
+                // Each call meets the same failure and reports it.
+                Err(_) => None,
+            }
+        } else {
+            None
         };
-        Ok(match tool {
-            StandardTool::Yield => {
-                let input: YieldInput = parse(name, input).map_err(CallError::Refused)?;
-                // The session writes the result: the wakeup's id is its own.
-                ToolOutcome {
-                    output: Vec::new(),
-                    is_error: false,
-                    view: None,
-                    effect: Some(ToolEffect::ScheduleYield {
-                        duration_ms: input.duration_ms.0,
-                    }),
+        // A shell a call of the step names is never given to a call that
+        // names none, so the two never race for it.
+        let default_named = default
+            .as_ref()
+            .is_some_and(|default| named.contains(&&default.id));
+        let beside = default.map(|default| default.cwd);
+        let mut default_taken = default_named;
+        // Each lane runs its calls one after another: one per named shell,
+        // and one per call without a shell.
+        let mut lanes: Vec<(Option<ShellId>, Vec<(usize, PlannedExec)>)> = Vec::new();
+        for (index, plan) in planned.into_iter().enumerate() {
+            let Some((call, input)) = plan else {
+                continue;
+            };
+            let target = match &input.shell_id {
+                Some(shell) => ShellTarget::Existing(shell.clone()),
+                None if !default_taken => {
+                    default_taken = true;
+                    ShellTarget::Default
                 }
+                None => ShellTarget::New {
+                    cwd: beside.clone(),
+                },
+            };
+            let shell = input.shell_id.clone();
+            let exec = PlannedExec {
+                call,
+                input,
+                target,
+            };
+            match lanes
+                .iter_mut()
+                .find(|(named, _)| named.is_some() && *named == shell)
+            {
+                Some((_, lane)) => lane.push((index, exec)),
+                None => lanes.push((shell, vec![(index, exec)])),
             }
-            StandardTool::ShellExec => {
-                let input: ShellExecInput = parse(name, input).map_err(CallError::Refused)?;
-                let handle = input.shell_id.as_ref().map_or(Handle::None, Handle::Shell);
-                let (slot, environment) = self.environment(handle).await?;
-                if let Some(suppressed) = slot.repeated(&input.script) {
-                    return Ok(suppressed);
-                }
-                let request = ExecRequest {
-                    script: input.script,
-                    shell: input
-                        .shell_id
-                        .map_or(ShellTarget::Default, ShellTarget::Existing),
-                    window: ObservationWindow::from_millis(u64::from(input.timeout_ms.0))
-                        .expect("the input admits only windows an environment takes"),
-                    caller: JobCaller {
-                        node: self.context.node.clone(),
-                    },
-                    tool_use_id,
-                };
-                let status = environment.exec(request, cancel).await?;
-                finish(environment.as_ref(), status, called).await
+        }
+        let lanes = lanes.into_iter().map(|(_, lane)| {
+            stream::iter(lane)
+                .then(move |(index, exec)| async move { (index, outcome(self.exec(exec).await)) })
+                .boxed_local()
+        });
+        Box::pin(stream::iter(refused).chain(stream::select_all(lanes)))
+    }
+
+    /// Starts a `shell_exec` call's script and watches it for up to its
+    /// window (`runtime.md` § The window).
+    async fn exec(&self, exec: PlannedExec) -> Result<ToolOutcome, CallError> {
+        let PlannedExec {
+            call,
+            input,
+            target,
+        } = exec;
+        let handle = input.shell_id.as_ref().map_or(Handle::None, Handle::Shell);
+        let (slot, environment) = self.environment(handle).await?;
+        if let Some(suppressed) = slot.repeated(&input.script) {
+            return Ok(suppressed);
+        }
+        let request = ExecRequest {
+            script: input.script,
+            shell: target,
+            caller: JobCaller {
+                node: self.context.node.clone(),
+            },
+            tool_use_id: call.tool_use_id,
+        };
+        let command = environment.start(request, call.cancel).await?;
+        let status = watch(
+            environment.as_ref(),
+            &command,
+            Some(window(input.timeout_ms)),
+            call.arrival.arrived(),
+        )
+        .await?;
+        let called = Called {
+            model: &call.model,
+            limits: call.request_limits,
+        };
+        Ok(finish(environment.as_ref(), status, called).await)
+    }
+
+    /// A `shell_status` call: writes its input to the command first when it
+    /// has some, then watches the command for up to its window, or looks at
+    /// once without one.
+    async fn status(&self, call: ToolInvocation) -> Result<ToolOutcome, CallError> {
+        let input: StatusInput =
+            parse(StandardTool::ShellStatus.name(), call.input).map_err(CallError::Refused)?;
+        let command = &input.command_id;
+        let (_, environment) = self.environment(Handle::Command(command)).await?;
+        if let Some(stdin) = input.stdin {
+            environment.write(command, Bytes::from(stdin.0)).await?;
+        }
+        let status = watch(
+            environment.as_ref(),
+            command,
+            input.timeout_ms.map(window),
+            call.arrival.arrived(),
+        )
+        .await?;
+        let called = Called {
+            model: &call.model,
+            limits: call.request_limits,
+        };
+        Ok(finish(environment.as_ref(), status, called).await)
+    }
+
+    /// A `yield` call: the wakeup it asks the session for. A command it
+    /// names must be one of the conversation's.
+    async fn yield_wakeup(&self, call: ToolInvocation) -> Result<ToolOutcome, CallError> {
+        let input: YieldInput =
+            parse(StandardTool::Yield.name(), call.input).map_err(CallError::Refused)?;
+        let commands = input.command_ids.unwrap_or_default();
+        for command in &commands {
+            if !self
+                .conversation
+                .knows(command)
+                .await
+                .map_err(CallError::Failed)?
+            {
+                return Ok(ToolOutcome::error(format!(
+                    "yield: no command {command} in this conversation"
+                )));
             }
-            StandardTool::ShellStatus => {
-                let input: CommandInput = parse(name, input).map_err(CallError::Refused)?;
-                let (_, environment) = self.environment(Handle::Command(&input.command_id)).await?;
-                let status = environment.status(&input.command_id)?;
-                finish(environment.as_ref(), status, called).await
-            }
-            StandardTool::ShellWrite => {
-                let input: ShellWriteInput = parse(name, input).map_err(CallError::Refused)?;
-                let environment = self.write(&input.command_id, input.stdin.0).await?;
-                let status = environment.status(&input.command_id)?;
-                finish(environment.as_ref(), status, called).await
-            }
-            StandardTool::ShellAbort => {
-                let input: CommandInput = parse(name, input).map_err(CallError::Refused)?;
-                let environment = self.abort(&input.command_id).await?;
-                let status = environment.status(&input.command_id)?;
-                // A stop the model asked for is never an error.
-                ToolOutcome {
-                    is_error: false,
-                    ..finish(environment.as_ref(), status, called).await
-                }
-            }
+        }
+        // The session writes the result: the wakeup's id is its own.
+        Ok(ToolOutcome {
+            output: Vec::new(),
+            is_error: false,
+            view: None,
+            effect: Some(ToolEffect::ScheduleYield {
+                duration_ms: input.duration_ms.0,
+                commands,
+            }),
         })
     }
 
-    /// Writes `stdin` to a running command of the current Host, and returns
-    /// the environment that runs it.
-    pub async fn write(
-        &self,
-        command: &CommandId,
-        stdin: String,
-    ) -> Result<Rc<dyn ShellEnvironment>, CallError> {
+    /// Writes `stdin` to a running command of the current Host, as a page's
+    /// input does.
+    pub async fn write(&self, command: &CommandId, stdin: String) -> Result<(), CallError> {
         let (_, environment) = self.environment(Handle::Command(command)).await?;
         environment.write(command, Bytes::from(stdin)).await?;
-        Ok(environment)
+        Ok(())
     }
 
-    /// Stops a running command of the current Host, and returns the
-    /// environment that ran it.
-    pub async fn abort(&self, command: &CommandId) -> Result<Rc<dyn ShellEnvironment>, CallError> {
+    /// Stops a running command of the current Host, as a page's stop does.
+    pub async fn abort(&self, command: &CommandId) -> Result<(), CallError> {
         let (_, environment) = self.environment(Handle::Command(command)).await?;
         environment.abort(command).await?;
-        Ok(environment)
+        Ok(())
     }
+}
+
+/// A call's outcome: a refused input completes it as an error the model
+/// reads, a failure as `Tool failed: <message>`.
+fn outcome(ran: Result<ToolOutcome, CallError>) -> Result<ToolOutcome, ToolFailure> {
+    match ran {
+        Ok(outcome) => Ok(outcome),
+        Err(CallError::Refused(text)) => Ok(ToolOutcome::error(text)),
+        Err(CallError::Failed(message)) => Err(ToolFailure(message)),
+    }
+}
+
+/// The window a call's `timeoutMs` names.
+fn window(timeout: DelayMs) -> ObservationWindow {
+    ObservationWindow::from_millis(u64::from(timeout.0))
+        .expect("the input admits only windows an environment takes")
 }
 
 /// Why a call did not produce a result of its tool.

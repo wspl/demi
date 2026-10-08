@@ -4,7 +4,10 @@
 //! wakeups still scheduled. Pure state: the session decides when a boundary
 //! takes them.
 
-use demi_shared_types::{AgentMessage, BlockId, PendingSteer, Timestamp, WakeupId};
+use demi_shared_types::{
+    AgentMessage, BlockId, CommandEnd, CommandId, PendingSteer, Timestamp, WakeupCommand, WakeupId,
+};
+use tokio_util::task::AbortOnDropHandle;
 
 use demi_agent_store::{PendingAgentInput, ScheduledWakeup};
 
@@ -173,32 +176,105 @@ impl InputQueue {
 }
 
 /// The yield wakeups scheduled and not yet fired, in the order they were
-/// scheduled.
+/// scheduled, each with the task that watches the commands it names.
 #[derive(Debug, Default)]
 pub(super) struct Wakeups {
-    scheduled: Vec<ScheduledWakeup>,
+    scheduled: Vec<Scheduled>,
+}
+
+#[derive(Debug)]
+struct Scheduled {
+    wakeup: ScheduledWakeup,
+    /// Watches the wakeup's commands until one ends; it goes with the
+    /// wakeup, whether the wakeup fires or is cancelled.
+    watch: Option<AbortOnDropHandle<()>>,
 }
 
 impl Wakeups {
-    pub(super) fn restored(scheduled: Vec<ScheduledWakeup>) -> Self {
-        Self { scheduled }
+    /// The wakeups a checkpoint saved, restored at `now`. Their commands
+    /// ended with the shells of the session that saved them, so a wakeup
+    /// that names commands and saw none of them end is due at once, as one
+    /// that ended with its node's shells (`runtime.md` § Yield wakeups).
+    pub(super) fn restored(scheduled: Vec<ScheduledWakeup>, now: Timestamp) -> Self {
+        let mut wakeups = Self {
+            scheduled: scheduled
+                .into_iter()
+                .map(|wakeup| Scheduled {
+                    wakeup,
+                    watch: None,
+                })
+                .collect(),
+        };
+        for scheduled in &mut wakeups.scheduled {
+            let wakeup = &mut scheduled.wakeup;
+            if wakeup.ended.is_none()
+                && let Some(command_id) = wakeup.command_ids.first()
+            {
+                wakeup.ended = Some(WakeupCommand {
+                    command_id: command_id.clone(),
+                    end: CommandEnd::Stopped,
+                });
+                wakeup.due_at = wakeup.due_at.map(|due| due.min(now));
+            }
+        }
+        wakeups
     }
 
-    /// A wakeup whose wait starts when its action ends.
-    pub(super) fn schedule(&mut self, id: WakeupId, duration_ms: u32) {
-        self.scheduled.push(ScheduledWakeup {
-            id,
-            duration_ms,
-            due_at: None,
+    /// A wakeup whose wait starts when its action ends, unless one of
+    /// `commands` ends first.
+    pub(super) fn schedule(&mut self, id: WakeupId, duration_ms: u32, commands: Vec<CommandId>) {
+        self.scheduled.push(Scheduled {
+            wakeup: ScheduledWakeup {
+                id,
+                duration_ms,
+                command_ids: commands,
+                ended: None,
+                due_at: None,
+            },
+            watch: None,
         });
     }
 
+    /// Keeps the task that watches the commands of the wakeup `id`; a
+    /// wakeup that is gone already drops it.
+    pub(super) fn watch(&mut self, id: &WakeupId, watch: AbortOnDropHandle<()>) {
+        if let Some(scheduled) = self.find(id) {
+            scheduled.watch = Some(watch);
+        }
+    }
+
+    /// One of the wakeup `id`'s commands ended, as `ended` says: the wakeup
+    /// is due at once, or when its action ends, if it has not ended yet.
+    /// A wakeup that fired or was cancelled already changes nothing.
+    pub(super) fn command_ended(&mut self, id: &WakeupId, ended: WakeupCommand, now: Timestamp) {
+        let Some(scheduled) = self.find(id) else {
+            return;
+        };
+        // The watch that reports this ends by itself, and its handle goes
+        // with the wakeup.
+        let wakeup = &mut scheduled.wakeup;
+        if wakeup.ended.is_none() {
+            wakeup.ended = Some(ended);
+        }
+        wakeup.due_at = wakeup.due_at.map(|due| due.min(now));
+    }
+
+    fn find(&mut self, id: &WakeupId) -> Option<&mut Scheduled> {
+        self.scheduled
+            .iter_mut()
+            .find(|scheduled| &scheduled.wakeup.id == id)
+    }
+
     /// Starts the wait of every wakeup whose action ended: each is due its
-    /// duration after `now`.
+    /// duration after `now`, or at `now` when one of its commands ended
+    /// meanwhile.
     pub(super) fn arm(&mut self, now: Timestamp) {
-        for wakeup in &mut self.scheduled {
+        for Scheduled { wakeup, .. } in &mut self.scheduled {
             if wakeup.due_at.is_none() {
-                wakeup.due_at = Some(after(now, wakeup.duration_ms));
+                wakeup.due_at = Some(match wakeup.ended {
+                    Some(_) => now,
+                    None => after(now, wakeup.duration_ms),
+                });
             }
         }
     }
@@ -207,17 +283,17 @@ impl Wakeups {
     pub(super) fn next_due(&self) -> Option<Timestamp> {
         self.scheduled
             .iter()
-            .filter_map(|wakeup| wakeup.due_at)
+            .filter_map(|scheduled| scheduled.wakeup.due_at)
             .min()
     }
 
     /// Takes the wakeups due at `now`, in the order they were scheduled.
     pub(super) fn take_due(&mut self, now: Timestamp) -> Vec<ScheduledWakeup> {
-        let (due, waiting) = std::mem::take(&mut self.scheduled)
+        let (due, waiting): (Vec<Scheduled>, Vec<Scheduled>) = std::mem::take(&mut self.scheduled)
             .into_iter()
-            .partition(|wakeup| wakeup.due_at.is_some_and(|due| due <= now));
+            .partition(|scheduled| scheduled.wakeup.due_at.is_some_and(|due| due <= now));
         self.scheduled = waiting;
-        due
+        due.into_iter().map(|scheduled| scheduled.wakeup).collect()
     }
 
     /// Cancels the oldest scheduled wakeup; false when none is scheduled.
@@ -233,8 +309,8 @@ impl Wakeups {
         self.scheduled.is_empty()
     }
 
-    pub(super) fn scheduled(&self) -> &[ScheduledWakeup] {
-        &self.scheduled
+    pub(super) fn scheduled(&self) -> impl Iterator<Item = &ScheduledWakeup> {
+        self.scheduled.iter().map(|scheduled| &scheduled.wakeup)
     }
 }
 

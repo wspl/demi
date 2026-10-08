@@ -168,6 +168,15 @@ impl CommandRecord {
         matches!(self.phase, Phase::Running)
     }
 
+    /// How the command ended; none while it runs.
+    pub fn ending(&self) -> Option<Ending> {
+        match &self.phase {
+            Phase::Running => None,
+            Phase::Exited { exit_code, .. } => Some(Ending::Exited(*exit_code)),
+            Phase::Aborted => Some(Ending::Aborted),
+        }
+    }
+
     /// The text of a stream so far.
     pub fn text(&self, stream: StreamKind) -> &str {
         &self.stream(stream).text

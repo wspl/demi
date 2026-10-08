@@ -7,9 +7,10 @@ use std::sync::Arc;
 
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
 use demi_shared_gates::{GateLease, Reservation};
-use demi_shared_types::{ModelSelection, ToolView, TurnId};
-use futures_util::future::LocalBoxFuture;
+use demi_shared_types::{CommandId, ModelSelection, ToolView, TurnId, WakeupCommand};
+use futures_util::{future::LocalBoxFuture, stream::LocalBoxStream};
 use serde_json::Value;
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 pub trait SessionRuntime {
@@ -52,12 +53,28 @@ pub trait SessionRuntime {
     /// The tools the model may call.
     fn tools(&self) -> Arc<[ToolDefinition]>;
 
-    /// Runs one call of a tool that [`tools`](Self::tools) names. Dropping
-    /// the future stops the call.
-    fn invoke_tool(
-        &self,
-        call: ToolInvocation,
-    ) -> LocalBoxFuture<'_, Result<ToolOutcome, ToolFailure>>;
+    /// Whether consecutive calls of `tool` in one round run together as one
+    /// step (`runtime.md` § Dispatch and failures); a call of any other tool
+    /// is a step of its own.
+    fn runs_together(&self, tool: &str) -> bool {
+        let _ = tool;
+        false
+    }
+
+    /// Runs one step: its calls, each of a tool that [`tools`](Self::tools)
+    /// names, together. Yields each call's outcome, by its index in
+    /// `calls`, as the call returns, and ends once every call has
+    /// returned. Dropping the stream stops the calls still running.
+    fn invoke_step(&self, calls: Vec<ToolInvocation>) -> StepOutcomes<'_>;
+
+    /// Resolves once the first of `commands`, which a `yield` named, has
+    /// ended, at once when one has ended already, with how it ended
+    /// (`runtime.md` § Yield wakeups). It holds nothing of the session. A
+    /// node without shells has no commands, so by default it never resolves.
+    fn command_end(&self, commands: Vec<CommandId>) -> LocalBoxFuture<'static, WakeupCommand> {
+        let _ = commands;
+        Box::pin(std::future::pending())
+    }
 
     /// Releases what the node's tools hold, such as its shell environments
     /// and the commands they run, once its session is disposed; the session's
@@ -66,6 +83,10 @@ pub trait SessionRuntime {
         Box::pin(async {})
     }
 }
+
+/// The outcomes of a step's calls as they return, each by the call's index
+/// in the step.
+pub type StepOutcomes<'a> = LocalBoxStream<'a, (usize, Result<ToolOutcome, ToolFailure>)>;
 
 /// A context block the model receives, as its source sees it.
 #[derive(Debug, Clone, Copy)]
@@ -100,6 +121,36 @@ pub struct ToolInvocation {
     /// Cancelled when the action stops: a command the call started stops
     /// with it, even after the call returned.
     pub cancel: CancellationToken,
+    /// Resolves once input arrives that joins the turn at its next boundary,
+    /// which ends the window a shell tool watches its command in
+    /// (`runtime.md` § The window).
+    pub arrival: InputArrival,
+}
+
+/// The arrival of input that joins the running turn at its next boundary:
+/// a steer, an agent message or a fired wakeup (`runtime.md` § The window).
+/// A message sent to the queue is none.
+#[derive(Debug, Clone)]
+pub struct InputArrival {
+    arrivals: watch::Receiver<u64>,
+    /// How many had arrived when the step started.
+    since: u64,
+}
+
+impl InputArrival {
+    /// The arrivals after the `since`th that `arrivals` counts.
+    pub(crate) fn new(arrivals: watch::Receiver<u64>, since: u64) -> Self {
+        Self { arrivals, since }
+    }
+
+    /// Resolves once input arrived after the step started.
+    pub async fn arrived(mut self) {
+        let since = self.since;
+        if self.arrivals.wait_for(|count| *count > since).await.is_err() {
+            // The session is gone, and no input will arrive.
+            std::future::pending::<()>().await;
+        }
+    }
 }
 
 /// How a tool call completed.
@@ -129,12 +180,16 @@ impl ToolOutcome {
 
 /// What a tool asks of its session (`runtime.md` § Dispatch and failures):
 /// a tool never reaches into its session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolEffect {
-    /// `yield`: schedule one wakeup `duration_ms` after the action ends, and
-    /// end the turn after this round of tools unless input arrived during
-    /// it. The call's result says `yield scheduled` with the duration.
-    ScheduleYield { duration_ms: u32 },
+    /// `yield`: schedule one wakeup `duration_ms` after the action ends, or
+    /// sooner when one of `commands` ends, and end the turn after this round
+    /// of tools unless input arrived during it. The call's result says
+    /// `yield scheduled` with the duration and the commands.
+    ScheduleYield {
+        duration_ms: u32,
+        commands: Vec<CommandId>,
+    },
 }
 
 /// A tool that failed; its call completes as `Tool failed: <message>`.
