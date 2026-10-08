@@ -39,7 +39,7 @@ async fn the_personal_instructions_and_the_projects_files_reach_the_model_whole_
     create(&backend, &master, FIRST).await;
 
     // `~/AGENTS.md` is above the repository; the root's `CLAUDE.md` links to
-    // its `AGENTS.md`, which is longer than the replay bound; `web` has
+    // its `AGENTS.md`, which is far longer than the replay bound; `web` has
     // only a `CLAUDE.md`.
     let home = alpha.runner.home_dir().to_owned();
     let repo = home.join("repo");
@@ -47,7 +47,8 @@ async fn the_personal_instructions_and_the_projects_files_reach_the_model_whole_
     std::fs::create_dir_all(repo.join(".git")).unwrap();
     std::fs::create_dir_all(&web).unwrap();
     std::fs::write(home.join("AGENTS.md"), "OUTSIDE THE REPOSITORY").unwrap();
-    let filler = "x".repeat(10_000);
+    // Over 256 KiB in all: no size keeps a file out or cuts it.
+    let filler = "x".repeat(150_000);
     let root_text = format!("ROOT RULES\n{filler}\nMIDDLE RULE\n{filler}");
     std::fs::write(repo.join("AGENTS.md"), &root_text).unwrap();
     std::os::unix::fs::symlink("AGENTS.md", repo.join("CLAUDE.md")).unwrap();
