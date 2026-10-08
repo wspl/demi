@@ -347,10 +347,13 @@ impl ConversationRuntime {
             let runtime = if provider.capabilities().process_host {
                 let work = ProcessWork::Conversation(scope.conversation.clone());
                 let placement = CloudPlacement::placement(scope.shard.clone(), work);
+                let env = RuntimeEnv {
+                    http: scope.http.clone(),
+                };
                 scope
                     .services
                     .assembly
-                    .process_runtime(entry, entry.active(), placement)
+                    .process_runtime(entry, entry.active(), env, placement)
                     .await
                     .map_err(|error| refused(error.to_string(), None))?
             } else {

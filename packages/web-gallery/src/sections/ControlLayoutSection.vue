@@ -138,7 +138,7 @@ const surfaces = [
             />
           </div>
           <div data-command-layout="single">
-            <CopyCode code="claude setup-token" />
+            <CopyCode code="demi-runner --version" />
           </div>
           <div data-command-layout="wrapped">
             <CopyCode

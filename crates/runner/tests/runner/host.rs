@@ -6,7 +6,7 @@
 use std::{collections::BTreeMap, path::PathBuf, time::Duration};
 
 use demi_runner_protocol::wire::{
-    FsResult, Inbound, Outbound, OutputStream, Signal, SpawnError, SpawnErrorKind,
+    self, FsResult, Inbound, Outbound, OutputStream, Signal, SpawnError, SpawnErrorKind,
 };
 
 use crate::{Host, context, start_job};
@@ -168,6 +168,7 @@ async fn raw_spawn_inherits_environment_only_when_requested() {
                 env,
                 inherit_env,
                 kill_process_group: Some(true),
+                descriptors: None,
             })
             .await;
             let mut stdout = Vec::new();
@@ -199,6 +200,53 @@ async fn raw_spawn_inherits_environment_only_when_requested() {
                 expected
             );
         }
+        host.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+/// A process reads the bytes its descriptor carries, and then the pipe's
+/// end, and the bytes appear nowhere else: a token a provider's process
+/// reads from a descriptor (`claude-code.md` § Accounts and sign-in).
+#[cfg(unix)]
+#[tokio::test]
+async fn a_raw_spawn_reads_its_descriptors_bytes_and_their_end() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let mut host = Host::start(BTreeMap::new()).await.online().await;
+        host.send(Inbound::Spawn {
+            spawn_id: "descriptor".into(),
+            command: "/bin/sh".into(),
+            args: Some(vec![
+                "-c".into(),
+                "cat <&3; echo; echo \"env:$(env | grep -c token-bytes)\"".into(),
+            ]),
+            cwd: None,
+            env: None,
+            inherit_env: None,
+            kill_process_group: Some(true),
+            descriptors: Some(vec![wire::Descriptor {
+                fd: 3,
+                bytes: wire::WireBytes(b"token-bytes".to_vec()),
+            }]),
+        })
+        .await;
+        let mut stdout = Vec::new();
+        loop {
+            match host.frame().await {
+                Outbound::SpawnExit { exit_code, .. } => {
+                    assert_eq!(exit_code, Some(0));
+                    break;
+                }
+                Outbound::SpawnOutput {
+                    stream: OutputStream::Stdout,
+                    bytes,
+                    ..
+                } => stdout.extend(bytes.0),
+                _ => {}
+            }
+        }
+        assert_eq!(String::from_utf8(stdout).unwrap(), "token-bytes\nenv:0\n");
         host.close().await;
     })
     .await

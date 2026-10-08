@@ -2,8 +2,6 @@
 import { ref, watch } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { Check, Copy, ExternalLink, Link } from '@lucide/vue'
-import CopyCode from '../ui/CopyCode.vue'
-import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
@@ -16,7 +14,7 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
 /**
  * A subscription sign-in, as the vendor's own flow: a device code confirmed in a
- * web browser, or a token the vendor's CLI hands out after its own login
+ * web browser, or the vendor's sign-in page, whose code the user pastes back
  * (`providers.md`). Owns nothing; the host drives the phase.
  */
 import type { ProviderLoginPhase } from './types'
@@ -31,19 +29,25 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  submitToken: [token: string]
+  submitCode: [code: string]
   /** The host opens the vendor's page the way it opens any external link. */
   open: [url: string]
   retry: []
 }>()
 
-const token = ref('')
+const code = ref('')
 watch(
   () => [props.isOpen, props.phase.kind],
   () => {
-    token.value = ''
+    code.value = ''
   },
 )
+
+function submitCode(): void {
+  if (props.phase.kind === 'code' && !props.phase.submitted && code.value) {
+    emit('submitCode', code.value)
+  }
+}
 const { copy, copied } = useClipboard({ copiedDuring: 1500 })
 // The link has its own tick: copying it must not mark the code as copied.
 const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500 })
@@ -61,14 +65,18 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
         <h3 class="text-[15px] font-medium text-fg-emphasis">
           Sign In to {{ vendorName }}
         </h3>
-        <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
+        <!-- While it starts, the body alone says so. -->
+        <p
+          v-if="phase.kind !== 'starting'"
+          class="mt-0.5 text-[13px] leading-5 text-fg-muted"
+        >
           <template v-if="phase.kind === 'device'"
             >Enter this code on the vendor’s page. Demi keeps waiting
             here.</template
           >
-          <template v-else-if="phase.kind === 'token'"
-            >Sign in with the vendor’s own tool, then paste the token it
-            prints.</template
+          <template v-else-if="phase.kind === 'code'"
+            >Sign in on the vendor’s page, then paste the code it
+            shows.</template
           >
           <template v-else-if="phase.kind === 'done' && phase.active"
             >Signed in. This account is now active for
@@ -78,10 +86,7 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
             >Signed in. {{ vendorName }} keeps using its active account;
             activate this one to switch.</template
           >
-          <template v-else-if="phase.kind === 'failed'"
-            >The sign-in did not complete.</template
-          >
-          <template v-else>Contacting {{ vendorName }}…</template>
+          <template v-else>The sign-in did not complete.</template>
         </p>
       </header>
 
@@ -90,7 +95,7 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
         class="flex items-center gap-2 py-4 text-chrome text-fg-muted"
       >
         <IndeterminateSpinner :size="ICON_PX.in24" />
-        Requesting a sign-in code
+        Contacting {{ vendorName }}…
       </div>
 
       <div v-else-if="phase.kind === 'device'" class="flex flex-col gap-4">
@@ -131,60 +136,52 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
         </div>
       </div>
 
-      <!-- Token: three numbered steps; the command copies, the last step is the paste. -->
-      <ol v-else-if="phase.kind === 'token'" class="flex flex-col gap-3">
-        <li class="flex items-start gap-3">
-          <Tag class="mt-0.5 shrink-0 tabular-nums">1</Tag>
-          <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-            <span class="text-chrome text-fg"
-              >Install {{ vendorName }} if you have not.</span
-            >
-            <Button class="self-start" @click="emit('open', phase.install.url)">
-              {{ phase.install.label }}
-              <ExternalLink :size="ICON_PX.in24" />
-            </Button>
-          </div>
-        </li>
-        <li class="flex items-start gap-3">
-          <Tag class="mt-0.5 shrink-0 tabular-nums">2</Tag>
-          <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-            <span class="text-chrome text-fg"
-              >Run this in a terminal and sign in when the browser opens.</span
-            >
-            <CopyCode :code="phase.command" />
-          </div>
-        </li>
-        <li class="flex items-start gap-3">
-          <Tag class="mt-0.5 shrink-0 tabular-nums">3</Tag>
-          <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-            <span class="text-chrome text-fg">Paste the token it prints.</span>
-            <div class="flex items-center gap-2">
-              <TextInput
-                v-model="token"
-                secret
-                trim
-                :placeholder="`${phase.prefix}…`"
-                class="flex-1"
-                @keydown.enter="
-                  token.startsWith(phase.prefix) &&
-                  emit('submitToken', token)
-                "
-              />
-              <Button
-                variant="primary"
-                :disabled="!token.startsWith(phase.prefix)"
-                @click="emit('submitToken', token)"
-                >Continue</Button
-              >
-            </div>
-            <span
-              v-if="token && !token.startsWith(phase.prefix)"
-              class="text-[12px] text-on-danger"
-              >A token starts with {{ phase.prefix }}.</span
-            >
-          </div>
-        </li>
-      </ol>
+      <!-- The vendor's page and the code it shows: open or copy the link, paste the code. -->
+      <div v-else-if="phase.kind === 'code'" class="flex flex-col gap-4">
+        <div class="flex flex-wrap items-center gap-3">
+          <Button @click="emit('open', phase.url)">
+            Open in Browser
+            <ExternalLink :size="ICON_PX.in24" />
+          </Button>
+          <!-- For a web browser on another machine, or another profile: the link alone. -->
+          <Tooltip :content="linkCopied ? 'Copied' : 'Copy the link to sign in from another browser or device'">
+            <IconButton
+              :icon="linkCopied ? Check : Link"
+              variant="ghost"
+              :aria-label="linkCopied ? 'Copied' : 'Copy link'"
+              @click="copyLink(phase.url)"
+            />
+          </Tooltip>
+        </div>
+        <div class="flex items-center gap-2">
+          <TextInput
+            v-model="code"
+            trim
+            placeholder="Paste the code"
+            aria-label="Code"
+            class="flex-1"
+            :disabled="phase.submitted"
+            @keydown.enter="submitCode"
+          />
+          <Button
+            variant="primary"
+            :disabled="!code || phase.submitted"
+            @click="submitCode"
+            >Continue</Button
+          >
+        </div>
+        <!-- The vendor's own words for a code it refused; the sign-in waits for another. -->
+        <InlineError v-if="phase.error && !phase.submitted" :message="phase.error" />
+        <span class="flex items-center gap-1.5 text-[12px] text-fg-subtle">
+          <IndeterminateSpinner :size="ICON_PX.in20" />
+          <template v-if="phase.submitted">Signing in…</template>
+          <template v-else
+            >Waiting for the code<template v-if="phase.expiresIn">
+              · expires in {{ phase.expiresIn }}</template
+            ></template
+          >
+        </span>
+      </div>
 
       <div
         v-else-if="phase.kind === 'done'"

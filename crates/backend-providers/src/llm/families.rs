@@ -9,9 +9,9 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_provider_claude_code::Placement;
-use demi_provider_common::VendorPolicy;
-use demi_provider_common::credentials::CredentialPool;
+use demi_provider_claude_code::{AccountMachine, Placement};
+use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
+use demi_provider_common::{RuntimeEnv, VendorPolicy};
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_provider_common::quota::QuotaSnapshotStore;
 use demi_provider_common::{Provider, ProviderRuntime, Secret};
@@ -34,13 +34,26 @@ pub trait ProviderFamily: Send + Sync + 'static {
     fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError>;
 
     /// A session's runtime of the provider `args` build, whose process
-    /// `placement` starts; none for a family whose provider runs no process
-    /// (`claude-code.md` § How a runtime gets its process).
+    /// `placement` starts, with the shard's `env`; none for a family whose
+    /// provider runs no process (`claude-code.md` § How a runtime gets its
+    /// process).
     fn process_runtime(
         &self,
         _args: FamilyArgs,
+        _env: RuntimeEnv,
         _placement: Rc<dyn Placement>,
     ) -> Option<Result<Box<dyn ProviderRuntime>, FamilyError>> {
+        None
+    }
+
+    /// The account operations of the provider `args` build, whose sign-in
+    /// runs on `machine`; none for a family whose login runs no process
+    /// (`claude-code.md` § Accounts and sign-in).
+    fn login_accounts(
+        &self,
+        _args: FamilyArgs,
+        _machine: Arc<dyn AccountMachine>,
+    ) -> Option<Result<Box<dyn SubscriptionAccounts>, FamilyError>> {
         None
     }
 }

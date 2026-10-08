@@ -134,7 +134,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
               @close="close"
               @retry="productWould('Start the Claude Code Sign-In Again')"
               @open="(url) => productWould(`Open ${url} in a New Browser Tab`)"
-              @submit-token="productWould('Sign In to Claude Code with the Token')"
+              @submit-code="productWould('Give the Code to the Claude Code Sign-In')"
             />
           </GalleryDialogFrame>
         </GallerySpecimen>

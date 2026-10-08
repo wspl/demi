@@ -81,7 +81,8 @@ fn scripted(directory: &Arc<Directory>) -> FamilyRegistry {
 #[tokio::test]
 async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
     let directory = Arc::new(Directory::default());
-    let families = crate::accounts::scripts(None).families.with(
+    let scripts = crate::accounts::scripts(None);
+    let families = scripts.families.clone().with(
         "scripted",
         ScriptedKey {
             directory: directory.clone(),
@@ -229,18 +230,8 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
         []
     );
     for user in [&master, &alice] {
-        let imported = backend
-            .post(
-                "/api/providers/setup-token",
-                Some(user),
-                json!({ "token": format!("token-of-{}", user.user.email.as_str()), "label": "Claude" }),
-            )
-            .await;
-        assert_eq!(imported.status, StatusCode::CREATED);
-        let path = format!(
-            "/api/providers/{}",
-            imported.json::<ProviderAnswer>().provider.id
-        );
+        let entry = crate::accounts::device_entry(&backend, user, &scripts).await;
+        let path = format!("/api/providers/{}", entry.id);
         assert_eq!(
             backend.delete(&path, user).await.status,
             StatusCode::NO_CONTENT
