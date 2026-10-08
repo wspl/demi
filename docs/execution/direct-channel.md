@@ -325,8 +325,9 @@ opens, `/settings/devices/<id>`, as a row of macOS's System Settings opens
 its detail.
 
 The page keeps state and settings apart, as macOS's Network settings do: the
-header says what is happening, and a grouped row is only something the user
-can change or a fact about the device, never a status dressed as a setting.
+header names the device and its state, a section of its own says how the
+direct connection fares, and a grouped row is only something the user can
+change or a fact about the device, never a status dressed as a setting.
 It says little, by the [Writing page's brevity rules](../../packages/web-gallery/src/sections/WritingSection.vue):
 a state in a few words, at most one short sentence, the rest behind
 Details….
@@ -337,8 +338,6 @@ Details….
 ┌────┐ zan-mbp
 │ 🖥 │ ● Through the server
 └────┘
-       Your networks block a direct connection.
-       [Details…]  [Try Again]
 
 Connection
 ┌──────────────────────────────────────────────────────────────┐
@@ -346,6 +345,9 @@ Connection
 │ Uses the faster path.                                        │
 └──────────────────────────────────────────────────────────────┘
   Direct 620 ms, 6% lost · Server 480 ms
+
+Direct Connection                         [Details…]  [Try Again]
+  Your networks block a direct connection.
 
 Device
 ┌──────────────────────────────────────────────────────────────┐
@@ -360,21 +362,17 @@ Device
 └──────────────────────────────────────────────────────────────┘
 ```
 
-- **The header.** The icon is exactly as tall as the name and status lines
-  together and centred on them, as macOS's account and device headers are;
-  the status dot is centred on the status text and has the colour of the
-  device's state, as the devices list's dot does: green while it is online,
-  whichever path the page takes, since the words say the path. The status carries no
-  figure, since the footnote under Connection gives both paths'. Under them,
-  starting where the name starts, the reason, only when there is one, and
-  then the buttons on a line of their own. **Details…** opens the sheet
-  below and **Try Again** makes a new peer at once; both are there only while
-  the device is online and its route allows a peer, Try Again only while the
-  page has no connected peer. The attempts Demi makes by itself show
-  nothing. Only Try Again shows its attempt: the button takes its loading
-  state when clicked and keeps it until the attempt ends. Clicked while an
-  attempt Demi started is running, it starts no second one and shows that
-  one until it ends.
+- **The header** names the device and its state, nothing more. The icon is
+  exactly as tall as the name and status lines together and centred on
+  them, as macOS's account and device headers are; the status dot is
+  centred on the status text and has the colour of the device's state, as
+  the devices list's dot does: green while it is online, whichever path the
+  page takes, since the words say the path, *Connected directly* or
+  *Through the server*. The status carries no figure, since the footnote
+  under Connection gives both paths'. While the device is offline, one line
+  under the status says how to bring it back: *Start Demi on the device:*
+  and the command that starts its runner, the one the composer's notice of
+  an offline Host gives.
 - **Connection.** The route, a pop-up button of *Automatic*, *Prefer
   Direct* and *Server Only*, described in one line by the chosen one:
   *Uses the faster path.*, *Direct whenever it connects.*, *Never connects
@@ -382,6 +380,19 @@ Device
   the two paths' latency from [Measuring the paths](#measuring-the-paths):
   *Direct 2 ms · Server 480 ms*; a direct path that loses probes adds its
   loss, *Direct 620 ms, 6% lost*; without a peer, *Server 480 ms* alone.
+- **Direct Connection**, a section of its own while the device is online
+  and its route allows a peer, says how this browser's direct connection
+  fares, under its heading as the devices list's Your Devices does, not as
+  grouped rows. Its text is one sentence: the reason it is not connected
+  (the table below), or, when it is, the device's address in use,
+  *Connected through 127.0.0.1*. The heading holds its buttons, as Your
+  Devices holds Add Device…: **Details…**, which opens the sheet below, and
+  **Try Again**, which makes a new peer at once, only while the page has no
+  connected peer. The attempts Demi makes by itself show nothing. Only Try
+  Again shows its attempt: the button takes its loading state when clicked
+  and keeps it until the attempt ends. Clicked while an attempt Demi
+  started is running, it starts no second one and shows that one until it
+  ends. Before any attempt has ended the section shows its heading alone.
 - **Device** holds the facts, as macOS's About settings do: the name with
   Rename…; the system by its name and version, such as *macOS 26.5* or
   *Ubuntu 26.04*, with the chip family, *Apple silicon*, *Intel* or *ARM*,
@@ -402,11 +413,11 @@ page's own addresses, shows as *Hidden by the browser*. Where the reason has
 something to do, the sheet says it: for a blocked permission, where the
 site's settings allow it.
 
-The reason under the header, from what the attempt saw, word for word:
+The Direct Connection section's sentence, from what the attempt saw, word for word:
 
 | Reason | When | The header says |
 | --- | --- | --- |
-| Server Only | The device's route is Server Only | Nothing: the route below says it |
+| Server Only | The device's route is Server Only | Nothing: the section is not shown, and the route says it |
 | Slower right now | Automatic, the peer is connected, and its loss or latency is worse than the relay's ([Measuring the paths](#measuring-the-paths)) | *Direct is slower right now.* |
 | Blocked by this browser | The browser reports its local network permission blocked | *This browser blocks local network access.* |
 | Not reachable | Every pair was checked and none answered, and both sides found their public address | *Your networks block a direct connection.* |
@@ -414,7 +425,6 @@ The reason under the header, from what the attempt saw, word for word:
 | Device is busy | The runner refused the peer with `busy` | *The device has too many connections.* |
 | Connection dropped | A connected peer failed | *The direct connection dropped.* |
 | Not offered | Crossing networks is off (`DEMI_STUN_URLS` empty) and no local pair answered | *Direct works only on the device’s network.* |
-| Offline | The device's runner is not connected | *Start Demi on the device:* and the command that starts its runner, the one the composer's notice of an offline Host gives |
 
 Opening a device's page while the page has no peer for it, and the route
 allows one, starts an attempt, so the header speaks of now and not of an
@@ -422,7 +432,7 @@ attempt minutes old.
 
 The Cloud is always reached through the server, since it runs beside the
 backend: its header says *Through the server* and nothing more, and its page
-has no Connection section. An offline device's page keeps the route, which
+has neither the Connection nor the Direct Connection section. An offline device's page keeps the route, which
 applies when it is back, and shows no footnote. A user who blocks the browser's local
 network permission sees no prompt again and stays on the relay.
 
