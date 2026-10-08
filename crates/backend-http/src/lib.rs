@@ -317,6 +317,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(devices::browse).post(devices::make_directory),
         )
         .route("/devices/{id}/log", get(devices::log))
+        .route("/devices/{id}/speed", get(devices::speed))
         .route("/devices/{id}/direct", get(direct::open))
         .route(
             "/conversations/{id}/fs",

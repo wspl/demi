@@ -2,6 +2,7 @@
 import { inject, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { ChevronLeft } from '@lucide/vue'
 import Button from '../ui/Button.vue'
+import TruncatedText from '../ui/TruncatedText.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 import { settingsLevelKey, settingsPageKey, type SettingsLevel } from './navigation'
@@ -13,6 +14,12 @@ import { settingsLevelKey, settingsPageKey, type SettingsLevel } from './navigat
  * of devices, names the page it returns to in `back`: a back button above
  * its title says so, and on a narrow dialog the dialog's own navigation bar
  * goes back to it instead, as System Settings and iOS do.
+ *
+ * A page of one thing says its state in its header, never in rows: an
+ * `icon` beside the title, a `status` line under it (a dot and a few
+ * words), the `description` sentence that explains it, and `actions` at the
+ * header's end, as macOS's Network settings head a service's page. A row
+ * below is only a setting or a fact.
  */
 const props = defineProps<{
   title: TitleText
@@ -71,8 +78,26 @@ onBeforeUnmount(leaveBar)
           {{ back }}
         </Button>
       </div>
-      <h2 class="text-[20px] font-medium leading-7 text-fg-emphasis">{{ title }}</h2>
-      <p v-if="description" class="mt-1 text-[13px] leading-5 text-fg-muted">{{ description }}</p>
+      <div class="flex flex-wrap items-start gap-x-4 gap-y-3">
+        <div v-if="$slots.icon" class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-float text-fg-muted ring-1 ring-line">
+          <slot name="icon" />
+        </div>
+        <div class="min-w-60 flex-1">
+          <h2 class="text-[20px] font-medium leading-7 text-fg-emphasis">
+            <TruncatedText :text="title" />
+          </h2>
+          <div v-if="$slots.status" class="mt-0.5 flex items-center gap-1.5 text-[13px] leading-5 text-fg-body">
+            <slot name="status" />
+          </div>
+          <p v-if="description || $slots.description" class="mt-1 text-[13px] leading-5 text-fg-muted">
+            <slot name="description">{{ description }}</slot>
+          </p>
+        </div>
+        <!-- The header's buttons end its last line, as a service's page in macOS's Network settings has them. -->
+        <div v-if="$slots.actions" class="flex shrink-0 flex-wrap items-center gap-2 self-end">
+          <slot name="actions" />
+        </div>
+      </div>
     </header>
     <slot />
   </div>

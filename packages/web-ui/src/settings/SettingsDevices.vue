@@ -10,7 +10,7 @@ import type { SentenceText } from '../ui/ui-text'
 import CloudSettings from '../cloud/CloudSettings.vue'
 import type { CloudState } from '../cloud/types'
 import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
-import { directReason, reasonShort } from '../devices/direct'
+import { directReason, reasonShort, type DeviceRoute } from '../devices/direct'
 import type { DeviceInstallation } from '../devices/installation'
 import { useDevicePairing, type PairingResult } from '../devices/pairing'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
@@ -37,9 +37,7 @@ const props = defineProps<{
   shown?: string | null
   /** The runner release the server's devices follow; null on a server without them. */
   runnerRelease: string | null
-  /** The shown device's direct round trip, in milliseconds, while its channel stands. */
-  roundTripMs?: number | null
-  /** The devices whose change of their switch, name or revocation is under way. */
+  /** The devices whose change of their route, name or revocation is under way. */
   changingIds?: string[]
   renamingIds?: string[]
   revokingIds?: string[]
@@ -56,8 +54,9 @@ const emit = defineEmits<{
   retry: []
   /** Shows a device's page, or the list again with null. */
   show: [id: string | null]
-  setDirect: [id: string, enabled: boolean]
+  setRoute: [id: string, route: DeviceRoute]
   tryNow: [id: string]
+  testSpeed: [id: string]
   rename: [id: string, name: string]
   revoke: [id: string]
   resetCloud: [operationId: string]
@@ -108,7 +107,6 @@ const pageProjects = computed(() =>
     :key="shown ?? ''"
     :page="page"
     :runner-release="runnerRelease"
-    :round-trip-ms="roundTripMs"
     :projects="pageProjects"
     :name-max-length="nameMaxLength"
     :changing="!!shown && changingIds?.includes(shown)"
@@ -116,8 +114,9 @@ const pageProjects = computed(() =>
     :revoking="!!shown && revokingIds?.includes(shown)"
     :overlay-store="overlayStore"
     @back="emit('show', null)"
-    @set-direct="emit('setDirect', shown!, $event)"
+    @set-route="emit('setRoute', shown!, $event)"
     @try-now="emit('tryNow', shown!)"
+    @test-speed="emit('testSpeed', shown!)"
     @rename="emit('rename', shown!, $event)"
     @revoke="emit('revoke', shown!)"
   />
