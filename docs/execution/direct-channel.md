@@ -425,7 +425,8 @@ Device
   - **Latency**, a label and its value, as the Device group's facts are:
     the two paths' from the last [measurement](#measuring-the-paths),
     *P2P 2 ms · Relay 480 ms*; a P2P path that lost probes adds its loss,
-    *P2P 620 ms, 10% lost*; without a peer, *Relay 480 ms* alone. Opening
+    *P2P 620 ms, 10% lost*; a path that answered none, *No answer*; without
+    a peer, *Relay 480 ms* alone. Opening
     the page measures; until the first measurement ends the value reads
     *Measuring…*, and later ones keep the figures shown until theirs
     replace them. Its trailing slot holds **Measure**, which measures at
