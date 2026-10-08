@@ -60,15 +60,25 @@ export interface KeptSourceOptions {
   follower?: FileFollower
 }
 
-/** A view's hold that also tells the follower. */
+/** A view's hold that also tells the follower, which watches the path only while the view is on screen. */
 function followed<T>(showing: Showing<T>, path: string, follower: FileFollower | undefined): Showing<T> {
-  const unfollow = follower?.show(path)
+  let unfollow = follower?.show(path)
   return {
     entry: showing.entry,
     retry: showing.retry,
     release() {
       showing.release()
       unfollow?.()
+      unfollow = undefined
+    },
+    away() {
+      showing.away()
+      unfollow?.()
+      unfollow = undefined
+    },
+    back() {
+      unfollow ??= follower?.show(path)
+      showing.back()
     },
   }
 }
@@ -102,11 +112,13 @@ export function keptContents(
   { files, follower }: KeptSourceOptions,
   kind: 'description' | 'committed' = 'description',
   absolute: (path: string) => string = (path) => path,
+  root?: string,
 ): FileContents {
   const spec = (path: string): KeptSpec<FileDescription> => ({
     kind,
     path: absolute(path),
     key: path,
+    ...(root === undefined ? {} : { root }),
     read: () => reads.describe(path),
     size: () => 0,
   })
@@ -184,22 +196,32 @@ export function keptSource(reads: FileReads, options: KeptSourceOptions): FileBr
   }
 }
 
-/** The working tree's uncommitted changes as a host reads them, each a request. */
+/**
+ * The working tree's uncommitted changes as a host reads them, each a
+ * request. Each read names the version it holds, `held`, and answers null
+ * when the Host's answer is still that one.
+ */
 export interface ChangeReads {
   /** The list of changes, or why there is none. */
-  list(): Promise<{ files: WorkingTreeChange[]; truncated: boolean; repository: boolean }>
+  list(held: string | null): Promise<ChangesList | null>
   /** Both sides of one changed file, by its path relative to the working tree. */
-  sides(path: string): Promise<ChangeSides>
+  sides(path: string, held: string | null): Promise<KeptSides | null>
   /** The committed side's bytes, by path relative to the working tree. */
   committed?: ContentReads
 }
 
-/** The kept changes list and what a view shows of it. */
-interface ChangesList {
+/** The kept changes list and what a view shows of it, with the version it was read at. */
+export interface ChangesList {
   files: WorkingTreeChange[]
   truncated: boolean
   repository: boolean
+  /** The repository's git directory; null outside one. */
+  gitDir: string | null
+  version: string | null
 }
+
+/** A changed file's two sides as kept, with the version they were read at. */
+export type KeptSides = ChangeSides & { version: string | null }
 
 /**
  * The working tree under `root` as a change set over the kept files: the
@@ -213,18 +235,23 @@ export function keptChangeSet(
 ): ChangeSetSource & { refresh(): void; show(): Showing<ChangesList> } {
   const { files, follower } = options
   const absolute = (path: string) => `${root.replace(/\/$/, '')}/${path}`
+  // Each is read again with the version held, and an unchanged answer
+  // keeps what is held, so a view shows nothing new.
   const listSpec: KeptSpec<ChangesList> = {
     kind: 'changes',
     path: root,
-    read: () => reads.list(),
+    root,
+    read: async (held) => (await reads.list(held?.version ?? null)) ?? held!,
     size: (list) => list.files.reduce((sum, file) => sum + file.path.length, 0),
     outsideRepository: (list) => !list.repository,
+    gitDir: (list) => list.gitDir,
   }
-  const sidesSpec = (path: string): KeptSpec<ChangeSides> => ({
+  const sidesSpec = (path: string): KeptSpec<KeptSides> => ({
     kind: 'sides',
     path: absolute(path),
     key: root,
-    read: () => reads.sides(path),
+    root,
+    read: async (held) => (await reads.sides(path, held?.version ?? null)) ?? held!,
     size: (sides) => sides.original.length + sides.modified.length,
   })
   const entry = () => files.peek(listSpec)
@@ -253,7 +280,7 @@ export function keptChangeSet(
       files.retry(listSpec)
     },
     showSides: (path: string) => followed(files.show(sidesSpec(path)), absolute(path), follower),
-    ...(reads.committed ? { committed: keptContents(reads.committed, options, 'committed', absolute) } : {}),
+    ...(reads.committed ? { committed: keptContents(reads.committed, options, 'committed', absolute, root) } : {}),
     show: () => followed(files.show(listSpec), root, follower),
   })
   return source

@@ -1,5 +1,6 @@
 import { computed, shallowRef, watch, type ComputedRef } from 'vue'
 import type { Showing, ShownEntry } from './file-cache'
+import { followOnScreen } from './on-screen'
 
 /** One kept entry a component shows (`useShowing`). */
 export interface ShownState<T> {
@@ -13,7 +14,8 @@ export interface ShownState<T> {
  * Shows the entry at `path` of what `owner` gives, through `open`, while the
  * calling component's scope lives: when either changes, the entry they name
  * now is shown and the last one let go. Nothing shows while either is null,
- * or `open` answers null.
+ * or `open` answers null. It follows the entry only while the component's
+ * views are on screen.
  */
 export function useShowing<O, T>(
   owner: () => O | null | undefined,
@@ -27,6 +29,7 @@ export function useShowing<O, T>(
     // Runs before the next entry shows, and when the scope ends.
     onCleanup(() => showing?.release())
   }, { immediate: true })
+  followOnScreen(() => [current.value])
   return {
     entry: computed(() => current.value?.entry ?? null),
     retry: () => current.value?.retry(),

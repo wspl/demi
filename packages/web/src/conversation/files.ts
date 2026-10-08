@@ -1,4 +1,5 @@
 import { computed, effectScope, onScopeDispose, watch } from 'vue'
+import { useOnScreen } from '@demicodes/web-ui/files/on-screen'
 import { emptyChangeSet, type ChangeSetSource } from '@demicodes/web-ui/files/changes'
 import { findRequest } from '@demicodes/web-ui/files/request-changes'
 import { keptChangeSet } from '@demicodes/web-ui/files/kept-source'
@@ -100,10 +101,16 @@ export function conversationFiles(conversationId: string): ConversationFileServi
     showChanges() {
       // The list shows for the calling component while it lives, for the Host and root it has now.
       const scope = effectScope()
+      const onScreen = useOnScreen()
       scope.run(() => {
         watch(changes, (set, _previous, onCleanup) => {
           const showing = set?.show()
-          onCleanup(() => showing?.release())
+          // The list follows the Host only while the component is on screen.
+          const following = watch(onScreen, (shown) => (shown ? showing?.back() : showing?.away()), { immediate: true })
+          onCleanup(() => {
+            following()
+            showing?.release()
+          })
         }, { immediate: true })
       })
       onScopeDispose(() => scope.stop())

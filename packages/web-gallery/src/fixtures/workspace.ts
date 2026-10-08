@@ -570,11 +570,13 @@ export function createGalleryChangeSet(latencyMs: number, listing: GalleryChange
         files: listing.unavailable ? [] : changedFiles,
         truncated: listing.truncated ?? false,
         repository: !listing.unavailable,
+        gitDir: listing.unavailable ? null : `${WORKSPACE_ROOT}/.git`,
+        version: null,
       }
     },
     async sides(path) {
       await delay(latencyMs)
-      return gallerySides(path)
+      return { ...await gallerySides(path), version: null }
     },
     committed: committedContents,
   }, WORKSPACE_ROOT, { files })
