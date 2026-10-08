@@ -7,9 +7,11 @@ import { customScrollbarExtension } from '../scrollbars/extension'
 import { useCodeView } from '../useCodeView'
 
 /**
- * Two versions of one file as a unified diff, read-only: the whole current
- * text, with each removed stretch shown above what replaced it. New texts of
- * the file replace the old in place; another file needs another editor.
+ * Two versions of one file as a unified diff, read-only: the current text,
+ * with each removed stretch shown above what replaced it, and the unchanged
+ * stretches between changes folded but for three lines around each change
+ * (`file-previews.md` § Changes). New texts of the file replace the old in
+ * place; another file needs another editor.
  */
 const props = defineProps<{
   original: string
@@ -57,6 +59,9 @@ useCodeView(container, reactive({
     gutter: false,
     mergeControls: false,
     syntaxHighlightDeletions: true,
+    // Three lines of context, as GitHub and git show; a stretch of four or
+    // more beyond that folds into one line a click unfolds.
+    collapseUnchanged: { margin: 3, minSize: 4 },
   }),
 ])
 </script>
