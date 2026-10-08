@@ -188,6 +188,19 @@ async fn the_stream_maps_reasoning_tool_calls_and_usage_by_the_shared_mapper() {
         [
             ProviderEvent::ThinkingStart,
             ProviderEvent::ThinkingDelta("think".into()),
+            // The call as the model writes it, for display, then whole.
+            ProviderEvent::ToolCallStart {
+                tool_use_id: "c1".into(),
+                tool_name: "shell_exec".into(),
+            },
+            ProviderEvent::ToolCallInput {
+                tool_use_id: "c1".into(),
+                partial_json: "{\"cmd\"".into(),
+            },
+            ProviderEvent::ToolCallInput {
+                tool_use_id: "c1".into(),
+                partial_json: ":\"ls\"}".into(),
+            },
             ProviderEvent::ToolCall(ToolCall {
                 tool_use_id: "c1".into(),
                 tool_name: "shell_exec".into(),
