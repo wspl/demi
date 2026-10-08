@@ -32,9 +32,6 @@ export interface RequestFile {
   path: string
   /** `added` when the request created it. */
   kind: 'added' | 'modified'
-  /** The lines the request's calls added and removed, summed over its calls. */
-  added: number
-  removed: number
   edits: RequestEdit[]
 }
 
@@ -84,12 +81,10 @@ function addCall(request: TranscriptRequest, byPath: Map<string, RequestFile>, b
   for (const file of view.files) {
     let entry = byPath.get(file.path)
     if (!entry) {
-      entry = { path: file.path, kind: file.kind, added: 0, removed: 0, edits: [] }
+      entry = { path: file.path, kind: file.kind, edits: [] }
       byPath.set(file.path, entry)
       request.files.push(entry)
     }
-    entry.added += file.added
-    entry.removed += file.removed
     file.edits.forEach((edit, segment) => {
       entry.edits.push({
         call: view.commandId,
