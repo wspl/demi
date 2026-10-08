@@ -95,9 +95,6 @@ pub enum ErrorCode {
     LoginNotWaiting,
     /// The entry holds no account of that id.
     AccountNotFound,
-    /// The active account cannot be removed: select another first, or delete
-    /// the provider.
-    ActiveAccount,
     /// Reading the provider's usage would spend an inference request.
     QuotaRequiresInference,
     /// The vendor's usage endpoint did not answer, refused, or answered what

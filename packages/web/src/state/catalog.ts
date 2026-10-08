@@ -153,7 +153,7 @@ export function providerView(
           return [
             {
               id: window.id,
-              label: window.label || window.id.replaceAll('_', ' '),
+              label: window.label,
               used: window.usedPercent,
               max: 100,
               resets: window.resetsAt ? formatRelativeTime(window.resetsAt) : null,

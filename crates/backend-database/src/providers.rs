@@ -308,12 +308,16 @@ impl ControlService {
         .await
     }
 
-    /// Removes the account, and the entry's selection of it with it.
+    /// Removes the account. When it was the entry's active account, the
+    /// entry's first remaining account in the list's order becomes active in
+    /// the same transaction, or none when it was the last
+    /// (`providers.md` § Login and publication). Answers the account active
+    /// afterwards.
     pub async fn remove_credential(
         &self,
         provider: ProviderId,
         id: CredentialId,
-    ) -> Result<(), StorageError> {
+    ) -> Result<Option<CredentialId>, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
             transaction.execute(
@@ -321,11 +325,26 @@ impl ControlService {
                 params![provider.as_str(), id.as_str()],
             )?;
             transaction.execute(
-                "UPDATE providers SET active_credential_id = NULL WHERE id = ?1 AND active_credential_id = ?2",
+                "UPDATE providers SET active_credential_id =
+                   (SELECT id FROM provider_credentials WHERE provider_id = ?1 ORDER BY id LIMIT 1)
+                 WHERE id = ?1 AND active_credential_id = ?2",
                 params![provider.as_str(), id.as_str()],
             )?;
+            let active: Option<String> = transaction.query_row(
+                "SELECT active_credential_id FROM providers WHERE id = ?1",
+                [provider.as_str()],
+                |row| row.get(0),
+            )?;
             transaction.commit()?;
-            Ok(())
+            active
+                .map(|id| {
+                    decode(
+                        "providers",
+                        "active_credential_id",
+                        CredentialId::try_from(id),
+                    )
+                })
+                .transpose()
         })
         .await
     }

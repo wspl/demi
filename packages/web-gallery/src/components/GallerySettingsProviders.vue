@@ -257,8 +257,13 @@ function activateAccount(p: SettingsProviderEntry, id: string) {
   }
 }
 
+/** As the backend does: the active account's removal makes the first remaining one active, or leaves none. */
 function removeAccount(p: SettingsProviderEntry, id: string) {
+  const wasActive = p.accounts.some((a) => a.id === id && a.active)
   p.accounts = p.accounts.filter((a) => a.id !== id)
+  if (wasActive && p.accounts[0]) {
+    p.accounts[0].active = true
+  }
   if (!p.accounts.length) {
     p.state = 'signed-out'
   }
