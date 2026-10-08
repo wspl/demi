@@ -76,8 +76,9 @@ const sizeClass = computed(() => {
 <template>
   <!-- The tip sits on a wrapper so a disabled face can still be hovered. The face itself
        ignores pointer events, so a parent's click does not fire. It takes the focus when
-       clicked or given it, as a native button does, but is no Tab stop, as on macOS; a
-       primary button is the default action a dialog without a field opens on. -->
+       clicked or given it, as a native button does, but is no Tab stop, as on macOS. A
+       primary or destructive button is a dialog's default button: Return presses it, and a
+       dialog without a field opens on it (Dialog). -->
   <Tooltip
     :content="tooltipContent"
     :disabled="!tooltipContent"
@@ -98,7 +99,7 @@ const sizeClass = computed(() => {
       @keydown="pressOnKey"
       role="button"
       :tabindex="disabled ? undefined : -1"
-      :data-default-action="variant === 'primary' || undefined"
+      :data-default-action="variant === 'primary' || variant === 'destructive' || undefined"
       class="relative inline-flex w-full cursor-default items-center justify-center gap-1 whitespace-nowrap rounded-md transition-[color,background-color,box-shadow,filter] duration-200 ease-out select-none"
       :aria-disabled="disabled || loading || undefined"
       :aria-busy="loading || undefined"

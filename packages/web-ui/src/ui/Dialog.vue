@@ -8,7 +8,7 @@ import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayInlineKey, useOverlayTarget } from '../overlay/overlayContainer'
 import { dialogNestingKey } from '../overlay/dialogNesting'
-import { useDialogFocus } from '../overlay/dialogFocus'
+import { DEFAULT_ACTION, useDialogFocus } from '../overlay/dialogFocus'
 import { provideLayerElevation } from '../overlay/layerElevation'
 import { useOverlay } from '../composables/useOverlay'
 import type { HeadlineText } from './ui-text'
@@ -36,7 +36,17 @@ import type { HeadlineText } from './ui-text'
  * panel whose height follows its content, such as the search window's list.
  * Scrolling: content scrolls as a whole by default. Set `scrollContent` to false
  * when content owns its scroll region: use a `flex min-h-0 flex-col` root,
- * non-shrinking header/footer and a shrinking ScrollArea for the body.
+ * a non-shrinking header and a shrinking ScrollArea for the body.
+ * Actions: the `footer` slot holds a dialog's buttons, laid out as a macOS
+ * sheet's at the trailing edge, Cancel before the default button, which is
+ * last and rightmost; `footer-leading` holds what stands apart at the leading
+ * edge, a link or a Delete beside Save. The footer stays in place while the
+ * content scrolls, and the content above it ends without its own bottom
+ * padding. Return presses the default button (the footer's primary or
+ * destructive one, `Button` marks it) from anywhere in the panel, except
+ * where the focus is on a control Return acts on itself: a button, a link,
+ * a multi-line field, or a field's open completion. Escape cancels, as the
+ * close control does.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -64,6 +74,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+}>()
+
+const slots = defineSlots<{
+  default(): unknown
+  /** The buttons, Cancel before the default button. */
+  footer?(): unknown
+  /** What stands apart at the leading edge: a link, or Delete beside Save. */
+  'footer-leading'?(): unknown
 }>()
 
 // A dialog confined to a host container never blocks the page, so it is not exclusive.
@@ -117,6 +135,25 @@ if (!container) {
   })
 }
 
+/** A control Return acts on itself, so it never reaches the default button. */
+const OWN_RETURN = 'button, a[href], select, textarea, [contenteditable]:not([contenteditable=false]), [role=button], [role=link]'
+
+const footer = ref<HTMLElement>()
+// Return presses the default button wherever the focus is in the panel, as a sheet's does.
+function pressDefault(event: KeyboardEvent): void {
+  if (event.key !== 'Enter' || event.defaultPrevented || event.isComposing || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey)
+    return
+  if (!container && !props.overlayStore.isTop(id))
+    return
+  if (event.target instanceof Element && event.target.closest(OWN_RETURN) !== null)
+    return
+  const action = footer.value?.querySelector<HTMLElement>(DEFAULT_ACTION)
+  if (!action)
+    return
+  event.preventDefault()
+  action.click()
+}
+
 // An Escape a field inside used, to revert its edit or clear its filter, closes nothing.
 onKeyStroke('Escape', (event) => {
   if (!props.isOpen || container || !props.overlayStore.isTop(id) || event.defaultPrevented)
@@ -151,6 +188,7 @@ onKeyStroke('Escape', (event) => {
           tabindex="-1"
           :aria-modal="container ? undefined : 'true'"
           :aria-label="label"
+          @keydown="pressDefault"
         >
           <div v-if="!hideClose" class="dialog-close absolute right-3 top-3 z-10">
             <IconButton
@@ -169,6 +207,18 @@ onKeyStroke('Escape', (event) => {
             <slot />
           </ScrollArea>
           <slot v-else />
+          <footer
+            v-if="slots.footer || slots['footer-leading']"
+            ref="footer"
+            class="flex shrink-0 items-center gap-2 px-5 pb-5 pt-4"
+          >
+            <div v-if="slots['footer-leading']" class="flex min-w-0 items-center gap-2">
+              <slot name="footer-leading" />
+            </div>
+            <div class="ml-auto flex shrink-0 items-center gap-2">
+              <slot name="footer" />
+            </div>
+          </footer>
         </div>
       </div>
     </Transition>
