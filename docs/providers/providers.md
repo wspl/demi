@@ -723,6 +723,21 @@ the `oauth2` crate, which refuses the vendors' token responses: they omit
   confirms, it reads the user's ID and email from the chat proxy's `/v1/user`
   when that answers. When the tokens act for a team or organization, the team
   or organization is the account's user, and the account has no email.
+- **Claude Code** signs in as the Claude Code CLI does on a machine without a
+  browser, the flow its `claude auth login` prints: OAuth authorization code
+  with PKCE (S256), Claude Code's public client
+  (`9d1c250a-e61b-44d9-88ed-5944d1962f5e`) and its scopes, `user:profile`
+  and `user:inference` among them, and the manual redirect
+  `https://platform.claude.com/oauth/code/callback`, whose page shows the user
+  a code. The login names `https://claude.com/cai/oauth/authorize` with
+  `code=true`, the challenge and a random state as its verification address
+  and waits for the code. The user pastes it into Demi; Demi sends it with the
+  verifier and the state to `https://platform.claude.com/v1/oauth/token` as
+  an `authorization_code` grant, in JSON, and stores the tokens. A refresh is
+  a `refresh_token` grant at the same address, with the client and the scopes.
+  The login ends after 15 minutes without a code, and a code the vendor
+  refuses ends it with the vendor's reason. These are the CLI's own
+  endpoints and client, read from Claude Code 2.1.294.
 
 A flow authenticates against a staged pool held in memory; nothing is stored
 until it completes. Completion is one control-store transaction:
@@ -765,22 +780,6 @@ select another account first, or delete the provider. Deleting a provider
 deletes its accounts in the same transaction. Public provider responses expose
 configuration metadata, account metadata and usage, never token material. The
 routes are listed in [Web API](../product/web-api.md#subscription-accounts).
-
-- **Claude Code** signs in as the Claude Code CLI does on a machine without a
-  browser, the flow its `claude auth login` prints: OAuth authorization code
-  with PKCE (S256), Claude Code's public client
-  (`9d1c250a-e61b-44d9-88ed-5944d1962f5e`) and its scopes, `user:profile`
-  and `user:inference` among them, and the manual redirect
-  `https://platform.claude.com/oauth/code/callback`, whose page shows the user
-  a code. The login names `https://claude.com/cai/oauth/authorize` with
-  `code=true`, the challenge and a random state as its verification address
-  and waits for the code. The user pastes it into Demi; Demi sends it with the
-  verifier and the state to `https://platform.claude.com/v1/oauth/token` as
-  an `authorization_code` grant, in JSON, and stores the tokens. A refresh is
-  a `refresh_token` grant at the same address, with the client and the scopes.
-  The login ends after 15 minutes without a code, and a code the vendor
-  refuses ends it with the vendor's reason. These are the CLI's own
-  endpoints and client, read from Claude Code 2.1.294.
 
 ## Usage and quota
 
