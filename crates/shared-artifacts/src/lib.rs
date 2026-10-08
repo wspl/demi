@@ -32,6 +32,16 @@ pub use publish::{
     publish_directory,
 };
 pub use release::{ReleaseFile, ReleaseRecord, publish_release};
+/// The workspace version this build carries, which every program reports
+/// and a server release is named by: `Cargo.toml`'s, or the one a build
+/// names in `DEMI_WORKSPACE_VERSION`, as `xtask deploy` names a development
+/// build's (`upgrades.md` § A development build on a server). Cargo builds
+/// this crate again when the variable changes.
+pub const WORKSPACE_VERSION: &str = match option_env!("DEMI_WORKSPACE_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 /// The HTTP client the downloads take, so a caller names it without a
 /// dependency of its own; `client` makes the one every download uses.
 pub use reqwest::Client;
