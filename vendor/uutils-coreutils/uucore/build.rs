@@ -260,15 +260,6 @@ fn embed_static_utility_locales(
         return Ok(()); // nothing to scan
     };
 
-    // Which utilities we embed here depends on the crates unpacked next to us
-    // in the registry, i.e. on what the consumer depends on. Cargo only knows
-    // about the files we declare, so without watching the consumer's lock file
-    // a utility added after the first build would keep printing raw message
-    // ids until uucore is rebuilt by hand.
-    if let Some(lock_file) = consumer_lock_file(env::var_os("OUT_DIR").as_deref()) {
-        println!("cargo:rerun-if-changed={}", lock_file.display());
-    }
-
     // First, try to embed uucore locales - critical for common translations like "Usage:"
     embed_component_locales(embedded_file, locales_to_embed, "uucore", |locale| {
         Path::new(&manifest_dir).join(format!("locales/{locale}.ftl"))
@@ -277,6 +268,24 @@ fn embed_static_utility_locales(
     embed_component_locales(embedded_file, locales_to_embed, "uucore-errors", |locale| {
         Path::new(&manifest_dir).join(format!("locales/errors/{locale}.ftl"))
     })?;
+
+    // Demi's: only a registry unpack has the utilities unpacked beside it as
+    // `uu_<util>-<version>`, which the scan below matches. A path dependency's
+    // siblings carry no version, so the scan would match none of them, and
+    // watching the lock file would only rebuild uucore, and every utility,
+    // whenever the consumer's lock file changes.
+    if !unpacked_from_registry(Path::new(&manifest_dir)) {
+        return Ok(());
+    }
+
+    // Which utilities we embed here depends on the crates unpacked next to us
+    // in the registry, i.e. on what the consumer depends on. Cargo only knows
+    // about the files we declare, so without watching the consumer's lock file
+    // a utility added after the first build would keep printing raw message
+    // ids until uucore is rebuilt by hand.
+    if let Some(lock_file) = consumer_lock_file(env::var_os("OUT_DIR").as_deref()) {
+        println!("cargo:rerun-if-changed={}", lock_file.display());
+    }
 
     // Collect and sort for deterministic builds
     let mut entries: Vec<_> = std::fs::read_dir(registry_dir)?
@@ -298,6 +307,16 @@ fn embed_static_utility_locales(
     }
 
     Ok(())
+}
+
+/// Whether `manifest_dir`, uucore's own directory, is a registry unpack,
+/// `uucore-<version>`, rather than a path dependency's directory.
+fn unpacked_from_registry(manifest_dir: &Path) -> bool {
+    manifest_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| name.strip_prefix("uucore-"))
+        .is_some_and(|version| version.starts_with(|c: char| c.is_ascii_digit()))
 }
 
 /// Find the `Cargo.lock` of the project we are being built for, by walking up
@@ -355,8 +374,8 @@ where
 ///
 /// # Errors
 ///
-/// Returns an error if the file at `locale_path` cannot be read or if
-/// writing to `embedded_file` fails.
+/// Returns an error if `locale_path` is not UTF-8 or if writing to
+/// `embedded_file` fails.
 fn embed_locale_file(
     embedded_file: &mut File,
     locale_path: &Path,
@@ -364,23 +383,23 @@ fn embed_locale_file(
     locale: &str,
     component: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use std::fs;
-
     if locale_path.exists() || locale_path.is_file() {
-        let content = fs::read_to_string(locale_path)?;
         writeln!(
             embedded_file,
             "        // Locale for {component} ({locale})"
         )?;
-        // Determine if we need a hash. If content contains ", we need r#""#
-        let delimiter = if content.contains('"') { "#" } else { "" };
+        // Demi's: the file is included rather than copied, so rustc's
+        // dep-info names it and Cargo compares it like any other source of
+        // uucore, by checksum when the build asks for that. A rerun-if-changed
+        // watch is compared by mtime only, so every fresh checkout reran this
+        // script and rebuilt uucore and every utility.
+        let locale_path = locale_path
+            .to_str()
+            .ok_or_else(|| format!("{} is not UTF-8", locale_path.display()))?;
         writeln!(
             embedded_file,
-            "        \"{locale_key}\" => Some(r{delimiter}\"{content}\"{delimiter}),"
+            "        \"{locale_key}\" => Some(include_str!({locale_path:?})),"
         )?;
-
-        // Tell Cargo to rerun if this file changes
-        println!("cargo:rerun-if-changed={}", locale_path.display());
     }
     Ok(())
 }
@@ -472,6 +491,14 @@ mod tests {
 
         assert_eq!(consumer_lock_file(None), None);
         std::fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn only_a_versioned_directory_is_a_registry_unpack() {
+        let registry = Path::new("/cargo/registry/src/index.crates.io-1949cf8c6b5b557f");
+        assert!(unpacked_from_registry(&registry.join("uucore-0.11.0")));
+        assert!(!unpacked_from_registry(Path::new("/repo/vendor/uutils-coreutils/uucore")));
+        assert!(!unpacked_from_registry(Path::new("/repo/vendor/uucore-fork")));
     }
 
     #[test]
