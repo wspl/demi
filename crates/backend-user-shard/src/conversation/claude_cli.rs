@@ -1,9 +1,11 @@
 //! Demi's Claude Code CLI on the user's Cloud (`claude-code.md` § The
-//! package, § Where it runs, § What the user sees): the versions the Cloud
-//! has and the install of the vendor's newest, through the `demi.claude-code`
-//! package; the placement that starts a provider's process there; and the
-//! installs no conversation asked for, whose outcome the settings page
-//! shows.
+//! package, § Where it runs, § Accounts and sign-in, § What the user sees):
+//! the versions the Cloud has and the install of the vendor's newest,
+//! through the `demi.claude-code` package; the placement that starts a
+//! provider's process there, each in a configuration directory of its own
+//! that goes with it; the acting user's Cloud as the machine a sign-in runs
+//! on; and the installs no conversation asked for, whose outcome the
+//! settings page shows.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -23,11 +25,16 @@ use demi_command_package_claude_code_protocol::{
 use demi_command_protocol::{
     ArtifactLocation, ArtifactUrl, CommandCaller, CommandContext, PackageArtifact,
 };
-use demi_host_interface::{Host as _, MkdirOptions, Process, SpawnRequest};
-use demi_provider_claude_code::{CliSite, Placement, StartError};
+use demi_host_interface::{
+    Host as _, HostError, MkdirOptions, Process, ProcessEnd, RmOptions, SpawnRequest,
+};
+use demi_provider_claude_code::{
+    AccountMachine, AccountWork, CliSite, ConfigDir, Placed, Placement, StartError,
+};
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{CliInstall, CliMachine};
-use futures_util::future::LocalBoxFuture;
+use futures_util::FutureExt as _;
+use futures_util::future::{BoxFuture, LocalBoxFuture, Shared};
 use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
 
@@ -88,10 +95,16 @@ struct CliTarget {
     context: CommandContext,
 }
 
+/// The parent of the processes' configuration directories on the Cloud:
+/// outside every workspace, and cleared when the Cloud stops or resets, so
+/// a directory whose process the stop ended goes with it.
+const CONFIG_PARENT: &str = "/tmp";
+
 /// The user's Cloud as the placement of a provider's process: each start
 /// wakes or admits the Cloud through machine access, makes sure it has the
-/// CLI, and holds the Cloud's admission only until the process started,
-/// since the process is retained.
+/// CLI, makes the process's configuration directory, private to the
+/// Cloud's user, and holds the Cloud's admission only until the process
+/// started; a process that is retained holds none afterwards.
 pub(crate) struct CloudPlacement {
     shard: Weak<Shard>,
     work: ProcessWork,
@@ -108,7 +121,7 @@ impl Placement for CloudPlacement {
     fn start<'a>(
         &'a self,
         spawn: &'a dyn Fn(&CliSite) -> SpawnRequest,
-    ) -> LocalBoxFuture<'a, Result<Process, StartError>> {
+    ) -> LocalBoxFuture<'a, Result<Placed, StartError>> {
         Box::pin(async move {
             let shard = self
                 .shard
@@ -119,11 +132,41 @@ impl Placement for CloudPlacement {
                 .machine_access()
                 .await
                 .map_err(|error| StartError(error.to_string()))?;
-            let site = shard
-                .cli_site(&access, &self.work)
+            let executable = shard
+                .cli_executable_at(&access, &self.work)
                 .await
                 .map_err(StartError)?;
+            let run_dir = run_dir(&access.home);
             access
+                .host
+                .fs()
+                .mkdir(&run_dir, MkdirOptions { recursive: true })
+                .await
+                .map_err(|error| {
+                    StartError(format!(
+                        "Claude Code's directory {run_dir} could not be made on the Cloud: {error}"
+                    ))
+                })?;
+            // Dropping the directory's handle before the process started,
+            // as when the start is given up, removes it.
+            let mut config = CloudConfigDir {
+                shard: self.shard.clone(),
+                host: access.host.clone(),
+                path: format!("{CONFIG_PARENT}/demi-claude-{}", uuid::Uuid::new_v4().simple()),
+                exit: None,
+                removed: false,
+            };
+            config.make().await.map_err(|error| {
+                StartError(format!(
+                    "Claude Code's configuration directory could not be made on the Cloud: {error}"
+                ))
+            })?;
+            let site = CliSite {
+                executable,
+                run_dir,
+                config_dir: config.path.clone(),
+            };
+            let process = access
                 .host
                 .process()
                 .spawn(spawn(&site))
@@ -132,7 +175,122 @@ impl Placement for CloudPlacement {
                     StartError(format!(
                         "Claude Code could not be started on the Cloud: {error}"
                     ))
+                })?;
+            let exit = process.exit.shared();
+            config.exit = Some(exit.clone());
+            Ok(Placed {
+                process: Process {
+                    exit: exit.boxed_local(),
+                    ..process
+                },
+                config: Box::new(config),
+            })
+        })
+    }
+}
+
+/// A process's configuration directory on the Cloud, removed once the
+/// process ended.
+struct CloudConfigDir {
+    shard: Weak<Shard>,
+    host: RemoteHost,
+    path: String,
+    /// The process's end; none until it started.
+    exit: Option<Shared<LocalBoxFuture<'static, ProcessEnd>>>,
+    removed: bool,
+}
+
+impl CloudConfigDir {
+    /// Makes the directory, new and private to the Cloud's user: a path
+    /// that exists already is refused rather than taken over.
+    async fn make(&self) -> Result<(), HostError> {
+        let fs = self.host.fs();
+        fs.mkdir(&self.path, MkdirOptions { recursive: false })
+            .await?;
+        fs.chmod(&self.path, 0o700).await
+    }
+
+    /// Removes the directory once its process ended.
+    fn removal(&mut self) -> LocalBoxFuture<'static, ()> {
+        self.removed = true;
+        let host = self.host.clone();
+        let path = self.path.clone();
+        let exit = self.exit.take();
+        Box::pin(async move {
+            if let Some(exit) = exit {
+                exit.await;
+            }
+            let options = RmOptions {
+                recursive: true,
+                force: true,
+            };
+            // A Cloud that stopped meanwhile cleared the directory with its
+            // `/tmp`; anything else is a directory left behind, said here.
+            if let Err(error) = host.fs().rm(&path, options).await {
+                tracing::warn!(path, "Claude Code's configuration directory was not removed: {error}");
+            }
+        })
+    }
+}
+
+impl ConfigDir for CloudConfigDir {
+    fn read<'a>(&'a self, name: &'a str) -> LocalBoxFuture<'a, Result<Bytes, HostError>> {
+        Box::pin(async move { self.host.fs().read_file(&format!("{}/{name}", self.path)).await })
+    }
+
+    fn remove(mut self: Box<Self>) -> LocalBoxFuture<'static, ()> {
+        self.removal()
+    }
+}
+
+impl Drop for CloudConfigDir {
+    /// A directory nobody removed goes once its process ended, as a task of
+    /// the shard, which shutdown waits for.
+    fn drop(&mut self) {
+        if self.removed {
+            return;
+        }
+        let removal = self.removal();
+        if let Some(shard) = self.shard.upgrade() {
+            shard.tasks().spawn_local(removal);
+        }
+    }
+}
+
+/// Where a provider's process runs on a Cloud whose home is `home`.
+fn run_dir(home: &str) -> String {
+    format!("{home}/.demi/claude/run")
+}
+
+/// The acting user's Cloud as the machine a sign-in runs on, reached
+/// through the user's shard from any thread (`claude-code.md` § Where it
+/// runs).
+pub struct ShardMachine {
+    shards: Shards,
+    user: UserId,
+}
+
+impl ShardMachine {
+    pub fn new(shards: Shards, user: UserId) -> Self {
+        Self { shards, user }
+    }
+}
+
+impl AccountMachine for ShardMachine {
+    fn run(&self, entry: String, work: AccountWork) -> BoxFuture<'static, Result<(), StartError>> {
+        let shards = self.shards.clone();
+        let user = self.user.clone();
+        Box::pin(async move {
+            let entry = ProviderId::try_from(entry).map_err(|error| StartError(error.to_string()))?;
+            shards
+                .of(&user)
+                .call(move |shard, abandoned| async move {
+                    let work_of = ProcessWork::Account(entry);
+                    let placement = CloudPlacement::placement(Rc::downgrade(&shard), work_of);
+                    work(placement, abandoned).await;
                 })
+                .await
+                .map_err(|error| StartError(error.to_string()))
         })
     }
 }
@@ -145,14 +303,13 @@ pub(crate) struct ClaudeCli {
 }
 
 impl Shard {
-    /// Where a provider's process runs on the Cloud `access` holds: the
-    /// CLI's executable, installed first when the Cloud has none, and Demi's
-    /// directories there, made first.
-    async fn cli_site(
+    /// The CLI's executable on the Cloud `access` holds, installed first
+    /// when the Cloud has none.
+    async fn cli_executable_at(
         &self,
         access: &MachineAccess,
         work: &ProcessWork,
-    ) -> Result<CliSite, String> {
+    ) -> Result<String, String> {
         let control = &self.services().control;
         let context = match work {
             ProcessWork::Conversation(id) => {
@@ -169,24 +326,9 @@ impl Shard {
             home: access.home.clone(),
             context,
         };
-        let executable = self
-            .cli_executable(&target)
+        self.cli_executable(&target)
             .await
-            .map_err(|error| error.to_string())?;
-        let site = CliSite {
-            executable,
-            run_dir: format!("{}/.demi/claude/run", access.home),
-            config_dir: format!("{}/.demi/claude/config", access.home),
-        };
-        for directory in [&site.run_dir, &site.config_dir] {
-            access
-                .host
-                .fs()
-                .mkdir(directory, MkdirOptions { recursive: true })
-                .await
-                .map_err(|error| format!("Claude Code's directory {directory} could not be made on the Cloud: {error}"))?;
-        }
-        Ok(site)
+            .map_err(|error| error.to_string())
     }
 
     /// The executable to start on `target`: the wanted version when the
@@ -262,10 +404,8 @@ impl Shard {
             .machine_access()
             .await
             .map_err(|error| error.to_string())?;
-        let site = self
-            .cli_site(&access, &ProcessWork::Account(entry.clone()))
-            .await?;
-        Ok(site.executable)
+        self.cli_executable_at(&access, &ProcessWork::Account(entry.clone()))
+            .await
     }
 
     /// The user's Cloud with the CLI versions it has, for `entry`'s

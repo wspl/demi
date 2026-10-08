@@ -4,7 +4,7 @@
 
 use demi_backend_providers::llm::families::SubscriptionArgs;
 use demi_provider_common::credentials::{
-    AccountMeta, AccountsCapability, CredentialPool, MemoryCredentialPool,
+    AccountMeta, AccountsCapability, CredentialPool, LoginKind, MemoryCredentialPool,
 };
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_provider_common::testing::{FixedClock, jwt};
@@ -92,8 +92,7 @@ async fn the_subscription_families_log_in_by_device_and_stand_for_their_bound_ac
         let staged = MemoryCredentialPool::new();
         let login = built(family, &staged, None);
         let device_login = AccountsCapability {
-            login: true,
-            add: false,
+            login: Some(LoginKind::Device),
         };
         assert_eq!(
             login.accounts().unwrap().capability(),

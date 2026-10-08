@@ -1,14 +1,16 @@
 //! The account operations of a subscription family (`providers.md` §
-//! Credential vault): listing, selecting, logging in, adding and removing the
+//! Credential vault): listing, selecting, logging in and removing the
 //! accounts of the provider's entry. One implementation, [`Accounts`], serves
 //! every family over its credential pool; a family supplies only what differs,
-//! its [`AccountKit`]: how it logs in or takes supplied material, and how an
-//! account names itself.
+//! its [`AccountKit`]: how it logs in, and how an account names itself.
 
+use std::future::Future;
 use std::sync::Arc;
 
 use demi_shared_types::{AccountInfo, Clock, LoginPending};
 use futures_util::future::BoxFuture;
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     Secret,
@@ -27,36 +29,60 @@ pub trait SubscriptionAccounts: Send + Sync {
 
     fn set_active<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), AccountsError>>;
 
-    /// Runs the family's device login and stores the account. `pending`
-    /// receives what the user must do, once. Dropping the future cancels the
-    /// login, even while it waits between polls, and stores nothing.
-    fn login<'a>(
-        &'a self,
-        pending: &'a (dyn Fn(LoginPending) + Send + Sync),
-    ) -> BoxFuture<'a, Result<AccountInfo, LoginError>>;
-
-    /// Stores an account from material the product supplies.
-    fn add(&self, input: AddAccount) -> BoxFuture<'_, Result<AccountInfo, AccountsError>>;
+    /// Runs the family's login and stores the account. The login reports what
+    /// the user must do to `io.pending`, takes the codes the user pastes from
+    /// `io.codes`, and once `io.stop` fires ends with [`LoginError::Stopped`]
+    /// as soon as it has released what it holds. Dropping the future cancels
+    /// it as well. A login that does not complete stores nothing.
+    fn login<'a>(&'a self, io: LoginIo<'a>) -> BoxFuture<'a, Result<AccountInfo, LoginError>>;
 
     /// Removes an account other than the active one: the entry keeps
     /// inferring with its active account until another is selected.
     fn remove<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), AccountsError>>;
 }
 
-/// Which ways a family offers to add an account.
+/// How a family adds an account.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AccountsCapability {
-    /// A device login.
-    pub login: bool,
-    /// Adding supplied material, such as a Claude Code setup token.
-    pub add: bool,
+    /// The family's login; none for a family whose provider cannot log in,
+    /// such as one built without the machine its login runs on.
+    pub login: Option<LoginKind>,
 }
 
-/// Material the product supplies for a new account.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AddAccount {
-    /// A token that `claude setup-token` printed.
-    SetupToken(Secret),
+/// What the user does in a family's login.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoginKind {
+    /// A device login: the user confirms a one-time code at the vendor's page
+    /// on any device.
+    Device,
+    /// The user signs in at the vendor's page on any device and pastes the
+    /// code the page shows back into Demi, which hands it to the login.
+    PastedCode,
+}
+
+/// What a login works with: where it reports what the user must do, the
+/// codes the user pastes, and when to stop.
+pub struct LoginIo<'a> {
+    pub pending: &'a (dyn Fn(LoginPending) + Send + Sync),
+    /// The codes the user pastes, in order; a login that takes none leaves
+    /// them.
+    pub codes: mpsc::UnboundedReceiver<Secret>,
+    /// Fires when the login is cancelled or its time is up.
+    pub stop: CancellationToken,
+}
+
+impl LoginIo<'_> {
+    /// Runs `login` until it ends or the login is stopped, for a login that
+    /// holds nothing that needs releasing, such as one that only polls the
+    /// vendor.
+    pub async fn until_stopped<T>(
+        stop: &CancellationToken,
+        login: impl Future<Output = Result<T, LoginError>>,
+    ) -> Result<T, LoginError> {
+        stop.run_until_cancelled(login)
+            .await
+            .unwrap_or(Err(LoginError::Stopped))
+    }
 }
 
 /// Why an account operation failed.
@@ -67,13 +93,6 @@ pub enum AccountsError {
     /// Removing the active account is refused.
     #[error("the active account cannot be removed; select another account first")]
     Active,
-    /// The family does not add accounts this way.
-    #[error("this provider does not add accounts this way")]
-    Unsupported,
-    /// The supplied material is not an account of the family. The message
-    /// never contains the material.
-    #[error("{0}")]
-    Invalid(String),
     /// The account store failed.
     #[error("{0}")]
     Store(String),
@@ -91,14 +110,17 @@ impl From<PoolError> for AccountsError {
 /// Why a login ended without an account.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum LoginError {
-    /// The family has no device login.
-    #[error("this provider has no device login")]
+    /// The family has no login.
+    #[error("this provider has no login")]
     Unsupported,
     /// The vendor does not offer the login, such as Codex answering 404.
     #[error("{0}")]
     Unavailable(String),
     #[error("{0}")]
     Failed(String),
+    /// The login was stopped, and has released what it held.
+    #[error("the login was stopped")]
+    Stopped,
 }
 
 /// How an account names itself: what the user knows it by, and what tells
@@ -124,16 +146,12 @@ pub struct NewAccount {
 pub trait AccountKit: Send + Sync + 'static {
     fn capability(&self) -> AccountsCapability;
 
-    /// Runs the family's device login, reporting what the user must do to
-    /// `pending` once. `None` when the family has no device login.
+    /// Runs the family's login with `io`, by the rules of
+    /// [`SubscriptionAccounts::login`]. `None` when the family has no login.
     fn login<'a>(
         &'a self,
-        pending: &'a (dyn Fn(LoginPending) + Send + Sync),
+        io: LoginIo<'a>,
     ) -> Option<BoxFuture<'a, Result<NewAccount, LoginError>>>;
-
-    /// The account of material the product supplies. `None` when the family
-    /// adds no accounts this way.
-    fn add(&self, input: AddAccount) -> Option<Result<NewAccount, AccountsError>>;
 }
 
 /// The account operations of one entry's pool, with a family's kit.
@@ -148,17 +166,15 @@ impl<K: AccountKit> Accounts<K> {
         Self { pool, kit, clock }
     }
 
-    /// Stores `account`: an account with the same identity key is replaced,
-    /// a new one gets an id derived from its identity, and the first account
-    /// of an entry without an active one becomes its active account.
-    async fn import(
-        &self,
-        account: NewAccount,
-        source: &str,
-    ) -> Result<AccountInfo, AccountsError> {
+    /// Stores the account a login made: an account with the same identity key
+    /// is replaced, keeping its id; a new one gets an id derived from its
+    /// identity, and the first account of an entry without an active one
+    /// becomes its active account.
+    async fn import(&self, account: NewAccount) -> Result<AccountInfo, LoginError> {
+        let stored = |error: PoolError| LoginError::Failed(AccountsError::from(error).to_string());
         let NewAccount { secret, label } = account;
         let existing = match &label.identity_key {
-            Some(key) => find_by_identity(&*self.pool, key).await?,
+            Some(key) => find_by_identity(&*self.pool, key).await.map_err(stored)?,
             None => None,
         };
         let id = match existing {
@@ -170,13 +186,17 @@ impl<K: AccountKit> Accounts<K> {
             label: label.label,
             detail: label.detail,
             updated_at: self.clock.now(),
-            source: source.to_owned(),
+            source: match self.kit.capability().login {
+                Some(LoginKind::PastedCode) => "login:code",
+                Some(LoginKind::Device) | None => "login:device",
+            }
+            .to_owned(),
             identity_key: label.identity_key,
         };
         let info = meta.info();
-        self.pool.write(meta, secret).await?;
-        if self.pool.active().await?.is_none() {
-            self.pool.set_active(&id).await?;
+        self.pool.write(meta, secret).await.map_err(stored)?;
+        if self.pool.active().await.map_err(stored)?.is_none() {
+            self.pool.set_active(&id).await.map_err(stored)?;
         }
         Ok(info)
     }
@@ -202,27 +222,13 @@ impl<K: AccountKit> SubscriptionAccounts for Accounts<K> {
         Box::pin(async move { Ok(self.pool.set_active(id).await?) })
     }
 
-    fn login<'a>(
-        &'a self,
-        pending: &'a (dyn Fn(LoginPending) + Send + Sync),
-    ) -> BoxFuture<'a, Result<AccountInfo, LoginError>> {
+    fn login<'a>(&'a self, io: LoginIo<'a>) -> BoxFuture<'a, Result<AccountInfo, LoginError>> {
         Box::pin(async move {
-            let Some(login) = self.kit.login(pending) else {
+            let Some(login) = self.kit.login(io) else {
                 return Err(LoginError::Unsupported);
             };
             let account = login.await?;
-            self.import(account, "login:device")
-                .await
-                .map_err(|error| LoginError::Failed(error.to_string()))
-        })
-    }
-
-    fn add(&self, input: AddAccount) -> BoxFuture<'_, Result<AccountInfo, AccountsError>> {
-        Box::pin(async move {
-            let Some(account) = self.kit.add(input) else {
-                return Err(AccountsError::Unsupported);
-            };
-            self.import(account?, "add").await
+            self.import(account).await
         })
     }
 
