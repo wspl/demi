@@ -622,11 +622,10 @@ What follows from that split:
   the composer is left.
 - While a file uploads its capsule shows how far along it is, and a failed
   upload offers Retry. Pointed at, a capsule shows the picture larger or a
-  text file's opening lines. In a sent message, an image or a video shows as
-  its thumbnail where its capsule stands, at the size of the agent's
-  thumbnails ([File previews](file-previews.md)), as a chat app shows a
-  picture the user sent. In the conversation, a click on a capsule opens
-  its file in the File view.
+  text file's opening lines. A sent message shows every file as the
+  composer did, an image or a video included: a capsule in the line, a
+  small gap from the text and the capsules beside it. In the conversation,
+  a click on a capsule opens its file in the File view.
 - The message's content is read off the document: for the example in
   [Writing a message](#writing-a-message), `Compare `, then `before.png`,
   then ` with `, then `after.png`, then the rest. Providers pass content in
