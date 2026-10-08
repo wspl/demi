@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { renderMarkdownDocument, type DocumentPlace } from '../markdown/document'
 import { useMarkdownRenderVersion } from '../markdown/highlight'
 import { useContentScrollers } from '../composables/useContentScrollers'
 import ScrollArea from '../ui/ScrollArea.vue'
+import CodeBlockCopy from '../markdown/CodeBlockCopy.vue'
 
 /**
  * A Markdown file rendered as a document (`file-previews.md` § Markdown). A
@@ -27,6 +28,13 @@ const html = computed(() => {
 const scrollArea = ref<InstanceType<typeof ScrollArea>>()
 const root = computed(() => scrollArea.value?.el)
 useContentScrollers(root)
+
+// Each code block's Copy, as a message's has, in the frame the renderer gives it.
+const codeBlocks = shallowRef<HTMLElement[]>([])
+watch(html, async () => {
+  await nextTick()
+  codeBlocks.value = [...root.value?.querySelectorAll<HTMLElement>('.code-block') ?? []]
+}, { immediate: true, flush: 'post' })
 
 function follow(event: MouseEvent): void {
   const link = event.target instanceof Element ? event.target.closest('a') : null
@@ -86,7 +94,8 @@ watch(() => props.reloads, () => {
 </script>
 
 <template>
-  <ScrollArea ref="scrollArea" class="h-full" @click="follow">
+  <!-- The page a reply reads on: the transcript's surface, so a document and a reply look alike. -->
+  <ScrollArea ref="scrollArea" class="h-full bg-surface" @click="follow">
     <!-- eslint-disable-next-line vue/no-v-html -- sanitized by the document renderer -->
     <article
       class="markdown-body markdown-document mx-auto max-w-[860px] select-text px-8 py-6 text-conversation text-fg-body"
@@ -94,4 +103,7 @@ watch(() => props.reloads, () => {
       v-html="html"
     />
   </ScrollArea>
+  <Teleport v-for="(block, index) in codeBlocks" :key="index" :to="block">
+    <CodeBlockCopy :block="block" />
+  </Teleport>
 </template>
