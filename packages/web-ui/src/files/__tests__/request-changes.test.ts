@@ -4,6 +4,7 @@ import type { ToolCallBlock } from '../../agent/block-types'
 import { createdAt, model, userBlock } from '../../agent/__tests__/agent-harness'
 import {
   editIndex,
+  offersAllChanges,
   findRequest,
   pillSelection,
   requestLineSelection,
@@ -145,6 +146,19 @@ describe('the Change view on a request', () => {
     // A file created by its first edit starts from that edit's empty original.
     const form = transcriptRequests(transcript).requests[0]!.files[1]!
     expect(form.edits[0]!.created).toBe(true)
+  })
+
+  test('All Changes is offered only when both its ends were kept; otherwise the file opens at its first edit with contents', () => {
+    const kept = (from: number) => ({ original: blob(from), modified: blob(from + 1) })
+    const edit = (segment: number, copies?: ReturnType<typeof kept>) => ({ call: 'c', title: 'Edit', segment, created: false, ...(copies ? { copies } : {}) })
+    const firstLost = { path: '/w/a.ts', kind: 'modified' as const, added: 2, removed: 2, edits: [edit(0), edit(1, kept(2)), edit(2, kept(3))] }
+    expect(offersAllChanges(firstLost)).toBe(false)
+    expect(editIndex(firstLost, null)).toBe(1)
+    const nothingKept = { ...firstLost, edits: [edit(0), edit(1)] }
+    expect(editIndex(nothingKept, null)).toBe(0)
+    expect(selectionCopies(nothingKept, editIndex(nothingKept, null))).toBeNull()
+    expect(offersAllChanges(login)).toBe(true)
+    expect(editIndex(login, null)).toBeNull()
   })
 
   test('a pill selects its file at that call’s first edit', () => {

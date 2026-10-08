@@ -23,7 +23,7 @@ import MarkdownDocument from './MarkdownDocument.vue'
 import PreviewPair from './PreviewPair.vue'
 import TreeFrame from './TreeFrame.vue'
 import { emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources } from './changes'
-import { editIndex, selectionCopies, type RequestEditRef } from './request-changes'
+import { editIndex, offersAllChanges, selectionCopies, type RequestEditRef } from './request-changes'
 import { TREE_WIDTH } from './file-view'
 import { baseName } from '@demicodes/utils'
 import { relativePath, resolveHostPath } from './paths'
@@ -94,16 +94,20 @@ const selectedChange = computed(() => mode.value === 'conversation'
   ? requestFile.value
   : workingTree.value.files.find((file) => file.path === selected.value) ?? null)
 const edits = computed(() => requestFile.value?.edits ?? [])
+/** Whether the file offers All Changes: both its ends were kept. */
+const allChanges = computed(() => requestFile.value !== null && offersAllChanges(requestFile.value))
 /** Where the shown edit stands among the file's edits; null for All Changes. */
 const editAt = computed(() => requestFile.value ? editIndex(requestFile.value, edit.value) : null)
 /** The two sides the selection shows, as the blobs that hold them; null when one was not kept. */
 const requestCopies = computed(() => requestFile.value ? selectionCopies(requestFile.value, editAt.value) : null)
 /** Names the pair shown, which a new pair replaces: the blobs, whatever object holds them. */
 const requestKey = computed(() => requestCopies.value ? `${requestCopies.value.original}:${requestCopies.value.modified}` : null)
-/** The step the edit control goes to, each way: All Changes comes before the first edit. */
+/** The step the edit control goes to, each way: All Changes, where offered, comes before the first edit. */
 const previousEdit = computed(() => {
   const at = editAt.value
-  return at === null ? undefined : at === 0 ? null : edits.value[at - 1]
+  if (at === null)
+    return undefined
+  return at > 0 ? edits.value[at - 1] : allChanges.value ? null : undefined
 })
 const nextEdit = computed(() => {
   const at = editAt.value
@@ -111,7 +115,7 @@ const nextEdit = computed(() => {
 })
 const editLabel = computed(() => editAt.value === null ? 'All Changes' : `Edit ${editAt.value + 1} of ${edits.value.length}`)
 const editItems = computed(() => [
-  { id: 'all', label: 'All Changes' },
+  ...(allChanges.value ? [{ id: 'all', label: 'All Changes' }] : []),
   ...edits.value.map((entry, index) => ({ id: String(index), label: entry.title, value: `Edit ${index + 1}` })),
 ])
 
