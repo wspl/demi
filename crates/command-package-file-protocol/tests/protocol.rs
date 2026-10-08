@@ -13,6 +13,7 @@ fn file_arguments_refuse_empty_old_text_and_zero_positions() {
         json!({"path": "a", "old": "x", "new": "y", "context": 0}),
         json!({"path": "a", "old": "x", "new": "y", "context": null}),
         json!({"path": "a", "old": "x"}),
+        json!({"path": "a", "old": "x", "new": "y", "occurrence": 1, "context": 2}),
     ] {
         assert!(
             matches!(edit(invalid.clone()), Err(OperationError::Invalid(_))),

@@ -8,7 +8,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_package_file_protocol::{Block, Change, CreateArgs, Edit, Operation, PatchArgs, ReadArgs};
+use demi_command_package_file_protocol::{Block, Change, Choice, CreateArgs, Edit, Operation, PatchArgs, ReadArgs};
 use demi_command_protocol::{CommandError, Completion, MAX_MEDIUM_BYTES, sniff_media_type};
 use demi_command_sdk::{
     InvocationContext, ServiceError,
@@ -274,19 +274,9 @@ fn edit(
     let path = resolve(cwd, &args.path)?;
     let content = fs::read_to_string(&path)?;
     let replacements = match &args.change {
-        Change::Text {
-            old,
-            new,
-            occurrence,
-            context,
-        } => vec![text_replacement(
-            &content,
-            &args.path,
-            old,
-            new,
-            *occurrence,
-            *context,
-        )?],
+        Change::Text { old, new, choice } => {
+            vec![text_replacement(&content, &args.path, old, new, *choice)?]
+        }
         Change::Blocks(blocks) => {
             let lines = Lines::of(&content);
             blocks
@@ -318,50 +308,48 @@ struct Replacement {
     block: usize,
 }
 
-/// `--old` replaced by `--new`: its only match, the `occurrence`th, or the
-/// one nearest the line `context`.
+/// `--old` replaced by `--new`, at the match `choice` names.
 fn text_replacement(
     content: &str,
     name: &str,
     old: &str,
     new: &str,
-    occurrence: Option<usize>,
-    context: Option<usize>,
+    choice: Choice,
 ) -> Result<Replacement, FileError> {
     let matches: Vec<_> = content.match_indices(old).map(|(index, _)| index).collect();
-    let index = if let Some(occurrence) = occurrence {
-        *matches
+    let index = match choice {
+        Choice::Occurrence(occurrence) => *matches
             .get(occurrence - 1)
-            .ok_or(FileError::OccurrenceOutOfRange(occurrence))?
-    } else if let Some(context) = context {
-        match nearest(&matches, |index| line_of(content, index).abs_diff(context)) {
-            Ok(index) => index,
-            Err(Unchosen::Empty) => return Err(FileError::NoMatchNearContext),
-            Err(Unchosen::Tie) => {
-                let candidates = matches
-                    .iter()
-                    .enumerate()
-                    .map(|(occurrence, &index)| {
-                        format!(
-                            "occurrence {} at line {}",
-                            occurrence + 1,
-                            line_of(content, index)
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join("; ");
-                return Err(FileError::AmbiguousContext {
-                    context,
-                    candidates,
-                });
+            .ok_or(FileError::OccurrenceOutOfRange(occurrence))?,
+        Choice::Context(context) => {
+            match nearest(&matches, |index| line_of(content, index).abs_diff(context)) {
+                Ok(index) => index,
+                Err(Unchosen::Empty) => return Err(FileError::NoMatchNearContext),
+                Err(Unchosen::Tie) => {
+                    let candidates = matches
+                        .iter()
+                        .enumerate()
+                        .map(|(occurrence, &index)| {
+                            format!(
+                                "occurrence {} at line {}",
+                                occurrence + 1,
+                                line_of(content, index)
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    return Err(FileError::AmbiguousContext {
+                        context,
+                        candidates,
+                    });
+                }
             }
         }
-    } else {
-        match matches.as_slice() {
+        Choice::Only => match matches.as_slice() {
             [index] => *index,
             [] => return Err(FileError::NoMatch(name.to_owned())),
             _ => return Err(FileError::MultipleMatches(name.to_owned())),
-        }
+        },
     };
     // `--old` is the edit's one replacement, so it overlaps no other.
     Ok(Replacement {

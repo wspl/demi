@@ -13,7 +13,7 @@ const ENTRY: &str = "Edits, patches and creates the task's files exactly, so the
 /// The help of `demi file edit`'s stdin: the blocks, with an example the
 /// model can copy. Its lines start at the margin, since a marker is a whole
 /// line and indentation copied with it would make it text.
-const EDIT_BLOCKS: &str = "SEARCH/REPLACE blocks. Each SEARCH is whole lines copied exactly from the file and must match one place; its REPLACE takes their place, and an empty one deletes them. Several blocks apply together or not at all. For a one-line change, pass --old and --new instead of stdin. Pass blocks in a quoted heredoc, so quotes, $ and backslashes need no escaping, for example:
+const EDIT_BLOCKS: &str = "SEARCH/REPLACE blocks. Each SEARCH is whole lines copied exactly from the file and must match one place; its REPLACE takes their place, and an empty one deletes them. Several blocks apply together or not at all. For a one-line change, pass --old and --new instead. Pass blocks in a quoted heredoc, so quotes, $ and backslashes need no escaping, for example:
 demi file edit src/slugify.mjs <<'EOF'
 <<<<<<< SEARCH
 export function slugify(text) {
@@ -65,6 +65,7 @@ pub(crate) fn file_group() -> GroupBuilder {
         .input::<EditArgs>()
         .positionals(["path"])
         .stdin_field("blocks")
+        .stdin_unless(["old"])
         .describe("blocks", EDIT_BLOCKS)
         .describe(
             "old",

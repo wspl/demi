@@ -118,14 +118,23 @@ pub enum Change {
     /// Whole lines, each block's SEARCH found exactly once in the file as
     /// it was; the blocks apply together.
     Blocks(Vec<Block>),
-    /// Exact text anywhere in the file: its only match, the `occurrence`th,
-    /// or the one nearest the line `context`.
+    /// Exact text anywhere in the file, at the match `choice` names.
     Text {
         old: String,
         new: String,
-        occurrence: Option<usize>,
-        context: Option<usize>,
+        choice: Choice,
     },
+}
+
+/// Which match of `--old` an edit replaces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Choice {
+    /// The only one.
+    Only,
+    /// The nth, 1-based (`--occurrence`).
+    Occurrence(usize),
+    /// The one nearest this 1-based line (`--context`).
+    Context(usize),
 }
 
 /// One SEARCH/REPLACE block: its lines, without their line endings.
@@ -155,6 +164,8 @@ pub enum EditArgsError {
     BlocksAndChoice,
     #[error("Give SEARCH/REPLACE blocks on stdin, or --old and --new")]
     Nothing,
+    #[error("Give --occurrence or --context, not both")]
+    OccurrenceAndContext,
     #[error("--old needs --new")]
     OldWithoutNew,
     #[error("--new needs --old")]
@@ -180,20 +191,25 @@ impl TryFrom<EditArgs> for Edit {
 
     fn try_from(args: EditArgs) -> Result<Self, EditArgsError> {
         garde::Validate::validate(&args)?;
+        let choice = match (args.occurrence, args.context) {
+            (Some(_), Some(_)) => return Err(EditArgsError::OccurrenceAndContext),
+            (Some(occurrence), None) => Some(Choice::Occurrence(occurrence)),
+            (None, Some(context)) => Some(Choice::Context(context)),
+            (None, None) => None,
+        };
         let blocks = args.blocks.as_deref().map(parse_blocks).transpose()?;
         let change = match (blocks.filter(|blocks| !blocks.is_empty()), args.old, args.new) {
             (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
                 return Err(EditArgsError::BlocksAndText);
             }
-            (Some(_), None, None) if args.occurrence.is_some() || args.context.is_some() => {
+            (Some(_), None, None) if choice.is_some() => {
                 return Err(EditArgsError::BlocksAndChoice);
             }
             (Some(blocks), None, None) => Change::Blocks(blocks),
             (None, Some(old), Some(new)) => Change::Text {
                 old,
                 new,
-                occurrence: args.occurrence,
-                context: args.context,
+                choice: choice.unwrap_or(Choice::Only),
             },
             (None, Some(_), None) => return Err(EditArgsError::OldWithoutNew),
             (None, None, Some(_)) => return Err(EditArgsError::NewWithoutOld),
@@ -206,8 +222,9 @@ impl TryFrom<EditArgs> for Edit {
     }
 }
 
-/// The SEARCH/REPLACE blocks of `text`, whose markers are whole lines;
-/// blank lines may stand between blocks, and nothing else.
+/// The SEARCH/REPLACE blocks of `text`, whose markers are whole lines that
+/// may carry trailing spaces; blank lines may stand between blocks, and
+/// nothing else.
 fn parse_blocks(text: &str) -> Result<Vec<Block>, EditArgsError> {
     enum Part {
         Outside,
@@ -221,7 +238,7 @@ fn parse_blocks(text: &str) -> Result<Vec<Block>, EditArgsError> {
         let block = blocks.len() + 1;
         let marker = [SEARCH_MARKER, DIVIDER_MARKER, REPLACE_MARKER]
             .into_iter()
-            .find(|marker| *marker == line);
+            .find(|marker| *marker == line.trim_end_matches([' ', '\t']));
         part = match (part, marker) {
             (Part::Outside, Some(SEARCH_MARKER)) => Part::Search(Vec::new()),
             (Part::Outside, None) if line.trim().is_empty() => Part::Outside,

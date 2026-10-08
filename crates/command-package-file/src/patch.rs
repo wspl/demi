@@ -74,6 +74,17 @@ struct Hunk {
     start: Option<usize>,
     old_count: Option<usize>,
     lines: Vec<Line>,
+    /// How many of the last lines were empty lines of the diff: empty
+    /// context lines inside the hunk, but at its end the blank lines that
+    /// separate it from what follows.
+    trailing_blank: usize,
+}
+
+impl Hunk {
+    /// The hunk's lines without the blank lines after it.
+    fn lines(&self) -> &[Line] {
+        &self.lines[..self.lines.len() - self.trailing_blank]
+    }
 }
 
 struct Line {
@@ -246,13 +257,13 @@ fn apply_hunks(
         check_cancelled(cancellation)?;
         let number = index + 1;
         let old: Vec<_> = hunk
-            .lines
+            .lines()
             .iter()
             .filter(|line| line.kind != b'+')
             .map(line_text)
             .collect();
         let new: Vec<_> = hunk
-            .lines
+            .lines()
             .iter()
             .filter(|line| line.kind != b'-')
             .map(line_text)
@@ -348,13 +359,15 @@ static DATE_SUFFIX: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
-/// The file patches of `diff`. Hunk line counts are not trusted, so a
-/// `--- ` line is a file's old header when a `+++ ` line follows it, and
-/// otherwise a hunk's removed line.
+/// The file patches of `diff`. Hunk line counts are not trusted, so inside
+/// a hunk a `--- ` line starts the next file only when a `+++ ` line and an
+/// `@@` line follow it, and is a removed line otherwise; an empty line is an
+/// empty context line, as `git apply` reads it.
 fn parse(diff: &str, cancellation: &CancellationToken) -> Result<Vec<FilePatch>, FileError> {
     let mut patches: Vec<FilePatch> = Vec::new();
     let mut pending_old = None;
-    let lines: Vec<&str> = diff.split('\n').collect();
+    // The text after the last line ending is no line.
+    let lines: Vec<&str> = diff.strip_suffix('\n').unwrap_or(diff).split('\n').collect();
     for (index, &line) in lines.iter().enumerate() {
         check_cancelled(cancellation)?;
         let in_hunk = pending_old.is_none()
@@ -364,7 +377,10 @@ fn parse(diff: &str, cancellation: &CancellationToken) -> Result<Vec<FilePatch>,
         let old_header = line.starts_with("--- ")
             && lines
                 .get(index + 1)
-                .is_some_and(|next| next.starts_with("+++ "));
+                .is_some_and(|next| next.starts_with("+++ "))
+            && lines
+                .get(index + 2)
+                .is_some_and(|next| next.starts_with("@@"));
         if let Some(path) = line.strip_prefix("--- ")
             && (old_header || !in_hunk)
         {
@@ -387,6 +403,7 @@ fn parse(diff: &str, cancellation: &CancellationToken) -> Result<Vec<FilePatch>,
                         .map(|count| count.as_str().parse().map_err(|_| PatchError::HunkCount))
                         .transpose()?,
                     lines: Vec::new(),
+                    trailing_blank: 0,
                 },
                 // A header without numbers, such as a bare `@@`.
                 None if !line.starts_with("@@ -") => Hunk {
@@ -394,6 +411,7 @@ fn parse(diff: &str, cancellation: &CancellationToken) -> Result<Vec<FilePatch>,
                     start: None,
                     old_count: None,
                     lines: Vec::new(),
+                    trailing_blank: 0,
                 },
                 None => return Err(PatchError::HunkHeader.into()),
             };
@@ -404,19 +422,29 @@ fn parse(diff: &str, cancellation: &CancellationToken) -> Result<Vec<FilePatch>,
                 .push(hunk);
         } else if let Some(hunk) = patches.last_mut().and_then(|patch| patch.hunks.last_mut()) {
             match line.as_bytes().first() {
-                Some(kind @ (b' ' | b'-' | b'+')) => hunk.lines.push(Line {
-                    kind: *kind,
-                    text: line[1..].into(),
-                    newline: true,
-                }),
+                Some(kind @ (b' ' | b'-' | b'+')) => {
+                    hunk.lines.push(Line {
+                        kind: *kind,
+                        text: line[1..].into(),
+                        newline: true,
+                    });
+                    hunk.trailing_blank = 0;
+                }
+                None => {
+                    hunk.lines.push(Line {
+                        kind: b' ',
+                        text: String::new(),
+                        newline: true,
+                    });
+                    hunk.trailing_blank += 1;
+                }
                 _ if line == "\\ No newline at end of file" => {
                     hunk.lines
                         .last_mut()
                         .ok_or(PatchError::NewlineMarker)?
                         .newline = false;
                 }
-                _ if line.is_empty() || line.starts_with("diff ") || line.starts_with("index ") => {
-                }
+                _ if line.starts_with("diff ") || line.starts_with("index ") => {}
                 _ => return Err(PatchError::Line(line.to_owned()).into()),
             }
         }
