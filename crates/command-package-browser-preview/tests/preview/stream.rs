@@ -1,5 +1,5 @@
-//! The stream itself (`preview.md` § The stream): a request's body moves
-//! one chunk per pull and an answer's runs a window ahead, the browser's cancellation reaches upstream, the engine
+//! The stream itself (`preview.md` § The stream): both bodies run a window
+//! ahead of the pulls, the browser's cancellation reaches upstream, the engine
 //! names the labels a runtime registers, page states move, and a frame the
 //! protocol refuses ends the stream.
 
@@ -18,7 +18,7 @@ use tokio::net::TcpListener;
 use crate::support::{DOMAIN, Frame, HOST, NAMESPACE, Relay, Site, client, echoed_header, engine, opening, request, top};
 
 #[tokio::test]
-async fn a_request_body_moves_one_chunk_per_pull_and_an_answer_runs_a_window_ahead() {
+async fn both_bodies_run_a_window_ahead_of_the_pulls() {
     let directory = tempfile::tempdir().unwrap();
     let site = Site::start().await;
     let mut relay = Relay::open(engine(&directory));
@@ -35,28 +35,30 @@ async fn a_request_body_moves_one_chunk_per_pull_and_an_answer_runs_a_window_ahe
         },
         client: client(),
     });
-    // The engine asks for the request's body chunk by chunk; meanwhile
-    // another request of the stream is answered whole, and nothing more of
-    // the first is asked for or sent.
+    // The relay sends the body's first chunks with the request, a window
+    // ahead, and one more for each the engine takes and pulls: the window
+    // holds the body's four chunks, and the engine pulls once for each. A
+    // chunk past the window would end the stream.
     let mut chunks = body.chunks(BODY_CHUNK_BYTES).chain([&[][..]]);
-    let mut pulled = 0;
-    let (head, answered) = loop {
+    for chunk in chunks.by_ref().take(BODY_WINDOW) {
+        relay.request_body(id, chunk);
+    }
+    for _ in 0..BODY_WINDOW {
         match relay.next().await {
-            Frame::Control(PreviewEngineMessage::Pull { id: pulled_id }) if pulled_id == id => {
-                pulled += 1;
-                if pulled == 1 {
-                    let other = relay.fetch(page.clone(), opening(&site.https("www.site.test", "/echo"))).await.unwrap();
-                    assert_eq!(echoed_header(&other.echoed(), "sec-fetch-mode"), Some("navigate"));
-                }
-                relay.request_body(id, chunks.next().unwrap());
-            }
-            Frame::Control(PreviewEngineMessage::Response { id: answered, headers, .. }) if answered == id => {
-                break (headers, pulled);
-            }
+            Frame::Control(PreviewEngineMessage::Pull { id: pulled }) if pulled == id => {}
             other => panic!("unexpected {other:?}"),
         }
-    };
-    assert_eq!(answered, 5, "{head:?}");
+    }
+    // While the first waits for its body's end, another request of the
+    // stream is answered whole.
+    let other = relay.fetch(page.clone(), opening(&site.https("www.site.test", "/echo"))).await.unwrap();
+    assert_eq!(echoed_header(&other.echoed(), "sec-fetch-mode"), Some("navigate"));
+    relay.request_body(id, chunks.next().unwrap());
+    assert!(chunks.next().is_none());
+    match relay.next().await {
+        Frame::Control(PreviewEngineMessage::Response { id: answered, .. }) if answered == id => {}
+        other => panic!("unexpected {other:?}"),
+    }
     // The answer, as long as the body echoed, comes a window ahead of the
     // pulls: its first chunks with no pull, so a small answer takes one
     // round trip, then one more per pull. A chunk the window did not let go
