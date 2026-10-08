@@ -162,6 +162,11 @@ the same failure. Bytes travel as binary messages of at most 64 KiB.
 | `mkdir`, `delete` | `{ path }` | `{ ok }` |
 | `watch` | `{ paths }` messages, as on the relay | The relay's `state`, `changed` and `heartbeat` messages |
 
+The `probe` channel is the one exception to one channel per operation: it
+lives as long as the peer, is unordered and never retransmitted, and carries
+`{ id }` messages, an integer, that the runner sends straight back
+([Measuring the paths](#measuring-the-paths)).
+
 The runner tells the backend `direct_stream { stream, name, conversation,
 open }` once it accepts a stream channel's header, naming the stream with an
 id it gives it and the user stream's `name` the header asked for, and again
@@ -251,7 +256,9 @@ once a second, with probes too small to cost anything:
   unordered and never retransmitted, so a lost probe stays lost as a lost
   video packet would. The page sends `{ id }`; the runner sends it back at
   once.
-- **The relay path.** The page sends `ping { id }` on the signaling socket;
+- **The relay path.** The page sends `ping { id }` on the signaling socket,
+  which the backend reads at any time, an offer waiting for its answer
+  included;
   the backend forwards it to the runner as `direct_ping { peer, id }`, the
   runner answers `direct_pong { peer, id }`, and the backend sends
   `pong { id }` back. The probe crosses the same two connections, page to
@@ -262,11 +269,10 @@ Over the last 30 probes of each path the page computes:
 | Figure | What it is |
 | --- | --- |
 | Latency | The median round trip |
-| Jitter | The mean difference between consecutive round trips, as RTP computes it |
 | Loss | The share of probes not answered within 2 seconds; the relay runs over TCP, which loses nothing but arrives late instead, so the relay has none |
 
 Under Automatic the choice is `direct` while the peer is connected, unless
-over the last 10 seconds its loss was above 2 % or its latency more than
+over the last 10 seconds its loss was above 2% or its latency more than
 20 ms above the relay's. The choice changes only when the condition has
 held for 10 seconds, so one slow probe never moves an open live view. A
 newly connected peer is used at once, before the figures exist, since a
@@ -274,12 +280,9 @@ peer that connects is almost always the faster path; the figures then
 confirm or overturn it. A slightly slower direct path still wins, because
 it keeps the bytes off the server and its link.
 
-**Test Speed** on the device's page measures throughput, which probes
-cannot: it downloads 8 MiB of random bytes from the runner over each path
-in turn, direct first when there is a peer, on a `speed` channel and with
-`GET /api/devices/:deviceId/speed?bytes=8388608`, and shows MiB/s. Random
-bytes, because a compressing proxy would make zeros look fast. A test runs
-only when the user asks, one at a time.
+Demi measures no throughput. Latency and loss are what decide the route,
+and a speed test would move megabytes through the user's server to show a
+figure nothing acts on.
 
 The figures stay in the page: nothing stores them, and another browser
 measures its own paths, since the user's other computer reaches the device
@@ -334,7 +337,8 @@ device, never a status dressed as a setting.
        ● Through the server · 480 ms
        Your network and the device's don't let a direct connection
        through, as a strict NAT or a firewall does. Demi tries again
-       in 7 minutes.                          [Details…]  [Try Again]
+       in 7 minutes.
+       [Details…]  [Try Again]
 
 Connection
 ┌──────────────────────────────────────────────────────────────┐
@@ -342,10 +346,8 @@ Connection
 │ Demi connects directly when that is faster, and through the  │
 │ server otherwise.                                            │
 └──────────────────────────────────────────────────────────────┘
-  Measured from this browser                       [Test Speed]
-              Latency     Jitter     Loss     Speed
-  Direct      —           —          —        —
-  Server      480 ms      12 ms      —        4.1 MiB/s
+  From this browser: through the server 480 ms; no direct
+  connection.
 
 Device
 ┌──────────────────────────────────────────────────────────────┐
@@ -364,17 +366,23 @@ Device
   *Connected directly*, grey *Through the server*, or *Offline* with when it
   was last seen; the path in use carries its latency. Under it, only when
   there is something to explain, a sentence says why the server's path is
-  used and what the user can do, then when Demi tries again. **Details…**
+  used and what the user can do, then when Demi tries again. The buttons
+  sit on a line of their own under the text, starting where it starts, in
+  every state. **Details…**
   opens a sheet with the last attempt's diagnostics; **Try Again** makes a
   new peer at once and is there only while the route allows a peer and the
-  page is not connected directly. A device connected directly needs no
+  page has no connected peer: a peer that is up but slower needs no new
+  attempt. A device connected directly needs no
   sentence: the header says it all.
 - **Connection** has one setting, the route, as a pop-up button of
   *Automatic*, *Prefer Direct* and *Server Only*, with a line saying what the
-  chosen one does. Under the group, as a table and not as rows, the two
-  paths' figures from [Measuring the paths](#measuring-the-paths), the path
-  in use marked, and Test Speed; a path with no figures shows a dash. The
-  figures are what the user decides the route by, so they sit beside it.
+  chosen one does. Under the group, as the footnote macOS writes under a
+  group, one line compares the two paths' latency from
+  [Measuring the paths](#measuring-the-paths): *From this browser: directly
+  2 ms, through the server 480 ms.* A direct path that loses probes says so,
+  *directly 620 ms with 6% lost*; one with no peer says *no direct
+  connection*. It is what the user picks the route by, so it sits under the
+  route.
 - **Device** holds the facts, as macOS's About settings do: the name with
   Rename…; the system by its name and version, such as *macOS 26.5* or
   *Ubuntu 26.04*, with the chip family, *Apple silicon*, *Intel* or *ARM*,
@@ -411,7 +419,7 @@ attempt minutes old.
 The Cloud is always reached through the server, since it runs beside the
 backend: its header says so in one sentence, and its page has no Connection
 section. An offline device's page keeps the route, which applies when it is
-back, and shows no figures. A user who blocks the browser's local network
+back, and shows no footnote. A user who blocks the browser's local network
 permission sees no prompt again and stays on the relay.
 
 ## Failure and limits
@@ -430,12 +438,12 @@ permission sees no prompt again and stays on the relay.
 
 | Where | Responsibility |
 | --- | --- |
-| `runner-protocol` | The `direct_offer`, `direct_answer`, `direct_candidate`, `direct_close`, `direct_stream`, `direct_ping` and `direct_pong` messages and the operations' headers and answers, `probe` and `speed` included |
+| `runner-protocol` | The `direct_offer`, `direct_answer`, `direct_candidate`, `direct_close`, `direct_stream`, `direct_ping` and `direct_pong` messages and the operations' headers and answers, `probe` included |
 | `runner-direct` | The runner's peers: sockets, ICE, DTLS and SCTP through str0m, and each operation carried out through `runner-host` and the service streams the runner supplies; on its own thread, off the runner's control thread, since a peer at full speed fills a core |
 | `runner` | Composing `runner-direct` with the Host operations and service streams, and closing every peer when the backend connection ends |
-| `backend-http` | The signaling route and the speed route, with the device access check |
+| `backend-http` | The signaling route, with the device access check |
 | `web` | The peer, the measurements and the choice of path, the operations' clients, the service worker, and the user streams and file reads the page context supplies over either path |
-| `web-ui` | The devices list's rows and the device's page: its header, Connection section with the figures table, Device section and Details sheet |
+| `web-ui` | The devices list's rows and the device's page: its header, Connection section with the paths' footnote, Device section and Details sheet |
 
 ## Rationale
 
