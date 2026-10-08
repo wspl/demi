@@ -460,10 +460,12 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
           />
         </template>
         <template #attach>
+          <!-- The menu opens above the composer, over the conversation it sits under; pinned open in a
+               gallery well, which has its room below, it opens below. -->
           <Dropdown
             v-if="!shownEdit || edit.editable.value"
             :overlay-store="appOverlayStore"
-            :placement="attachOpen ? 'bottom-start' : 'top-start'"
+            :side="attachOpen ? 'bottom' : 'top'"
             v-bind="attachOpen ? { open: true } : {}"
           >
             <template #trigger="{ isOpen }">

@@ -38,7 +38,6 @@ function select(id: string, close: () => void): void {
 <template>
   <Dropdown
     :overlay-store="appOverlayStore"
-    placement="bottom-end"
     :offset="6"
   >
     <template #trigger="{ isOpen }">
