@@ -3,7 +3,7 @@ import {
   type ClientSessionEvent,
 } from '@demicodes/web-ui/transport/protocol'
 import type { Conversation } from '../state/types'
-import { callScript, transcriptTerminals } from './terminals'
+import { findShellCall, transcriptTerminals } from './terminals'
 import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
 import { followLiveOutput, type TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 
@@ -39,7 +39,8 @@ export function applyConversationEvent(
       } else if (terminal.endedAt && current.chars === undefined) {
         Object.assign(current, terminal)
       } else {
-        current.name = terminal.name
+        current.title = terminal.title
+        current.script = terminal.script
       }
     }
   }
@@ -91,10 +92,12 @@ export function applyConversationEvent(
     const blocks = subagentId === undefined
       ? conversation.blocks
       : conversation.subagents.find((agent) => agent.id === subagentId)?.blocks ?? []
+    // The call that started it names it; the shell id stands in until the transcript has the call.
+    const call = current ?? findShellCall(blocks, status.toolUseId)
     const record: TerminalRecord = {
       id: status.commandId,
-      // The transcript names the command by its script; the shell id is the fallback.
-      name: current?.name ?? callScript(blocks, status.toolUseId) ?? status.shellId,
+      title: call?.title ?? status.shellId,
+      script: call?.script,
       phase: status.status,
       startedAt:
         current?.startedAt ?? new Date(Date.now() - status.runningMs).toISOString(),

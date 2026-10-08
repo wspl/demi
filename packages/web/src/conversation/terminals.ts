@@ -1,9 +1,10 @@
 import { z } from 'zod'
 import type { Block } from '@demicodes/protocol'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
+import { standardToolTitle } from '@demicodes/web-ui/agent/tool-rendering'
 
 /**
- * The commands a transcript remembers: name, start, output, and the end when
+ * The commands a transcript remembers: title, script, start, output, and the end when
  * a stored view saw one. A stored view is history, so none of these is
  * running: liveness comes only from the session's `shell_output` events,
  * which the server replays for the commands it still owns when the session
@@ -21,12 +22,12 @@ export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] 
       continue
     }
     const previous = commands.get(view.commandId)
-    const name = (block.toolName === 'shell_exec' ? script(block.input) : undefined)
-      ?? previous?.name
-      ?? view.shellId
+    // The call that started it names it; a look at it does not.
+    const call = (block.toolName === 'shell_exec' ? shellCall(block.input) : undefined) ?? previous
     commands.set(view.commandId, {
       id: view.commandId,
-      name,
+      title: call?.title ?? view.shellId,
+      script: call?.script,
       phase: view.status === 'aborted' ? 'aborted' : 'exited',
       startedAt: previous?.startedAt ?? block.createdAt,
       ...(view.status !== 'running'
@@ -42,20 +43,30 @@ export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] 
   return [...commands.values()]
 }
 
-/** The script of the `shell_exec` call `toolUseId` among `blocks`, the latest when a model reused the id. */
-export function callScript(blocks: readonly Block[], toolUseId: string): string | undefined {
+/** A `shell_exec` call's title, as its row shows it, and its script. */
+export interface ShellCall {
+  title: string
+  script: string
+}
+
+/** The `shell_exec` call `toolUseId` among `blocks`, the latest when a model reused the id. */
+export function findShellCall(blocks: readonly Block[], toolUseId: string): ShellCall | undefined {
   const call = blocks.findLast(
     (block) => block.type === 'tool_call' && block.toolUseId === toolUseId,
   )
   return call?.type === 'tool_call' && call.toolName === 'shell_exec'
-    ? script(call.input)
+    ? shellCall(call.input)
     : undefined
 }
 
-/** A `shell_exec` call's script, from its input's JSON text. */
-function script(input: string): string | undefined {
-  const parsed = z.object({ script: z.string() }).safeParse(parseInput(input))
-  return parsed.success ? parsed.data.script : undefined
+const shellCallInput = z.object({ script: z.string(), description: z.string().optional() })
+
+/** A `shell_exec` call's title and script, from its input's JSON text. */
+function shellCall(input: string): ShellCall | undefined {
+  const parsed = shellCallInput.safeParse(parseInput(input))
+  return parsed.success
+    ? { title: standardToolTitle('shell_exec', parsed.data), script: parsed.data.script }
+    : undefined
 }
 
 function parseInput(input: string): unknown {
