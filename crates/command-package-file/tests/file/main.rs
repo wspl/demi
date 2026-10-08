@@ -131,6 +131,142 @@ async fn the_resident_program_serves_every_file_operation_and_records_its_edits(
     }).await.unwrap();
 }
 
+/// Starts the program for one test, in a directory holding `files`.
+async fn service_with(files: &[(&str, &str)]) -> (tempfile::TempDir, ServiceProcess) {
+    let root = tempfile::tempdir().unwrap();
+    for (name, content) in files {
+        std::fs::write(root.path().join(name), content).unwrap();
+    }
+    let service = ServiceProcess::start(env!("CARGO_BIN_EXE_demi-file"), &["--command-service"], &[])
+        .await
+        .unwrap();
+    (root, service)
+}
+
+/// What a failed call wrote: its completion's message.
+fn message(completion: &Completion) -> &str {
+    &completion.error.as_ref().unwrap().message
+}
+
+/// SEARCH/REPLACE blocks replace whole lines found exactly once, all
+/// together or none, in the file's own line endings.
+#[tokio::test]
+async fn search_replace_blocks_replace_lines_found_once_all_together() {
+    tokio::time::timeout(Duration::from_secs(15), async {
+        let (root, service) = service_with(&[
+            ("twice.txt", "start\nrepeat\nmiddle\nrepeat\nend\n"),
+            ("two.txt", "alpha\nbeta\ngamma\ndelta\n"),
+            ("crlf.txt", "one\r\ntwo\r\nthree\r\n"),
+        ])
+        .await;
+        let cwd = root.path().to_str().unwrap();
+        let read = |name: &str| std::fs::read_to_string(root.path().join(name)).unwrap();
+        let edit = |path: &str, blocks: &str| {
+            call(
+                service.client(),
+                cwd,
+                "file.edit",
+                serde_json::json!({"path": path, "blocks": blocks}),
+            )
+        };
+
+        // A SEARCH that matches two places names both, and changes nothing.
+        let (result, _, _) = edit("twice.txt", "<<<<<<< SEARCH\nrepeat\n=======\nonce\n>>>>>>> REPLACE\n").await;
+        assert_eq!(result.exit_code, 1);
+        assert!(message(&result).contains("Block 1's SEARCH matches twice.txt at line 2 and line 4"), "{}", message(&result));
+        assert_eq!(read("twice.txt"), "start\nrepeat\nmiddle\nrepeat\nend\n");
+
+        // A second block that matches nowhere names itself and the closest
+        // lines, and the first block's change is not made either.
+        let failing = "<<<<<<< SEARCH\nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n\n<<<<<<< SEARCH\ngamma\ndelto\n=======\n>>>>>>> REPLACE\n";
+        let (result, _, _) = edit("two.txt", failing).await;
+        assert_eq!(result.exit_code, 1);
+        assert!(message(&result).contains("Block 2's SEARCH matches no lines of two.txt"), "{}", message(&result));
+        assert!(message(&result).contains("lines 3-4:\n3: gamma\n4: delta"), "{}", message(&result));
+        assert_eq!(read("two.txt"), "alpha\nbeta\ngamma\ndelta\n");
+
+        // Two blocks apply together, each against the file as it was; an
+        // empty REPLACE deletes its lines.
+        let both = "<<<<<<< SEARCH\nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n<<<<<<< SEARCH\ngamma\ndelta\n=======\n>>>>>>> REPLACE\n";
+        let (result, output, _) = edit("two.txt", both).await;
+        assert_eq!(result.exit_code, 0, "{result:?}");
+        assert_eq!(output, b"Edited two.txt\n");
+        assert_eq!(read("two.txt"), "ALPHA\nbeta\n");
+
+        // A file with CRLF line endings keeps them, though the blocks come
+        // with LF.
+        let (result, _, _) = edit("crlf.txt", "<<<<<<< SEARCH\ntwo\n=======\n2a\n2b\n>>>>>>> REPLACE\n").await;
+        assert_eq!(result.exit_code, 0, "{result:?}");
+        assert_eq!(read("crlf.txt"), "one\r\n2a\r\n2b\r\nthree\r\n");
+        assert!(service.shutdown().await.unwrap().success());
+    })
+    .await
+    .unwrap();
+}
+
+/// A unified diff applies where its hunks' context and removed lines match,
+/// whatever line counts its headers give, as `git apply --recount` reads
+/// them; a hunk that matches nowhere changes no file.
+#[tokio::test]
+async fn a_patch_applies_its_hunks_where_their_lines_match() {
+    tokio::time::timeout(Duration::from_secs(15), async {
+        let (root, service) = service_with(&[
+            ("counts.txt", "one\ntwo\nthree\nfour\nfive\n"),
+            ("bare.txt", "keep\nold\nkeep\n"),
+            ("twice.txt", "a\nx\nb\nc\na\nx\nb\nd\n"),
+            ("first.txt", "first\nline\n"),
+            ("second.txt", "second\n"),
+        ])
+        .await;
+        let cwd = root.path().to_str().unwrap();
+        let read = |name: &str| std::fs::read_to_string(root.path().join(name)).unwrap();
+        let patch = |diff: &str| {
+            call(
+                service.client(),
+                cwd,
+                "file.patch",
+                serde_json::json!({"patch": diff}),
+            )
+        };
+
+        // The header says 5 old and 8 new lines; the hunk has 3 and 5.
+        let (result, _, error) = patch(
+            "--- a/counts.txt\n+++ b/counts.txt\n@@ -2,5 +2,8 @@\n two\n-three\n+3a\n+3b\n+3c\n four\n",
+        )
+        .await;
+        assert_eq!(result.exit_code, 0, "{}", String::from_utf8_lossy(&error));
+        assert_eq!(read("counts.txt"), "one\ntwo\n3a\n3b\n3c\nfour\nfive\n");
+
+        let (result, _, error) = patch("--- a/bare.txt\n+++ b/bare.txt\n@@\n keep\n-old\n+new\n").await;
+        assert_eq!(result.exit_code, 0, "{}", String::from_utf8_lossy(&error));
+        assert_eq!(read("bare.txt"), "keep\nnew\nkeep\n");
+
+        // The hunk matches at lines 1 and 5; its header's line 4 is nearer
+        // the second.
+        let (result, _, error) = patch("--- a/twice.txt\n+++ b/twice.txt\n@@ -4,3 +4,3 @@\n a\n-x\n+y\n b\n").await;
+        assert_eq!(result.exit_code, 0, "{}", String::from_utf8_lossy(&error));
+        assert_eq!(read("twice.txt"), "a\nx\nb\nc\na\ny\nb\nd\n");
+
+        // The second file's hunk matches nowhere: the patch names it, and
+        // the first file, whose hunk applies, is left as it was.
+        let (result, _, _) = patch(
+            "--- a/first.txt\n+++ b/first.txt\n@@ -1,4 +1,4 @@\n-first\n+changed\n line\n--- a/second.txt\n+++ b/second.txt\n@@ -1 +1 @@\n-absent\n+changed\n",
+        )
+        .await;
+        assert_eq!(result.exit_code, 1);
+        assert!(
+            message(&result).contains("Patch does not apply to second.txt: hunk 1 (@@ -1 +1 @@) matches no lines"),
+            "{}",
+            message(&result)
+        );
+        assert_eq!(read("first.txt"), "first\nline\n");
+        assert_eq!(read("second.txt"), "second\n");
+        assert!(service.shutdown().await.unwrap().success());
+    })
+    .await
+    .unwrap();
+}
+
 /// A patch whose later file cannot be written leaves every file as it was:
 /// the earlier one it wrote is restored, and no edit is recorded.
 #[cfg(unix)]

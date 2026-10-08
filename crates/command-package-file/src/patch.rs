@@ -3,7 +3,7 @@ use std::{collections::HashSet, fs, path::PathBuf, sync::LazyLock};
 use regex::Regex;
 use tokio_util::sync::CancellationToken;
 
-use crate::files::{FileError, atomic_write, check_cancelled, resolve};
+use crate::files::{FileError, Unchosen, atomic_write, check_cancelled, nearest, resolve};
 
 /// Why a patch does not apply; its message is what the agent reads.
 #[derive(Debug, thiserror::Error)]
@@ -23,14 +23,26 @@ pub enum PatchError {
     DestinationExists,
     #[error("Patch changes the same path more than once")]
     PathTwice,
-    #[error("Patch hunk position is out of range")]
-    HunkOutOfRange,
-    #[error("Patch hunk starts before file")]
-    HunkBeforeFile,
-    #[error("Patch hunk line counts do not match header")]
-    HunkCounts,
-    #[error("Patch does not apply at line {0}")]
-    Mismatch(usize),
+    #[error("hunk {hunk} ({header}) inserts after line {line}, past the file's end")]
+    HunkOutOfRange {
+        hunk: usize,
+        header: String,
+        line: usize,
+    },
+    #[error("hunk {hunk} ({header}) matches no lines")]
+    HunkNoMatch { hunk: usize, header: String },
+    #[error(
+        "hunk {hunk} ({header}) matches at lines {lines}; give its header's line numbers or more context"
+    )]
+    HunkAmbiguous {
+        hunk: usize,
+        header: String,
+        lines: String,
+    },
+    #[error(
+        "hunk {hunk} ({header}) has no context or removed lines, so it needs its header's line numbers"
+    )]
+    HunkUnanchored { hunk: usize, header: String },
     #[error("New header precedes old header")]
     NewBeforeOld,
     #[error("Invalid patch hunk header")]
@@ -55,10 +67,12 @@ struct FilePatch {
     hunks: Vec<Hunk>,
 }
 
+/// A hunk: its header as written, the old start and line count the
+/// header gives, when it gives them, and its lines.
 struct Hunk {
-    start: usize,
-    old_count: usize,
-    new_count: usize,
+    header: String,
+    start: Option<usize>,
+    old_count: Option<usize>,
     lines: Vec<Line>,
 }
 
@@ -215,28 +229,22 @@ fn restore(change: &Change) -> Result<(), FileError> {
     }
 }
 
+/// `original` with `hunks` applied in order. A hunk's header gives no line
+/// counts that matter, as `git apply --recount` reads it: the hunk goes where
+/// its context and removed lines match, the only place or the one nearest
+/// its header's line (`commands.md` § File commands).
 fn apply_hunks(
     original: &str,
     hunks: &[Hunk],
     cancellation: &CancellationToken,
 ) -> Result<String, FileError> {
     let mut lines: Vec<String> = original.split_inclusive('\n').map(String::from).collect();
+    // How far the lines moved by the hunks applied before, against the
+    // header's numbers.
     let mut offset = 0isize;
-    for hunk in hunks {
+    for (index, hunk) in hunks.iter().enumerate() {
         check_cancelled(cancellation)?;
-        let original_start = if hunk.old_count == 0 {
-            hunk.start
-        } else {
-            hunk.start.saturating_sub(1)
-        };
-        let start = isize::try_from(original_start)
-            .ok()
-            .and_then(|start| start.checked_add(offset))
-            .ok_or(PatchError::HunkOutOfRange)?;
-        if start < 0 {
-            return Err(PatchError::HunkBeforeFile.into());
-        }
-        let start = start as usize;
+        let number = index + 1;
         let old: Vec<_> = hunk
             .lines
             .iter()
@@ -249,19 +257,80 @@ fn apply_hunks(
             .filter(|line| line.kind != b'-')
             .map(line_text)
             .collect();
-        if old.len() != hunk.old_count || new.len() != hunk.new_count {
-            return Err(PatchError::HunkCounts.into());
-        }
-        let end = start
-            .checked_add(old.len())
-            .ok_or(PatchError::HunkOutOfRange)?;
-        if lines.get(start..end) != Some(old.as_slice()) {
-            return Err(PatchError::Mismatch(hunk.start).into());
-        }
+        // The 0-based line the header names: its first old line, or for a
+        // header whose old count is 0, the line it inserts after.
+        let expected = hunk.start.map(|start| {
+            let first = if hunk.old_count == Some(0) {
+                start
+            } else {
+                start.saturating_sub(1)
+            };
+            first.saturating_add_signed(offset)
+        });
+        let at = if old.is_empty() {
+            match expected {
+                _ if lines.is_empty() => 0,
+                Some(line) if line <= lines.len() => line,
+                Some(line) => {
+                    return Err(PatchError::HunkOutOfRange {
+                        hunk: number,
+                        header: hunk.header.clone(),
+                        line,
+                    }
+                    .into());
+                }
+                None => {
+                    return Err(PatchError::HunkUnanchored {
+                        hunk: number,
+                        header: hunk.header.clone(),
+                    }
+                    .into());
+                }
+            }
+        } else {
+            let matches: Vec<usize> = lines
+                .windows(old.len())
+                .enumerate()
+                .filter(|(_, window)| *window == old.as_slice())
+                .map(|(first, _)| first)
+                .collect();
+            choose(&matches, expected).map_err(|several| match several {
+                None => PatchError::HunkNoMatch {
+                    hunk: number,
+                    header: hunk.header.clone(),
+                },
+                Some(lines) => PatchError::HunkAmbiguous {
+                    hunk: number,
+                    header: hunk.header.clone(),
+                    lines,
+                },
+            })?
+        };
         offset += new.len() as isize - old.len() as isize;
-        lines.splice(start..end, new);
+        lines.splice(at..at + old.len(), new);
     }
     Ok(lines.concat())
+}
+
+/// The match to use of `matches`: the only one, or the one nearest
+/// `expected`. Without one, the error is `None` when nothing matches and
+/// the 1-based lines of the matches it cannot choose among otherwise.
+fn choose(matches: &[usize], expected: Option<usize>) -> Result<usize, Option<String>> {
+    let chosen = match (matches, expected) {
+        ([], _) => return Err(None),
+        ([only], _) => Ok(*only),
+        (_, None) => Err(Unchosen::Tie),
+        (_, Some(expected)) => nearest(matches, |first| first.abs_diff(expected)),
+    };
+    chosen.map_err(|_| {
+        Some(
+            matches
+                .iter()
+                .map(|first| (first + 1).to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+        )
+    })
 }
 
 fn line_text(line: &Line) -> String {
@@ -273,57 +342,66 @@ fn line_text(line: &Line) -> String {
 }
 
 static HEADER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^@@ -(\d+)(?:,(\d+))? \+\d+(?:,(\d+))? @@").unwrap());
+    LazyLock::new(|| Regex::new(r"^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@").unwrap());
 static DATE_SUFFIX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\s+\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:\s+[+-]\d{4})?)?$")
         .unwrap()
 });
 
+/// The file patches of `diff`. Hunk line counts are not trusted, so a
+/// `--- ` line is a file's old header when a `+++ ` line follows it, and
+/// otherwise a hunk's removed line.
 fn parse(diff: &str, cancellation: &CancellationToken) -> Result<Vec<FilePatch>, FileError> {
     let mut patches: Vec<FilePatch> = Vec::new();
     let mut pending_old = None;
-    for line in diff.split('\n') {
+    let lines: Vec<&str> = diff.split('\n').collect();
+    for (index, &line) in lines.iter().enumerate() {
         check_cancelled(cancellation)?;
-        if pending_old.is_none()
-            && (line.starts_with("--- ") || line.starts_with("+++ "))
-            && let Some(hunk) = patches.last_mut().and_then(|patch| patch.hunks.last_mut())
+        let in_hunk = pending_old.is_none()
+            && patches
+                .last()
+                .is_some_and(|patch| !patch.hunks.is_empty());
+        let old_header = line.starts_with("--- ")
+            && lines
+                .get(index + 1)
+                .is_some_and(|next| next.starts_with("+++ "));
+        if let Some(path) = line.strip_prefix("--- ")
+            && (old_header || !in_hunk)
         {
-            let old = hunk.lines.iter().filter(|line| line.kind != b'+').count();
-            let new = hunk.lines.iter().filter(|line| line.kind != b'-').count();
-            if old < hunk.old_count || new < hunk.new_count {
-                hunk.lines.push(Line {
-                    kind: line.as_bytes()[0],
-                    text: line[1..].into(),
-                    newline: true,
-                });
-                continue;
-            }
-        }
-        if let Some(path) = line.strip_prefix("--- ") {
             pending_old = Some(parse_path(path));
-        } else if let Some(path) = line.strip_prefix("+++ ") {
+        } else if let Some(path) = line.strip_prefix("+++ ")
+            && (pending_old.is_some() || !in_hunk)
+        {
             patches.push(FilePatch {
                 old: pending_old.take().ok_or(PatchError::NewBeforeOld)?,
                 new: parse_path(path),
                 hunks: Vec::new(),
             });
-        } else if line.starts_with("@@ ") {
-            let header = HEADER.captures(line).ok_or(PatchError::HunkHeader)?;
-            let parse_count = |index| -> Result<usize, PatchError> {
-                header.get(index).map_or(Ok(1), |value| {
-                    value.as_str().parse().map_err(|_| PatchError::HunkCount)
-                })
+        } else if line.starts_with("@@") {
+            let hunk = match HEADER.captures(line) {
+                Some(header) => Hunk {
+                    header: line.to_owned(),
+                    start: Some(header[1].parse().map_err(|_| PatchError::HunkStart)?),
+                    old_count: header
+                        .get(2)
+                        .map(|count| count.as_str().parse().map_err(|_| PatchError::HunkCount))
+                        .transpose()?,
+                    lines: Vec::new(),
+                },
+                // A header without numbers, such as a bare `@@`.
+                None if !line.starts_with("@@ -") => Hunk {
+                    header: line.to_owned(),
+                    start: None,
+                    old_count: None,
+                    lines: Vec::new(),
+                },
+                None => return Err(PatchError::HunkHeader.into()),
             };
             patches
                 .last_mut()
                 .ok_or(PatchError::HunkBeforeHeader)?
                 .hunks
-                .push(Hunk {
-                    start: header[1].parse().map_err(|_| PatchError::HunkStart)?,
-                    old_count: parse_count(2)?,
-                    new_count: parse_count(3)?,
-                    lines: Vec::new(),
-                });
+                .push(hunk);
         } else if let Some(hunk) = patches.last_mut().and_then(|patch| patch.hunks.last_mut()) {
             match line.as_bytes().first() {
                 Some(kind @ (b' ' | b'-' | b'+')) => hunk.lines.push(Line {
