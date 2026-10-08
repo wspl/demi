@@ -104,11 +104,23 @@ html[data-tone="paper"] {
    they lack, Chinese among them, fall back to the system's faces. Geist
    brings its mono for code; "Code Arabic" stays first there (base.css). */
 
+/* Inter's x-height (0.55 of its size) is taller than the system face's, so
+   at the same px it reads larger and heavier; `font-size-adjust` draws it at
+   the system face's x-height, every hard-coded size included, and a slight
+   negative tracking follows Inter's own guidance for text sizes. */
 html[data-font="inter"] {
   --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans", sans-serif;
+  font-size-adjust: 0.52;
+  letter-spacing: -0.006em;
 }
 
 html[data-font="geist"] {
   --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans", sans-serif;
   --font-mono: "Code Arabic", "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Code keeps its own metrics: columns line up, and the terminal measures its cells. */
+html[data-font="inter"] :is(code, pre, kbd, samp, .font-mono, .xterm) {
+  font-size-adjust: none;
+  letter-spacing: normal;
 }
