@@ -37,6 +37,7 @@ export function commandToForkCommand(
             io: job.io,
             storage,
             host,
+            commandId: session.activeCommandId,
             signal: job.signal,
             stdinStream: job.stdinChunks(),
           }),

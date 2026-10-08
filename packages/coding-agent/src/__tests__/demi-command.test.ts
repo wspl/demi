@@ -366,6 +366,7 @@ test('demi patch rolls back files when a later write fails', async () => {
     io: output.io,
     storage: noopStorage,
     host,
+    commandId: null,
     signal: new AbortController().signal,
     stdinStream: (async function* (): AsyncIterable<Uint8Array> {})(),
   })

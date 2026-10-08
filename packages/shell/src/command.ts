@@ -60,6 +60,12 @@ export interface CommandRunContext {
   storage: CommandStorage
   /** Host of the BashEnvironment executing this command. */
   host: Host
+  /**
+   * The shell command record (`shell_exec` commandId) this invocation runs
+   * inside; every registered command a single script invokes shares it. Null
+   * outside a shell command record.
+   */
+  commandId: string | null
   /** Aborted when the shell command is aborted (shell_abort, shell teardown). */
   signal: AbortSignal
   /**
@@ -107,6 +113,7 @@ export interface CommandExecutionContext {
   io: CommandIO
   storage: CommandStorage
   host: Host
+  commandId?: string
   signal?: AbortSignal
   stdinStream?: AsyncIterable<Uint8Array>
 }
@@ -296,6 +303,7 @@ export async function runRegisteredCommand(root: Command, ctx: CommandExecutionC
     io: parsed.json ? capture : ctx.io,
     storage: ctx.storage,
     host: ctx.host,
+    commandId: ctx.commandId ?? null,
     signal: ctx.signal ?? new AbortController().signal,
     stdinStream: ctx.stdinStream ?? emptyStdinStream(),
   })
