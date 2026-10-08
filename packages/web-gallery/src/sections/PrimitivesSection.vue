@@ -28,6 +28,7 @@ import { usageAt } from '../fixtures/catalog'
 import GallerySection from '../components/GallerySection.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import { productWould } from '../product-would'
+import { demoInstructions, demoInstructionsTooLarge, demoOpenInstruction } from '../fixtures/instructions'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { useGalleryView } from '../gallery-views'
 
@@ -664,7 +665,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
 
       <GallerySection
         title="ContextUsageIndicator"
-        note="The ring is the backend’s estimate. Point at it for the card: a click on the ring does nothing, Compact compacts. Compact is offered from half the window."
+        note="The ring is the backend’s estimate. Point at it for the card: a click on the ring does nothing, Compact compacts. Compact is offered from half the window. The card lists the instructions the model holds; an entry opens where it is written."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="below half · 34%">
@@ -717,6 +718,44 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
                   :usage="usageAt(0.62)"
                   :is-compacting="compactPinned"
                   @compact="pulseCompact('pinned')"
+                />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell>
+            <GallerySpecimen variant="card · instructions">
+              <div class="px-36 pt-48">
+                <ContextUsageIndicator
+                  pinned
+                  :usage="usageAt(0.42)"
+                  :instructions="demoInstructions"
+                  @compact="productWould('Compact the Conversation')"
+                  @open-instruction="demoOpenInstruction($event, productWould)"
+                />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell>
+            <GallerySpecimen variant="card · a file too large">
+              <div class="px-36 pt-40">
+                <ContextUsageIndicator
+                  pinned
+                  :usage="usageAt(0.42)"
+                  :instructions="demoInstructionsTooLarge"
+                  @compact="productWould('Compact the Conversation')"
+                  @open-instruction="demoOpenInstruction($event, productWould)"
+                />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell>
+            <GallerySpecimen variant="card · no instructions">
+              <div class="px-36 pt-28">
+                <ContextUsageIndicator
+                  pinned
+                  :usage="usageAt(0.42)"
+                  :instructions="[]"
+                  @compact="productWould('Compact the Conversation')"
                 />
               </div>
             </GallerySpecimen>

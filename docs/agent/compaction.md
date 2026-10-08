@@ -320,7 +320,8 @@ The replay bound keeps one long text from filling a request:
   `\n\n[... truncated N characters ...]\n\n`, then its last 8,000, where `N`
   counts the scalar values left out.
 - The bound applies to the text parts of user, context, wakeup and steer
-  blocks, to assistant text, to thinking without a signature, to the text of
+  blocks, except the instructions block, which is replayed whole
+  ([Instructions](instructions.md#which-files-are-read)), to assistant text, to thinking without a signature, to the text of
   tool results, and to the replayed summary of a `compaction_boundary`.
 - Signed thinking and redacted data are replayed whole, because the vendor
   verifies them as they were sent.

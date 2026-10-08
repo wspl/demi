@@ -15,7 +15,7 @@ use demi_agent_server::{
 };
 use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
 use demi_agent_tools::{
-    ContextSource, HostResolver, NodeContext, SubagentSettings, SubagentSource, Toolset,
+    ContextAnswer, ContextSource, HostResolver, NodeContext, SubagentSettings, SubagentSource, Toolset,
     testing::{NoHost, NoShells},
 };
 use demi_agent_transcript::testing::SequentialIds;
@@ -71,10 +71,10 @@ impl ContextSource for PluginSource {
         _node: NodeContext<'a>,
         _turn: &'a TurnId,
         seen: &'a [&'a str],
-    ) -> LocalBoxFuture<'a, Result<Option<String>, String>> {
+    ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, String>> {
         self.asked.set(true);
         let news = (!seen.contains(&self.text.as_str())).then(|| self.text.clone());
-        Box::pin(async move { Ok(news) })
+        Box::pin(async move { Ok(news.map(ContextAnswer::from)) })
     }
 }
 
@@ -114,7 +114,7 @@ impl ContextSource for TestProduct {
         _node: NodeContext<'a>,
         _turn: &'a TurnId,
         seen: &'a [&'a str],
-    ) -> LocalBoxFuture<'a, Result<Option<String>, String>> {
+    ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, String>> {
         self.seen
             .borrow_mut()
             .push(seen.iter().map(|text| (*text).to_owned()).collect());
@@ -128,7 +128,7 @@ impl ContextSource for TestProduct {
                     .borrow_mut()
                     .push(plugin.asked.get());
             }
-            Ok(news)
+            Ok(news.map(ContextAnswer::from))
         })
     }
 }

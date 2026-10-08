@@ -11,7 +11,7 @@ use demi_provider_common::{
     InferenceItem, MediaBytes, Medium, RequestLimits, ResultPart, UserPart,
 };
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, B64Bytes, BlobRef, Block, CommandEnd, CompletionOutcome,
+    AgentMessage, AgentMessageEvent, B64Bytes, INSTRUCTIONS_SOURCE, BlobRef, Block, CommandEnd, CompletionOutcome,
     DocumentSource,
     PermissionOutcome,
     FileExtension, MediaSource, Model, ModelMediaKind, Timestamp, ToolCallStatus, ToolMediaSource,
@@ -88,8 +88,13 @@ pub fn replay(request: &RequestView) -> Replay {
                     content: preamble.chain(content).collect(),
                 });
             }
+            // The instructions are sent whole (`compaction.md` § Text bounds).
             Block::Context(context) => items.push(InferenceItem::UserMessage {
-                content: vec![bounded(&context.text)],
+                content: vec![if context.source == INSTRUCTIONS_SOURCE {
+                    UserPart::Text(context.text.clone())
+                } else {
+                    bounded(&context.text)
+                }],
             }),
             Block::Wakeup(wakeup) => {
                 let content = vec![UserPart::Text(wakeup_text(wakeup).into_owned())];

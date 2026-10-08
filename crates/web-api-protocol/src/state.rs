@@ -51,6 +51,8 @@ pub struct ProductState {
     pub conversations: Vec<ConversationSummary>,
     pub cloud: CloudStatus,
     pub subagents: SubagentSettings,
+    /// The user's personal instructions; empty when they have none.
+    pub instructions: String,
     /// The backend's plugins, in their order of registration.
     pub plugins: Vec<PluginEntry>,
     /// The state of each plugin the user has on that gives one, valid
@@ -131,6 +133,10 @@ pub enum SyncEvent {
     /// disabled or deleted a profile.
     Subagents {
         subagents: SubagentSettings,
+    },
+    /// The user saved their personal instructions.
+    Instructions {
+        instructions: String,
     },
     /// Nothing else was sent for 30 seconds.
     Heartbeat,

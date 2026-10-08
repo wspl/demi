@@ -724,6 +724,12 @@ there, each with a switch of its own that enables or disables it; a new
 profile starts enabled. The next spawn of every conversation uses a change.
 A profile whose provider entry, model, effort or tier is gone is marked as
 unavailable, with the part that is missing, until the user fixes it.
+Settings have an Instructions section, after Models & Providers: one text
+field for the user's [personal instructions](../agent/instructions.md#personal-instructions),
+which every conversation's agents follow, with Save, available while the
+text differs from the saved one, and the count of characters against the
+limit. Saving an empty text removes them. The context card's Personal
+instructions entry opens this section.
 Skills have a settings section of their own, which the sidebar also opens
 ([Skills](../agent/skills.md#the-page)).
 Data and privacy actions, language switching, and account deletion are also

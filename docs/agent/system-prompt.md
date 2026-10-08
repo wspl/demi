@@ -49,7 +49,8 @@ five layers in this order, and holds no time, Host or other state
 Everything that changes, or that differs by Host, user or project, reaches
 the model as a `context` block appended to the transcript, never as a change
 to these layers ([Context](runtime.md#context)): the date, the current Host's
-system and working directory, the skills catalog. Details reach it when it
+system and working directory, the skills catalog, the user's and the
+project's [instructions](instructions.md). Details reach it when it
 asks for them: a command's `--help` is a command result.
 
 The whole system prompt stays near 3,000 tokens: the identity a few
@@ -115,8 +116,11 @@ order:
   with what it can do without it, and does not run the command again until
   the user grants it.
 - **Context blocks and attachments.** A `context` block is a fact the
-  application supplies, not the user's words; a file the user attaches
-  arrives as an `<attachment>` tag naming its path on the Host.
+  application supplies, not the user's words; the instructions block is the
+  one that holds instructions to follow, the user's personal ones and the
+  project's `AGENTS.md` or `CLAUDE.md` files
+  ([Instructions](instructions.md)). A file the user attaches arrives as an
+  `<attachment>` tag naming its path on the Host.
 
 A rule belongs here only when its moment arises during ordinary work rather
 than while the model reads one command's help; otherwise it belongs in that

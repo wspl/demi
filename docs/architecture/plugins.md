@@ -163,7 +163,8 @@ a `context` block, and so does anything that differs by user or
 conversation, or changes while a conversation lives
 ([Transcript](../agent/runtime.md#block-types)). Before each provider request
 of a node, the session asks every context source at once and takes their
-answers in a fixed order: the product's execution context first, then each
+answers in a fixed order: the product's execution context first, then the
+product's [instructions](../agent/instructions.md), then each
 plugin that declared itself a context source, in registration order; a source
 that reads a Host does not make the others wait. Each source is given the text of its
 own context blocks that the model receives, the ones from the last
@@ -474,8 +475,8 @@ The plugin host, in `backend-plugins`, runs every plugin of the backend:
   plugins the backend offers, and a user turns each on or off ([A user's
   plugins](#a-users-plugins)). Each plugin has a unique id (`file`,
   `browser`, `skills`), which names its values, its part of the product state,
-  its directories on a Host and its page route; `execution` is the product's
-  context source and is taken. Its manifest also carries a name and a
+  its directories on a Host and its page route; `execution` and
+  `instructions` are the product's context sources and are taken. Its manifest also carries a name and a
   one-sentence description, which settings show.
 - **Startup.** The host reads every manifest and checks the commands and the
   streams ([Commands](#commands)). A manifest that breaks a rule stops the

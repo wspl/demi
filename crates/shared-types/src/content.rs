@@ -177,8 +177,8 @@ pub fn attachment_tag(attachment: &Attachment) -> String {
 }
 
 /// Appends `value` with the characters that could end or open markup
-/// escaped.
-fn push_escaped(out: &mut String, value: &str) {
+/// escaped, as an XML text or attribute value the model reads.
+pub fn push_escaped(out: &mut String, value: &str) {
     for character in value.chars() {
         match character {
             '&' => out.push_str("&amp;"),
@@ -188,6 +188,14 @@ fn push_escaped(out: &mut String, value: &str) {
             other => out.push(other),
         }
     }
+}
+
+/// `value` with the characters that could end or open markup escaped
+/// ([`push_escaped`]).
+pub fn xml_escaped(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    push_escaped(&mut escaped, value);
+    escaped
 }
 
 /// Whether `text` holds nothing but white space as JavaScript's `trim` counts

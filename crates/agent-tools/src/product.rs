@@ -7,7 +7,7 @@
 use std::rc::Rc;
 
 use demi_host_interface::{CommandSet, Host, HostError, HostErrorKind};
-use demi_shared_types::{NodeId, TurnId};
+use demi_shared_types::{InstructionEntry, NodeId, TurnId};
 use futures_util::future::LocalBoxFuture;
 
 /// The commands every node of a tree starts from, which a tree takes when
@@ -153,10 +153,30 @@ pub trait HostResolver: 'static {
     }
 }
 
+/// What a context source tells the node: its block's text, and for the
+/// instructions source what the text holds (`instructions.md` § What the
+/// card lists).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextAnswer {
+    pub text: String,
+    pub instructions: Vec<InstructionEntry>,
+}
+
+impl From<String> for ContextAnswer {
+    fn from(text: String) -> Self {
+        Self {
+            text,
+            instructions: Vec::new(),
+        }
+    }
+}
+
 /// One source of what the model must learn before a request (`runtime.md`
-/// § Context), such as the conversation's execution context or a plugin.
+/// § Context), such as the conversation's execution context, the
+/// instructions or a plugin.
 pub trait ContextSource {
-    /// The name its blocks record: `execution`, or a plugin's id.
+    /// The name its blocks record: `execution`, `instructions`, or a
+    /// plugin's id.
     fn name(&self) -> &str;
 
     /// What the node must learn now, or nothing. `seen` is the text of the
@@ -168,5 +188,5 @@ pub trait ContextSource {
         node: NodeContext<'a>,
         turn: &'a TurnId,
         seen: &'a [&'a str],
-    ) -> LocalBoxFuture<'a, Result<Option<String>, String>>;
+    ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, String>>;
 }

@@ -277,7 +277,7 @@ async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequ
     if !news.is_empty() {
         s.update(|core| {
             for news in news {
-                core.push_context(news.source, news.text);
+                core.push_context(news);
             }
         });
         persist::flush(s).await?;

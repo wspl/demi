@@ -32,6 +32,7 @@ import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protoc
 import { demoModels, demoProviders, usageAt } from '../fixtures/catalog'
 import { setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
 import { productWould } from '../product-would'
+import { demoInstructions, demoOpenInstruction } from '../fixtures/instructions'
 import type { SentMessage } from '../turn-flow'
 import { createGalleryRemoteFileHosts } from '../fixtures/files'
 import { galleryUploads } from '../fixtures/upload-sweep'
@@ -343,6 +344,7 @@ onBeforeUnmount(() => {
     :hold="hold"
     :model-settings="settings"
     :usage="props.usage ?? usageAt(0.62)"
+    :instructions="demoInstructions"
     :replaced="replacedVersion && { markdown: replacedVersion.text, fileNames: replacedVersion.files.map((file) => file.name) }"
     :draft-shown="shown"
     :plugins-changed="pluginsChanged"
@@ -363,6 +365,7 @@ onBeforeUnmount(() => {
     @change-context-limit="setGalleryContextLimit"
     @stop="emit('stop')"
     @compact="compact"
+    @open-instruction="demoOpenInstruction($event, productWould)"
   />
   <RemoteFilePicker
     ref="remotePicker"

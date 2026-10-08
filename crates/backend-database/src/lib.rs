@@ -18,6 +18,7 @@ pub mod deletions;
 pub mod devices;
 pub mod drafts;
 pub mod forks;
+pub mod instructions;
 pub mod managed;
 pub mod panels;
 pub mod permissions;

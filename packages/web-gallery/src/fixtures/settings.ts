@@ -1,3 +1,4 @@
+import { DEMO_PERSONAL_INSTRUCTIONS } from './instructions'
 import { reactive } from 'vue'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
@@ -685,6 +686,7 @@ export function createSettingsState() {
       { id: 'file-browser', name: 'File Browser', description: 'Opens the conversation’s files in the work panel to read them, with a tree of the working directory.', enabled: true },
     ] as SettingsPlugin[],
     subagents: createSubagentState(),
+    instructions: DEMO_PERSONAL_INSTRUCTIONS,
     skills: {
       sources: [
         {

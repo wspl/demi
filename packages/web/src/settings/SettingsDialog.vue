@@ -37,6 +37,7 @@ import { useConversations } from '../conversation/store'
 import DevicesPanel from './DevicesPanel.vue'
 import { useSettingsAddress } from './address'
 import ProvidersPanel from './ProvidersPanel.vue'
+import InstructionsPanel from './InstructionsPanel.vue'
 import SubagentsPanel from './SubagentsPanel.vue'
 
 const emit = defineEmits<{ signOut: [] }>()
@@ -457,6 +458,7 @@ function resetShortcuts(): void {
     />
     <ProvidersPanel v-else-if="section === 'models' && resources.canConfigure" />
     <DevicesPanel v-else-if="section === 'devices'" />
+    <InstructionsPanel v-else-if="section === 'instructions'" />
     <SubagentsPanel v-else-if="section === 'subagents'" />
     <SettingsPlugins
       v-else-if="section === 'plugins'"

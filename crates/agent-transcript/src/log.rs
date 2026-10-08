@@ -7,7 +7,7 @@ use demi_conversation_socket_protocol::{TranscriptPatch, TranscriptVersion};
 use demi_provider_common::ToolCall;
 use demi_shared_types::{
     AbortBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
-    CompactionMarkerBlock, ContextBlock, ErrorBlock, ModelSelection, ProviderErrorDiagnostics,
+    CompactionMarkerBlock, ContextBlock, ErrorBlock, InstructionEntry, ModelSelection, ProviderErrorDiagnostics,
     RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock, TextBlock, ThinkingBlock,
     Timestamp, TokenUsage, ToolCallBlock, ToolCallStatus, ToolResultContentBlock, ToolView, TurnId,
     UserBlock, UserContentBlock, WakeupBlock, WakeupCommand, WakeupPlacement,
@@ -102,6 +102,7 @@ impl TranscriptLog {
         model: &ModelSelection,
         source: String,
         text: String,
+        instructions: Vec<InstructionEntry>,
     ) {
         let (id, created_at) = self.stamp();
         self.append(Block::Context(ContextBlock {
@@ -111,6 +112,7 @@ impl TranscriptLog {
             model: model.clone(),
             source,
             text,
+            instructions,
         }));
     }
 

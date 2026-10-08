@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { isFocusedElementEditable } from '@vueuse/core'
-import type { ContextUsage } from '@demicodes/protocol'
+import type { ContextUsage, InstructionEntry } from '@demicodes/protocol'
 import { ArrowUp, File as FileIcon, HardDrive, Plus, RotateCcw, Square, X } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '../overlay/appOverlay'
@@ -70,6 +70,8 @@ const props = withDefaults(
     modelSettings?: ModelSettings | null
     /** How full the next request is, as the backend reports it. */
     usage?: ContextUsage | null
+    /** What the newest instructions block holds, which the context card lists. */
+    instructions?: readonly InstructionEntry[]
     /** When no model can send, show Configure Models. Hide the action if the user cannot open that page. */
     canConfigure?: boolean
     /** Replaces the input with the archive bar. */
@@ -108,6 +110,8 @@ const emit = defineEmits<{
   submit: []
   stop: []
   compact: []
+  /** Opens where an instructions entry of the context card is written. */
+  openInstruction: [entry: InstructionEntry]
   /** Files to attach; their capsules land where they were dropped, pasted or picked. */
   addFiles: [files: File[]]
   /** Open the host's file browser; the caller attaches what it returns, and its capsule lands at the cursor. */
@@ -517,7 +521,9 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             :usage="usage"
             :is-compacting="compacting"
             :unavailable-reason="compactUnavailable"
+            :instructions="instructions"
             @compact="emit('compact')"
+            @open-instruction="emit('openInstruction', $event)"
           />
           <Tooltip v-if="shownEdit" content="Cancel edit">
             <IconButton

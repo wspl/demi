@@ -9,6 +9,7 @@ mod adoption;
 #[cfg(test)]
 pub(crate) use self::adoption::PlayedRunner;
 pub mod cloud;
+pub mod instructions;
 mod host;
 #[cfg(test)]
 mod host_tests;

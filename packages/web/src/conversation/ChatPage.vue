@@ -231,6 +231,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
       ><ConversationComposer
         :key="conversation.id"
         :conversation="conversation"
+        :open-file="files?.open"
     /></template>
   </ChatSession>
   <section

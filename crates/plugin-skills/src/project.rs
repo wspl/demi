@@ -4,6 +4,7 @@
 //! found through Host reads that never wake the Host. Each round of the
 //! search reads every path it needs in one request.
 
+use demi_plugin_interface::project::{self, join};
 use demi_plugin_interface::{EntryKind, HostFile, HostRead, PluginPort, PortFailure};
 
 use crate::skill::{self, SKILL_MD_MAX_BYTES};
@@ -124,50 +125,11 @@ struct Node {
     depth: usize,
 }
 
-/// `cwd` and each directory above it up to the root of its git repository,
-/// the nearest that holds `.git`; outside a repository, `cwd` alone.
+/// `cwd` and each directory above it up to the root of its git repository.
 async fn searched_directories(port: &PluginPort, cwd: &str) -> Result<Vec<String>, PortFailure> {
-    let ancestors = ancestors(cwd);
-    let reads = ancestors
-        .iter()
-        .map(|directory| HostRead {
-            path: join(directory, ".git"),
-            limit: 0,
-        })
-        .collect();
-    let found = port.read_host_files(reads).await?;
-    let root = found
-        .iter()
-        .position(|file| !matches!(file, HostFile::Missing | HostFile::Unreadable { .. }));
-    Ok(match root {
-        Some(root) => ancestors[..=root].to_vec(),
-        None => vec![ancestors[0].clone()],
-    })
-}
-
-/// `cwd` and every directory above it, nearest first.
-fn ancestors(cwd: &str) -> Vec<String> {
-    let mut directory = cwd.trim_end_matches('/').to_owned();
-    if directory.is_empty() {
-        return vec!["/".to_owned()];
-    }
-    let mut ancestors = vec![directory.clone()];
-    while let Some((parent, _)) = directory.rsplit_once('/') {
-        directory = if parent.is_empty() {
-            "/".to_owned()
-        } else {
-            parent.to_owned()
-        };
-        ancestors.push(directory.clone());
-        if directory == "/" {
-            break;
-        }
-    }
-    ancestors
-}
-
-fn join(directory: &str, name: &str) -> String {
-    format!("{}/{name}", directory.trim_end_matches('/'))
+    let ancestors = project::ancestors(cwd);
+    let found = port.read_host_files(project::root_reads(&ancestors)).await?;
+    Ok(project::searched(&ancestors, &found).to_vec())
 }
 
 /// The skill in `directory` whose `SKILL.md` is `text`, of `size` bytes;

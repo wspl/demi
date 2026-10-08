@@ -372,9 +372,10 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
             let mut news = Vec::new();
             for (name, answer) in futures_util::future::join_all(asked).await {
                 match answer {
-                    Ok(Some(text)) => news.push(NewContext {
+                    Ok(Some(answer)) => news.push(NewContext {
                         source: name.to_owned(),
-                        text,
+                        text: answer.text,
+                        instructions: answer.instructions,
                     }),
                     Ok(None) => {}
                     Err(error) => tracing::warn!(

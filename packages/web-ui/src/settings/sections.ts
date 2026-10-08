@@ -7,6 +7,7 @@ import {
   Database,
   Keyboard,
   Monitor,
+  ScrollText,
   Settings2,
   Sparkles
 } from '@lucide/vue'
@@ -76,6 +77,13 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
           'base url',
           'catalog'
         ]
+      },
+      {
+        id: 'instructions',
+        label: 'Instructions',
+        icon: ScrollText,
+        keywords: ['personal instructions', 'custom instructions', 'AGENTS.md', 'CLAUDE.md', 'rules'],
+        settings: [{ label: 'Personal instructions' }],
       },
       {
         id: 'subagents',

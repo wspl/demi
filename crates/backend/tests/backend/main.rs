@@ -36,6 +36,7 @@ mod forks;
 mod holding_edge;
 mod hosts;
 mod install;
+mod instructions;
 mod isolation;
 mod machines;
 mod native;
