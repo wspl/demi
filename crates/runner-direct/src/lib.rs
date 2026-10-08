@@ -9,6 +9,7 @@
 //! through [`Direct`], and runs [`DirectDriver`] on that thread.
 
 mod addresses;
+mod gathering;
 mod operation;
 mod peer;
 #[cfg(feature = "testing")]
@@ -17,7 +18,7 @@ pub mod testing;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use demi_runner_protocol::direct::{Introduction, MAX_PEERS, OfferRefusal};
+use demi_runner_protocol::direct::{Introduction, MAX_PEERS, OfferRefusal, StunUrl};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
@@ -28,7 +29,7 @@ pub use operation::{
     StreamRequest, WatchStream,
 };
 
-use peer::{OfferError, Peer};
+use peer::{OfferError, Peer, Trickle};
 
 /// The runner's hold on its peers. Dropping it ends the driver, and with it
 /// every peer.
@@ -36,6 +37,14 @@ use peer::{OfferError, Peer};
 pub struct Direct {
     commands: mpsc::UnboundedSender<Command>,
     peers: watch::Receiver<usize>,
+}
+
+/// A runner's answer to an offer: its SDP, and the candidates it finds
+/// after, such as the address a STUN server saw it at, until the peer ends.
+#[derive(Debug)]
+pub struct Answered {
+    pub sdp: String,
+    pub candidates: mpsc::UnboundedReceiver<String>,
 }
 
 /// What a runner says to an offer it does not answer.
@@ -50,7 +59,12 @@ enum Command {
         peer: String,
         sdp: String,
         introduction: Introduction,
-        answer: oneshot::Sender<Result<String, Refused>>,
+        stun: Vec<StunUrl>,
+        answer: oneshot::Sender<Result<Answered, Refused>>,
+    },
+    Candidate {
+        peer: String,
+        candidate: String,
     },
     Close {
         peer: String,
@@ -86,18 +100,21 @@ pub fn direct(operations: Arc<dyn Operations>, addresses: Addresses) -> (Direct,
 
 impl Direct {
     /// Answers a page's offer for peer `peer` with a new peer, which
-    /// replaces the peer of that id.
+    /// replaces the peer of that id and asks the STUN servers `stun` for its
+    /// public addresses.
     pub async fn offer(
         &self,
         peer: String,
         sdp: String,
         introduction: Introduction,
-    ) -> Result<String, Refused> {
+        stun: Vec<StunUrl>,
+    ) -> Result<Answered, Refused> {
         let (answer, answered) = oneshot::channel();
         let command = Command::Offer {
             peer,
             sdp,
             introduction,
+            stun,
             answer,
         };
         let gone = || Refused {
@@ -106,6 +123,16 @@ impl Direct {
         };
         self.commands.send(command).map_err(|_| gone())?;
         answered.await.map_err(|_| gone())?
+    }
+
+    /// A candidate the page of peer `peer` found after its offer; one for a
+    /// peer the runner no longer has is passed over.
+    pub fn candidate(&self, peer: &str, candidate: String) {
+        // A driver that ended has no peer left to check it.
+        let _ = self.commands.send(Command::Candidate {
+            peer: peer.into(),
+            candidate,
+        });
     }
 
     /// Closes peer `peer`, whose page's signaling socket closed.
@@ -128,10 +155,11 @@ impl Direct {
 }
 
 /// A served peer: its generation, since a new offer replaces it under the
-/// same id, and what closes it.
+/// same id, what closes it, and where the page's later candidates go.
 struct Served {
     generation: u64,
     cancel: CancellationToken,
+    remote: mpsc::UnboundedSender<String>,
 }
 
 impl DirectDriver {
@@ -156,7 +184,7 @@ impl DirectDriver {
         loop {
             tokio::select! {
                 command = self.commands.recv() => match command {
-                    Some(Command::Offer { peer, sdp, introduction, answer }) => {
+                    Some(Command::Offer { peer, sdp, introduction, stun, answer }) => {
                         // A new offer replaces the peer of its id.
                         if let Some(replaced) = served.remove(&peer) {
                             replaced.cancel.cancel();
@@ -175,6 +203,7 @@ impl DirectDriver {
                             provider.clone(),
                             self.operations.clone(),
                             Arc::new(introduction),
+                            stun,
                         )
                         .await;
                         let (made, sdp) = match made {
@@ -192,15 +221,24 @@ impl DirectDriver {
                         };
                         generation += 1;
                         let cancel = CancellationToken::new();
-                        served.insert(peer.clone(), Served { generation, cancel: cancel.clone() });
+                        let (remote, heard) = mpsc::unbounded_channel();
+                        let (found, candidates) = mpsc::unbounded_channel();
+                        served.insert(peer.clone(), Served { generation, cancel: cancel.clone(), remote });
                         let current = generation;
+                        let trickle = Trickle { remote: heard, found };
                         tasks.spawn(async move {
-                            made.serve(cancel).await;
+                            made.serve(cancel, trickle).await;
                             (peer, current)
                         });
                         // A page that went before its answer has a peer
                         // that gives up.
-                        let _ = answer.send(Ok(sdp));
+                        let _ = answer.send(Ok(Answered { sdp, candidates }));
+                    }
+                    Some(Command::Candidate { peer, candidate }) => {
+                        if let Some(served) = served.get(&peer) {
+                            // A peer that ended takes no candidate.
+                            let _ = served.remote.send(candidate);
+                        }
                     }
                     Some(Command::Close { peer }) => {
                         if let Some(closed) = served.remove(&peer) {

@@ -77,19 +77,56 @@ impl Page {
     /// Offers a peer `peer` to `direct`, as the backend's introduction
     /// carries it, and serves the connection the answer makes.
     pub async fn offer(direct: &Direct, peer: &str, introduction: Introduction) -> Result<Self, Refused> {
-        Self::connect(async |offer| direct.offer(peer.into(), offer, introduction).await).await
+        Self::connect(async |offer| {
+            let answered = direct.offer(peer.into(), offer, introduction, Vec::new()).await?;
+            Ok(answered.sdp)
+        })
+        .await
+    }
+
+    /// Offers a peer `peer` to `direct` with no candidate, and reads the
+    /// runner's answer without its candidates, so that neither end can
+    /// reach the other until the page trickles its own after the answer, as
+    /// a browser does: the runner's checks to it then make the connection.
+    pub async fn trickled(direct: &Direct, peer: &str, introduction: Introduction) -> Result<Self, Refused> {
+        let (page, candidate) = Self::make(false, async |offer| {
+            let answered = direct.offer(peer.into(), offer, introduction, Vec::new()).await?;
+            let answer: String = answered
+                .sdp
+                .lines()
+                .filter(|line| !line.starts_with("a=candidate"))
+                .map(|line| format!("{line}\r\n"))
+                .collect();
+            Ok(answer)
+        })
+        .await?;
+        direct.candidate(peer, candidate);
+        Ok(page)
     }
 
     /// Makes the page's offer, which `answer` takes to the runner and whose
     /// answer it gives back, as the backend's signaling does, and serves the
     /// connection the answer makes.
     pub async fn connect<E>(answer: impl AsyncFnOnce(String) -> Result<String, E>) -> Result<Self, E> {
+        Ok(Self::make(true, answer).await?.0)
+    }
+
+    /// The page, with its socket's candidate in its offer or added after the
+    /// answer, and that candidate as the page trickles it.
+    async fn make<E>(
+        in_offer: bool,
+        answer: impl AsyncFnOnce(String) -> Result<String, E>,
+    ) -> Result<(Self, String), E> {
         let socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
         let local = socket.local_addr().unwrap();
         let mut rtc = RtcConfig::new()
             .set_crypto_provider(Arc::new(str0m::crypto::from_feature_flags()))
             .build(now());
-        rtc.add_local_candidate(Candidate::host(local, "udp").unwrap());
+        let candidate = Candidate::host(local, "udp").unwrap();
+        let mut trickled = None;
+        if in_offer {
+            trickled = rtc.add_local_candidate(candidate.clone()).map(Candidate::to_sdp_string);
+        }
         let mut changes = rtc.sdp_api();
         // A first channel, so that the offer carries one, as the page's.
         changes.add_channel("first".into());
@@ -97,14 +134,19 @@ impl Page {
         let answer = answer(offer.to_sdp_string()).await?;
         let answer = SdpAnswer::from_sdp_string(&answer).unwrap();
         rtc.sdp_api().accept_answer(pending, answer).unwrap();
+        if !in_offer {
+            trickled = rtc.add_local_candidate(candidate).map(Candidate::to_sdp_string);
+        }
+        let trickled = trickled.expect("the page's candidate is its first");
         let (commands, received) = mpsc::unbounded_channel();
         let (connected, watching) = watch::channel(None);
         let task = AbortOnDropHandle::new(tokio::spawn(serve(rtc, socket, received, connected)));
-        Ok(Self {
+        let page = Self {
             commands,
             connected: watching,
             _task: task,
-        })
+        };
+        Ok((page, trickled))
     }
 
     /// Waits until the connection stands, or answers that it failed.
