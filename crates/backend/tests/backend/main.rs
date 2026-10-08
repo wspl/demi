@@ -39,6 +39,7 @@ mod install;
 mod isolation;
 mod machines;
 mod native;
+mod organize;
 mod outputs;
 mod panel;
 mod permissions;
