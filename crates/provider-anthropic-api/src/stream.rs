@@ -187,7 +187,13 @@ impl Mapper {
             return Next::Nothing;
         };
         match block {
+            // The call's start is for display; the call is whole at its
+            // block's end (`providers.md` § A run).
             ContentBlock::ToolUse(tool) => {
+                let start_event = ProviderEvent::ToolCallStart {
+                    tool_use_id: tool.id.0.clone(),
+                    tool_name: tool.name.0.clone(),
+                };
                 self.tools.insert(
                     start.index,
                     ToolBlock {
@@ -197,7 +203,7 @@ impl Mapper {
                         input_json: String::new(),
                     },
                 );
-                Next::Nothing
+                Next::Event(start_event)
             }
             ContentBlock::Thinking(_) => Next::Event(ProviderEvent::ThinkingStart),
             ContentBlock::RedactedThinking(block) => {
@@ -223,10 +229,17 @@ impl Mapper {
                 Next::Event(ProviderEvent::ThinkingSignature(tagged(&piece.signature)))
             }
             Delta::InputJson(piece) => {
-                if let Some(block) = self.tools.get_mut(&delta.index) {
-                    block.input_json.push_str(&piece.partial_json);
+                let Some(block) = self.tools.get_mut(&delta.index) else {
+                    return Next::Nothing;
+                };
+                if piece.partial_json.is_empty() {
+                    return Next::Nothing;
                 }
-                Next::Nothing
+                block.input_json.push_str(&piece.partial_json);
+                Next::Event(ProviderEvent::ToolCallInput {
+                    tool_use_id: block.id.clone(),
+                    partial_json: piece.partial_json,
+                })
             }
         }
     }
