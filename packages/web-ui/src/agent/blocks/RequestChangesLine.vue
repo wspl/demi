@@ -10,8 +10,8 @@ import { useEditReads } from '../edit-selection'
 /**
  * The button at the end of a request's reply (`edit-tracking.md` § What the
  * conversation shows): how many files the request's calls changed and the
- * lines added and removed across them, each file's All Changes. It grows as
- * later calls of the request end. Once the button comes into view it reads
+ * lines added and removed across them, each file's All Changes, once the
+ * request has ended (`requestLineIds`). Once the button comes into view it reads
  * each file's two ends; until they are counted, or when a file's ends were
  * not kept, it names the files alone, and the counts then appear at its end
  * without moving anything. A pill like the file pills under a call: a
