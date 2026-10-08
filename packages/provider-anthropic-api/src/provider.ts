@@ -369,6 +369,25 @@ interface AnthropicToolBlock {
 
 function inferenceItemsToAnthropicMessages(items: InferenceItem[]): AnthropicMessage[] {
   const messages: AnthropicMessage[] = []
+  const toolIds = new Map<string, string>()
+  const reservedIds = new Set(items.flatMap((item) =>
+    (item.type === 'tool_use' || item.type === 'tool_result') && /^[a-zA-Z0-9_-]+$/.test(item.toolUseId)
+      ? [item.toolUseId]
+      : [],
+  ))
+  let nextToolId = 0
+  const wireToolId = (id: string): string => {
+    if (reservedIds.has(id)) return id
+    const existing = toolIds.get(id)
+    if (existing !== undefined) return existing
+    let mapped: string
+    do {
+      mapped = `tool_${nextToolId++}`
+    } while (reservedIds.has(mapped))
+    toolIds.set(id, mapped)
+    reservedIds.add(mapped)
+    return mapped
+  }
 
   const append = (role: AnthropicMessage['role'], content: AnthropicContentBlock[]) => {
     const last = messages[messages.length - 1]
@@ -389,12 +408,12 @@ function inferenceItemsToAnthropicMessages(items: InferenceItem[]): AnthropicMes
         append('assistant', [{ type: 'text', text: item.text }])
         break
       case 'tool_use':
-        append('assistant', [{ type: 'tool_use', id: item.toolUseId, name: item.toolName, input: item.input ?? {} }])
+        append('assistant', [{ type: 'tool_use', id: wireToolId(item.toolUseId), name: item.toolName, input: item.input ?? {} }])
         break
       case 'tool_result':
         append('user', [{
           type: 'tool_result',
-          tool_use_id: item.toolUseId,
+          tool_use_id: wireToolId(item.toolUseId),
           content: toolResultContentToAnthropic(item.output),
           ...(item.isError ? { is_error: true } : {}),
         }])
@@ -519,4 +538,3 @@ function mergeAnthropicUsage(current: TokenUsage, usage: Record<string, unknown>
     cacheWriteTokens: cacheWriteTokens || current.cacheWriteTokens,
   }
 }
-
