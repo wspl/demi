@@ -488,10 +488,7 @@ async fn a_runner_asks_for_its_devices_revocation_and_hears_which_projects_went(
     let conversation = uuid::Uuid::new_v4().to_string();
     create(&backend, &master, &conversation).await;
     let hosts = format!("/api/conversations/{conversation}/hosts");
-    let attached = backend
-        .post(&hosts, Some(&master), json!({ "deviceId": laptop.id() }))
-        .await;
-    assert_eq!(attached.status, StatusCode::CREATED);
+    harness.attach(&conversation, laptop.id(), "laptop");
     laptop.runner.stop().await;
     backend.until_online(&master, laptop.id(), false).await;
 

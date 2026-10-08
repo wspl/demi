@@ -1,17 +1,13 @@
-//! A conversation's attached hosts as the web app lists and changes them
-//! (`web-api.md` § Workspaces, devices, and attached hosts).
+//! A conversation's attached hosts as the web app lists them
+//! (`web-api.md` § Workspaces, devices, and attached hosts); the user
+//! detaches one, and the conversation's agents attach them.
 
 use demi_shared_types::{Nullable, Timestamp};
-use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::devices::DeviceState;
 use crate::ids::DeviceId;
-use crate::text::Trimmed;
-
-/// The most characters of an attached host's name.
-pub const HOST_NAME_MAX: usize = 64;
 
 /// A device attached to a conversation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -35,23 +31,4 @@ pub struct AttachedHost {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AttachedHosts {
     pub hosts: Vec<AttachedHost>,
-}
-
-/// `POST /conversations/:id/hosts { deviceId }`: a device of the user's to
-/// attach.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AttachHost {
-    #[garde(skip)]
-    pub device_id: DeviceId,
-}
-
-/// `PATCH /conversations/:id/hosts/:deviceId { name }`: 1 to 64 characters
-/// after trimming.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct RenameHost {
-    #[schemars(with = "Trimmed")]
-    #[garde(length(chars, min = 1, max = HOST_NAME_MAX))]
-    pub name: Trimmed,
 }

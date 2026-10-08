@@ -94,7 +94,6 @@ test('creating a project opens a new conversation draft in it, which only the fi
         title: conversation.title,
         pinned: false,
         target: { kind: 'workspace', workspaceId: PROJECT.id },
-        hosts: [],
       },
     },
   ])

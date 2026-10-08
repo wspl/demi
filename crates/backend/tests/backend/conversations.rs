@@ -684,9 +684,9 @@ async fn a_conversation_is_created_once_under_the_id_the_web_app_chose_and_liste
     backend.close().await;
 }
 
-// About a second here: two runners pair.
+// About a second here: a runner pairs.
 #[tokio::test]
-async fn a_conversation_starts_with_its_settings_and_hosts_from_one_request_and_a_refused_part_creates_nothing()
+async fn a_conversation_starts_with_its_settings_from_one_request_and_a_refused_part_creates_nothing()
  {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
@@ -697,12 +697,11 @@ async fn a_conversation_starts_with_its_settings_and_hosts_from_one_request_and_
     });
     let provider = entry(&backend, &master, body).await;
     let laptop = backend.pair(&master, "laptop").await;
-    let ci = backend.pair(&master, "ci").await;
     let on_laptop = json!({ "kind": "device", "deviceId": laptop.id(), "path": "/work" });
     let model = json!({ "providerId": provider, "modelId": "m" });
     let start = json!({
         "id": FIRST, "title": "Plans", "pinned": true, "target": on_laptop, "model": model,
-        "thinkingEffort": "high", "hosts": [{ "deviceId": ci.id(), "name": "build" }]
+        "thinkingEffort": "high"
     });
 
     let created = backend
@@ -730,12 +729,6 @@ async fn a_conversation_starts_with_its_settings_and_hosts_from_one_request_and_
             service_tier_id: None,
         })
     );
-    let hosts: Vec<(&str, &str)> = created
-        .hosts
-        .iter()
-        .map(|host| (host.device_id.as_str(), host.name.as_str()))
-        .collect();
-    assert_eq!(hosts, [(ci.id(), "build")]);
     assert_eq!(summary(&backend, &master, FIRST).await, created.conversation);
 
     // A retry finds it as it is and applies nothing.
@@ -758,10 +751,10 @@ async fn a_conversation_starts_with_its_settings_and_hosts_from_one_request_and_
         let master = &master;
         async move { backend.post("/api/conversations", Some(master), body).await }
     };
-    let primary = refused(json!({ "hosts": [{ "deviceId": laptop.id() }] })).await;
+    let unpaired = refused(json!({ "target": { "kind": "device", "deviceId": "00000000-0000-4000-8000-000000000000", "path": "/work" } })).await;
     assert_eq!(
-        primary.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::HostIsPrimary)
+        unpaired.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound)
     );
     let unlisted = refused(json!({ "model": { "providerId": provider, "modelId": "x" } })).await;
     assert_eq!(
