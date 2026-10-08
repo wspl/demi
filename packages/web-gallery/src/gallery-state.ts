@@ -36,6 +36,8 @@ export interface Paradigm {
   name: string
   summary: SentenceText
   tone: 'ink' | 'warm' | 'paper'
+  /** The tone in light mode, when it is not `tone`. */
+  lightTone?: 'ink'
   density: 'regular'
   radius: 'medium'
   shadow: 'hairline' | 'flat'
@@ -59,8 +61,9 @@ export const PARADIGMS: readonly Paradigm[] = [
   {
     id: 'flat',
     name: 'Flat',
-    summary: 'Warm paper neutrals, flat surfaces parted by 0.5px hairlines, quiet buttons, and a drop only under what floats.',
+    summary: 'Flat surfaces parted by 0.5px hairlines and a drop only under what floats; dark in measured near-neutral layers, light in Ink’s colours.',
     tone: 'paper',
+    lightTone: 'ink',
     density: 'regular',
     radius: 'medium',
     shadow: 'flat',
@@ -128,7 +131,7 @@ function writeAttributes(): void {
   const root = document.documentElement
   const paradigm = paradigmById(galleryState.paradigm)
   root.setAttribute('data-theme', galleryState.mode)
-  root.setAttribute('data-tone', paradigm.tone)
+  root.setAttribute('data-tone', galleryState.mode === 'light' ? paradigm.lightTone ?? paradigm.tone : paradigm.tone)
   root.setAttribute('data-accent', galleryState.accent)
   root.setAttribute('data-font', galleryState.font)
   root.setAttribute('data-density', paradigm.density)
