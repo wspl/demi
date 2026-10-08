@@ -22,7 +22,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_agent_session::{ToolEffect, ToolFailure, ToolInvocation, ToolOutcome};
+use demi_agent_session::{StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome};
 use demi_agent_store::AgentTreeStore;
 use demi_host_interface::{
     CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller,
@@ -30,7 +30,11 @@ use demi_host_interface::{
 };
 use demi_provider_common::{RequestLimits, ToolDefinition};
 use demi_shared_types::{CommandId, ModelSelection, NodeId, Sequence, ShellId};
-use futures_util::future::{LocalBoxFuture, join_all};
+use futures_util::{
+    StreamExt,
+    future::LocalBoxFuture,
+    stream::{self, FuturesUnordered},
+};
 
 pub use environments::Environments;
 use environments::Handle;
@@ -178,6 +182,16 @@ pub struct ShellAccess<'a, H: HostResolver> {
     pub conversation: &'a dyn ConversationCommands,
 }
 
+// Every field is a reference or a number, so a step's tasks each hold a
+// copy; derived, the copy would ask the same of the resolver `H`.
+impl<H: HostResolver> Clone for ShellAccess<'_, H> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<H: HostResolver> Copy for ShellAccess<'_, H> {}
+
 /// A `shell_exec` call of a step, with the shell it runs in.
 struct PlannedExec {
     call: ToolInvocation,
@@ -185,7 +199,7 @@ struct PlannedExec {
     target: ShellTarget,
 }
 
-impl<H: HostResolver> ShellAccess<'_, H> {
+impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// The environment for the conversation's current Host, which `handle`
     /// must belong to.
     async fn environment(
@@ -214,22 +228,24 @@ impl<H: HostResolver> ShellAccess<'_, H> {
 
     /// Runs one step of a round (`runtime.md` § Dispatch and failures): a
     /// call of `shell_status` or `yield`, or `shell_exec` calls, which start
-    /// together. Answers each call's outcome in the order of the calls. A
-    /// refused input completes its call as an error that names the
-    /// offending field; a failure of the Host or its shells completes it as
-    /// `Tool failed: <message>`.
-    pub async fn invoke_step(
-        &self,
-        calls: Vec<ToolInvocation>,
-    ) -> Vec<Result<ToolOutcome, ToolFailure>> {
-        if !calls.iter().all(|call| runs_together(&call.tool_name)) {
-            return join_all(calls.into_iter().map(|call| self.invoke(call))).await;
+    /// together. Yields each call's outcome, by its index, as the call
+    /// returns. A refused input completes its call as an error that names
+    /// the offending field; a failure of the Host or its shells completes
+    /// it as `Tool failed: <message>`.
+    pub fn invoke_step(self, calls: Vec<ToolInvocation>) -> StepOutcomes<'a> {
+        if !calls.is_empty() && calls.iter().all(|call| runs_together(&call.tool_name)) {
+            return Box::pin(stream::once(self.exec_step(calls)).flatten());
         }
-        self.exec_step(calls).await
+        let calls: FuturesUnordered<_> = calls
+            .into_iter()
+            .enumerate()
+            .map(|(index, call)| async move { (index, self.invoke(call).await) })
+            .collect();
+        Box::pin(calls)
     }
 
     /// Runs one call of a standard tool.
-    async fn invoke(&self, call: ToolInvocation) -> Result<ToolOutcome, ToolFailure> {
+    async fn invoke(self, call: ToolInvocation) -> Result<ToolOutcome, ToolFailure> {
         let Some(tool) = StandardTool::named(&call.tool_name) else {
             return Ok(ToolOutcome::error(format!(
                 "Tool not found: {}",
@@ -237,27 +253,30 @@ impl<H: HostResolver> ShellAccess<'_, H> {
             )));
         };
         match tool {
-            StandardTool::ShellExec => self.exec_step(vec![call]).await.pop().expect("one call"),
+            StandardTool::ShellExec => {
+                let mut ran = self.exec_step(vec![call]).await;
+                ran.next().await.expect("one call").1
+            }
             StandardTool::ShellStatus => outcome(self.status(call).await),
             StandardTool::Yield => outcome(self.yield_wakeup(call).await),
         }
     }
 
-    /// Runs a step's `shell_exec` calls together. The first without a
-    /// `shellId` runs in the default shell, and each other one without a
-    /// `shellId` in a new shell that starts in the default shell's
-    /// directory as it is when the step starts; calls that name the same
-    /// shell run one after another.
-    async fn exec_step(&self, calls: Vec<ToolInvocation>) -> Vec<Result<ToolOutcome, ToolFailure>> {
+    /// Plans a step's `shell_exec` calls and runs them together, yielding
+    /// each call's outcome as it returns. The first without a `shellId`
+    /// runs in the default shell, unless a call of the step names that
+    /// shell, and each other one without a `shellId` in a new shell that
+    /// starts in the default shell's directory as it is when the step
+    /// starts; calls that name the same shell run one after another.
+    async fn exec_step(self, calls: Vec<ToolInvocation>) -> StepOutcomes<'a> {
         let count = calls.len();
-        let mut results: Vec<Option<Result<ToolOutcome, ToolFailure>>> =
-            (0..count).map(|_| None).collect();
+        let mut refused = Vec::new();
         let mut planned: Vec<Option<(ToolInvocation, ShellExecInput)>> = Vec::with_capacity(count);
         for (index, call) in calls.into_iter().enumerate() {
             match parse::<ShellExecInput>(StandardTool::ShellExec.name(), call.input.clone()) {
                 Ok(input) => planned.push(Some((call, input))),
                 Err(refusal) => {
-                    results[index] = Some(Ok(ToolOutcome::error(refusal)));
+                    refused.push((index, Ok(ToolOutcome::error(refusal))));
                     planned.push(None);
                 }
             }
@@ -267,18 +286,30 @@ impl<H: HostResolver> ShellAccess<'_, H> {
             .flatten()
             .filter(|(_, input)| input.shell_id.is_none())
             .count();
-        // Only a step with a second call without a shell needs to know
-        // where the default shell is.
-        let beside = if unnamed > 1 {
+        let named: Vec<&ShellId> = planned
+            .iter()
+            .flatten()
+            .filter_map(|(_, input)| input.shell_id.as_ref())
+            .collect();
+        // Only a step with a call without a shell beside another call needs
+        // to know the default shell: where a second such call starts, and
+        // whether a call of the step names it.
+        let default = if unnamed > 1 || (unnamed == 1 && !named.is_empty()) {
             match self.environment(Handle::None).await {
-                Ok((_, environment)) => environment.default_cwd(),
+                Ok((_, environment)) => environment.default_shell(),
                 // Each call meets the same failure and reports it.
                 Err(_) => None,
             }
         } else {
             None
         };
-        let mut default_taken = false;
+        // A shell a call of the step names is never given to a call that
+        // names none, so the two never race for it.
+        let default_named = default
+            .as_ref()
+            .is_some_and(|default| named.contains(&&default.id));
+        let beside = default.map(|default| default.cwd);
+        let mut default_taken = default_named;
         // Each lane runs its calls one after another: one per named shell,
         // and one per call without a shell.
         let mut lanes: Vec<(Option<ShellId>, Vec<(usize, PlannedExec)>)> = Vec::new();
@@ -310,21 +341,12 @@ impl<H: HostResolver> ShellAccess<'_, H> {
                 None => lanes.push((shell, vec![(index, exec)])),
             }
         }
-        let ran = join_all(lanes.into_iter().map(|(_, lane)| async move {
-            let mut ran = Vec::with_capacity(lane.len());
-            for (index, exec) in lane {
-                ran.push((index, outcome(self.exec(exec).await)));
-            }
-            ran
-        }))
-        .await;
-        for (index, result) in ran.into_iter().flatten() {
-            results[index] = Some(result);
-        }
-        results
-            .into_iter()
-            .map(|result| result.expect("every call of the step has its result"))
-            .collect()
+        let lanes = lanes.into_iter().map(|(_, lane)| {
+            stream::iter(lane)
+                .then(move |(index, exec)| async move { (index, outcome(self.exec(exec).await)) })
+                .boxed_local()
+        });
+        Box::pin(stream::iter(refused).chain(stream::select_all(lanes)))
     }
 
     /// Starts a `shell_exec` call's script and watches it for up to its

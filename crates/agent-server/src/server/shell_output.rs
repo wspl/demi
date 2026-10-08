@@ -11,14 +11,14 @@
 use std::rc::Weak;
 
 use bytes::Bytes;
-use demi_agent_store::StoredOutput;
+use demi_agent_store::{StoredCommand, StoredOutput};
 use demi_host_interface::{MediumKept, StoredMedium};
 use demi_agent_tools::{HostResolver, PAGE_CHARS};
 use demi_host_interface::{
     Ending, GroupBuilder, LeafBuilder, OutputText, Piece, RpcError, RpcPort, Seen, ShellError,
     Streams, TypedRpc, WholeOutput,
 };
-use demi_shared_types::{B64Bytes, BlobRef, CommandId, StreamKind};
+use demi_shared_types::{B64Bytes, BlobRef, CommandEnd, CommandId, StreamKind};
 use futures_util::FutureExt;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -121,7 +121,7 @@ async fn stop<H: HostResolver>(call: Invoked<H, StopArgs>, port: RpcPort) -> Res
             port.stderr(unknown()).await?;
             return Ok(1);
         }
-        CommandPlace::Stored => format!("[command {id} had already ended]\n"),
+        CommandPlace::Stored(_) => format!("[command {id} had already ended]\n"),
         CommandPlace::Held(node) => match node.environment_of(&command) {
             Some(environment) if environment.ended(&command).now_or_never().is_none() => {
                 // The environment that runs it stops it, as for a page's
@@ -161,7 +161,8 @@ enum Reading {
 /// An output found, and whether its command still runs.
 struct Found {
     output: WholeOutput,
-    running: bool,
+    /// How the command ended; none while it runs.
+    end: Option<CommandEnd>,
 }
 
 async fn output<H: HostResolver>(
@@ -242,7 +243,7 @@ async fn output<H: HostResolver>(
         text: &text,
         id,
         streams,
-        running: found.running,
+        end: found.end,
     };
     let last = text.last_line();
     let printed = match reading {
@@ -273,10 +274,7 @@ async fn find<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<Found, String
     if let Some(node) = tree.holder(&command) {
         match node.read_output(&command).await {
             Ok(output) => {
-                return Ok(Found {
-                    output,
-                    running: true,
-                });
+                return Ok(Found { output, end: None });
             }
             // It ended, and its output is stored.
             Err(ShellError::NotRunning(_)) => {}
@@ -284,11 +282,17 @@ async fn find<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<Found, String
         }
     }
     match tree.store().command_output(&command).await {
-        Ok(Some(StoredOutput::Stored { output, .. })) => Ok(Found {
+        Ok(Some(StoredCommand {
+            end,
+            output: StoredOutput::Stored { output, .. },
+        })) => Ok(Found {
             output,
-            running: false,
+            end: Some(end),
         }),
-        Ok(Some(StoredOutput::NotStored(reason))) => {
+        Ok(Some(StoredCommand {
+            output: StoredOutput::NotStored(reason),
+            ..
+        })) => {
             Err(format!("the output of {id} was not stored: {reason}"))
         }
         Ok(None) => Err(unknown()),
@@ -325,8 +329,14 @@ async fn find_medium<H: HostResolver>(
         }
     }
     let media = match tree.store().command_output(&command).await {
-        Ok(Some(StoredOutput::Stored { media, .. })) => media,
-        Ok(Some(StoredOutput::NotStored(reason))) => {
+        Ok(Some(StoredCommand {
+            output: StoredOutput::Stored { media, .. },
+            ..
+        })) => media,
+        Ok(Some(StoredCommand {
+            output: StoredOutput::NotStored(reason),
+            ..
+        })) => {
             return Err(format!("the output of {id} was not stored: {reason}"));
         }
         Ok(None) => return Err(unknown()),
@@ -356,7 +366,8 @@ struct Page<'a> {
     text: &'a OutputText,
     id: &'a str,
     streams: Streams,
-    running: bool,
+    /// How the command ended; none while it runs.
+    end: Option<CommandEnd>,
 }
 
 impl Page<'_> {
@@ -454,18 +465,26 @@ impl Page<'_> {
     /// What the page holds: its lines, of how many, and of which streams.
     fn header(&self, shown: Option<(u64, u64)>) -> String {
         let of = self.text.last_line();
-        let so_far = if self.running { " so far" } else { "" };
+        let so_far = if self.end.is_none() { " so far" } else { "" };
         let streams = match self.streams {
             Streams::Both => "stdout and stderr",
             Streams::Only(StreamKind::Stdout) => "stdout",
             Streams::Only(StreamKind::Stderr) => "stderr",
         };
+        // How it ended, as its record keeps it; a record of a release that
+        // kept no end says nothing.
+        let ended = match self.end {
+            Some(CommandEnd::Exited { exit_code }) => format!(", exit code {exit_code}"),
+            Some(CommandEnd::Stopped) => ", stopped".to_owned(),
+            Some(CommandEnd::Lost) => ", ended with its Host's connection".to_owned(),
+            Some(CommandEnd::Unrecorded) | None => String::new(),
+        };
         match shown {
             Some((first, last)) => format!(
-                "[command {}: lines {first}-{last} of {of}{so_far}, {streams}]",
+                "[command {}: lines {first}-{last} of {of}{so_far}, {streams}{ended}]",
                 self.id
             ),
-            None => format!("[command {}: {of} lines{so_far}, {streams}]", self.id),
+            None => format!("[command {}: {of} lines{so_far}, {streams}{ended}]", self.id),
         }
     }
 

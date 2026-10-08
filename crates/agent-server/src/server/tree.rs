@@ -24,7 +24,7 @@ use demi_agent_transcript::IdSource;
 use demi_conversation_socket_protocol::ServerFrame;
 use demi_host_interface::RegisterError;
 use demi_shared_gates::{ActivityGate, KeyedSerialGate, Reservation};
-use demi_shared_types::{Clock, CommandId, NodeId};
+use demi_shared_types::{Clock, CommandEnd, CommandId, NodeId};
 use futures_util::future::join_all;
 use tokio::sync::watch;
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
@@ -199,8 +199,8 @@ pub(crate) enum OpenError {
 pub(crate) enum CommandPlace<H: HostResolver> {
     /// A node's shells hold it.
     Held(Rc<Node<H>>),
-    /// It ended, its end was given, and the store knows it.
-    Stored,
+    /// It ended, its end was given, and the store keeps how it ended.
+    Stored(CommandEnd),
     /// No command of the conversation has the number.
     Unknown,
 }
@@ -421,8 +421,8 @@ impl<H: HostResolver> Tree<H> {
         if let Some(node) = self.holder(command) {
             return Ok(CommandPlace::Held(node));
         }
-        match self.store.command_output(command).await {
-            Ok(Some(_)) => Ok(CommandPlace::Stored),
+        match self.store.command_end(command).await {
+            Ok(Some(end)) => Ok(CommandPlace::Stored(end)),
             Ok(None) => Ok(CommandPlace::Unknown),
             Err(error) => Err(format!("command {command} could not be found: {error}")),
         }

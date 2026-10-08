@@ -2,12 +2,12 @@
 //! ended command's whole output is a blob of the conversation owner's
 //! namespace, in the kept output's records, and the conversation's
 //! `command_outputs` table holds one row per command, keyed by its id,
-//! which says when the command ended and whether its output is stored, with
+//! which says when the command ended and how, and whether its output is stored, with
 //! its media, or was not stored and why. A row is written once when its
 //! command ends, or copied into a Fork's destination, and never changes.
 
 use demi_host_interface::{Missing, StoredMedium};
-use demi_shared_types::{BlobRef, Block, CommandId, Timestamp, ToolView};
+use demi_shared_types::{BlobRef, Block, CommandEnd, CommandId, Timestamp, ToolView};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::StorageError;
@@ -27,22 +27,26 @@ pub enum OutputRow {
     NotStored(String),
 }
 
-/// A command's row: when it ended, and its output.
+/// A command's row: when it ended and how, and its output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandOutput {
     pub command: CommandId,
     pub ended: Timestamp,
+    /// How it ended; `Unrecorded` for a row a release before 0.1.21 wrote,
+    /// which the column holds as null.
+    pub end: CommandEnd,
     pub output: OutputRow,
 }
 
-const COLUMNS: &str = "command_id, ended_at, blob, missing_bytes, missing_reason, media, not_stored";
+const COLUMNS: &str =
+    "command_id, ended_at, ending, blob, missing_bytes, missing_reason, media, not_stored";
 
 /// Writes `rows` in one transaction; a command that has a row keeps it.
 pub fn insert(connection: &mut Connection, rows: &[CommandOutput]) -> Result<(), StorageError> {
     let transaction = connection.transaction()?;
     {
         let mut insert = transaction.prepare_cached(&format!(
-            "INSERT INTO command_outputs ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "INSERT INTO command_outputs ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT (command_id) DO NOTHING"
         ))?;
         for row in rows {
@@ -56,9 +60,14 @@ pub fn insert(connection: &mut Connection, rows: &[CommandOutput]) -> Result<(),
             };
             let missing_bytes =
                 missing.map(|missing| i64::try_from(missing.bytes).unwrap_or(i64::MAX));
+            let ending = match row.end {
+                CommandEnd::Unrecorded => None,
+                end => Some(to_json(&end)),
+            };
             insert.execute(params![
                 row.command.as_str(),
                 row.ended.as_millisecond(),
+                ending,
                 blob.map(BlobRef::as_str),
                 missing_bytes,
                 missing.map(|missing| missing.reason.as_str()),
@@ -142,6 +151,11 @@ fn decode_row(row: &Row<'_>) -> Result<CommandOutput, StorageError> {
         CommandId::try_from(row.get::<_, String>("command_id")?),
     )?;
     let ended = instant(row, "command_outputs", "ended_at")?;
+    let ending: Option<String> = row.get("ending")?;
+    let end = match ending {
+        Some(text) => json("command_outputs", "ending", &text)?,
+        None => CommandEnd::Unrecorded,
+    };
     let stored: Option<String> = row.get("blob")?;
     let missing_bytes: Option<i64> = row.get("missing_bytes")?;
     let missing_reason: Option<String> = row.get("missing_reason")?;
@@ -186,6 +200,7 @@ fn decode_row(row: &Row<'_>) -> Result<CommandOutput, StorageError> {
     Ok(CommandOutput {
         command,
         ended,
+        end,
         output,
     })
 }

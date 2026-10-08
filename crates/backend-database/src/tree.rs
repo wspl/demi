@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_agent_store::{AgentTreeStore, SessionStore, StoredOutput};
+use demi_agent_store::{AgentTreeStore, SessionStore, StoredCommand, StoredOutput};
 use demi_agent_store::{
     Checkpoint, CheckpointState, CheckpointUpdate, ClosePhase, NodeClose, NodeRecord, StoreError,
     media::BlobStore,
@@ -27,7 +27,7 @@ use demi_agent_store::{
 use demi_agent_transcript::is_interruption;
 use demi_backend_remote_host::decode_output;
 use demi_shared_types::{
-    Block, BlockId, CommandId, CompletionId, NodeId, QueuedMessage, Sequence, SessionPhase,
+    Block, BlockId, CommandEnd, CommandId, CompletionId, NodeId, QueuedMessage, Sequence, SessionPhase,
     Timestamp, is_blank,
 };
 use futures_util::future::LocalBoxFuture;
@@ -339,13 +339,29 @@ impl AgentTreeStore for SqliteTreeStore {
         })
     }
 
+    fn command_end<'a>(
+        &'a self,
+        command: &'a CommandId,
+    ) -> LocalBoxFuture<'a, Result<Option<CommandEnd>, StoreError>> {
+        Box::pin(async move {
+            let wanted = command.clone();
+            let row = self
+                .db
+                .read(move |connection| command_outputs::read(connection, &wanted))
+                .await
+                .map_err(store_error)?
+                .flatten();
+            Ok(row.map(|row| row.end))
+        })
+    }
+
     /// Reads the command's row on a read-only connection, then its blob,
     /// which it decodes on the blocking pool: a stored output takes up to
     /// 16 MiB.
     fn command_output<'a>(
         &'a self,
         command: &'a CommandId,
-    ) -> LocalBoxFuture<'a, Result<Option<StoredOutput>, StoreError>> {
+    ) -> LocalBoxFuture<'a, Result<Option<StoredCommand>, StoreError>> {
         Box::pin(async move {
             let wanted = command.clone();
             let row = self
@@ -363,7 +379,12 @@ impl AgentTreeStore for SqliteTreeStore {
                     missing,
                     media,
                 } => (blob, missing, media),
-                OutputRow::NotStored(reason) => return Ok(Some(StoredOutput::NotStored(reason))),
+                OutputRow::NotStored(reason) => {
+                    return Ok(Some(StoredCommand {
+                        end: row.end,
+                        output: StoredOutput::NotStored(reason),
+                    }));
+                }
             };
             let bytes = self.blobs.get(&blob).await?.ok_or_else(|| {
                 StoreError::Failed(format!(
@@ -379,7 +400,10 @@ impl AgentTreeStore for SqliteTreeStore {
                             "the output of {command} does not decode: {error}"
                         ))
                     })?;
-            Ok(Some(StoredOutput::Stored { output, media }))
+            Ok(Some(StoredCommand {
+                end: row.end,
+                output: StoredOutput::Stored { output, media },
+            }))
         })
     }
 }

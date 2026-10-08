@@ -182,8 +182,11 @@ pub struct WakeupCommand {
     pub end: CommandEnd,
 }
 
-/// How a command ended, as a wakeup tells the model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+/// How a command ended, as the conversation's record of its output keeps
+/// it (`storage.md` § Command outputs) and a wakeup tells the model.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, garde::Validate,
+)]
 #[serde(
     tag = "kind",
     rename_all = "snake_case",
@@ -191,13 +194,17 @@ pub struct WakeupCommand {
     deny_unknown_fields
 )]
 pub enum CommandEnd {
-    Exited { exit_code: i32 },
+    Exited {
+        #[garde(skip)]
+        exit_code: i32,
+    },
     /// It was stopped: by a page, `demi shell stop`, a Stop of its action,
     /// or the end of its node's shells.
     Stopped,
-    /// It had ended before the wakeup was scheduled, and its result was
-    /// given already, so how it ended is not at hand.
-    Ended,
+    /// It ended with its Host's connection.
+    Lost,
+    /// Its record was made by a release before 0.1.21, which kept no end.
+    Unrecorded,
 }
 
 /// Where a fired wakeup entered the transcript.

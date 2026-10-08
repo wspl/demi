@@ -14,7 +14,7 @@ use bytes::Bytes;
 
 use demi_agent_session::{
     AgentSession, Continuation, NewContext, RestoreError, SeenContext, SessionConfig, SessionDeps,
-    SessionInit, SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome,
+    SessionInit, SessionRuntime, StepOutcomes, ToolInvocation,
 };
 use demi_agent_store::{AgentTreeStore, Checkpoint, NodeRecord, StoreError};
 use demi_agent_tools::{
@@ -398,19 +398,19 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         runs_together(tool)
     }
 
-    fn invoke_step(
-        &self,
-        calls: Vec<ToolInvocation>,
-    ) -> LocalBoxFuture<'_, Vec<Result<ToolOutcome, ToolFailure>>> {
-        Box::pin(async move { self.shell_access().invoke_step(calls).await })
+    fn invoke_step(&self, calls: Vec<ToolInvocation>) -> StepOutcomes<'_> {
+        self.shell_access().invoke_step(calls)
     }
 
     /// Finds each command in the tree, whichever node's shells hold it, and
-    /// then holds only the environments it waits on, never the tree. A
-    /// command whose result was given already, so that only the store
-    /// knows it, has ended without a known end.
+    /// then holds only the environments it waits on and the store, never
+    /// the tree. How a command ended is what the conversation's record of it
+    /// keeps (`storage.md` § Command outputs), which the record holds before
+    /// the command reads as ended; a command no record keeps, as in a
+    /// product without a keeper, ended as its environment says.
     fn command_end(&self, commands: Vec<CommandId>) -> LocalBoxFuture<'static, WakeupCommand> {
         let tree = self.tree();
+        let store = self.store.clone();
         Box::pin(async move {
             let Some(tree) = tree else {
                 // A tree that is not live runs no command; it is closing.
@@ -420,26 +420,34 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
             for command in commands {
                 let environment = match tree.command_place(&command).await {
                     Ok(CommandPlace::Held(node)) => node.environment_of(&command),
-                    Ok(CommandPlace::Stored | CommandPlace::Unknown) => None,
+                    Ok(CommandPlace::Stored(end)) => {
+                        return WakeupCommand {
+                            command_id: command,
+                            end,
+                        };
+                    }
+                    Ok(CommandPlace::Unknown) => None,
                     Err(error) => {
                         // The time still wakes the node.
                         tracing::warn!(%command, %error, "a command a yield waits for could not be found");
                         continue;
                     }
                 };
-                let Some(environment) = environment else {
-                    return WakeupCommand {
-                        command_id: command,
-                        end: CommandEnd::Ended,
-                    };
-                };
+                let store = store.clone();
                 waits.push(Box::pin(async move {
-                    let end = match environment.ended(&command).await {
-                        Ok(Ending::Exited(exit_code)) => CommandEnd::Exited { exit_code },
-                        Ok(Ending::Aborted) => CommandEnd::Stopped,
-                        // Released after its end was given.
-                        Err(_) => CommandEnd::Ended,
+                    let ended = match &environment {
+                        Some(environment) => environment.ended(&command).await.ok(),
+                        None => None,
                     };
+                    let recorded = store.command_end(&command).await.unwrap_or_else(|error| {
+                        tracing::warn!(%command, %error, "how a command ended could not be read");
+                        None
+                    });
+                    let end = recorded.unwrap_or(match ended {
+                        Some(Ending::Exited(exit_code)) => CommandEnd::Exited { exit_code },
+                        Some(Ending::Aborted) => CommandEnd::Stopped,
+                        None => CommandEnd::Unrecorded,
+                    });
                     WakeupCommand {
                         command_id: command,
                         end,

@@ -1281,6 +1281,7 @@ impl CommandKeeper for Publisher {
     fn keep_output<'a>(
         &'a self,
         _: &'a CommandId,
+        _: demi_shared_types::CommandEnd,
         _: &'a WholeOutput,
         _: &'a [CommandMedium],
     ) -> LocalBoxFuture<'a, ()> {
