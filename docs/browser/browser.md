@@ -1089,7 +1089,7 @@ shows only the declared arguments.
 
 | Family | Commands |
 | --- | --- |
-| Navigation and ownership | `open`, `show`, `present`, `tabs`, `info`, `goto`, `back`, `forward`, `reload`, `history`, `close` |
+| Navigation and ownership | `open`, `show`, `tabs`, `info`, `goto`, `back`, `forward`, `reload`, `history`, `close` |
 | Observation | `inspect`, `find` including `--query`, `read`, `screenshot`, `probe`, enforced read-only `eval`, `logs` |
 | Page input | `click`, `move`, `drag`, `scroll`, `fill`, `type`, `key`, `check`, `select`, `select-text`, `wait` |
 | Files and clipboard | `upload`, `download`, `clipboard write/read` |
@@ -1195,12 +1195,6 @@ opens and selects the tab once the command's job ends
 ([Showing a tab](live-view.md#showing-a-tab)). It does not bring the tab to
 the front of the Host's browser window, and the user may have looked away
 again by the time the agent continues. Showing a tab again shows it again.
-`present <tab>` hands a finished page to the user instead: the command's block
-in the transcript shows a card whose Open opens the page in the user's own
-browser, with its state ([Presenting a page](preview.md#presenting-a-page)).
-It prints the tab's title and address and changes nothing in the browser. The
-agent presents a result the user should use, and shows a tab the user should
-watch or act in while the agent holds it.
 Navigation defaults to `domcontentloaded`; `--load commit|domcontentloaded|load`
 changes the completion condition. `back` and `forward` return `history_boundary`
 before issuing anything when no history entry exists. History is local to the

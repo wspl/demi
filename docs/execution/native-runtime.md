@@ -416,15 +416,7 @@ it checks a download instead of trusting it as it trusts a cache entry:
 
 ## Invoke and retire a service
 
-The runner launches the verified executable with `--command-service --data
-<directory>`, where the directory is the package's own data under the Host's
-runner installation: `<installation>/data/<package id>` on a paired device,
-so each backend's runner on one machine has its own, and
-`~/.demi/data/<package id>` on a Cloud, on its home disk, which stops and
-wakes keep. A package keeps there what belongs to the Host across its
-restarts, such as the web preview's cookie jar
-([Cookies](../browser/preview.md#cookies)); conversation state does not go
-there ([Conversation-scoped state](#conversation-scoped-state)). The first
+The runner launches the verified executable with `--command-service`. The first
 patch call checks the service before invoking `file.patch`. Later calls reuse
 the process and connection, with one HTTP/2 stream per invocation.
 
