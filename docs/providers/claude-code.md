@@ -446,6 +446,12 @@ continues reading the CLI's output: each later `tools/call` of the batch is
 answered at once from its stored result, and the model goes on in the same
 process.
 
+Only the handing over waits for the batch. The CLI streams each call as the
+model writes it (`--include-partial-messages`), and the provider reports the
+call's start and its input pieces at once, as an HTTP provider does
+([A run](providers.md#a-run)), so the page shows the call being written
+before `message_stop`.
+
 This keeps one CLI process and one MCP session; there is no proxy process and
 no second MCP transport.
 

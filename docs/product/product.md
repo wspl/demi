@@ -350,6 +350,14 @@ its clock stay as they are. Each attempt is a request, and a row that changed
 its word with every attempt would flicker between two names for one wait. The
 retries have no control; the Resume control appears only after they give up.
 
+While a turn runs, the transcript's end always shows that work goes on:
+reasoning or text as it streams, a call being written or running
+([Calls being written](../agent/runtime.md#calls-being-written)), or the
+Requesting row. Text the model has finished, with nothing after it yet, is
+followed by the Requesting row, its clock counting from the text's end: a
+vendor that sends its calls only whole leaves that gap between a sentence
+and the call that follows it.
+
 Two other retries are not this and keep their own places: reloading a history
 that failed to load, and resending a message whose delivery is unconfirmed.
 They recover reading and delivery, not a turn.
