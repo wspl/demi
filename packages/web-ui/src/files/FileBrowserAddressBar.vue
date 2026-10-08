@@ -194,7 +194,6 @@ watch(() => props.path, () => {
     :base="root"
     kind="any"
     aria-label="Path"
-    spellcheck="false"
     @keydown="onKeydown"
     @complete-file="commit"
     @blur="editing = false"
