@@ -231,8 +231,8 @@
   --btn-hover-mix: #f7f8fa 100%;
 }
 
-/* Text keeps the platform's own smoothing: on macOS grayscale antialiasing
-   (`antialiased`) draws stems thinner than the system draws them elsewhere. */
+/* Interface text keeps the platform's own smoothing, as the system's own
+   controls draw theirs; reading text (`.markdown-body`) is antialiased. */
 html,
 body,
 #app {
@@ -900,19 +900,26 @@ html[data-theme="light"] {
   }
 }
 
-/* The space between paragraphs, lists and quotes. A body of smaller secondary text,
-   such as thinking, sets a tighter gap with a utility, so the default sits in a layer
-   below the utilities. */
+/* Reading text: a reply in the transcript and a Markdown file shown as a
+   document set the same blocks the same way, so a reply reads as a page does.
+   The space between paragraphs, lists, quotes, code and tables is one gap. A
+   body of smaller secondary text, such as thinking, or a message being typed,
+   sets a tighter gap with a utility, so the default sits in a layer below the
+   utilities. */
 @layer base {
   .markdown-body {
-    --markdown-block-gap: 0.5em;
+    --markdown-block-gap: 1em;
   }
 }
 
 /* Rendered Markdown never widens what holds it: a word or an address longer than
-   the line breaks, and a table or an equation wider than the text scrolls on its own. */
+   the line breaks, and a table or an equation wider than the text scrolls on its own.
+   Reading text is drawn with grayscale antialiasing, lighter than the platform's
+   default, which suits long runs of text at the reading size. */
 .markdown-body {
   overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .markdown-body > *:first-child {
@@ -955,7 +962,7 @@ html[data-theme="light"] {
 }
 
 .markdown-body pre {
-  margin: 0.75em 0;
+  margin: var(--markdown-block-gap) 0;
   padding: 0.75em 1em;
   background: color-mix(in srgb, var(--surface-current), var(--well-mix));
   border-radius: 8px;
@@ -979,7 +986,7 @@ html[data-theme="light"] {
   /* The pre's code line: 1.6 lines of its 0.85em text. */
   --code-block-line: calc(0.85em * 1.6);
   position: relative;
-  margin: 0.75em 0;
+  margin: var(--markdown-block-gap) 0;
 }
 
 .markdown-body .code-block > pre {
@@ -1030,6 +1037,11 @@ html[data-theme="light"] {
   margin: 0.25em 0;
 }
 
+.markdown-body li > ul,
+.markdown-body li > ol {
+  margin: 0.25em 0 0;
+}
+
 .markdown-body blockquote {
   margin: var(--markdown-block-gap) 0;
   padding-inline-start: 1em;
@@ -1038,28 +1050,50 @@ html[data-theme="light"] {
 }
 
 .markdown-body hr {
-  margin: 1em 0;
+  margin: 1.5em 0;
   border: none;
   border-top: 1px solid color-mix(in srgb, var(--color-overlay) 10%, transparent);
 }
 
-.markdown-body h1,
-.markdown-body h2,
-.markdown-body h3 {
+.markdown-body :is(h1, h2, h3, h4, h5, h6) {
   font-weight: 600;
   color: var(--fg-body);
-  margin: 0.75em 0 0.25em;
+  margin: 1.5em 0 0.75em;
+  line-height: 1.25;
   text-wrap: balance;
 }
 
 .markdown-body h1 {
-  font-size: 1.25em;
+  font-size: 1.75em;
 }
+
 .markdown-body h2 {
-  font-size: 1.125em;
+  font-size: 1.4em;
 }
+
 .markdown-body h3 {
+  font-size: 1.2em;
+}
+
+.markdown-body h4 {
   font-size: 1em;
+}
+
+.markdown-body :is(h5, h6) {
+  font-size: 0.9em;
+}
+
+.markdown-body h6 {
+  color: var(--fg-muted);
+}
+
+.markdown-body kbd {
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  padding: 0.1em 0.4em;
+  border: 1px solid color-mix(in srgb, var(--color-overlay) 18%, transparent);
+  border-bottom-width: 2px;
+  border-radius: 4px;
 }
 
 .markdown-body table {
@@ -1068,7 +1102,7 @@ html[data-theme="light"] {
   max-width: 100%;
   overflow: auto;
   border-collapse: collapse;
-  margin: 0.75em 0;
+  margin: var(--markdown-block-gap) 0;
 }
 
 .markdown-body .katex-display {
@@ -1290,6 +1324,7 @@ html[data-theme="light"] {
 /* A user message in its editor (`MessageEditor`): lines, not paragraphs, so a
    run of text around a code block keeps only the lines typed. */
 .message-editor-text {
+  --markdown-block-gap: 0.5em;
   outline: none;
 }
 
@@ -1322,65 +1357,18 @@ html[data-theme="light"] {
   background: var(--color-line-focus);
 }
 
-/* A Markdown file shown as a document: a repository file's layout, not a
-   message's. Headings step down from a ruled title, and a finished task stays
-   readable. */
-.markdown-document p,
-.markdown-document blockquote,
-.markdown-document details,
-.markdown-document table,
-.markdown-document pre,
-.markdown-document ul,
-.markdown-document ol {
-  margin: 0 0 1em;
-}
-
-.markdown-document li > ul,
-.markdown-document li > ol {
-  margin: 0.25em 0 0;
-}
-
-.markdown-document h1,
-.markdown-document h2,
-.markdown-document h3,
-.markdown-document h4,
-.markdown-document h5,
-.markdown-document h6 {
-  font-weight: 600;
-  color: var(--fg-body);
-  margin: 1.5em 0 0.75em;
-  line-height: 1.25;
+/* A Markdown file shown as a document sets its text as a reply does
+   (`.markdown-body`), with what belongs to a repository file's page: a ruled
+   title and sections, a finished task that stays readable, and images at
+   their own size. */
+.markdown-document details {
+  margin: var(--markdown-block-gap) 0;
 }
 
 .markdown-document h1,
 .markdown-document h2 {
   padding-bottom: 0.3em;
   border-bottom: 1px solid color-mix(in srgb, var(--color-overlay) 10%, transparent);
-}
-
-.markdown-document h1 {
-  font-size: 1.75em;
-}
-
-.markdown-document h2 {
-  font-size: 1.4em;
-}
-
-.markdown-document h3 {
-  font-size: 1.2em;
-}
-
-.markdown-document h4 {
-  font-size: 1em;
-}
-
-.markdown-document h5,
-.markdown-document h6 {
-  font-size: 0.9em;
-}
-
-.markdown-document h6 {
-  color: var(--fg-muted);
 }
 
 .markdown-document li:has(> input[type="checkbox"]:checked) {
@@ -1395,15 +1383,6 @@ html[data-theme="light"] {
 
 .markdown-document summary {
   cursor: pointer;
-}
-
-.markdown-document kbd {
-  font-family: var(--font-mono);
-  font-size: 0.8em;
-  padding: 0.1em 0.4em;
-  border: 1px solid color-mix(in srgb, var(--color-overlay) 18%, transparent);
-  border-bottom-width: 2px;
-  border-radius: 4px;
 }
 
 /* Interface controls are not document text; editable fields keep native selection. */
