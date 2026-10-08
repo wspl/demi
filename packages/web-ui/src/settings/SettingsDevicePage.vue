@@ -11,6 +11,7 @@ import StatusDot from '../ui/StatusDot.vue'
 import { formatDay, formatMoment, formatWhen, useTimeUntil } from '../composables/useRelativeTime'
 import DeviceRenameDialog from '../devices/DeviceRenameDialog.vue'
 import DeviceRevokeDialog from '../devices/DeviceRevokeDialog.vue'
+import DeviceStartHint from '../devices/DeviceStartHint.vue'
 import {
   DEVICE_ROUTE_DESCRIPTION,
   DEVICE_ROUTE_LABEL,
@@ -39,8 +40,9 @@ import type { SettingsDevice } from './types'
  * not directly and when Demi tries again, with Details… for the last
  * attempt's diagnostics and Try Again; Connection holds the route, with a
  * footnote comparing the two paths' latency from this browser; Device holds the
- * facts, with Rename…; Revoke… ends the page. The Cloud's page says it is
- * always reached through the server and has no Connection.
+ * facts, with Rename…; Revoke… ends the page. An offline device's header
+ * says how to start its runner again. The Cloud's page says it is always
+ * reached through the server and has no Connection.
  */
 const props = defineProps<{
   /** A paired device, or the Cloud with what its runner reported. */
@@ -101,6 +103,9 @@ const status = computed<{ tone: 'success' | 'warning' | 'muted'; words: Sentence
     ? { tone: 'success', words: 'Connected directly' }
     : { tone: 'muted', words: 'Through the server' }
 })
+
+/** How to start the runner again, which the header gives while the device is offline. */
+const offlineStart = computed(() => (device.value?.state === 'offline' ? (device.value.start ?? null) : null))
 
 /** The line under Connection that compares the paths; none while the device is offline. */
 const footnote = computed(() => (direct.value && online.value ? pathsFootnote(direct.value) : null))
@@ -206,8 +211,11 @@ function revoke() {
       </template>
       <span v-else-if="online && inUse" class="text-fg-subtle">· {{ formatLatency(inUse.latencyMs) }}</span>
     </template>
-    <template v-if="!device || explanation" #description>
-      {{ device ? explanation : 'The Cloud runs beside the server, so this browser always reaches it through the server.' }}
+    <template v-if="!device || explanation || offlineStart" #description>
+      <DeviceStartHint v-if="offlineStart" :start="offlineStart" />
+      <template v-else>
+        {{ device ? explanation : 'The Cloud runs beside the server, so this browser always reaches it through the server.' }}
+      </template>
     </template>
     <template v-if="attempt || canTryAgain" #actions>
       <Button v-if="attempt" size="sm" @click="detailsOpen = true">Details…</Button>

@@ -5,7 +5,8 @@ import type { DeviceStart } from './installation'
 /**
  * How to start an offline device's runner again: where to type the command,
  * and the command, with Copy. The command starts the runner in the
- * background and returns once it is connected.
+ * background and returns once it is connected. The sentence takes the text
+ * style of where it stands: the composer's notice, a device's page header.
  */
 defineProps<{
   start: DeviceStart
@@ -14,7 +15,7 @@ defineProps<{
 
 <template>
   <div class="flex min-w-0 flex-col gap-1.5">
-    <p class="text-[12px] leading-4 text-fg-subtle">
+    <p>
       {{
         start.system === 'windows'
           ? 'If its runner stopped, run this in PowerShell on the device.'
