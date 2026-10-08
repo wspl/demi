@@ -1,19 +1,25 @@
 import { z } from 'zod'
-import { callEditSelectionSchema, type CallEditSelection, type ChangeFile, type ChangeMode } from '@demicodes/plugin-sdk'
+import {
+  requestEditSelectionSchema,
+  type ChangeFile,
+  type ChangeMode,
+  type RequestEditRef,
+  type RequestEditSelection,
+} from '@demicodes/plugin-sdk'
 
 /**
- * What the Change view shows (`edit-tracking.md` § Delivery to the
- * conversation): its mode, the working-tree file it holds in Uncommitted,
- * the call's edit it shows in Conversation, and what Back and Forward return
- * to.
+ * What the Change view shows (`edit-tracking.md` § What the conversation
+ * shows): its mode, the working-tree file it holds in Uncommitted, the
+ * request, file and edit it holds in Conversation, and what Back and Forward
+ * return to. A request is named, never copied: the view reads it from the
+ * transcript as it is now.
  */
 const changeStepSchema = z.object({
   mode: z.enum(['conversation', 'uncommitted']),
   /** The working-tree path to show; null selects its first listed file. */
   uncommitted: z.string().nullable(),
-  call: callEditSelectionSchema.nullable(),
-  /** The edit segment of the call's file. */
-  edit: z.int().min(0),
+  /** The request, its file and its edit, or All Changes; null before any was opened. */
+  request: requestEditSelectionSchema.nullable(),
 })
 export type ChangeStep = z.infer<typeof changeStepSchema>
 
@@ -25,13 +31,13 @@ export type ChangeData = z.infer<typeof changeDataSchema>
 
 /** The view as a conversation's panel first shows it: Uncommitted, with nothing to go back to. */
 export function firstChangeData(): ChangeData {
-  return { mode: 'uncommitted', uncommitted: null, call: null, edit: 0, back: [], forward: [] }
+  return { mode: 'uncommitted', uncommitted: null, request: null, back: [], forward: [] }
 }
 
-/** Conversation paths come from the picked file; only the working tree holds a list selection. */
+/** Conversation paths come from the request's selection; only the working tree holds a list selection. */
 export function changePath(data: ChangeStep, mode: ChangeMode = data.mode, files?: readonly ChangeFile[]): string | null {
   if (mode === 'conversation') {
-    return data.call?.file.path ?? null
+    return data.request?.file ?? null
   }
   if (!files || files.some((file) => file.path === data.uncommitted)) {
     return data.uncommitted
@@ -40,40 +46,52 @@ export function changePath(data: ChangeStep, mode: ChangeMode = data.mode, files
 }
 
 function step(data: ChangeData): ChangeStep {
-  return { mode: data.mode, uncommitted: data.uncommitted, call: data.call, edit: data.edit }
+  return { mode: data.mode, uncommitted: data.uncommitted, request: data.request }
+}
+
+function sameEdit(a: RequestEditRef | null, b: RequestEditRef | null): boolean {
+  return a === b || (a !== null && b !== null && a.call === b.call && a.segment === b.segment)
+}
+
+function sameRequest(a: RequestEditSelection | null, b: RequestEditSelection | null): boolean {
+  return a === b || (a !== null && b !== null && a.node === b.node && a.request === b.request
+    && a.file === b.file && sameEdit(a.edit, b.edit))
+}
+
+/** `data` showing `next`, the step it showed kept for Back; the same step again changes nothing. */
+function go(data: ChangeData, next: ChangeStep): ChangeData {
+  if (next.mode === data.mode && next.uncommitted === data.uncommitted && sameRequest(next.request, data.request)) {
+    return data
+  }
+  return { ...next, back: [...data.back, step(data)], forward: [] }
 }
 
 /**
  * The view showing `path` in `mode`, remembering what it showed: a mode
- * switch and a pick in the tree are both steps Back returns to.
+ * switch and a pick in the sidebar are both steps Back returns to. Another
+ * file of the request shows its All Changes.
  */
-export function showChange(
-  data: ChangeData,
-  mode: ChangeMode,
-  path: string | null,
-  selection?: { call: CallEditSelection | null; edit: number },
-): ChangeData {
-  const call = selection ? selection.call : data.call
-  const nextPath = mode === 'conversation' ? call?.file.path ?? null : path
-  const sameFile = data.mode === mode && changePath(data, mode) === nextPath
-    && data.call?.commandId === call?.commandId
-  const edit = selection?.edit ?? (sameFile ? data.edit : 0)
-  if (sameFile && data.edit === edit) {
-    return data
+export function showChange(data: ChangeData, mode: ChangeMode, path: string | null): ChangeData {
+  if (mode === 'uncommitted') {
+    return go(data, { mode, uncommitted: path, request: data.request })
   }
-  return {
-    mode,
-    uncommitted: mode === 'uncommitted' ? path : data.uncommitted,
-    call,
-    edit,
-    back: [...data.back, step(data)],
-    forward: [],
-  }
+  const request = data.request && path !== null && path !== data.request.file
+    ? { ...data.request, file: path, edit: null }
+    : data.request
+  return go(data, { mode, uncommitted: data.uncommitted, request })
 }
 
-/** A file pill: the call's edit of that file, in Conversation mode. */
-export function showCallEdit(data: ChangeData, selection: CallEditSelection): ChangeData {
-  return showChange(data, 'conversation', null, { call: selection, edit: 0 })
+/** The view showing another edit of the file it shows, or its All Changes. */
+export function showEdit(data: ChangeData, edit: RequestEditRef | null): ChangeData {
+  if (!data.request) {
+    return data
+  }
+  return go(data, { mode: 'conversation', uncommitted: data.uncommitted, request: { ...data.request, edit } })
+}
+
+/** The `edit` intent: a request's line or a file pill, in Conversation mode. */
+export function showRequestEdit(data: ChangeData, selection: RequestEditSelection): ChangeData {
+  return go(data, { mode: 'conversation', uncommitted: data.uncommitted, request: selection })
 }
 
 /** The view showing what it showed before, the current step kept for Forward. */

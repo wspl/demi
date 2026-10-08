@@ -280,8 +280,8 @@ const brevityRules: readonly TextRule[] = [
   {
     title: 'The most important thing first',
     rule: 'Lead with what the reader came for: the state, then what to do. Background and figures follow, or wait behind Details…, where the reader asks for them.',
-    right: ['Through the server · 480 ms'],
-    wrong: ['From this browser, measured once a second over the last 30 probes: through the server 480 ms.'],
+    right: ['Through the server', 'Your networks block a direct connection.'],
+    wrong: ['Measured once a second over the last 30 probes, the server’s path is in use.'],
     source: 'Apple HIG: Writing, Consider each screen’s purpose; Microsoft Style Guide: Get to the point fast',
   },
   {

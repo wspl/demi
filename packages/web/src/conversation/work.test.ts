@@ -70,17 +70,14 @@ test('panel open and closed choices survive reload with the panel share in the s
   expect(readLocalState('one').workPanelOpen?.a).toBe(false)
 })
 
-test('a retained edit opens in the Change view with the panel, only while the changes plugin is on', async () => {
+test('the changes of a request open in the Change view with the panel, only while the changes plugin is on', async () => {
   signIn('one')
   const product = useProduct()
   const changes = { id: 'changes', name: 'Changes', description: 'Shows changes.', enabled: false, packages: [] }
   product.snapshot = productState({ plugins: [changes] })
   const work = useWorkPanel()
   const state = work.stateFor('a')
-  const edit = {
-    commandId: 'call',
-    file: { path: 'index.ts', kind: 'modified' as const, added: 1, removed: 1, edits: [{}] },
-  }
+  const edit = { node: null, request: 'user', file: 'index.ts', edit: { call: 'call', segment: 0 } }
   // Off, nothing opens the edit: the transcript's pills are no controls.
   expect(work.canOpen('edit')).toBe(false)
   work.openIn('a', { intent: 'edit', payload: edit })
@@ -93,7 +90,7 @@ test('a retained edit opens in the Change view with the panel, only while the ch
   expect(readLocalState('one').workPanelOpen?.a).toBe(true)
   // The edit takes the selection in the Change view's pinned tab; nothing is saved over a panel that was never read.
   expect(state.panel.history).toEqual(['change'])
-  expect(state.pinned.change).toMatchObject({ mode: 'conversation', call: { commandId: 'call' } })
+  expect(state.pinned.change).toMatchObject({ mode: 'conversation', request: { request: 'user', file: 'index.ts' } })
   signIn('two')
   await nextTick()
   expect(state.open).toBe(false)

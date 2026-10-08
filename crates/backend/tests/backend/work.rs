@@ -244,7 +244,7 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
     // backend's own.
     let system = created.requests[0]["system"].to_string();
     assert!(
-        system.contains("demi file\\nReads, creates") && system.contains("demi host\\nLists"),
+        system.contains("demi file\\nEdits, patches") && system.contains("demi host\\nLists"),
         "{system}"
     );
 

@@ -1,7 +1,7 @@
 import { onBeforeUnmount, ref } from 'vue'
 import type { DeviceRoute, DirectAttempt, DirectStatus, PathFigures } from '@demicodes/web-ui/devices/direct'
 import type { SettingsDevice } from '@demicodes/web-ui/settings/types'
-import { demoDeviceReport } from './device-installation'
+import { demoDeviceReport, demoDeviceStart } from './device-installation'
 import { ago } from './time'
 
 /**
@@ -61,9 +61,8 @@ export function demoAttempt(scenario: DirectScenario, startedAt: number): Direct
     browser: { local: ['7c1e4a52-9b0d-4c1e-8e3e-1a2b3c4d5e6f.local'], public: browserPublic },
     device: { local: ['192.168.1.20', '127.0.0.1'], public: devicePublic },
     pairs: { tried: connected ? 2 : 6, answered: connected ? 2 : 0 },
-    pair: connected ? { browser: null, device: '192.168.1.20:61204' } : null,
+    inUse: connected ? '192.168.1.20:61204' : null,
     permission: scenario === 'blocked' ? 'denied' : 'granted',
-    ...(scenario === 'dropped' ? { endedAt: new Date(startedAt + minutes(2)).toISOString() } : {}),
   }
 }
 
@@ -95,13 +94,22 @@ export interface GalleryDevice {
 
 const day = minutes(24 * 60)
 
-/** A demo device, paired `paired` ago, reached as `scenario` says. */
+/**
+ * A demo device, paired `paired` ago, reached as `scenario` says once it is
+ * online; while it is offline this page has made no attempt and measured
+ * nothing.
+ */
 function demoDevice(
-  device: Pick<SettingsDevice, 'id' | 'name' | 'state' | 'seen'> & { os: SettingsDevice['os']; runnerVersion: string | null },
+  device: Pick<SettingsDevice, 'id' | 'name' | 'state' | 'seen' | 'start'> & { os: SettingsDevice['os']; runnerVersion: string | null },
   scenario: DirectScenario,
   paired: number,
 ): GalleryDevice {
-  return { device: { ...device, pairedAt: ago(paired), direct: demoDirect(scenario) }, scenario }
+  const reached = demoDirect(scenario)
+  const direct =
+    device.state === 'offline'
+      ? { ...reached, peer: false, chosen: false, attempt: null, nextAt: null, figures: { direct: null, relay: null } }
+      : reached
+  return { device: { ...device, pairedAt: ago(paired), direct }, scenario }
 }
 
 /** The release the demo server's runners follow. */
@@ -113,7 +121,7 @@ export function galleryDevices(): GalleryDevice[] {
   return [
     demoDevice({ id: 'mac', name: 'zan-mbp', state: 'online', seen: ago(0), ...current('macos') }, 'connected', 40 * day),
     demoDevice(
-      { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * day), ...current('linux') },
+      { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * day), start: demoDeviceStart('linux'), ...current('linux') },
       'unreachable',
       90 * day,
     ),

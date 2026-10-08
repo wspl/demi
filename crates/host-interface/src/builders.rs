@@ -141,6 +141,7 @@ impl LeafBuilder {
                 input: None,
                 positionals: None,
                 stdin_field: None,
+                stdin_unless: Vec::new(),
                 rest_field: None,
                 output: None,
                 media: false,
@@ -199,6 +200,17 @@ impl LeafBuilder {
     /// The string field read from finite standard input.
     pub fn stdin_field(mut self, field: impl Into<String>) -> Self {
         self.leaf.stdin_field = Some(field.into());
+        self
+    }
+
+    /// The options whose presence means the stdin field is not read: the
+    /// command then leaves stdin to the calling process.
+    pub fn stdin_unless<I, S>(mut self, options: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.leaf.stdin_unless = options.into_iter().map(Into::into).collect();
         self
     }
 

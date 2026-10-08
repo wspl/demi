@@ -335,7 +335,7 @@ Details….
 ‹ Devices
 
 ┌────┐ zan-mbp
-│ 🖥 │ ● Through the server · 480 ms
+│ 🖥 │ ● Through the server
 └────┘
        Your networks block a direct connection.
        [Details…]  [Try Again]
@@ -362,11 +362,14 @@ Device
 
 - **The header.** The icon is exactly as tall as the name and status lines
   together and centred on them, as macOS's account and device headers are;
-  the status dot is centred on the status text. Under them, starting where
-  the name starts, the reason, only when there is one, and then the buttons
-  on a line of their own. **Details…** opens the sheet below; **Try Again**
-  makes a new peer at once and is there only while the route allows a peer
-  and the page has no connected peer.
+  the status dot is centred on the status text. The status carries no
+  figure, since the footnote under Connection gives both paths'. Under them,
+  starting where the name starts, the reason, only when there is one, and
+  then the buttons on a line of their own. **Details…** opens the sheet
+  below and **Try Again** makes a new peer at once; both are there only while
+  the device is online and its route allows a peer, Try Again only while the
+  page has no connected peer. While an attempt runs, Try Again shows that it
+  runs, and no sentence is added.
 - **Connection.** The route, a pop-up button of *Automatic*, *Prefer
   Direct* and *Server Only*, described in one line by the chosen one:
   *Uses the faster path.*, *Direct whenever it connects.*, *Never connects
@@ -387,7 +390,7 @@ The **Details** sheet, as macOS's Network → Details… opens one, titled
 how long it took, the stage it ended at (permission, gathering addresses,
 finding a path, the encryption handshake, opening the channel, or
 connected), the addresses each side offered, local and public, the pairs
-tried and how many answered, the pair in use when connected, the browser's
+tried and how many answered, the device's address in use when connected, the browser's
 local network permission, and when Demi tries next. A local address the
 browser hides behind a random `….local` name, as every browser does for a
 page's own addresses, shows as *Hidden by the browser*. Where the reason has
@@ -415,8 +418,7 @@ attempt minutes old.
 The Cloud is always reached through the server, since it runs beside the
 backend: its header says *Through the server* and nothing more, and its page
 has no Connection section. An offline device's page keeps the route, which
-applies when it is back, and shows no footnote; Details… is there only when
-this page has an attempt to show. A user who blocks the browser's local
+applies when it is back, and shows no footnote. A user who blocks the browser's local
 network permission sees no prompt again and stays on the relay.
 
 ## Failure and limits
