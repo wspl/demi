@@ -268,35 +268,42 @@ const punctuationRules: readonly TextRule[] = [
   },
 ]
 
-/** How much text a screen says. */
+/** How much text a screen says, from Apple’s and Microsoft’s writing guides. */
 const brevityRules: readonly TextRule[] = [
   {
-    title: 'A state is a few words',
-    rule: 'A status says what is, in two or three words and a figure, never in a sentence: macOS’s Wi-Fi says Connected.',
-    right: ['Connected directly · 2 ms', 'Offline · Last seen 3 days ago'],
-    wrong: ['This browser is connected directly to the device, and a round trip takes 2 ms.'],
-    source: 'macOS 26 System Settings: Wi-Fi, Bluetooth',
-  },
-  {
-    title: 'An explanation is one short sentence',
-    rule: 'Only where the state needs one, and at most about ten words: what is wrong or what to do. The why, the numbers and the history go behind Details…, opened when the user asks.',
+    title: 'Every word earns its place',
+    rule: 'Check each word to be sure it needs to be there, and use fewer when fewer say the same. Give just enough for the reader to decide with confidence; the mechanism behind a state is not part of it.',
     right: ['Your networks block a direct connection.'],
-    wrong: ['Your network and the device’s don’t let a direct connection through, as a strict NAT or a firewall does. Demi tries again in 7 minutes.'],
-    source: 'Apple HIG: Writing (be brief); macOS 26 Network → Details…',
+    wrong: ['Your network and the device’s don’t let a direct connection through, as a strict NAT or a firewall does.'],
+    source: 'Apple HIG: Writing, Be clear; Microsoft Style Guide: Be brief',
   },
   {
-    title: 'A row’s description is optional and one line',
-    rule: 'A settings row whose label says enough has none. One that needs one says what the setting does in a short line, not how it works.',
+    title: 'The most important thing first',
+    rule: 'Lead with what the reader came for: the state, then what to do. Background and figures follow, or wait behind Details…, where the reader asks for them.',
+    right: ['Through the server · 480 ms'],
+    wrong: ['From this browser, measured once a second over the last 30 probes: through the server 480 ms.'],
+    source: 'Apple HIG: Writing, Consider each screen’s purpose; Microsoft Style Guide: Get to the point fast',
+  },
+  {
+    title: 'A setting’s label comes first',
+    rule: 'Label a setting as practically as possible. Add an explanation only when the label is not enough, and then say what it does, not how it works.',
     right: ['Route: Automatic — Uses the faster path.'],
-    wrong: ['Route — Demi connects directly when that is faster, and through the server otherwise.', 'Revoke this device — It leaves your devices, and its runner removes itself if it is connected.'],
-    source: 'macOS 26 System Settings: most rows have no description',
+    wrong: ['Route — Demi connects directly when that is faster, and through the server otherwise.'],
+    source: 'Apple HIG: Writing, Keep settings labels clear and simple',
+  },
+  {
+    title: 'A problem says what to do',
+    rule: 'Show it next to what it is about, without blame, and say what the reader can do to fix it.',
+    right: ['Start Demi on the device, then try again.'],
+    wrong: ['The device’s runner is not connected to the backend.'],
+    source: 'Apple HIG: Writing, Write clear error messages',
   },
   {
     title: 'A screen says a thing once',
-    rule: 'A fact the header or a row shows is not said again in a sentence, a footnote or a list row. A list row names the item and its state; the reason belongs to the item’s page.',
+    rule: 'A fact the header or a row shows is not said again in a sentence, a footnote or a list row; a list row names the item and its state, and the reason waits on the item’s page.',
     right: ['macOS 26.5 · Through the server'],
     wrong: ['macOS 26.5 · Through the server, the networks don’t allow direct'],
-    source: 'macOS 26 System Settings lists',
+    source: 'Microsoft Style Guide: Be brief, prune every excess word',
   },
 ]
 
@@ -365,6 +372,8 @@ const sources: readonly Required<Source>[] = [
   { label: 'Apple Style Guide: ellipsis', href: 'https://support.apple.com/guide/applestyleguide/e-apsg076a7313/web' },
   { label: 'Apple Style Guide: help tag', href: 'https://support.apple.com/guide/applestyleguide/h-apsg9dac5903/web' },
   { label: 'OS X Human Interface Guidelines (2016): Terminology and wording', href: MACOS_HIG_2016 },
+  { label: 'Apple Human Interface Guidelines: Writing', href: 'https://developer.apple.com/design/human-interface-guidelines/writing' },
+  { label: 'Microsoft Writing Style Guide: Top 10 tips for style and voice', href: 'https://learn.microsoft.com/en-us/style-guide/top-10-tips-style-voice' },
 ]
 
 </script>
@@ -446,7 +455,7 @@ const sources: readonly Required<Source>[] = [
 
     <GallerySection
       title="Brevity"
-      note="How much a screen says. A written convention, like the rest of this page: nothing checks it."
+      note="How much a screen says, after Apple’s and Microsoft’s writing guides. A written convention, like the rest of this page: nothing checks it."
     >
       <GalleryTextRules :rules="brevityRules" />
     </GallerySection>
