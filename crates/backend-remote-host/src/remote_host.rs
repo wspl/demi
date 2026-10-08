@@ -651,12 +651,12 @@ impl RemoteHost {
         let sent = writer.write(input).await;
         if let Err(failure) = sent {
             abandon("service call failed");
-            return Err(HostError::interrupted(failure.to_string()).into());
+            return Err(broken(&link, failure).into());
         }
         writer.end();
         let mut answer = BytesMut::new();
         while let Some(chunk) = reader.next().await {
-            let chunk = chunk.map_err(|failure| HostError::interrupted(failure.to_string()))?;
+            let chunk = chunk.map_err(|failure| broken(&link, failure))?;
             if answer.len() + chunk.len() > max_bytes {
                 abandon("service call failed");
                 return Err(ServiceCallError::TooLarge(max_bytes));
@@ -1669,6 +1669,16 @@ fn kind(
     } else {
         FileKind::Other
     }
+}
+
+/// Why a call's bytes stopped: the device going offline when its runner
+/// went away, which fails every pipe it held, so the caller says what
+/// happened rather than that a pipe broke; else the pipe itself broke.
+fn broken(link: &Link, failure: impl ToString) -> HostError {
+    if link.is_closed() {
+        return link.offline();
+    }
+    HostError::interrupted(failure.to_string())
 }
 
 fn pipe_error(error: PipeError) -> HostError {

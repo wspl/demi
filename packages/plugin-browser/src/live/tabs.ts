@@ -91,19 +91,31 @@ export class BrowserTabsError extends Error {
   }
 }
 
-/** What a refusal's code means to the user, in the Writing page's words rather than the Host's error text. */
+/**
+ * What a refusal's code means to the user, in the Writing page's words rather
+ * than the Host's error text: the browser's own codes, and the Host's that a
+ * request or a tab's `failure` carries, such as an offline device, a stopped
+ * Cloud or a connection that broke partway (`live-view.md` § A browser tab in
+ * the panel).
+ */
 const REFUSALS: Readonly<Record<string, SentenceText>> = {
   history_boundary: 'The tab has no page to go to in that direction.',
   invalid_input: 'The browser opens only web, file and blank pages.',
   tab_not_found: 'This page is no longer open on the device.',
   host_stopped: 'The Cloud is stopped.',
+  cloud_resetting: 'The Cloud is resetting.',
+  cloud_capacity: 'The Cloud cannot start now: the server has no room for it.',
+  cloud_crash_loop: 'The Cloud stopped starting after repeated failures.',
+  cloud_unavailable: 'The Cloud is not available right now.',
   device_offline: 'The device is offline.',
+  device_not_found: 'The device was removed from your account.',
+  host_operation_failed: 'The connection to the device broke.',
   conversation_busy: 'The conversation is busy. Try again in a moment.',
   conversation_archived: 'This conversation is archived.',
   navigation_failed: 'The browser couldn’t load the page.',
   timeout: 'The browser didn’t answer in time.',
-  browser_unavailable: 'The browser on the device isn’t running.',
-  browser_lost: 'The browser on the device isn’t running.',
+  browser_unavailable: 'The browser couldn’t start on the device.',
+  browser_lost: 'The browser on the device stopped.',
   input_failed: 'The page didn’t receive your input.',
   capture_unavailable: 'This device can’t capture the browser’s pages.',
   capture_failed: 'The device couldn’t capture the page. It’s trying again.',
