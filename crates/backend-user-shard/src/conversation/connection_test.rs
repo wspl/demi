@@ -65,8 +65,11 @@ impl Shard {
             let work = ProcessWork::Account(entry.id.clone());
             let placement = CloudPlacement::placement(Rc::downgrade(&self.this()), work);
             let account = account.as_ref().or(entry.active());
+            let env = RuntimeEnv {
+                http: self.http().clone(),
+            };
             assembly
-                .process_runtime(&entry, account, placement)
+                .process_runtime(&entry, account, env, placement)
                 .await
                 .map_err(|error| error.to_string())
         } else {

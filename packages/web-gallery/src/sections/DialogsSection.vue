@@ -101,17 +101,22 @@ const passwordPhases: { variant: string; phase: ChangePasswordPhase }[] = [
   { variant: 'form · busy', phase: { kind: 'form', busy: true } },
   { variant: 'done', phase: { kind: 'done' } },
 ]
+const claudeLink = 'https://claude.com/cai/oauth/authorize?code=true'
 const claudePhases: { variant: string; phase: ProviderLoginPhase }[] = [
+  { variant: 'Claude Code · starting', phase: { kind: 'starting' } },
   {
-    variant: 'Claude Code · token',
-    phase: {
-      kind: 'token',
-      command: 'claude setup-token',
-      install: { label: 'Get Claude Code', url: 'https://docs.anthropic.com/en/docs/claude-code/setup' },
-      prefix: 'sk-ant-oat01-',
-    },
+    variant: 'Claude Code · link and code',
+    phase: { kind: 'code', url: claudeLink, expiresIn: '15 min', submitted: false },
   },
-  { variant: 'Claude Code · done', phase: { kind: 'done', account: 'zan@example.com · Max 5×', active: true } },
+  {
+    variant: 'Claude Code · signing in',
+    phase: { kind: 'code', url: claudeLink, submitted: true },
+  },
+  { variant: 'Claude Code · done', phase: { kind: 'done', account: 'zan@example.com · max', active: true } },
+  {
+    variant: 'Claude Code · failed',
+    phase: { kind: 'failed', message: 'Invalid code. Please make sure the full code was copied.' },
+  },
 ]
 const codexPhases: { variant: string; phase: ProviderLoginPhase }[] = [
   { variant: 'Codex · starting', phase: { kind: 'starting' } },
@@ -371,7 +376,7 @@ const resetPhases: {
                 :vendor-name="item.vendor"
                 :phase="item.phase"
                 @close="close"
-                @submit-token="productWould(`Sign In to ${item.vendor} with the Token`)"
+                @submit-code="productWould(`Give the Code to the ${item.vendor} Sign-In`)"
                 @open="(url) => productWould(`Open ${url} in a New Browser Tab`)"
                 @retry="productWould(`Start the ${item.vendor} Sign-in Again`)"
               />

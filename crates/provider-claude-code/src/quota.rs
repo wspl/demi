@@ -34,13 +34,14 @@ impl QuotaSource for ClaudeQuota {
         Some(ProbeCost::Free)
     }
 
-    /// `GET /api/oauth/usage` with the account's token. A setup token does
-    /// not say its plan, so the reading names none.
+    /// `GET /api/oauth/usage` with the account's access token, refreshed
+    /// first when it expires within five minutes. The endpoint does not say
+    /// the plan, so the reading names none.
     fn probe(&self) -> BoxFuture<'_, Result<ProbeReading, QuotaError>> {
         Box::pin(async move {
             let secret = self
                 .auth
-                .stored()
+                .credentials(&self.http, None)
                 .await
                 .map_err(|failure| failure.quota_error())?;
             let failed = |error: reqwest::Error| {
