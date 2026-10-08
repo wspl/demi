@@ -10,9 +10,10 @@ import { defaultWindow, useEventListener } from '@vueuse/core'
 import { useConversations } from '../conversation/store'
 import { useProduct } from '../state/product'
 import { executionFor } from '../targets/execution'
-import { DeviceDirect, type DirectState, type Permission } from './device'
+import type { DirectStatus } from '@demicodes/web-ui/devices/direct'
+import { DeviceDirect, directState, type DirectState, type Permission } from './device'
 import { connectPeer } from './peer'
-import { DeviceSignaling } from './signaling'
+import { DeviceSignaling, isBusy } from './signaling'
 
 /** A device in use, with its signaling socket. */
 interface UsedDevice {
@@ -52,16 +53,43 @@ export function directRoute(conversationId: string): DirectRoute | null {
 }
 
 /**
- * What Settings → Devices says of the path to device `deviceId`
- * (`direct-channel.md` § What the user sees): `connected` while this page
- * has a direct channel to it, `blocked` while the browser reports that it
- * blocks local network access, and nothing otherwise.
+ * Starts the use of paired device `deviceId` while its runner is
+ * connected, so that Settings → Devices says how this page reaches it even
+ * before a conversation used it.
  */
-export function directNote(deviceId: string): 'connected' | 'blocked' | undefined {
+export function watchDirect(deviceId: string): void {
+  const device = useProduct().snapshot?.devices.find((candidate) => candidate.id === deviceId)
+  if (device?.kind === 'user' && device.state === 'online')
+    use(deviceId)
+}
+
+/** What Settings → Devices shows of the path to paired device `deviceId` (`direct-channel.md` § What the user sees). */
+export function directStatus(deviceId: string): DirectStatus {
+  const product = useProduct()
+  const device = product.snapshot?.devices.find((candidate) => candidate.id === deviceId)
   follow()
-  if (permission.value === 'denied')
-    return 'blocked'
-  return states.get(deviceId)?.choice === 'direct' ? 'connected' : undefined
+  const state = states.get(deviceId) ?? directState()
+  return {
+    enabled: device?.direct ?? true,
+    crossing: (product.snapshot?.stunUrls.length ?? 0) > 0,
+    permission: permission.value,
+    connected: state.choice === 'direct',
+    trying: state.trying,
+    roundTripMs: null,
+    attempt: state.attempt,
+    nextAt: state.nextAt === null ? null : new Date(state.nextAt).toISOString(),
+  }
+}
+
+/** Makes a new attempt to device `deviceId` at once, as Try Now asks. */
+export function tryDirect(deviceId: string): void {
+  used.get(deviceId)?.direct.tryNow()
+}
+
+/** The round trip of the direct channel to device `deviceId`, in milliseconds; null while there is none. */
+export async function directRoundTrip(deviceId: string): Promise<number | null> {
+  const peer = used.get(deviceId)?.direct.current()
+  return peer ? peer.roundTrip() : null
 }
 
 /** The device's choice and signaling, started on its first use while its runner is connected. */
@@ -70,7 +98,8 @@ function use(deviceId: string): DeviceDirect {
   if (known)
     return known.direct
   follow()
-  const state = states.get(deviceId) ?? reactive({ choice: 'relay' as const, blocked: false })
+  const product = useProduct()
+  const state = states.get(deviceId) ?? reactive(directState())
   states.set(deviceId, state)
   // The first open of the socket starts the first attempt, and each open
   // after one closed is a reason to try again; a peer the backend closed is
@@ -79,7 +108,14 @@ function use(deviceId: string): DeviceDirect {
   const direct = new DeviceDirect(
     {
       ready: () => signaling.open,
-      connect: (signal) => connectPeer((sdp) => signaling.offer(sdp), signal),
+      connect: (signal) =>
+        connectPeer({
+          signaling,
+          stunUrls: product.snapshot?.stunUrls ?? [],
+          permission: () => permission.value,
+          busy: isBusy,
+          signal,
+        }),
       after: (ms, run) => {
         const timer = setTimeout(run, ms)
         return () => clearTimeout(timer)
@@ -88,6 +124,7 @@ function use(deviceId: string): DeviceDirect {
     state,
   )
   direct.setPermission(permission.value)
+  direct.setEnabled(product.snapshot?.devices.find((device) => device.id === deviceId)?.direct ?? true)
   used.set(deviceId, { direct, signaling })
   return direct
 }
@@ -124,6 +161,14 @@ function follow(): void {
           if (!online.includes(deviceId))
             release(deviceId)
         }
+      },
+    )
+    // The device's switch, which every page of the user's follows.
+    watch(
+      () => (product.snapshot?.devices ?? []).map((device) => [device.id, device.direct] as const),
+      (devices) => {
+        for (const [deviceId, enabled] of devices)
+          used.get(deviceId)?.direct.setEnabled(enabled)
       },
     )
     useEventListener(defaultWindow, 'online', () => {

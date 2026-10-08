@@ -1,41 +1,50 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
+import { Monitor } from '@lucide/vue'
 import AsyncRegion from '../ui/AsyncRegion.vue'
+import Button from '../ui/Button.vue'
+import CornerDot from '../ui/CornerDot.vue'
+import RelativeTime from '../ui/RelativeTime.vue'
+import { ICON_PX } from '../ui/icon-metrics'
+import type { SentenceText } from '../ui/ui-text'
 import CloudSettings from '../cloud/CloudSettings.vue'
 import type { CloudState } from '../cloud/types'
-import { Monitor } from '@lucide/vue'
-import CornerDot from '../ui/CornerDot.vue'
-import Button from '@demicodes/web-ui/ui/Button.vue'
-import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
+import { directReason, reasonShort } from '../devices/direct'
+import type { DeviceInstallation } from '../devices/installation'
+import { useDevicePairing, type PairingResult } from '../devices/pairing'
+import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
+import type { OverlayStore } from '../overlay/overlayStore'
+import SettingsDevicePage from './SettingsDevicePage.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { SettingsDevice } from './types'
-import type { SentenceText } from '../ui/ui-text'
-import type { DeviceInstallation } from '../devices/installation'
-import type { OverlayStore } from '../overlay/overlayStore'
-import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
-import DeviceRevokeDialog from '../devices/DeviceRevokeDialog.vue'
-import DeviceStartHint from '../devices/DeviceStartHint.vue'
-import { deviceReportLine } from '../devices/report'
-import DeviceRenameDialog from '../devices/DeviceRenameDialog.vue'
-import HelpPopover from '../ui/HelpPopover.vue'
-import RelativeTime from '../ui/RelativeTime.vue'
-import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
-import { useDevicePairing, type PairingResult } from '../devices/pairing'
 
+/**
+ * Settings → Devices (`direct-channel.md` § What the user sees): the Cloud,
+ * then the paired devices, each a row that names it and says in one line
+ * its system and how this page reaches it, and opens its own page, which
+ * `shown` names; the page is shown in the list's place.
+ */
 const props = defineProps<{
   load?: 'loading' | 'ready' | 'failed'
-  /** The devices whose revocation is under way. */
-  pendingIds?: string[]
-  /** The devices whose rename is under way. */
-  renamingIds?: string[]
-  /** The most characters a device's name has; null for no limit. */
-  nameMaxLength: number | null
   cloud: CloudState | null
   resetPending?: boolean
   resetError?: string | null
   devices: SettingsDevice[]
+  /** The device whose page is shown, the Cloud's included; null shows the list. */
+  shown?: string | null
+  /** The runner release the server's devices follow; null on a server without them. */
+  runnerRelease: string | null
+  /** The shown device's direct round trip, in milliseconds, while its channel stands. */
+  roundTripMs?: number | null
+  /** The devices whose change of their switch, name or revocation is under way. */
+  changingIds?: string[]
+  renamingIds?: string[]
+  revokingIds?: string[]
+  /** The most characters a device's name has; null for no limit. */
+  nameMaxLength: number | null
   /** The user's projects, each on a device; a revoked device's go with it. */
   projects?: readonly { deviceId: string; name: string }[]
   overlayStore: OverlayStore
@@ -45,60 +54,75 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   retry: []
-  revoke: [id: string]
+  /** Shows a device's page, or the list again with null. */
+  show: [id: string | null]
+  setDirect: [id: string, enabled: boolean]
+  tryNow: [id: string]
   rename: [id: string, name: string]
+  revoke: [id: string]
   resetCloud: [operationId: string]
 }>()
-/**
- * The few words under a device that say how this page reaches it
- * (`direct-channel.md` § What the user sees), or its state while its runner
- * does not serve it.
- */
+
+/** How this page reaches a device, in the few words its row has room for. */
 function reachedAs(device: SettingsDevice): SentenceText {
-  if (device.state !== 'online')
+  if (device.state !== 'online') {
     return DEVICE_STATE_LABEL[device.state]
-  return device.direct === 'connected' ? 'Connected directly' : 'Through the server'
+  }
+  const reason = directReason(device.direct)
+  if (reason === null) {
+    return 'Connected directly'
+  }
+  const short = reasonShort(reason)
+  return short ? `Through the server, ${short}` : 'Through the server'
 }
+
 const { isOpen, phase, open, close, submit } = useDevicePairing(
   (code, signal) => props.claimDevice(code, signal),
 )
-/**
- * The device whose revocation the confirmation asks about; it stays while the
- * confirmation closes, so the closing dialog keeps its text.
- */
-const confirming = ref<SettingsDevice | null>(null)
-const confirmOpen = ref(false)
-const confirmingProjects = computed(() =>
+
+/** The page shown in the list's place: a paired device's, the Cloud's, or none. */
+const page = computed(() => {
+  const shown = props.shown
+  if (!shown) {
+    return null
+  }
+  const device = props.devices.find((candidate) => candidate.id === shown)
+  if (device) {
+    return { kind: 'device' as const, device }
+  }
+  if (props.cloud && props.cloud.deviceId === shown) {
+    return { kind: 'cloud' as const, report: props.cloud.report }
+  }
+  return null
+})
+const pageProjects = computed(() =>
   (props.projects ?? [])
-    .filter((project) => project.deviceId === confirming.value?.id)
+    .filter((project) => project.deviceId === props.shown)
     .map((project) => project.name),
 )
-function confirmRevoke(device: SettingsDevice) {
-  confirming.value = device
-  confirmOpen.value = true
-}
-function revoke() {
-  confirmOpen.value = false
-  if (confirming.value) {
-    emit('revoke', confirming.value.id)
-  }
-}
-/** The device Rename… asks a name for; it stays while the dialog closes, as `confirming` does. */
-const renaming = ref<SettingsDevice | null>(null)
-const renameOpen = ref(false)
-function startRename(device: SettingsDevice) {
-  renaming.value = device
-  renameOpen.value = true
-}
-function rename(name: string) {
-  if (renaming.value) {
-    emit('rename', renaming.value.id, name)
-  }
-}
 </script>
 
 <template>
+  <SettingsDevicePage
+    v-if="page"
+    :key="shown ?? ''"
+    :page="page"
+    :runner-release="runnerRelease"
+    :round-trip-ms="roundTripMs"
+    :projects="pageProjects"
+    :name-max-length="nameMaxLength"
+    :changing="!!shown && changingIds?.includes(shown)"
+    :renaming="!!shown && renamingIds?.includes(shown)"
+    :revoking="!!shown && revokingIds?.includes(shown)"
+    :overlay-store="overlayStore"
+    @back="emit('show', null)"
+    @set-direct="emit('setDirect', shown!, $event)"
+    @try-now="emit('tryNow', shown!)"
+    @rename="emit('rename', shown!, $event)"
+    @revoke="emit('revoke', shown!)"
+  />
   <SettingsPage
+    v-else
     title="Devices"
     description="Machines that can host a conversation’s working directory."
   >
@@ -109,6 +133,7 @@ function rename(name: string) {
       :cloud="cloud"
       :overlay-store="overlayStore"
       @reset="emit('resetCloud', $event)"
+      @open="cloud.deviceId && emit('show', cloud.deviceId)"
     />
     <SettingsGroup>
       <template #header>
@@ -124,58 +149,28 @@ function rename(name: string) {
         label="Loading devices…"
         @retry="emit('retry')"
       >
-        <template v-for="device in devices" :key="device.id">
-          <SettingsRow :label="device.name">
-            <template #description>
-              <span v-if="deviceReportLine(device)" class="block">{{ deviceReportLine(device) }}</span>
-              <span class="block">
-                <template v-if="device.state === 'offline' && device.seen">
-                  Last seen <RelativeTime :timestamp="device.seen" />
-                </template>
-                <template v-else>{{ reachedAs(device) }}</template>
-              </span>
-            </template>
-            <template #leading>
-              <span class="relative flex">
-                <Monitor :size="ICON_PX.in28" />
-                <CornerDot
-                  :tone="DEVICE_STATE_TONE[device.state]"
-                  :label="DEVICE_STATE_LABEL[device.state]"
-                />
-              </span>
-            </template>
-            <HelpPopover
-              v-if="device.state === 'offline' && device.start"
-              label="How to Start Its Runner"
-              :overlay-store="overlayStore"
-            >
-              <DeviceStartHint :start="device.start" />
-            </HelpPopover>
-            <HelpPopover
-              v-else-if="device.state === 'online' && device.direct === 'blocked'"
-              label="How to Connect Directly"
-              :overlay-store="overlayStore"
-            >
-              <p class="text-[12px] leading-4 text-fg-muted">
-                This browser blocks direct connections to devices on this computer and network, so
-                this device is reached through the server, which is slower. To allow them, open
-                this site’s settings in the browser and allow Local network access.
-              </p>
-            </HelpPopover>
-            <Button
-              size="sm"
-              :loading="renamingIds?.includes(device.id)"
-              @click="startRename(device)"
-              >Rename…</Button
-            >
-            <Button
-              size="sm"
-              :loading="pendingIds?.includes(device.id)"
-              @click="confirmRevoke(device)"
-              >Revoke…</Button
-            >
-          </SettingsRow>
-        </template>
+        <SettingsRow
+          v-for="device in devices"
+          :key="device.id"
+          :label="device.name"
+          navigable
+          @click="emit('show', device.id)"
+        >
+          <template #description>
+            <template v-if="device.os">{{ device.os.name }} · </template>
+            <template v-if="device.state === 'offline' && device.seen">Last seen <RelativeTime :timestamp="device.seen" /></template>
+            <template v-else>{{ reachedAs(device) }}</template>
+          </template>
+          <template #leading>
+            <span class="relative flex">
+              <Monitor :size="ICON_PX.in28" />
+              <CornerDot
+                :tone="DEVICE_STATE_TONE[device.state]"
+                :label="DEVICE_STATE_LABEL[device.state]"
+              />
+            </span>
+          </template>
+        </SettingsRow>
         <div
           v-if="!devices.length"
           class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
@@ -184,22 +179,6 @@ function rename(name: string) {
         </div>
       </AsyncRegion>
     </SettingsGroup>
-    <DeviceRevokeDialog
-      :is-open="confirmOpen"
-      :overlay-store="overlayStore"
-      :device="confirming?.name ?? ''"
-      :projects="confirmingProjects"
-      @close="confirmOpen = false"
-      @revoke="revoke"
-    />
-    <DeviceRenameDialog
-      :is-open="renameOpen"
-      :overlay-store="overlayStore"
-      :name="renaming?.name ?? ''"
-      :max-length="nameMaxLength"
-      @close="renameOpen = false"
-      @rename="rename"
-    />
     <DevicePairingDialog
       v-if="installation"
       :is-open="isOpen"

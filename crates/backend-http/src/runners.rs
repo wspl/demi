@@ -66,7 +66,7 @@ async fn runner_update(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<Option<RunnerUpdate>, ApiError> {
-    let Some(current) = current_runner_release(&state.site).await? else {
+    let Some(current) = current_runner_release(state).await? else {
         return Ok(None);
     };
     let named = |name: &str| headers.get(name).and_then(|value| value.to_str().ok());

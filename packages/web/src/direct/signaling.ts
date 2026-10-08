@@ -1,7 +1,7 @@
 /**
  * A device's signaling socket (`web-api.md` § Direct channel): the page's
  * introduction to the device's runner. It carries one offer at a time and
- * its answer; a socket that brings nothing, not even a heartbeat, for as
+ * its answer, and each side's candidates found after them; a socket that brings nothing, not even a heartbeat, for as
  * long as the page's sockets may is broken, and a closed or broken socket
  * connects again after the page's reconnect waits (`web-application.md`
  * § Liveness and reconnection). Its close closes the runner's peer, and the
@@ -19,7 +19,7 @@ import {
 } from '@demicodes/web-ui/transport/liveness'
 import { apiUrl } from '../api/client'
 import { directMessageSchema, type DirectMessage, type DirectRequest } from '../api/generated/web-api'
-import { ChannelFailed } from './peer'
+import { ChannelFailed, type PeerSignaling } from './peer'
 
 /** An offer the runner did not answer. */
 export class Unanswered extends ChannelFailed {
@@ -29,7 +29,12 @@ export class Unanswered extends ChannelFailed {
   }
 }
 
-export class DeviceSignaling {
+/** Whether `error` is the runner's refusal of an offer for having too many peers. */
+export function isBusy(error: unknown): boolean {
+  return error instanceof Unanswered && error.code === 'busy'
+}
+
+export class DeviceSignaling implements PeerSignaling {
   private socket: WebSocket | null = null
   private silence: SilenceWatch | null = null
   private waiting: ReconnectWait | null = null
@@ -37,6 +42,8 @@ export class DeviceSignaling {
   private stopped = false
   /** The offer waiting for its answer. */
   private answering: PromiseWithResolvers<string> | null = null
+  /** Who hears the runner's candidates. */
+  private readonly listeners = new Set<(candidate: string) => void>()
 
   /**
    * @param deviceId The paired device the socket introduces the page to.
@@ -61,6 +68,20 @@ export class DeviceSignaling {
     const request: DirectRequest = { type: 'offer', sdp }
     socket.send(JSON.stringify(request))
     return this.answering.promise
+  }
+
+  /** Sends a candidate the browser found after the offer; one for a socket that closed meanwhile has no peer left. */
+  candidate(candidate: string): void {
+    const socket = this.socket
+    if (!socket || socket.readyState !== WebSocket.OPEN)
+      return
+    const request: DirectRequest = { type: 'candidate', candidate }
+    socket.send(JSON.stringify(request))
+  }
+
+  candidates(listener: (candidate: string) => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
   }
 
   /** Whether the socket is open, so an offer can go. */
@@ -125,6 +146,11 @@ export class DeviceSignaling {
       return
     if (message.type === 'closed') {
       this.peerClosed()
+      return
+    }
+    if (message.type === 'candidate') {
+      for (const listener of [...this.listeners])
+        listener(message.candidate)
       return
     }
     const answering = this.answering

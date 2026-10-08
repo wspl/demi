@@ -22,7 +22,7 @@ use demi_host_interface::{
     HostError, HostErrorKind, HostIdentity, HostKey, JobCaller, ProcessEnd, ProcessOutput,
     RpcError, RpcInvocation, RpcPort, SpawnError, SpawnErrorKind,
 };
-use demi_runner_protocol::direct::{Introduction, OfferRefusal};
+use demi_runner_protocol::direct::{Introduction, OfferRefusal, StunUrl};
 use demi_runner_protocol::wire::{
     self, ArtifactOwner, FileRead, FsResult, GitResult, HostArtifact, Inbound, LogLine, Outbound,
     VolumeName,
@@ -229,6 +229,9 @@ struct State {
     /// The direct streams open on the device, by the id the runner gave
     /// each.
     direct_streams: HashMap<String, DirectStream>,
+    /// Where the candidates the runner finds for each peer go: to the page
+    /// that offered it, by the peer's id.
+    direct_candidates: HashMap<String, mpsc::UnboundedSender<String>>,
 }
 
 /// A direct stream the runner reported open: what its close cancels, the
@@ -629,12 +632,15 @@ impl Link {
 
     /// Introduces a page to the runner with its offer for peer `peer`,
     /// which replaces the peer of that id, and waits for the runner's
-    /// answer; the caller bounds the wait.
+    /// answer; the caller bounds the wait. The runner asks the STUN servers
+    /// `stun` for its public addresses; what it finds after its answer comes
+    /// through what [`Link::direct_candidates`] answers.
     pub async fn direct_offer(
         &self,
         peer: &str,
         sdp: String,
         introduction: Introduction,
+        stun: Vec<StunUrl>,
     ) -> Result<DirectAnswer, HostError> {
         let answer = self
             .call(Expected::DirectOffer, |id| Inbound::DirectOffer {
@@ -642,6 +648,7 @@ impl Link {
                 peer: peer.to_owned(),
                 sdp,
                 introduction,
+                stun,
             })
             .await?;
         match answer {
@@ -653,8 +660,29 @@ impl Link {
         }
     }
 
+    /// The candidates the runner finds for peer `peer` from now on, until
+    /// the peer closes or another page's offer takes its id.
+    pub fn direct_candidates(&self, peer: &str) -> mpsc::UnboundedReceiver<String> {
+        let (found, candidates) = mpsc::unbounded_channel();
+        self.0
+            .state
+            .borrow_mut()
+            .direct_candidates
+            .insert(peer.to_owned(), found);
+        candidates
+    }
+
+    /// A candidate the page of peer `peer` found after its offer.
+    pub fn direct_candidate(&self, peer: &str, candidate: String) {
+        self.post(&Inbound::DirectCandidate {
+            peer: peer.to_owned(),
+            candidate,
+        });
+    }
+
     /// The page's signaling socket closed: the runner closes peer `peer`.
     pub fn direct_close(&self, peer: &str) {
+        self.0.state.borrow_mut().direct_candidates.remove(peer);
         self.post(&Inbound::DirectClose {
             peer: peer.to_owned(),
         });
@@ -842,6 +870,17 @@ impl Link {
                 conversation,
                 open,
             } => self.direct_stream(stream, name, conversation, open),
+            Outbound::DirectCandidate { peer, candidate } => {
+                let mut state = self.0.state.borrow_mut();
+                let gone = match state.direct_candidates.get(&peer) {
+                    Some(page) => page.send(candidate).is_err(),
+                    // A peer whose page went has nobody to tell.
+                    None => false,
+                };
+                if gone {
+                    state.direct_candidates.remove(&peer);
+                }
+            }
             Outbound::DirectRefused { id, code, message } => {
                 let answer = Answer::Direct(DirectAnswer::Refused(code, message));
                 self.answer(&id, Expected::DirectOffer, answer);

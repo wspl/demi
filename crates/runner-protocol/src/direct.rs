@@ -31,6 +31,121 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// relay's watch does.
 pub const WATCH_HEARTBEAT: Duration = Duration::from_secs(30);
 
+/// The most STUN servers a backend names.
+pub const MAX_STUN_URLS: usize = 8;
+/// The most characters of a candidate a page or a runner trickles.
+pub const CANDIDATE_CHARS: usize = 512;
+
+/// A STUN server pages and runners ask for the address the internet sees
+/// them at (`direct-channel.md` § Making the channel), as a `stun:` URL:
+/// `stun:host` or `stun:host:port`, port 3478 when it names none (RFC 7064),
+/// with an IPv6 host in brackets. The page passes it to the browser as it
+/// is; the runner resolves its host.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct StunUrl {
+    url: String,
+    host: String,
+    port: u16,
+}
+
+/// Why text is no `stun:` URL.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0:?} is not a stun: URL, such as stun:stun.cloudflare.com:3478")]
+pub struct NotAStunUrl(String);
+
+/// The port of a STUN server whose URL names none.
+pub const STUN_PORT: u16 = 3478;
+
+impl StunUrl {
+    /// The server's host: a name, an IPv4 address, or an IPv6 address
+    /// without its brackets.
+    pub fn host(&self) -> &str {
+        &self.host
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.url
+    }
+}
+
+impl TryFrom<String> for StunUrl {
+    type Error = NotAStunUrl;
+
+    fn try_from(url: String) -> Result<Self, Self::Error> {
+        let invalid = || NotAStunUrl(url.clone());
+        let rest = url
+            .strip_prefix("stun:")
+            .filter(|rest| !rest.starts_with('/'))
+            .ok_or_else(invalid)?;
+        let (host, port) = match rest.strip_prefix('[') {
+            Some(bracketed) => {
+                let (host, after) = bracketed.split_once(']').ok_or_else(invalid)?;
+                host.parse::<std::net::Ipv6Addr>().map_err(|_| invalid())?;
+                let port = match after {
+                    "" => None,
+                    after => Some(after.strip_prefix(':').ok_or_else(invalid)?),
+                };
+                (host, port)
+            }
+            None => match rest.split_once(':') {
+                Some((host, port)) => (host, Some(port)),
+                None => (rest, None),
+            },
+        };
+        let named = !host.is_empty()
+            && host
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':'));
+        if !named {
+            return Err(invalid());
+        }
+        let port = match port {
+            Some(port) => port.parse::<u16>().ok().filter(|port| *port != 0).ok_or_else(invalid)?,
+            None => STUN_PORT,
+        };
+        Ok(Self {
+            host: host.to_owned(),
+            port,
+            url,
+        })
+    }
+}
+
+impl std::str::FromStr for StunUrl {
+    type Err = NotAStunUrl;
+
+    fn from_str(url: &str) -> Result<Self, Self::Err> {
+        Self::try_from(url.to_owned())
+    }
+}
+
+impl From<StunUrl> for String {
+    fn from(url: StunUrl) -> Self {
+        url.url
+    }
+}
+
+impl std::fmt::Display for StunUrl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.url)
+    }
+}
+
+impl JsonSchema for StunUrl {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "StunUrl".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({ "type": "string", "pattern": "^stun:" })
+    }
+}
+
 /// The user stream a stream name opens: an operation of a published package.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
