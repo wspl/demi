@@ -370,8 +370,11 @@ Device
   then the buttons on a line of their own. **Details…** opens the sheet
   below and **Try Again** makes a new peer at once; both are there only while
   the device is online and its route allows a peer, Try Again only while the
-  page has no connected peer. While an attempt runs, Try Again shows that it
-  runs, and no sentence is added.
+  page has no connected peer. The attempts Demi makes by itself show
+  nothing. Only Try Again shows its attempt: the button takes its loading
+  state when clicked and keeps it until the attempt ends. Clicked while an
+  attempt Demi started is running, it starts no second one and shows that
+  one until it ends.
 - **Connection.** The route, a pop-up button of *Automatic*, *Prefer
   Direct* and *Server Only*, described in one line by the chosen one:
   *Uses the faster path.*, *Direct whenever it connects.*, *Never connects
