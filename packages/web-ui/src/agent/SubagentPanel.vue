@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { CircleStop } from '@lucide/vue'
-import Button from '../ui/Button.vue'
-import { ICON_PX } from '../ui/icon-metrics'
-import Tooltip from '../ui/Tooltip.vue'
+import { CircleStop, X } from '@lucide/vue'
+import MenuDivider from '../ui/MenuDivider.vue'
+import MenuItem from '../ui/MenuItem.vue'
 import AgentMessageList from './AgentMessageList.vue'
 import SessionOverlay from './SessionOverlay.vue'
 import SubagentHistoryMenu from './SubagentHistoryMenu.vue'
@@ -28,7 +27,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   /** Stop All: every live child. */
   abort: []
-  /** The close on a running tab: that child and its subtree. */
+  /** Stop Agent in a live tab's menu: that child and its subtree. */
   abortAgent: [id: string]
 }>()
 const activeId = defineModel<string | null>('activeId', { required: true })
@@ -50,13 +49,15 @@ function closePanel(): void {
   activeId.value = null
 }
 
-// Closing a running tab aborts the child; closing a finished one puts it away.
-function closeTab(agent: SubagentRecord): void {
-  if (agent.phase === 'running') {
-    emit('abortAgent', agent.id)
-    return
-  }
-  activeId.value = tabs.value.filter((tab) => tab.id !== agent.id).at(-1)?.id ?? null
+const anyRunning = computed(() => props.agents.some((agent) => agent.phase === 'running'))
+
+function agentOf(id: string): SubagentRecord | undefined {
+  return tabs.value.find((agent) => agent.id === id)
+}
+
+// A finished child's tab puts it away; a running one's tab stays until the child is stopped.
+function closeTab(id: string): void {
+  activeId.value = tabs.value.filter((tab) => tab.id !== id).at(-1)?.id ?? null
 }
 </script>
 
@@ -66,7 +67,7 @@ function closeTab(agent: SubagentRecord): void {
     :dismiss-outside="dismissOutside"
     @close="closePanel"
   >
-    <template #tabs>
+    <template #tabs="{ openTabMenu }">
       <TabItem
         v-for="agent in tabs"
         :key="agent.id"
@@ -74,25 +75,35 @@ function closeTab(agent: SubagentRecord): void {
         :is-active="agent.id === active?.id"
         :status="subagentStatus(agent.phase)"
         mark="bot"
+        :closable="false"
         @select="activate(agent.id)"
-        @close="closeTab(agent)"
+        @contextmenu="openTabMenu($event, agent.id)"
+      />
+    </template>
+    <template #tabMenu="{ id }">
+      <MenuItem
+        :icon="CircleStop"
+        label="Stop Agent"
+        :disabled="agentOf(id)?.phase !== 'running'"
+        @select="emit('abortAgent', id)"
+      />
+      <MenuDivider />
+      <MenuItem
+        :icon="X"
+        label="Close Tab"
+        :disabled="agentOf(id)?.phase === 'running'"
+        @select="closeTab(id)"
+      />
+    </template>
+    <template #stripMenu>
+      <MenuItem
+        :icon="CircleStop"
+        label="Stop All"
+        :disabled="!anyRunning"
+        @select="emit('abort')"
       />
     </template>
     <template #trailing>
-      <Tooltip
-        v-if="agents.some((agent) => agent.phase === 'running')"
-        content="Stop all agents"
-      >
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label="Stop all agents"
-          @click="emit('abort')"
-        >
-          <CircleStop :size="ICON_PX.in24" aria-hidden="true" />
-          Stop All
-        </Button>
-      </Tooltip>
       <SubagentHistoryMenu
         :agents="agents"
         :active-id="activeId"
