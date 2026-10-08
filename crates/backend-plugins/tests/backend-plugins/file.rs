@@ -235,7 +235,7 @@ const QUOTED_SHOWN: &str = concat!(
     "   1  // head\n",
     "   2  const greeting = \"it's $HOME, \\\"quoted\\\"\";\n",
     "   3  const path = 'C:\\new\\temp';\n",
-    "   4  \n",
+    "   4\n",
     "   5  // tail\n",
     "Created notes/new.md (1 line)\n",
     "It's $HOME's \\\"note\\\"\n",
