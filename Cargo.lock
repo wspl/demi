@@ -3004,6 +3004,7 @@ name = "demi-runner-process"
 version = "0.1.21"
 dependencies = [
  "bytes",
+ "command-fds",
  "demi-command-protocol",
  "demi-command-sdk",
  "demi-runner-protocol",

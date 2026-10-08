@@ -9,7 +9,7 @@ use std::{sync::Arc, time::Duration};
 use demi_provider_common::{
     Secret,
     credentials::{
-        AccountKit, AccountsCapability, AccountsError, AddAccount, LoginError, NewAccount,
+        AccountKit, AccountsCapability, LoginError, LoginIo, LoginKind, NewAccount,
         SecretDocument,
     },
     oauth::{PollInterval, ResponseError, decode_json_response},
@@ -33,20 +33,18 @@ pub(crate) struct CodexKit {
 impl AccountKit for CodexKit {
     fn capability(&self) -> AccountsCapability {
         AccountsCapability {
-            login: true,
-            add: false,
+            login: Some(LoginKind::Device),
         }
     }
 
+    /// The device flow only polls the vendor, so a stop drops it at once.
     fn login<'a>(
         &'a self,
-        pending: &'a (dyn Fn(LoginPending) + Send + Sync),
+        io: LoginIo<'a>,
     ) -> Option<BoxFuture<'a, Result<NewAccount, LoginError>>> {
-        Some(Box::pin(self.device_login(pending)))
-    }
-
-    fn add(&self, _input: AddAccount) -> Option<Result<NewAccount, AccountsError>> {
-        None
+        Some(Box::pin(async move {
+            LoginIo::until_stopped(&io.stop, self.device_login(io.pending)).await
+        }))
     }
 }
 
@@ -63,6 +61,7 @@ impl CodexKit {
         pending(LoginPending {
             verification_url: self.url("/codex/device").to_string(),
             user_code: Some(code.user_code.clone()),
+            code_error: None,
         });
         let authorization = self.authorization(&code).await?;
         let tokens = self.exchange(&authorization).await?;

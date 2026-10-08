@@ -1,8 +1,8 @@
 //! A process provider's command-line tool (`web-api.md` § Model
 //! configuration and provider inspection, `claude-code.md` § What the user
 //! sees): the vendor's newest version, the last install on the caller's
-//! Cloud and the versions that Cloud has, read without waking it; the
-//! install again; and the install that adding an account starts.
+//! Cloud and the versions that Cloud has, read without waking it; and the
+//! install again. A sign-in installs the tool it runs itself.
 
 use std::sync::Arc;
 
@@ -77,25 +77,4 @@ pub(super) async fn install(
     let entry = process_entry(&services, &user, &id).await?;
     let install = start_install(&services, &shards, &user.id, &entry.id).await;
     Ok((StatusCode::ACCEPTED, Json(CliInstallAnswer { install })))
-}
-
-/// Starts the install of the tool on the acting user's Cloud after an
-/// account was added to `entry`, when its provider runs a process. Its
-/// failure is the install's state, never the failure of adding the account.
-pub(super) async fn install_for_account(
-    services: &Services,
-    shards: &Shards,
-    user: &UserDto,
-    entry: &ProviderEntry,
-) {
-    match services.assembly.runs_a_process(entry).await {
-        Ok(true) => {
-            start_install(services, shards, &user.id, &entry.id).await;
-        }
-        Ok(false) => {}
-        // The account stands; the settings page offers the install again.
-        Err(error) => {
-            tracing::warn!(provider = %entry.id, "the CLI install was not started: {error}")
-        }
-    }
 }

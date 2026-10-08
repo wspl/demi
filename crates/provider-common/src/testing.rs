@@ -320,6 +320,18 @@ impl Clock for TokioClock {
     }
 }
 
+/// What a login of a test works with: `pending` gets what the user must
+/// do, no code is pasted, and nothing stops it.
+pub fn login_io(
+    pending: &(dyn Fn(demi_shared_types::LoginPending) + Send + Sync),
+) -> crate::credentials::LoginIo<'_> {
+    crate::credentials::LoginIo {
+        pending,
+        codes: tokio::sync::mpsc::unbounded_channel().1,
+        stop: CancellationToken::new(),
+    }
+}
+
 /// A JWT whose payload is `claims`, with a signature nobody checks, as the
 /// tokens vendors issue: providers read claims without verifying them.
 pub fn jwt(claims: &serde_json::Value) -> String {

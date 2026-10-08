@@ -3,13 +3,18 @@
 
 use std::sync::Arc;
 
-use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider};
+use demi_provider_claude_code::{
+    AccountMachine, AccountWork, ClaudeCodeConfig, ClaudeCodeProvider, StartError,
+};
 use demi_provider_common::credentials::{
-    AccountsCapability, AddAccount, CredentialPool, LoginError, MemoryCredentialPool,
+    AccountsCapability, CredentialPool, LoginError, LoginKind, MemoryCredentialPool,
 };
 use demi_provider_common::quota::{MemorySnapshots, QuotaError};
-use demi_provider_common::testing::{MockResponse, MockVendor};
-use demi_provider_common::{CatalogError, Provider, RuntimeEnv, RuntimeError, Secret};
+use demi_provider_common::testing::{MockResponse, MockVendor, login_io};
+use demi_provider_common::{
+    CatalogError, ErrorCode, Provider, ProviderEvent, RuntimeEnv, RuntimeError,
+};
+use futures_util::future::BoxFuture;
 use demi_shared_types::{AuthState, QuotaScope, QuotaSeverity, RuntimeState, SnapshotSource};
 use serde_json::json;
 
@@ -22,7 +27,8 @@ fn json_answer(body: serde_json::Value) -> MockResponse {
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_setup_token_is_an_account_named_by_its_digest_and_the_provider_needs_a_placement() {
+async fn a_sign_in_is_an_account_named_by_its_email_that_signs_in_on_a_machine_and_runs_in_a_placement()
+{
     let pool = MemoryCredentialPool::new();
     let staged = ClaudeCodeProvider::new(
         ClaudeCodeConfig::new("entry-1", "Claude", None),
@@ -36,42 +42,26 @@ async fn a_setup_token_is_an_account_named_by_its_digest_and_the_provider_needs_
         message: Some("No Claude Code account is signed in".into()),
     };
     assert_eq!(staged.auth_status().await, unauthenticated);
+    // Inference's provider cannot sign in: a sign-in needs the machine the
+    // CLI's login runs on.
     let accounts = staged.accounts().unwrap();
-    let setup_token = AccountsCapability {
-        login: false,
-        add: true,
-    };
-    assert_eq!(accounts.capability(), setup_token);
+    assert_eq!(accounts.capability(), AccountsCapability { login: None });
     assert_eq!(
-        accounts.login(&|_| {}).await.unwrap_err(),
+        accounts.login(login_io(&|_| {})).await.unwrap_err(),
         LoginError::Unsupported
     );
-    let token = || AddAccount::SetupToken(Secret::try_from(TOKEN.to_owned()).unwrap());
-    let added = accounts.add(token()).await.unwrap();
-    assert!(added.label.starts_with("claude-"), "{}", added.label);
-    assert_eq!(added.label.len(), "claude-".len() + 8);
-    assert_eq!(added.detail, None);
-    // The same token again is the same account.
-    let again = accounts.add(token()).await.unwrap();
-    assert_eq!(again.id, added.id);
-    assert_eq!(pool.list().await.unwrap().len(), 1);
-    assert_eq!(pool.active().await.unwrap(), Some(added.id.clone()));
-    let document = pool.document(&added.id).read().await.unwrap().unwrap();
+    let signing_in = staged.login_accounts(Arc::new(NoMachine));
     assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&document.text).unwrap(),
-        json!({ "accessToken": TOKEN })
+        signing_in.capability(),
+        AccountsCapability {
+            login: Some(LoginKind::PastedCode)
+        }
     );
 
-    let provider = ClaudeCodeProvider::new(
-        ClaudeCodeConfig::new("entry-1", "Claude", Some(added.id.clone())),
-        Arc::new(pool.clone()),
-        Arc::new(MemorySnapshots::new()),
-        models_dev_client("http://127.0.0.1:9/api.json"),
-        reqwest::Client::new(),
-        clock(),
-    );
+    let account = seed(&pool, sign_in(TOKEN, REFRESH, "2026-09-24T16:00:00Z")).await;
+    let provider = provider_of(&pool, &account, &NOWHERE);
     let signed_in = AuthState::Authenticated {
-        account_label: Some(added.label.clone()),
+        account_label: Some("zan@example.test".into()),
     };
     assert_eq!(provider.auth_status().await, signed_in);
     assert!(provider.capabilities().process_host);
@@ -91,28 +81,60 @@ async fn a_setup_token_is_an_account_named_by_its_digest_and_the_provider_needs_
             provider: "Claude".into()
         }
     );
+}
 
-    // A corrupt document is refused, never repaired.
-    pool.document(&added.id)
-        .replace(
-            "{\"accessToken\":\"x\",\"refreshToken\":\"y\"}".into(),
-            document.version,
-        )
-        .await
-        .unwrap();
-    let corrupt = provider.auth_status().await;
-    assert!(matches!(corrupt, AuthState::Error { .. }), "{corrupt:?}");
+/// A machine nothing signs in on.
+struct NoMachine;
+
+impl AccountMachine for NoMachine {
+    fn run(&self, _: String, _: AccountWork) -> BoxFuture<'static, Result<(), StartError>> {
+        unreachable!("no sign-in runs")
+    }
+}
+
+#[tokio::test(flavor = "local")]
+async fn an_account_of_a_setup_token_fails_with_a_message_to_sign_in_again_and_starts_no_process() {
+    let pool = MemoryCredentialPool::new();
+    let account = seed(
+        &pool,
+        json!({ "accessToken": "sk-ant-oat01-old-setup-token" }).to_string(),
+    )
+    .await;
+    let provider = provider_of(&pool, &account, &NOWHERE);
+    let message = "The Claude Code account cannot be read: its secret document is malformed \
+                   at .: a field is missing, unknown or of the wrong type. Remove \
+                   the account and sign in again";
+    // The document is refused, never repaired, and its token never shown.
+    assert_eq!(
+        provider.auth_status().await,
+        AuthState::Error {
+            message: message.into()
+        }
+    );
+    let (placement, _starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let events = all_events(runtime.run(request(vec![user("hi")]))).await;
+    let [ProviderEvent::Error(failure)] = events.as_slice() else {
+        panic!("the request did not fail: {events:?}");
+    };
+    assert_eq!(
+        (failure.message.as_str(), failure.code.clone()),
+        (message, Some(ErrorCode::AuthInvalid))
+    );
+    assert_eq!(placement.starts(), 0);
+    let stored = pool.document(&account).read().await.unwrap().unwrap();
+    assert!(stored.text.contains("sk-ant-oat01-old-setup-token"));
 }
 
 #[tokio::test(flavor = "local")]
 async fn the_quota_is_probed_with_the_accounts_token_and_observed_on_the_clis_lines() {
     let vendor = MockVendor::start().await;
-    let (provider, _) = provider_with(
-        TOKEN,
-        "http://127.0.0.1:9/api.json",
-        &vendor.url("/api/oauth/usage"),
-    )
-    .await;
+    let usage = vendor.url("/api/oauth/usage");
+    let urls = Urls {
+        usage: &usage,
+        ..NOWHERE
+    };
+    let (provider, _) = provider_with(TOKEN, &urls).await;
     vendor.respond(json_answer(json!({
         "five_hour": { "utilization": 12, "resets_at": "2026-09-24T10:00:00.000Z" },
         "seven_day": { "utilization": "lots" },
@@ -274,8 +296,12 @@ async fn the_catalog_is_models_devs_claude_models_from_4_6_flagship_first_and_th
         },
         "openai": { "id": "openai", "name": "OpenAI", "models": {} },
     })));
-    let (provider, _) =
-        provider_with(TOKEN, &vendor.url("/api.json"), "http://127.0.0.1:9/usage").await;
+    let models_dev = vendor.url("/api.json");
+    let urls = Urls {
+        models_dev: &models_dev,
+        ..NOWHERE
+    };
+    let (provider, _) = provider_with(TOKEN, &urls).await;
     let catalog = provider.list_models().await.unwrap();
     let ids: Vec<&str> = catalog
         .models

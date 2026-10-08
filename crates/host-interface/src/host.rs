@@ -324,9 +324,33 @@ pub struct SpawnRequest {
     /// The Host's default working directory when none.
     pub cwd: Option<String>,
     pub env: SpawnEnv,
+    /// Descriptors the process inherits besides its standard streams, each a
+    /// pipe that holds its bytes and then ends, such as a token a program
+    /// reads from a descriptor rather than from its environment, which
+    /// other processes of the same user can read.
+    pub descriptors: Vec<Descriptor>,
     /// The process is kept between pieces of work and is not itself work: a
     /// Host that counts activity leaves it out, and may stop with it running.
     pub retained: bool,
+}
+
+/// A pipe a process inherits at descriptor `fd`, 3 or higher: it reads
+/// `bytes`, and then the pipe's end.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Descriptor {
+    pub fd: u32,
+    pub bytes: Bytes,
+}
+
+impl fmt::Debug for Descriptor {
+    /// The bytes may be a secret, so only their length is shown.
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Descriptor")
+            .field("fd", &self.fd)
+            .field("bytes", &format_args!("{} bytes", self.bytes.len()))
+            .finish()
+    }
 }
 
 /// The environment a process starts with (`runner.md` § Host operations).

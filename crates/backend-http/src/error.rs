@@ -243,9 +243,6 @@ impl From<AccountRefusal> for ApiError {
     fn from(refusal: AccountRefusal) -> Self {
         let message = refusal.to_string();
         match refusal {
-            AccountRefusal::Exists => {
-                Self::new(StatusCode::CONFLICT, ErrorCode::ProviderExists, message)
-            }
             AccountRefusal::Unsupported(_) => Self::new(
                 StatusCode::BAD_REQUEST,
                 ErrorCode::AccountsUnsupported,
@@ -255,12 +252,7 @@ impl From<AccountRefusal> for ApiError {
             AccountRefusal::Active => {
                 Self::new(StatusCode::CONFLICT, ErrorCode::ActiveAccount, message)
             }
-            AccountRefusal::TokenImportFailed => Self::new(
-                StatusCode::BAD_REQUEST,
-                ErrorCode::TokenImportFailed,
-                message,
-            ),
-            AccountRefusal::Store(_) | AccountRefusal::Assembly(_) => Self::internal(&refusal),
+            AccountRefusal::Assembly(_) => Self::internal(&refusal),
         }
     }
 }

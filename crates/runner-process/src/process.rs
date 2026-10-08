@@ -28,6 +28,9 @@ pub struct SpawnOptions {
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,
     pub process_group: bool,
+    /// Pipes the process inherits besides its standard streams: at each
+    /// descriptor, 3 or higher, a pipe that holds the bytes and then ends.
+    pub descriptors: Vec<(u32, Bytes)>,
 }
 
 /// What a process the runner starts gets besides its command: the umask and
@@ -94,10 +97,15 @@ impl ChildProcess {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let mut command = wrap(command, options.process_group, &ChildAttributes::default());
+        let fillings = inherit(command.command_mut().as_std_mut(), &options.descriptors)?;
         let mut child = match start(|| command.spawn()).await {
             Ok(child) => child,
             Err(error) => return Err(classify_failure(error, &options).await),
         };
+        // The child holds the pipes' read ends now; the runner's copies go
+        // with the command.
+        drop(command);
+        fill(fillings);
         let pid = child.id().expect("newly spawned process has an ID");
         let mut stdin = child.stdin().take().expect("piped stdin");
         let stdout = child.stdout().take().expect("piped stdout");
@@ -260,6 +268,80 @@ impl Drop for ChildProcess {
         self.cancel.cancel();
     }
 }
+
+/// A pipe's write end and the bytes it is to carry to the process.
+#[cfg(unix)]
+type Filling = (std::io::PipeWriter, Bytes);
+#[cfg(not(unix))]
+type Filling = ();
+
+/// Gives `command` a pipe at each of `descriptors`, and answers the write
+/// ends with what each must carry. The write ends close on exec, so the
+/// process holds only the read ends.
+#[cfg(unix)]
+fn inherit(
+    command: &mut std::process::Command,
+    descriptors: &[(u32, Bytes)],
+) -> Result<Vec<Filling>, SpawnFailure> {
+    use command_fds::{CommandFdExt, FdMapping};
+    let failed = |message: String| SpawnFailure {
+        kind: SpawnErrorKind::Other,
+        message,
+    };
+    if descriptors.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut mappings = Vec::new();
+    let mut fillings = Vec::new();
+    for (fd, bytes) in descriptors {
+        let child_fd = i32::try_from(*fd)
+            .ok()
+            .filter(|fd| *fd > 2)
+            .ok_or_else(|| failed(format!("descriptor {fd} is not one a process inherits")))?;
+        let (reader, writer) = std::io::pipe()
+            .map_err(|error| failed(format!("the pipe of descriptor {fd}: {error}")))?;
+        mappings.push(FdMapping {
+            parent_fd: reader.into(),
+            child_fd,
+        });
+        fillings.push((writer, bytes.clone()));
+    }
+    command
+        .fd_mappings(mappings)
+        .map_err(|error| failed(error.to_string()))?;
+    Ok(fillings)
+}
+
+#[cfg(not(unix))]
+fn inherit(
+    _command: &mut std::process::Command,
+    descriptors: &[(u32, Bytes)],
+) -> Result<Vec<Filling>, SpawnFailure> {
+    if descriptors.is_empty() {
+        return Ok(Vec::new());
+    }
+    Err(SpawnFailure {
+        kind: SpawnErrorKind::Other,
+        message: "a process inherits no further descriptors on Windows".into(),
+    })
+}
+
+/// Writes each pipe's bytes and closes it, off the runtime's threads, since
+/// a pipe holds only so much until the process reads it. A process that
+/// ends without reading its pipe makes the write fail, which concerns
+/// nobody: what it does without its bytes is its own.
+#[cfg(unix)]
+fn fill(fillings: Vec<Filling>) {
+    use std::io::Write as _;
+    for (mut writer, bytes) in fillings {
+        tokio::task::spawn_blocking(move || {
+            let _unread = writer.write_all(&bytes);
+        });
+    }
+}
+
+#[cfg(not(unix))]
+fn fill(_fillings: Vec<Filling>) {}
 
 /// Sends one of the process's output streams to its owner, a chunk per read.
 /// Cancellation stops a read and a send alike, since the owner may have

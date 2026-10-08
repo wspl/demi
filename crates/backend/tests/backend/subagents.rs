@@ -161,6 +161,7 @@ impl ProviderFamily for Tree {
     fn process_runtime(
         &self,
         _: FamilyArgs,
+        _: RuntimeEnv,
         _: Rc<dyn Placement>,
     ) -> Option<Result<Box<dyn ProviderRuntime>, FamilyError>> {
         let runtime: Box<dyn ProviderRuntime> = Box::new(TreeRuntime(self.scripts.clone()));

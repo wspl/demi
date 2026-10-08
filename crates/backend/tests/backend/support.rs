@@ -17,6 +17,7 @@ use demi_backend_accounts::email_change::{AccountMail, MailError, VerificationMa
 use demi_backend_blobs::counting::ObjectCounts;
 use demi_backend_cloud::tuning::CloudTuning;
 use demi_backend_providers::llm::families::FamilyRegistry;
+use demi_backend_providers::vault::logins::LoginTiming;
 use demi_backend_remote_host::testing::{
     NativeFixture, RunnerProcess, RunnerProcessOptions, native_fixture_binary,
 };
@@ -269,6 +270,8 @@ pub struct Harness {
     user_streams: Option<Vec<Stream>>,
     pub lifecycle: LifecycleTuning,
     pub cloud: CloudTuning,
+    /// How long logins wait for their user.
+    pub logins: LoginTiming,
     /// Runs the Clouds of every backend this harness starts, unless
     /// `machines` names a real manager.
     pub manager: ScriptedManager,
@@ -328,6 +331,7 @@ impl Harness {
             user_streams: None,
             lifecycle: LifecycleTuning::default(),
             cloud: CloudTuning::default(),
+            logins: LoginTiming::default(),
             manager: ScriptedManager::start(),
             machines: None,
             server_release: None,
@@ -553,6 +557,7 @@ impl Harness {
         let mut config = BackendConfig::new(self.data_dir(), address, mode, machines);
         config.lifecycle = self.lifecycle;
         config.cloud = self.cloud;
+        config.logins = self.logins;
         config.clock = self.clock.clone();
         config.web_directory = self.web_directory.clone();
         config.families = self.families.clone();
@@ -810,6 +815,23 @@ impl TestBackend {
         self.backend
             .file_gate(&session.user.id, &conversation)
             .await
+    }
+
+    /// Stores `secret` of `family` as the one account of a new entry of
+    /// `session`'s user, as a sign-in would, and answers the entry's id.
+    pub async fn seed_subscription(
+        &self,
+        session: &Session,
+        family: &str,
+        label: &str,
+        identity: &str,
+        secret: String,
+    ) -> String {
+        self.backend
+            .seed_subscription(&session.user.id, family, label, identity, secret)
+            .await
+            .as_str()
+            .to_owned()
     }
 
     /// Waits until no collection of `session`'s user's blobs runs or is to

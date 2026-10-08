@@ -19,9 +19,9 @@ use crate::text::{EndpointUrl, Trimmed};
 /// trimming.
 pub const LABEL_MAX: usize = 80;
 
-/// The most characters (Unicode scalar values) a pasted setup token has,
+/// The most characters (Unicode scalar values) a pasted sign-in code has,
 /// after trimming.
-pub const TOKEN_MAX: usize = 16384;
+pub const CODE_MAX: usize = 4096;
 
 /// How an entry authenticates (`providers.md` § Families, vendors and
 /// endpoints).
@@ -30,7 +30,7 @@ pub const TOKEN_MAX: usize = 16384;
 pub enum CredentialKind {
     /// A key the user types in.
     ApiKey,
-    /// Accounts from a device login or a setup-token import.
+    /// Accounts from a sign-in.
     Subscription,
 }
 
@@ -207,7 +207,7 @@ pub struct ProviderDto {
     pub created_at: Timestamp,
 }
 
-/// `{ provider }`: the answer of a create, an edit and a setup-token import.
+/// `{ provider }`: the answer of a create and an edit.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ProviderAnswer {
     pub provider: ProviderDto,
@@ -402,32 +402,6 @@ pub struct Vendor {
     pub doc: Option<String>,
 }
 
-/// `POST /providers/setup-token`: a Claude Code entry from a token that
-/// `claude setup-token` printed.
-#[derive(Debug, Deserialize, JsonSchema, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct SetupTokenImport {
-    #[garde(length(chars, min = 1, max = TOKEN_MAX))]
-    pub token: Trimmed,
-    #[garde(length(chars, min = 1, max = LABEL_MAX))]
-    pub label: Trimmed,
-}
-
-/// `POST /providers/:id/accounts`: another account of an entry, from a setup
-/// token.
-#[derive(Debug, Deserialize, JsonSchema, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct AddToken {
-    #[garde(length(chars, min = 1, max = TOKEN_MAX))]
-    pub token: Trimmed,
-}
-
-/// `{ account }`: the account a token import added.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct AddedAccount {
-    pub account: AccountInfo,
-}
-
 /// `GET /providers/:id/accounts`: the entry's accounts and the active one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Accounts {
@@ -465,6 +439,30 @@ pub struct SubscriptionLogin {
     pub label: Option<Trimmed>,
 }
 
+/// `POST /providers/subscription-login/:id/code`: the code the vendor's
+/// sign-in page showed, which the login hands to its sign-in. It is one
+/// line, since the sign-in reads a line.
+#[derive(Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct LoginCode {
+    #[garde(length(chars, min = 1, max = CODE_MAX), custom(one_line))]
+    pub code: Trimmed,
+}
+
+impl std::fmt::Debug for LoginCode {
+    /// The code signs the user in, so it is never shown.
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("LoginCode { .. }")
+    }
+}
+
+fn one_line(code: &Trimmed, (): &()) -> garde::Result {
+    if code.as_str().chars().any(char::is_control) {
+        return Err(garde::Error::new("a code is one line of text"));
+    }
+    Ok(())
+}
+
 /// The 202 answer of a login start: `{ login: { id, status: "pending" } }`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct LoginStarted {
@@ -490,7 +488,7 @@ pub struct LoginAnswer {
     pub login: LoginState,
 }
 
-/// Where a device login is; a finished one is kept for ten minutes.
+/// Where a login is; a finished one is kept for ten minutes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(
     tag = "status",
@@ -499,8 +497,11 @@ pub struct LoginAnswer {
 )]
 pub enum LoginState {
     /// Waiting for the user, who opens the address and enters the code;
-    /// both are null until the vendor names them. The login ends at
-    /// `expires_at` unless the user finishes it first.
+    /// both are null until the vendor names them. With `needs_code`, the
+    /// user signs in at the address instead and pastes the code the page
+    /// shows, which the login now takes, `code_error` saying why it refused
+    /// the last one. The login ends at `expires_at`
+    /// unless the user finishes it first.
     Pending {
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<String>")]
@@ -508,6 +509,12 @@ pub enum LoginState {
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<String>")]
         user_code: Option<String>,
+        needs_code: bool,
+        /// Why the sign-in refused the last code pasted, in its own words;
+        /// null until it refuses one, and again once another is pasted.
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<String>")]
+        code_error: Option<String>,
         expires_at: Timestamp,
     },
     /// The login stored its account: `credentialId`, which is the entry's

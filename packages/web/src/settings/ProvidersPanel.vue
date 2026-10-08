@@ -27,7 +27,7 @@ const {
   accountAction,
   saveModel,
   saveModels,
-  submitToken,
+  submitCode,
   loadCli,
   checkCli,
   installCli,
@@ -129,6 +129,6 @@ onUnmounted(() => {
     @close="closeLogin"
     @open="openUrl"
     @retry="beginLogin(login.provider)"
-    @submit-token="submitToken"
+    @submit-code="submitCode"
   />
 </template>

@@ -230,13 +230,13 @@ async fn a_call_the_vendor_refused_fails_the_run_once_with_the_code_of_its_http_
         .and_then(|diagnostics| diagnostics.http_status);
     assert_eq!(status, Some(400));
     assert!(signals.is_empty());
+    // A 401 refreshes the token and runs the turn again (refresh.rs).
     for (status, words, code) in [
         (
             400,
             "prompt is too long: 250000 tokens",
             ErrorCode::ContextLengthExceeded,
         ),
-        (401, "OAuth token has expired", ErrorCode::AuthExpired),
         (429, "Too many requests", ErrorCode::RateLimit),
         (529, "Overloaded", ErrorCode::Overloaded),
     ] {

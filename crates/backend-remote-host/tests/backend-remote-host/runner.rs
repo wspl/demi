@@ -234,6 +234,7 @@ fn spawn(command: &str, args: &[&str]) -> SpawnRequest {
         args: args.iter().map(|arg| (*arg).to_owned()).collect(),
         cwd: None,
         env: SpawnEnv::Inherit,
+        descriptors: Vec::new(),
         retained: false,
     }
 }

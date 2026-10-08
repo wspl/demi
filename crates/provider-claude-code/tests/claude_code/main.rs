@@ -6,5 +6,6 @@
 mod account;
 mod cli;
 mod mcp;
+mod refresh;
 mod runs;
 mod wire;

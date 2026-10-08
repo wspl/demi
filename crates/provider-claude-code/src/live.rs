@@ -1,9 +1,11 @@
 //! A CLI process a runtime keeps across the turns of a session
 //! (`claude-code.md` § Process lifetime): its input and output, its SDK MCP
 //! server, what it has received of the transcript, and the tool calls it
-//! holds. Its standard error is drained all the time, keeping the last
-//! 64 KiB. Dropping it asks the Host to kill the process without waiting;
-//! [`LiveCli::close`] ends it and waits.
+//! holds, and the account's access token it holds, with that token's
+//! expiry. Its standard error is drained all the time, keeping
+//! the last 64 KiB. Dropping it asks the Host to kill the process without
+//! waiting, and its configuration directory goes once it ended;
+//! [`LiveCli::close`] ends it, removes the directory and waits.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -17,9 +19,10 @@ use demi_host_interface::{Process, ProcessControl, ProcessEnd, ProcessOutput, Si
 use demi_provider_common::quota::Observation;
 use demi_provider_common::wire::Tagged;
 use demi_provider_common::{
-    InferenceItem, InferenceRequest, ProviderFailure, ResultPart, ToolCall, UserPart, encode_body,
+    InferenceItem, InferenceRequest, ProviderFailure, ResultPart, Secret, ToolCall, UserPart,
+    encode_body,
 };
-use demi_shared_types::{StreamKind, ThinkingConfig};
+use demi_shared_types::{StreamKind, ThinkingConfig, Timestamp};
 use futures_channel::mpsc;
 use futures_util::future::{LocalBoxFuture, Shared as SharedFuture};
 use futures_util::stream::LocalBoxStream;
@@ -34,7 +37,8 @@ use tokio_util::task::AbortOnDropHandle;
 use crate::input::{self, ControlRequest, ControlResponse, Input, MCP_SERVER, McpReply};
 use crate::mcp::{self, Mcp, McpEvent};
 use crate::output::{ControlRequestLine, Line};
-use crate::placement::{CliSite, Placement};
+use crate::placement::{CliSite, ConfigDir, Placed, Placement};
+use crate::account::expiring;
 use crate::{FAMILY, Shared, cli};
 
 /// The `tracing` target of the raw stream-json exchange, at trace level.
@@ -134,6 +138,11 @@ pub(crate) enum Next {
 pub(crate) struct LiveCli {
     shared: Arc<Shared>,
     key: ProcessKey,
+    /// The access token the process holds, and when it expires.
+    pub(crate) token: Secret,
+    expires_at: Timestamp,
+    /// The process's configuration directory, which goes with it.
+    config: Option<Box<dyn ConfigDir>>,
     control: Box<dyn ProcessControl>,
     /// How the process ended, awaited as often as needed.
     exit: SharedFuture<LocalBoxFuture<'static, ProcessEnd>>,
@@ -155,20 +164,27 @@ pub(crate) struct LiveCli {
 
 impl LiveCli {
     /// Starts a new process for `request` through `placement`, with the
-    /// account's token; the CLI is never started without one.
+    /// account's access token, refreshed first when it expires within thirty
+    /// minutes or is still the one the vendor `refused`; the CLI is never
+    /// started without one.
     pub(crate) async fn start(
         shared: &Arc<Shared>,
+        http: &reqwest::Client,
         placement: &dyn Placement,
         request: &InferenceRequest,
+        refused: Option<&Secret>,
     ) -> Result<Self, ProviderFailure> {
         let secret = shared
             .auth
-            .stored()
+            .credentials(http, refused)
             .await
             .map_err(|failure| failure.failure())?;
+        let expires_at = secret.expires_at;
+        let token = secret.access_token;
         let spawn = |site: &CliSite| {
-            let spawn = cli::spawn_request(site, request, &secret.access_token);
-            // The environment holds the token, so the record leaves it out.
+            let spawn = cli::spawn_request(site, request, &token);
+            // The environment and the descriptors are left out: a
+            // descriptor holds the token.
             tracing::trace!(
                 target: WIRE,
                 direction = "spawn",
@@ -178,14 +194,15 @@ impl LiveCli {
             );
             spawn
         };
+        let Placed { process, config } = placement
+            .start(&spawn)
+            .await
+            .map_err(|error| failure(error.0))?;
         let Process {
             output,
             control,
             exit,
-        } = placement
-            .start(&spawn)
-            .await
-            .map_err(|error| failure(error.0))?;
+        } = process;
         let (stdout, lines) = mpsc::unbounded();
         let stderr = Rc::new(RefCell::new(Tail::default()));
         let drain = tokio::task::spawn_local(drain(output, stdout, stderr.clone()));
@@ -193,6 +210,9 @@ impl LiveCli {
         Ok(Self {
             shared: shared.clone(),
             key: ProcessKey::of(request),
+            token,
+            expires_at,
+            config: Some(config),
             control,
             exit: exit.shared(),
             lines: FramedRead::new(
@@ -218,10 +238,14 @@ impl LiveCli {
     /// neither, and the process would wait for input that never comes.
     pub(crate) fn serves(&self, request: &InferenceRequest) -> bool {
         let running = self.exit.clone().now_or_never().is_none();
+        // A process whose token is about to expire would be refused midway;
+        // a new one starts with a fresh token.
+        let fresh = !expiring(self.expires_at, self.shared.clock.now());
         let offers_tools = self.mcp.is_some() || request.tools.is_empty();
         let gains_input =
             !self.held.is_empty() || input::user_messages(&request.items).count() > self.sent.count;
         running
+            && fresh
             && offers_tools
             && self.key == ProcessKey::of(request)
             && !self.sent.diverged(&request.items)
@@ -558,11 +582,14 @@ impl LiveCli {
     /// The failure of a process whose output ended: results it was given and
     /// never asked for, or an exit other than success, told by the tail of
     /// its standard error when it wrote one.
-    pub(crate) async fn end(self) -> Option<ProviderFailure> {
+    pub(crate) async fn end(mut self) -> Option<ProviderFailure> {
         let unasked = self.mcp.as_ref().map(Mcp::unasked).unwrap_or_default();
         let stderr = self.stderr.borrow().text();
         let exit = self.exit.clone().await;
         tracing::trace!(target: WIRE, direction = "exit", end = ?exit);
+        if let Some(config) = self.config.take() {
+            config.remove().await;
+        }
         if !unasked.is_empty() {
             return Some(failure(format!(
                 "Claude Code exited before requesting SDK MCP tool result for {}",
@@ -593,7 +620,11 @@ impl LiveCli {
     /// SIGKILL follows after five seconds; either way its end is awaited.
     pub(crate) async fn close(self) {
         let LiveCli {
-            control, exit, mcp, ..
+            control,
+            exit,
+            mcp,
+            config,
+            ..
         } = self;
         drop(mcp);
         // A process that already ended, or whose machine went away, takes no
@@ -607,6 +638,9 @@ impl LiveCli {
             }
         };
         tracing::trace!(target: WIRE, direction = "exit", end = ?end);
+        if let Some(config) = config {
+            config.remove().await;
+        }
     }
 }
 
@@ -656,17 +690,17 @@ async fn drain(
 
 /// The last bytes of a stream.
 #[derive(Default)]
-struct Tail(Vec<u8>);
+pub(crate) struct Tail(Vec<u8>);
 
 impl Tail {
-    fn push(&mut self, bytes: &[u8]) {
+    pub(crate) fn push(&mut self, bytes: &[u8]) {
         self.0.extend_from_slice(bytes);
         let excess = self.0.len().saturating_sub(STDERR_TAIL_BYTES);
         self.0.drain(..excess);
     }
 
     /// The tail as text, trimmed; a character the cut split is left out.
-    fn text(&self) -> String {
+    pub(crate) fn text(&self) -> String {
         let start = self
             .0
             .iter()
@@ -694,7 +728,7 @@ fn undecodable(error: &dyn std::fmt::Display, text: String) -> ProviderFailure {
     )
 }
 
-fn exit_message(end: &ProcessEnd) -> String {
+pub(crate) fn exit_message(end: &ProcessEnd) -> String {
     match end {
         ProcessEnd::Exited(code) => format!("Claude Code exited with code {code}"),
         ProcessEnd::Signalled(signal) => format!("Claude Code was ended by {signal}"),

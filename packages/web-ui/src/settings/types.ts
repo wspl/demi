@@ -269,16 +269,14 @@ export type ProviderLoginPhase =
       expiresIn?: string
     }
   | {
-      kind: 'token'
-      /** The command that prints the token, run in the user's own terminal. */
-      command: string
-      /** Where to get the CLI when it is missing. */
-      install: {
-        label: TitleText
-        url: string
-      }
-      /** What a token starts with, so a paste can be checked before it is sent. */
-      prefix: string
+      /** The vendor's own sign-in: the user signs in at `url` and pastes back the code the page shows. */
+      kind: 'code'
+      url: string
+      expiresIn?: string
+      /** The pasted code is with the sign-in, which is finishing. */
+      submitted: boolean
+      /** Why the sign-in refused the last code, in the vendor's words; it waits for another. */
+      error?: SentenceText
     }
   | {
       kind: 'done'

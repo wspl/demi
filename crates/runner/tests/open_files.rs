@@ -417,6 +417,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
                 cwd,
                 env: BTreeMap::new(),
                 process_group: true,
+                descriptors: Vec::new(),
             })
             .await
             .map_err(|failure| failure.message)?;
@@ -641,6 +642,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
         cwd: root_path.clone(),
         env: BTreeMap::new(),
         process_group: true,
+        descriptors: Vec::new(),
     })
     .await
     .unwrap();

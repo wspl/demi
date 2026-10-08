@@ -12,6 +12,7 @@ fn options(command: &str, args: &[&str]) -> SpawnOptions {
         cwd: std::env::temp_dir(),
         env: BTreeMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
         process_group: true,
+        descriptors: Vec::new(),
     }
 }
 
