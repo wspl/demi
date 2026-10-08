@@ -159,7 +159,9 @@ const initials = computed(() =>
       <div class="flex h-full flex-col overflow-hidden @md:flex-row">
         <!-- Wide: a rail beside the page. Narrow: the list of sections, until one opens. -->
         <!-- The account and the filter stay put; only the section list scrolls. -->
+        <!-- The rail and the page are each a region (`ui/region.ts`): a menu opened in one grows toward its inside. -->
         <aside
+          data-region
           class="min-h-0 shrink-0 flex-col gap-3 bg-surface px-3 pb-3 @md:flex @md:w-56 @md:pt-3"
           :class="tab === null ? 'flex flex-1 @md:flex-none' : 'hidden'"
         >
@@ -239,6 +241,7 @@ const initials = computed(() =>
           </ScrollArea>
         </aside>
         <section
+          data-region
           class="relative min-h-0 min-w-0 flex-1 flex-col @md:flex"
           :class="tab === null ? 'hidden' : 'flex'"
         >
