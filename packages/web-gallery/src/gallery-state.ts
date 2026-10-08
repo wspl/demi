@@ -14,26 +14,24 @@ import {
 } from '@demicodes/web-ui/theme/appTheme'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 
-const paradigmIdSchema = z.enum(['demi', 'flat'])
-const toneIdSchema = z.enum(['ink', 'warm', 'paper'])
+const paradigmIdSchema = z.enum(['ink', 'warm', 'flat'])
 const accentIdSchema = z.literal(PRODUCT_ACCENTS.map((accent) => accent.id))
 
 export type ParadigmId = z.infer<typeof paradigmIdSchema>
-export type ToneId = z.infer<typeof toneIdSchema>
 export type AccentId = ProductAccent
 
 export const ACCENTS = PRODUCT_ACCENTS
 
 /**
- * A theme the gallery can show: the product's own, and Flat, the one under
- * trial. A theme fixes every token axis but the mode and the accent; the
- * settings specimen's Tone may still change the tone, as the product's does.
+ * A theme the gallery can show: the product's two tones, Ink and Warm, and
+ * Flat, the one on trial. A theme fixes every token axis but the mode and the
+ * accent.
  */
 export interface Paradigm {
   id: ParadigmId
   name: string
   summary: SentenceText
-  tone: ToneId
+  tone: 'ink' | 'warm' | 'paper'
   density: 'regular'
   radius: 'medium'
   shadow: 'hairline' | 'flat'
@@ -41,10 +39,18 @@ export interface Paradigm {
 
 export const PARADIGMS: readonly Paradigm[] = [
   {
-    id: 'demi',
-    name: 'Demi',
-    summary: 'Product appearance: Ink, regular density, medium radius and hairline shadows.',
-    ...productAppearance
+    id: 'ink',
+    name: 'Ink',
+    summary: 'The product’s default: neutral grays, regular density, medium radius and hairline shadows.',
+    ...productAppearance,
+    tone: 'ink',
+  },
+  {
+    id: 'warm',
+    name: 'Warm',
+    summary: 'The product’s warm tone: the same layout and shadows over warm grays.',
+    ...productAppearance,
+    tone: 'warm',
   },
   {
     id: 'flat',
@@ -62,7 +68,6 @@ const STORAGE_KEY = 'demi-gallery-style'
 export interface GalleryState {
   paradigm: ParadigmId
   mode: ThemeMode
-  tone: ToneId
   accent: AccentId
 }
 
@@ -81,7 +86,6 @@ function paradigmById(id: ParadigmId): Paradigm {
 const storedGalleryStateSchema = z.object({
   paradigm: paradigmIdSchema,
   mode: themeModeSchema,
-  tone: toneIdSchema,
   accent: accentIdSchema,
 })
 
@@ -101,9 +105,8 @@ function readStored(): GalleryState | null {
 
 function initialState(): GalleryState {
   return readStored() ?? {
-    paradigm: 'demi',
+    paradigm: productAppearance.tone,
     mode: 'dark',
-    tone: productAppearance.tone,
     accent: DEFAULT_ACCENT,
   }
 }
@@ -112,14 +115,13 @@ export const galleryState = reactive<GalleryState>(initialState())
 
 export function applyParadigm(id: ParadigmId): void {
   galleryState.paradigm = id
-  galleryState.tone = paradigmById(id).tone
 }
 
 function writeAttributes(): void {
   const root = document.documentElement
   const paradigm = paradigmById(galleryState.paradigm)
   root.setAttribute('data-theme', galleryState.mode)
-  root.setAttribute('data-tone', galleryState.tone)
+  root.setAttribute('data-tone', paradigm.tone)
   root.setAttribute('data-accent', galleryState.accent)
   root.setAttribute('data-density', paradigm.density)
   root.setAttribute('data-radius', paradigm.radius)
