@@ -60,7 +60,8 @@ export function useBlockVirtualizer(
   const heightCache = new Map<string, number>(persistedState?.heightCache ?? [])
 
   const scrollOffset = ref(0)
-  const isAtBottom = ref(true)
+  /** How far the list's end lies below the view, as of the last scroll or growth. */
+  const endDistance = ref(0)
   const isRestored = ref(false)
 
   const virtualizer = useVirtualizer<HTMLElement, HTMLElement>(
@@ -97,6 +98,12 @@ export function useBlockVirtualizer(
   }
 
   const shouldAutoScroll = ref(true)
+  /**
+   * The list follows its end, or its end is in view: otherwise the reader is
+   * offered the way back to it. One rule for every way of leaving the end,
+   * a small scroll up as much as a row opened at the end.
+   */
+  const isAtBottom = computed(() => shouldAutoScroll.value || endDistance.value <= AUTO_SCROLL_REENGAGE_THRESHOLD)
   let isProgrammaticScroll = false
   let pendingIntent: ScrollIntent = null
   let touchStartY = 0
@@ -135,7 +142,7 @@ export function useBlockVirtualizer(
       if (!el)
         return
       const dist = distanceFromBottom(el)
-      isAtBottom.value = dist <= BOTTOM_THRESHOLD_PX
+      endDistance.value = dist
       if (resized || !shouldAutoScroll.value)
         shouldAutoScroll.value = dist <= AUTO_SCROLL_REENGAGE_THRESHOLD
       else
@@ -243,8 +250,13 @@ export function useBlockVirtualizer(
   watch(
     () => virtualizer.value.getTotalSize(),
     () => {
-      if (!isRestored.value || !shouldAutoScroll.value || holdsView())
+      if (!isRestored.value || !shouldAutoScroll.value || holdsView()) {
+        // The list grew or shrank without following: its end moved off or
+        // into the view with no scroll to say so.
+        if (scrollContainer.value)
+          endDistance.value = distanceFromBottom(scrollContainer.value)
         return
+      }
       scrollToBottom()
     },
     { flush: 'post' },
@@ -302,7 +314,7 @@ export function useBlockVirtualizer(
     if (el) {
       scrollOffset.value = el.scrollTop
       const dist = distanceFromBottom(el)
-      isAtBottom.value = dist <= BOTTOM_THRESHOLD_PX
+      endDistance.value = dist
       updateAutoScrollState(dist, BOTTOM_THRESHOLD_PX)
       pendingIntent = null
     }
