@@ -42,53 +42,21 @@ function setMode(mode: 'light' | 'dark') {
       >
         <ScrollArea viewport-class="flex flex-col gap-3 p-3">
           <AxisPicker
-            label="Paradigm"
+            label="Theme"
             :values="paradigmIds"
             :names="paradigmNames"
-            :model-value="
-              galleryState.paradigm === 'custom' ? undefined : galleryState.paradigm
-            "
+            :model-value="galleryState.paradigm"
             @update:model-value="applyParadigm"
           />
-          <p
-            v-if="galleryState.paradigm === 'custom'"
-            class="text-[12px] text-fg-muted"
-          >
-            Custom
-          </p>
           <AxisPicker
             label="Mode"
             :values="['dark', 'light'] as const"
             :model-value="galleryState.mode"
             @update:model-value="setMode"
           />
-          <AxisPicker
-            label="Tone"
-            :values="['zinc', 'cool', 'warm', 'ink'] as const"
-            :model-value="galleryState.tone"
-            @update:model-value="galleryState.tone = $event"
-          />
           <AccentPicker
             :model-value="galleryState.accent"
             @update:model-value="galleryState.accent = $event"
-          />
-          <AxisPicker
-            label="Density"
-            :values="['compact', 'regular', 'comfortable'] as const"
-            :model-value="galleryState.density"
-            @update:model-value="galleryState.density = $event"
-          />
-          <AxisPicker
-            label="Radius"
-            :values="['tight', 'medium', 'soft'] as const"
-            :model-value="galleryState.radius"
-            @update:model-value="galleryState.radius = $event"
-          />
-          <AxisPicker
-            label="Shadow"
-            :values="['hairline', 'soft', 'carved'] as const"
-            :model-value="galleryState.shadow"
-            @update:model-value="galleryState.shadow = $event"
           />
         </ScrollArea>
       </div>
