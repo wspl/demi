@@ -1,4 +1,6 @@
-import { ref, watch } from 'vue'
+import { computed, ref, watch, type ComputedRef } from 'vue'
+import { useDirectoryExistence } from '../files/path-completion'
+import type { FileBrowserSource } from '../files/types'
 import type { PairingDevice } from '../devices/pairing'
 import type { DeviceState } from '../devices/state'
 
@@ -86,4 +88,32 @@ export function usePairedSelection(
   return (device) => {
     awaited.value = device.id
   }
+}
+
+/** What New Project's button does with a device's directory: take it as it is, or make it first. */
+export type DeviceProjectAction = 'Add Project' | 'Create Project'
+
+/**
+ * New Project's button for a directory on a device (`product.md`
+ * § Conversations and projects): Add Project when the directory exists,
+ * Create Project when Demi will create it, as the listing the directory
+ * field completes from tells (`useDirectoryExistence`). While the listing is
+ * on its way, or after it failed, the button keeps what it last said, so it
+ * does not flicker as the user types. It starts on Add Project: the form
+ * opens on the device's home, which exists. An empty `path` lists nothing,
+ * for a form that is closed or not on a device. Call it in a component's
+ * setup: the listing it shows goes with the component.
+ */
+export function useDeviceProjectAction(options: {
+  source: () => Pick<FileBrowserSource, 'home'> & Partial<Pick<FileBrowserSource, 'showListing'>>
+  path: () => string
+}): ComputedRef<DeviceProjectAction> {
+  const exists = useDirectoryExistence({ source: options.source, base: () => undefined, text: options.path })
+  const known = ref(true)
+  watch(exists, (answer) => {
+    if (answer !== null) {
+      known.value = answer
+    }
+  }, { immediate: true })
+  return computed(() => (known.value ? 'Add Project' : 'Create Project'))
 }
