@@ -84,7 +84,6 @@ export function directStatus(deviceId: string): DirectStatus {
     attempt: state.attempt,
     nextAt: state.nextAt === null ? null : new Date(state.nextAt).toISOString(),
     figures: measured.figures,
-    speed: measured.speed,
   }
 }
 
@@ -105,11 +104,6 @@ export function measureDirect(deviceId: string): () => void {
 /** Makes a new attempt to device `deviceId` at once, as Try Again asks. */
 export function tryDirect(deviceId: string): void {
   used.get(deviceId)?.direct.tryNow()
-}
-
-/** Runs Test Speed on device `deviceId`'s paths. */
-export function testSpeed(deviceId: string): Promise<void> {
-  return used.get(deviceId)?.meter.testSpeed() ?? Promise.resolve()
 }
 
 /** The device's choice and signaling, started on its first use while its runner is connected. */

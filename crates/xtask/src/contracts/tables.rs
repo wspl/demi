@@ -127,11 +127,6 @@ pub fn module(header: &str) -> String {
             u64::try_from(direct::CONNECT_TIMEOUT.as_millis()).expect("a timeout fits"),
         ),
         (
-            "DIRECT_SPEED_MAX_BYTES",
-            "The most bytes one speed test asks for, on either path (`direct-channel.md` § Measuring the paths).",
-            direct::SPEED_MAX_BYTES,
-        ),
-        (
             "DIRECT_WATCH_HEARTBEAT_MS",
             "How long a direct channel's watch stays silent before its heartbeat.",
             u64::try_from(direct::WATCH_HEARTBEAT.as_millis()).expect("a timeout fits"),

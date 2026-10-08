@@ -17,9 +17,10 @@ import { settingsLevelKey, settingsPageKey, type SettingsLevel } from './navigat
  *
  * A page of one thing says its state in its header, never in rows: an
  * `icon` beside the title, a `status` line under it (a dot and a few
- * words), the `description` sentence that explains it, and `actions` at the
- * header's end, as macOS's Network settings head a service's page. A row
- * below is only a setting or a fact.
+ * words), the `description` sentence that explains it, and `actions` on a
+ * line of their own under the text, starting where it starts, as macOS's
+ * Network settings head a service's page. A row below is only a setting or
+ * a fact.
  */
 const props = defineProps<{
   title: TitleText
@@ -92,10 +93,10 @@ onBeforeUnmount(leaveBar)
           <p v-if="description || $slots.description" class="mt-1 text-[13px] leading-5 text-fg-muted">
             <slot name="description">{{ description }}</slot>
           </p>
-        </div>
-        <!-- The header's buttons end its last line, as a service's page in macOS's Network settings has them. -->
-        <div v-if="$slots.actions" class="flex shrink-0 flex-wrap items-center gap-2 self-end">
-          <slot name="actions" />
+          <!-- The header's buttons: a line of their own, in every state, so they never move with the text. -->
+          <div v-if="$slots.actions" class="mt-3 flex flex-wrap items-center gap-2">
+            <slot name="actions" />
+          </div>
         </div>
       </div>
     </header>
