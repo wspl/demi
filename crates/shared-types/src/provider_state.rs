@@ -121,7 +121,7 @@ pub struct AccountInfo {
     pub updated_at: Option<Timestamp>,
 }
 
-/// What a device login asks the user to do, reported once while the login
+/// What a login asks the user to do, reported while the login
 /// waits (`providers.md` § Login and publication). When the login ends is
 /// the vault's, not the vendor's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -134,4 +134,9 @@ pub struct LoginPending {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub user_code: Option<String>,
+    /// Why the vendor's sign-in refused the code the user pasted, in its
+    /// own words, while it waits for another; null otherwise.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    pub code_error: Option<String>,
 }

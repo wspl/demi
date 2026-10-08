@@ -653,6 +653,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   let loginController: AbortController | null = null
   let loginId: string | null = null
   let loginTimer: ReturnType<typeof setTimeout> | null = null
+  /** When the last pasted code reached the login. */
+  let codeSentAt = 0
 
   function cancelLogin(): void {
     loginController?.abort()
@@ -679,6 +681,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   }
 
   async function pollLogin(controller: AbortController): Promise<void> {
+    const polled = Date.now()
     try {
       const response = await apiRequest(
         `/providers/subscription-login/${encodeURIComponent(loginId!)}`,
@@ -715,12 +718,16 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         }
       } else {
         if (result.verificationUrl && result.needsCode) {
-          // A pasted code keeps the dialog signing in until the login ends.
-          const submitted = login.value.phase.kind === 'code' && login.value.phase.submitted
+          // A pasted code keeps the dialog signing in until the login ends or
+          // refuses it; an answer asked before the code reached the login
+          // still names the refusal of the code before.
+          const shown = login.value.phase.kind === 'code' ? login.value.phase : null
+          const error = polled >= codeSentAt ? result.codeError ?? undefined : shown?.error
           login.value.phase = {
             kind: 'code',
             url: result.verificationUrl,
-            submitted,
+            submitted: !!shown?.submitted && !error,
+            ...(error ? { error } : {}),
           }
         } else if (result.verificationUrl && result.userCode) {
           login.value.phase = {
@@ -792,7 +799,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     if (!current || !controller || !id || current.phase.kind !== 'code') {
       return
     }
-    current.phase = { ...current.phase, submitted: true }
+    current.phase = { kind: 'code', url: current.phase.url, submitted: true }
+    codeSentAt = Number.POSITIVE_INFINITY
     try {
       await apiRequest(
         `/providers/subscription-login/${encodeURIComponent(id)}/code`,
@@ -802,6 +810,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           ...jsonBody({ code } satisfies LoginCode),
         },
       )
+      codeSentAt = Date.now()
     } catch (error) {
       if (!controller.signal.aborted && login.value === current) {
         current.phase = {

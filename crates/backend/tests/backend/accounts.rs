@@ -306,6 +306,7 @@ async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing
             verification_url: Some("https://verify.example/device".into()),
             user_code: Some("ABCD-1234".into()),
             needs_code: false,
+            code_error: None,
             // The vault's end, ten minutes from the start on the harness's
             // clock.
             expires_at: "2026-09-24T08:10:00.000Z".parse().unwrap(),
