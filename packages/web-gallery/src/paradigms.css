@@ -1,35 +1,37 @@
 /* The themes on trial in the gallery. Product UI keeps reading the same token
    names; a theme only remaps values via html[data-*]. */
 
-/* ── tone: paper (Flat — warm neutrals, hue 95, the claude.ai family) ─
-   Surfaces step by about 2.5% lightness, so a card or a menu parts from the
-   page by its hairline more than by its fill. Secondary text keeps more
-   contrast than ink's, since flat layouts lean on it for hierarchy. */
+/* ── tone: paper (Flat — near-neutral layers with a warm tint) ────────
+   Dark values are measured from the host's design tokens: four layers from
+   #0b0b0b to #20201f, white hairlines at 10, 20 and 40%, hover and selected
+   washes at 7.5 and 15%, and warm secondary text. Light values are still
+   estimated. */
 
 html[data-theme="dark"][data-tone="paper"] {
-  --surface-base: oklch(19.5% 0.003 95);
-  --surface: oklch(23% 0.003 95);
-  --surface-editor: oklch(21.5% 0.003 95);
-  --surface-raised: oklch(25.5% 0.003 95);
-  --surface-float: oklch(27.5% 0.003 95);
-  --elevation-step: 4%;
+  /* Measured from the host's own tokens (surface-0…3, text, border, fills). */
+  --surface-base: #0b0b0b;
+  --surface: #151515;
+  --surface-editor: #121212;
+  --surface-raised: #1a1a19;
+  --surface-float: #20201f;
+  --elevation-step: 3%;
   --overlay: white;
-  --fg-emphasis: oklch(97% 0.003 95);
-  --fg: oklch(94% 0.003 95);
-  --fg-body: oklch(89% 0.004 95);
-  --fg-muted: oklch(77% 0.004 95);
-  --fg-subtle: oklch(64% 0.004 95);
-  --fg-faint: oklch(48% 0.004 95);
-  --fg-ghost: oklch(35% 0.004 95);
-  --hover-mix: oklch(100% 0 0) 5%;
-  --active-mix: oklch(100% 0 0) 8%;
-  --line-subtle: oklch(100% 0 0 / 0.06);
-  --line: oklch(100% 0 0 / 0.1);
-  --line-strong: oklch(100% 0 0 / 0.16);
-  --line-focus: oklch(100% 0 0 / 0.3);
-  --line-overlay: oklch(100% 0 0 / 0.14);
-  --btn-mix: oklch(100% 0 0) 5%;
-  --btn-hover-mix: oklch(100% 0 0) 9%;
+  --fg-emphasis: #f0efec;
+  --fg: #f0efec;
+  --fg-body: #e6e5e1;
+  --fg-muted: #c3c2b7;
+  --fg-subtle: #898781;
+  --fg-faint: #5f5e5a;
+  --fg-ghost: #3a3a38;
+  --hover-mix: rgb(255 255 255) 7.5%;
+  --active-mix: rgb(255 255 255) 15%;
+  --line-subtle: rgb(255 255 255 / 0.06);
+  --line: rgb(255 255 255 / 0.1);
+  --line-strong: rgb(255 255 255 / 0.2);
+  --line-focus: rgb(255 255 255 / 0.4);
+  --line-overlay: rgb(255 255 255 / 0.2);
+  --btn-mix: rgb(255 255 255) 5%;
+  --btn-hover-mix: rgb(255 255 255) 7.5%;
 }
 
 html[data-theme="light"][data-tone="paper"] {
@@ -70,11 +72,11 @@ html[data-theme="dark"][data-shadow="flat"] {
   --shadow-float: 0 0 0 0.5px var(--line-strong);
   --shadow-overlay:
     0 0 0 0.5px var(--line-overlay),
-    0 8px 24px rgba(0, 0, 0, 0.28),
-    0 2px 6px rgba(0, 0, 0, 0.16);
+    0 8px 24px rgb(0 0 0 / 0.32),
+    0 2px 6px rgb(0 0 0 / 0.2);
   --shadow-overlay-ring: none;
   --shadow-btn: 0 0 0 0.5px var(--line-strong);
-  --shadow-btn-hover: 0 0 0 0.5px oklch(100% 0 0 / 0.24);
+  --shadow-btn-hover: 0 0 0 0.5px var(--line-focus);
 }
 
 html[data-theme="light"][data-shadow="flat"] {
