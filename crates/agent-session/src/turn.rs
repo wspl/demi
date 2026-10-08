@@ -189,6 +189,8 @@ async fn stream(
             .update(|core| core.take_runtime())
             .expect("the provider runtime is in its slot between runs");
         let read = read(s, cancel, window, runtime.run(request)).await;
+        // However the request ended, no call of it is being written.
+        s.update(|core| core.end_writing());
         s.return_runtime(runtime);
         let failure = match read? {
             Ok(recover) => {

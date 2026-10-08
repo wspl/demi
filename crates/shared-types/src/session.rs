@@ -60,6 +60,24 @@ pub struct QueuedMessage {
     pub content: Vec<UserContentBlock>,
 }
 
+/// A call the model is writing (`runtime.md` § Calls being written): the
+/// provider opened it and has not handed it over whole. It is never saved.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingCall {
+    /// The call's tool-use ID, which its `tool_call` block will have.
+    #[garde(length(min = 1))]
+    pub tool_use_id: String,
+    #[garde(length(min = 1))]
+    pub tool_name: String,
+    /// The call's `description` once the model has written that string
+    /// whole; null until then.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "crate::Nullable<String>")]
+    #[garde(skip)]
+    pub description: Option<String>,
+}
+
 /// A human steer the session accepted but has not yet written into the
 /// transcript. It is never saved.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]

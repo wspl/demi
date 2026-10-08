@@ -88,12 +88,28 @@ async fn a_stream_maps_thinking_text_tool_calls_and_usage() {
         delta,
         ProviderEvent::ThinkingSignature(signature),
         text,
+        call_start,
+        call_input,
         call,
         response,
     ] = events.as_slice()
     else {
         panic!("{events:?}");
     };
+    // The call as the model writes it, for display, then whole.
+    assert_eq!(
+        (call_start, call_input),
+        (
+            &ProviderEvent::ToolCallStart {
+                tool_use_id: "call_1|fc_1".into(),
+                tool_name: "shell_exec".into(),
+            },
+            &ProviderEvent::ToolCallInput {
+                tool_use_id: "call_1|fc_1".into(),
+                partial_json: "{\"script\":".into(),
+            }
+        )
+    );
     assert_eq!(
         (start, delta, text),
         (

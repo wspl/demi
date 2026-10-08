@@ -168,6 +168,9 @@ struct Collected {
     id: String,
     name: String,
     arguments: String,
+    /// The tool-use id its start was reported under, once it named its
+    /// function.
+    started: Option<String>,
 }
 
 #[derive(Default)]
@@ -217,7 +220,7 @@ impl Mapper {
                     out.push(ProviderEvent::TextDelta(content));
                 }
                 for call in delta.tool_calls.into_iter().flatten() {
-                    self.collect(call);
+                    self.collect(call, out);
                 }
             }
             if choice.finish_reason.as_deref() == Some("tool_calls") {
@@ -228,8 +231,11 @@ impl Mapper {
     }
 
     /// Folds one increment into the call it belongs to. A vendor that omits
-    /// `index` sends one call at a time, in order.
-    fn collect(&mut self, delta: ToolCallDelta) {
+    /// `index` sends one call at a time, in order. The first increment that
+    /// names the function reports the call's start, with the arguments so
+    /// far, and each later piece of arguments is reported as it comes, for
+    /// display (`providers.md` § A run); the call is whole at the flush.
+    fn collect(&mut self, delta: ToolCallDelta, out: &mut Vec<ProviderEvent>) {
         let index = delta
             .index
             .unwrap_or_else(|| u32::try_from(self.calls.len()).unwrap_or(u32::MAX));
@@ -237,13 +243,38 @@ impl Mapper {
         if let Some(id) = delta.id.filter(|id| !id.is_empty()) {
             call.id = id;
         }
-        if let Some(function) = delta.function {
-            if let Some(name) = function.name.filter(|name| !name.is_empty()) {
-                call.name = name;
+        let Some(function) = delta.function else {
+            return;
+        };
+        if let Some(name) = function.name.filter(|name| !name.is_empty()) {
+            call.name = name;
+        }
+        let arguments = function.arguments.unwrap_or_default();
+        call.arguments.push_str(&arguments);
+        let piece = match &call.started {
+            Some(_) => arguments,
+            None if !call.name.is_empty() => {
+                let tool_use_id = if call.id.is_empty() {
+                    format!("tool_call_{index}")
+                } else {
+                    call.id.clone()
+                };
+                out.push(ProviderEvent::ToolCallStart {
+                    tool_use_id: tool_use_id.clone(),
+                    tool_name: call.name.clone(),
+                });
+                call.started = Some(tool_use_id);
+                call.arguments.clone()
             }
-            if let Some(arguments) = function.arguments {
-                call.arguments.push_str(&arguments);
-            }
+            None => return,
+        };
+        if let Some(tool_use_id) = &call.started
+            && !piece.is_empty()
+        {
+            out.push(ProviderEvent::ToolCallInput {
+                tool_use_id: tool_use_id.clone(),
+                partial_json: piece,
+            });
         }
     }
 

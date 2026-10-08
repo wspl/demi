@@ -413,6 +413,9 @@ struct Mapper {
     current_call: Option<String>,
     /// Streamed arguments, by item id.
     arguments: HashMap<String, String>,
+    /// The tool-use id of each call whose start was reported, by item id,
+    /// for its argument deltas.
+    writing: HashMap<String, String>,
     reasoning_streamed: bool,
     text_streamed: bool,
 }
@@ -424,6 +427,7 @@ impl Mapper {
             signature_tag,
             current_call: None,
             arguments: HashMap::new(),
+            writing: HashMap::new(),
             reasoning_streamed: false,
             text_streamed: false,
         }
@@ -438,6 +442,16 @@ impl Mapper {
                     Some(ResponsesItem::Reasoning(_)) => out.push(ProviderEvent::ThinkingStart),
                     Some(ResponsesItem::FunctionCall(call)) => {
                         if let Some(id) = call.id {
+                            // The call's start is for display; it is whole
+                            // when its item is done (`providers.md` § A run).
+                            if let (Some(call_id), Some(name)) = (&call.call_id, call.name) {
+                                let tool_use_id = tool_use_id(call_id, &id);
+                                self.writing.insert(id.clone(), tool_use_id.clone());
+                                out.push(ProviderEvent::ToolCallStart {
+                                    tool_use_id,
+                                    tool_name: name,
+                                });
+                            }
                             self.arguments
                                 .insert(id.clone(), call.arguments.unwrap_or_default());
                             self.current_call = Some(id);
@@ -464,6 +478,14 @@ impl Mapper {
             }
             ResponsesEvent::ArgumentsDelta(delta) => {
                 if let Some(id) = delta.item_id.or_else(|| self.current_call.clone()) {
+                    if let Some(tool_use_id) = self.writing.get(&id)
+                        && !delta.delta.is_empty()
+                    {
+                        out.push(ProviderEvent::ToolCallInput {
+                            tool_use_id: tool_use_id.clone(),
+                            partial_json: delta.delta.clone(),
+                        });
+                    }
                     self.arguments.entry(id).or_default().push_str(&delta.delta);
                 }
                 false
@@ -593,6 +615,7 @@ impl Mapper {
                 }
                 if let Some(item_id) = item_id {
                     self.arguments.remove(&item_id);
+                    self.writing.remove(&item_id);
                     if self.current_call.as_deref() == Some(item_id.as_str()) {
                         self.current_call = None;
                     }

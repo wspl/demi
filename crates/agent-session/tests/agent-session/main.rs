@@ -1499,6 +1499,124 @@ async fn the_stream_becomes_blocks_and_each_delta_one_patch() {
     assert_eq!(appends, ["notes", "world"]);
 }
 
+/// A call the model is writing (`runtime.md` § Calls being written): it is
+/// listed from its start, which completes the text before it, gains its
+/// description once that string is whole, and leaves the list in the step
+/// that adds its block; a stopped request empties the list. Nothing of it
+/// is in the transcript before it is whole.
+#[tokio::test(flavor = "local")]
+async fn a_call_being_written_is_listed_from_its_start_until_its_block_and_a_stop_empties_the_list() {
+    use futures_util::StreamExt;
+    let (release, released) = oneshot::channel::<()>();
+    let before = [
+        event::text("Let me write a categorizer."),
+        event::tool_call_start("call-1", "echo"),
+        event::tool_call_input("call-1", "{\"description\": \"Write the"),
+        event::tool_call_input("call-1", " categorizer\", \"script\": \""),
+    ];
+    let after = [
+        event::tool_call_input("call-1", " cat > a.py"),
+        event::tool_call_input("call-1", "\"}"),
+        event::tool_call(
+            "call-1",
+            "echo",
+            json!({ "description": "Write the categorizer", "script": "cat > a.py" }),
+        ),
+        event::response(1, 1),
+    ];
+    let opening = Turn::Stream(Box::new(move |_| {
+        futures_util::stream::iter(before)
+            .chain(futures_util::stream::once(released).flat_map(move |_| futures_util::stream::iter(after.clone())))
+            .boxed_local()
+    }));
+    let hanging = Turn::Stream(Box::new(|_| {
+        futures_util::stream::iter([event::tool_call_start("call-2", "echo")])
+            .chain(futures_util::stream::pending())
+            .boxed_local()
+    }));
+    let provider = ScriptedRuntime::new([
+        opening,
+        Turn::Events(vec![event::text("written"), event::response(1, 1)]),
+        hanging,
+    ]);
+    let store = MemoryTreeStore::new();
+    let (echo, _) = counted("echo", "done");
+    let session = start(&provider, vec![echo], &store, SessionConfig::default()).await;
+    let log = Rc::new(RefCell::new(Vec::<String>::new()));
+    let _subscription = session.subscribe({
+        let log = log.clone();
+        move |event| match event {
+            SessionEvent::PendingCallsChanged { pending_calls } => {
+                let calls: Vec<String> = pending_calls
+                    .iter()
+                    .map(|call| format!("{}:{}", call.tool_name, call.description.as_deref().unwrap_or("-")))
+                    .collect();
+                log.borrow_mut().push(format!("pending [{}]", calls.join(", ")));
+            }
+            SessionEvent::TranscriptChanged { patches, .. } => {
+                for patch in patches {
+                    let entry = match patch {
+                        TranscriptPatch::Add { value, .. } => match value {
+                            Block::ToolCall(call) => format!("append tool_call {}", call.tool_use_id),
+                            other => format!("append {}", serde_json::to_value(other).unwrap()["type"].as_str().unwrap()),
+                        },
+                        TranscriptPatch::ReplaceBlock { value, .. } => match value {
+                            Block::Text(text) => format!("replace text forkable={}", text.forkable),
+                            _ => continue,
+                        },
+                        _ => continue,
+                    };
+                    log.borrow_mut().push(entry);
+                }
+            }
+            _ => {}
+        }
+    });
+
+    let running = session.send(text("classify"), turn("t1")).unwrap();
+    until(|| log.borrow().iter().any(|entry| entry.ends_with(":Write the categorizer]"))).await;
+    // While the call is being written, the transcript holds no block of it.
+    assert!(!kinds(&session.transcript().blocks).iter().any(|kind| kind.starts_with("tool_call")));
+    assert_eq!(session.pending_calls().len(), 1);
+    release.send(()).unwrap();
+    running.await.unwrap();
+    let written: Vec<String> = log
+        .borrow()
+        .iter()
+        .filter(|entry| !entry.starts_with("append user") && !entry.starts_with("append response"))
+        .cloned()
+        .collect();
+    assert_eq!(
+        written[..6],
+        [
+            "append text",
+            // The call's start completes the text before it.
+            "replace text forkable=true",
+            "pending [echo:-]",
+            // Read once its string is whole, not from the first piece.
+            "pending [echo:Write the categorizer]",
+            // The block arrives and the call leaves the list in one step.
+            "append tool_call call-1",
+            "pending []",
+        ],
+        "{written:#?}"
+    );
+
+    // A request stopped while a call is being written empties the list.
+    let running = session.send(text("again"), turn("t2")).unwrap();
+    until(|| session.pending_calls().len() == 1).await;
+    session.abort().await;
+    assert_eq!(running.await, Ok(ActionEnd::Aborted));
+    assert!(session.pending_calls().is_empty());
+    let last_pending = log
+        .borrow()
+        .iter()
+        .rev()
+        .find(|entry| entry.starts_with("pending"))
+        .cloned();
+    assert_eq!(last_pending.as_deref(), Some("pending []"));
+}
+
 /// What a streamed delta costs does not grow with the transcript: on a
 /// history of thousands of blocks, each delta's patch carries the delta
 /// alone, and neither the patches nor the saves touch the history.

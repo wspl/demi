@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import {
   isStandardToolName,
+  pendingCallTitle,
   shouldParsePartialToolInput,
   standardToolTitle,
   standardToolTitleParts,
@@ -55,4 +56,12 @@ test('standard tool helpers distinguish Demi tools from unknown generic tools', 
   expect(toolRenderKind('yield')).toBe('yield')
   expect(toolRenderKind('unknown_tool')).toBe('generic')
   expect(trimToolSummary(' a\n  b ')).toBe('a b')
+})
+
+test('a call being written is titled by its description once written, and by its tool until then', () => {
+  expect(pendingCallTitle({ toolName: 'shell_exec', description: 'Write the categorizer' })).toBe('Write the categorizer')
+  expect(pendingCallTitle({ toolName: 'shell_exec', description: null })).toBe('Preparing a command…')
+  expect(pendingCallTitle({ toolName: 'shell_status', description: null })).toBe('Checking a command…')
+  expect(pendingCallTitle({ toolName: 'yield', description: '  ' })).toBe('Waiting…')
+  expect(pendingCallTitle({ toolName: 'read_file', description: null })).toBe('read_file')
 })

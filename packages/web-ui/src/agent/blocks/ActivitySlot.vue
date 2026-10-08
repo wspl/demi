@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, type Component } from 'vue'
-import { Brain, History, SquareTerminal } from '@lucide/vue'
+import { Brain } from '@lucide/vue'
 import ActivityMark from '@demicodes/web-ui/ui/ActivityMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { ActivityKind, HandoffBlock } from '../activity-slot'
@@ -10,6 +10,7 @@ import { providerWaitLabel, thinkingFaceLabel } from '../thinking-label'
 import { useCommandReferences } from '../command-references'
 import { standardToolTitle, toolRenderKind } from '../tool-rendering'
 import FunctionalBlock from './FunctionalBlock.vue'
+import { toolRowIcon } from './tool-row-icon'
 
 /**
  * The transcript's tail row while it waits: a FunctionalBlock face with the
@@ -54,11 +55,12 @@ const face = computed<Face>(() => {
     return { icon: Brain, label: thinkingFaceLabel(true, null) }
   }
   const kind = toolRenderKind(block.toolName)
+  const icon = toolRowIcon(block.toolName)
   if (kind === 'generic') {
-    return { icon: null, label: block.toolName }
+    return { icon, label: block.toolName }
   }
   const label = standardToolTitle(kind, parseToolCallInput(block), (commandId) => references(commandId)?.title)
-  return { icon: kind === 'yield' ? History : SquareTerminal, label }
+  return { icon, label }
 })
 
 const rollKey = computed(() => props.incoming?.id ?? props.kind)

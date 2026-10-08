@@ -29,7 +29,7 @@ use demi_provider_common::{
 };
 use demi_shared_types::{
     AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, FailureSource,
-    ModelSelection, NodeId, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
+    ModelSelection, NodeId, PendingCall, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
     ToolResultContentBlock, ToolView, TurnId, UserContentBlock, WakeupCommand, WakeupId,
     WakeupPlacement,
 };
@@ -45,6 +45,9 @@ use super::{
 };
 
 pub(crate) struct SessionCore {
+    /// The calls of the running request that the model is writing, live
+    /// only (`runtime.md` § Calls being written).
+    pub(super) writing: Vec<WritingCall>,
     pub(super) id: NodeId,
     pub(super) cwd: String,
     /// The selection current now; every block records the one current when
@@ -197,11 +200,19 @@ struct Requests {
     save: bool,
 }
 
+/// A call the model is writing: what the page is told, and the input
+/// written so far, from which its description is read.
+pub(super) struct WritingCall {
+    call: PendingCall,
+    input: String,
+}
+
 /// The derived values listeners and the save were last told about.
 struct Published {
     queue: Vec<TurnId>,
     phase: SessionPhase,
     pending_steers: Vec<PendingSteer>,
+    pending_calls: Vec<PendingCall>,
     agent_inputs: Vec<BlockId>,
     wakeups: Vec<ScheduledWakeup>,
     edits: usize,
@@ -259,6 +270,7 @@ pub(super) struct CoreParts {
 impl SessionCore {
     pub(super) fn new(parts: CoreParts) -> Self {
         let mut core = Self {
+            writing: Vec::new(),
             id: parts.id,
             cwd: parts.cwd,
             model: parts.model,
@@ -285,6 +297,7 @@ impl SessionCore {
                 queue: Vec::new(),
                 phase: SessionPhase::Idle,
                 pending_steers: Vec::new(),
+                pending_calls: Vec::new(),
                 agent_inputs: Vec::new(),
                 wakeups: Vec::new(),
                 edits: 0,
@@ -1190,7 +1203,41 @@ impl SessionCore {
                     ProviderEvent::TextDelta(text) => {
                         self.transcript.append_text(&self.model, &text)
                     }
+                    ProviderEvent::ToolCallStart {
+                        tool_use_id,
+                        tool_name,
+                    } => {
+                        if !self.writing.iter().any(|writing| writing.call.tool_use_id == tool_use_id) {
+                            self.writing.push(WritingCall {
+                                call: PendingCall {
+                                    tool_use_id,
+                                    tool_name,
+                                    description: None,
+                                },
+                                input: String::new(),
+                            });
+                        }
+                    }
+                    ProviderEvent::ToolCallInput {
+                        tool_use_id,
+                        partial_json,
+                    } => {
+                        if let Some(writing) = self
+                            .writing
+                            .iter_mut()
+                            .find(|writing| writing.call.tool_use_id == tool_use_id)
+                        {
+                            writing.input.push_str(&partial_json);
+                            if writing.call.description.is_none() {
+                                writing.call.description = written_description(&writing.input);
+                            }
+                        }
+                    }
+                    // The call leaves the calls being written in the step
+                    // that adds its block.
                     ProviderEvent::ToolCall(call) => {
+                        self.writing
+                            .retain(|writing| writing.call.tool_use_id != call.tool_use_id);
                         self.transcript.push_tool_call(&self.model, call)
                     }
                     ProviderEvent::Response(usage) => {
@@ -1201,6 +1248,17 @@ impl SessionCore {
             }
         }
         self.commit();
+    }
+
+    /// The request ended, failed or was cancelled: no call is being written
+    /// any more.
+    pub(super) fn end_writing(&mut self) {
+        self.writing.clear();
+    }
+
+    /// The calls the model is writing, oldest first.
+    pub(super) fn pending_calls(&self) -> Vec<PendingCall> {
+        self.writing.iter().map(|writing| writing.call.clone()).collect()
     }
 
     /// Records a failed provider request, the turn's own or a compaction's
@@ -1573,6 +1631,11 @@ impl SessionCore {
             self.published.pending_steers = pending_steers.clone();
             events.push(SessionEvent::PendingSteersChanged { pending_steers });
         }
+        let pending_calls = self.pending_calls();
+        if pending_calls != self.published.pending_calls {
+            self.published.pending_calls = pending_calls.clone();
+            events.push(SessionEvent::PendingCallsChanged { pending_calls });
+        }
         let phase = self.phase();
         if phase != self.published.phase {
             self.published.phase = phase;
@@ -1592,6 +1655,22 @@ impl SessionCore {
         self.persist.dirty = true;
         self.requests.save = true;
     }
+}
+
+/// The `description` of a call's input written so far, once its string is
+/// whole: an unfinished document is read as far as it goes, and a string
+/// still being written counts as absent.
+fn written_description(input: &str) -> Option<String> {
+    let value = jiter::JsonValue::parse_with_config(input.as_bytes(), false, jiter::PartialMode::On).ok()?;
+    let jiter::JsonValue::Object(fields) = value else {
+        return None;
+    };
+    fields.iter().find_map(|(key, value)| match (key.as_ref(), value) {
+        ("description", jiter::JsonValue::Str(text)) if !text.trim().is_empty() => {
+            Some(text.trim().to_owned())
+        }
+        _ => None,
+    })
 }
 
 /// The id of the block a wakeup becomes.

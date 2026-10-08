@@ -8,7 +8,7 @@
 //! [`LiveCli::close`] ends it, removes the directory and waits.
 
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -157,6 +157,9 @@ pub(crate) struct LiveCli {
     pub(crate) streamed: bool,
     /// The tool uses of the message being streamed.
     pub(crate) collecting: Vec<ToolCall>,
+    /// The tool uses the message being streamed opened, by their block's
+    /// index, whose input pieces name only that index.
+    pub(crate) writing: HashMap<u64, String>,
     /// The batch the last run yielded, whose results the next run delivers.
     pub(crate) held: Vec<ToolCall>,
     pub(crate) mcp: Option<Mcp>,
@@ -225,6 +228,7 @@ impl LiveCli {
             sent: Sent::default(),
             streamed: false,
             collecting: Vec::new(),
+            writing: HashMap::new(),
             held: Vec::new(),
             mcp,
         })

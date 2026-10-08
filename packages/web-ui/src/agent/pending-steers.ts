@@ -1,4 +1,4 @@
-import type { Block, UserContentBlock } from '@demicodes/protocol'
+import type { Block, PendingCall, UserContentBlock } from '@demicodes/protocol'
 import type { CompactionProgressBlock } from './list-tail'
 import type { QueueDividerBlock, QueuedRenderBlock } from './queued-messages'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
@@ -10,8 +10,16 @@ export interface PendingSteerRenderBlock {
   content: UserContentBlock[]
 }
 
+/** A call the model is writing, shown after the transcript (`runtime.md` § Calls being written). */
+export interface PendingCallRenderBlock {
+  type: 'pending_call'
+  id: string
+  call: PendingCall
+}
+
 export type MessageListBlock =
   Block | PendingSteerRenderBlock | QueueDividerBlock | QueuedRenderBlock | CompactionProgressBlock |
+  PendingCallRenderBlock |
   { type: 'pending_submission'; id: string; submission: PendingSubmissionState }
 
 export function pendingSteersToRenderBlocks(
