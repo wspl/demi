@@ -1,5 +1,24 @@
 # @demicodes/web
 
+## 0.25.7
+
+### Patch Changes
+
+- Updated dependencies [08a5209]
+  - @demicodes/provider-anthropic-api@0.25.7
+  - @demicodes/agent@0.25.7
+  - @demicodes/coding-agent@0.25.7
+  - @demicodes/core@0.25.7
+  - @demicodes/host-local@0.25.7
+  - @demicodes/provider@0.25.7
+  - @demicodes/provider-claude-code@0.25.7
+  - @demicodes/provider-codex@0.25.7
+  - @demicodes/provider-grok-build@0.25.7
+  - @demicodes/provider-openai-api@0.25.7
+  - @demicodes/shell@0.25.7
+  - @demicodes/utils@0.25.7
+  - @demicodes/web-ui@0.25.7
+
 ## 0.25.6
 
 ### Patch Changes
