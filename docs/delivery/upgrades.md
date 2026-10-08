@@ -297,8 +297,12 @@ after an upgrade.
   `0.1.22-dev.20261008T0930Z` after `0.1.21`. It sorts after every published
   release before it and before the next one, so the next published release
   upgrades the server as usual, and each deploy is newer than the last. The
-  build carries it as its workspace version, set for that build only; the
-  device page shows such a runner as *Development build*.
+  build carries it as its workspace version, set for that build only:
+  `DEMI_WORKSPACE_VERSION`, which the workspace's one owner of the version
+  reads ([`shared-artifacts`](../architecture/crates-and-packages.md#shared-artifacts)),
+  so every program, the command packages, the web build and its preview
+  runtime name the same version. A device's runner then matches its
+  server's, and its page says *Up to date*.
 - **What it builds.** On the developer's machine, with its own toolchain and
   cross tools ([Cross builds](builds-and-releases.md#cross-builds)): the
   server's Linux target, its backend, machine manager, `demi-server`,
@@ -308,7 +312,10 @@ after an upgrade.
   stays disconnected until a deploy with its target or a published release.
 - **The release.** `xtask server-release` assembles the root and the files
   for those targets ([Server release](builds-and-releases.md#server-release)),
-  and the deploy copies them to the server with `rsync` over SSH. The Cloud
+  the files in the root's own `files/`, which its `release.json` names, and
+  the deploy copies the server archive to the server with `rsync` over SSH,
+  having first checked in one call that the server has what the image build
+  needs; it installs nothing and names what is missing. The Cloud
   image is built on the server itself, from that root, with the same script
   the release workflow runs, since it needs Linux and root, which the server
   has. The archives and their `SHA256SUMS` then lie in one directory there.
