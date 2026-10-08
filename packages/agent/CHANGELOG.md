@@ -1,5 +1,16 @@
 # @demicodes/agent
 
+## 0.25.8
+
+### Patch Changes
+
+- 25ff3f9: Let one shell command host at most one subagent: a second `demi agent` spawn or resume inside the same command fails, so a looping script can no longer keep starting children after they are aborted. Registered commands receive the hosting `commandId` on `CommandRunContext`.
+- Updated dependencies [25ff3f9]
+  - @demicodes/shell@0.25.8
+  - @demicodes/core@0.25.8
+  - @demicodes/provider@0.25.8
+  - @demicodes/utils@0.25.8
+
 ## 0.25.7
 
 ### Patch Changes
