@@ -629,8 +629,8 @@ Each crate implements the provider contract for one vendor family.
 
 #### `agent-tools`
 
-- **Owns:** the standard tools (`StandardTool`: `shell_exec`, `shell_status`,
-  `shell_write`, `shell_abort` and `yield`), their input and results and the
+- **Owns:** the standard tools (`StandardTool`: `shell_exec`, `shell_status`
+  and `yield`), their input and results and the
   rules for them that open every node's system prompt, with the durable
   dispatch of every tool call over each node's shell environment per Host,
   which the product's `ShellEnvironmentFactory` makes; and what the product
