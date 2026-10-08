@@ -18,6 +18,10 @@ use crate::{
 /// How many numbered lines the report shows of all the changes together.
 const REPORT_LINES: usize = 60;
 
+/// How many unchanged lines between two pieces of a file's report still
+/// make them one.
+const JOIN_LINES: usize = 2;
+
 /// One file the edit changes, as the agent named it.
 struct Planned {
     name: String,
@@ -482,8 +486,8 @@ fn line_of(content: &str, index: usize) -> usize {
 
 /// What the edit prints: a line for each file, and under an edited one
 /// each change as the file now reads, numbered, with a line of context on
-/// each side; past [`REPORT_LINES`] numbered lines in all, one line per file
-/// saying how to read the rest.
+/// each side, in pieces set apart by `--`; past [`REPORT_LINES`] numbered
+/// lines in all, one line per file saying how to read the rest.
 fn report(planned: &[Planned]) -> String {
     let mut out = String::new();
     let mut budget = REPORT_LINES;
@@ -508,8 +512,12 @@ fn report(planned: &[Planned]) -> String {
             // The new lines with one of context on each side; a deletion
             // shows the lines on each side of where it was.
             let window = new.start.saturating_sub(1)..(new.end + 1).min(after.len());
+            // Pieces that touch or lie within two lines of each other are
+            // one, as `diff` joins hunks.
             match shown.last_mut() {
-                Some(last) if window.start <= last.end => last.end = last.end.max(window.end),
+                Some(last) if window.start <= last.end + JOIN_LINES => {
+                    last.end = last.end.max(window.end);
+                }
                 _ => shown.push(window),
             }
         }
@@ -521,10 +529,18 @@ fn report(planned: &[Planned]) -> String {
         };
         out.push_str(&format!("Edited {} ({counts})\n", file.name));
         let mut rest: Option<Range<usize>> = None;
-        for window in &shown {
+        for (piece, window) in shown.iter().enumerate() {
+            // Pieces are set apart as `grep -C` sets apart its groups.
+            if piece > 0 && budget > 0 {
+                out.push_str("--\n");
+            }
             for index in window.clone() {
                 if budget > 0 {
-                    out.push_str(&format!("{:>4}  {}\n", index + 1, after[index]));
+                    let line = index + 1;
+                    match after[index] {
+                        "" => out.push_str(&format!("{line:>4}\n")),
+                        text => out.push_str(&format!("{line:>4}  {text}\n")),
+                    }
                     budget -= 1;
                 } else {
                     let rest = rest.get_or_insert(index..index);

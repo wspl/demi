@@ -328,6 +328,50 @@ async fn a_long_change_shows_its_first_60_lines_and_how_to_read_the_rest() {
     .unwrap();
 }
 
+/// Changes within two lines of each other show as one piece; farther ones
+/// are set apart by `--`, and a blank line shows as its number alone.
+#[tokio::test]
+async fn nearby_changes_show_as_one_piece_and_pieces_are_set_apart() {
+    tokio::time::timeout(Duration::from_secs(15), async {
+        let before: String = (1..=20).map(|line| if line == 9 { "\n".to_owned() } else { format!("l{line:02}\n") }).collect();
+        let (root, service) = service_with(&[("pieces.txt", &before)]).await;
+        // Lines 3 and 7 change: their shown lines, 2-4 and 6-8, lie one
+        // line apart, so lines 2-8 are one piece. Line 15 is another.
+        let blocks = "<<<<<<< SEARCH\nl03\n=======\nL03\n>>>>>>> REPLACE\n\
+                      <<<<<<< SEARCH\nl07\n=======\nL07\n>>>>>>> REPLACE\n\
+                      <<<<<<< SEARCH\nl15\n=======\nL15\n>>>>>>> REPLACE\n";
+        let (result, output, _) = call(
+            service.client(),
+            root.path().to_str().unwrap(),
+            "file.edit",
+            serde_json::json!({"path": "pieces.txt", "blocks": blocks}),
+        )
+        .await;
+        assert_eq!(result.exit_code, 0, "{result:?}");
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "Edited pieces.txt (+3 \u{2212}3)\n   2  l02\n   3  L03\n   4  l04\n   5  l05\n   6  l06\n   7  L07\n   8  l08\n\
+             --\n  14  l14\n  15  L15\n  16  l16\n"
+        );
+        // A blank line next to a change shows as its number alone.
+        let (result, output, _) = call(
+            service.client(),
+            root.path().to_str().unwrap(),
+            "file.edit",
+            serde_json::json!({"path": "pieces.txt", "blocks": "<<<<<<< SEARCH\nl10\n=======\nL10\n>>>>>>> REPLACE\n"}),
+        )
+        .await;
+        assert_eq!(result.exit_code, 0, "{result:?}");
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "Edited pieces.txt (+1 \u{2212}1)\n   9\n  10  L10\n  11  l11\n"
+        );
+        assert!(service.shutdown().await.unwrap().success());
+    })
+    .await
+    .unwrap();
+}
+
 /// A unified diff applies where its hunks' context and removed lines match,
 /// whatever line counts its headers give, as `git apply --recount` reads
 /// them; a hunk that matches nowhere changes no file.
