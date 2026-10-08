@@ -713,7 +713,7 @@ async fn the_system_prompt_layers_its_parts_in_order_and_a_context_change_is_sav
     let prompt = &request.system_prompt;
     let layers = [
         "system prompt\n\nharness guide\n\n",
-        "Shell session rules:",
+        "Shell tools:",
         "Capabilities:\n\nUnless a command states otherwise",
         "greet\nGreets the caller by name.\nOperations: hello\n",
         "This conversation runs on test-model (stub, test-model). If asked which model you are, answer with this.",

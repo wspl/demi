@@ -15,4 +15,5 @@ mod frames;
 mod hosts;
 mod marathon;
 mod registry;
+mod shell_tools;
 mod support;

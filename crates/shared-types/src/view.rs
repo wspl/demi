@@ -28,12 +28,18 @@ pub enum ToolView {
         #[garde(skip)]
         count: u32,
     },
-    /// The wakeup a `yield` scheduled.
+    /// The wakeup a `yield` scheduled, and the commands whose end fires it
+    /// sooner.
     YieldWakeup {
         #[garde(skip)]
         wakeup_id: WakeupId,
         #[garde(skip)]
         duration_ms: u32,
+        // A `yield` that names no command, as every one saved before
+        // commands could be named, has none.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[garde(skip)]
+        command_ids: Vec<CommandId>,
     },
 }
 
