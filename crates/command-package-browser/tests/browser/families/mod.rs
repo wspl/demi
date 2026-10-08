@@ -37,9 +37,6 @@ pub struct BrowserFixture {
     /// Where the invocations' stdout goes, for invocations a job's command
     /// makes, which may return media; none for any other.
     pub stdout: Option<StdoutTarget>,
-    /// The record of the job the invocations' command runs in, for the files
-    /// it edits and the pages it presents; none for a call no job makes.
-    pub edits: Option<demi_command_protocol::EditContext>,
 }
 
 impl BrowserFixture {
@@ -84,7 +81,7 @@ impl BrowserFixture {
                     locale: self.locale.clone(),
                 },
                 json: Some(self.json),
-                edits: self.edits.clone(),
+                edits: None,
                 args,
                 cwd: self.root.path().to_str().unwrap().into(),
                 env: self.env.clone(),
@@ -317,13 +314,11 @@ where
     W: Future<Output = BrowserFixture>,
 {
     let _turn = browser_turn().await;
-    let root = Arc::new(tempfile::tempdir().unwrap());
-    // The web preview's jar is kept in the service's data directory.
-    let service = test_browser().with_data_directory(root.path().join("data"));
+    let service = test_browser();
     service.numbers(numbers);
     let fixture = BrowserFixture {
         service: Arc::new(service),
-        root,
+        root: Arc::new(tempfile::tempdir().unwrap()),
         caller: 1,
         conversation: uuid::Uuid::new_v4().to_string(),
         env: BTreeMap::new(),
@@ -334,7 +329,6 @@ where
         color_scheme: demi_command_protocol::ColorScheme::Light,
         json: true,
         stdout: None,
-        edits: None,
     };
     // Catch both construction and polling of the exercise, including the initial
     // service assertions, before joining retirement and resuming the same panic.

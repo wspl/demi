@@ -23,7 +23,7 @@ use demi_command_package_browser_chrome::driver::{
     operation::{BrowserError, Result},
     output,
 };
-use demi_command_package_browser_chrome::page::{actions::TabResult, state};
+use demi_command_package_browser_chrome::page::actions::TabResult;
 use demi_command_package_browser_chrome::tabs::{
     environment::{BrowserEnvironment, LaunchOptions, with_browser},
     registry::Closed,
@@ -39,25 +39,8 @@ use demi_command_sdk::{ConversationContext, InvocationContext, Numbers, ServiceE
 use crate::protocol::{
     self, ActionProgress, BrowserErrorCode, BrowserFailure, BrowserOperation, CapabilitiesResult,
     CloseResult, ContentReadResult, DEFAULT_NODES, FailureDocument, ImageMime, InstallResult,
-    OpenResult, PresentResult, ScreenshotResult, ShowResult, TabsResult,
+    OpenResult, ScreenshotResult, ShowResult, TabsResult,
 };
-
-/// How long reading a page state of the agent's tab may take.
-const PAGE_STATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-/// How long opening a tab with a page state may take, starting the browser
-/// included.
-const HANDOVER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
-
-/// What a page state takes from a tab of the agent's browser.
-pub(crate) struct TabPageState {
-    pub url: String,
-    pub title: String,
-    /// The tab shows its page in Mobile.
-    pub mobile: bool,
-    /// Its top-level origin's storage; none for a page without a web origin.
-    pub storage: Option<demi_command_package_browser_protocol::preview::PageStorage>,
-    pub cookies: Vec<state::PageCookie>,
-}
 
 /// Requests waiting for an owner; a full queue holds back their senders.
 const REQUESTS: usize = 64;
@@ -1125,6 +1108,7 @@ impl Conversations {
                         can_go_back: listed.tab.history().back,
                         can_go_forward: listed.tab.history().forward,
                         shows: listed.tab.shows(),
+                        favicon: listed.tab.favicon(),
                     }
                 })
                 .collect();
@@ -1143,35 +1127,6 @@ impl Conversations {
             tab.show();
             return Ok(CommandOutput::Json(output::value(ShowResult {
                 tab: tab.id().clone(),
-            })?));
-        }
-        if matches!(command, BrowserOperation::Present(_)) {
-            let info = demi_command_package_browser_chrome::page::actions::metadata(
-                tab,
-                cancellation,
-                command.timeout(),
-            )
-            .await?;
-            if let Some(edits) = context.request.edits.clone() {
-                let page = demi_command_protocol::PresentedPage {
-                    tab: info.tab.to_string(),
-                    title: info.title.clone(),
-                    url: info.url.clone(),
-                };
-                // The record is the card in the transcript; the command printed
-                // the page whether or not it took it.
-                let recorded = tokio::task::spawn_blocking(move || {
-                    demi_command_sdk::edits::Recorder::new(edits)?.present(page)
-                })
-                .await;
-                if let Ok(Err(error)) | Err(error) = recorded.map_err(std::io::Error::other) {
-                    tracing::warn!(%error, "the presented page was not recorded for the command's card");
-                }
-            }
-            return Ok(CommandOutput::Json(output::value(PresentResult {
-                tab: info.tab,
-                title: info.title,
-                url: info.url,
             })?));
         }
         if matches!(command, BrowserOperation::Stop(_)) {
@@ -1485,121 +1440,6 @@ impl Conversations {
             .output
             .stdout(Bytes::from(serde_json::to_vec(&output)?))
             .await?;
-        Ok(Completion {
-            exit_code: 0,
-            error: None,
-        })
-    }
-
-    /// What a page state takes from the agent's tab `tab` of `conversation`
-    /// (`preview.md` § Page state): its address and title, its top-level
-    /// origin's storage, and the browser's cookies. It never starts a browser;
-    /// why it cannot, as a sentence the user reads.
-    pub async fn page_state(
-        &self,
-        conversation: &str,
-        tab: &str,
-    ) -> std::result::Result<TabPageState, String> {
-        const GONE: &str = "The agent’s tab is gone.";
-        let browser = self
-            .ask(|reply| Find::Lookup {
-                conversation: conversation.to_owned(),
-                reply,
-            })
-            .await
-            .flatten()
-            .ok_or(GONE)?;
-        let _admitted = browser.admit().ok_or(GONE)?;
-        let cancellation = CancellationToken::new();
-        let read = async {
-            let environment = browser
-                .environment(None, &cancellation)
-                .await?
-                .ok_or(BrowserError::TabNotFound)?;
-            let id = protocol::TabId::try_from(tab.to_owned()).map_err(|_| BrowserError::TabNotFound)?;
-            let tab = environment.tab(&id, &cancellation, PAGE_STATE_TIMEOUT).await?;
-            let info = demi_command_package_browser_chrome::page::actions::metadata(
-                &tab,
-                &cancellation,
-                PAGE_STATE_TIMEOUT,
-            )
-            .await?;
-            let storage = state::storage(&tab).await?;
-            let cookies = state::cookies(&tab).await?;
-            Ok::<_, BrowserError>(TabPageState {
-                url: info.url,
-                title: info.title,
-                mobile: tab.viewport().mode == protocol::ViewportMode::Mobile,
-                storage,
-                cookies,
-            })
-        };
-        match tokio::time::timeout(PAGE_STATE_TIMEOUT, read).await {
-            Ok(Ok(read)) => Ok(read),
-            Ok(Err(BrowserError::TabNotFound)) => Err(GONE.to_owned()),
-            Ok(Err(error)) => Err(format!("The agent’s browser could not read the page: {error}")),
-            Err(_) => Err("The agent’s browser took too long to read the page.".to_owned()),
-        }
-    }
-
-    /// `browser.handover`: the user's new tab of the conversation's browser on
-    /// `url`, starting the browser when needed, with `cookies` and `storage`
-    /// written before the page loads; its answer is `open`'s. A state that
-    /// could not be written leaves the tab on the address alone.
-    pub async fn handover(
-        &self,
-        context: InvocationContext,
-        url: &str,
-        mobile: bool,
-        cookies: Vec<state::PageCookie>,
-        storage: Option<&demi_command_package_browser_protocol::preview::PageStorage>,
-    ) -> std::result::Result<Completion, ServiceError> {
-        let (browser, _command) = self.admit(&context).await?;
-        let starting = Starting {
-            locale: context.request.context.locale.clone(),
-            color_scheme: context.request.context.color_scheme,
-        };
-        let cancellation = context.cancellation.child_token();
-        let deadline = tokio::time::Instant::now() + HANDOVER_TIMEOUT;
-        let opened = async {
-            let environment = browser
-                .environment(Some(&starting), &cancellation)
-                .await?
-                .ok_or(BrowserError::TabNotFound)?;
-            environment
-                .open_user_seeded(url, mobile, cookies, storage, &cancellation, deadline)
-                .await
-        }
-        .await;
-        let (tab, seeded) = match opened {
-            Ok(opened) => opened,
-            Err(BrowserError::Cancelled) => return Err(ServiceError::Cancelled),
-            Err(error) => {
-                // The browser's failure, as every operation of the user's answers one.
-                let failure = FailureDocument {
-                    error: BrowserFailure {
-                        code: error.code(),
-                        message: error.to_string(),
-                        details: None,
-                    },
-                };
-                context.output.stderr(Bytes::from(serde_json::to_vec(&failure)?)).await?;
-                return Ok(Completion {
-                    exit_code: 1,
-                    error: None,
-                });
-            }
-        };
-        if let Err(error) = seeded {
-            tracing::warn!(%error, "the page state was not written; the tab opens on its address alone");
-        }
-        let opened = OpenResult {
-            tab: tab.id().clone(),
-            url: url.to_owned(),
-            title: None,
-            viewport: None,
-        };
-        context.output.stdout(Bytes::from(serde_json::to_vec(&opened)?)).await?;
         Ok(Completion {
             exit_code: 0,
             error: None,

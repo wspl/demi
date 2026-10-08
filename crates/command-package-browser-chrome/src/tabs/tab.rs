@@ -54,6 +54,8 @@ pub struct TabState {
     pub requested: watch::Sender<Option<String>>,
     /// Which ends of its history the tab is away from.
     pub history: watch::Sender<crate::tabs::history::HistoryEnds>,
+    /// The page's icon as a PNG `data:` URL, while it has one.
+    pub favicon: watch::Sender<Option<String>>,
     /// How many times the agent showed the tab to the user
     /// (`live-view.md` § Showing a tab).
     pub shows: watch::Sender<u64>,
@@ -87,6 +89,8 @@ impl TabState {
         .await?;
         let history =
             crate::tabs::history::observe(page, ended.clone(), tasks, changes.clone()).await?;
+        let favicon =
+            crate::tabs::favicon::observe(page, ended.clone(), tasks, changes.clone()).await?;
         let dialog = DialogInput::start(page.clone(), opening, ended, tasks, failure.clone());
         Ok(Arc::new(Self {
             failure,
@@ -99,6 +103,7 @@ impl TabState {
             load,
             requested,
             history,
+            favicon,
             shows: watch::channel(0).0,
             changes,
             tasks: tasks.clone(),

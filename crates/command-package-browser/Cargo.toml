@@ -20,7 +20,6 @@ test = false
 [dependencies]
 bytes.workspace = true
 demi-command-package-browser-chrome = { path = "../command-package-browser-chrome" }
-demi-command-package-browser-preview = { path = "../command-package-browser-preview" }
 demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-sdk = { path = "../command-sdk" }
@@ -31,7 +30,6 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-url = "2"
 
 [dev-dependencies]
 axum = "0.8"
@@ -43,6 +41,7 @@ regex = "1"
 # The repair tests fetch from their fixture site.
 reqwest = { workspace = true, features = ["rustls", "stream"] }
 tempfile = "3"
+url = "2"
 uuid = { version = "1", features = ["v4"] }
 
 # The retirement tests read the process table.

@@ -38,10 +38,6 @@ const STAGING: &str = "/var/tmp";
 const IMAGE_BUILD: &str = "cloud-guest-image/rootfs";
 /// The built web app, relative to the repository.
 const WEB: &str = "packages/web/dist";
-/// The variable that names the workspace version a build carries
-/// (`demi_shared_artifacts::WORKSPACE_VERSION`), which the web app's build
-/// reads through `xtask preview-runtime`.
-const WORKSPACE_VERSION: &str = "DEMI_WORKSPACE_VERSION";
 /// What the server's programs, and the image build (`build.sh`: curl, jq,
 /// GNU tar, util-linux, coreutils), need there, each with the apt package
 /// that installs it. `sudo` is needed only by a user other than root.
@@ -217,7 +213,7 @@ pub fn run(options: Options) -> Result<(), Error> {
     let xtask = stages.time("Build xtask for the server", || {
         Ok(native::xtask(server.target, Some(&version.to_string()))?)
     })?;
-    stages.time("Build the web app", || web(&repository, &version))?;
+    stages.time("Build the web app", || web(&repository))?;
 
     let work = tempfile::Builder::new().prefix("demi-deploy-").tempdir()?;
     let stage = work.path().join("stage");
@@ -260,7 +256,7 @@ pub fn run(options: Options) -> Result<(), Error> {
     if !devices.is_empty() {
         println!("  The devices' {}: the runner and the command programs", devices.join(", "));
     }
-    println!("  The web app, with the preview runtime {version}.js");
+    println!("  The web app");
     println!("  xtask for the server's image build");
     println!(
         "  {} ({:.1} MiB)",
@@ -304,11 +300,8 @@ fn build(
     Ok(())
 }
 
-/// Builds the web app as the release workflow does, with the preview
-/// runtime named by `version`, then builds the checkout's runtime again
-/// under its own version, which the development backend's browser asks
-/// for: the web app's build has taken its copy already.
-fn web(repository: &Path, version: &Version) -> Result<(), Error> {
+/// Builds the web app as the release workflow does.
+fn web(repository: &Path) -> Result<(), Error> {
     local(
         "bun install",
         Command::new("bun")
@@ -317,17 +310,7 @@ fn web(repository: &Path, version: &Version) -> Result<(), Error> {
     )?;
     local(
         "bun run build",
-        Command::new("bun")
-            .args(["run", "build"])
-            .current_dir(repository)
-            .env(WORKSPACE_VERSION, version.to_string()),
-    )?;
-    local(
-        "bun xtask preview-runtime",
-        Command::new("bun")
-            .args(["xtask", "preview-runtime"])
-            .current_dir(repository)
-            .env_remove(WORKSPACE_VERSION),
+        Command::new("bun").args(["run", "build"]).current_dir(repository),
     )
 }
 

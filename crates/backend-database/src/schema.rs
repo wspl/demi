@@ -162,7 +162,8 @@ ALTER TABLE devices ADD COLUMN route TEXT NOT NULL DEFAULT 'automatic' CHECK (ro
 /// conversation 0.1.21 left; a permission request names its categories, the
 /// one category of each request 0.1.21 stored. SQLite cannot drop a column
 /// an index names, so the requests' table is made anew, as for 0.1.11's
-/// conversations.
+/// conversations. The web preview is gone, and the deployment's namespace
+/// at the preview domain with it.
 const CONTROL_FROM_0_1_21: &str = "
 ALTER TABLE conversations ADD COLUMN pending_id TEXT;
 ALTER TABLE conversations ADD COLUMN pending_kind TEXT CHECK (pending_kind IN ('cloud', 'device', 'workspace'));
@@ -202,6 +203,7 @@ INSERT INTO permission_requests_next
 DROP TABLE permission_requests;
 ALTER TABLE permission_requests_next RENAME TO permission_requests;
 CREATE INDEX permission_requests_of_conversation ON permission_requests (conversation_id, created_at);
+DROP TABLE preview_namespace;
 ";
 
 /// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
@@ -795,17 +797,6 @@ CREATE TABLE attachments (
   sha256     TEXT NOT NULL,
   snippet    TEXT,
   created_at INTEGER NOT NULL
-) STRICT;
-
--- The deployment's namespace at the preview domain: one row, its secret
--- sealed as a credential is, its expiry, and the origins it was last
--- registered with as a JSON list.
-CREATE TABLE preview_namespace (
-  id         INTEGER PRIMARY KEY CHECK (id = 1),
-  namespace  TEXT NOT NULL,
-  secret     BLOB NOT NULL,
-  expires_at INTEGER NOT NULL,
-  origins    TEXT NOT NULL
 ) STRICT;
 ";
 

@@ -63,7 +63,7 @@ pub(crate) const UNWATCHED: BrowserViewport = BrowserViewport {
     mode: ViewportMode::Web,
 };
 /// Mobile mode's size in CSS pixels.
-pub const PHONE: (u32, u32) = demi_command_package_browser_protocol::live::PHONE;
+pub const PHONE: (u32, u32) = (390, 844);
 
 /// The size a viewport's capture takes in device pixels at `scale`: at
 /// scale 1 the page's own surface, which Chrome rounds up to whole pixels,
