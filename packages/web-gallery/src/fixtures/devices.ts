@@ -63,7 +63,6 @@ export function demoAttempt(scenario: DirectScenario, startedAt: number): Direct
     pairs: { tried: connected ? 2 : 6, answered: connected ? 2 : 0 },
     pair: connected ? { browser: null, device: '192.168.1.20:61204' } : null,
     permission: scenario === 'blocked' ? 'denied' : 'granted',
-    ...(scenario === 'dropped' ? { endedAt: new Date(startedAt + minutes(2)).toISOString() } : {}),
   }
 }
 
