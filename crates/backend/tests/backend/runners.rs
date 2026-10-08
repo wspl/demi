@@ -15,7 +15,7 @@ use demi_runner_protocol::wire::{
     self, ArtifactOwner, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo,
     RunnerPlatform, StreamArtifactOwner,
 };
-use demi_web_api_protocol::devices::{DeviceAnswer, DeviceKind, DeviceLog, DeviceState};
+use demi_web_api_protocol::devices::{DeviceAnswer, DeviceKind, DeviceLog, DeviceRoute, DeviceState};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::Directory;
 use futures_util::{SinkExt as _, StreamExt as _};
@@ -153,19 +153,19 @@ async fn a_waiting_runners_code_changes_while_it_waits_and_claims_are_limited() 
 }
 
 /// A runner's side of the socket, spoken by the test.
-struct RawRunner(
+pub(crate) struct RawRunner(
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
 );
 
 impl RawRunner {
-    async fn connect(backend: &TestBackend) -> Self {
+    pub(crate) async fn connect(backend: &TestBackend) -> Self {
         let (socket, _) = tokio_tungstenite::connect_async(backend.ws_url("/api/runner"))
             .await
             .unwrap();
         Self(socket)
     }
 
-    async fn send(&mut self, message: &Outbound) {
+    pub(crate) async fn send(&mut self, message: &Outbound) {
         let frame = wire::encode(message).unwrap().into_bytes();
         self.0.send(Message::Binary(frame.into())).await.unwrap();
     }
@@ -201,7 +201,7 @@ impl RawRunner {
     }
 
     /// The next message the backend sends; none once it closed the socket.
-    async fn next(&mut self) -> Option<Inbound> {
+    pub(crate) async fn next(&mut self) -> Option<Inbound> {
         loop {
             match tokio::time::timeout(Duration::from_secs(10), self.0.next())
                 .await
@@ -216,7 +216,7 @@ impl RawRunner {
     }
 }
 
-fn hello(protocol: u32, token: Option<&str>, managed: Option<bool>) -> Outbound {
+pub(crate) fn hello(protocol: u32, token: Option<&str>, managed: Option<bool>) -> Outbound {
     Outbound::Hello {
         protocol,
         device_token: token.map(|token| DeviceToken::try_from(token.to_owned()).unwrap()),
@@ -893,13 +893,13 @@ async fn after_a_backend_restart_the_devices_are_kept_and_their_runners_come_bac
 
 /// A device shows the operating system and the runner release its runner's
 /// hello named, the Cloud's too; a paired device takes a new name, trimmed,
-/// which the user's pages see at once, or turns its direct connections off,
+/// which the user's pages see at once, or a route,
 /// while the Cloud keeps its name and its path and another user's device is
 /// not the caller's to change (`web-api.md` § Workspaces, devices, and
 /// attached hosts).
 // About half a second: a runner pairs and the Cloud boots.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_device_shows_its_system_and_runner_release_and_a_paired_one_takes_a_new_name_or_turns_direct_off() {
+async fn a_device_shows_its_system_and_runner_release_and_a_paired_one_takes_a_new_name_or_route() {
     use demi_web_api_protocol::auth::Role;
     use demi_web_api_protocol::state::SyncEvent;
 
@@ -969,23 +969,30 @@ async fn a_device_shows_its_system_and_runner_release_and_a_paired_one_takes_a_n
     );
     assert_eq!(backend.devices(&master).await[0].name, longest);
 
-    // A new device may be reached directly; turned off, it keeps its name,
-    // and every page hears it. The Cloud has no switch.
-    assert!(backend.devices(&master).await[0].direct);
-    let off = backend
-        .patch(&format!("/api/devices/{}", laptop.id()), &master, json!({ "direct": false }))
+    // A new device's route is Automatic; Server Only keeps its name, and
+    // every page hears it. The Cloud has no route.
+    assert_eq!(backend.devices(&master).await[0].route, DeviceRoute::Automatic);
+    let server = backend
+        .patch(&format!("/api/devices/{}", laptop.id()), &master, json!({ "route": "server" }))
         .await;
-    assert_eq!(off.status, StatusCode::OK, "{}", String::from_utf8_lossy(&off.body));
-    let device = off.json::<DeviceAnswer>().device;
-    assert_eq!((device.name.as_str(), device.direct), (longest.as_str(), false));
+    assert_eq!(server.status, StatusCode::OK, "{}", String::from_utf8_lossy(&server.body));
+    let device = server.json::<DeviceAnswer>().device;
+    assert_eq!((device.name.as_str(), device.route), (longest.as_str(), DeviceRoute::Server));
     page.until(|event| {
         matches!(event, SyncEvent::Devices { devices }
-            if devices.iter().any(|device| device.kind == DeviceKind::User && !device.direct))
+            if devices.iter().any(|device| device.kind == DeviceKind::User && device.route == DeviceRoute::Server))
     })
     .await;
     assert_eq!(
         backend
-            .patch(&format!("/api/devices/{}", cloud.id), &master, json!({ "direct": false }))
+            .patch(&format!("/api/devices/{}", laptop.id()), &master, json!({ "route": "fastest" }))
+            .await
+            .refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody)
+    );
+    assert_eq!(
+        backend
+            .patch(&format!("/api/devices/{}", cloud.id), &master, json!({ "route": "direct" }))
             .await
             .refusal(),
         (StatusCode::CONFLICT, ErrorCode::DeviceManaged)
