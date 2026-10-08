@@ -48,6 +48,12 @@ const props = defineProps<{
   iconless?: boolean
   /** Its icon and label drawn faded while it stays choosable, as a hidden file among a directory's entries. */
   faded?: boolean
+  /**
+   * Lit by `isFocused` alone, not by the pointer resting on it: for a list
+   * whose pointer moves the selection itself, as a field's completions do,
+   * so the one lit row is the one a key takes.
+   */
+  pointerless?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -176,7 +182,7 @@ const toneClass = computed(() => {
       return 'bg-active text-fg-emphasis'
     if (isFocused.value || submenuOpen.value)
       return 'bg-hover text-fg'
-    return 'text-fg-body hover:bg-hover hover:text-fg'
+    return props.pointerless ? 'text-fg-body' : 'text-fg-body hover:bg-hover hover:text-fg'
   }
   if (isFocused.value || submenuOpen.value)
     return 'bg-active text-fg-emphasis'
