@@ -20,7 +20,7 @@ export type ActivityKind = 'connecting' | 'requesting'
 export type PendingAction = 'resume' | null
 
 /** A block that enters the transcript through the activity slot: it rolls in as the slot's face, then the row becomes the block. */
-export type HandoffBlock = Extract<MessageListBlock, { type: 'thinking' | 'tool_call' }>
+export type HandoffBlock = Extract<MessageListBlock, { type: 'thinking' | 'tool_call' | 'pending_call' }>
 
 /** The face roll, then a beat before the transcript row takes over. */
 export const ACTIVITY_HANDOFF_MS = CHROME_ROLL_MS + 80
@@ -91,11 +91,16 @@ function isWaitingForProvider(input: ActivitySlotInput): boolean {
   if (last.type === 'text') {
     return last.forkable === true
   }
+  // A running group's face is the newest step: the steps after it roll over
+  // it there, not into the tail row.
+  if (last.type === 'work_group') {
+    return !last.live
+  }
   return WAITING_TAIL_TYPES.has(last.type)
 }
 
 export function isHandoffBlock(block: MessageListBlock | undefined): block is HandoffBlock {
-  return block?.type === 'thinking' || block?.type === 'tool_call'
+  return block?.type === 'thinking' || block?.type === 'tool_call' || block?.type === 'pending_call'
 }
 
 function lastNonQueueBlock(blocks: readonly MessageListBlock[]): MessageListBlock | undefined {

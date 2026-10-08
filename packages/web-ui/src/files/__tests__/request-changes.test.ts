@@ -8,7 +8,8 @@ import {
   offersAllChanges,
   findRequest,
   pillSelection,
-  requestLineCounts,
+  callFiles,
+  fileLineCounts,
   requestLineSelection,
   selectionCopies,
   transcriptRequests,
@@ -169,7 +170,7 @@ describe('the Change view on a request', () => {
     expect(diffLineCounts('same\n', 'same\n')).toEqual({ added: 0, removed: 0 })
   })
 
-  test('the button counts each file’s All Changes, not the sum of its calls’, when two calls change one line', async () => {
+  test('a file counts its All Changes, not the sum of its calls’, when two calls change one line', async () => {
     // Blob n holds version n of a.ts: one line, x = n.
     const texts = (n: number) => `const x = ${n}\n`
     const read = async (copies: { original: string; modified: string }) => ({
@@ -181,7 +182,21 @@ describe('the Change view on a request', () => {
       shellCall('one', 'Set x to 1', [edited('/w/a.ts', 0)]),
       shellCall('two', 'Set x to 2', [edited('/w/a.ts', 1)]),
     ])
-    expect(await requestLineCounts(requests[0]!, read)).toEqual({ added: 1, removed: 1 })
+    expect(await fileLineCounts(requests[0]!.files[0]!, read)).toEqual({ added: 1, removed: 1 })
+  })
+
+  test('a run of a request’s calls counts its files from its own first edit to its last', async () => {
+    const texts = (n: number) => `const x = ${n}\n`
+    const read = async (copies: { original: string; modified: string }) => ({
+      original: texts(parseInt(copies.original, 16)),
+      modified: texts(parseInt(copies.modified, 16)),
+    })
+    const two = shellCall('two', 'Set x to 2', [edited('/w/a.ts', 1)])
+    const three = shellCall('three', 'Set x to 3', [edited('/w/a.ts', 2), edited('/w/b.ts', 7, 1, 'added')])
+    const files = callFiles([two, three])
+    expect(files.map((file) => [file.path, file.kind])).toEqual([['/w/a.ts', 'modified'], ['/w/b.ts', 'added']])
+    expect(selectionCopies(files[0]!, null)).toEqual({ original: blob(1), modified: blob(3) })
+    expect(await fileLineCounts(files[0]!, read)).toEqual({ added: 1, removed: 1 })
   })
 
   test('the button has no counts when a file’s first original was not kept', async () => {
@@ -192,7 +207,7 @@ describe('the Change view on a request', () => {
       reads += 1
       return { original: '', modified: '' }
     }
-    expect(await requestLineCounts(requests[0]!, read)).toBeNull()
+    expect(await fileLineCounts(requests[0]!.files[0]!, read)).toBeNull()
     expect(reads).toBe(0)
   })
 

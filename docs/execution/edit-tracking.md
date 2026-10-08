@@ -209,7 +209,15 @@ parent's own commands changed.
 ### What the conversation shows
 
 - **The pills.** Under a shell call, its files, from the block's view
-  ([Rendering boundary](../agent/runtime.md#rendering-boundary)).
+  ([Rendering boundary](../agent/runtime.md#rendering-boundary)). Under a
+  folded work group ([Work groups](../agent/runtime.md#work-groups)), the
+  files its calls changed, each once in the order first changed, with each
+  file's lines counted as the request's line counts them, from its first
+  edit's original to its last edit's result within the group, so a line two
+  calls changed counts once. They are read when the pills come into view, and
+  only a file whose ends a later call changed is counted again; until counted,
+  or when its ends were not kept, a pill names its file alone. A pill opens
+  its file at the first of the group's calls that changed it.
 - **The request's line.** At the end of a request's reply, above its Copy
   and Fork, once the request has ended and one of its calls changed a file, a
   button that names how many files and the lines added and removed across

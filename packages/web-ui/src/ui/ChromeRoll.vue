@@ -6,6 +6,12 @@ const props = defineProps<{
   faceKey: string
   /** When this stays put, only the label rolls. When it changes, icon and label roll together. */
   iconKey?: string
+  /**
+   * When this changes, the face is replaced at once, without a roll: the row
+   * shows something else, as an open group its summary, rather than the next
+   * step of what it shows.
+   */
+  cutKey?: string
 }>()
 
 type RollMode = 'label' | 'face'
@@ -78,8 +84,13 @@ function startRoll(mode: RollMode, snapshot: HTMLElement): void {
 }
 
 watch(
-  () => [props.faceKey, props.iconKey ?? ''] as const,
-  ([, icon], [, prevIcon]) => {
+  () => [props.faceKey, props.iconKey ?? '', props.cutKey ?? ''] as const,
+  ([, icon, cut], [, prevIcon, prevCut]) => {
+    if (cut !== prevCut) {
+      clearRollTimer()
+      finishRoll()
+      return
+    }
     const mode: RollMode = icon === prevIcon && iconPresent.value
       ? 'label'
       : 'face'

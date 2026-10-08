@@ -9,6 +9,7 @@ import { assistantFooterIds, replyEndIds, requestLineIds } from './assistant-foo
 import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streaming'
 import type { MessageListBlock } from './pending-steers'
 import { listTailBlocks } from './list-tail'
+import { groupWork } from './work-groups'
 import type { PendingAction } from './activity-slot'
 import { useActivitySlot } from './useActivitySlot'
 import { useChromeEntrance } from './useChromeEntrance'
@@ -130,6 +131,11 @@ const tailBlocks = computed(() => listTailBlocks({
   queue: props.queue,
   pendingSubmission: props.pendingSubmission,
 }))
+// The calls the model is writing are the newest steps of the work: they join
+// its group and, as any step, roll into the tail row first.
+const pendingCallRows = computed(() => tailBlocks.value.filter((block) => block.type === 'pending_call'))
+const otherTailBlocks = computed(() => tailBlocks.value.filter((block) => block.type !== 'pending_call'))
+const workBlocks = computed<MessageListBlock[]>(() => [...transcriptBlocks.value, ...pendingCallRows.value])
 // The summary size each compaction divider tells, by the id of the block that shows it.
 const summaryTokens = computed(() => compactionSummaryTokens(props.blocks))
 const slotInput = computed(() => ({
@@ -138,12 +144,12 @@ const slotInput = computed(() => ({
   phase: props.phase,
   pendingAction: props.pendingAction ?? null,
   transcriptBlocks: visibleBlocks.value,
-  renderBlocks: [...transcriptBlocks.value, ...tailBlocks.value],
+  renderBlocks: [...groupWork(workBlocks.value, props.phase === 'running'), ...otherTailBlocks.value],
 }))
 const { heldId, slot } = useActivitySlot({
   input: () => slotInput.value,
   pendingSubmission: () => props.pendingSubmission ?? null,
-  tail: () => transcriptBlocks.value.at(-1),
+  tail: () => workBlocks.value.at(-1),
   scope: () => props.conversationId,
 })
 // The block rolling into the tail row is not a list row yet.
@@ -153,9 +159,15 @@ const visibleTranscriptBlocks = computed(() => {
     ? blocks.slice(0, -1)
     : blocks
 })
+const visibleWorkBlocks = computed(() => {
+  const blocks = workBlocks.value
+  return heldId.value !== null && blocks.at(-1)?.id === heldId.value
+    ? blocks.slice(0, -1)
+    : blocks
+})
 const renderBlocks = computed<MessageListBlock[]>(() => [
-  ...visibleTranscriptBlocks.value,
-  ...tailBlocks.value,
+  ...groupWork(visibleWorkBlocks.value, props.phase === 'running'),
+  ...otherTailBlocks.value,
 ])
 const { isEntering } = useChromeEntrance(
   () => visibleTranscriptBlocks.value,
@@ -245,14 +257,22 @@ onBeforeUnmount(() => {
 // A block a search result opened: shown once the history holds it, after the list placed itself,
 // and marked as it appears; the next request or leaving the list ends a mark still waiting.
 let revealing: AbortController | null = null
-/** Brings the block `id` into view and marks it for a moment; false when the list does not hold it. */
+/** The row that shows each block: a step's work group, or the block's own. */
+const rowOf = computed(() => new Map(renderBlocks.value.flatMap((row) =>
+  row.type === 'work_group' ? row.steps.map((step) => [step.id, row.id] as const) : [[row.id, row.id] as const])))
+/** The block a row ends with: a work group's last step, or the row's block. */
+function rowEnd(row: MessageListBlock): string {
+  return row.type === 'work_group' ? row.steps.at(-1)!.id : row.id
+}
+/** Brings the block `id`'s row into view and marks it for a moment; false when the list does not hold it. */
 function revealAndMark(id: string): boolean {
   const scroller = scrollContainer.value
-  if (!scroller || !reveal(id))
+  const row = rowOf.value.get(id) ?? id
+  if (!scroller || !reveal(row))
     return false
   revealing?.abort()
   revealing = new AbortController()
-  highlightFound(scroller, `[data-block-id="${CSS.escape(id)}"]`, revealing.signal)
+  highlightFound(scroller, `[data-block-id="${CSS.escape(row)}"]`, revealing.signal)
   return true
 }
 watch(
@@ -378,13 +398,13 @@ defineExpose({
               </AgentMessageVirtualBlock>
               <!-- A request that ends on anything else, as one stopped during a call, has the button under its last row. -->
               <div
-                v-if="renderBlocks[item.index]!.type !== 'text' && requestLines.has(renderBlocks[item.index]!.id)"
+                v-if="renderBlocks[item.index]!.type !== 'text' && requestLines.has(rowEnd(renderBlocks[item.index]!))"
                 class="px-[var(--agent-pad-x,2rem)] py-1"
               >
                 <RequestChangesLine
-                  :request="requestLines.get(renderBlocks[item.index]!.id)!"
+                  :request="requestLines.get(rowEnd(renderBlocks[item.index]!))!"
                   :selectable="editSelection() !== undefined"
-                  @open="openRequest(requestLines.get(renderBlocks[item.index]!.id)!)"
+                  @open="openRequest(requestLines.get(rowEnd(renderBlocks[item.index]!))!)"
                 />
               </div>
             </MessageEditRegion>
