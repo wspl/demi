@@ -328,10 +328,26 @@ connection state is `failed` or `closed`.
 
 ## What the user sees
 
-Nothing changes but speed, and the user can see why. In Settings → Devices
+Nothing changes but speed, and the user can see why.
+
+**Where the P2P path runs.** A P2P connection runs on one of three kinds of
+path, which the page tells apart from the pair of addresses the peer
+connected through, the device's side of WebRTC's selected candidate pair
+(`getStats`), whose address the runner offers unhidden:
+
+| Kind | The device's address in use | Label |
+| --- | --- | --- |
+| This computer | A loopback address, `127.0.0.0/8` or `::1` | *This Computer* |
+| Local network | A private, link-local or shared address: `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `100.64/10` (which VPNs such as Tailscale use), `fc00::/7`, `fe80::/10` | *Local Network* |
+| Internet | Any other, reached through a public address found by STUN | *Internet* |
+
+The label goes after the path wherever the path is named: *Connected via P2P
+· Local Network*. The relay's is *Relay*.
+
+In Settings → Devices
 each row names a device and says its system and its state in a few words:
-*macOS 26.5 · Connected via relay*, *Connected via P2P*, or *Offline · Last
-seen 3 days ago*. The reason belongs to the device's page, which the row
+*macOS 26.5 · Connected via relay*, *Connected via P2P · This Computer*, or
+*Offline · Last seen 3 days ago*. The reason belongs to the device's page, which the row
 opens, `/settings/devices/<id>`, as a row of macOS's System Settings opens
 its detail.
 
@@ -382,7 +398,8 @@ Device
   them, as macOS's account and device headers are; the status dot is
   centred on the status text and has the colour of the device's state, as
   the devices list's dot does: green while it is online, whichever path the
-  page takes, since the words say the path, *Connected via P2P* or
+  page takes, since the words say the path, *Connected via P2P · Local
+Network* or
   *Connected via relay*. The status carries no figure, since the Latency
   row gives both paths'. While the device is offline, one line
   under the status says how to bring it back: *Start Demi on the device:*
@@ -395,7 +412,8 @@ Device
   - **P2P**, while the device is online and its route allows a peer, as
     macOS's Wi-Fi shows the network it joined: its subtitle is one sentence,
     the reason it is not connected (the table below), or, when it is, the
-    device's address in use, *Connected through 127.0.0.1*; before any
+    device's address in use, *This computer, through 127.0.0.1*, *Local
+network, through 192.168.1.20*; before any
     attempt has ended it has none. Its end holds **Details…**, which opens
     the sheet below, and before it **Try Again**, which makes a new peer at
     once, only while the page has no connected peer, both in the row's
