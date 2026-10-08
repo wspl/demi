@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { storedShellView, toolCallTitle } from '../agent/block-helpers'
 import type { ToolCallBlock } from '../agent/block-types'
 import type { ReadCallChange } from './changes'
+import { diffLineCounts } from './diff-counts'
 
 /**
  * A request's changes (`edit-tracking.md` § Delivery to the conversation):
@@ -197,6 +198,42 @@ export function selectionCopies(file: RequestFile, index: number | null): EditCo
   const original = file.edits[0]?.copies?.original
   const modified = file.edits.at(-1)?.copies?.modified
   return original && modified ? { original, modified } : null
+}
+
+/**
+ * The lines a request added and removed: the sum over its files of each
+ * one's All Changes, counted as the Change view's header counts it; null
+ * when a file's ends were not kept or cannot be read.
+ */
+export async function requestLineCounts(
+  request: TranscriptRequest,
+  read: ReadCallChange,
+  signal?: AbortSignal,
+): Promise<{ added: number; removed: number } | null> {
+  const ends = request.files.map((file) => selectionCopies(file, null))
+  if (ends.some((copies) => copies === null)) {
+    return null
+  }
+  const sides = await Promise.all(ends.map((copies) => read(copies!, signal)))
+  let added = 0
+  let removed = 0
+  for (const pair of sides) {
+    if (!pair) {
+      return null
+    }
+    const counts = diffLineCounts(pair.original, pair.modified)
+    added += counts.added
+    removed += counts.removed
+  }
+  return { added, removed }
+}
+
+/** Names a request's files' ends, which its counts follow: they change only when a later call changes a file. */
+export function requestEndsKey(request: TranscriptRequest): string {
+  return request.files.map((file) => {
+    const copies = selectionCopies(file, null)
+    return copies ? `${copies.original}:${copies.modified}` : `${file.path}:-`
+  }).join(',')
 }
 
 /** A request's files for the Change view, and how it reads an edit's two sides. */
