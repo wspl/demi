@@ -140,15 +140,18 @@ anything else, so the next turn, the user's or a wakeup's, runs in the new
 place and reads it from its block. A newer pending move replaces an older
 one; an archive drops it. A pending move is stored with the conversation
 ([Storage](../backend/storage.md#control-records)), so a restart does not
-lose it. A pending move that fails when it is made, such as to a device that
-has gone offline, leaves the conversation where it was and wakes the root
+lose it. Making it checks what any switch checks, not whether the device is
+online, as the user's own switch does not: a move to an offline device is
+made, and the next turn finds the device offline as any conversation there
+does. A pending move that fails when it is made, such as into a project
+deleted meanwhile, leaves the conversation where it was and wakes the root
 with an agent message through the same entry, event `move_failed`, id
 `move-failed:<move id>`, whose envelope names Demi as the sender, a notice of
 the product's and not agent-originated context. The model reads:
 
 ```text
-Demi could not move this conversation into ledable-app on Studio PC: the
-device is offline. The conversation still runs on Cloud
+Demi could not move this conversation into ledable-app: the project no
+longer exists. The conversation still runs on Cloud
 (/home/demi/sessions/0f4e…).
 ```
 
