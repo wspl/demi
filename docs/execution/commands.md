@@ -137,6 +137,7 @@ Each input field has one source:
 | `input` | The JSON Schema of the leaf's argument type. It validates the whole input. |
 | `positionals` | Ordered fields supplied as positional arguments. They have no named-option form. The last may be an array, which takes every positional token left, as `demi attachment upload <path>...` does; usage shows it with `...`. |
 | `stdinField` | A string field populated from finite stdin: a quoted heredoc, a pipe, or input redirection. It has no option or positional form. |
+| `stdinUnless` | Options that, when given, leave the `stdinField` unread and stdin with the calling process, as `file edit` reads no blocks with `--old`. It names only options of the leaf, and only beside a `stdinField`; help shows it on the stdin line: `Stdin body: blocks, not read with --old`. |
 | `restField` | An array receiving raw tokens after `--`. It has no named-option form. |
 | Remaining input fields | Named options such as `--path notes.txt`. Their schemas define values, optionality, boolean flags, enums, and repeated array options. |
 | `output.json` | A schema enabling validated structured output through `--json`. |
@@ -558,7 +559,7 @@ EOF
 - **Together or not at all.** Several blocks in one call each match the file
   as it was, must not overlap, and are applied together; a failing block
   changes nothing.
-- A marker line may carry trailing spaces. An empty SEARCH is refused:
+- A marker line may carry trailing spaces or tabs. An empty SEARCH is refused:
   `demi file create` makes a file. A text with a line that is exactly a
   marker cannot be written as a block; `--old` and `--new`, or
   `demi file patch`, write it.
