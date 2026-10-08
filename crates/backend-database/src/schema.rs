@@ -77,14 +77,20 @@ pub(crate) const CONTROL: Schema = Schema {
 };
 
 /// Each conversation's database's. Its history holds the schema of each
-/// published release before the one that shipped the current schema; 0.1.12
-/// shipped it.
+/// published release before the one that ships the current schema; 0.1.12
+/// to 0.1.20 shipped the last one in it.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
-    history: &[Shipped {
-        sql: include_str!("schema/conversation-0.1.11.sql"),
-        migration: Migration::Sql(CONVERSATION_FROM_0_1_11),
-    }],
+    history: &[
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.11.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_0_1_11),
+        },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.20.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_0_1_20),
+        },
+    ],
 };
 
 /// From 0.1.11's control schema: the retention pass, which read when each
@@ -201,6 +207,33 @@ CREATE TABLE attachments (
   blob       TEXT NOT NULL,
   CHECK ((width IS NULL) = (height IS NULL))
 ) STRICT;
+";
+
+/// From 0.1.20's conversation schema: an output's record keeps how its
+/// command ended, which no row 0.1.20 wrote says, so theirs stays null. The
+/// table is made anew, as for 0.1.11, so the column takes its place among
+/// the others.
+const CONVERSATION_FROM_0_1_20: &str = "
+CREATE TABLE command_outputs_next (
+  command_id     TEXT PRIMARY KEY,
+  ended_at       INTEGER NOT NULL,
+  ending         TEXT,
+  blob           TEXT,
+  missing_bytes  INTEGER CHECK (missing_bytes >= 0),
+  missing_reason TEXT,
+  media          TEXT,
+  not_stored     TEXT,
+  CHECK ((blob IS NOT NULL) + (not_stored IS NOT NULL) = 1),
+  CHECK ((missing_bytes IS NULL) = (missing_reason IS NULL)),
+  CHECK (missing_bytes IS NULL OR blob IS NOT NULL),
+  CHECK ((media IS NULL) = (blob IS NULL))
+) STRICT;
+INSERT INTO command_outputs_next
+  (command_id, ended_at, blob, missing_bytes, missing_reason, media, not_stored)
+  SELECT command_id, ended_at, blob, missing_bytes, missing_reason, media, not_stored
+  FROM command_outputs;
+DROP TABLE command_outputs;
+ALTER TABLE command_outputs_next RENAME TO command_outputs;
 ";
 
 /// A kind of database, as a server's upgrade asks about it.
@@ -713,6 +746,9 @@ CREATE TABLE blocks (
 CREATE TABLE command_outputs (
   command_id     TEXT PRIMARY KEY,
   ended_at       INTEGER NOT NULL,
+  -- How it ended, a JSON object: its exit code, stopped, or with its Host's
+  -- connection; null for a row a release before 0.1.21 wrote.
+  ending         TEXT,
   blob           TEXT,
   missing_bytes  INTEGER CHECK (missing_bytes >= 0),
   missing_reason TEXT,
@@ -936,7 +972,7 @@ mod tests {
     #[test]
     fn a_conversation_of_0_1_11_keeps_its_rows_and_an_output_it_removed_stops_the_migration() {
         use demi_host_interface::{MediumKept, Missing, StoredMedium};
-        use demi_shared_types::{BlobRef, CommandId, Sequence, Timestamp};
+        use demi_shared_types::{BlobRef, CommandEnd, CommandId, Sequence, Timestamp};
 
         use crate::command_outputs::{self, CommandOutput, OutputRow};
         use crate::sequences;
@@ -980,6 +1016,8 @@ mod tests {
             Some(CommandOutput {
                 command: CommandId::try_from("c1").unwrap(),
                 ended: Timestamp::from_millisecond(1000).unwrap(),
+                // Its release kept no end, and the migrations invent none.
+                end: CommandEnd::Unrecorded,
                 output: OutputRow::Stored {
                     blob,
                     missing: Some(Missing {

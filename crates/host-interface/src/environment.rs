@@ -49,10 +49,10 @@ pub trait ShellEnvironment {
     /// The command's status, with its output since the model last looked.
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError>;
 
-    /// The directory a new shell beside the default one starts in: the
-    /// default shell's now; none while the environment has no default
-    /// shell, whose first command starts in the Host's default directory.
-    fn default_cwd(&self) -> Option<String>;
+    /// The default shell and its directory now, where a new shell beside it
+    /// starts; none while the environment has no default shell, whose first
+    /// command starts in the Host's default directory.
+    fn default_shell(&self) -> Option<DefaultShell>;
 
     /// The kept output of a command that runs, as its Host holds it now
     /// (`runtime.md` § The whole output).
@@ -140,6 +140,13 @@ pub async fn watch(
         }
     }
     environment.status(command)
+}
+
+/// An environment's default shell, and the directory it is in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DefaultShell {
+    pub id: ShellId,
+    pub cwd: String,
 }
 
 /// One exec, with every rule an environment enforces in its type.

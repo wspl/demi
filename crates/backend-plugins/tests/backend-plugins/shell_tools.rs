@@ -269,3 +269,48 @@ async fn a_steer_ends_the_window_and_the_command_runs_on() {
     })
     .await;
 }
+
+// About two seconds: four scripts, each a shell job.
+#[tokio::test(flavor = "local")]
+async fn a_shell_a_call_names_is_never_given_to_a_call_that_names_none() {
+    within(async {
+        let (turns, results) = model(vec![
+            Box::new(|_| vec![exec("enter", "mkdir -p sub && cd sub && sleep 0.3", 50)]),
+            Box::new(|results| {
+                let enter = field(result(results, "enter"), "commandId").to_owned();
+                vec![call(
+                    "ended",
+                    "shell_status",
+                    json!({"commandId": enter, "timeoutMs": 20_000}),
+                )]
+            }),
+            // The call without a shell comes first: given the default shell,
+            // it would leave the call that names that shell refused as busy.
+            Box::new(|results| {
+                let default = field(result(results, "enter"), "shellId").to_owned();
+                vec![
+                    exec("unnamed", "pwd", 20_000),
+                    call(
+                        "named",
+                        "shell_exec",
+                        json!({"description": "Run the test script", "script": "pwd", "timeoutMs": 20_000, "shellId": default}),
+                    ),
+                ]
+            }),
+        ]);
+        let script = ScriptedRuntime::new(turns);
+        let fixture = Fixture::start(&script).await;
+        let mut client = fixture.opened().await;
+        turn(&mut client, "message-1", "Look around.").await;
+
+        let results = results.borrow();
+        let sub = format!("{}/sub\n", fixture.workspace);
+        for id in ["unnamed", "named"] {
+            let text = result(&results, id);
+            assert_eq!(field(text, "status"), "exited", "{text}");
+            assert_eq!(shown_output(text), sub);
+        }
+        fixture.stop().await;
+    })
+    .await;
+}
