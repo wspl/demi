@@ -14,6 +14,7 @@ import { onClickOutside, onKeyStroke } from '@vueuse/core'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { useOverlayTarget } from '../overlay/overlayContainer'
 import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
+import { useFocusReturn } from '../overlay/focusReturn'
 import { useOverlay } from '../composables/useOverlay'
 
 const props = withDefaults(defineProps<{
@@ -188,14 +189,12 @@ watch(floatingRef, (el, _prev, onCleanup) => {
 })
 
 /**
- * The focus goes back to where it was when the panel opened, the control that
- * opened it, as a menu button's does in WAI-ARIA and on macOS, once a panel
- * that held the focus closes: by a choice, Escape, or a click outside on
- * nothing that takes the focus. A click outside on a control leaves the focus
- * there, and a panel that never held it, such as a hover card, gives none
- * back. A submenu gives the keys back to its own menu (MenuItem).
+ * A panel that held the focus gives it back to its opener when it closes, by
+ * a choice, Escape or a click outside on nothing that takes the focus
+ * (`useFocusReturn`); a panel that never held it, such as a hover card, gives
+ * none back. A submenu gives the keys back to its own menu (MenuItem).
  */
-let opener: HTMLElement | null = null
+const focusReturn = useFocusReturn(inFamily)
 let heldFocus = false
 
 function inFamily(el: EventTarget | null): boolean {
@@ -212,19 +211,15 @@ function panelFocusOut(event: FocusEvent): void {
     heldFocus = false
 }
 
+// Immediate: a panel can mount already open, as a context menu keyed to each opening does.
 watch(() => props.isOpen, (open) => {
   if (open) {
-    opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    heldFocus = false
-    return
+    focusReturn.open()
+  } else {
+    focusReturn.close(!nested && heldFocus)
   }
-  const active = document.activeElement
-  const focusWithPanel = active === null || active === document.body || inFamily(active)
-  if (!nested && heldFocus && focusWithPanel && opener?.isConnected)
-    opener.focus({ preventScroll: true })
-  opener = null
   heldFocus = false
-}, { flush: 'sync' })
+}, { flush: 'sync', immediate: true })
 
 onClickOutside(floatingRef, () => {
   if (props.isOpen)
