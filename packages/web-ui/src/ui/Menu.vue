@@ -12,6 +12,7 @@ import {
   menuIconlessKey,
   menuSlotKeyboardKey,
   menuSubmenuKey,
+  menuSubmenuKeysKey,
   type MenuSlotRow
 } from './menu-context'
 import { provideLayerElevation } from '../overlay/layerElevation'
@@ -25,7 +26,10 @@ import type { HeadlineText, PlaceholderText } from './ui-text'
  * submenu, `autofocus` is off, or it is pinned open in a catalog host
  * (`useAutofocus`). Without a filter field, typing a name moves
  * to the first row that starts with it (`useTypeSelect`), and Enter chooses
- * the row the keys moved to.
+ * the row the keys moved to. In a menu of slot rows the keys go as in a macOS
+ * menu: Up and Down Arrow move between rows, Right Arrow or Return on a row
+ * with a submenu opens it with the keys in it, and Left Arrow or Escape there
+ * closes it and gives the keys back.
  */
 const props = withDefaults(defineProps<{
   items?: T[]
@@ -61,8 +65,9 @@ defineSlots<{
   }): void
 }>()
 
-// A menu in another's submenu leaves the keyboard with the outermost one.
+// A menu in another's submenu leaves the keyboard with the outermost one, until the keys enter it.
 const nested = inject(menuSubmenuKey, null) !== null
+const submenuKeys = inject(menuSubmenuKeysKey, null)
 
 const filterQuery = ref(props.initialQuery ?? '')
 const focusedIndex = ref(-1)
@@ -188,6 +193,14 @@ watch(panelRef, (el) => {
   autofocus({ focus: () => el.focus({ preventScroll: true }) })
 })
 
+// A submenu the keys entered takes them at its first row.
+watch([panelRef, () => submenuKeys?.entered.value === true], ([el, entered]) => {
+  if (!el || !entered)
+    return
+  el.focus({ preventScroll: true })
+  focusRow(0)
+}, { flush: 'post' })
+
 watch(filteredItems, () => {
   focusedIndex.value = 0
 })
@@ -204,18 +217,42 @@ function handleClear() {
   inputRef.value?.focus({ preventScroll: true })
 }
 
+/** The keys of a menu whose rows are its slot's (the component comment says which). */
+function slotRowKeydown(event: KeyboardEvent): void {
+  const rows = orderedSlotRows()
+  const row = focusedSlotRow.value
+  const at = row ? rows.indexOf(row) : -1
+  if (event.key === 'ArrowDown' && rows.length) {
+    event.preventDefault()
+    focusRow(at < rows.length - 1 ? at + 1 : 0)
+  } else if (event.key === 'ArrowUp' && rows.length) {
+    event.preventDefault()
+    focusRow(at > 0 ? at - 1 : rows.length - 1)
+  } else if (event.key === 'ArrowRight' && row?.enter()) {
+    event.preventDefault()
+  } else if (event.key === 'Enter' && row) {
+    event.preventDefault()
+    // A submenu opens with the keys in it; any other row does what a click does.
+    if (!row.enter())
+      row.el()?.click()
+  }
+}
+
 function handleKeydown(event: KeyboardEvent) {
   // Type-select reads the keys the panel itself gets; a field in the header keeps its own.
   if (!props.filterable && event.target === event.currentTarget && typeSelect.keydown(event)) {
     event.preventDefault()
     return
   }
+  if ((event.key === 'ArrowLeft' || event.key === 'Escape') && submenuKeys && !props.filterable) {
+    // Only this submenu closes: the Escape stops here, before its panel's popover or the menu's own.
+    event.preventDefault()
+    event.stopPropagation()
+    submenuKeys.leave()
+    return
+  }
   if (props.items == null) {
-    if (event.key === 'Enter' && focusedSlotRow.value) {
-      event.preventDefault()
-      // As a click on it: the row does what a click does, closing its menu or opening its submenu.
-      focusedSlotRow.value.el()?.click()
-    }
+    slotRowKeydown(event)
     return
   }
   const count = filteredItems.value.length
