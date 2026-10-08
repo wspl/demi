@@ -506,6 +506,7 @@ test('restored running children keep an idle parent active in the sidebar', () =
     name: 'Restored child',
     phase: 'running',
     startedAt: '2026-09-13T00:00:00.000Z',
+    pendingCalls: [],
     blocks: [],
     failures: {},
   }]

@@ -6,6 +6,8 @@
 
 use demi_provider_common::wire::{Reported, ReportedString, Tagged};
 use demi_provider_common::{ErrorCode, ProviderEvent, ToolCall, tagged_wire};
+use std::collections::HashMap;
+
 use demi_shared_types::TokenUsage;
 use serde::Deserialize;
 
@@ -130,11 +132,15 @@ tagged_wire! {
 #[derive(Deserialize)]
 pub(crate) struct BlockStart {
     #[serde(default)]
+    index: Option<u64>,
+    #[serde(default)]
     content_block: Option<Tagged<ContentBlock>>,
 }
 
 #[derive(Deserialize)]
 pub(crate) struct BlockDelta {
+    #[serde(default)]
+    index: Option<u64>,
     #[serde(default)]
     delta: Option<Tagged<Delta>>,
 }
@@ -147,7 +153,14 @@ tagged_wire! {
         "text_delta" => Text(TextDelta),
         "thinking_delta" => Thinking(ThinkingDelta),
         "signature_delta" => Signature(SignatureDelta),
+        "input_json_delta" => InputJson(InputJsonDelta),
     }
+}
+
+#[derive(Deserialize)]
+pub(crate) struct InputJsonDelta {
+    #[serde(default)]
+    partial_json: String,
 }
 
 #[derive(Deserialize)]
@@ -314,15 +327,40 @@ impl ToolUseBlock {
 }
 
 impl StreamEvent {
-    /// The events of a streamed piece: a thinking block's start, and the
-    /// text, reasoning and signatures as they come. A tool use streams its
-    /// input in pieces, so it is read from the whole message instead.
-    pub(crate) fn events(self) -> Vec<ProviderEvent> {
+    /// The events of a streamed piece: a thinking block's start, the text,
+    /// reasoning and signatures as they come, and a tool use's start and its
+    /// input pieces, for display only (`claude-code.md` § Tool-call
+    /// batches): the call itself is read from the whole message, the only
+    /// place its input is whole. `writing` keeps the tool uses opened, by
+    /// their block's index.
+    pub(crate) fn events(self, writing: &mut HashMap<u64, String>) -> Vec<ProviderEvent> {
         match self {
             Self::BlockStart(start) => match start.content_block.and_then(|block| block.0) {
                 Some(ContentBlock::Thinking(_)) => vec![ProviderEvent::ThinkingStart],
                 Some(ContentBlock::Text(block)) if !block.text.is_empty() => {
                     vec![ProviderEvent::TextDelta(block.text)]
+                }
+                Some(ContentBlock::ToolUse(tool_use)) => {
+                    let (Some(index), Ok(call)) = (start.index, tool_use.call()) else {
+                        return Vec::new();
+                    };
+                    writing.insert(index, call.tool_use_id.clone());
+                    vec![ProviderEvent::ToolCallStart {
+                        tool_use_id: call.tool_use_id,
+                        tool_name: call.tool_name,
+                    }]
+                }
+                _ => Vec::new(),
+            },
+            Self::BlockDelta(BlockDelta {
+                index,
+                delta: Some(Tagged(Some(Delta::InputJson(piece)))),
+            }) => match index.and_then(|index| writing.get(&index)) {
+                Some(tool_use_id) if !piece.partial_json.is_empty() => {
+                    vec![ProviderEvent::ToolCallInput {
+                        tool_use_id: tool_use_id.clone(),
+                        partial_json: piece.partial_json,
+                    }]
                 }
                 _ => Vec::new(),
             },

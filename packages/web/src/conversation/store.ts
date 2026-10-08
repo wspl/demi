@@ -261,6 +261,7 @@ export const useConversations = defineStore('conversations', () => {
       phase: 'idle',
       queue: [],
       pendingSteers: [],
+      pendingCalls: [],
       model: record.model ? { ...record.model } : initialModelSettings(),
       lastError: null,
       draft: '',
@@ -920,6 +921,7 @@ export const useConversations = defineStore('conversations', () => {
     reconcileSubmission(conversation)
     conversation.terminals = transcriptTerminals(transcript.blocks)
     conversation.subagents = transcript.subagents.map(({ subagent, blocks, failures }) => ({
+      pendingCalls: [],
       id: subagent.subagentId,
       name: subagent.description,
       phase: subagent.phase,

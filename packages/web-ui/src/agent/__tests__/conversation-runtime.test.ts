@@ -14,6 +14,7 @@ function state(): RuntimeState {
     phase: 'idle',
     queue: [],
     pendingSteers: [],
+    pendingCalls: [],
     lastError: null,
     load: 'loading',
     pendingAction: null,

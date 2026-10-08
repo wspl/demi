@@ -497,6 +497,10 @@ impl<H: HostResolver> Tree<H> {
             ServerFrame::PendingSteers {
                 pending_steers: session.pending_steers(),
             },
+            ServerFrame::PendingCalls {
+                subagent_id: None,
+                pending_calls: session.pending_calls(),
+            },
         ];
         for frame in root
             .into_iter()
@@ -626,6 +630,10 @@ fn frame_of(event: &SessionEvent) -> Option<ServerFrame> {
         },
         SessionEvent::PendingSteersChanged { pending_steers } => ServerFrame::PendingSteers {
             pending_steers: pending_steers.clone(),
+        },
+        SessionEvent::PendingCallsChanged { pending_calls } => ServerFrame::PendingCalls {
+            subagent_id: None,
+            pending_calls: pending_calls.clone(),
         },
         SessionEvent::RetryScheduled {
             attempt,
