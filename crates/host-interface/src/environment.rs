@@ -1,4 +1,4 @@
-//! The shell-environment contract behind the `shell_*` tools: a node's shells
+//! The shell-environment contract behind the shell tools: a node's shells
 //! on one Host, the commands they run, the model's status view of each
 //! (`runtime.md` § Tools), and the pages' view of each, which the
 //! environment reports to the node's feed (`runtime.md` § Live output).
@@ -14,14 +14,11 @@ use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use crate::{CommandMedium, CommandRecord, HostError, PageView, Seen, WholeOutput};
+use crate::{CommandMedium, CommandRecord, Ending, HostError, PageView, Seen, WholeOutput};
 
-/// The longest an exec waits for its command before it returns the running
+/// The longest a call watches its command before it returns the running
 /// command's handle.
 pub const MAX_OBSERVATION: Duration = Duration::from_millis(600_000);
-
-/// How long an exec waits when its caller names no window.
-pub const DEFAULT_OBSERVATION: Duration = Duration::from_millis(10_000);
 
 /// The default budget of one status view's new output, per stream.
 pub const DEFAULT_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
@@ -36,17 +33,26 @@ pub const DEFAULT_BINARY_LIMIT_BYTES: usize = 16 * 1024 * 1024;
 /// answers is the model's; the pages see its commands through the feed it
 /// was made with ([`PageFeed`]).
 pub trait ShellEnvironment {
-    /// Runs `request.script`, and returns once the command ended or its
-    /// observation window passed, whichever is first; a command still
-    /// running then goes on, and `cancel` stops it whenever it is cancelled.
-    fn exec(
+    /// Starts `request.script` and returns its command's handle; the command
+    /// goes on by itself, and `cancel` stops it whenever it is cancelled.
+    /// [`watch`] watches it.
+    fn start(
         &self,
         request: ExecRequest,
         cancel: CancellationToken,
-    ) -> LocalBoxFuture<'_, Result<CommandStatus, ShellError>>;
+    ) -> LocalBoxFuture<'_, Result<CommandId, ShellError>>;
+
+    /// Waits until the command has ended, and answers how: at once for one
+    /// that has ended already.
+    fn ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<Ending, ShellError>>;
 
     /// The command's status, with its output since the model last looked.
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError>;
+
+    /// The directory a new shell beside the default one starts in: the
+    /// default shell's now; none while the environment has no default
+    /// shell, whose first command starts in the Host's default directory.
+    fn default_cwd(&self) -> Option<String>;
 
     /// The kept output of a command that runs, as its Host holds it now
     /// (`runtime.md` § The whole output).
@@ -114,12 +120,33 @@ pub trait PageFeed {
     fn watching(&self) -> watch::Receiver<bool>;
 }
 
+/// Watches `command` until the first of: it ends, `window` passes, or
+/// `until` resolves; then returns its status (`runtime.md` § The window).
+/// Without a window it looks at once. Ending the watch never stops the
+/// command.
+pub async fn watch(
+    environment: &dyn ShellEnvironment,
+    command: &CommandId,
+    window: Option<ObservationWindow>,
+    until: impl Future<Output = ()>,
+) -> Result<CommandStatus, ShellError> {
+    if let Some(window) = window {
+        tokio::select! {
+            ended = environment.ended(command) => {
+                ended?;
+            }
+            () = tokio::time::sleep(window.duration()) => {}
+            () = until => {}
+        }
+    }
+    environment.status(command)
+}
+
 /// One exec, with every rule an environment enforces in its type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecRequest {
     pub script: String,
     pub shell: ShellTarget,
-    pub window: ObservationWindow,
     /// The agent node the job's `rpc` calls act for.
     pub caller: JobCaller,
     /// The `shell_exec` call that runs the script, which the pages' view of
@@ -127,21 +154,21 @@ pub struct ExecRequest {
     pub tool_use_id: String,
 }
 
-/// Which shell an exec runs in.
+/// Which shell an exec runs in (`runtime.md` § Dispatch and failures).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShellTarget {
-    /// The environment's default shell, or a fresh shell while that one runs
-    /// a command, so a long command never blocks the next exec.
+    /// The environment's default shell, or, while that one runs a command,
+    /// a new shell that starts in its directory, so a long command never
+    /// blocks the next exec.
     Default,
     /// This shell; it must be idle.
     Existing(ShellId),
-    /// A shell of its own that starts in `cwd`, the Host's default when none,
-    /// so directory changes leak into no other exec. Its caller disposes of
-    /// it.
-    Ephemeral { cwd: Option<String> },
+    /// A new shell that starts in `cwd`, the Host's default when none, so
+    /// its directory changes reach no other shell.
+    New { cwd: Option<String> },
 }
 
-/// How long an exec waits for its command: from a millisecond to
+/// How long a call watches its command: from a millisecond to
 /// [`MAX_OBSERVATION`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObservationWindow(Duration);
@@ -158,11 +185,6 @@ impl ObservationWindow {
     }
 }
 
-impl Default for ObservationWindow {
-    fn default() -> Self {
-        Self(DEFAULT_OBSERVATION)
-    }
-}
 
 /// The agent node a job runs for, whose commands its `rpc` calls reach
 /// (`sessions-and-targets.md` § Bind jobs to their caller).
@@ -270,7 +292,7 @@ pub enum ShellError {
         number: u32,
         returned: usize,
     },
-    #[error("shell_write field \"stdin\" must not be empty; use shell_status to poll")]
+    #[error("stdin must not be empty")]
     EmptyStdin,
     #[error(transparent)]
     Host(#[from] HostError),

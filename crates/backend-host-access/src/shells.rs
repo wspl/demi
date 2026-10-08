@@ -26,7 +26,7 @@ use demi_backend_runners::host_key::device_of;
 use demi_backend_runners::router::CommandRegistration;
 use demi_command_protocol::{CommandCaller, EDIT_FILE_BYTES};
 use demi_host_interface::{
-    CommandMedium, CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostKey,
+    CommandMedium, CommandStatus, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
     MediumKept, PageView, ShellEnvironment, ShellError, StoredMedium, WholeOutput,
 };
 use demi_runner_protocol::wire::JobFileChange;
@@ -469,16 +469,24 @@ struct Registered {
 }
 
 impl ShellEnvironment for Registered {
-    fn exec(
+    fn start(
         &self,
         request: ExecRequest,
         cancel: CancellationToken,
-    ) -> LocalBoxFuture<'_, Result<CommandStatus, ShellError>> {
-        self.environment.exec(request, cancel)
+    ) -> LocalBoxFuture<'_, Result<CommandId, ShellError>> {
+        self.environment.start(request, cancel)
+    }
+
+    fn ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<Ending, ShellError>> {
+        self.environment.ended(command)
     }
 
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
         self.environment.status(command)
+    }
+
+    fn default_cwd(&self) -> Option<String> {
+        self.environment.default_cwd()
     }
 
     fn read_output<'a>(

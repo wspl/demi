@@ -717,30 +717,50 @@ export const yieldTool = toolCall({
   input: JSON.stringify({ description: 'Wait for the next user turn' }),
 })
 
+/** A wait that ends when the build ends, or after fifteen minutes. */
+export const yieldCommandsTool = toolCall({
+  id: 'tool-yield-commands',
+  toolName: 'yield',
+  status: 'completed',
+  input: JSON.stringify({ durationMs: 900_000, commandIds: [17] }),
+  output: [{ type: 'text', text: 'yield scheduled\ndurationMs: 900000\ncommandIds: 17' }],
+  view: { kind: 'yield_wakeup', wakeupId: 'wk-build', durationMs: 900_000, commandIds: ['17'] },
+})
+
 export const statusTool = toolCall({
   id: 'tool-status',
   toolName: 'shell_status',
   status: 'completed',
   input: JSON.stringify(
     {
-      commandId: 'cmd_1',
+      commandId: 17,
       description: 'Check the dev server'
     }
   ),
 })
 
-export const writeTool = toolCall({
-  id: 'tool-write',
-  toolName: 'shell_write',
+/** A look that answers the prompt the command waits for. */
+export const inputTool = toolCall({
+  id: 'tool-input',
+  toolName: 'shell_status',
   status: 'completed',
-  input: JSON.stringify({ commandId: 'cmd_1', data: 'continue' }),
+  input: JSON.stringify({ commandId: 17, stdin: 'y\n', description: 'Confirm the migration' }),
 })
 
-export const abortTool = toolCall({
-  id: 'tool-abort',
-  toolName: 'shell_abort',
+/** A stop of the dev server, which a command of the shell does. */
+export const stopTool = toolCall({
+  id: 'tool-stop',
+  toolName: 'shell_exec',
   status: 'completed',
-  input: JSON.stringify({ commandId: 'cmd_1' }),
+  input: JSON.stringify({
+    script: 'demi shell stop 17',
+    description: 'Stop the dev server',
+    timeoutMs: 10_000,
+  }),
+  view: shellView({
+    commandId: '21',
+    chunks: [{ stream: 'stdout', text: '[command 17 stopped]\n' }],
+  }),
 })
 
 export const errorTool = toolCall({
@@ -857,9 +877,10 @@ export function transcriptDemoBlocks(): Block[] {
       text: 'The login test passes. The orders page is open in my browser, signed in as the test user: **Open** it above to try it in yours.',
     },
     statusTool as Block,
-    writeTool as Block,
+    inputTool as Block,
     yieldTool as Block,
-    abortTool as Block,
+    yieldCommandsTool as Block,
+    stopTool as Block,
     errorTool as Block,
     {
       type: 'compaction_boundary',

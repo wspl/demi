@@ -16,7 +16,8 @@ use demi_agent_transcript::{
 use demi_provider_common::{ErrorCode, RequestLimits, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_shared_types::{
-    B64Bytes, BlobRef, Block, ContextUsage, ModelSelection, TokenUsage, TurnId, UserContentBlock,
+    B64Bytes, BlobRef, Block, CommandId, ContextUsage, ModelSelection, TokenUsage, TurnId,
+    UserContentBlock, WakeupCommand,
 };
 use futures_util::future::LocalBoxFuture;
 
@@ -513,11 +514,19 @@ impl SessionRuntime for CopyRuntime {
         self.session.tools()
     }
 
-    fn invoke_tool(
+    fn runs_together(&self, tool: &str) -> bool {
+        self.session.runs_together(tool)
+    }
+
+    fn invoke_step(
         &self,
-        call: ToolInvocation,
-    ) -> LocalBoxFuture<'_, Result<ToolOutcome, ToolFailure>> {
-        self.session.invoke_tool(call)
+        calls: Vec<ToolInvocation>,
+    ) -> LocalBoxFuture<'_, Vec<Result<ToolOutcome, ToolFailure>>> {
+        self.session.invoke_step(calls)
+    }
+
+    fn command_end(&self, commands: Vec<CommandId>) -> LocalBoxFuture<'static, WakeupCommand> {
+        self.session.command_end(commands)
     }
 }
 

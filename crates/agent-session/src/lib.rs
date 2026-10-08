@@ -59,7 +59,8 @@ pub use editing::{
 };
 pub use retry::RetryPolicy;
 pub use runtime::{
-    NewContext, SeenContext, SessionRuntime, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome,
+    InputArrival, NewContext, SeenContext, SessionRuntime, ToolEffect, ToolFailure,
+    ToolInvocation, ToolOutcome,
 };
 
 use self::{
@@ -414,6 +415,9 @@ pub(crate) struct SessionShared {
     /// started finishes before the next one starts.
     persist_gate: SerialGate,
     status: watch::Sender<Status>,
+    /// How many inputs arrived for a boundary: a shell tool's window ends
+    /// when one more arrives (`runtime.md` § The window).
+    arrivals: watch::Sender<u64>,
     /// Wakes the worker when an action starts.
     work: Rc<Notify>,
     /// Wakes the persister when a change makes a save due.
@@ -436,11 +440,16 @@ impl SessionShared {
     /// asked for: wakes the worker, the persister or the wakeup driver,
     /// publishes the session's status, and delivers the change's events.
     fn update<R>(&self, change: impl FnOnce(&mut SessionCore) -> R) -> R {
-        let (result, effects) = {
+        let (result, effects, arrivals) = {
             let mut core = self.core.borrow_mut();
             let result = change(&mut core);
-            (result, core.take_effects())
+            (result, core.take_effects(), core.inputs.arrivals())
         };
+        self.arrivals.send_if_modified(|count| {
+            let changed = *count != arrivals;
+            *count = arrivals;
+            changed
+        });
         if effects.wake_worker {
             self.work.notify_one();
         }
@@ -541,9 +550,10 @@ impl AgentSession {
         // A root restored once from its interrupted turn saved its
         // interruption record, which keeps the hold across a later restore.
         let held = interrupted || transcript.ends_with_interruption();
-        let mut wakeups = Wakeups::restored(state.wakeups);
+        let now = deps.clock.now();
+        let mut wakeups = Wakeups::restored(state.wakeups, now);
         // A wakeup whose action the process died in starts its wait now.
-        wakeups.arm(deps.clock.now());
+        wakeups.arm(now);
         let parts = CoreParts {
             id,
             cwd: state.cwd,
@@ -571,11 +581,13 @@ impl AgentSession {
 
     fn start(core: SessionCore, deps: SessionDeps) -> Self {
         let status = core.status();
+        let arrivals = core.inputs.arrivals();
         let shared = Rc::new(SessionShared {
             core: RefCell::new(core),
             bus: EventBus::default(),
             persist_gate: SerialGate::new(),
             status: watch::Sender::new(status),
+            arrivals: watch::Sender::new(arrivals),
             work: Rc::new(Notify::new()),
             persist_wake: Rc::new(Notify::new()),
             replan: Rc::new(Notify::new()),

@@ -167,8 +167,8 @@ crate::id!(
     ShellId
 );
 crate::id!(
-    /// A command a shell runs; its handle for `shell_status`, `shell_write`
-    /// and `shell_abort`.
+    /// A command a shell runs; its handle for `shell_status`, `yield` and
+    /// `demi shell stop`.
     CommandId
 );
 crate::id!(

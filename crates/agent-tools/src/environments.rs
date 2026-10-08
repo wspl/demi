@@ -245,7 +245,7 @@ mod tests {
     use std::cell::Cell;
 
     use bytes::Bytes;
-    use demi_host_interface::{CommandStatus, ExecRequest, ShellError, WholeOutput};
+    use demi_host_interface::{CommandStatus, Ending, ExecRequest, ShellError, WholeOutput};
     use futures_util::future::{LocalBoxFuture, join};
     use tokio_util::sync::CancellationToken;
 
@@ -260,16 +260,27 @@ mod tests {
     }
 
     impl ShellEnvironment for Owner {
-        fn exec(
+        fn start(
             &self,
             _: ExecRequest,
             _: CancellationToken,
-        ) -> LocalBoxFuture<'_, Result<CommandStatus, ShellError>> {
+        ) -> LocalBoxFuture<'_, Result<CommandId, ShellError>> {
             unreachable!("the environments never run a command")
+        }
+
+        fn ended<'a>(
+            &'a self,
+            command: &'a CommandId,
+        ) -> LocalBoxFuture<'a, Result<Ending, ShellError>> {
+            Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
         }
 
         fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
             Err(ShellError::UnknownCommand(command.clone()))
+        }
+
+        fn default_cwd(&self) -> Option<String> {
+            None
         }
 
         fn read_output<'a>(

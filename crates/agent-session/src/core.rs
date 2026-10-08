@@ -28,9 +28,10 @@ use demi_provider_common::{
     ToolDefinition,
 };
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, BlobRef, Block, BlockId, Clock, FailureSource, ModelSelection,
-    NodeId, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
-    ToolResultContentBlock, ToolView, TurnId, UserContentBlock, WakeupId, WakeupPlacement,
+    AgentMessage, AgentMessageEvent, BlobRef, Block, BlockId, Clock, CommandId, FailureSource,
+    ModelSelection, NodeId, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
+    ToolResultContentBlock, ToolView, TurnId, UserContentBlock, WakeupCommand, WakeupId,
+    WakeupPlacement,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -992,6 +993,7 @@ impl SessionCore {
                         turn.clone(),
                         &self.model,
                         WakeupPlacement::Steer,
+                        wakeup.ended,
                     );
                 }
                 Input::Agent(input) => {
@@ -1017,6 +1019,7 @@ impl SessionCore {
                 turn,
                 &self.model,
                 WakeupPlacement::NewTurn,
+                wakeup.ended,
             );
             self.commit();
             return Some(false);
@@ -1029,12 +1032,19 @@ impl SessionCore {
 
     // Yield wakeups.
 
-    /// Schedules a wakeup its action arms when it ends.
-    pub(super) fn schedule_wakeup(&mut self, duration_ms: u32) -> WakeupId {
+    /// Schedules a wakeup its action arms when it ends, unless one of
+    /// `commands` ends first.
+    pub(super) fn schedule_wakeup(&mut self, duration_ms: u32, commands: Vec<CommandId>) -> WakeupId {
         let id = WakeupId::try_from(self.ids.next_id())
             .expect("an id source never gives an empty identity");
-        self.wakeups.schedule(id.clone(), duration_ms);
+        self.wakeups.schedule(id.clone(), duration_ms, commands);
         id
+    }
+
+    /// One of the commands the wakeup `id` names ended: it is due at once,
+    /// or when its action ends.
+    pub(super) fn command_ended(&mut self, id: &WakeupId, ended: WakeupCommand) {
+        self.wakeups.command_ended(id, ended, self.clock.now());
     }
 
     /// Fires the wakeups due now: each joins the running action at its next
@@ -1449,7 +1459,6 @@ impl SessionCore {
     fn checkpoint_wakeups(&self) -> Vec<ScheduledWakeup> {
         self.wakeups
             .scheduled()
-            .iter()
             .chain(self.inputs.fired_wakeups())
             .cloned()
             .collect()

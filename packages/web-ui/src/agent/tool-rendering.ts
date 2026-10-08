@@ -3,8 +3,6 @@ import { nonEmptyString, numberOrNull, truncate } from '@demicodes/utils'
 export const STANDARD_TOOL_NAMES = [
   'shell_exec',
   'shell_status',
-  'shell_write',
-  'shell_abort',
   'yield'
 ] as const
 
@@ -38,24 +36,29 @@ export function standardToolTitle(
     case 'shell_exec':
       return nonEmptyString(input.script) ?? 'Run shell command'
     case 'shell_status': {
-      const commandId = nonEmptyString(input.commandId)
+      const commandId = commandIdText(input.commandId)
+      if (nonEmptyString(input.stdin))
+        return commandId ? `Send input to ${commandId}` : 'Send input'
       return commandId ? `Check ${commandId}` : 'Check command status'
     }
-    case 'shell_write': {
-      const commandId = nonEmptyString(input.commandId)
-      return commandId ? `Send input to ${commandId}` : 'Send input'
-    }
-    case 'shell_abort': {
-      const commandId = nonEmptyString(input.commandId)
-      return commandId ? `Stop ${commandId}` : 'Stop command'
-    }
     case 'yield': {
+      const commandIds = Array.isArray(input.commandIds)
+        ? input.commandIds.map(commandIdText).filter((id) => id !== undefined)
+        : []
+      if (commandIds.length > 0)
+        return `Wait for ${commandIds.join(', ')}`
       const duration = numberOrNull(input.durationMs)
       return duration === null
         ? 'Wait for wakeup'
         : `Wait ${Math.floor(duration)}ms`
     }
   }
+}
+
+/** A command's number as a call names it: the model writes it as a number or its digits. */
+function commandIdText(value: unknown): string | undefined {
+  const number = numberOrNull(value)
+  return number === null ? nonEmptyString(value) : String(number)
 }
 
 export function trimToolSummary(text: string, maxLength = 120): string {

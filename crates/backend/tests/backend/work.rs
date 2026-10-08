@@ -893,7 +893,7 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
 // Several seconds: two real devices each install the builtin package, and the
 // far job runs through `demi host shell`.
 #[tokio::test]
-async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_and_is_stopped_with_it()
+async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_and_demi_shell_stop_stops_it_with_the_far_job()
  {
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_file_package();
@@ -946,7 +946,7 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     }
 
     let write = json!({ "commandId": command, "description": "Answer the prompt", "stdin": "hello\n" });
-    work.turn(vec![tool_use("t2", "shell_write", &write), say("fed")])
+    work.turn(vec![tool_use("t2", "shell_status", &write), say("fed")])
         .await;
     let got = a.join("got.txt");
     let pid = a.join("far.pid");
@@ -967,17 +967,30 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
             .success()
     };
     assert!(alive(&pid));
+    // `demi shell stop` stops it, from another shell of the conversation,
+    // and waits until it has ended; a second stop is safe, and a number no
+    // command has fails, as it fails a yield.
+    let stop = format!("demi shell stop {command}; demi shell stop {command}; demi shell stop 999");
     let stopped = work
         .turn(vec![
-            tool_use("t3", "shell_abort", &json!({ "commandId": command })),
+            shell("t3", &stop, 30_000),
+            tool_use("t4", "shell_status", &json!({ "commandId": command })),
+            tool_use("t5", "yield", &json!({ "durationMs": 600_000, "commandIds": [999] })),
             say("stopped"),
         ])
         .await;
-    assert!(
-        stopped.received[0].starts_with("status: aborted"),
-        "{}",
-        stopped.received[0]
+    let [stop, look, wait] = &stopped.received[..] else {
+        panic!("{:#?}", stopped.received);
+    };
+    assert_eq!(field(stop, "exitCode"), "1", "{stop}");
+    assert_eq!(
+        shown_output(stop),
+        format!(
+            "[command {command} stopped]\n[command {command} had already ended]\ndemi shell stop: no command 999 in this conversation\n"
+        )
     );
+    assert!(look.starts_with("status: aborted"), "{look}");
+    assert_eq!(wait, "yield: no command 999 in this conversation");
     crate::support::eventually("the far job ended", || {
         let alive = alive(&pid);
         async move { !alive }

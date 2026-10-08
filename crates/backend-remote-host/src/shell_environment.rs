@@ -162,6 +162,9 @@ struct Environment {
     state: RefCell<State>,
     /// The jobs' tasks.
     tasks: TaskTracker,
+    /// Changes each time one of its commands ends, which a wait for a
+    /// command's end watches.
+    ends: watch::Sender<()>,
 }
 
 #[derive(Default)]
@@ -244,6 +247,7 @@ impl RemoteShellEnvironment {
             options,
             state: RefCell::default(),
             tasks: TaskTracker::new(),
+            ends: watch::Sender::new(()),
         }))
     }
 
@@ -252,11 +256,11 @@ impl RemoteShellEnvironment {
     /// awaits in, so two execs never share a shell. A new shell takes the
     /// conversation's next shell number, fetched first when none is spare.
     /// An exec refused before its number is taken takes none.
-    async fn start(
+    async fn start_command(
         &self,
         request: ExecRequest,
         cancel: CancellationToken,
-    ) -> Result<(CommandId, Rc<Running>), ShellError> {
+    ) -> Result<CommandId, ShellError> {
         if let ShellTarget::Existing(id) = &request.shell {
             check_free(&self.0.state.borrow(), id)?;
         }
@@ -288,7 +292,6 @@ impl RemoteShellEnvironment {
         // The pages learn of the command before its first output.
         self.report(&record);
         let environment = self.clone();
-        let task_running = running.clone();
         let task_command = command.clone();
         self.0.tasks.spawn_local(async move {
             environment
@@ -297,12 +300,12 @@ impl RemoteShellEnvironment {
                     task_command,
                     request.script,
                     request.caller,
-                    task_running,
+                    running,
                     record,
                 )
                 .await;
         });
-        Ok((command, running))
+        Ok(command)
     }
 
     /// Picks `target`'s shell and makes `command` its foreground; none when
@@ -320,14 +323,16 @@ impl RemoteShellEnvironment {
                 check_free(&state, id)?;
                 id.clone()
             }
-            ShellTarget::Ephemeral { cwd } => match self.create_shell(&mut state, cwd.clone()) {
+            ShellTarget::New { cwd } => match self.create_shell(&mut state, cwd.clone()) {
                 Some(id) => id,
                 None => return Ok(None),
             },
             ShellTarget::Default => match state.default_shell.clone() {
                 Some(id) if state.shells[&id].foreground.is_none() => id,
                 busy => {
-                    let Some(id) = self.create_shell(&mut state, None) else {
+                    // A shell beside the busy default one starts where it is.
+                    let cwd = busy.as_ref().map(|id| state.shells[id].cwd.clone());
+                    let Some(id) = self.create_shell(&mut state, cwd) else {
                         return Ok(None);
                     };
                     if busy.is_none() {
@@ -345,7 +350,10 @@ impl RemoteShellEnvironment {
         Ok(Some(shell_id))
     }
 
-    /// Makes a shell with the spare shell number; none when none is spare.
+    /// Makes a shell with the spare shell number, which starts in `cwd`, the
+    /// Host's default when none, with the variables every shell starts
+    /// with: no shell's variables carry from one exec to the next. None
+    /// when no number is spare.
     fn create_shell(&self, state: &mut State, cwd: Option<String>) -> Option<ShellId> {
         let id = state.spare_shell.take()?;
         state.shells.insert(
@@ -769,8 +777,15 @@ impl RemoteShellEnvironment {
                 .borrow_mut()
                 .settle(ending, Arc::new(output), binary_stdout, media, &page);
         if ended {
-            self.report(record);
+            self.ended_now(record);
         }
+    }
+
+    /// `record`'s command ended just now: the pages and the waits for its
+    /// end learn of it.
+    fn ended_now(&self, record: &Rc<RefCell<CommandRecord>>) {
+        self.report(record);
+        self.0.ends.send_replace(());
     }
 
     fn record(&self, command: &CommandId) -> Result<Rc<RefCell<CommandRecord>>, ShellError> {
@@ -824,7 +839,7 @@ impl RemoteShellEnvironment {
             if !running.settled_within(ABORT_GRACE).await {
                 let ended = record.borrow_mut().mark_aborted();
                 if ended {
-                    self.report(&record);
+                    self.ended_now(&record);
                 }
             }
         }
@@ -851,21 +866,38 @@ impl RemoteShellEnvironment {
 }
 
 impl ShellEnvironment for RemoteShellEnvironment {
-    fn exec(
+    fn start(
         &self,
         request: ExecRequest,
         cancel: CancellationToken,
-    ) -> LocalBoxFuture<'_, Result<CommandStatus, ShellError>> {
+    ) -> LocalBoxFuture<'_, Result<CommandId, ShellError>> {
+        Box::pin(self.start_command(request, cancel))
+    }
+
+    fn ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<Ending, ShellError>> {
         Box::pin(async move {
-            let window = request.window.duration();
-            let (command, running) = self.start(request, cancel).await?;
-            running.settled_within(window).await;
-            self.view(&command)
+            // The record outlives its release, which may come before this
+            // wait sees the end.
+            let record = self.record(command)?;
+            let mut ends = self.0.ends.subscribe();
+            loop {
+                if let Some(ending) = record.borrow().ending() {
+                    return Ok(ending);
+                }
+                // The sender lives in the environment `self` borrows.
+                let _ = ends.changed().await;
+            }
         })
     }
 
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
         self.view(command)
+    }
+
+    fn default_cwd(&self) -> Option<String> {
+        let state = self.0.state.borrow();
+        let shell = state.default_shell.as_ref()?;
+        Some(state.shells[shell].cwd.clone())
     }
 
     fn read_output<'a>(

@@ -1280,6 +1280,8 @@ mod tests {
             .map(|(index, due)| demi_agent_store::ScheduledWakeup {
                 id: format!("w{index}").try_into().unwrap(),
                 duration_ms: 1_000,
+                command_ids: Vec::new(),
+                ended: None,
                 due_at: due.map(|at| Timestamp::from_millisecond(at).unwrap()),
             })
             .collect();
