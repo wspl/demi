@@ -205,8 +205,8 @@ open, and a click opens it large:
   so a picture shows where the model saw it. A `shell_exec` whose command
   exits within the call's window carries the command's media, several of
   them when its commands returned several. When the command exits after the
-  call returned, the `shell_status`,
-  `shell_write` or `shell_abort` that reports the exit carries it instead. A
+  call returned, the `shell_status` that reports the exit carries it
+  instead. A
   `yield` carries none. The generic tool card shows its result's media the
   same way.
 - **Where.** Under the call's row, above the files the call changed, side

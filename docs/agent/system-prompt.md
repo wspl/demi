@@ -42,7 +42,7 @@ five layers in this order, and holds no time, Host or other state
 | --- | --- | --- |
 | Identity | The product; a [subagent profile](subagents.md#profiles)'s instructions replace it | What Demi is and how it works for the user |
 | Harness guide | The product | The facts of Demi's world the model cannot infer and that hold in every turn |
-| Tool rules | The agent runtime | How the five shell tools behave |
+| Tool rules | The agent runtime | How the three tools behave |
 | Capability index | Each command group's declaration | One entry per command group of the node, sorted by group |
 | Model identity | The agent runtime, from the node's model selection | Which model serves the node |
 
