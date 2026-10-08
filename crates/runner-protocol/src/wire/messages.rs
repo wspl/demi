@@ -988,12 +988,15 @@ pub enum Outbound {
         id: String,
     },
     /// The paths something changed at under watch `id`, each once: created,
-    /// written, removed or renamed (both names of a rename); `ignored` are
-    /// those of them git ignores in the watched path's repository.
+    /// written, removed or renamed (both names of a rename); `entries` are
+    /// those of them that came, went or were renamed, and `ignored` those
+    /// git ignores in the watched path's repository.
     FsWatchChanged {
         id: String,
         #[garde(length(min = 1, max = MAX_WATCH_PATHS))]
         paths: Vec<String>,
+        #[garde(length(max = MAX_WATCH_PATHS))]
+        entries: Vec<String>,
         #[garde(length(max = MAX_WATCH_PATHS))]
         ignored: Vec<String>,
     },
@@ -1514,6 +1517,12 @@ pub enum Looked {
 #[garde(allow_unvalidated)]
 pub struct GitChanges {
     pub repository: bool,
+    /// The absolute path of the repository's git directory; null outside a
+    /// repository. Named as the web API names its fields, since the page
+    /// receives it as it is.
+    #[serde(rename = "gitDir", deserialize_with = "Option::deserialize")]
+    #[schemars(with = "demi_shared_types::Nullable<String>")]
+    pub git_dir: Option<String>,
     /// Always written, null before the first commit.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "demi_shared_types::Nullable<String>")]

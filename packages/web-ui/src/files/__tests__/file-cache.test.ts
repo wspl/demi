@@ -1,6 +1,6 @@
 import { expect, jest, test } from 'bun:test'
 import { deferred, type Deferred } from '@demicodes/utils'
-import { HostFiles, type Coverage, type KeptSpec } from '../file-cache'
+import { HostFiles, SUMMARY_REREAD_MS, type Coverage, type KeptSpec } from '../file-cache'
 import { FileBrowserError } from '../types'
 
 // What a page keeps of a Host's files (`plugin-pages.md` § What the service
@@ -131,16 +131,49 @@ test('a report reads a shown listing again at once, and a burst of them once at 
   }
 })
 
-test('a change under .git unconfirms the changes list and the committed sides', async () => {
+// A fixed bug: every write under .git, such as the index `git status`
+// rewrites on each run, read again the sides of every changed file shown.
+test('in a git directory the index reads the changes list again, HEAD and refs every entry of the repository, anything else nothing', async () => {
+  jest.useFakeTimers()
+  try {
+    const files = new HostFiles()
+    files.cover(everything)
+    const { spec, answer, asked } = host()
+    const kept = (kind: KeptSpec<string>['kind'], path: string) => ({ ...spec(kind, path), root: '/w', gitDir: () => '/w/.git' })
+    files.show(kept('changes', '/w'))
+    files.show(kept('sides', '/w/src/app.ts'))
+    files.show(kept('committed', '/w/src/app.ts'))
+    files.show(spec('text', '/w/src/app.ts'))
+    await answer('x')
+    expect(asked()).toHaveLength(4)
+
+    files.changed(['/w/.git/objects/ab/cdef', '/w/.git/logs/HEAD', '/w/.git/index.lock'])
+    jest.advanceTimersByTime(SUMMARY_REREAD_MS)
+    expect(asked().slice(4)).toEqual([])
+
+    files.changed(['/w/.git/index'])
+    jest.advanceTimersByTime(SUMMARY_REREAD_MS)
+    expect(asked().slice(4)).toEqual(['changes /w'])
+    await answer('x')
+
+    files.changed(['/w/.git/refs/heads/main'])
+    jest.advanceTimersByTime(SUMMARY_REREAD_MS)
+    expect(asked().slice(5).sort()).toEqual(['changes /w', 'committed /w/src/app.ts', 'sides /w/src/app.ts'])
+  } finally {
+    jest.useRealTimers()
+  }
+})
+
+// A nested repository's git directory concerns none of the outer one's entries.
+test('another repository\'s git directory concerns no entry of this one', async () => {
   const files = new HostFiles()
   files.cover(everything)
   const { spec, answer, asked } = host()
-  files.show(spec('changes', '/w'))
-  files.show(spec('sides', '/w/src/app.ts'))
-  files.show(spec('text', '/w/src/app.ts'))
+  files.show({ ...spec('sides', '/w/src/app.ts'), root: '/w', gitDir: () => '/w/.git' })
+  files.show({ ...spec('changes', '/w'), root: '/w', gitDir: () => '/w/.git' })
   await answer('x')
-  files.changed(['/w/.git/index'])
-  expect(asked().slice(3)).toEqual(['changes /w', 'sides /w/src/app.ts'])
+  files.changed(['/w/third_party/v8/.git/HEAD'], ['/w/third_party/v8/.git/HEAD'])
+  expect(asked().slice(2)).toEqual([])
 })
 
 test('a watch that lost reports leaves nothing it covered confirmed, and what shows is read again', async () => {

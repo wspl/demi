@@ -104,11 +104,14 @@ pub enum FileWatchMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
     },
-    /// Absolute paths on the Host that something changed at, each once, and
-    /// `ignored`, those of them git ignores in the working tree's repository:
-    /// they change what the File view shows, not the working tree's changes.
+    /// Absolute paths on the Host that something changed at, each once;
+    /// `entries`, those of them that came, went or were renamed, which a
+    /// folder's listing reads again for; and `ignored`, those git ignores in
+    /// the working tree's repository: they change what the File view shows,
+    /// not the working tree's changes.
     Changed {
         paths: Vec<String>,
+        entries: Vec<String>,
         ignored: Vec<String>,
     },
     /// Nothing else was sent for 30 seconds: the watch is quiet, not dead.
@@ -144,10 +147,12 @@ pub enum FileWatchState {
 pub enum WatchReport {
     /// The watch runs: a change from now on is reported.
     Ready,
-    /// Absolute paths something changed at, and those of them git ignores
-    /// in the watched path's repository.
+    /// Absolute paths something changed at, those of them that came, went
+    /// or were renamed, and those git ignores in the watched path's
+    /// repository.
     Changed {
         paths: Vec<String>,
+        entries: Vec<String>,
         ignored: Vec<String>,
     },
     /// The watch lost reports; it keeps running.
@@ -266,8 +271,8 @@ impl PageWatch {
                 *coverage = Coverage::Failed(reason);
                 Vec::new()
             }
-            WatchReport::Changed { paths, ignored } => {
-                vec![FileWatchMessage::Changed { paths, ignored }]
+            WatchReport::Changed { paths, entries, ignored } => {
+                vec![FileWatchMessage::Changed { paths, entries, ignored }]
             }
             // Before the first `live` nothing was covered.
             WatchReport::Lost if self.initial && !self.unavailable => {

@@ -96,6 +96,8 @@ export const emptyChangeSet: ChangeSetSource = {
     entry: { value: undefined, failure: { kind: 'not-found', message: 'No change recorded' }, reading: false },
     retry: () => {},
     release: () => {},
+    away: () => {},
+    back: () => {},
   }),
 }
 

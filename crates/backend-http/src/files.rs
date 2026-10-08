@@ -344,8 +344,9 @@ pub(super) async fn upload(
 pub(super) async fn changes(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Path(id): Path<String>,
-) -> Result<Json<WorkingTreeChanges>, ApiError> {
+) -> Result<Response, ApiError> {
     let changes = on_host(&state, &user.id, &id, None, async move |host| {
         let changes = host
             .host
@@ -358,7 +359,7 @@ pub(super) async fn changes(
         })
     })
     .await?;
-    Ok(Json(changes))
+    Ok(unless_held(&headers, &changes))
 }
 
 /// One changed file's two sides as text: the last commit's, empty for a
@@ -366,9 +367,10 @@ pub(super) async fn changes(
 pub(super) async fn changed_file(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Path(id): Path<String>,
     QueryParams(TreeFileQuery { path }): QueryParams<TreeFileQuery>,
-) -> Result<Json<ChangeSides>, ApiError> {
+) -> Result<Response, ApiError> {
     let sides = on_host(&state, &user.id, &id, None, async move |host| {
         // The two sides do not wait for each other (`runner.md` § Host
         // operations).
@@ -390,7 +392,29 @@ pub(super) async fn changed_file(
         Ok(ChangeSides { original, modified })
     })
     .await?;
-    Ok(Json(sides))
+    Ok(unless_held(&headers, &sides))
+}
+
+/// `value` as JSON with an ETag of its content, or 304 when the request's
+/// `If-None-Match` names that ETag: the page then keeps what it holds and
+/// receives nothing (`web-api.md` § File text and working tree changes).
+fn unless_held(headers: &HeaderMap, value: &impl serde::Serialize) -> Response {
+    use sha2::{Digest as _, Sha256};
+    let body = serde_json::to_vec(value).expect("an answer of the API serializes");
+    // As the assets' tags are made (`assets.rs`).
+    let tag = format!("\"{:x}\"", Sha256::digest(&body));
+    let held = header(headers, IF_NONE_MATCH);
+    if held.is_some_and(|held| held.split(',').any(|one| one.trim() == tag)) {
+        return (StatusCode::NOT_MODIFIED, [(ETAG, header_value(&tag))]).into_response();
+    }
+    (
+        [
+            (ETAG, header_value(&tag)),
+            (axum::http::header::CONTENT_TYPE, HeaderValue::from_static("application/json")),
+        ],
+        body,
+    )
+        .into_response()
 }
 
 /// A changed file's last committed bytes, by range. Git's copy is read whole

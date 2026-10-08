@@ -246,12 +246,13 @@ async fn a_watch_carries_the_watch_and_its_paths_and_says_heartbeat_when_quiet()
     assert_eq!(watch.next().await.json()["paths"][0], "/etc/hosts");
     says.send(FileWatchMessage::Changed {
         paths: vec!["/work/a.rs".into(), "/work/server.log".into()],
+        entries: vec!["/work/a.rs".into()],
         ignored: vec!["/work/server.log".into()],
     })
     .unwrap();
     assert_eq!(
         watch.next().await.json(),
-        json!({ "type": "changed", "paths": ["/work/a.rs", "/work/server.log"], "ignored": ["/work/server.log"] })
+        json!({ "type": "changed", "paths": ["/work/a.rs", "/work/server.log"], "entries": ["/work/a.rs"], "ignored": ["/work/server.log"] })
     );
 
     // Thirty quiet seconds, on a paused clock: the peer's own checks go on

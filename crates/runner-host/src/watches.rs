@@ -320,9 +320,10 @@ impl Follow {
             .follow(|report| {
                 let message = match report {
                     WatchReport::Ready => wire::Outbound::FsWatchReady { id: id.clone() },
-                    WatchReport::Changed { paths, ignored } => wire::Outbound::FsWatchChanged {
+                    WatchReport::Changed { paths, entries, ignored } => wire::Outbound::FsWatchChanged {
                         id: id.clone(),
                         paths,
+                        entries,
                         ignored,
                     },
                     WatchReport::Lost => wire::Outbound::FsWatchLost { id: id.clone() },
@@ -414,6 +415,8 @@ impl Watched<'_> {
         let mut ready = false;
         let mut gathered: Vec<PathBuf> = Vec::new();
         let mut seen: HashSet<PathBuf> = HashSet::new();
+        // Those of `gathered` that came, went or were renamed.
+        let mut entries: HashSet<PathBuf> = HashSet::new();
         let mut due: Option<tokio::time::Instant> = None;
         loop {
             let status = statuses.borrow_and_update().clone();
@@ -438,9 +441,12 @@ impl Watched<'_> {
                     let _ = changed;
                 }
                 event = received.recv() => match event {
-                    Some(WatchEvent::Changed { path, metadata }) => {
+                    Some(WatchEvent::Changed { path, metadata, entry }) => {
                         if metadata && under_git(&path) {
                             continue;
+                        }
+                        if entry {
+                            entries.insert(path.clone());
                         }
                         if seen.insert(path.clone()) {
                             gathered.push(path);
@@ -450,6 +456,7 @@ impl Watched<'_> {
                     Some(WatchEvent::Lost) => {
                         gathered.clear();
                         seen.clear();
+                        entries.clear();
                         due = None;
                         if !report(WatchReport::Lost).await {
                             return;
@@ -465,6 +472,7 @@ impl Watched<'_> {
                     due = None;
                     seen.clear();
                     let paths = std::mem::take(&mut gathered);
+                    let came = std::mem::take(&mut entries);
                     let gathered = if paths.len() > wire::MAX_WATCH_PATHS {
                         WatchReport::Lost
                     } else {
@@ -472,6 +480,11 @@ impl Watched<'_> {
                         WatchReport::Changed {
                             paths: paths
                                 .iter()
+                                .map(|path| respelled(path, &canonical, &requested))
+                                .collect(),
+                            entries: paths
+                                .iter()
+                                .filter(|path| came.contains(*path))
                                 .map(|path| respelled(path, &canonical, &requested))
                                 .collect(),
                             ignored: ignored

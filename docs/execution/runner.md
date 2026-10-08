@@ -398,7 +398,7 @@ The `git_changes` reply:
 | Field | Meaning |
 | --- | --- |
 | `repository` | False when the directory is not inside a git repository; the other fields are then empty. |
-| `git_dir` | The absolute path of the repository's git directory, which a page reads reports under by what each of its entries depends on. |
+| `gitDir` | The absolute path of the repository's git directory, which a page reads reports under by what each of its entries depends on. |
 | `head` | The commit the changes are against; null before the first commit. |
 | `files` | One entry per path `git status` lists under the directory, path relative to it: its `status`, git's two status letters for it; its `kind`, how the working tree differs from `head`: `added`, `modified`, `deleted`, or `renamed` (with the old path in `from`); and the lines added and removed against `head`. |
 | `truncated` | True when the list stopped at 5,000 files. |

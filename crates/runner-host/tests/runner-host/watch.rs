@@ -57,6 +57,8 @@ async fn ready(replies: &mut mpsc::Receiver<wire::Frame>) {
 #[derive(Default)]
 struct Reported {
     paths: Vec<String>,
+    /// Those of them that came, went or were renamed.
+    entries: BTreeSet<String>,
     /// Those of them git ignores.
     ignored: BTreeSet<String>,
 }
@@ -69,14 +71,15 @@ async fn until_reported(replies: &mut mpsc::Receiver<wire::Frame>, wanted: &[Pat
     let mut reported = Reported::default();
     while !wanted.is_empty() {
         match next(replies).await {
-            Outbound::FsWatchChanged { id, paths, ignored } => {
+            Outbound::FsWatchChanged { id, paths, entries, ignored } => {
                 assert_eq!(id, "w");
                 let unique: BTreeSet<&String> = paths.iter().collect();
                 assert_eq!(unique.len(), paths.len(), "a path twice in {paths:?}");
                 assert!(
-                    ignored.iter().all(|path| unique.contains(path)),
-                    "{ignored:?} not among {paths:?}"
+                    ignored.iter().chain(&entries).all(|path| unique.contains(path)),
+                    "{ignored:?} or {entries:?} not among {paths:?}"
                 );
+                reported.entries.extend(entries);
                 for path in &paths {
                     wanted.remove(path);
                 }
@@ -160,14 +163,18 @@ async fn a_watch_reports_a_file_created_written_renamed_and_removed_under_the_pa
 
         let first = root.join("a.txt");
         let second = root.join("b.txt");
+        // A file that came, was renamed or went is an entry of its folder.
         std::fs::write(&first, "1\n").unwrap();
-        until_reported(&mut replies, std::slice::from_ref(&first)).await;
+        let created = until_reported(&mut replies, std::slice::from_ref(&first)).await;
+        assert!(created.entries.contains(&spelled(&first)), "{:?}", created.entries);
         std::fs::write(&first, "1\n2\n").unwrap();
         until_reported(&mut replies, std::slice::from_ref(&first)).await;
         std::fs::rename(&first, &second).unwrap();
-        until_reported(&mut replies, &[first.clone(), second.clone()]).await;
+        let renamed = until_reported(&mut replies, &[first.clone(), second.clone()]).await;
+        assert!(renamed.entries.contains(&spelled(&second)), "{:?}", renamed.entries);
         std::fs::remove_file(&second).unwrap();
-        until_reported(&mut replies, std::slice::from_ref(&second)).await;
+        let removed = until_reported(&mut replies, std::slice::from_ref(&second)).await;
+        assert!(removed.entries.contains(&spelled(&second)), "{:?}", removed.entries);
         host.close().await;
     })
     .await

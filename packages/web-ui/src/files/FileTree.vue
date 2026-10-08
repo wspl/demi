@@ -15,6 +15,7 @@ import Popover from '../ui/Popover.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import FileUploadList from './FileUploadList.vue'
+import { followOnScreen } from './on-screen'
 import Tree from './Tree.vue'
 import UploadConflictDialog from './UploadConflictDialog.vue'
 import { downloadUrl } from './download'
@@ -104,6 +105,8 @@ interface Listing {
 }
 
 const listings = shallowReactive(new Map<string, Listing>())
+// Each unfolded directory's listing follows the Host only while the tree is on screen.
+followOnScreen(() => [...listings.values()].map((entry) => entry.showing))
 
 function listing(path: string): Listing {
   let entry = listings.get(path)

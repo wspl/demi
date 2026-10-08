@@ -254,7 +254,7 @@ fn replies_name_their_operation_before_its_result() {
 fn a_working_tree_change_carries_a_pair_git_status_prints() {
     let changes = |status: &str| {
         json!({"type": "git_ok", "id": "git", "op": "changes", "result": {
-            "repository": true, "head": null, "truncated": false, "watched": false,
+            "repository": true, "gitDir": "/work/.git", "head": null, "truncated": false, "watched": false,
             "files": [{"path": "a", "status": status, "kind": "modified", "added": 0, "removed": 0}],
         }})
     };

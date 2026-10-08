@@ -18,8 +18,9 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum WatchEvent {
     /// Something changed at `path`; `metadata` when only its metadata did,
-    /// such as its mode or its times.
-    Changed { path: PathBuf, metadata: bool },
+    /// such as its mode or its times; `entry` when the path came, went or
+    /// was renamed, or the platform's event leaves that in doubt.
+    Changed { path: PathBuf, metadata: bool, entry: bool },
     /// The watch lost events: what it reported no longer tells what changed.
     Lost,
     /// The watch failed, for this reason, and reports nothing more.
@@ -69,10 +70,16 @@ fn from_notify(event: notify::Event) -> Vec<WatchEvent> {
         return Vec::new();
     }
     let metadata = matches!(event.kind, EventKind::Modify(ModifyKind::Metadata(_)));
+    // Only a write of content or of metadata is sure to leave the name in
+    // place; any other kind, an unknown one included, may have moved it.
+    let entry = !matches!(
+        event.kind,
+        EventKind::Modify(ModifyKind::Data(_) | ModifyKind::Metadata(_))
+    );
     event
         .paths
         .into_iter()
-        .map(|path| WatchEvent::Changed { path, metadata })
+        .map(|path| WatchEvent::Changed { path, metadata, entry })
         .collect()
 }
 
@@ -128,8 +135,14 @@ fn from_flags(path: PathBuf, flags: fsevent_sys::FSEventStreamEventFlags) -> Wat
     if flags & LOST != 0 {
         return WatchEvent::Lost;
     }
+    const ENTRY: fs::FSEventStreamEventFlags = fs::kFSEventStreamEventFlagItemCreated
+        | fs::kFSEventStreamEventFlagItemRemoved
+        | fs::kFSEventStreamEventFlagItemRenamed;
     let metadata = flags & METADATA != 0 && flags & CONTENT == 0;
-    WatchEvent::Changed { path, metadata }
+    // FSEvents merges an item's flags over a short history, so a file
+    // created and then written shows both: it counts as having come.
+    let entry = flags & ENTRY != 0;
+    WatchEvent::Changed { path, metadata, entry }
 }
 
 #[cfg(target_os = "macos")]

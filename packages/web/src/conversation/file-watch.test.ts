@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
-import { HostFiles, type KeptSpec } from '@demicodes/web-ui/files/file-cache'
+import { HostFiles, SUMMARY_REREAD_MS, type KeptSpec } from '@demicodes/web-ui/files/file-cache'
 import type { FileWatchMessage, FileWatchRequest } from '../api/generated/web-api'
 import { ConversationWatch } from './file-watch'
 
@@ -86,6 +86,15 @@ function kept() {
 const live: FileWatchMessage = { type: 'state', state: 'live' }
 
 test('a path git ignores reads its file again but leaves the changes list, which a tracked path or .git reads again', async () => {
+  jest.useFakeTimers()
+  try {
+    await ignoredPathsLeaveTheList()
+  } finally {
+    jest.useRealTimers()
+  }
+})
+
+async function ignoredPathsLeaveTheList(): Promise<void> {
   const { files, reads, spec } = kept()
   const watch = new ConversationWatch('c1', () => ({ files, root: '/w' }))
   watch.show('/w')
@@ -94,21 +103,24 @@ test('a path git ignores reads its file again but leaves the changes list, which
   socket.receive(live)
   files.show(spec('changes', '/w'))
   files.show(spec('text', '/w/server.log'))
-  await settle()
+  await flush()
 
   // A process appends to a log git ignores: the File view follows it, the Change list asks nothing.
-  socket.receive({ type: 'changed', paths: ['/w/server.log'], ignored: ['/w/server.log'] })
-  await settle()
+  socket.receive({ type: 'changed', paths: ['/w/server.log'], entries: ['/w/server.log'], ignored: ['/w/server.log'] })
+  await flush()
   expect(reads.slice(2)).toEqual(['text /w/server.log'])
 
-  socket.receive({ type: 'changed', paths: ['/w/app.ts', '/w/server.log'], ignored: ['/w/server.log'] })
-  await settle()
-  expect(reads.slice(3)).toEqual(['changes /w', 'text /w/server.log'])
+  // A tracked path reads the list again, once the second since its last read ends.
+  socket.receive({ type: 'changed', paths: ['/w/app.ts', '/w/server.log'], entries: ['/w/app.ts', '/w/server.log'], ignored: ['/w/server.log'] })
+  jest.advanceTimersByTime(SUMMARY_REREAD_MS)
+  await flush()
+  expect(reads.slice(3)).toEqual(['text /w/server.log', 'changes /w'])
 
-  socket.receive({ type: 'changed', paths: ['/w/.git/index'], ignored: [] })
-  await settle()
+  socket.receive({ type: 'changed', paths: ['/w/.git/index'], entries: ['/w/.git/index'], ignored: [] })
+  jest.advanceTimersByTime(SUMMARY_REREAD_MS)
+  await flush()
   expect(reads.slice(5)).toEqual(['changes /w'])
-})
+}
 
 test('a live watch confirms what is read, and a report has what it names read again', async () => {
   const { files, reads, spec } = kept()
@@ -126,7 +138,7 @@ test('a live watch confirms what is read, and a report has what it names read ag
   expect(reads).toEqual(['text /w/a.ts'])
 
   const again = files.show(spec('text', '/w/a.ts'))
-  socket.receive({ type: 'changed', paths: ['/w/a.ts'], ignored: [] })
+  socket.receive({ type: 'changed', paths: ['/w/a.ts'], entries: ['/w/a.ts'], ignored: [] })
   await settle()
   expect(reads).toEqual(['text /w/a.ts', 'text /w/a.ts'])
   expect(again.entry.value).toBe('2')
