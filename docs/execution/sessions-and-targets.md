@@ -243,9 +243,14 @@ The categories:
 `move` and `create-project` change where the conversation runs, and make a
 [pending move](#switch-the-primary-target) that applies when the tree is next
 idle; they print that the move applies when this conversation's work ends.
-`rename`, `attach` and `detach` apply at once; an attach or detach is
-announced to every node in its next execution-context block, as one the user
-makes. A move into a project on a paired device that is neither the primary
+`detach` is a transition too, which the command's own job and its working
+tree would always find busy, so it waits the same way: it marks the
+attachment to end, prints that the device is detached when this
+conversation's work ends, and the backend detaches it then, in the same
+transition as a pending move; the device stays usable until then, and an
+`attach` of it before then cancels the mark. `rename` and `attach` apply at
+once. An attach or detach is announced to every node in its next
+execution-context block, as one the user makes. A move into a project on a paired device that is neither the primary
 Host nor attached brings that device into the conversation, so it also needs Manage
 Devices, and one request asks for both
 ([Several categories](../agent/permissions.md#several-categories)).
