@@ -139,8 +139,8 @@ level, as a Wi-Fi menu lists networks:
 ```text
 Run On
   ☁ Cloud
-  🖥• MacBook Pro  This Computer 1 ms  ✓
-  🖥• Studio PC             LAN 3 ms
+  🖥• MacBook Pro     This Computer  ✓
+  🖥• Studio PC                 LAN
   🖥• Old Laptop             Offline   (cannot be chosen)
   + Add Device…
 ─────────
@@ -154,9 +154,8 @@ Attached
 - **How this browser reaches each one.** An online device's row ends with
   the path the page uses for it, *This Computer*, *LAN*, *P2P* or *Relay*
   ([Where the P2P path runs](../execution/direct-channel.md#what-the-user-sees)),
-  with its latency from the last
-  [measurement](../execution/direct-channel.md#measuring-the-paths) when
-  there is one, *LAN 2 ms*, as Wi-Fi menus show each network's security.
+  as Wi-Fi menus show each network's security; its latency is the device
+  page's.
   The Cloud's row shows nothing, since it is always reached the same way,
   and an offline device's reads *Offline*. The page knows the path of a
   device it has connected to, as it does while it shows a conversation on
