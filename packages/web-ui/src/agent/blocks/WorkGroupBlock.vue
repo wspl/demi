@@ -111,8 +111,8 @@ const face = computed<Face>(() => {
 const calls = computed(() => props.group.steps.filter((step) => step.type === 'tool_call'))
 const changed = computed(() => callFiles(calls.value))
 // Folded, each file the steps changed shows once, with the lines of its
-// changes across them counted from its two ends, as the request's line counts
-// them; until they are counted, or when its ends were not kept, its name alone.
+// changes across them counted from its two ends, as the Change view's All
+// Changes counts them; until they are counted, or when its ends were not kept, its name alone.
 const pills = ref<HTMLElement | null>(null)
 const pillsShown = useElementVisibility(pills)
 const counts = useFileLineCounts(() => changed.value, () => pillsShown.value && !isOpen.value)

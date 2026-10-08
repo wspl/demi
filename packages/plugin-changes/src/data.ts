@@ -89,7 +89,7 @@ export function showEdit(data: ChangeData, edit: RequestEditRef | null): ChangeD
   return go(data, { mode: 'conversation', uncommitted: data.uncommitted, request: { ...data.request, edit } })
 }
 
-/** The `edit` intent: a request's line or a file pill, in Conversation mode. */
+/** The `edit` intent: a file pill, in Conversation mode. */
 export function showRequestEdit(data: ChangeData, selection: RequestEditSelection): ChangeData {
   return go(data, { mode: 'conversation', uncommitted: data.uncommitted, request: selection })
 }

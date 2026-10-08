@@ -194,7 +194,7 @@ export function useGalleryWork(
   /** What the panel shows, as its strip marks it. */
   const selected = computed(() => shownSelection(panel.value, kinds))
 
-  /** A request's line or a tool call's file pill, through the `edit` intent. */
+  /** A file pill, through the `edit` intent. */
   function selectEdit(edit: RequestEditSelection) {
     openIn({ intent: 'edit', payload: edit })
   }

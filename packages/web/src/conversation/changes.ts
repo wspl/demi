@@ -37,7 +37,7 @@ export function workingTreeReads(conversationId: string): ChangeReads {
 
 /**
  * The texts of the blobs read so far, for the page's lifetime: a blob's bytes
- * never change, so the Change view and a request's line counts read each
+ * never change, so the Change view and a work group's file counts read each
  * once. A read that fails is dropped, so the next one tries again.
  */
 const blobTexts = new Map<string, Promise<string>>()

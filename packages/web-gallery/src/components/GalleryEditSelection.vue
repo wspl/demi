@@ -2,9 +2,8 @@
 import { provideEditSelection, type EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
 
 /**
- * What a request's line and the file pills below open: `select`, or nothing
- * at all, as with the `changes` plugin off, when the line and the pills are
- * no controls.
+ * What the file pills below open: `select`, or nothing at all, as with the
+ * `changes` plugin off, when the pills are no controls.
  */
 const props = defineProps<{ select?: EditSelectionHandler }>()
 provideEditSelection(() => props.select)

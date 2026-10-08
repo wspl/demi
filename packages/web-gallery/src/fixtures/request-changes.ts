@@ -7,7 +7,7 @@ import { WORKSPACE_ROOT } from './workspace'
 
 /**
  * Requests whose calls changed files (`edit-tracking.md` § Delivery to the
- * conversation), for the specimens of a request's line and of the Change
+ * conversation), for the specimens of the file pills and of the Change
  * view in Conversation mode.
  */
 

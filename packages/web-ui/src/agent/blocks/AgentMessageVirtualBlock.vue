@@ -119,11 +119,7 @@ const entersAsChrome = computed(() =>
       :fork="block.forkable ? fork : undefined"
       :fork-state="forkState"
       :regenerate="regenerate"
-    >
-      <template v-if="$slots.replyEnd" #end>
-        <slot name="replyEnd" />
-      </template>
-    </AssistantTextBlock>
+    />
     <div
       v-else-if="block.type === 'tool_call'"
       class="overflow-hidden px-[var(--agent-pad-x,2rem)]"
