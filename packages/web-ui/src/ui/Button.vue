@@ -23,13 +23,14 @@ const props = withDefaults(
   defineProps<{
     size?: 'xs' | 'sm' | 'md' | 'lg'
     /**
-     * primary: the default action, filled with the accent. destructive: the
-     * action of a confirmation that removes or resets what the user set up,
-     * filled red (Remove, Revoke, Reset Environment). danger: a destructive
-     * action that is not a confirmation's answer, red text on a plain face,
-     * which then asks first (Delete beside Save, Delete Account).
+     * primary: the default button, filled with the accent, which Return
+     * presses in a dialog; in a confirmation whose action destroys
+     * something, that is Cancel. danger: an action that destroys, red text
+     * on a plain face, never the default, as macOS's alerts show it: a
+     * confirmation's answer (Remove, Revoke, Reset Environment), or one
+     * that then asks first (Delete beside Save, Delete Account).
      */
-    variant?: 'default' | 'primary' | 'destructive' | 'ghost' | 'danger'
+    variant?: 'default' | 'primary' | 'ghost' | 'danger'
     disabled?: boolean
     loading?: boolean
     /** Why it is disabled, as a tooltip; only read while `disabled`. */
@@ -76,8 +77,9 @@ const sizeClass = computed(() => {
 <template>
   <!-- The tip sits on a wrapper so a disabled face can still be hovered. The face itself
        ignores pointer events, so a parent's click does not fire. It takes the focus when
-       clicked or given it, as a native button does, but is no Tab stop, as on macOS; a
-       primary button is the default action a dialog without a field opens on. -->
+       clicked or given it, as a native button does, but is no Tab stop, as on macOS. A
+       primary button is a dialog's default button: Return presses it, and a dialog without
+       a field opens on it (Dialog). -->
   <Tooltip
     :content="tooltipContent"
     :disabled="!tooltipContent"
@@ -106,10 +108,9 @@ const sizeClass = computed(() => {
       :data-pressed="!disabled && pressed ? true : undefined"
       :class="[
         sizeClass,
-        variant === 'primary' || variant === 'destructive'
+        variant === 'primary'
           ? [
-              variant === 'primary' ? 'btn-primary' : 'btn-destructive',
-              'font-medium text-white',
+              'btn-primary font-medium text-white',
               pressed ? 'brightness-110' : 'hover:brightness-110',
             ]
           : variant === 'ghost'
@@ -147,8 +148,7 @@ const sizeClass = computed(() => {
 .button-loading-indicator {
   color: var(--color-fg-muted);
 }
-.btn-primary .button-loading-indicator,
-.btn-destructive .button-loading-indicator {
+.btn-primary .button-loading-indicator {
   color: white;
 }
 </style>

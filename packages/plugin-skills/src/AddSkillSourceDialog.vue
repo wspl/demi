@@ -68,7 +68,7 @@ async function submit() {
     label="Add Source"
     @close="emit('close')"
   >
-    <div class="flex flex-col gap-4 p-5">
+    <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Add Source</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">A Git repository. Every SKILL.md in it becomes a skill you can turn on.</p>
@@ -86,24 +86,22 @@ async function submit() {
             aria-label="Repository"
             literal
             :readonly="busy"
-            @keydown.enter="submit"
           />
         </SettingsRow>
       </div>
       <InlineError v-if="refusal" :message="refusal" />
-
-      <div class="flex items-center justify-between gap-3">
-        <ExternalLink href="https://skills.sh">Browse skills.sh</ExternalLink>
-        <div class="flex justify-end gap-2">
-          <Button @click="emit('close')">Cancel</Button>
-          <Button
-            variant="primary"
-            :disabled="!canAdd && !busy"
-            :loading="busy"
-            @click="submit"
-          >Add Source</Button>
-        </div>
-      </div>
     </div>
+    <template #footer-leading>
+      <ExternalLink href="https://skills.sh">Browse skills.sh</ExternalLink>
+    </template>
+    <template #footer>
+      <Button @click="emit('close')">Cancel</Button>
+      <Button
+        variant="primary"
+        :disabled="!canAdd && !busy"
+        :loading="busy"
+        @click="submit"
+      >Add Source</Button>
+    </template>
   </Dialog>
 </template>

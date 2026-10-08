@@ -30,7 +30,6 @@ const conversations = ref(demoConversations())
 const activeId = ref<string | null>('c-login')
 const collapsedProjects = ref<string[]>(['p-dotfiles'])
 const sidebarWidth = ref<number>(SIDEBAR_WIDTH.default)
-const emptyList = ref<SidebarConversation[]>([])
 let nextId = 1
 
 // The live specimen's settings dialog, over the fixture the Settings view uses: an entry opens it
@@ -70,7 +69,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Conversations',
-    'Plain conversations that run in no checkout. Manual order, pinned on top. The Conversations and Projects headings stick to the top of the list as it scrolls.'
+    'Plain conversations that run in no checkout. Manual order, pinned on top. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
   ],
   [
     'Projects',
@@ -115,21 +114,10 @@ function select(id: string): void {
   ))
 }
 
+/** New opens an empty draft, which the sidebar lists only once it holds a character or a file: no row is selected. */
 function create(projectId: string | null): void {
-  const id = `c-new-${nextId++}`
-  conversations.value = [
-    {
-      id,
-      title: 'New conversation',
-      updatedAt: new Date().toISOString(),
-      status: 'idle',
-      projectId,
-      pinned: false,
-      unread: false
-    },
-    ...conversations.value,
-  ]
-  activeId.value = id
+  activeId.value = null
+  productWould(projectId ? 'Start a New Conversation in the Project' : 'Start a New Conversation')
 }
 
 /** Adds a project and opens a new conversation in it, as the product's New Project does. */
@@ -412,11 +400,9 @@ onBeforeUnmount(() => listRestore.stop())
               @search="productWould('Open the Search Window')"
               :account="demoAccount"
               :projects="fixedProjects.slice(0, 1)"
-              :conversations="emptyList"
+              :conversations="[]"
               :active-id="null"
-              @create="(projectId) => (emptyList = [{ id: 'first', title: 'New conversation', updatedAt: new Date().toISOString(), status: 'idle', projectId, pinned: false, unread: false }])"
-              @archive="(ids) => (emptyList = without(emptyList, ids))"
-              @delete="(ids) => (emptyList = without(emptyList, ids))"
+              @create="create"
             />
           </div>
         </GallerySpecimen>

@@ -196,7 +196,6 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
               placeholder="explore"
               literal
               aria-label="Name"
-              @keydown.enter="save"
             />
           </SettingsRow>
           <SettingsRow label="Description" description="Required. When the agent should use it, in one line.">
@@ -205,7 +204,6 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
               class="w-80 max-w-full"
               placeholder="Use for finding code; it reports and changes nothing."
               aria-label="Description"
-              @keydown.enter="save"
             />
           </SettingsRow>
           <SettingsRow label="Model" description="The parent’s, or one of any provider with its effort and tier.">
@@ -257,20 +255,15 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
         <InlineError v-if="missing" :message="missing" />
       </ScrollArea>
       <InlineError v-if="error" class="px-5 pt-3" :message="error" />
-
-      <div class="flex items-center gap-2 p-5 pt-4">
-        <Button
-          v-if="mode === 'edit'"
-          variant="danger"
-          :disabled="pending"
-          @click="emit('delete')"
-        >Delete</Button>
-        <span class="flex-1" />
-        <Button @click="emit('close')">Cancel</Button>
-        <Button variant="primary" :disabled="!canSave" @click="save">
-          {{ mode === 'create' ? 'Create Profile' : 'Save' }}
-        </Button>
-      </div>
     </div>
+    <template v-if="mode === 'edit'" #footer-leading>
+      <Button variant="danger" :disabled="pending" @click="emit('delete')">Delete</Button>
+    </template>
+    <template #footer>
+      <Button @click="emit('close')">Cancel</Button>
+      <Button variant="primary" :disabled="!canSave" @click="save">
+        {{ mode === 'create' ? 'Create Profile' : 'Save' }}
+      </Button>
+    </template>
   </Dialog>
 </template>
