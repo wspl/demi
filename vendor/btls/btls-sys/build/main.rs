@@ -631,8 +631,8 @@ fn get_cpp_runtime_lib(config: &Config) -> Option<String> {
 ///
 /// The destination directory must exist and be empty. Writes:
 ///
-///   - `lib/libcrypto.a`
-///   - `lib/libssl.a`
+///   - `lib/libcrypto.a`, or `lib/crypto.lib` for an MSVC target
+///   - `lib/libssl.a`, or `lib/ssl.lib` for an MSVC target
 ///   - `lib/bcm.o` (if FIPS is enabled)
 ///   - `include/openssl/...` (patched headers)
 fn install_artifacts(
@@ -651,11 +651,18 @@ fn install_artifacts(
     let lib_dir = install_dir.join("lib");
     fs::create_dir(&lib_dir)?;
 
-    for lib in ["libcrypto.a", "libssl.a", "bcm.o"] {
-        if !config.features.fips && lib == "bcm.o" {
-            continue;
-        }
+    // Demi's: an MSVC build's libraries carry MSVC's names, which
+    // `emit_link_directives` links by as well.
+    let libraries = if config.target_env == "msvc" {
+        ["crypto.lib", "ssl.lib"]
+    } else {
+        ["libcrypto.a", "libssl.a"]
+    };
+    for lib in libraries {
         fs::copy(bssl_build_dir.join(lib), lib_dir.join(lib))?;
+    }
+    if config.features.fips {
+        fs::copy(bssl_build_dir.join("bcm.o"), lib_dir.join("bcm.o"))?;
     }
 
     fs_extra::dir::copy(get_include_path(config)?, &install_dir, &Default::default())?;
