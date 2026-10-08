@@ -174,7 +174,7 @@ the view, without involving the Host; an added segment's original is empty.
 For example, the user asks "fix the sign-in page". The agent edits
 `login.ts` and `form.css`, starts a build and yields until it ends; woken,
 it edits `login.ts` again and replies. Under the reply a line reads
-*2 Files Changed*. It opens the Change
+*2 Files Changed +10 −0*. It opens the Change
 view on that request: a sidebar lists `login.ts` and `form.css`, and
 `login.ts` shows its change from before the first edit to after the second.
 
@@ -212,10 +212,16 @@ parent's own commands changed.
   ([Rendering boundary](../agent/runtime.md#rendering-boundary)).
 - **The request's line.** At the end of a request's reply, above its Copy
   and Fork, once one of its calls has changed a file, a button that names
-  how many files: *2 Files Changed*. It grows as later calls of the request
-  end. It counts files the request's calls changed and that still exist when
-  each call ended. It gives no line counts: adding up each call's would
-  disagree with All Changes, whose counts the Change view shows.
+  how many files and the lines added and removed across them:
+  *2 Files Changed +10 −0*, as GitHub and Cursor sum a change. It grows as
+  later calls of the request end. It counts files the request's calls
+  changed and that still exist when each call ended. The lines are each
+  file's All Changes, counted as the Change view counts them, not the sum of
+  each call's counts, which counts a line twice when two calls change it:
+  when the line comes into view, the page reads each file's first original
+  and last result, which never change, so once a page. Until they are
+  counted, or when a file's ends were not kept, the line shows the files
+  alone.
 - **The Change view.** The line and a pill open the `edit` intent, which the
   work panel's Change view opens in Conversation mode on the request
   ([Intents](../architecture/plugin-pages.md#intents)); with the `changes`
