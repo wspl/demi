@@ -459,9 +459,17 @@ impl ControlService {
                     // An archive withdraws the permission requests, decided
                     // ones whose message was not delivered among them, and
                     // keeps the grants (`permissions.md` § Requests).
+                    // It drops the move an agent asked for as well
+                    // (`sessions-and-targets.md` § Switch the primary target).
                     if *archived {
                         transaction.execute(
                             "DELETE FROM permission_requests WHERE conversation_id = ?1",
+                            [id.as_str()],
+                        )?;
+                        transaction.execute(
+                            "UPDATE conversations SET pending_id = NULL, pending_kind = NULL,
+                               pending_device_id = NULL, pending_path = NULL, pending_workspace_id = NULL
+                             WHERE id = ?1",
                             [id.as_str()],
                         )?;
                     }
@@ -485,6 +493,14 @@ impl ControlService {
                 RecordChange::Attach(host) => {
                     if insert_attached_host(&transaction, &id, host, now)? {
                         advance_context(&transaction, &id)?;
+                    } else {
+                        // Attached already: an attach cancels the detach an
+                        // agent asked for.
+                        transaction.execute(
+                            "UPDATE conversation_hosts SET detaching = 0
+                             WHERE conversation_id = ?1 AND device_id = ?2",
+                            params![id.as_str(), host.device.as_str()],
+                        )?;
                     }
                     1
                 }
@@ -912,7 +928,8 @@ impl ControlService {
     /// from: false, writing nothing, when the target is no longer
     /// `expected`, so of two switches from one target exactly one wins. The
     /// winner records `switch` for every node's next context block and
-    /// advances the execution-context revision.
+    /// advances the execution-context revision; when it makes the pending
+    /// move `pending`, it clears it.
     pub async fn switch_conversation_target(
         &self,
         id: ConversationId,
@@ -920,6 +937,7 @@ impl ControlService {
         to: ConversationTarget,
         switch: TargetSwitch,
         ends: SwitchEnds,
+        pending: Option<String>,
     ) -> Result<bool, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
@@ -970,6 +988,9 @@ impl ControlService {
                 };
                 insert_attached_host(&transaction, &id, &host, now)?;
             }
+            if let Some(pending) = &pending {
+                clear_pending_move(&transaction, &id, pending)?;
+            }
             transaction.commit()?;
             Ok(true)
         })
@@ -1002,6 +1023,213 @@ impl ControlService {
         })
         .await
     }
+}
+
+/// A move an agent asked for, which waits for its conversation's tree to be
+/// idle (`sessions-and-targets.md` § Switch the primary target).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingMove {
+    pub id: String,
+    pub target: ConversationTarget,
+}
+
+/// What waits for a conversation's tree to be idle: the move an agent asked
+/// for, and the attached devices an agent asked to detach.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PendingChanges {
+    pub moving: Option<PendingMove>,
+    pub detaching: Vec<DeviceId>,
+}
+
+impl PendingChanges {
+    pub fn is_empty(&self) -> bool {
+        self.moving.is_none() && self.detaching.is_empty()
+    }
+}
+
+impl ControlService {
+    /// Records the move to `target` an agent asked for, in place of the one
+    /// that waited, and answers its id; an archived conversation takes none.
+    pub async fn set_pending_move(
+        &self,
+        id: ConversationId,
+        target: ConversationTarget,
+    ) -> Result<Result<String, ChangeOutcome>, StorageError> {
+        self.call(move |connection, _| {
+            let pending = uuid::Uuid::new_v4().to_string();
+            let columns = TargetColumns::of(&target);
+            let set = connection.execute(
+                "UPDATE conversations SET pending_id = ?2, pending_kind = ?3, pending_device_id = ?4,
+                   pending_path = ?5, pending_workspace_id = ?6
+                 WHERE id = ?1 AND archived = 0",
+                params![
+                    id.as_str(),
+                    pending,
+                    columns.kind,
+                    columns.device,
+                    columns.path,
+                    columns.workspace
+                ],
+            )?;
+            if set == 1 {
+                return Ok(Ok(pending));
+            }
+            let archived: Option<bool> = connection
+                .query_row("SELECT archived FROM conversations WHERE id = ?1", [id.as_str()], |row| row.get(0))
+                .optional()?;
+            Ok(Err(match archived {
+                Some(_) => ChangeOutcome::Archived,
+                None => ChangeOutcome::Missing,
+            }))
+        })
+        .await
+    }
+
+    /// Marks the attached `device` to detach once the conversation's tree is
+    /// idle, as an agent's `demi host detach` asks; a device that is not
+    /// attached answers `NotAttached`.
+    pub async fn mark_detach(
+        &self,
+        id: ConversationId,
+        device: DeviceId,
+    ) -> Result<ChangeOutcome, StorageError> {
+        self.call(move |connection, _| {
+            let marked = connection.execute(
+                "UPDATE conversation_hosts SET detaching = 1
+                 WHERE conversation_id = ?1 AND device_id = ?2",
+                params![id.as_str(), device.as_str()],
+            )?;
+            Ok(if marked == 1 {
+                ChangeOutcome::Applied
+            } else {
+                ChangeOutcome::NotAttached
+            })
+        })
+        .await
+    }
+
+    /// What waits for the conversation's tree to be idle.
+    pub async fn pending_changes(&self, id: ConversationId) -> Result<PendingChanges, StorageError> {
+        self.call(move |connection, _| {
+            const TABLE: &str = "conversations";
+            let moving = connection
+                .query_row(
+                    "SELECT pending_id, pending_kind, pending_device_id, pending_path, pending_workspace_id
+                     FROM conversations WHERE id = ?1 AND pending_id IS NOT NULL",
+                    [id.as_str()],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, Option<String>>(2)?,
+                            row.get::<_, Option<String>>(3)?,
+                            row.get::<_, Option<String>>(4)?,
+                        ))
+                    },
+                )
+                .optional()?;
+            let moving = match moving {
+                None => None,
+                Some((pending, kind, device, path, workspace)) => {
+                    let target = match kind.as_str() {
+                        "cloud" => ConversationTarget::Cloud { path },
+                        "device" => ConversationTarget::Device {
+                            device_id: decode(
+                                TABLE,
+                                "pending_device_id",
+                                DeviceId::try_from(device.unwrap_or_default()),
+                            )?,
+                            path: path.unwrap_or_default(),
+                        },
+                        "workspace" => ConversationTarget::Workspace {
+                            workspace_id: decode(
+                                TABLE,
+                                "pending_workspace_id",
+                                WorkspaceId::try_from(workspace.unwrap_or_default()),
+                            )?,
+                        },
+                        other => {
+                            return Err(StorageError::Corrupt {
+                                table: TABLE,
+                                column: "pending_kind",
+                                reason: format!("unknown target kind {other}"),
+                            });
+                        }
+                    };
+                    decode(TABLE, "pending_path", target.validate())?;
+                    Some(PendingMove {
+                        id: pending,
+                        target,
+                    })
+                }
+            };
+            let detaching = connection
+                .prepare_cached(
+                    "SELECT device_id FROM conversation_hosts
+                     WHERE conversation_id = ?1 AND detaching = 1 ORDER BY attached_at, name",
+                )?
+                .query_map([id.as_str()], |row| row.get::<_, String>(0))?
+                .map(|device| {
+                    decode(
+                        "conversation_hosts",
+                        "device_id",
+                        DeviceId::try_from(device?),
+                    )
+                })
+                .collect::<Result<_, _>>()?;
+            Ok(PendingChanges { moving, detaching })
+        })
+        .await
+    }
+
+    /// Drops the pending move `pending`, as one that failed when it was
+    /// made; a newer one that replaced it stays.
+    pub async fn drop_pending_move(
+        &self,
+        id: ConversationId,
+        pending: String,
+    ) -> Result<(), StorageError> {
+        self.call(move |connection, _| clear_pending_move(connection, &id, &pending))
+            .await
+    }
+
+    /// The conversations of every user that hold a pending change, with
+    /// their owners, which a start makes once their trees are idle.
+    pub async fn conversations_pending(&self) -> Result<Vec<(UserId, ConversationId)>, StorageError> {
+        self.call(move |connection, _| {
+            connection
+                .prepare_cached(
+                    "SELECT user_id, id FROM conversations WHERE archived = 0 AND (pending_id IS NOT NULL
+                       OR EXISTS (SELECT 1 FROM conversation_hosts
+                                  WHERE conversation_id = conversations.id AND detaching = 1))",
+                )?
+                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+                .map(|row| {
+                    let (owner, id) = row?;
+                    Ok((
+                        decode("conversations", "user_id", UserId::try_from(owner))?,
+                        decode("conversations", "id", ConversationId::try_from(id.as_str()))?,
+                    ))
+                })
+                .collect()
+        })
+        .await
+    }
+}
+
+/// Clears the conversation's pending move when it is still `pending`.
+fn clear_pending_move(
+    connection: &Connection,
+    id: &ConversationId,
+    pending: &str,
+) -> Result<(), StorageError> {
+    connection.execute(
+        "UPDATE conversations SET pending_id = NULL, pending_kind = NULL, pending_device_id = NULL,
+           pending_path = NULL, pending_workspace_id = NULL
+         WHERE id = ?1 AND pending_id = ?2",
+        params![id.as_str(), pending],
+    )?;
+    Ok(())
 }
 
 /// The `conversation_hosts` rows of the conversation, first attached first.
@@ -1392,7 +1620,7 @@ mod tests {
                 departed: None,
                 arriving: Some(laptop.clone()),
             };
-            control.switch_conversation_target(id.clone(), cloud.clone(), to, switch, ends)
+            control.switch_conversation_target(id.clone(), cloud.clone(), to, switch, ends, None)
         };
         let (first, second) = tokio::join!(switch_to("/first"), switch_to("/second"));
         assert_eq!((first.unwrap(), second.unwrap()), (true, false));

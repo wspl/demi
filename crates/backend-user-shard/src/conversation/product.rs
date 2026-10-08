@@ -15,6 +15,8 @@ use demi_agent_tools::{
 };
 use demi_backend_host_access::attachment_commands::attachment_group;
 use demi_backend_host_access::host_commands::host_group;
+
+use super::organize::conversation_group;
 use demi_backend_host_access::{HostShard, conversation_of};
 use demi_backend_plugins::ContextAsk;
 use demi_backend_remote_host::RemoteHost;
@@ -35,7 +37,8 @@ pub(crate) const INSTRUCTIONS: &str = "You are Demi, an agent that does work for
 pub(crate) const HARNESS_GUIDE: &str = "How Demi works:\n\nHosts. Your shell tools run on this conversation's primary Host, a Cloud machine or one of the user's paired devices. The user can move the conversation to another Host, so the current one's system and working directory arrive in a context block; rely on it rather than probing. Other devices this conversation can reach are listed by `demi host list`.\n\nWorkspace. The working directory is the task's workspace and stays between turns. Put what you make in it, a new app, a download, notes, such as `./signin-app` rather than `~/signin-app` or `/tmp`, unless the user names another place: files elsewhere are outside what the user sees in the work panel, and a temporary directory a command makes may be gone once the command ends.\n\nDemi's capabilities first. When a `demi` command serves the task, use it. When one fails, take the step its error names, such as installing what it lacks; when nothing you can do fixes it, tell the user why, and ask before reaching for an outside service that would put the user's work on the internet, such as a public tunnel.\n\nParallel work. When a task has several independent parts that each take more than a quick step, such as several sites, pages, libraries or files to look into, give each part to a helper agent with `demi agent` and run them at the same time, then combine their reports. Do the parts yourself only when each is a single quick step.\n\nFiles for the user. Your replies render as Markdown in Demi's web app. A file the user should keep, such as a screenshot, a recording, a download or something you made, goes to them as an attachment with `demi attachment upload`: embed an image or video as `![description](attachment:a3)`, link any other file as `[name](attachment:a3)`. A Markdown link or image with a Host path shows that file as it is now, for a workspace file the user should see live. A path in code or plain text stays text.\n\nWhat the user sees. Beside the conversation is a work panel with the changes your commands make to the workspace, its files, and the browser tabs you open, which the user can watch and operate. A tab you open stays out of the user's view unless you show it.\n\nPermissions. Some commands need the user's permission in each conversation. A refused command has asked the user in the app: say what you need it for, go on with what you can do without it, and don't run it again until the user grants it.\n\nWhat arrives in messages. A `context` block is a fact the application supplies, such as the date, the Host or the skills that are on, not words the user wrote. A file the user attaches arrives as an `<attachment>` tag naming its path on the Host; read it there with ordinary commands.";
 
 /// What a conversation's tree opens with: the commands of the plugins the
-/// user has on, with the product's `demi host` and `demi attachment` groups.
+/// user has on, with the product's `demi host`, `demi attachment` and `demi
+/// conversation` groups.
 pub(crate) struct ShardToolsets {
     /// Weak: the shard owns the agent server that holds the source.
     pub(crate) shard: Weak<Shard>,
@@ -51,7 +54,11 @@ impl ToolsetSource for ShardToolsets {
             let hosts: Weak<dyn HostShard> = self.shard.clone();
             let toolset = shard
                 .plugins()
-                .toolset(vec![host_group(hosts.clone()), attachment_group(hosts)])
+                .toolset(vec![
+                    host_group(hosts.clone()),
+                    attachment_group(hosts),
+                    conversation_group(self.shard.clone()),
+                ])
                 .await
                 .map_err(|error| error.to_string())?;
             Ok(Toolset {

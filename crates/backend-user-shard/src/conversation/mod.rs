@@ -14,6 +14,8 @@ mod creation;
 mod deletion;
 mod failure_facts;
 mod fork;
+pub(crate) mod organize;
+pub(crate) mod pending;
 pub(crate) mod product;
 mod providers;
 pub mod search;
@@ -44,6 +46,7 @@ use demi_web_api_protocol::ids::UserId;
 pub use self::deletion::finish_deletions;
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
+pub use self::pending::settle_pending;
 pub(crate) use self::product::ShardHosts;
 use self::product::{
     ExecutionContext, HARNESS_GUIDE, INSTRUCTIONS, PluginContext, ShardSubagents, ShardToolsets,
@@ -141,9 +144,16 @@ pub(crate) fn conversation_parts(
         clock: services.clock.clone(),
         ids: Rc::new(RandomIds),
         config,
-        status_changed: Rc::new(move |root: &NodeId| {
-            marks.mark(Part::Conversation(conversation_of(root)));
-        }),
+        status_changed: {
+            let shard = shard.clone();
+            Rc::new(move |root: &NodeId| {
+                let conversation = conversation_of(root);
+                if let Some(shard) = shard.upgrade() {
+                    shard.poke_pending(&conversation);
+                }
+                marks.mark(Part::Conversation(conversation));
+            })
+        },
     });
     ConversationParts { agent, titles }
 }
