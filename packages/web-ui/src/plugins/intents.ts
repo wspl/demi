@@ -1,4 +1,4 @@
-import type { CallEditSelection } from '../files/changes'
+import type { RequestEditSelection } from '../files/request-changes'
 
 /**
  * What the shell and plugins ask the work panel to show, named by what it
@@ -8,8 +8,11 @@ import type { CallEditSelection } from '../files/changes'
 export interface IntentPayloads {
   /** A file on the conversation's Host, by its absolute path. */
   file: { path: string }
-  /** One call's edit of one file, as the transcript's tool block names it. */
-  edit: CallEditSelection
+  /**
+   * A request's changes, as its line or a file pill under one of its calls
+   * names them: the request, its file, and the edit of it or All Changes.
+   */
+  edit: RequestEditSelection
   /**
    * A page the agent presented, a tab of its browser, as the command's card
    * names it (`preview.md` § Presenting a page).

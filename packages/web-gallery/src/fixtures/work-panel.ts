@@ -12,7 +12,7 @@ import {
   type PinnedTabs,
 } from '@demicodes/web-ui/agent/panel-tabs'
 import { selectTab } from '@demicodes/web-ui/agent/tab-close'
-import type { CallEditSelection } from '@demicodes/web-ui/files/changes'
+import type { RequestEditSelection } from '@demicodes/web-ui/files/request-changes'
 import type { IntentRequest, PresentedPage } from '@demicodes/web-ui/plugins/intents'
 import {
   bindPages,
@@ -23,6 +23,7 @@ import {
 import { PLUGIN_PAGES } from '../generated/pages'
 import { productWould } from '../product-would'
 import { readGalleryEdit } from './blobs'
+import { galleryRequest } from './transcripts'
 import { galleryBrowser, type GalleryBrowser } from './live-browser'
 import { GalleryPanel, galleryBrowserPlugin } from './panel'
 import { galleryPreview, type GalleryPreview } from './preview'
@@ -36,6 +37,7 @@ export function galleryFiles(workspace: ReturnType<typeof createGalleryWorkspace
     root: workspace.root,
     changes: workspace.changes,
     edit: readGalleryEdit,
+    request: galleryRequest,
     // The gallery's working tree changes only when a specimen changes it.
     showChanges: () => {},
   }
@@ -192,8 +194,8 @@ export function useGalleryWork(
   /** What the panel shows, as its strip marks it. */
   const selected = computed(() => shownSelection(panel.value, kinds))
 
-  /** A tool call's file pill, through the `edit` intent. */
-  function selectEdit(edit: CallEditSelection) {
+  /** A request's line or a tool call's file pill, through the `edit` intent. */
+  function selectEdit(edit: RequestEditSelection) {
     openIn({ intent: 'edit', payload: edit })
   }
   /** A presented page's card, through the `page` intent. */

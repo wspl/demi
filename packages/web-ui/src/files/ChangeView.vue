@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, Diff, Eye, FileOutput, History, RefreshCw } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Diff, Eye, FileOutput, History, RefreshCw } from '@lucide/vue'
 import DiffEditor from '../editor/components/DiffEditor.vue'
 import type { DocumentPlace } from '../markdown/document'
+import { appOverlayStore } from '../overlay/appOverlay'
+import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
+import Menu from '../ui/Menu.vue'
 import RegionNote from '../ui/RegionNote.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import ChangeTree from './ChangeTree.vue'
+import RequestFileList from './RequestFileList.vue'
 import { useShowing } from './showing'
 import FilePreview from './FilePreview.vue'
 import FileIcon from './FileIcon.vue'
@@ -19,6 +23,8 @@ import MarkdownDocument from './MarkdownDocument.vue'
 import PreviewPair from './PreviewPair.vue'
 import TreeFrame from './TreeFrame.vue'
 import { emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources } from './changes'
+import { diffLineCounts } from './diff-counts'
+import { editIndex, offersAllChanges, selectionCopies, type RequestEditRef } from './request-changes'
 import { TREE_WIDTH } from './file-view'
 import { baseName } from '@demicodes/utils'
 import { relativePath, resolveHostPath } from './paths'
@@ -26,10 +32,14 @@ import { hasSourceView, previewKind, svgImageUrl } from './preview'
 import { FileBrowserError, type FileContents } from './types'
 
 /**
- * One working-tree file or one retained segment of a call. The working-tree
- * sidebar, segment control and Back/Forward events use the selection held by the host.
- * A missing retained pair leaves the editor area empty. The sidebar docks,
- * hides and shows over the diff as its frame (`TreeFrame`) decides.
+ * One working-tree file, or one file of a request of the conversation
+ * (`edit-tracking.md` § What the conversation shows): its All Changes, from
+ * before the request's first edit of it to after its last, or one of its
+ * edits, which a control steps through. The sidebar lists the working
+ * tree's files, or the request's; the file, the edit and Back and Forward
+ * are the host's to hold. An edit whose two sides were not kept leaves the
+ * editor area empty. The sidebar docks, hides and shows over the diff as its
+ * frame (`TreeFrame`) decides.
  *
  * Text shows as a diff. In Uncommitted mode an image, a video, an audio file
  * or a PDF shows its committed and working-tree versions side by side, and a
@@ -60,7 +70,8 @@ const emit = defineEmits<{
 
 const mode = defineModel<ChangeMode>('mode', { required: true })
 const selected = defineModel<string | null>('selected', { default: null })
-const edit = defineModel<number>('edit', { default: 0 })
+/** In Conversation, the selected file's edit shown; null for All Changes. */
+const edit = defineModel<RequestEditRef | null>('edit', { default: null })
 const tree = defineModel<boolean>('tree', { default: true })
 const treeWidth = defineModel<number>('treeWidth', { default: TREE_WIDTH.default })
 /** Markdown and SVG only: the text diff, or both sides rendered. */
@@ -78,11 +89,46 @@ const presentationOptions: readonly SegmentedOption<'diff' | 'preview'>[] = [
 const COMMITTED_TOO_LARGE = 'Over 8 MiB: too large to show.'
 
 const workingTree = computed(() => props.changes.uncommitted)
-const call = computed(() => mode.value === 'conversation' ? props.changes.conversation : null)
-const selectedChange = computed(() => mode.value === 'conversation'
-  ? call.value?.file ?? null
-  : workingTree.value.files.find((file) => file.path === selected.value) ?? null)
-const segments = computed(() => call.value?.file.edits ?? [])
+const request = computed(() => mode.value === 'conversation' ? props.changes.conversation : null)
+const requestFile = computed(() => request.value?.files.find((file) => file.path === selected.value) ?? null)
+const workingChange = computed(() => workingTree.value.files.find((file) => file.path === selected.value) ?? null)
+const selectedChange = computed(() => mode.value === 'conversation' ? requestFile.value : workingChange.value)
+const edits = computed(() => requestFile.value?.edits ?? [])
+/** Whether the file offers All Changes: both its ends were kept. */
+const allChanges = computed(() => requestFile.value !== null && offersAllChanges(requestFile.value))
+/** Where the shown edit stands among the file's edits; null for All Changes. */
+const editAt = computed(() => requestFile.value ? editIndex(requestFile.value, edit.value) : null)
+/** The two sides the selection shows, as the blobs that hold them; null when one was not kept. */
+const requestCopies = computed(() => requestFile.value ? selectionCopies(requestFile.value, editAt.value) : null)
+/** Names the pair shown, which a new pair replaces: the blobs, whatever object holds them. */
+const requestKey = computed(() => requestCopies.value ? `${requestCopies.value.original}:${requestCopies.value.modified}` : null)
+/** The step the edit control goes to, each way: All Changes, where offered, comes before the first edit. */
+const previousEdit = computed(() => {
+  const at = editAt.value
+  if (at === null)
+    return undefined
+  return at > 0 ? edits.value[at - 1] : allChanges.value ? null : undefined
+})
+const nextEdit = computed(() => {
+  const at = editAt.value
+  return at === null ? edits.value[0] : edits.value[at + 1]
+})
+const editLabel = computed(() => editAt.value === null ? 'All Changes' : `Edit ${editAt.value + 1} of ${edits.value.length}`)
+const editItems = computed(() => [
+  ...(allChanges.value ? [{ id: 'all', label: 'All Changes' }] : []),
+  ...edits.value.map((entry, index) => ({ id: String(index), label: entry.title, value: `Edit ${index + 1}` })),
+])
+
+function showEdit(target: { call: string; segment: number } | null | undefined): void {
+  if (target !== undefined) {
+    edit.value = target === null ? null : { call: target.call, segment: target.segment }
+  }
+}
+
+function chooseEdit(id: string, close: () => void): void {
+  showEdit(id === 'all' ? null : edits.value[Number(id)])
+  close()
+}
 const absolutePath = computed(() => resolveHostPath(props.root, selectedChange.value?.path ?? ''))
 /**
  * The file the view shows, named over it as a diff's file header names it on
@@ -98,11 +144,18 @@ const heading = computed(() => {
   const from = 'from' in change && change.from ? relativePath(props.root, resolveHostPath(props.root, change.from)) : null
   return { folder, name: baseName(absolutePath.value), from, deleted: change.kind === 'deleted' }
 })
-const treeAvailable = computed(() => mode.value === 'uncommitted' && workingTree.value.unavailable !== 'no-repository')
+const treeAvailable = computed(() => mode.value === 'uncommitted'
+  ? workingTree.value.unavailable !== 'no-repository'
+  : request.value !== null)
 const emptyText = computed(() => emptyChangeSetText(workingTree.value))
-const idleText = computed(() => mode.value === 'conversation'
-  ? 'Click a changed file in the conversation to see its diff here.'
-  : workingTree.value.files.length > 0 ? 'Select a changed file.' : emptyText.value)
+const idleText = computed(() => {
+  if (mode.value === 'conversation') {
+    if (!request.value)
+      return 'Click a changed file in the conversation to see its diff here.'
+    return request.value.files.length > 0 ? 'Select a changed file.' : 'These changes are no longer in the conversation.'
+  }
+  return workingTree.value.files.length > 0 ? 'Select a changed file.' : emptyText.value
+})
 
 const kind = computed(() => selectedChange.value ? previewKind(selectedChange.value.path) : 'text')
 const sourceView = computed(() => selectedChange.value !== null && hasSourceView(selectedChange.value.path))
@@ -128,7 +181,10 @@ const hasBefore = computed(() => {
   const change = selectedChange.value
   if (!change)
     return false
-  return mode.value === 'conversation' ? !(change.kind === 'added' && edit.value === 0) : change.kind !== 'added'
+  if (mode.value === 'uncommitted')
+    return change.kind !== 'added'
+  // A request's edit that created the file, or All Changes from before it, has nothing before it.
+  return !edits.value[editAt.value ?? 0]?.created
 })
 const hasAfter = computed(() => selectedChange.value?.kind !== 'deleted')
 const labels = computed(() => mode.value === 'conversation'
@@ -184,20 +240,21 @@ const staleBecause = computed(() => {
   return entry?.value !== undefined && entry.failure ? entry.failure.message ?? 'The read failed.' : null
 })
 
-// A call's retained edit, read from its copies, which never change.
+// A request's file, read from the copies the selection names, which never change.
 const callState = ref<State>({ phase: 'idle' })
 let controller: AbortController | null = null
 
 async function readCall(): Promise<void> {
   controller?.abort()
   controller = null
-  const shown = call.value
-  if (!shown || !selectedChange.value) {
+  const shown = request.value
+  if (!shown || !requestFile.value) {
     callState.value = { phase: 'idle' }
     return
   }
-  // An edit without copies has no diff to show.
-  if (!segments.value[edit.value]?.copies) {
+  // A selection without both sides kept has no diff to show.
+  const copies = requestCopies.value
+  if (!copies) {
     callState.value = { phase: 'unavailable' }
     return
   }
@@ -205,7 +262,7 @@ async function readCall(): Promise<void> {
   controller = current
   callState.value = { phase: 'loading' }
   try {
-    const result = await shown.read(edit.value, current.signal)
+    const result = await shown.read(copies, current.signal)
     if (current.signal.aborted)
       return
     callState.value = result === null ? { phase: 'unavailable' } : { phase: 'ready', sides: result }
@@ -220,9 +277,21 @@ async function readCall(): Promise<void> {
   }
 }
 
-watch(() => [call.value, edit.value], readCall, { immediate: true })
+// The transcript is derived anew as it grows: only another pair of sides, or another file, is read again.
+watch(() => [request.value !== null, requestFile.value?.path, requestKey.value], readCall, { immediate: true })
 
 const state = computed<State>(() => mode.value === 'conversation' ? callState.value : workingState.value)
+/**
+ * The header's line counts: a working-tree file's as git counts them, and in
+ * Conversation those of the diff shown, All Changes or one edit, once its
+ * sides are read; none without them.
+ */
+const counts = computed(() => {
+  if (mode.value === 'uncommitted')
+    return workingChange.value
+  const shown = callState.value
+  return shown.phase === 'ready' ? diffLineCounts(shown.sides.original, shown.sides.modified) : null
+})
 
 function retry(): void {
   if (mode.value === 'conversation')
@@ -258,10 +327,28 @@ onBeforeUnmount(() => {
       <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1 shrink-0" />
       <!-- The file's controls keep to the right, whether or not a file is shown. -->
       <div class="ml-auto flex items-center gap-1">
-        <div v-if="segments.length > 1" class="flex shrink-0 items-center gap-1 text-xs text-fg-muted">
-          <IconButton :icon="ArrowLeft" variant="ghost" aria-label="Previous edit" :disabled="edit === 0" @click="edit -= 1" />
-          <span class="whitespace-nowrap">Edit {{ edit + 1 }} of {{ segments.length }}</span>
-          <IconButton :icon="ArrowRight" variant="ghost" aria-label="Next edit" :disabled="edit >= segments.length - 1" @click="edit += 1" />
+        <!-- All Changes, then each edit of the request in turn, as GitHub picks a pull request's commits. -->
+        <div v-if="mode === 'conversation' && edits.length > 1" class="flex shrink-0 items-center">
+          <Tooltip content="Previous edit">
+            <IconButton :icon="ChevronLeft" variant="ghost" aria-label="Previous edit" :disabled="previousEdit === undefined" @click="showEdit(previousEdit)" />
+          </Tooltip>
+          <Dropdown :overlay-store="appOverlayStore" variant="ghost" size="sm" placement="bottom-end">
+            <template #trigger>
+              <span class="whitespace-nowrap text-xs">{{ editLabel }}</span>
+            </template>
+            <template #content="{ close }">
+              <Menu
+                class="w-80"
+                :items="editItems"
+                :selected-id="editAt === null ? 'all' : String(editAt)"
+                :item-height="28"
+                @select="chooseEdit($event, close)"
+              />
+            </template>
+          </Dropdown>
+          <Tooltip content="Next edit">
+            <IconButton :icon="ChevronRight" variant="ghost" aria-label="Next edit" :disabled="nextEdit === undefined" @click="showEdit(nextEdit)" />
+          </Tooltip>
         </div>
         <Segmented
           v-if="sourceView && selectedChange"
@@ -297,8 +384,10 @@ onBeforeUnmount(() => {
             <span class="min-w-0 truncate text-fg-muted [direction:rtl]"><bdi>{{ heading.folder }}</bdi></span>
             <span class="shrink-0" :class="heading.deleted ? 'text-fg-muted line-through' : 'text-fg'">{{ heading.name }}</span>
           </span>
-          <LineCounts :added="selectedChange.added" :removed="selectedChange.removed" />
+          <LineCounts v-if="counts" :added="counts.added" :removed="counts.removed" />
         </span>
+        <!-- The edit shown is named by its call's title; the file's name keeps its width first. -->
+        <span v-if="editAt !== null" class="ml-auto min-w-0 truncate pl-2 text-fg-subtle" :title="edits[editAt]?.title">{{ edits[editAt]?.title }}</span>
       </div>
       <RegionNote
         v-if="mode === 'uncommitted' && workingTree.watch?.unavailable"
@@ -344,7 +433,7 @@ onBeforeUnmount(() => {
       </PreviewPair>
       <PreviewPair
         v-else-if="state.phase === 'ready' && sourceView && presentation === 'preview'"
-        :key="`${call?.commandId ?? mode}:${absolutePath}:${edit}`"
+        :key="`${mode}:${absolutePath}:${requestKey}`"
         v-bind="labels"
       >
         <template v-if="hasBefore" #before>
@@ -359,7 +448,7 @@ onBeforeUnmount(() => {
       <!-- A diff is built for one pair of texts: a new file is a new editor. -->
       <DiffEditor
         v-else-if="state.phase === 'ready' && selectedChange"
-        :key="`${call?.commandId ?? mode}:${selectedChange.path}:${edit}`"
+        :key="`${mode}:${selectedChange.path}:${requestKey}`"
         :original="state.sides.original"
         :modified="state.sides.modified"
         :path="selectedChange.path"
@@ -380,12 +469,22 @@ onBeforeUnmount(() => {
     </template>
     <template v-if="treeAvailable" #tree>
       <ChangeTree
+        v-if="mode === 'uncommitted'"
         :source="workingTree"
         :root="root"
         :root-name="rootName"
         :selected="selected"
         :empty-text="emptyText"
         @select="pick"
+      />
+      <RequestFileList
+        v-else-if="request"
+        :files="request.files"
+        :root="root"
+        :root-name="rootName"
+        :selected="selected"
+        @select="pick"
+        @uncommitted="mode = 'uncommitted'"
       />
     </template>
   </TreeFrame>
