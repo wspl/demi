@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Archive, Pin, PinOff } from '@lucide/vue'
+import DeviceIcon from '@demicodes/web-ui/devices/DeviceIcon.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { isTextCut } from '@demicodes/web-ui/ui/truncation'
+import { DEVICE_STATE_LABEL } from '@demicodes/web-ui/devices/state'
 import type { SidebarConversation } from './types'
 
 const props = defineProps<{
@@ -63,6 +65,32 @@ const dotClass = computed(() => {
   return SETTLED_DOT
 })
 
+// The device a conversation outside a project runs on, named with its state as a row names an
+// item and its state (the Writing page's "A screen says a thing once").
+const deviceLabel = computed(() => {
+  const device = props.conversation.device
+  if (!device) {
+    return null
+  }
+  return device.kind === 'paired' ? `${device.name} · ${DEVICE_STATE_LABEL[device.state]}` : 'Removed device'
+})
+
+// The marks the row's end shows at rest, each in a 24px box: the device's, then the pin.
+const restMarks = computed(() => (props.conversation.device ? 1 : 0) + (props.conversation.pinned ? 1 : 0))
+
+// The title's end clears what the row's end shows: the marks at rest, Archive and Pin (50px) on
+// hover. Two marks (52px and a 6px gap) are wider than the actions, so the title keeps that
+// margin on hover rather than growing under the pointer.
+const titleMargin = computed(() => {
+  if (props.menuOpen || props.pending) {
+    return 'mr-[50px]'
+  }
+  if (restMarks.value === 2) {
+    return 'mr-[58px]'
+  }
+  return restMarks.value === 1 ? 'mr-8 group-hover/row:mr-[50px]' : 'group-hover/row:mr-[50px]'
+})
+
 // Selected rows are lit; the open one is also emphasized, so it stays visible inside a wider selection.
 const rowClass = computed(() => [
   props.selected
@@ -110,14 +138,7 @@ const rowClass = computed(() => [
       :show-if="isTextCut"
       placement="bottom-start"
       class="min-w-0 flex-1 overflow-clip text-ellipsis whitespace-nowrap transition-[margin] duration-[80ms] ease-out"
-      :class="[
-        conversation.unread && !open ? 'text-fg-emphasis' : '',
-        menuOpen || pending
-          ? 'mr-[50px]'
-          : conversation.pinned
-            ? 'mr-8 group-hover/row:mr-[50px]'
-            : 'group-hover/row:mr-[50px]',
-      ]"
+      :class="[conversation.unread && !open ? 'text-fg-emphasis' : '', titleMargin]"
       @dblclick="emit('renameStart')"
     >{{ conversation.title }}</Tooltip>
     <!-- While renaming the field has the whole row: no actions, no pin glyph over it. -->
@@ -158,12 +179,21 @@ const rowClass = computed(() => [
         />
       </Tooltip>
     </span>
-    <!-- The pinned glyph sits in the same 24px box as the Pin action, so nothing moves on hover. -->
+    <!-- The marks sit in the same 24px boxes as the actions, the pin in Pin's, so nothing moves
+         on hover: the device's mark, then the pinned glyph at the end. -->
     <span
-      v-if="conversation.pinned && !menuOpen && !renaming"
-      class="pointer-events-none absolute inset-y-0 right-0.5 flex w-6 items-center justify-center text-fg-faint transition-opacity group-hover/row:opacity-0"
+      v-if="restMarks && !menuOpen && !pending && !renaming"
+      class="pointer-events-none absolute inset-y-0 right-0.5 flex items-center gap-0.5 text-fg-faint transition-opacity group-hover/row:opacity-0"
     >
-      <Pin :size="ICON_PX.in20" />
+      <span v-if="deviceLabel" class="flex size-6 items-center justify-center">
+        <DeviceIcon
+          :state="conversation.device?.kind === 'paired' ? conversation.device.state : null"
+          :label="deviceLabel"
+        />
+      </span>
+      <span v-if="conversation.pinned" class="flex size-6 items-center justify-center">
+        <Pin :size="ICON_PX.in20" />
+      </span>
     </span>
   </div>
 </template>

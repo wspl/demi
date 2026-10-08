@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, useId, watch } from 'vue'
-import { Cloud, FolderOpen, Monitor, Plus, X } from '@lucide/vue'
-import { hostIcon } from './icons'
+import { Cloud, FolderOpen, Plus, X } from '@lucide/vue'
+import { DEVICE_ICON, hostIcon } from './icons'
 import { ICON_PX } from '../ui/icon-metrics'
 import { baseName } from '@demicodes/utils'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -81,7 +81,7 @@ const kindOptions = [
     value: 'device',
     label: 'Device',
     description: 'A directory on one of your devices.',
-    icon: Monitor,
+    icon: DEVICE_ICON,
   },
 ] as const satisfies readonly ChoiceCardOption<Kind>[]
 
