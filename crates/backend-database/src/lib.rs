@@ -26,7 +26,9 @@ pub mod preview;
 pub mod providers;
 pub mod references;
 mod schema;
-pub use schema::{DatabaseKind, schema_differs};
+#[cfg(feature = "testing")]
+pub use schema::testing as schema_testing;
+pub use schema::{DatabaseKind, SchemaFit, schema_fit};
 pub mod search;
 pub mod sequences;
 pub mod sidebar;

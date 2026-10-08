@@ -22,6 +22,8 @@ flate2 = "1"
 fs_extra = "1.3"
 futures-util.workspace = true
 garde.workspace = true
+# Names a development build by its time (`xtask deploy`).
+jiff.workspace = true
 # Plain HTTP to the backend `xtask dev` starts; the one Cargo selection
 # builds it with the features the backend gives it.
 reqwest.workspace = true
