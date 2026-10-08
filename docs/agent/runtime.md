@@ -433,7 +433,12 @@ have fired at fifteen minutes.
   queue or among the pending steers.
 - A wakeup belongs to its session, not to the turn that scheduled it: a turn
   the user started meanwhile receives it like its own.
-- When no action runs or waits, Stop cancels the oldest scheduled wakeup.
+- A session waits for one thing at a time: a `yield` replaces the wakeup
+  scheduled before it, which then never fires. For example, the agent yields
+  for ten minutes to wait for its subagents, a subagent's message wakes it
+  after four, and it yields again; only the second wakeup stands, so the
+  first does not wake it six minutes later with nothing left to wait for.
+- When no action runs or waits, Stop cancels the scheduled wakeup.
   Any other Stop leaves the wakeups as they are, and one that comes due
   afterwards fires ([Stop](#stop)).
 - A wakeup is saved in the checkpoint with its id, its duration, its

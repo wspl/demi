@@ -221,8 +221,12 @@ impl Wakeups {
     }
 
     /// A wakeup whose wait starts when its action ends, unless one of
-    /// `commands` ends first.
+    /// `commands` ends first. It replaces the wakeup scheduled before it,
+    /// which never fires: a session waits for one thing at a time, and an
+    /// agent that yields again has decided anew what it waits for.
     pub(super) fn schedule(&mut self, id: WakeupId, duration_ms: u32, commands: Vec<CommandId>) {
+        // Dropping the replaced wakeup's watch stops it.
+        self.scheduled.clear();
         self.scheduled.push(Scheduled {
             wakeup: ScheduledWakeup {
                 id,
