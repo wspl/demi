@@ -228,6 +228,32 @@ const exhibitAgentId = ref<string | null>(
   runningSubagents(agents)[0]?.id ?? agents[0]?.id ?? null,
 )
 const exhibitTerminalId = ref<string | null>(firstRunningTerminalId(terminals))
+/** Run Them Again: the windows' agents and jobs run again as the fixtures start them, each window open on its first. */
+function resetWindows(): void {
+  const freshAgents = gallerySubagents()
+  for (const agent of agents) {
+    const fresh = freshAgents.find((entry) => entry.id === agent.id)
+    if (fresh) {
+      agent.phase = fresh.phase
+      agent.endedAt = fresh.endedAt
+    }
+  }
+  const freshTerminals = galleryTerminals()
+  for (const terminal of terminals) {
+    const fresh = freshTerminals.find((entry) => entry.id === terminal.id)
+    if (fresh) {
+      terminal.phase = fresh.phase
+      terminal.endedAt = fresh.endedAt
+    }
+  }
+  exhibitAgentId.value = runningSubagents(agents)[0]?.id ?? agents[0]?.id ?? null
+  exhibitTerminalId.value = firstRunningTerminalId(terminals)
+}
+// The Agents panel open while a request waits: the card stands over the panel's lower part.
+const coverRequests = ref<PermissionRequestView[]>([rootRequest()])
+const coverAgentId = ref<string | null>(runningSubagents(agents)[0]?.id ?? null)
+const coverBlocks = transcriptDemoBlocks()
+const coverSurface = ref<{ dockHeight: number }>()
 /** The returned call's command, a Running job, which End Command stops. */
 const returnedCommand = computed(() => terminals.find((terminal) => terminal.toolUseId === returnedShellTool.toolUseId))
 /** The other returned call's command, which End Command ends with exit code 1. */
@@ -1333,7 +1359,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="SessionDock"
-        note="What waits over the composer stacks one 8px step apart: the permission card, then the chips, then the composer. A part that is not there takes no room, so without chips the card sits one step above the composer, as the chips do without a card. The scroll-to-bottom control floats over the transcript at the dock’s top right and takes no room either."
+        note="What waits over the composer stacks one 8px step apart: the permission card, then the chips, then the composer. A part that is not there takes no room, so without chips the card sits one step above the composer, as the chips do without a card. The card stands over the dock’s top rather than in it: the transcript keeps clear of it, and a panel the dock opened keeps its place under it (Panel Under a Permission Card). The scroll-to-bottom control floats over the transcript at the dock’s top right and takes no room either."
       >
         <div class="specimen-stack">
           <GallerySpecimen
@@ -1350,7 +1376,8 @@ onBeforeUnmount(() => {
                 Every request is decided.
                 <Button size="sm" @click="specimen.requests = [rootRequest()]">Show Again</Button>
               </div>
-              <div class="rounded-lg bg-surface p-3">
+              <!-- The card stands over the dock's top and takes no room in it: the frame leaves it room above. -->
+              <div class="flex flex-col justify-end rounded-lg bg-surface p-3" :class="specimen.asks ? 'min-h-[24rem]' : ''">
                 <SessionDock>
                   <template v-if="specimen.requests.length" #above>
                     <PermissionCard
@@ -2189,8 +2216,11 @@ onBeforeUnmount(() => {
     <template v-if="view === 'windows'">
       <GallerySection
         title="Agents"
-        note="Half-session inspect. Tabs are running children. The circle-stop icon and Stop All label stop every running agent. Completed opens the searchable finished list."
+        note="Half-session inspect. Tabs are running children; a click only selects one, and nothing on a tab stops it. A right-click on a tab, or the Menu key or Shift+F10 on a focused one, opens its menu: Stop Agent for a running child, Close Tab for a finished one, the other disabled. The More button at the strip’s end, and a right-click on the strip’s empty area, open the strip’s menu: Stop All, disabled once nothing runs. Completed opens the searchable finished list. Close (×) closes the window."
       >
+        <div class="mb-3 flex flex-wrap gap-2">
+          <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
+        </div>
         <div class="relative h-[24rem] min-h-0">
           <SubagentPanel
             v-model:active-id="exhibitAgentId"
@@ -2203,8 +2233,11 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Terminals"
-        note="The same window. Tabs are running jobs, each titled by its call’s description, cut at the end and whole in its tooltip; the body is a read-only xterm with ANSI color from bun, rg and git. The terminal opens with the script as a terminal shows what was typed: a muted $ and the first line, a muted > before each further line (Show the auth test changes), long lines wrapped at the terminal’s width (Find where the old cookie name is still used), the script in the emphasized text color, then the output. The watch tab’s output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame’s tail anew. Closing a running tab stops its command."
+        note="The same window. Tabs are running jobs, each titled by its call’s description, cut at the end and whole in its tooltip; the body is a read-only xterm with ANSI color from bun, rg and git. The terminal opens with the script as a terminal shows what was typed: a muted $ and the first line, a muted > before each further line (Show the auth test changes), long lines wrapped at the terminal’s width (Find where the old cookie name is still used), the script in the emphasized text color, then the output. The watch tab’s output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame’s tail anew. A click on a tab only selects it; its menu, from a right-click or the Menu key or Shift+F10, ends a running command (End Command) or closes an ended one’s tab (Close Tab). Close (×) closes the window."
       >
+        <div class="mb-3 flex flex-wrap gap-2">
+          <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
+        </div>
         <div class="relative h-[24rem] min-h-0">
           <TerminalPanel
             v-model:active-id="exhibitTerminalId"
@@ -2212,6 +2245,59 @@ onBeforeUnmount(() => {
             @abort="sessionFlow.abortTerminal"
             :dismiss-outside="false"
           />
+        </div>
+      </GallerySection>
+      <GallerySection
+        title="Panel Under a Permission Card"
+        note="A panel the dock opened keeps its size and place while a permission request waits: the card stands over the panel’s lower part, above it, with its own edge and shadow, and the panel scrolls and works above the card’s top. Nothing moves when the card comes or goes (Decide, Ask Again). The transcript behind keeps clear of the card when no panel is open (the Agents chip closes and opens the panel)."
+      >
+        <div class="mb-3 flex flex-wrap gap-2">
+          <Button variant="ghost" size="sm" :disabled="coverRequests.length > 0" @click="coverRequests = [rootRequest()]">Ask Again</Button>
+        </div>
+        <div class="gallery-frame h-[40rem] bg-surface">
+          <SessionSurface ref="coverSurface">
+            <div class="flex h-full min-h-0 flex-col">
+              <AgentMessageList
+                class="min-h-0 flex-1"
+                conversation-id="gallery-cover"
+                :blocks="coverBlocks"
+                :pending-steers="[]"
+                :queue="[]"
+                phase="idle"
+                :bottom-offset="coverSurface?.dockHeight ?? 0"
+                :persisted-scroll-state="undefined"
+                read-only
+              />
+            </div>
+            <template #dock>
+              <SessionDock>
+                <template v-if="coverRequests.length" #above>
+                  <PermissionCard
+                    :requests="coverRequests"
+                    @decide="(id, decision) => (coverRequests = decidePermission(coverRequests, id, decision))"
+                  />
+                </template>
+                <template #chips>
+                  <AgentsChip
+                    :agents="agents"
+                    :open="coverAgentId !== null"
+                    @open="coverAgentId = coverAgentId === null ? runningSubagents(agents)[0]?.id ?? agents[0]?.id ?? null : null"
+                  />
+                </template>
+                <GalleryComposer placeholder="Ask Demi…" />
+              </SessionDock>
+            </template>
+            <template #overDock>
+              <SubagentPanel
+                v-model:active-id="coverAgentId"
+                :agents="agents"
+                :terminals="terminals"
+                :dismiss-outside="false"
+                @abort="sessionFlow.abortSubagents"
+                @abort-agent="sessionFlow.abortSubagent"
+              />
+            </template>
+          </SessionSurface>
         </div>
       </GallerySection>
     </template>
