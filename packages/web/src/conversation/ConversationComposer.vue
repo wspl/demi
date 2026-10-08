@@ -7,6 +7,8 @@ import { reportError } from '@demicodes/web-ui/infra/errors'
 import { baseName } from '@demicodes/utils'
 
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
+import { loadedInstructions } from '@demicodes/web-ui/agent/instructions'
+import type { InstructionEntry } from '@demicodes/protocol'
 
 import {
   composerRemoteAttachment,
@@ -26,7 +28,11 @@ import type { Conversation } from '../state/types'
 import { cliPackageOf } from '../state/catalog'
 import { useSettingsAddress } from '../settings/address'
 
-const props = defineProps<{ conversation: Conversation }>()
+const props = defineProps<{
+  conversation: Conversation
+  /** Shows a Host file in the work panel; absent while no plugin shows files. */
+  openFile?: (path: string) => void
+}>()
 const store = useConversations()
 const resources = useResources()
 const preferences = usePreferences()
@@ -79,6 +85,18 @@ function openProviders() {
 function send() {
   if (canSend.value) {
     void store.send(props.conversation)
+  }
+}
+
+/** What the model holds of the user's and the project's instructions, which the context card lists. */
+const instructions = computed(() => loadedInstructions(props.conversation.blocks))
+
+/** The personal instructions open their settings; a file shows in the work panel. */
+function openInstruction(entry: InstructionEntry): void {
+  if (entry.kind === 'personal') {
+    void settings.open('instructions')
+  } else {
+    props.openFile?.(entry.path)
   }
 }
 
@@ -188,6 +206,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :models="resources.models"
       :model-settings="conversation.model"
       :usage="conversation.contextUsage"
+      :instructions="instructions"
       :remote-files="remoteHosts.length > 0"
       :archived="conversation.archived"
       :hold="hold"
@@ -210,6 +229,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @change-context-limit="preferences.setContextLimit($event)"
       @stop="store.stop(conversation)"
       @compact="store.compact(conversation)"
+      @open-instruction="openInstruction"
     />
     <RemoteFilePicker
       ref="remotePicker"

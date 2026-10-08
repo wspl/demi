@@ -34,6 +34,7 @@ layout and interaction; these documents do not repeat it.
 - [Failures and recovery](agent/failures-and-recovery.md): the failure record and how it is read, retries, and resuming an interrupted turn.
 - [Message editing](agent/message-editing.md): editing and resending a message as one transaction.
 - [Conversation fork](agent/conversation-fork.md): forking a conversation from a block, with its seed, publication and subagents.
+- [Instructions](agent/instructions.md): the user's personal instructions and a project's `AGENTS.md` or `CLAUDE.md` files, which files are read, the block the model receives, and what the context card lists.
 - [Skills](agent/skills.md): the Agent Skills format, user skills from git sources, project skills from the repository, the catalog the model sees, and the settings section.
 - [Conversation permissions](agent/permissions.md): the categories of operations on Demi itself, the check every command passes before its handler, the requests a refused command raises, the per-conversation grants, the decision's message to the agent, and the card and needs-you mark.
 

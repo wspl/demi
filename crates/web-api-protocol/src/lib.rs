@@ -18,6 +18,7 @@ pub mod error;
 pub mod files;
 pub mod hosts;
 pub mod ids;
+pub mod instructions;
 pub mod panel;
 pub mod permissions;
 pub mod plugins;

@@ -163,8 +163,13 @@ ALTER TABLE devices ADD COLUMN route TEXT NOT NULL DEFAULT 'automatic' CHECK (ro
 /// one category of each request 0.1.21 stored. SQLite cannot drop a column
 /// an index names, so the requests' table is made anew, as for 0.1.11's
 /// conversations. The web preview is gone, and the deployment's namespace
-/// at the preview domain with it.
+/// at the preview domain with it. Users keep personal instructions, which
+/// no user migrated from 0.1.21 has.
 const CONTROL_FROM_0_1_21: &str = "
+CREATE TABLE user_instructions (
+  user_id TEXT PRIMARY KEY REFERENCES users (id),
+  text    TEXT NOT NULL
+) STRICT;
 ALTER TABLE conversations ADD COLUMN pending_id TEXT;
 ALTER TABLE conversations ADD COLUMN pending_kind TEXT CHECK (pending_kind IN ('cloud', 'device', 'workspace'));
 ALTER TABLE conversations ADD COLUMN pending_device_id TEXT;
@@ -476,6 +481,13 @@ CREATE TABLE email_challenges (
 CREATE TABLE user_preferences (
   user_id     TEXT PRIMARY KEY REFERENCES users (id),
   preferences TEXT NOT NULL
+) STRICT;
+
+-- Each user's personal instructions (`instructions.md` § Personal
+-- instructions): a user with no row has none.
+CREATE TABLE user_instructions (
+  user_id TEXT PRIMARY KEY REFERENCES users (id),
+  text    TEXT NOT NULL
 ) STRICT;
 
 -- Each user's Subagent switch (`subagents.md` § Profiles): a user with no

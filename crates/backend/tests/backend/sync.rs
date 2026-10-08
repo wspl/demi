@@ -170,6 +170,8 @@ async fn the_snapshot_is_the_users_product_state() {
                 enabled: true,
                 profiles: Vec::new(),
             },
+            // A new user has no personal instructions.
+            instructions: String::new(),
             // Checked below by what the page needs of them.
             plugins: state.plugins.clone(),
             // A new user has no skill source.
