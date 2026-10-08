@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onBeforeUnmount, ref } from 'vue'
 import AgentMessageVirtualBlock from '@demicodes/web-ui/agent/blocks/AgentMessageVirtualBlock.vue'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -6,6 +7,7 @@ import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { composerAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import type { Block, UserContentBlock } from '@demicodes/protocol'
+import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import { useTurnFlow } from '../turn-flow'
 import { demoModel, errorTool } from '../fixtures/blocks'
 import GallerySection from './GallerySection.vue'
@@ -58,7 +60,21 @@ const records: Block[] = [
     'The upstream response ended before generation completed.',
   ),
 ]
-const toolFailure = errorTool as Block
+/** The failed call; Run Again runs it and fails it while it is on screen, where it stays folded too. */
+const toolFailure = ref<ToolCallBlock>(errorTool)
+const TOOL_RUN_MS = 1200
+let toolRunTimer: ReturnType<typeof setTimeout> | undefined
+
+function runToolAgain(): void {
+  clearTimeout(toolRunTimer)
+  toolFailure.value = { ...errorTool, status: 'executing', output: [] }
+  toolRunTimer = setTimeout(() => {
+    toolRunTimer = undefined
+    toolFailure.value = errorTool
+  }, TOOL_RUN_MS)
+}
+
+onBeforeUnmount(() => clearTimeout(toolRunTimer))
 // The exact message stays with the failure under it. Retry sends it again
 // with the same id, and Requesting shows until its turn answers.
 const undeliveredFlow = useTurnFlow({ id: 'gallery-undelivered-message' })
@@ -108,7 +124,7 @@ failDelivery()
           />
         </div>
       </GallerySpecimen>
-      <GallerySpecimen wide variant="Tool failed · the tool block is the record">
+      <GallerySpecimen wide variant="Tool failed · the tool block is the record, folded until the user opens it">
         <div class="rounded-lg bg-surface py-3">
           <AgentMessageVirtualBlock
             :block="toolFailure"
@@ -116,6 +132,7 @@ failDelivery()
             :thinking-ended-at="null"
           />
         </div>
+        <Button size="sm" variant="ghost" class="mt-2" @click="runToolAgain">Run Again</Button>
       </GallerySpecimen>
     </GallerySection>
     <GallerySection
