@@ -464,6 +464,8 @@ the agent stops reading a run at its failure.
 | The CLI's output ends | The run fails if stored results were never asked for, or if the process exited with a nonzero status and the run was not cancelled; the message is the tail of standard error, or "Claude Code exited with code N" | Gone |
 | A malformed line or tool use, or a tool call the request offered no tools for | The run fails with the line as its record | Closed |
 | An `error` line | The run fails with the CLI's words | Closed |
+| A `result` with `api_error_status` 401, before anything of the run reached the agent | The token is refreshed when the refused one is still the stored one, and the request is sent again once in a new process | Closed |
+| A request whose kept process holds a token expiring within 30 minutes | The token is refreshed and a new process takes the request | Closed |
 | The run is cancelled | The run ends without an event | Closed |
 | The turn drops the run's stream | — | Killed by the Host |
 | The runtime is closed: the session is disposed, or the backend builds the session a new runtime | — | Closed |
