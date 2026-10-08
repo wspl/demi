@@ -33,14 +33,8 @@ standard input and output. Which CLI that is, and which machine, are defined
 below: Demi's own verified copy, on the user's Cloud, whatever the
 conversation's execution target is.
 
-The provider reads its account's Claude sign-in from the vault, refreshed
-first when its access token expires within 5 minutes
-([Token refresh](providers.md#token-refresh)), and sets the access token as
-`CLAUDE_CODE_OAUTH_TOKEN` in the spawn environment; the refresh token never
-leaves the backend, so the CLI never refreshes and never races Demi's
-refresher for a single-use token. A kept CLI process whose access token the
-backend has since replaced is closed, as an account switch closes it, and the
-next request starts one with the new token. The runner and the CLI
+The provider gives each CLI process its account's access token, never its
+refresh token, as [Accounts and sign-in](#accounts-and-sign-in) describes. The runner and the CLI
 therefore receive this credential: the user's Cloud is trusted with that
 account's token, which on a shared instance means every user
 ([Scope](providers.md#scope)). When the token cannot be read, the request fails
@@ -65,6 +59,71 @@ unset an inherited variable; standard output and standard error are byte
 streams that end when the process exits, and waiting reports the exit code, the
 signal or the failure to start; dropping the process handle asks the Host to
 kill the process without waiting.
+
+## Accounts and sign-in
+
+The CLI owns Claude's sign-in, and Demi does not write it again: Demi starts
+the CLI's login, relays it to the user, and keeps the tokens the login wrote
+in the [credential vault](providers.md#credential-vault), the one place an
+account's tokens live. Every CLI process then gets only what its one account
+needs, in a place of its own, so accounts neither mix nor leak. For example,
+the user adds a work account and a personal one, and conversations use the
+work account:
+
+```text
+backend vault                     user's Cloud
+  work:     access, refresh   ─▶  CLI process A: private config dir A,
+  personal: access, refresh         work access token on a file descriptor
+                                  (personal's tokens are nowhere on the Cloud)
+```
+
+**Signing in.** Adding an account starts `claude auth login --claudeai` on the
+user's Cloud, the CLI Demi installs there, with `CLAUDE_CONFIG_DIR` naming a
+new directory of its own, private to the runner's user (mode 0700) and outside
+every workspace. The CLI prints its sign-in link and waits for a code; Demi
+shows the link, the user signs in on any device and pastes the code the page
+shows, and Demi writes it to the CLI's input. When the CLI exits with
+success, Demi reads what it wrote, `.credentials.json` (`claudeAiOauth`:
+tokens, expiry, scopes, subscription type) and the account in `.claude.json`
+(`oauthAccount`: its ID and email), decodes both against their schemas, stores
+them as the account's secret, and removes the directory, as it does when the
+login fails, is cancelled or ends after 15 minutes. A login that names an
+account already in the entry is refused, by the account's ID. The link, the
+code and the CLI's own words of failure are what the user sees; the code is
+never logged.
+
+**Using an account.** Each CLI process belongs to one account for its whole
+life ([An account is the unit](providers.md#an-account-is-the-unit)):
+
+- **Its own configuration directory.** A new private directory per process,
+  removed when it ends, named by `CLAUDE_CONFIG_DIR`, so no CLI state of one
+  account, its cached account record, settings or history, is read by a
+  process of another, and the user's own `~/.claude` on the Cloud, should the
+  user run Claude Code there themselves, is never read or written.
+- **Only the access token.** The token reaches the CLI on a file descriptor
+  (`CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR`), not in its environment, which
+  another process of the same user could read. The refresh token never
+  leaves the backend.
+- **Refresh by the backend.** The process runs with
+  `CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH`: after a 401 the CLI asks its host for
+  a fresh access token (the `oauth_token_refresh` control request), and Demi
+  answers with its account's token, refreshed under the account's refresh
+  turn when the one it holds is still the stored one
+  ([Token refresh](providers.md#token-refresh)). A process starts with a
+  token refreshed first when it expires within 5 minutes. One refresher per
+  account, the backend, is what keeps single-use refresh tokens from being
+  spent twice by two processes or two Clouds, which a CLI holding the
+  refresh token would do. The refresh is a `refresh_token` grant at the
+  CLI's token endpoint with the CLI's client, read from Claude Code 2.1.294.
+- **Switching.** Selecting another account closes the kept process, and the
+  next request starts a new one with the other account's token in a new
+  directory ([Process lifetime](#process-lifetime)). Nothing of the first
+  account remains on the Cloud.
+
+**The usage probe** asks `https://api.anthropic.com/api/oauth/usage` with the
+account's access token from the backend, refreshed first when due; the
+sign-in grants the `user:profile` scope it requires
+([Claude Code](usage-and-quota.md#claude-code)).
 
 ## Which version
 
