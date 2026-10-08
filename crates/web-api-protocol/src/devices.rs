@@ -31,8 +31,8 @@ serde_plain::derive_fromstr_from_deserialize!(DeviceKind);
 
 /// How pages reach a paired device (`direct-channel.md` § Choosing the
 /// path): `automatic`, over a direct channel while its path is not worse
-/// than the server's; `direct`, over one whenever it connects, Prefer
-/// Direct; `server`, never over one, Server Only.
+/// than the relay's; `direct`, over one whenever it connects, Prefer
+/// P2P; `server`, never over one, Relay Only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DeviceRoute {

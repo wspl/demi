@@ -165,17 +165,12 @@ const empty = computed(() => props.profiles.length === 0)
       </SettingsRow>
     </SettingsGroup>
 
-    <SettingsGroup>
-      <template #header>
-        <header class="flex items-start justify-between gap-3">
-          <div class="select-none">
-            <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">Profiles</h3>
-            <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-              An agent names one when it spawns; without one, a child inherits its parent.
-            </p>
-          </div>
-          <Button size="sm" @click="open(null)">New Profile…</Button>
-        </header>
+    <SettingsGroup
+      title="Profiles"
+      description="An agent names one when it spawns; without one, a child inherits its parent."
+    >
+      <template #actions>
+        <Button size="sm" @click="open(null)">New Profile…</Button>
       </template>
       <SettingsRow
         v-for="profile in profiles"
