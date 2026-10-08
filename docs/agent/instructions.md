@@ -117,8 +117,9 @@ Instructions. Each entry is one row in the block's order:
 The card shows no token count for an entry: Demi has no tokenizer of the
 model, and an estimate, which can be off by a large part for Chinese text or
 code, would read as a measurement. A click closes the card. Before the root's
-first request, and when the newest block says there is nothing, the card
-says `No personal instructions, AGENTS.md or CLAUDE.md`.
+first request, and when the newest block says there is nothing, the card has
+no Instructions part at all: it is as it was before instructions existed,
+rather than a line about what is missing.
 
 The card reads the transcript the page already holds: the instructions block
 carries, beside its text, the list of its entries (`instructions`, each
