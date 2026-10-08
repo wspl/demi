@@ -182,12 +182,12 @@ function formatLoss(loss: number): string {
 }
 
 /**
- * The footnote under the Connection group, which compares the two paths'
- * latency from this browser: "Direct 2 ms · Server 480 ms". A direct path
+ * The Latency row's value, which compares the two paths' latency from this
+ * browser: "Direct 2 ms · Server 480 ms". A direct path
  * that loses probes adds its loss, "Direct 620 ms, 6% lost"; without a peer
  * only the server's path is given. Null before either path has figures.
  */
-export function pathsFootnote(status: DirectStatus): SentenceText | null {
+export function pathsLatency(status: DirectStatus): SentenceText | null {
   const { direct, relay } = status.figures
   const parts: string[] = []
   if (status.peer && direct) {
