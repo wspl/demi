@@ -115,7 +115,7 @@ impl Shard {
         let hold = host.hold_for_transition(&record.id, tree).await?;
         let committed = match change {
             ConversationChange::Target(to) => {
-                let switched = host.switch_target(&record, to).await;
+                let switched = host.switch_target(&record, to, None).await;
                 // A deadline of the old binding never releases the new one.
                 if switched.is_ok() {
                     self.restart_idle(&record.id);
