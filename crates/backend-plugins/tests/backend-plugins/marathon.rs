@@ -6,7 +6,7 @@ use std::{cell::RefCell, rc::Rc};
 use demi_agent_tools::testing::{field, shown_output};
 use demi_conversation_socket_protocol::{ClientFrame, ServerFrame, ShellStatus};
 use demi_provider_common::{
-    InferenceRequest, ProviderEvent,
+    InferenceItem, InferenceRequest, ProviderEvent, UserPart,
     testing::{ScriptedRuntime, Turn, event},
 };
 use demi_shared_types::CommandId;
@@ -88,19 +88,10 @@ async fn a_coding_workflow_edits_files_and_keeps_its_shell_across_messages() {
             "export const value = 2\n"
         );
 
-        // The model was given the five tools.
+        // The model was given the three tools.
         let first = &script.requests()[0];
         let tools: Vec<&str> = first.tools.iter().map(|tool| tool.name.as_str()).collect();
-        assert_eq!(
-            tools,
-            [
-                "shell_exec",
-                "shell_status",
-                "shell_write",
-                "shell_abort",
-                "yield"
-            ]
-        );
+        assert_eq!(tools, ["shell_exec", "shell_status", "yield"]);
         // The prompt opens with the product's identity and harness guide,
         // indexes the node's groups, the plugins' `demi file` and the
         // `demi agent` graft, without their manuals, and names the model
@@ -139,15 +130,23 @@ async fn a_coding_workflow_edits_files_and_keeps_its_shell_across_messages() {
 enum Phase {
     /// The reader runs; the model checks it once.
     Started,
-    /// The reader waits for input; the model writes it.
+    /// The reader waits for its name; the model writes it.
     Checked,
-    /// The model waits for the reader to end, yielding between checks.
-    Reading,
-    /// The long command runs; the model stops it.
+    /// The reader waits for its second line, which the user types; the
+    /// model waits for the reader's end.
+    Fed,
+    /// The model yielded until the reader ends.
+    Yielded,
+    /// The reader's end woke the model, which read its end.
+    Read,
+    /// The long command runs; the model waits for its end.
     Long,
-    /// The long command was stopped; the model ends the turn.
+    /// The model yielded until the long command ends, which the user stops.
+    LongYielded,
+    /// The stop woke the model, which looks at the long command.
     Stopped,
-    Done,
+    /// The model saw the long command stopped and ended the turn.
+    Seen,
 }
 
 /// The model's side of the flow: it answers each request from the result
@@ -158,6 +157,10 @@ struct Model {
     long: Option<CommandId>,
     /// The reader's output, from every result that showed some.
     reader_output: String,
+    /// The text of the wakeup the reader's end fired.
+    wakeup: Option<String>,
+    /// The text of the wakeup the long command's stop fired.
+    stop_wakeup: Option<String>,
     polls: u32,
     /// Every result, in order.
     seen: Vec<String>,
@@ -174,33 +177,50 @@ impl Model {
                 vec![self.call("shell_status", json!({"commandId": self.reader}))]
             }
             Phase::Checked => {
-                self.phase = Phase::Reading;
+                self.phase = Phase::Fed;
                 vec![self.call(
-                    "shell_write",
+                    "shell_status",
                     json!({"commandId": self.reader, "stdin": "Alice\n", "description": "Answer with the name"}),
                 )]
             }
-            Phase::Reading => {
-                if result.starts_with("yield scheduled") {
-                    return vec![self.call("shell_status", json!({"commandId": self.reader}))];
-                }
+            Phase::Fed => {
                 self.reader_output.push_str(&shown_output(&result));
-                if field(&result, "status") == "running" {
-                    return vec![self.call("yield", json!({"durationMs": 20}))];
-                }
+                assert_eq!(field(&result, "status"), "running", "{result}");
+                self.phase = Phase::Yielded;
+                // Far longer than the test: only the reader's end wakes it.
+                vec![self.call(
+                    "yield",
+                    json!({"durationMs": 600_000, "commandIds": [self.reader]}),
+                )]
+            }
+            Phase::Yielded => {
+                self.wakeup = Some(last_user_text(request));
+                self.phase = Phase::Read;
+                vec![self.call("shell_status", json!({"commandId": self.reader}))]
+            }
+            Phase::Read => {
+                self.reader_output.push_str(&shown_output(&result));
                 self.phase = Phase::Long;
-                vec![exec("long", "echo long-ready; sleep 30", 200)]
+                vec![exec("long", "echo long-ready; read line", 200)]
             }
             Phase::Long => {
                 self.long = Some(command_id(&result));
+                self.phase = Phase::LongYielded;
+                vec![self.call(
+                    "yield",
+                    json!({"durationMs": 600_000, "commandIds": [self.long]}),
+                )]
+            }
+            Phase::LongYielded => {
+                self.stop_wakeup = Some(last_user_text(request));
                 self.phase = Phase::Stopped;
-                vec![self.call("shell_abort", json!({"commandId": self.long}))]
+                vec![self.call("shell_status", json!({"commandId": self.long}))]
             }
             Phase::Stopped => {
-                self.phase = Phase::Done;
+                self.phase = Phase::Seen;
                 reply("stopped")
             }
-            Phase::Done => panic!("the flow already ended"),
+            Phase::Seen => panic!("the flow already ended"),
         }
     }
 
@@ -214,22 +234,42 @@ fn command_id(result: &str) -> CommandId {
     CommandId::try_from(field(result, "commandId")).unwrap()
 }
 
+/// The text of the request's last user message or steer.
+fn last_user_text(request: &InferenceRequest) -> String {
+    request
+        .items
+        .iter()
+        .rev()
+        .find_map(|item| match item {
+            InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
+                content.iter().find_map(|part| match part {
+                    UserPart::Text(text) => Some(text.clone()),
+                    _ => None,
+                })
+            }
+            _ => None,
+        })
+        .expect("the request carries a user message")
+}
+
 // Over a second: two commands run as shell jobs, which the model checks,
-// feeds and stops.
+// feeds and waits for until the user feeds and stops them.
 #[tokio::test(flavor = "local")]
-async fn the_shell_tools_feed_a_waiting_command_stop_a_long_one_and_yield_between_checks() {
+async fn the_shell_tools_feed_a_waiting_command_and_a_yield_wakes_at_a_commands_end() {
     within(async {
         let model = Rc::new(RefCell::new(Model {
             phase: Phase::Started,
             reader: None,
             long: None,
             reader_output: String::new(),
+            wakeup: None,
+            stop_wakeup: None,
             polls: 0,
             seen: Vec::new(),
         }));
         let mut turns = vec![Turn::Events(vec![exec(
             "reader",
-            "read name; echo \"hello $name\"",
+            "read name; read line; echo \"hello $name\"",
             200,
         )])];
         for _ in 0..100 {
@@ -251,8 +291,35 @@ async fn the_shell_tools_feed_a_waiting_command_stop_a_long_one_and_yield_betwee
             })
             .await;
         let mut frames = Vec::new();
-        while model.borrow().phase != Phase::Done {
+        let mut typed = false;
+        let mut stopped = false;
+        while model.borrow().phase != Phase::Seen {
             frames.extend(client.next_until(is_idle).await);
+            let (phase, reader, long) = {
+                let model = model.borrow();
+                (model.phase, model.reader.clone(), model.long.clone())
+            };
+            // The turn ended with a yield for the reader: the user types the
+            // reader's second line, and the reader's end wakes the model.
+            if phase == Phase::Yielded && !typed {
+                typed = true;
+                client
+                    .send(ClientFrame::ShellWrite {
+                        command_id: reader.unwrap(),
+                        stdin: "go\n".into(),
+                    })
+                    .await;
+            }
+            // The turn ended with a yield for the long command: the user
+            // stops it, and the stop wakes the model.
+            if phase == Phase::LongYielded && !stopped {
+                stopped = true;
+                client
+                    .send(ClientFrame::ShellAbort {
+                        command_id: long.unwrap(),
+                    })
+                    .await;
+            }
         }
         {
             let model = model.borrow();
@@ -269,6 +336,23 @@ async fn the_shell_tools_feed_a_waiting_command_stop_a_long_one_and_yield_betwee
                 model.seen[1]
             );
             assert_eq!(model.reader_output, "hello Alice\n");
+            // The yield's result names the command it waits for, and the
+            // reader's end, not the time, woke the model.
+            assert!(
+                model.seen.iter().any(|seen| seen == &format!(
+                    "yield scheduled\ndurationMs: 600000\ncommandIds: {reader}"
+                )),
+                "{:#?}",
+                model.seen
+            );
+            assert_eq!(
+                model.wakeup.as_deref(),
+                Some(format!("Command {reader} ended with exit code 0. Continue the previous work; read its output with demi shell output {reader}.").as_str())
+            );
+            assert_eq!(
+                model.stop_wakeup.as_deref(),
+                Some(format!("Command {long} was stopped. Continue the previous work; read its output with demi shell output {long}.").as_str())
+            );
             let aborted = model.seen.last().unwrap();
             assert!(aborted.starts_with("status: aborted\n"), "{aborted}");
             assert!(
@@ -292,16 +376,14 @@ async fn the_shell_tools_feed_a_waiting_command_stop_a_long_one_and_yield_betwee
                     ends.push((command.clone(), ShellStatus::clone(status)));
                 }
             }
-            let [(first, greeted), (second, stopped)] = &ends[..] else {
-                panic!("{ends:?}");
-            };
-            assert_eq!((first, second), (&reader, &long));
+            let greeted = ends.iter().find(|(command, _)| *command == reader).map(|(_, end)| end);
             assert!(
-                matches!(greeted, ShellStatus::Exited { exit_code: 0, command } if command.tail == "hello Alice\n"),
+                matches!(greeted, Some(ShellStatus::Exited { exit_code: 0, command }) if command.tail == "hello Alice\n"),
                 "{greeted:?}"
             );
-            assert!(matches!(stopped, ShellStatus::Aborted { .. }), "{stopped:?}");
-            // No call was an error, the abort included.
+            let stopped = ends.iter().find(|(command, _)| *command == long).map(|(_, end)| end);
+            assert!(matches!(stopped, Some(ShellStatus::Aborted { .. })), "{stopped:?}");
+            // No call was an error, the stop included.
             let kinds = fixture.kinds();
             assert!(
                 !kinds.iter().any(|kind| kind == "tool_call:error"),

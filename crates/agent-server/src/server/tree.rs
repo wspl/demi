@@ -24,7 +24,7 @@ use demi_agent_transcript::IdSource;
 use demi_conversation_socket_protocol::ServerFrame;
 use demi_host_interface::RegisterError;
 use demi_shared_gates::{ActivityGate, KeyedSerialGate, Reservation};
-use demi_shared_types::{Clock, CommandId, NodeId};
+use demi_shared_types::{Clock, CommandEnd, CommandId, NodeId};
 use futures_util::future::join_all;
 use tokio::sync::watch;
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
@@ -195,6 +195,16 @@ pub(crate) enum OpenError {
     Toolset(String),
 }
 
+/// Where one of the conversation's commands is.
+pub(crate) enum CommandPlace<H: HostResolver> {
+    /// A node's shells hold it.
+    Held(Rc<Node<H>>),
+    /// It ended, its end was given, and the store keeps how it ended.
+    Stored(CommandEnd),
+    /// No command of the conversation has the number.
+    Unknown,
+}
+
 impl<H: HostResolver> Tree<H> {
     /// The revision of the toolset the tree opened with, which the product
     /// compares with its current one.
@@ -251,6 +261,7 @@ impl<H: HostResolver> Tree<H> {
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
             config: deps.config.session,
+            server: Rc::downgrade(server),
         })
         .await?;
         let session = assembled.node.session().clone();
@@ -401,6 +412,20 @@ impl<H: HostResolver> Tree<H> {
             .values()
             .find(|child| child.node().holds(command))
             .map(|child| child.node().clone())
+    }
+
+    /// Where the conversation's command `command` is, whichever agent ran
+    /// it: held by a node's shells while it runs and until its end is
+    /// given, then known to the store, which keeps its output.
+    pub(crate) async fn command_place(&self, command: &CommandId) -> Result<CommandPlace<H>, String> {
+        if let Some(node) = self.holder(command) {
+            return Ok(CommandPlace::Held(node));
+        }
+        match self.store.command_end(command).await {
+            Ok(Some(end)) => Ok(CommandPlace::Stored(end)),
+            Ok(None) => Ok(CommandPlace::Unknown),
+            Err(error) => Err(format!("command {command} could not be found: {error}")),
+        }
     }
 
     /// The conversation's store.

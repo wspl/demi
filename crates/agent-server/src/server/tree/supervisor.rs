@@ -434,6 +434,7 @@ impl<H: HostResolver> Tree<H> {
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
             config: deps.config.session,
+            server: Rc::downgrade(server),
         })
         .await
         .map_err(|error| error.to_string())?;

@@ -15,7 +15,7 @@ use demi_agent_session::{
     ActionEnd, AdmissionError, AgentMessageError, AgentSession, CompactionConfig, Continuation,
     EditCheck, EditContent, EditError, EditSubmission, ModelSwitch, NewContext, SeenContext,
     SessionConfig, SessionDeps, SessionEvent, SessionInit, SessionRuntime, SteerError,
-    Subscription, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome,
+    StepOutcomes, Subscription, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome,
 };
 use demi_conversation_socket_protocol::{AbortResult, AbortTarget, TranscriptPatch};
 use demi_provider_common::{
@@ -63,6 +63,8 @@ struct TestRuntime {
     /// While set, the window the node answers for every model in place of
     /// the model's own, as a user's context limit makes it.
     window_in_use: Rc<Cell<Option<u32>>>,
+    /// The tools whose consecutive calls run together as one step.
+    together: Vec<&'static str>,
 }
 
 impl SessionRuntime for TestRuntime {
@@ -129,16 +131,25 @@ impl SessionRuntime for TestRuntime {
             .collect()
     }
 
-    fn invoke_tool(
-        &self,
-        call: ToolInvocation,
-    ) -> LocalBoxFuture<'_, Result<ToolOutcome, ToolFailure>> {
-        let (_, invoke) = self
-            .tools
-            .iter()
-            .find(|(name, _)| *name == call.tool_name)
-            .expect("the session invokes only the tools it was given");
-        invoke(call)
+    fn runs_together(&self, tool: &str) -> bool {
+        self.together.contains(&tool)
+    }
+
+    fn invoke_step(&self, calls: Vec<ToolInvocation>) -> StepOutcomes<'_> {
+        let calls: futures_util::stream::FuturesUnordered<_> = calls
+            .into_iter()
+            .enumerate()
+            .map(|(index, call)| {
+                let (_, invoke) = self
+                    .tools
+                    .iter()
+                    .find(|(name, _)| *name == call.tool_name)
+                    .expect("the session invokes only the tools it was given");
+                let ran = invoke(call);
+                async move { (index, ran.await) }
+            })
+            .collect();
+        Box::pin(calls)
     }
 }
 
@@ -195,16 +206,25 @@ fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>)
     (invoke, releases, started_rx)
 }
 
-/// A `yield` of `duration_ms`.
+/// A `yield` of `durationMs`, and of the commands `commandIds` names.
 fn yield_tool() -> (String, Invoke) {
     tool("yield", |call| {
         let duration_ms = call.input["durationMs"]
             .as_u64()
             .and_then(|duration| u32::try_from(duration).ok())
             .expect("the test's yield names its duration");
+        let commands = call.input["commandIds"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|id| demi_shared_types::CommandId::try_from(id.to_string()).unwrap())
+            .collect();
         Box::pin(async move {
             Ok(ToolOutcome {
-                effect: Some(ToolEffect::ScheduleYield { duration_ms }),
+                effect: Some(ToolEffect::ScheduleYield {
+                    duration_ms,
+                    commands,
+                }),
                 ..output("")
             })
         })
@@ -294,6 +314,7 @@ fn test_runtime(tools: Vec<(String, Invoke)>) -> TestRuntime {
         execution: None,
         seen: Rc::default(),
         window_in_use: Rc::default(),
+        together: Vec::new(),
     }
 }
 
@@ -827,6 +848,50 @@ async fn stop_during_a_tool_drops_the_call_and_records_the_stop_before_it_answer
             is_error: true,
         }
     );
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_stop_during_a_step_keeps_the_result_of_a_call_that_returned() {
+    let provider = ScriptedRuntime::new([Turn::Events(vec![
+        event::tool_call("call-1", "work", json!({ "slow": false })),
+        event::tool_call("call-2", "work", json!({ "slow": true })),
+        event::response(1, 1),
+    ])]);
+    let store = MemoryTreeStore::new();
+    let (started, started_rx) = oneshot::channel();
+    let started = Rc::new(RefCell::new(Some(started)));
+    let work = tool("work", move |call| {
+        let slow = call.input["slow"] == true;
+        if slow && let Some(started) = started.borrow_mut().take() {
+            let _ = started.send(());
+        }
+        Box::pin(async move {
+            if slow {
+                std::future::pending::<()>().await;
+            }
+            Ok(output("quick"))
+        })
+    });
+    let runtime = TestRuntime {
+        together: vec!["work"],
+        ..test_runtime(vec![work])
+    };
+    let session = start_on(&provider, runtime, &store, SessionConfig::default()).await;
+    let running = session.send(text("go"), turn("t1")).unwrap();
+    started_rx.await.unwrap();
+    // The quick call returns while the slow one runs.
+    tokio::task::yield_now().await;
+
+    session.abort().await;
+
+    assert_eq!(running.await, Ok(ActionEnd::Aborted));
+    let blocks = session.transcript().blocks;
+    assert_eq!(
+        kinds(&blocks),
+        ["user", "tool_call:completed", "tool_call:error", "response", "abort"]
+    );
+    assert_eq!(tool_output(&blocks[1]).1, texts(&["quick"]));
+    assert_eq!(tool_output(&blocks[2]).1, texts(&["Tool call aborted: work"]));
 }
 
 #[tokio::test(flavor = "local")]
