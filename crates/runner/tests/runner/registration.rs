@@ -53,7 +53,7 @@ async fn backend_job_invokes_a_declared_builtin_and_drain_releases_installation(
             };
             assert_eq!(id, "log");
             assert!(lines.iter().all(|line| line.source == "runner"));
-            let started = format!("runner {} started", env!("CARGO_PKG_VERSION"));
+            let started = format!("runner {} started", demi_shared_artifacts::WORKSPACE_VERSION);
             if lines.iter().any(|line| line.text == started) {
                 assert!(next > 0);
                 break;

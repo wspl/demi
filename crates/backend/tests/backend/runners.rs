@@ -921,7 +921,7 @@ async fn a_device_shows_its_system_and_runner_release_and_a_paired_one_takes_a_n
     let os = paired.os.as_ref().expect("the hello named the system");
     assert!(!os.name.is_empty());
     assert_eq!(os.arch, std::env::consts::ARCH);
-    assert_eq!(paired.runner_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
+    assert_eq!(paired.runner_version.as_deref(), Some(demi_shared_artifacts::WORKSPACE_VERSION));
     let mut page = backend.sync(&master).await;
     let state = page.snapshot().await;
     let cloud = state
@@ -930,7 +930,7 @@ async fn a_device_shows_its_system_and_runner_release_and_a_paired_one_takes_a_n
         .find(|device| device.kind == DeviceKind::Managed)
         .expect("the Cloud booted");
     assert!(cloud.os.is_some(), "{cloud:?}");
-    assert_eq!(cloud.runner_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
+    assert_eq!(cloud.runner_version.as_deref(), Some(demi_shared_artifacts::WORKSPACE_VERSION));
 
     let rename = async |id: &str, session: &Session, name: &str| {
         backend

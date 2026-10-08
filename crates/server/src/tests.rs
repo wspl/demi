@@ -11,6 +11,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use demi_backend_database::{DatabaseKind, schema_testing};
 use semver::Version;
 use tokio_util::sync::CancellationToken;
 
@@ -55,7 +56,8 @@ impl Services for Simulated<'_> {
 }
 
 /// A server running 0.1.0 with 0.2.0 unpacked beside it, and a control
-/// database of a schema 0.2.0 migrates.
+/// database of the schema the last published release shipped, which 0.2.0,
+/// this build, migrates.
 struct Server {
     root: tempfile::TempDir,
     layout: Layout,
@@ -88,7 +90,10 @@ impl Server {
         std::fs::create_dir_all(server.manager()).unwrap();
         let control = rusqlite::Connection::open(server.backend().join("control.sqlite")).unwrap();
         control
-            .execute_batch("CREATE TABLE users (id TEXT); INSERT INTO users VALUES ('a'); PRAGMA user_version = 7;")
+            .execute_batch("CREATE TABLE users (id TEXT); INSERT INTO users VALUES ('a');")
+            .unwrap();
+        control
+            .pragma_update(None, "user_version", schema_testing::shipped_version(DatabaseKind::Control))
             .unwrap();
         server
     }
@@ -124,8 +129,9 @@ impl Server {
     /// What the new backend would leave: a migrated database.
     fn migrate(&self) {
         let control = rusqlite::Connection::open(self.backend().join("control.sqlite")).unwrap();
+        control.execute_batch("INSERT INTO users VALUES ('since');").unwrap();
         control
-            .execute_batch("INSERT INTO users VALUES ('since'); PRAGMA user_version = 8;")
+            .pragma_update(None, "user_version", schema_testing::current_version(DatabaseKind::Control))
             .unwrap();
     }
 
@@ -219,6 +225,34 @@ fn a_release_that_does_not_start_returns_the_server_with_its_data() {
         "start demi-backend.service 0.1.0".to_owned(),
     ]));
     assert!(!server.layout.journal().exists());
+}
+
+/// A database the new release could not open, such as one a development
+/// build of another unpublished schema made, stops the upgrade before
+/// either service stops, naming the file: the control database and a
+/// conversation's alike.
+#[test]
+fn an_upgrade_refuses_a_database_its_release_cannot_open_before_anything_stops() {
+    for database in ["control.sqlite", "conversations/c1.sqlite"] {
+        let server = Server::new();
+        let path = server.backend().join(database);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let other = rusqlite::Connection::open(&path).unwrap();
+        other.execute_batch("CREATE TABLE IF NOT EXISTS notes (id TEXT);").unwrap();
+        // The version of a schema this build neither has nor migrates from.
+        other.pragma_update(None, "user_version", 7).unwrap();
+        drop(other);
+        let services = server.services(&[]);
+        let refused = moving::start(&server.layout, &services, &NEW);
+        assert!(
+            matches!(&refused, Err(Failure::Failed(error)) if error.to_string().contains(&path.display().to_string())),
+            "{database}: {refused:?}"
+        );
+        assert!(services.calls.borrow().is_empty(), "{database}");
+        assert_eq!(server.layout.current_version().unwrap(), OLD, "{database}");
+        assert!(!server.layout.journal().exists(), "{database}");
+        assert!(!server.backend().join("snapshots").exists(), "{database}");
+    }
 }
 
 #[test]

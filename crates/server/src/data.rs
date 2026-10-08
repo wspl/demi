@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use demi_backend_database::{DatabaseKind, schema_differs};
+use demi_backend_database::{DatabaseKind, SchemaFit, schema_fit};
 use semver::Version;
 
 /// The databases of a data directory, relative to it, with their kinds.
@@ -41,12 +41,25 @@ fn databases(data: &Path) -> io::Result<Vec<(PathBuf, DatabaseKind)>> {
 }
 
 /// The databases of `data` that this release would migrate, relative to it.
+/// A database it could not open, of a schema neither its own nor in its
+/// history, stops the move here, before anything is interrupted, naming
+/// each such file (`upgrades.md` § Prepare).
 pub fn migrating(data: &Path) -> io::Result<Vec<PathBuf>> {
     let mut migrating = Vec::new();
+    let mut other = Vec::new();
     for (database, kind) in databases(data)? {
-        if schema_differs(&data.join(&database), kind).map_err(io::Error::other)? {
-            migrating.push(database);
+        let path = data.join(&database);
+        match schema_fit(&path, kind).map_err(io::Error::other)? {
+            SchemaFit::Current => {}
+            SchemaFit::Migrates => migrating.push(database),
+            SchemaFit::Other => other.push(path.display().to_string()),
         }
+    }
+    if !other.is_empty() {
+        return Err(io::Error::other(format!(
+            "this release cannot open {}: its schema is neither this release's nor one it migrates from, as when a development build of another unpublished schema made it",
+            other.join(", ")
+        )));
     }
     Ok(migrating)
 }
