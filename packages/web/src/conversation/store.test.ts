@@ -528,20 +528,19 @@ test('new conversation is local and does not depend on the server', async () => 
   expect(requests.some((request) => request.path === '/api/conversations')).toBe(false)
 })
 
-test('a new conversation is listed once its draft holds a character or a file, and never while it is empty', async () => {
+test('a new conversation is listed while it is open, and left empty it goes from the list', async () => {
   const store = useConversations()
   const id = store.create()
   await store.activate(id, { newConversation: true })
-  const listed = () => store.listed.some((item) => item.id === id)
-  expect(listed()).toBe(false)
-  const draft = store.items.find((item) => item.id === id)!
-  draft.draft = 'F'
-  expect(listed()).toBe(true)
-  draft.draft = ''
-  draft.attachmentIds = ['att-1']
-  expect(listed()).toBe(true)
-  draft.attachmentIds = []
-  expect(listed()).toBe(false)
+  const listed = (which: string) => store.listed.some((item) => item.id === which)
+  expect(listed(id)).toBe(true)
+  await store.activate(FIRST)
+  expect(listed(id)).toBe(false)
+  const kept = store.create()
+  await store.activate(kept, { newConversation: true })
+  store.items.find((item) => item.id === kept)!.attachmentIds = ['att-1']
+  await store.activate(FIRST)
+  expect(listed(kept)).toBe(true)
 })
 
 test('repeated new reuses the active empty draft and a new snapshot preserves it', async () => {

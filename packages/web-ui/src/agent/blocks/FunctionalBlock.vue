@@ -5,6 +5,7 @@ import ChromeRoll from '@demicodes/web-ui/ui/ChromeRoll.vue'
 import Fold from '@demicodes/web-ui/ui/Fold.vue'
 import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
+import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useFollowEnd } from '../../composables/useFollowEnd'
 
@@ -16,6 +17,7 @@ const props = defineProps<{
   loading?: boolean
   /** The failure text, shown under the body once the user opens the block; a failure never opens it. Pair with `tone="danger"`. */
   errorText?: string
+  /** A failed call: the row keeps its colors, with a red Failed after its title. */
   tone?: 'danger'
   /** Keep the scrolling part at its latest line while content streams in (live thinking, a running command's output), until the reader scrolls up from it. */
   stickBottom?: boolean
@@ -97,9 +99,7 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
   <div class="overflow-hidden">
     <div
       class="flex h-7 cursor-default select-none items-center gap-2 text-chrome transition-colors duration-200 ease-out"
-      :class="tone === 'danger'
-        ? isExpandable ? 'group text-on-danger hover:text-on-danger' : 'text-on-danger'
-        : isExpandable ? 'group text-fg-muted hover:text-fg-body' : 'text-fg-muted'"
+      :class="isExpandable ? 'group text-fg-muted hover:text-fg-body' : 'text-fg-muted'"
       :role="isExpandable ? 'button' : undefined"
       :tabindex="isExpandable ? 0 : undefined"
       :aria-expanded="isExpandable ? isOpen : undefined"
@@ -135,11 +135,13 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
             class="min-w-0 truncate font-mono text-fg-body group-hover:text-fg-emphasis"
             :class="loading ? 'thinking-shimmer' : ''"
           >{{ detail }}</span>
+          <!-- A failed call reads as its row does, marked after its title, as a failed command is. -->
+          <Tag v-if="tone === 'danger'" tone="danger" class="shrink-0">Failed</Tag>
           <!-- The chevron is part of the face: it follows the label's end, so it rolls with it rather than jumping to the new label's width. -->
           <span v-if="isExpandable || chevron" class="-ml-1 shrink-0 text-xs">
             <FoldChevron
               :open="isOpen"
-              :class="tone === 'danger' ? 'text-on-danger-muted group-hover:text-on-danger' : 'text-fg-faint group-hover:text-fg-muted'"
+              class="text-fg-faint group-hover:text-fg-muted"
             />
           </span>
         </div>

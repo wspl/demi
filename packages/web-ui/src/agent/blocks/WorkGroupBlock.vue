@@ -167,7 +167,7 @@ function pick(path: string): void {
 <template>
   <FunctionalBlock
     v-model:open="isOpen"
-    :expandable="lone ? loneText !== '' : true"
+    :expandable="!lone || loneText !== ''"
     :flow="!lone"
     :open-while="lone ? thinkingLive && loneText !== '' : undefined"
     :stick-bottom="lone ? thinkingLive : false"
@@ -179,7 +179,8 @@ function pick(path: string): void {
       <component :is="face.icon" :size="ICON_PX.in28" />
     </template>
     <span class="min-w-0 truncate" :class="face.loading ? 'thinking-shimmer' : ''">{{ face.label }}</span>
-    <template #body>
+    <!-- A thinking with no text has nothing to open: no body, so no chevron. -->
+    <template v-if="!lone || loneText !== ''" #body>
       <StreamedMarkdown
         v-if="lone"
         :content="lone.text"

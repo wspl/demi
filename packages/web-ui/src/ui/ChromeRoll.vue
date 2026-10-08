@@ -28,8 +28,13 @@ const rolling = ref(false)
 const rollMode = ref<RollMode>('label')
 let rollTimer: ReturnType<typeof setTimeout> | undefined
 
-function cloneChildren(el: HTMLElement | undefined): Node[] {
-  return el ? [...el.childNodes].map((node) => node.cloneNode(true)) : []
+/** Copies of `el`'s children; with `labelOnly`, without the icon a face roll carries. */
+function cloneChildren(el: HTMLElement | undefined, labelOnly = false): Node[] {
+  if (!el)
+    return []
+  return [...el.childNodes]
+    .filter((node) => !(labelOnly && node instanceof HTMLElement && node.hasAttribute('data-roll-icon')))
+    .map((node) => node.cloneNode(true))
 }
 
 // Snapshots come from the DOM still showing the old face (this runs before the re-render),
@@ -42,7 +47,9 @@ function snapshotFace(mode: RollMode): HTMLElement | null {
   wrap.className = 'flex h-7 items-center gap-2'
   if (mode === 'face' && rollMode.value === 'label')
     wrap.append(...cloneChildren(iconRef.value))
-  wrap.append(...cloneChildren(face))
+  // After a face roll the face holds its icon too; a label roll keeps the
+  // standing icon, so the outgoing label must not bring a second one.
+  wrap.append(...cloneChildren(face, mode === 'label'))
   return wrap.childNodes.length > 0 ? wrap : null
 }
 
@@ -135,7 +142,9 @@ onBeforeUnmount(clearRollTimer)
         />
         <div class="chrome-roll-face">
           <div ref="faceRef" class="flex h-7 items-center gap-2">
-            <slot v-if="iconPresent" name="icon" />
+            <div v-if="iconPresent" data-roll-icon class="flex h-7 shrink-0 items-center">
+              <slot name="icon" />
+            </div>
             <slot />
           </div>
         </div>
