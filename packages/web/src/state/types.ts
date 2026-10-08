@@ -1,4 +1,4 @@
-import type { Block, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import type { Block, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
 import type { DeviceStart } from '@demicodes/web-ui/devices/installation'
 import type { DeviceState } from '@demicodes/web-ui/devices/state'
@@ -43,6 +43,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   phase: SessionPhase
   queue: QueuedMessage[]
   pendingSteers: PendingSteerMessage[]
+  /** The calls the model is writing (`runtime.md` § Calls being written). */
+  pendingCalls: PendingCall[]
   model: ModelSettings
   lastError: string | null
   /** The composer's Markdown, a mark where each file's capsule stands. */

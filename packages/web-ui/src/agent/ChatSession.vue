@@ -347,6 +347,7 @@ watch(() => props.conversation.id, close)
             :key="conversation.id"
             :conversation-id="conversation.id"
             :blocks="conversation.blocks"
+            :pending-calls="conversation.pendingCalls"
             :queue="conversation.queue"
             :pending-steers="conversation.pendingSteers"
             :phase="conversation.phase"

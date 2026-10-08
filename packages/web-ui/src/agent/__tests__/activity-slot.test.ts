@@ -56,6 +56,18 @@ test('the slot stays hidden while assistant content is the latest visible block'
   expect(kind('running', [textBlock()])).toBeNull()
 })
 
+test('finished text with nothing after it is followed by Requesting, and a call being written takes its place', () => {
+  const finished: MessageListBlock = { ...textBlock(), forkable: true } as MessageListBlock
+  expect(kind('running', [finished])).toBe('requesting')
+  const writing: MessageListBlock = {
+    type: 'pending_call',
+    id: 'pending-call:call-1',
+    call: { toolUseId: 'call-1', toolName: 'shell_exec', description: null },
+  }
+  expect(kind('running', [finished], [finished, writing])).toBeNull()
+  expect(kind('idle', [finished])).toBeNull()
+})
+
 test('a pending steer does not add the slot while active thinking is already the tail', () => {
   const transcriptBlocks = [thinkingBlock()]
   const renderBlocks = [...transcriptBlocks, pendingSteerBlock()]
@@ -122,6 +134,8 @@ function slotOver(phase: SessionPhase, blocks: MessageListBlock[]) {
         ...conversation.blocks,
         ...listTailBlocks({
           phase: conversation.phase,
+          blocks: [],
+          pendingCalls: [],
           pendingSteers: [],
           queue: [],
           pendingSubmission: conversation.pendingSubmission,

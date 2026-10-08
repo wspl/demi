@@ -97,6 +97,27 @@ function commandIdText(value: unknown): string | undefined {
   return number === null ? nonEmptyString(value) : String(number)
 }
 
+/**
+ * The title of a call the model is still writing: its description once
+ * written, and until then a title by tool (`runtime.md` § Calls being
+ * written); a tool the runtime does not have is named.
+ */
+export function pendingCallTitle(call: { toolName: string, description: string | null }): string {
+  const description = nonEmptyString(call.description)
+  if (description)
+    return description
+  switch (toolRenderKind(call.toolName)) {
+    case 'shell_exec':
+      return 'Preparing a command…'
+    case 'shell_status':
+      return 'Checking a command…'
+    case 'yield':
+      return 'Waiting…'
+    case 'generic':
+      return call.toolName
+  }
+}
+
 export function trimToolSummary(text: string, maxLength = 120): string {
   return truncate(text.replace(/\s+/g, ' ').trim(), maxLength, '...')
 }

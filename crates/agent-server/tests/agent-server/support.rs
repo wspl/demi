@@ -333,6 +333,21 @@ pub fn held(gate: &Gate, events: Vec<demi_provider_common::ProviderEvent>) -> Tu
     }))
 }
 
+/// A run that streams `before`, then waits until the gate opens and plays
+/// `after`.
+pub fn streamed_then_held(
+    gate: &Gate,
+    before: Vec<demi_provider_common::ProviderEvent>,
+    after: Vec<demi_provider_common::ProviderEvent>,
+) -> Turn {
+    let Turn::Stream(rest) = held(gate, after) else {
+        unreachable!("a held run is a stream")
+    };
+    Turn::Stream(Box::new(move |request| {
+        stream::iter(before).chain(rest(request)).boxed_local()
+    }))
+}
+
 /// What a `demi agent` call wrote and how it exited.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandRun {
@@ -572,7 +587,7 @@ impl Fixture {
     pub async fn opened(&self) -> TestClient<TestProduct> {
         let mut client = self.client();
         client.send(open()).await;
-        let handshake = client.next_until(is_pending_steers).await;
+        let handshake = client.next_until(is_pending_calls).await;
         assert_eq!(
             handshake.first(),
             Some(&ServerFrame::Opened),
@@ -645,6 +660,11 @@ pub fn send(id: &str, message: &str) -> ClientFrame {
 
 pub fn is_pending_steers(frame: &ServerFrame) -> bool {
     matches!(frame, ServerFrame::PendingSteers { .. })
+}
+
+/// The handshake's last frame before the usage.
+pub fn is_pending_calls(frame: &ServerFrame) -> bool {
+    matches!(frame, ServerFrame::PendingCalls { .. })
 }
 
 pub fn is_context_usage(frame: &ServerFrame) -> bool {

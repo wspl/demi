@@ -2,7 +2,7 @@
 import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
-import type { Block, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import type { Block, PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { BLOCK_GAP, useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { compactionSummaryTokens, getVisibleBlocks } from './visible-blocks'
 import { assistantFooterIds, replyEndIds, requestLineIds } from './assistant-footer'
@@ -42,6 +42,8 @@ const props = defineProps<{
   /** The agent whose transcript this is: null for the conversation's own, a subagent's id otherwise. */
   node?: string | null
   blocks: Block[]
+  /** The calls the model is writing, shown after the transcript. */
+  pendingCalls?: PendingCall[]
   pendingSteers: PendingSteerMessage[]
   queue: QueuedMessage[]
   phase: SessionPhase
@@ -122,6 +124,8 @@ function regenerate(): void {
 }
 const tailBlocks = computed(() => listTailBlocks({
   phase: props.phase,
+  blocks: props.blocks,
+  pendingCalls: props.pendingCalls ?? [],
   pendingSteers: props.pendingSteers,
   queue: props.queue,
   pendingSubmission: props.pendingSubmission,
