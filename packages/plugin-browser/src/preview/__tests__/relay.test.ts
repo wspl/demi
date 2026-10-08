@@ -150,7 +150,6 @@ function scriptedEngine(answer: (received: Received) => Answer | Promise<Answer>
       requests.set(message.id, message)
       if (message.request.body) {
         bodies.set(message.id, [])
-        send({ type: 'pull', id: message.id })
       } else {
         respond(message.id)
       }
@@ -575,28 +574,32 @@ test('pulls made before their chunks arrive get the body in order, as a streamâ€
   expect(decoder.decode(chunks[1]!)).toBe('tail')
 })
 
-test('a request body goes one chunk per pull, and the frames refuse what the engine never sends', () => {
+test('a request body goes a window ahead of the engineâ€™s pulls, and the frames refuse what the engine never sends', () => {
   const reader = new PreviewFrameReader()
   expect(() => reader.read(new Uint8Array([0, 0, 0, 0]))).toThrow()
   expect(() => new PreviewFrameReader().read(encodeMessage({ type: 'cancel', id: 1 }))).toThrow()
   expect(() => new PreviewFrameReader().read(new Uint8Array([0, 0, 0, 7, 4, 0, 0, 0, 1, 0, 0xff]))).toThrow()
-  const big = new Uint8Array(PREVIEW_BODY_CHUNK_BYTES * 2 + 3).fill(7)
+  // A body larger than the window: its first chunks go with the request, before any pull, as a small
+  // body goes whole with its end; then one chunk, or the end, for each chunk the engine took.
+  const big = new Uint8Array(PREVIEW_BODY_CHUNK_BYTES * PREVIEW_BODY_WINDOW + 3).fill(7)
   const sent: Uint8Array[] = []
-  const connection = new PreviewConnection((handlers) => ({
-    send: (bytes) => {
-      sent.push(bytes)
-      const frame = bytes.subarray(4)
-      if (frame[0] === PREVIEW_CONTROL_FRAME && JSON.parse(decoder.decode(frame.subarray(1))).type === 'request') {
-        handlers.data(encodeEngine({ type: 'pull', id: 1 }))
-      }
-    },
-    close: () => {},
-  }))
+  let engine: UserStreamHandlers | null = null
+  const connection = new PreviewConnection((handlers) => {
+    engine = handlers
+    return { send: (bytes) => sent.push(bytes), close: () => {} }
+  })
   connection.request(PLACE, APP, { ...request('http://localhost:5173/upload'), method: 'POST' }, client(), big)
-  const bodies = sent.filter((bytes) => bytes[4] === PREVIEW_REQUEST_BODY_FRAME)
-  // One pull, one chunk, at most a frame's worth.
-  expect(bodies).toHaveLength(1)
-  expect(bodies[0]!.length).toBe(9 + PREVIEW_BODY_CHUNK_BYTES)
+  const bodies = () => sent.filter((bytes) => bytes[4] === PREVIEW_REQUEST_BODY_FRAME).map((bytes) => bytes.length - 9)
+  expect(bodies()).toEqual(Array(PREVIEW_BODY_WINDOW).fill(PREVIEW_BODY_CHUNK_BYTES))
+  engine!.data(encodeEngine({ type: 'pull', id: 1 }))
+  engine!.data(encodeEngine({ type: 'pull', id: 1 }))
+  engine!.data(encodeEngine({ type: 'pull', id: 1 }))
+  // The rest, then the end; a pull past the end sends nothing.
+  expect(bodies().slice(PREVIEW_BODY_WINDOW)).toEqual([3, 0])
+  const small = new PreviewConnection(() => ({ send: (bytes) => sent.push(bytes), close: () => {} }))
+  sent.length = 0
+  small.request(PLACE, APP, { ...request('http://localhost:5173/cookie'), method: 'POST' }, client(), encoder.encode('a=1'))
+  expect(bodies()).toEqual([3, 0])
 })
 
 function request(url: string) {

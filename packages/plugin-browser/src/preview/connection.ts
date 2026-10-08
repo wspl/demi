@@ -2,9 +2,9 @@
  * One conversation's `preview` stream as the relay uses it (`preview.md`
  * § The stream): requests, WebSockets and label questions of every tab of
  * the user's browser in that conversation share it, each with an id this
- * side chooses. A request's body moves one chunk per the engine's pull; an
- * answer's comes a window ahead of this side's pulls, each pull sent as a
- * chunk is read, so a small answer takes one round trip. The stream opens with the first
+ * side chooses. Both bodies go a window ahead of the other side's pulls,
+ * each pull sent as a chunk is taken, so a small request or answer takes no
+ * round trip of its own. The stream opens with the first
  * request, says `hello` first, and opens again with the next request after
  * it ended: an end, or a frame the protocol refuses, fails every request
  * and socket it carried, as a network error.
@@ -12,6 +12,7 @@
 import type { OpenUserStream, PreviewPlace, UserStream } from '@demicodes/plugin-sdk'
 import {
   PREVIEW_BODY_CHUNK_BYTES,
+  PREVIEW_BODY_WINDOW,
   type PreviewClient,
   type PageStorage,
   type PreviewEngineMessage,
@@ -81,6 +82,8 @@ interface OpenRequest {
   body: Uint8Array | null
   /** How much of the body was sent. */
   sent: number
+  /** The body's empty end chunk was sent. */
+  bodyEnded: boolean
   answered(head: PreviewHead): void
   failed(reason: string): void
   /**
@@ -210,11 +213,10 @@ export class PreviewConnection {
         return
       }
       case 'pull': {
+        // The engine took a chunk of the request's body: one more may go.
         const request = this.requests.get(message.id)
-        if (request?.body) {
-          const data = request.body.subarray(request.sent, request.sent + PREVIEW_BODY_CHUNK_BYTES)
-          request.sent += data.length
-          this.stream?.send(encodeRequestBody(message.id, data))
+        if (request) {
+          this.sendBody(message.id, request)
         }
         return
       }
@@ -274,6 +276,17 @@ export class PreviewConnection {
     waiting.resolve(chunk)
   }
 
+  /** Sends the next chunk of request `id`'s body, or its end, while it has one to send. */
+  private sendBody(id: number, request: OpenRequest): void {
+    if (!request.body || request.bodyEnded) {
+      return
+    }
+    const data = request.body.subarray(request.sent, request.sent + PREVIEW_BODY_CHUNK_BYTES)
+    request.sent += data.length
+    request.bodyEnded = data.length === 0
+    this.stream?.send(encodeRequestBody(id, data))
+  }
+
   /** A chunk of request `id`'s answer was read: the engine may send one more. */
   private consumed(id: number): void {
     this.stream?.send(encodeMessage({ type: 'pull', id }))
@@ -308,9 +321,13 @@ export class PreviewConnection {
     })
     // A request nobody reads the head of still fails quietly.
     head.catch(() => {})
-    const open: OpenRequest = { body: body && body.length > 0 ? body : null, sent: 0, answered, failed, chunks: [], arrived: [], done: false, broken: null }
+    const open: OpenRequest = { body: body && body.length > 0 ? body : null, sent: 0, answered, failed, chunks: [], arrived: [], done: false, broken: null, bodyEnded: false }
     this.requests.set(id, open)
     stream.send(encodeMessage({ type: 'request', id, environment, request: { ...request, body: open.body !== null }, client }))
+    // The body's first chunks go with the request, without waiting for the engine's pulls.
+    for (let sent = 0; sent < PREVIEW_BODY_WINDOW; sent++) {
+      this.sendBody(id, open)
+    }
     return {
       head,
       pull: () => {
