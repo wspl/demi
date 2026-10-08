@@ -328,6 +328,21 @@ async fn a_peer_that_does_not_connect_within_ten_seconds_is_given_up() {
     assert_eq!(started.elapsed().as_secs(), 10);
 }
 
+// Tens of milliseconds over loopback.
+#[tokio::test]
+async fn the_probe_channel_echoes_each_probe() {
+    let fake = Fake::default();
+    let direct = runner(&fake);
+    let page = connected(&direct, "p1").await;
+
+    let mut probe = page.probe().await;
+    for id in [1, 2, 3] {
+        let sent = json!({ "id": id }).to_string();
+        probe.text(&sent);
+        assert_eq!(probe.next().await, Heard::Text(sent), "each probe comes back as it went");
+    }
+}
+
 /// A STUN server on 127.0.0.1 that answers every binding request with
 /// `mapped` as its XOR-MAPPED-ADDRESS, the address it says it saw the
 /// request come from, as a public server answers a request that crossed a

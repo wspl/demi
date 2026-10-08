@@ -1,7 +1,8 @@
 /**
  * A device's signaling socket (`web-api.md` § Direct channel): the page's
  * introduction to the device's runner. It carries one offer at a time and
- * its answer, and each side's candidates found after them; a socket that brings nothing, not even a heartbeat, for as
+ * its answer, each side's candidates found after them, and the page's
+ * probes of the relay path with their answers; a socket that brings nothing, not even a heartbeat, for as
  * long as the page's sockets may is broken, and a closed or broken socket
  * connects again after the page's reconnect waits (`web-application.md`
  * § Liveness and reconnection). Its close closes the runner's peer, and the
@@ -44,6 +45,8 @@ export class DeviceSignaling implements PeerSignaling {
   private answering: PromiseWithResolvers<string> | null = null
   /** Who hears the runner's candidates. */
   private readonly listeners = new Set<(candidate: string) => void>()
+  /** Who hears the runner's answers to the relay probes. */
+  private readonly pongs = new Set<(id: number) => void>()
 
   /**
    * @param deviceId The paired device the socket introduces the page to.
@@ -77,6 +80,21 @@ export class DeviceSignaling implements PeerSignaling {
       return
     const request: DirectRequest = { type: 'candidate', candidate }
     socket.send(JSON.stringify(request))
+  }
+
+  /** Sends a probe of the relay path; one for a socket that is not open is lost. */
+  ping(id: number): void {
+    const socket = this.socket
+    if (!socket || socket.readyState !== WebSocket.OPEN)
+      return
+    const request: DirectRequest = { type: 'ping', id }
+    socket.send(JSON.stringify(request))
+  }
+
+  /** Calls `listener` with the id of each probe the runner answered; the answer stops it. */
+  onPong(listener: (id: number) => void): () => void {
+    this.pongs.add(listener)
+    return () => this.pongs.delete(listener)
   }
 
   candidates(listener: (candidate: string) => void): () => void {
@@ -146,6 +164,11 @@ export class DeviceSignaling implements PeerSignaling {
       return
     if (message.type === 'closed') {
       this.peerClosed()
+      return
+    }
+    if (message.type === 'pong') {
+      for (const listener of [...this.pongs])
+        listener(message.id)
       return
     }
     if (message.type === 'candidate') {

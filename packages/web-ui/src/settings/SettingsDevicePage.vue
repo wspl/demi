@@ -1,20 +1,28 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { Cloud, Monitor } from '@lucide/vue'
 import Button from '../ui/Button.vue'
-import Fold from '../ui/Fold.vue'
-import FoldChevron from '../ui/FoldChevron.vue'
-import HelpPopover from '../ui/HelpPopover.vue'
+import DetailsSheet from '../ui/DetailsSheet.vue'
+import Dropdown from '../ui/Dropdown.vue'
+import Menu from '../ui/Menu.vue'
+import MenuItem from '../ui/MenuItem.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
-import Switch from '../ui/Switch.vue'
-import { formatDay, formatWhen, useTimeUntil } from '../composables/useRelativeTime'
+import StatusDot from '../ui/StatusDot.vue'
+import { formatDay, formatMoment, formatWhen, useTimeUntil } from '../composables/useRelativeTime'
 import DeviceRenameDialog from '../devices/DeviceRenameDialog.vue'
 import DeviceRevokeDialog from '../devices/DeviceRevokeDialog.vue'
-import DeviceStartHint from '../devices/DeviceStartHint.vue'
 import {
+  DEVICE_ROUTE_DESCRIPTION,
+  DEVICE_ROUTE_LABEL,
   DIRECT_STAGE_LABEL,
   directReason,
+  formatLatency,
+  pathsFootnote,
   reasonSentence,
+  shownAddress,
+  type DeviceRoute,
   type DirectAddresses,
+  type PathFigures,
 } from '../devices/direct'
 import { RUNNER_STATE_LABEL, runnerState, systemName, type DeviceReport } from '../devices/report'
 import { DEVICE_STATE_LABEL } from '../devices/state'
@@ -27,23 +35,22 @@ import type { SettingsDevice } from './types'
 
 /**
  * A device's own page (`direct-channel.md` § What the user sees), which its
- * row in Devices opens: how this page reaches it and why, with the switch
- * for direct connections, Try Now and what the last attempt saw; then the
- * device itself, its system by name, its runner as up to date or not, and
- * when it was paired, with Rename… and Revoke…. The Cloud's page has no
- * switch: the Cloud is always reached through the server.
+ * row in Devices opens. Its header says how this page reaches it now, why
+ * not directly and when Demi tries again, with Details… for the last
+ * attempt's diagnostics and Try Again; Connection holds the route, with a
+ * footnote comparing the two paths' latency from this browser; Device holds the
+ * facts, with Rename…; Revoke… ends the page. The Cloud's page says it is
+ * always reached through the server and has no Connection.
  */
 const props = defineProps<{
   /** A paired device, or the Cloud with what its runner reported. */
   page: { kind: 'device'; device: SettingsDevice } | { kind: 'cloud'; report: DeviceReport }
   /** The runner release the server's devices follow; null on a server without them. */
   runnerRelease: string | null
-  /** The direct channel's round trip while it stands, in milliseconds. */
-  roundTripMs?: number | null
   /** The names of the projects on the device, which go with it. */
   projects?: readonly string[]
   nameMaxLength: number | null
-  /** A change of the device's switch is under way. */
+  /** A change of the device's route is under way. */
   changing?: boolean
   renaming?: boolean
   revoking?: boolean
@@ -51,11 +58,13 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   back: []
-  setDirect: [enabled: boolean]
+  setRoute: [route: DeviceRoute]
   tryNow: []
   rename: [name: string]
   revoke: []
 }>()
+
+const ROUTES: readonly DeviceRoute[] = ['automatic', 'direct', 'server']
 
 const device = computed(() => (props.page.kind === 'device' ? props.page.device : null))
 const report = computed<DeviceReport>(() => (props.page.kind === 'device' ? props.page.device : props.page.report))
@@ -63,43 +72,77 @@ const system = computed(() => systemName(report.value))
 const runner = computed(() => runnerState(report.value.runnerVersion, props.runnerRelease))
 
 const direct = computed(() => device.value?.direct ?? null)
-const reason = computed(() => (direct.value ? directReason(direct.value) : null))
 const online = computed(() => device.value?.state === 'online')
+const reason = computed(() => (direct.value && online.value ? directReason(direct.value) : null))
 const attempt = computed(() => direct.value?.attempt ?? null)
 
-/** The status row's words: how this page reaches the device now. */
-const statusLabel = computed<SentenceText>(() => {
-  const shown = device.value
-  if (!shown) {
-    return 'Through the server'
-  }
-  if (shown.state !== 'online') {
-    return DEVICE_STATE_LABEL[shown.state]
-  }
-  return reason.value === null ? 'Connected directly' : 'Through the server'
-})
-
-const roundTrip = computed(() => {
-  const ms = props.roundTripMs
-  if (ms === null || ms === undefined) {
+/** The figures of the path in use. */
+const inUse = computed<PathFigures | null>(() => {
+  const status = direct.value
+  if (!status) {
     return null
   }
-  if (ms < 0.1) {
-    return 'under 0.1 ms'
-  }
-  return ms < 10 ? `${ms.toFixed(1)} ms` : `${Math.round(ms)} ms`
+  return status.chosen ? status.figures.direct : status.figures.relay
 })
 
+/** The header's dot and its words: how this page reaches the device now. */
+const status = computed<{ tone: 'success' | 'warning' | 'muted'; words: SentenceText }>(() => {
+  const shown = device.value
+  if (!shown) {
+    return { tone: 'muted', words: 'Through the server' }
+  }
+  if (shown.state === 'updating') {
+    return { tone: 'warning', words: DEVICE_STATE_LABEL.updating }
+  }
+  if (shown.state === 'offline') {
+    return { tone: 'muted', words: DEVICE_STATE_LABEL.offline }
+  }
+  return reason.value === null
+    ? { tone: 'success', words: 'Connected directly' }
+    : { tone: 'muted', words: 'Through the server' }
+})
+
+/** The line under Connection that compares the paths; none while the device is offline. */
+const footnote = computed(() => (direct.value && online.value ? pathsFootnote(direct.value) : null))
+
 const nextIn = useTimeUntil(() => direct.value?.nextAt ?? new Date().toISOString())
+
+/** The sentence under the status: why the server's path is used, then when Demi tries again. */
+const explanation = computed<SentenceText | null>(() => {
+  const status = direct.value
+  if (!status || !online.value) {
+    return null
+  }
+  if (status.trying && reason.value?.kind === 'notYet') {
+    return 'Demi is trying a direct connection.'
+  }
+  const sentence = reason.value ? reasonSentence(reason.value, formatWhen) : null
+  if (!sentence) {
+    return null
+  }
+  const retries = reason.value?.kind !== 'serverOnly' && reason.value?.kind !== 'slower' && status.nextAt !== null
+  return retries ? `${sentence} Demi tries again ${nextIn.value}.` : sentence
+})
+
+/**
+ * Try Again is there only while the route allows a peer and the page is not
+ * connected directly; a peer that stands but is slower right now needs no new
+ * attempt, so it has none to offer.
+ */
+const canTryAgain = computed(() => {
+  const status = direct.value
+  return !!status && online.value && status.route !== 'server' && !status.chosen && !status.peer
+})
 
 /** How long an attempt took, as a person reads it. */
 function took(ms: number): string {
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`
 }
 
-/** One side's addresses on one line, or that it offered none. */
-function addresses(side: DirectAddresses, kind: keyof DirectAddresses): string {
-  return side[kind].length ? side[kind].join(', ') : 'None'
+/** One side's addresses, local and public, each as a person can use it. */
+function addressLines(side: DirectAddresses): string[] {
+  const list = (addresses: readonly string[]) => (addresses.length ? [...new Set(addresses.map(shownAddress))].join(', ') : 'None')
+  return [`Local: ${list(side.local)}`, `Public: ${list(side.public)}`]
 }
 
 const PERMISSION_LABEL = {
@@ -107,6 +150,34 @@ const PERMISSION_LABEL = {
   prompt: 'Not answered yet',
   denied: 'Blocked',
 } as const
+
+/** The last attempt's diagnostics, as the Details sheet lists them. */
+const details = computed(() => {
+  const seen = attempt.value
+  if (!seen) {
+    return []
+  }
+  const ended =
+    seen.outcome === 'busy'
+      ? 'The device was busy'
+      : seen.outcome === 'dropped'
+        ? 'Connected, then dropped'
+        : seen.stage
+          ? DIRECT_STAGE_LABEL[seen.stage]
+          : 'Not known'
+  return [
+    { label: 'Ran', value: formatMoment(seen.startedAt) },
+    { label: 'Took', value: took(seen.durationMs) },
+    { label: 'Ended at', value: ended },
+    { label: 'This browser', value: addressLines(seen.browser) },
+    { label: 'The device', value: addressLines(seen.device) },
+    { label: 'Paths tried', value: `${seen.pairs.tried}, of which ${seen.pairs.answered} answered` },
+    ...(seen.pair
+      ? [{ label: 'Path in use', value: `${seen.pair.browser === null ? 'Hidden by the browser' : shownAddress(seen.pair.browser)} to ${seen.pair.device}` }]
+      : []),
+    { label: 'Local network access', value: seen.permission ? PERMISSION_LABEL[seen.permission] : 'Not asked by this browser' },
+  ]
+})
 
 const detailsOpen = ref(false)
 const renameOpen = ref(false)
@@ -123,91 +194,51 @@ function revoke() {
     back="Devices"
     @back="emit('back')"
   >
-    <SettingsGroup title="Connection">
-      <template v-if="device">
-        <SettingsRow
-          label="Connect directly when possible"
-          description="Files and a browser’s live view go straight to the device when the network allows it."
-        >
-          <Switch
-            :model-value="device.direct.enabled"
-            aria-label="Connect directly when possible"
-            :disabled="changing"
-            @update:model-value="emit('setDirect', $event)"
-          />
-        </SettingsRow>
-        <SettingsRow :label="statusLabel">
-          <template #description>
-            <template v-if="device.state === 'offline'">
-              <template v-if="device.seen">Last seen <RelativeTime :timestamp="device.seen" />.</template>
-              <template v-else>Its runner has not connected yet.</template>
-            </template>
-            <template v-else-if="device.state === 'updating'">Its runner is updating itself and connects again in a moment.</template>
-            <template v-else-if="reason === null">
-              {{ roundTrip ? `Round trip ${roundTrip}.` : 'Files and the live view go straight to the device.' }}
-            </template>
-            <template v-else>{{ reasonSentence(reason, formatWhen) }}</template>
-          </template>
-          <HelpPopover
-            v-if="device.state === 'offline' && device.start"
-            label="How to Start Its Runner"
-            :overlay-store="overlayStore"
-          >
-            <DeviceStartHint :start="device.start" />
-          </HelpPopover>
-        </SettingsRow>
-        <SettingsRow v-if="online && device.direct.enabled" label="Last attempt">
-          <template #description>
-            <template v-if="device.direct.trying">Trying now…</template>
-            <template v-else-if="attempt">
-              Ran <RelativeTime :timestamp="attempt.startedAt" /> and took {{ took(attempt.durationMs) }}.<template
-                v-if="device.direct.nextAt"
-              > The next one runs {{ nextIn }}.</template>
-            </template>
-            <template v-else>None yet.</template>
-          </template>
-          <Button
-            size="sm"
-            :loading="device.direct.trying"
-            :disabled="device.direct.connected || device.direct.permission === 'denied'"
-            :disabled-reason="device.direct.connected ? 'Already connected directly.' : 'This browser blocks local network access.'"
-            @click="emit('tryNow')"
-          >Try Now</Button>
-        </SettingsRow>
-        <template v-if="attempt">
-          <SettingsRow label="Details" interactive @click="detailsOpen = !detailsOpen">
-            <template #accessory><FoldChevron :open="detailsOpen" /></template>
-          </SettingsRow>
-          <!-- The details read as the Details row's own, with no line between them. -->
-          <Fold :open="detailsOpen" class="border-t-0!">
-            <dl class="grid select-text grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-1.5 px-4 pb-4 pt-0.5 text-[12px] leading-4">
-              <dt class="text-fg-subtle">Result</dt>
-              <dd class="text-fg-muted">
-                {{ attempt.outcome === 'failed' && attempt.stage ? `Stopped at ${DIRECT_STAGE_LABEL[attempt.stage].toLowerCase()}` : attempt.outcome === 'busy' ? 'The device was busy' : attempt.outcome === 'dropped' ? 'Connected, then dropped' : 'Connected' }}
-              </dd>
-              <dt class="text-fg-subtle">Took</dt>
-              <dd class="text-fg-muted">{{ took(attempt.durationMs) }}</dd>
-              <dt class="text-fg-subtle">This browser</dt>
-              <dd class="break-words text-fg-muted">
-                Local: {{ addresses(attempt.browser, 'local') }}<br>Public: {{ addresses(attempt.browser, 'public') }}
-              </dd>
-              <dt class="text-fg-subtle">The device</dt>
-              <dd class="break-words text-fg-muted">
-                Local: {{ addresses(attempt.device, 'local') }}<br>Public: {{ addresses(attempt.device, 'public') }}
-              </dd>
-              <dt class="text-fg-subtle">Paths tried</dt>
-              <dd class="text-fg-muted">{{ attempt.pairs.tried }}, {{ attempt.pairs.answered }} answered</dd>
-              <dt class="text-fg-subtle">Local network access</dt>
-              <dd class="text-fg-muted">{{ attempt.permission ? PERMISSION_LABEL[attempt.permission] : 'Not asked by this browser' }}</dd>
-            </dl>
-          </Fold>
-        </template>
+    <template #icon>
+      <Monitor v-if="device" :size="20" aria-hidden="true" />
+      <Cloud v-else :size="20" aria-hidden="true" />
+    </template>
+    <template #status>
+      <StatusDot :tone="status.tone" />
+      <span>{{ status.words }}</span>
+      <template v-if="device?.state === 'offline' && device.seen">
+        <span class="text-fg-subtle">· Last seen <RelativeTime :timestamp="device.seen" /></span>
       </template>
-      <SettingsRow
-        v-else
-        label="Through the server"
-        description="The Cloud runs beside the server, so this browser always reaches it through the server."
-      />
+      <span v-else-if="online && inUse" class="text-fg-subtle">· {{ formatLatency(inUse.latencyMs) }}</span>
+    </template>
+    <template v-if="!device || explanation" #description>
+      {{ device ? explanation : 'The Cloud runs beside the server, so this browser always reaches it through the server.' }}
+    </template>
+    <template v-if="attempt || canTryAgain" #actions>
+      <Button v-if="attempt" size="sm" @click="detailsOpen = true">Details…</Button>
+      <Button v-if="canTryAgain" size="sm" :loading="direct?.trying" @click="emit('tryNow')">Try Again</Button>
+    </template>
+
+    <SettingsGroup v-if="device" title="Connection">
+      <SettingsRow label="Route" :description="DEVICE_ROUTE_DESCRIPTION[device.direct.route]">
+        <Dropdown
+          size="sm"
+          :overlay-store="overlayStore"
+          variant="default"
+          trigger-label="Route"
+          :disabled="changing"
+        >
+          <template #trigger>{{ DEVICE_ROUTE_LABEL[device.direct.route] }}</template>
+          <template #content="{ close }">
+            <Menu>
+              <MenuItem
+                v-for="route in ROUTES"
+                :key="route"
+                :label="DEVICE_ROUTE_LABEL[route]"
+                choice
+                :is-selected="device.direct.route === route"
+                @select="close(); route !== device.direct.route && emit('setRoute', route)"
+              />
+            </Menu>
+          </template>
+        </Dropdown>
+      </SettingsRow>
+      <template v-if="footnote" #footer>{{ footnote }}</template>
     </SettingsGroup>
 
     <SettingsGroup title="Device">
@@ -238,6 +269,14 @@ function revoke() {
       </SettingsRow>
     </SettingsGroup>
 
+    <DetailsSheet
+      :is-open="detailsOpen"
+      :overlay-store="overlayStore"
+      title="Connection Details"
+      description="What the last attempt at a direct connection saw."
+      :entries="details"
+      @close="detailsOpen = false"
+    />
     <DeviceRenameDialog
       :is-open="renameOpen"
       :overlay-store="overlayStore"
