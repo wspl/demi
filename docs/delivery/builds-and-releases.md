@@ -686,6 +686,26 @@ development server under `demi-preview.localhost`, whose subdomains Chrome
 resolves to the loopback address and treats as secure contexts over plain
 HTTP, so they need no certificate; they never reach the deployed domain.
 
+## Stale build products
+
+Cargo never removes a unit it stops building. Each change of `Cargo.lock`, a
+feature or a flag gives the affected units new directories under
+`target/debug/build/<package>/<hash>/` and new incremental caches under
+`target/debug/incremental/<crate>-<id>/`, and the old ones stay: in three days
+one checkout held 151 directories of `demi-backend` alone, and each of the
+checkout and the four slots grows so. `bun xtask sweep` asks Cargo for the
+products of `cargo check --workspace --all-targets`, `cargo test --workspace
+--no-run` and `cargo build --workspace --all-targets`, each with
+`--features demi-runner/test-fixtures`, keeps the unit directories those
+products are in and the incremental caches those units last wrote, and
+removes the rest of the `debug` profile while it holds Cargo's build-directory
+lock; when any build fails, it removes nothing. After a sweep the same builds
+compile nothing. It leaves other target directories alone and lists their
+sizes; `--dry-run` reports without removing. Cargo's own answer, a cache
+shared across workspaces with collection, is a 2026 project goal not yet on
+nightly; `-Z build-dir-new-layout` and `-Z fine-grain-locking` are its first
+steps.
+
 ## Validation
 
 [Testing](testing.md) says what a test must be; this section says how the tests run.
