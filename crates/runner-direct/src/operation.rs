@@ -207,6 +207,23 @@ impl Out {
     }
 }
 
+/// `total` random bytes, for a speed test on either path
+/// (`direct-channel.md` § Measuring the paths): random, since a compressing
+/// proxy would make repeated bytes look fast.
+pub fn speed_bytes(total: u64) -> ByteStream {
+    const CHUNK: u64 = 64 * 1024;
+    let chunks = futures_util::stream::unfold(total, |left| async move {
+        if left == 0 {
+            return None;
+        }
+        let size = left.min(CHUNK);
+        let mut chunk = vec![0; usize::try_from(size).expect("a chunk fits memory")];
+        fastrand::fill(&mut chunk);
+        Some((Ok(Bytes::from(chunk)), left - size))
+    });
+    Box::pin(chunks)
+}
+
 async fn carry_out(
     operations: Arc<dyn Operations>,
     introduction: Arc<Introduction>,
@@ -214,11 +231,20 @@ async fn carry_out(
     input: mpsc::UnboundedReceiver<Input>,
     out: &Out,
 ) {
-    let scope = Scope {
-        conversation: header.scope().conversation.to_owned(),
-        cwd: header.scope().cwd.to_owned(),
+    if let ChannelHeader::Speed { bytes } = header {
+        if out.answer(&Opened::new()).await {
+            out.bytes(speed_bytes(bytes)).await;
+        }
+        return;
+    }
+    let Some(scope) = header.scope().map(|scope| Scope {
+        conversation: scope.conversation.to_owned(),
+        cwd: scope.cwd.to_owned(),
+    }) else {
+        return;
     };
     match header {
+        ChannelHeader::Speed { .. } => unreachable!("a speed test is carried out above"),
         ChannelHeader::Read {
             path,
             offset,

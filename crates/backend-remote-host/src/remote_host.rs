@@ -572,6 +572,22 @@ impl RemoteHost {
         }
     }
 
+    /// `bytes` random bytes from the runner through this backend, the relay
+    /// half of Test Speed (`direct-channel.md` § Measuring the paths).
+    pub async fn speed(&self, bytes: u64) -> Result<PipeReader, HostError> {
+        let link = self.link()?;
+        let (answer, reader) = answered(&link, Expected::Speed, |id, output| Inbound::Speed {
+            id,
+            bytes,
+            output,
+        })
+        .await?;
+        match answer {
+            Answer::Done => Ok(reader),
+            _ => Err(protocol("the runner answered another request")),
+        }
+    }
+
     /// Opens a user stream: `request`'s operation in the resident service
     /// that holds the conversation's state, its input and output the two
     /// pipes (`runner.md` § Service streams). It admits no work: a stream is
