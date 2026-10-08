@@ -374,8 +374,8 @@ where
 ///
 /// # Errors
 ///
-/// Returns an error if the file at `locale_path` cannot be read or if
-/// writing to `embedded_file` fails.
+/// Returns an error if `locale_path` is not UTF-8 or if writing to
+/// `embedded_file` fails.
 fn embed_locale_file(
     embedded_file: &mut File,
     locale_path: &Path,
@@ -383,23 +383,23 @@ fn embed_locale_file(
     locale: &str,
     component: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use std::fs;
-
     if locale_path.exists() || locale_path.is_file() {
-        let content = fs::read_to_string(locale_path)?;
         writeln!(
             embedded_file,
             "        // Locale for {component} ({locale})"
         )?;
-        // Determine if we need a hash. If content contains ", we need r#""#
-        let delimiter = if content.contains('"') { "#" } else { "" };
+        // Demi's: the file is included rather than copied, so rustc's
+        // dep-info names it and Cargo compares it like any other source of
+        // uucore, by checksum when the build asks for that. A rerun-if-changed
+        // watch is compared by mtime only, so every fresh checkout reran this
+        // script and rebuilt uucore and every utility.
+        let locale_path = locale_path
+            .to_str()
+            .ok_or_else(|| format!("{} is not UTF-8", locale_path.display()))?;
         writeln!(
             embedded_file,
-            "        \"{locale_key}\" => Some(r{delimiter}\"{content}\"{delimiter}),"
+            "        \"{locale_key}\" => Some(include_str!({locale_path:?})),"
         )?;
-
-        // Tell Cargo to rerun if this file changes
-        println!("cargo:rerun-if-changed={}", locale_path.display());
     }
     Ok(())
 }
