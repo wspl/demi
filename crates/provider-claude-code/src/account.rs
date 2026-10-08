@@ -24,8 +24,10 @@ use crate::FAMILY;
 /// (Claude Code 2.1.294).
 pub(crate) const CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 
-/// How long before its expiry a token is refreshed.
-const EXPIRY_SKEW: Duration = Duration::from_secs(5 * 60);
+/// How long before its expiry a token is refreshed, and a process holding
+/// it replaced: a request may run for long, and the CLI cannot be given a
+/// fresh token while it runs (`claude-code.md` § Accounts and sign-in).
+const EXPIRY_SKEW: Duration = Duration::from_secs(30 * 60);
 
 /// The `claude-code` family's secret document: what the CLI's sign-in wrote,
 /// its tokens and their expiry, the scopes granted and the subscription
@@ -64,11 +66,16 @@ impl ClaudeSecret {
         }
     }
 
-    /// Whether the access token expires within five minutes of `now`.
     fn expiring(&self, now: Timestamp) -> bool {
-        let skew = i64::try_from(EXPIRY_SKEW.as_millis()).unwrap_or(i64::MAX);
-        self.expires_at.as_millisecond() - now.as_millisecond() <= skew
+        expiring(self.expires_at, now)
     }
+}
+
+/// Whether a token that expires at `expires_at` expires within thirty
+/// minutes of `now`.
+pub(crate) fn expiring(expires_at: Timestamp, now: Timestamp) -> bool {
+    let skew = i64::try_from(EXPIRY_SKEW.as_millis()).unwrap_or(i64::MAX);
+    expires_at.as_millisecond() - now.as_millisecond() <= skew
 }
 
 /// The account a provider stands for, and how its tokens are refreshed.
@@ -114,8 +121,8 @@ impl ClaudeAuth {
     }
 
     /// The account's sign-in, refreshed first when its access token expires
-    /// within five minutes, or when it is still the one the CLI was
-    /// `refused` with. A refresh that waited behind another uses the other's
+    /// within thirty minutes, or when it is still the one the vendor
+    /// `refused`. A refresh that waited behind another uses the other's
     /// tokens unless they expire as soon.
     pub(crate) async fn credentials(
         &self,

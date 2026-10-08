@@ -347,13 +347,31 @@ function beginLogin(p: SettingsProviderEntry) {
   }, 900)
 }
 
-/** As the product's sign-in does once it has the code: it signs in, then the account is there. */
-function submitCode() {
-  if (login.value?.phase.kind !== 'code') {
+/**
+ * As the product's sign-in does once it has the code: it signs in, then the account is there.
+ * A code without the `#` the vendor's page shows is refused in Claude Code's words, and the
+ * sign-in waits for another.
+ */
+function submitCode(code: string) {
+  const phase = login.value?.phase
+  if (phase?.kind !== 'code') {
     return
   }
-  login.value.phase = { ...login.value.phase, submitted: true }
-  loginTimer = window.setTimeout(() => finishLogin('zan@example.com · max'), 1500)
+  login.value!.phase = { kind: 'code', url: phase.url, expiresIn: phase.expiresIn, submitted: true }
+  loginTimer = window.setTimeout(() => {
+    if (login.value?.phase.kind !== 'code') {
+      return
+    }
+    if (!code.includes('#')) {
+      login.value.phase = {
+        ...login.value.phase,
+        submitted: false,
+        error: 'Invalid code. Please make sure the full code was copied.',
+      }
+      return
+    }
+    finishLogin('zan@example.com · max')
+  }, 1500)
 }
 
 function finishLogin(account: string) {

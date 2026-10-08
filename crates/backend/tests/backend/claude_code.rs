@@ -7,9 +7,9 @@
 //! results, reports usage, stops in the middle of a stream, starts again
 //! from the transcript, for another model and effort too, and reports a
 //! vendor error as the request's failure. It reads the account's access
-//! token from a descriptor, runs in a private directory of its own that
-//! goes with it, and after a 401 asks Demi for a fresh token, which Demi
-//! refreshes at the token endpoint. Every assertion is on what the product
+//! token from a descriptor and runs in a private directory of its own that
+//! goes with it; a turn the vendor refuses for its token is refreshed at the
+//! token endpoint and sent again in a new process. Every assertion is on what the product
 //! observes: the transcript, the frames, the usage ledger and what the
 //! vendor received.
 //!
@@ -820,7 +820,7 @@ fn config_directories() -> std::collections::BTreeSet<std::path::PathBuf> {
 // Several seconds: see the first scenario.
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
-async fn the_cli_reads_its_token_from_a_descriptor_in_its_own_directory_and_asks_demi_for_a_fresh_one_after_a_401()
+async fn the_cli_reads_its_token_from_a_descriptor_in_its_own_directory_and_a_refused_turn_runs_again_with_a_fresh_one()
  {
     use std::os::unix::fs::PermissionsExt as _;
 
@@ -829,16 +829,19 @@ async fn the_cli_reads_its_token_from_a_descriptor_in_its_own_directory_and_asks
     let mut socket = world.conversation().await;
 
     // The vendor refuses the token the CLI read from its descriptor as
-    // expired. The CLI asks Demi for a fresh one; Demi refreshes it at the
-    // token endpoint with the account's refresh token, and the CLI calls
-    // again with the fresh token.
+    // expired, on both of the CLI's own attempts (Claude Code 2.1.294 tries
+    // twice). Demi refreshes the token at the token endpoint with the
+    // account's refresh token, closes the process and sends the turn again
+    // in a new one, which calls with the fresh token.
     let expired = json!({ "type": "error", "error": {
         "type": "authentication_error", "message": "OAuth token has expired" } });
-    world.answers(
-        MockResponse::status(401)
-            .header("content-type", "application/json")
-            .chunk(expired.to_string()),
-    );
+    for _ in 0..2 {
+        world.answers(
+            MockResponse::status(401)
+                .header("content-type", "application/json")
+                .chunk(expired.to_string()),
+        );
+    }
     world.vendor.respond_at(
         "/v1/oauth/token",
         MockResponse::status(200)
@@ -862,16 +865,21 @@ async fn the_cli_reads_its_token_from_a_descriptor_in_its_own_directory_and_asks
     socket
         .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a41", "Hello?")
         .await;
-    assert_eq!(last_text(&world.blocks().await), "Fresh again.");
-    let tokens: Vec<Option<String>> = world
-        .inferences()
+    // The user sees the turn once.
+    let blocks = world.blocks().await;
+    assert_eq!(kinds(&blocks), ["user", "text", "response"]);
+    assert_eq!(last_text(&blocks), "Fresh again.");
+    let inferences = world.inferences();
+    let tokens: Vec<Option<String>> = inferences
         .iter()
         .map(|request| request.header("authorization").map(str::to_owned))
         .collect();
+    let stale = Some(format!("Bearer {TOKEN}"));
     assert_eq!(
         tokens,
-        [Some(format!("Bearer {TOKEN}")), Some(format!("Bearer {FRESH}"))]
+        [stale.clone(), stale, Some(format!("Bearer {FRESH}"))]
     );
+    assert_ne!(process(&inferences[2]), process(&inferences[0]));
     let refreshes: Vec<Value> = world
         .vendor
         .requests()
@@ -890,7 +898,7 @@ async fn the_cli_reads_its_token_from_a_descriptor_in_its_own_directory_and_asks
     );
 
     // The kept process runs in a directory of its own, private to the
-    // Cloud's user, which goes with it.
+    // Cloud's user, which goes with it; the refused process's went with it.
     let created: Vec<std::path::PathBuf> = config_directories()
         .difference(&before)
         .cloned()

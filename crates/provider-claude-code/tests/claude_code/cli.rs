@@ -102,6 +102,16 @@ pub const NOWHERE: Urls<'static> = Urls {
 
 /// A provider for `account` of `pool`, reading the vendor at `urls`.
 pub fn provider_of(pool: &MemoryCredentialPool, account: &str, urls: &Urls<'_>) -> ClaudeCodeProvider {
+    provider_at(pool, account, urls, clock())
+}
+
+/// The same, on `clock`.
+pub fn provider_at(
+    pool: &MemoryCredentialPool,
+    account: &str,
+    urls: &Urls<'_>,
+    clock: Arc<dyn Clock>,
+) -> ClaudeCodeProvider {
     let mut config = ClaudeCodeConfig::new("entry-1", "Claude", Some(account.to_owned()));
     config.usage_url = urls.usage.parse().unwrap();
     config.token_url = urls.token.parse().unwrap();
@@ -111,7 +121,7 @@ pub fn provider_of(pool: &MemoryCredentialPool, account: &str, urls: &Urls<'_>) 
         Arc::new(MemorySnapshots::new()),
         models_dev_client(urls.models_dev),
         reqwest::Client::new(),
-        clock(),
+        clock,
     )
 }
 
@@ -606,6 +616,28 @@ impl Cli {
             "subtype": "success",
             "is_error": false,
             "usage": { "input_tokens": input, "output_tokens": output },
+        }));
+    }
+
+    /// The turn's end after the vendor refused the token, as Claude Code
+    /// 2.1.294 prints it: its made-up assistant line, then a failed result
+    /// that names HTTP 401.
+    pub fn refused(&self) {
+        let words = "Failed to authenticate. API Error: 401 OAuth token has expired";
+        self.say(json!({
+            "type": "assistant",
+            "error": "authentication_failed",
+            "is_api_error_message": true,
+            "message": { "model": "<synthetic>", "content": [{ "type": "text", "text": words }] },
+        }));
+        self.say(json!({
+            "type": "result",
+            "subtype": "success",
+            "is_error": true,
+            "api_error_status": 401,
+            "terminal_reason": "api_error",
+            "result": words,
+            "usage": { "input_tokens": 0, "output_tokens": 0 },
         }));
     }
 }

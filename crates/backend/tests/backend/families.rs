@@ -254,6 +254,7 @@ impl AccountKit for Kit {
                 (io.pending)(LoginPending {
                     verification_url: "https://verify.example/device".into(),
                     user_code: Some("ABCD-1234".into()),
+                    code_error: None,
                 });
                 let mut guard = Cancelled(Some(script.clone()));
                 let mut approved = script.approved.subscribe();

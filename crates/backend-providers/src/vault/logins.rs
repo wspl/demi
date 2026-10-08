@@ -249,6 +249,7 @@ impl LoginFlows {
                 verification_url: None,
                 user_code: None,
                 needs_code: false,
+                code_error: None,
                 expires_at,
             },
             codes,
@@ -271,31 +272,35 @@ impl LoginFlows {
     }
 
     /// Hands `code`, which the owner pasted, to the owner's login, which
-    /// waits for one once it has shown its link. The code is never kept.
+    /// waits for one once it has shown its link; the refusal of an earlier
+    /// code no longer stands. The code is never kept.
     pub fn submit_code(
         &self,
         id: &LoginId,
         owner: &UserId,
         code: Secret,
     ) -> Result<(), CodeRefusal> {
-        let flows = self.lock();
+        let mut flows = self.lock();
         let flow = flows
-            .get(id)
+            .get_mut(id)
             .filter(|flow| flow.owner == *owner)
             .ok_or(CodeRefusal::NotFound)?;
-        let waiting = matches!(
-            flow.state,
-            LoginState::Pending {
-                needs_code: true,
-                ..
-            }
-        ) && !flow.cancel.is_cancelled();
-        if !waiting {
+        let LoginState::Pending {
+            needs_code: true,
+            code_error,
+            ..
+        } = &mut flow.state
+        else {
+            return Err(CodeRefusal::NotWaiting);
+        };
+        if flow.cancel.is_cancelled() {
             return Err(CodeRefusal::NotWaiting);
         }
         flow.codes
             .send(code)
-            .map_err(|_| CodeRefusal::NotWaiting)
+            .map_err(|_| CodeRefusal::NotWaiting)?;
+        *code_error = None;
+        Ok(())
     }
 
     /// The login's state, for its owner.
@@ -419,6 +424,7 @@ impl LoginFlows {
             verification_url: Some(pending.verification_url),
             user_code: pending.user_code,
             needs_code: flow.kind == LoginKind::PastedCode,
+            code_error: pending.code_error,
             expires_at,
         };
     }
@@ -560,6 +566,7 @@ mod tests {
                     (io.pending)(LoginPending {
                         verification_url: "https://verify.example/device".into(),
                         user_code: Some("ABCD-1234".into()),
+                        code_error: None,
                     });
                     std::future::pending::<()>().await;
                     Ok(NewAccount {

@@ -130,7 +130,7 @@ pub struct AccountLabel {
     pub label: String,
     pub detail: Option<String>,
     /// Derived from the account itself, so that logging in again with the
-    /// same account finds its record.
+    /// same account replaces its record.
     pub identity_key: Option<String>,
 }
 
@@ -152,12 +152,6 @@ pub trait AccountKit: Send + Sync + 'static {
         &'a self,
         io: LoginIo<'a>,
     ) -> Option<BoxFuture<'a, Result<NewAccount, LoginError>>>;
-
-    /// Whether a login of an account the entry already has is refused,
-    /// rather than replacing that account's record.
-    fn refuses_known_accounts(&self) -> bool {
-        false
-    }
 }
 
 /// The account operations of one entry's pool, with a family's kit.
@@ -173,9 +167,9 @@ impl<K: AccountKit> Accounts<K> {
     }
 
     /// Stores the account a login made: an account with the same identity key
-    /// is replaced, or refused when the kit says so; a new one gets an id
-    /// derived from its identity, and the first account of an entry without
-    /// an active one becomes its active account.
+    /// is replaced, keeping its id; a new one gets an id derived from its
+    /// identity, and the first account of an entry without an active one
+    /// becomes its active account.
     async fn import(&self, account: NewAccount) -> Result<AccountInfo, LoginError> {
         let stored = |error: PoolError| LoginError::Failed(AccountsError::from(error).to_string());
         let NewAccount { secret, label } = account;
@@ -184,12 +178,6 @@ impl<K: AccountKit> Accounts<K> {
             None => None,
         };
         let id = match existing {
-            Some(_) if self.kit.refuses_known_accounts() => {
-                return Err(LoginError::Failed(format!(
-                    "{} is already signed in to this provider",
-                    label.label
-                )));
-            }
             Some(existing) => existing.id,
             None => credential_id_for(label.identity_key.as_deref(), &label.label),
         };

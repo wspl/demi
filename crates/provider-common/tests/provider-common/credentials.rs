@@ -365,6 +365,7 @@ impl AccountKit for Kit {
                 (io.pending)(LoginPending {
                     verification_url: "https://vendor.example/device".into(),
                     user_code: Some("ABCD-1234".into()),
+                    code_error: None,
                 });
                 match next {
                     Some(account) => Ok(account),

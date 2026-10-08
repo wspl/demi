@@ -1,8 +1,9 @@
 //! The Claude Code CLI through the backend (`claude-code.md` § Accounts and
 //! sign-in, § Where it runs, § What the user sees, § Acceptance): a sign-in
 //! runs the CLI's own login on the user's Cloud, relays its link, hands it
-//! the pasted code and keeps the account it wrote, in a directory that goes
-//! however the sign-in ends; a sign-in whose Cloud cannot install the CLI
+//! the pasted code, shows the CLI's words for a code it refuses, and keeps
+//! the account it wrote, replacing the tokens of one signed in again, in a
+//! directory that goes however the sign-in ends; a sign-in whose Cloud cannot install the CLI
 //! says why, with the version, and so does a request; the settings read the
 //! newest version and the Cloud's versions; a Cloud with an older CLI
 //! answers with it; a conversation on a paired device infers through the
@@ -51,8 +52,9 @@ const LOGIN: &str = "/api/providers/subscription-login";
 /// The Claude Code CLI as a script. Its login records its directory and that
 /// directory's mode, prints the link and waits for a code: a code starting
 /// `invalid` it calls invalid and waits again, one starting `refused` fails
-/// the login, and any other, `account#state`, signs in `account`, whose
-/// tokens and account it writes as the CLI writes them. Its other runs read
+/// the login, and any other, `account#state`, signs in `account` with the
+/// access token `access-account-state`, whose tokens and account it writes
+/// as the CLI writes them. Its other runs read
 /// the access token from descriptor 3, answer `initialize`, answer each user
 /// message with the executable, the token, how many environment variables
 /// hold it, the directory they run in, their configuration directory and
@@ -71,7 +73,8 @@ if [ "$1" = auth ]; then
     esac
   done
   account="${code%%#*}"
-  printf '{"claudeAiOauth":{"accessToken":"access-%s","refreshToken":"refresh-%s","expiresAt":4102444800000,"scopes":["user:inference","user:profile"],"subscriptionType":"max","rateLimitTier":null}}' "$account" "$account" > "$CLAUDE_CONFIG_DIR/.credentials.json"
+  state="${code#*#}"
+  printf '{"claudeAiOauth":{"accessToken":"access-%s-%s","refreshToken":"refresh-%s","expiresAt":4102444800000,"scopes":["user:inference","user:profile"],"subscriptionType":"max","rateLimitTier":null}}' "$account" "$state" "$account" > "$CLAUDE_CONFIG_DIR/.credentials.json"
   printf '{"numStartups":1,"oauthAccount":{"accountUuid":"uuid-%s","emailAddress":"%s@example.test","organizationUuid":"org-1"}}' "$account" "$account" > "$CLAUDE_CONFIG_DIR/.claude.json"
   echo "Login successful."
   exit 0
@@ -301,6 +304,38 @@ async fn pasted(backend: &TestBackend, master: &Session, id: &str, code: &str) -
     awaited(backend, master, id, ended).await
 }
 
+/// Pastes `code`, which the CLI refuses, into the master's login `id`, and
+/// answers the words the login then shows while it waits.
+async fn refused_code(backend: &TestBackend, master: &Session, id: &str, code: &str) -> String {
+    let answer = backend
+        .post(
+            &format!("{LOGIN}/{id}/code"),
+            Some(master),
+            json!({ "code": code }),
+        )
+        .await;
+    assert_eq!(answer.status, StatusCode::NO_CONTENT);
+    let refused = awaited(backend, master, id, |state| {
+        !matches!(
+            state,
+            LoginState::Pending {
+                code_error: None,
+                ..
+            }
+        )
+    })
+    .await;
+    let LoginState::Pending {
+        code_error: Some(words),
+        needs_code: true,
+        ..
+    } = refused
+    else {
+        panic!("the login did not wait for another code: {refused:?}");
+    };
+    words
+}
+
 /// What the scripted CLI answers a message with, in a process of `token`'s
 /// whose configuration directory is `config`.
 fn answer(cli: &str, home: &str, token: &str, config: &str) -> String {
@@ -435,14 +470,20 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
     );
     assert_eq!(
         first_answer,
-        answer(&older, &home, "access-first", &first_config)
+        answer(&older, &home, "access-first-state", &first_config)
     );
     assert!(!laptop.runner.home_dir().join(".demi/claude").exists());
 
-    // Another account signs in beside it, and the same account again is
-    // refused; neither login leaves its directory.
+    // Another account signs in beside it: a code the CLI refuses keeps the
+    // login waiting, with the CLI's words, until the user pastes another.
+    // Signing in to the first account again replaces its tokens and keeps
+    // its ID and the entry's choice. No login leaves its directory.
     let accounts_path = format!("/api/providers/{provider}/accounts");
     let id = waiting_login(&backend, &master, &format!("{accounts_path}/login"), json!({})).await;
+    assert_eq!(
+        refused_code(&backend, &master, &id, "invalid").await,
+        "Invalid code. Please make sure the full code was copied."
+    );
     let LoginState::Completed {
         credential_id: second,
         ..
@@ -451,12 +492,14 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
         panic!("the second sign-in did not complete");
     };
     let id = waiting_login(&backend, &master, &format!("{accounts_path}/login"), json!({})).await;
-    assert_eq!(
-        pasted(&backend, &master, &id, "first#again").await,
-        LoginState::Failed {
-            message: "first@example.test is already signed in to this provider".into()
-        }
-    );
+    let LoginState::Completed {
+        credential_id: again,
+        ..
+    } = pasted(&backend, &master, &id, "first#again").await
+    else {
+        panic!("signing in to the first account again did not complete");
+    };
+    assert_eq!(again, first);
     let logins = login_directories(&home);
     assert_eq!(logins.len(), 3, "{logins:?}");
     assert!(
@@ -495,20 +538,41 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
     assert_ne!(second_config, first_config);
     assert_eq!(
         second_answer,
-        answer(&older, &home, "access-second", &second_config)
+        answer(&older, &home, "access-second-state", &second_config)
     );
     assert!(!std::path::Path::new(&first_config).exists());
+
+    // Back on the first account, a new process has its new token.
+    let selected = backend
+        .put(
+            &format!("{accounts_path}/active"),
+            &master,
+            json!({ "credentialId": first }),
+        )
+        .await;
+    assert_eq!(selected.status, StatusCode::OK);
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a03", "once more")
+        .await;
+    let third_answer = last_text(&saved(&backend, &master).await);
+    let third_config = config_of(&third_answer);
+    assert_eq!(
+        third_answer,
+        answer(&older, &home, "access-first-again", &third_config)
+    );
     let processes = std::fs::read_to_string(format!("{home}/claude-processes.log")).unwrap();
     let expected = [
-        format!("started access-first {first_config}"),
-        "ended access-first".to_owned(),
-        format!("started access-second {second_config}"),
+        format!("started access-first-state {first_config}"),
+        "ended access-first-state".to_owned(),
+        format!("started access-second-state {second_config}"),
+        "ended access-second-state".to_owned(),
+        format!("started access-first-again {third_config}"),
     ];
     assert_eq!(processes.lines().collect::<Vec<_>>(), expected);
     // The distribution was read once: its answer is believed.
     assert_eq!(distribution.requests().len(), 2);
     backend.close().await;
-    assert!(!std::path::Path::new(&second_config).exists());
+    assert!(!std::path::Path::new(&third_config).exists());
 }
 
 // About two seconds, most of it the one login that expires.
@@ -533,21 +597,13 @@ async fn a_sign_in_that_fails_is_cancelled_or_expires_stores_nothing_and_leaves_
     install_by_hand(&harness.manager.artifacts(&cloud), OLDER).await;
 
     // The CLI's own words of failure are what the user sees.
-    for (code, words) in [
-        ("refused#state", "Login failed: the code was refused"),
-        (
-            "invalid",
-            "Invalid code. Please make sure the full code was copied.",
-        ),
-    ] {
-        let id = waiting_login(&backend, &master, LOGIN, new_entry.clone()).await;
-        assert_eq!(
-            pasted(&backend, &master, &id, code).await,
-            LoginState::Failed {
-                message: words.into()
-            }
-        );
-    }
+    let id = waiting_login(&backend, &master, LOGIN, new_entry.clone()).await;
+    assert_eq!(
+        pasted(&backend, &master, &id, "refused#state").await,
+        LoginState::Failed {
+            message: "Login failed: the code was refused".into()
+        }
+    );
 
     // A cancelled sign-in has ended, with its directory gone, once the
     // cancel answers.
@@ -561,8 +617,8 @@ async fn a_sign_in_that_fails_is_cancelled_or_expires_stores_nothing_and_leaves_
         }
     );
     let logins = login_directories(&home);
-    assert_eq!(logins.len(), 3, "{logins:?}");
-    assert!(!std::path::Path::new(&logins[2].0).exists());
+    assert_eq!(logins.len(), 2, "{logins:?}");
+    assert!(!std::path::Path::new(&logins[1].0).exists());
 
     // A sign-in nobody finishes ends at its expiry.
     let id = waiting_login(&backend, &master, LOGIN, new_entry).await;
@@ -573,7 +629,7 @@ async fn a_sign_in_that_fails_is_cancelled_or_expires_stores_nothing_and_leaves_
         }
     );
     let logins = login_directories(&home);
-    assert_eq!(logins.len(), 4, "{logins:?}");
+    assert_eq!(logins.len(), 3, "{logins:?}");
     assert!(
         logins
             .iter()

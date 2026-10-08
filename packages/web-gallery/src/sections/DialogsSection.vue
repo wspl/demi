@@ -109,13 +109,23 @@ const claudePhases: { variant: string; phase: ProviderLoginPhase }[] = [
     phase: { kind: 'code', url: claudeLink, expiresIn: '15 min', submitted: false },
   },
   {
+    variant: 'Claude Code · code refused',
+    phase: {
+      kind: 'code',
+      url: claudeLink,
+      expiresIn: '14 min',
+      submitted: false,
+      error: 'Invalid code. Please make sure the full code was copied.',
+    },
+  },
+  {
     variant: 'Claude Code · signing in',
     phase: { kind: 'code', url: claudeLink, submitted: true },
   },
   { variant: 'Claude Code · done', phase: { kind: 'done', account: 'zan@example.com · max', active: true } },
   {
     variant: 'Claude Code · failed',
-    phase: { kind: 'failed', message: 'Invalid code. Please make sure the full code was copied.' },
+    phase: { kind: 'failed', message: 'Login failed: the authorization code has expired.' },
   },
 ]
 const codexPhases: { variant: string; phase: ProviderLoginPhase }[] = [

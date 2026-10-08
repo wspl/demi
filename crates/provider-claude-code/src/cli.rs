@@ -3,8 +3,8 @@
 //! permission prompts of its own; the request's model, system prompt and
 //! effort; stream-json in and out with partial messages; its own
 //! configuration directory; the account's access token on a descriptor,
-//! never in its environment, with its host, Demi, answering for a fresh
-//! one; and the CLI's updater and automatic compaction off. A sign-in runs
+//! never in its environment; and the CLI's updater and automatic compaction
+//! off. A sign-in runs
 //! the CLI's own login in a directory of its own.
 
 use std::collections::BTreeMap;
@@ -18,14 +18,6 @@ use crate::placement::CliSite;
 
 /// The descriptor the access token reaches the CLI on.
 const TOKEN_FD: u32 = 3;
-
-/// The entrypoint the CLI is started as. The CLI asks its host for a fresh
-/// access token after a 401 (`oauth_token_refresh`) only when
-/// `CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH` is set and the entrypoint is
-/// `claude-desktop`, `local-agent` or `claude-vscode` (Claude Code 2.1.294);
-/// `claude-vscode` changes the least else. The design names no entrypoint:
-/// this is an open decision (`claude-code.md` § Accounts and sign-in).
-const ENTRYPOINT: &str = "claude-vscode";
 
 /// The request that starts a CLI process at `site` for `request`, with the
 /// account's access `token` on a descriptor. It is retained: the process is
@@ -107,7 +99,7 @@ pub(crate) fn args(request: &InferenceRequest) -> Vec<String> {
 
 /// The changes to the machine's environment: the descriptor the access
 /// token is on, and a token in the machine's own environment removed; the
-/// host's refresh of the token; the process's own configuration directory;
+/// process's own configuration directory;
 /// the CLI's updater off, since Demi alone changes its version; its
 /// automatic compaction off, since Demi compacts the conversation itself;
 /// an MCP tool-output limit of one million tokens, so the CLI never cuts a
@@ -121,8 +113,6 @@ fn environment(site: &CliSite) -> BTreeMap<String, Option<String>> {
             Some(TOKEN_FD.to_string()),
         ),
         ("CLAUDE_CODE_OAUTH_TOKEN".to_owned(), None),
-        ("CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH".to_owned(), set("1")),
-        ("CLAUDE_CODE_ENTRYPOINT".to_owned(), set(ENTRYPOINT)),
         ("CLAUDE_CONFIG_DIR".to_owned(), set(&site.config_dir)),
         ("DISABLE_AUTOUPDATER".to_owned(), set("1")),
         ("DISABLE_AUTO_COMPACT".to_owned(), set("1")),

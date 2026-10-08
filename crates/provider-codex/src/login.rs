@@ -61,6 +61,7 @@ impl CodexKit {
         pending(LoginPending {
             verification_url: self.url("/codex/device").to_string(),
             user_code: Some(code.user_code.clone()),
+            code_error: None,
         });
         let authorization = self.authorization(&code).await?;
         let tokens = self.exchange(&authorization).await?;

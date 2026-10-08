@@ -121,22 +121,14 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
     .map(String::from)
     .collect();
     // The access token is on descriptor 3, never in the environment, which
-    // removes a token the machine's own environment holds; the CLI asks
-    // Demi for a fresh one.
+    // removes a token the machine's own environment holds; the process
+    // claims to be no other client.
     let env = BTreeMap::from([
         ("CLAUDECODE".to_owned(), None),
         ("CLAUDE_CODE_OAUTH_TOKEN".to_owned(), None),
         (
             "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR".to_owned(),
             Some("3".to_owned()),
-        ),
-        (
-            "CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH".to_owned(),
-            Some("1".to_owned()),
-        ),
-        (
-            "CLAUDE_CODE_ENTRYPOINT".to_owned(),
-            Some("claude-vscode".to_owned()),
         ),
         (
             "CLAUDE_CONFIG_DIR".to_owned(),

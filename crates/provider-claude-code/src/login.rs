@@ -3,8 +3,10 @@
 //! directory of its own, shows the user the link the CLI prints, and writes
 //! the code the user pastes to the CLI's input. When the CLI exits with
 //! success, Demi reads the tokens and the account it wrote, and the
-//! directory goes, as it does when the login fails or is stopped. Demi
-//! never writes Claude's OAuth flow itself, and never logs the code.
+//! directory goes, as it does when the login fails or is stopped. A code the
+//! CLI refuses leaves it waiting, and the user sees its words and pastes
+//! another. Demi never writes Claude's OAuth flow itself, and never logs the
+//! code.
 
 use std::sync::Arc;
 
@@ -33,6 +35,15 @@ const CREDENTIALS: &str = ".credentials.json";
 /// The file the CLI writes its account to there.
 const CONFIG: &str = ".claude.json";
 
+/// What the sign-in shows the user while it runs.
+enum Shown {
+    /// The link the CLI printed.
+    Link(String),
+    /// The CLI refused the code the user pasted, in these words, and waits
+    /// for another.
+    CodeRefused(String),
+}
+
 /// What the `claude-code` family adds to the account operations: the CLI's
 /// own sign-in, on the machine account work runs on. A kit without a
 /// machine, as of a provider built for inference, cannot sign in.
@@ -57,11 +68,6 @@ impl AccountKit for ClaudeKit {
         Some(Box::pin(sign_in(machine, self.entry.clone(), io)))
     }
 
-    /// An account is signed in once per entry (`claude-code.md` § Accounts
-    /// and sign-in).
-    fn refuses_known_accounts(&self) -> bool {
-        true
-    }
 }
 
 /// Runs the CLI's sign-in on `machine` and relays it: the link the CLI
@@ -78,26 +84,41 @@ async fn sign_in(
         codes,
         stop,
     } = io;
-    let (links, mut link) = mpsc::unbounded_channel();
+    let (shown_to, mut link) = mpsc::unbounded_channel();
     let (answer, answered) = oneshot::channel();
     let work: AccountWork = Box::new(move |placement, abandoned| {
         Box::pin(async move {
-            let signed_in = sign_in_at(&*placement, links, codes, stop, abandoned).await;
+            let signed_in = sign_in_at(&*placement, shown_to, codes, stop, abandoned).await;
             // A login that gave up waiting has stopped the sign-in already.
             let _ = answer.send(signed_in);
         })
     });
     let ran = machine.run(entry, work);
     tokio::pin!(ran);
-    let mut linked = false;
+    let mut shown = true;
+    let mut link_url = None;
     loop {
         tokio::select! {
-            url = link.recv(), if !linked => match url {
-                Some(url) => pending(LoginPending {
-                    verification_url: url,
-                    user_code: None,
-                }),
-                None => linked = true,
+            next = link.recv(), if shown => match next {
+                Some(Shown::Link(url)) => {
+                    pending(LoginPending {
+                        verification_url: url.clone(),
+                        user_code: None,
+                        code_error: None,
+                    });
+                    link_url = Some(url);
+                }
+                Some(Shown::CodeRefused(words)) => {
+                    // The CLI reads codes only after it printed its link.
+                    if let Some(url) = &link_url {
+                        pending(LoginPending {
+                            verification_url: url.clone(),
+                            user_code: None,
+                            code_error: Some(words),
+                        });
+                    }
+                }
+                None => shown = false,
             },
             ran = &mut ran => {
                 ran.map_err(|error| LoginError::Failed(error.0))?;
@@ -117,7 +138,7 @@ async fn sign_in(
 /// its directory however it ends.
 async fn sign_in_at(
     placement: &dyn Placement,
-    links: mpsc::UnboundedSender<String>,
+    shown: mpsc::UnboundedSender<Shown>,
     codes: mpsc::UnboundedReceiver<Secret>,
     stop: CancellationToken,
     abandoned: CancellationToken,
@@ -142,7 +163,7 @@ async fn sign_in_at(
     } = process;
     let exit = exit.shared();
     let relayed = tokio::select! {
-        relayed = relay(output, &*control, links, codes) => relayed,
+        relayed = relay(output, &*control, shown, codes) => relayed,
         () = stopped() => Err(LoginError::Stopped),
     };
     let signed_in = match relayed {
@@ -168,14 +189,13 @@ async fn sign_in_at(
 }
 
 /// Relays the sign-in until the CLI's output ends: the link it prints goes
-/// to `links`, and each code to its input, followed by a newline. Answers
-/// the tail of its standard error. A code the CLI calls invalid ends the
-/// sign-in with the CLI's words, since the CLI then waits for another one
-/// that the user, who sees only progress, would not know to paste.
+/// to `shown`, and each code to its input, followed by a newline. A code
+/// the CLI calls invalid goes to `shown` in the CLI's words, while the CLI
+/// waits for another. Answers the tail of its standard error.
 async fn relay(
     mut output: futures_util::stream::LocalBoxStream<'static, demi_host_interface::ProcessOutput>,
     control: &dyn ProcessControl,
-    links: mpsc::UnboundedSender<String>,
+    shown: mpsc::UnboundedSender<Shown>,
     mut codes: mpsc::UnboundedReceiver<Secret>,
 ) -> Result<String, LoginError> {
     let mut stdout = Vec::new();
@@ -200,7 +220,7 @@ async fn relay(
                             if let Some(url) = link(&String::from_utf8_lossy(&line)) {
                                 linked = true;
                                 // The login is gone once it stopped waiting.
-                                let _ = links.send(url);
+                                let _ = shown.send(Shown::Link(url));
                             }
                         }
                     }
@@ -211,7 +231,8 @@ async fn relay(
                             let line: Vec<u8> = stderr_line.drain(..=end).collect();
                             let line = String::from_utf8_lossy(&line).trim().to_owned();
                             if line.starts_with("Invalid code") {
-                                return Err(LoginError::Failed(line));
+                                // As above.
+                                let _ = shown.send(Shown::CodeRefused(line));
                             }
                         }
                     }

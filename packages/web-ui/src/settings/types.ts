@@ -275,6 +275,8 @@ export type ProviderLoginPhase =
       expiresIn?: string
       /** The pasted code is with the sign-in, which is finishing. */
       submitted: boolean
+      /** Why the sign-in refused the last code, in the vendor's words; it waits for another. */
+      error?: SentenceText
     }
   | {
       kind: 'done'
