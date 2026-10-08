@@ -79,8 +79,7 @@ const ready = computed(() => props.submitted && !failed.value && props.phase ===
       <InlineError v-else-if="failed" :message="error ?? resetPhaseLabels.failed" />
     </div>
     <template #footer>
-      <!-- Cancel, or Close once the reset is under way, is the default: Return never resets (Dialog). -->
-      <Button variant="primary" @click="emit('close')">{{ submitted ? 'Close' : 'Cancel' }}</Button>
+      <!-- Cancel, or Close once the reset is under way, is the default, last: Return never resets (Dialog). -->
       <Button
         v-if="!submitted || failed"
         variant="danger"
@@ -88,6 +87,7 @@ const ready = computed(() => props.submitted && !failed.value && props.phase ===
         @click="emit('reset')"
         >{{ submitted ? 'Retry Reset' : 'Reset Environment' }}</Button
       >
+      <Button variant="primary" @click="emit('close')">{{ submitted ? 'Close' : 'Cancel' }}</Button>
     </template>
   </Dialog>
 </template>
