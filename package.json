@@ -25,7 +25,7 @@
     "check:registry": "bun run scripts/check-public-registry.ts",
     "contracts": "bun scripts/xtask.ts contracts",
     "typecheck": "bun run contracts && tsgo --noEmit && tsgo --noEmit -p packages/browse && bun run --cwd services/preview-domain typecheck",
-    "typecheck:web": "bun run contracts && bun run --cwd packages/protocol typecheck && bun run --cwd packages/conversation-client typecheck && bun run --cwd packages/web-ui typecheck && bun run --cwd packages/plugin-sdk typecheck && bun run --cwd packages/plugin-browser typecheck && bun run --cwd packages/plugin-changes typecheck && bun run --cwd packages/plugin-file-browser typecheck && bun run --cwd packages/plugin-skills typecheck && bun run --cwd packages/web-gallery typecheck && bun run --cwd packages/web typecheck",
+    "typecheck:web": "bun run contracts && bun run --parallel --no-exit-on-error --filter @demicodes/protocol --filter @demicodes/conversation-client --filter @demicodes/web-ui --filter '@demicodes/plugin-*' --filter @demicodes/web-gallery --filter @demicodes/web typecheck",
     "build": "bun --filter '!@demicodes/web' build && bun run web:build",
     "changeset": "changeset",
     "changeset:version": "changeset version",
