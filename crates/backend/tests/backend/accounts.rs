@@ -10,7 +10,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use demi_backend_providers::llm::families::FamilyRegistry;
-use demi_provider_common::quota::ProbeCost;
+use demi_provider_common::quota::{ProbeCost, QuotaError};
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_shared_types::{QuotaWindow, SnapshotSource};
 use demi_web_api_protocol::auth::Role;
@@ -29,6 +29,7 @@ use crate::support::{Harness, Session, TestBackend};
 
 pub(crate) struct Scripts {
     pub(crate) login: Arc<LoginScript>,
+    pub(crate) quota: Arc<QuotaScript>,
     pub(crate) families: FamilyRegistry,
 }
 
@@ -58,7 +59,11 @@ pub(crate) fn scripts(cost: Option<ProbeCost>) -> Scripts {
     let families = demi_backend::families::builtin()
         .with("claude-code", family())
         .with("device", family());
-    Scripts { login, families }
+    Scripts {
+        login,
+        quota,
+        families,
+    }
 }
 
 async fn start_login(
@@ -577,6 +582,36 @@ async fn a_free_probe_fills_the_accounts_snapshot_which_outlives_a_restart() {
         .await
         .json::<ProviderDetails>();
     assert_eq!(restored.quota, Some(snapshot));
+    backend.close().await;
+}
+
+/// A failed probe reaches the page as the backend's answer, with its reason.
+/// Behind Cloudflare it would not as a 502: Cloudflare replaces an origin's
+/// 502 or 504 with its own page, which the web app reads as the backend being
+/// away, so it sent the probe again and again (hel1, Claude Code, 0.1.20).
+#[tokio::test]
+async fn a_probe_the_vendor_fails_answers_its_reason_in_a_status_a_cdn_passes_through() {
+    let scripts = scripts(Some(ProbeCost::Free));
+    let harness = Harness::new().with_families(scripts.families.clone());
+    let (backend, master) = harness.start_set_up().await;
+    let entry = device_entry(&backend, &master, &scripts).await;
+    *scripts.quota.reading.lock().unwrap() = Err(QuotaError::Unavailable(
+        "Claude usage request failed (429): Rate limited".into(),
+    ));
+    let failed = backend
+        .post(
+            &format!("/api/providers/{}/quota", entry.id),
+            Some(&master),
+            json!({}),
+        )
+        .await;
+    assert_eq!(
+        (failed.refusal(), failed.error().message),
+        (
+            (StatusCode::SERVICE_UNAVAILABLE, ErrorCode::QuotaUnavailable),
+            "Claude usage request failed (429): Rate limited".to_owned()
+        )
+    );
     backend.close().await;
 }
 

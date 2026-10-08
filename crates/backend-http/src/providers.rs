@@ -110,7 +110,7 @@ pub(super) async fn catalog(
 
 fn catalog_unavailable(error: impl ToString) -> ApiError {
     ApiError::new(
-        StatusCode::BAD_GATEWAY,
+        StatusCode::SERVICE_UNAVAILABLE,
         ErrorCode::CatalogUnavailable,
         error.to_string(),
     )
@@ -317,7 +317,7 @@ pub(super) async fn status(
         Err(AssemblyError::Storage(error)) => Err(error.into()),
         // As the entry's `failed` details in the sync state say it.
         Err(error) => Err(ApiError::new(
-            StatusCode::BAD_GATEWAY,
+            StatusCode::SERVICE_UNAVAILABLE,
             ErrorCode::ProviderStatusFailed,
             error.to_string(),
         )),
@@ -368,7 +368,7 @@ pub(super) async fn quota(
         }
         Err(error) => {
             return Err(ApiError::new(
-                StatusCode::BAD_GATEWAY,
+                StatusCode::SERVICE_UNAVAILABLE,
                 ErrorCode::QuotaUnavailable,
                 error.to_string(),
             ));

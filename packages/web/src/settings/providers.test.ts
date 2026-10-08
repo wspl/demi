@@ -236,7 +236,7 @@ test('automatic quota failures stay quiet; manual retries explain the error', as
   let requests = 0
   probe = async () => {
     requests++
-    return Response.json({ code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 502 })
+    return Response.json({ code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 503 })
   }
   await settings.refreshUsage(provider, 'first', true)
   expect(toasts).toHaveLength(0)
@@ -265,7 +265,7 @@ test('a manual refresh joins an automatic request and shows its pending state an
   await settings.refreshUsage(provider, 'first', true)
   expect(settings.refreshingUsage.configured?.first).toBe('manual')
   expect(requests).toBe(1)
-  deferred.resolve(Response.json({ code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 502 }))
+  deferred.resolve(Response.json({ code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 503 }))
   await automatic
   expect(settings.refreshingUsage).toEqual({})
   expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Refresh Usage', message: 'Billing unavailable' })

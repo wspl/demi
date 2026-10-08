@@ -98,7 +98,7 @@ impl StreamError {
     pub fn code(&self) -> (ErrorCode, u16) {
         match self {
             Self::Access(error) => error.code(),
-            Self::Failed(_) => (ErrorCode::StreamFailed, 502),
+            Self::Failed(_) => (ErrorCode::StreamFailed, 503),
         }
     }
 }
