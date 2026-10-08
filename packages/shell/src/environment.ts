@@ -1,4 +1,4 @@
-import { concatBytes, decodeLatin1, decodeUtf8, decodeUtf8Strict, encodeLatin1, encodeUtf8, isAbsolutePath, tail, utf8Bytes, utf8Slice } from '@demicodes/utils'
+import { concatBytes, decodeLatin1, decodeUtf8, decodeUtf8CutTail, encodeLatin1, encodeUtf8, isAbsolutePath, tail, utf8Bytes, utf8Slice } from '@demicodes/utils'
 import { ArithmeticError, BadSubstitutionError, ExitError, ExecutionLimitError, Interpreter, type InterpreterState } from '@demicodes/just-bash/interpreter'
 import type { HostSpawnRedirection } from '@demicodes/just-bash/interpreter'
 import type { ScriptNode } from '@demicodes/just-bash/ast/types'
@@ -176,6 +176,8 @@ export type ShellCommandStatus =
       commandMetadata?: CommandMetadataRecord[]
       /** Present when the final stream was binary (bytes that are not valid UTF-8). */
       binaryStdout?: BinaryStdout
+      /** Present when stderr was binary; its raw bytes exist only in stderr.bin. */
+      binaryStderr?: { totalBytes: number }
     }
   | {
       status: 'running'
@@ -225,6 +227,8 @@ interface ShellCommandRecord {
   /** Full binary stream bytes awaiting their one-time write to stdout.bin. */
   pendingBinaryArtifact?: Uint8Array
   pendingBinaryStderrArtifact?: Uint8Array
+  /** Size of a binary stderr stream, whose raw bytes live only in stderr.bin. */
+  binaryStderrBytes?: number
   /** Output limit of the exec that started this command (binary carry cap). */
   outputLimitBytes: number
   persistedFingerprint?: string
@@ -1078,7 +1082,7 @@ export class BashEnvironment {
 
     // The interpreter declares its output shape; never infer encoding from characters.
     const bytes = encodeLatin1(latin1FromBytes(stdoutAsBytes(resultOrError)))
-    const strict = decodeUtf8Strict(bytes)
+    const strict = decodeStreamText(bytes)
     let stdoutText: string
     let binary: BinaryStdout | undefined
     if (strict !== null) {
@@ -1102,9 +1106,12 @@ export class BashEnvironment {
         record.pendingBinaryArtifact = bytes
     }
     const stderrBytes = encodeLatin1(latin1FromBytes(stderrAsBytes(resultOrError)))
-    const decodedStderr = decodeUtf8Strict(stderrBytes)
+    const decodedStderr = decodeStreamText(stderrBytes)
     const stderrText = decodedStderr ?? `<binary stderr: ${stderrBytes.length} bytes; raw bytes at ${record.artifactDir}/stderr.bin>\n`
-    if (decodedStderr === null) record.pendingBinaryStderrArtifact = stderrBytes
+    if (decodedStderr === null) {
+      record.pendingBinaryStderrArtifact = stderrBytes
+      record.binaryStderrBytes = stderrBytes.length
+    }
     session.accumulator.stdout = stdoutText
     session.accumulator.stderr = stderrText
     if (binary) record.binaryStdout = binary
@@ -1216,6 +1223,7 @@ export class BashEnvironment {
       }
       if (record.commandMetadata.length > 0) result.commandMetadata = record.commandMetadata
       if (record.binaryStdout) result.binaryStdout = record.binaryStdout
+      if (record.binaryStderrBytes !== undefined) result.binaryStderr = { totalBytes: record.binaryStderrBytes }
       return result
     }
     if (record.status === 'aborted') return { ...base, status: 'aborted' }
@@ -1383,6 +1391,16 @@ function ensureRecordOutputCoverage(record: ShellCommandRecord): void {
   appendRecordOutput(record, 'stderr', record.stderr)
 }
 
+// A stream cut at a byte count (head -c, dd) usually ends mid-character; that
+// is still text. Only bytes that are invalid before the tail make it binary.
+function decodeStreamText(bytes: Uint8Array): string | null {
+  const decoded = decodeUtf8CutTail(bytes)
+  if (!decoded) return null
+  if (decoded.droppedBytes === 0) return decoded.text
+  const separator = decoded.text === '' || decoded.text.endsWith('\n') ? '' : '\n'
+  return `${decoded.text}${separator}[demi: dropped ${decoded.droppedBytes} trailing byte(s) of an incomplete UTF-8 character; the stream was cut mid-character, e.g. by head -c]\n`
+}
+
 function commandArtifactMeta(record: ShellCommandRecord): Record<string, unknown> {
   return {
     status: record.status,
@@ -1401,6 +1419,9 @@ function commandArtifactMeta(record: ShellCommandRecord): Record<string, unknown
             bytes: record.binaryStdout.totalBytes,
           },
         }
+      : {}),
+    ...(record.binaryStderrBytes !== undefined
+      ? { stderrBinary: { path: `${record.artifactDir}/stderr.bin`, bytes: record.binaryStderrBytes } }
       : {}),
   }
 }

@@ -31,6 +31,14 @@ const emitSpec: Command = {
       },
     },
     {
+      name: 'cut',
+      summary: 'Write UTF-8 text cut in the middle of its last character.',
+      run: async (ctx) => {
+        await ctx.io.stdout(new TextEncoder().encode('你好').slice(0, 4))
+        return { exitCode: 0 }
+      },
+    },
+    {
       name: 'text',
       summary: 'Write multibyte UTF-8 text to stdout as bytes.',
       run: async (ctx) => {
@@ -172,3 +180,16 @@ async function waitForFile(path: string): Promise<void> {
   }
   throw new Error(`timed out waiting for artifact file ${path}`)
 }
+
+test('text cut mid-character stays text with a note instead of turning binary', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-binary-'))
+  const env = makeEnv(root, 'shell-cut')
+
+  const result = await env.exec({ script: 'emit cut' })
+  if (result.status !== 'exited') throw new Error('expected exited result')
+
+  expect(result.binaryStdout).toBeUndefined()
+  expect(result.stdout.delta).toBe(
+    '你\n[demi: dropped 1 trailing byte(s) of an incomplete UTF-8 character; the stream was cut mid-character, e.g. by head -c]\n',
+  )
+})
