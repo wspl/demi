@@ -3,18 +3,33 @@ import { computed } from 'vue'
 import { ICON_PX } from '../../ui/icon-metrics'
 import type { ToolCallBlock } from '../block-types'
 import { storedShellView } from '../block-helpers'
-import { useEditSelection } from '../edit-selection'
+import { useEditSelection, useTranscript } from '../edit-selection'
+import { pillSelection } from '../../files/request-changes'
 import FileChangePills from './FileChangePills.vue'
 
+/**
+ * The files a shell call changed, as pills under its row. A pill opens its
+ * file in the call's request, at the call's first edit of it
+ * (`edit-tracking.md` § What the conversation shows).
+ */
 const props = defineProps<{ block: ToolCallBlock }>()
 const call = computed(() => storedShellView(props.block))
 const select = useEditSelection()
+const transcript = useTranscript()
+
+/** What each pill opens, by path; none while the call belongs to no request. */
+function selection(path: string) {
+  return transcript ? pillSelection(transcript.node, transcript.requests(), props.block, path) : null
+}
+const selectable = computed(() => {
+  const first = call.value?.files?.[0]
+  return select() !== undefined && first !== undefined && selection(first.path) !== null
+})
 
 function pick(path: string): void {
-  const current = call.value
-  const file = current?.files?.find((entry) => entry.path === path)
-  if (current && file) {
-    select()?.({ commandId: current.commandId, file })
+  const picked = selection(path)
+  if (picked) {
+    select()?.(picked)
   }
 }
 </script>
@@ -25,7 +40,7 @@ function pick(path: string): void {
     class="py-1"
     :style="{ paddingLeft: `${ICON_PX.in28 + 8}px` }"
     :files="call.files"
-    :selectable="select() !== undefined"
+    :selectable="selectable"
     @select="pick"
   />
 </template>

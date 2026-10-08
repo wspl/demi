@@ -12,7 +12,7 @@ import {
 } from '../panel-tabs'
 import type { PanelTabKind } from '../panel-kinds/kind'
 import { definePage, type PanelKind } from '../../plugins/page'
-import type { CallEditSelection } from '../../files/changes'
+import type { RequestEditSelection } from '../../files/request-changes'
 
 /** Three tabs, which the page selected in `history`. */
 function three(history: readonly string[] = []): PanelState {
@@ -81,7 +81,7 @@ test('an intent opens the first enabled page that declares it, in its pinned tab
   expect(second?.pinned).toEqual({ file: 'null > /a > /b' })
   expect(opened).toEqual([null, 'null > /a'])
   // No enabled page opens `edit`: the shell shows no control for it.
-  const edit: CallEditSelection = { commandId: 'c', file: { path: 'x', kind: 'added', added: 1, removed: 0, edits: [] } }
+  const edit: RequestEditSelection = { node: null, request: 'u', file: 'x', edit: null }
   expect(openIntent(first!.pinned, pages, enabled, { intent: 'edit', payload: edit })).toBeNull()
 })
 

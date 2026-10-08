@@ -1,7 +1,7 @@
 import { Allow, parse } from 'partial-json'
 import { z } from 'zod'
 import type { ShellToolView, ToolCallBlock } from './block-types'
-import { shouldParsePartialToolInput } from './tool-rendering'
+import { isStandardToolName, shouldParsePartialToolInput, standardToolTitle } from './tool-rendering'
 
 export type ShellTerminalOutputChunk = ShellToolView['chunks'][number]
 
@@ -46,6 +46,13 @@ export function parseToolCallInput(block: ToolCallBlock): Record<string, unknown
   } catch {
     return {}
   }
+}
+
+/** A tool call's title, as its row in the transcript names it. */
+export function toolCallTitle(block: ToolCallBlock): string {
+  return isStandardToolName(block.toolName)
+    ? standardToolTitle(block.toolName, parseToolCallInput(block))
+    : block.toolName
 }
 
 export function parseToolInput(raw: string): Record<string, unknown> {

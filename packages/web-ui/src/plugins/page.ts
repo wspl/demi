@@ -17,6 +17,7 @@ import { z } from 'zod'
 import type { PanelTabKind, TabCommand } from '../agent/panel-kinds/kind'
 import type { HostArtifact } from '../devices/installed'
 import type { ChangeSetSource, ReadCallChange } from '../files/changes'
+import type { TranscriptRequest } from '../files/request-changes'
 import type { FileBrowserSource } from '../files/types'
 import { reportError } from '../infra/errors'
 import { showToast } from '../infra/toast'
@@ -63,8 +64,15 @@ export interface ConversationFileService {
   readonly root: string | null
   /** The working tree's uncommitted changes. */
   readonly changes: ChangeSetSource
-  /** The two sides of one call's retained edit. */
+  /** The two sides of one retained edit, by the blobs that hold them. */
   readonly edit: ReadCallChange
+  /**
+   * A request of the agent `node` (null for the conversation's own), with
+   * the files its calls changed, as the agent's transcript holds it now:
+   * derived as it is read, never stored (`edit-tracking.md` § A request).
+   * Null while the transcript does not hold it.
+   */
+  request(node: string | null, request: string): TranscriptRequest | null
   /**
    * The calling component shows the working tree: the service follows the
    * Host's reports for it and keeps `changes` current until the component's
