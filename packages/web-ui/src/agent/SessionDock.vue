@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { ChevronDown } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
@@ -30,18 +30,32 @@ onBeforeUnmount(() => {
     surfaceCover.value = 0
   }
 })
+
+// The scroll control belongs to the row of chips, at its other end: with chips it stands level
+// with them; without, it floats where that row would be, above what waits over the composer.
+const chipsRef = ref<HTMLElement>()
+const composerRef = ref<HTMLElement>()
+const { height: chipsHeight } = useElementSize(chipsRef, { width: 0, height: 0 }, { box: 'border-box' })
+const { height: composerHeight } = useElementSize(composerRef, { width: 0, height: 0 }, { box: 'border-box' })
+/** The chips row's step over the composer (its `pb-2`). */
+const STEP_PX = 8
+const scrollBottom = computed(() =>
+  chipsHeight.value > 0
+    ? `${composerHeight.value + STEP_PX}px`
+    : `calc(100% + ${coverHeight.value + STEP_PX}px)`,
+)
 </script>
 
 <template>
   <!-- What stands over the composer stacks at one 8px step: the card, the chips, the composer.
        A part that is not there takes no room, so the next one moves up by the same step. -->
   <div class="relative">
-    <!-- The scroll control floats over the transcript at the dock's top right, so it takes no
-         room in the dock; it shows only away from the scroll bottom, where it covers nothing the
-         user reads last. -->
+    <!-- The scroll control is the chips row's control at its right end, so it takes no room in
+         the dock; it shows only away from the scroll bottom, where it covers nothing the user
+         reads last. -->
     <span
-      class="pointer-events-none absolute right-0 mb-2 inline-flex size-7"
-      :style="{ bottom: `calc(100% + ${coverHeight}px)` }"
+      class="pointer-events-none absolute right-0 z-20 inline-flex size-7"
+      :style="{ bottom: scrollBottom }"
     >
       <Transition
         appear
@@ -70,10 +84,10 @@ onBeforeUnmount(() => {
     </div>
     <!-- Chips read from the left. A chip renders nothing while it has nothing to say, so the row
          shows only while it holds an element. -->
-    <div class="hidden items-center gap-1.5 pb-2 has-[>*]:flex">
+    <div ref="chipsRef" class="hidden items-center gap-1.5 pb-2 has-[>*]:flex">
       <slot name="chips" />
     </div>
-    <div class="relative z-10">
+    <div ref="composerRef" class="relative z-10">
       <slot />
     </div>
   </div>

@@ -92,10 +92,11 @@ tier, including a choice made in an empty unsent draft. These defaults are backe
 user preferences; existing conversations keep their own selections. If a saved
 choice becomes unavailable, the picker keeps it with a warning and requires an
 explicit replacement. With no saved choice, the first available model is used.
-The sidebar lists a new conversation once its draft holds something, a
-character or a file, as *New conversation*; an empty draft is not listed,
-as ChatGPT and Claude list a chat only once it has begun, so opening New
-conversation and leaving it leaves nothing behind.
+The sidebar lists a new conversation as *New conversation* from the moment
+it opens, whether or not its draft holds anything yet, so the user sees where
+they are. Leaving it while its draft is still empty, with no character and no
+file, drops it, so opening New conversation and leaving it leaves nothing
+behind; once its draft holds something, it stays listed.
 
 The first send creates the backend record and starts its
 [title](#conversation-titles). From then on the backend keeps the
