@@ -218,6 +218,12 @@ export class PreviewTab implements RelayTab {
   private generation = 0
   /** The frame shows the boot page, whose own load is no page loaded. */
   private booting = false
+  /**
+   * The page took a Back, Forward or Reload and has not said yet whether its
+   * document goes, which the next load ends, or stays, which its history's
+   * move ends.
+   */
+  private commanded = false
   /** The page icon's address the tab shows, or fetches. */
   private iconOf = ''
   private unregister: () => void = () => {}
@@ -283,6 +289,7 @@ export class PreviewTab implements RelayTab {
     const generation = ++this.generation
     const place = this.place()
     this.current = navigation
+    this.commanded = false
     this.view.failure = null
     // Where previews cannot open, the tab says why in place of its page.
     if (!place || this.tabs.unavailable.value) {
@@ -362,6 +369,10 @@ export class PreviewTab implements RelayTab {
       return
     }
     if (this.tabs.driver.command(this, action)) {
+      // The tab loads from the click on, as a browser's does: over a far relay the page's next
+      // document may take a while to answer (`live-view.md` § A browser tab in the panel).
+      this.view.loading = true
+      this.commanded = true
       return
     }
     if (action === 'reload') {
@@ -384,6 +395,7 @@ export class PreviewTab implements RelayTab {
    */
   halt(): void {
     this.generation++
+    this.commanded = false
     this.view.loading = false
     this.view.starting = false
     if (this.view.page && this.tabs.driver.command(this, 'stop')) {
@@ -434,8 +446,14 @@ export class PreviewTab implements RelayTab {
         this.entries.moved(event.key, event.navigationType)
         this.view.canGoBack = this.entries.canGoBack
         this.view.canGoForward = this.entries.canGoForward
+        // A Back or Forward within the document: its move is all there is to load.
+        if (this.commanded) {
+          this.commanded = false
+          this.view.loading = false
+        }
         return
       case 'leaving':
+        this.commanded = false
         this.view.loading = true
         return
       case 'failed':
