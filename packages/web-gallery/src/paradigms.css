@@ -50,11 +50,11 @@ html[data-theme="light"][data-tone="paper"] {
   --fg-ghost: oklch(88% 0.005 95);
   --hover-mix: oklch(20% 0.005 95) 5%;
   --active-mix: oklch(20% 0.005 95) 8%;
-  --line-subtle: oklch(20% 0.005 95 / 0.06);
-  --line: oklch(20% 0.005 95 / 0.11);
-  --line-strong: oklch(20% 0.005 95 / 0.17);
-  --line-focus: oklch(20% 0.005 95 / 0.32);
-  --line-overlay: oklch(20% 0.005 95 / 0.14);
+  --line-subtle: oklch(20% 0.005 95 / 0.04);
+  --line: oklch(20% 0.005 95 / 0.07);
+  --line-strong: oklch(20% 0.005 95 / 0.1);
+  --line-focus: oklch(20% 0.005 95 / 0.22);
+  --line-overlay: oklch(20% 0.005 95 / 0.09);
   --btn-mix: oklch(100% 0 0) 100%;
   --btn-hover-mix: oklch(97% 0.004 95) 100%;
 }
@@ -91,7 +91,7 @@ html[data-theme="light"][data-shadow="flat"] {
     0 2px 6px rgba(0, 0, 0, 0.05);
   --shadow-overlay-ring: none;
   --shadow-btn: 0 0 0 0.5px var(--line-strong);
-  --shadow-btn-hover: 0 0 0 0.5px oklch(20% 0.005 95 / 0.26);
+  --shadow-btn-hover: 0 0 0 0.5px oklch(20% 0.005 95 / 0.16);
 }
 
 /* ── Flat's marks ─────────────────────────────────────────────────────
