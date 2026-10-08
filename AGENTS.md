@@ -61,7 +61,7 @@ Only when the user says to enter parallel development mode:
 - The lead names a free slot in each subagent's brief. The subagent starts its branch there from the lead's branch with `git switch --discard-changes -C <branch> feat/demi-next` and `git clean -fd`, which keeps the ignored build products. It commits on its branch and never pushes.
 - Slot *n* starts its servers on ports 33*n*0–33*n*9 and 189*n*0–189*n*9, so slots never collide with each other or with the user's own development servers.
 - The lead reviews each result, merges it into the branch of the user's own checkout, tests and pushes from there, and deletes the branch, which frees the slot. After each merge it rebuilds and restarts the development backend and web front end from the checkout (`bun run dev`, `bun run web:dev`), so the user sees the new code at once.
-- When the disk runs low, the lead removes from the checkout and every slot the build products no build has used for a week.
+- After each merge, and whenever the disk runs low, the lead runs `bun xtask sweep` in the checkout and in every free slot: it keeps the build products the current selections use and removes every other unit and incremental cache under `target/debug`; other target directories, such as `.cache/native-target`, it only lists with their sizes, and the lead removes those no longer needed by hand.
 
 # Writing and Communication
 
