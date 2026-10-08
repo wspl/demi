@@ -8,7 +8,7 @@ import { parseToolCallInput } from '../block-helpers'
 import { useElapsedTime } from '../../composables/useElapsedTime'
 import { providerWaitLabel, thinkingFaceLabel } from '../thinking-label'
 import { useCommandReferences } from '../command-references'
-import { standardToolTitle, toolRenderKind } from '../tool-rendering'
+import { pendingCallTitle, standardToolTitle, toolRenderKind } from '../tool-rendering'
 import FunctionalBlock from './FunctionalBlock.vue'
 import { toolRowIcon } from './tool-row-icon'
 
@@ -53,6 +53,9 @@ const face = computed<Face>(() => {
   }
   if (block.type === 'thinking') {
     return { icon: Brain, label: thinkingFaceLabel(true, null) }
+  }
+  if (block.type === 'pending_call') {
+    return { icon: toolRowIcon(block.call.toolName), label: pendingCallTitle(block.call) }
   }
   const kind = toolRenderKind(block.toolName)
   const icon = toolRowIcon(block.toolName)

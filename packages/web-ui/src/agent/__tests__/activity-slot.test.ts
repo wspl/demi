@@ -4,6 +4,7 @@ import type { Block, SessionPhase, ToolCallStatus } from '@demicodes/protocol'
 import type { MessageListBlock } from '../pending-steers'
 import { activitySlotKind, type PendingAction } from '../activity-slot'
 import { listTailBlocks } from '../list-tail'
+import { groupWork } from '../work-groups'
 import type { SessionLoad } from '../session-status'
 import type { PendingSubmissionState } from '../types'
 import { useActivitySlot } from '../useActivitySlot'
@@ -39,6 +40,13 @@ test('a running turn requests after user-like blocks', () => {
 test('a running turn requests after a completed tool while waiting for the model to continue', () => {
   expect(kind('running', [toolCallBlock('completed')])).toBe('requesting')
   expect(kind('running', [toolCallBlock('error')])).toBe('requesting')
+})
+
+test('a running group is its own activity: the next steps roll over its face, not into the tail row', () => {
+  const transcript = [userBlock(), toolCallBlock('completed')]
+  expect(kind('running', transcript, groupWork(transcript, true))).toBeNull()
+  // Without the grouping the same tail waits for the model.
+  expect(kind('running', transcript)).toBe('requesting')
 })
 
 test('the slot stays hidden while the tool row itself is executing', () => {

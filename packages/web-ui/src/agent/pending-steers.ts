@@ -1,3 +1,4 @@
+import type { WorkGroupBlock } from './work-groups'
 import type { Block, PendingCall, UserContentBlock } from '@demicodes/protocol'
 import type { CompactionProgressBlock } from './list-tail'
 import type { QueueDividerBlock, QueuedRenderBlock } from './queued-messages'
@@ -19,7 +20,7 @@ export interface PendingCallRenderBlock {
 
 export type MessageListBlock =
   Block | PendingSteerRenderBlock | QueueDividerBlock | QueuedRenderBlock | CompactionProgressBlock |
-  PendingCallRenderBlock |
+  PendingCallRenderBlock | WorkGroupBlock |
   { type: 'pending_submission'; id: string; submission: PendingSubmissionState }
 
 export function pendingSteersToRenderBlocks(

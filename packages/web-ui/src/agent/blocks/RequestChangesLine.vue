@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useElementVisibility } from '@vueuse/core'
 import { FileDiff } from '@lucide/vue'
 import LineCounts from '../../files/LineCounts.vue'
-import { requestEndsKey, requestLineCounts, type TranscriptRequest } from '../../files/request-changes'
+import type { TranscriptRequest } from '../../files/request-changes'
 import { ICON_PX } from '../../ui/icon-metrics'
-import { useEditReads } from '../edit-selection'
+import { useFileLineCounts } from '../useFileLineCounts'
 
 /**
  * The button at the end of a request's reply (`edit-tracking.md` § What the
@@ -27,34 +27,19 @@ const label = computed(() => props.request.files.length === 1 ? '1 File Changed'
 
 const el = ref<HTMLElement | null>(null)
 const visible = useElementVisibility(el)
-const read = useEditReads()
-/** The files' ends the counts were taken from, so counts of ends a later call replaced never show. */
-const ends = computed(() => requestEndsKey(props.request))
-const counted = ref<{ ends: string; added: number; removed: number } | null>(null)
-const counts = computed(() => counted.value?.ends === ends.value ? counted.value : null)
-let controller: AbortController | null = null
-
-watch([visible, ends], async ([shown, key]) => {
-  const reader = read()
-  if (!shown || !reader || counted.value?.ends === key) {
-    return
+const byFile = useFileLineCounts(() => props.request.files, () => visible.value)
+/** The sum over the files, once each is counted; none while a file's ends are missing. */
+const counts = computed(() => {
+  let added = 0
+  let removed = 0
+  for (const count of byFile.value.values()) {
+    if (!count)
+      return null
+    added += count.added
+    removed += count.removed
   }
-  controller?.abort()
-  const current = new AbortController()
-  controller = current
-  try {
-    const result = await requestLineCounts(props.request, reader, current.signal)
-    if (!current.signal.aborted && result) {
-      counted.value = { ends: key, ...result }
-    }
-  } catch {
-    // Safe to ignore: an abort is the next count taking over, and a read that
-    // failed leaves the button naming the files alone, as the design has it
-    // for ends it cannot count; the Change view reports a failed read itself.
-  }
-}, { immediate: true })
-
-onBeforeUnmount(() => controller?.abort())
+  return { added, removed }
+})
 </script>
 
 <template>
