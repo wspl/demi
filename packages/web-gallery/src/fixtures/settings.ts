@@ -291,14 +291,12 @@ export function mockProviders(): MockProvider[] {
           label: 'zan@example.com',
           plan: 'Max 5×',
           active: true,
+          // As the usage probe names them: by period and scope, a limit on one model too.
           quota: [
- { id: 'hour', label: '5-hour',
-              used: 62,
-              max: 100,
-              resets: 'in 2 h 10 min'
-             },
- { id: 'week', label: 'Weekly',  used: 31, max: 100, resets: 'Monday'  },
-]
+            { id: 'five_hour', label: '5h session', used: 62, max: 100, resets: 'in 2 h 10 min' },
+            { id: 'seven_day', label: '7d all models', used: 31, max: 100, resets: 'Monday' },
+            { id: 'limit:weekly_scoped:Fable', label: '7d Fable', used: 74, max: 100, resets: 'Tuesday' },
+          ],
         },
         {
           id: 'a2',
@@ -306,22 +304,14 @@ export function mockProviders(): MockProvider[] {
           plan: 'Pro',
           active: false,
           quota: [
- { id: 'hour', label: '5-hour',
-              used: 100,
-              max: 100,
-              resets: 'in 4 h'
-             },
- { id: 'week', label: 'Weekly',
-              used: 88,
-              max: 100,
-              resets: 'Thursday'
-             },
-]
+            { id: 'five_hour', label: '5h session', used: 100, max: 100, resets: 'in 4 h' },
+            { id: 'seven_day', label: '7d all models', used: 88, max: 100, resets: 'Thursday' },
+          ]
         },
-        // Signed in with a token: the vendor names no plan, so the row shows none.
+        // The vendor names no plan, so the row shows none.
         {
           id: 'a3',
-          label: 'claude-c3bd1c21',
+          label: 'zan@family.example',
           plan: '',
           active: false,
           // A vendor names its windows as it likes; the label column fits the longest.
