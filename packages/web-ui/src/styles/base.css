@@ -228,13 +228,13 @@
   --btn-hover-mix: #f7f8fa 100%;
 }
 
+/* Text keeps the platform's own smoothing: on macOS grayscale antialiasing
+   (`antialiased`) draws stems thinner than the system draws them elsewhere. */
 html,
 body,
 #app {
   overflow: hidden;
   height: 100%;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 html {

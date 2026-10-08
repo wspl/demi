@@ -15,10 +15,14 @@ import {
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 
 const paradigmIdSchema = z.enum(['ink', 'warm', 'flat'])
+/** The faces on trial for the product, beside the system's. */
+const fontIdSchema = z.enum(['system', 'inter', 'geist'])
 const accentIdSchema = z.literal(PRODUCT_ACCENTS.map((accent) => accent.id))
 
 export type ParadigmId = z.infer<typeof paradigmIdSchema>
 export type AccentId = ProductAccent
+export type FontId = z.infer<typeof fontIdSchema>
+export const FONT_IDS = fontIdSchema.options
 
 export const ACCENTS = PRODUCT_ACCENTS
 
@@ -69,6 +73,7 @@ export interface GalleryState {
   paradigm: ParadigmId
   mode: ThemeMode
   accent: AccentId
+  font: FontId
 }
 
 function paradigmById(id: ParadigmId): Paradigm {
@@ -87,6 +92,7 @@ const storedGalleryStateSchema = z.object({
   paradigm: paradigmIdSchema,
   mode: themeModeSchema,
   accent: accentIdSchema,
+  font: fontIdSchema,
 })
 
 function readStored(): GalleryState | null {
@@ -108,6 +114,7 @@ function initialState(): GalleryState {
     paradigm: productAppearance.tone,
     mode: 'dark',
     accent: DEFAULT_ACCENT,
+    font: 'system',
   }
 }
 
@@ -123,6 +130,7 @@ function writeAttributes(): void {
   root.setAttribute('data-theme', galleryState.mode)
   root.setAttribute('data-tone', paradigm.tone)
   root.setAttribute('data-accent', galleryState.accent)
+  root.setAttribute('data-font', galleryState.font)
   root.setAttribute('data-density', paradigm.density)
   root.setAttribute('data-radius', paradigm.radius)
   root.setAttribute('data-shadow', paradigm.shadow)
