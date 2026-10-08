@@ -15,6 +15,7 @@ import { useConversations } from './conversation/store'
 import { closeDraftStorage } from './conversation/drafts'
 import { useResources } from './state/resources'
 import { useProduct } from './state/product'
+import { followDirect } from './direct'
 import { startRawBridge } from './direct/raw-bridge'
 import { usePreferences } from './state/preferences'
 import { useNotifications } from './state/notifications'
@@ -74,6 +75,9 @@ product.start()
 // channels for its lifetime (`direct-channel.md` § Bytes the browser
 // fetches itself).
 startRawBridge()
+// The page makes the peer of the device a conversation it shows runs on, and
+// follows what changes its paths, for its lifetime.
+followDirect()
 /** A page signed out, or of a Demi without accounts, follows no state; one whose check failed keeps the channel for its Retry. */
 function stopUnlessSignedIn(): void {
   const { status } = session.current
