@@ -1,5 +1,6 @@
 import { computed, type ComputedRef } from 'vue'
 import { useTheme } from '../theme/appTheme'
+import type { PromptColors } from '../agent/terminals'
 
 /** 16 ANSI colors plus the xterm chrome (cursor and selection). */
 export interface TerminalTheme {
@@ -113,6 +114,20 @@ export function resolveCssColor(root: Element, value: string): string {
   return `rgb(${r}, ${g}, ${b})`
 }
 
+/** A CSS `rgb()` color as the escape sequence that sets it as the foreground, or nothing for a color it cannot read. */
+export function cssColorToAnsiForeground(color: string): string {
+  const match = color.match(RGB)
+  if (!match)
+    return ''
+  return `\x1b[38;2;${Math.round(Number(match[1]))};${Math.round(Number(match[2]))};${Math.round(Number(match[3]))}m`
+}
+
+/** The live value of the color token `name` under `el`, or `fallback` when it does not resolve. */
+function tokenColor(el: HTMLElement, name: string, fallback: string): string {
+  const resolved = resolveCssColor(el, `var(${name})`)
+  return RGB.test(resolved) ? resolved : fallback
+}
+
 export function terminalPalette(mode: 'dark' | 'light'): TerminalTheme {
   return mode === 'light' ? lightTheme : darkTheme
 }
@@ -122,10 +137,7 @@ export function terminalPalette(mode: 'dark' | 'light'): TerminalTheme {
  * Ground, cursor and selection follow the live tokens (tone, accent, surface).
  */
 export function xtermThemeFromElement(el: HTMLElement, palette: TerminalTheme): TerminalTheme {
-  const token = (name: string, fallback: string) => {
-    const resolved = resolveCssColor(el, `var(${name})`)
-    return RGB.test(resolved) ? resolved : fallback
-  }
+  const token = (name: string, fallback: string) => tokenColor(el, name, fallback)
   const background = token('--surface', palette.background)
   const foreground = token('--fg-body', palette.foreground)
   const emphasis = token('--fg-emphasis', palette.cursor)
@@ -142,6 +154,18 @@ export function xtermThemeFromElement(el: HTMLElement, palette: TerminalTheme): 
     selectionBackground: selection,
     selectionInactiveBackground: selection,
     overviewRulerBorder: background,
+  }
+}
+
+/**
+ * A command's prompt line colors (`promptLine`), from the live tokens as the
+ * terminal theme takes them: the prompt in the muted text color, the script
+ * in the emphasized one.
+ */
+export function terminalPromptColors(el: HTMLElement, palette: TerminalTheme): PromptColors {
+  return {
+    prompt: cssColorToAnsiForeground(tokenColor(el, '--fg-muted', palette.brightBlack)),
+    script: cssColorToAnsiForeground(tokenColor(el, '--fg-emphasis', palette.brightWhite)),
   }
 }
 

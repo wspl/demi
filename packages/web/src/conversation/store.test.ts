@@ -398,19 +398,20 @@ test('sidebar stays active until the last running child closes after its parent 
 })
 
 /** A `shell_exec` call of `script`, as a transcript holds it while it runs or once it returned. */
-function execCall(toolUseId: string, script: string, status: 'executing' | 'completed') {
+function execCall(toolUseId: string, script: string, status: 'executing' | 'completed', description?: string) {
   return {
     type: 'tool_call' as const, id: `block-${toolUseId}`, createdAt: '2026-09-13T00:00:00.000Z', model,
-    toolUseId, toolName: 'shell_exec', input: JSON.stringify({ script }), status, output: [], view: null,
+    toolUseId, toolName: 'shell_exec', input: JSON.stringify({ script, description }), status, output: [], view: null,
   }
 }
 
 // `runtime.md` § Live output and § Rendering boundary: every page keeps one
-// record of a command from its live frames, named by its call's script, and
-// adds only the characters beyond those it has shown.
+// record of a command from its live frames, titled by its call's description
+// and opening with its script, and adds only the characters beyond those it
+// has shown.
 test('a command\'s live frames build what the page shows of it, until its end', () => {
   const conversation = useConversations().items[0]!
-  conversation.blocks = [execCall('call-1', 'npm test', 'executing')]
+  conversation.blocks = [execCall('call-1', 'npm test', 'executing', 'Run the unit tests')]
   conversation.terminals = []
   const frame = (status: 'running' | 'exited', tail: string, chars: number) => ({
     type: 'shell_output' as const,
@@ -422,21 +423,23 @@ test('a command\'s live frames build what the page shows of it, until its end', 
   // The frame's tail holds only the newest characters; the page adds them.
   applyConversationEvent(conversation, frame('running', 'two\n', 8))
   expect(toRaw(conversation.terminals)).toMatchObject([
-    { id: 'cmd', name: 'npm test', phase: 'running', output: 'one\ntwo\n', chars: 8, toolUseId: 'call-1' },
+    { id: 'cmd', title: 'Run the unit tests', script: 'npm test', phase: 'running', output: 'one\ntwo\n', chars: 8, toolUseId: 'call-1' },
   ])
   // After a gap, the page shows the tail anew; a transcript event keeps the live view.
   applyConversationEvent(conversation, frame('running', 'ninety\n', 100))
-  conversation.blocks = [{ ...execCall('call-1', 'npm test', 'completed'), view: {
+  conversation.blocks = [{ ...execCall('call-1', 'npm test', 'completed', 'Run the unit tests'), view: {
     kind: 'shell', status: 'exited', exitCode: 0, shellId: 'sh', commandId: 'cmd', runningMs: 10, idleMs: 0,
     chunks: [{ stream: 'stdout', text: 'one\n' }], viewTruncated: false,
   } }]
   applyConversationEvent(conversation, { type: 'transcript_patch', patches: [], blocks: conversation.blocks, failures: {} })
-  expect(toRaw(conversation.terminals)).toMatchObject([{ output: 'ninety\n', chars: 100, phase: 'running' }])
+  expect(toRaw(conversation.terminals)).toMatchObject([
+    { title: 'Run the unit tests', script: 'npm test', output: 'ninety\n', chars: 100, phase: 'running' },
+  ])
   applyConversationEvent(conversation, frame('exited', 'ninety\nend\n', 104))
-  expect(toRaw(conversation.terminals)).toMatchObject([{ phase: 'exited', output: 'ninety\nend\n' }])
+  expect(toRaw(conversation.terminals)).toMatchObject([{ phase: 'exited', exitCode: 0, output: 'ninety\nend\n' }])
   expect(conversation.terminals[0]?.endedAt).toBeDefined()
 
-  // A subagent's command takes its name from the child's transcript.
+  // A subagent's command takes its call from the child's transcript; a call without a description is titled by its script.
   const job = {
     subagentId: 'child', parentSessionId: conversation.id, description: 'Child', profile: null,
     phase: 'running' as const, startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
@@ -450,7 +453,7 @@ test('a command\'s live frames build what the page shows of it, until its end', 
     status: { status: 'running', shellId: 'sh-2', commandId: 'cmd-2', toolUseId: 'call-1', tail: 'Compiling\n', chars: 10, runningMs: 5 },
   })
   expect(toRaw(conversation.terminals)[1]).toMatchObject({
-    id: 'cmd-2', name: 'cargo build', subagentId: 'child', toolUseId: 'call-1', output: 'Compiling\n',
+    id: 'cmd-2', title: 'cargo build', script: 'cargo build', subagentId: 'child', toolUseId: 'call-1', output: 'Compiling\n',
   })
 })
 

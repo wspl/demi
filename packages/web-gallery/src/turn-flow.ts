@@ -32,6 +32,7 @@ const THINK_1 = 'The cookie name changed from sid to session. The helper already
 const THINK_2 = 'The helper is fine. Update the assertion in auth.test.ts and leave cookie.ts alone.'
 const REPLY = 'The cookie helper is fine. The test still expects `sid`.\n\nI updated the assertion in `auth.test.ts` and left `cookie.ts` alone.'
 const TOOL_SCRIPT = 'rg -n "sid" packages/web/src/auth.test.ts'
+const TOOL_DESCRIPTION = 'Find the old cookie name in the login test'
 /** What the turn's command prints, a line at a time while its call runs. */
 const TOOL_LINES = [
   'packages/web/src/auth.test.ts:18:    expect(cookie.name).toBe("sid")',
@@ -192,7 +193,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       status,
       input: JSON.stringify({
         script: TOOL_SCRIPT,
-        description: 'Find the old cookie name in the login test',
+        description: TOOL_DESCRIPTION,
       }),
         output,
       view: shellView({
@@ -295,7 +296,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       runningTool = toolId
       state.terminals.push({
         id: `cmd-${toolId}`,
-        name: TOOL_SCRIPT,
+        title: TOOL_DESCRIPTION,
+        script: TOOL_SCRIPT,
         phase: 'running',
         startedAt: toolStartedAt,
         output: '',
