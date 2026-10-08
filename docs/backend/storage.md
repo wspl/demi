@@ -145,7 +145,7 @@ input, which the multi-worker control service also relies on
   secret, sealed as a credential is, its expiry, and the origins it was last
   registered with, so a start knows whether to renew it or replace them.
 - **Devices and workspaces:** `devices` stores ownership, kind, name,
-  platform, the operating system and architecture and the runner release its runner last reported, whether pages may reach it directly (`direct`, on by default), the hash of the device's current token, claim and last-seen
+  platform, the operating system and architecture and the runner release its runner last reported, how pages reach it (`route`: `automatic`, the default, `direct` or `server`), the hash of the device's current token, claim and last-seen
   times, and the JSON list of artifacts its runner last reported its cache
   holds ([Installed artifacts](../execution/native-runtime.md#installed-artifacts)).
   The token hash is unique, so a runner's token finds its device

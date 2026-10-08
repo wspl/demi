@@ -197,12 +197,23 @@ refuses more with `busy`, which sends the page's operation to the relay.
 
 ## Choosing the path
 
-The page keeps one choice per device: `relay` or `direct`. It is `direct`
-while the peer is connected. The user can turn direct connections off for a
-device on its page, which every page of the user follows: the device's
-`direct` field ([Workspaces, devices, and attached hosts](../product/web-api.md#workspaces-devices-and-attached-hosts));
-a page then makes no peer for it, closes the one it has, and the relay serves
-everything, until it is turned on again.
+The page keeps one choice per device: `relay` or `direct`. The device's
+route, which the user picks on its page and every page of the user follows
+(the device's `route` field, [Workspaces, devices, and attached hosts](../product/web-api.md#workspaces-devices-and-attached-hosts)),
+says how the page makes it:
+
+| Route | The page makes a peer | The choice is `direct` while |
+| --- | --- | --- |
+| Automatic, the default | Yes | The peer is connected and its path is not worse than the relay's ([Measuring the paths](#measuring-the-paths)) |
+| Prefer Direct | Yes | The peer is connected |
+| Server Only | No, and it closes the one it has | Never |
+
+Automatic exists because a connected peer is not always the better path. On
+one machine or one network it is far faster, but across networks the pair
+that answered may run over a congested or lossy link, and then the server's
+path serves the live view better. Prefer Direct is the switch for a user who
+knows the direct path suits them; Server Only for one whose network or
+policy makes the attempts unwelcome.
 
 - **Each operation chooses as it starts.** A read, a text, a listing or a
   write starts on whatever the choice is at that moment, and finishes there.
@@ -229,6 +240,50 @@ everything, until it is turned on again.
 The relay never closes because the direct channel opened: a page that sees
 both keeps using the relay for everything that does not go direct, and falls
 back to it without waiting.
+
+## Measuring the paths
+
+While a page uses a device, that is while it shows a conversation whose
+primary Host is the device or the device's own page, it measures both paths
+once a second, with probes too small to cost anything:
+
+- **The direct path.** The peer has one more data channel, `probe`,
+  unordered and never retransmitted, so a lost probe stays lost as a lost
+  video packet would. The page sends `{ id }`; the runner sends it back at
+  once.
+- **The relay path.** The page sends `ping { id }` on the signaling socket;
+  the backend forwards it to the runner as `direct_ping { peer, id }`, the
+  runner answers `direct_pong { peer, id }`, and the backend sends
+  `pong { id }` back. The probe crosses the same two connections, page to
+  backend and backend to runner, that every relayed byte crosses.
+
+Over the last 30 probes of each path the page computes:
+
+| Figure | What it is |
+| --- | --- |
+| Latency | The median round trip |
+| Jitter | The mean difference between consecutive round trips, as RTP computes it |
+| Loss | The share of probes not answered within 2 seconds; the relay runs over TCP, which loses nothing but arrives late instead, so the relay has none |
+
+Under Automatic the choice is `direct` while the peer is connected, unless
+over the last 10 seconds its loss was above 2 % or its latency more than
+20 ms above the relay's. The choice changes only when the condition has
+held for 10 seconds, so one slow probe never moves an open live view. A
+newly connected peer is used at once, before the figures exist, since a
+peer that connects is almost always the faster path; the figures then
+confirm or overturn it. A slightly slower direct path still wins, because
+it keeps the bytes off the server and its link.
+
+**Test Speed** on the device's page measures throughput, which probes
+cannot: it downloads 8 MiB of random bytes from the runner over each path
+in turn, direct first when there is a peer, on a `speed` channel and with
+`GET /api/devices/:deviceId/speed?bytes=8388608`, and shows MiB/s. Random
+bytes, because a compressing proxy would make zeros look fast. A test runs
+only when the user asks, one at a time.
+
+The figures stay in the page: nothing stores them, and another browser
+measures its own paths, since the user's other computer reaches the device
+over another network.
 
 ## Bytes the browser fetches itself
 
@@ -265,40 +320,99 @@ reaches it, *Connected directly* or *Through the server* with the reason in
 a few words, or that it is offline and when it was last seen; it shows no
 version, architecture or other code. The row opens the device's page,
 `/settings/devices/<id>`, as a row of macOS's System Settings opens its
-detail:
+detail.
 
-- **Connection.** *Connect Directly When Possible*, on by default
-  ([Choosing the path](#choosing-the-path)); the status, direct or through the
-  server, with the round trip the direct channel measures; when through the
-  server, why, in a sentence that also says what the user can do; when the
-  last attempt ran and when the next will, with Try Now, which makes a new
-  peer at once; and Details, closed by default, with what the last attempt
-  saw: the stage it failed at (permission, gathering addresses, finding a
-  path, the encryption handshake, opening the channel), how long it took,
-  the addresses each side offered, local and public, the pairs tried and how
-  many answered, and the browser's local network permission.
-- **Device.** The system by its name and version, such as *macOS 26.5* or
+The page keeps state and settings apart, as macOS's Network settings do: what
+is happening is said above the settings, in sentences and figures, and a
+grouped row is only ever something the user can change or a fact about the
+device, never a status dressed as a setting.
+
+```text
+‹ Devices
+
+[icon] zan-mbp
+       ● Through the server · 480 ms
+       Your network and the device's don't let a direct connection
+       through, as a strict NAT or a firewall does. Demi tries again
+       in 7 minutes.                          [Details…]  [Try Again]
+
+Connection
+┌──────────────────────────────────────────────────────────────┐
+│ Route                                        [Automatic   ⌄] │
+│ Demi connects directly when that is faster, and through the  │
+│ server otherwise.                                            │
+└──────────────────────────────────────────────────────────────┘
+  Measured from this browser                       [Test Speed]
+              Latency     Jitter     Loss     Speed
+  Direct      —           —          —        —
+  Server      480 ms      12 ms      —        4.1 MiB/s
+
+Device
+┌──────────────────────────────────────────────────────────────┐
+│ Name                                    zan-mbp  [Rename…]   │
+│ System                         macOS 26.5 · Apple silicon    │
+│ Runner                                         Up to date    │
+│ Paired                                    August 29, 2026    │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│ Revoke this device                               [Revoke…]   │
+└──────────────────────────────────────────────────────────────┘
+```
+
+- **The header** names the device and says its state with a dot: green
+  *Connected directly*, grey *Through the server*, or *Offline* with when it
+  was last seen; the path in use carries its latency. Under it, only when
+  there is something to explain, a sentence says why the server's path is
+  used and what the user can do, then when Demi tries again. **Details…**
+  opens a sheet with the last attempt's diagnostics; **Try Again** makes a
+  new peer at once and is there only while the route allows a peer and the
+  page is not connected directly. A device connected directly needs no
+  sentence: the header says it all.
+- **Connection** has one setting, the route, as a pop-up button of
+  *Automatic*, *Prefer Direct* and *Server Only*, with a line saying what the
+  chosen one does. Under the group, as a table and not as rows, the two
+  paths' figures from [Measuring the paths](#measuring-the-paths), the path
+  in use marked, and Test Speed; a path with no figures shows a dash. The
+  figures are what the user decides the route by, so they sit beside it.
+- **Device** holds the facts, as macOS's About settings do: the name with
+  Rename…; the system by its name and version, such as *macOS 26.5* or
   *Ubuntu 26.04*, with the chip family, *Apple silicon*, *Intel* or *ARM*,
   not an architecture code; the runner as *Up to date*, *Update available* or
   *Development build*, never a version code; and when it was paired.
-- **Rename…** and **Revoke…**, which leave the list's rows.
+- **Revoke…** alone at the end, as a destructive action is.
 
-The reasons the page gives, from what the attempt saw:
+The **Details** sheet, as macOS's Network → Details… opens one, lists what
+the last attempt saw as labels and values: when it ran, how long it took,
+the stage it ended at (permission, gathering addresses, finding a path, the
+encryption handshake, opening the channel, or connected), the addresses
+each side offered, local and public, the pairs tried and how many answered,
+the pair in use when connected, and the browser's local network permission.
+A local address the browser hides behind a random `….local` name, as every
+browser does for a page's own addresses, shows as *Hidden by the browser*.
 
-| Reason | When | The page says |
+The reasons the header gives, from what the attempt saw:
+
+| Reason | When | The header says |
 | --- | --- | --- |
-| Turned off | The device's `direct` is off | Direct connections are off for this device, and everything goes through the server |
+| Server Only | The device's route is Server Only | The route is Server Only, so everything goes through the server |
+| Slower right now | Automatic, the peer is connected, and its loss or latency is worse than the relay's ([Measuring the paths](#measuring-the-paths)) | The direct connection is up but slower or losing packets right now, with its figure, and that Demi moves back when it improves |
 | Blocked by this browser | The browser reports its local network permission blocked | The browser blocks local network access for this site, how to allow it in the site's settings, and that Demi connects without a reload once it is allowed |
-| Not reachable | Every pair was checked and none answered, and both sides found their public address | The two networks don't let a direct connection through, as with strict NAT or a firewall, and the addresses tried |
+| Not reachable | Every pair was checked and none answered, and both sides found their public address | The two networks don't let a direct connection through, as with strict NAT or a firewall |
 | This network blocks it | One side found no public address: its network blocks UDP or the STUN server | Which side's network blocks it, the browser's or the device's |
 | Device is busy | The runner refused the peer with `busy` | The device's runner has too many connections open, and that Demi tries again |
 | Connection dropped | A connected peer failed | When it was direct until, and that Demi tries again |
 | Not offered | Crossing networks is off (`DEMI_STUN_URLS` empty) and no local pair answered | Direct connections work only on the same network as the device on this server |
 
+Opening a device's page while the page has no peer for it, and the route
+allows one, starts an attempt, so the header speaks of now and not of an
+attempt minutes old.
+
 The Cloud is always reached through the server, since it runs beside the
-backend; its page says so and offers no switch. A user who blocks the
-browser's local network permission sees no prompt again and stays on the
-relay.
+backend: its header says so in one sentence, and its page has no Connection
+section. An offline device's page keeps the route, which applies when it is
+back, and shows no figures. A user who blocks the browser's local network
+permission sees no prompt again and stays on the relay.
 
 ## Failure and limits
 
@@ -316,12 +430,12 @@ relay.
 
 | Where | Responsibility |
 | --- | --- |
-| `runner-protocol` | The `direct_offer`, `direct_answer`, `direct_candidate`, `direct_close` and `direct_stream` messages and the operations' headers and answers |
+| `runner-protocol` | The `direct_offer`, `direct_answer`, `direct_candidate`, `direct_close`, `direct_stream`, `direct_ping` and `direct_pong` messages and the operations' headers and answers, `probe` and `speed` included |
 | `runner-direct` | The runner's peers: sockets, ICE, DTLS and SCTP through str0m, and each operation carried out through `runner-host` and the service streams the runner supplies; on its own thread, off the runner's control thread, since a peer at full speed fills a core |
 | `runner` | Composing `runner-direct` with the Host operations and service streams, and closing every peer when the backend connection ends |
-| `backend-http` | The signaling route, with the device access check |
-| `web` | The peer, the choice of path, the operations' clients, the service worker, and the user streams and file reads the page context supplies over either path |
-| `web-ui` | The devices list's rows and the device's page with its Connection section, reasons and details |
+| `backend-http` | The signaling route and the speed route, with the device access check |
+| `web` | The peer, the measurements and the choice of path, the operations' clients, the service worker, and the user streams and file reads the page context supplies over either path |
+| `web-ui` | The devices list's rows and the device's page: its header, Connection section with the figures table, Device section and Details sheet |
 
 ## Rationale
 
