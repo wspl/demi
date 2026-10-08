@@ -1,8 +1,8 @@
 diff --git a/Cargo.toml b/Cargo.toml
-index e266ec1..d22f086 100644
+index e266ec1..2d1ea49 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -105,3 +105,18 @@ version = "0.2"
+@@ -105,3 +105,19 @@ version = "0.2"
  level = "allow"
  priority = 0
  check-cfg = ["cfg(const_fn)"]
@@ -19,10 +19,11 @@ index e266ec1..d22f086 100644
 +    "Every Windows build, from any build machine, compiles BoringSSL without assembly (OPENSSL_NO_ASM), as upstream already did on a Windows build machine, and takes the C runtime from crt-static even under a CMake toolchain file such as cargo-xwin's: the x86-64 assembly would need NASM, and the toolchain file's early return dropped the runtime choice",
 +    "An MSVC build generates for Ninja, as cargo-xwin's does, so BoringSSL compiles with the build's compiler and the MSVC toolset its environment selected: cmake's default Visual Studio generator compiled with Visual Studio's newest toolset (14.51) instead of the pinned 14.44, whose static C++ library then lacked the ARM64 vectorized algorithms the newer STL headers called (__std_find_trivial_1 and others), so aarch64-pc-windows-msvc failed to link on a Windows runner; disabling _USE_STD_VECTOR_ALGORITHMS would hide that symptom but still link one toolset's objects against an older one's libraries",
 +    "CMake configures a fresh build directory on every run of the build script, so a directory an earlier run left with settings CMake cannot change in place (another generator: a cached target directory from before the MSVC builds moved to Ninja) cannot fail the build; every run copies BoringSSL's source anew, so the old directory saved little",
++    "BORING_BSSL_INSTALL_DIR exports an MSVC build's libraries by their MSVC names, crypto.lib and ssl.lib, where it copied only libcrypto.a and libssl.a, which an MSVC build does not make; the release workflow keeps that export as its cache of BoringSSL and builds against it with BORING_BSSL_PATH",
 +    "suspicious_runtime_symbol_definitions is allowed: the bindings declare the C library's malloc and realloc with C's types, which the pinned nightly's lint flags, and nothing calls them",
 +]
 diff --git a/build/main.rs b/build/main.rs
-index 0825ff5..9d3a00f 100644
+index 0825ff5..280f8e8 100644
 --- a/build/main.rs
 +++ b/build/main.rs
 @@ -212,10 +212,6 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
@@ -107,7 +108,42 @@ index 0825ff5..9d3a00f 100644
          let mut cfg = get_boringssl_cmake_config(config);
  
          let num_jobs = std::env::var("NUM_JOBS").ok().or_else(|| {
-@@ -702,7 +729,11 @@ fn emit_link_directives(config: &Config) {
+@@ -604,8 +631,8 @@ fn get_cpp_runtime_lib(config: &Config) -> Option<String> {
+ ///
+ /// The destination directory must exist and be empty. Writes:
+ ///
+-///   - `lib/libcrypto.a`
+-///   - `lib/libssl.a`
++///   - `lib/libcrypto.a`, or `lib/crypto.lib` for an MSVC target
++///   - `lib/libssl.a`, or `lib/ssl.lib` for an MSVC target
+ ///   - `lib/bcm.o` (if FIPS is enabled)
+ ///   - `include/openssl/...` (patched headers)
+ fn install_artifacts(
+@@ -624,12 +651,19 @@ fn install_artifacts(
+     let lib_dir = install_dir.join("lib");
+     fs::create_dir(&lib_dir)?;
+ 
+-    for lib in ["libcrypto.a", "libssl.a", "bcm.o"] {
+-        if !config.features.fips && lib == "bcm.o" {
+-            continue;
+-        }
++    // Demi's: an MSVC build's libraries carry MSVC's names, which
++    // `emit_link_directives` links by as well.
++    let libraries = if config.target_env == "msvc" {
++        ["crypto.lib", "ssl.lib"]
++    } else {
++        ["libcrypto.a", "libssl.a"]
++    };
++    for lib in libraries {
+         fs::copy(bssl_build_dir.join(lib), lib_dir.join(lib))?;
+     }
++    if config.features.fips {
++        fs::copy(bssl_build_dir.join("bcm.o"), lib_dir.join("bcm.o"))?;
++    }
+ 
+     fs_extra::dir::copy(get_include_path(config)?, &install_dir, &Default::default())?;
+ 
+@@ -702,7 +736,11 @@ fn emit_link_directives(config: &Config) {
              .map(|s| dir.join(s))
              .filter(|d| d.exists())
              .unwrap_or(dir);

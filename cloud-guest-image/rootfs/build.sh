@@ -52,20 +52,23 @@ done
 [ -z "$ca" ] || [ -f "$ca" ] || { echo "no certificate bundle at $ca" >&2; exit 2; }
 # A release is immutable: every build publishes a new one.
 [ ! -e "$output" ] || { echo "$output exists: choose a new release directory" >&2; exit 2; }
+# The image's apt names Ubuntu's own archive of its architecture; --mirror
+# changes only where the build fetches from, which is the builder's network.
 case "$(uname -m)" in
   aarch64)
     deb_arch=arm64
-    mirror="${mirror:-http://ports.ubuntu.com/ubuntu-ports}"
+    ubuntu_archive=http://ports.ubuntu.com/ubuntu-ports
     ;;
   x86_64)
     deb_arch=amd64
-    mirror="${mirror:-http://archive.ubuntu.com/ubuntu}"
+    ubuntu_archive=http://archive.ubuntu.com/ubuntu
     ;;
   *)
     echo "no Cloud image is built for $(uname -m)" >&2
     exit 2
     ;;
 esac
+mirror="${mirror:-$ubuntu_archive}"
 # The Ubuntu release of the image, 26.04; the manifest records it.
 suite=resolute
 # What the build creates is readable by `demi`, whatever the caller's umask.
@@ -97,13 +100,17 @@ echo "$sha256  $archive" | sha256sum --check --quiet - || {
 }
 tar --numeric-owner -xpzf "$archive" -C "$work"
 rm "$archive"
-cat > "$work/etc/apt/sources.list.d/ubuntu.sources" <<SOURCES
+# Writes the tree's apt sources, which name the archive at $1.
+write_sources() {
+  cat > "$work/etc/apt/sources.list.d/ubuntu.sources" <<SOURCES
 Types: deb
-URIs: $mirror
+URIs: $1
 Suites: $suite $suite-updates $suite-security
 Components: main universe
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 SOURCES
+}
+write_sources "$mirror"
 in_chroot() {
   chroot "$work" /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
     DEBIAN_FRONTEND=noninteractive HOME=/root "$@"
@@ -164,7 +171,9 @@ mkdir -p "$work/home"
 umount "$work/dev" "$work/sys" "$work/proc"
 trap - EXIT
 
-# No runtime state, network configuration or machine identity of the builder.
+# No runtime state, network configuration or machine identity of the builder,
+# whose mirror included.
+write_sources "$ubuntu_archive"
 rm -f "$work/etc/resolv.conf"
 rm -rf "$work/dev/"* "$work/run/"* "$work/tmp/"*
 rm -f "$work/etc/machine-id" "$work/var/lib/dbus/machine-id"
