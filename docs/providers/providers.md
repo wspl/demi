@@ -663,7 +663,7 @@ refresh turn only saves needless vendor calls within one backend.
 |---|---|
 | `codex` | A request was refused with HTTP 401 and its access token is still the stored one, or the stored access token expires within 5 minutes, or the sign-in was last refreshed 8 or more days ago |
 | `grok-build` | A request was refused with HTTP 401 and its access token is still the stored one, or the stored access token expires within 5 minutes; a sign-in without a refresh token is used as it is |
-| `claude-code` | The CLI asks for a fresh access token after a 401 and its token is still the stored one, or the stored access token expires within 5 minutes when a CLI process starts ([Accounts and sign-in](claude-code.md#accounts-and-sign-in)) |
+| `claude-code` | The stored access token expires within 30 minutes when a request or the usage probe would use it, or the CLI's request was refused with HTTP 401 and its token is still the stored one ([Accounts and sign-in](claude-code.md#accounts-and-sign-in)) |
 
 A refused request names the token it was refused with, so a refresher that
 waited behind another finds the other's new tokens no longer due and uses
