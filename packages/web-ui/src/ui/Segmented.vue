@@ -132,10 +132,9 @@ function choose(clicked: T | undefined) {
 </template>
 
 <style scoped>
-/* The thumb is a button on the track: the button's fill and edge, from the
-   theme's tokens, in both modes. */
+/* The thumb takes the button's fill from the theme's tokens, in both modes,
+   and no edge: its fill alone parts it from the track. */
 .segmented-thumb {
   background: color-mix(in srgb, var(--surface-current), var(--btn-mix));
-  box-shadow: var(--shadow-btn);
 }
 </style>
