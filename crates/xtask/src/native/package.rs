@@ -26,9 +26,6 @@ use tokio_util::sync::CancellationToken;
 
 use super::{DESCRIPTOR, Error, Executable, MANIFEST};
 
-/// The workspace version, which every crate inherits: the version a command
-/// package, the backend and the machine manager are released as.
-const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// A backend or machine manager release's record.
 const RELEASE: &str = "release.json";
 /// Where packaging keeps the executables' compressed copies, each named by
@@ -90,7 +87,9 @@ pub enum Versioning {
 }
 
 /// One release to package: the executable, the targets it carries, the
-/// Cargo target directory the build wrote, and the release directory.
+/// Cargo target directory the build wrote, the release directory, and the
+/// workspace version the build carries, which names a command package and
+/// the backend's and the machine manager's releases.
 pub struct Spec<'a> {
     pub executable: Executable,
     pub targets: &'a [&'static str],
@@ -98,6 +97,7 @@ pub struct Spec<'a> {
     pub output: &'a Path,
     pub caches: &'a Caches,
     pub versioning: Versioning,
+    pub version: &'a str,
 }
 
 pub fn run(options: Options) -> Result<(), Error> {
@@ -112,6 +112,7 @@ pub fn run(options: Options) -> Result<(), Error> {
             output: &output,
             caches: &options.caches,
             versioning: Versioning::Development,
+            version: demi_shared_artifacts::WORKSPACE_VERSION,
         };
         package(&spec, &cancel).await
     })??;
@@ -244,16 +245,17 @@ impl Built {
         Ok(())
     }
 
-    /// The version of the command package this release is, as `versioning`
-    /// names it: a development version carries the leading digits of the
-    /// digest of its targets' executables.
-    fn version(&self, versioning: Versioning) -> Result<String, Error> {
+    /// The version of the command package this release of the workspace
+    /// version `workspace` is, as `versioning` names it: a development
+    /// version carries the leading digits of the digest of its targets'
+    /// executables.
+    fn version(&self, versioning: Versioning, workspace: &str) -> Result<String, Error> {
         match versioning {
-            Versioning::Published => Ok(VERSION.to_owned()),
+            Versioning::Published => Ok(workspace.to_owned()),
             Versioning::Development => {
                 let digest = canonical_digest(&self.targets)
                     .map_err(|error| Error::Record(error.to_string()))?;
-                Ok(format!("{VERSION}+dev.{}", &digest[..DEVELOPMENT_DIGITS]))
+                Ok(format!("{workspace}+dev.{}", &digest[..DEVELOPMENT_DIGITS]))
             }
         }
     }
@@ -382,10 +384,12 @@ pub async fn package(spec: &Spec<'_>, cancel: &CancellationToken) -> Result<Stri
             built
                 .add_compressed(&compressed, demi_shared_artifacts::Effort::Published, cancel)
                 .await?;
-            let version = built.version(spec.versioning)?;
+            let version = built.version(spec.versioning, spec.version)?;
             command_package(spec.output, id, &version, operations, built, cancel).await
         }
-        Release::Executable => executable_release(spec.output, executable, built, cancel).await,
+        Release::Executable => {
+            executable_release(spec.output, executable, spec.version, built, cancel).await
+        }
     }
 }
 
@@ -419,7 +423,7 @@ pub async fn development_package(
             cancel,
         )
         .await?;
-    let version = built.version(Versioning::Development)?;
+    let version = built.version(Versioning::Development, demi_shared_artifacts::WORKSPACE_VERSION)?;
     command_package(output, id, &version, operations, built, cancel).await?;
     Ok(())
 }
@@ -465,16 +469,18 @@ struct ExecutableRelease<'a> {
     targets: &'a BTreeMap<String, PackageArtifact>,
 }
 
-/// Publishes the release of the backend or the machine manager at `output`.
+/// Publishes the release of `version` of the backend or the machine manager
+/// at `output`.
 async fn executable_release(
     output: &Path,
     executable: Executable,
+    version: &str,
     built: Built,
     cancel: &CancellationToken,
 ) -> Result<String, Error> {
     let bytes = record(&ExecutableRelease {
         executable: executable.name(),
-        version: VERSION,
+        version,
         targets: &built.targets,
     })?;
     let record = ReleaseRecord {
@@ -483,7 +489,7 @@ async fn executable_release(
     };
     demi_shared_artifacts::publish_release(output, record, &built.files, cancel).await?;
     Ok(format!(
-        "Release {}@{VERSION}\n{}",
+        "Release {}@{version}\n{}",
         executable.name(),
         output.join(RELEASE).display()
     ))
@@ -581,6 +587,7 @@ mod tests {
             output,
             caches: &caches,
             versioning: Versioning::Development,
+            version: demi_shared_artifacts::WORKSPACE_VERSION,
         };
         package(&spec, cancel).await
     }
@@ -682,7 +689,7 @@ mod tests {
         }
         let record: serde_json::Value =
             serde_json::from_slice(&std::fs::read(output.join(RELEASE)).unwrap()).unwrap();
-        let expected = serde_json::json!({"executable": "demi-machine-manager", "version": VERSION, "targets": targets});
+        let expected = serde_json::json!({"executable": "demi-machine-manager", "version": demi_shared_artifacts::WORKSPACE_VERSION, "targets": targets});
         assert_eq!(record, expected);
         assert_eq!(names(&output), [linux[0], RELEASE, linux[1]]);
         assert_eq!(
@@ -743,7 +750,7 @@ mod tests {
         // same version, a rebuilt one another.
         let development = descriptor.version.clone();
         assert!(
-            development.starts_with(&format!("{VERSION}+dev.")),
+            development.starts_with(&format!("{}+dev.", demi_shared_artifacts::WORKSPACE_VERSION)),
             "{development}"
         );
         let again = root.path().join("demi-file-again");

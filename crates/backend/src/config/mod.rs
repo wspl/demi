@@ -57,7 +57,11 @@ impl std::str::FromStr for StunUrls {
 /// `--help` and in every error is its variable, so an unusable value stops
 /// startup naming the variable.
 #[derive(clap::Parser)]
-#[command(name = "demi-backend", version, about = "The Demi product server")]
+#[command(
+    name = "demi-backend",
+    version = demi_shared_artifacts::WORKSPACE_VERSION,
+    about = "The Demi product server"
+)]
 pub struct Config {
     /// Validate the configuration as a start would, then exit
     #[arg(long)]

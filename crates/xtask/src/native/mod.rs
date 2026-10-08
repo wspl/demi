@@ -7,6 +7,7 @@ mod package;
 
 #[cfg(all(unix, feature = "developer"))]
 pub use package::development_package;
+pub use build::{Options as BuildOptions, xtask};
 pub use package::{Caches, Spec, Versioning, package, split, write_server_release};
 
 use std::path::{Path, PathBuf};
@@ -107,7 +108,7 @@ pub enum Executable {
 impl Executable {
     /// The executables a build makes unless named: the runner and the
     /// command programs.
-    const DEFAULT: [Self; 4] = [Self::Runner, Self::File, Self::Browser, Self::Claude];
+    pub const DEFAULT: [Self; 4] = [Self::Runner, Self::File, Self::Browser, Self::Claude];
     /// The command programs, each the program of a command package.
     pub const COMMANDS: [Self; 3] = [Self::File, Self::Browser, Self::Claude];
 
