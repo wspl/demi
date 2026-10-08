@@ -227,7 +227,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 
 - **Owns:** the `demi.file` package's id (`PACKAGE`, which its release
   descriptor names) and operations (`Operation`): the arguments and results of
-  `file.read`, `file.create`, `file.edit` and `file.patch`, with their limits.
+  `file.read`, `file.edit` and `file.patch`, with their limits.
 - **Public boundary:** the types above. `plugin-file` declares the `demi file`
   commands from them and `demi-file` decodes invocations with them.
   Behavior: [Commands](../execution/commands.md).
@@ -1364,7 +1364,7 @@ demi-backend (executable: configuration, composition)
 #### `command-package-file` (`demi-file`)
 
 - **Owns:** the independently released `demi.file` resident program: file
-  read, create, edit and patch, with the file mutations serialized by one
+  read, edit and patch, with the file mutations serialized by one
   gate and recorded through the edit recorder
   ([Edit tracking](../execution/edit-tracking.md)). It holds no conversation
   state, so it answers every conversation status as empty and ends with its
