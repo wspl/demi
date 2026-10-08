@@ -151,7 +151,7 @@ const surfaces = [
            (container height - control height) / 2. The container's primitive owns that
            inset through a dedicated slot; callers never place a control with their own margin. -->
       <GallerySpecimen variant="row actions · equal inset to the top, bottom and right edge">
-        <Menu class="w-72" data-row-actions>
+        <Menu class="w-72" :autofocus="false" data-row-actions>
           <MenuItem :icon="Globe" label="127.0.0.1:5173" value="52 min left">
             <template #actions>
               <IconButton :icon="RefreshCw" size="xs" variant="ghost" aria-label="Renew" spin-on-click />
