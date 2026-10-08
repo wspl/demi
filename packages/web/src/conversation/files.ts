@@ -1,5 +1,6 @@
 import { computed, effectScope, onScopeDispose, watch } from 'vue'
 import { emptyChangeSet, type ChangeSetSource } from '@demicodes/web-ui/files/changes'
+import { findRequest } from '@demicodes/web-ui/files/request-changes'
 import { keptChangeSet } from '@demicodes/web-ui/files/kept-source'
 import type { ConversationFileService } from '@demicodes/web-ui/plugins/page'
 import { conversationFileRoutes, fileSource, hostFiles } from '../api/files'
@@ -17,7 +18,8 @@ const services = new Map<string, ConversationFileService>()
 /**
  * A conversation's files (`plugin-pages.md` § The conversation files
  * service): the Host's tree and contents while its device and directory are
- * known, and the working tree's changes. What it reads it keeps with the
+ * known, the working tree's changes, and a request's changes from the
+ * transcripts the page holds. What it reads it keeps with the
  * Host's other files, and while a component shows any of them its file
  * watch is open, whose reports have what they name read again
  * (`plugin-pages.md` § What the service keeps).
@@ -90,6 +92,11 @@ export function conversationFiles(conversationId: string): ConversationFileServi
       return changes.value ?? emptyChangeSet
     },
     edit: readEditCopies,
+    request(node, request) {
+      // The conversation's transcripts as the page holds them: its own agent's and each subagent's.
+      const conversation = conversations.items.find((item) => item.id === conversationId)
+      return conversation ? findRequest(conversation, node, request) : null
+    },
     showChanges() {
       // The list shows for the calling component while it lives, for the Host and root it has now.
       const scope = effectScope()

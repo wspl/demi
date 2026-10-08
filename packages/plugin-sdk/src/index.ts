@@ -56,16 +56,23 @@ export {
 
 // Files: the shapes the conversation files service gives, and their paths.
 export {
-  callChangeSource,
-  callEditSelectionSchema,
   emptyChangeSet,
-  type CallEditSelection,
   type ChangeFile,
   type ChangeMode,
   type ChangeSetSource,
   type ChangeSources,
   type ReadCallChange,
 } from '@demicodes/web-ui/files/changes'
+// A request's changes: what the `edit` intent names, and the files the Change view lists.
+export {
+  requestEditSelectionSchema,
+  type RequestChangeSource,
+  type RequestEdit,
+  type RequestEditRef,
+  type RequestEditSelection,
+  type RequestFile,
+  type TranscriptRequest,
+} from '@demicodes/web-ui/files/request-changes'
 export type { FileBrowserSource } from '@demicodes/web-ui/files/types'
 export { baseName, joinPath, relativePath } from '@demicodes/web-ui/files/paths'
 export { downloadUrl } from '@demicodes/web-ui/files/download'

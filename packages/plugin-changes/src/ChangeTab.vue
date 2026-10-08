@@ -10,18 +10,18 @@ const presentation = ref<'diff' | 'preview'>('diff')
 import { computed } from 'vue'
 import {
   ChangeView,
-  callChangeSource,
   joinPath,
   treeLayout,
   usePage,
   type ChangeSources,
 } from '@demicodes/plugin-sdk'
-import { changePath, goBack, goForward, showChange, type ChangeData } from './data'
+import { changePath, goBack, goForward, showChange, showEdit, type ChangeData } from './data'
 
 /**
  * The Change view of one conversation (`file-previews.md` § Changes): the
- * working tree's changes in Uncommitted, a call's retained edit in
- * Conversation, over the conversation's files service.
+ * working tree's changes in Uncommitted, a request's in Conversation, over
+ * the conversation's files service, which reads the request from the
+ * transcript as it is now, so the view follows calls that end later.
  */
 const props = defineProps<{
   conversation: string
@@ -38,7 +38,9 @@ const intents = page.intents
 
 const changes = computed<ChangeSources>(() => ({
   uncommitted: files.changes,
-  conversation: props.data.call ? callChangeSource(props.data.call, files.edit) : null,
+  conversation: props.data.request
+    ? { files: files.request(props.data.request.node, props.data.request.request)?.files ?? [], read: files.edit }
+    : null,
 }))
 const selected = computed(() => changePath(props.data, props.data.mode, changes.value.uncommitted.files))
 const root = computed(() => files.workspace?.root ?? files.root ?? '/')
@@ -58,7 +60,7 @@ function open(path: string): void {
     :mode="data.mode"
     :selected="selected"
     :changes="changes"
-    :edit="data.edit"
+    :edit="data.request?.edit ?? null"
     :root="root"
     :root-name="files.workspace?.name"
     :contents="files.workspace?.source.contents"
@@ -66,7 +68,7 @@ function open(path: string): void {
     :can-forward="data.forward.length > 0"
     :opens="intents.canOpen('file')"
     @update:mode="emit('update', showChange(data, $event, changePath(data, $event)))"
-    @update:edit="emit('update', showChange(data, data.mode, selected, { call: data.call, edit: $event }))"
+    @update:edit="emit('update', showEdit(data, $event))"
     @update:selected="emit('update', showChange(data, data.mode, $event))"
     @back="emit('update', goBack(data))"
     @forward="emit('update', goForward(data))"
