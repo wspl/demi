@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { useSession } from '../auth/session'
-import { computed, onScopeDispose, ref, watch } from 'vue'
+import { computed, onScopeDispose, ref, watch, type Ref } from 'vue'
+import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useProduct } from '../state/product'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
@@ -9,7 +10,7 @@ import {
   deviceAnswerSchema,
   revokedDeviceSchema,
   type CloudReset,
-  type RenameDevice,
+  type ChangeDevice,
 } from '../api/generated/web-api'
 
 export const useDeviceSettings = defineStore('device-settings', () => {
@@ -17,6 +18,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
   let lifetime = new AbortController()
   const revoking = ref<string[]>([])
   const renaming = ref<string[]>([])
+  const changing = ref<string[]>([])
   const reset = ref<
     | { status: 'idle' | 'pending' }
     | {
@@ -41,6 +43,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       volumes: status.volumes,
       limits: status.limits,
       newerImage: status.newerImage,
+      deviceId: device?.id ?? null,
       report: { os: device?.os ?? null, runnerVersion: device?.runnerVersion ?? null },
     }
   })
@@ -69,29 +72,43 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     }
   }
 
-  /** Gives a paired device a new name; the channel brings it to every page, this one included. */
-  async function rename(id: string, name: string): Promise<void> {
-    if (renaming.value.includes(id)) {
+  /**
+   * Changes a paired device: what `change` names, while its id is in
+   * `pending`; the channel brings the change to every page, this one
+   * included, and a refusal is a toast titled `failed`.
+   */
+  async function change(id: string, body: ChangeDevice, pending: Ref<string[]>, failed: HeadlineText): Promise<void> {
+    if (pending.value.includes(id)) {
       return
     }
     const current = lifetime
-    renaming.value.push(id)
+    pending.value.push(id)
     try {
       const response = await apiRequest(`/devices/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         signal: current.signal,
-        ...jsonBody({ name } satisfies RenameDevice),
+        ...jsonBody(body),
       })
       await readResponse(response, deviceAnswerSchema)
     } catch (error) {
       if (!current.signal.aborted) {
-        reportError('Could Not Rename Device', error, { userVisible: true })
+        reportError(failed, error, { userVisible: true })
       }
     } finally {
       if (current === lifetime) {
-        renaming.value = renaming.value.filter((value) => value !== id)
+        pending.value = pending.value.filter((value) => value !== id)
       }
     }
+  }
+
+  /** Gives a paired device a new name. */
+  function rename(id: string, name: string): Promise<void> {
+    return change(id, { name }, renaming, 'Could Not Rename Device')
+  }
+
+  /** Turns a paired device's direct connections on or off, which every page of the user's follows. */
+  function setDirect(id: string, direct: boolean): Promise<void> {
+    return change(id, { direct }, changing, direct ? 'Could Not Turn On Direct Connections' : 'Could Not Turn Off Direct Connections')
   }
 
   async function resetCloud(operationId: string): Promise<void> {
@@ -133,6 +150,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       lifetime = new AbortController()
       revoking.value = []
       renaming.value = []
+      changing.value = []
       reset.value = { status: 'idle' }
     },
   )
@@ -144,6 +162,8 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     revoke,
     renaming,
     rename,
+    changing,
+    setDirect,
     resetCloud,
   }
 })

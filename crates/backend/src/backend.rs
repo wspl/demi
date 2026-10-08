@@ -12,6 +12,7 @@ use std::sync::atomic::AtomicBool;
 
 use demi_backend_blobs::ObjectError;
 use demi_backend_blobs::store as objects;
+use demi_backend_runners::install::RunnerReleases;
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::publication::{PublicationError, publish_native, release_files};
 use demi_backend_cloud::CloudServices;
@@ -185,6 +186,8 @@ impl Backend {
         let settings = ServiceSettings {
             mode: config.mode,
             web_build,
+            runner_releases: RunnerReleases::new(config.runner_releases),
+            stun: config.stun,
             mail: config.account_mail,
             runners: config.runners,
             conversations: config.conversations,
@@ -261,7 +264,8 @@ impl Backend {
                 "the conversations to index for search cannot be listed"
             );
         }
-        let runners = config.runner_releases.clone().map(|releases| {
+        let runners = services.runner_releases.root().map(|releases| {
+            let releases = releases.to_owned();
             let services = services.clone();
             AbortOnDropHandle::new(tokio::spawn(async move {
                 // The handle's drop aborts the task, which drops its need.
@@ -277,7 +281,6 @@ impl Backend {
             shards: shards.shards(),
             site: Arc::new(Site {
                 public_url: config.public_url,
-                runner_releases: config.runner_releases,
                 origin_dropped: AtomicBool::new(false),
             }),
         };

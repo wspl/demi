@@ -7,15 +7,17 @@
 mod operations;
 
 use std::collections::BTreeMap;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 
 use bytes::Bytes;
 use demi_command_protocol::{CommandLocale, PackageArtifact, PackageDescriptor};
 use demi_runner_direct::{Addresses, Direct, direct, offered};
 use demi_runner_protocol::direct::{
-    Introduction, MAX_CHANNELS, MAX_PEERS, OfferRefusal, ServiceBinding,
+    Introduction, MAX_CHANNELS, MAX_PEERS, OfferRefusal, ServiceBinding, StunUrl,
 };
+use tokio::net::UdpSocket;
+use tokio_util::task::AbortOnDropHandle;
 use demi_runner_protocol::files::{FileWatchMessage, FileWatchState};
 use if_addrs::{IfAddr, IfOperStatus, Ifv4Addr, Interface};
 use serde_json::{Value, json};
@@ -324,6 +326,75 @@ async fn a_peer_that_does_not_connect_within_ten_seconds_is_given_up() {
     let started = tokio::time::Instant::now();
     peers.wait_for(|peers| *peers == 0).await.unwrap();
     assert_eq!(started.elapsed().as_secs(), 10);
+}
+
+/// A STUN server on 127.0.0.1 that answers every binding request with
+/// `mapped` as its XOR-MAPPED-ADDRESS, the address it says it saw the
+/// request come from, as a public server answers a request that crossed a
+/// router (RFC 8489 § 14.2).
+async fn stun_server(mapped: SocketAddrV4) -> (SocketAddr, AbortOnDropHandle<()>) {
+    const COOKIE: u32 = 0x2112_A442;
+    let socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    let address = socket.local_addr().unwrap();
+    let serving = tokio::spawn(async move {
+        let mut buffer = vec![0; 2048];
+        loop {
+            let (length, from) = socket.recv_from(&mut buffer).await.unwrap();
+            let request = &buffer[..length];
+            if length < 20 || request[..2] != [0x00, 0x01] {
+                continue;
+            }
+            let mut reply = vec![0x01, 0x01, 0x00, 12];
+            reply.extend_from_slice(&request[4..20]);
+            reply.extend_from_slice(&[0x00, 0x20, 0x00, 8, 0x00, 0x01]);
+            reply.extend_from_slice(&(mapped.port() ^ (COOKIE >> 16) as u16).to_be_bytes());
+            reply.extend_from_slice(&(u32::from(*mapped.ip()) ^ COOKIE).to_be_bytes());
+            socket.send_to(&reply, from).await.unwrap();
+        }
+    });
+    (address, AbortOnDropHandle::new(serving))
+}
+
+// Tens of milliseconds: a STUN answer and a connection over loopback.
+#[tokio::test]
+async fn a_peer_offers_the_page_the_public_address_a_stun_server_saw_it_at() {
+    let fake = Fake::default();
+    let direct = runner(&fake);
+    let public: SocketAddrV4 = "203.0.113.9:4444".parse().unwrap();
+    let (server, _serving) = stun_server(public).await;
+    let stun: StunUrl = format!("stun:{server}").parse().unwrap();
+    let mut found = None;
+    let mut page = Page::connect(async |offer| {
+        let answered = direct.offer("p1".into(), offer, introduction(), vec![stun]).await?;
+        found = Some(answered.candidates);
+        Ok::<_, demi_runner_direct::Refused>(answered.sdp)
+    })
+    .await
+    .unwrap();
+    let candidate = tokio::time::timeout(std::time::Duration::from_secs(10), found.unwrap().recv())
+        .await
+        .expect("the peer offers its public address within the connect limit")
+        .expect("the peer stands");
+    assert!(
+        candidate.starts_with("candidate:") && candidate.contains(" 203.0.113.9 4444 typ srflx "),
+        "{candidate}"
+    );
+    // The candidate it found keeps nothing from connecting.
+    assert!(page.wait_connected().await, "the peer connects");
+}
+
+// Tens of milliseconds over loopback; without the trickled candidate the
+// peer gives up after ten seconds.
+#[tokio::test]
+async fn a_candidate_the_page_trickles_after_the_answer_makes_the_connection() {
+    let fake = Fake::default();
+    let direct = runner(&fake);
+    // Neither end's description names an address: the page's candidate
+    // reaches the runner only as it trickles it.
+    let mut page = Page::trickled(&direct, "p1", introduction()).await.unwrap();
+    assert!(page.wait_connected().await, "the runner's checks to the trickled candidate connect");
+    let mut list = page.open(header("list", json!({}))).await;
+    assert_eq!(list.next().await.json()["path"], "/work", "its channels carry operations");
 }
 
 fn interface(name: &str, ip: [u8; 4], up: bool, broadcast: bool, p2p: bool) -> Interface {

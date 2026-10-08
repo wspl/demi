@@ -30,64 +30,39 @@ import {
 import { productWould } from '../product-would'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
-import type { SettingsDevice } from '@demicodes/web-ui/settings/types'
 import { demoDeviceInstallation, demoDeviceReport, demoDeviceStart } from '../fixtures/device-installation'
-import { ago } from '../fixtures/time'
+import { DEMO_RUNNER_RELEASE, DIRECT_SCENARIOS, galleryDevices, useGalleryDevices, type DirectScenario } from '../fixtures/devices'
+import type { CloudState } from '@demicodes/web-ui/cloud/types'
 
 const { view } = useGalleryView()
 
-/** The page's path to each online paired device, which the Direct Channel specimen switches. */
-type DirectPath = 'relay' | 'connected' | 'blocked'
-const directPath = ref<DirectPath>('connected')
-const directPaths = [
-  { value: 'relay', label: 'Through the Server' },
-  { value: 'connected', label: 'Connected Directly' },
-  { value: 'blocked', label: 'Blocked by the Browser' },
-] as const
-const directDevices = ref<SettingsDevice[]>([
-  { id: 'mac', name: 'zan-mbp', state: 'online', seen: ago(0), ...demoDeviceReport('macos') },
-  {
-    id: 'build',
-    name: 'build-01',
-    state: 'offline',
-    seen: ago(3 * 24 * 60 * 60 * 1000),
-    start: demoDeviceStart('linux'),
-    ...demoDeviceReport('linux'),
-  },
-  { id: 'lab', name: 'lab-01', state: 'updating', seen: ago(0), ...demoDeviceReport('linux', '0.1.15') },
-])
-/** Each device as the Devices page lists it: an online one directly connected, a blocked browser blocking every one. */
-const directListed = computed(() =>
-  directDevices.value.map((device) => ({
-    ...device,
-    direct:
-      directPath.value === 'blocked'
-        ? ('blocked' as const)
-        : directPath.value === 'connected' && device.state === 'online'
-          ? ('connected' as const)
-          : undefined,
-  })),
-)
-function revokeDirectDevice(id: string) {
-  directDevices.value = directDevices.value.filter((device) => device.id !== id)
-}
-/** A renamed device's row takes its new name, as the product's state brings it. */
-function renameDirectDevice(id: string, name: string) {
-  const device = directDevices.value.find((candidate) => candidate.id === id)
-  if (device) {
-    device.name = name
-  }
-}
-async function claimDirectDevice(_code: string) {
-  const device = {
-    id: `device-${Date.now()}`,
-    name: `host-${directDevices.value.length + 1}`,
-    state: 'online' as const,
-    seen: ago(0),
-    ...demoDeviceReport('macos'),
-  }
-  directDevices.value.push(device)
-  return { ok: true as const, device }
+/**
+ * The Devices specimen's devices, its page open on zan-mbp, whose path the
+ * segmented control sets to each reason its page gives.
+ */
+/**
+ * How often a full mock's open section was chosen again on its rail, which
+ * mounts the section anew, so a page it opened inside itself gives way to
+ * the section's own, as the product's address does.
+ */
+const fullReselects = ref(0)
+const directDevices = useGalleryDevices(() => galleryDevices(demoDeviceStart))
+directDevices.shown.value = 'mac'
+const directScenario = computed({
+  get: () => directDevices.scenarios.value['mac'] ?? 'connected',
+  set: (scenario: DirectScenario) => directDevices.setScenario('mac', scenario),
+})
+/** The Cloud beside them, whose page says it is always reached through the server. */
+const directCloud: CloudState = {
+  state: 'running',
+  operationId: null,
+  phase: null,
+  error: null,
+  volumes: { systemBytes: 3 * 1024 ** 3, homeBytes: 9 * 1024 ** 3 },
+  limits: { systemBytes: 16 * 1024 ** 3, homeBytes: 64 * 1024 ** 3 },
+  newerImage: false,
+  deviceId: 'cloud',
+  report: demoDeviceReport('linux', DEMO_RUNNER_RELEASE),
 }
 
 const anatomy: [string, string][] = [
@@ -238,20 +213,27 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Devices · Direct Channel"
-        note="Under a device’s name, the system, architecture and runner release its runner last reported, then, for an online one, in a few words how this page reaches it, Connected directly or Through the server; switch the page’s path to see each. While the browser blocks local network access, its ? says how to allow it. A device whose runner updates itself reads Updating; an offline one says when it was last seen, and its ? opens the command that starts its runner, with Copy. Escape or a click outside closes the help. Rename… asks for a new name and the row takes it; Revoke… asks first and the row goes."
+        note="A device’s row names it and says in one line its system and how this page reaches it, or when an offline one was last seen; the row opens the device’s own page, whose back button returns to the list. There, Connection has the switch for direct connections, the status with its reason when it goes through the server, the last attempt with Try Now, which runs one and ends as the device’s path says, and Details, folded, with what the attempt saw. Device names the system by name and chip family and the runner as up to date or not. Rename… changes the name everywhere; Revoke… asks first, and the device leaves the list. Set zan-mbp’s path to see each reason its page gives; the Cloud’s page has no switch."
       >
         <div class="flex w-full max-w-2xl flex-col gap-4">
-          <Segmented v-model="directPath" :options="directPaths" size="sm" />
-          <div class="rounded-xl border border-line bg-surface-dialog p-6">
+          <Segmented v-model="directScenario" :options="DIRECT_SCENARIOS" size="sm" />
+          <div class="@container rounded-xl border border-line bg-surface-dialog p-6">
             <SettingsDevices
-              :cloud="null"
-              :devices="directListed"
+              :cloud="directCloud"
+              :devices="directDevices.devices.value"
+              :shown="directDevices.shown.value"
+              :runner-release="DEMO_RUNNER_RELEASE"
+              :round-trip-ms="directDevices.roundTripMs()"
               :overlay-store="appOverlayStore"
               :installation="demoDeviceInstallation"
-              :claim-device="claimDirectDevice"
+              :claim-device="directDevices.claim"
               :name-max-length="64"
-              @revoke="revokeDirectDevice"
-              @rename="renameDirectDevice"
+              @show="directDevices.shown.value = $event"
+              @set-direct="directDevices.setDirect"
+              @try-now="directDevices.tryNow"
+              @revoke="directDevices.revoke"
+              @rename="directDevices.rename"
+              @reset-cloud="productWould('Reset the Cloud Environment')"
               @retry="productWould('Load the Devices Again')"
             />
           </div>
@@ -295,13 +277,14 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
           <SettingsDialog
             v-slot="{ section }"
             v-model:tab="fullTab"
+            @reselect="fullReselects += 1"
             :is-open="fullOpen"
             :overlay-store="appOverlayStore"
             :account="account"
             :sections="sections"
             @close="fullOpen = false"
           >
-            <GallerySettingsFull :tab="section ?? ''" :state="full" />
+            <GallerySettingsFull :key="fullReselects" :tab="section ?? ''" :state="full" />
           </SettingsDialog>
         </GalleryOverlayWell>
       </GallerySection>
@@ -386,13 +369,14 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
           <SettingsDialog
             v-slot="{ section }"
             v-model:tab="fullNarrowTab"
+            @reselect="fullReselects += 1"
             :is-open="fullNarrowOpen"
             :overlay-store="appOverlayStore"
             :account="account"
             :sections="sections"
             @close="fullNarrowOpen = false"
           >
-            <GallerySettingsFull :tab="section ?? ''" :state="full" />
+            <GallerySettingsFull :key="fullReselects" :tab="section ?? ''" :state="full" />
           </SettingsDialog>
         </GalleryOverlayWell>
       </GallerySection>

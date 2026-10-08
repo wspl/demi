@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { defineComponent } from 'vue'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
-import { closeSettings, openSettings, pageUnderSettings, routeSection, SETTINGS_ROUTE, showSection } from './address'
+import { closeSettings, openSettings, pageUnderSettings, routeDetail, routeSection, SETTINGS_ROUTE, showSection } from './address'
 
 // Cost: a memory router, no DOM; milliseconds.
 
@@ -12,7 +12,7 @@ async function routerAt(path: string): Promise<Router> {
     history: createMemoryHistory(),
     routes: [
       { path: '/chat/:id?', component: Page },
-      { path: '/settings/:section?', name: SETTINGS_ROUTE, component: Page },
+      { path: '/settings/:section?/:detail?', name: SETTINGS_ROUTE, component: Page },
     ],
   })
   await router.push(path)
@@ -77,4 +77,25 @@ test("a phone's back button returns to the list a section was opened from", asyn
   router.back()
   await closed
   expect(where(router)).toBe('/chat')
+})
+
+test('a device’s page is a step inside its section: Back and the section return to the list, and closing returns to the page', async () => {
+  const router = await routerAt('/chat/c-1')
+  await openSettings(router, 'devices')
+  await showSection(router, 'devices', 'mac')
+  expect(where(router)).toBe('/settings/devices/mac')
+  expect(routeDetail(router.currentRoute.value)).toBe('mac')
+
+  // The page's back button shows the section, which is the entry before.
+  const back = navigated(router)
+  await showSection(router, 'devices')
+  await back
+  expect(where(router)).toBe('/settings/devices')
+  expect(routeDetail(router.currentRoute.value)).toBeNull()
+
+  await showSection(router, 'devices', 'mac')
+  const closed = navigated(router)
+  await closeSettings(router)
+  await closed
+  expect(where(router)).toBe('/chat/c-1')
 })

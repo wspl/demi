@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { CloudState } from './types'
-import { deviceReportLine } from '../devices/report'
 import { formatBytes } from '../files/format'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
@@ -17,6 +16,8 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   reset: [operationId: string]
+  /** Opens the Cloud's own page. */
+  open: []
 }>()
 const open = ref(false)
 const submitted = ref(false)
@@ -49,7 +50,11 @@ const storage = computed(() => {
     current === undefined ? `up to ${formatBytes(limit)}` : `${formatBytes(current)} of ${formatBytes(limit)}`
   return `System: ${size(volumes?.systemBytes, limits.systemBytes)} · Home: ${size(volumes?.homeBytes, limits.homeBytes)}`
 })
-const reportLine = computed(() => deviceReportLine(props.cloud.report))
+/** The Cloud's one line, as a device's row has: its system and how this page reaches it. */
+const line = computed(() => {
+  const system = props.cloud.report.os?.name
+  return system ? `${system} · Through the server` : 'Through the server'
+})
 function begin() {
   submitted.value = false
   open.value = true
@@ -66,12 +71,17 @@ function reset() {
 </script>
 
 <template>
-  <SettingsGroup title="Cloud">
-    <SettingsRow label="Your Cloud environment">
-      <template #description>
-        <span class="block">All your Cloud projects share this environment. Starts automatically when needed.</span>
-        <span v-if="reportLine" class="block">{{ reportLine }}</span>
-      </template>
+  <SettingsGroup
+    title="Cloud"
+    description="All your Cloud projects share this environment. It starts automatically when needed."
+  >
+    <SettingsRow
+      label="Your Cloud environment"
+      :description="line"
+      :navigable="cloud.deviceId !== null"
+      isolate-controls
+      @click="emit('open')"
+    >
       <Button
         size="sm"
         :disabled="cloud.state === 'resetting'"

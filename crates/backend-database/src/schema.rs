@@ -40,8 +40,8 @@ pub(crate) enum Migration {
 }
 
 /// The control database's. Its history holds the schema of each published
-/// release before the one that ships the current schema; 0.1.18 shipped the
-/// last one in it.
+/// release before the one that ships the current schema; 0.1.19 and 0.1.20
+/// shipped the last one in it.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
     history: &[
@@ -68,6 +68,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.18.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_18),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.20.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_20),
         },
     ],
 };
@@ -134,6 +138,13 @@ CREATE TABLE preview_namespace (
   expires_at INTEGER NOT NULL,
   origins    TEXT NOT NULL
 ) STRICT;
+";
+
+/// From 0.1.20's control schema: a device says whether pages may reach it
+/// over a direct channel, which every device migrated from 0.1.20 may, as a
+/// new one does (`direct-channel.md` § Choosing the path).
+const CONTROL_FROM_0_1_20: &str = "
+ALTER TABLE devices ADD COLUMN direct INTEGER NOT NULL DEFAULT 1 CHECK (direct IN (0, 1));
 ";
 
 /// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
@@ -372,7 +383,10 @@ CREATE TABLE devices (
   runner_version TEXT,
   -- Whether the backend's last shutdown ended its runner's connection; the
   -- next start reads it and clears it.
-  ended_by_shutdown INTEGER NOT NULL DEFAULT 0 CHECK (ended_by_shutdown IN (0, 1))
+  ended_by_shutdown INTEGER NOT NULL DEFAULT 0 CHECK (ended_by_shutdown IN (0, 1)),
+  -- Whether pages may reach it over a direct channel; the user turns it off
+  -- on the device's page.
+  direct       INTEGER NOT NULL DEFAULT 1 CHECK (direct IN (0, 1))
 ) STRICT;
 CREATE UNIQUE INDEX devices_one_managed ON devices (user_id) WHERE kind = 'managed';
 

@@ -51,6 +51,12 @@ const tab = defineModel<SettingsTab | null>('tab', { default: null })
 
 const emit = defineEmits<{
   close: []
+  /**
+   * The rail's section that is open was chosen again: a page it opened
+   * inside itself, such as a device's, gives way to the section's own, as
+   * System Settings' sidebar does.
+   */
+  reselect: [section: SettingsTab]
 }>()
 
 const touchOnly = useTouchOnly()
@@ -95,6 +101,8 @@ function open(id: string, setting: string | null = null): void {
   const item = items.value.find((entry) => entry.id === id)
   if (!item || item.disabled)
     return
+  if (tab.value === id)
+    emit('reselect', id)
   tab.value = id
   finding?.abort()
   finding = null

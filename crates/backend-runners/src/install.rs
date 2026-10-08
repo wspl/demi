@@ -107,6 +107,40 @@ fn powershell_expandable(value: &str) -> String {
         .replace('$', "`$")
 }
 
+/// A server release's `runners/`, where the runner releases are
+/// (`native-runtime.md` § Runner releases): `manifest.json` names the
+/// current one, the release the installers install and every paired
+/// device's runner follows, and each release's directory holds its own,
+/// which names each target's executable. A backend without them, as in
+/// development, serves no installer and checks no runner's release.
+#[derive(Debug, Clone, Default)]
+pub struct RunnerReleases(Option<std::path::PathBuf>);
+
+impl RunnerReleases {
+    pub fn new(root: Option<std::path::PathBuf>) -> Self {
+        Self(root)
+    }
+
+    /// The directory, when the backend has runner releases.
+    pub fn root(&self) -> Option<&Path> {
+        self.0.as_deref()
+    }
+
+    /// The current runner release; none without runner releases. The
+    /// record is read on each use, so a release packaged into a running
+    /// backend's `runners/` takes effect at once.
+    pub async fn current(&self) -> Result<Option<RunnerRelease>, String> {
+        let Some(root) = &self.0 else {
+            return Ok(None);
+        };
+        let path = root.join("manifest.json");
+        match read_runner_release(&path).await? {
+            Some(release) => Ok(Some(release)),
+            None => Err(format!("{} is missing", path.display())),
+        }
+    }
+}
+
 /// The runner release record at `path`, a release's or the top-level
 /// `manifest.json` of a server release's `runners/`, when there is one; a
 /// record that does not decode is the deployment's fault.

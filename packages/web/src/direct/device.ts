@@ -8,9 +8,12 @@
  * device's runner or the signaling socket connected again), and otherwise
  * after 1, 2 and 5 minutes and then every 10. One attempt runs at a time.
  * A browser that blocks local network access gets no attempt until the
- * permission changes.
+ * permission changes, and a device whose direct connections the user turned
+ * off gets none, and loses its peer, until they are turned on. Each attempt
+ * leaves what it saw for the device's page.
  */
-import type { DirectPeer } from './peer'
+import type { DirectAttempt } from '@demicodes/web-ui/devices/direct'
+import { AttemptFailed, type DirectPeer } from './peer'
 
 export type Choice = 'relay' | 'direct'
 
@@ -33,10 +36,22 @@ export interface DeviceDirectDeps {
   after(ms: number, run: () => void): () => void
 }
 
-/** What the page shows of a device's path: direct, or blocked by the browser. */
+/** What the page shows of a device's path. */
 export interface DirectState {
   choice: Choice
+  /** The browser blocks local network access. */
   blocked: boolean
+  /** An attempt runs now. */
+  trying: boolean
+  /** What the last attempt saw; null before the first. */
+  attempt: DirectAttempt | null
+  /** When the next attempt runs, in milliseconds since the epoch; null when none is planned. */
+  nextAt: number | null
+}
+
+/** The state of a device the page has not tried yet. */
+export function directState(): DirectState {
+  return { choice: 'relay', blocked: false, trying: false, attempt: null, nextAt: null }
 }
 
 export class DeviceDirect {
@@ -47,12 +62,14 @@ export class DeviceDirect {
   private failures = 0
   private permission: Permission | null = null
   private stopped = false
+  /** The device's `direct` switch. */
+  private enabled = true
   private readonly listeners = new Set<(choice: Choice) => void>()
 
   constructor(
     private readonly deps: DeviceDirectDeps,
     /** Where the choice is kept for the views; a reactive object in the page. */
-    readonly state: DirectState = { choice: 'relay', blocked: false },
+    readonly state: DirectState = directState(),
   ) {}
 
   get choice(): Choice {
@@ -75,12 +92,39 @@ export class DeviceDirect {
    * is `direct`, one runs, or the browser blocks local network access.
    */
   tryNow(): void {
-    if (this.stopped || this.peer || this.attempt || this.permission === 'denied' || !this.deps.ready())
+    if (this.stopped || !this.enabled || this.peer || this.attempt || this.permission === 'denied' || !this.deps.ready())
       return
     this.cancelRetry?.()
     this.cancelRetry = null
+    this.state.nextAt = null
     this.failures = 0
     this.start()
+  }
+
+  /**
+   * The device's `direct` switch: off, the attempt stops, the peer closes
+   * and nothing tries again; on again, an attempt starts at once.
+   */
+  setEnabled(enabled: boolean): void {
+    if (enabled === this.enabled)
+      return
+    this.enabled = enabled
+    if (enabled) {
+      this.tryNow()
+      return
+    }
+    this.cancelRetry?.()
+    this.cancelRetry = null
+    this.state.nextAt = null
+    this.attempt?.abort()
+    this.attempt = null
+    this.state.trying = false
+    const peer = this.peer
+    if (peer) {
+      this.peer = null
+      this.set('relay')
+      peer.close()
+    }
   }
 
   /** The browser reported its local network permission; a change is a reason to try again. */
@@ -91,6 +135,7 @@ export class DeviceDirect {
     if (permission === 'denied') {
       this.cancelRetry?.()
       this.cancelRetry = null
+      this.state.nextAt = null
       return
     }
     if (changed)
@@ -143,6 +188,7 @@ export class DeviceDirect {
   private start(): void {
     const attempt = new AbortController()
     this.attempt = attempt
+    this.state.trying = true
     this.deps.connect(attempt.signal).then(
       (peer) => {
         if (this.attempt !== attempt) {
@@ -150,15 +196,20 @@ export class DeviceDirect {
           return
         }
         this.attempt = null
+        this.state.trying = false
+        this.state.attempt = peer.attempt
         this.failures = 0
         this.peer = peer
         this.set('direct')
         void peer.closed.then(() => this.lost(peer))
       },
-      () => {
+      (error: unknown) => {
         if (this.attempt !== attempt)
           return
         this.attempt = null
+        this.state.trying = false
+        if (error instanceof AttemptFailed)
+          this.state.attempt = error.attempt
         this.failures += 1
         this.schedule()
       },
@@ -170,19 +221,22 @@ export class DeviceDirect {
     if (this.peer !== peer)
       return
     this.peer = null
+    this.state.attempt = { ...peer.attempt, outcome: 'dropped', endedAt: new Date().toISOString() }
     this.set('relay')
     this.failures += 1
     this.schedule()
   }
 
   private schedule(): void {
-    if (this.stopped || this.permission === 'denied')
+    if (this.stopped || !this.enabled || this.permission === 'denied')
       return
     this.cancelRetry?.()
     const wait = RETRY_MS[Math.min(this.failures, RETRY_MS.length) - 1] ?? RETRY_MS[0]
+    this.state.nextAt = Date.now() + wait
     this.cancelRetry = this.deps.after(wait, () => {
       this.cancelRetry = null
-      if (!this.peer && !this.attempt && !this.stopped && this.deps.ready())
+      this.state.nextAt = null
+      if (!this.peer && !this.attempt && !this.stopped && this.enabled && this.deps.ready())
         this.start()
     })
   }

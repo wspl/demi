@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, useSlots } from 'vue'
+import { useElementSize } from '@vueuse/core'
+import { ChevronRight } from '@lucide/vue'
+import { ICON_PX } from '../ui/icon-metrics'
 import { disabledTooltip } from '../ui/disabled'
 import Tag from '../ui/Tag.vue'
 import Tooltip from '../ui/Tooltip.vue'
@@ -19,7 +22,12 @@ import type { SentenceText } from '../ui/ui-text'
  * for lists of like items (models, accounts); an interactive one opens on click
  * without a hover wash. `muted` fades the label side only, so actions stay at
  * full strength. `disabled` mutes the row, blocks its click, and shows
- * `disabledReason` on hover. `statuses` are the row's state, each a label
+ * `disabledReason` on hover. A navigable row opens a page of its own, as a row
+ * of System Settings does: the whole row is its button, and a chevron at its
+ * end says so. The `accessory` slot holds such a mark (the chevron, a fold's
+ * chevron): it sits in a square as tall as the row at the row's end, so its
+ * distance to the row's end equals its distance to the row's top and bottom
+ * (the edge-control rule). `statuses` are the row's state, each a label
  * right after the name, after the `tags`. The name tells rows apart, so it
  * keeps its width: where the tags do not fit beside it they move under it,
  * and only a name wider than the whole line is cut, whole in its tooltip
@@ -31,6 +39,8 @@ const props = defineProps<{
   inset?: boolean
   compact?: boolean
   interactive?: boolean
+  /** Opens a page of its own: clickable as a whole, with a chevron at its end. */
+  navigable?: boolean
   isolateControls?: boolean
   muted?: boolean
   disabled?: boolean
@@ -41,6 +51,13 @@ const props = defineProps<{
 
 const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
 const faded = computed(() => props.muted === true || props.disabled === true)
+const slots = useSlots()
+const clickable = computed(() => props.interactive === true || props.navigable === true)
+const accessory = computed(() => props.navigable === true || slots['accessory'] !== undefined)
+// The accessory's square: as wide as the row is tall. CSS cannot size a
+// stretched flex item's width from its height, so the row is measured.
+const rowElement = ref<HTMLElement>()
+const { height: rowHeight } = useElementSize(rowElement, undefined, { box: 'border-box' })
 
 const emit = defineEmits<{
   click: []
@@ -55,14 +72,22 @@ const emit = defineEmits<{
     :open-delay-ms="80"
   >
     <div
+      ref="rowElement"
       :data-setting="label"
-      class="flex items-center gap-y-2 @sm:flex-nowrap"
+      class="flex items-stretch"
+      :class="[clickable ? 'cursor-default' : '', navigable ? 'outline-none focus-visible:bg-hover' : '', disabled ? 'cursor-not-allowed' : '']"
+      :role="navigable ? 'button' : undefined"
+      :tabindex="navigable && !disabled ? 0 : undefined"
+      @click="!disabled && clickable && emit('click')"
+      @keydown.enter.self="!disabled && navigable && emit('click')"
+      @keydown.space.self.prevent="!disabled && navigable && emit('click')"
+    >
+    <div
+      class="flex min-w-0 flex-1 items-center gap-y-2 @sm:flex-nowrap"
       :class="[
       inset ? 'min-h-9 flex-nowrap gap-x-3 bg-(--fill-color) py-1.5 pl-7 pr-4 [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_2.5%)] *:on-fill' : compact ? 'min-h-10 flex-wrap gap-x-3 px-3 py-1.5' : 'min-h-14 flex-wrap gap-x-4 px-4 py-3',
-      interactive ? 'cursor-default' : '',
-      disabled ? 'cursor-not-allowed' : '',
+      accessory ? 'pr-0!' : '',
     ]"
-      @click="!disabled && interactive && emit('click')"
     >
       <div
         v-if="$slots.leading"
@@ -118,6 +143,18 @@ const emit = defineEmits<{
       >
         <slot />
       </div>
+    </div>
+    <!-- A square as tall as the row: its mark is as far from the row's end as from its top and bottom. -->
+    <div
+      v-if="accessory"
+      class="flex shrink-0 items-center justify-center text-fg-subtle"
+      :class="faded ? 'opacity-60' : ''"
+      :style="{ width: `${rowHeight}px` }"
+    >
+      <slot name="accessory">
+        <ChevronRight :size="ICON_PX.in28" aria-hidden="true" />
+      </slot>
+    </div>
     </div>
   </Tooltip>
 </template>
