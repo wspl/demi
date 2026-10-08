@@ -18,9 +18,9 @@ export const DEVICE_ROUTE_LABEL: Record<DeviceRoute, TitleText> = {
 
 /** The line under the route that says what the chosen one does. */
 export const DEVICE_ROUTE_DESCRIPTION: Record<DeviceRoute, SentenceText> = {
-  automatic: 'Demi connects directly when that is faster, and through the server otherwise.',
-  direct: 'Demi connects directly whenever it can, even when the server’s path is faster.',
-  server: 'Everything goes through the server, and Demi makes no direct connection.',
+  automatic: 'Uses the faster path.',
+  direct: 'Direct whenever it connects.',
+  server: 'Never connects directly.',
 }
 
 /** Where an attempt ended. */
@@ -62,12 +62,10 @@ export interface DirectAttempt {
   device: DirectAddresses
   /** The address pairs checked, and how many of them answered. */
   pairs: { tried: number; answered: number }
-  /** The pair in use while it was connected: this browser's address, null where the browser keeps it, and the device's. */
-  pair: { browser: string | null; device: string } | null
+  /** The device's address in use while it was connected, such as `127.0.0.1:60044`. */
+  inUse: string | null
   /** The browser's local network permission as the attempt ran. */
   permission: DirectPermission | null
-  /** When a dropped channel ended, as an ISO 8601 timestamp. */
-  endedAt?: string
 }
 
 /**
@@ -100,15 +98,19 @@ export interface DirectStatus {
   figures: { direct: PathFigures | null; relay: PathFigures | null }
 }
 
-/** Why the page reaches a device through the server. */
+/**
+ * Why the page reaches a device through the server, one per row of the
+ * design's table; `notYet` while no attempt has ended, which has no reason
+ * to give.
+ */
 export type DirectReason =
   | { kind: 'serverOnly' }
-  | { kind: 'slower'; direct: PathFigures | null; relay: PathFigures | null }
+  | { kind: 'slower' }
   | { kind: 'blocked' }
-  | { kind: 'unreachable'; pairs: number }
+  | { kind: 'unreachable' }
   | { kind: 'network'; side: 'browser' | 'device' }
   | { kind: 'busy' }
-  | { kind: 'dropped'; endedAt: string | null }
+  | { kind: 'dropped' }
   | { kind: 'notOffered' }
   | { kind: 'notYet' }
 
@@ -125,7 +127,7 @@ export function directReason(status: DirectStatus): DirectReason | null {
     return null
   }
   if (status.peer) {
-    return { kind: 'slower', direct: status.figures.direct, relay: status.figures.relay }
+    return { kind: 'slower' }
   }
   if (status.permission === 'denied') {
     return { kind: 'blocked' }
@@ -138,7 +140,7 @@ export function directReason(status: DirectStatus): DirectReason | null {
     return { kind: 'busy' }
   }
   if (attempt.outcome === 'dropped') {
-    return { kind: 'dropped', endedAt: attempt.endedAt ?? null }
+    return { kind: 'dropped' }
   }
   if (attempt.stage === 'permission') {
     return { kind: 'blocked' }
@@ -152,31 +154,7 @@ export function directReason(status: DirectStatus): DirectReason | null {
   if (attempt.device.public.length === 0) {
     return { kind: 'network', side: 'device' }
   }
-  return { kind: 'unreachable', pairs: attempt.pairs.tried }
-}
-
-/** The few words a device's row gives after Through the server; empty when there is nothing to say. */
-export function reasonShort(reason: DirectReason): SentenceText {
-  switch (reason.kind) {
-    case 'serverOnly':
-      return 'set to Server Only'
-    case 'slower':
-      return 'direct is slower right now'
-    case 'blocked':
-      return 'blocked by this browser'
-    case 'unreachable':
-      return 'the networks don’t allow direct'
-    case 'network':
-      return reason.side === 'browser' ? 'this network blocks direct' : 'the device’s network blocks direct'
-    case 'busy':
-      return 'the device is busy'
-    case 'dropped':
-      return 'the direct connection dropped'
-    case 'notOffered':
-      return 'not on the device’s network'
-    case 'notYet':
-      return ''
-  }
+  return { kind: 'unreachable' }
 }
 
 /** A figure in whole units, with one decimal only under one: 0.4, 2, 48. */
@@ -186,75 +164,57 @@ function wholeUnlessSmall(value: number): string {
 }
 
 /** A latency as a person reads it: "0.4 ms", "2 ms", "48 ms". */
-export function formatLatency(ms: number): string {
+function formatLatency(ms: number): string {
   return ms < 0.05 ? 'under 0.1 ms' : `${wholeUnlessSmall(ms)} ms`
 }
 
 /** A share lost as a person reads it: "0%", "0.5%", "6%". */
-export function formatLoss(loss: number): string {
+function formatLoss(loss: number): string {
   return `${wholeUnlessSmall(loss * 100)}%`
 }
 
 /**
  * The footnote under the Connection group, which compares the two paths'
- * latency from this browser: "From this browser: directly 2 ms, through the
- * server 480 ms." A direct path that loses probes says how many, and one
- * with no peer says there is no direct connection. Null before either path
- * has figures.
+ * latency from this browser: "Direct 2 ms · Server 480 ms". A direct path
+ * that loses probes adds its loss, "Direct 620 ms, 6% lost"; without a peer
+ * only the server's path is given. Null before either path has figures.
  */
 export function pathsFootnote(status: DirectStatus): SentenceText | null {
   const { direct, relay } = status.figures
   const parts: string[] = []
   if (status.peer && direct) {
-    const lost = direct.loss ? ` with ${formatLoss(direct.loss)} lost` : ''
-    parts.push(`directly ${formatLatency(direct.latencyMs)}${lost}`)
+    const lost = direct.loss ? `, ${formatLoss(direct.loss)} lost` : ''
+    parts.push(`Direct ${formatLatency(direct.latencyMs)}${lost}`)
   }
   if (relay) {
-    parts.push(`through the server ${formatLatency(relay.latencyMs)}`)
+    parts.push(`Server ${formatLatency(relay.latencyMs)}`)
   }
-  if (parts.length === 0) {
-    return null
-  }
-  const none = status.peer ? '' : '; no direct connection'
-  return `From this browser: ${parts.join(', ')}${none}.`
-}
-
-/** What makes the direct path worse, for the sentence that says so. */
-function slowerBecause(direct: PathFigures | null, relay: PathFigures | null): string {
-  if (direct?.loss && direct.loss > 0.02) {
-    return `it is losing ${formatLoss(direct.loss)} of its packets`
-  }
-  if (direct && relay) {
-    return `its round trip is ${formatLatency(direct.latencyMs)}, against ${formatLatency(relay.latencyMs)} through the server`
-  }
-  return 'it is slower than the server’s path'
+  return parts.length ? parts.join(' · ') : null
 }
 
 /**
- * The sentence the header gives for why the server's path is used and what
- * the user can do, as the design's table words it; `time` formats a moment.
- * Null when there is nothing to explain.
+ * The sentence the header gives for why the server's path is used, word for
+ * word as the design's table gives it; null when the header says nothing
+ * more: on Server Only, which the route below says, and before an attempt
+ * has ended.
  */
-export function reasonSentence(reason: DirectReason, time: (iso: string) => string): SentenceText | null {
+export function reasonSentence(reason: DirectReason): SentenceText | null {
   switch (reason.kind) {
-    case 'serverOnly':
-      return 'The route is Server Only, so everything goes through the server.'
     case 'slower':
-      return `The direct connection is up but slower right now: ${slowerBecause(reason.direct, reason.relay)}. Demi moves back when it improves.`
+      return 'Direct is slower right now.'
     case 'blocked':
-      return 'This browser blocks local network access for this site. Allow Local network access in the site’s settings in the browser; Demi then connects without a reload.'
+      return 'This browser blocks local network access.'
     case 'unreachable':
-      return 'Your network and the device’s don’t let a direct connection through, as a strict NAT or a firewall does.'
+      return 'Your networks block a direct connection.'
     case 'network':
-      return reason.side === 'browser'
-        ? 'This browser’s network blocks direct connections: it couldn’t learn its public address, as when the network blocks UDP.'
-        : 'The device’s network blocks direct connections: the device couldn’t learn its public address, as when the network blocks UDP.'
+      return reason.side === 'browser' ? 'Your network blocks it.' : 'The device’s network blocks it.'
     case 'busy':
-      return 'The device’s runner has too many connections open.'
+      return 'The device has too many connections.'
     case 'dropped':
-      return reason.endedAt ? `The direct connection worked until ${time(reason.endedAt)}.` : 'The direct connection dropped.'
+      return 'The direct connection dropped.'
     case 'notOffered':
-      return 'On this server, direct connections work only on the same network as the device.'
+      return 'Direct works only on the device’s network.'
+    case 'serverOnly':
     case 'notYet':
       return null
   }

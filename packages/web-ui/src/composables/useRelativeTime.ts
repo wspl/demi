@@ -38,15 +38,6 @@ export function useTimeUntil(timestamp: MaybeRefOrGetter<string>) {
   })
 }
 
-/**
- * A moment of today as its time, "1:25 PM", and any other as `formatMoment`
- * gives it, for a sentence that names when something ended.
- */
-export function formatWhen(timestamp: string): string {
-  const moment = dayjs(timestamp)
-  return moment.isSame(dayjs(), 'day') ? moment.format('h:mm A') : formatMoment(timestamp)
-}
-
 /** A day in the interface's English: "October 7, 2026". */
 export function formatDay(timestamp: string): string {
   return dayjs(timestamp).format('MMMM D, YYYY')
