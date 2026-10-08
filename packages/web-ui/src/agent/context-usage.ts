@@ -1,19 +1,22 @@
 import type { ContextUsage } from '@demicodes/protocol'
+import { formatPercent } from '../ui/percent'
 
-/**
- * A share of the window as the page shows it: whole percent, rounded down,
- * as the backend words its refusal (`compaction.md` § When compaction runs).
- */
-function percentOf(tokens: number, window: number): number {
-  return Math.floor((tokens * 100) / window)
-}
-
-/** How full the context is, in whole percent of its window; null without a window. */
-export function contextPercent(usage: ContextUsage | null): number | null {
+/** How full the context is, from 0 to 1 of its window, full at most; null without a window. */
+export function contextRatio(usage: ContextUsage | null): number | null {
   if (!usage?.window) {
     return null
   }
-  return Math.min(percentOf(usage.tokens, usage.window), 100)
+  return Math.min(usage.tokens / usage.window, 1)
+}
+
+/**
+ * How full the context is as the page says it: whole percent of its
+ * window, rounded down as every meter's label is (`formatPercent`) and as
+ * the backend words its refusal (`compaction.md` § When compaction runs);
+ * null without a window.
+ */
+export function contextPercent(usage: ContextUsage | null): string | null {
+  return usage?.window ? formatPercent(usage.tokens, usage.window) : null
 }
 
 /**
@@ -25,6 +28,6 @@ export function compactionRefusal(usage: ContextUsage | null): string | null {
   if (!usage?.window || usage.compactFrom == null || usage.tokens >= usage.compactFrom) {
     return null
   }
-  const from = percentOf(usage.compactFrom, usage.window)
-  return `Compaction is available from ${from}% context usage (now ${percentOf(usage.tokens, usage.window)}%)`
+  const from = formatPercent(usage.compactFrom, usage.window)
+  return `Compaction is available from ${from} context usage (now ${formatPercent(usage.tokens, usage.window)})`
 }
