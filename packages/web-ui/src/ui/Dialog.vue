@@ -38,8 +38,10 @@ import type { HeadlineText } from './ui-text'
  * when content owns its scroll region: use a `flex min-h-0 flex-col` root,
  * a non-shrinking header and a shrinking ScrollArea for the body.
  * Actions: the `footer` slot holds a dialog's buttons, laid out as a macOS
- * sheet's at the trailing edge, Cancel before the default button, which is
- * last and rightmost; `footer-leading` holds what stands apart at the leading
+ * sheet's at the trailing edge, the default button last and rightmost
+ * whatever order the caller writes them in, as NSAlert places it: Cancel
+ * before Save, and Remove before Cancel where Cancel is the default;
+ * `footer-leading` holds what stands apart at the leading
  * edge, a link or a Delete beside Save. The footer stays in place while the
  * content scrolls, and the content above it ends without its own bottom
  * padding. Return presses the default button, the footer's primary one,
@@ -219,7 +221,8 @@ onKeyStroke('Escape', (event) => {
             <div v-if="slots['footer-leading']" class="flex min-w-0 items-center gap-2">
               <slot name="footer-leading" />
             </div>
-            <div class="ml-auto flex shrink-0 items-center gap-2">
+            <!-- The default button stands last, whichever it is (`Button` marks it). -->
+            <div class="ml-auto flex shrink-0 items-center gap-2 [&>:has([data-default-action])]:order-last">
               <slot name="footer" />
             </div>
           </footer>
