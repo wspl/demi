@@ -6,6 +6,7 @@ import { SerialQueue } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
 import type { ProviderLoginPhase } from '@demicodes/web-ui/settings/types'
+import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { defaultEndpointUrl } from '@demicodes/web-ui/settings/provider-defaults'
 import {
   WIRE_API_LABELS,
@@ -115,12 +116,38 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     return [...subscriptions, ...remaining]
   })
 
-  function report(error: unknown): void {
+  /** The one toast of a provider operation that failed, titled by what failed. */
+  function report(title: HeadlineText, error: unknown): void {
     if (error instanceof DOMException && error.name === 'AbortError') {
       return
     }
     if (!lifetime.signal.aborted) {
-      reportError('Provider Operation Failed', error, { userVisible: true })
+      reportError(title, error, { userVisible: true })
+    }
+  }
+
+  /** What a failed operation's toast is titled, in the Writing page's alert style. */
+  function failureTitle(operation: SettingsProviderOperation): HeadlineText {
+    switch (operation.kind) {
+      case 'saving':
+        return 'Could Not Save the Provider'
+      case 'testing':
+        return 'Could Not Test the Provider'
+      case 'refreshing':
+        return 'Could Not Refresh the Models'
+      case 'removing':
+        return 'Could Not Remove the Provider'
+      case 'cli':
+        return 'Could Not Update the Command-Line Tool'
+      case 'account':
+        switch (operation.action) {
+          case 'activate':
+            return 'Could Not Switch Accounts'
+          case 'remove':
+            return 'Could Not Remove the Account'
+          case 'test':
+            return 'Could Not Test the Account'
+        }
     }
   }
 
@@ -157,7 +184,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     const current = lifetime
     void run(id, operation, action).catch((error) => {
       if (!current.signal.aborted) {
-        report(error)
+        report(failureTitle(operation), error)
       }
     })
   }
@@ -468,7 +495,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     try {
       await saveModels(provider, models)
     } catch (error) {
-      report(error)
+      report('Could Not Save the Model', error)
       throw error
     }
   }
@@ -556,7 +583,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       try {
         await readCli(provider.id, true, signal)
       } catch (error) {
-        report(error)
+        report('Could Not Check for Updates', error)
       }
     })
   }
@@ -567,7 +594,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         await apiRequest(`/providers/${encodeURIComponent(provider.id)}/cli/install`, { method: 'POST', signal })
         await readCli(provider.id, false, lifetime.signal)
       } catch (error) {
-        report(error)
+        report('Could Not Install the Command-Line Tool', error)
       }
     })
   }
@@ -671,7 +698,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         {
           method: 'DELETE',
         },
-      ).catch(report)
+      ).catch((error: unknown) => report('Could Not Cancel the Sign-In', error))
     }
   }
 
