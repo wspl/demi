@@ -1,10 +1,10 @@
 //! The `preview` stream (`preview.md` § The stream): the relay's requests and
 //! WebSockets in, the engine's answers out, over one byte stream with the
 //! live view's framing. Several requests share the stream, each with the id
-//! the relay chose. A request's body moves one chunk per pull; an answer's
-//! goes [`BODY_WINDOW`] chunks ahead of the relay's pulls, so a small
-//! answer takes one round trip, and a slow page holds the Host back rather
-//! than filling memory. Page states move
+//! the relay chose. Both bodies go [`BODY_WINDOW`] chunks ahead of the
+//! other side's pulls, each pull sent as a chunk is taken: a small request
+//! or answer takes no round trip of its own, and a slow page holds the Host
+//! back rather than filling memory. Page states move
 //! over it too, between the user's browser and the conversation's
 //! ([`PageStates`]).
 
@@ -346,7 +346,8 @@ impl Served {
                 // The answer's first chunks go without a pull.
                 let pulls = Arc::new(Semaphore::new(BODY_WINDOW));
                 let (body, chunks) = if request.body {
-                    let (body, chunks) = mpsc::channel(1);
+                    // The relay sends the body's first chunks with the request.
+                    let (body, chunks) = mpsc::channel(BODY_WINDOW);
                     (Some(body), Some(chunks))
                 } else {
                     (None, None)
@@ -401,7 +402,7 @@ impl Served {
                     // The request has read its body, or failed meanwhile.
                     Ok(()) | Err(mpsc::error::TrySendError::Closed(_)) => {}
                     Err(mpsc::error::TrySendError::Full(_)) => {
-                        return Err(refused(format!("a chunk of request {id}'s body the engine did not pull")));
+                        return Err(refused(format!("a chunk of request {id}'s body past the window the engine let go")));
                     }
                 }
             }
@@ -508,9 +509,9 @@ struct Requested {
     client: PreviewClient,
 }
 
-/// Answers one request: reads its body on the engine's pulls, fetches it,
-/// and sends its body as far ahead of the relay's pulls as the window
-/// lets it.
+/// Answers one request: reads its body as the relay sends it, a pull for
+/// each chunk taken, fetches it, and sends its answer's body as far ahead of
+/// the relay's pulls as the window lets it.
 async fn answer(
     engine: Arc<Engine>,
     place: Arc<Place>,
@@ -525,14 +526,15 @@ async fn answer(
     let mut body = BytesMut::new();
     if let Some(mut chunks) = chunks {
         loop {
-            if output.send(control(&PreviewEngineMessage::Pull { id })).await.is_err() {
-                return ended;
-            }
             match chunks.recv().await {
                 Some(chunk) if chunk.is_empty() => break,
                 Some(chunk) => body.extend_from_slice(&chunk),
                 // The stream ended.
                 None => return ended,
+            }
+            // The chunk is taken: the relay may send one more.
+            if output.send(control(&PreviewEngineMessage::Pull { id })).await.is_err() {
+                return ended;
             }
         }
     }

@@ -15,7 +15,7 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use demi_command_package_browser_preview::testing::{Network, Space};
 use demi_command_package_browser_preview::{Engine, PageStates, StreamError, TakenState};
 use demi_command_package_browser_protocol::preview::{
-    BodyHeader, CHUNK_FRAME, CONTROL_FRAME, PageStorage, PreviewClient, PreviewCredentials, PreviewEngineMessage,
+    BODY_WINDOW, BodyHeader, CHUNK_FRAME, CONTROL_FRAME, PageStorage, PreviewClient, PreviewCredentials, PreviewEngineMessage,
     PreviewEnvironment, PreviewHeader, PreviewMode, PreviewRelayMessage, PreviewRequest, PreviewScheme, REQUEST_BODY_FRAME,
     SOCKET_MESSAGE_FRAME, SocketHeader,
 };
@@ -349,17 +349,27 @@ impl Relay {
     ) -> Result<Fetched, String> {
         let id = self.id();
         request.body = !body.is_empty();
+        let request_body = request.body;
         self.send(&PreviewRelayMessage::Request {
             id,
             environment,
             request,
             client: self.client.clone(),
         });
-        let mut chunks = body.chunks(100_000);
+        // As the relay does: the body's first chunks with the request, then
+        // one more, or its end, for each the engine takes.
+        let mut chunks = body.chunks(100_000).chain([&[][..]]);
+        if request_body {
+            for chunk in chunks.by_ref().take(BODY_WINDOW) {
+                self.request_body(id, chunk);
+            }
+        }
         let (status, headers, labels) = loop {
             match self.next().await {
                 Frame::Control(PreviewEngineMessage::Pull { id: pulled }) if pulled == id => {
-                    self.request_body(id, chunks.next().unwrap_or_default());
+                    if let Some(chunk) = chunks.next() {
+                        self.request_body(id, chunk);
+                    }
                 }
                 Frame::Control(PreviewEngineMessage::Response {
                     id: answered,
