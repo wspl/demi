@@ -1,11 +1,12 @@
 import { onBeforeUnmount, watch, type WatchSource } from 'vue'
-import type { OverlayLayer, OverlayStore } from '../overlay/overlayStore'
+import type { OverlayLayer, OverlayStore, OverlaySurface } from '../overlay/overlayStore'
 
 export function useOverlay(
   store: OverlayStore,
   isOpen: WatchSource<boolean>,
   close: () => void,
   layer: OverlayLayer = 'exclusive',
+  surface: OverlaySurface = 'popover',
 ): string {
   const id = crypto.randomUUID()
   let remove = () => {}
@@ -14,7 +15,7 @@ export function useOverlay(
     remove()
     if (!open)
       return
-    remove = store.push(id, close, layer)
+    remove = store.push(id, close, layer, surface)
   }, { immediate: true })
 
   onBeforeUnmount(() => {

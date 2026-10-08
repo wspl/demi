@@ -113,6 +113,7 @@ const id = useOverlay(
       emit('close')
   },
   nested || props.stack ? 'stacked' : 'exclusive',
+  'dialog',
 )
 
 /**
