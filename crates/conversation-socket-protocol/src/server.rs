@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use demi_shared_types::{
-    Block, BlockId, CommandId, ContextUsage, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId, PendingSteer,
+    Block, BlockId, CommandId, ContextUsage, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId, PendingCall, PendingSteer,
     ProviderErrorDiagnostics, ProviderFailureFacts, QueuedMessage, SessionPhase, ShellId,
     Timestamp, TurnId,
 };
@@ -95,6 +95,21 @@ pub enum ServerFrame {
     PendingSteers {
         #[garde(dive)]
         pending_steers: Vec<PendingSteer>,
+    },
+    /// The complete list of the calls the model is writing
+    /// (`runtime.md` § Calls being written).
+    PendingCalls {
+        /// The subagent whose calls they are; absent for the root's.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        #[schemars(with = "NodeId")]
+        #[garde(skip)]
+        subagent_id: Option<NodeId>,
+        #[garde(dive)]
+        pending_calls: Vec<PendingCall>,
     },
     /// Answers `steer` and `steer_queued_message`.
     SteerResult {

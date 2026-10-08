@@ -22,6 +22,7 @@ export type RuntimeState = Pick<
   | 'phase'
   | 'queue'
   | 'pendingSteers'
+  | 'pendingCalls'
   | 'lastError'
   | 'load'
   | 'pendingAction'
@@ -409,6 +410,12 @@ export class ConversationRuntime {
         break
       case 'pending_steers':
         state.pendingSteers = event.pendingSteers
+        break
+      case 'pending_calls':
+        // A subagent's calls belong to its record, which the host keeps.
+        if (event.subagentId === undefined) {
+          state.pendingCalls = event.pendingCalls
+        }
         break
       case 'error':
         state.lastError = event.message

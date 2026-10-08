@@ -61,6 +61,7 @@ export function applyConversationEvent(
         startedAt: job.startedAt,
         endedAt: job.endedAt ?? undefined,
         blocks: [],
+        pendingCalls: [],
         failures: {},
       })
     }
@@ -79,6 +80,11 @@ export function applyConversationEvent(
         child.blocks = applyTranscriptPatches(child.blocks, event.patches)
         child.failures = { ...child.failures, ...event.failures }
       }
+    }
+  } else if (event.type === 'pending_calls' && event.subagentId !== undefined) {
+    const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
+    if (child) {
+      child.pendingCalls = event.pendingCalls
     }
   } else if (event.type === 'shell_output') {
     // A command's live view, the same for every page (`runtime.md` § Live
