@@ -1355,7 +1355,7 @@ file bodies or raw bytes, and its type is fixed per tool by `kind`:
 
 | `kind` | Fields |
 | --- | --- |
-| `shell` | `status` (`running`, `exited` or `aborted`); `shellId`; `commandId`; `exitCode`, once exited; `runningMs`; `idleMs`; `chunks`, the last 32,768 characters of the output the result covers, stdout and stderr merged, each chunk tagged with its stream, a line that stands for bytes the output does not hold tagged as stderr; `viewTruncated`, true when that window or the output itself was cut; `files` and `filesTruncated`, once the command has exited and changed files; `presented`, once the command has exited and presented pages with `demi browser present`, each `{ tab, title, url }` ([Presenting a page](../browser/preview.md#presenting-a-page)) |
+| `shell` | `status` (`running`, `exited` or `aborted`); `shellId`; `commandId`; `exitCode`, once exited; `runningMs`; `idleMs`; `chunks`, the last 32,768 characters of the output the result covers, stdout and stderr merged, each chunk tagged with its stream, a line that stands for bytes the output does not hold tagged as stderr; `viewTruncated`, true when that window or the output itself was cut; `files` and `filesTruncated`, once the command has exited and changed files |
 | `repeated_shell_exec` | `script`, `count` |
 | `yield_wakeup` | `wakeupId`, `durationMs`, `commandIds` |
 
@@ -1476,8 +1476,10 @@ commands*, and a click opens it to every step.
 - A step is a `thinking` block, a `tool_call` block or a call being written
   ([Calls being written](#calls-being-written)). A run is the steps between
   two other blocks, such as the user's message and the answer's text.
-- Thinking without text shows only before the answer's text, or while it is
-  the newest block; any later step covers it.
+- Thinking without text shows only while it is the newest block of a
+  running turn, as what the agent does now; once anything follows it or the
+  turn ends, it has nothing to show and goes, from the transcript and from
+  the steps of an opened row.
 - The run at the end of a running turn is always one row. Folded, the row is
   its newest step, shimmering while it runs: a step that arrives rolls over
   the one before, a call being written rolls over to its description once
