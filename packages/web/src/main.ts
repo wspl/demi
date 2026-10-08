@@ -171,8 +171,12 @@ const stopAppearance = watch(
   },
 )
 const stopTheme = applyThemeToDocument()
+// The page reports its own facts when they may have changed: once the
+// stored preferences first arrive, when its theme changes, and on the events
+// below; never because the stored ones changed, which another page or the
+// backend's canonical spelling does (`web-api.md` § User preferences).
 const stopLocale = watch(
-  [() => product.snapshot?.preferences, () => appThemeStore.state.mode],
+  [() => product.snapshot?.preferences !== undefined, () => appThemeStore.state.mode],
   () => void preferences.reportBrowser(),
   { immediate: true },
 )
