@@ -6,10 +6,8 @@
 //! body until it ends (`runner.md` § Host operations).
 
 use bytes::Bytes;
-use demi_runner_protocol::{
-    values::{BackendUrl, DeviceToken},
-    wire,
-};
+use crate::backend::Backend;
+use demi_runner_protocol::{values::DeviceToken, wire};
 use futures_util::{SinkExt, Stream, StreamExt, stream::BoxStream};
 use std::{io, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, watch};
@@ -29,6 +27,7 @@ const ANSWER_BYTES: usize = 16 * 1024;
 
 #[derive(Clone)]
 pub struct PipeClient {
+    backend: Backend,
     http: reqwest::Client,
     origin: reqwest::Url,
     /// How long a connection may take to open, a stream pipe's WebSocket
@@ -40,7 +39,7 @@ pub struct PipeClient {
 
 impl PipeClient {
     pub fn new(
-        backend: &BackendUrl,
+        backend: &Backend,
         token: watch::Receiver<Option<DeviceToken>>,
     ) -> io::Result<Self> {
         Self::with_connect_timeout(backend, token, CONNECT_TIMEOUT)
@@ -51,33 +50,24 @@ impl PipeClient {
     /// stay quiet for as long as its pipe lasts. [`PipeClient::new`] gives a
     /// connection 15 seconds.
     pub fn with_connect_timeout(
-        backend: &BackendUrl,
+        backend: &Backend,
         token: watch::Receiver<Option<DeviceToken>>,
         connect_timeout: Duration,
     ) -> io::Result<Self> {
-        let mut origin = backend.url().clone();
-        match origin.scheme() {
-            "ws" => origin
-                .set_scheme("http")
-                .map_err(|_| io::Error::other("invalid HTTP origin"))?,
-            "wss" => origin
-                .set_scheme("https")
-                .map_err(|_| io::Error::other("invalid HTTPS origin"))?,
-            _ => {}
-        }
-        origin.set_path("/");
-        origin.set_query(None);
+        let origin = backend.origin()?;
         // Over TLS the edge's ALPN picks HTTP/2 when it offers it, and the
         // pipes share that one connection (`runner.md` § Host operations);
         // its windows grow with the link, so a file far away moves at the
         // link's pace.
-        let http = reqwest::Client::builder()
+        let http = backend
+            .http(reqwest::Client::builder())
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(connect_timeout)
             .http2_adaptive_window(true)
             .build()
             .map_err(io::Error::other)?;
         Ok(Self {
+            backend: backend.clone(),
             http,
             origin,
             connect_timeout,
@@ -170,7 +160,8 @@ impl PipeClient {
             .max_frame_size(Some(wire::STREAM_PIPE_MESSAGE_BYTES));
         // Out of open files, the connection waits for one (`runner.md` § Load).
         let connecting = demi_command_sdk::descriptors::retry(cancel, || async {
-            tokio_tungstenite::connect_async_with_config(request.clone(), Some(config), true)
+            self.backend
+                .websocket(request.clone(), config)
                 .await
                 .map_err(socket_error)
         });

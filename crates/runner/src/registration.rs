@@ -18,10 +18,10 @@ use demi_runner_jobs::commands::{
     dispatch::Dispatcher,
     local::Server,
 };
-use demi_runner_process::{job_shell::JobShell, pipes::PipeClient};
+use demi_runner_process::{backend::Backend, job_shell::JobShell, pipes::PipeClient};
 use demi_runner_protocol::{
     image::ARTIFACTS_PATH,
-    values::{BackendUrl, DeviceToken},
+    values::DeviceToken,
     wire,
 };
 use std::{
@@ -36,7 +36,7 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 pub struct Options {
-    pub backend: BackendUrl,
+    pub backend: Backend,
     pub directory: PathBuf,
     /// The artifact cache (`native-runtime.md` § Install
     /// artifacts).
@@ -88,7 +88,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     let saved = state.config().await?;
     if let Some(saved) = &saved
         && crate::state::instance_id(&saved.backend_url)
-            != crate::state::instance_id(&options.backend)
+            != crate::state::instance_id(options.backend.url())
     {
         return Err(io::Error::other(
             "installation is registered to another backend",
@@ -103,7 +103,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     }
     state
         .write_config(&RunnerConfig {
-            backend_url: options.backend.clone(),
+            backend_url: options.backend.url().clone(),
             device_id: saved.and_then(|config| config.device_id),
         })
         .await?;
@@ -117,6 +117,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     let registry = ServiceRegistry::new(
         options.artifacts.clone(),
         image,
+        Some(options.backend.clone()),
         options.cwd.clone(),
         options.env.clone(),
     )
@@ -219,7 +220,7 @@ async fn reconnect(registered: &Registered, installed: Option<&Installed>) -> io
         }
         management.set_phase(Phase::Connecting);
         if failure.is_none() {
-            tracing::info!("connecting to {}", registered.backend);
+            tracing::info!("connecting to {}", registered.backend.url());
         }
         let result = connection(registered).await;
         let result = match result {
@@ -232,7 +233,7 @@ async fn reconnect(registered: &Registered, installed: Option<&Installed>) -> io
                 };
                 tracing::info!("updating to runner release {}", update.release);
                 match installed
-                    .update(&registered.backend, &update, &management.stop)
+                    .update(registered.backend.url(), &update, &management.stop)
                     .await
                 {
                     Ok(successor) => return Ok(Ending::Replaced(successor)),

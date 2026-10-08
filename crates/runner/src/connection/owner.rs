@@ -33,12 +33,13 @@ use demi_runner_jobs::{
     tasks::{Commands, JobConfig, JobTable, TaskCommand, TaskSpec, WorkId, failure_exit},
 };
 use demi_runner_process::{
+    backend::Backend,
     job_shell::JobShell,
     pipes::{PipeClient, report_pipe},
 };
 use demi_runner_protocol::{
     console::{PAIRED, PAIRING_CODE, REMOVAL},
-    values::{BackendUrl, DeviceToken},
+    values::DeviceToken,
     wire::{self, Inbound},
 };
 use tokio::{
@@ -67,7 +68,7 @@ pub enum End {
 
 /// What each connection takes from its registration.
 pub struct Registered {
-    pub backend: BackendUrl,
+    pub backend: Backend,
     pub runner: wire::RunnerInfo,
     pub state: Arc<RunnerState>,
     pub token: watch::Sender<Option<DeviceToken>>,
@@ -399,7 +400,7 @@ impl Owner<'_> {
             } => {
                 let state = registered.state.clone();
                 let config = RunnerConfig {
-                    backend_url: registered.backend.clone(),
+                    backend_url: registered.backend.url().clone(),
                     device_id: Some(device_id.try_into().map_err(io::Error::other)?),
                 };
                 self.work
@@ -445,7 +446,7 @@ impl Owner<'_> {
                 {
                     eprintln!(
                         "demi-runner: this device is no longer paired with {}; to remove this runner, run: {removal}",
-                        registered.backend
+                        registered.backend.url()
                     );
                 }
                 management.set_phase(Phase::Rejected);

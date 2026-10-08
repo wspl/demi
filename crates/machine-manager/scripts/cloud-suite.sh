@@ -117,8 +117,12 @@ mkdir -p "$work"
 work="$(cd "$work" && pwd)"
 state="$work/state"
 socket="$work/machines.sock"
+# The backend's runner socket, in a directory of its own, which the manager
+# mounts into each Cloud; outside /run, which the stand-in host replaces.
+runner_socket="$work/runner/runners.sock"
 [ ! -e "$state" ] || { echo "$state exists: a run's state is removed after it" >&2; exit 2; }
 rm -f "$socket" "$work/stand-in.ready"
+install -d -m 0755 "$work/runner"
 
 # What a run can leave behind, listed before and after it.
 snapshot() {
@@ -177,6 +181,7 @@ finish() {
   echo "$forwarding" > /proc/sys/net/ipv4/ip_forward
   rm -rf "$state"
   rm -f "$socket" "$work/stand-in.ready"
+  rm -rf "$work/runner"
   snapshot "$work/after"
   local remains=0
   for list in "$work/before"/*; do
@@ -247,6 +252,7 @@ nsenter --mount="/proc/$stand_in/ns/mnt" --pid="/proc/$stand_in/ns/pid_for_child
   taskset -c "$cpus" env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
   DEMI_RELEASE="$release" \
   DEMI_MACHINE_MANAGER_SOCKET="$socket" \
+  DEMI_BACKEND_RUNNER_SOCKET="$runner_socket" \
   DEMI_MANAGED_DATA="$state" \
   DEMI_MANAGED_RUNSC="$runsc" \
   DEMI_BACKEND_PUBLIC_URL="$url" \
@@ -280,6 +286,7 @@ set +e
   # cargo test runs a test executable in its package's directory.
   cd "$repository/crates/backend"
   DEMI_TEST_MACHINES_SOCKET="$socket" \
+    DEMI_TEST_RUNNER_SOCKET="$runner_socket" \
     DEMI_TEST_CLOUD_URL="$url" \
     DEMI_TEST_MACHINES_DATA="$state" \
     DEMI_TEST_CLOUD_RELEASE="$release" \

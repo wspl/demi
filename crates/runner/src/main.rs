@@ -18,8 +18,9 @@ use demi_runner_process::{
     command_client::{self, RAW, RawCommand, Stdio},
     stdio::{self, standard_file},
 };
+use demi_runner_process::backend::Backend;
 use demi_runner_protocol::{
-    boot::ManagedBoot,
+    boot::{BACKEND_SOCKET, ManagedBoot},
     values::BackendUrl,
     wire::{self, RunnerPlatform},
 };
@@ -387,6 +388,12 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     #[cfg(unix)]
     let _umask = demi_runner_process::process::umask();
     let installation_directory = directory.clone();
+    // A Cloud's runner reaches its backend through the socket the machine
+    // manager mounted (`managed-hosts.md` § Backend socket).
+    let backend = match &boot {
+        Some(_) => Backend::through(backend, PathBuf::from(BACKEND_SOCKET)),
+        None => Backend::at(backend),
+    };
     let options = Options {
         backend,
         log: log.reader(),

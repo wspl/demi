@@ -807,7 +807,9 @@ demi-runner (executable: connection, registration, Host log, composition)
   a process group of its own with the runner's attributes (`ChildAttributes`:
   the umask and resource limits of
   [Builtins that act on a process](../execution/runner.md#builtins-that-act-on-a-process)),
-  killing and reaping it; standard IO plumbing; the pipe endpoints that carry
+  killing and reaping it; standard IO plumbing; the way to the backend, at its
+  URL or through a Cloud's runner socket
+  ([Backend socket](../cloud/managed-hosts.md#backend-socket)); the pipe endpoints that carry
   file contents and output to the backend's pipe routes, and the report of a
   pipe's outcome ([Pipes and output](../execution/runner.md#pipes-and-output));
   the identities of a job's live input and output, which tell a command
