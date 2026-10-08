@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useId, watch } from 'vue'
 import { Cloud, FolderOpen, Monitor, Plus, X } from '@lucide/vue'
 import { hostIcon } from './icons'
 import { ICON_PX } from '../ui/icon-metrics'
@@ -23,6 +23,7 @@ import type { PairingDevice } from '../devices/pairing'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import {
   openingChoice,
+  useDeviceProjectAction,
   usePairedSelection,
   type WorkspaceDevice,
   type WorkspaceDraft,
@@ -105,6 +106,17 @@ const browserHosts = computed(() =>
 const browserSource = computed(() => props.sourceFor(deviceId.value))
 const browserPlaces = computed(() => props.placesFor?.(deviceId.value) ?? [])
 const online = computed(() => device.value?.state === 'online')
+/**
+ * What the button says: a device's directory is added when it exists, else
+ * created; a Cloud project is always new. Only a shown device form keeps the
+ * directory's listing.
+ */
+const deviceAction = useDeviceProjectAction({
+  source: () => browserSource.value,
+  path: () => (props.isOpen && kind.value === 'device' ? path.value : ''),
+})
+const action = computed(() => (kind.value === 'cloud' ? 'Create Project' : deviceAction.value))
+const directoryId = useId()
 /** What a device project will be called: the directory's name. */
 const projectName = computed(() => baseName(path.value))
 const canCreate = computed(
@@ -318,8 +330,11 @@ function selectDevice(id: string, close: () => void): void {
                   </Button>
                 </span>
               </div>
-              <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-                Directory
+              <!-- Not a <label>: a label hands every click inside it, on the caption, the hint or
+                   the gaps between, to the field, which would take the focus back and reopen
+                   its completion (`product.md` § Conversations and projects). -->
+              <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
+                <span :id="`${directoryId}-label`">Directory</span>
                 <span class="flex items-center gap-2">
                   <!-- Completes from the device's folders as it is typed; Enter still creates. -->
                   <PathInput
@@ -328,6 +343,8 @@ function selectDevice(id: string, close: () => void): void {
                     kind="directory"
                     :disabled="pending"
                     placeholder="/path/to/project"
+                    :aria-labelledby="`${directoryId}-label`"
+                    :aria-describedby="`${directoryId}-hint`"
                     class="min-w-0 flex-1"
                   />
                   <Button
@@ -339,12 +356,12 @@ function selectDevice(id: string, close: () => void): void {
                     Browse…
                   </Button>
                 </span>
-                <span class="text-[12px] leading-4 text-fg-subtle">{{
+                <span :id="`${directoryId}-hint`" class="text-[12px] leading-4 text-fg-subtle">{{
                   projectName
                     ? `The project will be called ${projectName}.`
                     : 'The project takes the folder’s name.'
                 }}</span>
-              </label>
+              </div>
             </template>
             <InlineError v-if="message" :message="message" />
             <div>
@@ -353,7 +370,7 @@ function selectDevice(id: string, close: () => void): void {
                 :disabled="!canCreate && !pending"
                 :loading="pending"
                 @click="create"
-                >Create Project</Button
+                >{{ action }}</Button
               >
             </div>
           </form>
