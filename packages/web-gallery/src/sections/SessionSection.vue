@@ -600,6 +600,8 @@ useGalleryTranscripts(() => ({ blocks: changesFlow.state.blocks, subagents: [] }
 /** The requests of the Request’s Changes specimens, which the panel under them reads as the product reads a conversation. */
 const signInBlocks = signInRequestBlocks('sign-in')
 const signInOffBlocks = signInRequestBlocks('sign-in-off')
+/** The same request still working, its last call ended and no reply yet. */
+const signInRunningBlocks = signInRequestBlocks('sign-in-running').slice(0, -1)
 const uncopiedBlocks = uncopiedRequestBlocks()
 const parentBlocks = helperParentBlocks()
 const childBlocks = helperBlocks()
@@ -1777,7 +1779,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Request’s Changes"
-        note="A request runs from the user’s message to their next one, through yields, receipts and steers. Once one of its calls changed a file, its reply ends, above Copy and Fork, with a button naming how many files and the lines of their All Changes, which grows as later calls end; the counts arrive once the button is in view, and a request whose files’ ends were not kept, as the logo’s, names its files alone. It opens the Change view below on the first file’s All Changes; a file pill opens its file at that call’s first edit. A subagent’s changes show only in its own transcript. With the changes plugin off, the button and the pills are no controls."
+        note="A request runs from the user’s message to their next one, through yields, receipts and steers. Once it has ended and one of its calls changed a file, its reply ends, above Copy and Fork, with a button naming how many files and the lines of their All Changes; while it still works, in its turn or a later one it continues, the button waits, as Copy and Fork do, and the pills under each call show its files. The counts arrive once the button is in view, and a request whose files’ ends were not kept, as the logo’s, names its files alone. It opens the Change view below on the first file’s All Changes; a file pill opens its file at that call’s first edit. A subagent’s changes show only in its own transcript. With the changes plugin off, the button and the pills are no controls."
       >
         <GallerySpecimen variant="two files, login.ts edited three times across a yield" wide>
           <div class="gallery-frame h-[30rem] bg-surface">
@@ -1788,6 +1790,21 @@ onBeforeUnmount(() => {
               :pending-steers="[]"
               :queue="[]"
               phase="idle"
+              :bottom-offset="0"
+              :persisted-scroll-state="undefined"
+              read-only
+            />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="still working · the same request before its reply, with no button yet" wide>
+          <div class="gallery-frame h-[30rem] bg-surface">
+            <AgentMessageList
+              class="h-full"
+              conversation-id="gallery-request-running"
+              :blocks="signInRunningBlocks"
+              :pending-steers="[]"
+              :queue="[]"
+              phase="running"
               :bottom-offset="0"
               :persisted-scroll-state="undefined"
               read-only
