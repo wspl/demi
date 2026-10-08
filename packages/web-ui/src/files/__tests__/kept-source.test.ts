@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
-import { HostFiles, LISTING_REREAD_MS } from '../file-cache'
+import { HostFiles, SUMMARY_REREAD_MS } from '../file-cache'
 import { keptChangeSet, keptSource } from '../kept-source'
 import type { FileBrowserEntry } from '../types'
 
@@ -70,9 +70,38 @@ test('an upload adds its entry to the folder shown, without listing it, until th
   // The watch's report of the writes lists each folder once, as the
   // second since its last listing ends.
   files.changed(['/w/src/new.ts', '/w/src/app.ts'])
-  jest.advanceTimersByTime(LISTING_REREAD_MS)
+  jest.advanceTimersByTime(SUMMARY_REREAD_MS)
   await settle()
   expect(lists).toEqual(['/w', '/w/src', '/w/src'])
+})
+
+// A fixed bug: a build writing files in a large repository had the changes
+// list read again after every batch of reports, several statuses a second.
+test('a changes list that reports keep naming is listed at most once a second, the last report never dropped', async () => {
+  const files = new HostFiles()
+  files.cover({ covers: () => true })
+  let lists = 0
+  const changes = keptChangeSet({
+    async list() {
+      lists += 1
+      return { files: [], truncated: false, repository: true, gitDir: '/w/.git', version: null }
+    },
+    async sides() {
+      return { original: '', modified: '', version: null }
+    },
+  }, '/w', { files })
+  changes.show()
+  await settle()
+  expect(lists).toBe(1)
+
+  for (let step = 0; step < 10; step++) {
+    files.changed(['/w/src/gen.cc'])
+    await settle()
+  }
+  expect(lists).toBe(1)
+  jest.advanceTimersByTime(SUMMARY_REREAD_MS)
+  await settle()
+  expect(lists).toBe(2)
 })
 
 test('a changes list outside a repository is not listed again for any change there, until a .git appears', async () => {
@@ -83,10 +112,10 @@ test('a changes list outside a repository is not listed again for any change the
   const changes = keptChangeSet({
     async list() {
       lists += 1
-      return { files: [], truncated: false, repository }
+      return { files: [], truncated: false, repository, gitDir: repository ? '/w/.git' : null, version: null }
     },
     async sides() {
-      return { original: '', modified: '' }
+      return { original: '', modified: '', version: null }
     },
   }, '/w', { files })
   changes.show()
@@ -103,9 +132,11 @@ test('a changes list outside a repository is not listed again for any change the
   // `git init` there: the list is read again, and follows the files from then on.
   repository = true
   files.changed(['/w/.git', '/w/.git/HEAD'])
+  jest.advanceTimersByTime(SUMMARY_REREAD_MS)
   await settle()
   expect([lists, changes.unavailable]).toEqual([2, null])
   files.changed(['/w/app.log'])
+  jest.advanceTimersByTime(SUMMARY_REREAD_MS)
   await settle()
   expect(lists).toBe(3)
 })
