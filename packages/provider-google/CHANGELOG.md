@@ -1,5 +1,14 @@
 # @demicodes/provider-google
 
+## 0.25.9
+
+### Patch Changes
+
+- Updated dependencies [886dc0e]
+  - @demicodes/utils@0.25.9
+  - @demicodes/core@0.25.9
+  - @demicodes/provider@0.25.9
+
 ## 0.25.8
 
 ### Patch Changes
