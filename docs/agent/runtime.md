@@ -1438,8 +1438,10 @@ so an update never shows a second record. Renderers tell shell execution,
 a look at a command, with or without input, and waiting apart by tool
 name and input. A look or a wait without a `description` takes the title of
 the command it names, quoted: *Check “Run the test suite”*, *Wait for “Run
-the test suite”*, never a bare number; a look shows the command's state as
-it found it, `aborted` included. Component structure, expansion, icons, typography, motion and the
+the test suite”*, never a bare number; a title too long for its row is cut
+at the end with an ellipsis inside the quotes, *Check “Run the whole test
+suite and…”*, so the closing quote stays. A look shows the command's state
+as it found it, `aborted` included. Component structure, expansion, icons, typography, motion and the
 presentation of changed files are shown in the gallery, not here.
 
 ### Tool descriptions
