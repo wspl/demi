@@ -194,7 +194,7 @@ name and online state, `os`, the operating system and architecture its runner
 last reported, and `runnerVersion`, the runner release it last reported, such
 as `0.1.16`; both are null before its runner first connected, and `route`,
 how pages reach it: `automatic`, `direct` or `server`, the routes
-Automatic, Prefer Direct and Server Only of a
+Automatic, Prefer P2P and Server Only of a
 [direct channel](../execution/direct-channel.md#choosing-the-path),
 `automatic` for a new device. Settings shows them on the device's page, the Cloud's
 included ([What the user sees](../execution/direct-channel.md#what-the-user-sees)).
