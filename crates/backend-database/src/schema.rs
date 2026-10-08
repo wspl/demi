@@ -243,21 +243,75 @@ pub enum DatabaseKind {
     Conversation,
 }
 
-/// Whether this build would change the database at `path` as it opens it:
-/// one that records another schema version than this build's, which it
-/// migrates or refuses (`upgrades.md` § Prepare). The database is read, never
-/// written.
-pub fn schema_differs(path: &Path, kind: DatabaseKind) -> Result<bool, StorageError> {
+impl DatabaseKind {
+    fn schema(self) -> &'static Schema {
+        match self {
+            Self::Control => &CONTROL,
+            Self::Conversation => &CONVERSATION,
+        }
+    }
+}
+
+/// What this build does with a database as it opens it (`upgrades.md`
+/// § Prepare).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SchemaFit {
+    /// It records this build's schema and opens as it is.
+    Current,
+    /// It holds nothing yet or records a schema in the history: opening
+    /// gives it this build's schema.
+    Migrates,
+    /// It records another schema, as a newer release or a development build
+    /// of another unpublished schema made it: opening refuses it.
+    Other,
+}
+
+/// What this build would do with the database at `path` as it opens it. The
+/// database is read, never written.
+pub fn schema_fit(path: &Path, kind: DatabaseKind) -> Result<SchemaFit, StorageError> {
     let connection = Connection::open_with_flags(
         path,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )?;
     let recorded: i32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    let schema = match kind {
-        DatabaseKind::Control => &CONTROL,
-        DatabaseKind::Conversation => &CONVERSATION,
-    };
-    Ok(recorded != schema.version())
+    // A database that records no version and holds no table is new, and
+    // `apply` gives it the schema.
+    if recorded == 0 && tables(&connection)? == 0 {
+        return Ok(SchemaFit::Migrates);
+    }
+    Ok(match kind.schema().current(recorded) {
+        Some(true) => SchemaFit::Current,
+        Some(false) => SchemaFit::Migrates,
+        None => SchemaFit::Other,
+    })
+}
+
+/// How many tables the database of `connection` holds.
+fn tables(connection: &Connection) -> rusqlite::Result<i64> {
+    connection.query_row(
+        "SELECT count(*) FROM sqlite_schema WHERE type = 'table'",
+        [],
+        |row| row.get(0),
+    )
+}
+
+/// The versions a database of `kind` records, for the tests of what reads
+/// only a database's version, as an upgrade's preparation does.
+#[cfg(feature = "testing")]
+pub mod testing {
+    use super::{DatabaseKind, version_of};
+
+    /// The version of this build's schema.
+    pub fn current_version(kind: DatabaseKind) -> i32 {
+        kind.schema().version()
+    }
+
+    /// The version of the newest schema a published release shipped before
+    /// this build's.
+    pub fn shipped_version(kind: DatabaseKind) -> i32 {
+        let shipped = kind.schema().history.last().expect("a schema has a history");
+        version_of(shipped.sql)
+    }
 }
 
 /// The version a database of the schema `sql` records in `user_version`:
@@ -300,12 +354,7 @@ impl Schema {
         if recorded == self.version() {
             return Ok(());
         }
-        let tables: i64 = transaction.query_row(
-            "SELECT count(*) FROM sqlite_schema WHERE type = 'table'",
-            [],
-            |row| row.get(0),
-        )?;
-        if recorded == 0 && tables == 0 {
+        if recorded == 0 && tables(&transaction)? == 0 {
             transaction.execute_batch(self.sql)?;
         } else {
             let migrations = self

@@ -33,4 +33,6 @@ which = "8"
 zstd = { version = "0.13", default-features = false }
 
 [dev-dependencies]
+# The schema versions a database of each kind records, for the data check.
+demi-backend-database = { path = "../backend-database", features = ["testing"] }
 rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }

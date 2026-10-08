@@ -161,7 +161,7 @@ const PROGRAM: &str = "demi-runner";
 
 /// Runs this device as a Demi execution target.
 #[derive(clap::Parser)]
-#[command(name = PROGRAM, version)]
+#[command(name = PROGRAM, version = demi_shared_artifacts::WORKSPACE_VERSION)]
 struct Cli {
     #[command(subcommand)]
     action: Action,
@@ -343,7 +343,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         os: operating_system(),
         version: installation
             .release
-            .unwrap_or_else(|| env!("CARGO_PKG_VERSION").into()),
+            .unwrap_or_else(|| demi_shared_artifacts::WORKSPACE_VERSION.into()),
         identity,
         managed: boot
             .as_ref()
