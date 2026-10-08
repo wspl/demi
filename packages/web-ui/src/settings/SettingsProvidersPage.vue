@@ -511,8 +511,10 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
             <SettingsGroup>
               <template #header>
                 <header class="select-none">
+                  <!-- At least a control's height; where the actions do not fit beside the name they
+                       wrap under it, and the header grows rather than running over the card. -->
                   <div
-                    class="flex h-8 flex-wrap items-center gap-x-1.5 gap-y-2"
+                    class="flex min-h-8 flex-wrap items-center gap-x-1.5 gap-y-2"
                   >
                     <TitleInput
                       v-if="renaming"
@@ -597,7 +599,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       >Limit reached</Tag
                     >
                   </template>
-                  <template #description>
+                  <template #below>
                     <ProviderQuota
                       :key="`${selected.id}:${account.id}`"
                       :windows="account.quota"

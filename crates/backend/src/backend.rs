@@ -21,7 +21,9 @@ use demi_backend_cloud::reset::recover_resets;
 use demi_backend_database::StorageError;
 use demi_backend_http::{AppState, Edge, Site, WebBuildError, web_build};
 use demi_backend_user_shard::conversation::search::index_at_start;
-use demi_backend_user_shard::conversation::{finish_deletions, rearm_wakeups, recover_forks};
+use demi_backend_user_shard::conversation::{
+    finish_deletions, rearm_wakeups, recover_forks, settle_pending,
+};
 use demi_backend_user_shard::preview::keep_registered;
 use demi_backend_user_shard::shard::deliver_decisions;
 use demi_backend_user_shard::services::{
@@ -233,6 +235,16 @@ impl Backend {
             tracing::error!(
                 error = &error as &dyn std::error::Error,
                 "the pending deletions cannot be listed"
+            );
+        }
+        // Each move or detach an agent asked for that a restart cut off is
+        // made, before a saved wakeup opens its tree
+        // (`sessions-and-targets.md` § Switch the primary target). A failure
+        // does not stop the start: the next start makes it.
+        if let Err(error) = settle_pending(&services.control, &shards.shards()).await {
+            tracing::error!(
+                error = &error as &dyn std::error::Error,
+                "the pending moves cannot be listed"
             );
         }
         // Each saved wakeup is armed again, so it fires with no page open

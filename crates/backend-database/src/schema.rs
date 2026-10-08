@@ -40,8 +40,8 @@ pub(crate) enum Migration {
 }
 
 /// The control database's. Its history holds the schema of each published
-/// release before the one that ships the current schema; 0.1.19 and 0.1.20
-/// shipped the last one in it.
+/// release before the one that ships the current schema; 0.1.21 shipped the
+/// last one in it.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
     history: &[
@@ -72,6 +72,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.20.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_20),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.21.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_21),
         },
     ],
 };
@@ -151,6 +155,53 @@ CREATE TABLE preview_namespace (
 /// (`direct-channel.md` § Choosing the path).
 const CONTROL_FROM_0_1_20: &str = "
 ALTER TABLE devices ADD COLUMN route TEXT NOT NULL DEFAULT 'automatic' CHECK (route IN ('automatic', 'direct', 'server'));
+";
+
+/// From 0.1.21's control schema: a conversation keeps the move an agent
+/// asked for and an attached host the detach it waits with, none for every
+/// conversation 0.1.21 left; a permission request names its categories, the
+/// one category of each request 0.1.21 stored. SQLite cannot drop a column
+/// an index names, so the requests' table is made anew, as for 0.1.11's
+/// conversations.
+const CONTROL_FROM_0_1_21: &str = "
+ALTER TABLE conversations ADD COLUMN pending_id TEXT;
+ALTER TABLE conversations ADD COLUMN pending_kind TEXT CHECK (pending_kind IN ('cloud', 'device', 'workspace'));
+ALTER TABLE conversations ADD COLUMN pending_device_id TEXT;
+ALTER TABLE conversations ADD COLUMN pending_path TEXT;
+ALTER TABLE conversations ADD COLUMN pending_workspace_id TEXT CHECK (
+    (pending_kind IS NULL
+      AND pending_id IS NULL AND pending_device_id IS NULL AND pending_path IS NULL
+      AND pending_workspace_id IS NULL)
+    OR (pending_kind = 'cloud' AND pending_id IS NOT NULL
+      AND pending_device_id IS NULL AND pending_workspace_id IS NULL)
+    OR (pending_kind = 'device' AND pending_id IS NOT NULL
+      AND pending_device_id IS NOT NULL AND pending_path IS NOT NULL AND pending_workspace_id IS NULL)
+    OR (pending_kind = 'workspace' AND pending_id IS NOT NULL
+      AND pending_workspace_id IS NOT NULL AND pending_device_id IS NULL AND pending_path IS NULL)
+  );
+ALTER TABLE conversation_hosts ADD COLUMN detaching INTEGER NOT NULL DEFAULT 0 CHECK (detaching IN (0, 1));
+
+CREATE TABLE permission_requests_next (
+  id                TEXT PRIMARY KEY,
+  conversation_id   TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  categories        TEXT NOT NULL,
+  command           TEXT NOT NULL,
+  node_id           TEXT NOT NULL,
+  agent_number      INTEGER,
+  agent_description TEXT,
+  created_at        INTEGER NOT NULL,
+  decision          TEXT CHECK (decision IN ('allowed', 'denied')),
+  decided_at        INTEGER,
+  CHECK ((agent_number IS NULL) = (agent_description IS NULL)),
+  CHECK ((decision IS NULL) = (decided_at IS NULL))
+) STRICT;
+INSERT INTO permission_requests_next
+  (id, conversation_id, categories, command, node_id, agent_number, agent_description, created_at, decision, decided_at)
+  SELECT id, conversation_id, json_array(category), command, node_id, agent_number, agent_description, created_at, decision, decided_at
+  FROM permission_requests;
+DROP TABLE permission_requests;
+ALTER TABLE permission_requests_next RENAME TO permission_requests;
+CREATE INDEX permission_requests_of_conversation ON permission_requests (conversation_id, created_at);
 ";
 
 /// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
@@ -552,6 +603,24 @@ CREATE TABLE conversations (
   -- The revision of its attached hosts, raised by each change of them and
   -- of the directory a host's shell recorded; 0 before the first.
   hosts_revision      INTEGER NOT NULL DEFAULT 0 CHECK (hosts_revision >= 0),
+  -- The pending move an agent asked for (sessions-and-targets.md § Switch
+  -- the primary target): its id and its target, typed as the target is; all
+  -- null while none waits.
+  pending_id           TEXT,
+  pending_kind         TEXT CHECK (pending_kind IN ('cloud', 'device', 'workspace')),
+  pending_device_id    TEXT,
+  pending_path         TEXT,
+  pending_workspace_id TEXT CHECK (
+    (pending_kind IS NULL
+      AND pending_id IS NULL AND pending_device_id IS NULL AND pending_path IS NULL
+      AND pending_workspace_id IS NULL)
+    OR (pending_kind = 'cloud' AND pending_id IS NOT NULL
+      AND pending_device_id IS NULL AND pending_workspace_id IS NULL)
+    OR (pending_kind = 'device' AND pending_id IS NOT NULL
+      AND pending_device_id IS NOT NULL AND pending_path IS NOT NULL AND pending_workspace_id IS NULL)
+    OR (pending_kind = 'workspace' AND pending_id IS NOT NULL
+      AND pending_workspace_id IS NOT NULL AND pending_device_id IS NULL AND pending_path IS NULL)
+  ),
   CHECK (
     (target_kind = 'cloud'
       AND target_device_id IS NULL AND target_workspace_id IS NULL)
@@ -571,6 +640,8 @@ CREATE TABLE conversation_hosts (
   name            TEXT NOT NULL,
   cwd             TEXT,
   attached_at     INTEGER NOT NULL,
+  -- An agent's detach, which waits for the tree to be idle.
+  detaching       INTEGER NOT NULL DEFAULT 0 CHECK (detaching IN (0, 1)),
   PRIMARY KEY (conversation_id, device_id),
   UNIQUE (conversation_id, name)
 ) STRICT;
@@ -601,14 +672,15 @@ CREATE TABLE conversation_drafts (
 ) STRICT;
 
 -- Conversation permissions (permissions.md): each command an agent ran
--- without the grant of its category, undecided until the user decides and
+-- without the grants of its categories, a JSON array of their ids sorted so
+-- that the same categories compare equal, undecided until the user decides and
 -- then kept until the decision's message is in the agent's checkpoint; and
 -- each category the user allowed for a conversation. The agent is the root
 -- when its number and description are null.
 CREATE TABLE permission_requests (
   id                TEXT PRIMARY KEY,
   conversation_id   TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
-  category          TEXT NOT NULL,
+  categories        TEXT NOT NULL,
   command           TEXT NOT NULL,
   node_id           TEXT NOT NULL,
   agent_number      INTEGER,

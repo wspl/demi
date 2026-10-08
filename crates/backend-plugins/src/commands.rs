@@ -16,7 +16,7 @@ use crate::user::Shared;
 use crate::{Registry, RegistryError};
 
 /// The `demi` groups the agent runtime and the product own.
-pub(crate) const TAKEN_GROUPS: &[&str] = &["agent", "shell", "host"];
+pub(crate) const TAKEN_GROUPS: &[&str] = &["agent", "shell", "host", "attachment", "conversation"];
 
 /// The command set of the plugins of `registry` that `include` takes, by
 /// their index, whose `rpc` leaves `user`'s instances serve; without them,
