@@ -4,8 +4,8 @@
 /* ── tone: paper (Flat — near-neutral layers with a warm tint) ────────
    Dark values are measured from the host's design tokens: four layers from
    #0b0b0b to #20201f, white hairlines at 10, 20 and 40%, hover and selected
-   washes at 7.5 and 15%, and warm secondary text. Light values are still
-   estimated. */
+   washes at 7.5 and 15%, and warm secondary text. Light values are Demi's
+   own, designed to the same structure. */
 
 html[data-theme="dark"][data-tone="paper"] {
   /* Measured from the host's own tokens (surface-0…3, text, border, fills). */
