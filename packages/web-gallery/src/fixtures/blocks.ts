@@ -170,7 +170,7 @@ export const shellTool = toolCall({
     description: 'Find the old cookie name',
   }),
   view: shellView({
-    commandId: 'cmd-find',
+    commandId: '11',
     // The Arabic match joins its letters in the output, as it does in a sentence.
     chunks: [
       {
@@ -200,7 +200,7 @@ export const runningShellTool = toolCall({
     description: 'Run the login test',
   }),
   view: shellView({
-    commandId: 'cmd-run',
+    commandId: '17',
     status: 'running',
     chunks: [{ stream: 'stdout', text: 'bun test v1.2\n' }],
   }),
@@ -714,10 +714,10 @@ export const yieldTool = toolCall({
   id: 'tool-yield',
   toolName: 'yield',
   status: 'completed',
-  input: JSON.stringify({ description: 'Wait for the next user turn' }),
+  input: JSON.stringify({ durationMs: 600_000, description: 'Check the build when it ends' }),
 })
 
-/** A wait that ends when the build ends, or after fifteen minutes. */
+/** A wait for the login test's end, which names it as a reference to its call. */
 export const yieldCommandsTool = toolCall({
   id: 'tool-yield-commands',
   toolName: 'yield',
@@ -727,16 +727,13 @@ export const yieldCommandsTool = toolCall({
   view: { kind: 'yield_wakeup', wakeupId: 'wk-build', durationMs: 900_000, commandIds: ['17'] },
 })
 
+/** A look at the login test without a title of its own: it names the command and shows what it found. */
 export const statusTool = toolCall({
   id: 'tool-status',
   toolName: 'shell_status',
   status: 'completed',
-  input: JSON.stringify(
-    {
-      commandId: 17,
-      description: 'Check the dev server'
-    }
-  ),
+  input: JSON.stringify({ commandId: 17 }),
+  view: shellView({ commandId: '17', status: 'running', chunks: [] }),
 })
 
 /** A look that answers the prompt the command waits for. */
@@ -744,17 +741,18 @@ export const inputTool = toolCall({
   id: 'tool-input',
   toolName: 'shell_status',
   status: 'completed',
-  input: JSON.stringify({ commandId: 17, stdin: 'y\n', description: 'Confirm the migration' }),
+  input: JSON.stringify({ commandId: 17, stdin: 'r\n', description: 'Rerun the failed tests' }),
+  view: shellView({ commandId: '17', status: 'running', chunks: [] }),
 })
 
-/** A stop of the dev server, which a command of the shell does. */
+/** A stop of the login test, which a command of the shell does. */
 export const stopTool = toolCall({
   id: 'tool-stop',
   toolName: 'shell_exec',
   status: 'completed',
   input: JSON.stringify({
     script: 'demi shell stop 17',
-    description: 'Stop the dev server',
+    description: 'Stop the login test',
     timeoutMs: 10_000,
   }),
   view: shellView({
@@ -762,6 +760,57 @@ export const stopTool = toolCall({
     chunks: [{ stream: 'stdout', text: '[command 17 stopped]\n' }],
   }),
 })
+
+/** The look after the stop: the command it names was stopped. */
+export const stoppedLookTool = toolCall({
+  id: 'tool-stopped-look',
+  toolName: 'shell_status',
+  status: 'completed',
+  input: JSON.stringify({ commandId: 17 }),
+  view: shellView({ commandId: '17', status: 'aborted', chunks: [] }),
+})
+
+/**
+ * The calls the reference specimens show: commands that succeeded, failed,
+ * were stopped or still run, one with a title too long for a narrow row,
+ * and the looks and waits that name them.
+ */
+export function commandReferenceBlocks(): Block[] {
+  type End = { status: 'exited', exitCode: number } | { status: 'running' | 'aborted' }
+  const exec = (id: string, commandId: string, description: string, end: End) => toolCall({
+    id,
+    toolName: 'shell_exec',
+    status: 'completed',
+    input: JSON.stringify({ script: 'bun test', description, timeoutMs: 2_000 }),
+    view: shellView({ commandId, ...end, chunks: [] }),
+  })
+  const look = (id: string, input: Record<string, unknown>, end: End) => toolCall({
+    id,
+    toolName: 'shell_status',
+    status: 'completed',
+    input: JSON.stringify(input),
+    view: shellView({ commandId: String(input.commandId), ...end, chunks: [] }),
+  })
+  return [
+    exec('ref-short', '31', 'Run the first short sleep', { status: 'exited', exitCode: 0 }),
+    exec('ref-long', '32', 'Run the whole test suite and collect coverage for every package in the workspace', { status: 'running' }),
+    exec('ref-failed', '33', 'Run the login test', { status: 'exited', exitCode: 1 }),
+    exec('ref-stopped-run', '34', 'Start the dev server', { status: 'aborted' }),
+    look('ref-look', { commandId: 31 }, { status: 'exited', exitCode: 0 }),
+    look('ref-look-failed', { commandId: 33 }, { status: 'exited', exitCode: 1 }),
+    look('ref-input', { commandId: 32, stdin: 'y\n' }, { status: 'running' }),
+    toolCall({
+      id: 'ref-wait',
+      toolName: 'yield',
+      status: 'completed',
+      input: JSON.stringify({ durationMs: 600_000, commandIds: [32, 31] }),
+    }),
+    look('ref-stopped', { commandId: 34 }, { status: 'aborted' }),
+    look('ref-long-failed', { commandId: 32 }, { status: 'exited', exitCode: 2 }),
+    // A command of another agent's transcript: its title, without a jump.
+    look('ref-other', { commandId: 40 }, { status: 'exited', exitCode: 0 }),
+  ] as Block[]
+}
 
 export const errorTool = toolCall({
   id: 'tool-error',
@@ -881,6 +930,7 @@ export function transcriptDemoBlocks(): Block[] {
     yieldTool as Block,
     yieldCommandsTool as Block,
     stopTool as Block,
+    stoppedLookTool as Block,
     errorTool as Block,
     {
       type: 'compaction_boundary',

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
 use demi_shared_gates::{GateLease, Reservation};
 use demi_shared_types::{CommandId, ModelSelection, ToolView, TurnId, WakeupCommand};
-use futures_util::future::LocalBoxFuture;
+use futures_util::{future::LocalBoxFuture, stream::LocalBoxStream};
 use serde_json::Value;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
@@ -62,12 +62,10 @@ pub trait SessionRuntime {
     }
 
     /// Runs one step: its calls, each of a tool that [`tools`](Self::tools)
-    /// names, together. Answers each call's outcome in the order of the
-    /// calls. Dropping the future stops every call.
-    fn invoke_step(
-        &self,
-        calls: Vec<ToolInvocation>,
-    ) -> LocalBoxFuture<'_, Vec<Result<ToolOutcome, ToolFailure>>>;
+    /// names, together. Yields each call's outcome, by its index in
+    /// `calls`, as the call returns, and ends once every call has
+    /// returned. Dropping the stream stops the calls still running.
+    fn invoke_step(&self, calls: Vec<ToolInvocation>) -> StepOutcomes<'_>;
 
     /// Resolves once the first of `commands`, which a `yield` named, has
     /// ended, at once when one has ended already, with how it ended
@@ -85,6 +83,10 @@ pub trait SessionRuntime {
         Box::pin(async {})
     }
 }
+
+/// The outcomes of a step's calls as they return, each by the call's index
+/// in the step.
+pub type StepOutcomes<'a> = LocalBoxStream<'a, (usize, Result<ToolOutcome, ToolFailure>)>;
 
 /// A context block the model receives, as its source sees it.
 #[derive(Debug, Clone, Copy)]

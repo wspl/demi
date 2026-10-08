@@ -24,35 +24,71 @@ export function toolRenderKind(toolName: string): ToolRenderKind {
   return isStandardToolName(toolName) ? toolName : 'generic'
 }
 
-export function standardToolTitle(
+/**
+ * A tool call's title in parts: its words, or, for a look or a wait without
+ * a description, words before and after the command it names, which the
+ * row shows as a reference (`runtime.md` § Rendering boundary).
+ */
+export type ToolTitle =
+  | { kind: 'text', text: string }
+  | { kind: 'reference', lead: string, commandId: string, trail: string }
+
+export function standardToolTitleParts(
   toolName: StandardToolName,
   input: Record<string, unknown>
-): string {
+): ToolTitle {
   const description = nonEmptyString(input.description)
   if (description)
-    return description
+    return { kind: 'text', text: description }
 
   switch (toolName) {
     case 'shell_exec':
-      return nonEmptyString(input.script) ?? 'Run shell command'
+      return { kind: 'text', text: nonEmptyString(input.script) ?? 'Run shell command' }
     case 'shell_status': {
       const commandId = commandIdText(input.commandId)
-      if (nonEmptyString(input.stdin))
-        return commandId ? `Send input to ${commandId}` : 'Send input'
-      return commandId ? `Check ${commandId}` : 'Check command status'
+      const writes = nonEmptyString(input.stdin) !== undefined
+      if (commandId === undefined)
+        return { kind: 'text', text: writes ? 'Send input' : 'Check command status' }
+      return { kind: 'reference', lead: writes ? 'Send input to' : 'Check', commandId, trail: '' }
     }
     case 'yield': {
       const commandIds = Array.isArray(input.commandIds)
         ? input.commandIds.map(commandIdText).filter((id) => id !== undefined)
         : []
-      if (commandIds.length > 0)
-        return `Wait for ${commandIds.join(', ')}`
+      const [first, ...others] = commandIds
+      if (first !== undefined) {
+        const trail = others.length > 0 ? `and ${others.length} more` : ''
+        return { kind: 'reference', lead: 'Wait for', commandId: first, trail }
+      }
       const duration = numberOrNull(input.durationMs)
-      return duration === null
-        ? 'Wait for wakeup'
-        : `Wait ${Math.floor(duration)}ms`
+      return {
+        kind: 'text',
+        text: duration === null ? 'Wait for wakeup' : `Wait ${Math.floor(duration)}ms`,
+      }
     }
   }
+}
+
+/**
+ * A tool call's title as plain text: a command it names by the title of the
+ * call that started it, as `commandTitle` gives it, or as "command 17" when
+ * no transcript the row sees holds that call.
+ */
+export function standardToolTitle(
+  toolName: StandardToolName,
+  input: Record<string, unknown>,
+  commandTitle: (commandId: string) => string | undefined = () => undefined,
+): string {
+  const title = standardToolTitleParts(toolName, input)
+  if (title.kind === 'text')
+    return title.text
+  const named = commandTitle(title.commandId) ?? unknownCommand(title.commandId)
+  return [title.lead, named, title.trail].filter(Boolean).join(' ')
+}
+
+/** How a reference names a command no transcript the row sees holds: never a bare number. */
+export function unknownCommand(commandId: string): string {
+  return `command ${commandId}`
 }
 
 /** A command's number as a call names it: the model writes it as a number or its digits. */

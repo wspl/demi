@@ -369,7 +369,8 @@ fn complete_text(s: &SessionShared) {
 /// executing, in steps (`runtime.md` § Dispatch and failures): consecutive
 /// calls of a tool that runs together start together, and each other call
 /// is a step of its own. A step ends when each of its calls has returned;
-/// its results are recorded in the order of the calls. Input that arrives
+/// its results are recorded in the order of the calls, and a Stop keeps
+/// those of the calls that returned before it. Input that arrives
 /// meanwhile is written after each step, unless the turn is about to
 /// compact.
 async fn run_tools(
@@ -401,7 +402,8 @@ async fn run_tools(
             }
         }
         let before = s.read(|core| core.inputs.arrivals());
-        let outcomes: Vec<ToolOutcome> = if tools.iter().any(|tool| tool.name == step[0].tool_name) {
+        let mut outcomes: Vec<Option<ToolOutcome>> = step.iter().map(|_| None).collect();
+        let ran = if tools.iter().any(|tool| tool.name == step[0].tool_name) {
             let (model, request_limits) =
                 s.read(|core| (core.model.clone(), core.request_limits()));
             let invocations = step
@@ -416,22 +418,32 @@ async fn run_tools(
                     arrival: InputArrival::new(s.arrivals.subscribe(), before),
                 })
                 .collect();
+            let mut returned = s.runtime.invoke_step(invocations);
             cancel
-                .guard(s.runtime.invoke_step(invocations))
-                .await?
-                .into_iter()
-                .map(|outcome| {
-                    outcome.unwrap_or_else(|failure| {
-                        ToolOutcome::error(format!("Tool failed: {}", failure.0))
-                    })
+                .guard(async {
+                    while let Some((index, outcome)) = returned.next().await {
+                        outcomes[index] = Some(outcome.unwrap_or_else(|failure| {
+                            ToolOutcome::error(format!("Tool failed: {}", failure.0))
+                        }));
+                    }
                 })
-                .collect()
+                .await
         } else {
-            step.iter()
-                .map(|call| ToolOutcome::error(format!("Tool not found: {}", call.tool_name)))
-                .collect()
+            for (outcome, call) in outcomes.iter_mut().zip(&step) {
+                *outcome = Some(ToolOutcome::error(format!(
+                    "Tool not found: {}",
+                    call.tool_name
+                )));
+            }
+            Ok(())
         };
+        // Results are recorded in the order of the calls. A Stop during the
+        // step ends the calls still running; one that returned keeps its
+        // result.
         for (call, outcome) in step.iter().zip(outcomes) {
+            let Some(outcome) = outcome else {
+                continue;
+            };
             let outcome = match outcome.effect {
                 Some(ToolEffect::ScheduleYield {
                     duration_ms,
@@ -450,6 +462,7 @@ async fn run_tools(
                 core.complete_tool_call(&call.tool_use_id, output, outcome.is_error, outcome.view);
             });
         }
+        ran?;
         if !defer_input {
             write_inputs_since(s, before).await?;
         }

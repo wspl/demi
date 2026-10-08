@@ -83,7 +83,7 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
         page[0]
     );
     assert!(
-        page[0].ends_with(" of 30000, stdout and stderr]"),
+        page[0].ends_with(" of 30000, stdout and stderr, exit code 0]"),
         "{}",
         page[0]
     );
@@ -127,7 +127,7 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
     assert_eq!(
         shown_output(&tailed.received[0]),
         format!(
-            "[command {command}: lines 29999-30000 of 30000, stdout and stderr]\n 29999\t29999\n 30000\t30000\n\
+            "[command {command}: lines 29999-30000 of 30000, stdout and stderr, exit code 0]\n 29999\t29999\n 30000\t30000\n\
              demi shell output: lines 30001-30002 are past the end: the output has 30000 lines\n\
              demi shell output: no command nothing-here in this conversation\n"
         )
@@ -219,3 +219,61 @@ fn attached_one(result: &str) -> &str {
     assert!(!text.contains("[image]"), "one image: {result}");
     text
 }
+
+// A few seconds: a real device installs the builtin package, and two turns
+// run a shell job each.
+#[tokio::test]
+async fn a_commands_record_keeps_how_it_ended_for_its_page_header_and_a_yield_that_names_it_after()
+{
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_file_package();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    create(&backend, &master, ENDED).await;
+    let _device = on_device(&harness, &backend, &master, ENDED).await;
+    let mut work = Driven::open(&backend, &master, &vendor, ENDED, &provider, "/work").await;
+
+    // The command ends within its call, which gives its end and lets its
+    // handle go: from then on only its record knows how it ended.
+    let failed = work
+        .turn(vec![shell("t1", "echo failing; exit 3", 30_000), say("failed")])
+        .await;
+    let command = field(&failed.received[0], "commandId").to_owned();
+    assert_eq!(field(&failed.received[0], "exitCode"), "3");
+
+    // `demi shell output`'s header names the end its record keeps.
+    let read = work
+        .turn(vec![
+            shell("t2", &format!("demi shell output {command}"), 30_000),
+            say("read"),
+        ])
+        .await;
+    assert_eq!(
+        shown_output(&read.received[0]),
+        format!("[command {command}: lines 1-1 of 1, stdout and stderr, exit code 3]\n     1\tfailing\n")
+    );
+
+    // A yield that names the ended command is due as its action ends, and
+    // its wakeup reads the end from the record.
+    let wait = serde_json::json!({ "durationMs": 600_000, "commandIds": [command] });
+    let before = work
+        .start(vec![
+            crate::conversations::tool_use("t3", "yield", &wait),
+            say("woke"),
+        ])
+        .await;
+    let woken = format!(
+        "Command {command} ended with exit code 3. Continue the previous work; read its output with demi shell output {command}."
+    );
+    eventually("the wakeup's request", || {
+        let requests = vendor.requests();
+        let found = requests[before..]
+            .iter()
+            .any(|request| request.json().to_string().contains(&woken));
+        async move { found }
+    })
+    .await;
+    backend.close().await;
+}
+
+const ENDED: &str = "5e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a06";

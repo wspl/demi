@@ -37,17 +37,17 @@ pub fn wakeup_text(wakeup: &WakeupBlock) -> Cow<'static, str> {
     let Some(WakeupCommand { command_id, end }) = &wakeup.command else {
         return Cow::Borrowed(WAKEUP_TEXT);
     };
-    Cow::Owned(match end {
-        CommandEnd::Exited { exit_code } => format!(
-            "Command {command_id} ended with exit code {exit_code}. Read its end with shell_status {command_id} and continue the previous work."
-        ),
-        CommandEnd::Stopped => format!(
-            "Command {command_id} was stopped. Read its end with shell_status {command_id} and continue the previous work."
-        ),
-        CommandEnd::Ended => {
-            format!("Command {command_id} had already ended. Continue the previous work.")
+    let ended = match end {
+        CommandEnd::Exited { exit_code } => {
+            format!("Command {command_id} ended with exit code {exit_code}.")
         }
-    })
+        CommandEnd::Stopped => format!("Command {command_id} was stopped."),
+        CommandEnd::Lost => format!("Command {command_id} ended with its Host's connection."),
+        CommandEnd::Unrecorded => format!("Command {command_id} ended."),
+    };
+    Cow::Owned(format!(
+        "{ended} Continue the previous work; read its output with demi shell output {command_id}."
+    ))
 }
 
 /// The scalar values a replayed text keeps from its start, and from its end,

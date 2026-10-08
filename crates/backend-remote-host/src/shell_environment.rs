@@ -21,6 +21,7 @@ use bytes::Bytes;
 use demi_command_protocol::{CommandContext, EditKind as JobEditKind};
 use demi_host_interface::{
     BinaryOutput, CommandMedium, CommandRecord, CommandSet, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
+    DefaultShell,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, Ending, ExecRequest, Host, HostError, HostKey,
     JobCaller, Missing, Numbers, OutputRecord, PageFeed, PageView, ProcessEnd, Seen,
     ShellEnvironment, ShellError, ShellTarget, SpawnErrorKind, Streams, WholeOutput, binary_line,
@@ -30,7 +31,8 @@ use demi_runner_protocol::{
     wire::{self, JobFileChange},
 };
 use demi_shared_types::{
-    BlobRef, CommandId, EditCopies, EditKind, EditSegment, EditedFile, Sequence, ShellId, StreamKind,
+    BlobRef, CommandEnd, CommandId, EditCopies, EditKind, EditSegment, EditedFile, Sequence, ShellId,
+    StreamKind,
 };
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
@@ -75,9 +77,11 @@ pub trait CommandKeeper {
     /// namespace holds it, so a medium it holds is not read from the Host.
     fn stored_blob<'a>(&'a self, blob: &'a BlobRef) -> LocalBoxFuture<'a, Option<Bytes>>;
 
+    /// Records the command's end, `end`, with its whole output and media.
     fn keep_output<'a>(
         &'a self,
         command: &'a CommandId,
+        end: CommandEnd,
         output: &'a WholeOutput,
         media: &'a [CommandMedium],
     ) -> LocalBoxFuture<'a, ()>;
@@ -184,9 +188,9 @@ struct Shell {
 }
 
 /// How a command ended and the whole output it settles with, which
-/// [`CommandRecord::settle`] takes.
+/// [`CommandRecord::settle`] takes and the keeper records.
 struct Settlement {
-    ending: Ending,
+    end: CommandEnd,
     output: WholeOutput,
     binary_stdout: Option<BinaryOutput>,
     media: Vec<CommandMedium>,
@@ -410,14 +414,14 @@ impl RemoteShellEnvironment {
             && record.borrow().is_running()
         {
             let mut output = running.received.take();
-            let (ending, page) = if running.stop.is_cancelled() {
-                (Ending::Aborted, String::new())
+            let (end, page) = if running.stop.is_cancelled() {
+                (CommandEnd::Stopped, String::new())
             } else {
-                (Ending::Exited(127), push_reason(&mut output, &reason))
+                (CommandEnd::Exited { exit_code: 127 }, push_reason(&mut output, &reason))
             };
             let output = WholeOutput::new(output, None);
             let settlement = Settlement {
-                ending,
+                end,
                 output,
                 binary_stdout: None,
                 media: Vec::new(),
@@ -581,7 +585,7 @@ impl RemoteShellEnvironment {
                 let page = push_reason(&mut received, &reason);
                 set_files(retained.await);
                 let settlement = Settlement {
-                    ending: Ending::Exited(127),
+                    end: CommandEnd::Exited { exit_code: 127 },
                     output: WholeOutput::new(received, None),
                     binary_stdout: None,
                     media: Vec::new(),
@@ -610,7 +614,7 @@ impl RemoteShellEnvironment {
                     .map(|medium| command_medium(medium, Err(LOST.into())))
                     .collect();
                 let settlement = Settlement {
-                    ending: Ending::Exited(127),
+                    end: CommandEnd::Lost,
                     output: WholeOutput::new(received, missing),
                     binary_stdout: None,
                     media,
@@ -683,10 +687,10 @@ impl RemoteShellEnvironment {
         } else if let Some(length) = binary_length {
             page.insert_str(0, &format!("{}\n", binary_line(length)));
         }
-        let ending = if running.aborted.get() {
-            Ending::Aborted
+        let end = if running.aborted.get() {
+            CommandEnd::Stopped
         } else {
-            Ending::Exited(exit_code)
+            CommandEnd::Exited { exit_code }
         };
         {
             let mut record = record.borrow_mut();
@@ -694,7 +698,7 @@ impl RemoteShellEnvironment {
             record.grew(StreamKind::Stderr, lengths.stderr_bytes);
         }
         let settlement = Settlement {
-            ending,
+            end,
             output,
             binary_stdout: binary,
             media,
@@ -760,14 +764,14 @@ impl RemoteShellEnvironment {
         job: Option<&RemoteJob>,
     ) {
         let Settlement {
-            ending,
+            end,
             output,
             binary_stdout,
             media,
             page,
         } = settlement;
         if let Some(keeper) = &self.0.options.keeper {
-            keeper.keep_output(command, &output, &media).await;
+            keeper.keep_output(command, end, &output, &media).await;
         }
         if let Some(job) = job {
             job.release().await;
@@ -775,7 +779,7 @@ impl RemoteShellEnvironment {
         let ended =
             record
                 .borrow_mut()
-                .settle(ending, Arc::new(output), binary_stdout, media, &page);
+                .settle(ending_of(end), Arc::new(output), binary_stdout, media, &page);
         if ended {
             self.ended_now(record);
         }
@@ -894,10 +898,11 @@ impl ShellEnvironment for RemoteShellEnvironment {
         self.view(command)
     }
 
-    fn default_cwd(&self) -> Option<String> {
+    fn default_shell(&self) -> Option<DefaultShell> {
         let state = self.0.state.borrow();
-        let shell = state.default_shell.as_ref()?;
-        Some(state.shells[shell].cwd.clone())
+        let id = state.default_shell.clone()?;
+        let cwd = state.shells[&id].cwd.clone();
+        Some(DefaultShell { id, cwd })
     }
 
     fn read_output<'a>(
@@ -1054,6 +1059,16 @@ fn stream_index(stream: StreamKind) -> usize {
     match stream {
         StreamKind::Stdout => 0,
         StreamKind::Stderr => 1,
+    }
+}
+
+/// How the command record shows `end`: one that ended with its Host's
+/// connection reads as exit code 127, as one that never ran does.
+fn ending_of(end: CommandEnd) -> Ending {
+    match end {
+        CommandEnd::Exited { exit_code } => Ending::Exited(exit_code),
+        CommandEnd::Stopped => Ending::Aborted,
+        CommandEnd::Lost | CommandEnd::Unrecorded => Ending::Exited(127),
     }
 }
 

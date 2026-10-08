@@ -30,6 +30,9 @@ import { messageEditSuffixIds, offeredEditId } from './message-editing'
 import { useMessageForks, type MessageForkHandler } from './message-fork'
 import { useFollowSentMessages } from './useFollowSentMessages'
 import { highlightFound } from '../ui/found-highlight'
+import { provideBlockJump } from './block-jump'
+import { commandCalls, provideCommandReferences, useCommandReferences } from './command-references'
+import { toolCallTitle } from './block-helpers'
 import RequestChangesLine from './blocks/RequestChangesLine.vue'
 import { provideTranscript, useEditSelection } from './edit-selection'
 import { requestLineSelection, transcriptRequests, type TranscriptRequest } from '../files/request-changes'
@@ -245,24 +248,45 @@ onBeforeUnmount(() => {
 // A block a search result opened: shown once the history holds it, after the list placed itself,
 // and marked as it appears; the next request or leaving the list ends a mark still waiting.
 let revealing: AbortController | null = null
+/** Brings the block `id` into view and marks it for a moment; false when the list does not hold it. */
+function revealAndMark(id: string): boolean {
+  const scroller = scrollContainer.value
+  if (!scroller || !reveal(id))
+    return false
+  revealing?.abort()
+  revealing = new AbortController()
+  highlightFound(scroller, `[data-block-id="${CSS.escape(id)}"]`, revealing.signal)
+  return true
+}
 watch(
   [() => props.revealBlockId, () => renderBlocks.value.length, scrollContainer],
   ([id]) => {
     if (!id)
       return
     void nextTick(() => {
-      const scroller = scrollContainer.value
-      if (props.revealBlockId !== id || !scroller || !reveal(id))
-        return
-      revealing?.abort()
-      revealing = new AbortController()
-      highlightFound(scroller, `[data-block-id="${CSS.escape(id)}"]`, revealing.signal)
-      emit('revealed')
+      if (props.revealBlockId === id && revealAndMark(id))
+        emit('revealed')
     })
   },
   { immediate: true, flush: 'post' },
 )
 onBeforeUnmount(() => revealing?.abort())
+// A row's reference to another block of this list jumps to it, as a chat
+// app jumps to a quoted message.
+provideBlockJump((id) => {
+  revealAndMark(id)
+})
+// A look or a wait names a command of this transcript by its call, which
+// the reference jumps to, or one of another agent's by its title alone.
+const outerReferences = useCommandReferences()
+const ownCommands = computed(() => commandCalls(visibleTranscriptBlocks.value))
+provideCommandReferences((commandId) => {
+  const call = ownCommands.value.get(commandId)
+  if (call)
+    return { title: toolCallTitle(call), blockId: call.id }
+  const outer = outerReferences(commandId)
+  return outer && { title: outer.title }
+})
 
 // The part of the transcript the composer leaves visible, which caps a
 // message's image height (`file-previews.md` § Files named in messages). Until

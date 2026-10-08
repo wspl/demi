@@ -279,7 +279,7 @@ mod tests {
             Err(ShellError::UnknownCommand(command.clone()))
         }
 
-        fn default_cwd(&self) -> Option<String> {
+        fn default_shell(&self) -> Option<demi_host_interface::DefaultShell> {
             None
         }
 
