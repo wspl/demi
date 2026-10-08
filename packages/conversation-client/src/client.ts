@@ -5,6 +5,7 @@ import {
   type ClientContent,
   type ClientFrame,
   type EditRequest,
+  type PendingCall,
   type PendingSteer,
   type ProviderErrorDiagnostics,
   type QueuedMessage,
@@ -107,6 +108,8 @@ export class ConversationClient {
   private phase: SessionPhase | null = null
   private queue: QueuedMessage[] = []
   private pending: PendingSteer[] = []
+  /** The calls the root's model is writing, as the server last listed them (`runtime.md` § Calls being written). */
+  private calls: PendingCall[] = []
 
   constructor(transport: ConversationClientTransport) {
     this.transport = transport
@@ -316,6 +319,11 @@ export class ConversationClient {
     return structuredClone(this.pending)
   }
 
+  /** The calls the root's model is writing, as copies. */
+  pendingCalls(): PendingCall[] {
+    return structuredClone(this.calls)
+  }
+
   /** Sends `frame` unless the client is detached; answers whether it did. */
   private sendFrame(frame: ClientFrame): boolean {
     if (this.disconnected) {
@@ -476,6 +484,7 @@ export class ConversationClient {
     switch (frame.type) {
       case 'opened':
         this.pending = []
+        this.calls = []
         this.emit(frame)
         return
       case 'transcript_reset':
@@ -505,6 +514,14 @@ export class ConversationClient {
         this.pending = structuredClone(frame.pendingSteers)
         this.removeWrittenSteers(false)
         this.emitPendingSteers()
+        return
+      case 'pending_calls':
+        if (frame.subagentId === undefined) {
+          this.calls = structuredClone(frame.pendingCalls)
+          this.emit({ type: 'pending_calls', pendingCalls: this.pendingCalls() })
+        } else {
+          this.emit({ type: 'pending_calls', subagentId: frame.subagentId, pendingCalls: structuredClone(frame.pendingCalls) })
+        }
         return
       case 'steer_result':
         this.emit(frame)
@@ -558,6 +575,7 @@ export class ConversationClient {
         this.phase = null
         this.queue = []
         this.pending = []
+        this.calls = []
         this.emit(frame)
         for (const waiter of this.actionWaiters.splice(0)) {
           waiter.resolve()

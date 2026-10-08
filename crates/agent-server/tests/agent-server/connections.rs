@@ -26,7 +26,7 @@ use crate::{
     editing::{edit, edit_outcome, said, user_block},
     support::{
         Fixture, Gate, conversation, frame_type, held, is_context_usage, is_idle, kinds, open,
-        send, session_of, turn, until,
+        send, session_of, streamed_then_held, turn, until,
     },
 };
 
@@ -61,6 +61,7 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
             "phase",
             "queue",
             "pending_steers",
+            "pending_calls",
             "context_usage"
         ]
     );
@@ -103,6 +104,7 @@ async fn a_page_that_opens_while_a_request_streams_receives_the_handshake_and_th
             "phase",
             "queue",
             "pending_steers",
+            "pending_calls",
             "context_usage"
         ]
     );
@@ -114,6 +116,61 @@ async fn a_page_that_opens_while_a_request_streams_receives_the_handshake_and_th
             .any(|frame| matches!(frame, ServerFrame::TranscriptPatch { .. })),
         "{turn:?}"
     );
+}
+
+// A call the model is writing reaches every page as the complete list,
+// which a page that opens meanwhile receives in its handshake, and leaves
+// the list once the request has ended (`runtime.md` § Calls being written).
+#[tokio::test(flavor = "local")]
+async fn a_call_being_written_reaches_the_pages_as_a_list_and_an_opening_page_in_its_handshake() {
+    let gate = Gate::new();
+    let script = ScriptedRuntime::new([streamed_then_held(
+        &gate,
+        vec![
+            event::text("Let me write a categorizer."),
+            event::tool_call_start("call-1", "shell_exec"),
+            event::tool_call_input(
+                "call-1",
+                "{\"description\": \"Write the categorizer\", \"script\": \"cat",
+            ),
+        ],
+        vec![event::response(1, 1)],
+    )]);
+    let fixture = Fixture::new(&script);
+    let mut first = fixture.opened().await;
+    first.send(send("m1", "hi")).await;
+    let listed = first
+        .next_until(|frame| matches!(frame, ServerFrame::PendingCalls { pending_calls, .. }
+            if pending_calls.iter().any(|call| call.description.is_some())))
+        .await;
+    let calls = |frame: &ServerFrame| match frame {
+        ServerFrame::PendingCalls { subagent_id: None, pending_calls } => pending_calls
+            .iter()
+            .map(|call| (call.tool_use_id.clone(), call.tool_name.clone(), call.description.clone()))
+            .collect::<Vec<_>>(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        calls(listed.last().unwrap()),
+        [("call-1".to_owned(), "shell_exec".to_owned(), Some("Write the categorizer".to_owned()))]
+    );
+
+    let mut second = fixture.client();
+    second.send(open()).await;
+    let handshake = second.received();
+    let types: Vec<String> = handshake.iter().map(frame_type).collect();
+    assert_eq!(types[4..6], ["pending_steers", "pending_calls"]);
+    assert_eq!(calls(&handshake[5]), calls(listed.last().unwrap()));
+
+    // The request ends without the call: the list is emptied.
+    gate.open();
+    let rest = first.next_until(is_idle).await;
+    let last = rest
+        .iter()
+        .filter(|frame| matches!(frame, ServerFrame::PendingCalls { .. }))
+        .last()
+        .expect("the list changed");
+    assert!(calls(last).is_empty());
 }
 
 #[tokio::test(flavor = "local")]
@@ -505,6 +562,7 @@ async fn a_connection_dropped_with_its_socket_detaches_and_its_outbox_ends() {
             "phase",
             "queue",
             "pending_steers",
+            "pending_calls",
             "context_usage"
         ]
     );

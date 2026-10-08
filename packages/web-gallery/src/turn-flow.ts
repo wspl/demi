@@ -79,6 +79,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     phase: 'idle',
     queue: [],
     pendingSteers: [],
+    pendingCalls: [],
     model: {
       providerId: demoModel.providerId,
       modelId: demoModel.model.id,

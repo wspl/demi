@@ -333,6 +333,18 @@ pub enum ProviderEvent {
     /// received.
     RedactedThinking(String),
     TextDelta(String),
+    /// The model opened a tool call. With its input pieces it is for
+    /// display only: the agent runs a call only from its `ToolCall`, which
+    /// follows with the whole input (`runtime.md` § Calls being written).
+    ToolCallStart {
+        tool_use_id: String,
+        tool_name: String,
+    },
+    /// A piece of an opened call's input JSON, as the model writes it.
+    ToolCallInput {
+        tool_use_id: String,
+        partial_json: String,
+    },
     ToolCall(ToolCall),
     /// The usage of the run's final API call: the context the next request
     /// carries, never a total over the turn.
