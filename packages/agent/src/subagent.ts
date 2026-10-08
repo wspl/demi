@@ -274,6 +274,8 @@ interface PersistedSubagentJob {
 export class ChildSupervisor<State = unknown> {
   private readonly options: ChildSupervisorOptions<State>
   private readonly jobs = new Map<string, ChildJob<State>>()
+  /** Shell commandId → the child that command hosts ('' while its spawn or resume is starting). */
+  private readonly childByCommandId = new Map<string, string>()
   private parentSession: AgentSession<State> | null = null
   private isDisposed = false
 
@@ -314,7 +316,7 @@ export class ChildSupervisor<State = unknown> {
     return {
       name: 'agent',
       summary:
-        'Start an isolated child agent session and wait for its result. The command stays running until the child session ends; stdout is the child\'s last assistant text. While it is the foreground job, shell_write steers the child and shell_abort aborts it. Run several in separate shell_exec calls with short timeoutMs to fan out, then end the turn — completion wakes an idle session; do not poll. Children can spawn children of their own.',
+        'Start an isolated child agent session and wait for its result. The command stays running until the child session ends; stdout is the child\'s last assistant text. While it is the foreground job, shell_write steers the child and shell_abort aborts it. One shell command hosts one child: run several in separate shell_exec calls with short timeoutMs to fan out, then end the turn — completion wakes an idle session; do not poll. Children can spawn children of their own.',
       successOutput:
         'first stderr line is "subagentId: <id>" at start; stdout is the child\'s last assistant text (empty is valid), written only at exit',
       failureOutput: 'non-zero exit with the abort or failure reason on stderr',
@@ -339,12 +341,13 @@ export class ChildSupervisor<State = unknown> {
       stdinField: 'prompt',
       output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
       runningHint: SPAWN_RUNNING_HINT,
-      run: async ({ parsed, io, signal, stdinStream }) => {
+      run: async ({ parsed, io, signal, stdinStream, commandId }) => {
         const prompt = String(parsed.values.prompt ?? '').trim()
         if (!prompt) {
           await io.stderr('demi agent: prompt must not be empty\n')
           return { exitCode: 1 }
         }
+        if (!(await this.claimHostingCommand(commandId, io, 'demi agent'))) return { exitCode: 1 }
         let job: ChildJob<State>
         try {
           job = await this.spawn({
@@ -354,9 +357,11 @@ export class ChildSupervisor<State = unknown> {
             isSpawnForbidden: parsed.values['no-subagents'] === true,
           })
         } catch (error) {
+          this.releaseHostingCommand(commandId)
           await io.stderr(`demi agent: ${errorMessage(error)}\n`)
           return { exitCode: 1 }
         }
+        this.recordHostedChild(commandId, job.id)
         return this.attendChild(job, { io, isJson: parsed.json === true, signal, stdinStream })
       },
       subcommands: [
@@ -443,20 +448,23 @@ export class ChildSupervisor<State = unknown> {
           stdinField: 'message',
           output: { json: z.object({ subagentId: z.string(), text: z.string() }) },
           runningHint: SPAWN_RUNNING_HINT,
-          run: async ({ parsed, io, signal, stdinStream }) => {
+          run: async ({ parsed, io, signal, stdinStream, commandId }) => {
             const id = String(parsed.values.id)
             const message = String(parsed.values.message ?? '').trim()
             if (!message) {
               await io.stderr('demi agent resume: message must not be empty\n')
               return { exitCode: 1 }
             }
+            if (!(await this.claimHostingCommand(commandId, io, 'demi agent resume'))) return { exitCode: 1 }
             let job: ChildJob<State>
             try {
               job = await this.resumeArchived(id, message)
             } catch (error) {
+              this.releaseHostingCommand(commandId)
               await io.stderr(`demi agent resume: ${errorMessage(error)}\n`)
               return { exitCode: 1 }
             }
+            this.recordHostedChild(commandId, job.id)
             return this.attendChild(job, { io, isJson: parsed.json === true, signal, stdinStream })
           },
         },
@@ -878,6 +886,33 @@ export class ChildSupervisor<State = unknown> {
       saveCheckpoint: (checkpoint) => this.options.store.writeJson(this.childStoreKey(childId, 'checkpoint.json'), checkpoint),
       loadCheckpoint: () => this.options.store.readJson(this.childStoreKey(childId, 'checkpoint.json')),
     }
+  }
+
+  /**
+   * One shell command hosts at most one child lifecycle, so `shell_abort` on
+   * that command and aborting that child are the same act. A script that loops
+   * or chains spawns would otherwise start the next child as soon as the
+   * previous one is aborted, outliving every abort aimed at it.
+   */
+  private async claimHostingCommand(commandId: string | null, io: CommandIO, verb: string): Promise<boolean> {
+    if (commandId === null) return true
+    const hostedId = this.childByCommandId.get(commandId)
+    if (hostedId === undefined) {
+      this.childByCommandId.set(commandId, '')
+      return true
+    }
+    await io.stderr(
+      `${verb}: this shell command already ran subagent ${hostedId || '(starting)'}; one shell command hosts one child — run each spawn or resume in its own shell_exec call\n`,
+    )
+    return false
+  }
+
+  private releaseHostingCommand(commandId: string | null): void {
+    if (commandId !== null) this.childByCommandId.delete(commandId)
+  }
+
+  private recordHostedChild(commandId: string | null, childId: string): void {
+    if (commandId !== null) this.childByCommandId.set(commandId, childId)
   }
 
   /** Shared spawn/resume foreground behaviour: announce the id, wire abort and stdin steers, wait for close, report the outcome. */

@@ -94,6 +94,12 @@ While that command is the shell foreground job:
 
 Parallel children are multiple `demi agent` invocations in separate
 `shell_exec` calls; a busy shell session gets a fresh one automatically.
+One shell command hosts at most one child lifecycle: a second spawn or
+`resume` inside the same command (a loop, a chain, a subshell) fails with a
+non-zero exit before starting anything. This keeps `shell_abort` on that
+command and aborting that child the same act — otherwise a looping script
+starts the next child as soon as the previous one is aborted, and outlives
+every abort (`demi agent abort`, client `abortSubagents`) aimed at it.
 `timeoutMs` on spawn is only an observation window, capped at
 `MAX_TIMEOUT_MS` per call like every exec wait: the call returns a running
 status at the cap and the parent turn continues; the child keeps running.
@@ -445,6 +451,7 @@ agent directory:
 the same control surface as host processes:
 
 - `CommandRunContext.signal` is the job abort signal
+- `CommandRunContext.commandId` names the hosting shell command record
 - `CommandIO` writes into the live stdout/stderr accumulator
 - stdin after start is a stream; each `shell_write` chunk is one child steer
 - `timeoutMs` / `shell_status` / `shell_write` / `shell_abort` apply as they
@@ -569,7 +576,8 @@ blocks are for nested UI (cards, inspect), not a second user-facing reply.
   empty last text exits 0, `subagent*` protocol frames from nested depths,
   inherited vs replaced `systemPrompt` with unknown-profile rejection,
   spawn restriction (`--no-subagents` and profile `canSpawnSubagents: false`)
-  with communication intact,
+  with communication intact, one child per hosting shell command (a looping
+  script cannot chain a second spawn),
   `resume` on the preserved transcript, list tree rendering
   with self marker, parent close detaches (not aborts) live children,
   cross-provider spawn and nested inheritance, checkpoint provider routing on

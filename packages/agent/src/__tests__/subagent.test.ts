@@ -689,6 +689,34 @@ test('demi agent abort tears the child down and fails the pending spawn command'
   await client.close()
 })
 
+test('one shell command hosts at most one child: a looping script cannot chain further spawns', async () => {
+  let continuationText = ''
+  const { client, seen } = await openHarness({
+    turns: [
+      [spawnCall('t1', 'for i in 1 2; do demi agent "part $i" --description "part $i"; done; echo loop-finished', 5_000)],
+      [events.text('first child result'), events.response()],
+      (request) => {
+        continuationText = itemsText(request)
+        return [events.text('parent done'), events.response()]
+      },
+    ],
+  })
+
+  await client.send([{ type: 'text', text: 'go' }])
+  await waitFor(
+    () => client.transcript().blocks.some((block) => block.type === 'text' && block.text === 'parent done'),
+    undefined,
+    { timeoutMs: 3_000 },
+  )
+
+  const started = seen.filter((event) => event.type === 'subagent' && event.event === 'started')
+  expect(started).toHaveLength(1)
+  expect(continuationText).toContain('first child result')
+  expect(continuationText).toContain('already ran subagent')
+  expect(continuationText).toContain('loop-finished')
+  await client.close()
+})
+
 test('list renders the tree with a self marker; show exposes a bounded snapshot; a finished id misses', async () => {
   let inspectionText = ''
   const { client, sessionId } = await openHarness({
