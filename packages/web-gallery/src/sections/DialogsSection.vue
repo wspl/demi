@@ -303,7 +303,7 @@ const resetPhases: {
     <template v-if="view === 'providers'">
       <GallerySection
         title="Confirm Removal"
-        note="Removing what the user set up asks first: the title asks, the body says what goes with it, Cancel is the safe answer, and the action is the destructive button, filled red under white text in both schemes."
+        note="Removing what the user set up asks first: the title asks, the body says what goes with it, Cancel is the safe answer and the default, which Return presses and the dialog opens on, and the action is the destructive button, filled red under white text in both schemes, which takes a click."
       >
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen wide variant="provider">
