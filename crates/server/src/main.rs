@@ -32,7 +32,7 @@ use crate::{journal::Journal, layout::Layout, services::Systemd, settings::Setti
 
 /// Installs, upgrades and rolls back this Demi server.
 #[derive(Parser)]
-#[command(name = "demi-server", version)]
+#[command(name = "demi-server", version = demi_shared_artifacts::WORKSPACE_VERSION)]
 struct Cli {
     #[command(subcommand)]
     command: Action,
@@ -98,7 +98,7 @@ fn main() -> ExitCode {
 
 /// This program's release.
 fn own_version() -> Version {
-    Version::parse(env!("CARGO_PKG_VERSION")).expect("the workspace version is a version")
+    Version::parse(demi_shared_artifacts::WORKSPACE_VERSION).expect("the workspace version is a version")
 }
 
 /// Runs `work` holding the lock that keeps one `demi-server` at a time.

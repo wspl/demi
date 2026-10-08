@@ -112,7 +112,10 @@ impl Place {
             client: format!("/__demi/v{FILES_VERSION}/client.js"),
             // The runtime of the engine's own release, which the rewriter's
             // output calls (`preview.md` § The forwarder and the relay).
-            runtime: format!("/__demi/page/runtime/{}.js", env!("CARGO_PKG_VERSION")),
+            runtime: format!(
+                "/__demi/page/runtime/{}.js",
+                demi_shared_artifacts::WORKSPACE_VERSION
+            ),
             document,
             top_level,
             opaque: false,

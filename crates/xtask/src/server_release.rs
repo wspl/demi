@@ -42,36 +42,40 @@ const UNITS: [(&str, &str); 2] = [
 pub struct Options {
     /// The root to assemble, a directory that does not exist yet.
     #[arg(long, value_name = "DIRECTORY")]
-    output: PathBuf,
+    pub(crate) output: PathBuf,
     /// The directory of the release's files, which may hold this build's
     /// files already.
     #[arg(long, value_name = "DIRECTORY")]
-    files: PathBuf,
+    pub(crate) files: PathBuf,
     /// The HTTPS URL the files will be published at, which release.json
     /// names [default: the files directory].
     #[arg(long, value_name = "URL")]
-    downloads: Option<String>,
+    pub(crate) downloads: Option<String>,
     /// A target of the runner and the command packages; repeat for several
     /// [default: all six].
     #[arg(long = "target", value_name = "TRIPLE", value_parser = native::target)]
-    targets: Vec<&'static str>,
+    pub(crate) targets: Vec<&'static str>,
     /// The Linux target whose backend and machine manager go in bin/, with
     /// the units in systemd/ [default: no bin/].
     #[arg(long, value_name = "TRIPLE", value_parser = native::target)]
-    server: Option<&'static str>,
+    pub(crate) server: Option<&'static str>,
     /// The built web app to copy into web/ [default: no web/].
     #[arg(long, value_name = "DIRECTORY")]
-    web: Option<PathBuf>,
+    pub(crate) web: Option<PathBuf>,
     /// Names the command packages with the workspace version itself; only
     /// the release workflow publishes.
     #[arg(long)]
-    publish: bool,
+    pub(crate) publish: bool,
     /// The Cargo target directory the build wrote [default:
     /// .cache/native-target in the repository].
     #[arg(long, value_name = "DIRECTORY")]
-    artifacts: Option<PathBuf>,
+    pub(crate) artifacts: Option<PathBuf>,
     #[command(flatten)]
-    caches: Caches,
+    pub(crate) caches: Caches,
+    /// The workspace version the build carries, which `xtask deploy` names
+    /// for a development build [default: the workspace version].
+    #[arg(skip)]
+    pub(crate) version: Option<String>,
 }
 
 /// Why assembling stopped.
@@ -103,7 +107,7 @@ pub fn run(options: Options) -> Result<(), Error> {
 
 /// Assembles the root and the files `options` name and returns the root's
 /// path.
-async fn assemble(options: &Options, cancel: &CancellationToken) -> Result<PathBuf, Error> {
+pub(crate) async fn assemble(options: &Options, cancel: &CancellationToken) -> Result<PathBuf, Error> {
     let output = std::path::absolute(&options.output)?;
     if tokio::fs::try_exists(&output).await? {
         return Err(Error::Exists(output));
@@ -162,6 +166,10 @@ async fn assemble(options: &Options, cancel: &CancellationToken) -> Result<PathB
             output: &release,
             caches: &options.caches,
             versioning,
+            version: options
+                .version
+                .as_deref()
+                .unwrap_or(demi_shared_artifacts::WORKSPACE_VERSION),
         };
         println!("{}", native::package(&spec, cancel).await?);
         native::split(&release, executable, stage.path(), &files, cancel).await?;
@@ -287,6 +295,7 @@ mod tests {
             caches: Caches {
                 compressed: Some(artifacts.join("compressed")),
             },
+            version: None,
         };
         let cancel = CancellationToken::new();
         // Without the server's build, no root is assembled and no stage is
