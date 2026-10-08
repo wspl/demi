@@ -69,7 +69,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Conversations',
-    'Plain conversations that run in no checkout. Manual order, pinned on top. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
+    'Plain conversations that run in no checkout. Manual order, pinned on top. One on a paired device shows that device at its row’s end: a laptop with a dot for the device’s state, or without a dot once the device is removed, left of the pin when the row is pinned; a row on the Cloud shows none. On hover Archive and Pin take the marks’ places. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
   ],
   [
     'Projects',
