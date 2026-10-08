@@ -42,8 +42,9 @@ function isEmptyThinking(block: MessageListBlock): boolean {
 
 /**
  * The list's rows with the work grouped. A thinking block without text
- * shows only when a reply follows it, or while it is the newest block; any
- * other block after it covers it. The steps at the end of a running turn are
+ * shows only while it is the newest block of a running turn, as what the
+ * agent is doing; once anything follows it or the turn ends, it has nothing
+ * to show and goes. The steps at the end of a running turn are
  * always one group, so each new step rolls over the one before in one row.
  * Once they ended, they stay one group when they hold a call and another
  * step, and a lone thinking stays the group it was; a lone call is its own
@@ -63,10 +64,10 @@ export function groupWork(blocks: readonly MessageListBlock[], running: boolean)
     while (end < blocks.length && isStep(blocks[end]!))
       end += 1
     const next = blocks[end]
-    const steps = blocks.slice(index, end).filter((step, at, run): step is WorkStep =>
-      isStep(step) && !(isEmptyThinking(step) && (at < run.length - 1 || (next !== undefined && next.type !== 'text'))))
-    const calls = steps.filter((step) => step.type !== 'thinking').length
     const live = running && next === undefined
+    const steps = blocks.slice(index, end).filter((step, at, run): step is WorkStep =>
+      isStep(step) && !(isEmptyThinking(step) && !(live && at === run.length - 1)))
+    const calls = steps.filter((step) => step.type !== 'thinking').length
     const grouped = live
       ? steps.length > 0
       : (calls >= 1 && steps.length >= 2) || (steps.length === 1 && steps[0]!.type === 'thinking')

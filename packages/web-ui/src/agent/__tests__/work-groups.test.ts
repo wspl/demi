@@ -32,12 +32,13 @@ function rows(list: readonly MessageListBlock[]): (string | string[])[] {
 }
 
 describe('the steps the transcript shows as one row', () => {
-  test('thinking without text is covered by the step after it, and stays only before a reply', () => {
+  test('thinking without text shows only while it is what the running turn does now', () => {
     expect(rows(groupWork([thinking('t1'), call('a'), thinking('t2'), call('b'), text('r')], false)))
       .toEqual([['a', 'b'], 'r'])
     expect(rows(groupWork([call('a'), call('b'), thinking('t3'), text('r')], false)))
-      .toEqual([['a', 'b', 't3'], 'r'])
-    expect(rows(groupWork([thinking('t1'), text('r')], false))).toEqual([['t1'], 'r'])
+      .toEqual([['a', 'b'], 'r'])
+    expect(rows(groupWork([thinking('t1'), text('r')], false))).toEqual(['r'])
+    expect(rows(groupWork([text('r'), call('a'), thinking('t2')], true))).toEqual(['r', ['a', 't2']])
   })
 
   test('a reply ends a run, and the next run is a group of its own', () => {
