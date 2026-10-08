@@ -30,7 +30,7 @@ import {
 import { productWould } from '../product-would'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
-import { demoDeviceInstallation, demoDeviceReport, demoDeviceStart } from '../fixtures/device-installation'
+import { demoDeviceInstallation, demoDeviceReport } from '../fixtures/device-installation'
 import { DEMO_RUNNER_RELEASE, DIRECT_SCENARIOS, galleryDevices, useGalleryDevices, type DirectScenario } from '../fixtures/devices'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
 
@@ -46,7 +46,7 @@ const { view } = useGalleryView()
  * the section's own, as the product's address does.
  */
 const fullReselects = ref(0)
-const directDevices = useGalleryDevices(() => galleryDevices(demoDeviceStart))
+const directDevices = useGalleryDevices(() => galleryDevices())
 directDevices.shown.value = 'mac'
 const directScenario = computed({
   get: () => directDevices.scenarios.value['mac'] ?? 'connected',
@@ -213,7 +213,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Devices · Direct Channel"
-        note="A device’s row names it and says in one line its system and how this page reaches it, or when an offline one was last seen; the row opens the device’s own page, whose back button returns to the list. Its header says how this page reaches the device now, with the latency of the path in use, why not directly and when Demi tries again, with Details…, a sheet of what the last attempt saw, and Try Again, which runs an attempt that ends as the device’s path says. Connection holds the route, Automatic, Prefer Direct or Server Only; under it the two paths’ figures, the one in use marked, and Test Speed, which measures for a moment. Device holds the facts with Rename…; Revoke… asks first, and the device leaves the list. Set zan-mbp’s path to see each state its header gives; the Cloud’s page says it is always reached through the server."
+        note="A device’s row names it and says in one line its system and how this page reaches it, or when an offline one was last seen; the row opens the device’s own page, whose back button returns to the list. Its header says how this page reaches the device now, with the latency of the path in use, why not directly and when Demi tries again, with Details…, a sheet of what the last attempt saw, and Try Again, which runs an attempt that ends as the device’s path says. Connection holds the route, Automatic, Prefer Direct or Server Only; a footnote under it compares the two paths’ latency from this browser, and a lossy direct path says how much it loses. Device holds the facts with Rename…; Revoke… asks first, and the device leaves the list. Set zan-mbp’s path to see each state its header gives; the Cloud’s page says it is always reached through the server."
       >
         <div class="flex w-full max-w-2xl flex-col gap-4">
           <Segmented v-model="directScenario" :options="DIRECT_SCENARIOS" size="sm" />
@@ -230,7 +230,6 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
               @show="directDevices.shown.value = $event"
               @set-route="directDevices.setRoute"
               @try-now="directDevices.tryNow"
-              @test-speed="directDevices.testSpeed"
               @revoke="directDevices.revoke"
               @rename="directDevices.rename"
               @reset-cloud="productWould('Reset the Cloud Environment')"

@@ -1,9 +1,10 @@
 import { expect, test } from 'bun:test'
-import { directReason, shownAddress, type DirectAttempt, type DirectReason, type DirectStatus } from '../direct'
+import { directReason, pathsFootnote, shownAddress, type DirectAttempt, type DirectReason, type DirectStatus } from '../direct'
 
 // The reason a device's page gives for going through the server, from its
 // route, its peer and what the last attempt saw (`direct-channel.md`
-// § What the user sees). Pure; milliseconds.
+// § What the user sees), and the footnote that compares the two paths.
+// Pure; milliseconds.
 
 const failed: DirectAttempt = {
   startedAt: '2026-10-08T09:00:00.000Z',
@@ -27,11 +28,10 @@ const status: DirectStatus = {
   attempt: failed,
   nextAt: null,
   figures: { direct: null, relay: null },
-  speed: { direct: null, relay: null, testing: false },
 }
 
-const slow = { latencyMs: 90, jitterMs: 4, loss: 0 }
-const relay = { latencyMs: 30, jitterMs: 2, loss: null }
+const slow = { latencyMs: 90, loss: 0 }
+const relay = { latencyMs: 30, loss: null }
 
 const cases: { scenario: string; status: DirectStatus; reason: DirectReason | null }[] = [
   {
@@ -78,3 +78,33 @@ test('a browser’s random .local name for its own address shows as hidden; a re
   expect(shownAddress('7c1e4a52-9b0d-4c1e-8e3e-1a2b3c4d5e6f.local')).toBe('Hidden by the browser')
   expect(shownAddress('192.168.1.20')).toBe('192.168.1.20')
 })
+
+const footnotes: { scenario: string; status: DirectStatus; footnote: string | null }[] = [
+  {
+    scenario: 'both paths measured',
+    status: { ...status, peer: true, figures: { direct: { latencyMs: 1.8, loss: 0 }, relay: { latencyMs: 480.4, loss: null } } },
+    footnote: 'From this browser: directly 2 ms, through the server 480 ms.',
+  },
+  {
+    scenario: 'the direct path loses probes',
+    status: { ...status, peer: true, figures: { direct: { latencyMs: 620, loss: 0.06 }, relay } },
+    footnote: 'From this browser: directly 620 ms with 6% lost, through the server 30 ms.',
+  },
+  {
+    scenario: 'a direct path on a local network loses one probe in two hundred',
+    status: { ...status, peer: true, figures: { direct: { latencyMs: 0.42, loss: 0.005 }, relay } },
+    footnote: 'From this browser: directly 0.4 ms with 0.5% lost, through the server 30 ms.',
+  },
+  {
+    scenario: 'there is no peer',
+    status: { ...status, figures: { direct: null, relay: { latencyMs: 480, loss: null } } },
+    footnote: 'From this browser: through the server 480 ms; no direct connection.',
+  },
+  { scenario: 'nothing is measured yet', status, footnote: null },
+]
+
+for (const { scenario, status: given, footnote } of footnotes) {
+  test(`the footnote when ${scenario}`, () => {
+    expect(pathsFootnote(given)).toBe(footnote)
+  })
+}

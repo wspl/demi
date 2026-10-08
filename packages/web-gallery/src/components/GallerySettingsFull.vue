@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { demoDeviceInstallation, demoDeviceReport, demoDeviceStart } from '../fixtures/device-installation'
+import { demoDeviceInstallation, demoDeviceReport } from '../fixtures/device-installation'
 import { DEMO_RUNNER_RELEASE, galleryDevices, useGalleryDevices } from '../fixtures/devices'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
@@ -226,7 +226,7 @@ function restoreArchived(id: string) {
 }
 
 /** The paired devices, whose controls act on them as the product's do. */
-const devices = useGalleryDevices(() => galleryDevices(demoDeviceStart))
+const devices = useGalleryDevices(() => galleryDevices())
 /** A revoked device leaves the list, and its projects go with it, as the product's do. */
 function revokeDevice(id: string) {
   devices.revoke(id)
@@ -334,7 +334,6 @@ function resetShortcuts() {
     @show="devices.shown.value = $event"
     @set-route="devices.setRoute"
     @try-now="devices.tryNow"
-    @test-speed="devices.testSpeed"
     @revoke="revokeDevice"
     @rename="devices.rename"
   />

@@ -274,7 +274,6 @@ pub(crate) enum Expected {
     JobRead,
     JobMediaRead,
     DirectOffer,
-    Speed,
 }
 
 pub(crate) enum Answer {
@@ -914,7 +913,6 @@ impl Link {
                 self.tell_peer(&peer, PeerEvent::Candidate(candidate));
             }
             Outbound::DirectPong { peer, id } => self.tell_peer(&peer, PeerEvent::Pong(id)),
-            Outbound::SpeedStarted { id } => self.answer(&id, Expected::Speed, Answer::Done),
             Outbound::DirectRefused { id, code, message } => {
                 let answer = Answer::Direct(DirectAnswer::Refused(code, message));
                 self.answer(&id, Expected::DirectOffer, answer);

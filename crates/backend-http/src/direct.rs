@@ -3,8 +3,9 @@
 //! introduces the page to its paired device's runner, through device
 //! access, and is the only check. It relays each offer to the runner and
 //! its answer to the page, each side's candidates found after them to the
-//! other, and the page's probes of the relay path and their answers; the socket's close closes the runner's peer, and
-//! so does the user turning a plugin on or off, which the socket tells the
+//! other, and the page's probes of the relay path and their answers, which
+//! never wait behind an offer's answer; the socket's close closes the
+//! runner's peer, and so does the user turning a plugin on or off, which the socket tells the
 //! page so that it offers again with the new introduction.
 
 use std::time::Duration;
@@ -21,7 +22,8 @@ use demi_runner_protocol::direct::{CONNECT_TIMEOUT, Introduction, OfferRefusal};
 use demi_web_api_protocol::devices::{DeviceKind, DirectMessage, DirectRequest, Unanswered};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{DeviceId, UserId};
-use futures_util::StreamExt as _;
+use futures_util::future::BoxFuture;
+use futures_util::{FutureExt as _, StreamExt as _};
 use futures_util::stream::SplitStream;
 use garde::Validate as _;
 use tokio::sync::mpsc;
@@ -131,6 +133,12 @@ impl Signaling {
             .await;
             return;
         };
+        // The offer waiting for the runner's answer, which the page's other
+        // messages, its probes above all, do not wait behind.
+        let mut answering: Option<BoxFuture<'_, Option<Offered>>> = None;
+        // The page's candidates that came while its offer waited: they go
+        // once the runner made the peer they belong to.
+        let mut held: Vec<String> = Vec::new();
         let end = loop {
             let switched = introduced.clone();
             let request = tokio::select! {
@@ -148,6 +156,31 @@ impl Signaling {
                     self.close_peer().await;
                     if page.send(text(&DirectMessage::Closed)).await.is_err() {
                         break End::PageClosed;
+                    }
+                    continue;
+                }
+                answer = async {
+                    match answering.as_mut() {
+                        Some(answer) => answer.await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    answering = None;
+                    let Some(Offered { message, switched }) = answer else {
+                        break End::HostUnreachable;
+                    };
+                    // A new offer replaced the peer, and only an answered
+                    // one made another, which the held candidates are for.
+                    let answered = matches!(message, DirectMessage::Answer { .. });
+                    introduced = answered.then_some(switched);
+                    let candidates = std::mem::take(&mut held);
+                    if page.send(text(&message)).await.is_err() {
+                        break End::PageClosed;
+                    }
+                    if answered {
+                        for candidate in candidates {
+                            self.candidate(candidate).await;
+                        }
                     }
                     continue;
                 }
@@ -183,38 +216,22 @@ impl Signaling {
                     continue;
                 }
             };
-            let sdp = match request {
-                DirectRequest::Offer { sdp } => sdp,
+            match request {
+                DirectRequest::Offer { sdp } => {
+                    // An offer that replaces one still waiting drops it, with
+                    // the candidates that came for it.
+                    offered = true;
+                    held.clear();
+                    answering = Some(self.offer(sdp).boxed());
+                }
+                DirectRequest::Candidate { candidate } if answering.is_some() => held.push(candidate),
+                // A candidate before any offer has no peer to go to.
                 DirectRequest::Candidate { candidate } => {
-                    // A candidate before any offer has no peer to go to.
                     if offered {
                         self.candidate(candidate).await;
                     }
-                    continue;
                 }
-                DirectRequest::Ping { id } => {
-                    self.ping(id).await;
-                    continue;
-                }
-            };
-            offered = true;
-            let answer = tokio::select! {
-                biased;
-                () = &mut link_ended => break End::HostUnreachable,
-                answer = self.offer(sdp) => answer,
-            };
-            let message = match answer {
-                Some(Offered { message, switched }) => {
-                    // A new offer replaced the peer, and only an answered
-                    // one made another.
-                    let answered = matches!(message, DirectMessage::Answer { .. });
-                    introduced = answered.then_some(switched);
-                    message
-                }
-                None => break End::HostUnreachable,
-            };
-            if page.send(text(&message)).await.is_err() {
-                break End::PageClosed;
+                DirectRequest::Ping { id } => self.ping(id).await,
             }
         };
         if offered {

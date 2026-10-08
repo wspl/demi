@@ -209,37 +209,6 @@ impl TryFrom<u64> for LogLimit {
     }
 }
 
-/// `?bytes=` of `GET /devices/:id/speed`, the relay half of Test Speed.
-/// Queries are the backend's alone and are not emitted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub struct SpeedQuery {
-    pub bytes: SpeedBytes,
-}
-
-/// How many random bytes a speed test asks for: 1 to 64 MiB.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(try_from = "u64")]
-pub struct SpeedBytes(u64);
-
-impl SpeedBytes {
-    pub fn get(self) -> u64 {
-        self.0
-    }
-}
-
-impl TryFrom<u64> for SpeedBytes {
-    type Error = String;
-
-    fn try_from(bytes: u64) -> Result<Self, String> {
-        let most = demi_runner_protocol::direct::SPEED_MAX_BYTES;
-        if (1..=most).contains(&bytes) {
-            Ok(Self(bytes))
-        } else {
-            Err(format!("bytes must be 1 to {most}"))
-        }
-    }
-}
-
 /// The one source a device log read keeps, such as `runner`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "String")]

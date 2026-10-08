@@ -4,7 +4,8 @@ import type { SentenceText, TitleText } from '../ui/ui-text'
  * A titled card of rows. Rows separate themselves with hairlines. A `header` slot
  * replaces the title when the group's subject needs its own controls, such as an
  * editable name beside its actions; an `aside` slot puts something beside the card,
- * such as a live preview of what the rows change.
+ * such as a live preview of what the rows change. A `footer` slot is the line macOS
+ * writes under a group: small, secondary, about what the rows above decide.
  */
 defineProps<{
   title?: TitleText
@@ -26,10 +27,16 @@ defineProps<{
     </slot>
     <!-- An aside (a preview, a legend) sits beside the card where there is room, under it where not. -->
     <div class="@container flex flex-col gap-4 @lg:flex-row @lg:items-stretch">
-      <div
-        class="settings-card @container min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface-float"
-      >
-        <slot />
+      <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+        <div
+          class="settings-card @container min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface-float"
+        >
+          <slot />
+        </div>
+        <!-- The footnote starts where the rows' text starts. -->
+        <p v-if="$slots.footer" class="select-none px-4 text-[12px] leading-4 text-fg-muted">
+          <slot name="footer" />
+        </p>
       </div>
       <div v-if="$slots.aside" class="flex shrink-0">
         <slot name="aside" />

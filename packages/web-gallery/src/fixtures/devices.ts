@@ -9,8 +9,7 @@ import { ago } from './time'
  * (`direct-channel.md` § What the user sees), and the devices of the
  * Devices specimens, whose controls act on them as the product's do: Try
  * Again runs an attempt that ends as the device's path says, the route
- * changes how it is reached, Test Speed measures for a moment, and Rename…
- * and Revoke… change the list.
+ * changes how it is reached, and Rename… and Revoke… change the list.
  */
 export type DirectScenario =
   | 'connected'
@@ -40,11 +39,11 @@ export const DIRECT_SCENARIOS: readonly { value: DirectScenario; label: string }
 const minutes = (count: number) => count * 60_000
 
 /** The relay's figures to a server about 230 ms away, as the design measured. */
-const RELAY: PathFigures = { latencyMs: 480, jitterMs: 12, loss: null }
+const RELAY: PathFigures = { latencyMs: 480, loss: null }
 /** A direct path on one network. */
-const LOCAL: PathFigures = { latencyMs: 0.4, jitterMs: 0.1, loss: 0 }
+const LOCAL: PathFigures = { latencyMs: 1.8, loss: 0 }
 /** A direct path over a congested link, slower than the server's. */
-const CONGESTED: PathFigures = { latencyMs: 620, jitterMs: 85, loss: 0.06 }
+const CONGESTED: PathFigures = { latencyMs: 620, loss: 0.06 }
 
 /** Whether an attempt of `scenario` connects. */
 const connects = (scenario: DirectScenario) => scenario === 'connected' || scenario === 'slower' || scenario === 'dropped'
@@ -62,7 +61,7 @@ export function demoAttempt(scenario: DirectScenario, startedAt: number): Direct
     browser: { local: ['7c1e4a52-9b0d-4c1e-8e3e-1a2b3c4d5e6f.local'], public: browserPublic },
     device: { local: ['192.168.1.20', '127.0.0.1'], public: devicePublic },
     pairs: { tried: connected ? 2 : 6, answered: connected ? 2 : 0 },
-    pair: connected ? { browser: '7c1e4a52-9b0d-4c1e-8e3e-1a2b3c4d5e6f.local:52311', device: '192.168.1.20:61204' } : null,
+    pair: connected ? { browser: null, device: '192.168.1.20:61204' } : null,
     permission: scenario === 'blocked' ? 'denied' : 'granted',
     ...(scenario === 'dropped' ? { endedAt: new Date(startedAt + minutes(2)).toISOString() } : {}),
   }
@@ -85,7 +84,6 @@ export function demoDirect(scenario: DirectScenario): DirectStatus {
       direct: scenario === 'connected' ? LOCAL : scenario === 'slower' ? CONGESTED : null,
       relay: RELAY,
     },
-    speed: { direct: null, relay: null, testing: false },
   }
 }
 
@@ -99,7 +97,7 @@ const day = minutes(24 * 60)
 
 /** A demo device, paired `paired` ago, reached as `scenario` says. */
 function demoDevice(
-  device: Pick<SettingsDevice, 'id' | 'name' | 'state' | 'seen' | 'start'> & { os: SettingsDevice['os']; runnerVersion: string | null },
+  device: Pick<SettingsDevice, 'id' | 'name' | 'state' | 'seen'> & { os: SettingsDevice['os']; runnerVersion: string | null },
   scenario: DirectScenario,
   paired: number,
 ): GalleryDevice {
@@ -110,12 +108,12 @@ function demoDevice(
 export const DEMO_RUNNER_RELEASE = '9c1f…release'
 
 /** The paired devices of the Devices specimens. */
-export function galleryDevices(start: (system: 'linux' | 'windows') => SettingsDevice['start']): GalleryDevice[] {
+export function galleryDevices(): GalleryDevice[] {
   const current = (system: 'macos' | 'linux' | 'windows') => demoDeviceReport(system, DEMO_RUNNER_RELEASE)
   return [
     demoDevice({ id: 'mac', name: 'zan-mbp', state: 'online', seen: ago(0), ...current('macos') }, 'connected', 40 * day),
     demoDevice(
-      { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * day), start: start('linux'), ...current('linux') },
+      { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * day), ...current('linux') },
       'unreachable',
       90 * day,
     ),
@@ -134,7 +132,7 @@ export function galleryDevices(start: (system: 'linux' | 'windows') => SettingsD
 
 /**
  * The state of a Devices specimen: its devices, the page shown, and what
- * each control does to them. An attempt or a speed test takes a moment.
+ * each control does to them. An attempt takes a moment.
  */
 export function useGalleryDevices(initial: () => GalleryDevice[]) {
   const made = initial()
@@ -182,7 +180,7 @@ export function useGalleryDevices(initial: () => GalleryDevice[]) {
       const scenario = scenarioOf(device)
       const ends = scenario === 'serverOnly' || scenario === 'dropped' ? 'connected' : scenario
       const status = demoDirect(ends)
-      device.direct = { ...status, route: device.direct.route, attempt: demoAttempt(ends, startedAt), speed: device.direct.speed }
+      device.direct = { ...status, route: device.direct.route, attempt: demoAttempt(ends, startedAt) }
     })
   }
 
@@ -205,21 +203,6 @@ export function useGalleryDevices(initial: () => GalleryDevice[]) {
       return
     }
     tryNow(id)
-  }
-
-  /** A speed test takes a moment, then shows each path's MiB/s. */
-  function testSpeed(id: string) {
-    const device = find(id)
-    if (!device || device.direct.speed.testing)
-      return
-    device.direct.speed.testing = true
-    later(1200, () => {
-      device.direct.speed = {
-        direct: device.direct.peer ? (scenarioOf(device) === 'slower' ? 1.8 : 87.4) : null,
-        relay: 4.1,
-        testing: false,
-      }
-    })
   }
 
   function rename(id: string, name: string) {
@@ -252,5 +235,5 @@ export function useGalleryDevices(initial: () => GalleryDevice[]) {
     return { ok: true as const, device }
   }
 
-  return { devices, shown, scenarios, setScenario, tryNow, setRoute, testSpeed, rename, revoke, claim }
+  return { devices, shown, scenarios, setScenario, tryNow, setRoute, rename, revoke, claim }
 }

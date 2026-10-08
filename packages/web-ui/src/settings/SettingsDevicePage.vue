@@ -4,8 +4,6 @@ import { Cloud, Monitor } from '@lucide/vue'
 import Button from '../ui/Button.vue'
 import DetailsSheet from '../ui/DetailsSheet.vue'
 import Dropdown from '../ui/Dropdown.vue'
-import FiguresTable from '../ui/FiguresTable.vue'
-import HelpPopover from '../ui/HelpPopover.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
@@ -13,14 +11,13 @@ import StatusDot from '../ui/StatusDot.vue'
 import { formatDay, formatMoment, formatWhen, useTimeUntil } from '../composables/useRelativeTime'
 import DeviceRenameDialog from '../devices/DeviceRenameDialog.vue'
 import DeviceRevokeDialog from '../devices/DeviceRevokeDialog.vue'
-import DeviceStartHint from '../devices/DeviceStartHint.vue'
 import {
   DEVICE_ROUTE_DESCRIPTION,
   DEVICE_ROUTE_LABEL,
   DIRECT_STAGE_LABEL,
   directReason,
   formatLatency,
-  formatLoss,
+  pathsFootnote,
   reasonSentence,
   shownAddress,
   type DeviceRoute,
@@ -40,8 +37,8 @@ import type { SettingsDevice } from './types'
  * A device's own page (`direct-channel.md` § What the user sees), which its
  * row in Devices opens. Its header says how this page reaches it now, why
  * not directly and when Demi tries again, with Details… for the last
- * attempt's diagnostics and Try Again; Connection holds the route, with the
- * two paths' measured figures under it and Test Speed; Device holds the
+ * attempt's diagnostics and Try Again; Connection holds the route, with a
+ * footnote comparing the two paths' latency from this browser; Device holds the
  * facts, with Rename…; Revoke… ends the page. The Cloud's page says it is
  * always reached through the server and has no Connection.
  */
@@ -63,7 +60,6 @@ const emit = defineEmits<{
   back: []
   setRoute: [route: DeviceRoute]
   tryNow: []
-  testSpeed: []
   rename: [name: string]
   revoke: []
 }>()
@@ -106,6 +102,9 @@ const status = computed<{ tone: 'success' | 'warning' | 'muted'; words: Sentence
     : { tone: 'muted', words: 'Through the server' }
 })
 
+/** The line under Connection that compares the paths; none while the device is offline. */
+const footnote = computed(() => (direct.value && online.value ? pathsFootnote(direct.value) : null))
+
 const nextIn = useTimeUntil(() => direct.value?.nextAt ?? new Date().toISOString())
 
 /** The sentence under the status: why the server's path is used, then when Demi tries again. */
@@ -133,34 +132,6 @@ const explanation = computed<SentenceText | null>(() => {
 const canTryAgain = computed(() => {
   const status = direct.value
   return !!status && online.value && status.route !== 'server' && !status.chosen && !status.peer
-})
-
-const columns = [
-  { key: 'latency', label: 'Latency' },
-  { key: 'jitter', label: 'Jitter' },
-  { key: 'loss', label: 'Loss' },
-  { key: 'speed', label: 'Speed' },
-] as const
-
-/** A path's figures as the table shows them. */
-function figureValues(figures: PathFigures | null, speed: number | null): Record<string, string | null> {
-  return {
-    latency: figures ? formatLatency(figures.latencyMs) : null,
-    jitter: figures ? formatLatency(figures.jitterMs) : null,
-    loss: figures?.loss === null || figures?.loss === undefined ? null : formatLoss(figures.loss),
-    speed: speed === null ? null : `${speed < 10 ? speed.toFixed(1) : Math.round(speed)} MiB/s`,
-  }
-}
-
-const rows = computed(() => {
-  const status = direct.value
-  if (!status) {
-    return []
-  }
-  return [
-    { key: 'direct', label: 'Direct', values: figureValues(status.figures.direct, status.speed.direct), current: status.chosen },
-    { key: 'server', label: 'Server', values: figureValues(status.figures.relay, status.speed.relay), current: !status.chosen },
-  ]
 })
 
 /** How long an attempt took, as a person reads it. */
@@ -238,56 +209,37 @@ function revoke() {
     <template v-if="!device || explanation" #description>
       {{ device ? explanation : 'The Cloud runs beside the server, so this browser always reaches it through the server.' }}
     </template>
-    <template v-if="attempt || canTryAgain || (device?.state === 'offline' && device.start)" #actions>
-      <HelpPopover
-        v-if="device?.state === 'offline' && device.start"
-        label="How to Start Its Runner"
-        :overlay-store="overlayStore"
-      >
-        <DeviceStartHint :start="device.start" />
-      </HelpPopover>
+    <template v-if="attempt || canTryAgain" #actions>
       <Button v-if="attempt" size="sm" @click="detailsOpen = true">Details…</Button>
       <Button v-if="canTryAgain" size="sm" :loading="direct?.trying" @click="emit('tryNow')">Try Again</Button>
     </template>
 
-    <div v-if="device" class="flex flex-col gap-3">
-      <SettingsGroup title="Connection">
-        <SettingsRow label="Route" :description="DEVICE_ROUTE_DESCRIPTION[device.direct.route]">
-          <Dropdown
-            size="sm"
-            :overlay-store="overlayStore"
-            variant="default"
-            trigger-label="Route"
-            :disabled="changing"
-          >
-            <template #trigger>{{ DEVICE_ROUTE_LABEL[device.direct.route] }}</template>
-            <template #content="{ close }">
-              <Menu>
-                <MenuItem
-                  v-for="route in ROUTES"
-                  :key="route"
-                  :label="DEVICE_ROUTE_LABEL[route]"
-                  choice
-                  :is-selected="device.direct.route === route"
-                  @select="close(); route !== device.direct.route && emit('setRoute', route)"
-                />
-              </Menu>
-            </template>
-          </Dropdown>
-        </SettingsRow>
-      </SettingsGroup>
-      <FiguresTable
-        v-if="online"
-        caption="Measured from this browser"
-        :columns="columns"
-        :rows="rows"
-        current-label="In use"
-      >
-        <template #action>
-          <Button size="sm" :loading="device.direct.speed.testing" @click="emit('testSpeed')">Test Speed</Button>
-        </template>
-      </FiguresTable>
-    </div>
+    <SettingsGroup v-if="device" title="Connection">
+      <SettingsRow label="Route" :description="DEVICE_ROUTE_DESCRIPTION[device.direct.route]">
+        <Dropdown
+          size="sm"
+          :overlay-store="overlayStore"
+          variant="default"
+          trigger-label="Route"
+          :disabled="changing"
+        >
+          <template #trigger>{{ DEVICE_ROUTE_LABEL[device.direct.route] }}</template>
+          <template #content="{ close }">
+            <Menu>
+              <MenuItem
+                v-for="route in ROUTES"
+                :key="route"
+                :label="DEVICE_ROUTE_LABEL[route]"
+                choice
+                :is-selected="device.direct.route === route"
+                @select="close(); route !== device.direct.route && emit('setRoute', route)"
+              />
+            </Menu>
+          </template>
+        </Dropdown>
+      </SettingsRow>
+      <template v-if="footnote" #footer>{{ footnote }}</template>
+    </SettingsGroup>
 
     <SettingsGroup title="Device">
       <SettingsRow v-if="device" label="Name">

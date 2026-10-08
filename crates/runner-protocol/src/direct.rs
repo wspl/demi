@@ -31,9 +31,6 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// relay's watch does.
 pub const WATCH_HEARTBEAT: Duration = Duration::from_secs(30);
 
-/// The most bytes one speed test asks for, on either path
-/// (`direct-channel.md` § Measuring the paths).
-pub const SPEED_MAX_BYTES: u64 = 64 * 1024 * 1024;
 /// The label of a peer's probe channel, unordered and never retransmitted,
 /// on which the runner sends back each message as it arrives.
 pub const PROBE_LABEL: &str = "probe";
@@ -290,19 +287,12 @@ pub enum ChannelHeader {
         #[garde(length(min = 1), custom(without_nul))]
         cwd: String,
     },
-    /// Test Speed's direct half: `bytes` random bytes, after `{ ok }`; it
-    /// acts for no conversation (`direct-channel.md` § Measuring the paths).
-    Speed {
-        #[garde(range(min = 1, max = SPEED_MAX_BYTES))]
-        bytes: u64,
-    },
 }
 
 impl ChannelHeader {
     /// The conversation the operation acts for, and the directory its work
-    /// starts in on the device, as the conversation's summary names them;
-    /// none for a speed test, which acts for none.
-    pub fn scope(&self) -> Option<Scope<'_>> {
+    /// starts in on the device, as the conversation's summary names them.
+    pub fn scope(&self) -> Scope<'_> {
         let (Self::Stream { conversation, cwd, .. }
         | Self::Read { conversation, cwd, .. }
         | Self::Write { conversation, cwd, .. }
@@ -310,11 +300,8 @@ impl ChannelHeader {
         | Self::List { conversation, cwd, .. }
         | Self::Mkdir { conversation, cwd, .. }
         | Self::Delete { conversation, cwd, .. }
-        | Self::Watch { conversation, cwd }) = self
-        else {
-            return None;
-        };
-        Some(Scope { conversation, cwd })
+        | Self::Watch { conversation, cwd }) = self;
+        Scope { conversation, cwd }
     }
 }
 

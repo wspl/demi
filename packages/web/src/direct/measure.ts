@@ -85,10 +85,7 @@ export class PathProbes {
   }
 }
 
-/**
- * Latency, the median round trip; jitter, the mean difference between
- * consecutive round trips, as RTP computes it; loss, the share lost.
- */
+/** Latency, the median round trip, and loss, the share lost. */
 function figuresOf(samples: readonly Sample[], lossy: boolean): PathFigures | null {
   const rtts = samples.flatMap((sample) => (sample.rtt === null ? [] : [sample.rtt]))
   if (rtts.length === 0) {
@@ -97,16 +94,11 @@ function figuresOf(samples: readonly Sample[], lossy: boolean): PathFigures | nu
   const sorted = [...rtts].sort((a, b) => a - b)
   const middle = Math.floor(sorted.length / 2)
   const latencyMs = sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2
-  let differences = 0
-  for (let index = 1; index < rtts.length; index++) {
-    differences += Math.abs(rtts[index]! - rtts[index - 1]!)
-  }
-  const jitterMs = rtts.length > 1 ? differences / (rtts.length - 1) : 0
   const loss = lossy ? (samples.length - rtts.length) / samples.length : null
-  return { latencyMs, jitterMs, loss }
+  return { latencyMs, loss }
 }
 
-/** Whether the direct path is worse than the relay's: losing over 2 %, or over 20 ms slower. */
+/** Whether the direct path is worse than the relay's: losing over 2%, or over 20 ms slower. */
 export function directWorse(direct: PathFigures | null, relay: PathFigures | null): boolean {
   if (!direct) {
     return false

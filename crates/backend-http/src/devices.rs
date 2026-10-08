@@ -1,16 +1,11 @@
 //! `/api/devices` (`web-api.md` § Workspaces, devices, and attached hosts,
 //! § Device files and remote references, § Device log): the caller's
 //! devices, pairing, renaming and routes, revocation, browsing a paired
-//! device's directories to choose a target, a Host's log, and the relay half
-//! of a speed test. Browsing and the log
+//! device's directories to choose a target, and a Host's log. Browsing and the log
 //! reach the device through device access, which wakes nothing: a device
 //! whose runner is not connected answers 409 `device_offline`.
 
 use axum::Json;
-use axum::body::Body;
-use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
-use axum::response::{IntoResponse as _, Response};
-use futures_util::StreamExt as _;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_database::accounts::TokenHash;
@@ -21,7 +16,7 @@ use demi_backend_runners::files::browse_directory;
 use demi_host_interface::{HostError, HostErrorKind, MkdirOptions};
 use demi_web_api_protocol::devices::{
     ChangeDevice, Claim, DeviceAnswer, DeviceKind, DeviceLog, DeviceLogLine, DeviceLogQuery,
-    Devices, RevokedDevice, SpeedQuery,
+    Devices, RevokedDevice,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{
@@ -210,49 +205,6 @@ pub(super) async fn make_directory(
         })
         .await??;
     Ok((StatusCode::CREATED, Json(made)))
-}
-
-/// `bytes` random bytes from a paired device's runner through this backend,
-/// the relay half of Test Speed (`direct-channel.md` § Measuring the
-/// paths); it answers as the signaling route does when the device is the
-/// Cloud or its runner is not connected.
-pub(super) async fn speed(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-    QueryParams(SpeedQuery { bytes }): QueryParams<SpeedQuery>,
-) -> Result<Response, ApiError> {
-    let device = owned_device(&state, &user.id, &id, None).await?;
-    if device.kind == DeviceKind::Managed {
-        return Err(ApiError::new(
-            StatusCode::CONFLICT,
-            ErrorCode::NotAPairedDevice,
-            "A speed test measures a paired device's paths, not the Cloud's",
-        ));
-    }
-    let reader = state
-        .shards
-        .of(&user.id)
-        .call(move |shard, _| async move {
-            let host = shard
-                .devices()
-                .device_access(&device.id)
-                .ok_or_else(ApiError::device_offline)?;
-            host.speed(bytes.get()).await.map_err(|error| {
-                if error.kind == HostErrorKind::Offline {
-                    ApiError::device_offline()
-                } else {
-                    ApiError::new(StatusCode::BAD_GATEWAY, ErrorCode::HostOperationFailed, error.message)
-                }
-            })
-        })
-        .await??;
-    let body = reader.into_stream().map(|chunk| chunk.map_err(|failure| std::io::Error::other(failure.to_string())));
-    let headers = [
-        (CONTENT_TYPE, "application/octet-stream"),
-        (CACHE_CONTROL, "no-store"),
-    ];
-    Ok((headers, Body::from_stream(body)).into_response())
 }
 
 /// Lines of a device's Host log, the Cloud's included.

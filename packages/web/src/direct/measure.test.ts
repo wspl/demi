@@ -33,7 +33,7 @@ function paths() {
 test('one lost probe does not move the choice off the direct path', () => {
   const { run, slower } = paths()
   run(20, () => 2)
-  // A tenth of the next ten seconds' probes is lost, more than 2 %, but for
+  // A tenth of the next ten seconds' probes is lost, more than 2%, but for
   // less than ten seconds.
   run(1, () => null)
   run(20, () => 2)
@@ -55,18 +55,18 @@ test('a direct path slower for ten seconds gives way to the relay, and takes ove
   expect(slower.slice(40, 49).every((value) => value)).toBe(true)
 })
 
-test('a direct path losing more than 2 % of its probes for ten seconds gives way to the relay', () => {
+test('a direct path losing more than 2% of its probes for ten seconds gives way to the relay', () => {
   const { run, slower, direct } = paths()
   run(10, () => 2)
-  // One probe in five lost: 20 % of the last ten seconds.
+  // One probe in five lost: 20% of the last ten seconds.
   run(30, (second) => (second % 5 === 0 ? null : 2))
   expect(direct.figures()?.loss).toBeGreaterThan(0.02)
   expect(slower.at(-1)).toBe(true)
 })
 
-test('the figures are the median round trip, the mean change between round trips and the share lost, the relay losing none', () => {
+test('the figures are the median round trip and the share lost, the relay losing none', () => {
   const { run, direct, relay } = paths()
   run(4, (second) => [2, 4, null, 10][second]!)
-  expect(direct.figures()).toEqual({ latencyMs: 4, jitterMs: 4, loss: 0.25 })
-  expect(relay.figures()).toEqual({ latencyMs: 30, jitterMs: 0, loss: null })
+  expect(direct.figures()).toEqual({ latencyMs: 4, loss: 0.25 })
+  expect(relay.figures()).toEqual({ latencyMs: 30, loss: null })
 })

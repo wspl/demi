@@ -690,15 +690,6 @@ pub enum Inbound {
         #[garde(skip)]
         id: u32,
     },
-    /// The relay half of Test Speed: `bytes` random bytes into `output`,
-    /// after the runner says `speed_started`.
-    Speed {
-        id: String,
-        #[garde(range(min = 1, max = crate::direct::SPEED_MAX_BYTES))]
-        bytes: u64,
-        #[garde(skip)]
-        output: PipeRef,
-    },
     /// The page's signaling socket closed: the runner closes the peer.
     DirectClose {
         #[garde(length(min = 1))]
@@ -1059,10 +1050,6 @@ pub enum Outbound {
         peer: String,
         #[garde(skip)]
         id: u32,
-    },
-    /// The runner took a `speed` request; its bytes follow in its pipe.
-    SpeedStarted {
-        id: String,
     },
     /// The runner did not answer a `direct_offer`.
     DirectRefused {
