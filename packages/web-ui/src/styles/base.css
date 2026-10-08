@@ -1332,16 +1332,6 @@ html[data-theme="light"] {
   border-radius: calc(var(--capsule-radius) - var(--capsule-inset));
 }
 
-/* A sent message's image or video, its thumbnail where its capsule stood
-   (`AttachmentNodeView`): it sits on the line like a character, and those
-   that follow each other stand 8 pixels apart, as a run of images does. */
-.message-thumbnail {
-  display: inline-flex;
-  vertical-align: bottom;
-  margin-block: 2px;
-  margin-inline-end: 8px;
-}
-
 /* A user message in its editor (`MessageEditor`): lines, not paragraphs, so a
    run of text around a code block keeps only the lines typed. */
 .message-editor-text {

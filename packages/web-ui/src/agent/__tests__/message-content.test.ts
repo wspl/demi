@@ -70,15 +70,14 @@ test('a capsule names its file, shows its picture or opening lines, and its uplo
     id: '0',
     name: 'before.png',
     image: image.source,
-    medium: { kind: 'image', source: image.source },
     path: record.path,
     snippet: undefined,
   })
-  // A video the model could not read natively shows its own bytes.
+  // An image the model could not read natively shows its own bytes.
   expect(contentCapsule('3', [{
-    type: 'attachment', name: 'demo.mp4', path: '/home/demi/.demi/attachments/c/demo.mp4',
-    mediaType: 'video/mp4', sizeBytes: 3, sha256: 'b'.repeat(64),
-  }]).medium).toEqual({ kind: 'video', source: { type: 'ref', ref: 'b'.repeat(64), mediaType: 'video/mp4' } })
+    type: 'attachment', name: 'shot.png', path: '/home/demi/.demi/attachments/c/shot.png',
+    mediaType: 'image/png', sizeBytes: 3, sha256: 'b'.repeat(64),
+  }]).image).toEqual({ type: 'ref', ref: 'b'.repeat(64), mediaType: 'image/png' })
   expect(contentCapsule('1', [log])).toMatchObject({ name: 'build.log', snippet: 'error: the test failed' })
   expect(contentCapsule('2', [{
     type: 'reference',
