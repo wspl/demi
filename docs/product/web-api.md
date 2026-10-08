@@ -55,7 +55,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
 | Usage | `GET /usage` for the caller; `GET /usage/instance` for admins in shared mode |
-| Devices | `GET /devices`, `POST /devices/claim { code }`, `PATCH /devices/:id { name }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=<absolute>`, `POST /devices/:id/fs { path }` |
+| Devices | `GET /devices`, `POST /devices/claim { code }`, `PATCH /devices/:id { name?, direct? }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=<absolute>`, `POST /devices/:id/fs { path }` |
 | Workspaces | `GET/POST /workspaces`, `PATCH /workspaces/:id { name }`, `DELETE /workspaces/:id` |
 | Cloud | `GET /cloud`, `POST /cloud/reset { operationId }` |
 | Attachments | `POST /attachments` with raw bytes; `GET /blobs/:sha256?type=...` |
@@ -192,10 +192,14 @@ runner.
 A device in `GET /devices` and in the product state carries, besides its
 name and online state, `os`, the operating system and architecture its runner
 last reported, and `runnerVersion`, the runner release it last reported, such
-as `0.1.16`; both are null before its runner first connected. Settings shows
-them under the device's name, the Cloud's included. `PATCH /devices/:id
-{ name }` renames a paired device: the name is trimmed and has 1 to 64
-characters, and the answer is `{ device }`, 200, as for a claim. The Cloud's device keeps its
+as `0.1.16`; both are null before its runner first connected, and `direct`,
+whether pages may reach it over a [direct channel](../execution/direct-channel.md#choosing-the-path),
+true for a new device. Settings shows them on the device's page, the Cloud's
+included ([What the user sees](../execution/direct-channel.md#what-the-user-sees)).
+`PATCH /devices/:id { name?, direct? }` renames a paired device or turns its
+direct connections on or off, each field applied when present: the name is
+trimmed and has 1 to 64 characters, and the answer is `{ device }`, 200, as
+for a claim. The Cloud's device keeps its
 name: renaming it answers 409 `device_managed`, and a device the caller does
 not have 404 `device_not_found`. A rename reaches every page of the user in
 the product state; the names a conversation gives its attached hosts are its

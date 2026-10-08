@@ -22,6 +22,15 @@ it, moves to it when it connects, and goes back to the relay when it fails.
 Nothing waits for it, and nothing is lost when it never connects: the page
 then works exactly as it does without it.
 
+It works on one machine, on one local network, and across networks where
+both sides' routers let a connection through, which most home and office
+routers do: each side learns the address the internet sees it at from a
+public STUN server and offers it, and the two ends' checks open the way
+through both routers, as video calls do. It does not work where both
+networks map each outgoing connection to a new address (symmetric NAT) or
+block UDP; the relay then serves everything, and the device's page says
+why.
+
 ## What goes direct
 
 Only operations whose bytes are large or whose round trips the user feels,
@@ -54,10 +63,13 @@ was not told about.
    one per device, whichever of its conversations it shows. The upgrade
    checks the session cookie, the `Origin` header and that the caller owns
    the device. The backend gives the socket a peer id.
-2. **The offer.** The page creates an `RTCPeerConnection` with no ICE servers,
-   opens a first data channel so that the offer carries one, and sends the
-   offer at once, without waiting for its own candidates: the runner learns
-   the page's addresses from the checks the page sends it. The backend
+2. **The offer.** The page creates an `RTCPeerConnection` with the STUN
+   servers the backend names (`DEMI_STUN_URLS`, Cloudflare's public
+   `stun:stun.cloudflare.com:3478` by default; empty turns crossing networks
+   off), opens a first data channel so that the offer carries one, and sends
+   the offer at once; its candidates follow as `direct_candidate { peer,
+   candidate }` as the browser finds them, the public one once the STUN
+   server answers. The backend
    forwards the offer to the runner as `direct_offer { peer, sdp,
    introduction }`, where the introduction is what the runner cannot know on
    its own: the user's locale, and each user stream of the plugins the user
@@ -65,9 +77,12 @@ was not told about.
 3. **The answer.** The runner binds one UDP socket on `127.0.0.1` and one on
    each address it can be reached at on the local network, each on a port
    the system picks, and answers with those addresses as candidates in
-   `direct_answer { peer, sdp }`, which the backend forwards to the page. It
-   runs full ICE: the page's checks reach one of its sockets, and the pair
-   that answers first is used. Nothing listens on a fixed port, and no router
+   `direct_answer { peer, sdp }`, which the backend forwards to the page;
+   it asks the same STUN servers, from its local network sockets, for the
+   address the internet sees them at, and sends each it learns as a
+   `direct_candidate` too. It runs full ICE, checks to the page's candidates
+   included, so both routers see outgoing traffic and let the other side's
+   checks in; the pair that answers first is used. Nothing listens on a fixed port, and no router
    is configured.
 4. **Connected or not.** The page waits up to 10 seconds for the connection,
    and the runner gives up on a peer that has not connected in that time. A
@@ -83,7 +98,10 @@ ignores loopback candidates and connects to a local network address.
 
 The encryption keys' fingerprints travel in the offer and the answer, so
 each end knows it talks to the one the backend introduced. The channel is
-encrypted end to end with DTLS, as every WebRTC data channel is.
+encrypted end to end with DTLS, as every WebRTC data channel is. The STUN
+server only answers each side with its own public address: it sees that the
+browser and the device asked, and from where, and carries none of their
+traffic.
 
 ## Who may connect
 
@@ -180,7 +198,11 @@ refuses more with `busy`, which sends the page's operation to the relay.
 ## Choosing the path
 
 The page keeps one choice per device: `relay` or `direct`. It is `direct`
-while the peer is connected.
+while the peer is connected. The user can turn direct connections off for a
+device on its page, which every page of the user follows: the device's
+`direct` field ([Workspaces, devices, and attached hosts](../product/web-api.md#workspaces-devices-and-attached-hosts));
+a page then makes no peer for it, closes the one it has, and the relay serves
+everything, until it is turned on again.
 
 - **Each operation chooses as it starts.** A read, a text, a listing or a
   write starts on whatever the choice is at that moment, and finishes there.
@@ -237,13 +259,44 @@ connection state is `failed` or `closed`.
 
 ## What the user sees
 
-Nothing changes but speed. In Settings → Devices, an online paired device's
-row says in a few words how this page reaches it, *Connected directly* or
-*Through the server*, so a user can tell why one machine feels faster than
-another; nothing more stays in the row. Its `?` button opens the help that
-fits: how to allow direct connections when the browser blocks them, or, for
-an offline device, the command that starts its runner
-([Installation, pairing and removal](runner.md#installation-pairing-and-removal)). A user who blocks the
+Nothing changes but speed, and the user can see why. In Settings → Devices
+each row names a device and says, in one line, its system and how this page
+reaches it, *Connected directly* or *Through the server* with the reason in
+a few words, or that it is offline and when it was last seen; it shows no
+version, architecture or other code. The row opens the device's page,
+`/settings/devices/<id>`, as a row of macOS's System Settings opens its
+detail:
+
+- **Connection.** *Connect Directly When Possible*, on by default
+  ([Choosing the path](#choosing-the-path)); the status, direct or through the
+  server, with the round trip the direct channel measures; when through the
+  server, why, in a sentence that also says what the user can do; when the
+  last attempt ran and when the next will, with Try Now, which makes a new
+  peer at once; and Details, closed by default, with what the last attempt
+  saw: the stage it failed at (permission, gathering addresses, finding a
+  path, the encryption handshake, opening the channel), how long it took,
+  the addresses each side offered, local and public, the pairs tried and how
+  many answered, and the browser's local network permission.
+- **Device.** The system by its name and version, such as *macOS 26.5* or
+  *Ubuntu 26.04*, with the chip family, *Apple silicon*, *Intel* or *ARM*,
+  not an architecture code; the runner as *Up to date*, *Update available* or
+  *Development build*, never a version code; and when it was paired.
+- **Rename…** and **Revoke…**, which leave the list's rows.
+
+The reasons the page gives, from what the attempt saw:
+
+| Reason | When | The page says |
+| --- | --- | --- |
+| Turned off | The device's `direct` is off | Direct connections are off for this device, and everything goes through the server |
+| Blocked by this browser | The browser reports its local network permission blocked | The browser blocks local network access for this site, how to allow it in the site's settings, and that Demi connects without a reload once it is allowed |
+| Not reachable | Every pair was checked and none answered, and both sides found their public address | The two networks don't let a direct connection through, as with strict NAT or a firewall, and the addresses tried |
+| This network blocks it | One side found no public address: its network blocks UDP or the STUN server | Which side's network blocks it, the browser's or the device's |
+| Device is busy | The runner refused the peer with `busy` | The device's runner has too many connections open, and that Demi tries again |
+| Connection dropped | A connected peer failed | When it was direct until, and that Demi tries again |
+| Not offered | Crossing networks is off (`DEMI_STUN_URLS` empty) and no local pair answered | Direct connections work only on the same network as the device on this server |
+
+The Cloud is always reached through the server, since it runs beside the
+backend; its page says so and offers no switch. A user who blocks the
 browser's local network permission sees no prompt again and stays on the
 relay.
 
@@ -251,7 +304,7 @@ relay.
 
 | Situation | What happens |
 | --- | --- |
-| The browser and the Host are different machines that cannot reach each other | The peer never connects; the relay serves everything |
+| The browser and the Host are on networks that do not let a direct connection through (symmetric NAT on both, or UDP blocked) | The peer never connects; the relay serves everything, and the device's page says why |
 | Two machines on one local network | The peer connects over the network's addresses, as on one machine |
 | The browser asks for local network permission, and the user has not answered | The relay serves everything; a later attempt or a permission change tries again |
 | Windows asks whether the runner may receive connections | The runner's local network sockets are blocked until the user allows it; `127.0.0.1` still connects in Chrome |
@@ -263,12 +316,12 @@ relay.
 
 | Where | Responsibility |
 | --- | --- |
-| `runner-protocol` | The `direct_offer`, `direct_answer`, `direct_close` and `direct_stream` messages and the operations' headers and answers |
+| `runner-protocol` | The `direct_offer`, `direct_answer`, `direct_candidate`, `direct_close` and `direct_stream` messages and the operations' headers and answers |
 | `runner-direct` | The runner's peers: sockets, ICE, DTLS and SCTP through str0m, and each operation carried out through `runner-host` and the service streams the runner supplies; on its own thread, off the runner's control thread, since a peer at full speed fills a core |
 | `runner` | Composing `runner-direct` with the Host operations and service streams, and closing every peer when the backend connection ends |
 | `backend-http` | The signaling route, with the device access check |
 | `web` | The peer, the choice of path, the operations' clients, the service worker, and the user streams and file reads the page context supplies over either path |
-| `web-ui` | The *Connected directly* note and the blocked-permission note in the Devices settings |
+| `web-ui` | The devices list's rows and the device's page with its Connection section, reasons and details |
 
 ## Rationale
 
