@@ -43,7 +43,7 @@ const rules: readonly ElementRule[] = [
     kind: 'Menu item',
     where: 'MenuItem label, a Dropdown’s options',
     style: 'title',
-    right: ['New Conversation Here', 'Use as Primary Environment…'],
+    right: ['New Conversation Here', 'Add Device…'],
     wrong: ['New conversation here'],
     source: { label: 'HIG: Menus', href: `${HIG}/menus` },
   },
@@ -51,8 +51,8 @@ const rules: readonly ElementRule[] = [
     kind: 'Menu section heading',
     where: 'MenuGroup label',
     style: 'title',
-    right: ['Attached Hosts'],
-    wrong: ['Attached hosts'],
+    right: ['Run On'],
+    wrong: ['Run on'],
     source: { label: 'macOS HIG 2016: list headings', href: MACOS_HIG_2016 },
   },
   {
@@ -262,7 +262,7 @@ const punctuationRules: readonly TextRule[] = [
   {
     title: 'Quotation marks are curly',
     rule: 'A name or a phrase the UI quotes stands between curly quotation marks (“ ”), as a confirmation names what it removes. Straight ones (") are for code and for what the user typed.',
-    right: ['Remove “OpenAI API”?', 'the sidebar’s “Move To”'],
+    right: ['Remove “OpenAI API”?', 'the header’s “Run On”'],
     wrong: ['Remove "OpenAI API"?'],
     source: 'Apple Style Guide: quotation marks; macOS 26 Finder’s Move to Trash confirmation',
   },

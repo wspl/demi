@@ -18,7 +18,7 @@ use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use demi_backend_database::conversation_index::{
-    AttachedHostRecord, ChangeOutcome, ExecutionTarget, RecordChange,
+    AttachedHostRecord, ExecutionTarget, RecordChange,
 };
 use demi_backend_remote_host::{JobEnd, JobStart, Pipe, RemoteJob};
 use demi_host_interface::{
@@ -381,7 +381,7 @@ async fn detach(
         .mark_detach(conversation.clone(), host.device.clone())
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
-    if marked != ChangeOutcome::Applied {
+    if !marked {
         port.stderr(format!("host detach: host {wanted} is not attached to this conversation\n"))
             .await?;
         return Ok(1);

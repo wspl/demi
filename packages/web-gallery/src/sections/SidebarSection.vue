@@ -81,7 +81,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Selection',
-    'One selection across plain rows and projects. Click selects and opens; ⌘-click toggles; Shift-click ranges. Drag rows to reorder within a group and pin partition. Project dragging temporarily folds all projects, restores their expansion on release, and smoothly centers the moved header. Right-click acts on the selection: open, rename and copy conversation ID for one row; pin, move to a project, archive and delete for any count. Delete asks first in a dialog that names the one conversation or counts several, and its Delete button removes the rows for good. Copy ID writes the identifier to the clipboard and confirms with a toast. Project headers have their own menu.'
+    'One selection across plain rows and projects. Click selects and opens; ⌘-click toggles; Shift-click ranges. Drag rows to reorder within a group and pin partition. Project dragging temporarily folds all projects, restores their expansion on release, and smoothly centers the moved header. Right-click acts on the selection: open, rename and copy conversation ID for one row; pin, archive and delete for any count; a conversation moves into a project from its header, where it runs. Delete asks first in a dialog that names the one conversation or counts several, and its Delete button removes the rows for good. Copy ID writes the identifier to the clipboard and confirms with a toast. Project headers have their own menu.'
   ],
   [
     'Keys',
@@ -279,7 +279,6 @@ onBeforeUnmount(() => listRestore.stop())
             @remove-project="removeProject"
             @rename="(id, title) => patch(id, (c) => ({ ...c, title }))"
             @pin="(ids, pinned) => patchMany(ids, (c) => ({ ...c, pinned }))"
-            @move-to-project="(ids, projectId) => patchMany(ids, (c) => ({ ...c, projectId }))"
             @archive="dropMany"
             @delete="deleteMany"
             @open-settings="openSettings"

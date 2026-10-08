@@ -211,13 +211,18 @@ impl Shard {
         }
     }
 
-    /// Where a target runs, as the notice names it: its Host and directory.
-    async fn place(&self, target: &ExecutionTarget) -> String {
-        let host = match target.device() {
+    /// Where a target runs, as Demi's messages about a move name it: its
+    /// Host and directory, `MacBook Pro (/Users/zan/code/app)`.
+    pub(crate) async fn place(&self, target: &ExecutionTarget) -> String {
+        format!("{} ({})", self.target_host(target).await, target.path())
+    }
+
+    /// The Host a target runs on, by the name Demi's messages give it.
+    pub(crate) async fn target_host(&self, target: &ExecutionTarget) -> String {
+        match target.device() {
             Some(device) => self.host_name(device).await,
             None => "Cloud".to_owned(),
-        };
-        format!("{host} ({})", target.path())
+        }
     }
 
     /// A device's name, or Cloud for the user's Cloud, as Demi's messages

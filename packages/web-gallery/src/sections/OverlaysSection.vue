@@ -24,10 +24,10 @@ import SettingsRow from '@demicodes/web-ui/settings/SettingsRow.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { reactive, ref } from 'vue'
-import HostPicker from '@demicodes/web-ui/hosts/HostPicker.vue'
-import AutofocusScope from '@demicodes/web-ui/ui/AutofocusScope.vue'
-import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
-import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import type { HostDeviceOption } from '@demicodes/web-ui/hosts/types'
+import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
+import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
+import GalleryHostMenu from '../components/GalleryHostMenu.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import { demoImageUrl } from '../fixtures/blocks'
 import GallerySection from '../components/GallerySection.vue'
@@ -48,38 +48,30 @@ const hostStatusItems = hostDevices.map((device) => ({
   label: device.name,
   indicator: DEVICE_STATE_TONE[device.state],
   indicatorLabel: DEVICE_STATE_LABEL[device.state],
+  value: device.state === 'online' ? undefined : DEVICE_STATE_LABEL[device.state],
 }))
-const primaryHost = ref<HostMenuHost>({
-  id: 'mac',
-  name: 'zan-mbp',
-  kind: 'device',
-  state: 'online',
-})
-const attachedHosts = ref<HostMenuHost[]>([
-  ...hostDevices.filter(device => device.id !== 'mac').map(device => ({ ...device, kind: 'device' as const })),
-  { id: 'managed-device', name: 'Cloud', kind: 'cloud', state: 'offline' },
-])
-
-function switchPrimaryHost(id: string) {
-  const device = hostDevices.find(device => device.id === id)
-  primaryHost.value = device
-    ? { id: device.id, name: device.name, kind: 'device', state: device.state }
-    : { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online' }
-}
-
-function attachHost(id: string) {
-  const device = hostDevices.find(device => device.id === id)
-  if (device)
-    attachedHosts.value.push({ ...device, kind: 'device' })
-}
-
-function detachHost(id: string) {
-  attachedHosts.value = attachedHosts.value.filter(device => device.id !== id)
-}
-
-/** A host's name as the host menu shows it; the Cloud is the one that is no device. */
-function deviceName(id: string): string {
-  return hostDevices.find(device => device.id === id)?.name ?? 'Cloud'
+/**
+ * The devices the host menu specimens list: one for each path this page
+ * can reach a device by, one it has not reached this session, and one
+ * offline.
+ */
+const menuDevices: HostDeviceOption[] = [
+  { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer' },
+  { id: 'studio', name: 'Studio PC', state: 'online', path: 'localNetwork' },
+  { id: 'build', name: 'build-box', state: 'online', path: 'internet' },
+  { id: 'office', name: 'Office Mac mini', state: 'online', path: 'relay' },
+  { id: 'lab', name: 'lab-workstation-with-a-long-hostname', state: 'online' },
+  { id: 'old', name: 'Old Laptop', state: 'offline' },
+]
+const askedMove = useMoveQuestion()
+function askMove() {
+  void askedMove.ask(
+    { host: 'MacBook Pro', directory: '~/code/ledable-app', from: 'Cloud', fromCloud: true },
+    async (tell) => {
+      productWould(tell ? 'Move the Conversation and Tell the Agent' : 'Move the Conversation')
+      return true
+    },
+  )
 }
 const statusSelected = ref('mac')
 
@@ -402,17 +394,6 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             </Menu>
           </GallerySpecimen>
         </GalleryOverlayWell>
-        <GallerySpecimen variant="host picker · online, bound and offline">
-          <!-- A picker shown open beside the others: it would take the keys as it does in its popover. -->
-          <AutofocusScope :enabled="false">
-            <HostPicker
-              :devices="hostDevices"
-              :bound-ids="['build']"
-              @select="productWould(`Selected ${$event}`)"
-              @connect="productWould('Add Device')"
-            />
-          </AutofocusScope>
-        </GallerySpecimen>
         <GallerySpecimen variant="status dots · virtual list without icons">
           <Menu
             :autofocus="false"
@@ -422,37 +403,30 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             @select="statusSelected = $event"
           />
         </GallerySpecimen>
-        <GallerySpecimen variant="cloud host · no status dot">
-          <HostMenu
-            :primary-host="{ id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'offline' }"
-            :attached-hosts="[]"
-            :devices="hostDevices"
-            @switch-primary="productWould(`Move the Conversation to ${deviceName($event)}`)"
-            @attach="productWould(`Attach ${deviceName($event)}`)"
-            @detach="productWould(`Detach ${deviceName($event)}`)"
-            @connect="productWould('Add Device')"
-          />
+        <GallerySpecimen variant="host menu · a conversation with messages: a move asks first">
+          <GalleryHostMenu :devices="menuDevices" primary-id="mac" :attached-ids="['build', 'old']" has-messages />
+        </GallerySpecimen>
+        <GallerySpecimen variant="host menu · a new conversation moves at once">
+          <GalleryHostMenu :devices="menuDevices" :primary-id="null" />
+        </GallerySpecimen>
+        <GallerySpecimen variant="host menu · in a project: a device opens its directory picker">
+          <GalleryHostMenu :devices="menuDevices" primary-id="studio" in-project has-messages />
+        </GallerySpecimen>
+        <GallerySpecimen variant="host menu · while the conversation works">
+          <GalleryHostMenu :devices="menuDevices" primary-id="mac" :attached-ids="['build']" locked />
         </GallerySpecimen>
         <GallerySpecimen variant="host menu · a name longer than the button, whole on hover">
-          <HostMenu
-            :primary-host="{ id: 'lab', name: 'lab-workstation-with-a-long-hostname', kind: 'device', state: 'online' }"
-            :attached-hosts="[]"
-            :devices="hostDevices"
-            @switch-primary="productWould(`Move the Conversation to ${deviceName($event)}`)"
-            @attach="productWould(`Attach ${deviceName($event)}`)"
-            @detach="productWould(`Detach ${deviceName($event)}`)"
-            @connect="productWould('Add Device')"
-          />
+          <GalleryHostMenu :devices="menuDevices" primary-id="lab" />
         </GallerySpecimen>
-        <GallerySpecimen variant="host menu · label/value and status">
-          <HostMenu
-            :primary-host="primaryHost"
-            :attached-hosts="attachedHosts"
-            :devices="hostDevices"
-            @switch-primary="switchPrimaryHost"
-            @attach="attachHost"
-            @detach="detachHost"
-            @connect="productWould('Add Device')"
+        <GallerySpecimen variant="move dialog">
+          <Button @click="askMove">Move to MacBook Pro…</Button>
+          <MoveConversationDialog
+            :is-open="askedMove.open.value"
+            :overlay-store="appOverlayStore"
+            :question="askedMove.question.value"
+            :busy="askedMove.busy.value"
+            @close="askedMove.cancel"
+            @move="askedMove.answer"
           />
         </GallerySpecimen>
         <div class="specimen-row specimen-row-wide items-start">

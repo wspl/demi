@@ -93,6 +93,14 @@ export const permissionReceiptMessages: AgentMessage[] = [
   event: { type: 'permission' as const, outcome, action: 'manage skills' },
 }))
 
+/** The user's move of the conversation, which the user told the agent of. */
+export const movedReceiptMessage: AgentMessage = {
+  id: 'moved:4',
+  recipientId: 'gallery-parent',
+  timestamp: '2026-09-12T12:08:00.000Z',
+  content: 'The user moved this conversation from Cloud (/home/demi/sessions/0f4e2a1c) to MacBook Pro (/Users/zan/code/ledable-app). Files did not move. Check what this means for the work so far, and tell the user.',
+  event: { type: 'moved', host: 'MacBook Pro', path: '/Users/zan/code/ledable-app', home: '/Users/zan' },
+}
 /** A decision on a request of two categories, and Demi's notice that a move the agent asked for failed. */
 export const organizeReceiptMessages: AgentMessage[] = [
   {

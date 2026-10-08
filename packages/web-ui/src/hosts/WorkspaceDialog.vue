@@ -37,9 +37,8 @@ import {
  * browser is a page of the same dialog, opened by Browse…. Every opening
  * starts from a clean form on the user's last choice of kind and device,
  * the Cloud the first time (`product.md` § Conversations and projects); the
- * host remembers it from `choose`. Switching between existing projects is the
- * sidebar's Move To and the conversation header's workspace control, not this
- * dialog.
+ * host remembers it from `choose`. Moving a conversation between existing
+ * projects is the conversation header's menus, not this dialog.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -304,7 +303,7 @@ function selectDevice(id: string, close: () => void): void {
                         :label="entry.name"
                         :indicator="DEVICE_STATE_TONE[entry.state]"
                         :indicator-label="DEVICE_STATE_LABEL[entry.state]"
-                        :note="entry.state === 'online' ? undefined : DEVICE_STATE_LABEL[entry.state]"
+                        :value="entry.state === 'online' ? undefined : DEVICE_STATE_LABEL[entry.state]"
                         :disabled="entry.state !== 'online'"
                         disabled-reason="This device is offline."
                         choice

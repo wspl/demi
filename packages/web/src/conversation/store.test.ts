@@ -176,15 +176,12 @@ beforeEach(async () => {
       if (!existing) {
         records.unshift(created)
       }
-      const hosts = (body.hosts ?? []).map((host: { deviceId: string; name: string }) => ({
-        ...host, cwd: null, state: 'online', attachedAt: '2026-09-09T00:00:00.000Z',
-      }))
-      return Response.json({ conversation: created, hosts }, { status: existing ? 200 : 201 })
+      return Response.json({ conversation: created }, { status: existing ? 200 : 201 })
     }
     if (path === '/api/conversations/batch') {
       const items = body.items as {
         id: string
-        patch: Partial<ConversationSummary>
+        patch: Partial<ConversationSummary> & { notifyAgent?: boolean }
       }[]
       return Response.json(
         {
@@ -206,12 +203,14 @@ beforeEach(async () => {
                 ],
               }
             }
-            Object.assign(current, item.patch)
+            // Telling the agent is no field of the record, and has no result of its own.
+            const { notifyAgent: _told, ...fields } = item.patch
+            Object.assign(current, fields)
             return {
               status: 'updated',
               id: item.id,
               conversation: current,
-              results: Object.keys(item.patch).map((field) => ({
+              results: Object.keys(fields).map((field) => ({
                 field,
                 status: 'applied',
               })),
@@ -724,12 +723,11 @@ test('the first send keeps the new conversation shown while its record opens', a
   }
 })
 
-test('the first send creates the conversation with its settings and hosts in one request and reads nothing of it back', async () => {
+test('the first send creates the conversation with its settings in one request and reads nothing of it back', async () => {
   const store = useConversations()
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  conversation.attachedHosts = [{ deviceId: 'laptop', name: 'build', cwd: null }]
   useProduct().snapshot!.providers.push(stubProvider)
   const originalFetch = globalThis.fetch
   const readBack: string[] = []
@@ -751,10 +749,8 @@ test('the first send creates the conversation with its settings and hosts in one
     expect(created.map((request) => request.body)).toEqual([{
       id, title: conversation.title, pinned: false, target: { kind: 'cloud' },
       model: { providerId: 'stub', modelId: 'stub' }, serviceTierId: null,
-      hosts: [{ deviceId: 'laptop', name: 'build' }],
     }])
     expect(readBack).toEqual([])
-    expect(conversation.attachedHosts.map((host) => host.name)).toEqual(['build'])
   } finally {
     submit.mockRestore()
     connect.mockRestore()
@@ -762,36 +758,34 @@ test('the first send creates the conversation with its settings and hosts in one
   }
 })
 
-test('a draft whose attached device becomes its primary creates the conversation on that device alone', async () => {
+test('a draft moves without telling anyone and is created where it moved; a conversation with a record asks the backend to tell its agent', async () => {
   const store = useConversations()
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  useProduct().snapshot!.devices.push({
-    id: 'laptop', kind: 'user', name: 'laptop', platform: 'darwin', claimedAt: '2026-09-10T00:00:00.000Z',
-    lastSeenAt: null, state: 'online', home: '/Users/ada', installed: [], startCommand: null, os: null, runnerVersion: null, route: 'automatic',
-  })
   useProduct().snapshot!.providers.push(stubProvider)
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) =>
     String(input).startsWith('/api/models') ? Response.json(stubCatalog()) : originalFetch(input, init)) as typeof fetch
   const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
   const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
+  const onLaptop = { kind: 'device' as const, deviceId: 'laptop', path: '/Users/ada/work' }
   try {
     await useProduct().loadModels(true)
     await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
-    await store.attachHost(conversation, 'laptop')
-    expect(conversation.attachedHosts.map((host) => host.deviceId)).toEqual(['laptop'])
-    await store.switchTarget(id, { kind: 'device', deviceId: 'laptop', path: '/Users/ada/work' })
-    expect(conversation.attachedHosts).toEqual([])
+    expect(await store.switchTarget(id, onLaptop, true)).toBe(true)
     conversation.draft = 'First message'
     await store.send(conversation)
-    expect(submit).toHaveBeenCalledTimes(1)
     const created = requests.filter((request) => request.path === '/api/conversations')
-    expect(created.map((request) => request.body)).toMatchObject([{
-      target: { kind: 'device', deviceId: 'laptop', path: '/Users/ada/work' },
-      hosts: [],
-    }])
+    expect(created.map((request) => request.body)).toMatchObject([{ target: onLaptop }])
+    expect(requests.filter((request) => request.path === '/api/conversations/batch')).toEqual([])
+
+    expect(await store.switchTarget(FIRST, onLaptop, true)).toBe(true)
+    expect(await store.switchTarget(FIRST, { kind: 'cloud' })).toBe(true)
+    expect(requests.filter((request) => request.path === '/api/conversations/batch').map((request) => request.body)).toEqual([
+      { items: [{ id: FIRST, patch: { target: onLaptop, notifyAgent: true } }] },
+      { items: [{ id: FIRST, patch: { target: { kind: 'cloud' } } }] },
+    ])
   } finally {
     submit.mockRestore()
     connect.mockRestore()
@@ -799,33 +793,23 @@ test('a draft whose attached device becomes its primary creates the conversation
   }
 })
 
-test('an attach and a rename show the hosts their answers list, and a detach the one it removed, with no read', async () => {
+test('a detach shows the hosts without the one it removed, with no read', async () => {
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
-  const host = (name: string) => ({ deviceId: 'laptop', name, cwd: null, state: 'online', attachedAt: '2026-09-09T00:00:00.000Z' })
+  first.attachedHosts = [{ deviceId: 'laptop', name: 'laptop', cwd: null }]
   const originalFetch = globalThis.fetch
   const sent: string[] = []
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
     const method = init?.method ?? 'GET'
     sent.push(`${method} ${path}`)
-    if (path === `/api/conversations/${FIRST}/hosts` && method === 'POST') return Response.json({ hosts: [host('laptop')] }, { status: 201 })
-    if (path === `/api/conversations/${FIRST}/hosts/laptop` && method === 'PATCH') return Response.json({ hosts: [host('build')] })
     if (path === `/api/conversations/${FIRST}/hosts/laptop` && method === 'DELETE') return new Response(null, { status: 204 })
     return originalFetch(input, init)
   }) as typeof fetch
   try {
-    await store.attachHost(first, 'laptop')
-    expect(first.attachedHosts.map((attached) => attached.name)).toEqual(['laptop'])
-    await store.renameHost(first, 'laptop', 'build')
-    expect(first.attachedHosts.map((attached) => attached.name)).toEqual(['build'])
     await store.detachHost(first, 'laptop')
     expect(first.attachedHosts).toEqual([])
-    expect(sent).toEqual([
-      `POST /api/conversations/${FIRST}/hosts`,
-      `PATCH /api/conversations/${FIRST}/hosts/laptop`,
-      `DELETE /api/conversations/${FIRST}/hosts/laptop`,
-    ])
+    expect(sent).toEqual([`DELETE /api/conversations/${FIRST}/hosts/laptop`])
   } finally {
     globalThis.fetch = originalFetch
   }
@@ -1304,7 +1288,6 @@ test('the list waits for the new conversations this web browser keeps, so a relo
       local: {
         phase: 'draft',
         conversation: { id: draftId, title: 'New conversation', pinned: false, archived: false, target: { kind: 'cloud' }, createdAt: now, updatedAt: now },
-        hosts: [],
       },
     }])
     await initialized

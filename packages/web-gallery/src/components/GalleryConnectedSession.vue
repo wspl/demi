@@ -94,16 +94,15 @@ function selectRecent(id: string): void {
     folder.value = { deviceId: folder.value.deviceId, path: recent.path }
   }
 }
-function switchPrimary(id: string): void {
-  const host = hosts.find((candidate) => candidate.id === id)
+/** A Host chosen in the host menu: a device moves the session to its home; the gallery has no Cloud to move to. */
+function choose(chosen: { kind: 'cloud' } | { kind: 'device'; id: string }): void {
+  if (chosen.kind === 'cloud') {
+    productWould('Move the Conversation to the Cloud')
+    return
+  }
+  const host = hosts.find((candidate) => candidate.id === chosen.id)
   if (host) {
     folder.value = { deviceId: host.id, path: host.source.home }
-  }
-}
-function attach(id: string): void {
-  const device = devices.find((candidate) => candidate.id === id)
-  if (device && !attachedHosts.value.some((host) => host.id === id)) {
-    attachedHosts.value = [...attachedHosts.value, { ...device, kind: 'device' }]
   }
 }
 function detach(id: string): void {
@@ -158,10 +157,8 @@ function detach(id: string): void {
               :primary-host="primaryHost"
               :attached-hosts="attachedHosts"
               :devices="devices"
-              :primary-locked="locked"
-              :attachments-locked="session.archived"
-              @switch-primary="switchPrimary"
-              @attach="attach"
+              :locked="locked"
+              @choose="choose"
               @detach="detach"
               @connect="productWould('Add Device')"
             />

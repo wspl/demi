@@ -57,11 +57,6 @@ pub enum ChangeRefusal {
     /// The device to attach is the conversation's primary Host.
     #[error("That device is the conversation's primary host")]
     HostIsPrimary,
-    /// The device to rename is not attached.
-    #[error("No such attached host")]
-    NotAttached,
-    #[error("Another attached host has that name")]
-    NameTaken,
     #[error(transparent)]
     Storage(#[from] StorageError),
 }
@@ -81,11 +76,17 @@ impl ChangeRefusal {
             Self::DeviceNotFound => (ErrorCode::DeviceNotFound, 404),
             Self::Conflict => (ErrorCode::TargetConflict, 409),
             Self::HostIsPrimary => (ErrorCode::HostIsPrimary, 409),
-            Self::NotAttached => (ErrorCode::HostNotAttached, 404),
-            Self::NameTaken => (ErrorCode::NameTaken, 409),
             Self::Runtime(_) | Self::Storage(_) => (ErrorCode::OperationFailed, 500),
         }
     }
+}
+
+/// A target switch made: where it went from and to, and the
+/// execution-context revision it made.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Switched {
+    pub switch: TargetSwitch,
+    pub revision: u64,
 }
 
 /// A conversation held for a transition. Its fields drop in order: the file
@@ -154,8 +155,6 @@ impl dyn HostShard + '_ {
             ChangeOutcome::Applied => Ok(()),
             ChangeOutcome::Missing => Err(ChangeRefusal::NotFound),
             ChangeOutcome::Archived => Err(ChangeRefusal::Archived),
-            ChangeOutcome::NotAttached => Err(ChangeRefusal::NotAttached),
-            ChangeOutcome::NameTaken => Err(ChangeRefusal::NameTaken),
         }
     }
 
@@ -192,13 +191,14 @@ impl dyn HostShard + '_ {
     /// it leaves hears the conversation release and stays attached where it
     /// was left, the device it reaches is primary alone, and the commit is
     /// against the target the switch started from. A switch that makes the
-    /// pending move `pending` clears it in its commit.
+    /// pending move `pending` clears it in its commit. Answers where the
+    /// switch went from and to, and the execution-context revision it made.
     pub async fn switch_target(
         &self,
         expected: &ConversationRecord,
         to: ConversationTarget,
         pending: Option<String>,
-    ) -> Result<(), ChangeRefusal> {
+    ) -> Result<Switched, ChangeRefusal> {
         let control = self.control();
         let current = control
             .conversation(expected.id.clone())
@@ -227,20 +227,18 @@ impl dyn HostShard + '_ {
             from,
             to: destination,
         };
-        let won = control
+        let revision = control
             .switch_conversation_target(
                 expected.id.clone(),
                 expected.target.clone(),
                 to,
-                switch,
+                switch.clone(),
                 ends,
                 pending,
             )
-            .await?;
-        if !won {
-            return Err(ChangeRefusal::Conflict);
-        }
-        Ok(())
+            .await?
+            .ok_or(ChangeRefusal::Conflict)?;
+        Ok(Switched { switch, revision })
     }
 
     /// The held archive: the conversation release on every Host the

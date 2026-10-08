@@ -51,6 +51,16 @@ export function relativePath(root: string, path: string): string {
   return target.startsWith(prefix) ? target.slice(prefix.length) : target
 }
 
+/** `path` as a person reads it on a Host whose home is `home`: `~` and `~/a/b` under it, any other path whole. */
+export function homePath(path: string, home: string | null | undefined): string {
+  if (!home || normalizePath(home) === '/')
+    return path
+  const relative = relativePath(home, path)
+  if (relative === '')
+    return '~'
+  return relative === normalizePath(path) ? path : `~/${relative}`
+}
+
 /** Every ancestor from the root down to the path itself, for a breadcrumb. */
 export function pathSegments(path: string): {
   name: string;

@@ -165,11 +165,6 @@ pub enum RecordChange {
     /// A device of the user's attached (`sessions-and-targets.md` § Attached
     /// hosts); one attached already stays as it is.
     Attach(AttachedHostRecord),
-    /// An attached host's new name, unique within the conversation.
-    Rename {
-        device: DeviceId,
-        name: String,
-    },
     /// A detach of an attached device; a device that is not attached
     /// detaches as nothing.
     Detach(DeviceId),
@@ -183,15 +178,11 @@ pub enum ChangeOutcome {
     Missing,
     /// The conversation is archived, and the change is not its restore.
     Archived,
-    /// The rename names a device that is not attached.
-    NotAttached,
-    /// Another attached host has the name.
-    NameTaken,
 }
 
 /// What a new conversation starts with (`web-api.md` § Conversation
-/// creation and Fork); by default the Cloud, the placeholder title, no
-/// model and no hosts.
+/// creation and Fork); by default the Cloud, the placeholder title and no
+/// model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationStart {
     /// The user's title; the placeholder when none.
@@ -199,7 +190,6 @@ pub struct ConversationStart {
     pub pinned: bool,
     pub target: ConversationTarget,
     pub model: Option<ModelSelection>,
-    pub hosts: Vec<AttachedHostRecord>,
 }
 
 impl Default for ConversationStart {
@@ -209,7 +199,6 @@ impl Default for ConversationStart {
             pinned: false,
             target: ConversationTarget::Cloud { path: None },
             model: None,
-            hosts: Vec::new(),
         }
     }
 }
@@ -318,11 +307,6 @@ impl ControlService {
                     at: now,
                 },
             )?;
-            if inserted == 1 {
-                for host in &start.hosts {
-                    insert_attached_host(&transaction, &id, host, now)?;
-                }
-            }
             let record =
                 conversation_by_id(&transaction, &id)?.ok_or_else(|| StorageError::Corrupt {
                     table: "conversations",
@@ -507,28 +491,6 @@ impl ControlService {
                             params![id.as_str(), host.device.as_str()],
                         )?;
                     }
-                    1
-                }
-                RecordChange::Rename { device, name } => {
-                    let holders: Vec<String> = transaction
-                        .prepare_cached(
-                            "SELECT device_id FROM conversation_hosts
-                             WHERE conversation_id = ?1 AND (device_id = ?2 OR name = ?3)",
-                        )?
-                        .query_map(params![id.as_str(), device.as_str(), name], |row| row.get(0))?
-                        .collect::<Result<_, _>>()?;
-                    if !holders.iter().any(|holder| holder == device.as_str()) {
-                        return Ok(ChangeOutcome::NotAttached);
-                    }
-                    if holders.iter().any(|holder| holder != device.as_str()) {
-                        return Ok(ChangeOutcome::NameTaken);
-                    }
-                    transaction.execute(
-                        "UPDATE conversation_hosts SET name = ?3 WHERE conversation_id = ?1 AND device_id = ?2",
-                        params![id.as_str(), device.as_str(), name],
-                    )?;
-                    advance_context(&transaction, &id)?;
-                    raise_hosts_revision(&transaction, &id)?;
                     1
                 }
                 RecordChange::Detach(device) => {
@@ -930,11 +892,11 @@ pub struct SwitchEnds {
 
 impl ControlService {
     /// The target switch's write, against the target the switch started
-    /// from: false, writing nothing, when the target is no longer
+    /// from: none, writing nothing, when the target is no longer
     /// `expected`, so of two switches from one target exactly one wins. The
     /// winner records `switch` for every node's next context block and
-    /// advances the execution-context revision; when it makes the pending
-    /// move `pending`, it clears it.
+    /// advances the execution-context revision, which it answers; when it
+    /// makes the pending move `pending`, it clears it.
     pub async fn switch_conversation_target(
         &self,
         id: ConversationId,
@@ -943,17 +905,18 @@ impl ControlService {
         switch: TargetSwitch,
         ends: SwitchEnds,
         pending: Option<String>,
-    ) -> Result<bool, StorageError> {
+    ) -> Result<Option<u64>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let from = TargetColumns::of(&expected);
             let target = TargetColumns::of(&to);
             // `IS` compares NULL as equal to NULL, which `=` does not.
-            let won = transaction.execute(
+            let revision: Option<i64> = transaction.query_row(
                 "UPDATE conversations SET target_kind = ?2, target_device_id = ?3, target_path = ?4,
                    target_workspace_id = ?5, last_switch = ?6, context_version = context_version + 1, updated_at = ?7
                  WHERE id = ?1 AND target_kind = ?8 AND target_device_id IS ?9 AND target_path IS ?10
-                   AND target_workspace_id IS ?11",
+                   AND target_workspace_id IS ?11
+                 RETURNING context_version",
                 params![
                     id.as_str(),
                     target.kind,
@@ -967,10 +930,12 @@ impl ControlService {
                     from.path,
                     from.workspace
                 ],
-            )? > 0;
-            if !won {
-                return Ok(false);
-            }
+                |row| row.get(0),
+            ).optional()?;
+            let Some(revision) = revision else {
+                return Ok(None);
+            };
+            let revision = decode("conversations", "context_version", u64::try_from(revision))?;
             if let Some(arriving) = &ends.arriving {
                 let removed = transaction.execute(
                     "DELETE FROM conversation_hosts WHERE conversation_id = ?1 AND device_id = ?2",
@@ -997,7 +962,7 @@ impl ControlService {
                 clear_pending_move(&transaction, &id, pending)?;
             }
             transaction.commit()?;
-            Ok(true)
+            Ok(Some(revision))
         })
         .await
     }
@@ -1091,24 +1056,20 @@ impl ControlService {
     }
 
     /// Marks the attached `device` to detach once the conversation's tree is
-    /// idle, as an agent's `demi host detach` asks; a device that is not
-    /// attached answers `NotAttached`.
+    /// idle, as an agent's `demi host detach` asks; answers whether it is
+    /// attached, false marking nothing.
     pub async fn mark_detach(
         &self,
         id: ConversationId,
         device: DeviceId,
-    ) -> Result<ChangeOutcome, StorageError> {
+    ) -> Result<bool, StorageError> {
         self.call(move |connection, _| {
             let marked = connection.execute(
                 "UPDATE conversation_hosts SET detaching = 1
                  WHERE conversation_id = ?1 AND device_id = ?2",
                 params![id.as_str(), device.as_str()],
             )?;
-            Ok(if marked == 1 {
-                ChangeOutcome::Applied
-            } else {
-                ChangeOutcome::NotAttached
-            })
+            Ok(marked == 1)
         })
         .await
     }
@@ -1628,7 +1589,7 @@ mod tests {
             control.switch_conversation_target(id.clone(), cloud.clone(), to, switch, ends, None)
         };
         let (first, second) = tokio::join!(switch_to("/first"), switch_to("/second"));
-        assert_eq!((first.unwrap(), second.unwrap()), (true, false));
+        assert_eq!((first.unwrap(), second.unwrap()), (Some(1), None));
         let record = control.conversation(id.clone()).await.unwrap().unwrap();
         assert_eq!(
             (record.target, record.context_version),
@@ -1704,10 +1665,7 @@ mod tests {
             path: "/work".into(),
         };
         control.set_pending_move(id.clone(), to).await.unwrap().unwrap();
-        assert_eq!(
-            control.mark_detach(id.clone(), laptop.clone()).await.unwrap(),
-            ChangeOutcome::Applied
-        );
+        assert!(control.mark_detach(id.clone(), laptop.clone()).await.unwrap());
         let pending = control.pending_changes(id.clone()).await.unwrap();
         assert!(pending.moving.is_some() && pending.detaching == [laptop.clone()], "{pending:?}");
 
