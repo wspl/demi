@@ -260,7 +260,9 @@ it again.
 
 **The card.** The conversation's page shows the oldest undecided request as a
 card pinned above the composer, below the transcript and above the dock's
-chips. It is not a modal: the user can read the transcript, write a message
+chips. A panel the dock opened, such as the agents' or the running commands',
+keeps its size and place: the card stands over its lower part, above it in
+the stacking order, rather than the two sharing the height. It is not a modal: the user can read the transcript, write a message
 or a steer while it is there. The card shows:
 
 - its title, "Allow this conversation to `<action>`?", its categories'
