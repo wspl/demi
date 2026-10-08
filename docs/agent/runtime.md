@@ -1453,7 +1453,9 @@ marks how its command ended the same way, and only when something went
 wrong: a small tag after its title, the gallery's `Tag`, red *Failed* for an
 exit code other than 0, grey *Stopped* for a stopped command, with the exit
 code in the tag's tooltip, *Exit code 1*; one that succeeded shows nothing,
-and one that runs shimmers. The expanded row says the end in words above the
+and one whose command runs shimmers, as long as it runs: also after its call
+returned and the command runs on as one of the conversation's running
+commands, until its end arrives. The expanded row says the end in words above the
 output. Component structure, expansion, icons, typography, motion and the
 presentation of changed files are shown in the gallery, not here.
 
