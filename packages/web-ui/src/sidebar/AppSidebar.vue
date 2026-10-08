@@ -28,6 +28,7 @@ import SidebarProjectHeader from './SidebarProjectHeader.vue'
 import SidebarProjectMenu from './SidebarProjectMenu.vue'
 import SidebarRow from './SidebarRow.vue'
 import SidebarSelectionMenu from './SidebarSelectionMenu.vue'
+import { useRevealOpen } from './reveal-open'
 import ConversationDeleteDialog from './ConversationDeleteDialog.vue'
 
 /**
@@ -236,6 +237,12 @@ watch(
     entry.scrollIntoView(SCROLL_IN_LIST)
   },
 )
+
+useRevealOpen({
+  openProject: () => (props.activeId ? byId.value.get(props.activeId)?.projectId ?? null : null),
+  isFolded,
+  unfold: (projectId) => setFolded(projectId, false),
+})
 
 // The open conversation is the selection until the user makes a wider one.
 watch(() => props.activeId, (id) => {
