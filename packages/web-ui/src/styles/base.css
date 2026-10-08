@@ -83,6 +83,8 @@
   --fg-ghost: #404040;
   --hover-mix: rgb(255 255 255) 6%;
   --active-mix: rgb(255 255 255) 10%;
+  /* A well set into its surface: code, a table's header, a track. */
+  --well-mix: rgb(255 255 255) 4%;
   --line-subtle: rgba(255, 255, 255, 0.06);
   --line: rgba(255, 255, 255, 0.08);
   --line-strong: rgba(255, 255, 255, 0.10);
@@ -174,6 +176,7 @@
   --fg-ghost: #dadde3;
   --hover-mix: rgb(0 0 0) 6%;
   --active-mix: rgb(0 0 0) 10%;
+  --well-mix: rgb(0 0 0) 4%;
   --line-subtle: rgba(0, 0, 0, 0.05);
   --line: rgba(0, 0, 0, 0.09);
   --line-strong: rgba(0, 0, 0, 0.13);
@@ -938,7 +941,7 @@ svg.lucide {
 .markdown-body code {
   font-family: var(--font-mono);
   font-size: 0.85em;
-  background: color-mix(in srgb, var(--color-overlay) 4%, transparent);
+  background: color-mix(in srgb, var(--surface-current), var(--well-mix));
   padding: 0.15em 0.35em;
   border-radius: 4px;
 }
@@ -946,7 +949,7 @@ svg.lucide {
 .markdown-body pre {
   margin: 0.75em 0;
   padding: 0.75em 1em;
-  background: color-mix(in srgb, var(--color-overlay) 4%, transparent);
+  background: color-mix(in srgb, var(--surface-current), var(--well-mix));
   border-radius: 8px;
   overflow-x: auto;
 }
@@ -1086,7 +1089,7 @@ svg.lucide {
 
 .markdown-body th {
   font-weight: 600;
-  background-color: color-mix(in srgb, var(--color-overlay) 4%, transparent);
+  background-color: color-mix(in srgb, var(--surface-current), var(--well-mix));
 }
 
 /* A header cell starts where its column's text starts, as a body cell does, so
