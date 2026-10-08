@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ChevronDown, FileText, Globe, RefreshCw, Plus, Search, Send, Settings2, Trash2 } from '@lucide/vue'
+import { ChevronDown, RefreshCw, Plus, Search, Send, Settings2, Trash2 } from '@lucide/vue'
 import CopyCode from '@demicodes/web-ui/ui/CopyCode.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import ListCard from '@demicodes/web-ui/ui/ListCard.vue'
-import ListCardRow from '@demicodes/web-ui/ui/ListCardRow.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
@@ -205,28 +203,6 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
         note="Shared command surface, wrapping and copy feedback."
       >
         <CopyCode code="demi-runner run --backend https://demi.example.com" />
-      </GallerySection>
-      <GallerySection
-        title="ListCard"
-        note="Things a result hands over, in a framed list. Each row keeps its tile and its control as far from the edge as from the top and bottom."
-      >
-        <GallerySpecimen variant="with a control · without">
-          <ListCard class="w-120 max-w-full">
-            <ListCardRow title="Orders — Example" detail="https://example.test/orders">
-              <template #icon>
-                <Globe :size="ICON_PX.in28" />
-              </template>
-              <template #action>
-                <Button size="sm" variant="ghost" @click="productWould('Open Orders — Example in Your Browser')">Open</Button>
-              </template>
-            </ListCardRow>
-            <ListCardRow title="release-notes.md" detail="docs/delivery">
-              <template #icon>
-                <FileText :size="ICON_PX.in28" />
-              </template>
-            </ListCardRow>
-          </ListCard>
-        </GallerySpecimen>
       </GallerySection>
       <GallerySection
         title="IconButton"

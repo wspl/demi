@@ -69,7 +69,6 @@ pub async fn execute(
         command,
         BrowserOperation::Open(_)
             | BrowserOperation::Show(_)
-            | BrowserOperation::Present(_)
             | BrowserOperation::Tabs(_)
             | BrowserOperation::Stop(_)
             | BrowserOperation::Close(_)
@@ -871,7 +870,6 @@ pub async fn command_admitted(
             }),
             BrowserOperation::Open(_)
             | BrowserOperation::Show(_)
-            | BrowserOperation::Present(_)
             | BrowserOperation::Tabs(_)
             | BrowserOperation::Stop(_)
             | BrowserOperation::Close(_)

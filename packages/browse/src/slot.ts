@@ -15,11 +15,6 @@ export interface SlotPorts {
    * `demi.net` sets.
    */
   network: number
-  /**
-   * The local preview domain service, `demi-preview.localhost:<port>`,
-   * which the slot's backend registers its namespace with.
-   */
-  preview: number
 }
 
 export interface Slot {
@@ -47,10 +42,10 @@ export function slotNumber(root: string): number {
   return Number(name)
 }
 
-/** Slot n's ports: 33n0 the backend, 33n1 the web app, 33n2 the gallery, 33n3 the network, 33n4 the preview domain. */
+/** Slot n's ports: 33n0 the backend, 33n1 the web app, 33n2 the gallery. */
 export function slotPorts(number: number): SlotPorts {
   const base = 3300 + number * 10
-  return { backend: base, web: base + 1, gallery: base + 2, network: base + 3, preview: base + 4 }
+  return { backend: base, web: base + 1, gallery: base + 2, network: base + 3 }
 }
 
 /** The slot of the checkout this tool belongs to. */

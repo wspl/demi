@@ -99,23 +99,6 @@ export interface StateFeed {
   stop(): void
 }
 
-/**
- * Where a conversation's web previews live (`preview.md` § The stream): the
- * preview domain the backend registered its namespace at, the
- * conversation's primary Host, which every label names, and the page
- * runtime the web app's build carries, which the relay delivers.
- */
-export interface PreviewPlace {
-  scheme: 'http' | 'https'
-  /** With its port when it is not the scheme's default: `demi-preview.dev`. */
-  domain: string
-  namespace: string
-  /** The conversation's primary Host. */
-  host: string
-  /** The runtime's release, which names it, and the address the build serves it at. */
-  runtime: { release: string; url: string }
-}
-
 /** What the page around the shell supplies for every page. */
 export interface PageHost {
   /** The plugin's user state as the product state holds it, read reactively; undefined while there is none. */
@@ -143,11 +126,6 @@ export interface PageHost {
   installed(plugin: string, conversation: string): readonly HostArtifact[]
   /** Whether `conversation`'s primary Host is the user's Cloud while it does not run, read reactively. */
   hostStarting(conversation: string): boolean
-  /**
-   * Where `conversation`'s previews live, read reactively; null while the
-   * backend has no preview domain or the conversation no Host.
-   */
-  preview(conversation: string): PreviewPlace | null
   files(conversation: string): ConversationFileService
   intents: IntentService
   /** The panel tabs of one conversation. */
@@ -197,8 +175,6 @@ export interface ConversationPlugin {
    * does not run: work the user starts there waits for it to start first.
    */
   readonly hostStarting: ComputedRef<boolean>
-  /** Where the conversation's previews live; null while they cannot. */
-  readonly preview: ComputedRef<PreviewPlace | null>
 }
 
 /** The page's own plugin. */
@@ -226,8 +202,6 @@ export interface PageContext {
     /** A defect of the page itself, which only the console shows; a call its caller dropped is none. */
     defect(message: string, error: unknown): void
   }
-  /** A fact about what the user asked for, which neither worked nor failed, as a neutral toast. */
-  readonly notices: { show(title: HeadlineText, message: SentenceText): void }
   readonly overlays: OverlayStore
   files(conversation: string): ConversationFileService
 }
@@ -318,7 +292,6 @@ export interface PanelKind<Data, Session = undefined> {
   intents?: {
     file?(payload: IntentPayloads['file'], current: Data | null): Data
     edit?(payload: IntentPayloads['edit'], current: Data | null): Data
-    page?(payload: IntentPayloads['page'], current: Data | null): Data
   }
 }
 
@@ -480,7 +453,6 @@ function conversationPlugin(host: PageHost, plugin: string, conversation: string
     stream: (name) => host.stream(name, conversation),
     installed: computed(() => host.installed(plugin, conversation)),
     hostStarting: computed(() => host.hostStarting(conversation)),
-    preview: computed(() => host.preview(conversation)),
   }
 }
 
@@ -548,7 +520,6 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
     },
     settings: { open: (section) => host.openSettings(section) },
     errors,
-    notices: { show: (title, message) => void showToast({ title, message, tone: 'neutral' }) },
     overlays: host.overlays,
     files: (conversation) => host.files(conversation),
   }

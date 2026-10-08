@@ -87,37 +87,6 @@ demi_shared_types::id!(
     schema = { "type": "string", "pattern": UUID_PATTERN }
 );
 
-/// What a preview namespace looks like: 8 characters of lowercase
-/// base32hex (RFC 4648 § 7), as the preview domain service names it
-/// (`preview.md` § Addresses and labels).
-const PREVIEW_NAMESPACE_PATTERN: &str = "^[0-9a-v]{8}$";
-
-/// Why a text is not a preview namespace.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("must be 8 characters of lowercase base32hex")]
-pub struct NotPreviewNamespace;
-
-fn preview_namespace(text: &str) -> Result<(), NotPreviewNamespace> {
-    static PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(PREVIEW_NAMESPACE_PATTERN).expect("the namespace pattern compiles")
-    });
-    if PATTERN.is_match(text) {
-        Ok(())
-    } else {
-        Err(NotPreviewNamespace)
-    }
-}
-
-demi_shared_types::id!(
-    /// A deployment's namespace at the preview domain, which the preview
-    /// domain service chooses when the backend registers
-    /// (`preview.md` § The preview domain service).
-    PreviewNamespace,
-    check = preview_namespace,
-    error = NotPreviewNamespace,
-    schema = { "type": "string", "pattern": PREVIEW_NAMESPACE_PATTERN }
-);
-
 #[cfg(test)]
 mod tests {
     use super::*;

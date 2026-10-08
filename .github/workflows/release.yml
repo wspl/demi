@@ -102,68 +102,6 @@ jobs:
       - uses: ./.github/actions/rust-cache
         with:
           key: ${{ matrix.target }}-${{ matrix.group }}
-      # BoringSSL, which demi-browser alone links, compiles for minutes with
-      # CMake. Its libraries and patched headers are kept under a key of all
-      # they are made from: the target, the vendored btls-sys with BoringSSL's
-      # source and patches, the flags xtask builds with, the release profile,
-      # the cc and cmake crates, and the toolchain that compiles it. A change
-      # to any of them is a miss, which builds BoringSSL afresh in a new CMake
-      # build directory, as every build did before, and exports it
-      # (BORING_BSSL_INSTALL_DIR); a hit builds against that export
-      # (BORING_BSSL_PATH) and reuses nothing else. There are no restore keys:
-      # an export of another key is never restored.
-      - name: Describe the BoringSSL toolchain
-        if: matrix.group == 'commands'
-        run: |
-          # The compiler CMake runs: MSVC's cl in the pinned toolset, Apple's
-          # clang (xtask pins its SDK), or Zig, which cargo-zigbuild finds on
-          # PATH or else as the ziglang module native-tools installs.
-          case "$RUNNER_OS" in
-            Windows)
-              # cl prints its version and usage, and fails, without a file.
-              compiler=$(cl 2>&1 || true)
-              [[ $compiler == *'Compiler Version'* ]] || { echo "$compiler" >&2; exit 1; }
-              ;;
-            macOS) compiler=$(cc --version) ;;
-            Linux)
-              zig=$(zig version 2> /dev/null || python3 -m ziglang version)
-              compiler="zig $zig, $(cargo-zigbuild --version)"
-              ;;
-          esac
-          cmake=$(cmake --version)
-          mkdir -p .cache
-          {
-            # The first lines name the versions; the rest of cc's output
-            # names the runner's OS build, which compiles nothing.
-            echo "${compiler%%$'\n'*}"
-            echo "${cmake%%$'\n'*}"
-            awk '/^\[/ { kept = ($0 == "[profile.release]") } kept' Cargo.toml
-            grep -A1 -E '^name = "(cc|cmake)"$' Cargo.lock
-          } > .cache/boringssl-toolchain
-          cat .cache/boringssl-toolchain
-      - uses: actions/cache/restore@v6
-        id: boringssl
-        if: matrix.group == 'commands'
-        with:
-          path: .cache/boringssl
-          key: boringssl-${{ matrix.target }}-${{ hashFiles('vendor/btls/btls-sys/**', 'crates/xtask/src/native/build.rs', '.cache/boringssl-toolchain') }}
-      # The variables name the target, which only the build of the target's
-      # programs reads.
-      - name: Point the build at BoringSSL
-        if: matrix.group == 'commands'
-        env:
-          HIT: ${{ steps.boringssl.outputs.cache-hit }}
-          TARGET: ${{ matrix.target }}
-          EXPORT: ${{ github.workspace }}/.cache/boringssl
-        run: |
-          suffix=${TARGET//-/_}
-          # printf, not echo: the path holds backslashes on Windows.
-          if [ "$HIT" = true ]; then
-            printf 'BORING_BSSL_PATH_%s=%s\n' "$suffix" "$EXPORT" >> "$GITHUB_ENV"
-          else
-            mkdir -p .cache/boringssl
-            printf 'BORING_BSSL_INSTALL_DIR_%s=%s\n' "$suffix" "$EXPORT" >> "$GITHUB_ENV"
-          fi
       - name: Build
         if: runner.os != 'Windows'
         run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} ${{ matrix.packages }}
@@ -172,13 +110,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} ${{ matrix.packages }}
-      # Only a whole export is kept: a build that failed saves nothing, and
-      # one that did not run BoringSSL's build left no libraries.
-      - uses: actions/cache/save@v6
-        if: matrix.group == 'commands' && steps.boringssl.outputs.cache-hit != 'true' && hashFiles('.cache/boringssl/lib/*') != ''
-        with:
-          path: .cache/boringssl
-          key: ${{ steps.boringssl.outputs.cache-primary-key }}
       # Packaging compresses each program into the cache, by its SHA-256,
       # where the server release finds the copies made, so it compresses
       # none itself; what packaging publishes is thrown away.

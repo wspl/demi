@@ -13,18 +13,6 @@ export interface IntentPayloads {
    * names them: the request, its file, and the edit of it or All Changes.
    */
   edit: RequestEditSelection
-  /**
-   * A page the agent presented, a tab of its browser, as the command's card
-   * names it (`preview.md` § Presenting a page).
-   */
-  page: PresentedPage
-}
-
-/** A page a command presented: the agent's tab, its title and its address. */
-export interface PresentedPage {
-  tab: string
-  title: string
-  url: string
 }
 
 export type IntentName = keyof IntentPayloads

@@ -28,8 +28,6 @@ struct Fixture {
     numbers: Arc<Mutex<Option<Numbers>>>,
     /// The connection's artifacts source.
     artifacts: Arc<Mutex<Option<Artifacts>>>,
-    /// The package's data directory, as the runner named it.
-    data: Option<std::path::PathBuf>,
 }
 
 impl Handler for Fixture {
@@ -57,7 +55,6 @@ impl Handler for Fixture {
         let (stalled, proceed) = (self.stalled.clone(), self.proceed.clone());
         let numbers = self.numbers.lock().unwrap().clone();
         let artifacts = self.artifacts.lock().unwrap().clone();
-        let data = self.data.clone();
         Box::pin(async move {
             let mut exit_code = 0;
             match context.request.operation.as_str() {
@@ -179,14 +176,6 @@ impl Handler for Fixture {
                     eprintln!("fixture crashing on purpose");
                     std::process::exit(3);
                 }
-                // Prints the data directory the runner named.
-                "data" => {
-                    let value = serde_json::json!({ "data": data });
-                    context
-                        .output
-                        .stdout(Bytes::from(value.to_string()))
-                        .await?;
-                }
                 "where" => {
                     let value = serde_json::json!({
                         "label": context.request.args.get("label"),
@@ -295,12 +284,7 @@ impl Handler for Fixture {
 
 #[tokio::main]
 async fn main() {
-    let launch = demi_command_sdk::Launch::from_process();
-    let fixture = Fixture {
-        data: launch.data().map(ToOwned::to_owned),
-        ..Fixture::default()
-    };
-    let result = demi_command_sdk::serve_stdio(Arc::new(fixture)).await;
+    let result = demi_command_sdk::serve_stdio(Arc::new(Fixture::default())).await;
     if let Err(error) = result {
         eprintln!("fixture: {error}");
         std::process::exit(1);

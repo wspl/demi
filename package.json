@@ -12,11 +12,9 @@
     "packages/plugin-changes",
     "packages/plugin-file-browser",
     "packages/plugin-skills",
-    "packages/preview-runtime",
     "packages/web-gallery",
     "packages/web",
-    "packages/browse",
-    "services/preview-domain"
+    "packages/browse"
   ],
   "scripts": {
     "dev": "bun scripts/xtask.ts dev",
@@ -24,16 +22,16 @@
     "xtask": "bun scripts/xtask.ts",
     "check:registry": "bun run scripts/check-public-registry.ts",
     "contracts": "bun scripts/xtask.ts contracts",
-    "typecheck": "bun run contracts && tsgo --noEmit && tsgo --noEmit -p packages/browse && bun run --cwd services/preview-domain typecheck",
+    "typecheck": "bun run contracts && tsgo --noEmit && tsgo --noEmit -p packages/browse",
     "typecheck:web": "bun run contracts && bun run --parallel --no-exit-on-error --filter @demicodes/protocol --filter @demicodes/conversation-client --filter @demicodes/web-ui --filter '@demicodes/plugin-*' --filter @demicodes/web-gallery --filter @demicodes/web typecheck",
     "build": "bun --filter '!@demicodes/web' build && bun run web:build",
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "release": "bun run scripts/release.ts",
-    "test": "bun run contracts && DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts --conditions development --parallel --timeout=20000 ./packages/utils/src ./packages/conversation-client/src ./packages/protocol/src ./packages/web-ui/src ./packages/plugin-browser/src ./packages/plugin-changes/src ./packages/plugin-file-browser/src ./packages/plugin-skills/src ./packages/web/src ./packages/web-gallery/src ./packages/browse/src ./scripts/__tests__ ./crates/command-package-browser-chrome/src/driver/capture ./crates/command-package-browser-chrome/src/page ./services/preview-domain/src",
+    "test": "bun run contracts && DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts --conditions development --parallel --timeout=20000 ./packages/utils/src ./packages/conversation-client/src ./packages/protocol/src ./packages/web-ui/src ./packages/plugin-browser/src ./packages/plugin-changes/src ./packages/plugin-file-browser/src ./packages/plugin-skills/src ./packages/web/src ./packages/web-gallery/src ./packages/browse/src ./scripts/__tests__ ./crates/command-package-browser-chrome/src/driver/capture ./crates/command-package-browser-chrome/src/page",
     "web:gallery": "bun scripts/web-gallery.ts",
     "web:dev": "bun scripts/web-dev.ts",
-    "web:build": "bun run contracts && bun scripts/xtask.ts preview-runtime && bun --filter @demicodes/web build"
+    "web:build": "bun run contracts && bun --filter @demicodes/web build"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",

@@ -18,7 +18,7 @@ use crate::driver::{
         DialogInspectResult, DialogOutcome, DialogResult, DownloadResult, EvalResult, FindResult,
         HistoryResult, InfoResult, InspectResult, InstallResult, LogsResult, MouseButton, NavigationResult,
         NodeValue, OpenResult, ProbeResult, ReadResult, ResolvedElement, ScreenshotResult,
-        PresentResult, SelectedOption, ShowResult, TabsResult, UploadResult, ViewportResult, WaitResult, WebmcpCallResult,
+        SelectedOption, ShowResult, TabsResult, UploadResult, ViewportResult, WaitResult, WebmcpCallResult,
         WebmcpListResult,
     },
 };
@@ -31,15 +31,6 @@ pub(crate) fn render(operation: &BrowserOperation, value: Value) -> Result<Strin
         BrowserOperation::Show(_) => {
             let result: ShowResult = typed(value)?;
             format!("Shown {} to the user.\n", result.tab)
-        }
-        BrowserOperation::Present(_) => {
-            let result: PresentResult = typed(value)?;
-            format!(
-                "Presented {} to the user · {}\nURL: {}\n",
-                result.tab,
-                plain(&result.title),
-                plain(&result.url)
-            )
         }
         BrowserOperation::Tabs(_) => tabs(&typed(value)?),
         BrowserOperation::Info(_) => info(&typed(value)?),

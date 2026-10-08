@@ -25,7 +25,6 @@ export {
   type PluginPage,
   type PluginSettingsSection,
   type PluginState,
-  type PreviewPlace,
 } from '@demicodes/web-ui/plugins/page'
 export { pendingCalls, type PendingCalls } from '@demicodes/web-ui/plugins/calls'
 export type { IntentName, IntentPayloads, IntentRequest } from '@demicodes/web-ui/plugins/intents'
@@ -36,8 +35,6 @@ export type {
   UserStreamHandlers,
 } from '@demicodes/web-ui/plugins/streams'
 export type { HostArtifact } from '@demicodes/web-ui/devices/installed'
-export type { TabCommand } from '@demicodes/web-ui/agent/panel-kinds/kind'
-export type { PresentedPage } from '@demicodes/web-ui/plugins/intents'
 export type { OverlayStore } from '@demicodes/web-ui/overlay/overlayStore'
 export type { SettingsRowStatus } from '@demicodes/web-ui/settings/types'
 // The style a plugin's own prop of UI text declares (the gallery's Writing page).

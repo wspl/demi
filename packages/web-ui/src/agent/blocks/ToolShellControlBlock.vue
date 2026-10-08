@@ -3,7 +3,6 @@ import { computed } from 'vue'
 import { toolRowIcon } from './tool-row-icon'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Reference from '@demicodes/web-ui/ui/Reference.vue'
-import PresentedPages from './PresentedPages.vue'
 import ShellEditPills from './ShellEditPills.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
 import ToolMedia from './ToolMedia.vue'
@@ -60,7 +59,7 @@ const iconComponent = computed(() => toolRowIcon(props.toolName))
 <template>
   <FunctionalBlock
     :loading="block.status === 'executing'"
-    :tone="block.status === 'error' ? 'danger' : undefined"
+    :tone="block.status === 'error' && !endMark ? 'danger' : undefined"
   >
     <template #icon>
       <component :is="iconComponent" :size="ICON_PX.in28" />
@@ -88,5 +87,4 @@ const iconComponent = computed(() => toolRowIcon(props.toolName))
   </FunctionalBlock>
   <ToolMedia :output="block.output" :title="title" />
   <ShellEditPills :block="block" />
-  <PresentedPages :block="block" />
 </template>

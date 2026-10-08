@@ -49,7 +49,7 @@ impl Dispatch {
     /// runner test binary stands in for the command aliases.
     pub async fn new(root: &Path, manifest: serde_json::Value, pipes: PipeClient) -> Self {
         let services =
-            ServiceRegistry::new(root.join("artifacts"), None, root.join("data"), root.into(), BTreeMap::new())
+            ServiceRegistry::new(root.join("artifacts"), None, root.into(), BTreeMap::new())
                 .await
                 .expect("service registry");
         let paths = ContextPaths::new(

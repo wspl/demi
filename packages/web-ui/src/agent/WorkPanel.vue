@@ -263,7 +263,6 @@ function reorder(from: number, to: number): void {
             :icon="command.icon"
             :label="command.label"
             :disabled="command.disabled"
-            :disabled-reason="command.disabledReason"
             @select="runCommand(command.run)"
           />
           <MenuItem v-if="menuTab?.kind?.duplicate" :icon="Copy" label="Duplicate" @select="duplicate" />

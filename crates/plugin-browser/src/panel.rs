@@ -21,8 +21,6 @@ use crate::page;
 
 /// The kind whose tabs the plugin takes part in.
 pub const KIND: &str = "browser";
-/// The kind of the tabs of the user's browser, the web previews.
-pub const PREVIEW_KIND: &str = "preview";
 
 /// What a `browser` tab keeps.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -44,15 +42,6 @@ struct TabData {
     /// writes when it adds the tab.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     opened_by: Option<String>,
-    /// The page state of the user's browser the tab opens with, as the
-    /// `preview` stream kept it: Open in Agent's Browser writes it, and the
-    /// plugin drops it once the tab opened (`preview.md` § Page state).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    handover: Option<String>,
-    /// The tab opens in Mobile, as the tab of the user's browser it was
-    /// handed over from showed the page; dropped with `handover`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    mobile: Option<bool>,
 }
 
 impl TabData {
@@ -120,9 +109,8 @@ impl Work {
         match open_for(port, id, data).await {
             Ok(tab) => Ok(tab),
             Err(error) => {
-                // A page state opens one tab, once: Retry opens the address alone.
-                let failed = fields([("failure", failure(&error)), ("handover", Value::Null), ("mobile", Value::Null)]);
-                port.update_panel_tab(id, failed).await?;
+                port.update_panel_tab(id, fields([("failure", failure(&error))]))
+                    .await?;
                 Ok(None)
             }
         }
@@ -278,13 +266,9 @@ async fn open_for(
     id: &str,
     data: TabData,
 ) -> Result<Option<String>, PluginError> {
-    let (tab, at) = match (data.live(), &data.handover) {
-        (Some(tab), _) => (tab.to_owned(), None),
-        (None, Some(state)) => {
-            let opened = page::handover(port, &data.url, state, data.mobile == Some(true)).await?;
-            (opened.id.to_string(), Some(data.url))
-        }
-        (None, None) => {
+    let (tab, at) = match data.live() {
+        Some(tab) => (tab.to_owned(), None),
+        None => {
             let opened = page::open(port, &data.url).await?;
             (opened.id.to_string(), Some(data.url))
         }
@@ -293,8 +277,6 @@ async fn open_for(
         ("tab", Value::String(tab.clone())),
         ("closed", Value::Null),
         ("failure", Value::Null),
-        ("handover", Value::Null),
-        ("mobile", Value::Null),
     ]);
     port.update_panel_tab(id, bound).await?;
     match data_of(port, id).await? {

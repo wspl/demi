@@ -32,8 +32,6 @@ members = [
   "crates/plugin-file",
   "crates/plugin-skills",
   "crates/plugin-browser",
-  "crates/preview-rewrite",
-  "crates/preview-rewrite-wasm",
   "crates/backend-plugins",
   "crates/command-protocol",
   "crates/command-sdk",
@@ -41,7 +39,6 @@ members = [
   "crates/shared-types",
   "crates/command-package-browser",
   "crates/command-package-browser-chrome",
-  "crates/command-package-browser-preview",
   "crates/command-package-claude-code",
   "crates/command-package-file",
   "crates/command-package-file-protocol",
@@ -98,11 +95,6 @@ tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process"
 tokio-util = { version = "0.7", features = ["io", "rt"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "registry", "std"] }
-# The preview rewriter's WebAssembly glue: `wasm-bindgen-cli-support`, which
-# `xtask preview-runtime` generates the glue with, must be of the same
-# version as the crate (`builds-and-releases.md` § Preview runtime).
-wasm-bindgen = "=0.2.129"
-wasm-bindgen-cli-support = "=0.2.129"
 
 [profile.dev]
 # Line tables are enough for test backtraces. Full debug info made every test
@@ -143,10 +135,6 @@ opt-level = "s"
 strip = true
 
 [patch.crates-io]
-# Chrome 154's ClientHello for the web preview's upstream requests
-# (`builds-and-releases.md` § Vendored crates).
-wreq = { path = "vendor/wreq/wreq" }
-btls-sys = { path = "vendor/btls/btls-sys" }
 chromiumoxide = { path = "vendor/chromiumoxide/chromiumoxide" }
 chromiumoxide_cdp = { path = "vendor/chromiumoxide/chromiumoxide_cdp" }
 jaq-core = { path = "vendor/jaq/jaq-core" }

@@ -5,7 +5,7 @@
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
-use demi_web_api_protocol::ids::{CredentialId, PreviewNamespace, ProviderId};
+use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 
 const NONCE_BYTES: usize = 12;
 
@@ -21,8 +21,6 @@ pub enum Row<'a> {
     Config(&'a ProviderId),
     /// A subscription account's secret document.
     Secret(&'a ProviderId, &'a CredentialId),
-    /// The secret of the deployment's namespace at the preview domain.
-    PreviewSecret(&'a PreviewNamespace),
 }
 
 impl Row<'_> {
@@ -35,9 +33,6 @@ impl Row<'_> {
                 b"demi account secret",
                 vec![provider.as_str(), credential.as_str()],
             ),
-            Self::PreviewSecret(namespace) => {
-                (b"demi preview namespace secret", vec![namespace.as_str()])
-            }
         };
         let mut name = label.to_vec();
         for id in ids {

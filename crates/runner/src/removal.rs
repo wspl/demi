@@ -73,7 +73,6 @@ const RUNNER_ENTRIES: &[&str] = &[
     "artifacts",
     "backend-url",
     "commands",
-    "data",
     "install.lock",
     "jobs",
     "log",

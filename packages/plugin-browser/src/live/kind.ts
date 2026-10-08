@@ -1,7 +1,6 @@
 import { defineComponent, h } from 'vue'
-import { Bot, Globe, RotateCw } from '@lucide/vue'
-import { ICON_PX, type PanelKind, type TabCommand } from '@demicodes/plugin-sdk'
-import type { BrowserPanel } from '../panel'
+import { Globe, RotateCw } from '@lucide/vue'
+import { GlobePlus, ICON_PX, type PanelKind } from '@demicodes/plugin-sdk'
 import BrowserTabContent from './BrowserTabContent.vue'
 import {
   NEW_TAB_URL,
@@ -10,13 +9,8 @@ import {
   type BrowserTabsController,
 } from './tabs'
 
-/**
- * The agent's browser's one fixed icon, which tells its tabs from the tabs of
- * the user's browser, which show their pages' own (`preview.md` § What the
- * user sees).
- */
 const BrowserTabMark = defineComponent({
-  setup: () => () => h(Bot, { size: ICON_PX.markIn28 }),
+  setup: () => () => h(Globe, { size: ICON_PX.markIn28 }),
 })
 
 /**
@@ -28,7 +22,7 @@ const BrowserTabMark = defineComponent({
  * user sent elsewhere is named after where it goes at once, never after the
  * page it leaves.
  */
-export function browserTabTitle(data: BrowserTabData, session: BrowserTabsController): string {
+function browserTabTitle(data: BrowserTabData, session: BrowserTabsController): string {
   if (data.url === NEW_TAB_URL) {
     return 'New Tab'
   }
@@ -40,50 +34,39 @@ export function browserTabTitle(data: BrowserTabData, session: BrowserTabsContro
   return url ? url.host || url.href : data.url
 }
 
-/** Open in Your Browser, unavailable with why where previews cannot run or the tab has no web page. */
-function yourBrowserCommand(session: BrowserPanel, data: BrowserTabData, id: string): TabCommand {
-  const address = session.browser.address(data)
-  const page = data.tab !== undefined && data.closed !== true && /^https?:/.test(address)
-  const reason = session.preview.unavailable.value ?? (page ? null : 'The tab has no web page to open yet.')
-  return {
-    label: 'Open in Your Browser',
-    icon: Globe,
-    disabled: reason !== null,
-    ...(reason ? { disabledReason: reason } : {}),
-    run: () => {
-      const title = session.browser.title(data) ?? data.title
-      session.preview.fromAgent(id, { ...data, url: address, ...(title ? { title } : {}) })
-    },
-  }
-}
-
 /**
  * The `browser` tab kind (`live-view.md` § A browser tab in the panel). Its
  * content reaches the conversation's browser through the page's panel
  * session; the panel sees only this declaration.
  */
-export const browserTabKind: PanelKind<BrowserTabData, BrowserPanel> = {
+export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = {
   kind: 'browser',
   schema: browserTabDataSchema,
-  title: (data, tab) => browserTabTitle(data, tab.session.browser),
+  title: (data, tab) => browserTabTitle(data, tab.session),
   // The agent's showings, which the plugin carries from the tab list (`live-view.md` § Showing a tab).
   shows: (data) => data.shows ?? 0,
   // Which tab opened it, so the panel places the next tab its opener opens behind it.
   openedBy: (data) => data.openedBy,
   mark: BrowserTabMark,
+  // The page's own icon, as a web browser's tab shows it; the mark only for a page without one.
+  icon: (data, tab) => tab.session.favicon(data),
   // The page loads: the strip shows it as a web browser's tab does.
-  busy: (data, tab, id) => tab.session.browser.busy(id, data),
+  busy: (data, tab, id) => tab.session.busy(id, data),
   content: BrowserTabContent,
   // A web browser's tab menu: Reload the page, or open the address again in a tab of its own.
-  commands: (data, tab, id) => [
+  commands: (data, tab) => [
     {
       label: 'Reload',
       icon: RotateCw,
       disabled: data.tab === undefined || data.closed === true,
-      run: () => tab.session.browser.reload(data),
+      run: () => tab.session.reload(data),
     },
-    // The page in the user's own browser, beside this tab, with its state (`preview.md` § What the user sees).
-    yourBrowserCommand(tab.session, data, id),
   ],
   duplicate: (data) => (data.title ? { url: data.url, title: data.title } : { url: data.url }),
+  create: {
+    label: 'New Tab in the Conversation’s Browser',
+    icon: GlobePlus,
+    data: () => ({ url: NEW_TAB_URL }),
+    unavailable: (tab) => tab.session.unavailable.value,
+  },
 }

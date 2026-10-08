@@ -396,13 +396,6 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             Some(_) => home.join(".demi/artifacts"),
             None => directory.join("artifacts"),
         }),
-        // The packages' data is the instance's, so two runners on one
-        // account keep two; a Cloud keeps it on its home image beside its
-        // artifacts, as its stops and wakes keep the rest of the Host.
-        data: match &boot {
-            Some(_) => home.join(".demi/data"),
-            None => directory.join("data"),
-        },
         directory,
         jobs,
         executable,

@@ -212,23 +212,6 @@ pub struct ShowResult {
 }
 
 input! {
-    tab
-    /// `present`: hands a finished page to the user: the command's block in
-    /// the transcript shows a card whose Open opens it in the user's own
-    /// browser, with its state (`preview.md` § Presenting a page).
-    pub struct PresentInput {}
-}
-
-/// What `present` answers: the page it presented, as the card shows it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct PresentResult {
-    pub tab: TabId,
-    pub title: String,
-    pub url: String,
-}
-
-input! {
     /// `tabs`: lists the browser's tabs.
     pub struct TabsInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
@@ -1547,7 +1530,6 @@ macro_rules! operations {
 operations! {
     "open" => Open(OpenInput),
     "show" => Show(ShowInput),
-    "present" => Present(PresentInput),
     "tabs" => Tabs(TabsInput),
     "info" => Info(InfoInput),
     "goto" => Goto(GotoInput),

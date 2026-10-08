@@ -14,7 +14,6 @@ mod contracts;
 #[cfg(all(unix, feature = "developer"))]
 mod dev;
 mod native;
-mod preview_runtime;
 mod server_release;
 // Reads Unix file metadata: the sweep runs where development builds do.
 #[cfg(unix)]
@@ -42,8 +41,6 @@ enum Command {
     /// Builds the native executables and packages their releases.
     #[command(subcommand)]
     Native(native::Command),
-    /// Builds the web preview's runtime with the rewriter's WebAssembly.
-    PreviewRuntime(preview_runtime::Options),
     /// Assembles a server release root from the built executables.
     ServerRelease(server_release::Options),
     /// Moves the server DEMI_DEPLOY_HOST names to a build of the checkout,
@@ -157,13 +154,6 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("xtask native: {error}");
-                ExitCode::FAILURE
-            }
-        },
-        Command::PreviewRuntime(options) => match preview_runtime::run(options) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(error) => {
-                eprintln!("xtask preview-runtime: {error}");
                 ExitCode::FAILURE
             }
         },

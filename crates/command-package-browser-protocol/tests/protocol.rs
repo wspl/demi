@@ -176,10 +176,6 @@ fn an_invocation_decodes_to_the_operation_its_name_names() {
         Operation::parse("browser.live", json!({})),
         Ok(Operation::Live)
     ));
-    assert!(matches!(
-        Operation::parse("browser.preview", json!({})),
-        Ok(Operation::Preview)
-    ));
     // The browser reports a refused argument and an unserved browser
     // operation itself; a name outside the package is unknown to it.
     assert!(matches!(
@@ -197,39 +193,11 @@ fn an_invocation_decodes_to_the_operation_its_name_names() {
         );
     }
     // Every listed name decodes, so the descriptor lists nothing unserved.
-    assert_eq!(Operation::names().count(), OPERATIONS.len() + 4);
-    let opening = json!({
-        "url": "http://localhost:5173/",
-        "scheme": "https",
-        "domain": "demi-preview.dev",
-        "namespace": "k3f9a2ab",
-        "host": "device",
-    });
-    assert!(matches!(
-        Operation::parse("browser.preview_open", opening.clone()),
-        Ok(Operation::PreviewOpen(_))
-    ));
-    // Only an address the web shows opens in a tab of the user's browser.
-    let mut file = opening.clone();
-    file["url"] = json!("file:///etc/passwd");
-    assert!(matches!(
-        Operation::parse("browser.preview_open", file),
-        Err(OperationError::Invalid(_))
-    ));
-    let handover = json!({ "url": "http://localhost:5173/", "state": "kept-1", "mobile": false });
-    assert!(matches!(
-        Operation::parse("browser.handover", handover.clone()),
-        Ok(Operation::Handover(_))
-    ));
+    assert_eq!(Operation::names().count(), OPERATIONS.len() + 1);
     for name in Operation::names() {
-        let args = match name {
-            "browser.preview_open" => opening.clone(),
-            "browser.handover" => handover.clone(),
-            _ => json!({}),
-        };
         assert!(
             !matches!(
-                Operation::parse(name, args),
+                Operation::parse(name, json!({})),
                 Err(OperationError::Unknown(_) | OperationError::Unserved(_))
             ),
             "{name}"

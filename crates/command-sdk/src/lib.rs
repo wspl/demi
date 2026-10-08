@@ -23,7 +23,7 @@ pub use artifacts::{ArtifactPending, Artifacts, ArtifactsAsk};
 pub use asking::{Answered, Asked, Pending, Reporter, RequestStream};
 pub use client::{Client, CommandInput, CommandOutput};
 pub use exchange::{Exchange, ExchangeError, InputSource, OutputSink};
-pub use launch::{COMMAND_SERVICE, DATA, Launch};
+pub use launch::{COMMAND_SERVICE, Launch};
 pub use numbers::{Draw, Numbers, NumbersAsk};
 pub use server::{
     ConversationContext, Handler, InvocationContext, MediumRefused, Output, serve,

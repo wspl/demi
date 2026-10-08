@@ -7,11 +7,6 @@
   "dependencies": {
     "@demicodes/web": "workspace:^",
     "playwright": "1.63.0",
-    "zod": "^4.0.0",
-    "esbuild": "0.28.2",
-    "ws": "8.21.3"
-  },
-  "devDependencies": {
-    "@types/ws": "^8.18.1"
+    "zod": "^4.0.0"
   }
 }

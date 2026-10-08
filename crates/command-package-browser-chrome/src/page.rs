@@ -21,7 +21,6 @@ mod pointer;
 pub mod probe;
 mod query;
 pub mod screenshot;
-pub mod state;
 mod select;
 mod selection;
 #[cfg(feature = "testing")]

@@ -13,7 +13,7 @@ import {
 } from '@demicodes/web-ui/agent/panel-tabs'
 import { selectTab } from '@demicodes/web-ui/agent/tab-close'
 import type { RequestEditSelection } from '@demicodes/web-ui/files/request-changes'
-import type { IntentRequest, PresentedPage } from '@demicodes/web-ui/plugins/intents'
+import type { IntentRequest } from '@demicodes/web-ui/plugins/intents'
 import {
   bindPages,
   intentKind,
@@ -26,7 +26,6 @@ import { readGalleryEdit } from './blobs'
 import { galleryRequest } from './transcripts'
 import { galleryBrowser, type GalleryBrowser } from './live-browser'
 import { GalleryPanel, galleryBrowserPlugin } from './panel'
-import { galleryPreview, type GalleryPreview } from './preview'
 import type { createGalleryWorkspace } from './workspace'
 import { browserPlugin, galleryPageHost } from './plugins'
 
@@ -57,27 +56,17 @@ const CONVERSATION = 'gallery'
  */
 export function useGalleryWork(
   selection: string | null,
-  { files, browser = galleryBrowser(), preview = galleryPreview(), pictures, pages }: {
+  { files, browser = galleryBrowser(), pictures, pages }: {
     files: ConversationFileService
     browser?: GalleryBrowser
-    /** The pages the tabs of the user's browser show. */
-    preview?: GalleryPreview
     /** Whether the web browser decodes the pictures; by default it asks the web browser, as the product does. */
     pictures?: () => Promise<boolean>
     /** The plugin pages whose kinds the panel shows; every one the product shows by default. */
     pages?: readonly AnyPluginPage[]
   },
 ) {
-  // The gallery's pages, with the browser's own over the gallery's previews, and the pictures as the specimen
-  // says they decode.
-  const shown = pages ?? PLUGIN_PAGES.map((page) =>
-    page.plugin === 'browser'
-      ? browserPage({
-          ...(pictures ? { pictures } : {}),
-          previewDriver: () => preview.driver(),
-          previewUnsupported: () => preview.unsupported.value,
-        })
-      : page)
+  // The gallery's pages, with the browser's own made for a specimen that says how the pictures decode.
+  const shown = pages ?? PLUGIN_PAGES.map((page) => (page.plugin === 'browser' && pictures ? browserPage({ pictures }) : page))
   const enabled = () => true
   const backend = new GalleryPanel()
   const plugin = galleryBrowserPlugin(browser, backend, shown)
@@ -167,12 +156,9 @@ export function useGalleryWork(
     select(opened.selection)
   }
 
-  // A page state takes the page of the agent's tab from the gallery's browser.
-  preview.takeFrom((tab) => browser.listed.value.tabs.find((listed) => listed.id === tab) ?? null)
-  const host = galleryPageHost({ browser: browserPlugin(browser, plugin, preview) }, {
+  const host = galleryPageHost({ browser: browserPlugin(browser, plugin) }, {
     files,
     hostStarting: () => browser.hostStarting.value,
-    preview: () => preview.place(),
     intents: {
       open: (_conversation, request) => openIn(request),
       canOpen: (intent) => intentKind(shown, enabled, intent) !== null,
@@ -197,10 +183,6 @@ export function useGalleryWork(
   /** A file pill, through the `edit` intent. */
   function selectEdit(edit: RequestEditSelection) {
     openIn({ intent: 'edit', payload: edit })
-  }
-  /** A presented page's card, through the `page` intent. */
-  function openPage(page: PresentedPage) {
-    openIn({ intent: 'page', payload: page })
   }
   /** The panel as it started: every tab closed, the first selection again. */
   function reset() {
@@ -229,7 +211,6 @@ export function useGalleryWork(
     kinds,
     selected,
     browser,
-    preview,
     agentShows,
     agentOpens,
     host,
@@ -241,7 +222,6 @@ export function useGalleryWork(
     closeTabs,
     openIn,
     selectEdit,
-    openPage,
     reset,
   }
 }

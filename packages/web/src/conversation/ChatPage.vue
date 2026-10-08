@@ -16,7 +16,6 @@ import { usePermissions } from './permissions'
 import { conversationFileRoutes, rawFileContents } from '../api/files'
 import { readEditCopies } from './changes'
 import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
-import type { PageOpeningHandler } from '@demicodes/web-ui/agent/page-opening'
 import { lookupAttachment } from '../api/attachments'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
@@ -146,15 +145,6 @@ const selectEdit = computed<EditSelectionHandler | undefined>(() => {
   return (selection) => work.openIn(current.id, { intent: 'edit', payload: selection })
 })
 
-/** A presented page's card opens it through the `page` intent, while a plugin opens it. */
-const openPage = computed<PageOpeningHandler | undefined>(() => {
-  const current = conversation.value
-  if (!current || !work.canOpen('page')) {
-    return undefined
-  }
-  return (page) => work.openIn(current.id, { intent: 'page', payload: page })
-})
-
 /**
  * The Host files the conversation's messages name: images from its raw
  * route, files opened through the `file` intent while a plugin opens it; and
@@ -194,7 +184,6 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :fork="fork"
     :select-edit="selectEdit"
     :read-edit="readEditCopies"
-    :open-page="openPage"
     :files="files"
     :permission-requests="permissions.stateFor(conversation.id).requests"
     :deciding-permission="permissions.stateFor(conversation.id).deciding"

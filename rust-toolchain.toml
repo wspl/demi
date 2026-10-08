@@ -9,6 +9,4 @@ targets = [
   "x86_64-unknown-linux-musl",
   "aarch64-pc-windows-msvc",
   "x86_64-pc-windows-msvc",
-  # The preview runtime's rewriter (`builds-and-releases.md` § Preview runtime).
-  "wasm32-unknown-unknown",
 ]

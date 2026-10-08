@@ -127,6 +127,45 @@ const LOAD_MS = 5000
 const CLOUD_START_MS = 2500
 /** How long the browser takes to start on a Host where it does not run, as Chrome starts. */
 const BROWSER_START_MS = 1500
+/** Each site's icon, drawn once. */
+const siteIcons = new Map<string, string>()
+
+/**
+ * A site's icon as the Host draws it, 32 pixels square: the first letter of
+ * its host on a color of its own. `plain.test` has none, so its tabs show
+ * the generic mark, as a site without an icon does.
+ */
+function siteIcon(url: string): string | undefined {
+  const parsed = URL.parse(url)
+  if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.host === 'plain.test') {
+    return undefined
+  }
+  const known = siteIcons.get(parsed.host)
+  if (known) {
+    return known
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = 32
+  canvas.height = 32
+  const context = canvas.getContext('2d')
+  if (!context) {
+    return undefined
+  }
+  const hue = [...parsed.host].reduce((sum, letter) => sum + letter.charCodeAt(0), 0) % 360
+  context.fillStyle = `hsl(${hue} 60% 45%)`
+  context.beginPath()
+  context.roundRect(0, 0, 32, 32, 7)
+  context.fill()
+  context.fillStyle = '#fff'
+  context.font = 'bold 20px sans-serif'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  context.fillText(parsed.host.charAt(0).toUpperCase(), 16, 17)
+  const icon = canvas.toDataURL('image/png')
+  siteIcons.set(parsed.host, icon)
+  return icon
+}
+
 /** Tab ids as the protocol spells them: `t` and the tab's number in the conversation. */
 function galleryTabs(): LiveTab[] {
   return [
@@ -139,6 +178,7 @@ function galleryTabs(): LiveTab[] {
       loading: false,
       canGoBack: false,
       canGoForward: false,
+      favicon: siteIcon('https://example.test/orders'),
     },
     {
       id: 't2',
@@ -623,6 +663,7 @@ export function galleryBrowser(
       canGoBack: tab.canGoBack,
       canGoForward: tab.canGoForward,
       shows: shows.get(tab.id) ?? 0,
+      ...(tab.favicon ? { favicon: tab.favicon } : {}),
     }
   }
 
@@ -693,12 +734,17 @@ export function galleryBrowser(
     const history = historyOf(tab)
     tab.canGoBack = history.index > 0
     tab.canGoForward = history.index < history.entries.length - 1
+    // The site's icon arrives once its page has loaded.
+    if (!tab.loading) {
+      tab.favicon = siteIcon(url)
+    }
     changed()
     if (tab.loading) {
       loads.set(tab.id, setTimeout(() => {
         loads.delete(tab.id)
         tab.loading = false
         tab.title = PAGE_TITLES.get(url) ?? tab.title
+        tab.favicon = siteIcon(url)
         changed()
       }, LOAD_MS))
     }
@@ -922,6 +968,7 @@ export function galleryBrowser(
         loading: false,
         canGoBack: false,
         canGoForward: false,
+        favicon: siteIcon(url),
       }
       tabs.push(tab)
       if (options.show) {
