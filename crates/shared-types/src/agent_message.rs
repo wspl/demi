@@ -1,7 +1,9 @@
 //! Input one agent of a tree sends another (`subagents.md` § Message
-//! identity): an explicit message, or a child's completion receipt; and the
+//! identity): an explicit message, or a child's completion receipt; the
 //! user's decision on a permission request, which reaches the agent that
-//! asked the same way (`permissions.md` § The decision's message).
+//! asked the same way (`permissions.md` § The decision's message); and
+//! Demi's notice that a move the agent asked for failed
+//! (`sessions-and-targets.md` § Switch the primary target).
 
 use std::{fmt, str::FromStr};
 
@@ -17,11 +19,11 @@ use crate::{BlockId, MAX_SAFE_INTEGER, NodeId, Timestamp, is_blank};
 pub struct AgentMessage {
     /// The id of the `agent_message` block the message becomes. A
     /// completion's id is its [`CompletionId`]; a permission decision's is
-    /// `permission:<request id>`.
+    /// `permission:<request id>`; a failed move's `move-failed:<move id>`.
     #[garde(custom(names_completed_round(&self.sender, &self.event)))]
     pub id: BlockId,
-    /// The agent that sent it; none for the user, who sends only a
-    /// permission decision.
+    /// The agent that sent it; none for the user's permission decision and
+    /// Demi's notice of a failed move.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(custom(sent_by_an_agent_unless_decided(&self.event)), dive)]
     pub sender: Option<Sender>,
@@ -72,11 +74,23 @@ pub enum AgentMessageEvent {
     Permission {
         #[garde(skip)]
         outcome: PermissionOutcome,
-        /// The category's action, such as `manage skills`, which the
-        /// receipt row names.
+        /// The actions of the request's categories joined with "and",
+        /// such as `manage skills`, which the receipt row names.
         #[garde(length(min = 1))]
         action: String,
     },
+    /// Demi's notice that a move the recipient asked for failed, which left
+    /// the conversation where it was.
+    MoveFailed {},
+}
+
+impl AgentMessageEvent {
+    /// Whether the user or Demi sends it rather than an agent: a permission
+    /// decision or a failed move, which wake the recipient while it is idle
+    /// even after the user stopped its last turn.
+    pub fn is_from_product(&self) -> bool {
+        matches!(self, Self::Permission { .. } | Self::MoveFailed { .. })
+    }
 }
 
 /// How the user decided a permission request.
@@ -153,15 +167,15 @@ impl FromStr for CompletionId {
     }
 }
 
-/// The user sends a permission decision, and an agent every other message.
+/// The user sends a permission decision, Demi a failed move's notice, and
+/// an agent every other message.
 fn sent_by_an_agent_unless_decided(
     event: &AgentMessageEvent,
 ) -> impl FnOnce(&Option<Sender>, &()) -> garde::Result + '_ {
     move |sender, _| {
-        let decided = matches!(event, AgentMessageEvent::Permission { .. });
-        match (sender, decided) {
+        match (sender, event.is_from_product()) {
             (Some(_), true) => Err(garde::Error::new(
-                "a permission decision is the user's and names no agent sender",
+                "a permission decision or a failed move's notice names no agent sender",
             )),
             (None, false) => Err(garde::Error::new("an agent message names its sender")),
             _ => Ok(()),

@@ -15,11 +15,37 @@ export const retiredCategory: PermissionCategoryView = {
   description: null,
 }
 
+/** Organize Conversations, as the product's `demi conversation` declares it. */
+export const organizeConversations: PermissionCategoryView = {
+  id: 'conversation.organize',
+  action: 'organize conversations',
+  description:
+    'Organize Conversations lets the agents of this conversation rename it, list your projects, make a project of a directory, and move this conversation into or out of one. Projects show in your sidebar on every device.',
+}
+
+/** Manage Devices, as the product's `demi host` declares it. */
+export const manageDevices: PermissionCategoryView = {
+  id: 'host.devices',
+  action: 'manage devices',
+  description:
+    'Manage Devices lets the agents of this conversation list your devices, and attach them to this conversation or detach them. The agents run commands as you on an attached device.',
+}
+
+/** A move into a project on a device the conversation lacks, without either grant: one request of both categories. */
+export function moveRequest(): PermissionRequestView {
+  return {
+    id: 'pr-move',
+    categories: [organizeConversations, manageDevices],
+    command: 'demi conversation move ledable-app',
+    subagent: null,
+  }
+}
+
 /** The root's request, as the design's example raises it. */
 export function rootRequest(): PermissionRequestView {
   return {
     id: 'pr-root',
-    category: manageSkills,
+    categories: [manageSkills],
     command: 'demi skills add vercel-labs/agent-skills --skill web-design-guidelines',
     subagent: null,
   }
@@ -29,7 +55,7 @@ export function rootRequest(): PermissionRequestView {
 export function subagentRequest(): PermissionRequestView {
   return {
     id: 'pr-subagent',
-    category: manageSkills,
+    categories: [manageSkills],
     command: 'demi skills enable vercel-labs/agent-skills --skill react-best-practices',
     subagent: { number: 2, description: 'Frontend review' },
   }
@@ -42,7 +68,7 @@ export function queuedRequests(): PermissionRequestView[] {
     subagentRequest(),
     {
       id: 'pr-retired',
-      category: retiredCategory,
+      categories: [retiredCategory],
       command: 'demi conversations show 12',
       subagent: { number: 3, description: 'History search' },
     },
