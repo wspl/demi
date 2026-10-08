@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import { providerRuntime, type InferenceRequest, type ProviderEvent, type ProviderSelection } from '@demicodes/provider'
+import { providerRuntime, type InferenceItem, type InferenceRequest, type ProviderEvent, type ProviderSelection } from '@demicodes/provider'
+import { buildCodexResponsesRequestBody } from '../../../provider-codex/src/responses'
 import {
   buildAnthropicMessagesBody,
   createAnthropicApiProvider,
@@ -155,6 +156,43 @@ test('Anthropic API request body groups user/tool_result and assistant/tool_use 
       input_schema: { type: 'object', properties: { path: { type: 'string' } } },
     },
   ])
+})
+
+test('Anthropic wire IDs preserve tool pairing without changing cross-provider history', async () => {
+  const ids = ['call_1|fc_1', 'call_1/fc_1', '', '调用', 'tool_0', 'tool_1', 'toolu-native']
+  const items: InferenceItem[] = [{ type: 'user_message', content: [{ type: 'text', text: 'check' }] }]
+  for (const id of ids) items.push({ type: 'tool_use', modelId: 'gpt-test', toolUseId: id, toolName: 'check', input: {} })
+  for (const id of [...ids].reverse()) items.push({ type: 'tool_result', toolUseId: id, output: [{ type: 'text', text: id }], isError: false })
+  const original = structuredClone(items)
+  const codexBefore = buildCodexResponsesRequestBody(request({ modelId: 'gpt-test', items }))
+  const body = buildAnthropicMessagesBody(request({ items }), {})
+  const blocks = body.messages.flatMap((message) => message.content)
+  const calls = blocks.filter((block) => block.type === 'tool_use')
+  const results = blocks.filter((block) => block.type === 'tool_result')
+  expect(calls).toHaveLength(ids.length)
+  expect(new Set(calls.map((call) => call.id)).size).toBe(ids.length)
+  for (const [index, call] of calls.entries()) {
+    expect(call.id).toMatch(/^[a-zA-Z0-9_-]+$/)
+    expect(results[ids.length - 1 - index]?.tool_use_id).toBe(call.id)
+  }
+  expect(calls.slice(-3).map((call) => call.id)).toEqual(ids.slice(-3))
+  expect(buildAnthropicMessagesBody(request({ items }), {})).toEqual(body)
+  expect(buildCodexResponsesRequestBody(request({ modelId: 'gpt-test', items }))).toEqual(codexBefore)
+  expect(items).toEqual(original)
+
+  const continued: InferenceItem[] = [...items,
+    { type: 'tool_use', modelId: 'claude-test', toolUseId: 'toolu-next', toolName: 'check', input: {} },
+    { type: 'tool_result', toolUseId: 'toolu-next', output: [{ type: 'text', text: 'OK' }], isError: false },
+  ]
+  const requests: CapturedRequest[] = []
+  const provider = createAnthropicApiProvider({ apiKey: () => 'test-key', fetch: captureFetch(requests) })
+  const runtime = await providerRuntime(provider, selection('anthropic', 'claude-test'))
+  await collect(runtime.clone().run(request({ items: continued })))
+  expect(requests[0]!.body).toEqual(buildAnthropicMessagesBody(request({ items: continued }), {}))
+  const sentBlocks = buildAnthropicMessagesBody(request({ items: continued }), {}).messages.flatMap((message) => message.content)
+  expect(sentBlocks).toContainEqual({ type: 'tool_use', id: 'toolu-next', name: 'check', input: {} })
+  expect(sentBlocks).toContainEqual({ type: 'tool_result', tool_use_id: 'toolu-next', content: [{ type: 'text', text: 'OK' }] })
+  expect(items).toEqual(original)
 })
 
 test('Anthropic API stream maps thinking, text, tool use, and usage', async () => {
