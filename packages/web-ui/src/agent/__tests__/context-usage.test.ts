@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { compactionRefusal, contextPercent } from '../context-usage'
+import { compactionRefusal, contextPercent, contextRatio } from '../context-usage'
 
 const WINDOW = 100_000
 
@@ -20,7 +20,9 @@ test('a model without a window, or a usage not reported yet, leaves Compact to t
   expect(contextPercent({ tokens: 12_000, window: null, compactFrom: null })).toBeNull()
 })
 
-test('the ring shows the estimate in whole percent of the window, full at most', () => {
-  expect(contextPercent(usage(62_500))).toBe(62)
-  expect(contextPercent(usage(130_000))).toBe(100)
+test('the meter shows the estimate in whole percent of the window, rounded down, full at most', () => {
+  expect(contextPercent(usage(62_500))).toBe('62%')
+  expect(contextPercent(usage(29_000))).toBe('29%')
+  expect(contextPercent(usage(130_000))).toBe('100%')
+  expect(contextRatio(usage(130_000))).toBe(1)
 })
