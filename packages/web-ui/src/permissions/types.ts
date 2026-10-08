@@ -1,4 +1,4 @@
-import { upperFirst } from '@demicodes/utils'
+import { titleCase } from '@demicodes/utils'
 
 /**
  * Conversation permissions as the page shows them (`permissions.md` § What
@@ -42,12 +42,12 @@ export function requestAction(request: Pick<PermissionRequestView, 'categories'>
   return request.categories.map(categoryAction).join(' and ')
 }
 
-/** The category's title: its action with its first letter capitalized, such as "Manage skills"; its id as it is when it is no longer declared. */
+/** The category's title: its action in title case, such as "Manage Skills", as its description names it; its id as it is when it is no longer declared. */
 export function categoryTitle(category: PermissionCategoryView): string {
   if (category.action === null) {
     return category.id
   }
-  return upperFirst(category.action)
+  return titleCase(category.action)
 }
 
 /**
