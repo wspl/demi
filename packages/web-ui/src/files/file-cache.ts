@@ -7,7 +7,8 @@
  * Any other entry is unconfirmed: showing it shows it at once and reads it
  * again. Reads of one entry share one request, and a report that names an
  * entry being read reads it once more after. A report reads a shown entry
- * again at once, a folder's listing at most once a second. At most `budget`
+ * again at once, a folder's listing and a changes list at most once a
+ * second. At most `budget`
  * of text stay, the entries shown longest ago leaving first.
  */
 import { reactive } from 'vue'
@@ -18,17 +19,22 @@ import { FileBrowserError, type FileBrowserFailure } from './types'
 export const KEPT_TEXT = 64 * 1024 * 1024
 
 /**
- * The least time between two reads of a folder's listing that reports ask
- * for, in milliseconds: a log appended many times a second updates its
- * size once a second, as Finder does.
+ * The least time between two reads of a folder's listing or a working
+ * tree's changes list that reports ask for, in milliseconds: a log appended
+ * many times a second updates its size once a second, as Finder does, and a
+ * build that writes files all the time lists the repository's changes once
+ * a second, as an editor's source control view refreshes, rather than after
+ * every batch of reports, each a status over the whole repository.
  */
-export const LISTING_REREAD_MS = 1000
+export const SUMMARY_REREAD_MS = 1000
 
 /**
- * What an entry is, which decides which reports concern it: a listing is
- * its folder's, and a file's entries are the file's; the changes list and
- * the committed sides follow the repository's `.git` too, and a changes
- * list outside any repository follows only a `.git` that appears in it.
+ * What an entry is, which decides which reports concern it
+ * (`plugin-pages.md` § What the service keeps): a listing is its folder's
+ * entries, and a file's entries are the file's; the changes list follows
+ * its repository's index, `HEAD` and refs too, a changed file's sides and
+ * its committed contents its `HEAD` and refs, and a changes list outside
+ * any repository only a `.git` that appears in it.
  */
 export type KeptKind = 'listing' | 'text' | 'description' | 'changes' | 'sides' | 'committed'
 
@@ -53,6 +59,14 @@ export interface Showing<T> {
   retry(): void
   /** The view no longer shows it; a second release does nothing. */
   release(): void
+  /**
+   * The view holds it but is not on screen, as a work panel tab the user
+   * switched away from: reports leave it unconfirmed and read nothing
+   * (`plugin-pages.md` § What the service keeps). A second call does nothing.
+   */
+  away(): void
+  /** The view is on screen again: an entry a report left unconfirmed is read once. */
+  back(): void
 }
 
 /** What a live watch of the Host covers: a report of it names every change at such a path. */
@@ -67,6 +81,8 @@ export interface KeptSpec<T> {
   path: string
   /** Tells the entries of one path and kind apart, such as a changed file's sides from its working tree root. */
   key?: string
+  /** For the changes list, a changed file's sides and its committed contents: the working tree's root, whose repository's git directory concerns them. */
+  root?: string
   /** Reads it; `held` is the last answer kept, which a read may answer unchanged with. */
   read(held: T | undefined): Promise<T>
   /** The characters of text it holds. */
@@ -77,11 +93,40 @@ export interface KeptSpec<T> {
    * report concerns it, however often the files there change.
    */
   outsideRepository?(value: T): boolean
+  /** The absolute path of the git directory a changes list `value` found its repository's in. */
+  gitDir?(value: T): string | null
 }
 
-/** Whether `path` lies in a repository's `.git`, whose changes concern the changes list and the committed sides. */
-export function inGitDirectory(path: string): boolean {
-  return /(^|\/)\.git(\/|$)/.test(path.replaceAll('\\', '/'))
+/**
+ * What a path in a git directory is to the entries kept: the index, which
+ * the changes list reads; what moves `HEAD` (`HEAD`, a ref, `packed-refs`),
+ * which every entry of the repository reads; what decides what git ignores
+ * (`config`, `info/exclude`), which the changes list reads; or anything
+ * else, such as an object, a log or a lock, which no entry reads. Null for
+ * a path in no git directory. `gitDir` names the repository's when known;
+ * otherwise the path's own `.git` is taken as it.
+ */
+export function gitPath(path: string, gitDir: string | null): { dir: string; kind: 'index' | 'head' | 'rules' | 'other' } | null {
+  const normal = path.replaceAll('\\', '/')
+  let dir = gitDir
+  if (dir === null) {
+    const at = normal.search(/(^|\/)\.git(\/|$)/)
+    if (at < 0)
+      return null
+    dir = normal.slice(0, normal.indexOf('.git', at) + 4)
+  } else if (!within(normal, dir)) {
+    return null
+  }
+  const inside = normal.slice(dir.length).replace(/^\//, '')
+  const [first = '', second] = inside.split('/')
+  const kind = first === 'index' && second === undefined
+    ? 'index'
+    : first === 'HEAD' || first === 'packed-refs' || first === 'refs'
+      ? 'head'
+      : first === 'config' || (first === 'info' && second === 'exclude')
+        ? 'rules'
+        : 'other'
+  return { dir, kind }
 }
 
 /** Whether `path` is `ancestor` or lies below it. */
@@ -111,28 +156,34 @@ class Entry<T> {
   }
 
   /**
-   * Whether a report of a change at `path` concerns it; `ignored` when git
-   * ignores the path, which then changes no working tree's changes.
+   * Whether a report of a change at `path` concerns it: `ignored` when git
+   * ignores the path, which then changes no working tree's changes; `entry`
+   * when the path came, went or was renamed, which alone changes a folder's
+   * listing; `gitDir`, the git directory of the repository it belongs to
+   * when known.
    */
-  concerns(path: string, ignored: boolean): boolean {
+  concerns(path: string, ignored: boolean, entry: boolean, gitDir: string | null): boolean {
     const own = this.spec.path
+    const git = gitPath(path, gitDir)
     switch (this.spec.kind) {
       case 'listing':
-        // Its own folder, a folder above it, or an entry of it came, went or was renamed.
-        return within(own, path) || parentPath(path) === own
+        // Its own folder or a folder above it, or an entry of it came, went or was renamed.
+        return within(own, path) || (entry && parentPath(path) === own)
       case 'text':
       case 'description':
         return within(own, path)
       case 'sides':
-        return within(own, path) || inGitDirectory(path)
+        return git !== null ? git.kind === 'head' : within(own, path)
+      case 'committed':
+        return git?.kind === 'head'
       case 'changes': {
         const value = this.state.value
         if (value !== undefined && this.spec.outsideRepository?.(value))
           return within(path, `${own.replace(/\/$/, '')}/.git`)
-        return (within(path, own) && !ignored) || inGitDirectory(path)
+        if (git !== null)
+          return git.kind !== 'other'
+        return within(path, own) && !ignored
       }
-      case 'committed':
-        return inGitDirectory(path)
     }
   }
 }
@@ -147,6 +198,8 @@ function failureOf(error: unknown): FileBrowserFailure {
 export class HostFiles {
   private readonly entries = new Map<string, Entry<unknown>>()
   private readonly coverages = new Set<Coverage>()
+  /** Each working tree's repository's git directory, as its changes list last found it. */
+  private readonly gitDirs = new Map<string, string>()
   private clock = 0
   private kept = 0
 
@@ -194,7 +247,13 @@ export class HostFiles {
     const reading = (async () => {
       try {
         const value = await entry.spec.read(entry.state.value)
-        entry.state.value = value
+        // An answer that is what the entry holds, as a read the Host
+        // answered unchanged, changes nothing a view shows.
+        if (value !== entry.state.value)
+          entry.state.value = value
+        const gitDir = entry.spec.gitDir?.(value)
+        if (gitDir && entry.spec.root)
+          this.gitDirs.set(entry.spec.root, gitDir)
         entry.state.failure = null
         this.measure(entry, entry.spec.size(value))
         entry.confirmed = this.confirms(coverage, entry, stamp)
@@ -224,18 +283,19 @@ export class HostFiles {
 
   /**
    * Reads again an entry a view shows, for a report that named it: at once,
-   * but a folder's listing at most once a second. A report within a second
-   * of the listing's last read waits for that second to end and is then
-   * read with any that came meanwhile, so the last report is never dropped.
+   * but a folder's listing or a changes list at most once a second. A report
+   * within a second of its last read waits for that second to end and is
+   * then read with any that came meanwhile, so the last report is never
+   * dropped.
    */
   private reread(entry: Entry<unknown>): void {
-    if (entry.spec.kind !== 'listing') {
+    if (entry.spec.kind !== 'listing' && entry.spec.kind !== 'changes') {
       void this.read(entry)
       return
     }
     if (entry.rereadTimer !== null)
       return
-    const wait = entry.readStart + LISTING_REREAD_MS - performance.now()
+    const wait = entry.readStart + SUMMARY_REREAD_MS - performance.now()
     if (wait <= 0) {
       void this.read(entry)
       return
@@ -296,6 +356,7 @@ export class HostFiles {
     if (!entry.confirmed)
       void this.read(entry)
     let released = false
+    let away = false
     return {
       entry: entry.state,
       retry: () => {
@@ -305,9 +366,26 @@ export class HostFiles {
         if (released)
           return
         released = true
-        entry.shown -= 1
+        if (!away)
+          entry.shown -= 1
         entry.lastShown = ++this.clock
         this.evict()
+      },
+      away: () => {
+        if (released || away)
+          return
+        away = true
+        entry.shown -= 1
+        entry.lastShown = ++this.clock
+      },
+      back: () => {
+        if (released || !away)
+          return
+        away = false
+        entry.shown += 1
+        entry.lastShown = ++this.clock
+        if (!entry.confirmed)
+          void this.read(entry)
       },
     }
   }
@@ -351,16 +429,21 @@ export class HostFiles {
   }
 
   /**
-   * Something changed at each of `paths`, of which git ignores `ignored`:
-   * every entry they concern is unconfirmed, and read again while a view
-   * shows it, at once but a listing at most once a second. An ignored path, such as a log a process appends to,
-   * concerns its file and folder but not the working tree's changes
-   * (`web-api.md` § File text and working tree changes).
+   * Something changed at each of `paths`, of which `entries` came, went or
+   * were renamed and git ignores `ignored`: every entry they concern is
+   * unconfirmed, and read again while a view shows it, at once but a
+   * listing and a changes list at most once a second. An ignored path, such
+   * as a log a process appends to, concerns its file but not the working
+   * tree's changes (`web-api.md` § File text and working tree changes). A
+   * report without `entries` names every path as one, so no listing is
+   * left stale.
    */
-  changed(paths: readonly string[], ignored: readonly string[] = []): void {
+  changed(paths: readonly string[], ignored: readonly string[] = [], entries: readonly string[] = paths): void {
     const ignoredPaths = new Set(ignored)
+    const entryPaths = new Set(entries)
     for (const entry of this.entries.values()) {
-      if (!paths.some((path) => entry.concerns(path, ignoredPaths.has(path))))
+      const gitDir = entry.spec.root === undefined ? null : this.gitDirs.get(entry.spec.root) ?? null
+      if (!paths.some((path) => entry.concerns(path, ignoredPaths.has(path), entryPaths.has(path), gitDir)))
         continue
       this.unconfirm(entry)
       if (entry.shown > 0)

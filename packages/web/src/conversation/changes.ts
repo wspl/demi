@@ -12,20 +12,35 @@ import { fileBrowserError, rawFileContents } from '../api/files'
  */
 export function workingTreeReads(conversationId: string): ChangeReads {
   const id = encodeURIComponent(conversationId)
+  // Each read names the version the page holds: an unchanged answer is a
+  // 304 without its content.
+  const held = (version: string | null) => version === null
+    ? { allowNotModified: true }
+    : { headers: { 'if-none-match': version }, allowNotModified: true }
   return {
-    async list() {
+    async list(version) {
       try {
-        const response = await apiRequest(`/conversations/${id}/changes`)
+        const response = await apiRequest(`/conversations/${id}/changes`, held(version))
+        if (response.status === 304)
+          return null
         const changes = await readResponse(response, workingTreeChangesSchema)
-        return { files: changes.files, truncated: changes.truncated, repository: changes.repository }
+        return {
+          files: changes.files,
+          truncated: changes.truncated,
+          repository: changes.repository,
+          gitDir: changes.gitDir,
+          version: response.headers.get('etag'),
+        }
       } catch (error) {
         throw fileBrowserError(error)
       }
     },
-    async sides(path) {
+    async sides(path, version) {
       try {
-        const response = await apiRequest(`/conversations/${id}/changes/file?${new URLSearchParams({ path })}`)
-        return await readResponse(response, changeSidesSchema)
+        const response = await apiRequest(`/conversations/${id}/changes/file?${new URLSearchParams({ path })}`, held(version))
+        if (response.status === 304)
+          return null
+        return { ...await readResponse(response, changeSidesSchema), version: response.headers.get('etag') }
       } catch (error) {
         // A side that is not text is the views' to show another way.
         throw fileBrowserError(error)

@@ -197,6 +197,7 @@ impl Operations for Fake {
                 Some((
                     FileWatchMessage::Changed {
                         paths: named,
+                        entries: Vec::new(),
                         ignored: Vec::new(),
                     },
                     paths,

@@ -19,6 +19,7 @@ import type { HostArtifact } from '../devices/installed'
 import type { ChangeSetSource, ReadCallChange } from '../files/changes'
 import type { TranscriptRequest } from '../files/request-changes'
 import type { FileBrowserSource } from '../files/types'
+import { provideOnScreen } from '../files/on-screen'
 import { reportError } from '../infra/errors'
 import { showToast } from '../infra/toast'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -586,6 +587,8 @@ function bindKind(
     emits: { update: (_data: unknown) => true, close: () => true },
     setup(props, { emit }) {
       providePage(context)
+      // A tab that is not the selected one keeps its views but follows nothing.
+      provideOnScreen(() => props.shown)
       return () =>
         h(kind.content, {
           conversation: tab.conversation,

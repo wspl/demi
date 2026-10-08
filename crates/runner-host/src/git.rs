@@ -56,6 +56,8 @@ pub struct Change {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Changes {
     pub repository: bool,
+    /// The absolute path of the repository's git directory.
+    pub git_dir: Option<PathBuf>,
     pub head: Option<String>,
     pub files: Vec<Change>,
     pub truncated: bool,
@@ -66,6 +68,7 @@ impl Changes {
     fn outside_repository() -> Self {
         Changes {
             repository: false,
+            git_dir: None,
             head: None,
             files: Vec::new(),
             truncated: false,
@@ -225,6 +228,9 @@ impl Watch {
 
 struct Baseline {
     head: Option<String>,
+    /// The index's entries as this baseline found them (`index_entries`): an
+    /// index rewritten with the same entries changes nothing listed.
+    index: u64,
     files: BTreeMap<String, Change>,
     /// Each staged rename under the root, new path to old, whether listed or
     /// not. Renames change only with the index, and any change under `.git`
@@ -244,6 +250,9 @@ type RulesStamp = Option<(u64, SystemTime)>;
 struct Touched {
     paths: HashSet<PathBuf>,
     whole: bool,
+    /// The index was written: its entries decide whether that changed
+    /// anything, as `git status` rewrites it with fresh file times.
+    index: bool,
     /// The watch reported an error; it is dropped and the next walk is whole.
     broken: bool,
 }
@@ -268,6 +277,7 @@ enum Scope {
 
 struct Computed {
     head: Option<String>,
+    index: u64,
     files: BTreeMap<String, Change>,
     renames: BTreeMap<String, String>,
     truncated: bool,
@@ -549,14 +559,27 @@ async fn changes(
         state.watch = Watch::Unavailable;
     }
     let watched = matches!(state.watch, Watch::Followed { adopted: true, .. });
+    // A written index changed what is listed only when its entries did.
+    let index_moved = match &state.baseline {
+        Some(baseline) if touched.index && !touched.whole => {
+            let workdir = located.workdir.clone();
+            let index = blocking(cancel, move || {
+                let repo = discover(&workdir)?.ok_or(GitError::NotRepository)?;
+                index_entries(&repo)
+            })
+            .await?;
+            index != baseline.index
+        }
+        _ => false,
+    };
     let scope = match &state.baseline {
         Some(baseline)
-            if watched && !adopted && !touched.whole && baseline.rules_above == rules =>
+            if watched && !adopted && !touched.whole && !index_moved && baseline.rules_above == rules =>
         {
             let scope = paths_scope(&touched.paths, &located, baseline);
             match scope {
                 Some(scope) => scope,
-                None => return Ok(baseline.to_changes(true)),
+                None => return Ok(baseline.to_changes(true, &located.git_dir)),
             }
         }
         _ => Scope::Whole,
@@ -584,6 +607,7 @@ async fn changes(
     let mut baseline = match scope {
         Scope::Whole => Baseline {
             head: computed.head,
+            index: computed.index,
             files: computed.files,
             renames: computed.renames,
             rules_above: rules,
@@ -599,7 +623,7 @@ async fn changes(
         }
     };
     baseline.truncate(max_files);
-    let changes = baseline.to_changes(watched);
+    let changes = baseline.to_changes(watched, &located.git_dir);
     state.baseline = Some(baseline);
     Ok(changes)
 }
@@ -610,6 +634,7 @@ impl Baseline {
         self.files.retain(|path, _| !within(path, root_relative));
         self.files.extend(computed.files);
         self.head = computed.head;
+        self.index = computed.index;
         self.truncated |= computed.truncated;
     }
 
@@ -637,9 +662,10 @@ impl Baseline {
         }
     }
 
-    fn to_changes(&self, watched: bool) -> Changes {
+    fn to_changes(&self, watched: bool, git_dir: &Path) -> Changes {
         Changes {
             repository: true,
+            git_dir: Some(git_dir.to_path_buf()),
             head: self.head.clone(),
             files: self.files.values().cloned().collect(),
             truncated: self.truncated,
@@ -815,13 +841,15 @@ fn root_relative_path<'a>(rela: &'a str, prefix: &str) -> Option<&'a str> {
 }
 
 impl Touched {
-    /// Notes what a watch saw. Metadata alone under `.git` changes nothing
-    /// git lists; any other change there, or to a `.gitignore` or
-    /// `.gitattributes`, can change what git lists anywhere, so the next walk
-    /// is whole.
+    /// Notes what a watch saw. Under the git directory, a moved `HEAD` or
+    /// ref, or a change to what git ignores or how it reads the repository,
+    /// can change what git lists anywhere, so the next walk is whole; a
+    /// written index may, which its entries tell; anything else there, such
+    /// as an object, a log or a lock, changes nothing listed. A `.gitignore`
+    /// or `.gitattributes` makes the next walk whole too.
     fn record(&mut self, event: &WatchEvent, git_dir: &Path) {
         let (path, metadata) = match event {
-            WatchEvent::Changed { path, metadata } => (path, *metadata),
+            WatchEvent::Changed { path, metadata, .. } => (path, *metadata),
             WatchEvent::Lost => {
                 self.whole = true;
                 return;
@@ -831,9 +859,13 @@ impl Touched {
                 return;
             }
         };
-        if path.starts_with(git_dir) {
+        if let Ok(inside) = path.strip_prefix(git_dir) {
             if !metadata {
-                self.whole = true;
+                match git_path(inside) {
+                    GitPath::Index => self.index = true,
+                    GitPath::Listing => self.whole = true,
+                    GitPath::Other => {}
+                }
             }
         } else if !metadata && rules_file(path) {
             self.whole = true;
@@ -845,6 +877,43 @@ impl Touched {
             }
         }
     }
+}
+
+/// What a path in the git directory, relative to it, is to the list.
+enum GitPath {
+    /// The index.
+    Index,
+    /// What moves `HEAD` or decides what git ignores or how it reads the
+    /// repository: `HEAD`, a ref, `packed-refs`, `info/exclude`, `config`.
+    Listing,
+    /// Anything else: objects, logs, locks, `FETCH_HEAD` and the like.
+    Other,
+}
+
+fn git_path(inside: &Path) -> GitPath {
+    let mut parts = inside.components().map(|part| part.as_os_str().to_string_lossy());
+    match parts.next().as_deref() {
+        Some("index") if parts.next().is_none() => GitPath::Index,
+        Some("HEAD" | "packed-refs" | "config" | "refs") => GitPath::Listing,
+        Some("info") if parts.next().as_deref() == Some("exclude") => GitPath::Listing,
+        _ => GitPath::Other,
+    }
+}
+
+/// The index's entries, each its path, object, mode and flags, as one
+/// number: two indexes with the same entries list the same, whatever file
+/// times they hold.
+fn index_entries(repo: &gix::Repository) -> Result<u64, GitError> {
+    use std::hash::{Hash as _, Hasher as _};
+    let index = repo.index_or_empty().map_err(internal)?;
+    let mut hasher = std::hash::DefaultHasher::new();
+    for entry in index.entries() {
+        entry.path(&index).hash(&mut hasher);
+        entry.id.hash(&mut hasher);
+        entry.mode.bits().hash(&mut hasher);
+        entry.flags.bits().hash(&mut hasher);
+    }
+    Ok(hasher.finish())
 }
 
 /// Whether git reads `path` to decide what it lists and how it compares
@@ -1220,6 +1289,7 @@ fn compute(
     }
     Ok(Computed {
         head,
+        index: index_entries(&repo)?,
         files,
         renames,
         truncated,
@@ -1397,6 +1467,7 @@ async fn call(
 fn to_wire(changes: Changes) -> wire::GitChanges {
     wire::GitChanges {
         repository: changes.repository,
+        git_dir: changes.git_dir.map(|dir| dir.to_string_lossy().into_owned()),
         head: changes.head,
         files: changes
             .files
