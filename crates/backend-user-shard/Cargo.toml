@@ -55,6 +55,7 @@ futures-util.workspace = true
 object_store.workspace = true
 rand = "0.9"
 reqwest = { workspace = true, features = ["rustls", "stream"] }
+schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"
@@ -62,6 +63,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
+typed-path = "0.12"
 url = "2"
 uuid = { version = "1", features = ["v4"] }
 

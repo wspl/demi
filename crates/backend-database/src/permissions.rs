@@ -2,23 +2,33 @@
 //! `permissions.md`): the requests refused commands raise, each undecided
 //! until the user decides it and then kept until its message is in the
 //! asking agent's checkpoint, and the grants, one per conversation and
-//! category, each kept for the conversation's life. Each change reads and
+//! category, each kept for the conversation's life. A request names the
+//! categories its call lacked, sorted, so that the same categories compare
+//! equal (`permissions.md` § Several categories). Each change reads and
 //! writes in one transaction, so a check and a decision never interleave.
 
 use demi_shared_types::{NodeId, PermissionOutcome, Timestamp};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::permissions::{PermissionRequestId, RequestingAgent};
+use garde::Validate;
 use rusqlite::{Connection, OptionalExtension, Row, params};
+use serde::{Deserialize, Serialize};
 
 use super::StorageError;
-use super::columns::{decode, instant};
+use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
 use super::drafts::archived;
 
 const REQUESTS: &str = "permission_requests";
 
 const REQUEST_COLUMNS: &str =
-    "id, conversation_id, category, command, node_id, agent_number, agent_description, created_at, decision, decided_at";
+    "id, conversation_id, categories, command, node_id, agent_number, agent_description, created_at, decision, decided_at";
+
+/// A request's categories as its column holds them: their ids, one or more,
+/// sorted.
+#[derive(Debug, Serialize, Deserialize, Validate)]
+#[garde(transparent)]
+struct Categories(#[garde(length(min = 1), inner(length(min = 1)))] Vec<String>);
 
 /// The agent that ran a refused command: its node, and, for a subagent, the
 /// number and description the model knows it by.
@@ -34,7 +44,8 @@ pub struct AskingAgent {
 pub struct StoredRequest {
     pub id: PermissionRequestId,
     pub conversation: ConversationId,
-    pub category: String,
+    /// The ids of the categories the call lacked, sorted.
+    pub categories: Vec<String>,
     /// The command line as the agent ran it.
     pub command: String,
     pub agent: AskingAgent,
@@ -53,11 +64,15 @@ pub struct Decision {
 /// What the check finds for a call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Checked {
-    /// The conversation has the grant: the call is dispatched.
+    /// The conversation has every grant: the call is dispatched.
     Granted,
-    /// No grant: the request was recorded, in place of the undecided one of
-    /// the same category from the same agent, if any.
-    Raised(PermissionRequestId),
+    /// A grant is missing: the request was recorded for the categories
+    /// `lacking`, sorted, in place of the undecided one of the same
+    /// categories from the same agent, if any.
+    Raised {
+        id: PermissionRequestId,
+        lacking: Vec<String>,
+    },
 }
 
 /// Why a decision changed nothing.
@@ -79,25 +94,35 @@ pub struct Undelivered {
 
 impl ControlService {
     /// The check of one call (`permissions.md` § The check): whether the
-    /// conversation has the grant of `category`, and when it has not, the
-    /// request recorded for `command`, which replaces the undecided request
-    /// of the same category from the same agent.
+    /// conversation has the grant of each of `categories`, and when it lacks
+    /// any, the request recorded for `command` with the categories it lacks,
+    /// which replaces the undecided request of the same categories from the
+    /// same agent.
     pub async fn check_permission(
         &self,
         conversation: ConversationId,
-        category: String,
+        categories: Vec<String>,
         command: String,
         agent: AskingAgent,
     ) -> Result<Checked, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            if granted_at(&transaction, &conversation, &category)?.is_some() {
+            let mut lacking = Vec::new();
+            for category in categories {
+                if granted_at(&transaction, &conversation, &category)?.is_none() {
+                    lacking.push(category);
+                }
+            }
+            if lacking.is_empty() {
                 return Ok(Checked::Granted);
             }
+            lacking.sort();
+            lacking.dedup();
+            let stored = to_json(&lacking);
             transaction.execute(
                 "DELETE FROM permission_requests
-                 WHERE conversation_id = ?1 AND category = ?2 AND node_id = ?3 AND decision IS NULL",
-                params![conversation.as_str(), category, agent.node.as_str()],
+                 WHERE conversation_id = ?1 AND categories = ?2 AND node_id = ?3 AND decision IS NULL",
+                params![conversation.as_str(), stored, agent.node.as_str()],
             )?;
             let id = PermissionRequestId::try_from(uuid::Uuid::new_v4().to_string())
                 .expect("a UUID is not empty");
@@ -110,12 +135,12 @@ impl ControlService {
             };
             transaction.execute(
                 "INSERT INTO permission_requests
-                 (id, conversation_id, category, command, node_id, agent_number, agent_description, created_at)
+                 (id, conversation_id, categories, command, node_id, agent_number, agent_description, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     id.as_str(),
                     conversation.as_str(),
-                    category,
+                    stored,
                     command,
                     agent.node.as_str(),
                     number,
@@ -124,7 +149,7 @@ impl ControlService {
                 ],
             )?;
             transaction.commit()?;
-            Ok(Checked::Raised(id))
+            Ok(Checked::Raised { id, lacking })
         })
         .await
     }
@@ -148,9 +173,9 @@ impl ControlService {
     }
 
     /// Decides the undecided request `request` (`permissions.md`
-    /// § Requests). An allow records the grant of its category and decides
-    /// every undecided request of that category in the conversation; a deny
-    /// decides this request alone. Answers the requests it decided, whose
+    /// § Requests). An allow records the grant of each of its categories and
+    /// decides every undecided request of the conversation whose categories
+    /// are now all granted; a deny decides this request alone. Answers the requests it decided, whose
     /// messages the backend delivers next.
     pub async fn decide_permission(
         &self,
@@ -163,31 +188,44 @@ impl ControlService {
             if archived(&transaction, &conversation)? {
                 return Ok(Err(PermissionRefusal::Archived));
             }
-            let category: Option<String> = transaction
+            let stored: Option<String> = transaction
                 .query_row(
-                    "SELECT category FROM permission_requests
+                    "SELECT categories FROM permission_requests
                      WHERE id = ?1 AND conversation_id = ?2 AND decision IS NULL",
                     params![request.as_str(), conversation.as_str()],
                     |row| row.get(0),
                 )
                 .optional()?;
-            let Some(category) = category else {
+            let Some(stored) = stored else {
                 return Ok(Err(PermissionRefusal::NotFound));
             };
             let decided: Vec<String> = match outcome {
                 PermissionOutcome::Allowed => {
-                    transaction.execute(
-                        "INSERT OR IGNORE INTO permission_grants (conversation_id, category, granted_at)
-                         VALUES (?1, ?2, ?3)",
-                        params![conversation.as_str(), category, now.as_millisecond()],
-                    )?;
-                    transaction
+                    for category in categories(&stored)? {
+                        transaction.execute(
+                            "INSERT OR IGNORE INTO permission_grants (conversation_id, category, granted_at)
+                             VALUES (?1, ?2, ?3)",
+                            params![conversation.as_str(), category, now.as_millisecond()],
+                        )?;
+                    }
+                    let undecided: Vec<(String, String)> = transaction
                         .prepare_cached(
-                            "SELECT id FROM permission_requests
-                             WHERE conversation_id = ?1 AND category = ?2 AND decision IS NULL",
+                            "SELECT id, categories FROM permission_requests
+                             WHERE conversation_id = ?1 AND decision IS NULL",
                         )?
-                        .query_map(params![conversation.as_str(), category], |row| row.get(0))?
-                        .collect::<Result<_, _>>()?
+                        .query_map([conversation.as_str()], |row| Ok((row.get(0)?, row.get(1)?)))?
+                        .collect::<Result<_, _>>()?;
+                    let mut complete = Vec::new();
+                    for (id, stored) in undecided {
+                        let mut granted = true;
+                        for category in categories(&stored)? {
+                            granted &= granted_at(&transaction, &conversation, &category)?.is_some();
+                        }
+                        if granted {
+                            complete.push(id);
+                        }
+                    }
+                    complete
                 }
                 PermissionOutcome::Denied => vec![request.as_str().to_owned()],
             };
@@ -276,6 +314,12 @@ fn granted_at(
         .optional()?)
 }
 
+/// The category ids a `categories` column holds.
+fn categories(stored: &str) -> Result<Vec<String>, StorageError> {
+    let Categories(ids) = json(REQUESTS, "categories", stored)?;
+    Ok(ids)
+}
+
 fn outcome_text(outcome: PermissionOutcome) -> &'static str {
     match outcome {
         PermissionOutcome::Allowed => "allowed",
@@ -331,7 +375,7 @@ fn request_row(row: &Row<'_>) -> Result<StoredRequest, StorageError> {
             "conversation_id",
             ConversationId::try_from(row.get::<_, String>("conversation_id")?.as_str()),
         )?,
-        category: row.get("category")?,
+        categories: categories(&row.get::<_, String>("categories")?)?,
         command: row.get("command")?,
         agent: AskingAgent {
             node: decode(

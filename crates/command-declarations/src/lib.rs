@@ -9,9 +9,11 @@
 //! ([`Binding`]), and [`Node::pin`] turns the one into the other.
 //!
 //! A group may declare permission categories, and a leaf names the one it
-//! needs as its `permission` (`permissions.md` § Categories): the
-//! declaration is all a command does about permissions, which the backend's
-//! dispatch checks before a handler runs.
+//! needs as its `permission` (`permissions.md` § Categories), and the input
+//! field that may bring a device into the conversation as its `bringsHost`
+//! (`permissions.md` § Several categories): the declaration is all a
+//! command does about permissions, which the backend's dispatch checks
+//! before a handler runs.
 
 mod help;
 mod input;
@@ -101,18 +103,6 @@ pub struct Category {
     pub description: String,
 }
 
-impl Category {
-    /// The category's title: its action with its first letter capitalized,
-    /// such as "Manage skills".
-    pub fn title(&self) -> String {
-        let mut characters = self.action.chars();
-        match characters.next() {
-            Some(first) => first.to_uppercase().chain(characters).collect(),
-            None => String::new(),
-        }
-    }
-}
-
 /// A command: its help texts, the JSON Schema of its input object, where its
 /// input comes from on the command line, and how it runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -144,6 +134,10 @@ pub struct Leaf<B = Binding> {
     /// The id of the permission category the command needs, which one of
     /// its groups declares; only an `rpc` leaf names one.
     pub permission: Option<String>,
+    /// The string input field that names a device or a project the call may
+    /// bring into the conversation, which the dispatch resolves; only an
+    /// `rpc` leaf names one.
+    pub brings_host: Option<String>,
     pub kind: LeafKind<B>,
 }
 
@@ -378,6 +372,20 @@ impl<B> Node<B> {
             }
             Self::Leaf(leaf) => {
                 leaf.validate()?;
+                if let Some(field) = &leaf.brings_host {
+                    if matches!(leaf.kind, LeafKind::Native(_)) {
+                        return Err(invalid(format!(
+                            "native command {} names a bringsHost field; only an rpc command can",
+                            leaf.name
+                        )));
+                    }
+                    if leaf.property_type(field) != Some("string") {
+                        return Err(invalid(format!(
+                            "command {} names {field} as bringsHost, which is no string field of its input",
+                            leaf.name
+                        )));
+                    }
+                }
                 let Some(permission) = &leaf.permission else {
                     return Ok(());
                 };
@@ -432,6 +440,7 @@ impl Node<NativeOperation> {
                 output: leaf.output.clone(),
                 media: leaf.media,
                 permission: leaf.permission.clone(),
+                brings_host: leaf.brings_host.clone(),
                 kind: match &leaf.kind {
                     LeafKind::Rpc => LeafKind::Rpc,
                     LeafKind::Native(operation) => LeafKind::Native(Binding {
@@ -699,6 +708,12 @@ struct RawLeaf<B> {
         with = "unwrap_or_skip"
     )]
     permission: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    brings_host: Option<String>,
     kind: RawKind,
     #[serde(
         default,
@@ -739,6 +754,7 @@ impl<B> TryFrom<RawLeaf<B>> for Leaf<B> {
             output: raw.output,
             media: raw.media,
             permission: raw.permission,
+            brings_host: raw.brings_host,
             kind,
         })
     }
@@ -764,6 +780,7 @@ impl<B> From<Leaf<B>> for RawLeaf<B> {
             output: leaf.output,
             media: leaf.media,
             permission: leaf.permission,
+            brings_host: leaf.brings_host,
             kind,
             binding,
         }

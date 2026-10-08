@@ -23,7 +23,7 @@ use demi_agent_tools::{HostResolver, shell_output};
 use demi_agent_transcript::IdSource;
 use demi_conversation_socket_protocol::ServerFrame;
 use demi_host_interface::RegisterError;
-use demi_shared_gates::{ActivityGate, KeyedSerialGate, Reservation};
+use demi_shared_gates::{ActivityGate, GateState, KeyedSerialGate, Reservation};
 use demi_shared_types::{Clock, CommandEnd, CommandId, NodeId};
 use futures_util::future::join_all;
 use tokio::sync::watch;
@@ -455,6 +455,20 @@ impl<H: HostResolver> Tree<H> {
         !self.works() && !self.live.runs_commands()
     }
 
+    /// A watch that wakes at each change that may make the tree quiescent or
+    /// not, or its admission free to reserve: its root's status, a child's
+    /// start or close, a command's start or end, a lease or a reservation of
+    /// its admission. It does not keep the tree alive, and it wakes once the
+    /// tree is gone.
+    pub fn watch_quiescence(&self) -> QuiescenceWatch {
+        QuiescenceWatch {
+            status: self.root.session().status_watch(),
+            changes: self.changes.subscribe(),
+            running: self.live.watch_running(),
+            admission: self.admission.subscribe(),
+        }
+    }
+
     /// Attaches a connection beside the others and sends it the open
     /// handshake in one step, so nothing happens to the tree between
     /// `opened` and the last live command: the root's snapshot frames, then
@@ -631,6 +645,28 @@ fn frame_of(event: &SessionEvent) -> Option<ServerFrame> {
         },
         SessionEvent::ActionFailed { .. } => return None,
     })
+}
+
+/// What [`Tree::watch_quiescence`] answers.
+pub struct QuiescenceWatch {
+    status: watch::Receiver<Status>,
+    changes: watch::Receiver<u64>,
+    running: watch::Receiver<BTreeSet<CommandId>>,
+    admission: watch::Receiver<GateState>,
+}
+
+impl QuiescenceWatch {
+    /// Resolves at the next change after the last one this watch saw, or
+    /// once the tree is gone, after which it resolves at once.
+    pub async fn changed(&mut self) {
+        // An error is the tree gone, which the caller finds when it looks.
+        tokio::select! {
+            _ = self.status.changed() => {}
+            _ = self.changes.changed() => {}
+            _ = self.running.changed() => {}
+            _ = self.admission.changed() => {}
+        }
+    }
 }
 
 /// Whether a root in this status does nothing by itself.

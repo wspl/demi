@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
-import { agentReceiptMessages, editedFile, permissionReceiptMessages } from '../fixtures/blocks'
+import { agentReceiptMessages, editedFile, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
 import { HELPER, helperBlocks, helperParentBlocks, signInRequestBlocks, standaloneRequest, uncopiedRequestBlocks } from '../fixtures/request-changes'
 import { useGalleryTranscripts } from '../fixtures/transcripts'
 import GalleryTranscript from '../components/GalleryTranscript.vue'
@@ -11,7 +11,7 @@ import GalleryCommandReferences from '../components/GalleryCommandReferences.vue
 import GalleryEditSelection from '../components/GalleryEditSelection.vue'
 import PermissionCard from '@demicodes/web-ui/permissions/PermissionCard.vue'
 import { afterDecision, type PermissionDecision, type PermissionRequestView } from '@demicodes/web-ui/permissions/types'
-import { queuedRequests, rootRequest, subagentRequest } from '../fixtures/permissions'
+import { moveRequest, queuedRequests, rootRequest, subagentRequest } from '../fixtures/permissions'
 import { readGalleryEdit } from '../fixtures/blobs'
 import ErrorBlock from '@demicodes/web-ui/agent/blocks/ErrorBlock.vue'
 import ToolShellBlock from '@demicodes/web-ui/agent/blocks/ToolShellBlock.vue'
@@ -79,7 +79,7 @@ import GalleryUserMessageLengths from '../components/GalleryUserMessageLengths.v
 import { regenerateMessage, submitMessageEdit, type MessageEditHost, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { callTerminal, firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
 import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
-import type { UserContentBlock } from '@demicodes/protocol'
+import type { AgentMessage, UserContentBlock } from '@demicodes/protocol'
 import { applyModelChange, type ModelSettings, type ModelSettingsChange } from '@demicodes/web-ui/agent/model-selection'
 import { composerAttachment, encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
@@ -151,6 +151,7 @@ const permissionSpecimens = reactive([
   { variant: 'one request', fixture: () => [rootRequest()], requests: [rootRequest()] },
   { variant: 'a queue of three', fixture: queuedRequests, requests: queuedRequests() },
   { variant: 'a subagent asked', fixture: () => [subagentRequest()], requests: [subagentRequest()] },
+  { variant: 'two categories', fixture: () => [moveRequest()], requests: [moveRequest()] },
 ])
 function decidePermission(
   requests: PermissionRequestView[],
@@ -158,9 +159,23 @@ function decidePermission(
   decision: PermissionDecision,
 ): PermissionRequestView[] {
   productWould(decision === 'allow'
-    ? 'Allow the Category and Tell Each Agent That Asked'
+    ? 'Allow the Categories and Tell Each Agent That Asked'
     : 'Tell the Agent the Request Was Denied')
   return afterDecision(requests, id, decision)
+}
+/** A receipt specimen's name: what the message is. */
+function receiptVariant(message: AgentMessage): string {
+  const event = message.event
+  switch (event.type) {
+    case 'message':
+      return 'update'
+    case 'move_failed':
+      return 'move failed'
+    case 'permission':
+      return event.action.includes(' and ') ? `${event.outcome}, two categories` : event.outcome
+    default:
+      return event.outcome
+  }
 }
 /**
  * The dock's specimens: what stacks over the composer, one step apart, with
@@ -1247,7 +1262,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="PermissionCard"
-        note="An agent’s command needs the user’s permission (permissions.md): the oldest request waits above the composer, below the transcript and over the dock’s chips, while the transcript and the composer stay usable. It says what the conversation would be allowed, the command the agent ran, the subagent that ran it, what a grant allows, and which one of how many it is. Allow for This Conversation decides every request of its category; Deny decides this one, and the next takes its place. A category the user’s command set no longer declares shows its id."
+        note="An agent’s command needs the user’s permission (permissions.md): the oldest request waits above the composer, below the transcript and over the dock’s chips, while the transcript and the composer stay usable. It says what the conversation would be allowed, the command the agent ran, the subagent that ran it, what a grant allows, and which one of how many it is. A command that needs two categories, such as a move into a project on a device the conversation lacks, asks for both at once, with each category’s title and what it allows. Allow for This Conversation grants the request’s categories and decides every request they complete; Deny decides this one, and the next takes its place. A category the user’s command set no longer declares shows its id."
       >
         <div class="specimen-stack">
           <GallerySpecimen
@@ -1508,13 +1523,13 @@ onBeforeUnmount(() => {
         </div>
       </GallerySection>
 
-      <GallerySection title="AgentReceiptBlock" note="Agent updates, completion receipts, and the user’s decisions on permission requests as the agent that asked received them. Expand to read the message; these rows have no human message controls.">
+      <GallerySection title="AgentReceiptBlock" note="Agent updates, completion receipts, the user’s decisions on permission requests as the agent that asked received them, and Demi’s notice that a move the agent asked for failed. Expand to read the message; these rows have no human message controls.">
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
             <GallerySpecimen
-              v-for="(message, index) in [...agentReceiptMessages, ...permissionReceiptMessages]"
+              v-for="(message, index) in [...agentReceiptMessages, ...permissionReceiptMessages, ...organizeReceiptMessages]"
               :key="message.id"
-              :variant="message.event.type === 'message' ? 'update' : message.event.outcome"
+              :variant="receiptVariant(message)"
               wide
             >
               <AgentReceiptBlock :message="message" :open="index === 1" />

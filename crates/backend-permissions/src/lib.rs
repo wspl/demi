@@ -108,15 +108,15 @@ impl From<PermissionRefusal> for PermissionError {
     }
 }
 
-/// The check of one `rpc` call whose leaf needs `category`
+/// The check of one `rpc` call that needs `categories`, one or more
 /// (`permissions.md` § The check): it passes when the call's conversation
-/// has the grant, whichever agent of its tree runs it. Otherwise it records
-/// the request and fails the call with the message the agent reads, and no
-/// handler runs.
+/// has the grant of each, whichever agent of its tree runs it. Otherwise it
+/// records one request of the categories the conversation lacks and fails
+/// the call with the message the agent reads, and no handler runs.
 pub async fn check(
     shard: &dyn PermissionShard,
     invocation: &RpcInvocation,
-    category: &Category,
+    categories: &[&Category],
 ) -> Result<(), RpcError> {
     let conversation = ConversationId::try_from(invocation.context.conversation.as_str())
         .map_err(|_| RpcError::Failed("the call names no conversation".into()))?;
@@ -129,21 +129,33 @@ pub async fn check(
         .asking_agent(&conversation, &node)
         .map_err(RpcError::Failed)?;
     let command = command_line(invocation)?;
+    let ids = categories.iter().map(|category| category.id.clone()).collect();
     let checked = shard
         .control()
-        .check_permission(conversation.clone(), category.id.clone(), command, agent)
+        .check_permission(conversation.clone(), ids, command, agent)
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     match checked {
         Checked::Granted => Ok(()),
-        Checked::Raised(_) => {
+        Checked::Raised { lacking, .. } => {
             changed(shard, &conversation);
+            let lacking: Vec<&Category> = lacking
+                .iter()
+                .filter_map(|id| categories.iter().find(|category| category.id == *id).copied())
+                .collect();
             Err(RpcError::Failed(format!(
                 "this conversation needs the user's permission to {}; the request was sent to the user, and you will be told when the user decides",
-                category.action
+                joined(lacking.iter().map(|category| category.action.as_str()))
             )))
         }
     }
+}
+
+/// The actions of several categories as one phrase: joined with "and", as
+/// the card's title and the decision's message join them (`permissions.md`
+/// § Several categories).
+fn joined<'a>(actions: impl Iterator<Item = &'a str>) -> String {
+    actions.collect::<Vec<_>>().join(" and ")
 }
 
 /// The command line as the agent ran it: the call's argv, which starts with
@@ -176,7 +188,7 @@ pub async fn read(
         requests: requests
             .into_iter()
             .map(|request| PermissionRequest {
-                category: category(&request.category),
+                categories: request.categories.iter().map(|id| category(id)).collect(),
                 id: request.id,
                 command: request.command,
                 agent: request.agent.subagent,
@@ -187,8 +199,9 @@ pub async fn read(
 }
 
 /// Decides the undecided request `request` (`permissions.md` § Requests):
-/// an allow grants its category to the conversation and decides each of
-/// its requests, a deny decides this one alone. Each agent that asked is
+/// an allow grants its categories to the conversation and decides each
+/// request whose categories are then all granted, a deny decides this one
+/// alone. Each agent that asked is
 /// sent its message after the answer.
 pub async fn decide(
     shard: &dyn PermissionShard,
@@ -228,10 +241,12 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
         return;
     };
     let categories = declared(&*shard).await;
-    let action = categories
-        .iter()
-        .find(|category| category.id == request.category)
-        .map_or_else(|| request.category.clone(), |category| category.action.clone());
+    let action = joined(request.categories.iter().map(|id| {
+        categories
+            .iter()
+            .find(|category| category.id == *id)
+            .map_or(id.as_str(), |category| category.action.as_str())
+    }));
     let message = |recipient: &NodeId| AgentMessage {
         id: BlockId::try_from(format!("permission:{}", request.id))
             .expect("a permission message's id is not empty"),
