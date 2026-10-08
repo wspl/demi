@@ -746,6 +746,7 @@ impl Context {
             args: args.iter().map(|arg| (*arg).to_owned()).collect(),
             cwd: cwd.map(str::to_owned),
             env: self.env.clone(),
+            descriptors: Vec::new(),
             retained: false,
         };
         self.host.process().spawn(request).await.map_err(text)

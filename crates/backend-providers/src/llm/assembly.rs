@@ -9,9 +9,9 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use demi_backend_database::StorageError;
-use demi_provider_claude_code::Placement;
-use demi_provider_common::credentials::CredentialPool;
-use demi_provider_common::{Provider, ProviderRuntime};
+use demi_provider_claude_code::{AccountMachine, Placement};
+use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
+use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv};
 use demi_shared_types::Clock;
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 
@@ -43,6 +43,22 @@ pub enum AssemblyError {
 /// An entry's provider for its active account, with the entry read it was
 /// built from.
 type Built = (ProviderEntry, Arc<dyn Provider>);
+
+/// The account operations a login runs: its family's own over the machine
+/// its sign-in runs on, or else the provider's.
+pub enum LoginAccounts {
+    Provider(Arc<dyn Provider>),
+    Machine(Box<dyn SubscriptionAccounts>),
+}
+
+impl LoginAccounts {
+    pub fn accounts(&self) -> Option<&dyn SubscriptionAccounts> {
+        match self {
+            Self::Provider(provider) => provider.accounts(),
+            Self::Machine(accounts) => Some(&**accounts),
+        }
+    }
+}
 
 /// The providers of every entry, shared by the edge and the shards.
 pub struct ProviderAssembly {
@@ -149,21 +165,45 @@ impl ProviderAssembly {
         self.build(entry, Some(account)).await.map(Some)
     }
 
-    /// A provider of `family` over `pool` with no account yet, for a login
-    /// whose entry does not exist until the login completes.
-    pub fn detached(
+    /// The account operations a login into `entry` runs, whose sign-in runs
+    /// on `machine` for a family whose login runs a process.
+    pub async fn login_accounts(
+        &self,
+        entry: &ProviderEntry,
+        machine: Arc<dyn AccountMachine>,
+    ) -> Result<LoginAccounts, AssemblyError> {
+        let family = self.family(&entry.family)?;
+        let args = self.entry_args(entry, None).await?;
+        match family.login_accounts(args, machine) {
+            Some(accounts) => Ok(LoginAccounts::Machine(accounts?)),
+            None => Ok(LoginAccounts::Provider(self.provider_for(entry).await?)),
+        }
+    }
+
+    /// The account operations of a login of `family` over `pool` with no
+    /// account yet, whose entry does not exist until the login completes;
+    /// its sign-in runs on `machine` for a family whose login runs a
+    /// process.
+    pub fn detached_login_accounts(
         &self,
         family: &str,
         id: &str,
         label: &str,
         pool: Arc<dyn CredentialPool>,
-    ) -> Result<Arc<dyn Provider>, AssemblyError> {
+        machine: Arc<dyn AccountMachine>,
+    ) -> Result<LoginAccounts, AssemblyError> {
         let registered = self.family(family)?;
-        let credential = FamilyCredential::Subscription(SubscriptionArgs {
-            pool,
-            account: None,
-        });
-        Ok(registered.provider(self.args(id.to_owned(), label.to_owned(), credential))?)
+        let args = || {
+            let credential = FamilyCredential::Subscription(SubscriptionArgs {
+                pool: pool.clone(),
+                account: None,
+            });
+            self.args(id.to_owned(), label.to_owned(), credential)
+        };
+        match registered.login_accounts(args(), machine) {
+            Some(accounts) => Ok(LoginAccounts::Machine(accounts?)),
+            None => Ok(LoginAccounts::Provider(registered.provider(args())?)),
+        }
     }
 
     /// Whether `entry`'s provider runs a process on a Host, which then is the
@@ -179,12 +219,13 @@ impl ProviderAssembly {
         &self,
         entry: &ProviderEntry,
         account: Option<&CredentialId>,
+        env: RuntimeEnv,
         placement: Rc<dyn Placement>,
     ) -> Result<Box<dyn ProviderRuntime>, AssemblyError> {
         let family = self.family(&entry.family)?;
         let args = self.entry_args(entry, account).await?;
         let runtime = family
-            .process_runtime(args, placement)
+            .process_runtime(args, env, placement)
             .ok_or_else(|| AssemblyError::NoProcessRuntime(entry.family.clone()))?;
         Ok(runtime?)
     }

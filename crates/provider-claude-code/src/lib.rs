@@ -1,18 +1,20 @@
 //! The Claude Code provider (`crates-and-packages.md` §
-//! provider-claude-code): a `claude-code` subscription entry's account, a
-//! setup token, inferring through Demi's own copy of the vendor's CLI. A
-//! session's runtime keeps one CLI process and exchanges stream-json with it
-//! over the `shell` process a [`Placement`] starts; the model's tools reach
-//! Demi over the SDK MCP channel, an rmcp server inside the run, with the
-//! model's parallel tool batches kept whole. The catalog is models.dev's
-//! Claude models, and the account's quota comes from a free probe of the OAuth
-//! usage endpoint and from the rate limits the CLI's lines report
-//! (`claude-code.md`).
+//! provider-claude-code): a `claude-code` subscription entry's account,
+//! signed in by the CLI's own login on the user's Cloud, inferring through
+//! Demi's own copy of the vendor's CLI. A session's runtime keeps one CLI
+//! process and exchanges stream-json with it over the `shell` process a
+//! [`Placement`] starts; each process gets only its account's access token,
+//! which the backend alone refreshes; the model's tools reach Demi over the
+//! SDK MCP channel, an rmcp server inside the run, with the model's parallel
+//! tool batches kept whole. The catalog is models.dev's Claude models, and
+//! the account's quota comes from a free probe of the OAuth usage endpoint
+//! and from the rate limits the CLI's lines report (`claude-code.md`).
 
 mod account;
 mod cli;
 mod input;
 mod live;
+mod login;
 mod mcp;
 mod models;
 mod output;
@@ -37,9 +39,12 @@ use demi_shared_types::{
 use futures_util::future::BoxFuture;
 use reqwest::Url;
 
-pub use placement::{CliSite, Placement, StartError};
+pub use placement::{
+    AccountMachine, AccountWork, CliSite, ConfigDir, Placed, Placement, StartError,
+};
 
-use crate::account::{ClaudeAuth, ClaudeKit};
+use crate::account::ClaudeAuth;
+use crate::login::ClaudeKit;
 use crate::quota::ClaudeQuota;
 use crate::run::ClaudeCodeRuntime;
 
@@ -59,10 +64,14 @@ pub struct ClaudeCodeConfig {
     /// The OAuth usage endpoint the quota probe reads,
     /// `https://api.anthropic.com/api/oauth/usage` in the product.
     pub usage_url: Url,
+    /// The CLI's token endpoint the account's tokens are refreshed at,
+    /// `https://platform.claude.com/v1/oauth/token` in the product.
+    pub token_url: Url,
 }
 
 impl ClaudeCodeConfig {
     pub const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
+    pub const TOKEN_URL: &str = "https://platform.claude.com/v1/oauth/token";
 
     /// The product's configuration of an entry's provider for `account`.
     pub fn new(
@@ -75,6 +84,7 @@ impl ClaudeCodeConfig {
             display_name: display_name.into(),
             account,
             usage_url: Url::parse(Self::USAGE_URL).expect("the usage URL parses"),
+            token_url: Url::parse(Self::TOKEN_URL).expect("the token URL parses"),
         }
     }
 }
@@ -92,8 +102,12 @@ pub struct ClaudeCodeProvider {
 struct Shared {
     id: String,
     display_name: String,
+    pool: Arc<dyn CredentialPool>,
+    clock: Arc<dyn Clock>,
     auth: Arc<ClaudeAuth>,
     quota: ProviderQuota,
+    /// The accounts as inference and settings see them; signing in needs a
+    /// machine ([`ClaudeCodeProvider::login_accounts`]).
     accounts: Accounts<ClaudeKit>,
     models_dev: ModelsDevClient,
 }
@@ -111,28 +125,62 @@ impl ClaudeCodeProvider {
         http: reqwest::Client,
         clock: Arc<dyn Clock>,
     ) -> Self {
-        let auth = Arc::new(ClaudeAuth::new(pool.clone(), config.account));
+        let auth = Arc::new(ClaudeAuth::new(
+            pool.clone(),
+            config.account,
+            config.token_url,
+            clock.clone(),
+        ));
         let source = ClaudeQuota {
             auth: auth.clone(),
             http,
             usage_url: config.usage_url,
         };
+        let kit = ClaudeKit {
+            machine: None,
+            entry: config.id.clone(),
+        };
         Self {
             shared: Arc::new(Shared {
                 id: config.id,
                 display_name: config.display_name,
+                pool: pool.clone(),
+                clock: clock.clone(),
                 auth,
                 quota: ProviderQuota::new(Box::new(source), snapshots, clock.clone()),
-                accounts: Accounts::new(pool, ClaudeKit, clock),
+                accounts: Accounts::new(pool, kit, clock),
                 models_dev,
             }),
         }
     }
 
     /// A session's runtime, which starts its CLI processes through
-    /// `placement` and keeps at most one of them between runs.
-    pub fn process_runtime(&self, placement: Rc<dyn Placement>) -> Box<dyn ProviderRuntime> {
-        Box::new(ClaudeCodeRuntime::new(self.shared.clone(), placement))
+    /// `placement` and keeps at most one of them between runs; `env` is the
+    /// shard's, whose client refreshes the account's token.
+    pub fn process_runtime(
+        &self,
+        env: RuntimeEnv,
+        placement: Rc<dyn Placement>,
+    ) -> Box<dyn ProviderRuntime> {
+        Box::new(ClaudeCodeRuntime::new(
+            self.shared.clone(),
+            env.http,
+            placement,
+        ))
+    }
+
+    /// The entry's account operations with a sign-in that runs the CLI's own
+    /// login on `machine` (`claude-code.md` § Accounts and sign-in).
+    pub fn login_accounts(&self, machine: Arc<dyn AccountMachine>) -> Box<dyn SubscriptionAccounts> {
+        let kit = ClaudeKit {
+            machine: Some(machine),
+            entry: self.shared.id.clone(),
+        };
+        Box::new(Accounts::new(
+            self.shared.pool.clone(),
+            kit,
+            self.shared.clock.clone(),
+        ))
     }
 }
 
@@ -141,7 +189,8 @@ impl Provider for ClaudeCodeProvider {
         Capabilities { process_host: true }
     }
 
-    /// The account's setup token as stored; reading it never infers.
+    /// The account's sign-in as stored; reading it never refreshes and
+    /// never infers.
     fn auth_status(&self) -> BoxFuture<'_, AuthState> {
         Box::pin(async {
             match self.shared.auth.stored().await {

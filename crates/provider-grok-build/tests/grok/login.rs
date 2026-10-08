@@ -10,8 +10,8 @@ use std::{
 
 use demi_provider_common::{
     Provider,
-    credentials::{AccountsCapability, CredentialPool, LoginError, MemoryCredentialPool},
-    testing::{MockResponse, MockVendor},
+    credentials::{AccountsCapability, CredentialPool, LoginError, LoginKind, MemoryCredentialPool},
+    testing::{MockResponse, MockVendor, login_io},
 };
 use demi_shared_types::LoginPending;
 use serde_json::{Value, json};
@@ -85,8 +85,7 @@ async fn a_device_login_follows_the_grok_clis_contract_and_stores_the_user() {
     assert_eq!(
         accounts.capability(),
         AccountsCapability {
-            login: true,
-            add: false
+            login: Some(LoginKind::Device)
         }
     );
 
@@ -95,7 +94,7 @@ async fn a_device_login_follows_the_grok_clis_contract_and_stores_the_user() {
         let shown = shown.clone();
         move |pending: LoginPending| shown.lock().unwrap().push(pending)
     };
-    let account = accounts.login(&report).await.unwrap();
+    let account = accounts.login(login_io(&report)).await.unwrap();
     let shown = shown.lock().unwrap().clone();
     assert_eq!(shown.len(), 1);
     assert_eq!(
@@ -185,7 +184,7 @@ async fn tokens_that_act_for_a_team_make_the_team_the_accounts_user_without_an_e
     let pool = MemoryCredentialPool::new();
     let provider = provider(&vendor, &pool, None);
     let report = |_: LoginPending| {};
-    let account = provider.accounts().unwrap().login(&report).await.unwrap();
+    let account = provider.accounts().unwrap().login(login_io(&report)).await.unwrap();
     assert_eq!(account.label, "team-123");
     let document = stored(&pool, &account.id).await;
     assert_eq!(
@@ -209,7 +208,7 @@ async fn a_slow_down_waits_five_seconds_longer_before_each_later_poll() {
     let provider = provider(&vendor, &pool, None);
     let report = |_: LoginPending| {};
     let started = tokio::time::Instant::now();
-    provider.accounts().unwrap().login(&report).await.unwrap();
+    provider.accounts().unwrap().login(login_io(&report)).await.unwrap();
     // Two seconds, then seven, then seven again.
     let waited = started.elapsed();
     assert!(
@@ -237,15 +236,15 @@ async fn a_refused_login_or_an_address_a_web_browser_cannot_trust_fails_and_stor
     let report = |_: LoginPending| panic!("a failed login showed a code");
     let refused = |_: LoginPending| {};
     assert_eq!(
-        accounts.login(&refused).await.unwrap_err(),
+        accounts.login(login_io(&refused)).await.unwrap_err(),
         LoginError::Failed("Grok device login failed: access_denied".into())
     );
-    let insecure = accounts.login(&report).await.unwrap_err();
+    let insecure = accounts.login(login_io(&report)).await.unwrap_err();
     assert_eq!(
         insecure,
         LoginError::Failed("Grok device code failed: the response is malformed at verification_uri: a field is missing, unknown or of the wrong type".into())
     );
-    let unnamed = accounts.login(&report).await.unwrap_err();
+    let unnamed = accounts.login(login_io(&report)).await.unwrap_err();
     assert_eq!(
         unnamed,
         LoginError::Failed(
@@ -268,7 +267,7 @@ async fn dropping_a_login_while_it_waits_for_the_user_stops_it_and_stores_nothin
         move |_: LoginPending| shown.notify_one()
     };
     tokio::select! {
-        _ = provider.accounts().unwrap().login(&report) => panic!("the login ended without the user"),
+        _ = provider.accounts().unwrap().login(login_io(&report)) => panic!("the login ended without the user"),
         () = shown.notified() => {}
     }
     tokio::time::sleep(Duration::from_secs(60)).await;

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_host_interface::{ProcessEnd, Signal, SpawnEnv, SpawnRequest};
+use demi_host_interface::{Descriptor, ProcessEnd, Signal, SpawnEnv, SpawnRequest};
 use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider};
 use demi_provider_common::credentials::MemoryCredentialPool;
 use demi_provider_common::quota::MemorySnapshots;
@@ -58,7 +58,8 @@ async fn as_the_agent_reads(mut run: ProviderRun<'_>) -> Vec<ProviderEvent> {
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_new_process_starts_with_the_cli_contract_the_accounts_token_and_demis_directories() {
+async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_token_on_a_descriptor()
+{
     let provider = provider().await;
     let (placement, mut starts) = ScriptedPlacement::new();
     let mut runtime = runtime_of(&provider, &placement);
@@ -119,10 +120,28 @@ async fn a_new_process_starts_with_the_cli_contract_the_accounts_token_and_demis
     .into_iter()
     .map(String::from)
     .collect();
+    // The access token is on descriptor 3, never in the environment, which
+    // removes a token the machine's own environment holds; the CLI asks
+    // Demi for a fresh one.
     let env = BTreeMap::from([
         ("CLAUDECODE".to_owned(), None),
-        ("CLAUDE_CODE_OAUTH_TOKEN".to_owned(), Some(TOKEN.to_owned())),
-        ("CLAUDE_CONFIG_DIR".to_owned(), Some(site().config_dir)),
+        ("CLAUDE_CODE_OAUTH_TOKEN".to_owned(), None),
+        (
+            "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR".to_owned(),
+            Some("3".to_owned()),
+        ),
+        (
+            "CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH".to_owned(),
+            Some("1".to_owned()),
+        ),
+        (
+            "CLAUDE_CODE_ENTRYPOINT".to_owned(),
+            Some("claude-vscode".to_owned()),
+        ),
+        (
+            "CLAUDE_CONFIG_DIR".to_owned(),
+            Some(cli.config_dir().to_owned()),
+        ),
         ("DISABLE_AUTOUPDATER".to_owned(), Some("1".to_owned())),
         ("DISABLE_AUTO_COMPACT".to_owned(), Some("1".to_owned())),
         (
@@ -135,12 +154,23 @@ async fn a_new_process_starts_with_the_cli_contract_the_accounts_token_and_demis
         args,
         cwd: Some(site().run_dir),
         env: SpawnEnv::Overlay(env),
+        descriptors: vec![Descriptor {
+            fd: 3,
+            bytes: Bytes::from_static(TOKEN.as_bytes()),
+        }],
         retained: true,
     };
     assert_eq!(cli.spawn, expected);
-    // Kept for the next turn: never signalled, still running.
+    // Kept for the next turn: never signalled, still running, with its
+    // directory.
     assert!(cli.signals().is_empty());
     assert_eq!(cli.end(), None);
+    assert!(!cli.config_removed());
+
+    // Closing the runtime ends the process, and its directory goes.
+    runtime.close().await;
+    assert!(cli.end().is_some());
+    assert!(cli.config_removed());
 }
 
 #[tokio::test(flavor = "local")]

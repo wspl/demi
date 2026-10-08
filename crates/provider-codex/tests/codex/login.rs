@@ -6,9 +6,9 @@ use std::sync::{Arc, Mutex};
 use demi_provider_codex::{CodexConfig, CodexProvider};
 use demi_provider_common::{
     Provider,
-    credentials::{AccountsCapability, CredentialPool, LoginError, MemoryCredentialPool},
+    credentials::{AccountsCapability, CredentialPool, LoginError, LoginKind, MemoryCredentialPool},
     quota::MemorySnapshots,
-    testing::{FixedClock, MockResponse, MockVendor, jwt},
+    testing::{FixedClock, MockResponse, MockVendor, jwt, login_io},
 };
 use demi_shared_types::LoginPending;
 use serde_json::{Value, json};
@@ -57,8 +57,7 @@ async fn a_device_login_shows_its_code_once_polls_until_confirmed_and_stores_the
     assert_eq!(
         accounts.capability(),
         AccountsCapability {
-            login: true,
-            add: false
+            login: Some(LoginKind::Device)
         }
     );
 
@@ -67,7 +66,7 @@ async fn a_device_login_shows_its_code_once_polls_until_confirmed_and_stores_the
         let shown = shown.clone();
         move |pending: LoginPending| shown.lock().unwrap().push(pending)
     };
-    let account = accounts.login(&report).await.unwrap();
+    let account = accounts.login(login_io(&report)).await.unwrap();
     let shown = shown.lock().unwrap().clone();
     assert_eq!(shown.len(), 1);
     assert_eq!(shown[0].verification_url, vendor.url("/codex/device"));
@@ -155,7 +154,7 @@ async fn a_device_code_without_a_user_code_or_an_unavailable_login_fails() {
     let missing = provider
         .accounts()
         .unwrap()
-        .login(&report)
+        .login(login_io(&report))
         .await
         .unwrap_err();
     assert_eq!(
@@ -165,7 +164,7 @@ async fn a_device_code_without_a_user_code_or_an_unavailable_login_fails() {
     let unavailable = provider
         .accounts()
         .unwrap()
-        .login(&report)
+        .login(login_io(&report))
         .await
         .unwrap_err();
     assert_eq!(
@@ -189,7 +188,7 @@ async fn dropping_a_login_cancels_it_between_polls_and_stores_nothing() {
     // The login is dropped once its first poll went out; the next would
     // follow five seconds later.
     tokio::select! {
-        _ = provider.accounts().unwrap().login(&report) => panic!("the login ended without the user"),
+        _ = provider.accounts().unwrap().login(login_io(&report)) => panic!("the login ended without the user"),
         () = vendor.received(2) => {}
     }
     assert_eq!(vendor.requests().len(), 2);

@@ -292,7 +292,7 @@ function removeModel(p: SettingsProviderEntry, m: SettingsProviderModel) {
   p.models = p.models.filter((x) => x.id !== m.id)
 }
 
-// Sign-in runs in its own dialog; the mock walks the device-code flow to completion.
+// Sign-in runs in its own dialog; the mock walks each flow to completion.
 const login = ref<{
   provider: SettingsProviderEntry
   phase: ProviderLoginPhase
@@ -301,34 +301,29 @@ const loginOpen = ref(false)
 let loginTimer = 0
 
 /**
- * Claude Code hands out a token from its own CLI; Codex and Grok Build confirm a
- * device code in a web browser. The mock walks each to done.
+ * Claude Code signs in on Claude's page, whose code the user pastes back; Codex
+ * and Grok Build confirm a device code in a web browser. The mock walks each to
+ * done.
  */
 function beginLogin(p: SettingsProviderEntry) {
   window.clearTimeout(loginTimer)
   loginOpen.value = true
   const mock = p as MockProvider
-  if (mock.family === 'claude-code') {
-    login.value = {
-      provider: p,
-      phase: {
-        kind: 'token',
-        command: 'claude setup-token',
-        install: {
-          label: 'Get Claude Code',
-          url: 'https://docs.anthropic.com/en/docs/claude-code/setup',
-        },
-        prefix: 'sk-ant-oat01-',
-      },
-    }
-    return
-  }
   login.value = {
     provider: p,
     phase: { kind: 'starting' },
   }
   loginTimer = window.setTimeout(() => {
     if (!login.value) {
+      return
+    }
+    if (mock.family === 'claude-code') {
+      login.value.phase = {
+        kind: 'code',
+        url: 'https://claude.com/cai/oauth/authorize?code=true',
+        expiresIn: '15 min',
+        submitted: false,
+      }
       return
     }
     const grok = mock.family === 'grok-build'
@@ -350,6 +345,15 @@ function beginLogin(p: SettingsProviderEntry) {
       }
     }, 4000)
   }, 900)
+}
+
+/** As the product's sign-in does once it has the code: it signs in, then the account is there. */
+function submitCode() {
+  if (login.value?.phase.kind !== 'code') {
+    return
+  }
+  login.value.phase = { ...login.value.phase, submitted: true }
+  loginTimer = window.setTimeout(() => finishLogin('zan@example.com · max'), 1500)
 }
 
 function finishLogin(account: string) {
@@ -440,6 +444,6 @@ function closeLogin() {
     @close="closeLogin"
     @open="openUrl"
     @retry="beginLogin(login.provider)"
-    @submit-token="finishLogin('zan@example.com · Max 5×')"
+    @submit-code="submitCode"
   />
 </template>

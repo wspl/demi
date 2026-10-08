@@ -26,15 +26,22 @@ use crate::placement::Placement;
 /// A session's runtime.
 pub(crate) struct ClaudeCodeRuntime {
     shared: Arc<Shared>,
+    /// The client of the shard the runtime runs on.
+    http: reqwest::Client,
     placement: Rc<dyn Placement>,
     /// The process kept from the last run.
     live: Option<LiveCli>,
 }
 
 impl ClaudeCodeRuntime {
-    pub(crate) fn new(shared: Arc<Shared>, placement: Rc<dyn Placement>) -> Self {
+    pub(crate) fn new(
+        shared: Arc<Shared>,
+        http: reqwest::Client,
+        placement: Rc<dyn Placement>,
+    ) -> Self {
         Self {
             shared,
+            http,
             placement,
             live: None,
         }
@@ -59,7 +66,11 @@ impl ProviderRuntime for ClaudeCodeRuntime {
     }
 
     fn fresh(&self) -> Box<dyn ProviderRuntime> {
-        Box::new(Self::new(self.shared.clone(), self.placement.clone()))
+        Box::new(Self::new(
+            self.shared.clone(),
+            self.http.clone(),
+            self.placement.clone(),
+        ))
     }
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
@@ -115,7 +126,12 @@ fn run(
                 if let Some(previous) = previous {
                     previous.close().await;
                 }
-                let started = LiveCli::start(&runtime.shared, &*runtime.placement, &request);
+                let started = LiveCli::start(
+                    &runtime.shared,
+                    &runtime.http,
+                    &*runtime.placement,
+                    &request,
+                );
                 let mut live = match cancel.run_until_cancelled(started).await {
                     // Giving the start up drops what it started, which kills
                     // it.

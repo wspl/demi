@@ -6,8 +6,12 @@
 //! text, runs a batch of tool calls through Demi and sends back their
 //! results, reports usage, stops in the middle of a stream, starts again
 //! from the transcript, for another model and effort too, and reports a
-//! vendor error as the request's failure. Every assertion is on what the product observes: the
-//! transcript, the frames, the usage ledger and what the vendor received.
+//! vendor error as the request's failure. It reads the account's access
+//! token from a descriptor, runs in a private directory of its own that
+//! goes with it, and after a 401 asks Demi for a fresh token, which Demi
+//! refreshes at the token endpoint. Every assertion is on what the product
+//! observes: the transcript, the frames, the usage ledger and what the
+//! vendor received.
 //!
 //! The suite runs only when `DEMI_TEST_CLAUDE_CODE` names the CLI's
 //! executable, as an ordinary user, since the CLI refuses the provider's
@@ -17,8 +21,9 @@
 //! goes to the scripted vendor on 127.0.0.1, which the Cloud's runner names
 //! in `ANTHROPIC_BASE_URL`; the runner's environment is the suite's own, so
 //! no proxy of the machine's reaches the CLI; the CLI's non-essential
-//! traffic, telemetry and error reporting are off; and the account's token
-//! is made up.
+//! traffic, telemetry and error reporting are off; and the account's tokens
+//! are made up. The account is stored as a sign-in would store it, since
+//! the CLI's own sign-in reaches only the vendor.
 //!
 //! The distribution serves HTTPS, since `demi.claude-code` downloads nothing
 //! else, with the certificate in `claude_code/`. The backend in this process
@@ -32,7 +37,8 @@ use bytes::Bytes;
 use demi_conversation_socket_protocol::ServerFrame;
 use demi_provider_common::testing::{MockResponse, MockVendor, RecordedRequest};
 use demi_shared_types::{Block, TokenUsage, ToolCallStatus, ToolResultContentBlock};
-use demi_web_api_protocol::providers::{CliInstall, NewestVersion, ProviderAnswer};
+use demi_backend::families::ClaudeCodeFamily;
+use demi_web_api_protocol::providers::{CliInstall, NewestVersion};
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
@@ -44,8 +50,11 @@ use crate::conversations::{
 };
 use crate::support::{Harness, Session, TestBackend};
 
-/// The account's setup token: made up, since no request reaches the vendor.
+/// The account's access token: made up, since no request reaches the
+/// vendor.
 const TOKEN: &str = "sk-ant-oat01-demi-suite-made-up-token";
+/// The access token a refresh gives.
+const FRESH: &str = "sk-ant-oat01-demi-suite-fresh-token";
 const CONVERSATION: &str = "4d2e3f5a-9b4c-4d2f-8e3a-6b2d3f4a5c01";
 /// The conversation's model, and the one it changes to.
 const MODEL: &str = "claude-opus-4-8";
@@ -208,33 +217,47 @@ impl World {
         }
         let vendor = MockVendor::start().await;
         vendor.respond_at("/api.json", claude_models());
+        // The account's tokens are refreshed at the scripted vendor.
+        let claude = ClaudeCodeFamily {
+            token_url: vendor.url("/v1/oauth/token").parse().unwrap(),
+            ..ClaudeCodeFamily::default()
+        };
         let harness = Harness::new()
             .with_claude_package()
             .with_claude_releases(distribution.url(RELEASES))
-            .with_models_dev(vendor.url("/api.json"));
+            .with_models_dev(vendor.url("/api.json"))
+            .with_families(demi_backend::families::builtin().with("claude-code", claude));
         harness
             .manager
             .script(|script| script.cloud_env = Some(cloud_env(&vendor, &ca)));
         let (backend, master) = harness.start_set_up().await;
-        let imported = backend
-            .post(
-                "/api/providers/setup-token",
-                Some(&master),
-                json!({ "token": TOKEN, "label": "Claude" }),
+        let secret = json!({
+            "accessToken": TOKEN,
+            "refreshToken": "sk-ant-ort01-demi-suite-made-up-refresh",
+            "expiresAt": "2100-01-01T00:00:00.000Z",
+            "scopes": ["user:inference", "user:profile"],
+            "subscriptionType": "max",
+            "accountId": "demi-suite-account",
+            "email": "suite@example.test",
+        });
+        let provider = backend
+            .seed_subscription(
+                &master,
+                "claude-code",
+                "Claude",
+                "account:demi-suite-account",
+                secret.to_string(),
             )
             .await;
-        assert_eq!(
-            imported.status,
-            StatusCode::CREATED,
-            "{}",
-            String::from_utf8_lossy(&imported.body)
-        );
-        let provider = imported
-            .json::<ProviderAnswer>()
-            .provider
-            .id
-            .as_str()
-            .to_owned();
+        // **Install**, as the settings page offers it.
+        let started = backend
+            .post(
+                &format!("/api/providers/{provider}/cli/install"),
+                Some(&master),
+                json!({}),
+            )
+            .await;
+        assert_eq!(started.status, StatusCode::ACCEPTED);
         let installed = settled(&backend, &master, &provider).await;
         assert!(
             matches!(installed.install, Some(CliInstall::Installed { .. })),
@@ -780,4 +803,104 @@ async fn a_vendor_error_fails_the_request_in_the_clis_words_and_the_kept_process
     );
     drop(socket);
     world.backend.close().await;
+}
+
+/// The configuration directories of CLI processes on this machine.
+fn config_directories() -> std::collections::BTreeSet<std::path::PathBuf> {
+    std::fs::read_dir("/tmp")
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            path.file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with("demi-claude-"))
+        })
+        .collect()
+}
+
+// Several seconds: see the first scenario.
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
+async fn the_cli_reads_its_token_from_a_descriptor_in_its_own_directory_and_asks_demi_for_a_fresh_one_after_a_401()
+ {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let world = World::start().await;
+    let before = config_directories();
+    let mut socket = world.conversation().await;
+
+    // The vendor refuses the token the CLI read from its descriptor as
+    // expired. The CLI asks Demi for a fresh one; Demi refreshes it at the
+    // token endpoint with the account's refresh token, and the CLI calls
+    // again with the fresh token.
+    let expired = json!({ "type": "error", "error": {
+        "type": "authentication_error", "message": "OAuth token has expired" } });
+    world.answers(
+        MockResponse::status(401)
+            .header("content-type", "application/json")
+            .chunk(expired.to_string()),
+    );
+    world.vendor.respond_at(
+        "/v1/oauth/token",
+        MockResponse::status(200)
+            .header("content-type", "application/json")
+            .chunk(
+                json!({
+                    "access_token": FRESH,
+                    "refresh_token": "sk-ant-ort01-demi-suite-next-refresh",
+                    "expires_in": 28_800,
+                    "scope": "user:inference user:profile",
+                })
+                .to_string(),
+            ),
+    );
+    world.answers(message(
+        vec![text_block(0, &["Fresh again."])],
+        "end_turn",
+        json!({ "input_tokens": 5, "output_tokens": 1 }),
+        2,
+    ));
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a41", "Hello?")
+        .await;
+    assert_eq!(last_text(&world.blocks().await), "Fresh again.");
+    let tokens: Vec<Option<String>> = world
+        .inferences()
+        .iter()
+        .map(|request| request.header("authorization").map(str::to_owned))
+        .collect();
+    assert_eq!(
+        tokens,
+        [Some(format!("Bearer {TOKEN}")), Some(format!("Bearer {FRESH}"))]
+    );
+    let refreshes: Vec<Value> = world
+        .vendor
+        .requests()
+        .iter()
+        .filter(|request| request.uri.path() == "/v1/oauth/token")
+        .map(RecordedRequest::json)
+        .collect();
+    assert_eq!(
+        refreshes,
+        [json!({
+            "grant_type": "refresh_token",
+            "refresh_token": "sk-ant-ort01-demi-suite-made-up-refresh",
+            "client_id": "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+            "scope": "user:inference user:profile",
+        })]
+    );
+
+    // The kept process runs in a directory of its own, private to the
+    // Cloud's user, which goes with it.
+    let created: Vec<std::path::PathBuf> = config_directories()
+        .difference(&before)
+        .cloned()
+        .collect();
+    let [directory] = created.as_slice() else {
+        panic!("one process directory: {created:?}");
+    };
+    let mode = std::fs::metadata(directory).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o700);
+    drop(socket);
+    world.backend.close().await;
+    assert!(!directory.exists());
 }

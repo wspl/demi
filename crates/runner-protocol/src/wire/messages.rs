@@ -111,6 +111,14 @@ pub enum Inbound {
             with = "unwrap_or_skip"
         )]
         kill_process_group: Option<bool>,
+        /// Pipes the process inherits besides its standard streams, each
+        /// holding its bytes and then ending.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        descriptors: Option<Vec<Descriptor>>,
     },
     SpawnStdin {
         spawn_id: String,
@@ -1184,6 +1192,28 @@ pub struct JobArtifactOwner {
     pub job_id: String,
     #[garde(custom(digest))]
     pub manifest_hash: String,
+}
+
+/// A pipe a spawned process inherits at descriptor `fd`, which holds `bytes`
+/// and then ends. Descriptors 0 to 2 are the standard streams.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Descriptor {
+    #[garde(range(min = 3))]
+    pub fd: u32,
+    #[garde(skip)]
+    pub bytes: WireBytes,
+}
+
+impl std::fmt::Debug for Descriptor {
+    /// The bytes may be a secret, so only their length is shown.
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Descriptor")
+            .field("fd", &self.fd)
+            .field("bytes", &format_args!("{} bytes", self.bytes.0.len()))
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

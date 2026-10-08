@@ -1,6 +1,6 @@
 //! A subscription entry's accounts (`web-api.md` § Subscription accounts,
 //! `providers.md` § Login and publication, `usage-and-quota.md` § Vendor
-//! quota): setup tokens sealed and never returned, explicit selection,
+//! quota): signed-in accounts sealed and never returned, explicit selection,
 //! device logins published once, held entries, cancellation, and
 //! an account's quota snapshot through a probe and a restart. The families
 //! are scripted.
@@ -16,7 +16,7 @@ use demi_shared_types::{QuotaWindow, SnapshotSource};
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{
-    Accounts, ActiveAccount, AddedAccount, CredentialKind, LoginAnswer, LoginStarted, LoginState,
+    Accounts, ActiveAccount, CredentialKind, LoginAnswer, LoginStarted, LoginState,
     ProbeCost as ProbeCostDto, ProviderAnswer, ProviderDetails, ProviderDto, Providers,
     QuotaAnswer, QuotaCapability, VendorCatalog,
 };
@@ -66,7 +66,7 @@ pub(crate) fn scripts(cost: Option<ProbeCost>) -> Scripts {
     }
 }
 
-async fn start_login(
+pub(crate) async fn start_login(
     backend: &TestBackend,
     session: &Session,
     path: &str,
@@ -84,7 +84,7 @@ async fn start_login(
     answer.json::<LoginStarted>().login.id.into_string()
 }
 
-async fn login_state(backend: &TestBackend, session: &Session, id: &str) -> LoginState {
+pub(crate) async fn login_state(backend: &TestBackend, session: &Session, id: &str) -> LoginState {
     backend
         .get(
             &format!("/api/providers/subscription-login/{id}"),
@@ -96,14 +96,15 @@ async fn login_state(backend: &TestBackend, session: &Session, id: &str) -> Logi
 }
 
 /// The login's state once `settled` says it has moved on, polled for up to
-/// five seconds.
-async fn awaited(
+/// thirty seconds: a Claude sign-in may first wake the Cloud and install its
+/// CLI there.
+pub(crate) async fn awaited(
     backend: &TestBackend,
     session: &Session,
     id: &str,
     settled: impl Fn(&LoginState) -> bool,
 ) -> LoginState {
-    for _ in 0..500 {
+    for _ in 0..3000 {
         let state = login_state(backend, session, id).await;
         if settled(&state) {
             return state;
@@ -113,61 +114,37 @@ async fn awaited(
     panic!("login {id} did not settle");
 }
 
-fn ended(state: &LoginState) -> bool {
+pub(crate) fn ended(state: &LoginState) -> bool {
     !matches!(state, LoginState::Pending { .. })
 }
 
 #[tokio::test]
-async fn a_setup_token_becomes_a_sealed_account_that_no_answer_returns() {
+async fn signed_in_accounts_are_sealed_selected_explicitly_and_hidden_from_who_only_infers() {
     let scripts = scripts(Some(ProbeCost::Free));
-    let harness = Harness::new().with_families(scripts.families);
+    let harness = Harness::new().with_families(scripts.families.clone());
     let (backend, master) = harness.start_set_up().await;
-    let created = backend
-        .post(
-            "/api/providers/setup-token",
-            Some(&master),
-            json!({ "token": " fixture-token-a ", "label": "Claude" }),
-        )
-        .await;
-    assert_eq!(created.status, StatusCode::CREATED);
-    let entry = created.json::<ProviderAnswer>().provider;
+    scripts.login.signs_in("first");
+    let entry = device_entry(&backend, &master, &scripts).await;
     assert_eq!(
         (entry.kind, entry.provider_type.as_str()),
-        (CredentialKind::Subscription, "claude-code")
+        (CredentialKind::Subscription, "device")
     );
-    let again = backend
-        .post(
-            "/api/providers/setup-token",
-            Some(&master),
-            json!({ "token": "fixture-token-c", "label": "Again" }),
-        )
-        .await;
-    assert_eq!(
-        again.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::ProviderExists)
-    );
-
     let path = format!("/api/providers/{}/accounts", entry.id);
-    let added = backend
-        .post(&path, Some(&master), json!({ "token": "fixture-token-b" }))
-        .await;
-    assert_eq!(added.status, StatusCode::CREATED);
-    let second = added.json::<AddedAccount>().account;
-    let refused = backend
-        .post(&path, Some(&master), json!({ "token": "bad-token-1" }))
-        .await;
-    assert_eq!(
-        refused.refusal(),
-        (StatusCode::BAD_REQUEST, ErrorCode::TokenImportFailed)
-    );
-    assert!(!String::from_utf8_lossy(&refused.body).contains("bad-token-1"));
+    scripts.login.signs_in("second");
+    let id = start_login(&backend, &master, &format!("{path}/login"), json!({})).await;
+    let LoginState::Completed { credential_id, .. } =
+        awaited(&backend, &master, &id, ended).await
+    else {
+        panic!("the second login did not complete");
+    };
+    let second = credential_id;
 
     let listed = backend.get(&path, Some(&master)).await;
-    assert!(!String::from_utf8_lossy(&listed.body).contains("fixture-token"));
+    assert!(!String::from_utf8_lossy(&listed.body).contains("login-secret"));
     let accounts = listed.json::<Accounts>();
     assert_eq!(accounts.accounts.len(), 2);
     let first = accounts.active.clone().unwrap();
-    assert_ne!(first.as_str(), second.id);
+    assert_ne!(first, second);
     let secrets: Vec<Vec<u8>> = {
         let database = harness.control_database();
         let mut statement = database
@@ -183,7 +160,7 @@ async fn a_setup_token_becomes_a_sealed_account_that_no_answer_returns() {
     assert!(
         secrets
             .iter()
-            .all(|secret| !secret.windows(13).any(|window| window == b"fixture-token"))
+            .all(|secret| !secret.windows(12).any(|window| window == b"login-secret"))
     );
 
     // Selecting is explicit, and the active account cannot be removed.
@@ -196,10 +173,10 @@ async fn a_setup_token_becomes_a_sealed_account_that_no_answer_returns() {
         .put(
             &format!("{path}/active"),
             &master,
-            json!({ "credentialId": second.id }),
+            json!({ "credentialId": second }),
         )
         .await;
-    assert_eq!(switched.json::<ActiveAccount>().active.as_str(), second.id);
+    assert_eq!(switched.json::<ActiveAccount>().active, second);
     assert_eq!(
         backend.delete(&active, &master).await.status,
         StatusCode::NO_CONTENT
@@ -221,14 +198,14 @@ async fn a_setup_token_becomes_a_sealed_account_that_no_answer_returns() {
             Some(&master),
         )
         .await;
-    assert!(!String::from_utf8_lossy(&status.body).contains("fixture-token"));
+    assert!(!String::from_utf8_lossy(&status.body).contains("login-secret"));
     let status = status.json::<ProviderDetails>();
     assert_eq!(
         (
             status.accounts.len(),
             status.active.as_ref().map(|id| id.as_str())
         ),
-        (1, Some(second.id.as_str()))
+        (1, Some(second.as_str()))
     );
 
     // Someone who only infers with a shared instance's entry sees whether it
@@ -236,7 +213,7 @@ async fn a_setup_token_becomes_a_sealed_account_that_no_answer_returns() {
     harness.add_user("reader@example.test", "reader-pass-1", Role::User);
     let reader = backend.login("reader@example.test", "reader-pass-1").await;
     let refused = backend
-        .post(&path, Some(&reader), json!({ "token": "not-allowed" }))
+        .post(&format!("{path}/login"), Some(&reader), json!({}))
         .await;
     assert_eq!(
         refused.refusal(),
@@ -328,10 +305,24 @@ async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing
         LoginState::Pending {
             verification_url: Some("https://verify.example/device".into()),
             user_code: Some("ABCD-1234".into()),
+            needs_code: false,
             // The vault's end, ten minutes from the start on the harness's
             // clock.
             expires_at: "2026-09-24T08:10:00.000Z".parse().unwrap(),
         }
+    );
+
+    // A device login takes no pasted code.
+    let code = backend
+        .post(
+            &format!("{login}/{first}/code"),
+            Some(&master),
+            json!({ "code": "pasted#state" }),
+        )
+        .await;
+    assert_eq!(
+        code.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::LoginNotWaiting)
     );
 
     scripts.login.approve(true);
@@ -455,13 +446,17 @@ pub(crate) async fn device_entry(
     )
     .await;
     let state = awaited(backend, session, &id, ended).await;
-    assert!(matches!(state, LoginState::Completed { .. }), "{state:?}");
+    let LoginState::Completed { provider_id, .. } = state else {
+        panic!("the login did not complete: {state:?}");
+    };
     backend
         .get("/api/providers", Some(session))
         .await
         .json::<Providers>()
         .providers
-        .remove(0)
+        .into_iter()
+        .find(|provider| provider.id == provider_id)
+        .expect("the login's entry is listed")
 }
 
 #[tokio::test]

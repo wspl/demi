@@ -1143,15 +1143,16 @@ async fn shutdown_cancels_a_cloud_boot_waiting_for_its_runner_and_saves_it_once(
     let harness = Harness::new().with_claude_package();
     harness.manager.script(|script| script.silent_wake = true);
     let (backend, master) = harness.start_set_up().await;
-    let imported = backend
+    // A Claude sign-in runs the CLI's login on the Cloud, which it wakes.
+    let login = backend
         .post(
-            "/api/providers/setup-token",
+            "/api/providers/subscription-login",
             Some(&master),
-            json!({ "token": "sk-ant-oat01-shutdown-account", "label": "Claude" }),
+            json!({ "providerType": "claude-code" }),
         )
         .await;
-    assert_eq!(imported.status, StatusCode::CREATED);
-    eventually("the install wakes the Cloud", || async {
+    assert_eq!(login.status, StatusCode::ACCEPTED);
+    eventually("the sign-in wakes the Cloud", || async {
         harness
             .manager
             .calls()
