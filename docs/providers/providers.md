@@ -209,9 +209,20 @@ A run yields these events:
 | Thinking signature | The vendor's signature over the reasoning, sent back with it in later requests |
 | Redacted thinking | Reasoning the vendor sends only in encrypted form, sent back as received |
 | Text | A piece of answer text |
-| Tool call | A tool-use ID, the tool's name and its input as JSON |
+| Tool call start | The model opened a tool call: its tool-use ID and the tool's name |
+| Tool call input | A piece of that call's input JSON, as the model writes it |
+| Tool call | The whole call: its tool-use ID, the tool's name and its input as JSON |
 | Response | The token usage of the run's final API call |
 | Error | A failure: its message, a typed code, its diagnostics and the wait the vendor asked for |
+
+A call's start and input pieces are for display only
+([Calls being written](../agent/runtime.md#calls-being-written)): the agent
+runs a call only from its Tool call event, which follows them with the whole
+input. A vendor that streams a call reports its start as soon as the model
+opens it (Anthropic's `content_block_start` of a `tool_use`, a Responses
+`output_item.added` of a function call, the first Chat Completions delta that
+names a function) and its input pieces as they arrive. Google sends calls only
+whole, so its runs report only the Tool call.
 
 Signatures and redacted reasoning are sent back only to the vendor that
 issued them, because a vendor refuses a signature it did not sign. Each
