@@ -26,7 +26,7 @@ web app fetches them when a file is opened.
 | --- | --- |
 | A file a brush redirection opens for writing (`>`, `>>`, `<>`, `exec 3>f`). | Writes by external programs that do not participate in recording: git, python, node, user-installed tools. |
 | A file an embedded utility opens for writing, writes whole, or renames over (`sed -i`, `tee`, `sort -o`, `uniq` with an output file). | Copies and hard links (`cp`), deletions, renames as moves, directories, permissions, ownership, times. |
-| Files created or modified by `demi file create`, `demi file edit`, and `demi file patch`, including when one patch edits several files. | Edits prepared by a native command but never written, or successfully rolled back. |
+| Files created or modified by `demi file edit` and `demi file patch`, including when one call changes several files. | Edits prepared by a native command but never written, or successfully rolled back. |
 | Every in-process part of the job: subshells, functions, background tasks, process substitutions. | Reads, and the empty file `mktemp` creates. |
 
 A file is `added` when it did not exist before this job first changed it,
