@@ -121,6 +121,26 @@ impl dyn HostShard + '_ {
         })
     }
 
+    /// Holds the conversation for the changes an agent asked for, once the
+    /// shard reserved its idle tree (`sessions-and-targets.md` § Switch the
+    /// primary target): as [`hold_for_transition`](Self::hold_for_transition)
+    /// does, except that it waits for the Host operations that hold the file
+    /// gate to end, since nobody is there to retry a refusal.
+    pub async fn hold_when_free(
+        &self,
+        id: &ConversationId,
+        tree: Option<Reservation>,
+    ) -> TransitionHold {
+        let slot = self.conversations().slot(id);
+        let transfers = slot.transfers.close().await;
+        let files = slot.file_gate().reserve().await;
+        TransitionHold {
+            _files: files,
+            _transfers: transfers,
+            _tree: tree,
+        }
+    }
+
     /// Commits a change of the conversation's record.
     pub async fn commit(
         &self,
@@ -170,12 +190,14 @@ impl dyn HostShard + '_ {
     /// The held switch's steps 4 to 6 (§ Switch the primary target): the device
     /// it leaves hears the conversation release and stays attached where it
     /// was left, the device it reaches is primary alone, and the commit is
-    /// against the target the switch started from. Answers where the switch
-    /// went from and to, and the execution-context revision it made.
+    /// against the target the switch started from. A switch that makes the
+    /// pending move `pending` clears it in its commit. Answers where the
+    /// switch went from and to, and the execution-context revision it made.
     pub async fn switch_target(
         &self,
         expected: &ConversationRecord,
         to: ConversationTarget,
+        pending: Option<String>,
     ) -> Result<Switched, ChangeRefusal> {
         let control = self.control();
         let current = control
@@ -212,6 +234,7 @@ impl dyn HostShard + '_ {
                 to,
                 switch.clone(),
                 ends,
+                pending,
             )
             .await?
             .ok_or(ChangeRefusal::Conflict)?;

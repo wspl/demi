@@ -16,10 +16,7 @@
 //! (`demi_backend_host_access::transition`).
 
 use demi_backend_database::StorageError;
-use demi_backend_database::conversation_index::{
-    ConversationChange, ExecutionTarget, RecordChange, SettingsChange,
-};
-use demi_backend_database::devices::CLOUD_NAME;
+use demi_backend_database::conversation_index::{ConversationChange, RecordChange, SettingsChange};
 use demi_backend_host_access::root_of;
 use demi_backend_host_access::transition::{ChangeRefusal, Switched};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId};
@@ -129,7 +126,7 @@ impl Shard {
         let hold = host.hold_for_transition(&record.id, tree).await?;
         let committed = match change {
             ConversationChange::Target(to) => {
-                let switched = host.switch_target(&record, to).await;
+                let switched = host.switch_target(&record, to, None).await;
                 // A deadline of the old binding never releases the new one.
                 if switched.is_ok() {
                     self.restart_idle(&record.id);
@@ -274,62 +271,32 @@ impl Shard {
     /// leaves the move made, and the agent reads it from its next context
     /// block.
     async fn tell_of_move(&self, id: &ConversationId, switched: &Switched) {
-        let told = async {
-            let from = self.place(&switched.switch.from).await?;
-            let to = self.place(&switched.switch.to).await?;
-            let content = format!(
-                "The user moved this conversation from {} ({}) to {} ({}). Files did not move. Check what this means for the work so far, and tell the user.",
-                from.host, from.path, to.host, to.path
-            );
-            let message = |recipient: &NodeId| AgentMessage {
-                id: BlockId::try_from(format!("moved:{}", switched.revision))
-                    .expect("a move's message id is not empty"),
-                sender: None,
-                recipient_id: recipient.clone(),
-                timestamp: self.services().clock.now(),
-                content: content.clone(),
-                event: AgentMessageEvent::Moved {
-                    host: to.host.clone(),
-                    path: to.path.clone(),
-                    home: to.home.clone(),
-                },
-            };
-            self.permission_shard()
-                .admit(id, &root_of(id), &message)
-                .await
+        let (from, to) = (&switched.switch.from, &switched.switch.to);
+        let content = format!(
+            "The user moved this conversation from {} to {}. Files did not move. Check what this means for the work so far, and tell the user.",
+            self.place(from).await,
+            self.place(to).await,
+        );
+        let host = self.target_host(to).await;
+        let home = to.device().and_then(|device| self.devices().home(device));
+        let at = self.services().clock.now();
+        let message = |recipient: &NodeId| AgentMessage {
+            id: BlockId::try_from(format!("moved:{}", switched.revision))
+                .expect("a move's message id is not empty"),
+            sender: None,
+            recipient_id: recipient.clone(),
+            timestamp: at,
+            content: content.clone(),
+            event: AgentMessageEvent::Moved {
+                host: host.clone(),
+                path: to.path().to_owned(),
+                home: home.clone(),
+            },
         };
-        let told: Result<NodeId, String> = told.await;
-        if let Err(error) = told {
+        if let Err(error) = self.permission_shard().admit(id, &root_of(id), &message).await {
             tracing::warn!(conversation = %id, "the agent was not told of the move; it reads it from its next context block: {error}");
         }
     }
-
-    /// Where a target is, as the user names it: its Host and its directory,
-    /// with the Host's home for the receipt.
-    async fn place(&self, target: &ExecutionTarget) -> Result<Place, String> {
-        let host = match target.device() {
-            Some(device) => self
-                .services()
-                .control
-                .device(device.clone())
-                .await
-                .map_err(|error| error.to_string())?
-                .map_or_else(|| device.to_string(), |record| record.name),
-            None => CLOUD_NAME.to_owned(),
-        };
-        Ok(Place {
-            host,
-            path: target.path().to_owned(),
-            home: target.device().and_then(|device| self.devices().home(device)),
-        })
-    }
-}
-
-/// A target as the user's move names it.
-struct Place {
-    host: String,
-    path: String,
-    home: Option<String>,
 }
 
 fn failed(field: PatchField, refusal: &ChangeRefusal) -> FieldResult {

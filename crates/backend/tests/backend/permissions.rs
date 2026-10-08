@@ -18,7 +18,8 @@ use demi_web_api_protocol::permissions::{ConversationPermissions, RequestingAgen
 use reqwest::StatusCode;
 use serde_json::json;
 
-use crate::conversations::{FIRST, SECOND, Socket, choose, create, summary};
+use crate::conversations::{FIRST, SECOND, Socket, choose, create, summary, working_on};
+use crate::organize::{project, target_of};
 use crate::subagents::{Scripts, WAIT, say, shell, tree_on};
 use crate::support::{Harness, Session, TestBackend, eventually};
 
@@ -175,8 +176,9 @@ async fn a_command_without_the_grant_asks_and_the_users_allow_grants_the_categor
     let request = &asked.requests[0];
     assert_eq!(request.command, "demi skills add acme/tools");
     assert_eq!(request.agent, None);
-    assert_eq!(request.category.id, "skills.manage");
-    assert_eq!(request.category.action.as_deref(), Some("manage skills"));
+    assert_eq!(request.categories.len(), 1, "{request:?}");
+    assert_eq!(request.categories[0].id, "skills.manage");
+    assert_eq!(request.categories[0].action.as_deref(), Some("manage skills"));
     assert!(granted(&harness, FIRST).is_empty());
     assert_eq!(summary(&backend, &master, FIRST).await.permission_requests, 1);
 
@@ -613,5 +615,113 @@ async fn a_decision_whose_message_a_restart_cut_off_reaches_the_agent_once_at_th
         .filter(|block| matches!(block, Block::AgentMessage(_)))
         .count();
     assert_eq!(messages, 1);
+    backend.close().await;
+}
+
+// Several seconds: a second real device holds the project, and a real
+// device runs the shell jobs of five turns in two conversations.
+#[tokio::test]
+async fn a_move_that_brings_a_device_asks_for_both_categories_in_one_request() {
+    let scripts = Arc::new(Scripts::default());
+    let World {
+        harness,
+        backend,
+        master,
+        mut socket,
+        _device,
+        provider,
+    } = opened(&scripts).await;
+    let studio = backend.pair(&master, "studio").await;
+    let ledable = project(&backend, &master, &studio, "ledable-app").await;
+
+    // Neither grant: one request of both categories, and the refusal names
+    // both actions.
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t1", "demi conversation move ledable-app; echo exit=$?"),
+            say("I asked the user"),
+        ],
+    );
+    socket.chat("m1", "Move into ledable-app").await;
+    let refused = last_asked(&scripts, FIRST);
+    assert!(
+        refused.contains("demi: this conversation needs the user's permission to organize conversations and manage devices; the request was sent to the user"),
+        "{refused}"
+    );
+    assert!(refused.contains("exit=1"), "{refused}");
+    let asked = permissions(&backend, &master, FIRST).await;
+    assert_eq!(asked.requests.len(), 1, "{asked:?}");
+    let request = &asked.requests[0];
+    let ids: Vec<&str> = request.categories.iter().map(|category| category.id.as_str()).collect();
+    assert_eq!(ids, ["conversation.organize", "host.devices"]);
+    assert_eq!(
+        request.categories[1].action.as_deref(),
+        Some("manage devices")
+    );
+
+    // Allow grants both: the root is told with both actions, its command
+    // runs, and the move applies once its turn has ended.
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t2", "demi conversation move ledable-app"),
+            say("moving"),
+        ],
+    );
+    let allowed = decide(&backend, &master, FIRST, request.id.as_str(), "allow").await;
+    assert_eq!(allowed.status, StatusCode::NO_CONTENT);
+    socket.until_idle().await;
+    let woken = scripts.asked(|session| session == FIRST);
+    assert!(
+        woken[woken.len() - 2].contains(
+            "The user allowed this conversation to organize conversations and manage devices; the command `demi conversation move ledable-app` can now run."
+        ),
+        "{}",
+        woken[woken.len() - 2]
+    );
+    assert!(
+        woken.last().unwrap().contains("applies when this conversation's work ends"),
+        "{}",
+        woken.last().unwrap()
+    );
+    assert_eq!(granted(&harness, FIRST), ["conversation.organize", "host.devices"]);
+    eventually("the move is made", || async {
+        target_of(&harness, FIRST) == ("workspace".to_owned(), Some(ledable.clone()))
+    })
+    .await;
+
+    // With Organize Conversations granted before, the request holds Manage
+    // Devices alone.
+    create(&backend, &master, SECOND).await;
+    choose(&backend, &master, SECOND, &provider, "m").await;
+    working_on(&harness, &_device, SECOND);
+    harness
+        .control_database()
+        .execute(
+            "INSERT INTO permission_grants (conversation_id, category, granted_at) VALUES (?1, 'conversation.organize', 1)",
+            [SECOND],
+        )
+        .unwrap();
+    let mut second = Socket::connect(&backend, &master, SECOND).await;
+    second.open().await;
+    scripts.root(
+        SECOND,
+        vec![shell("s1", "demi conversation move ledable-app"), say("asked")],
+    );
+    second.chat("n1", "Move into ledable-app").await;
+    assert!(
+        last_asked(&scripts, SECOND).contains("permission to manage devices; the request"),
+        "{}",
+        last_asked(&scripts, SECOND)
+    );
+    let other = permissions(&backend, &master, SECOND).await;
+    assert_eq!(other.requests.len(), 1, "{other:?}");
+    let ids: Vec<&str> = other.requests[0]
+        .categories
+        .iter()
+        .map(|category| category.id.as_str())
+        .collect();
+    assert_eq!(ids, ["host.devices"]);
     backend.close().await;
 }

@@ -44,9 +44,11 @@ impl Declared {
 }
 
 /// An `rpc` call the command set accepts: the permission category its leaf
-/// needs, if any, and the handler that runs it.
+/// needs, if any, the device or project its `bringsHost` argument names, if
+/// it gives one, and the handler that runs it.
 pub struct Checked<'a> {
     pub category: Option<&'a Category>,
+    pub brings_host: Option<String>,
     pub handler: &'a Rc<dyn RpcHandler>,
 }
 
@@ -229,8 +231,8 @@ impl CommandSet {
     /// here: the backend's dispatch checks it between [`CommandSet::check`]
     /// and the handler (`permissions.md` § The check).
     pub async fn dispatch(&self, invocation: RpcInvocation, port: RpcPort) -> Result<u8, RpcError> {
-        let checked = self.check(&invocation)?;
-        checked.handler.call(invocation, port).await
+        let handler = self.check(&invocation)?.handler.clone();
+        handler.call(invocation, port).await
     }
 
     /// The `rpc` leaf `invocation.path` names, with its handler, once the
@@ -248,7 +250,17 @@ impl CommandSet {
             self.category(id)
                 .expect("registration checked that a group declares the leaf's category")
         });
-        Ok(Checked { category, handler })
+        let brings_host = leaf
+            .brings_host
+            .as_deref()
+            .and_then(|field| invocation.args.get(field))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+        Ok(Checked {
+            category,
+            brings_host,
+            handler,
+        })
     }
 
     /// The permission category `id` that a group of the set declares.

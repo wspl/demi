@@ -517,7 +517,6 @@ fn a_leaf_names_a_permission_category_one_of_its_groups_declares_and_its_help_sa
         "permission": "skills.manage"});
     let declared = tree(json!([manage.clone()]), add.clone());
     declared.validate().unwrap();
-    assert_eq!(declared.categories()[0].title(), "Manage skills");
     let help = help(&declared, &["skills", "add"]);
     assert!(
         help.contains("    Permission: needs the user's permission (skills.manage) in each conversation; without it, the command fails at once and the user is asked."),
@@ -537,4 +536,33 @@ fn a_leaf_names_a_permission_category_one_of_its_groups_declares_and_its_help_sa
     let misnamed = json!({"id": "other.manage", "action": "manage", "description": "Manage."});
     let foreign = refused(tree(json!([misnamed]), add));
     assert!(foreign.contains("must be named skills.<name>"), "{foreign}");
+}
+
+#[test]
+fn a_brings_host_field_is_a_string_field_of_an_rpc_leafs_input() {
+    let tree = |leaf: Value| {
+        serde_json::from_value::<Node>(json!({"name": "demi", "summary": "Demi",
+            "subcommands": [{"name": "conversation", "summary": "Conversation",
+                "subcommands": [leaf]}]}))
+        .unwrap()
+    };
+    let input = json!({"type": "object", "additionalProperties": false,
+        "properties": {"project": {"type": "string"}, "out": {"type": "boolean"}}});
+    let leaf = |kind: &str, field: &str| {
+        let mut leaf = json!({"name": "move", "summary": "Move", "kind": kind,
+            "input": input.clone(), "bringsHost": field});
+        if kind == "native" {
+            leaf["binding"] = json!({"package": "demi.file", "operation": "file.read",
+                "descriptorHash": "a".repeat(64)});
+        }
+        leaf
+    };
+    tree(leaf("rpc", "project")).validate().unwrap();
+    let refused = |tree: Node| tree.validate().unwrap_err().to_string();
+    let flag = refused(tree(leaf("rpc", "out")));
+    assert!(flag.contains("no string field"), "{flag}");
+    let missing = refused(tree(leaf("rpc", "device")));
+    assert!(missing.contains("no string field"), "{missing}");
+    let native = refused(tree(leaf("native", "project")));
+    assert!(native.contains("only an rpc command can"), "{native}");
 }

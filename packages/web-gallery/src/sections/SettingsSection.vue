@@ -197,7 +197,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Rows"
-        note="Label and explanation on the left, the control on the right. In a card narrower than 24rem the control drops under the label: a text field, a slider or a menu button then fills the row, the menu button keeping its value at the start and its chevron at the end, while a segmented control, a switch and a button keep their size at the right edge."
+        note="Label and explanation on the left, the control on the right. In a card narrower than 24rem the control drops under the label: a text field, a slider or a menu button then fills the row, the menu button keeping its value at the start and its chevron at the end, while a segmented control, a switch and a button keep their size at the right edge. What needs the row’s whole width, such as an account’s usage bars, takes a line of its own under the name and the controls at every width, the controls then aligned with the name; Refresh reads the usage again."
       >
         <GallerySpecimen variant="Wide" wide>
           <div class="w-full max-w-xl">

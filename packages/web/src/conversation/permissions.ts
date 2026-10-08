@@ -21,7 +21,7 @@ export interface PermissionsState {
   deciding: boolean
 }
 
-function category(answer: PermissionCategory): PermissionRequestView['category'] {
+function category(answer: PermissionCategory): PermissionRequestView['categories'][number] {
   return {
     id: answer.id,
     action: answer.action ?? null,
@@ -64,7 +64,7 @@ export const usePermissions = defineStore('permissions', () => {
     state.held = taken
     state.requests = answer.requests.map((request) => ({
       id: request.id,
-      category: category(request.category),
+      categories: request.categories.map(category),
       command: request.command,
       subagent: request.agent,
     }))

@@ -25,7 +25,8 @@ use futures_util::future::LocalBoxFuture;
 use demi_backend_runners::host_key::conversation_of;
 
 use super::Shard;
-use demi_backend_host_access::host_commands::reachable;
+use demi_backend_host_access::host_commands::{MANAGE_DEVICES, reachable};
+use demi_command_declarations::Category;
 
 /// The rules of one device's connection, in its user's shard.
 pub(crate) struct ShardPolicy {
@@ -59,9 +60,11 @@ impl LinkPolicy for ShardPolicy {
     }
 
     /// Runs the call in its node's commands: once the command set checked
-    /// the call, its leaf's permission category, if it names one, is checked
-    /// against the conversation's grants before the handler runs
-    /// (`permissions.md` § The check).
+    /// the call, the categories it needs, its leaf's and Manage Devices when
+    /// its `bringsHost` argument brings a paired device into the
+    /// conversation, are checked against the conversation's grants before
+    /// the handler runs (`permissions.md` § The check, § Several
+    /// categories).
     fn dispatch(
         &self,
         job: Rc<JobOrigin>,
@@ -73,11 +76,27 @@ impl LinkPolicy for ShardPolicy {
             let shard = shard.map_err(RpcError::Failed)?;
             let commands = shard.commands().commands_of(&job).map_err(RpcError::Failed)?;
             let checked = commands.check(&invocation)?;
-            if let Some(category) = checked.category {
-                demi_backend_permissions::check(shard.permission_shard(), &invocation, category)
+            let handler = checked.handler.clone();
+            let mut needed: Vec<&Category> = checked.category.into_iter().collect();
+            if let Some(named) = &checked.brings_host
+                && let Some(devices) = commands.category(MANAGE_DEVICES)
+                && !needed.contains(&devices)
+            {
+                let conversation = ConversationId::try_from(invocation.context.conversation.as_str())
+                    .map_err(|_| RpcError::Failed("the call names no conversation".into()))?;
+                if shard
+                    .brings_paired_device(&conversation, named)
+                    .await
+                    .map_err(RpcError::Failed)?
+                {
+                    needed.push(devices);
+                }
+            }
+            if !needed.is_empty() {
+                demi_backend_permissions::check(shard.permission_shard(), &invocation, &needed)
                     .await?;
             }
-            checked.handler.call(invocation, port).await
+            handler.call(invocation, port).await
         })
     }
 

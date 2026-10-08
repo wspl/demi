@@ -484,7 +484,6 @@ onBeforeUnmount(() => {
         :root-name="rootName"
         :selected="selected"
         @select="pick"
-        @uncommitted="mode = 'uncommitted'"
       />
     </template>
   </TreeFrame>

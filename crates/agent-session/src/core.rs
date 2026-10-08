@@ -957,13 +957,13 @@ impl SessionCore {
             Activity::Running(run) => run.turn.clone(),
             _ => TurnId::try_from(message.id.as_str()).expect("a message id is never empty"),
         };
-        let the_users = message.event.is_the_users();
+        let from_product = message.event.is_from_product();
         self.inputs.add(Input::Agent(PendingAgentInput {
             turn_id,
             model: self.model.clone(),
             message,
         }));
-        if the_users {
+        if from_product {
             self.wake_for_user();
         } else {
             self.wake();

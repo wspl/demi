@@ -5,7 +5,8 @@ import Button from '../ui/Button.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import {
-  categoryAction,
+  categoryTitle,
+  requestAction,
   type PermissionDecision,
   type PermissionRequestView,
 } from './types'
@@ -13,8 +14,10 @@ import {
 /**
  * The oldest undecided permission request of the conversation, pinned above
  * the composer (`permissions.md` § What the user sees): what the agent asks
- * to do, the command it ran, which subagent ran it, what a grant allows, and
- * Deny or Allow for This Conversation. It is not modal: the transcript and
+ * to do, its categories' actions joined with "and", the command it ran,
+ * which subagent ran it, what a grant of each category allows, under the
+ * category's title when there are several, and Deny or Allow for This
+ * Conversation. It is not modal: the transcript and
  * the composer stay usable. With several requests it says which one of how
  * many it shows; the next one takes its place once it is decided.
  */
@@ -30,6 +33,9 @@ const emit = defineEmits<{
 }>()
 
 const request = computed(() => props.requests[0] ?? null)
+const title = computed(() => (request.value ? `Allow this conversation to ${requestAction(request.value)}?` : ''))
+/** The categories whose grant the card explains: each with a description the command set still declares. */
+const described = computed(() => request.value?.categories.filter((category) => category.description) ?? [])
 const ran = computed(() => {
   const subagent = request.value?.subagent
   return subagent
@@ -43,7 +49,7 @@ const ran = computed(() => {
     v-if="request"
     class="permission-card flex w-full flex-col gap-2.5 rounded-lg border border-line bg-surface-raised p-3 text-chrome"
     role="alertdialog"
-    :aria-label="`Allow this conversation to ${categoryAction(request.category)}?`"
+    :aria-label="title"
   >
     <header class="flex items-start gap-2">
       <ShieldQuestionMark
@@ -52,7 +58,7 @@ const ran = computed(() => {
         aria-hidden="true"
       />
       <h3 class="min-w-0 flex-1 font-medium text-fg-emphasis">
-        Allow this conversation to {{ categoryAction(request.category) }}?
+        {{ title }}
       </h3>
       <span
         v-if="requests.length > 1"
@@ -69,8 +75,18 @@ const ran = computed(() => {
           >{{ request.command }}</code
         >
       </ScrollArea>
-      <p v-if="request.category.description" class="pt-1 leading-5 text-fg-muted">
-        {{ request.category.description }}
+      <template v-if="request.categories.length > 1">
+        <div
+          v-for="category in described"
+          :key="category.id"
+          class="flex flex-col pt-1 leading-5"
+        >
+          <span class="font-medium text-fg-body">{{ categoryTitle(category) }}</span>
+          <p class="text-fg-muted">{{ category.description }}</p>
+        </div>
+      </template>
+      <p v-else-if="described.length" class="pt-1 leading-5 text-fg-muted">
+        {{ described[0]!.description }}
       </p>
     </div>
     <footer class="flex flex-wrap justify-end gap-2">
