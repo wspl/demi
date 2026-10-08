@@ -58,6 +58,22 @@ pub mod event {
         })
     }
 
+    /// The model opened the call `tool_use_id` of `tool_name`.
+    pub fn tool_call_start(tool_use_id: &str, tool_name: &str) -> ProviderEvent {
+        ProviderEvent::ToolCallStart {
+            tool_use_id: tool_use_id.to_owned(),
+            tool_name: tool_name.to_owned(),
+        }
+    }
+
+    /// A piece of the call `tool_use_id`'s input JSON.
+    pub fn tool_call_input(tool_use_id: &str, piece: &str) -> ProviderEvent {
+        ProviderEvent::ToolCallInput {
+            tool_use_id: tool_use_id.to_owned(),
+            partial_json: piece.to_owned(),
+        }
+    }
+
     /// A response whose usage is `input_tokens` in and `output_tokens` out.
     pub fn response(input_tokens: u64, output_tokens: u64) -> ProviderEvent {
         ProviderEvent::Response(TokenUsage {

@@ -62,6 +62,19 @@ async fn a_stream_maps_thinking_text_tool_use_and_usage() {
             ProviderEvent::ThinkingDelta("plan".into()),
             ProviderEvent::ThinkingSignature("anthropic:sig".into()),
             ProviderEvent::TextDelta("hello".into()),
+            // The call as the model writes it, for display, then whole.
+            ProviderEvent::ToolCallStart {
+                tool_use_id: "toolu_1".into(),
+                tool_name: "read_file".into(),
+            },
+            ProviderEvent::ToolCallInput {
+                tool_use_id: "toolu_1".into(),
+                partial_json: "{\"path\":".into(),
+            },
+            ProviderEvent::ToolCallInput {
+                tool_use_id: "toolu_1".into(),
+                partial_json: "\"a.ts\"}".into(),
+            },
             ProviderEvent::ToolCall(ToolCall {
                 tool_use_id: "toolu_1".into(),
                 tool_name: "read_file".into(),

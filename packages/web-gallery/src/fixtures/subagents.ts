@@ -81,6 +81,7 @@ export function gallerySubagents(): SubagentRecord[] {
       phase: 'running',
       startedAt: ago(134_000),
       failures: {},
+    pendingCalls: [],
       blocks: [
         user(
           'ag-cookie-user',
@@ -103,6 +104,7 @@ export function gallerySubagents(): SubagentRecord[] {
       phase: 'running',
       startedAt: ago(48_000),
       failures: {},
+    pendingCalls: [],
       blocks: [
         user(
           'ag-logout-user',
@@ -122,6 +124,7 @@ export function gallerySubagents(): SubagentRecord[] {
       phase: 'running',
       startedAt: ago(12_000),
       failures: {},
+    pendingCalls: [],
       blocks: [
         user(
           'ag-snapshot-user',
@@ -137,6 +140,7 @@ export function gallerySubagents(): SubagentRecord[] {
       startedAt: ago(420_000),
       endedAt: ago(240_000),
       failures: {},
+    pendingCalls: [],
       blocks: [
         user(
           'ag-comments-user',
@@ -169,6 +173,7 @@ export function gallerySubagents(): SubagentRecord[] {
       startedAt: ago(180_000),
       endedAt: ago(120_000),
       failures: {},
+    pendingCalls: [],
       blocks: [
         user(
           'ag-ci-user',

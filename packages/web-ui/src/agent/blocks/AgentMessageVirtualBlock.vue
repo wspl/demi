@@ -8,6 +8,7 @@ import ThinkingBlock from './ThinkingBlock.vue'
 import AgentReceiptBlock from './AgentReceiptBlock.vue'
 import AssistantTextBlock from './AssistantTextBlock.vue'
 import ToolCallBlock from './ToolCallBlock.vue'
+import PendingCallBlock from './PendingCallBlock.vue'
 import ErrorBlock from './ErrorBlock.vue'
 import StoppedBlock from './StoppedBlock.vue'
 import CompactionBlock from './CompactionBlock.vue'
@@ -49,7 +50,7 @@ const attrs = useAttrs()
 /** Rows built on FunctionalBlock: the 28px chrome face. Text streams in on its own. */
 const entersAsChrome = computed(() =>
   props.entering
-  && (props.block.type === 'agent_message' || props.block.type === 'thinking' || props.block.type === 'tool_call' || props.block.type === 'abort'),
+  && (props.block.type === 'agent_message' || props.block.type === 'thinking' || props.block.type === 'tool_call' || props.block.type === 'pending_call' || props.block.type === 'abort'),
 )
 </script>
 
@@ -129,6 +130,12 @@ const entersAsChrome = computed(() =>
       <ToolCallBlock
         :block="block"
       />
+    </div>
+    <div
+      v-else-if="block.type === 'pending_call'"
+      class="overflow-hidden px-[var(--agent-pad-x,2rem)]"
+    >
+      <PendingCallBlock :call="block.call" />
     </div>
     <div
       v-else-if="block.type === 'error'"
