@@ -63,7 +63,7 @@ fn file<'a>(name: &'a str, version: &'a str, bytes: &[u8]) -> Wanted<'a> {
 }
 
 async fn cache(root: &Path) -> ArtifactCache {
-    ArtifactCache::new(root.join("cache"), None)
+    ArtifactCache::new(root.join("cache"), None, None)
         .await
         .unwrap()
 }

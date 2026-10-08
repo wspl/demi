@@ -120,5 +120,6 @@ fi
 limactl shell "$instance" -- sudo bash "$here/scripts/install-managed-hosts.sh" \
   --user "$guest_user" --release "$release"
 echo "DEMI_MACHINE_MANAGER_SOCKET=$HOME/.lima/$instance/sock/demi-machine-manager.sock"
+echo "DEMI_BACKEND_RUNNER_SOCKET=$HOME/.lima/$instance/sock/runners.sock"
 echo "DEMI_BACKEND_PUBLIC_URL=$public_url"
 limactl shell "$instance" -- sudo journalctl -u demi-machine-manager.service -n 10 --no-pager

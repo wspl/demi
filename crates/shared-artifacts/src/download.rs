@@ -39,6 +39,18 @@ pub fn client_allowing_http() -> Result<reqwest::Client, Error> {
         .map_err(|error| Error::Download(error.without_url().to_string()))
 }
 
+/// [`client_allowing_http`] for a backend's own artifacts, through the
+/// connection `connect` sets up, such as a Cloud runner's backend socket
+/// (`managed-hosts.md` § Backend socket). It follows no redirect, which would
+/// leave through that same connection.
+pub fn client_through(
+    connect: impl FnOnce(reqwest::ClientBuilder) -> reqwest::ClientBuilder,
+) -> Result<reqwest::Client, Error> {
+    connect(builder().https_only(false))
+        .build()
+        .map_err(|error| Error::Download(error.without_url().to_string()))
+}
+
 /// [`client`], but following redirects: for a server release's files, which
 /// GitHub serves through a redirect to short-lived storage. The backend
 /// checks every file against the size and SHA-256 its own release records

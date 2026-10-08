@@ -29,7 +29,10 @@ registrations do not share their authorization context.
 
 A paired device stores its device token in private installation state. A managed
 guest receives a token at boot and keeps temporary state. The backend owns device
-claiming and user ownership. The runner opens an outbound WebSocket and sends its
+claiming and user ownership. A paired device reaches the backend at its URL; a
+Cloud's runner reaches it through the backend's runner socket on the server
+([Backend socket](../cloud/managed-hosts.md#backend-socket)), with the same
+routes. The runner opens an outbound WebSocket and sends its
 `hello` first; the backend closes a connection that has sent nothing within 30
 seconds of opening. Besides its token, version and platform, the hello names
 the Host's operating system with its release, such as `Ubuntu 26.04` or

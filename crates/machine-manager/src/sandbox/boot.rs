@@ -42,6 +42,8 @@ const STOP_POLL: Duration = Duration::from_millis(50);
 pub enum SandboxError {
     #[error("Cloud backend differs from configured allowlist")]
     Allowlist,
+    #[error("The backend's runner socket directory {0} does not exist: is the backend running?")]
+    NoBackendSocket(std::path::PathBuf),
     #[error("Cloud {0} filesystem needs recovery: {1}")]
     NeedsRecovery(Volume, String),
     #[error("Cannot signal Cloud sandbox: {0}")]
@@ -133,6 +135,18 @@ impl Sandbox {
         if boot.backend_url.url() != &core.config.backend_url {
             return Err(SandboxError::Allowlist);
         }
+        // The backend makes the socket's directory, which outlives its
+        // restarts; a sandbox mounts the directory, so each socket the
+        // backend makes again reaches it.
+        let backend_socket = core
+            .config
+            .runner_socket
+            .parent()
+            .expect("the configured socket lies in a directory")
+            .to_owned();
+        if !tokio::fs::metadata(&backend_socket).await.is_ok_and(|metadata| metadata.is_dir()) {
+            return Err(SandboxError::NoBackendSocket(backend_socket));
+        }
         let record = self.record.clone();
         let directory = self.directory.clone();
         let base = base.to_owned();
@@ -194,6 +208,7 @@ impl Sandbox {
                 limits,
             }),
             runner_release,
+            backend_socket: &backend_socket,
         })?;
         let directory = self.directory.clone();
         let log = blocking::run(move |off| -> io::Result<_> {

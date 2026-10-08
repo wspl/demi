@@ -94,7 +94,7 @@ fn digest(descriptor: &PackageDescriptor) -> String {
 }
 
 async fn registry(root: &Path) -> ServiceRegistry {
-    ServiceRegistry::new(root.join("cache"), None, root.into(), BTreeMap::new())
+    ServiceRegistry::new(root.join("cache"), None, None, root.into(), BTreeMap::new())
         .await
         .unwrap()
 }
@@ -548,6 +548,7 @@ async fn a_service_starts_from_the_image_copy_without_a_download() {
         let registry = ServiceRegistry::new(
             cache.clone(),
             Some(image),
+            None,
             root.path().into(),
             BTreeMap::new(),
         )
@@ -584,6 +585,7 @@ async fn without_a_matching_image_copy_a_service_starts_from_a_download() {
         let registry = ServiceRegistry::new(
             root.path().join("cache"),
             Some(image.clone()),
+            None,
             root.path().into(),
             BTreeMap::new(),
         )

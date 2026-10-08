@@ -720,7 +720,9 @@ Runtime upgrades require the same acceptance matrix, but do not change user
 storage format.
 
 The runtime profile fixes `--platform=systrap`, `--network=sandbox`,
-`--allow-suid=true` and `--sidecar-usage-policy=STRICT`, and adds
+`--allow-suid=true`, `--sidecar-usage-policy=STRICT` and `--host-uds=open`,
+which lets the sandbox connect to the one host socket its mounts show, the
+backend's runner socket ([Backend socket](#backend-socket)), and adds
 `--ignore-cgroups` with the [resource limits](#resource-limits) off. The
 strict policy makes `runsc` fail when a sidecar program it starts from
 `gvisor-bin/` is missing, where it would otherwise download one or fall
@@ -739,8 +741,8 @@ networking, unconfined runtime seccomp, host PID namespace, or runtime socket is
 exposed. Keep runsc's standard Directfs security profile; changes require a
 design and acceptance update, not a per-user escape hatch.
 
-Only the prepared root, this device's home, and explicit runtime mounts reach
-Gofer. No checkout, Mac home, Docker socket, manager state, arbitrary host path,
+Only the prepared root, this device's home, explicit runtime mounts, and the
+directory of the backend's runner socket reach Gofer. No checkout, Mac home, Docker socket, manager state, arbitrary host path,
 or other user's mount is available. `/proc` and devices are sandbox views; host
 sysfs and writable cgroups are not mounted. The workload cannot supply OCI
 annotations, host paths, runtime flags, or network/cgroup identities.
@@ -763,8 +765,9 @@ data with the `nftables` crate and applies it with `nft` in one transaction:
 the netlink libraries for nftables are thinly maintained, and a text script
 would be assembled from strings.
 
-Allow outbound public traffic, replies to established connections, the exact
-configured backend address/port, and the configured DNS resolver on TCP/UDP 53.
+Allow outbound public traffic, replies to established connections, and the
+configured DNS resolver on TCP/UDP 53. The backend is not among them: a Cloud
+reaches it through the [backend socket](#backend-socket), never the network.
 Deny other private, loopback, link-local, metadata, multicast, reserved, and
 other-tenant destinations, including the host's own services. Enforce policy on
 both forwarded traffic and traffic addressed to the execution host. Disable IPv6
@@ -774,13 +777,54 @@ kernel runs without IPv6, such as one booted with `ipv6.disable=1`, has no IPv6
 to turn off, and a boot there skips that step. Resolver configuration
 uses an address reachable from the sandbox, never a container engine's loopback
 resolver. Filtering is by destination address, so DNS rebinding does not grant
-private-network access. Exceptions for a private backend or resolver are exact
-endpoints, not whole subnets; address changes require revalidation and rule
-update.
+private-network access. An exception for a private resolver is an exact
+endpoint, not a whole subnet; an address change requires revalidation and a
+rule update.
 
 The runner connection carries files, commands and conversation browser
 streams through normal Host access. No
 infrastructure transport is an alternate route for conversation operations.
+
+### Backend socket
+
+A Cloud's runner reaches its backend through a Unix socket on the execution
+host, never over the network. The backend and the manager run on one server,
+so the network would only add a way to fail: behind a CDN, a Cloud's
+connection left the server for the CDN's edge and came back, and the edge
+reset it every hour or two, which cut off what the runner was sending at the
+time.
+
+```text
+execution host                                     Cloud sandbox (gVisor)
+backend ── listens on /run/demi-backend/runners.sock
+              │ the manager bind-mounts the directory, read-only
+              └──────────────────────────────────▶ /run/demi-backend/runners.sock
+                                                      runner: socket, pipes and
+                                                      the backend's own artifacts
+```
+
+- The backend listens on `DEMI_BACKEND_RUNNER_SOCKET`, default
+  `/run/demi-backend/runners.sock`, beside the network, and serves there only
+  what a runner uses: the runner socket, the pipes and the downloads of
+  runners and command artifacts. A browser's routes answer 404 there. Anyone
+  who reaches the file may connect, since a runner proves itself with its
+  device token, so the socket is mode 0666 in a directory of mode 0755. The
+  socket's directory outlives the backend's restarts (its unit's
+  `RuntimeDirectoryPreserve`); each start replaces the socket file. Without
+  the directory, as on a machine that runs no Cloud, the backend serves only
+  the network and logs that Clouds cannot reach it.
+- The manager reads the same setting. A boot mounts the socket's directory
+  read-only at `/run/demi-backend`, so a socket the backend makes again after
+  a restart reaches the running Clouds. A wake whose directory is missing
+  fails with an error that says to start the backend. The setting's file name
+  must be `runners.sock`, the name a Cloud's runner looks for, in a directory
+  of its own, since the whole directory is mounted.
+- A runner started with `--managed-boot` connects through
+  `/run/demi-backend/runners.sock`. The boot record's backend URL still names
+  the backend's origin, which requests carry as their host; no TLS crosses
+  the socket. An artifact URL on that origin, a local store's download, goes
+  through the socket too; any other URL, such as an S3 store's, goes over the
+  network.
 
 ### Managed boot credential
 

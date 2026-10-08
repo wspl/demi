@@ -45,7 +45,7 @@ mod workspaces;
 
 use std::io;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use axum::Router;
@@ -56,7 +56,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
 use demi_backend_runners::native;
 use hyper::body::Incoming;
-use tokio::net::TcpListener;
+use axum::serve::{Listener as _, ListenerExt as _};
+use std::os::unix::fs::PermissionsExt as _;
+use tokio::net::{TcpListener, UnixListener};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt as _;
@@ -80,15 +82,43 @@ pub struct Edge {
     /// Cancelled to end the server once its connections are gone.
     stop: CancellationToken,
     serving: JoinHandle<()>,
+    /// The runner socket's server, when the backend has the socket.
+    serving_runners: Option<JoinHandle<()>>,
+}
+
+/// Opens the backend's runner socket at `path` (`managed-hosts.md` § Backend
+/// socket), replacing the file a previous backend left; anyone who reaches
+/// the file may connect, since a runner proves itself with its device token.
+/// None when the socket's directory does not exist, as on a machine that
+/// runs no Cloud: no Cloud can then reach this backend.
+pub fn runner_socket(path: &Path) -> io::Result<Option<UnixListener>> {
+    let directory = path.parent().unwrap_or(Path::new("/"));
+    if !directory.is_dir() {
+        tracing::warn!(
+            "Clouds cannot reach this backend: the runner socket's directory {} does not exist",
+            directory.display()
+        );
+        return Ok(None);
+    }
+    match std::fs::remove_file(path) {
+        Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+        _ => {}
+    }
+    let listener = UnixListener::bind(path)?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666))?;
+    Ok(Some(listener))
 }
 
 impl Edge {
+    /// Serves the network at `address`, and the runner routes on
+    /// `runner_socket` when there is one ([`runner_socket`]).
     pub async fn start(
         address: SocketAddr,
+        runner_socket: Option<UnixListener>,
         state: AppState,
         web_directory: Option<PathBuf>,
     ) -> io::Result<Self> {
-        let tcp = TcpListener::bind(address).await?;
+        let tcp = TcpListener::bind(address).await?.tap_io(listener::without_delay);
         let local_addr = tcp.local_addr()?;
         // Before the first request: a Cloud's boot and a local store's
         // downloads name this URL.
@@ -99,6 +129,13 @@ impl Edge {
         let closing = CancellationToken::new();
         let connections = CancellationToken::new();
         let stop = CancellationToken::new();
+        let serving_runners = runner_socket.map(|socket| {
+            let listener = EdgeListener::new(socket, closing.clone(), connections.clone());
+            let app = runner_socket_router(state.clone(), closing.clone());
+            tokio::spawn(listener::serve(listener, stop.clone(), move |peer, request| {
+                respond(app.clone(), peer, request)
+            }))
+        });
         let listener = EdgeListener::new(tcp, closing.clone(), connections.clone());
         let app = router(state.clone(), closing.clone(), web_directory);
         let serving = tokio::spawn(listener::serve(
@@ -112,6 +149,7 @@ impl Edge {
             connections,
             stop,
             serving,
+            serving_runners,
         })
     }
 
@@ -131,6 +169,9 @@ impl Edge {
         self.closing.cancel();
         self.connections.cancel();
         self.stop.cancel();
+        if let Some(serving) = self.serving_runners {
+            serving.await.map_err(io::Error::other)?;
+        }
         self.serving.await.map_err(io::Error::other)
     }
 }
@@ -176,24 +217,6 @@ impl FromRef<AppState> for Shards {
 /// The pipes stay outside the 503 of a closing backend, whose shutdown needs
 /// them, and outside the body limit, since their bodies have none.
 fn router(state: AppState, closing: CancellationToken, web_directory: Option<PathBuf>) -> Router {
-    // What no session cookie authenticates: the public downloads, and the
-    // runner's socket, which carries a device token.
-    let runners_and_downloads = Router::new()
-        .route("/install.sh", get(install::shell))
-        .route("/install.ps1", get(install::powershell))
-        .route(
-            "/runner-artifacts/{release}/{target}/{file}",
-            get(install::artifact),
-        )
-        .route(
-            &format!("{}/{{sha256}}", native::ROUTE),
-            get(install::native_artifact),
-        )
-        .route("/api/runner", get(runners::socket))
-        .method_not_allowed_fallback(no_route);
-    let pipes = Router::new()
-        .route("/api/pipes/{id}", put(runners::put).get(runners::get))
-        .method_not_allowed_fallback(no_route);
     let session_api = Router::new()
         .route("/auth/logout", post(auth::logout))
         .route("/auth/me", get(auth::me).patch(auth::set_nickname))
@@ -367,12 +390,46 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             gate::product_pages,
         ));
     let app = Router::new()
-        .merge(runners_and_downloads)
+        .merge(runners_and_downloads())
         .merge(web_app_routes);
     let app = match web_directory {
         Some(directory) => assets::serve(app, directory),
         None => app.fallback(no_route),
     };
+    edge(app, closing, state)
+}
+
+/// The routes of the backend's runner socket: what a Cloud's runner reaches
+/// its backend for (`managed-hosts.md` § Backend socket), and nothing a
+/// browser uses.
+fn runner_socket_router(state: AppState, closing: CancellationToken) -> Router {
+    edge(runners_and_downloads().fallback(no_route), closing, state)
+}
+
+/// What no session cookie authenticates: the public downloads, and the
+/// runner's socket, which carries a device token.
+fn runners_and_downloads() -> Router<AppState> {
+    Router::new()
+        .route("/install.sh", get(install::shell))
+        .route("/install.ps1", get(install::powershell))
+        .route(
+            "/runner-artifacts/{release}/{target}/{file}",
+            get(install::artifact),
+        )
+        .route(
+            &format!("{}/{{sha256}}", native::ROUTE),
+            get(install::native_artifact),
+        )
+        .route("/api/runner", get(runners::socket))
+        .method_not_allowed_fallback(no_route)
+}
+
+/// `app` as a listener serves it: with the body limit and the 503 of a
+/// closing backend, and the pipes beside both.
+fn edge(app: Router<AppState>, closing: CancellationToken, state: AppState) -> Router {
+    let pipes = Router::new()
+        .route("/api/pipes/{id}", put(runners::put).get(runners::get))
+        .method_not_allowed_fallback(no_route);
     app.layer(DefaultBodyLimit::max(body::JSON_BODY_LIMIT))
         .layer(middleware::from_fn_with_state(
             closing,

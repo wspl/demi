@@ -116,7 +116,7 @@ fn manifest(version: &str) -> MockResponse {
 async fn install_by_hand(cache: &std::path::Path, version: &str) -> String {
     let source = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(source.path(), SCRIPTED_CLI).unwrap();
-    let cache = ArtifactCache::new(cache.to_owned(), None)
+    let cache = ArtifactCache::new(cache.to_owned(), None, None)
         .await
         .unwrap();
     let wanted = Wanted {
