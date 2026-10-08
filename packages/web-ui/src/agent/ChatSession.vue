@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { provideEditSelection, type EditSelectionHandler } from './edit-selection'
+import { provideEditReads, provideEditSelection, type EditSelectionHandler } from './edit-selection'
+import type { ReadCallChange } from '../files/changes'
 import { providePageOpening, type PageOpeningHandler } from './page-opening'
 import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
@@ -51,6 +52,8 @@ const props = withDefaults(defineProps<{
   editVersion?: TranscriptVersion | null
   messageEdit?: MessageEditState | null
   selectEdit?: EditSelectionHandler
+  /** Reads a retained edit's two sides, for a request's line counts. */
+  readEdit?: ReadCallChange
   /** Opens a page the agent presented; without it, its card offers no Open. */
   openPage?: PageOpeningHandler
   fork?: MessageForkHandler
@@ -108,6 +111,7 @@ const emit = defineEmits<{
   revealed: []
 }>()
 provideEditSelection(() => props.selectEdit)
+provideEditReads(() => props.readEdit)
 providePageOpening(() => props.openPage)
 // A running call shows its command's output under it; once the call
 // returned, a command that still runs is the dock's (`runtime.md`
