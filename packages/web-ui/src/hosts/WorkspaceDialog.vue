@@ -238,8 +238,9 @@ function selectDevice(id: string, close: () => void): void {
       />
     </div>
     <template v-else>
+      <!-- The close keeps the same 12 px to the bar's top, bottom and trailing edge; the title lines up with the form. -->
       <header
-        class="flex select-none items-center justify-between border-b border-line px-4 py-3"
+        class="flex select-none items-center justify-between border-b border-line py-3 pl-5 pr-3"
       >
         <h2 class="text-[15px] font-medium text-fg-emphasis">New Project</h2>
         <IconButton
@@ -254,130 +255,127 @@ function selectDevice(id: string, close: () => void): void {
         label="Loading devices…"
         @retry="emit('retry')"
       >
-        <div class="flex flex-col gap-4 p-4">
-          <form class="flex flex-col gap-4" @submit.prevent="create">
-            <ChoiceCards
-              :model-value="kind"
-              :options="kindOptions"
-              @update:model-value="chooseKind"
+        <div class="flex flex-col gap-4 px-5 pt-4">
+          <ChoiceCards
+            :model-value="kind"
+            :options="kindOptions"
+            @update:model-value="chooseKind"
+          />
+          <label
+            v-if="kind === 'cloud'"
+            class="flex flex-col gap-1.5 text-chrome text-fg-muted"
+          >
+            Project name
+            <TextInput
+              v-model="name"
+              :disabled="pending"
+              focused
+              maxlength="64"
+              placeholder="My next idea"
             />
-            <label
-              v-if="kind === 'cloud'"
-              class="flex flex-col gap-1.5 text-chrome text-fg-muted"
-            >
-              Project name
-              <TextInput
-                v-model="name"
-                :disabled="pending"
-                focused
-                maxlength="64"
-                placeholder="My next idea"
-              />
-            </label>
-            <template v-else>
-              <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-                Device
-                <span class="flex items-center gap-2">
-                  <!-- The menu fills the row, the way the file browser's device picker does; Add Device sits after it. -->
-                  <Dropdown
-                    :overlay-store="overlayStore"
-                    :disabled="pending"
-                    variant="field"
-                    width="fill"
-                    trigger-label="Device"
-                    class="flex-1"
-                  >
-                    <template #trigger>
-                      <component
-                        :is="hostIcon({ id: deviceId })"
-                        :size="ICON_PX.in28"
-                        class="shrink-0 text-fg-muted"
+          </label>
+          <template v-else>
+            <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
+              Device
+              <span class="flex items-center gap-2">
+                <!-- The menu fills the row, the way the file browser's device picker does; Add Device sits after it. -->
+                <Dropdown
+                  :overlay-store="overlayStore"
+                  :disabled="pending"
+                  variant="field"
+                  width="fill"
+                  trigger-label="Device"
+                  class="flex-1"
+                >
+                  <template #trigger>
+                    <component
+                      :is="hostIcon({ id: deviceId })"
+                      :size="ICON_PX.in28"
+                      class="shrink-0 text-fg-muted"
+                    />
+                    <TruncatedText class="flex-1" :text="deviceLabel" />
+                  </template>
+                  <template #content="{ close, triggerWidth }">
+                    <Menu :style="{ minWidth: `${triggerWidth}px` }">
+                      <MenuItem
+                        v-for="entry in devices"
+                        :key="entry.id"
+                        :icon="hostIcon(entry)"
+                        :label="entry.name"
+                        :indicator="DEVICE_STATE_TONE[entry.state]"
+                        :indicator-label="DEVICE_STATE_LABEL[entry.state]"
+                        :note="entry.state === 'online' ? undefined : DEVICE_STATE_LABEL[entry.state]"
+                        :disabled="entry.state !== 'online'"
+                        disabled-reason="This device is offline."
+                        choice
+                        :is-selected="deviceId === entry.id"
+                        @select="selectDevice(entry.id, close)"
                       />
-                      <TruncatedText class="flex-1" :text="deviceLabel" />
-                    </template>
-                    <template #content="{ close, triggerWidth }">
-                      <Menu :style="{ minWidth: `${triggerWidth}px` }">
-                        <MenuItem
-                          v-for="entry in devices"
-                          :key="entry.id"
-                          :icon="hostIcon(entry)"
-                          :label="entry.name"
-                          :indicator="DEVICE_STATE_TONE[entry.state]"
-                          :indicator-label="DEVICE_STATE_LABEL[entry.state]"
-                          :note="entry.state === 'online' ? undefined : DEVICE_STATE_LABEL[entry.state]"
-                          :disabled="entry.state !== 'online'"
-                          disabled-reason="This device is offline."
-                          choice
-                          :is-selected="deviceId === entry.id"
-                          @select="selectDevice(entry.id, close)"
-                        />
-                        <div
-                          v-if="!devices.length"
-                          class="select-none px-2 py-3 text-center text-chrome text-fg-subtle"
-                        >
-                          No devices yet.
-                        </div>
-                      </Menu>
-                    </template>
-                  </Dropdown>
-                  <Button
-                    class="shrink-0"
-                    :disabled="pending"
-                    @click="emit('connectDevice', paired)"
-                  >
-                    <Plus :size="14" />
-                    Add Device…
-                  </Button>
-                </span>
-              </div>
-              <!-- Not a <label>: a label hands every click inside it, on the caption, the hint or
-                   the gaps between, to the field, which would take the focus back and reopen
-                   its completion (`product.md` § Conversations and projects). -->
-              <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-                <span :id="`${directoryId}-label`">Directory</span>
-                <span class="flex items-center gap-2">
-                  <!-- Completes from the device's folders as it is typed; Enter still creates. -->
-                  <PathInput
-                    v-model="path"
-                    :source="browserSource"
-                    kind="directory"
-                    :disabled="pending"
-                    placeholder="/path/to/project"
-                    :aria-labelledby="`${directoryId}-label`"
-                    :aria-describedby="`${directoryId}-hint`"
-                    class="min-w-0 flex-1"
-                  />
-                  <Button
-                    class="shrink-0"
-                    :disabled="!online || pending"
-                    @click="browsing = true"
-                  >
-                    <FolderOpen :size="14" />
-                    Browse…
-                  </Button>
-                </span>
-                <span :id="`${directoryId}-hint`" class="text-[12px] leading-4 text-fg-subtle">{{
-                  projectName
-                    ? `The project will be called ${projectName}.`
-                    : 'The project takes the folder’s name.'
-                }}</span>
-              </div>
-            </template>
-            <InlineError v-if="message" :message="message" />
-            <!-- The actions end the form at its trailing edge, Cancel before the default button, as every dialog's do. -->
-            <div class="flex justify-end gap-2">
-              <Button @click="emit('close')">Cancel</Button>
-              <Button
-                variant="primary"
-                :disabled="!canCreate && !pending"
-                :loading="pending"
-                @click="create"
-                >{{ action }}</Button
-              >
+                      <div
+                        v-if="!devices.length"
+                        class="select-none px-2 py-3 text-center text-chrome text-fg-subtle"
+                      >
+                        No devices yet.
+                      </div>
+                    </Menu>
+                  </template>
+                </Dropdown>
+                <Button
+                  class="shrink-0"
+                  :disabled="pending"
+                  @click="emit('connectDevice', paired)"
+                >
+                  <Plus :size="14" />
+                  Add Device…
+                </Button>
+              </span>
             </div>
-          </form>
+            <!-- Not a <label>: a label hands every click inside it, on the caption, the hint or
+                 the gaps between, to the field, which would take the focus back and reopen
+                 its completion (`product.md` § Conversations and projects). -->
+            <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
+              <span :id="`${directoryId}-label`">Directory</span>
+              <span class="flex items-center gap-2">
+                <!-- Completes from the device's folders as it is typed; Return outside the completion creates. -->
+                <PathInput
+                  v-model="path"
+                  :source="browserSource"
+                  kind="directory"
+                  :disabled="pending"
+                  placeholder="/path/to/project"
+                  :aria-labelledby="`${directoryId}-label`"
+                  :aria-describedby="`${directoryId}-hint`"
+                  class="min-w-0 flex-1"
+                />
+                <Button
+                  class="shrink-0"
+                  :disabled="!online || pending"
+                  @click="browsing = true"
+                >
+                  <FolderOpen :size="14" />
+                  Browse…
+                </Button>
+              </span>
+              <span :id="`${directoryId}-hint`" class="text-[12px] leading-4 text-fg-subtle">{{
+                projectName
+                  ? `The project will be called ${projectName}.`
+                  : 'The project takes the folder’s name.'
+              }}</span>
+            </div>
+          </template>
+          <InlineError v-if="message" :message="message" />
         </div>
       </AsyncRegion>
+    </template>
+    <template v-if="!browsing && (load ?? 'ready') === 'ready'" #footer>
+      <Button @click="emit('close')">Cancel</Button>
+      <Button
+        variant="primary"
+        :disabled="!canCreate && !pending"
+        :loading="pending"
+        @click="create"
+        >{{ action }}</Button
+      >
     </template>
   </Dialog>
 </template>
