@@ -813,8 +813,9 @@ unless the user finishes it, and for Claude Code `needsCode: true` and no
 `userCode`: `verificationUrl` is the link the CLI printed, the user signs in
 there and pastes the code the page shows, which
 `POST /api/providers/subscription-login/:id/code { code }` hands to the CLI's
-login (204; 409 `login_not_waiting` when it waits for none). The login then
-continues as a device login does, `{ status: "completed", providerId,
+login (204; 409 `login_not_waiting` when it waits for none). A code the CLI
+refuses leaves the login pending with `codeError`, the CLI's words, until the
+user pastes another. The login then continues as a device login does, `{ status: "completed", providerId,
 credentialId }` with the account the login added, or `{ status: "failed",
 message }`. Cancel with DELETE at the same path. A login is its starter's to
 read and cancel; another id answers 404 `login_not_found`. Terminal results are

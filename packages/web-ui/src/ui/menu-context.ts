@@ -28,6 +28,8 @@ export const menuRootKey: InjectionKey<MenuRoot> = Symbol('menuRoot')
 export interface MenuSlotRow {
   label: () => string | undefined
   el: () => HTMLElement | null
+  /** Opens the row's submenu with the keys in it; false when the row has none to open. */
+  enter: () => boolean
 }
 
 /**
@@ -42,6 +44,19 @@ export interface MenuSlotKeyboard {
 }
 
 export const menuSlotKeyboardKey: InjectionKey<MenuSlotKeyboard> = Symbol('menuSlotKeyboard')
+
+/**
+ * What a row gives the menu in its submenu: whether the keyboard opened it,
+ * so that menu takes the keys at its first row, and the way back, which
+ * closes the submenu and returns the keys to the row (Left Arrow or Escape,
+ * as in a macOS menu).
+ */
+export interface MenuSubmenuKeys {
+  entered: Readonly<Ref<boolean>>
+  leave: () => void
+}
+
+export const menuSubmenuKeysKey: InjectionKey<MenuSubmenuKeys> = Symbol('menuSubmenuKeys')
 
 /** Delay before a submenu closes after the pointer leaves its row or panel. */
 export const SUBMENU_CLOSE_DELAY_MS = 120
