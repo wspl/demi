@@ -34,7 +34,7 @@
 - The Cloud and a paired device are the same thing: a Host behind a runner. Code never distinguishes them except where the design says they differ (pairing, revocation, lifecycle). Anything that reaches a conversation's Host goes through the conversation's host access (`with_host` in `backend-host-access`, see `docs/execution/sessions-and-targets.md` § Host operations), which resolves the target, wakes a stopped Cloud, and holds the file gate. There is no other way to a conversation's Host, and every other way to a Host is named in that section; if the host access does not fit, change the design first.
 - In development, build native code with the machine's own toolchain and cross tools, not the build container, and build and package only the targets of the Hosts in use (`docs/delivery/builds-and-releases.md`). All six targets are for a published release, which the release workflow builds on GitHub's hosted runners, each platform on its own (§ Release workflow).
 - Commit completed checkpoints with Conventional Commit subjects and push after each commit.
-- Release when a whole batch of work is done and merged, not after each fix, unless the user asks for a release; releasing and upgrading the user's server then need no further confirmation.
+- Release only when the user asks for a release; releasing and upgrading the user's server then need no further confirmation. For the user's acceptance, deploy a whole merged batch to the server `DEMI_DEPLOY_HOST` names in the user's `.env` with `bun xtask deploy` (`docs/delivery/upgrades.md` § A development build on a server), not after each fix; that deploy needs no confirmation either.
 
 # Building and Testing
 
