@@ -2,16 +2,23 @@ import { createStore } from '../store/createStore'
 
 /**
  * Exclusive layers (menu, popover, dialog) dismiss hints and replace each other.
- * A stacked layer is a dialog opened from inside another: it dismisses hints too,
- * but keeps what it stands on, and goes when that closes. Hints never cover either.
+ * A stacked layer is a dialog opened over another dialog: it dismisses hints
+ * too, and replaces a menu or popover as an exclusive one does, but keeps the
+ * dialog it stands on, and goes when that closes. A dialog a menu row opens,
+ * such as Add Device… or a move's question, therefore stays once the menu
+ * closes. Hints never cover either.
  */
 export type OverlayLayer = 'exclusive' | 'stacked' | 'hint'
+
+/** What a layer is: a dialog, which a stacked layer may stand on, or a menu or popover, which it replaces. */
+export type OverlaySurface = 'dialog' | 'popover'
 
 export interface OverlayEntry {
   id: string
   layer: OverlayLayer
+  surface: OverlaySurface
   close: () => void
-  /** The exclusive entry a stacked one stands on. */
+  /** The dialog a stacked entry stands on. */
   parent?: string
 }
 
@@ -24,7 +31,7 @@ export interface OverlayStore {
   /** Whether this entry is the one Escape and the scrim address. */
   isTop(id: string): boolean
   closeTop(): void
-  push(id: string, close: () => void, layer?: OverlayLayer): () => void
+  push(id: string, close: () => void, layer?: OverlayLayer, surface?: OverlaySurface): () => void
   remove(id: string): void
   subscribe(listener: () => void): () => void
 }
@@ -82,17 +89,23 @@ export function createOverlayStore(): OverlayStore {
         return
       top.close()
     },
-    push(id, close, layer = 'exclusive') {
+    push(id, close, layer = 'exclusive', surface = 'popover') {
       if (layer === 'hint' && exclusives().length > 0) {
         return () => {}
       }
 
       dismissHints()
-      const previous = layer === 'exclusive' ? exclusives() : []
-      const parent = layer === 'stacked' ? exclusives().at(-1)?.id : undefined
+      const previous = layer === 'exclusive'
+        ? exclusives()
+        : layer === 'stacked'
+          ? exclusives().filter((entry) => entry.surface !== 'dialog')
+          : []
+      const parent = layer === 'stacked'
+        ? exclusives().findLast((entry) => entry.surface === 'dialog')?.id
+        : undefined
 
       store.update((state) => {
-        state.entries.push({ id, layer, close, parent })
+        state.entries.push({ id, layer, surface, close, parent })
       })
 
       for (const entry of previous) {
