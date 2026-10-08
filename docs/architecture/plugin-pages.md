@@ -335,15 +335,46 @@ without a loading state.
 - **Confirmed entries.** An entry read while a watch covering its path was
   live, and that no report named since, is the Host's content as its file
   system knows it. Showing it asks nothing.
-- **A report.** A changed path makes unconfirmed: its own text, description,
-  diff sides and, for a folder, its listing; its folder's listing, since a
-  file came, went or was renamed; and the changes list of the working tree
-  it lies in, unless git ignores the path. A path under the repository's
-  `.git`, such as `HEAD`, the index or a ref, makes the changes list and every
-  committed side unconfirmed. What a report makes unconfirmed and something
-  shows is read again at once, a folder's listing at most once a second, as
-  Finder updates a size that keeps growing; the rest is read again when it is
-  shown next.
+- **A report names what changed; the page reads only what depends on it
+  and shows.** The Host signals which paths changed and the page reads
+  again what it needs, rather than the Host pushing the changed content: the
+  answer read is always the Host's whole truth, so a lost or reordered
+  report never leaves a wrong copy behind, and the Host keeps nothing per
+  page. Each entry depends on these alone:
+
+  | Entry | Read again when a report names |
+  | --- | --- |
+  | A file's text or description | The file |
+  | A folder's listing | An entry of it that came, went or was renamed (`entries`), or the folder itself; a file of it written in place changes no name, so its listing stays |
+  | The changes list of a working tree | A path in the tree git does not ignore; in its repository's git directory the index, `HEAD`, a ref under `refs/` or `packed-refs` |
+  | A changed file's two sides, the last commit's and the working tree's | The file; in its repository's git directory `HEAD`, a ref or `packed-refs`, which move the commit, and never the index, which neither side reads |
+  | A file's committed contents | In its repository's git directory `HEAD`, a ref or `packed-refs` |
+
+  Any other path in a git directory, such as an object, a log, a lock or
+  `FETCH_HEAD`, concerns no entry. A git directory concerns only its own
+  repository's entries: the changes list's answer names its repository's
+  git directory (`gitDir`), so in a checkout with nested repositories, such
+  as Chromium's, a commit in `src/v8` reads nothing of `src`. For example,
+  the user reads the diff of an unchanged `added.txt` while a build writes
+  tracked files and its scripts run `git status`, which rewrites the index:
+  the changes list is read again, and `added.txt`'s sides never are.
+- **Only what is on screen follows.** An entry is followed while a view
+  shows it on screen: a work panel tab the user switched away from, or a
+  panel that is closed, follows nothing, and what it holds is marked
+  unconfirmed as reports name it, unread. Shown again, it is shown at once
+  and checked once.
+- **Reading again costs little, and an unchanged answer changes nothing.**
+  A file text, the changes list and a changed file's sides are read again
+  with the version the service holds (`If-None-Match`), and one that has not
+  changed answers that it has not, without its content; the view then keeps
+  what it shows untouched. The changes list is read again at most once a
+  second, and a folder's listing too, as an editor's source control view and
+  Finder refresh while a build writes files: each changes list is a status
+  over the whole repository, which a large one cannot answer many times a
+  second. A report within that second is read with the ones after it when
+  the second ends, so the last is never dropped. Nothing is read on a timer
+  of its own: every read answers a report, a view that comes on screen, or
+  the user's Refresh.
 - **Unconfirmed entries are shown, then checked.** An entry read while no
   watch covered it, or once the watch said it lost reports, or across a lost
   connection to the Host or a watch stream that reconnected, may be out of
@@ -364,12 +395,6 @@ without a loading state.
   folder adds itself, a deletion removes its entry. The watch's report then
   lists the folder once. A listing with no watch, as in a device's folder
   dialog, so still shows what the page just did.
-- **Reading again costs little.** A file text is read again with the version
-  the service holds, and an unchanged file answers that it is unchanged
-  without its text
-  ([File text and working tree changes](../product/web-api.md#file-text-and-working-tree-changes)).
-  A preview's bytes come from a URL that names their version, which the user's
-  browser keeps, so a preview shown again needs no bytes.
 
 ## The plugin kit
 

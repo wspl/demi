@@ -398,6 +398,7 @@ The `git_changes` reply:
 | Field | Meaning |
 | --- | --- |
 | `repository` | False when the directory is not inside a git repository; the other fields are then empty. |
+| `git_dir` | The absolute path of the repository's git directory, which a page reads reports under by what each of its entries depends on. |
 | `head` | The commit the changes are against; null before the first commit. |
 | `files` | One entry per path `git status` lists under the directory, path relative to it: its `status`, git's two status letters for it; its `kind`, how the working tree differs from `head`: `added`, `modified`, `deleted`, or `renamed` (with the old path in `from`); and the lines added and removed against `head`. |
 | `truncated` | True when the list stopped at 5,000 files. |
@@ -441,8 +442,11 @@ it ran.
 
 The next request re-examines the recorded paths, with the other path of any staged
 rename among them so that the two still pair, and merges them into the
-previous result. It walks the whole tree again instead when a path under
-`.git` changed (a commit, a checkout, a staging), when a `.gitignore` or
+previous result. It walks the whole tree again instead when the repository's
+`HEAD`, a ref or `packed-refs` changed (a commit, a checkout), or the index's
+entries did (a staging): an index that `git status` only rewrote with fresh
+file times, which it does on every run, holds the same entries and walks
+nothing. It walks it again too when a `.gitignore` or
 `.gitattributes` changed, since those decide what git lists for other paths,
 or when more than 100 paths changed: a walk over some paths checks every index
 entry against each of them, so past about a hundred it costs more than a whole
@@ -482,7 +486,11 @@ runner reports, as messages of that watch:
 - `changed` with the paths something changed at: created, written, removed
   or renamed, both names of a rename. A file opened or read reports nothing,
   and neither does metadata alone under `.git`, as for the
-  [working tree](#working-tree). The runner gathers paths for 100 ms and sends
+  [working tree](#working-tree). Among them it names `entries`, the paths
+  that came, went or were renamed, by the platform's event kinds; a path the
+  platform's events leave in doubt, as FSEvents can merge a creation and a
+  write into one event, is named among them too, so a folder's listing is
+  never left stale. The runner gathers paths for 100 ms and sends
   each once; more than 1,000 at once it sends as `lost`. It names among them
   `ignored`, the paths git ignores in the working tree's repository by its own
   rules (untracked and matched by an ignore rule, or under an ignored folder),
