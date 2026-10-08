@@ -7,6 +7,7 @@ import { agentReceiptMessages, editedFile, permissionReceiptMessages } from '../
 import { HELPER, helperBlocks, helperParentBlocks, signInRequestBlocks, standaloneRequest, uncopiedRequestBlocks } from '../fixtures/request-changes'
 import { useGalleryTranscripts } from '../fixtures/transcripts'
 import GalleryTranscript from '../components/GalleryTranscript.vue'
+import GalleryCommandReferences from '../components/GalleryCommandReferences.vue'
 import GalleryEditSelection from '../components/GalleryEditSelection.vue'
 import PermissionCard from '@demicodes/web-ui/permissions/PermissionCard.vue'
 import { afterDecision, type PermissionDecision, type PermissionRequestView } from '@demicodes/web-ui/permissions/types'
@@ -107,6 +108,7 @@ import {
   thinkingText,
   steerPrompt,
   transcriptDemoBlocks,
+  commandReferenceBlocks,
   unsizedRecordingTool,
   wideImageTool,
 } from '../fixtures/blocks'
@@ -134,6 +136,9 @@ import { useGalleryView } from '../gallery-views'
 
 const { view } = useGalleryView()
 const historyModelBlocks = transcriptDemoBlocks()
+/** The reference specimens' transcript, and a command of another agent's that one of them names. */
+const referenceBlocks = commandReferenceBlocks()
+const referenceOthers: Record<string, string> = { '40': 'Read the release notes' }
 
 /**
  * The permission card's specimens, each over its own requests: a decision
@@ -1650,6 +1655,24 @@ onBeforeUnmount(() => {
                 code="rate_limit"
                 :diagnostics="{ source: 'http', httpStatus: 429 }"
               />
+            </GallerySpecimen>
+          </div>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Command References"
+        note="A look or a wait without a title of its own names the command it acts on by that command's title, underlined with dots: Check, Send input to, Wait for, and and 1 more for a wait on several. A click on the title jumps to the command's call and marks it for a moment; the rest of the row behaves as usual. A command of another agent's transcript is named by its title alone. Every shell row, a run or a look, marks a command that went wrong with a tag after its title: red Failed, with its exit code in the tooltip, or grey Stopped; one that succeeded shows nothing, and one that runs shimmers. An open run that failed or was stopped says so above its output. A title too long for its row is cut at the end; the tag stays."
+      >
+        <div class="gallery-frame gallery-block-frame bg-surface">
+          <div class="specimen-stack [--agent-pad-x:0px]">
+            <GallerySpecimen variant="references" wide>
+              <GalleryCommandReferences :blocks="referenceBlocks" :others="referenceOthers" />
+            </GallerySpecimen>
+            <GallerySpecimen variant="references · narrow" wide>
+              <div class="w-[300px]">
+                <GalleryCommandReferences :blocks="referenceBlocks" :others="referenceOthers" />
+              </div>
             </GallerySpecimen>
           </div>
         </div>

@@ -2,7 +2,7 @@
 //! the request reaches a size threshold, request the provider, retry what
 //! waiting can fix and compact once after a refusal as too large, apply its
 //! events to the transcript as they stream, save, run the requested tools in
-//! order, compact when the usage reached the threshold, and ask again until a
+//! steps, compact when the usage reached the threshold, and ask again until a
 //! response requests no tool or a tool ends the turn, unless input arrived
 //! during the round. Every wait on the provider, a hook or a tool is raced
 //! against the action's stop and dropped when it comes; a save is never
@@ -18,8 +18,9 @@ use demi_agent_transcript::{
 use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ResultPart,
 };
-use demi_shared_types::{Block, ModelSelection, ToolView, WakeupId};
+use demi_shared_types::{Block, CommandId, ModelSelection, ToolView, WakeupId};
 use futures_util::StreamExt;
+use tokio_util::task::AbortOnDropHandle;
 
 use super::{
     ErrorReport, SessionEvent, SessionShared, TurnError,
@@ -29,7 +30,7 @@ use super::{
     input::Take,
     media::model_view,
     persist,
-    runtime::{SeenContext, ToolEffect, ToolInvocation, ToolOutcome},
+    runtime::{InputArrival, SeenContext, ToolEffect, ToolInvocation, ToolOutcome},
 };
 
 /// How many compactions one turn runs after responses over the threshold.
@@ -364,11 +365,16 @@ fn complete_text(s: &SessionShared) {
     s.update(|core| core.complete_tail_text());
 }
 
-/// Runs the calls the last response requested, one at a time in order,
-/// after saving them as executing. Input that arrives meanwhile is written
-/// after each call, unless the turn is about to compact.
+/// Runs the calls the last response requested, after saving them as
+/// executing, in steps (`runtime.md` § Dispatch and failures): consecutive
+/// calls of a tool that runs together start together, and each other call
+/// is a step of its own. A step ends when each of its calls has returned;
+/// its results are recorded in the order of the calls, and a Stop keeps
+/// those of the calls that returned before it. Input that arrives
+/// meanwhile is written after each step, unless the turn is about to
+/// compact.
 async fn run_tools(
-    s: &SessionShared,
+    s: &Rc<SessionShared>,
     cancel: &TurnCancel,
     defer_input: bool,
 ) -> Result<ToolRound, TurnError> {
@@ -386,41 +392,77 @@ async fn run_tools(
         executed: true,
         stop_after_result: false,
     };
-    for call in calls {
+    let mut calls = calls.into_iter().peekable();
+    while let Some(first) = calls.next() {
         cancel.check()?;
+        let mut step = vec![first];
+        if s.runtime.runs_together(&step[0].tool_name) {
+            while let Some(next) = calls.next_if(|call| call.tool_name == step[0].tool_name) {
+                step.push(next);
+            }
+        }
         let before = s.read(|core| core.inputs.arrivals());
-        let outcome = if tools.iter().any(|tool| tool.name == call.tool_name) {
+        let mut outcomes: Vec<Option<ToolOutcome>> = step.iter().map(|_| None).collect();
+        let ran = if tools.iter().any(|tool| tool.name == step[0].tool_name) {
             let (model, request_limits) =
                 s.read(|core| (core.model.clone(), core.request_limits()));
-            let invocation = ToolInvocation {
-                tool_use_id: call.tool_use_id.clone(),
-                tool_name: call.tool_name.clone(),
-                input: tool_input(&call.input),
-                model,
-                request_limits,
-                cancel: cancel.child_token(),
-            };
-            match cancel.guard(s.runtime.invoke_tool(invocation)).await? {
-                Ok(outcome) => outcome,
-                Err(failure) => ToolOutcome::error(format!("Tool failed: {}", failure.0)),
-            }
+            let invocations = step
+                .iter()
+                .map(|call| ToolInvocation {
+                    tool_use_id: call.tool_use_id.clone(),
+                    tool_name: call.tool_name.clone(),
+                    input: tool_input(&call.input),
+                    model: model.clone(),
+                    request_limits,
+                    cancel: cancel.child_token(),
+                    arrival: InputArrival::new(s.arrivals.subscribe(), before),
+                })
+                .collect();
+            let mut returned = s.runtime.invoke_step(invocations);
+            cancel
+                .guard(async {
+                    while let Some((index, outcome)) = returned.next().await {
+                        outcomes[index] = Some(outcome.unwrap_or_else(|failure| {
+                            ToolOutcome::error(format!("Tool failed: {}", failure.0))
+                        }));
+                    }
+                })
+                .await
         } else {
-            ToolOutcome::error(format!("Tool not found: {}", call.tool_name))
-        };
-        let outcome = match outcome.effect {
-            Some(ToolEffect::ScheduleYield { duration_ms }) => {
-                round.stop_after_result = true;
-                s.update(|core| yield_result(core.schedule_wakeup(duration_ms), duration_ms))
+            for (outcome, call) in outcomes.iter_mut().zip(&step) {
+                *outcome = Some(ToolOutcome::error(format!(
+                    "Tool not found: {}",
+                    call.tool_name
+                )));
             }
-            None => outcome,
+            Ok(())
         };
-        // The result's media are stored before it enters the transcript, and
-        // the session holds their bytes (`runtime.md` § Media).
-        let (output, held) = media::store_result(outcome.output, s.store.blobs()).await;
-        s.update(|core| {
-            core.media.absorb(held);
-            core.complete_tool_call(&call.tool_use_id, output, outcome.is_error, outcome.view);
-        });
+        // Results are recorded in the order of the calls. A Stop during the
+        // step ends the calls still running; one that returned keeps its
+        // result.
+        for (call, outcome) in step.iter().zip(outcomes) {
+            let Some(outcome) = outcome else {
+                continue;
+            };
+            let outcome = match outcome.effect {
+                Some(ToolEffect::ScheduleYield {
+                    duration_ms,
+                    commands,
+                }) => {
+                    round.stop_after_result = true;
+                    schedule_yield(s, duration_ms, commands)
+                }
+                None => outcome,
+            };
+            // The result's media are stored before it enters the transcript,
+            // and the session holds their bytes (`runtime.md` § Media).
+            let (output, held) = media::store_result(outcome.output, s.store.blobs()).await;
+            s.update(|core| {
+                core.media.absorb(held);
+                core.complete_tool_call(&call.tool_use_id, output, outcome.is_error, outcome.view);
+            });
+        }
+        ran?;
         if !defer_input {
             write_inputs_since(s, before).await?;
         }
@@ -429,16 +471,43 @@ async fn run_tools(
     Ok(round)
 }
 
+/// Schedules the wakeup a `yield` asked for and, when it names commands,
+/// the task that makes it due once the first of them ends; answers the
+/// call's result.
+fn schedule_yield(s: &Rc<SessionShared>, duration_ms: u32, commands: Vec<CommandId>) -> ToolOutcome {
+    let id = s.update(|core| core.schedule_wakeup(duration_ms, commands.clone()));
+    let outcome = yield_result(id.clone(), duration_ms, commands.clone());
+    if commands.is_empty() {
+        return outcome;
+    }
+    let ended = s.runtime.command_end(commands);
+    let session = Rc::downgrade(s);
+    let wakeup = id.clone();
+    let watch = tokio::task::spawn_local(async move {
+        let ended = ended.await;
+        if let Some(s) = session.upgrade() {
+            s.update(|core| core.command_ended(&wakeup, ended));
+        }
+    });
+    s.update(|core| core.wakeups.watch(&id, AbortOnDropHandle::new(watch)));
+    outcome
+}
+
 /// The result of a `yield` call, which the session writes because the
 /// wakeup's id is its own. The text names no wakeup: no tool takes one.
-fn yield_result(wakeup_id: WakeupId, duration_ms: u32) -> ToolOutcome {
-    let text = format!("yield scheduled\ndurationMs: {duration_ms}");
+fn yield_result(wakeup_id: WakeupId, duration_ms: u32, command_ids: Vec<CommandId>) -> ToolOutcome {
+    let mut text = format!("yield scheduled\ndurationMs: {duration_ms}");
+    if !command_ids.is_empty() {
+        let commands: Vec<&str> = command_ids.iter().map(CommandId::as_str).collect();
+        text.push_str(&format!("\ncommandIds: {}", commands.join(", ")));
+    }
     ToolOutcome {
         output: vec![ResultPart::Text(text)],
         is_error: false,
         view: Some(ToolView::YieldWakeup {
             wakeup_id,
             duration_ms,
+            command_ids,
         }),
         effect: None,
     }

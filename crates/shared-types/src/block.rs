@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use crate::{
-    AgentMessage, BlockId, MAX_SAFE_INTEGER, ModelSelection, Nullable, ProviderErrorDiagnostics,
+    AgentMessage, BlockId, CommandId, MAX_SAFE_INTEGER, ModelSelection, Nullable, ProviderErrorDiagnostics,
     Timestamp, TokenUsage, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
 };
 
@@ -145,8 +145,10 @@ pub struct ContextBlock {
     pub text: String,
 }
 
-/// A fired yield wakeup. The model receives the fixed wakeup text as a user
-/// message or as a steer, as the placement says.
+/// A fired yield wakeup. The model receives the wakeup text as a user
+/// message or as a steer, as the placement says: the text for the time that
+/// came, or the one that names the command whose end fired it
+/// (`runtime.md` § Yield wakeups).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WakeupBlock {
@@ -160,6 +162,49 @@ pub struct WakeupBlock {
     pub model: ModelSelection,
     #[garde(skip)]
     pub placement: WakeupPlacement,
+    /// The command whose end fired it; absent when its time came.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "WakeupCommand")]
+    #[garde(skip)]
+    pub command: Option<WakeupCommand>,
+}
+
+/// A command a `yield` named, and how it ended: what fires its wakeup
+/// before the time comes.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WakeupCommand {
+    pub command_id: CommandId,
+    pub end: CommandEnd,
+}
+
+/// How a command ended, as the conversation's record of its output keeps
+/// it (`storage.md` § Command outputs) and a wakeup tells the model.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, garde::Validate,
+)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum CommandEnd {
+    Exited {
+        #[garde(skip)]
+        exit_code: i32,
+    },
+    /// It was stopped: by a page, `demi shell stop`, a Stop of its action,
+    /// or the end of its node's shells.
+    Stopped,
+    /// It ended with its Host's connection.
+    Lost,
+    /// Its record was made by a release before 0.1.21, which kept no end.
+    Unrecorded,
 }
 
 /// Where a fired wakeup entered the transcript.

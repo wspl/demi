@@ -5,30 +5,39 @@
 //! the model, the commands, the spawn restriction, and the role that sets
 //! the lifecycle policy.
 
-use std::{rc::Rc, sync::Arc};
+use std::{
+    rc::{Rc, Weak},
+    sync::Arc,
+};
 
 use bytes::Bytes;
 
 use demi_agent_session::{
     AgentSession, Continuation, NewContext, RestoreError, SeenContext, SessionConfig, SessionDeps,
-    SessionInit, SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome,
+    SessionInit, SessionRuntime, StepOutcomes, ToolInvocation,
 };
 use demi_agent_store::{AgentTreeStore, Checkpoint, NodeRecord, StoreError};
 use demi_agent_tools::{
-    CallError, ContextSource, Environments, HostResolver, ModelIdentity, NodeContext,
-    ShellAccess, ShellEnvironmentFactory, StoreNumbers, definitions, stored_running_commands,
-    system_prompt,
+    CallError, ContextSource, ConversationCommands, Environments, HostResolver, ModelIdentity,
+    NodeContext, ShellAccess, ShellEnvironmentFactory, StoreNumbers, definitions, runs_together,
+    stored_running_commands, system_prompt,
 };
 use demi_agent_transcript::IdSource;
 use demi_host_interface::{
-    CommandSet, JobCaller, Numbers, PageFeed, PageState, PageView, ShellError, WholeOutput,
+    CommandSet, Ending, JobCaller, Numbers, PageFeed, PageState, PageView, ShellEnvironment,
+    ShellError, WholeOutput,
 };
 use demi_provider_common::{ProviderRuntime, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
-use demi_shared_types::{Clock, CommandId, ModelSelection, NodeId, QueuedMessage, TurnId};
-use futures_util::future::LocalBoxFuture;
+use demi_shared_types::{
+    Clock, CommandEnd, CommandId, ModelSelection, NodeId, QueuedMessage, TurnId, WakeupCommand,
+};
+use futures_util::future::{LocalBoxFuture, select_all};
 
-use crate::server::ProviderResolver;
+use crate::{
+    AgentServer,
+    server::{CommandPlace, ProviderResolver, Tree},
+};
 
 /// A node's place in its tree, which sets its lifecycle policy: a child
 /// resumes a turn the process interrupted and closes once it is quiescent;
@@ -86,20 +95,23 @@ impl<H: HostResolver> Node<H> {
         command: &CommandId,
         stdin: String,
     ) -> Result<(), CallError> {
-        self.runtime.shell_access().write(command, stdin).await?;
-        Ok(())
+        self.runtime.shell_access().write(command, stdin).await
     }
 
     /// Stops a running command through the node's environment for the
     /// conversation's current Host, as a page's `shell_abort` asks.
     pub(crate) async fn shell_abort(&self, command: &CommandId) -> Result<(), CallError> {
-        self.runtime.shell_access().abort(command).await?;
-        Ok(())
+        self.runtime.shell_access().abort(command).await
     }
 
     /// Whether one of the node's environments holds `command`.
     pub(crate) fn holds(&self, command: &CommandId) -> bool {
         self.runtime.environments.owning(command).is_some()
+    }
+
+    /// The node's environment that holds `command`.
+    pub(crate) fn environment_of(&self, command: &CommandId) -> Option<Rc<dyn ShellEnvironment>> {
+        self.runtime.environments.owning(command)
     }
 
     /// What the Host of `command`, which one of the node's environments
@@ -230,6 +242,8 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     numbers: Rc<dyn Numbers>,
     /// The node's agent number.
     agent: u64,
+    /// The server, through which the node finds its tree's commands.
+    server: Weak<AgentServer<H>>,
 }
 
 impl<H: HostResolver> NodeRuntime<H> {
@@ -252,7 +266,25 @@ impl<H: HostResolver> NodeRuntime<H> {
             commands: &self.commands,
             feed: &self.feed,
             numbers: &self.numbers,
+            conversation: self,
         }
+    }
+
+    /// The node's tree, while it is live.
+    fn tree(&self) -> Option<Rc<Tree<H>>> {
+        self.server.upgrade()?.tree(&self.root)
+    }
+}
+
+impl<H: HostResolver> ConversationCommands for NodeRuntime<H> {
+    fn knows<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<bool, String>> {
+        Box::pin(async move {
+            let tree = self
+                .tree()
+                .ok_or_else(|| format!("the conversation {} is not open", self.root))?;
+            let place = tree.command_place(command).await?;
+            Ok(!matches!(place, CommandPlace::Unknown))
+        })
     }
 }
 
@@ -362,11 +394,72 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         definitions()
     }
 
-    fn invoke_tool(
-        &self,
-        call: ToolInvocation,
-    ) -> LocalBoxFuture<'_, Result<ToolOutcome, ToolFailure>> {
-        Box::pin(async move { self.shell_access().invoke(call).await })
+    fn runs_together(&self, tool: &str) -> bool {
+        runs_together(tool)
+    }
+
+    fn invoke_step(&self, calls: Vec<ToolInvocation>) -> StepOutcomes<'_> {
+        self.shell_access().invoke_step(calls)
+    }
+
+    /// Finds each command in the tree, whichever node's shells hold it, and
+    /// then holds only the environments it waits on and the store, never
+    /// the tree. How a command ended is what the conversation's record of it
+    /// keeps (`storage.md` § Command outputs), which the record holds before
+    /// the command reads as ended; a command no record keeps, as in a
+    /// product without a keeper, ended as its environment says.
+    fn command_end(&self, commands: Vec<CommandId>) -> LocalBoxFuture<'static, WakeupCommand> {
+        let tree = self.tree();
+        let store = self.store.clone();
+        Box::pin(async move {
+            let Some(tree) = tree else {
+                // A tree that is not live runs no command; it is closing.
+                return std::future::pending().await;
+            };
+            let mut waits = Vec::new();
+            for command in commands {
+                let environment = match tree.command_place(&command).await {
+                    Ok(CommandPlace::Held(node)) => node.environment_of(&command),
+                    Ok(CommandPlace::Stored(end)) => {
+                        return WakeupCommand {
+                            command_id: command,
+                            end,
+                        };
+                    }
+                    Ok(CommandPlace::Unknown) => None,
+                    Err(error) => {
+                        // The time still wakes the node.
+                        tracing::warn!(%command, %error, "a command a yield waits for could not be found");
+                        continue;
+                    }
+                };
+                let store = store.clone();
+                waits.push(Box::pin(async move {
+                    let ended = match &environment {
+                        Some(environment) => environment.ended(&command).await.ok(),
+                        None => None,
+                    };
+                    let recorded = store.command_end(&command).await.unwrap_or_else(|error| {
+                        tracing::warn!(%command, %error, "how a command ended could not be read");
+                        None
+                    });
+                    let end = recorded.unwrap_or(match ended {
+                        Some(Ending::Exited(exit_code)) => CommandEnd::Exited { exit_code },
+                        Some(Ending::Aborted) => CommandEnd::Stopped,
+                        None => CommandEnd::Unrecorded,
+                    });
+                    WakeupCommand {
+                        command_id: command,
+                        end,
+                    }
+                }));
+            }
+            drop(tree);
+            if waits.is_empty() {
+                return std::future::pending().await;
+            }
+            select_all(waits).await.0
+        })
     }
 
     /// Ends the node's shells on every Host, their running commands with
@@ -456,6 +549,8 @@ pub(crate) struct NodeSpec<H: HostResolver> {
     pub(crate) ids: Rc<dyn IdSource>,
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) config: SessionConfig,
+    /// The server, through which the node finds its tree's commands.
+    pub(crate) server: Weak<AgentServer<H>>,
 }
 
 /// A node, and what it has yet to run: what its restore handed back, or a new
@@ -502,6 +597,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         ids,
         clock,
         config,
+        server,
     } = spec;
     let record = origin.record().clone();
     let session_store = store.session_store(&record.id);
@@ -527,6 +623,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         lifecycle: ActivityGate::new(),
         numbers: Rc::new(StoreNumbers(store.clone())),
         agent: record.number,
+        server,
         store: store.clone(),
         shells,
         environments: Environments::default(),

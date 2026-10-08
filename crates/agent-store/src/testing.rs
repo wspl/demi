@@ -11,14 +11,14 @@ use std::{
 
 use demi_provider_common::UserPart;
 use demi_shared_types::{
-    B64Bytes, BlobRef, Block, CommandId, FileExtension, Model, ModelSelection, NodeId,
+    B64Bytes, BlobRef, Block, CommandEnd, CommandId, FileExtension, Model, ModelSelection, NodeId,
     QueuedMessage, Sequence, Timestamp, UserContentBlock,
 };
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
     AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, NodeClose, NodeRecord,
-    SessionStore, StoreError, StoredOutput, media::BlobStore,
+    SessionStore, StoreError, StoredCommand, media::BlobStore,
 };
 
 /// A model selection of the provider `provider` with a 100,000-token window.
@@ -97,7 +97,7 @@ struct Stored {
     /// The holds on reads of a node's children, by the node.
     children_holds: BTreeMap<NodeId, Rc<Hold>>,
     /// What the product's keeper stored of each ended command's output.
-    outputs: BTreeMap<CommandId, StoredOutput>,
+    outputs: BTreeMap<CommandId, StoredCommand>,
 }
 
 /// Calls waiting until a test lets them through.
@@ -177,8 +177,8 @@ impl MemoryTreeStore {
 
     /// Records what the conversation holds of `command`'s output, as the
     /// product's keeper does when the command ends.
-    pub fn keep_output(&self, command: CommandId, output: StoredOutput) {
-        self.stored.borrow_mut().outputs.insert(command, output);
+    pub fn keep_output(&self, command: CommandId, stored: StoredCommand) {
+        self.stored.borrow_mut().outputs.insert(command, stored);
     }
 
     /// Every save so far, in order, with the node it was for.
@@ -477,8 +477,16 @@ impl AgentTreeStore for MemoryTreeStore {
     fn command_output<'a>(
         &'a self,
         command: &'a CommandId,
-    ) -> LocalBoxFuture<'a, Result<Option<StoredOutput>, StoreError>> {
+    ) -> LocalBoxFuture<'a, Result<Option<StoredCommand>, StoreError>> {
         Box::pin(async move { Ok(self.stored.borrow().outputs.get(command).cloned()) })
+    }
+
+    fn command_end<'a>(
+        &'a self,
+        command: &'a CommandId,
+    ) -> LocalBoxFuture<'a, Result<Option<CommandEnd>, StoreError>> {
+        let end = self.stored.borrow().outputs.get(command).map(|stored| stored.end);
+        Box::pin(async move { Ok(end) })
     }
 }
 

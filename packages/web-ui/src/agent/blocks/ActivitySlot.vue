@@ -7,6 +7,7 @@ import type { ActivityKind, HandoffBlock } from '../activity-slot'
 import { parseToolCallInput } from '../block-helpers'
 import { useElapsedTime } from '../../composables/useElapsedTime'
 import { providerWaitLabel, thinkingFaceLabel } from '../thinking-label'
+import { useCommandReferences } from '../command-references'
 import { standardToolTitle, toolRenderKind } from '../tool-rendering'
 import FunctionalBlock from './FunctionalBlock.vue'
 
@@ -23,6 +24,7 @@ const props = defineProps<{
   since: number
 }>()
 
+const references = useCommandReferences()
 const requestingElapsed = useElapsedTime(
   () => props.since,
   () => props.kind === 'requesting' && !props.incoming,
@@ -55,7 +57,7 @@ const face = computed<Face>(() => {
   if (kind === 'generic') {
     return { icon: null, label: block.toolName }
   }
-  const label = standardToolTitle(kind, parseToolCallInput(block))
+  const label = standardToolTitle(kind, parseToolCallInput(block), (commandId) => references(commandId)?.title)
   return { icon: kind === 'yield' ? History : SquareTerminal, label }
 })
 

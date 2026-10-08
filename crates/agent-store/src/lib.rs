@@ -25,8 +25,8 @@ use std::rc::Rc;
 use demi_conversation_socket_protocol::{JobPhase, SubagentJob};
 use demi_host_interface::{StoredMedium, WholeOutput};
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, Block, CommandId, CompletionId, ModelSelection, NodeId,
-    OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId, WakeupId,
+    AgentMessage, AgentMessageEvent, Block, CommandEnd, CommandId, CompletionId, ModelSelection, NodeId,
+    OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId, WakeupCommand, WakeupId,
 };
 use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
@@ -113,13 +113,27 @@ pub trait AgentTreeStore {
     /// leave a gap.
     fn next_number(&self, sequence: Sequence) -> LocalBoxFuture<'_, Result<u64, StoreError>>;
 
-    /// What the conversation holds of the output of its command `command`,
-    /// which ended (`storage.md` § Command outputs); none for a command it
-    /// does not have.
+    /// What the conversation holds of its command `command`, which ended
+    /// (`storage.md` § Command outputs): how it ended, and its output; none
+    /// for a command it does not have.
     fn command_output<'a>(
         &'a self,
         command: &'a CommandId,
-    ) -> LocalBoxFuture<'a, Result<Option<StoredOutput>, StoreError>>;
+    ) -> LocalBoxFuture<'a, Result<Option<StoredCommand>, StoreError>>;
+
+    /// How the conversation's command `command` ended, as its record keeps
+    /// it, without its output; none for a command it has no record of.
+    fn command_end<'a>(
+        &'a self,
+        command: &'a CommandId,
+    ) -> LocalBoxFuture<'a, Result<Option<CommandEnd>, StoreError>>;
+}
+
+/// What a conversation holds of an ended command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredCommand {
+    pub end: CommandEnd,
+    pub output: StoredOutput,
 }
 
 /// What a conversation holds of an ended command's output.
@@ -306,6 +320,15 @@ pub struct ScheduledWakeup {
     /// How long after the scheduling action ended it fires.
     #[garde(range(min = 1))]
     pub duration_ms: u32,
+    /// The commands whose first end fires it sooner.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(skip)]
+    pub command_ids: Vec<CommandId>,
+    /// The first of them that ended, and how; the text the wakeup gives
+    /// the model names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub ended: Option<WakeupCommand>,
     /// When it is due, in wall-clock time; null until the action that
     /// scheduled it ended.
     #[serde(deserialize_with = "Option::deserialize")]

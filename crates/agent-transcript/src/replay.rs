@@ -11,10 +11,12 @@ use demi_provider_common::{
     InferenceItem, MediaBytes, Medium, RequestLimits, ResultPart, UserPart,
 };
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, B64Bytes, BlobRef, Block, CompletionOutcome, DocumentSource,
+    AgentMessage, AgentMessageEvent, B64Bytes, BlobRef, Block, CommandEnd, CompletionOutcome,
+    DocumentSource,
     PermissionOutcome,
     FileExtension, MediaSource, Model, ModelMediaKind, Timestamp, ToolCallStatus, ToolMediaSource,
-    ToolResultContentBlock, UserContentBlock, WakeupPlacement, attachment_tag, char_offset,
+    ToolResultContentBlock, UserContentBlock, WakeupBlock, WakeupCommand, WakeupPlacement,
+    attachment_tag, char_offset,
     file_extension_support, model_accepts_media_type,
 };
 use serde::Serialize;
@@ -25,8 +27,28 @@ use super::{gone_text, latest_answer, replay_start};
 /// What the model receives for a `resume` block.
 pub const RESUME_TEXT: &str = "Continue from where you left off.";
 
-/// What the model receives for a fired yield wakeup.
+/// What the model receives for a yield wakeup whose time came.
 pub const WAKEUP_TEXT: &str = "Scheduled yield wakeup fired. Continue the previous work and inspect any running command with shell_status when needed.";
+
+/// What the model receives for a fired yield wakeup (`runtime.md` § Yield
+/// wakeups): the text for the time that came, or the one that names the
+/// command whose end fired it.
+pub fn wakeup_text(wakeup: &WakeupBlock) -> Cow<'static, str> {
+    let Some(WakeupCommand { command_id, end }) = &wakeup.command else {
+        return Cow::Borrowed(WAKEUP_TEXT);
+    };
+    let ended = match end {
+        CommandEnd::Exited { exit_code } => {
+            format!("Command {command_id} ended with exit code {exit_code}.")
+        }
+        CommandEnd::Stopped => format!("Command {command_id} was stopped."),
+        CommandEnd::Lost => format!("Command {command_id} ended with its Host's connection."),
+        CommandEnd::Unrecorded => format!("Command {command_id} ended."),
+    };
+    Cow::Owned(format!(
+        "{ended} Continue the previous work; read its output with demi shell output {command_id}."
+    ))
+}
 
 /// The scalar values a replayed text keeps from its start, and from its end,
 /// when it is longer than both together.
@@ -70,7 +92,7 @@ pub fn replay(request: &RequestView) -> Replay {
                 content: vec![bounded(&context.text)],
             }),
             Block::Wakeup(wakeup) => {
-                let content = vec![UserPart::Text(WAKEUP_TEXT.to_owned())];
+                let content = vec![UserPart::Text(wakeup_text(wakeup).into_owned())];
                 items.push(match wakeup.placement {
                     WakeupPlacement::NewTurn => InferenceItem::UserMessage { content },
                     WakeupPlacement::Steer => InferenceItem::UserSteer { content },

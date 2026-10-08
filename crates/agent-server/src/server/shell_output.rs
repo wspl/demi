@@ -1,28 +1,31 @@
-//! The `demi shell` command group (`runtime.md` § The whole output):
-//! `demi shell output` prints a command of the conversation's whole output,
-//! as numbered lines a page at a time, the lines a range names, the newest
-//! lines, or the bytes as they are, or returns one of the media the
-//! command's declared commands returned. It reads a running command's
-//! output and media from its Host through the command's job, and an ended
-//! command's from the conversation's store.
+//! The `demi shell` command group (`runtime.md` § The whole output,
+//! § Stopping a command): `demi shell output` prints a command of the
+//! conversation's whole output, as numbered lines a page at a time, the
+//! lines a range names, the newest lines, or the bytes as they are, or
+//! returns one of the media the command's declared commands returned. It
+//! reads a running command's output and media from its Host through the
+//! command's job, and an ended command's from the conversation's store.
+//! `demi shell stop` stops a running command of the conversation through
+//! the shell environment that runs it, as a page's stop does.
 
 use std::rc::Weak;
 
 use bytes::Bytes;
-use demi_agent_store::StoredOutput;
+use demi_agent_store::{StoredCommand, StoredOutput};
 use demi_host_interface::{MediumKept, StoredMedium};
 use demi_agent_tools::{HostResolver, PAGE_CHARS};
 use demi_host_interface::{
-    GroupBuilder, LeafBuilder, OutputText, Piece, RpcError, RpcPort, Seen, ShellError, Streams,
-    TypedRpc, WholeOutput,
+    Ending, GroupBuilder, LeafBuilder, OutputText, Piece, RpcError, RpcPort, Seen, ShellError,
+    Streams, TypedRpc, WholeOutput,
 };
-use demi_shared_types::{B64Bytes, BlobRef, CommandId, StreamKind};
+use demi_shared_types::{B64Bytes, BlobRef, CommandEnd, CommandId, StreamKind};
+use futures_util::FutureExt;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::{
     commands::{Invoked, verb},
-    tree::Tree,
+    tree::{CommandPlace, Tree},
 };
 use crate::AgentServer;
 
@@ -32,11 +35,13 @@ const LINE_CHARS: usize = 2_000;
 /// The size of the writes `--raw` makes.
 const RAW_CHUNK_BYTES: usize = 1024 * 1024;
 
-const GROUP_SUMMARY: &str = "Shell commands: read a command's whole output.";
+const GROUP_SUMMARY: &str = "Shell commands: read a command's whole output, or stop a command.";
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const GROUP_ENTRY: &str = "Prints the whole output of a command you ran earlier, by its commandId, a page at a time. Use it when a result was cut short in the middle; the result says so with a line naming this command.";
+const GROUP_ENTRY: &str = "Prints the whole output of a command you ran earlier, by its commandId, a page at a time, and stops a running command. Use output when a result was cut short in the middle; the result says so with a line naming this command. Use stop to end a dev server, a watcher or any command you no longer need.";
+
+const STOP_SUMMARY: &str = "Stop a running command of this conversation by its commandId, whichever agent ran it, and wait until it has ended. Its next shell_status shows it aborted, with its last output. Stopping a command that has ended already succeeds, so it is safe to repeat.";
 
 const OUTPUT_SUMMARY: &str = "Print a command's whole output by its commandId: numbered lines a page at a time, as `cat -n` shows them, from the first line or the lines --lines <from>-<to> names; the newest with --tail <n>. --stdout or --stderr takes one stream, with line numbers of its own. --raw prints the bytes as they are, unnumbered and unpaged, for pipes and files: `grep -n` on it gives the numbers --lines takes (`demi shell output 17 --raw | grep -n FAIL`). --medium <n> returns the command's medium n, the image or video its line `[medium n: …]` stands for, as it came: shown to you again, or its bytes into a file (`demi shell output 17 --medium 2 > shot.png`). Any command of this conversation, running or ended.";
 
@@ -63,6 +68,14 @@ struct OutputArgs {
     medium: Option<u32>,
 }
 
+/// The input of `demi shell stop`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct StopArgs {
+    /// The command's commandId, as its result names it
+    id: String,
+}
+
 /// The `shell` group.
 pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> GroupBuilder {
     GroupBuilder::new("shell", GROUP_SUMMARY)
@@ -74,8 +87,65 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
                 .success_output("the page, the lines, or with --raw the bytes on stdout; with --raw, a line on stderr where bytes were left out; with --medium, the medium")
                 .media()
                 .failure_output("\"demi shell output: <reason>\" on stderr, exit 1")
-                .bind(TypedRpc::new(verb(server, output))),
+                .bind(TypedRpc::new(verb(server.clone(), output))),
         )
+        .leaf(
+            LeafBuilder::rpc("stop", STOP_SUMMARY)
+                .input::<StopArgs>()
+                .positionals(["id"])
+                .success_output("\"[command <id> stopped]\", or \"[command <id> had already ended]\" for a command that had ended")
+                .failure_output("\"demi shell stop: <reason>\" on stderr, exit 1")
+                .bind(TypedRpc::new(verb(server, stop))),
+        )
+}
+
+/// Stops the conversation's command `id` through the shell environment of
+/// the node that runs it, and waits until it has ended.
+async fn stop<H: HostResolver>(call: Invoked<H, StopArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let id = call.args.id.as_str();
+    let failed = |reason: String| format!("demi shell stop: {reason}\n").into_bytes();
+    let unknown = || failed(format!("no command {id} in this conversation"));
+    let Ok(command) = CommandId::try_from(id) else {
+        port.stderr(unknown()).await?;
+        return Ok(1);
+    };
+    let place = match call.tree.command_place(&command).await {
+        Ok(place) => place,
+        Err(reason) => {
+            port.stderr(failed(reason)).await?;
+            return Ok(1);
+        }
+    };
+    let said = match place {
+        CommandPlace::Unknown => {
+            port.stderr(unknown()).await?;
+            return Ok(1);
+        }
+        CommandPlace::Stored(_) => format!("[command {id} had already ended]\n"),
+        CommandPlace::Held(node) => match node.environment_of(&command) {
+            Some(environment) if environment.ended(&command).now_or_never().is_none() => {
+                // The environment that runs it stops it, as for a page's
+                // stop; no Host is resolved, so the call never enters the
+                // conversation's file gate its own job holds a lease of.
+                let stopped = match environment.abort(&command).await {
+                    Ok(()) => environment.ended(&command).await,
+                    Err(error) => Err(error),
+                };
+                match stopped {
+                    Ok(Ending::Aborted) => format!("[command {id} stopped]\n"),
+                    // It ended by itself before the stop reached it.
+                    Ok(Ending::Exited(_)) => format!("[command {id} had already ended]\n"),
+                    Err(error) => {
+                        port.stderr(failed(error.to_string())).await?;
+                        return Ok(1);
+                    }
+                }
+            }
+            _ => format!("[command {id} had already ended]\n"),
+        },
+    };
+    port.stdout(said.into_bytes()).await?;
+    Ok(0)
 }
 
 /// What a reading prints of the output's lines.
@@ -91,7 +161,8 @@ enum Reading {
 /// An output found, and whether its command still runs.
 struct Found {
     output: WholeOutput,
-    running: bool,
+    /// How the command ended; none while it runs.
+    end: Option<CommandEnd>,
 }
 
 async fn output<H: HostResolver>(
@@ -172,7 +243,7 @@ async fn output<H: HostResolver>(
         text: &text,
         id,
         streams,
-        running: found.running,
+        end: found.end,
     };
     let last = text.last_line();
     let printed = match reading {
@@ -203,10 +274,7 @@ async fn find<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<Found, String
     if let Some(node) = tree.holder(&command) {
         match node.read_output(&command).await {
             Ok(output) => {
-                return Ok(Found {
-                    output,
-                    running: true,
-                });
+                return Ok(Found { output, end: None });
             }
             // It ended, and its output is stored.
             Err(ShellError::NotRunning(_)) => {}
@@ -214,11 +282,17 @@ async fn find<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<Found, String
         }
     }
     match tree.store().command_output(&command).await {
-        Ok(Some(StoredOutput::Stored { output, .. })) => Ok(Found {
+        Ok(Some(StoredCommand {
+            end,
+            output: StoredOutput::Stored { output, .. },
+        })) => Ok(Found {
             output,
-            running: false,
+            end: Some(end),
         }),
-        Ok(Some(StoredOutput::NotStored(reason))) => {
+        Ok(Some(StoredCommand {
+            output: StoredOutput::NotStored(reason),
+            ..
+        })) => {
             Err(format!("the output of {id} was not stored: {reason}"))
         }
         Ok(None) => Err(unknown()),
@@ -255,8 +329,14 @@ async fn find_medium<H: HostResolver>(
         }
     }
     let media = match tree.store().command_output(&command).await {
-        Ok(Some(StoredOutput::Stored { media, .. })) => media,
-        Ok(Some(StoredOutput::NotStored(reason))) => {
+        Ok(Some(StoredCommand {
+            output: StoredOutput::Stored { media, .. },
+            ..
+        })) => media,
+        Ok(Some(StoredCommand {
+            output: StoredOutput::NotStored(reason),
+            ..
+        })) => {
             return Err(format!("the output of {id} was not stored: {reason}"));
         }
         Ok(None) => return Err(unknown()),
@@ -286,7 +366,8 @@ struct Page<'a> {
     text: &'a OutputText,
     id: &'a str,
     streams: Streams,
-    running: bool,
+    /// How the command ended; none while it runs.
+    end: Option<CommandEnd>,
 }
 
 impl Page<'_> {
@@ -384,18 +465,26 @@ impl Page<'_> {
     /// What the page holds: its lines, of how many, and of which streams.
     fn header(&self, shown: Option<(u64, u64)>) -> String {
         let of = self.text.last_line();
-        let so_far = if self.running { " so far" } else { "" };
+        let so_far = if self.end.is_none() { " so far" } else { "" };
         let streams = match self.streams {
             Streams::Both => "stdout and stderr",
             Streams::Only(StreamKind::Stdout) => "stdout",
             Streams::Only(StreamKind::Stderr) => "stderr",
         };
+        // How it ended, as its record keeps it; a record of a release that
+        // kept no end says nothing.
+        let ended = match self.end {
+            Some(CommandEnd::Exited { exit_code }) => format!(", exit code {exit_code}"),
+            Some(CommandEnd::Stopped) => ", stopped".to_owned(),
+            Some(CommandEnd::Lost) => ", ended with its Host's connection".to_owned(),
+            Some(CommandEnd::Unrecorded) | None => String::new(),
+        };
         match shown {
             Some((first, last)) => format!(
-                "[command {}: lines {first}-{last} of {of}{so_far}, {streams}]",
+                "[command {}: lines {first}-{last} of {of}{so_far}, {streams}{ended}]",
                 self.id
             ),
-            None => format!("[command {}: {of} lines{so_far}, {streams}]", self.id),
+            None => format!("[command {}: {of} lines{so_far}, {streams}{ended}]", self.id),
         }
     }
 

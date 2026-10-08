@@ -4,8 +4,6 @@ import type { ToolCallBlock } from '../block-types'
 import { parseToolCallInput } from '../block-helpers'
 import ToolShellBlock from './ToolShellBlock.vue'
 import ToolShellStatusBlock from './ToolShellStatusBlock.vue'
-import ToolShellWriteBlock from './ToolShellWriteBlock.vue'
-import ToolShellAbortBlock from './ToolShellAbortBlock.vue'
 import ToolYieldBlock from './ToolYieldBlock.vue'
 import ToolGenericBlock from './ToolGenericBlock.vue'
 import { toolRenderKind } from '../tool-rendering'
@@ -28,16 +26,6 @@ const renderKind = computed(() => toolRenderKind(props.block.toolName))
   />
   <ToolShellStatusBlock
     v-else-if="renderKind === 'shell_status'"
-    :block="block"
-    :input="parsedInput"
-  />
-  <ToolShellWriteBlock
-    v-else-if="renderKind === 'shell_write'"
-    :block="block"
-    :input="parsedInput"
-  />
-  <ToolShellAbortBlock
-    v-else-if="renderKind === 'shell_abort'"
     :block="block"
     :input="parsedInput"
   />

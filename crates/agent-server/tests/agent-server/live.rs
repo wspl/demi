@@ -20,7 +20,7 @@ use demi_agent_tools::{
 use demi_agent_transcript::testing::SequentialIds;
 use demi_conversation_socket_protocol::{ServerFrame, ShellStatus};
 use demi_host_interface::{
-    CommandRecord, CommandSet, CommandStatus, DEFAULT_OUTPUT_LIMIT_BYTES, ExecRequest, Host,
+    CommandRecord, CommandSet, CommandStatus, DEFAULT_OUTPUT_LIMIT_BYTES, Ending, ExecRequest, Host,
     HostError, HostFs, HostIdentity, HostKey, HostProcess, PageFeed, PageView, ShellEnvironment,
     ShellError, WholeOutput,
 };
@@ -110,26 +110,42 @@ impl ScriptedShell {
 }
 
 impl ShellEnvironment for ScriptedShell {
-    fn exec(
+    fn start(
         &self,
         request: ExecRequest,
         _cancel: CancellationToken,
-    ) -> LocalBoxFuture<'_, Result<CommandStatus, ShellError>> {
+    ) -> LocalBoxFuture<'_, Result<CommandId, ShellError>> {
+        let command = CommandId::try_from("1").unwrap();
         let record = Rc::new(RefCell::new(CommandRecord::new(
             ShellId::try_from("1").unwrap(),
-            CommandId::try_from("1").unwrap(),
+            command.clone(),
             request.tool_use_id,
         )));
         self.command.replace(Some(record.clone()));
         self.feed.changed(&record);
-        let status = record.borrow_mut().status(DEFAULT_OUTPUT_LIMIT_BYTES, None);
-        Box::pin(async move { Ok(status) })
+        Box::pin(async move { Ok(command) })
+    }
+
+    /// The command runs until the test ends; a watch of it ends with its
+    /// window.
+    fn ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<Ending, ShellError>> {
+        let ended = self.record(command).map(|record| record.borrow().ending());
+        Box::pin(async move {
+            match ended? {
+                Some(ending) => Ok(ending),
+                None => std::future::pending().await,
+            }
+        })
     }
 
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
         let record = self.record(command)?;
         let status = record.borrow_mut().status(DEFAULT_OUTPUT_LIMIT_BYTES, None);
         Ok(status)
+    }
+
+    fn default_shell(&self) -> Option<demi_host_interface::DefaultShell> {
+        None
     }
 
     fn read_output<'a>(
