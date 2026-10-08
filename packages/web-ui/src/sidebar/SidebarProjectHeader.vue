@@ -37,47 +37,61 @@ const emit = defineEmits<{
       :size="ICON_PX.in28"
       class="shrink-0 text-fg-muted"
     />
-    <span class="flex min-w-0 flex-1 items-center gap-1">
-      <TruncatedText class="font-medium text-fg-emphasis" :text="project.name" />
-      <ChevronRight
-        :size="ICON_PX.in20"
-        aria-hidden="true"
-        class="shrink-0 text-fg-subtle opacity-0 transition-[opacity,rotate] duration-150 ease-out motion-reduce:transition-none group-hover/project:opacity-100"
-        :class="collapsed ? 'rotate-0' : 'rotate-90'"
-      />
-    </span>
-    <!-- The host takes at most 30% of the row, so the project's name keeps the larger share. -->
-    <span class="grid min-w-hit-sm max-w-[30%] items-center">
-      <span
-        class="pointer-events-none col-start-1 row-start-1 flex min-w-0 items-center justify-end text-[11px] leading-none text-fg-subtle transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0"
-        :aria-label="project.host"
-      >
-        <span v-if="project.hostKind === 'device'" class="truncate">{{ project.host }}</span>
-        <!-- The host's mark stands where New conversation appears, so it keeps the button's inset from the row's edges. -->
-        <span class="flex size-hit-sm shrink-0 items-center justify-center">
-          <Cloud v-if="project.hostKind === 'cloud'" :size="ICON_PX.in20" />
+    <!-- The text and the host's mark touch: the mark stands in its own button-sized box. -->
+    <span class="flex min-w-0 flex-1 items-center">
+      <!-- The project's name takes what the device's name leaves; the device's name takes its own
+           width, at most half of the text's, and each is cut at its end. The hover chevron and
+           the gaps around it (4px, 12px, 4px) are not text, so the device's half leaves out half of
+           their 20px. -->
+      <span class="flex min-w-0 flex-1 items-center gap-1">
+        <span class="flex min-w-0 flex-1 items-center gap-1">
+          <TruncatedText class="font-medium text-fg-emphasis" :text="project.name" />
+          <ChevronRight
+            :size="ICON_PX.in20"
+            aria-hidden="true"
+            class="shrink-0 text-fg-subtle opacity-0 transition-[opacity,rotate] duration-150 ease-out motion-reduce:transition-none group-hover/project:opacity-100"
+            :class="collapsed ? 'rotate-0' : 'rotate-90'"
+          />
+        </span>
+        <TruncatedText
+          v-if="project.hostKind === 'device'"
+          class="max-w-[calc(50%-10px)] flex-[0_1_auto] text-[11px] text-fg-subtle"
+          :text="project.host"
+        />
+      </span>
+      <!-- The host's mark stands where New conversation appears, so it keeps the button's inset from the row's edges. -->
+      <span class="grid shrink-0 items-center">
+        <span
+          class="pointer-events-none col-start-1 row-start-1 flex size-hit-sm items-center justify-center text-fg-subtle transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0"
+        >
+          <Cloud
+            v-if="project.hostKind === 'cloud'"
+            role="img"
+            :aria-label="project.host"
+            :size="ICON_PX.in20"
+          />
           <StatusDot
             v-else
             :tone="DEVICE_STATE_TONE[project.state]"
             :label="DEVICE_STATE_LABEL[project.state]"
           />
         </span>
-      </span>
-      <span
-        class="col-start-1 row-start-1 flex items-center justify-self-end opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto"
-      >
-        <Tooltip content="New conversation" class="flex items-center">
-          <IconButton
-            :icon="SquarePen"
-            size="sm"
-            variant="ghost"
-            aria-label="New conversation"
-            tabindex="0"
-            @keydown.enter.stop.prevent="emit('create')"
-            @keydown.space.stop.prevent="emit('create')"
-            @click.stop="emit('create')"
-          />
-        </Tooltip>
+        <span
+          class="col-start-1 row-start-1 flex items-center justify-self-end opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto"
+        >
+          <Tooltip content="New conversation" class="flex items-center">
+            <IconButton
+              :icon="SquarePen"
+              size="sm"
+              variant="ghost"
+              aria-label="New conversation"
+              tabindex="0"
+              @keydown.enter.stop.prevent="emit('create')"
+              @keydown.space.stop.prevent="emit('create')"
+              @click.stop="emit('create')"
+            />
+          </Tooltip>
+        </span>
       </span>
     </span>
   </div>

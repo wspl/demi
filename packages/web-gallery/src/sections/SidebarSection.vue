@@ -73,11 +73,11 @@ const anatomy: [string, string][] = [
   ],
   [
     'Projects',
-    'Every checkout the agent works in, in manual order, each with the host it lives on: the Cloud icon, or the device’s name and a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. The host takes at most 30% of the row, so a long device name is cut before the project’s name; on hover New conversation takes the host’s place. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
+    'Every checkout the agent works in, in manual order, each with the host it lives on: the Cloud icon, or the device’s name and a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. The device’s name takes its own width, at most half of the text’s, and is cut at its end beyond that; the project’s name takes the rest and is cut only when it does not fit there; each cut name shows whole on hover. On hover New conversation takes the dot’s place. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
   ],
   [
     'Row',
-    'A title and one quiet dot: yellow while a permission request waits for the user, over every other mark and whether the row is open or read; breathing while running, blue for a result waiting to be read, orange when the conversation failed or was stopped, a faint ring when settled. A cut title fades at the edge and plays as a marquee on hover. Pin and archive appear on hover; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list’s scrollbar floats over that margin and takes no room.'
+    'A title and one quiet dot: yellow while a permission request waits for the user, over every other mark and whether the row is open or read; breathing while running, blue for a result waiting to be read, orange when the conversation failed or was stopped, a faint ring when settled. A cut title ends in an ellipsis and shows whole in its tooltip. Pin and archive appear on hover; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list’s scrollbar floats over that margin and takes no room.'
   ],
   [
     'Selection',
