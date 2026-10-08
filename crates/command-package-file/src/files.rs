@@ -3,12 +3,11 @@
 
 use std::{
     fs,
-    ops::Range,
     path::{Path, PathBuf},
 };
 
 use bytes::Bytes;
-use demi_command_package_file_protocol::{Block, Change, Choice, CreateArgs, Edit, Operation, PatchArgs, ReadArgs};
+use demi_command_package_file_protocol::{Operation, PatchArgs, ReadArgs};
 use demi_command_protocol::{CommandError, Completion, MAX_MEDIUM_BYTES, sniff_media_type};
 use demi_command_sdk::{
     InvocationContext, ServiceError,
@@ -20,7 +19,10 @@ use demi_shared_types::DecodeError;
 use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 
-use crate::patch::{self, PatchError};
+use crate::{
+    edit,
+    patch::{self, PatchError},
+};
 
 /// How much of a file one read sends on.
 const READ_BYTES: usize = 64 * 1024;
@@ -48,26 +50,34 @@ pub enum FileError {
     NoMatch(String),
     #[error("Multiple matches in {0}; specify --occurrence or --context")]
     MultipleMatches(String),
-    #[error("Block {block}'s SEARCH matches no lines of {name}. {closest}")]
+    #[error("{name}, block {block}: its SEARCH matches no lines. {closest}")]
     BlockNoMatch {
         block: usize,
         name: String,
         closest: String,
     },
     #[error(
-        "Block {block}'s SEARCH matches {name} at {places}; add a line around it so it matches one place"
+        "{name}, block {block}: its SEARCH matches at {places}; add a line around it so it matches one place"
     )]
     BlockMatchesSeveral {
         block: usize,
         name: String,
         places: String,
     },
-    #[error("Blocks {first} and {second} overlap in {name}; make them one block")]
+    #[error("{name}: blocks {first} and {second} overlap; make them one block")]
     BlocksOverlap {
         first: usize,
         second: usize,
         name: String,
     },
+    #[error("{name}, block {block}: the file exists; a block with an empty SEARCH creates a new file")]
+    FileExists { name: String, block: usize },
+    #[error("{name}: the file does not exist; a block with an empty SEARCH creates it")]
+    FileMissing { name: String },
+    #[error(
+        "{name}, block {block}: a block with an empty SEARCH creates the file, so it is the file's only block"
+    )]
+    CreateWithOthers { name: String, block: usize },
     #[error(transparent)]
     Patch(#[from] PatchError),
     /// The result could not be sent back.
@@ -91,15 +101,9 @@ pub async fn invoke(
 ) -> Result<Completion, ServiceError> {
     let result = match operation {
         Operation::Read(args) => read(&context, &args).await,
-        Operation::Create(args) => {
-            mutate(&context, &mutations, move |cwd, cancellation, recording| {
-                create(cwd, args, cancellation, recording)
-            })
-            .await
-        }
         Operation::Edit(args) => {
             mutate(&context, &mutations, move |cwd, cancellation, recording| {
-                edit(cwd, &args, cancellation, recording)
+                edit::edit(cwd, &args, cancellation, recording)
             })
             .await
         }
@@ -241,122 +245,8 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8], create: bool) -> Result<()
     Ok(())
 }
 
-fn create(
-    cwd: &str,
-    CreateArgs {
-        path: name,
-        content,
-    }: CreateArgs,
-    cancellation: &CancellationToken,
-    recording: Option<&mut Recording>,
-) -> Result<String, FileError> {
-    let path = resolve(cwd, &name)?;
-    if let Some(recording) = recording {
-        recording.track(&path);
-    }
-    check_cancelled(cancellation)?;
-    atomic_write(&path, content.as_bytes(), true)?;
-    Ok(format!("Created {name}\n"))
-}
-
 pub(crate) fn resolve(cwd: &str, path: &str) -> Result<PathBuf, FileError> {
     Ok(demi_command_sdk::paths::resolve(cwd, path)?)
-}
-
-/// Replaces what `args` names in its file: every replacement is planned
-/// against the file as it was, and they are written together or not at all.
-fn edit(
-    cwd: &str,
-    args: &Edit,
-    cancellation: &CancellationToken,
-    recording: Option<&mut Recording>,
-) -> Result<String, FileError> {
-    let path = resolve(cwd, &args.path)?;
-    let content = fs::read_to_string(&path)?;
-    let replacements = match &args.change {
-        Change::Text { old, new, choice } => {
-            vec![text_replacement(&content, &args.path, old, new, *choice)?]
-        }
-        Change::Blocks(blocks) => {
-            let lines = Lines::of(&content);
-            blocks
-                .iter()
-                .enumerate()
-                .map(|(index, block)| {
-                    check_cancelled(cancellation)?;
-                    lines.replacement(index + 1, block, &args.path)
-                })
-                .collect::<Result<_, _>>()?
-        }
-    };
-    let updated = replace_all(&content, replacements, &args.path)?;
-    check_cancelled(cancellation)?;
-    if updated != content {
-        if let Some(recording) = recording {
-            recording.track(&path);
-        }
-        atomic_write(&path, updated.as_bytes(), false)?;
-    }
-    Ok(format!("Edited {}\n", args.path))
-}
-
-/// One planned replacement: the bytes of the file it replaces, its text,
-/// and the block it comes from, for a message about two that overlap.
-struct Replacement {
-    range: Range<usize>,
-    text: String,
-    block: usize,
-}
-
-/// `--old` replaced by `--new`, at the match `choice` names.
-fn text_replacement(
-    content: &str,
-    name: &str,
-    old: &str,
-    new: &str,
-    choice: Choice,
-) -> Result<Replacement, FileError> {
-    let matches: Vec<_> = content.match_indices(old).map(|(index, _)| index).collect();
-    let index = match choice {
-        Choice::Occurrence(occurrence) => *matches
-            .get(occurrence - 1)
-            .ok_or(FileError::OccurrenceOutOfRange(occurrence))?,
-        Choice::Context(context) => {
-            match nearest(&matches, |index| line_of(content, index).abs_diff(context)) {
-                Ok(index) => index,
-                Err(Unchosen::Empty) => return Err(FileError::NoMatchNearContext),
-                Err(Unchosen::Tie) => {
-                    let candidates = matches
-                        .iter()
-                        .enumerate()
-                        .map(|(occurrence, &index)| {
-                            format!(
-                                "occurrence {} at line {}",
-                                occurrence + 1,
-                                line_of(content, index)
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join("; ");
-                    return Err(FileError::AmbiguousContext {
-                        context,
-                        candidates,
-                    });
-                }
-            }
-        }
-        Choice::Only => match matches.as_slice() {
-            [index] => *index,
-            [] => return Err(FileError::NoMatch(name.to_owned())),
-            _ => return Err(FileError::MultipleMatches(name.to_owned())),
-        },
-    };
-    // `--old` is the edit's one replacement, so it overlaps no other.
-    Ok(Replacement {
-        range: index..index + old.len(),
-        text: new.to_owned(),
-        block: 1,
-    })
 }
 
 /// Why [`nearest`] chose no candidate.
@@ -383,192 +273,4 @@ pub(crate) fn nearest<T: Copy>(
         [first, second, ..] if first.0 == second.0 => Err(Unchosen::Tie),
         [(_, candidate), ..] => Ok(*candidate),
     }
-}
-
-/// `content` with each replacement made; two that overlap fail.
-fn replace_all(
-    content: &str,
-    mut replacements: Vec<Replacement>,
-    name: &str,
-) -> Result<String, FileError> {
-    replacements.sort_by_key(|replacement| replacement.range.start);
-    for pair in replacements.windows(2) {
-        if pair[1].range.start < pair[0].range.end {
-            let mut blocks = [pair[0].block, pair[1].block];
-            blocks.sort_unstable();
-            return Err(FileError::BlocksOverlap {
-                first: blocks[0],
-                second: blocks[1],
-                name: name.to_owned(),
-            });
-        }
-    }
-    let mut updated = String::with_capacity(content.len());
-    let mut end = 0;
-    for replacement in &replacements {
-        updated.push_str(&content[end..replacement.range.start]);
-        updated.push_str(&replacement.text);
-        end = replacement.range.end;
-    }
-    updated.push_str(&content[end..]);
-    Ok(updated)
-}
-
-/// A file's lines: where each starts, where its text ends, and where its
-/// line ending ends.
-struct Lines<'a> {
-    content: &'a str,
-    lines: Vec<Line>,
-}
-
-struct Line {
-    start: usize,
-    text_end: usize,
-    end: usize,
-}
-
-impl<'a> Lines<'a> {
-    fn of(content: &'a str) -> Self {
-        let mut lines = Vec::new();
-        let mut start = 0;
-        for line in content.split_inclusive('\n') {
-            let end = start + line.len();
-            let text = line
-                .strip_suffix('\n')
-                .map_or(line, |text| text.strip_suffix('\r').unwrap_or(text));
-            lines.push(Line {
-                start,
-                text_end: start + text.len(),
-                end,
-            });
-            start = end;
-        }
-        Self { content, lines }
-    }
-
-    fn text(&self, index: usize) -> &'a str {
-        let line = &self.lines[index];
-        &self.content[line.start..line.text_end]
-    }
-
-    fn ending(&self, index: usize) -> &'a str {
-        let line = &self.lines[index];
-        &self.content[line.text_end..line.end]
-    }
-
-    /// Where `block`'s SEARCH matches whole lines: the index of each
-    /// match's first line.
-    fn matches(&self, block: &Block) -> Vec<usize> {
-        let count = block.search.len();
-        (0..(self.lines.len() + 1).saturating_sub(count))
-            .filter(|&first| {
-                block
-                    .search
-                    .iter()
-                    .enumerate()
-                    .all(|(offset, line)| self.text(first + offset) == line)
-            })
-            .collect()
-    }
-
-    /// The replacement `block`, the `number`th, makes: its REPLACE in place
-    /// of the lines its SEARCH matches exactly once, written with the
-    /// file's own line endings.
-    fn replacement(
-        &self,
-        number: usize,
-        block: &Block,
-        name: &str,
-    ) -> Result<Replacement, FileError> {
-        let count = block.search.len();
-        let first = match self.matches(block).as_slice() {
-            [first] => *first,
-            [] => {
-                return Err(FileError::BlockNoMatch {
-                    block: number,
-                    name: name.to_owned(),
-                    closest: self.closest(block),
-                });
-            }
-            several => {
-                return Err(FileError::BlockMatchesSeveral {
-                    block: number,
-                    name: name.to_owned(),
-                    places: several
-                        .iter()
-                        .map(|&first| line_span(first, count))
-                        .collect::<Vec<_>>()
-                        .join(" and "),
-                });
-            }
-        };
-        let last = first + count - 1;
-        let ending = (first..=last)
-            .map(|index| self.ending(index))
-            .chain((0..self.lines.len()).map(|index| self.ending(index)))
-            .find(|ending| !ending.is_empty())
-            .unwrap_or("\n");
-        let mut text = String::new();
-        for (index, line) in block.replace.iter().enumerate() {
-            text.push_str(line);
-            // The last line keeps the matched last line's ending, none at
-            // the end of a file without a final newline.
-            if index + 1 < block.replace.len() || !self.ending(last).is_empty() {
-                text.push_str(ending);
-            }
-        }
-        Ok(Replacement {
-            range: self.lines[first].start..self.lines[last].end,
-            text,
-            block: number,
-        })
-    }
-
-    /// The lines of the file most like `block`'s SEARCH, numbered: as many
-    /// lines as it has, from the first that matches its lines best.
-    fn closest(&self, block: &Block) -> String {
-        if self.lines.is_empty() {
-            return "The file is empty.".to_owned();
-        }
-        let count = block.search.len().min(self.lines.len());
-        let score = |first: usize| -> f64 {
-            block
-                .search
-                .iter()
-                .zip(first..first + count)
-                .map(|(line, index)| strsim::sorensen_dice(line.trim(), self.text(index).trim()))
-                .sum()
-        };
-        let mut best = 0;
-        let mut best_score = f64::MIN;
-        for first in 0..=self.lines.len() - count {
-            let score = score(first);
-            if score > best_score {
-                best = first;
-                best_score = score;
-            }
-        }
-        let lines = (best..best + count)
-            .map(|index| format!("{}: {}", index + 1, self.text(index)))
-            .collect::<Vec<_>>()
-            .join("\n");
-        format!("The closest are {}:\n{lines}", line_span(best, count))
-    }
-}
-
-/// `line 3` or `lines 3-5`, for `count` lines from the 0-based `first`.
-fn line_span(first: usize, count: usize) -> String {
-    if count == 1 {
-        format!("line {}", first + 1)
-    } else {
-        format!("lines {}-{}", first + 1, first + count)
-    }
-}
-/// The 1-based line of the byte at `index`.
-fn line_of(content: &str, index: usize) -> usize {
-    content[..index]
-        .bytes()
-        .filter(|&byte| byte == b'\n')
-        .count()
-        + 1
 }
