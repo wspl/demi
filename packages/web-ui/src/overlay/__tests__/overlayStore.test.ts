@@ -54,10 +54,10 @@ test('a stacked entry keeps what it stands on and goes with it', () => {
   let innerClosed = 0
   store.push('dialog', () => {
     outerClosed += 1
-  })
+  }, 'exclusive', 'dialog')
   store.push('inner', () => {
     innerClosed += 1
-  }, 'stacked')
+  }, 'stacked', 'dialog')
   expect(outerClosed).toBe(0)
   expect(store.state.entries.map((entry) => entry.id)).toEqual(
     ['dialog', 'inner']
@@ -73,8 +73,39 @@ test('a stacked entry keeps what it stands on and goes with it', () => {
 
   store.push('inner-2', () => {
     innerClosed += 1
-  }, 'stacked')
+  }, 'stacked', 'dialog')
   store.remove('dialog')
   expect(innerClosed).toBe(2)
   expect(store.state.entries).toHaveLength(0)
+})
+
+test('a stacked dialog a menu row opens replaces the menu and stays when the menu closes', () => {
+  // The host menu's Cloud row asks before a move, and Add Device… pairs:
+  // each opens a stacked dialog as its menu closes.
+  const store = createOverlayStore()
+  let menuClosed = 0
+  let dialogClosed = 0
+  store.push('menu', () => {
+    menuClosed += 1
+  })
+  store.push('question', () => {
+    dialogClosed += 1
+  }, 'stacked', 'dialog')
+  expect(menuClosed).toBe(1)
+  // The menu unregisters itself once it is closed, which takes nothing with it.
+  store.remove('menu')
+  expect(dialogClosed).toBe(0)
+  expect(store.state.entries.map((entry) => entry.id)).toEqual(['question'])
+  expect(store.isTop('question')).toBe(true)
+})
+
+test('a stacked dialog over a picker with a menu open stands on the picker', () => {
+  const store = createOverlayStore()
+  let pickerClosed = 0
+  store.push('picker', () => {
+    pickerClosed += 1
+  }, 'exclusive', 'dialog')
+  store.push('question', () => {}, 'stacked', 'dialog')
+  expect(pickerClosed).toBe(0)
+  expect(store.state.entries.find((entry) => entry.id === 'question')?.parent).toBe('picker')
 })
