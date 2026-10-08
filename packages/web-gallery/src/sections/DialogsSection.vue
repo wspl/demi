@@ -318,7 +318,7 @@ const resetPhases: {
     <template v-if="view === 'providers'">
       <GallerySection
         title="Confirm Removal"
-        note="Removing what the user set up asks first: the title asks, the body says what goes with it, Cancel is the safe answer, and the action is the destructive button, filled red under white text in both schemes."
+        note="Removing what the user set up asks first: the title asks, the body says what goes with it, Cancel is the safe answer and the default, the primary button, which Return presses and the dialog opens on, and the action is a danger button, red with no fill, which takes a click, as macOS’s alerts show them."
       >
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen wide variant="provider">
@@ -472,7 +472,7 @@ const resetPhases: {
     <template v-if="view === 'workspace'">
       <GallerySection
         title="Delete Conversations"
-        note="Delete in a conversation’s sidebar menu, a selection’s menu or an archived row asks first: the title names the one conversation or counts several, the body says that their messages and files go and that this cannot be undone, and that the files they changed in their projects stay. Delete is the destructive button, and Cancel the safe answer."
+        note="Delete in a conversation’s sidebar menu, a selection’s menu or an archived row asks first: the title names the one conversation or counts several, the body says that their messages and files go and that this cannot be undone, and that the files they changed in their projects stay. Delete is a danger button, red with no fill, and Cancel the safe answer and the default."
       >
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen
