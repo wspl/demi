@@ -27,15 +27,15 @@ test('the card lists the newest instructions block, and nothing before the first
   expect(loadedInstructions([...blocks, context('instructions')])).toEqual([])
 })
 
-test('each file is named from the outermost file’s directory, and a file too large is marked', () => {
+test('each file is named from the outermost file’s directory', () => {
   const rows = instructionRows([
     { kind: 'personal' },
     { kind: 'file', path: '/repo/AGENTS.md' },
-    { kind: 'too_large', path: '/repo/web/AGENTS.md' },
+    { kind: 'file', path: '/repo/web/AGENTS.md' },
   ])
-  expect(rows.map(({ label, path, tooLarge }) => ({ label, path, tooLarge }))).toEqual([
-    { label: 'Personal instructions', path: null, tooLarge: false },
-    { label: 'AGENTS.md', path: '/repo/AGENTS.md', tooLarge: false },
-    { label: 'web/AGENTS.md', path: '/repo/web/AGENTS.md', tooLarge: true },
+  expect(rows.map(({ label, path }) => ({ label, path }))).toEqual([
+    { label: 'Personal instructions', path: null },
+    { label: 'AGENTS.md', path: '/repo/AGENTS.md' },
+    { label: 'web/AGENTS.md', path: '/repo/web/AGENTS.md' },
   ])
 })
