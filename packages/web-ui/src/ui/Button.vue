@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, useAttrs } from 'vue'
-import { blockUnavailableButtonEvent } from './button-events'
+import { blockUnavailableButtonEvent, pressOnKey } from './button-events'
 import { useButtonIconSpin } from './button-icon-spin'
 import { disabledTooltip } from './disabled'
 import Tooltip from './Tooltip.vue'
@@ -59,15 +59,6 @@ const { rotating, onClick } = useButtonIconSpin(
   () => emit('spinEnd'),
 )
 
-/** Return and Space press the button that has the focus, as they press a native one. */
-function onKeydown(event: KeyboardEvent): void {
-  if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) {
-    return
-  }
-  event.preventDefault()
-  root.value?.click()
-}
-
 const sizeClass = computed(() => {
   if (props.size === 'lg') {
     return 'h-9 px-3.5 text-chrome'
@@ -104,7 +95,7 @@ const sizeClass = computed(() => {
       @keydown.capture="
         blockUnavailableButtonEvent($event, disabled || loading)
       "
-      @keydown="onKeydown"
+      @keydown="pressOnKey"
       role="button"
       :tabindex="disabled ? undefined : -1"
       :data-default-action="variant === 'primary' || undefined"
