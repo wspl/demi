@@ -93,6 +93,26 @@ export const permissionReceiptMessages: AgentMessage[] = [
   event: { type: 'permission' as const, outcome, action: 'manage skills' },
 }))
 
+/** A decision on a request of two categories, and Demi's notice that a move the agent asked for failed. */
+export const organizeReceiptMessages: AgentMessage[] = [
+  {
+    id: 'permission:pr-move',
+    recipientId: 'gallery-parent',
+    timestamp: '2026-09-12T12:06:00.000Z',
+    content:
+      'The user allowed this conversation to organize conversations and manage devices; the command `demi conversation move ledable-app` can now run.',
+    event: { type: 'permission' as const, outcome: 'allowed' as const, action: 'organize conversations and manage devices' },
+  },
+  {
+    id: 'move-failed:4c1e9d2b',
+    recipientId: 'gallery-parent',
+    timestamp: '2026-09-12T12:08:00.000Z',
+    content:
+      "Demi could not make the move this conversation's agent asked for: the project no longer exists. The conversation still runs on Cloud (/home/demi/sessions/0f4e7597-e889-4baa-ac98-93fa61b68d28).",
+    event: { type: 'move_failed' as const },
+  },
+]
+
 export const demoImageUrl = '/fixtures/preview/photo.png'
 
 export const longUserText = [

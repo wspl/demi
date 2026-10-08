@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { truncate } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { markdownPlainText } from '@demicodes/web-ui/markdown/plain-text'
-import { categoryAction } from '@demicodes/web-ui/permissions/types'
+import { requestAction } from '@demicodes/web-ui/permissions/types'
 import { readPermissions } from '../api/permissions'
 import type { ConversationSummary, LastTurn } from '../api/generated/web-api'
 import { useProduct } from './product'
@@ -235,7 +235,13 @@ export const useNotifications = defineStore('notifications', () => {
         notifiedRequests.set(summary.id, new Set(requests.map((request) => request.id)))
         for (const request of requests) {
           if (!notified.has(request.id)) {
-            const action = categoryAction({ id: request.category.id, action: request.category.action ?? null, description: null })
+            const action = requestAction({
+              categories: request.categories.map((category) => ({
+                id: category.id,
+                action: category.action ?? null,
+                description: null,
+              })),
+            })
             show(summary.id, summary.title, `Allow this conversation to ${action}?`, `permission:${request.id}`, open)
           }
         }

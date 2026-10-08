@@ -1,4 +1,4 @@
-import { upperFirst } from '@demicodes/utils'
+import { titleCase } from '@demicodes/utils'
 
 /**
  * Conversation permissions as the page shows them (`permissions.md` § What
@@ -15,10 +15,11 @@ export interface PermissionCategoryView {
   description: string | null
 }
 
-/** One undecided request: the command an agent ran without the grant of its category. */
+/** One undecided request: the command an agent ran without the grants of its categories, one or more. */
 export interface PermissionRequestView {
   id: string
-  category: PermissionCategoryView
+  /** The categories the conversation lacked, in the backend's order. */
+  categories: PermissionCategoryView[]
   /** The command line as the agent ran it. */
   command: string
   /** The subagent that ran it; null for the root. */
@@ -32,18 +33,29 @@ export function categoryAction(category: PermissionCategoryView): string {
   return category.action ?? category.id
 }
 
-/** The category's title: its action with its first letter capitalized, such as "Manage skills"; its id as it is when it is no longer declared. */
+/**
+ * What the request lets the conversation do: its categories' actions joined
+ * with "and", as the card's title and the agent's message join them
+ * (`permissions.md` § Several categories).
+ */
+export function requestAction(request: Pick<PermissionRequestView, 'categories'>): string {
+  return request.categories.map(categoryAction).join(' and ')
+}
+
+/** The category's title: its action in title case, such as "Manage Skills", as its description names it; its id as it is when it is no longer declared. */
 export function categoryTitle(category: PermissionCategoryView): string {
   if (category.action === null) {
     return category.id
   }
-  return upperFirst(category.action)
+  return titleCase(category.action)
 }
 
 /**
  * The requests left once the user decided `id` (`permissions.md`
- * § Requests): an allow decides every request of its category, a deny that
- * one alone.
+ * § Requests): an allow grants the request's categories and decides every
+ * request they complete, a deny decides that one alone. A request that also
+ * needs a category granted before is left for the backend's answer to
+ * decide, since the page does not know the grants.
  */
 export function afterDecision(
   requests: readonly PermissionRequestView[],
@@ -54,9 +66,9 @@ export function afterDecision(
   if (!decided) {
     return [...requests]
   }
-  return requests.filter((request) =>
-    decision === 'allow'
-      ? request.category.id !== decided.category.id
-      : request.id !== id,
-  )
+  if (decision === 'deny') {
+    return requests.filter((request) => request.id !== id)
+  }
+  const granted = new Set(decided.categories.map((category) => category.id))
+  return requests.filter((request) => !request.categories.every((category) => granted.has(category.id)))
 }
