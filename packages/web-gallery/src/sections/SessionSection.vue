@@ -77,7 +77,7 @@ import GalleryModelPreference from '../components/GalleryModelPreference.vue'
 import GalleryFindBar from '../components/GalleryFindBar.vue'
 import GalleryUserMessageLengths from '../components/GalleryUserMessageLengths.vue'
 import { regenerateMessage, submitMessageEdit, type MessageEditHost, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
-import { callTerminal, firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
+import { callTerminal, firstRunningTerminalId, type TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
 import type { AgentMessage, UserContentBlock } from '@demicodes/protocol'
 import { applyModelChange, type ModelSettings, type ModelSettingsChange } from '@demicodes/web-ui/agent/model-selection'
@@ -104,6 +104,7 @@ import {
   screenshotsTool,
   shellTool,
   returnedShellTool,
+  returnedFailingShellTool,
   smallImageTool,
   statusImageTool,
   thinkingText,
@@ -225,20 +226,30 @@ const exhibitAgentId = ref<string | null>(
   runningSubagents(agents)[0]?.id ?? agents[0]?.id ?? null,
 )
 const exhibitTerminalId = ref<string | null>(firstRunningTerminalId(terminals))
-/** The returned call's command, which the specimen's button ends and runs again, as its end would arrive. */
+/** The returned call's command, a Running job, which End Command stops. */
 const returnedCommand = computed(() => terminals.find((terminal) => terminal.toolUseId === returnedShellTool.toolUseId))
+/** The other returned call's command, which End Command ends with exit code 1. */
+const returnedFailingCommand = reactive<TerminalRecord>({
+  id: 'term-typecheck',
+  title: 'Watch the type check',
+  script: 'bun run typecheck --watch',
+  phase: 'running',
+  startedAt: new Date().toISOString(),
+  output: 'Watching for changes…\n',
+  toolUseId: returnedFailingShellTool.toolUseId,
+})
 
-function toggleReturnedCommand(): void {
-  const command = returnedCommand.value
+/** Ends a returned call's command as its last frame would, `end` saying how, or runs it again. */
+function toggleReturnedCommand(command: TerminalRecord | undefined, end: Pick<TerminalRecord, 'phase' | 'exitCode'>): void {
   if (!command) {
     return
   }
   if (command.phase === 'running') {
-    command.phase = 'exited'
-    command.endedAt = new Date().toISOString()
+    Object.assign(command, end, { endedAt: new Date().toISOString() })
     return
   }
   command.phase = 'running'
+  delete command.exitCode
   delete command.endedAt
 }
 const fillPane = computed(() => view.value === 'session')
@@ -625,7 +636,7 @@ const turnFlow = useTurnFlow({ id: 'gallery-turn' })
 // The specimens' calls show their commands' output while they run: the live
 // call's and the Turn's, whose flow runs its own command.
 provideLiveCalls((toolUseId) =>
-  callTerminal([...terminals, ...turnFlow.state.terminals], undefined, toolUseId),
+  callTerminal([...terminals, ...turnFlow.state.terminals, returnedFailingCommand], undefined, toolUseId),
 )
 const changesFlow = useTurnFlow({ id: 'gallery-changes', title: 'Cookie rename', blocks: changesDemoBlocks() })
 useGalleryTranscripts(() => ({ blocks: changesFlow.state.blocks, subagents: [] }))
@@ -1559,7 +1570,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="FunctionalBlock"
-        note="Thinking, shell (collapsed and expanded), loading, and error. A shell call shows its command and output in one box: the command stays at the top and only the output under it scrolls once it fills the box. Command and output wrap as a terminal wraps: each line fills to the box’s edge and breaks at any character, never earlier at a hyphen, as the live output’s flags show. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. A shell row shimmers while its command runs, also after its call returned with the command running on as one of the conversation’s running commands, until the command’s end arrives (End Command). While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
+        note="Thinking, shell (collapsed and expanded), loading, and error. A shell call shows its command and output in one box: the command stays at the top and only the output under it scrolls once it fills the box. Command and output wrap as a terminal wraps: each line fills to the box’s edge and breaks at any character, never earlier at a hyphen, as the live output’s flags show. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. A shell row shimmers while its command runs, also after its call returned with the command running on as one of the conversation’s running commands, until the command’s end arrives, and then marks how it ended as any shell row does: Stopped, or Failed for an exit code other than 0 (End Command). While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -1639,15 +1650,27 @@ onBeforeUnmount(() => {
               />
             </GallerySpecimen>
             <GallerySpecimen
-              variant="shell · returned, its command still runs"
+              variant="shell · returned, its command still runs · stopped"
               wide
             >
               <ToolShellBlock
                 :block="returnedShellTool"
                 :input="parseToolInput(returnedShellTool.input)"
               />
-              <Button size="sm" variant="ghost" class="mt-1" @click="toggleReturnedCommand">
+              <Button size="sm" variant="ghost" class="mt-1" @click="toggleReturnedCommand(returnedCommand, { phase: 'aborted' })">
                 {{ returnedCommand?.phase === 'running' ? 'End Command' : 'Run Again' }}
+              </Button>
+            </GallerySpecimen>
+            <GallerySpecimen
+              variant="shell · returned, its command still runs · exits 1"
+              wide
+            >
+              <ToolShellBlock
+                :block="returnedFailingShellTool"
+                :input="parseToolInput(returnedFailingShellTool.input)"
+              />
+              <Button size="sm" variant="ghost" class="mt-1" @click="toggleReturnedCommand(returnedFailingCommand, { phase: 'exited', exitCode: 1 })">
+                {{ returnedFailingCommand.phase === 'running' ? 'End Command' : 'Run Again' }}
               </Button>
             </GallerySpecimen>
             <GallerySpecimen

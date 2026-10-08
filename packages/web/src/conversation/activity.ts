@@ -106,6 +106,8 @@ export function applyConversationEvent(
         : {}),
       output: followLiveOutput(current?.output ?? '', current?.chars, status.tail, status.chars),
       chars: status.chars,
+      // How it ended, which its row marks also when its call returned before.
+      exitCode: status.status === 'exited' ? status.exitCode : undefined,
       toolUseId: status.toolUseId,
       ...(subagentId === undefined ? {} : { subagentId }),
     }
