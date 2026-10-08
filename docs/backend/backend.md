@@ -546,7 +546,13 @@ DEMI_BACKEND_LISTEN=127.0.0.1:3271
 ### Public URL and listening address
 
 Demi does not terminate TLS. A deployment's public URL is an HTTPS URL on a
-domain name, and something in front of the backend holds the certificate:
+domain name, and something in front of the backend holds the certificate.
+The backend never answers 502 or 504 itself, whatever failed behind it: a
+CDN such as Cloudflare replaces those with its own page, and the page would
+take the backend's own answer for an unreachable backend and wait for it
+([A page of another build](../product/web-application.md#a-page-of-another-build));
+an error the backend builds for a failure behind it is 503 with its
+`{ code, message }`.
 
 | Shape | `DEMI_BACKEND_LISTEN` | In front of the backend |
 | --- | --- | --- |
