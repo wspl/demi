@@ -184,16 +184,16 @@ impl Parsed {
         if self.help {
             return Ok(self);
         }
-        if let Some(field) = leaf.stdin_field.as_ref() {
+        if let Some(field) = leaf.stdin_read(&self.values) {
             self.values.insert(
-                field.clone(),
+                field.to_owned(),
                 Value::String(stdin.ok_or_else(|| {
                     UsageError("stdin field was not supplied by dispatcher".into())
                 })?),
             );
         } else if stdin.is_some() {
             return Err(UsageError(
-                "stdin body supplied to a leaf without stdinField".into(),
+                "stdin body supplied to a leaf that does not read it".into(),
             ));
         }
         if let Some(properties) = leaf.properties() {
