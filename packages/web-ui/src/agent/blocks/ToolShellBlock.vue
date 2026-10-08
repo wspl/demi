@@ -18,7 +18,6 @@ import { standardToolTitle } from '../tool-rendering'
 const props = defineProps<{
   block: ToolCallBlock
   input: Record<string, unknown>
-  isStreaming: boolean
 }>()
 
 const command = computed(() => (props.input['script'] as string) ?? '')
@@ -39,21 +38,8 @@ const terminalOutputText = computed(
   () => liveOutput.value
     || shellTerminalOutputChunks(props.block).map((chunk) => chunk.text).join('')
 )
+// Only the user opens the row, while the call runs as after it returned.
 const isOpen = defineModel<boolean>('open', { default: false })
-// A running call opens once its command's output starts to come, and also
-// when its row mounts with the output already coming: the row takes over from
-// the activity slot only after the slot's roll, by which time the first lines
-// have usually arrived, and a page opened while the call runs shows what the
-// command prints now. A fold by the user holds until the call returns.
-watch(
-  () => liveOutput.value !== '',
-  (coming) => {
-    if (coming) {
-      isOpen.value = true
-    }
-  },
-  { immediate: true },
-)
 
 /** How many lines the command shows until a click shows it whole: the template's `line-clamp-2`. */
 const COMMAND_LINES = 2
@@ -95,11 +81,10 @@ function toggleCommand(): void {
 <template>
   <FunctionalBlock
     v-model:open="isOpen"
-    :open-while="block.status === 'executing' || isStreaming"
     :loading="block.status === 'executing'"
     :tone="block.status === 'error' ? 'danger' : undefined"
     :error-text="errorText"
-    :stick-bottom="block.status === 'executing' || isStreaming"
+    :stick-bottom="block.status === 'executing'"
     framed
   >
     <template #icon>

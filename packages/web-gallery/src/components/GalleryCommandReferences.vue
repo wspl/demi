@@ -41,7 +41,7 @@ onBeforeUnmount(() => marking?.abort())
 <template>
   <div ref="root" class="flex flex-col">
     <div v-for="block in blocks" :key="block.id" :data-block-id="block.id" class="rounded-md">
-      <ToolCallBlock v-if="block.type === 'tool_call'" :block="block" :is-streaming="false" />
+      <ToolCallBlock v-if="block.type === 'tool_call'" :block="block" />
     </div>
   </div>
 </template>

@@ -27,7 +27,6 @@ function setMode(mode: 'light' | 'dark') {
 <template>
   <Dropdown
     :overlay-store="appOverlayStore"
-    placement="bottom-end"
   >
     <template #trigger="{ isOpen }">
       <IconButton

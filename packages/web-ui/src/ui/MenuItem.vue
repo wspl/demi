@@ -271,6 +271,7 @@ const toneClass = computed(() => {
       </span>
     </div>
   </Tooltip>
+  <!-- A submenu opens beside its item, as macOS's do, not below a trigger: its placement is its own. -->
   <Popover
     v-if="showsSubmenu"
     :overlay-store="appOverlayStore"

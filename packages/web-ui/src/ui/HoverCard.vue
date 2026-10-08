@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, useSlots } from 'vue'
-import type { Placement } from '@floating-ui/vue'
 import Popover from './Popover.vue'
 import { useLayerElevation } from '../overlay/layerElevation'
 import { appOverlayStore } from '../overlay/appOverlay'
@@ -19,7 +18,8 @@ import type { OverlayStore } from '../overlay/overlayStore'
  * bottom.
  */
 const props = withDefaults(defineProps<{
-  placement?: Placement
+  /** Whether the card opens above the trigger or below it; it grows toward the inside of the trigger's region (Popover). */
+  side?: 'top' | 'bottom'
   openDelayMs?: number
   /** Time the pointer has to cross from the trigger into the card. */
   closeDelayMs?: number
@@ -27,7 +27,7 @@ const props = withDefaults(defineProps<{
   /** Shown whatever the pointer does, as a gallery specimen pins it inside an overlay well. */
   pinned?: boolean
 }>(), {
-  placement: 'top',
+  side: 'top',
   openDelayMs: 120,
   closeDelayMs: 150,
 })
@@ -109,7 +109,7 @@ onBeforeUnmount(clearTimers)
     :is-open="isOpen"
     :overlay-store="overlayStore()"
     :anchor-el="triggerRef"
-    :placement="placement"
+    :side="side"
     :offset="8"
     :ignore-els="triggerRef ? [triggerRef] : []"
     @close="close"
