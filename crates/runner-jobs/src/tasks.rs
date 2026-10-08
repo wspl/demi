@@ -123,6 +123,9 @@ pub enum TaskCommand {
         command: String,
         args: Vec<String>,
         process_group: bool,
+        /// Pipes the process inherits, each at its descriptor with the bytes
+        /// it carries.
+        descriptors: Vec<(u32, Bytes)>,
     },
 }
 
@@ -373,6 +376,7 @@ impl JobConfig {
                 command,
                 args,
                 process_group,
+                descriptors,
             } => {
                 let child = ChildProcess::spawn(SpawnOptions {
                     command,
@@ -380,6 +384,7 @@ impl JobConfig {
                     process_group,
                     cwd: spec.cwd,
                     env,
+                    descriptors,
                 })
                 .await;
                 let child = match child {

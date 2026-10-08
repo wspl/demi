@@ -213,11 +213,14 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/models", get(models::models))
         .route("/providers", get(providers::list).post(providers::create))
         .route("/providers/catalog", get(providers::catalog))
-        .route("/providers/setup-token", post(accounts::import_setup_token))
         .route("/providers/subscription-login", post(accounts::start_login))
         .route(
             "/providers/subscription-login/{id}",
             get(accounts::login_state).delete(accounts::cancel_login),
+        )
+        .route(
+            "/providers/subscription-login/{id}/code",
+            post(accounts::submit_code),
         )
         .route(
             "/providers/{id}",
@@ -230,7 +233,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/providers/{id}/cli/install", post(provider_cli::install))
         .route(
             "/providers/{id}/accounts",
-            get(accounts::list).post(accounts::add_token),
+            get(accounts::list),
         )
         .route("/providers/{id}/accounts/active", put(accounts::activate))
         .route("/providers/{id}/accounts/login", post(accounts::login_into))

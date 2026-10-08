@@ -381,6 +381,43 @@ impl Backend {
             .expect("the user's shard serves while the backend runs");
     }
 
+    /// Stores `secret`, a secret document of `family`, as the one account of
+    /// a new entry of `owner`'s labelled `label`, as a sign-in would store
+    /// it, for a suite whose vendor sign-in cannot run (`scenarios.md` §
+    /// Claude Code suite). The account is known by `identity`.
+    #[cfg(feature = "testing")]
+    pub async fn seed_subscription(
+        &self,
+        owner: &demi_web_api_protocol::ids::UserId,
+        family: &str,
+        label: &str,
+        identity: &str,
+        secret: String,
+    ) -> demi_web_api_protocol::ids::ProviderId {
+        use demi_provider_common::credentials::{
+            AccountMeta, CredentialPool as _, MemoryCredentialPool, credential_id_for,
+        };
+        let staged = MemoryCredentialPool::new();
+        let id = credential_id_for(Some(identity), label);
+        let meta = AccountMeta {
+            id: id.clone(),
+            label: label.to_owned(),
+            detail: None,
+            updated_at: self.services.clock.now(),
+            source: "login:code".into(),
+            identity_key: Some(identity.to_owned()),
+        };
+        staged.write(meta, secret).await.expect("a pool in memory stores");
+        staged.set_active(&id).await.expect("a pool in memory selects");
+        self.services
+            .vault
+            .create_subscription(owner.clone(), family.to_owned(), label.to_owned(), &staged)
+            .await
+            .expect("the vault stores the entry")
+            .expect("the owner has no entry of the family")
+            .id
+    }
+
     /// Shuts the backend down. The listener closes first, so no new work
     /// starts and a new request on an open connection answers 503
     /// `backend_closing`; every step runs even when an earlier one fails, and

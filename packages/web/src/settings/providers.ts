@@ -27,12 +27,11 @@ import {
   providerCliSchema,
   testResultSchema,
   type ActivateAccount,
-  type AddToken,
   type ConfiguredModel,
   type CreateProvider,
   type ProviderPatch,
+  type LoginCode,
   type QuotaRequest,
-  type SetupTokenImport,
   type SubscriptionLogin,
   type TestRequest,
 } from '../api/generated/web-api'
@@ -715,7 +714,15 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           message: result.message,
         }
       } else {
-        if (result.verificationUrl && result.userCode) {
+        if (result.verificationUrl && result.needsCode) {
+          // A pasted code keeps the dialog signing in until the login ends.
+          const submitted = login.value.phase.kind === 'code' && login.value.phase.submitted
+          login.value.phase = {
+            kind: 'code',
+            url: result.verificationUrl,
+            submitted,
+          }
+        } else if (result.verificationUrl && result.userCode) {
           login.value.phase = {
             kind: 'device',
             url: result.verificationUrl,
@@ -741,21 +748,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     )!
     const controller = new AbortController()
     loginController = controller
-    if (provider.providerType === 'claude-code') {
-      login.value = {
-        provider,
-        phase: {
-          kind: 'token',
-          command: 'claude setup-token',
-          prefix: 'sk-ant-oat01-',
-          install: {
-            label: 'Get Claude Code',
-            url: 'https://code.claude.com/docs/en/setup',
-          },
-        },
-      }
-      return
-    }
     login.value = {
       provider,
       phase: { kind: 'starting' },
@@ -792,36 +784,26 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
   }
 
-  async function submitToken(token: string): Promise<void> {
+  /** Hands the code the user pasted to the sign-in, which then finishes on its own. */
+  async function submitCode(code: string): Promise<void> {
     const current = login.value
     const controller = loginController
-    if (!current || !controller) {
+    const id = loginId
+    if (!current || !controller || !id || current.phase.kind !== 'code') {
       return
     }
-    current.phase = { kind: 'starting' }
+    current.phase = { ...current.phase, submitted: true }
     try {
       await apiRequest(
-        current.provider.configured
-          ? `/providers/${encodeURIComponent(current.provider.id)}/accounts`
-          : '/providers/setup-token',
+        `/providers/subscription-login/${encodeURIComponent(id)}/code`,
         {
           method: 'POST',
           signal: controller.signal,
-          ...jsonBody(
-            current.provider.configured
-              ? { token } satisfies AddToken
-              : { token, label: current.provider.name } satisfies SetupTokenImport,
-          ),
+          ...jsonBody({ code } satisfies LoginCode),
         },
       )
-      controller.signal.throwIfAborted()
-      current.phase = {
-        kind: 'done',
-        account: 'Account connected',
-        active: true,
-      }
     } catch (error) {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && login.value === current) {
         current.phase = {
           kind: 'failed',
           message: error instanceof Error ? error.message : String(error),
@@ -875,7 +857,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     accountAction,
     saveModel,
     saveModels,
-    submitToken,
+    submitCode,
     refreshUsage,
     loadCli,
     checkCli,
