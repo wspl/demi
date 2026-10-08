@@ -748,7 +748,7 @@ completion. For example:
 
 The caller sees `started`, then a running job, then `done` and completion.
 A tool timeout returns the running job's handle. `shell_status` observes that job,
-and `shell_abort` cancels it. Background tasks remain job-owned rather than
+and `demi shell stop` cancels it. Background tasks remain job-owned rather than
 becoming detached services. Brush's internal tasks do not expose OS PIDs in `$!`.
 
 ### Builtins that act on a process

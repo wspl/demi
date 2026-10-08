@@ -13,7 +13,7 @@ JSON, image bytes, targeting, and examples, is specified in
 [Browser automation](../browser/browser.md#command-contract). It uses this
 command contract rather than a separate shell or model tool loop. The
 `demi agent` group is specified in [Subagents](../agent/subagents.md), and the
-`demi shell` group in [The whole output](../agent/runtime.md#the-whole-output).
+`demi shell` group in [The whole output](../agent/runtime.md#the-whole-output) and [Stopping a command](../agent/runtime.md#stopping-a-command).
 
 ## Declare a command
 
@@ -516,6 +516,57 @@ name says it is Demi's ([File contents](runner.md#file-contents)), and a patch
 that changes several files restores the files it already changed when a later
 write fails. Create, edit, and patch record their writes for
 [edit tracking](edit-tracking.md).
+
+`demi file edit <path>` replaces text it finds exactly once. For example,
+the model changes a function whose text has quotes, a backslash and several
+lines:
+
+```text
+demi file edit src/slugify.mjs <<'EOF'
+<<<<<<< SEARCH
+export function slugify(text) {
+  return text.toLowerCase().replace(/\s+/g, '-');
+}
+=======
+export function slugify(text) {
+  return text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+>>>>>>> REPLACE
+EOF
+```
+
+- **Stdin, not arguments.** The replacements come on stdin as SEARCH/REPLACE
+  blocks, the form Aider and Cline give models and that models write
+  reliably. A quoted heredoc passes the text byte for byte, so no quote, `$`
+  or backslash needs escaping. Text passed as an argument does: a model that
+  edited this function with `--old $'…'` wrote each quote as `\x27`, and a
+  command substitution, `"$(cat <<'EOF' … EOF)"`, drops the text's last
+  newlines. `--old` and `--new` stay for a one-line change, `--old beta --new
+  gamma`, with `--occurrence` and `--context` to choose among several matches.
+- **Whole lines.** The markers are whole lines. A block's SEARCH is the lines
+  between `<<<<<<< SEARCH` and `=======`, each with its line ending, and it
+  matches whole lines of the file; its REPLACE, the lines up to
+  `>>>>>>> REPLACE`, takes their place, and an empty one deletes them. The
+  file's own line endings are kept.
+- **Exactly once.** A SEARCH must match exactly one place. One that matches
+  nowhere fails, naming the block and the lines of the file that come
+  closest; one that matches several fails, naming the lines of each match,
+  so the model adds a line of context.
+- **Together or not at all.** Several blocks in one call each match the file
+  as it was, must not overlap, and are applied together; a failing block
+  changes nothing.
+- A text with a line that is exactly a marker cannot be written as a block;
+  `--old` and `--new`, or `demi file patch`, write it.
+
+`demi file patch` applies a unified diff from stdin, as `git diff` writes it,
+to one or more files. It ignores the line counts of each hunk's header, as
+`git apply --recount` does, since a model that writes a diff by hand often
+miscounts them: a model's diff with a miscounted header failed with `Patch
+hunk line counts do not match header`. It finds each hunk by its context and
+removed lines where they match exactly once, or, where they match several
+times, at the match nearest the header's line. A header without numbers,
+`@@`, is accepted. A hunk that matches nowhere fails the patch, naming its
+file and hunk, and changes nothing.
 
 `demi file read` prints a file's bytes, and declares `media`: a file of at
 most 16 MiB whose bytes are an image or video type of the model-media table it

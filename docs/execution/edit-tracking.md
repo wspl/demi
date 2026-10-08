@@ -8,9 +8,10 @@ a layer the runner owns, and that layer takes notes. This is why the shell runs
 in process and why the utilities are forked to open files through one context.
 Native Demi file commands also participate in recording, as described below.
 
-Edit tracking has one consumer: the file pills under a shell call in the
-conversation, and the work panel's change view in Conversation mode that a
-pill opens to show what that call changed. Nothing else reads it. The model
+Edit tracking has one consumer: the conversation's view of what the agent
+changed, the file pills under a shell call and the line under a request's
+reply, and the work panel's change view in Conversation mode that they open.
+Nothing else reads it. The model
 never receives it; the working tree view ([Runner](runner.md#working-tree))
 answers a different question, "what is uncommitted?", for the whole directory.
 The two share the file entry shape and the diff view and nothing else.
@@ -170,23 +171,78 @@ the view, without involving the Host; an added segment's original is empty.
 
 ## Delivery to the conversation
 
-The shell block shows the entries as file pills under the call, from the block's
-view ([Rendering boundary](../agent/runtime.md#rendering-boundary)). Picking a
-pill opens the `edit` intent, which the work panel's Change view opens in
-Conversation mode on that call, with the picked file selected
-([Intents](../architecture/plugin-pages.md#intents)); with the `changes`
-plugin off, the pills are not controls. The Change tab keeps its mode and file
-when the user leaves it and comes back, as any tab keeps what it shows. Its header counts always
-describe the uncommitted working tree, not the retained edit. This mode receives only that file's metadata, command ID and
-edit segments, not the call's file list. Its two sides, fetched from the blob
-route, show in the same diff editor the Uncommitted mode uses. If the file
-has several edit segments, a shared control selects one in order, initially the
-first. The selection identifies the command, file and segment, so opening another call for the same path replaces its diff.
-An edit without copies has no diff; the interface silently omits the diff
-without a message or explanation. Its file pill remains under the call.
-Conversation mode has no file sidebar, list source or refresh operation. Picking
-another pill replaces the selected edit; Back and Forward revisit selections.
-Only Uncommitted mode lists files and offers a changed-file tree.
+For example, the user asks "fix the sign-in page". The agent edits
+`login.ts` and `form.css`, starts a build and yields until it ends; woken,
+it edits `login.ts` again and replies. Under the reply a line reads
+*2 files changed*, with the lines added and removed. It opens the Change
+view on that request: a sidebar lists `login.ts` and `form.css`, and
+`login.ts` shows its change from before the first edit to after the second.
+
+### A request
+
+A request is what one message of the user asked for: it starts at a `user`
+block, the message as sent or edited, and holds every block of the same
+agent up to its next `user` block. What wakes the agent without the user
+asking starts no request and belongs to the request it continues:
+
+| Block that continues the work | Starts a request |
+| --- | --- |
+| `user`: a message sent, edited or regenerated | Yes |
+| `steer`: the user adds to the running turn | No |
+| `wakeup`: a yield's wakeup | No |
+| `agent_message`: a receipt or a message from another agent, which can start a continuation | No |
+| `resume`: Resume, or a turn continued after compaction or a model switch | No |
+
+So a request's turns may be several, and its changes are those of all of
+them. A message sent while the agent works waits in the queue and starts
+its own request when it runs. The request is derived from the transcript
+when shown, never stored.
+
+### Each agent its own
+
+A request belongs to one agent, and so do its changes: the changes a
+subagent makes show in the subagent's own transcript, under its own
+requests, which start at the `user` blocks of its spawn and its resumes,
+and never under the parent's. The parent's transcript shows what the
+parent's own commands changed.
+
+### What the conversation shows
+
+- **The pills.** Under a shell call, its files, from the block's view
+  ([Rendering boundary](../agent/runtime.md#rendering-boundary)).
+- **The request's line.** At the end of a request's reply, once one of its
+  calls has changed a file, one line: how many files and the lines added and
+  removed, *2 files changed +18 −4*. It grows as later calls of the request
+  end. It counts files the request's calls changed and that still exist when
+  each call ended.
+- **The Change view.** The line and a pill open the `edit` intent, which the
+  work panel's Change view opens in Conversation mode on the request
+  ([Intents](../architecture/plugin-pages.md#intents)); with the `changes`
+  plugin off, neither is a control. The sidebar lists the request's files in
+  the order they were first changed. A file shows **All Changes**, from its
+  contents before the request's first edit to after its last, and a control
+  steps through each edit of the request in order, `Edit 2 of 3`, each named
+  by its call's title. The line opens the first file's All Changes; a pill
+  opens its file at that call's first edit. Picking another file or edit
+  replaces the selection; Back and Forward revisit selections. A file whose
+  every edit is without contents is listed without a diff. Under the list,
+  one line says that files other programs wrote are not here, with a link to
+  Uncommitted mode, which shows everything uncommitted.
+- **What it cannot show.** Edit tracking records only the writes that pass
+  through it ([Scope](#scope)): a file `npm install` or `git checkout` wrote
+  is not listed. When something outside the request changed a file between
+  two of its edits, All Changes includes that change, as it spans from the
+  first edit's original to the last edit's result; the edits one by one show
+  only the request's own. An edit or a regenerate removes the replaced
+  calls from the transcript, and their changes leave the list with them,
+  though their files stay as they were written.
+
+The Change tab keeps its mode and selection when the user leaves it and
+comes back, as any tab keeps what it shows. Its header counts always
+describe the uncommitted working tree, not the request. The two sides of an
+edit come from the blob route ([Edit copies](#edit-copies)); All Changes
+takes its original from the first edit and its result from the last. Only
+Uncommitted mode lists the working tree's files and has a refresh.
 
 ## Responsibilities
 
@@ -200,7 +256,7 @@ Only Uncommitted mode lists files and offers a changed-file tree.
 | `crates/runner-protocol`, `crates/host-interface`, `crates/backend-remote-host` | Carry the report through command completion. |
 | `crates/backend-user-shard` | Store the copies as blobs before tool completion; the blob route serves them. |
 | `crates/shared-types`, `crates/agent-tools` | Define the shell tool view with its small file and segment list, and carry it in the transcript, exclusively for the user. |
-| `packages/web-ui` | Shared file selection, segment selection and diff behavior. |
+| `packages/web-ui` | Deriving a request's changes from the transcript, the request's line, and shared file selection, edit selection and diff behavior. |
 | `packages/web`, `packages/web-gallery` | Product data adapters and matching specimens. |
 
 ## Rationale
