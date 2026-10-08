@@ -14,6 +14,8 @@ bench = false
 [dependencies]
 demi-runner-protocol = { path = "../runner-protocol" }
 bytes.workspace = true
+# The random bytes of a speed test, which only need to be incompressible.
+fastrand = "2"
 futures-util.workspace = true
 garde.workspace = true
 # The interfaces a runner offers its local network addresses on

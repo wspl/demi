@@ -32,7 +32,7 @@ pub mod testing;
 
 pub use file_watch::{HostWatch, WatchUpdate};
 pub use link::{
-    DirectAdmission, DirectAnswer, JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions,
+    DirectAdmission, DirectAnswer, PeerEvent, JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions,
     LinkPolicy,
     OUTBOUND_FRAMES, PING_INTERVAL, WeakLink,
 };

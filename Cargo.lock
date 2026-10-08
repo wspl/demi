@@ -2928,6 +2928,7 @@ dependencies = [
  "demi-runner-direct",
  "demi-runner-protocol",
  "demi-shared-types",
+ "fastrand",
  "futures-util",
  "garde",
  "if-addrs",

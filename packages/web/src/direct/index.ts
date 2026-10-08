@@ -10,21 +10,25 @@ import { defaultWindow, useEventListener } from '@vueuse/core'
 import { useConversations } from '../conversation/store'
 import { useProduct } from '../state/product'
 import { executionFor } from '../targets/execution'
-import type { DirectStatus } from '@demicodes/web-ui/devices/direct'
+import type { DeviceRoute, DirectStatus } from '@demicodes/web-ui/devices/direct'
 import { DeviceDirect, directState, type DirectState, type Permission } from './device'
+import { DeviceMeter, meterState, type MeterState } from './meter'
 import { connectPeer } from './peer'
 import { DeviceSignaling, isBusy } from './signaling'
 
-/** A device in use, with its signaling socket. */
+/** A device in use, with its signaling socket and the measuring of its paths. */
 interface UsedDevice {
   direct: DeviceDirect
   signaling: DeviceSignaling
+  meter: DeviceMeter
 }
 
 /** The devices in use, by id. */
 const used = new Map<string, UsedDevice>()
 /** What the views show of each device's path, by id, kept while the page lives. */
 const states = reactive(new Map<string, DirectState>())
+/** What the views show of each device's measured paths, by id. */
+const meters = reactive(new Map<string, MeterState>())
 /** The browser's local network permission, where it reports one. */
 const permission = ref<Permission | null>(null)
 
@@ -69,27 +73,43 @@ export function directStatus(deviceId: string): DirectStatus {
   const device = product.snapshot?.devices.find((candidate) => candidate.id === deviceId)
   follow()
   const state = states.get(deviceId) ?? directState()
+  const measured = meters.get(deviceId) ?? meterState()
   return {
-    enabled: device?.direct ?? true,
+    route: device?.route ?? 'automatic',
     crossing: (product.snapshot?.stunUrls.length ?? 0) > 0,
     permission: permission.value,
-    connected: state.choice === 'direct',
+    peer: state.peer,
+    chosen: state.choice === 'direct',
     trying: state.trying,
-    roundTripMs: null,
     attempt: state.attempt,
     nextAt: state.nextAt === null ? null : new Date(state.nextAt).toISOString(),
+    figures: measured.figures,
+    speed: measured.speed,
   }
 }
 
-/** Makes a new attempt to device `deviceId` at once, as Try Now asks. */
+/**
+ * Measures paired device `deviceId`'s paths while its page shows, starting
+ * its use while its runner is connected; the answer ends the measuring.
+ */
+export function measureDirect(deviceId: string): () => void {
+  watchDirect(deviceId)
+  const device = used.get(deviceId)
+  if (!device)
+    return () => {}
+  // A page shown speaks of now: with no peer, an attempt starts at once.
+  device.direct.tryNow()
+  return device.meter.use()
+}
+
+/** Makes a new attempt to device `deviceId` at once, as Try Again asks. */
 export function tryDirect(deviceId: string): void {
   used.get(deviceId)?.direct.tryNow()
 }
 
-/** The round trip of the direct channel to device `deviceId`, in milliseconds; null while there is none. */
-export async function directRoundTrip(deviceId: string): Promise<number | null> {
-  const peer = used.get(deviceId)?.direct.current()
-  return peer ? peer.roundTrip() : null
+/** Runs Test Speed on device `deviceId`'s paths. */
+export function testSpeed(deviceId: string): Promise<void> {
+  return used.get(deviceId)?.meter.testSpeed() ?? Promise.resolve()
 }
 
 /** The device's choice and signaling, started on its first use while its runner is connected. */
@@ -123,9 +143,13 @@ function use(deviceId: string): DeviceDirect {
     },
     state,
   )
+  const route = (): DeviceRoute => product.snapshot?.devices.find((device) => device.id === deviceId)?.route ?? 'automatic'
+  const measured = meters.get(deviceId) ?? reactive(meterState())
+  meters.set(deviceId, measured)
+  const meter = new DeviceMeter(deviceId, direct, signaling, route, measured)
   direct.setPermission(permission.value)
-  direct.setEnabled(product.snapshot?.devices.find((device) => device.id === deviceId)?.direct ?? true)
-  used.set(deviceId, { direct, signaling })
+  direct.setRoute(route())
+  used.set(deviceId, { direct, signaling, meter })
   return direct
 }
 
@@ -135,6 +159,7 @@ function release(deviceId: string): void {
   if (!device)
     return
   used.delete(deviceId)
+  device.meter.close()
   device.direct.stop()
   device.signaling.stop()
 }
@@ -163,13 +188,28 @@ function follow(): void {
         }
       },
     )
-    // The device's switch, which every page of the user's follows.
+    // The device's route, which every page of the user's follows.
     watch(
-      () => (product.snapshot?.devices ?? []).map((device) => [device.id, device.direct] as const),
+      () => (product.snapshot?.devices ?? []).map((device) => [device.id, device.route] as const),
       (devices) => {
-        for (const [deviceId, enabled] of devices)
-          used.get(deviceId)?.direct.setEnabled(enabled)
+        for (const [deviceId, route] of devices)
+          used.get(deviceId)?.direct.setRoute(route)
       },
+    )
+    // The conversation the page shows measures its device's paths while it
+    // shows (`direct-channel.md` § Measuring the paths).
+    const conversations = useConversations()
+    watch(
+      () => {
+        const summary = conversations.items.find((item) => item.id === product.activeConversationId)
+        const execution = summary ? executionFor(summary) : null
+        return execution?.kind === 'device' && execution.state === 'online' ? execution.deviceId : null
+      },
+      (deviceId, _, onCleanup) => {
+        if (deviceId)
+          onCleanup(measureDirect(deviceId))
+      },
+      { immediate: true },
     )
     useEventListener(defaultWindow, 'online', () => {
       for (const device of used.values())
