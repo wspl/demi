@@ -44,8 +44,9 @@ The CLI sends its inference traffic directly to the vendor. Demi adds no
 inference proxy and no remote-inference call. The quota probe is a backend
 operation that needs no CLI and no machine
 ([Vendor quota](usage-and-quota.md#vendor-quota)); the token's refresh is the
-backend's as well. The runner keeps no credential of its own: the token exists on the
-Cloud only in the CLI process's environment.
+backend's as well. The runner keeps no credential of its own: an access
+token reaches the Cloud only on a CLI process's file descriptor, and the
+process's private directory goes with the process.
 
 The provider replays the transcript itself and turns the CLI's session
 persistence off. A new process, after a Cloud stop or reset or a change of
@@ -77,26 +78,31 @@ backend vault                     user's Cloud
                                   (personal's tokens are nowhere on the Cloud)
 ```
 
-**Signing in.** Adding an account starts `claude auth login --claudeai` on the
-user's Cloud, the CLI Demi installs there, with `CLAUDE_CONFIG_DIR` naming a
-new directory of its own, private to the runner's user (mode 0700) and outside
-every workspace. The CLI prints its sign-in link and waits for a code; Demi
+**Signing in.** Adding an account installs the CLI on the user's Cloud when
+it is missing, then starts `claude auth login --claudeai` there through the
+Cloud's machine access, with `CLAUDE_CONFIG_DIR` naming a new directory of its
+own, `/tmp/demi-claude-<id>`, private to the runner's user (mode 0700) and
+outside every workspace; a Cloud stop clears `/tmp`, so a directory a lost
+login left behind goes with it. The CLI prints its sign-in link and waits for a code; Demi
 shows the link, the user signs in on any device and pastes the code the page
 shows, and Demi writes it to the CLI's input. When the CLI exits with
 success, Demi reads what it wrote, `.credentials.json` (`claudeAiOauth`:
 tokens, expiry, scopes, subscription type) and the account in `.claude.json`
 (`oauthAccount`: its ID and email), decodes both against their schemas, stores
 them as the account's secret, and removes the directory, as it does when the
-login fails, is cancelled or ends after 15 minutes. A login that names an
-account already in the entry is refused, by the account's ID. The link, the
-code and the CLI's own words of failure are what the user sees; the code is
-never logged.
+login fails, is cancelled or ends after 15 minutes. A code the CLI refuses
+as invalid leaves the login waiting, as the CLI itself waits for another: the
+login says the code was not accepted, and the user pastes it again. A login
+that names an account already in the entry replaces that account's tokens,
+as signing in again to a lapsed account should; its ID and the entry's
+active choice stay. The link, the code and the CLI's own words of failure are
+what the user sees; the code is never logged.
 
 **Using an account.** Each CLI process belongs to one account for its whole
 life ([An account is the unit](providers.md#an-account-is-the-unit)):
 
 - **Its own configuration directory.** A new private directory per process,
-  removed when it ends, named by `CLAUDE_CONFIG_DIR`, so no CLI state of one
+  `/tmp/demi-claude-<id>`, removed when it ends, named by `CLAUDE_CONFIG_DIR`, so no CLI state of one
   account, its cached account record, settings or history, is read by a
   process of another, and the user's own `~/.claude` on the Cloud, should the
   user run Claude Code there themselves, is never read or written.
@@ -104,16 +110,21 @@ life ([An account is the unit](providers.md#an-account-is-the-unit)):
   (`CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR`), not in its environment, which
   another process of the same user could read. The refresh token never
   leaves the backend.
-- **Refresh by the backend.** The process runs with
-  `CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH`: after a 401 the CLI asks its host for
-  a fresh access token (the `oauth_token_refresh` control request), and Demi
-  answers with its account's token, refreshed under the account's refresh
-  turn when the one it holds is still the stored one
-  ([Token refresh](providers.md#token-refresh)). A process starts with a
-  token refreshed first when it expires within 5 minutes. One refresher per
-  account, the backend, is what keeps single-use refresh tokens from being
-  spent twice by two processes or two Clouds, which a CLI holding the
-  refresh token would do. The refresh is a `refresh_token` grant at the
+- **Refresh by the backend.** A request that would start a process, or use
+  a kept one, whose token expires within 30 minutes first refreshes the
+  account's token under its refresh turn
+  ([Token refresh](providers.md#token-refresh)) and starts a new process
+  with it, closing the kept one. A request the vendor refuses for its token
+  (the CLI's authentication error) refreshes the token when the refused one
+  is still the stored one, closes the process and sends the same request
+  again, once, in a new process: the transcript is the backend's, so the new
+  process goes on where the old one stood. Claude Code 2.1.294 also lets a
+  host answer a 401 itself (`oauth_token_refresh`, with
+  `CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH`), but only for its own clients, the
+  desktop app and the VS Code extension, which Demi does not claim to be.
+  One refresher per account, the backend, is what keeps single-use refresh
+  tokens from being spent twice by two processes or two Clouds, which a CLI
+  holding the refresh token would do. The refresh is a `refresh_token` grant at the
   CLI's token endpoint with the CLI's client, read from Claude Code 2.1.294.
 - **Switching.** Selecting another account closes the kept process, and the
   next request starts a new one with the other account's token in a new
@@ -252,7 +263,8 @@ The process is **retained** between turns and is not activity
 ([Activity](../execution/resource-lifecycle.md#activity)): a Cloud that goes
 idle stops with the process in it, and the next request wakes the Cloud, starts
 the CLI again and replays the transcript. It runs in `~/.demi/claude/run` on the
-Cloud, with `~/.demi/claude/config` as its configuration home, not in the
+Cloud, with a private configuration directory of its own
+([Accounts and sign-in](#accounts-and-sign-in)), not in the
 conversation's directory, which on a paired device is a path the Cloud does not
 have; the CLI reads and writes nothing there that a conversation owns.
 
@@ -270,7 +282,7 @@ backend, on the user's shard                 provider-claude-code
   placement.start(spawn) <------------------------+  a run needs a new process
     machine access: wake or admit the Cloud
     demi.claude-code: claude-code.status, claude-code.ensure when needed
-    make ~/.demi/claude/run and ~/.demi/claude/config
+    make ~/.demi/claude/run and the process's /tmp/demi-claude-<id>
     spawn(executable, run dir, config dir) -> the provider's spawn request
     Host process interface: start it, then release the Cloud's admission
   --- shell's Process ---------------------------->  the run drives it
@@ -308,7 +320,8 @@ thinking setting.
 - the request's model, system prompt and thinking effort;
 - stream-json input and output with partial messages, so reasoning and text
   stream as they are generated;
-- an environment with the account's token, Demi's configuration home, the CLI's
+- the account's access token on a file descriptor, the process's private
+  configuration directory, and an environment with the CLI's
   updater and its automatic compaction turned off (Demi compacts the
   conversation itself), an MCP tool-output limit of one million tokens so the
   CLI does not cut a result Demi sends, and `CLAUDECODE` unset so the CLI never
@@ -484,9 +497,10 @@ A failure is always shown, with its reason and the version: the release could
 not be read, the download failed or did not match its digest, the platform has
 no build, the disk is full, the executable did not start. In a conversation it
 is that request's error, and the next request tries again. For account work it
-is the result of the action that asked, and an install that failed after an
-account was added does not undo the account: the settings page shows the
-account as added and the CLI as not installed, with **Install** to try again.
+is the result of the action that asked: a sign-in installs the CLI before
+it starts the CLI's login, and an install that fails ends the sign-in with
+that reason, while the settings page shows the CLI as not installed, with
+**Install** to try again.
 Backend shutdown cancels an install in progress; the next request, or
 **Install**, starts it again.
 
