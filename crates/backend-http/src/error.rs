@@ -249,9 +249,6 @@ impl From<AccountRefusal> for ApiError {
                 message,
             ),
             AccountRefusal::NotFound => Self::account_not_found(),
-            AccountRefusal::Active => {
-                Self::new(StatusCode::CONFLICT, ErrorCode::ActiveAccount, message)
-            }
             AccountRefusal::Assembly(_) => Self::internal(&refusal),
         }
     }

@@ -281,20 +281,16 @@ impl Usage {
                 .and_then(|scope| scope.model)
                 .and_then(|model| model.display_name);
             let used_percent = limit.percent.and_then(clamp_used_percent);
-            let (id, label, scope) = match model {
+            let label = limit_label(&kind, model.as_deref());
+            let (id, scope) = match model {
                 Some(model) => (
                     format!("limit:{kind}:{model}"),
-                    format!("{kind} ({model})"),
                     QuotaScope {
                         kind: "model".into(),
                         label: Some(model),
                     },
                 ),
-                None => (
-                    format!("limit:{kind}"),
-                    kind.clone(),
-                    QuotaScope { kind, label: None },
-                ),
+                None => (format!("limit:{kind}"), QuotaScope { kind, label: None }),
             };
             windows.push(QuotaWindow {
                 id,
@@ -312,6 +308,27 @@ impl Usage {
             });
         }
         windows
+    }
+}
+
+/// What a limit of the probe is called, as the named windows are, by its
+/// period and its scope, never by the vendor's kind: a `weekly_*` kind is
+/// `7d`, a session kind `5h`, and a limit on one model adds the model's
+/// name; a kind whose period Demi cannot tell is named by its model, or
+/// `Other limit` (`usage-and-quota.md` § Claude Code).
+fn limit_label(kind: &str, model: Option<&str>) -> String {
+    let period = if kind.starts_with("weekly") {
+        Some("7d")
+    } else if kind.starts_with("session") {
+        Some("5h")
+    } else {
+        None
+    };
+    match (period, model) {
+        (Some(period), Some(model)) => format!("{period} {model}"),
+        (Some(period), None) => period.to_owned(),
+        (None, Some(model)) => model.to_owned(),
+        (None, None) => "Other limit".to_owned(),
     }
 }
 
