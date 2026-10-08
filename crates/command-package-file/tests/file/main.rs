@@ -186,8 +186,9 @@ async fn search_replace_blocks_replace_lines_found_once_all_together() {
         assert_eq!(read("two.txt"), "alpha\nbeta\ngamma\ndelta\n");
 
         // Two blocks apply together, each against the file as it was; an
-        // empty REPLACE deletes its lines.
-        let both = "<<<<<<< SEARCH\nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n<<<<<<< SEARCH\ngamma\ndelta\n=======\n>>>>>>> REPLACE\n";
+        // empty REPLACE deletes its lines, and a marker may carry trailing
+        // spaces.
+        let both = "<<<<<<< SEARCH  \nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n<<<<<<< SEARCH\ngamma\ndelta\n======= \n>>>>>>> REPLACE \n";
         let (result, output, _) = edit("two.txt", both).await;
         assert_eq!(result.exit_code, 0, "{result:?}");
         assert_eq!(output, b"Edited two.txt\n");
@@ -216,6 +217,8 @@ async fn a_patch_applies_its_hunks_where_their_lines_match() {
             ("twice.txt", "a\nx\nb\nc\na\nx\nb\nd\n"),
             ("first.txt", "first\nline\n"),
             ("second.txt", "second\n"),
+            ("blank.txt", "start\n\nend\n"),
+            ("dashes.sql", "-- note\nselect 1;\n"),
         ])
         .await;
         let cwd = root.path().to_str().unwrap();
@@ -246,6 +249,18 @@ async fn a_patch_applies_its_hunks_where_their_lines_match() {
         let (result, _, error) = patch("--- a/twice.txt\n+++ b/twice.txt\n@@ -4,3 +4,3 @@\n a\n-x\n+y\n b\n").await;
         assert_eq!(result.exit_code, 0, "{}", String::from_utf8_lossy(&error));
         assert_eq!(read("twice.txt"), "a\nx\nb\nc\na\ny\nb\nd\n");
+
+        // An empty line in a hunk is an empty context line; the text after
+        // a header's second @@ is git's, and blank lines after a hunk end it.
+        let (result, _, error) = patch("--- a/blank.txt\n+++ b/blank.txt\n@@ -1,3 +1,3 @@ fn start\n start\n\n-end\n+END\n\n").await;
+        assert_eq!(result.exit_code, 0, "{}", String::from_utf8_lossy(&error));
+        assert_eq!(read("blank.txt"), "start\n\nEND\n");
+
+        // A removed `-- note` before an added `++ note` stays in its hunk:
+        // no @@ follows them.
+        let (result, _, error) = patch("--- a/dashes.sql\n+++ b/dashes.sql\n@@\n--- note\n+++ note\n select 1;\n").await;
+        assert_eq!(result.exit_code, 0, "{}", String::from_utf8_lossy(&error));
+        assert_eq!(read("dashes.sql"), "++ note\nselect 1;\n");
 
         // The second file's hunk matches nowhere: the patch names it, and
         // the first file, whose hunk applies, is left as it was.
