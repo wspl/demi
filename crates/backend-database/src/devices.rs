@@ -53,10 +53,20 @@ pub struct DeviceRecord {
     /// The runner release its runner last reported, such as `0.1.16`; none
     /// before its runner first connected.
     pub runner_version: Option<String>,
+    /// Whether pages may reach it over a direct channel
+    /// (`direct-channel.md` § Choosing the path).
+    pub direct: bool,
+}
+
+/// What a change of a device sets: each field that is present.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DeviceChange {
+    pub name: Option<String>,
+    pub direct: Option<bool>,
 }
 
 const DEVICE_COLUMNS: &str =
-    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version";
+    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version, direct";
 
 /// The name and platform of the one device a user's Cloud is.
 pub const CLOUD_NAME: &str = "Cloud";
@@ -98,6 +108,7 @@ impl ControlService {
                 installed: Vec::new(),
                 os: None,
                 runner_version: None,
+                direct: true,
             })
         })
         .await
@@ -304,18 +315,22 @@ impl ControlService {
         .await
     }
 
-    /// Gives `device` a new name; none when there is no such device.
-    pub async fn rename_device(
+    /// Sets what `change` names of `device`, in one statement; none when
+    /// there is no such device.
+    pub async fn change_device(
         &self,
         device: DeviceId,
-        name: String,
+        change: DeviceChange,
     ) -> Result<Option<DeviceRecord>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(&format!(
-                "UPDATE devices SET name = ?1 WHERE id = ?2 RETURNING {DEVICE_COLUMNS}"
+                "UPDATE devices SET name = coalesce(?1, name), direct = coalesce(?2, direct)
+                 WHERE id = ?3 RETURNING {DEVICE_COLUMNS}"
             ))?;
             statement
-                .query_row(params![name, device.as_str()], |row| Ok(device_row(row)))
+                .query_row(params![change.name, change.direct, device.as_str()], |row| {
+                    Ok(device_row(row))
+                })
                 .optional()?
                 .transpose()
         })
@@ -428,5 +443,6 @@ fn device_row(row: &Row<'_>) -> Result<DeviceRecord, StorageError> {
             None => None,
         },
         runner_version: row.get("runner_version")?,
+        direct: row.get("direct")?,
     })
 }

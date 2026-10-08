@@ -397,6 +397,7 @@ impl Devices {
             last_seen_at: device.last_seen_at,
             os: device.os,
             runner_version: device.runner_version,
+            direct: device.direct,
             start_command,
         }
     }

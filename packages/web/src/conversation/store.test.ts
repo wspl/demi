@@ -753,7 +753,7 @@ test('a draft whose attached device becomes its primary creates the conversation
   const conversation = store.items.find((item) => item.id === id)!
   useProduct().snapshot!.devices.push({
     id: 'laptop', kind: 'user', name: 'laptop', platform: 'darwin', claimedAt: '2026-09-10T00:00:00.000Z',
-    lastSeenAt: null, state: 'online', home: '/Users/ada', installed: [], startCommand: null, os: null, runnerVersion: null,
+    lastSeenAt: null, state: 'online', home: '/Users/ada', installed: [], startCommand: null, os: null, runnerVersion: null, direct: true,
   })
   useProduct().snapshot!.providers.push(stubProvider)
   const originalFetch = globalThis.fetch

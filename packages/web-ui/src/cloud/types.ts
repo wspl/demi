@@ -21,6 +21,8 @@ export interface CloudState {
   limits: CloudVolumes
   /** The server runs a newer Cloud image than the Cloud's system is on, which a reset moves it to. */
   newerImage: boolean
+  /** The Cloud's device, whose page its row opens; null before its first use made it. */
+  deviceId: string | null
   /** What the Cloud's runner last reported; nothing before the Cloud first started. */
   report: DeviceReport
 }

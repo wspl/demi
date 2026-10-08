@@ -1,6 +1,9 @@
 //! Devices: the list, pairing, and a Host's log (`web-api.md` § Workspaces,
 //! devices, and attached hosts, § Device log).
 
+use demi_runner_protocol::direct::CANDIDATE_CHARS;
+/// The STUN servers' URLs, which the product state names to the page.
+pub use demi_runner_protocol::direct::{NotAStunUrl, StunUrl};
 use demi_runner_protocol::wire::{HostArtifact, OperatingSystem, RunnerPlatform};
 use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use garde::Validate;
@@ -44,9 +47,10 @@ pub enum DeviceState {
 /// last reported its artifact cache holds, kept while it is offline
 /// (`native-runtime.md` § Installed artifacts); `os` and `runner_version`
 /// are the operating system and the runner release its runner last
-/// reported, null before its runner first connected; `start_command` is what
-/// a person types in a terminal on a paired device to start its runner
-/// again, null for the Cloud.
+/// reported, null before its runner first connected; `direct` is whether
+/// pages may reach it over a direct channel (`direct-channel.md` § Choosing
+/// the path); `start_command` is what a person types in a terminal on a
+/// paired device to start its runner again, null for the Cloud.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceDto {
@@ -69,6 +73,7 @@ pub struct DeviceDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub runner_version: Option<String>,
+    pub direct: bool,
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub start_command: Option<String>,
@@ -89,15 +94,20 @@ pub struct Claim {
     pub code: String,
 }
 
-/// `PATCH /devices/:id`: a paired device's new name.
+/// `PATCH /devices/:id`: a paired device's new name, whether pages may
+/// reach it directly, or both; each applies when present.
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct RenameDevice {
-    #[garde(length(chars, min = 1, max = DEVICE_NAME_MAX))]
-    pub name: Trimmed,
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChangeDevice {
+    #[serde(default)]
+    #[garde(inner(length(chars, min = 1, max = DEVICE_NAME_MAX)))]
+    pub name: Option<Trimmed>,
+    #[serde(default)]
+    #[garde(skip)]
+    pub direct: Option<bool>,
 }
 
-/// `{ device }`: the answer of a claim and of a rename.
+/// `{ device }`: the answer of a claim and of a change.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct DeviceAnswer {
     pub device: DeviceDto,
@@ -217,6 +227,12 @@ pub enum DirectRequest {
         #[garde(length(min = 1, max = MAX_OFFER_BYTES))]
         sdp: String,
     },
+    /// A candidate the browser found after the offer, the `candidate:` line
+    /// as it gives it; the runner checks it too.
+    Candidate {
+        #[garde(length(min = 1, max = CANDIDATE_CHARS))]
+        candidate: String,
+    },
 }
 
 /// The most bytes of an offer: a data channel's offer is a few kilobytes.
@@ -228,6 +244,9 @@ pub const MAX_OFFER_BYTES: usize = 64 * 1024;
 pub enum DirectMessage {
     /// The runner's answer to the page's last offer.
     Answer { sdp: String },
+    /// A candidate the runner found after its answer, such as the address a
+    /// STUN server saw it at; it may come before the answer.
+    Candidate { candidate: String },
     /// The runner did not answer the page's last offer.
     Unanswered { code: Unanswered },
     /// Nothing else was sent for 30 seconds: the socket is quiet, not dead.

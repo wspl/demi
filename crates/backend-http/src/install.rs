@@ -35,11 +35,6 @@ pub struct Site {
     /// The URL the product's pages and the runners reach the backend at;
     /// without it, a request's own origin.
     pub public_url: Option<Url>,
-    /// The runner releases the installers serve, a server release's
-    /// `runners/`: `manifest.json` names the current one, and each
-    /// release's directory holds its own, which names each target's
-    /// executable.
-    pub runner_releases: Option<PathBuf>,
     /// Whether a request showed that a proxy in front of the backend drops
     /// `Origin`, which the edge warns about once.
     pub origin_dropped: AtomicBool,
@@ -89,7 +84,7 @@ async fn installer(
     media_type: &'static str,
 ) -> Result<Response, ApiError> {
     let site = &state.site;
-    let Some(release) = current_runner_release(site).await? else {
+    let Some(release) = current_runner_release(state).await? else {
         return Ok((StatusCode::SERVICE_UNAVAILABLE, UNCONFIGURED).into_response());
     };
     let backend = match &site.public_url {
@@ -109,19 +104,14 @@ async fn installer(
 }
 
 /// The runner release the installers install and every paired device's
-/// runner follows, the one `runners/manifest.json` names; none for a backend
-/// without runner releases. The record is read on each use, so a release
-/// packaged into a running backend's `runners/` takes effect at once.
-pub(super) async fn current_runner_release(site: &Site) -> Result<Option<RunnerRelease>, ApiError> {
-    let Some(releases) = &site.runner_releases else {
-        return Ok(None);
-    };
-    let release = read_release(releases.join("manifest.json"))
-        .await?
-        .ok_or_else(|| {
-            ApiError::internal_message("the runner release directory has no manifest.json")
-        })?;
-    Ok(Some(release))
+/// runner follows; none for a backend without runner releases.
+pub(super) async fn current_runner_release(state: &AppState) -> Result<Option<RunnerRelease>, ApiError> {
+    state
+        .services
+        .runner_releases
+        .current()
+        .await
+        .map_err(ApiError::internal_message)
 }
 
 /// The origin the request came to, for a backend that names no public URL.
@@ -147,7 +137,7 @@ pub(super) async fn artifact(
             "No such runner artifact",
         )
     };
-    let Some(releases) = &state.site.runner_releases else {
+    let Some(releases) = state.services.runner_releases.root() else {
         return Err(not_found());
     };
     let executable = if target.contains("windows") {

@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use axum::extract::ws::{Message, WebSocket};
 use demi_backend_database::StorageError;
-use demi_backend_database::devices::{DeviceRecord, DeviceRemoval};
+use demi_backend_database::devices::{DeviceChange, DeviceRecord, DeviceRemoval};
 use demi_backend_page_sync::Part;
 use demi_backend_remote_host::{Link, LinkOptions, host_identity};
 use demi_backend_runners::devices::{DeviceRecorder, Serving, Updating, send};
@@ -194,15 +194,16 @@ impl Shard {
         Ok(removal)
     }
 
-    /// Gives the user's paired device `device` a new name, which every page
-    /// of the user's sees; none once the device is gone. The names the
-    /// conversations give their attached hosts are theirs and stay.
-    pub async fn rename_device(
+    /// Changes the user's paired device `device`, its name or whether pages
+    /// may reach it directly, which every page of the user's sees; none once
+    /// the device is gone. The names the conversations give their attached
+    /// hosts are theirs and stay.
+    pub async fn change_device(
         &self,
         device: DeviceId,
-        name: String,
+        change: DeviceChange,
     ) -> Result<Option<DeviceDto>, StorageError> {
-        let Some(renamed) = self.services().control.rename_device(device, name).await? else {
+        let Some(renamed) = self.services().control.change_device(device, change).await? else {
             return Ok(None);
         };
         self.mark(Part::Devices);
