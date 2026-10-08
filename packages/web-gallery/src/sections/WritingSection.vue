@@ -268,6 +268,38 @@ const punctuationRules: readonly TextRule[] = [
   },
 ]
 
+/** How much text a screen says. */
+const brevityRules: readonly TextRule[] = [
+  {
+    title: 'A state is a few words',
+    rule: 'A status says what is, in two or three words and a figure, never in a sentence: macOS’s Wi-Fi says Connected.',
+    right: ['Connected directly · 2 ms', 'Offline · Last seen 3 days ago'],
+    wrong: ['This browser is connected directly to the device, and a round trip takes 2 ms.'],
+    source: 'macOS 26 System Settings: Wi-Fi, Bluetooth',
+  },
+  {
+    title: 'An explanation is one short sentence',
+    rule: 'Only where the state needs one, and at most about ten words: what is wrong or what to do. The why, the numbers and the history go behind Details…, opened when the user asks.',
+    right: ['Your networks block a direct connection.'],
+    wrong: ['Your network and the device’s don’t let a direct connection through, as a strict NAT or a firewall does. Demi tries again in 7 minutes.'],
+    source: 'Apple HIG: Writing (be brief); macOS 26 Network → Details…',
+  },
+  {
+    title: 'A row’s description is optional and one line',
+    rule: 'A settings row whose label says enough has none. One that needs one says what the setting does in a short line, not how it works.',
+    right: ['Route: Automatic — Uses the faster path.'],
+    wrong: ['Route — Demi connects directly when that is faster, and through the server otherwise.', 'Revoke this device — It leaves your devices, and its runner removes itself if it is connected.'],
+    source: 'macOS 26 System Settings: most rows have no description',
+  },
+  {
+    title: 'A screen says a thing once',
+    rule: 'A fact the header or a row shows is not said again in a sentence, a footnote or a list row. A list row names the item and its state; the reason belongs to the item’s page.',
+    right: ['macOS 26.5 · Through the server'],
+    wrong: ['macOS 26.5 · Through the server, the networks don’t allow direct'],
+    source: 'macOS 26 System Settings lists',
+  },
+]
+
 /** What gives way when a line of text does not fit, and how the reader gets it back. */
 const longTextRules: readonly TextRule[] = [
   {
@@ -410,6 +442,13 @@ const sources: readonly Required<Source>[] = [
       note="Both styles write them as typesetters do. A written convention, like the rest of this page: nothing checks it."
     >
       <GalleryTextRules :rules="punctuationRules" />
+    </GallerySection>
+
+    <GallerySection
+      title="Brevity"
+      note="How much a screen says. A written convention, like the rest of this page: nothing checks it."
+    >
+      <GalleryTextRules :rules="brevityRules" />
     </GallerySection>
 
     <GallerySection

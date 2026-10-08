@@ -318,36 +318,34 @@ connection state is `failed` or `closed`.
 ## What the user sees
 
 Nothing changes but speed, and the user can see why. In Settings → Devices
-each row names a device and says, in one line, its system and how this page
-reaches it, *Connected directly* or *Through the server* with the reason in
-a few words, or that it is offline and when it was last seen; it shows no
-version, architecture or other code. The row opens the device's page,
-`/settings/devices/<id>`, as a row of macOS's System Settings opens its
-detail.
+each row names a device and says its system and its state in a few words:
+*macOS 26.5 · Through the server*, *Connected directly*, or *Offline · Last
+seen 3 days ago*. The reason belongs to the device's page, which the row
+opens, `/settings/devices/<id>`, as a row of macOS's System Settings opens
+its detail.
 
-The page keeps state and settings apart, as macOS's Network settings do: what
-is happening is said above the settings, in sentences and figures, and a
-grouped row is only ever something the user can change or a fact about the
-device, never a status dressed as a setting.
+The page keeps state and settings apart, as macOS's Network settings do: the
+header says what is happening, and a grouped row is only something the user
+can change or a fact about the device, never a status dressed as a setting.
+It says little, by the [Writing page's brevity rules](../../packages/web-gallery/src/sections/WritingSection.vue):
+a state in a few words, at most one short sentence, the rest behind
+Details….
 
 ```text
 ‹ Devices
 
-[icon] zan-mbp
-       ● Through the server · 480 ms
-       Your network and the device's don't let a direct connection
-       through, as a strict NAT or a firewall does. Demi tries again
-       in 7 minutes.
+┌────┐ zan-mbp
+│ 🖥 │ ● Through the server · 480 ms
+└────┘
+       Your networks block a direct connection.
        [Details…]  [Try Again]
 
 Connection
 ┌──────────────────────────────────────────────────────────────┐
 │ Route                                        [Automatic   ⌄] │
-│ Demi connects directly when that is faster, and through the  │
-│ server otherwise.                                            │
+│ Uses the faster path.                                        │
 └──────────────────────────────────────────────────────────────┘
-  From this browser: through the server 480 ms; no direct
-  connection.
+  Direct 620 ms, 6% lost · Server 480 ms
 
 Device
 ┌──────────────────────────────────────────────────────────────┐
@@ -362,68 +360,64 @@ Device
 └──────────────────────────────────────────────────────────────┘
 ```
 
-- **The header** names the device and says its state with a dot: green
-  *Connected directly*, grey *Through the server*, or *Offline* with when it
-  was last seen; the path in use carries its latency. Under it, only when
-  there is something to explain, a sentence says why the server's path is
-  used and what the user can do, then when Demi tries again. The buttons
-  sit on a line of their own under the text, starting where it starts, in
-  every state. **Details…**
-  opens a sheet with the last attempt's diagnostics; **Try Again** makes a
-  new peer at once and is there only while the route allows a peer and the
-  page has no connected peer: a peer that is up but slower needs no new
-  attempt. A device connected directly needs no
-  sentence: the header says it all.
-- **Connection** has one setting, the route, as a pop-up button of
-  *Automatic*, *Prefer Direct* and *Server Only*, with a line saying what the
-  chosen one does. Under the group, as the footnote macOS writes under a
-  group, one line compares the two paths' latency from
-  [Measuring the paths](#measuring-the-paths): *From this browser: directly
-  2 ms, through the server 480 ms.* A direct path that loses probes says so,
-  *directly 620 ms with 6% lost*; one with no peer says *no direct
-  connection*. It is what the user picks the route by, so it sits under the
-  route.
+- **The header.** The icon is exactly as tall as the name and status lines
+  together and centred on them, as macOS's account and device headers are;
+  the status dot is centred on the status text. Under them, starting where
+  the name starts, the reason, only when there is one, and then the buttons
+  on a line of their own. **Details…** opens the sheet below; **Try Again**
+  makes a new peer at once and is there only while the route allows a peer
+  and the page has no connected peer.
+- **Connection.** The route, a pop-up button of *Automatic*, *Prefer
+  Direct* and *Server Only*, described in one line by the chosen one:
+  *Uses the faster path.*, *Direct whenever it connects.*, *Never connects
+  directly.* Under the group, as the footnote macOS writes under a group,
+  the two paths' latency from [Measuring the paths](#measuring-the-paths):
+  *Direct 2 ms · Server 480 ms*; a direct path that loses probes adds its
+  loss, *Direct 620 ms, 6% lost*; without a peer, *Server 480 ms* alone.
 - **Device** holds the facts, as macOS's About settings do: the name with
   Rename…; the system by its name and version, such as *macOS 26.5* or
   *Ubuntu 26.04*, with the chip family, *Apple silicon*, *Intel* or *ARM*,
   not an architecture code; the runner as *Up to date*, *Update available* or
   *Development build*, never a version code; and when it was paired.
-- **Revoke…** alone at the end, as a destructive action is.
+- **Revoke this device** with Revoke…, alone at the end and with no
+  description: the confirmation says what revoking does.
 
-The **Details** sheet, as macOS's Network → Details… opens one, lists what
-the last attempt saw as labels and values: when it ran, how long it took,
-the stage it ended at (permission, gathering addresses, finding a path, the
-encryption handshake, opening the channel, or connected), the addresses
-each side offered, local and public, the pairs tried and how many answered,
-the pair in use when connected, and the browser's local network permission.
-A local address the browser hides behind a random `….local` name, as every
-browser does for a page's own addresses, shows as *Hidden by the browser*.
+The **Details** sheet, as macOS's Network → Details… opens one, titled
+*Connection Details*, lists labels and values: when the last attempt ran,
+how long it took, the stage it ended at (permission, gathering addresses,
+finding a path, the encryption handshake, opening the channel, or
+connected), the addresses each side offered, local and public, the pairs
+tried and how many answered, the pair in use when connected, the browser's
+local network permission, and when Demi tries next. A local address the
+browser hides behind a random `….local` name, as every browser does for a
+page's own addresses, shows as *Hidden by the browser*. Where the reason has
+something to do, the sheet says it: for a blocked permission, where the
+site's settings allow it.
 
-The reasons the header gives, from what the attempt saw:
+The reason under the header, from what the attempt saw, word for word:
 
 | Reason | When | The header says |
 | --- | --- | --- |
-| Server Only | The device's route is Server Only | The route is Server Only, so everything goes through the server |
-| Slower right now | Automatic, the peer is connected, and its loss or latency is worse than the relay's ([Measuring the paths](#measuring-the-paths)) | The direct connection is up but slower or losing packets right now, with its figure, and that Demi moves back when it improves |
-| Blocked by this browser | The browser reports its local network permission blocked | The browser blocks local network access for this site, how to allow it in the site's settings, and that Demi connects without a reload once it is allowed |
-| Not reachable | Every pair was checked and none answered, and both sides found their public address | The two networks don't let a direct connection through, as with strict NAT or a firewall |
-| This network blocks it | One side found no public address: its network blocks UDP or the STUN server | Which side's network blocks it, the browser's or the device's |
-| Device is busy | The runner refused the peer with `busy` | The device's runner has too many connections open, and that Demi tries again |
-| Connection dropped | A connected peer failed | When it was direct until, and that Demi tries again |
-| Not offered | Crossing networks is off (`DEMI_STUN_URLS` empty) and no local pair answered | Direct connections work only on the same network as the device on this server |
+| Server Only | The device's route is Server Only | Nothing: the route below says it |
+| Slower right now | Automatic, the peer is connected, and its loss or latency is worse than the relay's ([Measuring the paths](#measuring-the-paths)) | *Direct is slower right now.* |
+| Blocked by this browser | The browser reports its local network permission blocked | *This browser blocks local network access.* |
+| Not reachable | Every pair was checked and none answered, and both sides found their public address | *Your networks block a direct connection.* |
+| This network blocks it | One side found no public address: its network blocks UDP or the STUN server | *Your network blocks it.* or *The device’s network blocks it.* |
+| Device is busy | The runner refused the peer with `busy` | *The device has too many connections.* |
+| Connection dropped | A connected peer failed | *The direct connection dropped.* |
+| Not offered | Crossing networks is off (`DEMI_STUN_URLS` empty) and no local pair answered | *Direct works only on the device’s network.* |
+| Offline | The device's runner is not connected | *Start Demi on the device:* and the command that starts its runner, the one the composer's notice of an offline Host gives |
 
 Opening a device's page while the page has no peer for it, and the route
 allows one, starts an attempt, so the header speaks of now and not of an
 attempt minutes old.
 
 The Cloud is always reached through the server, since it runs beside the
-backend: its header says so in one sentence, and its page has no Connection
-section. An offline device's page keeps the route, which applies when it is
-back, and shows no footnote. Its header says how to bring it back, in
-the sentence under the status: start Demi on the device, with the command
-that starts its runner, the same one the composer's notice of an offline
-Host gives. Details… is there only when this page has an attempt to show. A user who blocks the browser's local network
-permission sees no prompt again and stays on the relay.
+backend: its header says *Through the server* and nothing more, and its page
+has no Connection section. An offline device's page keeps the route, which
+applies when it is back, and shows no footnote; Details… is there only when
+this page has an attempt to show. A user who blocks the browser's local
+network permission sees no prompt again and stays on the relay.
 
 ## Failure and limits
 
