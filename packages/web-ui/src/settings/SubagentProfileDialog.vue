@@ -216,7 +216,6 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
               size="sm"
               width="shrink"
               trigger-label="Model"
-              placement="bottom-end"
             >
               <template #trigger>
                 <span class="flex min-w-0 items-center gap-1.5">

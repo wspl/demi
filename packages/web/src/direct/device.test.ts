@@ -38,6 +38,7 @@ class Peer implements DirectPeer {
 /** A device whose attempts and waits the test answers. */
 function device() {
   const attempts: PromiseWithResolvers<DirectPeer>[] = []
+  let measured = 0
   const timers: { ms: number; run: () => void; cancelled: boolean }[] = []
   const direct = new DeviceDirect({
     ready: () => true,
@@ -53,12 +54,15 @@ function device() {
         timer.cancelled = true
       }
     },
+    connected: () => {
+      measured += 1
+    },
   })
   const choices: Choice[] = []
   direct.onChange((choice) => choices.push(choice))
   /** The wait now running, which the test lets pass. */
   const waiting = () => timers.filter((timer) => !timer.cancelled).at(-1)
-  return { direct, attempts, timers, choices, waiting }
+  return { direct, attempts, timers, choices, waiting, measured: () => measured }
 }
 
 /** Lets the promises due run. */
@@ -166,6 +170,7 @@ test('no attempt starts before the signaling socket is open, whose opening is th
       return attempt.promise
     },
     after: () => () => {},
+    connected: () => {},
   })
   direct.setPermission('prompt')
   direct.tryNow()
@@ -266,4 +271,24 @@ test('under Automatic a slower direct path leaves its peer standing but unused; 
   direct.setSlower(false)
   expect(direct.current()).toBe(peer)
   expect(choices).toEqual(['direct', 'relay', 'direct', 'relay', 'direct'])
+})
+
+test('a new peer is used at once and asks for a measurement, whatever the last one found of the peer before it', async () => {
+  const { direct, attempts, measured } = device()
+  direct.tryNow()
+  const first = new Peer()
+  attempts[0]!.resolve(first)
+  await flush()
+  expect(measured()).toBe(1)
+  direct.setSlower(true)
+  expect(direct.current()).toBeNull()
+
+  first.close()
+  await flush()
+  direct.tryNow()
+  const second = new Peer()
+  attempts[1]!.resolve(second)
+  await flush()
+  expect(direct.current()).toBe(second)
+  expect(measured()).toBe(2)
 })

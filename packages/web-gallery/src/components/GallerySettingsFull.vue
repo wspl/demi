@@ -89,11 +89,12 @@ function setThemeChoice(choice: ThemeChoice) {
     galleryState.mode = choice
 }
 
-// Tone and accent change the gallery itself, the way they would change the app.
+// Tone and accent change the gallery itself, the way they would change the app. Flat is
+// not a product tone yet, so under it the control shows Ink, the product's default.
 const tone = computed({
-  get: () => galleryState.tone as ProductTone,
+  get: (): ProductTone => (galleryState.paradigm === 'warm' ? 'warm' : 'ink'),
   set: (value: ProductTone) => {
-    galleryState.tone = value
+    galleryState.paradigm = value
   },
 })
 const accent = computed({
@@ -334,6 +335,7 @@ function resetShortcuts() {
     @show="devices.shown.value = $event"
     @set-route="devices.setRoute"
     @try-now="devices.tryNow"
+    @measure="devices.measure"
     @revoke="revokeDevice"
     @rename="devices.rename"
   />

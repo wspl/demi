@@ -1582,7 +1582,6 @@ onBeforeUnmount(() => {
                 v-model:open="functionalTool"
                 :block="shellTool"
                 :input="parseToolInput(shellTool.input)"
-                :is-streaming="false"
               />
             </GallerySpecimen>
             <GallerySpecimen
@@ -1593,7 +1592,6 @@ onBeforeUnmount(() => {
                 v-model:open="functionalShellExpanded"
                 :block="shellTool"
                 :input="parseToolInput(shellTool.input)"
-                :is-streaming="false"
               />
             </GallerySpecimen>
             <GallerySpecimen
@@ -1604,7 +1602,6 @@ onBeforeUnmount(() => {
                 v-model:open="functionalShellLive"
                 :block="runningShellTool"
                 :input="parseToolInput(runningShellTool.input)"
-                :is-streaming="false"
               />
             </GallerySpecimen>
             <GallerySpecimen
@@ -1615,7 +1612,6 @@ onBeforeUnmount(() => {
                 v-model:open="functionalShellScript"
                 :block="longScriptShellTool"
                 :input="parseToolInput(longScriptShellTool.input)"
-                :is-streaming="false"
               />
             </GallerySpecimen>
             <GallerySpecimen
@@ -1627,7 +1623,6 @@ onBeforeUnmount(() => {
                   v-model:open="functionalShellFiles"
                   :block="editingShellTool"
                   :input="parseToolInput(editingShellTool.input)"
-                  :is-streaming="false"
                 />
               </GalleryTranscript>
             </GallerySpecimen>
@@ -1638,7 +1633,6 @@ onBeforeUnmount(() => {
               <ToolShellBlock
                 :block="presentingShellTool"
                 :input="parseToolInput(presentingShellTool.input)"
-                :is-streaming="false"
               />
             </GallerySpecimen>
             <GallerySpecimen
@@ -1648,7 +1642,6 @@ onBeforeUnmount(() => {
               <ToolShellBlock
                 :block="presentingPagesShellTool"
                 :input="parseToolInput(presentingPagesShellTool.input)"
-                :is-streaming="false"
               />
             </GallerySpecimen>
             <GallerySpecimen
@@ -1697,7 +1690,6 @@ onBeforeUnmount(() => {
             >
               <ToolCallBlock
                 :block="specimen.block"
-                :is-streaming="false"
               />
             </GallerySpecimen>
           </div>
@@ -1886,7 +1878,6 @@ onBeforeUnmount(() => {
                   v-model:open="changeCaseOpen[item.block.id]"
                   :block="item.block"
                   :input="parseToolInput(item.block.input)"
-                  :is-streaming="false"
                 />
               </GalleryTranscript>
             </GallerySpecimen>

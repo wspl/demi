@@ -146,7 +146,6 @@ function refresh(p: SettingsProviderEntry) {
   window.setTimeout(() => {
     refreshing.value = null
     p.catalogFetched = 'just now'
-    p.stale = false
   }, 1400)
 }
 

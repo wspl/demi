@@ -189,7 +189,6 @@ defineExpose({
     :is-open="completion.isOpen.value"
     :anchor-el="frame"
     :ignore-els="frame ? [frame] : []"
-    placement="bottom-start"
     :offset="4"
     @close="completion.follow('', null)"
   >

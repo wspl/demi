@@ -123,7 +123,10 @@ user starts the same way. The directory and the name are not remembered. For
 a device, the dialog's button says what it will do with the directory typed:
 *Add Project* when it exists, *Create Project* when Demi will create it, as
 the directory field's completion has already learned which. The field's
-completion list closes when the user clicks anywhere outside it, and a click
+completion list opens with its first entry selected; Up and Down move the
+selection, Tab completes the field with the selected entry, and Return
+creates the project, as a shell's completion takes Tab and leaves Return to
+run. The list closes when the user clicks anywhere outside it, and a click
 elsewhere in the dialog never moves the focus back into the field.
 Creating the project opens a new conversation in it, as the project's own New
 Conversation does: an immediately typeable draft, which the first send makes a
@@ -139,8 +142,9 @@ level, as a Wi-Fi menu lists networks:
 ```text
 Run On
   ☁ Cloud
-  🖥• MacBook Pro          ✓
-  🖥• Studio PC      Offline   (cannot be chosen)
+  🖥• MacBook Pro     This Computer  ✓
+  🖥• Studio PC                 LAN
+  🖥• Old Laptop             Offline   (cannot be chosen)
   + Add Device…
 ─────────
 Attached
@@ -150,10 +154,22 @@ Attached
 - **Run On** lists the Cloud and every paired device with its state; the
   primary Host is checked, and an offline device cannot be chosen. **Add
   Device…** pairs a new one.
+- **How this browser reaches each one.** An online device's row ends with
+  the path the page uses for it, *This Computer*, *LAN*, *P2P* or *Relay*
+  ([Where the P2P path runs](../execution/direct-channel.md#what-the-user-sees)),
+  as Wi-Fi menus show each network's security; its latency is the device
+  page's.
+  The Cloud's row shows nothing, since it is always reached the same way,
+  and an offline device's reads *Offline*. The page knows the path of a
+  device it has connected to, as it does while it shows a conversation on
+  it or its page, and keeps the last it found until the page closes; a
+  device it has not tried this time shows no path, since opening a menu
+  connects to nothing.
 - **Choosing a Host.** In a conversation outside a project, a click moves it
   there at once: to the device's home directory, or the Cloud's directory of
-  the conversation. In a project, each Host but the checked one reads
-  *Cloud…*, *Studio PC…*: choosing it opens that Host's directory picker,
+  the conversation. In a project, the Cloud moves it the same way, out of
+  its project, and each device but the checked one reads *Studio PC…*:
+  choosing it opens that device's directory picker,
   and choosing a directory moves the conversation there, into the project
   whose directory it is, or out of its project otherwise. The header's
   directory menu chooses another directory on the same Host the same way.

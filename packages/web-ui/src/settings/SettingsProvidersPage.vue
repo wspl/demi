@@ -558,7 +558,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       >
                       <Switch
                         :model-value="selected.enabled"
-                        label="Show in model menu"
+                        aria-label="Show in model menu"
                         @update:model-value="
                           emit('change', selected, { enabled: $event })
                         "
@@ -868,7 +868,6 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     class="text-[12px] text-fg-subtle"
                     >Updated <RelativeTime :timestamp="selected.catalogFetched"
                   /></span>
-                  <Tag v-if="selected.stale" tone="warning">Stale</Tag>
                   <span v-if="selected.kind === 'subscription'" class="ml-auto"
                     ><Tooltip content="Refresh"
                       ><IconButton

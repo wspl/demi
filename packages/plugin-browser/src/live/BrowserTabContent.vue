@@ -419,7 +419,6 @@ watch(
       :overlay-store="overlays"
       :is-open="bubble && downloads.length > 0"
       :anchor-el="bubbleAnchor"
-      placement="bottom-end"
       @close="bubble = false"
     >
       <Menu aria-label="Downloads">

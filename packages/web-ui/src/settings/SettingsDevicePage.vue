@@ -13,13 +13,15 @@ import { formatDay, formatMoment, useTimeUntil } from '../composables/useRelativ
 import DeviceRenameDialog from '../devices/DeviceRenameDialog.vue'
 import DeviceRevokeDialog from '../devices/DeviceRevokeDialog.vue'
 import DeviceStartHint from '../devices/DeviceStartHint.vue'
-import { useTryAgain } from '../devices/useTryAgain'
+import { useAsked } from '../devices/useAsked'
 import {
   DEVICE_ROUTE_DESCRIPTION,
   DEVICE_ROUTE_LABEL,
   DIRECT_STAGE_LABEL,
   addressWithPort,
+  connectedVia,
   directReason,
+  pathSentence,
   pathsLatency,
   reasonSentence,
   shownAddress,
@@ -45,8 +47,8 @@ import type { SettingsDevice } from './types'
  * the route; P2P, while the device is online and its route allows a peer,
  * saying in a sentence how the P2P connection fares, with Try Again and
  * Details… for the last attempt's diagnostics; and the two paths' latency
- * from this browser. Device holds the facts, with Rename…; Revoke… ends the
- * page. The Cloud's page has no Connection.
+ * from this browser's last measurement, with Measure. Device holds the
+ * facts, with Rename…; Revoke… ends the page. The Cloud's page has no Connection.
  */
 const props = defineProps<{
   /** A paired device, or the Cloud with what its runner reported. */
@@ -66,6 +68,7 @@ const emit = defineEmits<{
   back: []
   setRoute: [route: DeviceRoute]
   tryNow: []
+  measure: []
   rename: [name: string]
   revoke: []
 }>()
@@ -96,14 +99,24 @@ const status = computed<{ tone: StatusDotTone; words: SentenceText }>(() => {
   if (shown.state !== 'online') {
     return { tone, words: DEVICE_STATE_LABEL[shown.state] }
   }
-  return { tone, words: reason.value === null ? 'Connected via P2P' : 'Connected via relay' }
+  return { tone, words: direct.value ? connectedVia(direct.value) : 'Connected via relay' }
 })
 
 /** How to start the runner again, which the header gives while the device is offline. */
 const offlineStart = computed(() => (device.value?.state === 'offline' ? (device.value.start ?? null) : null))
 
-/** The Latency row's value, comparing the paths; none before either is measured, or while the device is offline. */
-const latency = computed(() => (direct.value && online.value ? pathsLatency(direct.value) : null))
+/**
+ * The Latency row's value while the device is online: the paths compared
+ * from the last measurement, which stay shown while the next runs;
+ * Measuring… until the first ends; and No answer after one the device
+ * answered none of.
+ */
+const latency = computed<SentenceText | null>(() => {
+  if (!direct.value || !online.value) {
+    return null
+  }
+  return pathsLatency(direct.value) ?? (direct.value.measuring ? 'Measuring…' : 'No answer')
+})
 
 const nextIn = useTimeUntil(() => direct.value?.nextAt ?? new Date().toISOString())
 
@@ -119,12 +132,14 @@ const directSentence = computed<SentenceText | null>(() => {
     return reasonSentence(reason.value)
   }
   const inUse = attempt.value?.inUse
-  return inUse ? `Connected through ${inUse.address}` : null
+  return inUse ? pathSentence(inUse.address) : null
 })
 
 /** Try Again is there only while the page has no connected peer; one that stands but is slower needs no new attempt. */
 const canTryAgain = computed(() => !direct.value?.peer)
-const tryAgain = useTryAgain(() => direct.value?.trying ?? false, () => emit('tryNow'))
+const tryAgain = useAsked(() => direct.value?.trying ?? false, () => emit('tryNow'))
+/** Measure shows loading only for the measurement the user asked for, never one Demi runs by itself. */
+const measure = useAsked(() => direct.value?.measuring ?? false, () => emit('measure'))
 
 /** How long an attempt took, as a person reads it. */
 function took(ms: number): string {
@@ -238,6 +253,7 @@ function revoke() {
       </SettingsRow>
       <SettingsRow v-if="latency" label="Latency">
         <span class="text-chrome text-fg-muted">{{ latency }}</span>
+        <Button size="sm" :loading="measure.loading.value" @click="measure.click">Measure</Button>
       </SettingsRow>
     </SettingsGroup>
 

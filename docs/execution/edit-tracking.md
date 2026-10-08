@@ -211,10 +211,12 @@ parent's own commands changed.
 - **The pills.** Under a shell call, its files, from the block's view
   ([Rendering boundary](../agent/runtime.md#rendering-boundary)).
 - **The request's line.** At the end of a request's reply, above its Copy
-  and Fork, once one of its calls has changed a file, a button that names
-  how many files and the lines added and removed across them:
-  *2 Files Changed +10 −0*, as GitHub and Cursor sum a change. It grows as
-  later calls of the request end. It counts files the request's calls
+  and Fork, once the request has ended and one of its calls changed a file, a
+  button that names how many files and the lines added and removed across
+  them: *2 Files Changed +10 −0*, as GitHub and Cursor sum a change. While
+  the request still works, its turn or a later one it continues, the line is
+  not shown, as Copy and Fork are not: the reply is not done, and its pills
+  already show each call's files. It counts files the request's calls
   changed and that still exist when each call ended. The lines are each
   file's All Changes, counted as the Change view counts them, not the sum of
   each call's counts, which counts a line twice when two calls change it:
@@ -236,9 +238,7 @@ parent's own commands changed.
   a regenerate removed says *These changes are no longer in the
   conversation.* Picking another file or edit
   replaces the selection; Back and Forward revisit selections. A file whose
-  every edit is without contents is listed without a diff. Under the list,
-  one line says that files other programs wrote are not here, with a link to
-  Uncommitted mode, which shows everything uncommitted.
+  every edit is without contents is listed without a diff.
 - **What it cannot show.** Edit tracking records only the writes that pass
   through it ([Scope](#scope)): a file `npm install` or `git checkout` wrote
   is not listed. When something outside the request changed a file between

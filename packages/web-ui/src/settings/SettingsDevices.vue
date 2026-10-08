@@ -7,7 +7,7 @@ import type { SentenceText } from '../ui/ui-text'
 import CloudSettings from '../cloud/CloudSettings.vue'
 import type { CloudState } from '../cloud/types'
 import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
-import { directReason, type DeviceRoute } from '../devices/direct'
+import { connectedVia, type DeviceRoute } from '../devices/direct'
 import type { DeviceInstallation } from '../devices/installation'
 import { useDevicePairing, type PairingResult } from '../devices/pairing'
 import DeviceIcon from '../devices/DeviceIcon.vue'
@@ -55,6 +55,7 @@ const emit = defineEmits<{
   show: [id: string | null]
   setRoute: [id: string, route: DeviceRoute]
   tryNow: [id: string]
+  measure: [id: string]
   rename: [id: string, name: string]
   revoke: [id: string]
   resetCloud: [operationId: string]
@@ -65,7 +66,7 @@ function reachedAs(device: SettingsDevice): SentenceText {
   if (device.state !== 'online') {
     return DEVICE_STATE_LABEL[device.state]
   }
-  return directReason(device.direct) === null ? 'Connected via P2P' : 'Connected via relay'
+  return connectedVia(device.direct)
 }
 
 const { isOpen, phase, open, close, submit } = useDevicePairing(
@@ -109,6 +110,7 @@ const pageProjects = computed(() =>
     @back="emit('show', null)"
     @set-route="emit('setRoute', shown!, $event)"
     @try-now="emit('tryNow', shown!)"
+    @measure="emit('measure', shown!)"
     @rename="emit('rename', shown!, $event)"
     @revoke="emit('revoke', shown!)"
   />

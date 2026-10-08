@@ -91,13 +91,26 @@ export function cssColorToRgba(color: string, alpha: number): string {
   return `rgba(${Number(match[1])}, ${Number(match[2])}, ${Number(match[3])}, ${alpha})`
 }
 
+/**
+ * A CSS color as `rgb(r, g, b)`, whatever notation the token uses. Computed
+ * style keeps a token's own notation (`oklch(…)`, `color(srgb …)`), which
+ * xterm cannot paint, so the color is drawn on a one-pixel canvas and read
+ * back as sRGB.
+ */
 export function resolveCssColor(root: Element, value: string): string {
   const probe = document.createElement('span')
   probe.style.color = value
   root.appendChild(probe)
-  const resolved = getComputedStyle(probe).color
+  const computed = getComputedStyle(probe).color
   probe.remove()
-  return resolved
+  const context = document.createElement('canvas').getContext('2d', { willReadFrequently: true })
+  // No 2D context (a headless renderer without one): keep what the style gave.
+  if (!context)
+    return computed
+  context.fillStyle = computed
+  context.fillRect(0, 0, 1, 1)
+  const [r, g, b] = context.getImageData(0, 0, 1, 1).data
+  return `rgb(${r}, ${g}, ${b})`
 }
 
 export function terminalPalette(mode: 'dark' | 'light'): TerminalTheme {

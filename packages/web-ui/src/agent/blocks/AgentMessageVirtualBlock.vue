@@ -128,7 +128,6 @@ const entersAsChrome = computed(() =>
     >
       <ToolCallBlock
         :block="block"
-        :is-streaming="block.status === 'executing'"
       />
     </div>
     <div

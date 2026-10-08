@@ -6,6 +6,7 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import {
   applyParadigm,
+  FONT_IDS,
   galleryState,
   PARADIGMS,
   type ParadigmId,
@@ -26,7 +27,6 @@ function setMode(mode: 'light' | 'dark') {
 <template>
   <Dropdown
     :overlay-store="appOverlayStore"
-    placement="bottom-end"
   >
     <template #trigger="{ isOpen }">
       <IconButton
@@ -42,53 +42,29 @@ function setMode(mode: 'light' | 'dark') {
       >
         <ScrollArea viewport-class="flex flex-col gap-3 p-3">
           <AxisPicker
-            label="Paradigm"
+            label="Theme"
             :values="paradigmIds"
             :names="paradigmNames"
-            :model-value="
-              galleryState.paradigm === 'custom' ? undefined : galleryState.paradigm
-            "
+            :model-value="galleryState.paradigm"
             @update:model-value="applyParadigm"
           />
-          <p
-            v-if="galleryState.paradigm === 'custom'"
-            class="text-[12px] text-fg-muted"
-          >
-            Custom
-          </p>
           <AxisPicker
             label="Mode"
             :values="['dark', 'light'] as const"
             :model-value="galleryState.mode"
             @update:model-value="setMode"
           />
-          <AxisPicker
-            label="Tone"
-            :values="['zinc', 'cool', 'warm', 'ink'] as const"
-            :model-value="galleryState.tone"
-            @update:model-value="galleryState.tone = $event"
-          />
           <AccentPicker
             :model-value="galleryState.accent"
             @update:model-value="galleryState.accent = $event"
           />
+          <!-- On trial: the product's face is still being chosen. -->
           <AxisPicker
-            label="Density"
-            :values="['compact', 'regular', 'comfortable'] as const"
-            :model-value="galleryState.density"
-            @update:model-value="galleryState.density = $event"
-          />
-          <AxisPicker
-            label="Radius"
-            :values="['tight', 'medium', 'soft'] as const"
-            :model-value="galleryState.radius"
-            @update:model-value="galleryState.radius = $event"
-          />
-          <AxisPicker
-            label="Shadow"
-            :values="['hairline', 'soft', 'carved'] as const"
-            :model-value="galleryState.shadow"
-            @update:model-value="galleryState.shadow = $event"
+            label="Font"
+            :values="FONT_IDS"
+            :names="{ system: 'System', inter: 'Inter', geist: 'Geist' }"
+            :model-value="galleryState.font"
+            @update:model-value="galleryState.font = $event"
           />
         </ScrollArea>
       </div>

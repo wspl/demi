@@ -125,7 +125,6 @@ export function providerView(
     apiKey: '',
     modelSource: entry.models ? 'manual' : 'catalog',
     catalogFetched: catalog?.sourceFetchedAt ?? null,
-    stale: catalog?.stale ?? false,
     state,
     // A healthy provider's messages are notes ("Uses the … API"), not failures.
     detail: state === 'ready'

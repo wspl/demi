@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useClipboard } from '@vueuse/core'
-import { Check, Copy, ExternalLink, Link } from '@lucide/vue'
+import { Check, Copy, ExternalLink } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
@@ -121,7 +121,7 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
           <!-- For a web browser on another machine, or another profile: the link alone. -->
           <Tooltip :content="linkCopied ? 'Copied' : 'Copy the link to sign in from another browser or device'">
             <IconButton
-              :icon="linkCopied ? Check : Link"
+              :icon="linkCopied ? Check : Copy"
               variant="ghost"
               :aria-label="linkCopied ? 'Copied' : 'Copy link'"
               @click="copyLink(phase.url)"
@@ -146,7 +146,7 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
           <!-- For a web browser on another machine, or another profile: the link alone. -->
           <Tooltip :content="linkCopied ? 'Copied' : 'Copy the link to sign in from another browser or device'">
             <IconButton
-              :icon="linkCopied ? Check : Link"
+              :icon="linkCopied ? Check : Copy"
               variant="ghost"
               :aria-label="linkCopied ? 'Copied' : 'Copy link'"
               @click="copyLink(phase.url)"

@@ -57,7 +57,6 @@ useEventListener(
     :is-open="open"
     :overlay-store="overlayStore"
     :anchor-el="anchor"
-    placement="bottom-end"
     :ignore-els="anchor ? [anchor] : []"
     @close="open = false"
   >

@@ -182,8 +182,10 @@ onKeyStroke('Escape', (event) => {
         :style="inline || depth === 0 ? undefined : { zIndex: 50 + depth }"
         @click.self="!inline && emit('close')"
       >
+        <!-- The panel is a region (`ui/region.ts`): a menu opened in it grows toward its inside. -->
         <div
           ref="panel"
+          data-region
           class="dialog-panel overlay-dialog relative flex flex-col overflow-hidden rounded-xl bg-surface-dialog shadow-2xl outline-none"
           :class="[
             inline ? 'w-full' : 'max-h-[calc(100%-2rem)] w-[calc(100%-2rem)]',

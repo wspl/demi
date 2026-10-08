@@ -31,7 +31,12 @@ const WIDTH_CLASSES: Record<DropdownWidth, { wrapper: string; trigger: string }>
 
 const props = withDefaults(defineProps<{
   overlayStore: OverlayStore
-  placement?: 'top' | 'top-start' | 'top-end' | 'bottom' | 'bottom-start' | 'bottom-end'
+  /**
+   * Whether the menu opens below the trigger or above it; it flips where it
+   * would not fit. Its alignment is not the caller's: it grows toward the
+   * inside of the trigger's region (Popover).
+   */
+  side?: 'top' | 'bottom'
   offset?: number
   anchorInset?: number
   shiftPadding?: number
@@ -45,7 +50,7 @@ const props = withDefaults(defineProps<{
   /** A `field` trigger wants `fill`. */
   width?: DropdownWidth
 }>(), {
-  placement: 'bottom-start',
+  side: 'bottom',
   offset: 4,
   size: 'md',
   width: 'content',
@@ -135,7 +140,7 @@ defineExpose({ open, close })
         :is-open="isOpen"
         :anchor-el="triggerRef"
         :anchor-inset="props.anchorInset"
-        :placement="props.placement"
+        :side="props.side"
         :offset="props.offset"
         :shift-padding="props.shiftPadding"
         :ignore-els="ignoreEls"

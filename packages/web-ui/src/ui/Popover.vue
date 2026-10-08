@@ -9,13 +9,14 @@ import {
   size,
   autoUpdate
 } from '@floating-ui/vue'
-import type { Placement } from '@floating-ui/vue'
+import type { Alignment, Placement } from '@floating-ui/vue'
 import { onClickOutside, onKeyStroke } from '@vueuse/core'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { useOverlayTarget } from '../overlay/overlayContainer'
 import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
 import { useFocusReturn } from '../overlay/focusReturn'
 import { useOverlay } from '../composables/useOverlay'
+import { inwardAlignment, regionSpan } from './region'
 
 const props = withDefaults(defineProps<{
   isOpen: boolean
@@ -30,6 +31,13 @@ const props = withDefaults(defineProps<{
   anchorHeight?: number
   /** Overflow-ancestor root for a point anchor so autoUpdate tracks scroll. */
   anchorContextEl?: HTMLElement | null
+  /** Whether the panel opens below its anchor or above it; it flips where it would not fit. */
+  side?: 'top' | 'bottom'
+  /**
+   * A placement the inward rule does not cover, such as a submenu's beside
+   * its item. The caller says why at the call; without one the panel grows
+   * toward the inside of its trigger's region.
+   */
   placement?: Placement
   offset?: number
   shiftPadding?: number
@@ -42,7 +50,7 @@ const props = withDefaults(defineProps<{
   anchorY: 0,
   anchorWidth: 0,
   anchorHeight: 0,
-  placement: 'bottom-start',
+  side: 'bottom',
   offset: 6,
   shiftPadding: 8,
 })
@@ -127,6 +135,30 @@ const virtualRef = computed(() => {
   }
 })
 
+/**
+ * The trigger's edge the panel lines up with, decided each time it opens
+ * from a trigger (a new trigger while open is a new opening): a trigger in
+ * the end half of its region gets a panel that grows back across the region.
+ */
+const alignment = ref<Alignment>('start')
+
+watch(
+  () => [props.isOpen, props.anchorEl] as const,
+  ([open, el]) => {
+    if (!open || !el)
+      return
+    const rect = virtualRef.value.getBoundingClientRect()
+    alignment.value = inwardAlignment({ left: rect.left, width: rect.width }, regionSpan(el))
+  },
+  { immediate: true },
+)
+
+// A menu at the pointer has no trigger to grow inward from: it opens toward the pointer's lower
+// right, as macOS's context menus do, and flips where it would not fit.
+const placement = computed<Placement>(() => (
+  props.placement ?? `${props.side}-${props.anchorEl ? alignment.value : 'start'}`
+))
+
 // A panel confined to a host container never owns the page, so it is not exclusive, and the
 // container stands in for the viewport: the panel stays inside it the way it stays on screen.
 const { container, to: teleportTarget, ready } = useOverlayTarget()
@@ -137,7 +169,7 @@ const boundary = computed(() => container?.value ?? undefined)
 const EDGE_PADDING = 16
 
 const { floatingStyles, placement: resolvedPlacement } = useFloating(virtualRef, floatingRef, {
-  placement: computed(() => props.placement),
+  placement,
   strategy: 'fixed',
   middleware: computed(() => [
     offsetMiddleware(props.offset),
