@@ -28,7 +28,7 @@ import { usageAt } from '../fixtures/catalog'
 import GallerySection from '../components/GallerySection.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import { productWould } from '../product-would'
-import { demoInstructions, demoInstructionsTooLarge, demoOpenInstruction } from '../fixtures/instructions'
+import { demoInstructions, demoOpenInstruction } from '../fixtures/instructions'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { useGalleryView } from '../gallery-views'
 
@@ -729,19 +729,6 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
                   pinned
                   :usage="usageAt(0.42)"
                   :instructions="demoInstructions"
-                  @compact="productWould('Compact the Conversation')"
-                  @open-instruction="demoOpenInstruction($event, productWould)"
-                />
-              </div>
-            </GallerySpecimen>
-          </GalleryOverlayWell>
-          <GalleryOverlayWell>
-            <GallerySpecimen variant="card · a file too large">
-              <div class="px-36 pt-40">
-                <ContextUsageIndicator
-                  pinned
-                  :usage="usageAt(0.42)"
-                  :instructions="demoInstructionsTooLarge"
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                 />
