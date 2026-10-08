@@ -13,8 +13,6 @@ defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
   title: HeadlineText
-  /** An optional line under the title: what the values are of. */
-  description?: SentenceText
   entries: readonly { label: SentenceText; value: string | readonly string[] }[]
 }>()
 const emit = defineEmits<{
@@ -27,7 +25,6 @@ const emit = defineEmits<{
     <div class="flex flex-col gap-4 p-5">
       <header class="select-none pr-8">
         <h3 class="text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
-        <p v-if="description" class="mt-0.5 text-[13px] leading-5 text-fg-muted">{{ description }}</p>
       </header>
       <dl class="grid select-text grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2 text-[13px] leading-5">
         <template v-for="entry in entries" :key="entry.label">
