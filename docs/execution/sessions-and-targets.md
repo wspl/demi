@@ -138,10 +138,23 @@ the switch as the conversation's **pending move** and answers at once; the
 backend makes it, as above, when the tree is next idle, before it admits
 anything else, so the next turn, the user's or a wakeup's, runs in the new
 place and reads it from its block. A newer pending move replaces an older
-one; an archive drops it. A pending move that fails when it is made, such as
-to a device that has gone offline, leaves the conversation where it was and
-reaches the root as a message from the backend that names the reason, which
-wakes it.
+one; an archive drops it. A pending move is stored with the conversation
+([Storage](../backend/storage.md#control-records)), so a restart does not
+lose it. A pending move that fails when it is made, such as to a device that
+has gone offline, leaves the conversation where it was and wakes the root
+with an agent message through the same entry, event `move_failed`, id
+`move-failed:<move id>`, whose envelope names Demi as the sender, a notice of
+the product's and not agent-originated context. The model reads:
+
+```text
+Demi could not move this conversation into ledable-app on Studio PC: the
+device is offline. The conversation still runs on Cloud
+(/home/demi/sessions/0f4e…).
+```
+
+The transcript shows it as a receipt row, *Move to ledable-app failed*,
+which expands to the message. A move that succeeds sends nothing: the agent
+asked for it, and its next block names the new place.
 
 Each node observes the latest execution-context revision before its next inference,
 the first one included: a node's first inference is preceded by a block of
