@@ -749,18 +749,6 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
             </GallerySpecimen>
           </GalleryOverlayWell>
           <GalleryOverlayWell>
-            <GallerySpecimen variant="card · no instructions">
-              <div class="px-36 pt-28">
-                <ContextUsageIndicator
-                  pinned
-                  :usage="usageAt(0.42)"
-                  :instructions="[]"
-                  @compact="productWould('Compact the Conversation')"
-                />
-              </div>
-            </GallerySpecimen>
-          </GalleryOverlayWell>
-          <GalleryOverlayWell>
             <GallerySpecimen variant="card · below half, Compact disabled">
               <div class="px-28 pt-14">
                 <ContextUsageIndicator pinned :usage="usageAt(0.23)" />

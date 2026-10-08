@@ -23,7 +23,7 @@ const props = defineProps<{
   unavailableReason?: string | null
   /** The card shows without the pointer, as a gallery specimen pins it. */
   pinned?: boolean
-  /** What the newest instructions block holds, in its order; absent where the card lists no instructions. */
+  /** What the newest instructions block holds, in its order; the card lists nothing of them while it holds none. */
   instructions?: readonly InstructionEntry[]
 }>()
 
@@ -111,9 +111,9 @@ const ringColor = computed(() => {
         Compact
       </Button>
     </template>
-    <template v-if="instructions" #details="{ close }">
+    <template v-if="rows.length" #details="{ close }">
       <div class="px-3 pt-2 pb-1 text-[11px] font-medium text-fg-subtle">Instructions</div>
-      <ul v-if="rows.length" class="px-1 pb-1">
+      <ul class="px-1 pb-1">
         <li v-for="row in rows" :key="row.path ?? 'personal'">
           <button
             type="button"
@@ -128,8 +128,6 @@ const ringColor = computed(() => {
           </button>
         </li>
       </ul>
-      <!-- As wide as the usage above it, never wider: the sentence wraps. -->
-      <p v-else class="w-0 min-w-full px-3 pb-2 text-fg-subtle">No personal instructions, AGENTS.md or CLAUDE.md</p>
     </template>
   </HoverCard>
 </template>
