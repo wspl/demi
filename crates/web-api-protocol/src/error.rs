@@ -83,22 +83,21 @@ pub enum ErrorCode {
     /// A subscription family is created by its login, and its entry takes
     /// only a new label.
     SubscriptionOnly,
-    /// The entry does not take accounts this way: an API-key entry has none,
-    /// and a family adds accounts by device login or by a token, not both.
+    /// The entry does not take accounts this way: an API-key entry has none.
     AccountsUnsupported,
-    /// The family has no device login.
+    /// The family has no login.
     NoLoginFlow,
     /// No login of the caller's has that id, or its result was dropped ten
     /// minutes after it finished.
     LoginNotFound,
+    /// The login waits for no code: it is not one that takes a pasted code,
+    /// it has not shown its link yet, or it ended.
+    LoginNotWaiting,
     /// The entry holds no account of that id.
     AccountNotFound,
     /// The active account cannot be removed: select another first, or delete
     /// the provider.
     ActiveAccount,
-    /// The supplied setup token is not an account of the family; the message
-    /// never repeats it.
-    TokenImportFailed,
     /// Reading the provider's usage would spend an inference request.
     QuotaRequiresInference,
     /// The vendor's usage endpoint did not answer, refused, or answered what

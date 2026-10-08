@@ -10,8 +10,8 @@ use std::{
 use demi_provider_common::{
     credentials::{
         AccountError, AccountKit, AccountLabel, AccountMeta, Accounts, AccountsCapability,
-        AccountsError, AddAccount, CredentialPool, LoginError, MemoryCredentialPool, NewAccount,
-        PoolError, RefreshGates, RenewError, SecretDecodeError, SecretDocument, SecretFault,
+        AccountsError, CredentialPool, LoginError, LoginIo, LoginKind, MemoryCredentialPool,
+        NewAccount, PoolError, RefreshGates, RenewError, SecretDecodeError, SecretDocument, SecretFault,
         SubscriptionAccounts, credential_id_for, read_secret, renew,
     },
     testing::FixedClock,
@@ -19,6 +19,7 @@ use demi_provider_common::{
 use demi_shared_types::{LoginPending, Timestamp};
 use futures_util::future::BoxFuture;
 use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
 
 /// A secret document of a made-up family.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -350,31 +351,42 @@ fn account(identity: &str, secret: &str) -> NewAccount {
 impl AccountKit for Kit {
     fn capability(&self) -> AccountsCapability {
         AccountsCapability {
-            login: true,
-            add: false,
+            login: Some(LoginKind::Device),
         }
     }
 
     fn login<'a>(
         &'a self,
-        pending: &'a (dyn Fn(LoginPending) + Send + Sync),
+        io: LoginIo<'a>,
     ) -> Option<BoxFuture<'a, Result<NewAccount, LoginError>>> {
         let next = self.logins.lock().unwrap().pop_front();
         Some(Box::pin(async move {
-            pending(LoginPending {
-                verification_url: "https://vendor.example/device".into(),
-                user_code: Some("ABCD-1234".into()),
-            });
-            match next {
-                Some(account) => Ok(account),
-                // The user never confirms.
-                None => std::future::pending::<Result<NewAccount, LoginError>>().await,
-            }
+            let login = async {
+                (io.pending)(LoginPending {
+                    verification_url: "https://vendor.example/device".into(),
+                    user_code: Some("ABCD-1234".into()),
+                    code_error: None,
+                });
+                match next {
+                    Some(account) => Ok(account),
+                    // The user never confirms.
+                    None => std::future::pending::<Result<NewAccount, LoginError>>().await,
+                }
+            };
+            LoginIo::until_stopped(&io.stop, login).await
         }))
     }
+}
 
-    fn add(&self, _input: AddAccount) -> Option<Result<NewAccount, AccountsError>> {
-        None
+/// What a login of `report`'s works with, stopped by `stop`.
+fn io<'a>(
+    report: &'a (dyn Fn(LoginPending) + Send + Sync),
+    stop: &CancellationToken,
+) -> LoginIo<'a> {
+    LoginIo {
+        pending: report,
+        codes: tokio::sync::mpsc::unbounded_channel().1,
+        stop: stop.clone(),
     }
 }
 
@@ -393,17 +405,17 @@ async fn a_login_stores_its_account_by_identity_and_the_first_one_becomes_active
     assert_eq!(
         accounts.capability(),
         AccountsCapability {
-            login: true,
-            add: false
+            login: Some(LoginKind::Device)
         }
     );
 
+    let stop = CancellationToken::new();
     let shown = Arc::new(Mutex::new(Vec::new()));
     let report = {
         let shown = shown.clone();
         move |pending: LoginPending| shown.lock().unwrap().push(pending.user_code)
     };
-    let first = accounts.login(&report).await.unwrap();
+    let first = accounts.login(io(&report, &stop)).await.unwrap();
     assert_eq!(first.id, "cred-ba36a4edd92d37c6");
     let now: Timestamp = NOW.parse().unwrap();
     assert_eq!(
@@ -417,14 +429,14 @@ async fn a_login_stores_its_account_by_identity_and_the_first_one_becomes_active
     );
 
     // Logging in again with the same account replaces its record.
-    let again = accounts.login(&report).await.unwrap();
+    let again = accounts.login(io(&report, &stop)).await.unwrap();
     assert_eq!(again.id, first.id);
     assert_eq!(
         pool.document(&first.id).read().await.unwrap().unwrap().text,
         "second secret"
     );
     // Another account is added beside it and does not take over.
-    let other = accounts.login(&report).await.unwrap();
+    let other = accounts.login(io(&report, &stop)).await.unwrap();
     assert_ne!(other.id, first.id);
     assert_eq!(accounts.list().await.unwrap().len(), 2);
     assert_eq!(
@@ -455,15 +467,10 @@ async fn a_login_stores_its_account_by_identity_and_the_first_one_becomes_active
         .map(|info| info.id)
         .collect();
     assert_eq!(listed, [first.id]);
-    let setup_token = AddAccount::SetupToken("sk-ant-oat01-x".to_owned().try_into().unwrap());
-    assert_eq!(
-        accounts.add(setup_token).await,
-        Err(AccountsError::Unsupported)
-    );
 }
 
 #[tokio::test(start_paused = true)]
-async fn dropping_a_login_cancels_it_and_stores_nothing() {
+async fn a_stopped_login_ends_and_stores_nothing() {
     let pool = MemoryCredentialPool::new();
     let kit = Kit {
         logins: Mutex::new(VecDeque::new()),
@@ -471,7 +478,11 @@ async fn dropping_a_login_cancels_it_and_stores_nothing() {
     let clock = Arc::new(FixedClock(NOW.parse::<Timestamp>().unwrap()));
     let accounts = Accounts::new(Arc::new(pool.clone()), kit, clock);
     let report = |_: LoginPending| {};
-    let waiting = tokio::time::timeout(Duration::from_millis(20), accounts.login(&report)).await;
-    assert!(waiting.is_err(), "the login ended without the user");
+    let stop = CancellationToken::new();
+    stop.cancel();
+    assert_eq!(
+        accounts.login(io(&report, &stop)).await,
+        Err(LoginError::Stopped)
+    );
     assert!(pool.list().await.unwrap().is_empty());
 }
