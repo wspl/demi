@@ -26,11 +26,11 @@ use demi_backend_runners::host_key::device_of;
 use demi_backend_runners::router::CommandRegistration;
 use demi_command_protocol::{CommandCaller, EDIT_FILE_BYTES};
 use demi_host_interface::{
-    CommandMedium, CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostKey,
+    CommandMedium, CommandStatus, DefaultShell, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
     MediumKept, PageView, ShellEnvironment, ShellError, StoredMedium, WholeOutput,
 };
 use demi_runner_protocol::wire::JobFileChange;
-use demi_shared_types::{BlobRef, Clock, CommandId, EditCopies, EditedFile, ShellId};
+use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile, ShellId};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
@@ -427,6 +427,7 @@ impl CommandKeeper for Keeper {
     fn keep_output<'a>(
         &'a self,
         command: &'a CommandId,
+        end: CommandEnd,
         output: &'a WholeOutput,
         media: &'a [CommandMedium],
     ) -> LocalBoxFuture<'a, ()> {
@@ -446,6 +447,7 @@ impl CommandKeeper for Keeper {
             let row = CommandOutput {
                 command: command.clone(),
                 ended,
+                end,
                 output: stored,
             };
             let recorded = self
@@ -469,16 +471,24 @@ struct Registered {
 }
 
 impl ShellEnvironment for Registered {
-    fn exec(
+    fn start(
         &self,
         request: ExecRequest,
         cancel: CancellationToken,
-    ) -> LocalBoxFuture<'_, Result<CommandStatus, ShellError>> {
-        self.environment.exec(request, cancel)
+    ) -> LocalBoxFuture<'_, Result<CommandId, ShellError>> {
+        self.environment.start(request, cancel)
+    }
+
+    fn ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<Ending, ShellError>> {
+        self.environment.ended(command)
     }
 
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
         self.environment.status(command)
+    }
+
+    fn default_shell(&self) -> Option<DefaultShell> {
+        self.environment.default_shell()
     }
 
     fn read_output<'a>(

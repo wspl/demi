@@ -38,6 +38,7 @@ use tokio_util::task::TaskTracker;
 pub use connection::{Connection, FrameRx, Outgoing};
 pub use content::{ContentError, ContentResolver, FileReference, ResolvedFiles};
 pub use tree::Tree;
+pub(crate) use tree::CommandPlace;
 
 use tree::OpenError;
 
