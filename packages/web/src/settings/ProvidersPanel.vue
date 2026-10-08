@@ -117,7 +117,7 @@ onUnmounted(() => {
         saveModels(
           provider,
           provider.models.filter((entry) => entry.id !== model.id),
-        ).catch(report)
+        ).catch((error: unknown) => report('Could Not Remove the Model', error))
     "
   />
   <ProviderLoginDialog

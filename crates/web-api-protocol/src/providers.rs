@@ -425,6 +425,15 @@ pub struct ActiveAccount {
     pub active: CredentialId,
 }
 
+/// `DELETE /providers/:id/accounts/:credentialId`: the account the entry
+/// infers with after the removal, null when it has none left.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RemovedAccount {
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<CredentialId>")]
+    pub active: Option<CredentialId>,
+}
+
 /// `POST /providers/subscription-login`: the first account of a family's
 /// entry, by device login.
 #[derive(Debug, Deserialize, JsonSchema, Validate)]

@@ -323,8 +323,11 @@ impl ConversationRuntime {
         requested: ModelSelection,
     ) -> Result<(), ProviderFailure> {
         if let EntryCredential::Subscription { active: None } = &entry.credential {
+            // The runtime of an account removed meanwhile goes, as a switch
+            // closes it.
+            self.close_current().await;
             return Err(refused(
-                "No subscription account configured",
+                demi_backend_providers::vault::accounts::NO_ACCOUNT,
                 Some(ErrorCode::AuthMissing),
             ));
         }

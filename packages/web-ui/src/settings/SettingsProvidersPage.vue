@@ -239,11 +239,25 @@ function askRemoveProvider(provider: SettingsProviderEntry): void {
   })
 }
 
-function askRemoveAccount(provider: SettingsProviderEntry, account: { id: string; label: string }): void {
+/**
+ * Removing the active account switches the provider to its first other account in the list,
+ * as the backend does, or leaves it with none (`providers.md` § Login and publication); the
+ * question says which.
+ */
+function askRemoveAccount(
+  provider: SettingsProviderEntry,
+  account: { id: string; label: string; active: boolean },
+): void {
+  const next = provider.accounts.find((other) => other.id !== account.id)
+  const effect = !account.active
+    ? `${provider.name} keeps using its active account.`
+    : next
+      ? `${provider.name} switches to “${next.label}”.`
+      : `${provider.name} is left without an account and can’t be used until you add one.`
   ask({
     title: `Remove the account “${account.label}”?`,
     action: 'Remove',
-    body: [`${provider.name} stops using it, and Demi forgets its sign-in. You can add it again with Add Account.`],
+    body: [effect, 'Demi forgets its sign-in. You can add it again with Add Account.'],
     run: () => emit('removeAccount', provider, account.id),
   })
 }

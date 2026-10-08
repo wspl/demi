@@ -118,6 +118,7 @@ impl ProviderFamily for ScriptedKey {
             quota: None,
             account: None,
             process_host: self.process_host,
+            runs: None,
         }))
     }
 
@@ -190,6 +191,9 @@ pub struct ScriptedSubscription {
     pub login: Arc<LoginScript>,
     pub quota: Arc<QuotaScript>,
     pub directory: Arc<Directory>,
+    /// Where its runtimes answer with the account's ID and wait as the test
+    /// says; without it, each run answers `ok`.
+    pub runs: Option<Arc<crate::conversations::Runs>>,
 }
 
 impl ProviderFamily for ScriptedSubscription {
@@ -218,6 +222,7 @@ impl ProviderFamily for ScriptedSubscription {
             quota,
             account: subscription.account.map(|binding| binding.credential_id),
             process_host: false,
+            runs: self.runs.clone(),
         }))
     }
 }
@@ -300,6 +305,7 @@ struct Scripted {
     quota: Option<ProviderQuota>,
     account: Option<String>,
     process_host: bool,
+    runs: Option<Arc<crate::conversations::Runs>>,
 }
 
 impl Provider for Scripted {
@@ -336,7 +342,13 @@ impl Provider for Scripted {
     }
 
     fn runtime(&self, _: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {
-        Ok(answers_ok())
+        Ok(match (&self.runs, &self.account) {
+            (Some(runs), Some(account)) => Box::new(crate::conversations::KeyedRuntime::new(
+                account.clone(),
+                runs.clone(),
+            )),
+            _ => answers_ok(),
+        })
     }
 }
 

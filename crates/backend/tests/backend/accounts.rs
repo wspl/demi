@@ -17,6 +17,7 @@ use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{
     Accounts, ActiveAccount, CredentialKind, LoginAnswer, LoginStarted, LoginState,
+    RemovedAccount,
     ProbeCost as ProbeCostDto, ProviderAnswer, ProviderDetails, ProviderDto, Providers,
     QuotaAnswer, QuotaCapability, VendorCatalog,
 };
@@ -55,6 +56,7 @@ pub(crate) fn scripts(cost: Option<ProbeCost>) -> Scripts {
         login: login.clone(),
         quota: quota.clone(),
         directory: Arc::new(Directory::default()),
+        runs: None,
     };
     let families = demi_backend::families::builtin()
         .with("claude-code", family())
@@ -163,12 +165,9 @@ async fn signed_in_accounts_are_sealed_selected_explicitly_and_hidden_from_who_o
             .all(|secret| !secret.windows(12).any(|window| window == b"login-secret"))
     );
 
-    // Selecting is explicit, and the active account cannot be removed.
+    // Selecting is explicit; removing an account that is not active keeps
+    // the active one.
     let active = format!("{path}/{first}");
-    assert_eq!(
-        backend.delete(&active, &master).await.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::ActiveAccount)
-    );
     let switched = backend
         .put(
             &format!("{path}/active"),
@@ -178,8 +177,12 @@ async fn signed_in_accounts_are_sealed_selected_explicitly_and_hidden_from_who_o
         .await;
     assert_eq!(switched.json::<ActiveAccount>().active, second);
     assert_eq!(
-        backend.delete(&active, &master).await.status,
-        StatusCode::NO_CONTENT
+        backend
+            .delete(&active, &master)
+            .await
+            .json::<RemovedAccount>()
+            .active,
+        Some(second.clone())
     );
     let missing = backend
         .put(
@@ -658,5 +661,93 @@ async fn a_probe_that_would_spend_inference_is_refused_and_an_api_key_entry_has_
         (status.quota_capability, status.accounts.len()),
         (QuotaCapability::None {}, 0)
     );
+    backend.close().await;
+}
+
+/// Removing the active account selects the entry's next one, and the last
+/// one's removal leaves none (`providers.md` § Login and publication): a
+/// request already running finishes with its own account, the next one runs
+/// with the account now active, and with none left the request is refused
+/// before inference with the message to add an account. One backend, three
+/// turns of a scripted family, well under a second.
+#[tokio::test]
+async fn removing_the_active_account_selects_the_next_and_the_last_leaves_none() {
+    use crate::conversations::{FIRST, Runs, Socket, choose, create, send};
+    use demi_conversation_socket_protocol::ServerFrame;
+
+    let runs = Runs::new();
+    let directory = Arc::new(Directory::default());
+    for _ in 0..8 {
+        directory.answer(Ok(crate::families::catalog(&["m"])));
+    }
+    let login = Arc::new(LoginScript::default());
+    let quota = Arc::new(QuotaScript::free(Vec::new()));
+    let family = ScriptedSubscription {
+        login: login.clone(),
+        quota: quota.clone(),
+        directory,
+        runs: Some(runs.clone()),
+    };
+    let scripts = Scripts {
+        login,
+        quota,
+        families: demi_backend::families::builtin().with("device", family),
+    };
+    let harness = Harness::new().with_families(scripts.families.clone());
+    let (backend, master) = harness.start_set_up().await;
+    scripts.login.signs_in("first");
+    let entry = device_entry(&backend, &master, &scripts).await;
+    let path = format!("/api/providers/{}/accounts", entry.id);
+    scripts.login.signs_in("second");
+    let id = start_login(&backend, &master, &format!("{path}/login"), json!({})).await;
+    let LoginState::Completed {
+        credential_id: second,
+        ..
+    } = awaited(&backend, &master, &id, ended).await
+    else {
+        panic!("the second login did not complete");
+    };
+    let accounts = backend.get(&path, Some(&master)).await.json::<Accounts>();
+    let first = accounts.active.clone().unwrap();
+    assert_ne!(first, second);
+
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, entry.id.as_str(), "m").await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+
+    // The active account goes while a request runs with it: the next one
+    // becomes active, and the running request finishes with its own.
+    socket.send(&send("m1", "before the removal")).await;
+    crate::support::eventually("the first request runs", || async {
+        runs.calls().len() == 1
+    })
+    .await;
+    let removed = backend.delete(&format!("{path}/{first}"), &master).await;
+    assert_eq!(removed.json::<RemovedAccount>().active, Some(second.clone()));
+    runs.released.send_replace(true);
+    socket.until_idle().await;
+    socket.chat("m2", "after the removal").await;
+    assert_eq!(
+        runs.calls(),
+        [
+            (first.as_str().to_owned(), 1),
+            (second.as_str().to_owned(), 1)
+        ]
+    );
+
+    // The last account goes: none is active, and the next request is refused
+    // before inference with the message to add one.
+    let removed = backend.delete(&format!("{path}/{second}"), &master).await;
+    assert_eq!(removed.json::<RemovedAccount>().active, None);
+    let accounts = backend.get(&path, Some(&master)).await.json::<Accounts>();
+    assert_eq!((accounts.accounts.len(), accounts.active), (0, None));
+    let turn = socket.chat("m3", "with no account").await;
+    let refused = turn.iter().any(|frame| {
+        matches!(frame, ServerFrame::Error { message, .. }
+            if message == "This provider has no account. Add one in Settings to use it.")
+    });
+    assert!(refused, "{turn:?}");
+    assert_eq!(runs.calls().len(), 2);
     backend.close().await;
 }

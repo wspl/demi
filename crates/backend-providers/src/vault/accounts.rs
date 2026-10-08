@@ -1,8 +1,10 @@
 //! The product's rules over a subscription entry's accounts
 //! (`providers.md` § Login and publication, `web-api.md` § Subscription
 //! accounts): every account comes from a sign-in, selecting an account is
-//! explicit, and the active account cannot be removed. A change of accounts
-//! invalidates the entry's provider and catalog.
+//! explicit, and removing the active account selects the entry's next one,
+//! or leaves it with none. A change of accounts invalidates the entry's
+//! provider and catalog, so the next request builds its runtime anew, while
+//! a running one finishes with its own.
 
 use demi_backend_database::StorageError;
 use demi_web_api_protocol::ids::CredentialId;
@@ -12,6 +14,10 @@ use super::entries::{EntryCredential, ProviderEntry};
 use super::pool::meta;
 use crate::llm::assembly::{AssemblyError, ProviderAssembly};
 
+/// What an entry without an account says, in its status and when a request
+/// is refused before inference: the user adds an account to use it.
+pub const NO_ACCOUNT: &str = "This provider has no account. Add one in Settings to use it.";
+
 /// Why an account operation was refused.
 #[derive(Debug, thiserror::Error)]
 pub enum AccountRefusal {
@@ -20,8 +26,6 @@ pub enum AccountRefusal {
     Unsupported(&'static str),
     #[error("No such account")]
     NotFound,
-    #[error("Select another account before removing the active one, or delete the provider")]
-    Active,
     #[error(transparent)]
     Assembly(#[from] AssemblyError),
 }
@@ -75,16 +79,15 @@ pub async fn activate(
     Ok(account)
 }
 
-/// Removes an account other than the active one, with its quota snapshot.
+/// Removes an account, the active one included, with its quota snapshot,
+/// and answers the account now active: the entry's first remaining one when
+/// the removed one was active, none when it was the last.
 pub async fn remove(
     assembly: &ProviderAssembly,
     entry: &ProviderEntry,
     account: CredentialId,
-) -> Result<(), AccountRefusal> {
+) -> Result<Option<CredentialId>, AccountRefusal> {
     subscription(entry)?;
-    if entry.active() == Some(&account) {
-        return Err(AccountRefusal::Active);
-    }
     let stored = assembly
         .vault()
         .account(entry.id.clone(), account.clone())
@@ -92,7 +95,7 @@ pub async fn remove(
     if stored.is_none() {
         return Err(AccountRefusal::NotFound);
     }
-    assembly
+    let active = assembly
         .vault()
         .control()
         .remove_credential(entry.id.clone(), account.clone())
@@ -100,7 +103,7 @@ pub async fn remove(
     assembly.quotas().forget_account(&entry.id, &account);
     assembly.vault().mark_changed(&entry.owner);
     assembly.invalidate(&entry.id).await?;
-    Ok(())
+    Ok(active)
 }
 
 fn subscription(entry: &ProviderEntry) -> Result<(), AccountRefusal> {
