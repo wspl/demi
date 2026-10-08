@@ -1,5 +1,6 @@
 <script setup lang="ts" generic="R extends Row">
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
 import { useTypeSelect } from '../composables/useTypeSelect'
 import DropOutline from '../ui/DropOutline.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
@@ -283,6 +284,9 @@ function scrollBy(px: number): void {
 }
 
 onMounted(layout)
+// A tree laid out while hidden, as a frame's sidebar that slides in is, measured
+// every row at the top: it measures them again once it is shown or resized.
+useResizeObserver(() => scrollArea.value?.el, layout)
 watch([() => props.rows, () => props.selected, () => props.dropTarget], () => {
   void nextTick(layout)
 })
