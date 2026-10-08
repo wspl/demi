@@ -62,8 +62,8 @@ export interface DirectAttempt {
   device: DirectAddresses
   /** The address pairs checked, and how many of them answered. */
   pairs: { tried: number; answered: number }
-  /** The pair in use while it was connected: this browser's address, null where the browser keeps it, and the device's. */
-  pair: { browser: string | null; device: string } | null
+  /** The device's address in use while it was connected, such as `127.0.0.1:60044`. */
+  inUse: string | null
   /** The browser's local network permission as the attempt ran. */
   permission: DirectPermission | null
 }
@@ -164,12 +164,12 @@ function wholeUnlessSmall(value: number): string {
 }
 
 /** A latency as a person reads it: "0.4 ms", "2 ms", "48 ms". */
-export function formatLatency(ms: number): string {
+function formatLatency(ms: number): string {
   return ms < 0.05 ? 'under 0.1 ms' : `${wholeUnlessSmall(ms)} ms`
 }
 
 /** A share lost as a person reads it: "0%", "0.5%", "6%". */
-export function formatLoss(loss: number): string {
+function formatLoss(loss: number): string {
   return `${wholeUnlessSmall(loss * 100)}%`
 }
 
