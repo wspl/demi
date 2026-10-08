@@ -119,6 +119,7 @@ import {
   openaiOnlyProviders,
   usageAt,
 } from '../fixtures/catalog'
+import { setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
 import { galleryBlobs } from '../fixtures/blobs'
 import { gallerySubagents } from '../fixtures/subagents'
 import { galleryTerminals } from '../fixtures/terminals'
@@ -620,7 +621,8 @@ function playTurn(kind: TurnFlowKind): void {
   turnFlow.play(kind)
 }
 
-/** 150K tokens: half of the 300K the Gemini specimen is limited to. */
+/** The catalog with the user's context limits, which the selector specimens' Context rows change. */
+const selectorModels = computed(() => withContextLimits(demoModels))
 const selectorSettings = ref<ModelSettings>({
   providerId: 'anthropic',
   modelId: 'claude-sonnet',
@@ -1324,26 +1326,29 @@ onBeforeUnmount(() => {
           <GallerySpecimen variant="chip">
             <ModelSelector
               :providers="demoProviders"
-              :models="demoModels"
+              :models="selectorModels"
               :settings="selectorSettings"
               @change="changeSelector"
+              @context-limit="setGalleryContextLimit"
             />
           </GallerySpecimen>
           <GallerySpecimen variant="fast">
             <ModelSelector
               :providers="demoProviders"
-              :models="demoModels"
+              :models="selectorModels"
               :settings="fastSettings"
               @change="changeFast"
+              @context-limit="setGalleryContextLimit"
             />
           </GallerySpecimen>
           <GalleryOverlayWell size="wide">
             <GallerySpecimen variant="menu">
               <ModelMenu
                 :providers="demoProviders"
-                :models="demoModels"
+                :models="selectorModels"
                 :settings="selectorSettings"
                 @change="changeSelector"
+                @context-limit="setGalleryContextLimit"
               />
             </GallerySpecimen>
           </GalleryOverlayWell>
