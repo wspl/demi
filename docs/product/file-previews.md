@@ -275,6 +275,14 @@ from a server that answers ranges, and every player seeks with them.
 
 ## Changes
 
+A text change shows as a unified diff of the whole file, as GitHub's and VS
+Code's do: each changed stretch with three unchanged lines around it, and a
+longer unchanged stretch between two changes folded into one line that says
+how many lines it holds, which a click unfolds in place. For example, an
+edit of line 10 in a 400-line file shows lines 7 to 13, then one line for
+the 387 below; the stretch at the top folds only once it is longer than
+three lines.
+
 A working directory outside a git repository has no changes to show: the
 Change view says so, and the page never lists changes for it, however often
 its files change.
