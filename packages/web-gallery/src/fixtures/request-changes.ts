@@ -103,7 +103,7 @@ export function signInRequestBlocks(prefix: string): Block[] {
 export function uncopiedRequestBlocks(): Block[] {
   return [
     user('uncopied-user', 400_000, 'Replace the logo and say so in the readme.'),
-    shell('uncopied-logo', 390_000, 'demi file create assets/logo.png < new-logo.png', 'Replace the logo', [
+    shell('uncopied-logo', 390_000, 'cp new-logo.png assets/logo.png', 'Replace the logo', [
       uncopiedFile({ path: `${WORKSPACE_ROOT}/assets/logo.png`, kind: 'modified', added: 0, removed: 0 }),
       uncopiedFile({ path: `${WORKSPACE_ROOT}/README.md`, kind: 'modified', added: 1, removed: 1 }),
     ]),
