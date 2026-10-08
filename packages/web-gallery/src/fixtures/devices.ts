@@ -24,9 +24,9 @@ export type DirectScenario =
   | 'notOffered'
 
 export const DIRECT_SCENARIOS: readonly { value: DirectScenario; label: string }[] = [
-  { value: 'connected', label: 'Direct' },
+  { value: 'connected', label: 'P2P' },
   { value: 'slower', label: 'Slower' },
-  { value: 'serverOnly', label: 'Server Only' },
+  { value: 'serverOnly', label: 'Relay Only' },
   { value: 'blocked', label: 'Blocked' },
   { value: 'unreachable', label: 'Not Reachable' },
   { value: 'browserNetwork', label: 'This Network' },
@@ -61,7 +61,7 @@ export function demoAttempt(scenario: DirectScenario, startedAt: number): Direct
     browser: { local: ['7c1e4a52-9b0d-4c1e-8e3e-1a2b3c4d5e6f.local'], public: browserPublic },
     device: { local: ['192.168.1.20', '127.0.0.1'], public: devicePublic },
     pairs: { tried: connected ? 2 : 6, answered: connected ? 2 : 0 },
-    inUse: connected ? '192.168.1.20:61204' : null,
+    inUse: connected ? { address: '192.168.1.20', port: 61204 } : null,
     permission: scenario === 'blocked' ? 'denied' : 'granted',
   }
 }
@@ -206,7 +206,7 @@ export function useGalleryDevices(initial: () => GalleryDevice[]) {
       return
     }
     if (device.direct.peer) {
-      // Prefer Direct uses a standing peer whatever Automatic found.
+      // Prefer P2P uses a standing peer whatever Automatic found.
       device.direct.chosen = route === 'direct' || scenarioOf(device) !== 'slower'
       return
     }

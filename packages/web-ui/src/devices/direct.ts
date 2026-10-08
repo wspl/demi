@@ -7,20 +7,24 @@ import type { SentenceText, TitleText } from '../ui/ui-text'
  * device's page shows, and the reason it gives from them.
  */
 
-/** How pages reach a device: Automatic, Prefer Direct or Server Only. */
+/**
+ * How pages reach a device: Automatic, Prefer P2P or Relay Only. The page
+ * calls the direct channel P2P and the backend's path the relay; the values
+ * are the wire's and stay as published.
+ */
 export type DeviceRoute = 'automatic' | 'direct' | 'server'
 
 export const DEVICE_ROUTE_LABEL: Record<DeviceRoute, TitleText> = {
   automatic: 'Automatic',
-  direct: 'Prefer Direct',
-  server: 'Server Only',
+  direct: 'Prefer P2P',
+  server: 'Relay Only',
 }
 
 /** The line under the route that says what the chosen one does. */
 export const DEVICE_ROUTE_DESCRIPTION: Record<DeviceRoute, SentenceText> = {
   automatic: 'Uses the faster path.',
-  direct: 'Direct whenever it connects.',
-  server: 'Never connects directly.',
+  direct: 'P2P whenever it connects.',
+  server: 'Never uses P2P.',
 }
 
 /** Where an attempt ended. */
@@ -62,8 +66,8 @@ export interface DirectAttempt {
   device: DirectAddresses
   /** The address pairs checked, and how many of them answered. */
   pairs: { tried: number; answered: number }
-  /** The device's address in use while it was connected, such as `127.0.0.1:60044`. */
-  inUse: string | null
+  /** The device's address and port in use while it was connected. */
+  inUse: { address: string; port: number } | null
   /** The browser's local network permission as the attempt ran. */
   permission: DirectPermission | null
 }
@@ -86,9 +90,13 @@ export interface DirectStatus {
   permission: DirectPermission | null
   /** Whether this page's peer to it is connected. */
   peer: boolean
-  /** Whether the page uses the peer now: connected directly. */
+  /** Whether the page uses the peer now: connected via P2P. */
   chosen: boolean
-  /** An attempt runs now. */
+  /**
+   * An attempt runs now, whoever started it. The host sets it as it starts
+   * one, before the page next renders, so Try Again knows whether its click
+   * started an attempt (`useTryAgain`).
+   */
   trying: boolean
   /** The last attempt; null before the first. */
   attempt: DirectAttempt | null
@@ -99,7 +107,7 @@ export interface DirectStatus {
 }
 
 /**
- * Why the page reaches a device through the server, one per row of the
+ * Why the page reaches a device via the relay, one per row of the
  * design's table; `notYet` while no attempt has ended, which has no reason
  * to give.
  */
@@ -115,7 +123,7 @@ export type DirectReason =
   | { kind: 'notYet' }
 
 /**
- * The reason the page reaches a device through the server, from its route,
+ * The reason the page reaches a device via the relay, from its route,
  * its peer and what its last attempt saw, in the order the design gives
  * them; null while it reaches it directly.
  */
@@ -184,10 +192,10 @@ export function pathsFootnote(status: DirectStatus): SentenceText | null {
   const parts: string[] = []
   if (status.peer && direct) {
     const lost = direct.loss ? `, ${formatLoss(direct.loss)} lost` : ''
-    parts.push(`Direct ${formatLatency(direct.latencyMs)}${lost}`)
+    parts.push(`P2P ${formatLatency(direct.latencyMs)}${lost}`)
   }
   if (relay) {
-    parts.push(`Server ${formatLatency(relay.latencyMs)}`)
+    parts.push(`Relay ${formatLatency(relay.latencyMs)}`)
   }
   return parts.length ? parts.join(' · ') : null
 }
@@ -195,29 +203,34 @@ export function pathsFootnote(status: DirectStatus): SentenceText | null {
 /**
  * The sentence the header gives for why the server's path is used, word for
  * word as the design's table gives it; null when the header says nothing
- * more: on Server Only, which the route below says, and before an attempt
+ * more: on Relay Only, which the route below says, and before an attempt
  * has ended.
  */
 export function reasonSentence(reason: DirectReason): SentenceText | null {
   switch (reason.kind) {
     case 'slower':
-      return 'Direct is slower right now.'
+      return 'P2P is slower right now.'
     case 'blocked':
       return 'This browser blocks local network access.'
     case 'unreachable':
-      return 'Your networks block a direct connection.'
+      return 'Your networks block P2P connections.'
     case 'network':
       return reason.side === 'browser' ? 'Your network blocks it.' : 'The device’s network blocks it.'
     case 'busy':
       return 'The device has too many connections.'
     case 'dropped':
-      return 'The direct connection dropped.'
+      return 'The P2P connection dropped.'
     case 'notOffered':
-      return 'Direct works only on the device’s network.'
+      return 'P2P works only on the device’s network.'
     case 'serverOnly':
     case 'notYet':
       return null
   }
+}
+
+/** An address with its port, as the Details sheet gives the one in use: `127.0.0.1:60044`, `[::1]:60044`. */
+export function addressWithPort(inUse: { address: string; port: number }): string {
+  return inUse.address.includes(':') ? `[${inUse.address}]:${inUse.port}` : `${inUse.address}:${inUse.port}`
 }
 
 /**

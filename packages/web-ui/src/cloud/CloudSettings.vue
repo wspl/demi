@@ -53,7 +53,7 @@ const storage = computed(() => {
 /** The Cloud's one line, as a device's row has: its system and how this page reaches it. */
 const line = computed(() => {
   const system = props.cloud.report.os?.name
-  return system ? `${system} · Through the server` : 'Through the server'
+  return system ? `${system} · Connected via relay` : 'Connected via relay'
 })
 function begin() {
   submitted.value = false
