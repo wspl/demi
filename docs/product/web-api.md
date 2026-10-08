@@ -55,7 +55,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
 | Usage | `GET /usage` for the caller; `GET /usage/instance` for admins in shared mode |
-| Devices | `GET /devices`, `POST /devices/claim { code }`, `PATCH /devices/:id { name?, route? }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=<absolute>`, `POST /devices/:id/fs { path }`, `GET /devices/:id/speed?bytes=` |
+| Devices | `GET /devices`, `POST /devices/claim { code }`, `PATCH /devices/:id { name?, route? }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=<absolute>`, `POST /devices/:id/fs { path }` |
 | Workspaces | `GET/POST /workspaces`, `PATCH /workspaces/:id { name }`, `DELETE /workspaces/:id` |
 | Cloud | `GET /cloud`, `POST /cloud/reset { operationId }` |
 | Attachments | `POST /attachments` with raw bytes; `GET /blobs/:sha256?type=...` |
@@ -1489,11 +1489,6 @@ The backend sends:
 A new `offer` replaces the socket's peer: the runner closes the old one. The
 socket closes with 1011 `host_unreachable` when the runner's connection
 ends, and 1003 `invalid_message` for a message the page should not have sent.
-
-`GET /api/devices/:deviceId/speed?bytes=<n>` answers `n` random bytes, at
-most 64 MiB, which the device's runner sends through the backend, for the
-relay half of Test Speed ([Measuring the paths](../execution/direct-channel.md#measuring-the-paths)).
-It takes device access and answers the signaling route's errors.
 
 ## Serving the web app build
 
