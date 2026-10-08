@@ -71,7 +71,6 @@ export function watchDirect(deviceId: string): void {
 export function directStatus(deviceId: string): DirectStatus {
   const product = useProduct()
   const device = product.snapshot?.devices.find((candidate) => candidate.id === deviceId)
-  follow()
   const state = states.get(deviceId) ?? directState()
   const measured = meters.get(deviceId) ?? meterState()
   return {
@@ -118,7 +117,6 @@ function use(deviceId: string): DeviceDirect {
   const known = used.get(deviceId)
   if (known)
     return known.direct
-  follow()
   const product = useProduct()
   const state = states.get(deviceId) ?? reactive(directState())
   states.set(deviceId, state)
@@ -170,11 +168,14 @@ function release(deviceId: string): void {
 let following = false
 
 /**
- * Follows, for the page's lifetime, what makes the page try again or let a
- * device go: its runner leaving or connecting again, the page coming back
- * online, and the browser's local network permission.
+ * Follows, for the page's lifetime, from its start, what makes the page use
+ * a device, try again or let it go: the conversation it shows, whose
+ * device's peer is made as it shows, before any operation needs it
+ * (`direct-channel.md` § Making the channel); a runner leaving or
+ * connecting again; the page coming back online; and the browser's local
+ * network permission.
  */
-function follow(): void {
+export function followDirect(): void {
   if (following)
     return
   following = true
