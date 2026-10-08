@@ -106,26 +106,46 @@ export function useBlockVirtualizer(
   // neither follows the end nor corrects for the row's new height, so the row
   // they acted on stays put and what follows it moves, as a browser keeps a
   // <details> the reader opens in place. Then the list is at its end or not
-  // by where it is.
+  // by where it is: it follows only when its end is in view, as scrolling
+  // there re-engages it. The nearness that keeps following while the reader
+  // scrolls does not decide it, since a row opened at the end grows below the
+  // view by less than that, and following would pull its steps up under the
+  // reader the next time the list grows. A click that changed no row's
+  // height, such as on a copy button, leaves following as it was, and the
+  // view catches up with what arrived while it held.
   let readerLayoutUntil = 0
   let readerLayoutTimer: ReturnType<typeof setTimeout> | undefined
+  /** The rows the reader acted on while the view holds, each with its height when first acted on. */
+  const readerRows = new Map<HTMLElement, number>()
   function holdsView(): boolean {
     return performance.now() < readerLayoutUntil
   }
-  function readerChangesLayout(): void {
+  function readerChangesLayout(event: Event): void {
+    const row = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-index]') : null
+    if (row && !readerRows.has(row))
+      readerRows.set(row, row.getBoundingClientRect().height)
     readerLayoutUntil = performance.now() + READER_LAYOUT_MS
     clearTimeout(readerLayoutTimer)
     readerLayoutTimer = setTimeout(() => {
       readerLayoutTimer = undefined
       const el = scrollContainer.value
+      const resized = [...readerRows].some(([row, height]) =>
+        Math.abs(row.getBoundingClientRect().height - height) > AUTO_SCROLL_REENGAGE_THRESHOLD)
+      readerRows.clear()
       if (!el)
         return
       const dist = distanceFromBottom(el)
       isAtBottom.value = dist <= BOTTOM_THRESHOLD_PX
-      shouldAutoScroll.value = isAtBottom.value
+      if (resized || !shouldAutoScroll.value)
+        shouldAutoScroll.value = dist <= AUTO_SCROLL_REENGAGE_THRESHOLD
+      else
+        scrollToBottom()
     }, READER_LAYOUT_MS)
   }
-  onScopeDispose(() => clearTimeout(readerLayoutTimer))
+  onScopeDispose(() => {
+    clearTimeout(readerLayoutTimer)
+    readerRows.clear()
+  })
 
   function scrollToBottom() {
     isProgrammaticScroll = true
@@ -202,7 +222,7 @@ export function useBlockVirtualizer(
       }
       const onKeydown = (e: KeyboardEvent) => {
         if (e.key === 'Enter' || e.key === ' ')
-          readerChangesLayout()
+          readerChangesLayout(e)
       }
       el.addEventListener('click', readerChangesLayout, { capture: true })
       el.addEventListener('keydown', onKeydown, { capture: true })
