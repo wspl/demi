@@ -408,7 +408,7 @@ models offer it.
 | `google` | By prefix, automatically (implicit caching) | Nothing. An explicit cache is a stored resource with a storage price, a second copy of the history |
 | `codex` | By prefix, keyed by the session | `prompt_cache_key`, `session-id` and `thread-id`, the session id |
 | `grok-build` | By prefix; the header routes a conversation's requests to one server | `x-grok-conv-id`, the session id |
-| `claude-code` | The CLI marks its own requests | A kept process continues its own history ([Process lifetime](claude-code.md#process-lifetime)). A new process starts from the transcript as text, which is a new prefix; so does a compaction summary, whose fresh runtime starts one |
+| `claude-code` | The CLI marks its own requests | A kept process continues its own history ([Process lifetime](claude-code.md#process-lifetime)); a new process resumes a session file written from the blocks, the CLI's own entries as they were, so its first request begins with the previous process's last ([The session a process resumes](claude-code.md#the-session-a-process-resumes)) |
 
 **Anthropic's marks.** The Messages API writes a cache entry only at a block
 marked with `cache_control`, and a mark finds an earlier entry only within the
