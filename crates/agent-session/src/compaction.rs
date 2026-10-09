@@ -448,6 +448,7 @@ fn session_copy(s: &Rc<SessionShared>, window: Vec<Block>, media: HeldMedia) -> 
         inputs: InputQueue::default(),
         wakeups: Wakeups::default(),
         edits: Vec::new(),
+        last_turn: core.last_turn,
         held: false,
         ids: s.ids.clone(),
         clock: core.clock(),
