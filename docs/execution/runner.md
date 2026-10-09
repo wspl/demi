@@ -209,10 +209,14 @@ in the foreground until pairing ends:
   uninstall` (on Windows, `& '<installation>\run.ps1' uninstall`), and exits.
 
 The runner writes the same lines to its log, so a person who closed the
-terminal early finds them there; closing it does not stop the runner. A
-start appends to the log rather than emptying it, and the log keeps its last
-10 MiB, so what a runner printed before it crashed is still there after
-`run start` starts it again.
+terminal early finds them there; closing it does not stop the runner. The
+runner writes its log itself, rather than the installer redirecting its
+output: it appends to `runner.log`, and when the file passes 10 MiB it
+renames it `runner.log.1`, replacing the one before, and starts a new one.
+So what a runner printed before it crashed is still there after `run start`
+starts it again. The installer and `run start` read the pairing codes and
+the connection's outcome from where the log ended when they started the
+runner.
 
 `run start` starts the installation's runner in the background again, as the
 installer does, and returns once it is connected or has said why it cannot
