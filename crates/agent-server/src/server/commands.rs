@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     AgentServer,
     shell_output::shell_group,
-    tree::{AgentSnapshot, ProfileListing, StartInput, Tree, TreeEntry},
+    tree::{ProfileListing, ShownAgent, StartInput, Tree, TreeEntry},
 };
 
 /// The one description of a spawn's brief (`subagents.md` § Command help).
@@ -41,7 +41,7 @@ const PROFILES_SUMMARY: &str = "List the user's enabled subagent profiles with w
 /// settings (`subagents.md` § Command help).
 const PROFILE_OPTION: &str = "The name of one of the user's subagent profiles; `demi agent profiles` lists them with when to use each. Omit to inherit the parent's model, prompt, Host and commands.";
 
-const SHOW_SUMMARY: &str = "Bounded snapshot of any live agent in the tree (root excluded): execution state, recent tool titles with durations, last assistant text. Every duration is relative to now — use the ages to tell motion from stall. Omits tool outputs, file contents, and older turns. A read, not a wait — not for polling loops.";
+const SHOW_SUMMARY: &str = "Bounded snapshot of any agent in the tree (root excluded): for a live one, execution state, recent tool titles with durations, last assistant text; for an archived one, how and when it closed with its result or failure. Every duration is relative to now — use the ages to tell motion from stall. Omits tool outputs, file contents, and older turns. A read, not a wait — not for polling loops.";
 
 /// The input of `demi agent spawn`.
 #[derive(Deserialize, JsonSchema)]
@@ -134,7 +134,7 @@ struct Listing {
 /// `demi agent show --json`.
 #[derive(Serialize, JsonSchema)]
 struct Shown {
-    agent: AgentSnapshot,
+    agent: ShownAgent,
 }
 
 /// A node's commands: the product's, with the `demi agent` and `demi shell`
@@ -403,8 +403,10 @@ async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Res
 
 async fn show<H: HostResolver>(call: Invoked<H, ShowArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let number = call.args.id;
-    let Some((snapshot, text)) = call.tree.show(number) else {
-        return fail(&port, "show", &format!("no live agent {number}")).await;
+    let (snapshot, text) = match call.tree.show(number).await {
+        Ok(Some(shown)) => shown,
+        Ok(None) => return fail(&port, "show", &format!("no subagent {number}")).await,
+        Err(error) => return fail(&port, "show", &error).await,
     };
     if call.json {
         return json(&port, &Shown { agent: snapshot }).await;

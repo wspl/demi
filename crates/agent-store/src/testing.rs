@@ -584,6 +584,7 @@ pub mod store_contract {
                 cwd: "/w".into(),
                 model: test_model(),
                 edits: Vec::new(),
+                last_turn: crate::TurnEnd::Answer,
             },
             block_count: blocks.len(),
             changed_blocks: blocks.into_iter().enumerate().collect(),
