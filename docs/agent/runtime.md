@@ -677,6 +677,11 @@ output:
   ([Pipes and output](../execution/runner.md#pipes-and-output)). For example,
   a build that prints its 100th KiB of log lines a second ago shows an
   `idleMs` below 3,000, so the model does not take it for a hung one.
+- The model need not cut a command's output itself: the result is already
+  bounded and points to the rest. The tool rules say so, since piping into
+  `head` or `tail`, which models did in half of their scripts, hides the
+  command's exit status behind the pipe's, hides a long command's output
+  until it ends, and turns a returned image into a fragment of its bytes.
 - The output is the merged stdout and stderr since the model's last look, in
   the order the runner read them. It is shown whole when the whole result fits
   the replay bound of 16,000 characters
@@ -839,7 +844,11 @@ connection, not read from the Host, or not stored
 ([Where media are kept](#where-media-are-kept)), gets its line without a way
 to read it. A binary stdout gets one line as well: that it was attached and
 as what, or why not and how to save its bytes,
-`demi shell output 17 --raw --stdout > <file>`.
+`demi shell output 17 --raw --stdout > <file>`. A binary stdout that is no
+medium is most often a medium cut short by a pipe, as in
+`demi browser screenshot t1 | tail -3`, so its line says so first:
+`[binary stdout, 848 bytes: not an image or video; a pipe after the command
+may have cut it — run the command without it]`.
 
 #### Bounds and cut output
 

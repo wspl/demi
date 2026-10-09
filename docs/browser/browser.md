@@ -951,7 +951,7 @@ locator per call:
 
 | Arguments | Meaning |
 | --- | --- |
-| `--ref e3` | Previously returned node |
+| `e3`, after the tab, or `--ref e3` | Previously returned node |
 | `--role button --name 'Sign in'` | Accessible role and name |
 | `--label Email` | Associated label |
 | `--placeholder 'Search products'` | Placeholder |
@@ -959,6 +959,12 @@ locator per call:
 | `--test-id checkout` | `data-testid` |
 | `--css 'main .product'` | Standard CSS selector |
 | `--xy 420,300` | Viewport point; only for supported pointer/media operations |
+
+A reference is the locator models use most, and outputs print it as
+`[ref=e3]`, so it is also the positional argument after the tab:
+`demi browser click t1 e3`. `key` takes its key the same way,
+`demi browser key t1 Enter`, or `demi browser key t1 e1 Enter` to focus a
+node first; `check` checks, and `--value=false` unchecks.
 
 The three text locators are three different computations. `--role` with
 `--name` matches the accessibility role and the computed accessible name.
@@ -1247,13 +1253,13 @@ $ demi browser find t1 --frame e30 --label Email
 1 match:
   [ref=e31] textbox "Email"
 
-$ demi browser read t1 --ref e21 --property text
+$ demi browser read t1 e21 --property text
 Phone A
 
-$ demi browser read t1 --ref e21 --attribute href
+$ demi browser read t1 e21 --attribute href
 /products/a
 
-$ demi browser read t1 --ref e3 --property enabled
+$ demi browser read t1 e3 --property enabled
 true
 
 $ demi browser read t1 --css '.product' --property text --all
@@ -1320,7 +1326,7 @@ candidate elements, roles, names, bounds, and available locator information.
 ### Pointer actions
 
 ```text
-$ demi browser click t1 --ref e3
+$ demi browser click t1 e3
 Clicked button "Sign in" [ref=e3].
 
 $ demi browser click t1 --role button --name 'Sign in'
@@ -1329,10 +1335,10 @@ Clicked button "Sign in" [ref=e3].
 $ demi browser click t1 --xy 420,300
 Clicked at 420,300.
 
-$ demi browser click t1 --ref e21 --count 2
+$ demi browser click t1 e21 --count 2
 Double-clicked row "Order 1042" [ref=e21].
 
-$ demi browser click t1 --ref e21 --button right
+$ demi browser click t1 e21 --button right
 Right-clicked row "Order 1042" [ref=e21].
 
 $ demi browser move t1 --xy 420,300
@@ -1344,7 +1350,7 @@ Dragged from 100,200 to 300,250.
 $ demi browser scroll t1 --dy 600
 Scroll input delivered: dy=600.
 
-$ demi browser scroll t1 --ref e40 --dy 300
+$ demi browser scroll t1 e40 --dy 300
 Scroll input delivered to list "Results" [ref=e40]: dy=300.
 ```
 
@@ -1373,40 +1379,40 @@ page moved: it may already be at a boundary. Observe again when that matters.
 ### Input and forms
 
 ```text
-$ demi browser fill t1 --ref e1 --text test@example.com
+$ demi browser fill t1 e1 --text test@example.com
 Filled textbox "Email" [ref=e1].
 
 $ demi browser type t1 --text hello
 Typed into textbox "Email" [ref=e1].
 
-$ demi browser key t1 --key Escape
+$ demi browser key t1 Escape
 Pressed Escape in textbox "Email" [ref=e1].
 
-$ demi browser type t1 --ref e1 --text '.test'
+$ demi browser type t1 e1 --text '.test'
 Typed into textbox "Email" [ref=e1].
 
-$ demi browser key t1 --ref e1 --key Enter
+$ demi browser key t1 e1 Enter
 Pressed Enter in textbox "Email" [ref=e1].
 
-$ demi browser key t1 --ref e1 --key ControlOrMeta+A
+$ demi browser key t1 e1 ControlOrMeta+A
 Pressed ControlOrMeta+A in textbox "Email" [ref=e1].
 
-$ demi browser check t1 --ref e5 --value true
+$ demi browser check t1 e5
 Checked checkbox "Remember me" [ref=e5].
 
-$ demi browser check t1 --ref e5 --value false
+$ demi browser check t1 e5 --value=false
 Unchecked checkbox "Remember me" [ref=e5].
 
-$ demi browser select t1 --ref e6 --option-label Singapore
+$ demi browser select t1 e6 --option-label Singapore
 Selected: Singapore (SG).
 
-$ demi browser select t1 --ref e6 --value SG --value JP
+$ demi browser select t1 e6 --value SG --value JP
 Selected: Singapore (SG), Japan (JP).
 
-$ demi browser select-text t1 --ref e7 --text 'Replace this'
+$ demi browser select-text t1 e7 --text 'Replace this'
 Selected text in textbox "Message" [ref=e7].
 
-$ demi browser select-text t1 --ref e7 --text 'Replace this' --cursor before
+$ demi browser select-text t1 e7 --text 'Replace this' --cursor before
 Cursor placed before the matching text in textbox "Message" [ref=e7].
 ```
 
@@ -1474,7 +1480,7 @@ a control is done with the pointer and keyboard commands.
 $ demi browser wait t1 --role heading --name 'Welcome back' --state visible --timeout 10000
 Matched heading "Welcome back" [ref=e50]. State: visible.
 
-$ demi browser wait t1 --ref e51 --state hidden --timeout 5000
+$ demi browser wait t1 e51 --state hidden --timeout 5000
 Matched status "Saving" [ref=e51]. State: hidden.
 
 $ demi browser wait t1 --css .spinner --state detached --timeout 5000
@@ -1486,7 +1492,7 @@ URL matched: http://localhost:3000/dashboard.
 $ demi browser wait t1 --load domcontentloaded
 Load state reached: domcontentloaded.
 
-$ demi browser click t1 --ref e3 --wait-url '**/dashboard' --timeout 10000
+$ demi browser click t1 e3 --wait-url '**/dashboard' --timeout 10000
 Clicked button "Sign in" [ref=e3].
 URL: http://localhost:3000/dashboard
 ```
@@ -1557,16 +1563,16 @@ whole resource and does not wait for a beforeunload confirmation.
 ### Upload, download, and clipboard
 
 ```text
-$ demi browser upload t1 --ref e60 --file /tmp/avatar.png
+$ demi browser upload t1 e60 --file /tmp/avatar.png
 Attached 1 file through [ref=e60].
   /tmp/avatar.png
 
-$ demi browser upload t1 --ref e60 --file /tmp/a.pdf --file /tmp/b.pdf
+$ demi browser upload t1 e60 --file /tmp/a.pdf --file /tmp/b.pdf
 Attached 2 files through [ref=e60].
   /tmp/a.pdf
   /tmp/b.pdf
 
-$ demi browser download t1 --ref e61 --output /tmp/report.pdf
+$ demi browser download t1 e61 --output /tmp/report.pdf
 Downloaded: /tmp/report.pdf
 Suggested filename: report.pdf
 Bytes: 48320
@@ -1637,7 +1643,7 @@ document.querySelectorAll('.product').length
 JS
 12
 
-$ demi browser eval t1 --ref e21 <<'JS'
+$ demi browser eval t1 e21 <<'JS'
 element.textContent
 JS
 "Phone A"
@@ -1657,13 +1663,24 @@ $ demi browser viewport reset t1
 Viewport: 1280 × 720 CSS px, device pixel ratio 1, web.
 ```
 
-Eval is read-only page inspection. The stdin expression can access document;
+Eval is read-only page inspection. Stdin holds statements, as a script or a
+console would: `const ps = [...document.querySelectorAll('p')]; ps.map(p =>
+p.textContent)` returns the value of the last expression. They run as one
+block, so declarations stay inside it. Nothing waits: `await`, and a value
+that is a Promise, fail with a line saying that eval returns values that are
+already there and cannot wait, since waiting needs the side effects eval
+refuses. The stdin can access document;
 a unique target additionally exposes element, or explicit `--all` exposes
 elements. All bound elements must belong to one frame document; a set spanning
 frame documents fails with `unsupported_capability` and must be narrowed with
 `--frame` or `--within`. Chrome cannot bind remote objects from separate execution
-contexts into one read-only expression. Results must be JSON-representable. Functions, DOM objects, cycles,
-and other unsupported values fail rather than silently losing information.
+contexts into one read-only expression. Results must be JSON-representable,
+with `undefined` treated as `JSON.stringify` treats it: `null` in an array,
+left out of an object, and `undefined` as the whole result. Functions, DOM
+objects, cycles, and other unsupported values fail with `unsupported_result`
+and the place of the first one, such as `result[2] is a function`, rather
+than silently losing information. To change the page, use `click`, `fill`,
+`scroll` and the other actions.
 The default is a compact JSON representation of the value; `--json` returns
 `{value: ...}`.
 
@@ -1951,24 +1968,27 @@ match count, even if offset/limit restricts the returned matches.
 
 ### Errors
 
+A failure's text is lines of context, then one last line in the form of every
+command's runtime error
+([Handle an rpc call](../execution/commands.md#handle-an-rpc-call)): the
+command, the tab, the message, the code and what became of the action. The
+error is the last line because models read the end of a command's output,
+often through `| tail -1`; a failure that ended with a `Tab: t2` line looked
+like a success.
+
 ```text
-$ demi browser click t1 --ref e3
-Error: stale_ref
-Element [ref=e3] belongs to an expired document. Inspect the page again.
-Action: not_started.
+$ demi browser click t1 e3
+demi browser click: t1: element [ref=e3] belongs to an expired document; inspect the page again (stale_ref, action not started)
 
 $ demi browser click t1 --role button --name Delete
-Error: ambiguous_target
 Found 2 matching buttons:
   [ref=e10] inside row "Order A"
   [ref=e20] inside row "Order B"
-Action: not_started.
+demi browser click: t1: 2 elements match; name one by its ref (ambiguous_target, action not started)
 
-$ demi browser click t1 --ref e3 --wait-url '**/dashboard' --timeout 5000
-Error: timeout
-The click completed, but the expected navigation was not observed.
-Action: completed.
+$ demi browser click t1 e3 --wait-url '**/dashboard' --timeout 5000
 Current URL: http://localhost:3000/login
+demi browser click: t1: the click completed, but the expected navigation was not observed (timeout, action completed)
 ```
 
 The last failure has this JSON representation on stderr:
