@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import type { Block, EditedFile } from '@demicodes/protocol'
+import type { Block, EditedFile, PathChange } from '@demicodes/protocol'
 import type { ToolCallBlock } from '../../agent/block-types'
 import { createdAt, model, userBlock } from '../../agent/__tests__/agent-harness'
 import { diffLineCounts } from '../diff-counts'
@@ -30,7 +30,7 @@ function edited(path: string, from: number, segments = 1, kind: EditedFile['kind
   }
 }
 
-function shellCall(id: string, description: string, files: EditedFile[]): ToolCallBlock {
+function shellCall(id: string, description: string, files: EditedFile[], pathChanges?: PathChange[]): ToolCallBlock {
   return {
     type: 'tool_call',
     id,
@@ -52,6 +52,7 @@ function shellCall(id: string, description: string, files: EditedFile[]): ToolCa
       chunks: [],
       viewTruncated: false,
       files,
+      ...(pathChanges ? { pathChanges } : {}),
     },
   }
 }
@@ -150,7 +151,7 @@ describe('the Change view on a request', () => {
 
   test('All Changes is offered only when both its ends were kept; otherwise the file opens at its first edit with contents', () => {
     const kept = (from: number) => ({ original: blob(from), modified: blob(from + 1) })
-    const edit = (segment: number, copies?: ReturnType<typeof kept>) => ({ call: 'c', title: 'Edit', segment, created: false, ...(copies ? { copies } : {}) })
+    const edit = (segment: number, copies?: ReturnType<typeof kept>) => ({ call: 'c', title: 'Edit', path: '/w/a.ts', segment, created: false, ...(copies ? { copies } : {}) })
     const firstLost = { path: '/w/a.ts', kind: 'modified' as const, edits: [edit(0), edit(1, kept(2)), edit(2, kept(3))] }
     expect(offersAllChanges(firstLost)).toBe(false)
     expect(editIndex(firstLost, null)).toBe(1)
@@ -212,11 +213,90 @@ describe('the Change view on a request', () => {
   test('a pill selects its file at that call’s first edit', () => {
     const requests = transcriptRequests(transcript)
     const selection = pillSelection('child', requests, second, '/w/login.ts')
-    expect(selection).toEqual({ node: 'child', request: 'u1', file: '/w/login.ts', edit: { call: 'c2', segment: 0 } })
+    expect(selection).toEqual({ node: 'child', request: 'u1', file: '/w/login.ts', edit: { call: 'c2', path: '/w/login.ts', segment: 0 } })
     const at = editIndex(login, selection!.edit)
     expect(at).toBe(2)
     expect(selectionCopies(login, at)).toEqual({ original: blob(3), modified: blob(4) })
     // The first call's pill starts at its first segment, not its last.
     expect(editIndex(login, pillSelection(null, requests, first, '/w/login.ts')!.edit)).toBe(0)
+  })
+})
+
+describe('a request across renames and removals', () => {
+  /**
+   * The design's example: one call writes the new page outside the
+   * workspace, the next moves it over the existing page, and a later one
+   * makes a scratch file that the last removes.
+   */
+  const write = shellCall('c1', 'Write the new page', [edited('/tmp/page.ts.new', 0, 1, 'added')])
+  const place = shellCall('c2', 'Put the new page in place', [edited('/w/src/page.ts', 10)], [
+    { kind: 'renamed', from: '/tmp/page.ts.new', to: '/w/src/page.ts' },
+  ])
+  const scratch = shellCall('c3', 'Make a scratch file', [edited('/w/scratch.txt', 20, 1, 'added')])
+  const clean = shellCall('c4', 'Remove the scratch file', [], [{ kind: 'removed', path: '/w/scratch.txt' }])
+  const request = transcriptRequests([userBlock('u', 't', 'Replace the page'), write, place, scratch, clean]).requests[0]!
+
+  test('lists its files as they stand after its latest call', () => {
+    expect(request.files.map((file) => [file.path, file.kind])).toEqual([['/w/src/page.ts', 'modified']])
+  })
+
+  test('a renamed file keeps its earlier edits, each under the name it was made under', () => {
+    const page = request.files[0]!
+    expect(page.edits.map((edit) => `${edit.call} ${edit.path} ${edit.title}`)).toEqual([
+      'c1 /tmp/page.ts.new Write the new page',
+      'c2 /w/src/page.ts Put the new page in place',
+    ])
+    // All Changes spans the page that was there before to the new one, not
+    // the creation of the file that replaced it.
+    expect(selectionCopies(page, null)).toEqual({ original: blob(10), modified: blob(11) })
+  })
+
+  test('a pill opens its file under its new name, and a removed file’s opens nothing', () => {
+    const requests = transcriptRequests([userBlock('u', 't', 'Replace the page'), write, place, scratch, clean])
+    const selection = pillSelection(null, requests, write, '/tmp/page.ts.new')
+    expect(selection).toEqual({
+      node: null,
+      request: 'u',
+      file: '/w/src/page.ts',
+      edit: { call: 'c1', path: '/tmp/page.ts.new', segment: 0 },
+    })
+    expect(editIndex(requests.requests[0]!.files[0]!, selection!.edit)).toBe(0)
+    expect(pillSelection(null, requests, scratch, '/w/scratch.txt')).toBeNull()
+  })
+
+  test('a folder moves and goes with everything in it, and a rename onto a listed file merges into it', () => {
+    const edit = shellCall('e1', 'Edit the files', [
+      edited('/w/old/x.ts', 1),
+      edited('/w/old.ts', 3),
+      edited('/w/tmp/t1.ts', 5, 1, 'added'),
+      edited('/w/tmp/deep/t2.ts', 7, 1, 'added'),
+      edited('/w/tmp.ts', 9),
+      edited('/w/a.ts', 11),
+      edited('/w/b.ts', 13),
+    ])
+    const move = shellCall('e2', 'Rearrange them', [edited('/w/b.ts', 30)], [
+      { kind: 'renamed', from: '/w/old', to: '/w/moved' },
+      { kind: 'removed', path: '/w/tmp' },
+      { kind: 'renamed', from: '/w/a.ts', to: '/w/b.ts' },
+    ])
+    const files = transcriptRequests([userBlock('u', 't', 'Tidy up'), edit, move]).requests[0]!.files
+    expect(files.map((file) => [file.path, file.kind])).toEqual([
+      ['/w/moved/x.ts', 'added'],
+      ['/w/old.ts', 'modified'],
+      ['/w/tmp.ts', 'modified'],
+      ['/w/b.ts', 'modified'],
+    ])
+    expect(files[3]!.edits.map((entry) => `${entry.call} ${entry.path}`)).toEqual(['e1 /w/b.ts', 'e1 /w/a.ts', 'e2 /w/b.ts'])
+    // A work group of the later call alone knows nothing of the earlier one's files.
+    expect(callFiles([move]).map((file) => file.path)).toEqual(['/w/b.ts'])
+  })
+
+  test('a file made again after its removal starts anew', () => {
+    const files = transcriptRequests([
+      userBlock('u', 't', 'Redo the notes'),
+      shellCall('n1', 'Write notes', [edited('/w/notes.md', 1, 1, 'added')]),
+      shellCall('n2', 'Rewrite notes', [edited('/w/notes.md', 40, 1, 'added')], [{ kind: 'removed', path: '/w/notes.md' }]),
+    ]).requests[0]!.files
+    expect(files.map((file) => `${file.path} ${file.edits.map((entry) => entry.call).join()}`)).toEqual(['/w/notes.md n2'])
   })
 })

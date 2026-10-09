@@ -25,7 +25,15 @@ import PreviewPair from './PreviewPair.vue'
 import TreeFrame from './TreeFrame.vue'
 import { emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources } from './changes'
 import { diffLineCounts } from './diff-counts'
-import { editIndex, offersAllChanges, selectionCopies, type RequestEditRef } from './request-changes'
+import {
+  allChangesStart,
+  editIndex,
+  editRef,
+  offersAllChanges,
+  selectionCopies,
+  type RequestEdit,
+  type RequestEditRef,
+} from './request-changes'
 import { TREE_WIDTH } from './file-view'
 import { baseName } from '@demicodes/utils'
 import { relativePath, resolveHostPath } from './paths'
@@ -128,11 +136,18 @@ const editItems = computed(() => [
   ...edits.value.map((entry, index) => ({ id: String(index), label: entry.title, value: `Edit ${index + 1}` })),
 ])
 
-function showEdit(target: { call: string; segment: number } | null | undefined): void {
+function showEdit(target: RequestEdit | null | undefined): void {
   if (target !== undefined) {
-    edit.value = target === null ? null : { call: target.call, segment: target.segment }
+    edit.value = target === null ? null : editRef(target)
   }
 }
+/** In Conversation, the edit the diff starts from: the one shown, or All Changes' first. */
+const startEdit = computed(() => {
+  const file = requestFile.value
+  if (!file)
+    return undefined
+  return editAt.value === null ? allChangesStart(file) : edits.value[editAt.value]
+})
 
 function chooseEdit(id: string, close: () => void): void {
   showEdit(id === 'all' ? null : edits.value[Number(id)])
@@ -142,7 +157,8 @@ const absolutePath = computed(() => resolveHostPath(props.root, selectedChange.v
 /**
  * The file the view shows, named over it as a diff's file header names it on
  * GitHub: its folder from the workspace, its name, and where a renamed file
- * came from.
+ * came from: in Conversation, the name the shown diff starts under, when a
+ * later call renamed the file.
  */
 const heading = computed(() => {
   const change = selectedChange.value
@@ -150,7 +166,11 @@ const heading = computed(() => {
     return null
   const shown = relativePath(props.root, absolutePath.value)
   const folder = shown.slice(0, shown.lastIndexOf('/') + 1)
-  const from = 'from' in change && change.from ? relativePath(props.root, resolveHostPath(props.root, change.from)) : null
+  const start = startEdit.value
+  const renamed = mode.value === 'conversation'
+    ? start && start.path !== change.path ? start.path : undefined
+    : 'from' in change ? change.from : undefined
+  const from = renamed ? relativePath(props.root, resolveHostPath(props.root, renamed)) : null
   return { folder, name: baseName(absolutePath.value), from, deleted: change.kind === 'deleted' }
 })
 const treeAvailable = computed(() => mode.value === 'uncommitted'
@@ -193,7 +213,7 @@ const hasBefore = computed(() => {
   if (mode.value === 'uncommitted')
     return change.kind !== 'added'
   // A request's edit that created the file, or All Changes from before it, has nothing before it.
-  return !edits.value[editAt.value ?? 0]?.created
+  return !startEdit.value?.created
 })
 const hasAfter = computed(() => selectedChange.value?.kind !== 'deleted')
 const labels = computed(() => mode.value === 'conversation'

@@ -7,8 +7,8 @@ use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use demi_shared_types::{
-    BinaryStdout, CommandId, EditedFile, NodeId, OutputView, Sequence, ShellId, StreamKind,
-    StreamView,
+    BinaryStdout, CommandId, EditedFile, NodeId, OutputView, PathChange, Sequence, ShellId,
+    StreamKind, StreamView,
 };
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
@@ -277,6 +277,8 @@ pub struct BinaryOutput {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditedFiles {
     pub files: Vec<EditedFile>,
+    /// The renames and removals of its embedded utilities, in order.
+    pub path_changes: Vec<PathChange>,
     /// Whether the list was cut.
     pub truncated: bool,
 }

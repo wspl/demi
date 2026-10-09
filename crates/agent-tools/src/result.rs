@@ -633,6 +633,10 @@ fn shell_view(status: &CommandStatus, text: &OutputText) -> ShellToolView {
         view_truncated: cut,
         files: status.files.as_ref().map(|files| files.files.clone()),
         files_truncated: status.files.as_ref().map(|files| files.truncated),
+        path_changes: status
+            .files
+            .as_ref()
+            .map_or_else(Vec::new, |files| files.path_changes.clone()),
     }
 }
 

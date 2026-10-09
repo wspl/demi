@@ -582,6 +582,8 @@ pub fn remove(files: &[&OsStr], options: &Options) -> bool {
                 }
 
                 any_files_processed = true;
+                // One removal per argument, a folder with all in it.
+                let _edit = uucore::context::edit_remove(file);
                 if metadata.context_is_dir() {
                     handle_dir(file, options, progress_bar.as_ref())
                 } else if is_symlink_dir(&metadata) {

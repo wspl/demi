@@ -11,7 +11,7 @@ function derived(modified: string): RequestFile[] {
   return [{
     path: 'src/app.ts',
     kind: 'modified',
-    edits: [{ call: 'call-1', title: 'Edit src/app.ts', segment: 0, created: false, copies: { original: 'a'.repeat(64), modified } }],
+    edits: [{ call: 'call-1', title: 'Edit src/app.ts', path: 'src/app.ts', segment: 0, created: false, copies: { original: 'a'.repeat(64), modified } }],
   }]
 }
 

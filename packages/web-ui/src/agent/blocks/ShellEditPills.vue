@@ -17,14 +17,16 @@ const call = computed(() => storedShellView(props.block))
 const select = useEditSelection()
 const transcript = useTranscript()
 
-/** What each pill opens, by path; none while the call belongs to no request. */
+/**
+ * What each pill opens, by path; none while the call belongs to no request,
+ * or once a later call of it removed the file.
+ */
 function selection(path: string) {
   return transcript ? pillSelection(transcript.node, transcript.requests(), props.block, path) : null
 }
-const selectable = computed(() => {
-  const first = call.value?.files?.[0]
-  return select() !== undefined && first !== undefined && selection(first.path) !== null
-})
+function selectable(path: string): boolean {
+  return select() !== undefined && selection(path) !== null
+}
 
 function pick(path: string): void {
   const picked = selection(path)

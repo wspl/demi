@@ -63,6 +63,7 @@ export {
 // A request's changes: what the `edit` intent names, and the files the Change view lists.
 export {
   requestEditSelectionSchema,
+  sameEditRef,
   sameRequestFiles,
   type RequestChangeSource,
   type RequestEdit,

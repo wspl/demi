@@ -18,13 +18,20 @@ const props = withDefaults(
   defineProps<{
     files: ChangeFile[]
     maxRows?: number
-    /** A pill opens its file's edit; otherwise the pills only name the files. */
-    selectable?: boolean
+    /**
+     * Which pills open their file's edit, all or each by its path; any
+     * other only names its file.
+     */
+    selectable?: boolean | ((path: string) => boolean)
   }>(),
   { maxRows: 3, selectable: true },
 )
 
 const emit = defineEmits<{ select: [path: string] }>()
+
+function opens(path: string): boolean {
+  return typeof props.selectable === 'function' ? props.selectable(path) : props.selectable
+}
 
 const container = ref<HTMLElement>()
 const pillEls = ref<HTMLElement[]>([])
@@ -89,15 +96,15 @@ watch([() => props.files, expanded], () => { void measure() })
     class="flex min-w-0 flex-wrap items-center gap-1"
   >
     <component
-      :is="selectable ? 'button' : 'span'"
-      :type="selectable ? 'button' : undefined"
+      :is="opens(file.path) ? 'button' : 'span'"
+      :type="opens(file.path) ? 'button' : undefined"
       v-for="(file, index) in files"
       v-show="index < visibleCount"
       :key="file.path"
       ref="pillEls"
       class="group/pill inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full pl-1.5 pr-2 text-xs leading-4 text-fg-muted transition-colors duration-200 ease-out"
-      :class="selectable ? 'btn [--shadow-btn:var(--shadow-pill)] hover:text-fg-body' : 'bg-btn shadow-[var(--shadow-pill)]'"
-      @click="selectable && emit('select', file.path)"
+      :class="opens(file.path) ? 'btn [--shadow-btn:var(--shadow-pill)] hover:text-fg-body' : 'bg-btn shadow-[var(--shadow-pill)]'"
+      @click="opens(file.path) && emit('select', file.path)"
       :title="file.from ? `${file.from} → ${file.path}` : file.path"
     >
       <!-- The pills stand under the row they belong to, quieter than it: the

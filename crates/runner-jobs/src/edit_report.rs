@@ -1,20 +1,29 @@
 //! Convert retained edit snapshots to the runner's completed-job report.
 
-use demi_command_protocol::EDIT_FILE_BYTES;
+use demi_command_protocol::{EDIT_FILE_BYTES, PathChange};
 use demi_command_sdk::edits::Recorder;
 use demi_runner_process::file_diff::line_counts;
 use demi_runner_protocol::wire;
 use std::io::Read;
 
-pub fn finish(recorder: Option<&Recorder>) -> (Vec<wire::JobFileChange>, bool) {
+/// What a job's `job_exit` reports of its edits (`edit-tracking.md`
+/// § The report).
+#[derive(Default)]
+pub struct EditReport {
+    pub files: Vec<wire::JobFileChange>,
+    pub path_changes: Vec<PathChange>,
+    pub truncated: bool,
+}
+
+pub fn finish(recorder: Option<&Recorder>) -> EditReport {
     let Some(recorder) = recorder else {
-        return (Vec::new(), false);
+        return EditReport::default();
     };
     let journal = match recorder.report() {
         Ok(journal) => journal,
         Err(error) => {
             tracing::warn!("edit report failed: {error}");
-            return (Vec::new(), false);
+            return EditReport::default();
         }
     };
     let files = journal
@@ -54,7 +63,11 @@ pub fn finish(recorder: Option<&Recorder>) -> (Vec<wire::JobFileChange>, bool) {
             }
         })
         .collect();
-    (files, journal.files_truncated)
+    EditReport {
+        files,
+        path_changes: journal.path_changes,
+        truncated: journal.files_truncated,
+    }
 }
 
 fn read_snapshot(path: &String) -> std::io::Result<Vec<u8>> {

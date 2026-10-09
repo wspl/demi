@@ -79,7 +79,7 @@ pub use session::{ContextUsage, PendingCall, PendingSteer, QueuedMessage, Sessio
 pub use time::{Clock, SystemClock, Timestamp, TimestampError};
 pub use view::{
     BinaryStdout, EditCopies, EditKind, EditSegment, EditedFile, OutputChunk, OutputView,
-    ShellToolView, ShellViewStatus, StreamKind, StreamView, ToolView,
+    PathChange, ShellToolView, ShellViewStatus, StreamKind, StreamView, ToolView,
 };
 
 use serde::de::DeserializeOwned;
