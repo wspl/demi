@@ -52,7 +52,8 @@ pub struct Options {
     /// .cache/native-target in the repository].
     #[arg(long, value_name = "DIRECTORY")]
     pub(crate) artifacts: Option<PathBuf>,
-    /// The Apple SDK, which the Apple targets need.
+    /// The Apple SDK, which the Apple targets need [default: the one xcrun
+    /// --show-sdk-path names on a Mac].
     #[arg(long, env = "SDKROOT", value_name = "DIRECTORY")]
     pub(crate) sdk: Option<PathBuf>,
     /// Builds inside this image of scripts/native/Dockerfile, for a machine
@@ -80,7 +81,7 @@ pub fn run(options: Options) -> Result<(), Error> {
     }
     let targets = super::targets(&executables, &options.targets)?;
     let sdk = if targets.iter().any(|target| apple(target)) {
-        Some(apple_sdk(options.sdk.as_deref())?)
+        Some(apple_sdk(options.sdk.as_deref(), xcrun_sdk)?)
     } else {
         None
     };
@@ -122,15 +123,24 @@ pub fn run(options: Options) -> Result<(), Error> {
     Ok(())
 }
 
-/// The Apple SDK at `named`, checked against the pin.
-fn apple_sdk(named: Option<&Path>) -> Result<PathBuf, Error> {
+/// The Apple SDK at `named` (`--sdk` or `SDKROOT`), or else the one
+/// `found` names, as Apple's own tools find it; checked against the pin
+/// either way.
+fn apple_sdk(
+    named: Option<&Path>,
+    found: impl FnOnce() -> Option<PathBuf>,
+) -> Result<PathBuf, Error> {
     /// What the check reads of the SDK's settings.
     #[derive(Deserialize)]
     struct Settings {
         #[serde(rename = "Version")]
         version: String,
     }
-    let sdk = std::path::absolute(named.ok_or(Error::NoSdk)?)?;
+    let sdk = match named {
+        Some(named) => named.to_path_buf(),
+        None => found().ok_or(Error::NoSdk)?,
+    };
+    let sdk = std::path::absolute(sdk)?;
     let path = sdk.join("SDKSettings.json");
     let unreadable = |reason: String| Error::SdkSettings {
         path: path.clone(),
@@ -146,6 +156,24 @@ fn apple_sdk(named: Option<&Path>) -> Result<PathBuf, Error> {
         });
     }
     Ok(sdk)
+}
+
+/// The SDK `xcrun --show-sdk-path` names on a Mac; none elsewhere, or when
+/// xcrun cannot name one. Its failure is not an error of its own: the build
+/// then stops with [`Error::NoSdk`], which says how to name the SDK.
+fn xcrun_sdk() -> Option<PathBuf> {
+    if Platform::HOST != Platform::Mac {
+        return None;
+    }
+    let output = Command::new("xcrun")
+        .arg("--show-sdk-path")
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()
+        .filter(|output| output.status.success())?;
+    let path = String::from_utf8(output.stdout).ok()?;
+    let path = path.trim_end();
+    (!path.is_empty()).then(|| PathBuf::from(path))
 }
 
 /// Checks that the Visual Studio environment a Windows build runs in,
@@ -451,22 +479,34 @@ mod tests {
             "pinned",
             Some(r#"{"CanonicalName":"macosx26.5","Version":"26.5"}"#),
         );
-        assert_eq!(apple_sdk(Some(&pinned)).unwrap(), pinned);
+        let none = || None;
+        assert_eq!(apple_sdk(Some(&pinned), none).unwrap(), pinned);
+        // Without --sdk or SDKROOT, the SDK xcrun names, checked the same
+        // way.
+        assert_eq!(
+            apple_sdk(None, || Some(pinned.clone())).unwrap(),
+            pinned
+        );
         let older = sdk(
             "older",
             Some(r#"{"CanonicalName":"macosx15.2","Version":"15.2"}"#),
         );
-        let refused = apple_sdk(Some(&older));
+        let refused = apple_sdk(Some(&older), none);
         assert!(
             matches!(&refused, Err(Error::SdkVersion { found, .. }) if found == "15.2"),
             "{refused:?}"
         );
         let empty = sdk("empty", None);
         assert!(matches!(
-            apple_sdk(Some(&empty)),
+            apple_sdk(Some(&empty), none),
             Err(Error::SdkSettings { .. })
         ));
-        assert!(matches!(apple_sdk(None), Err(Error::NoSdk)));
+        let xcrun_older = apple_sdk(None, || Some(older.clone()));
+        assert!(
+            matches!(&xcrun_older, Err(Error::SdkVersion { found, .. }) if found == "15.2"),
+            "{xcrun_older:?}"
+        );
+        assert!(matches!(apple_sdk(None, none), Err(Error::NoSdk)));
     }
 
     #[test]
