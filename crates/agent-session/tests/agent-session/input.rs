@@ -1,13 +1,15 @@
-//! Input that waits for a boundary (`runtime.md` § Input, § Yield wakeups,
-//! `subagents.md` § Communication): human steers, agent messages and yield
-//! wakeups.
+//! Input that waits for a boundary (`runtime.md` § Input, § Send now,
+//! § Yield wakeups, `subagents.md` § Communication): human steers, also
+//! sent now, agent messages and yield wakeups.
 
 use demi_agent_store::ScheduledWakeup;
 use demi_agent_transcript::testing::{WAKEUP_TEXT, agent_message_envelope};
 use demi_provider_common::testing::TokioClock;
+use demi_agent_session::WindowEnd;
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, BlockId, CompletionOutcome, PendingSteer, WakeupPlacement,
 };
+use tokio_util::sync::CancellationToken;
 
 use super::*;
 
@@ -203,37 +205,198 @@ async fn a_stop_writes_the_pending_steers_before_its_marker_and_a_steer_needs_a_
     );
 }
 
+/// How a watching tool's window ended, and the token that would stop its
+/// command.
+type Watched = Rc<RefCell<Option<(WindowEnd, CancellationToken)>>>;
+
+/// A tool that watches its command as a shell tool does, until input or a
+/// send now ends its window, and answers what ended it.
+fn watching_tool() -> ((String, Invoke), Watched, oneshot::Receiver<()>) {
+    let (started, started_rx) = oneshot::channel();
+    let started = Rc::new(RefCell::new(Some(started)));
+    let watched: Watched = Rc::default();
+    let ended = watched.clone();
+    let invoke = tool("watch", move |call| {
+        if let Some(started) = started.borrow_mut().take() {
+            let _ = started.send(());
+        }
+        let ended = ended.clone();
+        Box::pin(async move {
+            let end = call.arrival.arrived().await;
+            *ended.borrow_mut() = Some((end, call.cancel));
+            Ok(output(match end {
+                WindowEnd::SentNow => "moved to the background",
+                WindowEnd::Input => "input arrived",
+            }))
+        })
+    });
+    (invoke, watched, started_rx)
+}
+
+/// Each request's tool results' texts, by call id.
+fn sent_results(items: &[InferenceItem]) -> Vec<(String, Vec<ResultPart>)> {
+    items
+        .iter()
+        .filter_map(|item| match item {
+            InferenceItem::ToolResult {
+                tool_use_id,
+                output,
+                ..
+            } => Some((tool_use_id.clone(), output.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
 #[tokio::test(flavor = "local")]
-async fn a_queued_message_becomes_a_steer_of_the_running_turn() {
+async fn steer_now_returns_the_running_call_at_once_and_the_turn_goes_on_with_the_steer() {
     let provider = ScriptedRuntime::new([
         Turn::Events(vec![
-            event::tool_call("call-1", "hold", json!({})),
+            event::tool_call("call-1", "watch", json!({})),
+            event::tool_call("call-2", "later", json!({})),
             event::response(1, 1),
         ]),
-        Turn::Events(vec![event::text("both done"), event::response(1, 1)]),
+        Turn::Events(vec![event::text("skipping them"), event::response(1, 1)]),
     ]);
     let store = MemoryTreeStore::new();
-    let (hold, releases, started) = gated_tool("hold");
-    let session = start(&provider, vec![hold], &store, SessionConfig::default()).await;
+    let (watch, watched, started) = watching_tool();
+    let (later, later_runs) = counted("later", "ran");
+    let session = start(&provider, vec![watch, later], &store, SessionConfig::default()).await;
+    let running = session.send(text("run the tests"), turn("t1")).unwrap();
+    started.await.unwrap();
+
+    session.steer(text("skip the e2e tests"), steer_id("s1")).unwrap();
+    session.steer_now(&steer_id("s1"));
+
+    assert_eq!(running.await, Ok(ActionEnd::Completed));
+    // The call returned for the send now, and nothing stops its command.
+    let (end, command) = watched.borrow_mut().take().unwrap();
+    assert_eq!(end, WindowEnd::SentNow);
+    assert!(!command.is_cancelled());
+    // The call after it never ran.
+    assert_eq!(later_runs.get(), 0);
+    let blocks = session.transcript().blocks;
+    assert_eq!(
+        kinds(&blocks),
+        [
+            "user",
+            "tool_call:completed",
+            "tool_call:error",
+            "response",
+            "steer",
+            "text",
+            "response"
+        ]
+    );
+    assert_eq!(
+        tool_output(&blocks[2]),
+        (
+            ToolCallStatus::Error,
+            texts(&["Tool call not run: the user sent a message"])
+        )
+    );
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(steers(&requests[1].items), ["skip the e2e tests"]);
+    assert_eq!(
+        sent_results(&requests[1].items),
+        [
+            ("call-1".to_owned(), sent_texts(&["moved to the background"])),
+            (
+                "call-2".to_owned(),
+                sent_texts(&["Tool call not run: the user sent a message"])
+            ),
+        ]
+    );
+    assert!(session.pending_steers().is_empty());
+}
+
+#[tokio::test(flavor = "local")]
+async fn steer_now_cuts_the_stream_where_it_is_and_the_next_request_carries_the_steer() {
+    let provider = ScriptedRuntime::new([
+        partial_then_hang("Running the whole sui"),
+        Turn::Events(vec![event::text("skipping them"), event::response(1, 1)]),
+    ]);
+    let store = MemoryTreeStore::new();
+    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
+    let running = session.send(text("run the tests"), turn("t1")).unwrap();
+    until(|| session.transcript().blocks.len() == 2).await;
+
+    // A steer that is no longer pending changes nothing.
+    session.steer_now(&steer_id("missing"));
+    session.steer(text("skip the e2e tests"), steer_id("s1")).unwrap();
+    session.steer_now(&steer_id("s1"));
+
+    assert_eq!(running.await, Ok(ActionEnd::Completed));
+    assert_eq!(
+        kinds(&session.transcript().blocks),
+        ["user", "text", "steer", "text", "response"]
+    );
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 2);
+    // What streamed stays, and the next request goes on from it.
+    assert_eq!(
+        item_kinds(&requests[1].items),
+        ["user_message", "assistant_text", "user_steer"]
+    );
+    assert_eq!(steers(&requests[1].items), ["skip the e2e tests"]);
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_queued_message_sent_now_ends_the_turn_without_a_marker_and_runs_next() {
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![
+            event::tool_call("call-1", "watch", json!({})),
+            event::response(1, 1),
+        ]),
+        Turn::Events(vec![event::text("third first"), event::response(1, 1)]),
+        Turn::Events(vec![event::text("then second"), event::response(1, 1)]),
+    ]);
+    let store = MemoryTreeStore::new();
+    let (watch, watched, started) = watching_tool();
+    let session = start(&provider, vec![watch], &store, SessionConfig::default()).await;
     let running = session.send(text("first"), turn("t1")).unwrap();
     started.await.unwrap();
-    let queued = session.send(text("second"), turn("t2")).unwrap();
+    let second = session.send(text("second"), turn("t2")).unwrap();
+    let third = session.send(text("third"), turn("t3")).unwrap();
+    session.steer(text("pending"), steer_id("s1")).unwrap();
 
-    assert_eq!(
-        session.steer_queued_message(&turn("missing"), steer_id("s0")),
-        Ok(false)
-    );
-    assert_eq!(
-        session.steer_queued_message(&turn("t2"), steer_id("s1")),
-        Ok(true)
-    );
+    assert!(!session.send_queued_message(&turn("missing")));
+    assert!(session.send_queued_message(&turn("t3")));
 
-    assert_eq!(queued.await, Ok(ActionEnd::Dropped));
-    assert!(session.queued_messages().is_empty());
-    assert_eq!(session.pending_steers()[0].content, text("second"));
-    let _ = releases.borrow_mut().remove(0).send(());
-    running.await.unwrap();
-    assert_eq!(steers(&provider.requests()[1].items), ["second"]);
+    assert_eq!(running.await, Ok(ActionEnd::Completed));
+    assert_eq!(third.await, Ok(ActionEnd::Completed));
+    assert_eq!(second.await, Ok(ActionEnd::Completed));
+    let (end, command) = watched.borrow_mut().take().unwrap();
+    assert_eq!(end, WindowEnd::SentNow);
+    assert!(!command.is_cancelled());
+    // The turn ended at the boundary with the pending steer written, and no
+    // stopped marker; the message sent now ran before the one it passed.
+    assert_eq!(
+        kinds(&session.transcript().blocks),
+        [
+            "user",
+            "tool_call:completed",
+            "response",
+            "steer",
+            "user",
+            "text",
+            "response",
+            "user",
+            "text",
+            "response"
+        ]
+    );
+    let users: Vec<String> = session
+        .transcript()
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::User(user) => Some(user.turn_id.to_string()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(users, ["t1", "t3", "t2"]);
 }
 
 #[tokio::test(flavor = "local")]

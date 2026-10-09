@@ -800,17 +800,18 @@ async fn the_context_sources_are_asked_at_once_and_answer_in_their_order() {
 }
 
 #[tokio::test(flavor = "local")]
-async fn messages_sent_during_a_turn_wait_in_the_queue_which_the_client_reorders_and_empties() {
-    let (release, release_third) = (Gate::new(), Gate::new());
-    let first = held(&release, vec![event::text("one"), event::response(1, 1)]);
-    let third = held(
-        &release_third,
+async fn messages_sent_during_a_turn_wait_in_the_queue_which_the_client_empties_or_sends_now() {
+    let release_second = Gate::new();
+    let second = held(
+        &release_second,
         vec![event::text("two"), event::response(1, 1)],
     );
+    // The first message's reply never comes: sending the third now ends its
+    // turn.
     let script = ScriptedRuntime::new([
-        first,
+        Turn::pending(),
         Turn::Events(vec![event::text("three"), event::response(1, 1)]),
-        third,
+        second,
     ]);
     let fixture = Fixture::new(&script);
     let mut client = fixture.opened().await;
@@ -823,6 +824,7 @@ async fn messages_sent_during_a_turn_wait_in_the_queue_which_the_client_reorders
     ] {
         client.send(send(id, text)).await;
     }
+    until(|| script.requests().len() == 1).await;
     let queue_ids = |frame: &ServerFrame| match frame {
         ServerFrame::Queue { queue } => Some(
             queue
@@ -834,15 +836,17 @@ async fn messages_sent_during_a_turn_wait_in_the_queue_which_the_client_reorders
     };
 
     client
-        .send(ClientFrame::SendQueuedMessage {
-            message_id: crate::support::turn("m3"),
-        })
-        .await;
-    client
         .send(ClientFrame::DequeueMessage {
             message_id: crate::support::turn("m4"),
         })
         .await;
+    client
+        .send(ClientFrame::SendQueuedMessage {
+            message_id: crate::support::turn("m3"),
+        })
+        .await;
+    // m3 runs at once, then m2, whose reply waits.
+    until(|| script.requests().len() == 3).await;
     let queues: Vec<Vec<String>> = client.received().iter().filter_map(queue_ids).collect();
     assert_eq!(
         queues,
@@ -851,15 +855,15 @@ async fn messages_sent_during_a_turn_wait_in_the_queue_which_the_client_reorders
             vec!["m2", "m3"],
             vec!["m2", "m3", "m4"],
             vec!["m2", "m3", "m4", "m5"],
-            vec!["m3", "m2", "m4", "m5"],
+            vec!["m2", "m3", "m5"],
             vec!["m3", "m2", "m5"],
+            vec!["m2", "m5"],
+            vec!["m5"],
         ]
     );
-    // m1 and m3 run; while m2 runs, the queue that is left is cleared.
-    release.open();
-    until(|| script.requests().len() == 3).await;
+    // While m2 runs, the queue that is left is cleared.
     client.send(ClientFrame::ClearMessageQueue {}).await;
-    release_third.open();
+    release_second.open();
     let tree = fixture.server.tree(&conversation()).unwrap();
     tree.root().session().settled().await;
     let users: Vec<String> = tree

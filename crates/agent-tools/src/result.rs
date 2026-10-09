@@ -31,14 +31,16 @@ const RUNNING_NEXT: &str = "next: command is still running; look again with shel
 
 /// A shell tool's outcome for `status`: its text, the media it attaches and
 /// the lines about them, and its view. `model` is the call's, and its
-/// vendor takes requests within `limits`.
+/// vendor takes requests within `limits`; `sent_now` says that the user's
+/// send now ended the call's window.
 pub(super) async fn shell_outcome(
     status: &CommandStatus,
     model: &Model,
     limits: RequestLimits,
+    sent_now: bool,
 ) -> ToolOutcome {
     let text = unseen_output(status);
-    let mut output = vec![ResultPart::Text(result_text(status, &text))];
+    let mut output = vec![ResultPart::Text(result_text(status, &text, sent_now))];
     if let CommandState::Exited {
         binary_stdout,
         media,
@@ -81,8 +83,10 @@ fn unseen_output(status: &CommandStatus) -> OutputText {
 /// The lines the model reads: the status, the handles and timings that
 /// matter, the output since the model's last look within the replay bound,
 /// while the command runs each stream's newest lines beyond its start, and
-/// the next step.
-fn result_text(status: &CommandStatus, text: &OutputText) -> String {
+/// the next step, after the line that says the command moved to the
+/// background when the user's send now ended the window
+/// (`runtime.md` § Send now).
+fn result_text(status: &CommandStatus, text: &OutputText, sent_now: bool) -> String {
     let command = &status.command_id;
     let running = matches!(status.state, CommandState::Running { .. });
     let mut before = vec![format!("status: {}", view_status(&status.state))];
@@ -109,6 +113,11 @@ fn result_text(status: &CommandStatus, text: &OutputText) -> String {
     }
     match &status.state {
         CommandState::Running { hint } => {
+            if sent_now {
+                after.push(format!(
+                    "[The user sent a message, so command {command} moved to the background. It keeps running.]"
+                ));
+            }
             after.push(hint.clone().unwrap_or_else(|| RUNNING_NEXT.to_owned()));
         }
         CommandState::Aborted => after.push("next: command was intentionally stopped.".to_owned()),
@@ -739,7 +748,7 @@ mod tests {
     }
 
     async fn result(status: &CommandStatus) -> String {
-        let outcome = shell_outcome(status, &test_model().model, RequestLimits::default()).await;
+        let outcome = shell_outcome(status, &test_model().model, RequestLimits::default(), false).await;
         text_of(&outcome)[0].to_owned()
     }
 
@@ -950,7 +959,7 @@ mod tests {
             }),
             media: Vec::new(),
         };
-        let outcome = shell_outcome(&status, model, limits).await;
+        let outcome = shell_outcome(&status, model, limits, false).await;
         text_of(&outcome)[1..].join(" | ")
     }
 
@@ -1071,7 +1080,7 @@ mod tests {
             }),
             media,
         };
-        let outcome = shell_outcome(&status, model, limits).await;
+        let outcome = shell_outcome(&status, model, limits, false).await;
         text_of(&outcome)[1..]
             .iter()
             .flat_map(|part| part.lines())

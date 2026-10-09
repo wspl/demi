@@ -43,21 +43,21 @@ pub enum ClientFrame {
         #[garde(skip)]
         steer_id: BlockId,
     },
+    /// Deliver a pending steer now (`runtime.md` § Send now).
+    SteerNow {
+        #[garde(skip)]
+        steer_id: BlockId,
+    },
     DequeueMessage {
         #[garde(skip)]
         message_id: TurnId,
     },
-    /// Move a queued message to the front, so that it runs next.
+    /// Send a queued message now (`runtime.md` § Send now): while a turn
+    /// runs, the turn ends at once and the message runs next; otherwise it
+    /// moves to the front of the queue.
     SendQueuedMessage {
         #[garde(skip)]
         message_id: TurnId,
-    },
-    /// Turn a queued message into a steer of the running turn.
-    SteerQueuedMessage {
-        #[garde(skip)]
-        message_id: TurnId,
-        #[garde(skip)]
-        steer_id: BlockId,
     },
     ClearMessageQueue {},
     /// Stop one thing (`runtime.md` § Stop).
@@ -98,9 +98,9 @@ pub enum ClientFrameKind {
     EditAndSend,
     Steer,
     CancelPendingSteer,
+    SteerNow,
     DequeueMessage,
     SendQueuedMessage,
-    SteerQueuedMessage,
     ClearMessageQueue,
     Abort,
     AbortSubagents,
@@ -125,9 +125,9 @@ impl ClientFrame {
             Self::EditAndSend { .. } => ClientFrameKind::EditAndSend,
             Self::Steer { .. } => ClientFrameKind::Steer,
             Self::CancelPendingSteer { .. } => ClientFrameKind::CancelPendingSteer,
+            Self::SteerNow { .. } => ClientFrameKind::SteerNow,
             Self::DequeueMessage { .. } => ClientFrameKind::DequeueMessage,
             Self::SendQueuedMessage { .. } => ClientFrameKind::SendQueuedMessage,
-            Self::SteerQueuedMessage { .. } => ClientFrameKind::SteerQueuedMessage,
             Self::ClearMessageQueue {} => ClientFrameKind::ClearMessageQueue,
             Self::Abort {} => ClientFrameKind::Abort,
             Self::AbortSubagents {} => ClientFrameKind::AbortSubagents,
