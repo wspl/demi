@@ -225,6 +225,7 @@ fn yield_tool() -> (String, Invoke) {
                 effect: Some(ToolEffect::ScheduleYield {
                     duration_ms,
                     commands,
+                    above_cap: None,
                 }),
                 ..output("")
             })

@@ -47,6 +47,14 @@ where
 /// The longest window a shell tool watches, and the longest yield.
 const MAX_DELAY_MS: u32 = 600_000;
 
+/// A delay's description in the model's schema: what it is for, and the cap
+/// a larger value is taken as (`runtime.md` § Tool input).
+fn delay(purpose: &str) -> String {
+    format!(
+        "{purpose}, in whole milliseconds: at most {MAX_DELAY_MS} (ten minutes); a larger value is taken as {MAX_DELAY_MS}."
+    )
+}
+
 /// What a call's `description` asks of the model: the title the user sees,
 /// which the model writes before the step runs (`runtime.md` § Tool
 /// descriptions).
@@ -62,7 +70,7 @@ pub(super) struct ShellExecInput {
         reason = "the call's title, which the renderer reads from its input"
     )]
     description: NonEmpty,
-    #[schemars(range(min = 1, max = MAX_DELAY_MS))]
+    #[schemars(range(min = 1), description = delay("How long to watch the command"))]
     pub(super) timeout_ms: DelayMs,
 }
 
@@ -78,7 +86,7 @@ pub(super) struct StatusFields {
     #[schemars(with = "String", length(min = 1), description = STDIN)]
     stdin: Option<NonEmpty>,
     #[serde(default, deserialize_with = "unwrap_or_skip::deserialize")]
-    #[schemars(with = "DelayMs", range(min = 1, max = MAX_DELAY_MS), description = WATCH)]
+    #[schemars(with = "DelayMs", range(min = 1), description = delay(WATCH))]
     timeout_ms: Option<DelayMs>,
     #[serde(
         default,
@@ -93,7 +101,7 @@ pub(super) struct StatusFields {
 const STDIN: &str = "Input to write to the command before looking at it, such as an answer to its prompt; end it with a newline for a line-based prompt.";
 
 /// What `shell_status`'s `timeoutMs` asks of the model.
-const WATCH: &str = "How long to wait for the command to end before looking; without it, look at once.";
+const WATCH: &str = "How long to wait for the command to end before looking (without it, look at once)";
 
 /// A `shell_status` call: a look at a command, which writes `stdin` first
 /// when it has some, and then watches the command up to `timeout_ms`. A
@@ -139,7 +147,7 @@ pub(super) struct YieldInput {
         reason = "the call's title, which the renderer reads from its input"
     )]
     description: Option<String>,
-    #[schemars(range(min = 1, max = MAX_DELAY_MS))]
+    #[schemars(range(min = 1), description = delay("How long to wait before you are woken"))]
     pub(super) duration_ms: DelayMs,
     #[serde(default, deserialize_with = "some_numbers")]
     #[schemars(with = "Vec<u64>", length(min = 1), description = COMMANDS)]
@@ -175,25 +183,38 @@ where
         .map(Some)
 }
 
-// Whole milliseconds from 1 to 600,000: the window a shell tool watches, or
-// the wait of a yield. A fraction is refused, not rounded. (A doc comment
-// would become the field's description in the model's schema.)
+// A whole number of milliseconds from 1: the window a shell tool watches,
+// or the wait of a yield. A value above the cap is taken as the cap, and the
+// result says so; a fraction is refused, not rounded. (A doc comment would
+// become the field's description in the model's schema.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
-#[serde(try_from = "u32")]
+#[serde(try_from = "u64")]
 #[schemars(inline)]
-pub(super) struct DelayMs(pub(super) u32);
+pub(super) struct DelayMs(u64);
 
-impl TryFrom<u32> for DelayMs {
+impl DelayMs {
+    /// The delay taken: the one asked for, or the cap when it asks for more.
+    pub(super) fn taken(self) -> u32 {
+        u32::try_from(self.0).map_or(MAX_DELAY_MS, |asked| asked.min(MAX_DELAY_MS))
+    }
+
+    /// The line a result starts with when the delay asked for is above the
+    /// cap, such as `timeoutMs 900000 is above the cap; watched for 600000`:
+    /// `field` names the input, and `taken_as` what was done with the cap.
+    pub(super) fn above_cap(self, field: &str, taken_as: &str) -> Option<String> {
+        (self.0 > u64::from(MAX_DELAY_MS))
+            .then(|| format!("{field} {} is above the cap; {taken_as} {MAX_DELAY_MS}", self.0))
+    }
+}
+
+impl TryFrom<u64> for DelayMs {
     type Error = String;
 
-    fn try_from(milliseconds: u32) -> Result<Self, String> {
-        if (1..=MAX_DELAY_MS).contains(&milliseconds) {
-            Ok(Self(milliseconds))
-        } else {
-            Err(format!(
-                "{milliseconds} is not a whole number of milliseconds from 1 to {MAX_DELAY_MS}"
-            ))
+    fn try_from(milliseconds: u64) -> Result<Self, String> {
+        if milliseconds == 0 {
+            return Err("0 is not a whole number of milliseconds from 1".to_owned());
         }
+        Ok(Self(milliseconds))
     }
 }
 
@@ -253,7 +274,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_schema_declares_integer_windows_string_handles_and_nothing_else() {
+    fn a_schema_declares_integer_windows_with_their_cap_string_handles_and_nothing_else() {
         let exec = schema::<ShellExecInput>();
         assert_eq!(exec["additionalProperties"], false);
         assert_eq!(
@@ -263,7 +284,15 @@ mod tests {
         let properties = &exec["properties"];
         assert_eq!(properties["timeoutMs"]["type"], "integer");
         assert_eq!(properties["timeoutMs"]["minimum"], 1);
-        assert_eq!(properties["timeoutMs"]["maximum"], 600_000);
+        // A larger window is taken as the cap, not refused, so the schema
+        // states the cap in words rather than as a maximum.
+        assert!(properties["timeoutMs"].get("maximum").is_none());
+        assert!(
+            properties["timeoutMs"]["description"]
+                .as_str()
+                .unwrap()
+                .contains("at most 600000 (ten minutes); a larger value is taken as 600000")
+        );
         assert_eq!(
             properties["description"],
             json!({"type": "string", "minLength": 1, "description": DESCRIPTION})
@@ -278,9 +307,11 @@ mod tests {
         assert_eq!(status["properties"]["stdin"]["type"], "string");
         assert_eq!(status["properties"]["stdin"]["minLength"], 1);
         assert_eq!(status["properties"]["timeoutMs"]["type"], "integer");
-        assert_eq!(status["properties"]["timeoutMs"]["maximum"], 600_000);
+        assert!(status["properties"]["timeoutMs"].get("maximum").is_none());
         let wait = schema::<YieldInput>();
         assert_eq!(wait["required"], json!(["durationMs"]));
+        assert_eq!(wait["properties"]["durationMs"]["type"], "integer");
+        assert!(wait["properties"]["durationMs"].get("maximum").is_none());
         assert_eq!(wait["properties"]["commandIds"]["type"], "array");
         assert_eq!(wait["properties"]["commandIds"]["minItems"], 1);
         assert_eq!(wait["properties"]["commandIds"]["items"]["type"], "integer");
@@ -304,11 +335,7 @@ mod tests {
             ),
             (
                 json!({"script": "true", "timeoutMs": 0, "description": "Run"}),
-                "timeoutMs: 0 is not a whole number of milliseconds from 1 to 600000",
-            ),
-            (
-                json!({"script": "true", "timeoutMs": 600_001, "description": "Run"}),
-                "timeoutMs: 600001 is not",
+                "timeoutMs: 0 is not a whole number of milliseconds from 1",
             ),
             // A step that starts work names it for the user.
             (
@@ -348,8 +375,6 @@ mod tests {
             ("7", None, Some(DelayMs(5_000)))
         );
         let wait = |input: Value| parse::<YieldInput>("yield", input);
-        let named = wait(json!({"durationMs": 900_000, "commandIds": [17, "18"]}));
-        assert!(named.unwrap_err().contains("durationMs: 900000 is not"));
         let named = wait(json!({"durationMs": 60_000, "commandIds": [17, "18"]})).unwrap();
         let named: Vec<&str> = named
             .command_ids
@@ -369,8 +394,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            (exec.script.as_str(), exec.timeout_ms),
-            ("ls", DelayMs(600_000))
+            (exec.script.as_str(), exec.timeout_ms.taken()),
+            ("ls", 600_000)
         );
+        assert_eq!(exec.timeout_ms.above_cap("timeoutMs", "watched for"), None);
     }
 }
