@@ -77,7 +77,7 @@ test('the changes of a request open in the Change view with the panel, only whil
   product.snapshot = productState({ plugins: [changes] })
   const work = useWorkPanel()
   const state = work.stateFor('a')
-  const edit = { node: null, request: 'user', file: 'index.ts', edit: { call: 'call', segment: 0 } }
+  const edit = { node: null, request: 'user', file: 'index.ts', edit: { call: 'call', path: 'index.ts', segment: 0 } }
   // Off, nothing opens the edit: the transcript's pills are no controls.
   expect(work.canOpen('edit')).toBe(false)
   work.openIn('a', { intent: 'edit', payload: edit })

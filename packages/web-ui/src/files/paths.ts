@@ -31,6 +31,14 @@ export function resolveHostPath(base: string, path: string): string {
     : joinPath(base, normalized)
 }
 
+/**
+ * Whether `path` is `folder` or lies within it, compared as the Host names
+ * them, on either path syntax.
+ */
+export function isWithinPath(path: string, folder: string): boolean {
+  return path === folder || path.startsWith(`${folder}/`) || path.startsWith(`${folder}\\`)
+}
+
 /** The root is its own parent. */
 export function parentPath(path: string): string {
   const normalized = normalizePath(path)
