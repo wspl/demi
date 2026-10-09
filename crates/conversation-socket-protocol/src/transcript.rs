@@ -6,7 +6,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// One change to a transcript. A batch of patches advances the revision by
-/// one; a rewrite of history is one `replace`. `conversation-client`'s one patch
+/// one; a rewrite of history is one `replace`. A block travels without its
+/// entries. `conversation-client`'s one patch
 /// applier applies them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "op", rename_all = "snake_case", rename_all_fields = "camelCase")]
@@ -15,6 +16,8 @@ pub enum TranscriptPatch {
     Add {
         #[garde(skip)]
         index: u32,
+        #[serde(with = "demi_shared_types::client_block")]
+        #[schemars(with = "Block")]
         #[garde(dive)]
         value: Block,
     },
@@ -22,6 +25,8 @@ pub enum TranscriptPatch {
     ReplaceBlock {
         #[garde(skip)]
         index: u32,
+        #[serde(with = "demi_shared_types::client_block")]
+        #[schemars(with = "Block")]
         #[garde(dive)]
         value: Block,
     },
@@ -35,6 +40,8 @@ pub enum TranscriptPatch {
     },
     /// Replace every block.
     Replace {
+        #[serde(with = "demi_shared_types::client_blocks")]
+        #[schemars(with = "Vec<Block>")]
         #[garde(dive)]
         value: Vec<Block>,
     },
