@@ -1516,7 +1516,13 @@ export const useConversations = defineStore('conversations', () => {
     preferences.update({ lastModel: { ...settings } }, true)
   }
 
-  async function send(conversation: Conversation): Promise<void> {
+  /**
+   * Sends the draft as a message, or as a steer of the running turn with
+   * `steer` (`product.md` § Steer or queue). A delivery tried again, as Retry
+   * does, goes as a message: a steer the session already holds is not sent
+   * again, and one it does not hold is answered next.
+   */
+  async function send(conversation: Conversation, way: 'message' | 'steer' = 'message'): Promise<void> {
     if (
       conversation.archived ||
       conversation.pendingSend?.error === null ||
@@ -1541,7 +1547,7 @@ export const useConversations = defineStore('conversations', () => {
       conversation.attachmentIds = []
     }
     const pending = conversation.pendingSend
-    const delivery = deliver(conversation, pending)
+    const delivery = deliver(conversation, pending, way)
     sending.set(conversation.id, delivery)
     try {
       await delivery
@@ -1555,11 +1561,12 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * Delivers the message the conversation holds as sent: makes its record
    * first when it has none, then gives the message to the session with its
-   * id, which takes it once.
+   * id, which takes it once, as a message or as a steer.
    */
   async function deliver(
     conversation: Conversation,
     pending: NonNullable<Conversation['pendingSend']>,
+    way: 'message' | 'steer',
   ): Promise<void> {
     const signal = lifetime.signal
     pending.error = null
@@ -1587,7 +1594,8 @@ export const useConversations = defineStore('conversations', () => {
       })
       // Each file where its capsule stands in the text.
       const content = joinMessageContent(pending.text, references.map((reference) => [reference]))
-      await (await runtimeFor(conversation)).submit(content, pending.id)
+      const runtime = await runtimeFor(conversation)
+      await (way === 'steer' ? runtime.steer(content, pending.id) : runtime.submit(content, pending.id))
       clearSubmission(conversation, pending.id)
     } catch (error) {
       // The page let the conversations go, as a sign-out does, or the message is no longer the one to send.
