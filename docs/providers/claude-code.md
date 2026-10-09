@@ -330,7 +330,9 @@ thinking setting.
   `--session-mirror`, so the CLI prints every entry it adds to the session,
   and `--system-prompt-snapshot off`, so each request carries the system
   prompt and tools the provider passes rather than those recorded in the
-  session;
+  session; and `--mcp-config` naming the SDK MCP server `main`, so the
+  process waits for that server before it answers the session's last input,
+  whose request would otherwise carry no tools;
 - the request's model, system prompt and thinking effort;
 - stream-json input and output with partial messages, so reasoning and text
   stream as they are generated;
@@ -369,6 +371,9 @@ process sent a new prefix and paid for the whole history again, and the model
 read its own tool calls as `[Earlier in this conversation I called the tool
 shell_exec with input: …]`, under names unlike its tools'.
 
+- **Entries are the backend's.** They are stored with the blocks and read by
+  the provider, and never leave the backend: no frame, transcript route or
+  other client-facing form of a block carries them.
 - **Entries are kept on the blocks.** The CLI prints each batch of entries it
   adds to its session (`transcript_mirror`). The provider keeps each entry on
   the block it belongs to, as other vendors' fields are kept on theirs
@@ -399,10 +404,13 @@ shell_exec with input: …]`, under names unlike its tools'.
   describe the Cloud the CLI runs on, not the conversation's Host, which the
   agent learns from its context block
   ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)).
-  So the provider writes that entry itself, with no text, and with the
-  snapshot of the machine the CLI runs on, its run directory, platform, shell
-  and kernel release, which the CLI compares with its own and so adds no
-  other. The `model` and `date` entries are the CLI's and stay true.
+  So the provider writes that entry itself, with a single space as its
+  text, which the CLI leaves out of the request (an empty text makes the CLI
+  render its own), and with the snapshot of the machine the CLI runs on, its
+  run directory, platform, shell and kernel release, which the CLI compares
+  with its own and so adds no other. The placement reads them from the
+  machine before each start: the run directory's real path, `uname -s`,
+  `uname -r` and `$SHELL`. The `model` and `date` entries are the CLI's and stay true.
 - **What cuts or copies history** needs nothing of the CLI: an edit, a retry
   or a resume cuts the blocks, and the next process resumes the file written
   from what remains. A fork copies the blocks with their entries; its file
@@ -597,8 +605,9 @@ a failed installation. The routes are listed in
   message; after the first message is edited, a new process resumes a
   session file written from the edited blocks. A retry of a failed turn,
   which gains no input, starts a new process that resumes the cut history.
-- A new process's first request begins with the bytes of the previous
-  process's last request, history included; a turn of another provider in
+- A new process's first request, on the same model, begins with the bytes of
+  the previous process's last request, history included, also across a
+  change of effort and across a turn of another provider and back; a turn of another provider in
   between is written in Claude's format; the request carries no environment
   text of the CLI's.
 - Cancelling a run closes the process and ends the run without an event; a
