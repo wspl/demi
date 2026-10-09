@@ -152,9 +152,11 @@ A paired device's runner that receives an executable updates itself:
 3. It records the new release in its installation state, `release-id`,
    which the installation's launcher reads, and removes every release
    directory of its installation except the new one and its own.
-4. It ends what it still runs, as a drain does: its local endpoint and its
-   command services; it runs no job, since it holds no connection. Then it
-   lets its locks go.
+4. It ends what it still runs, as a drain does: its local endpoint, its
+   command services, and the jobs it kept through the connection loss,
+   stopped as a stop does, since the new runner cannot take them over; the
+   backend learns of them from the new runner's hello as lost to the update.
+   Then it lets its locks go.
 5. It starts the new executable with its own arguments and environment but
    the new release: on Linux and macOS in its own process, on Windows beside
    it, and then it exits. The new runner connects.
@@ -1034,9 +1036,38 @@ that context releases its command bindings and its leases on resident services.
 The command set and package catalog follow the backend's
 [startup binding contract](native-runtime.md#bind-an-exact-package).
 
-Connection loss invalidates contexts, cancels their work, and shuts every
-resident service down, which ends the conversation state they hold. Reconnection
-creates fresh contexts; it does not resume streams or replay commands.
+For example, a laptop's Wi-Fi drops for two minutes while a test suite and a
+dev server run on it. The runner keeps both running and keeps their output.
+When it connects again, its hello lists them, and the backend picks them up:
+the suite's end and the output both printed meanwhile reach the conversation
+as if the connection had never dropped, and the dev server is still serving.
+
+- **A connection loss stops nothing for 10 minutes.** The runner keeps its
+  jobs, their directories and execution contexts, and its resident services,
+  with the conversation state they hold, such as a browser's tabs. A job's
+  output goes on into its kept output; the messages the runner would have
+  sent about it are not queued, since the next connection reads what it
+  needs from the kept output. A declared command a job runs that needs the
+  backend, such as an `rpc` call, waits for the connection, and fails with
+  `<command>: the backend is unreachable` if the 10 minutes pass first.
+- **The runner notices a loss itself.** It pings the backend every 30
+  seconds and counts a connection unanswered for 60 seconds as lost, so a
+  connection the network dropped without closing it starts the 10 minutes
+  as a closed one does.
+- **The hello lists the runner's jobs**: each job's id, whether it runs or
+  ended, with its status, each stream's length and its media count, and the
+  runner's own instance, a number each start of the runner draws, so the
+  backend tells a runner that kept its jobs from one that started anew
+  ([Recovery and persistence](sessions-and-targets.md#recovery-and-persistence)).
+  A job the backend has no command for is stopped.
+- **After 10 minutes without a connection** the runner stops its jobs, as a
+  stop does ([Cancellation and completion](#cancellation-and-completion)),
+  and its services, keeps the jobs' ends and their directories, and reports
+  them at its next connection as ended for that reason.
+- **A runner that ends loses its jobs**: their shell work runs in its
+  process. That happens when it crashes, when it updates itself to another
+  release ([Runner updates](#runner-updates)), and when a Cloud stops.
+
 Reconnecting the network does not itself change the backend's command set.
 
 ## Pipes and output
@@ -1140,9 +1171,9 @@ A job's directory lasts until the backend has what it needs of the job:
   media it did not hold and the edit copies
   ([Edit tracking](edit-tracking.md)), the backend sends
   `job_release { jobId }`, and the runner removes the directory.
-- A connection loss cancels every job ([Command lifetime](#command-lifetime)),
-  and the backend reads nothing of them afterwards, so the runner removes
-  every job directory then.
+- A connection loss keeps every job's directory for the backend's next
+  connection ([Command lifetime](#command-lifetime)); one whose job the
+  backend has no command for is removed with the job.
 - A runner removes every job directory in its job root when it starts: what
   a runner that ended without that cleanup left.
 
