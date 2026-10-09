@@ -296,8 +296,37 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       replace(id, textBlock(id, createdAt, partial))
     })
     at(run, end + 160, () => {
+      // A steer that came during the reply is read before the turn ends.
+      if (writeSteers()) {
+        thinkThenReply(run, WAIT_MS, THINK_2)
+        return
+      }
       state.phase = 'idle'
     })
+  }
+
+  /**
+   * The continuation boundary of the running turn, where a call returned or a
+   * reply ended: the pending steers become `steer` blocks the model reads
+   * next, as the product's runtime writes them. Returns whether there were any.
+   */
+  function writeSteers(): boolean {
+    const steers = state.pendingSteers
+    if (steers.length === 0) {
+      return false
+    }
+    state.pendingSteers = []
+    for (const pending of steers) {
+      append({
+        type: 'steer',
+        id: pending.id,
+        turnId: nextId('turn'),
+        createdAt: now(),
+        model: demoModel,
+        content: pending.content,
+      })
+    }
+    return true
   }
 
   function thinkThenReply(run: number, startMs: number, text: string): void {
@@ -352,6 +381,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       endTerminal(command(toolId), 'exited')
       runningTool = null
       replace(toolId, tool(toolId, toolStartedAt, 'completed'))
+      writeSteers()
     })
     thinkThenReply(run, toolDone + WAIT_MS, THINK_2)
   }
@@ -428,6 +458,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
           terminal.exitCode = step.exitCode
         endTerminal(terminal, 'exited')
         replace(id, workCall(id, startedAt, step, 'completed'))
+        writeSteers()
       })
       t = done + WAIT_MS
     }
@@ -604,8 +635,27 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
         },
       ]
       state.contextUsage = usageAt(0.06)
+      // Steers that came during the pass are read once it ends.
+      if (writeSteers()) {
+        thinkThenReply(run, WAIT_MS, THINK_2)
+        state.phase = 'running'
+        return
+      }
       state.phase = 'idle'
     })
+  }
+
+  /**
+   * A message sent as a steer: it waits as a pending steer until the turn's
+   * next boundary. With nothing running, the steer is refused and the
+   * message goes as a message, as the product sends it.
+   */
+  function steer(content: UserContentBlock[], message: SentMessage): void {
+    if (state.phase === 'idle') {
+      turn(content, message)
+      return
+    }
+    state.pendingSteers = [...state.pendingSteers, { id: nextId('pending'), content }]
   }
 
   /** A message sent while a turn runs waits in the queue, as the product's does. */
@@ -778,6 +828,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     resume,
     stop,
     compact,
+    steer,
     queue,
     removeQueued,
     sendQueued,
