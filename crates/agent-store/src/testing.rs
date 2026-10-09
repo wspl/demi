@@ -890,10 +890,10 @@ pub mod store_contract {
         for sequence in [
             Sequence::Command,
             Sequence::Command,
-            Sequence::Shell,
+            Sequence::Tab,
             Sequence::Agent,
             Sequence::Command,
-            Sequence::Shell,
+            Sequence::Tab,
         ] {
             let number = store
                 .next_number(sequence)
@@ -906,10 +906,10 @@ pub mod store_contract {
             [
                 (Sequence::Command, 1),
                 (Sequence::Command, 2),
-                (Sequence::Shell, 1),
+                (Sequence::Tab, 1),
                 (Sequence::Agent, 1),
                 (Sequence::Command, 3),
-                (Sequence::Shell, 2),
+                (Sequence::Tab, 2),
             ]
         );
     }

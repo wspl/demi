@@ -32,10 +32,6 @@ pub(crate) struct Shipped {
 pub(crate) enum Migration {
     Sql(&'static str),
     /// A change SQL cannot express, such as re-encoding a stored value.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "every migration so far is SQL")
-    )]
     Code(fn(&Transaction<'_>) -> rusqlite::Result<()>),
 }
 
@@ -81,8 +77,8 @@ pub(crate) const CONTROL: Schema = Schema {
 };
 
 /// Each conversation's database's. Its history holds the schema of each
-/// published release before the one that ships the current schema; 0.1.12
-/// to 0.1.20 shipped the last one in it.
+/// published release before the one that ships the current schema; 0.1.21
+/// shipped the last one in it.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -93,6 +89,10 @@ pub(crate) const CONVERSATION: Schema = Schema {
         Shipped {
             sql: include_str!("schema/conversation-0.1.20.sql"),
             migration: Migration::Sql(CONVERSATION_FROM_0_1_20),
+        },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.21.sql"),
+            migration: Migration::Code(conversation_without_shells),
         },
     ],
 };
@@ -293,6 +293,60 @@ INSERT INTO command_outputs_next
 DROP TABLE command_outputs;
 ALTER TABLE command_outputs_next RENAME TO command_outputs;
 ";
+
+/// From 0.1.21's conversation schema: a command no longer runs in a shell
+/// (`runtime.md` § Running shell tools), so the shell sequence goes, and
+/// with it its row, and a stored shell view no longer names a shell
+/// (transcript block format 2): each block that holds one is decoded
+/// without its `shellId` and written again through the block's own
+/// encoding.
+fn conversation_without_shells(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
+    transaction.execute_batch(
+        "
+DELETE FROM sequences WHERE name = 'shell';
+CREATE TABLE sequences_next (
+  name TEXT PRIMARY KEY CHECK (name IN ('command', 'agent', 'tab', 'attachment')),
+  next INTEGER NOT NULL CHECK (next >= 1)
+) STRICT;
+INSERT INTO sequences_next (name, next) SELECT name, next FROM sequences;
+DROP TABLE sequences;
+ALTER TABLE sequences_next RENAME TO sequences;
+",
+    )?;
+    // A stored block that does not decode stops the migration, which
+    // leaves the database as 0.1.21 left it.
+    let corrupt = |error: Box<dyn std::error::Error + Send + Sync>| {
+        rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, error)
+    };
+    let mut blocks = Vec::new();
+    {
+        let mut statement = transaction.prepare("SELECT node_id, idx, block FROM blocks")?;
+        let mut rows = statement.query([])?;
+        while let Some(row) = rows.next()? {
+            let text: String = row.get(2)?;
+            let mut block: serde_json::Value =
+                serde_json::from_str(&text).map_err(|error| corrupt(Box::new(error)))?;
+            let view = block
+                .get_mut("view")
+                .and_then(serde_json::Value::as_object_mut)
+                .filter(|view| view.get("kind").and_then(serde_json::Value::as_str) == Some("shell"));
+            if let Some(view) = view
+                && view.remove("shellId").is_some()
+            {
+                let block: demi_shared_types::Block = demi_shared_types::decode_value(block)
+                    .map_err(|error| corrupt(Box::new(error)))?;
+                let node: String = row.get(0)?;
+                let index: i64 = row.get(1)?;
+                blocks.push((node, index, super::columns::to_json(&block)));
+            }
+        }
+    }
+    let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
+    for (node, index, block) in blocks {
+        update.execute(rusqlite::params![node, index, block])?;
+    }
+    Ok(())
+}
 
 /// A kind of database, as a server's upgrade asks about it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -614,8 +668,8 @@ CREATE TABLE conversations (
   -- start restores the tree at: 0 for one whose action had not ended, due
   -- at start; null when it saved none.
   wakeup_at           INTEGER CHECK (wakeup_at >= 0),
-  -- The revision of its attached hosts, raised by each change of them and
-  -- of the directory a host's shell recorded; 0 before the first.
+  -- The revision of its attached hosts, raised by each change of them; 0
+  -- before the first.
   hosts_revision      INTEGER NOT NULL DEFAULT 0 CHECK (hosts_revision >= 0),
   -- The pending move an agent asked for (sessions-and-targets.md § Switch
   -- the primary target): its id and its target, typed as the target is; all
@@ -652,6 +706,8 @@ CREATE TABLE conversation_hosts (
   conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id),
   device_id       TEXT NOT NULL REFERENCES devices (id),
   name            TEXT NOT NULL,
+  -- The directory its commands start in, fixed when it was attached; null
+  -- for a device attached by name, whose commands start in its home.
   cwd             TEXT,
   attached_at     INTEGER NOT NULL,
   -- An agent's detach, which waits for the tree to be idle.
@@ -836,6 +892,7 @@ CREATE TABLE nodes (
   delivered        INTEGER NOT NULL CHECK (delivered IN (0, 1)),
   -- The session's checkpoint state as JSON, with whether a Stop holds its
   -- waiting input until the user's next action.
+  -- nodes.state: checkpoint state format 1
   state            TEXT NOT NULL,
   block_count      INTEGER NOT NULL CHECK (block_count >= 0),
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
@@ -854,13 +911,14 @@ CREATE INDEX nodes_children ON nodes (parent_id, number);
 -- number is advanced past in its own transaction before it is given out,
 -- so a crash leaves a gap and never gives a number twice.
 CREATE TABLE sequences (
-  name TEXT PRIMARY KEY CHECK (name IN ('command', 'shell', 'agent', 'tab', 'attachment')),
+  name TEXT PRIMARY KEY CHECK (name IN ('command', 'agent', 'tab', 'attachment')),
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
 CREATE TABLE blocks (
   node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx     INTEGER NOT NULL CHECK (idx >= 0),
+  -- blocks.block: transcript block format 2
   block   TEXT NOT NULL,
   PRIMARY KEY (node_id, idx)
 ) STRICT;
@@ -872,11 +930,13 @@ CREATE TABLE command_outputs (
   ended_at       INTEGER NOT NULL,
   -- How it ended, a JSON object: its exit code, stopped, or with its Host's
   -- connection; null for a row a release before 0.1.21 wrote.
+  -- command_outputs.ending: command ending format 1
   ending         TEXT,
   blob           TEXT,
   missing_bytes  INTEGER CHECK (missing_bytes >= 0),
   missing_reason TEXT,
   -- The command's media, a JSON array, beside a stored output.
+  -- command_outputs.media: command media format 1
   media          TEXT,
   not_stored     TEXT,
   CHECK ((blob IS NOT NULL) + (not_stored IS NOT NULL) = 1),
@@ -1179,5 +1239,93 @@ mod tests {
             .query_row("SELECT removed_at FROM command_outputs WHERE command_id = 'c3'", [], |row| row.get(0))
             .unwrap();
         assert_eq!(removed_at, 2000);
+    }
+
+    /// 0.1.21's shell sequence goes with its row, and a stored shell view
+    /// that names its shell is written again without it, through the block's
+    /// own encoding; every other number keeps its next value.
+    #[test]
+    fn a_conversation_of_0_1_21_loses_its_shells_and_keeps_its_commands() {
+        use demi_shared_types::{Block, Sequence};
+
+        use crate::sequences;
+
+        let shipped = CONVERSATION
+            .history
+            .last()
+            .expect("a schema has a history")
+            .sql;
+        let block = |view: serde_json::Value| {
+            serde_json::json!({
+                "type": "tool_call",
+                "id": "tc4",
+                "createdAt": "2026-09-21T14:13:20.000Z",
+                "model": {
+                    "providerId": "anthropic",
+                    "model": {
+                        "id": "claude-sonnet-4-5",
+                        "name": "Claude Sonnet 4.5",
+                        "contextWindow": 200000,
+                        "outputLimit": 64000,
+                        "thinking": [{"type": "disabled"}],
+                        "acceptedExtensions": ["png"]
+                    },
+                    "thinking": {"type": "disabled"},
+                    "serviceTierId": null
+                },
+                "toolUseId": "toolu_04",
+                "toolName": "shell_exec",
+                "input": "{}",
+                "status": "completed",
+                "output": [{"type": "text", "text": "status: running"}],
+                "view": view
+            })
+        };
+        let view = |shell: Option<&str>| {
+            let mut view = serde_json::json!({
+                "kind": "shell",
+                "status": "running",
+                "commandId": "17",
+                "runningMs": 60000,
+                "idleMs": 2000,
+                "chunks": [],
+                "viewTruncated": false
+            });
+            if let Some(shell) = shell {
+                view["shellId"] = serde_json::json!(shell);
+            }
+            view
+        };
+        let (_directory, path, mut connection) = database(shipped);
+        connection
+            .execute_batch(
+                "INSERT INTO sequences (name, next) VALUES ('command', 18), ('shell', 4), ('agent', 2);
+                 INSERT INTO nodes
+                   (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
+                 VALUES ('root', 0, '', 1, 0, 1, 0, '{}', 1, 0);",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO blocks (node_id, idx, block) VALUES ('root', 0, ?1)",
+                [block(view(Some("3"))).to_string()],
+            )
+            .unwrap();
+
+        CONVERSATION.apply(&mut connection, &path).unwrap();
+        let stored: String = connection
+            .query_row("SELECT block FROM blocks WHERE node_id = 'root' AND idx = 0", [], |row| row.get(0))
+            .unwrap();
+        let expected: Block = demi_shared_types::decode_value(block(view(None))).unwrap();
+        assert_eq!(demi_shared_types::decode::<Block>(&stored).unwrap(), expected);
+        assert_eq!(
+            sequences::all(&connection).unwrap(),
+            vec![(Sequence::Agent, 2), (Sequence::Command, 18)]
+        );
+        assert!(
+            connection
+                .execute("INSERT INTO sequences (name, next) VALUES ('shell', 1)", [])
+                .is_err()
+        );
     }
 }

@@ -111,9 +111,6 @@ struct Controls {
 pub enum TaskCommand {
     Shell {
         script: String,
-        /// Where the job starts when its cwd no longer exists: the
-        /// conversation's working directory (`runner.md` § Shell jobs).
-        workspace: PathBuf,
         stdin: Option<wire::PipeRef>,
         stdout: Option<wire::PipeRef>,
         /// The manifest and command context of a job with declared commands.
@@ -406,22 +403,15 @@ impl JobConfig {
             }
             TaskCommand::Shell {
                 script,
-                workspace,
                 stdin,
                 stdout,
                 commands,
             } => {
                 let JobDirectory {
                     path,
-                    scratch,
                     output,
                     running,
                 } = self.directories.create(&id, &cancel).await?;
-                env.insert(
-                    "TMPDIR".into(),
-                    scratch.path().to_string_lossy().into_owned(),
-                );
-                env.insert("TEMP".into(), scratch.path().to_string_lossy().into_owned());
                 env.insert("DEMI_JOB_ID".into(), id.clone());
                 let edit_context = demi_command_protocol::EditContext {
                     directory: path.join("changes").to_string_lossy().into_owned(),
@@ -445,7 +435,7 @@ impl JobConfig {
                         None
                     }
                 };
-                job = Some((Logs::new(output), scratch, recorder.clone(), running));
+                job = Some((Logs::new(output), recorder.clone(), running));
                 let commands = match commands {
                     Some((manifest_hash, command)) => {
                         let media = Arc::new(JobMedia::new(
@@ -478,7 +468,6 @@ impl JobConfig {
                     .start(JobStart {
                         script,
                         cwd: spec.cwd,
-                        workspace,
                         env,
                         live: stdin.is_none(),
                         output: stdout.is_none(),
@@ -647,7 +636,7 @@ impl JobConfig {
         if let Some((logs, ..)) = job.as_mut() {
             logs.send_last(&id, followed, &self.output, &closed).await?;
         }
-        let (exit, cwd) = child.wait().await;
+        let exit = child.wait().await;
         drop(execution);
         drop(stdout_pipe);
         input_cancel.cancel();
@@ -685,20 +674,18 @@ impl JobConfig {
         match job {
             // The job's directory stays running until its exit is built, and
             // then lasts until the backend releases it.
-            Some((logs, scratch, recorder, _running)) => {
+            Some((logs, recorder, _running)) => {
                 let output = logs.lengths();
                 let edits = tokio::task::spawn_blocking(move || {
-                    scratch.close()?;
-                    Ok::<_, io::Error>(crate::edit_report::finish(recorder.as_ref()))
+                    crate::edit_report::finish(recorder.as_ref())
                 })
                 .await
-                .map_err(io::Error::other)??;
+                .map_err(io::Error::other)?;
                 wire::encode(&wire::Outbound::JobExit {
                     job_id: id,
                     exit_code: exit.code,
                     signal: exit.signal,
                     spawn_error,
-                    cwd,
                     output: Some(output),
                     files: edits.files,
                     path_changes: edits.path_changes,
@@ -763,9 +750,9 @@ impl Execution {
             ExecutionOwner::Shell(child) => child.signal(signal),
         }
     }
-    async fn wait(&mut self) -> (ProcessExit, Option<String>) {
+    async fn wait(&mut self) -> ProcessExit {
         match &mut self.owner {
-            ExecutionOwner::Process(child) => (child.wait().await, None),
+            ExecutionOwner::Process(child) => child.wait().await,
             ExecutionOwner::Shell(child) => child.wait().await,
         }
     }
@@ -781,7 +768,6 @@ pub fn failure_exit(work: &WorkId, reason: String) -> Result<wire::Frame, wire::
             exit_code: None,
             signal: None,
             spawn_error,
-            cwd: None,
             output: None,
             files: Vec::new(),
             path_changes: Vec::new(),

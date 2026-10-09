@@ -186,7 +186,6 @@ impl RemoteHost {
                 context: job.context,
                 script: job.script,
                 cwd: job.cwd,
-                workspace: self.0.default_cwd.clone(),
                 env: job.env,
                 stdin: job.stdin,
                 stdout: job.stdout,
@@ -782,6 +781,8 @@ pub enum Look {
 /// A job to start.
 pub struct JobStart {
     pub script: String,
+    /// Where the job starts; one that does not exist fails it before its
+    /// script runs (`runner.md` § Shell jobs).
     pub cwd: String,
     /// Exactly the variables the job's shell starts with, above the device's.
     pub env: BTreeMap<String, String>,

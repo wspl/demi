@@ -10,7 +10,6 @@ fn options(root: &Path, output: std::fs::File) -> ShellOptions {
         scope: Scope::new(tokio_util::sync::CancellationToken::new(), None),
         login: false,
         cwd: root.into(),
-        workspace: root.into(),
         env: BTreeMap::new(),
         stdin: tempfile::tempfile().unwrap(),
         stdout: output,
@@ -56,12 +55,11 @@ async fn shell_handles_redirects_functions_subshell_cwd_and_fresh_state() {
         .await
         .unwrap();
     assert_eq!(result.code, 0);
-    assert_eq!(result.cwd, root.path().join("b"));
     assert_eq!(std::fs::read_to_string(output.path()).unwrap(), "PEAR\n");
     let output = tempfile::NamedTempFile::new().unwrap();
     let result = execute(
         "printf '%s' \"${LEAK-unset}\"",
-        options(&result.cwd, output.reopen().unwrap()),
+        options(&root.path().join("b"), output.reopen().unwrap()),
     )
     .await
     .unwrap();
@@ -158,19 +156,23 @@ async fn login_profiles_apply_per_job_without_replacing_owned_context_or_cwd() {
             ),
         ]);
         let result = execute(
-            "printf '%s\\n' \"$FROM_PROFILE\" \"$DEMI_CONTEXT_ID\" \"$PATH\"",
+            "printf '%s\\n' \"$FROM_PROFILE\" \"$DEMI_CONTEXT_ID\" \"$PATH\" \"$(pwd -P)\"",
             opts,
         )
         .await
         .unwrap();
         assert_eq!(result.code, 0);
-        assert_eq!(result.cwd, root);
         let output = std::fs::read_to_string(output.path()).unwrap();
         let mut lines = output.lines();
         assert_eq!(lines.next(), Some(value));
         assert_eq!(lines.next(), Some("owned"));
         let paths = std::env::split_paths(lines.next().unwrap()).collect::<Vec<_>>();
         assert_eq!(paths, [aliases.clone(), tools.clone()]);
+        // The job runs where it was asked to, not where the profile went.
+        assert_eq!(
+            lines.next().map(std::path::PathBuf::from),
+            Some(root.canonicalize().unwrap())
+        );
         assert_eq!(lines.next(), None);
     }
 }

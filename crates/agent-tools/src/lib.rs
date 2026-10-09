@@ -28,10 +28,10 @@ use demi_agent_session::{
 use demi_agent_store::AgentTreeStore;
 use demi_host_interface::{
     CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller,
-    Numbers, ObservationWindow, PageFeed, ShellEnvironment, ShellError, ShellTarget, watch,
+    Numbers, ObservationWindow, PageFeed, ShellEnvironment, ShellError, watch,
 };
 use demi_provider_common::{RequestLimits, ToolDefinition};
-use demi_shared_types::{CommandId, ModelSelection, NodeId, Sequence, ShellId};
+use demi_shared_types::{CommandId, ModelSelection, NodeId, Sequence};
 use futures_util::{
     StreamExt,
     future::LocalBoxFuture,
@@ -52,7 +52,7 @@ pub use prompt::{ModelIdentity, system_prompt};
 /// result printing one is never cut.
 pub const PAGE_CHARS: usize = 12_000;
 
-/// The conversation's command and shell numbers, as its tree store gives
+/// The conversation's command numbers, as its tree store gives
 /// them out.
 pub struct StoreNumbers(pub Rc<dyn AgentTreeStore>);
 
@@ -76,13 +76,13 @@ pub struct EnvironmentScope<'a> {
     /// The node's agent number, as the model and its commands' context know
     /// it (`runtime.md` § Identifiers the model sees).
     pub agent: u64,
-    /// The commands the environment's shells offer: the node's.
+    /// The commands the environment's jobs offer: the node's.
     pub commands: &'a Rc<CommandSet>,
     /// Where the environment tells the pages of its commands, and learns
     /// whether a page watches: the node's feed of its tree
     /// (`runtime.md` § Live output).
     pub feed: &'a Rc<dyn PageFeed>,
-    /// Where the environment's command and shell numbers come from: the
+    /// Where the environment's command numbers come from: the
     /// conversation's sequences, which the tree store gives out.
     pub numbers: &'a Rc<dyn Numbers>,
 }
@@ -165,9 +165,9 @@ pub trait ConversationCommands {
     fn knows<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<bool, String>>;
 }
 
-/// A node's access to its shells: the resolver that names the current Host,
-/// the product's factory, the environments made so far, and the node they
-/// belong to.
+/// A node's access to its shell environments: the resolver that names the
+/// current Host, the product's factory, the environments made so far, and
+/// the node they belong to.
 pub struct ShellAccess<'a, H: HostResolver> {
     pub hosts: &'a H,
     pub shells: &'a dyn ShellEnvironmentFactory<H::Host>,
@@ -193,13 +193,6 @@ impl<H: HostResolver> Clone for ShellAccess<'_, H> {
 }
 
 impl<H: HostResolver> Copy for ShellAccess<'_, H> {}
-
-/// A `shell_exec` call of a step, with the shell it runs in.
-struct PlannedExec {
-    call: ToolInvocation,
-    input: ShellExecInput,
-    target: ShellTarget,
-}
 
 impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// The environment for the conversation's current Host, which `handle`
@@ -232,8 +225,8 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// call of `shell_status` or `yield`, or `shell_exec` calls, which start
     /// together. Yields each call's outcome, by its index, as the call
     /// returns. A refused input completes its call as an error that names
-    /// the offending field; a failure of the Host or its shells completes
-    /// it as `Tool failed: <message>`.
+    /// the offending field; a failure of the Host or its environment
+    /// completes it as `Tool failed: <message>`.
     pub fn invoke_step(self, calls: Vec<ToolInvocation>) -> StepOutcomes<'a> {
         if !calls.is_empty() && calls.iter().all(|call| runs_together(&call.tool_name)) {
             return Box::pin(stream::once(self.exec_step(calls)).flatten());
@@ -264,114 +257,43 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         }
     }
 
-    /// Plans a step's `shell_exec` calls and runs them together, yielding
-    /// each call's outcome as it returns. The first without a `shellId`
-    /// runs in the default shell, unless a call of the step names that
-    /// shell, and each other one without a `shellId` in a new shell that
-    /// starts in the default shell's directory as it is when the step
-    /// starts; calls that name the same shell run one after another.
+    /// Runs a step's `shell_exec` calls together, each a job of its own
+    /// (`runtime.md` § Dispatch and failures), yielding each call's outcome
+    /// as it returns.
     async fn exec_step(self, calls: Vec<ToolInvocation>) -> StepOutcomes<'a> {
-        let count = calls.len();
         let mut refused = Vec::new();
-        let mut planned: Vec<Option<(ToolInvocation, ShellExecInput)>> = Vec::with_capacity(count);
+        let mut planned = Vec::with_capacity(calls.len());
         for (index, call) in calls.into_iter().enumerate() {
             match parse::<ShellExecInput>(StandardTool::ShellExec.name(), call.input.clone()) {
-                Ok(input) => planned.push(Some((call, input))),
-                Err(refusal) => {
-                    refused.push((index, Ok(ToolOutcome::error(refusal))));
-                    planned.push(None);
-                }
+                Ok(input) => planned.push((index, call, input)),
+                Err(refusal) => refused.push((index, Ok(ToolOutcome::error(refusal)))),
             }
         }
-        let unnamed = planned
-            .iter()
-            .flatten()
-            .filter(|(_, input)| input.shell_id.is_none())
-            .count();
-        let named: Vec<&ShellId> = planned
-            .iter()
-            .flatten()
-            .filter_map(|(_, input)| input.shell_id.as_ref())
+        let execs: FuturesUnordered<_> = planned
+            .into_iter()
+            .map(|(index, call, input)| async move { (index, outcome(self.exec(call, input).await)) })
             .collect();
-        // Only a step with a call without a shell beside another call needs
-        // to know the default shell: where a second such call starts, and
-        // whether a call of the step names it.
-        let default = if unnamed > 1 || (unnamed == 1 && !named.is_empty()) {
-            match self.environment(Handle::None).await {
-                Ok((_, environment)) => environment.default_shell(),
-                // Each call meets the same failure and reports it.
-                Err(_) => None,
-            }
-        } else {
-            None
-        };
-        // A shell a call of the step names is never given to a call that
-        // names none, so the two never race for it.
-        let default_named = default
-            .as_ref()
-            .is_some_and(|default| named.contains(&&default.id));
-        let beside = default.map(|default| default.cwd);
-        let mut default_taken = default_named;
-        // Each lane runs its calls one after another: one per named shell,
-        // and one per call without a shell.
-        let mut lanes: Vec<(Option<ShellId>, Vec<(usize, PlannedExec)>)> = Vec::new();
-        for (index, plan) in planned.into_iter().enumerate() {
-            let Some((call, input)) = plan else {
-                continue;
-            };
-            let target = match &input.shell_id {
-                Some(shell) => ShellTarget::Existing(shell.clone()),
-                None if !default_taken => {
-                    default_taken = true;
-                    ShellTarget::Default
-                }
-                None => ShellTarget::New {
-                    cwd: beside.clone(),
-                },
-            };
-            let shell = input.shell_id.clone();
-            let exec = PlannedExec {
-                call,
-                input,
-                target,
-            };
-            match lanes
-                .iter_mut()
-                .find(|(named, _)| named.is_some() && *named == shell)
-            {
-                Some((_, lane)) => lane.push((index, exec)),
-                None => lanes.push((shell, vec![(index, exec)])),
-            }
-        }
-        let lanes = lanes.into_iter().map(|(_, lane)| {
-            stream::iter(lane)
-                .then(move |(index, exec)| async move { (index, outcome(self.exec(exec).await)) })
-                .boxed_local()
-        });
-        Box::pin(stream::iter(refused).chain(stream::select_all(lanes)))
+        Box::pin(stream::iter(refused).chain(execs))
     }
 
     /// Starts a `shell_exec` call's script and watches it for up to its
     /// window (`runtime.md` § The window).
-    async fn exec(&self, exec: PlannedExec) -> Result<ToolOutcome, CallError> {
-        let PlannedExec {
-            call,
-            input,
-            target,
-        } = exec;
+    async fn exec(
+        &self,
+        call: ToolInvocation,
+        input: ShellExecInput,
+    ) -> Result<ToolOutcome, CallError> {
         // A call after one that the user's send now returned never starts
         // (`runtime.md` § Send now).
         if call.arrival.sent_now() {
             return Ok(ToolOutcome::not_run());
         }
-        let handle = input.shell_id.as_ref().map_or(Handle::None, Handle::Shell);
-        let (slot, environment) = self.environment(handle).await?;
+        let (slot, environment) = self.environment(Handle::None).await?;
         if let Some(suppressed) = slot.repeated(&input.script) {
             return Ok(suppressed);
         }
         let request = ExecRequest {
             script: input.script,
-            shell: target,
             caller: JobCaller {
                 node: self.context.node.clone(),
             },
@@ -489,7 +411,7 @@ fn window(timeout: DelayMs) -> ObservationWindow {
 pub enum CallError {
     /// The input is refused, with the text the model receives.
     Refused(String),
-    /// The Host or its shells failed.
+    /// The Host or its environment failed.
     Failed(String),
 }
 

@@ -120,12 +120,11 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
     assert_eq!(bytes.body, *PNG);
 
     // An attachment is a copy: the file's later fate changes nothing, and the
-    // next upload takes the next number, past the ones that failed. The
-    // shell is still in `out`.
+    // next upload takes the next number, past the ones that failed.
     std::fs::remove_file(format!("{root}/out/login.png")).unwrap();
     let again = work
         .turn(vec![
-            shell("t2", "cd .. && demi attachment upload --json notes.md", 30_000),
+            shell("t2", "demi attachment upload --json notes.md", 30_000),
             say("again"),
         ])
         .await;

@@ -1,6 +1,7 @@
 //! Host requests through a connection's owner: filesystem work and kills stay
 //! available while a job runs, jobs and raw processes get the environment
-//! `runner.md` § Host operations gives them, and a job's directory lasts
+//! `runner.md` § Host operations gives them, the device's without the
+//! runner's own names, and a job's directory lasts
 //! until the backend has what it needs of the job.
 
 use std::{collections::BTreeMap, path::PathBuf, time::Duration};
@@ -94,8 +95,7 @@ async fn job_environment_combines_device_request_and_owned_values() {
             job_id: "env".into(),
             script: "printf '%s:%s:%s:%s:%s' \"$DEVICE\" \"$OVERRIDE\" \"$DEMI_HOME\" \"$HOME\" \"$profile_home\""
                 .into(),
-            cwd: cwd.clone(),
-            workspace: cwd,
+            cwd,
             env: BTreeMap::from([
                 ("OVERRIDE".into(), "new".into()),
                 ("DEMI_HOME".into(), "untrusted".into()),
@@ -200,6 +200,90 @@ async fn raw_spawn_inherits_environment_only_when_requested() {
                 expected
             );
         }
+        host.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+/// The device environment is the runner's own without its `DEMI_*` names,
+/// for a job and a raw process alike; and a job's temporary directory is the
+/// device's, never one under the job root, whose path is too long for a
+/// dev server's Unix socket on macOS (`runner.md` § Host operations, § Shell
+/// jobs). Before the fix, the job read the runner's release and setting and
+/// a `TMPDIR` under its job directory.
+#[cfg(unix)]
+#[tokio::test]
+async fn the_device_environment_leaves_out_the_runners_own_names_and_keeps_its_temporary_directory()
+{
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let device = BTreeMap::from([
+            ("DEMI_RELEASE_ID".into(), "runner-release".into()),
+            ("DEMI_SETTING".into(), "developer".into()),
+        ]);
+        let mut host = Host::start(device).await.online().await;
+        start_job(
+            &mut host,
+            "job",
+            r#"printf '%s\n' "${DEMI_RELEASE_ID-unset}" "${DEMI_SETTING-unset}" "${TMPDIR-unset}""#,
+        )
+        .await;
+        let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+        loop {
+            match host.frame().await {
+                Outbound::JobExit { exit_code, .. } => {
+                    assert_eq!(exit_code, Some(0), "{}", String::from_utf8_lossy(&stderr));
+                    break;
+                }
+                Outbound::JobOutput {
+                    stream: OutputStream::Stdout,
+                    bytes,
+                    ..
+                } => stdout.extend(bytes.0),
+                Outbound::JobOutput { bytes, .. } => stderr.extend(bytes.0),
+                other => panic!("unexpected {other:?}"),
+            }
+        }
+        // The harness names the runner's temporary directory in its state.
+        let temporary = host.state().join("tmp");
+        assert_eq!(
+            String::from_utf8(stdout).unwrap(),
+            format!("unset\nunset\n{}\n", temporary.display())
+        );
+
+        host.send(Inbound::Spawn {
+            spawn_id: "process".into(),
+            command: "/usr/bin/env".into(),
+            args: None,
+            cwd: None,
+            env: None,
+            inherit_env: None,
+            kill_process_group: Some(true),
+            descriptors: None,
+        })
+        .await;
+        let mut stdout = Vec::new();
+        loop {
+            match host.frame().await {
+                Outbound::SpawnExit { exit_code, .. } => {
+                    assert_eq!(exit_code, Some(0));
+                    break;
+                }
+                Outbound::SpawnOutput {
+                    stream: OutputStream::Stdout,
+                    bytes,
+                    ..
+                } => stdout.extend(bytes.0),
+                _ => {}
+            }
+        }
+        let text = String::from_utf8(stdout).unwrap();
+        let names: Vec<_> = text
+            .lines()
+            .filter_map(|line| line.split_once('=').map(|(name, _)| name))
+            .filter(|name| matches!(*name, "DEMI_RELEASE_ID" | "DEMI_SETTING"))
+            .collect();
+        assert!(names.is_empty(), "{text}");
         host.close().await;
     })
     .await

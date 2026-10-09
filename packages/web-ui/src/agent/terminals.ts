@@ -14,7 +14,7 @@ export type TerminalPhase = ShellViewStatus
  */
 export interface TerminalRecord {
   id: string
-  /** Its tab's title: the `shell_exec` call's title, as its row shows it, or the shell's id when no call is known. */
+  /** Its tab's title: the `shell_exec` call's title, as its row shows it, or its command id when no call is known. */
   title: string
   /** The `shell_exec` call's script, which the terminal opens with; absent when no call is known. */
   script?: string

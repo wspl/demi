@@ -7,7 +7,10 @@
 use std::{collections::HashSet, path::Path};
 
 use demi_machine_manager_protocol::image::{INIT_PATH, PROGRAMS_PATH, RUNNER_PATH};
-use demi_runner_protocol::{boot::BACKEND_SOCKET, release::RELEASE_ENV};
+use demi_runner_protocol::{
+    boot::{BACKEND_SOCKET, TEMPORARY_DIRECTORY},
+    release::RELEASE_ENV,
+};
 use oci_spec::{
     OciSpecError,
     runtime::{
@@ -117,6 +120,9 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
             "LANG=C.UTF-8".into(),
             "PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin".into(),
             format!("{RELEASE_ENV}={}", boot.runner_release),
+            // On the system image, not the 256 MiB `/tmp` in memory
+            // (`managed-hosts.md` § Images).
+            format!("TMPDIR={TEMPORARY_DIRECTORY}"),
         ])
         .capabilities(capabilities)
         .no_new_privileges(false)

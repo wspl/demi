@@ -98,11 +98,11 @@ export function applyConversationEvent(
     const blocks = subagentId === undefined
       ? conversation.blocks
       : conversation.subagents.find((agent) => agent.id === subagentId)?.blocks ?? []
-    // The call that started it names it; the shell id stands in until the transcript has the call.
+    // The call that started it names it; the command's id stands in until the transcript has the call.
     const call = current ?? findShellCall(blocks, status.toolUseId)
     const record: TerminalRecord = {
       id: status.commandId,
-      title: call?.title ?? status.shellId,
+      title: call?.title ?? status.commandId,
       script: call?.script,
       phase: status.status,
       startedAt:

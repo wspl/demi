@@ -15,7 +15,8 @@
       "LOGNAME=demi",
       "LANG=C.UTF-8",
       "PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin",
-      "DEMI_RELEASE_ID=release-of-the-runner"
+      "DEMI_RELEASE_ID=release-of-the-runner",
+      "TMPDIR=/var/lib/demi/tmp"
     ],
     "capabilities": {
       "bounding": [

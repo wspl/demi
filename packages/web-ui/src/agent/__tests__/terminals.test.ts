@@ -203,7 +203,7 @@ test('a returned call marks its command\'s end once the end arrives, and not fro
     type: 'tool_call', id: 'call', createdAt, model, toolUseId: 'call-1', toolName: 'shell_exec',
     input: '{"script":"make watch"}', status: 'completed', output: [],
     view: {
-      kind: 'shell', status: 'running', shellId: 'sh', commandId: 'cmd', runningMs: 10, idleMs: 0,
+      kind: 'shell', status: 'running', commandId: 'cmd', runningMs: 10, idleMs: 0,
       chunks: [], viewTruncated: false,
     },
   }

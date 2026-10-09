@@ -136,7 +136,8 @@ pub enum Inbound {
         )]
         signal: Option<Signal>,
     },
-    /// One job: `bash -c script` in `cwd` with exactly `env`. Its declared
+    /// One job: `bash -c script` in `cwd` with exactly `env`; a `cwd` that
+    /// does not exist fails it before its script runs. Its declared
     /// commands receive `context`; `stdin` and `stdout` attach the job's fd 0
     /// and fd 1 to pipes whose other ends are elsewhere.
     JobStart {
@@ -152,9 +153,6 @@ pub enum Inbound {
         context: CommandContext,
         script: String,
         cwd: String,
-        /// The conversation's working directory, where the job starts when
-        /// `cwd` no longer exists (`runner.md` § Shell jobs).
-        workspace: String,
         env: BTreeMap<String, String>,
         #[serde(
             default,
@@ -898,13 +896,6 @@ pub enum Outbound {
             with = "unwrap_or_skip"
         )]
         spawn_error: Option<SpawnError>,
-        /// The directory the script ended in; absent when bash never ran it.
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            with = "unwrap_or_skip"
-        )]
-        cwd: Option<String>,
         /// Absent when bash never ran the script.
         #[serde(
             default,
