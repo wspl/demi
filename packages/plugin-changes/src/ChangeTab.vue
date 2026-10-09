@@ -8,14 +8,9 @@ const presentation = ref<'diff' | 'preview'>('diff')
 
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import {
-  ChangeView,
-  joinPath,
-  treeLayout,
-  usePage,
-  type ChangeSources,
-} from '@demicodes/plugin-sdk'
+import { ChangeView, joinPath, treeLayout, usePage } from '@demicodes/plugin-sdk'
 import { changePath, goBack, goForward, holdShownChange, showChange, showEdit, type ChangeData } from './data'
+import { useChangeSources } from './sources'
 
 /**
  * The Change view of one conversation (`file-previews.md` § Changes): the
@@ -36,12 +31,10 @@ const files = page.files(props.conversation)
 files.showChanges()
 const intents = page.intents
 
-const changes = computed<ChangeSources>(() => ({
-  uncommitted: files.changes,
-  conversation: props.data.request
-    ? { files: files.request(props.data.request.node, props.data.request.request)?.files ?? [], read: files.edit }
-    : null,
-}))
+const changes = useChangeSources(files, () => props.data)
+// Each frame of a turn replaces the product state the answer is read from:
+// the view is given it as a value, which changes only with the answer.
+const opens = computed(() => intents.canOpen('file'))
 const selected = computed(() => changePath(props.data, props.data.mode, changes.value.uncommitted.files))
 const root = computed(() => files.workspace?.root ?? files.root ?? '/')
 
@@ -74,7 +67,7 @@ function open(path: string): void {
     :contents="files.workspace?.source.contents"
     :can-back="data.back.length > 0"
     :can-forward="data.forward.length > 0"
-    :opens="intents.canOpen('file')"
+    :opens="opens"
     @update:mode="emit('update', showChange(data, $event, changePath(data, $event)))"
     @update:edit="emit('update', showEdit(data, $event))"
     @update:selected="emit('update', showChange(data, data.mode, $event))"
