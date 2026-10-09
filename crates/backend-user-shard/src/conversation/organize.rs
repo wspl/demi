@@ -149,16 +149,12 @@ async fn rename(shard: Rc<Shard>, call: Call<RenameArgs>, port: RpcPort) -> Resu
     let conversation = conversation_of(&call.invocation)?;
     let title = Trimmed::from(call.args.title).into_string();
     if title.is_empty() {
-        port.stderr("conversation rename: the title is blank\n").await?;
-        return Ok(2);
+        return Err(failed("the title is blank"));
     }
-    if let Err(refusal) = shard
+    shard
         .transition(&conversation, RecordChange::Title(title.clone()).into())
         .await
-    {
-        port.stderr(format!("conversation rename: {refusal}\n")).await?;
-        return Ok(1);
-    }
+        .map_err(failed)?;
     port.stdout(format!("Renamed this conversation to \u{201c}{title}\u{201d}.\n"))
         .await?;
     Ok(0)
@@ -251,18 +247,14 @@ async fn move_to(shard: Rc<Shard>, call: Call<MoveArgs>, port: RpcPort) -> Resul
             let workspace = match named_project(&shard, &wanted).await? {
                 Named::One(workspace) => workspace,
                 Named::None => {
-                    port.stderr(format!(
-                        "conversation move: no project {wanted} (see `demi conversation projects`)\n"
-                    ))
-                    .await?;
-                    return Ok(1);
+                    return Err(failed(format!(
+                        "{wanted}: no such project (see `demi conversation projects`)"
+                    )));
                 }
                 Named::Several => {
-                    port.stderr(format!(
-                        "conversation move: several projects are named {wanted}; name one by its id (see `demi conversation projects`)\n"
-                    ))
-                    .await?;
-                    return Ok(1);
+                    return Err(failed(format!(
+                        "{wanted}: several projects have this name; name one by its id (see `demi conversation projects`)"
+                    )));
                 }
             };
             let host = shard.host_name(&workspace.device).await;
@@ -279,9 +271,7 @@ async fn move_to(shard: Rc<Shard>, call: Call<MoveArgs>, port: RpcPort) -> Resul
         }
         (None, true) => {
             let ConversationTarget::Workspace { workspace_id } = &record.target else {
-                port.stderr("conversation move: this conversation is not in a project\n")
-                    .await?;
-                return Ok(1);
+                return Err(failed("this conversation is not in a project"));
             };
             let workspace = shard
                 .services()
@@ -296,11 +286,7 @@ async fn move_to(shard: Rc<Shard>, call: Call<MoveArgs>, port: RpcPort) -> Resul
             );
             (outside(&shard, &workspace).await?, said)
         }
-        _ => {
-            port.stderr("usage: demi conversation move <project> | demi conversation move --out\n")
-                .await?;
-            return Ok(2);
-        }
+        _ => return Err(failed("give a project, or --out, not both")),
     };
     // A move to where it runs replaces a move that waits, and is made as
     // nothing.
@@ -355,9 +341,7 @@ async fn create_project(
     let conversation = conversation_of(&invocation)?;
     let name = Trimmed::from(args.name).into_string();
     if name.is_empty() {
-        port.stderr("conversation create-project: the name is blank\n")
-            .await?;
-        return Ok(2);
+        return Err(failed("the name is blank"));
     }
     let host = shard.host_shard();
     let record = host.owned_conversation(&conversation).await.map_err(failed)?;
@@ -368,11 +352,9 @@ async fn create_project(
     // The shell's directory is a directory of the Host the command runs on,
     // which `demi host shell` may have made another.
     if invocation.host != device.as_str() {
-        port.stderr(
-            "conversation create-project: run it on this conversation's primary Host, not through `demi host shell`\n",
-        )
-        .await?;
-        return Ok(1);
+        return Err(failed(
+            "run it on this conversation's primary Host, not through `demi host shell`",
+        ));
     }
     let path = on_host(&invocation.cwd, args.directory.as_deref().unwrap_or("."));
     let control = &shard.services().control;

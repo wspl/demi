@@ -1217,29 +1217,28 @@ async fn a_nested_command_prints_its_groups_help_and_only_json_output_that_match
         assert_eq!(exited(refused), 1, "{}", refused.stderr.tail);
         assert_eq!(refused.stdout.delta, "");
     }
-    // Each refusal says that the command's --json output failed, and how.
+    // Each refusal says that the command's --json output failed, and how,
+    // after the command's path.
     assert!(
         not_json
             .stderr
             .delta
-            .starts_with("demi-runner: --json output is not JSON: "),
+            .starts_with("probe json emit: --json output is not JSON: "),
         "{}",
         not_json.stderr.delta
     );
     assert_eq!(
         mismatch.stderr.delta,
-        "demi-runner: --json output does not match its schema: \"ok\" is not of type \"boolean\"\n"
+        "probe json emit: --json output does not match its schema: \"ok\" is not of type \"boolean\"\n"
     );
-    // A usage error exits 1 and names the field at fault.
+    // A usage error is clap's, with the command's usage, and exits 2.
     let usage = run(&shell, "probe json emit").await;
-    assert_eq!(exited(&usage), 1);
-    assert!(
-        usage
-            .stderr
-            .delta
-            .contains("\"text\" is a required property"),
-        "{}",
-        usage.stderr.delta
+    assert_eq!(
+        (exited(&usage), usage.stderr.delta.as_str()),
+        (
+            2,
+            "error: the following required arguments were not provided:\n  <text>\n\nUsage: probe json emit <text> [--json]\n\nFor more information, try '--help'.\n"
+        )
     );
     fixture.stop().await;
 }

@@ -24,7 +24,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::{
-    commands::{Invoked, verb},
+    commands::{Invoked, fail_one, verb},
     tree::{CommandPlace, Tree},
 };
 use crate::AgentServer;
@@ -41,7 +41,7 @@ const GROUP_SUMMARY: &str = "Shell commands: read a command's whole output, or s
 /// § Capability index).
 const GROUP_ENTRY: &str = "Prints the whole output of a command you ran earlier, by its commandId, a page at a time, and stops a running command. Use output when a result was cut short in the middle; the result says so with a line naming this command. Use stop to end a dev server, a watcher or any command you no longer need.";
 
-const STOP_SUMMARY: &str = "Stop a running command of this conversation by its commandId, whichever agent ran it, and wait until it has ended. Its next shell_status shows it aborted, with its last output. Stopping a command that has ended already succeeds, so it is safe to repeat.";
+const STOP_SUMMARY: &str = "Stop running commands of this conversation by their commandIds, in order, whichever agent ran them, and wait until each has ended. Its next shell_status shows it aborted, with its last output. Stopping a command that has ended already succeeds, so it is safe to repeat.";
 
 const OUTPUT_SUMMARY: &str = "Print a command's whole output by its commandId: numbered lines a page at a time, as `cat -n` shows them, from the first line or the lines --lines <from>-<to> names; the newest with --tail <n>. --stdout or --stderr takes one stream, with line numbers of its own. --raw prints the bytes as they are, unnumbered and unpaged, for pipes and files: `grep -n` on it gives the numbers --lines takes (`demi shell output 17 --raw | grep -n FAIL`). --medium <n> returns the command's medium n, the image or video its line `[medium n: …]` stands for, as it came: shown to you again, or its bytes into a file (`demi shell output 17 --medium 2 > shot.png`). Any command of this conversation, running or ended.";
 
@@ -72,8 +72,9 @@ struct OutputArgs {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct StopArgs {
-    /// The command's commandId, as its result names it
-    id: String,
+    /// The commands' commandIds, as their results name them
+    #[schemars(length(min = 1))]
+    id: Vec<String>,
 }
 
 /// The `shell` group.
@@ -94,33 +95,36 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
                 .input::<StopArgs>()
                 .positionals(["id"])
                 .success_output("\"[command <id> stopped]\", or \"[command <id> had already ended]\" for a command that had ended")
-                .failure_output("\"demi shell stop: <reason>\" on stderr, exit 1")
+                .failure_output("a line per command that cannot be stopped, \"demi shell stop: <id>: <reason>\", on stderr; the others are still stopped, and the command exits 1")
                 .bind(TypedRpc::new(verb(server, stop))),
         )
 }
 
-/// Stops the conversation's command `id` through the shell environment of
-/// the node that runs it, and waits until it has ended.
+/// Stops each of the conversation's commands the call names, in order. A
+/// command that cannot be stopped is told on stderr, and the next is
+/// stopped all the same.
 async fn stop<H: HostResolver>(call: Invoked<H, StopArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let id = call.args.id.as_str();
-    let failed = |reason: String| format!("demi shell stop: {reason}\n").into_bytes();
-    let unknown = || failed(format!("no command {id} in this conversation"));
-    let Ok(command) = CommandId::try_from(id) else {
-        port.stderr(unknown()).await?;
-        return Ok(1);
-    };
-    let place = match call.tree.command_place(&command).await {
-        Ok(place) => place,
-        Err(reason) => {
-            port.stderr(failed(reason)).await?;
-            return Ok(1);
+    let mut failed = false;
+    for id in &call.args.id {
+        match stop_one(&call.tree, id).await {
+            Ok(said) => port.stdout(said.into_bytes()).await?,
+            Err(reason) => {
+                failed = true;
+                fail_one(&port, &call.command, id, &reason).await?;
+            }
         }
-    };
-    let said = match place {
-        CommandPlace::Unknown => {
-            port.stderr(unknown()).await?;
-            return Ok(1);
-        }
+    }
+    Ok(u8::from(failed))
+}
+
+/// Stops the conversation's command `id` through the shell environment of
+/// the node that runs it, and waits until it has ended: what the command
+/// prints of it, or why it could not.
+async fn stop_one<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<String, String> {
+    let unknown = || "no such command in this conversation".to_owned();
+    let command = CommandId::try_from(id).map_err(|_| unknown())?;
+    Ok(match tree.command_place(&command).await? {
+        CommandPlace::Unknown => return Err(unknown()),
         CommandPlace::Stored(_) => format!("[command {id} had already ended]\n"),
         CommandPlace::Held(node) => match node.environment_of(&command) {
             Some(environment) if environment.ended(&command).now_or_never().is_none() => {
@@ -131,21 +135,15 @@ async fn stop<H: HostResolver>(call: Invoked<H, StopArgs>, port: RpcPort) -> Res
                     Ok(()) => environment.ended(&command).await,
                     Err(error) => Err(error),
                 };
-                match stopped {
-                    Ok(Ending::Aborted) => format!("[command {id} stopped]\n"),
+                match stopped.map_err(|error| error.to_string())? {
+                    Ending::Aborted => format!("[command {id} stopped]\n"),
                     // It ended by itself before the stop reached it.
-                    Ok(Ending::Exited(_)) => format!("[command {id} had already ended]\n"),
-                    Err(error) => {
-                        port.stderr(failed(error.to_string())).await?;
-                        return Ok(1);
-                    }
+                    Ending::Exited(_) => format!("[command {id} had already ended]\n"),
                 }
             }
             _ => format!("[command {id} had already ended]\n"),
         },
-    };
-    port.stdout(said.into_bytes()).await?;
-    Ok(0)
+    })
 }
 
 /// What a reading prints of the output's lines.
@@ -178,31 +176,31 @@ async fn output<H: HostResolver>(
             && args.stderr.is_none()
             && args.raw.is_none();
         if !alone {
-            return fail(&port, "--medium returns one medium and goes with no other option").await;
+            return fail("--medium returns one medium and goes with no other option");
         }
         return match find_medium(&call.tree, id, number).await {
             Ok(blob) => {
                 port.medium(blob).await?;
                 Ok(0)
             }
-            Err(reason) => fail(&port, &reason).await,
+            Err(reason) => fail(&reason),
         };
     }
     let streams = match (args.stdout == Some(true), args.stderr == Some(true)) {
-        (true, true) => return fail(&port, "--stdout and --stderr do not go together").await,
+        (true, true) => return fail("--stdout and --stderr do not go together"),
         (true, false) => Streams::Only(StreamKind::Stdout),
         (false, true) => Streams::Only(StreamKind::Stderr),
         (false, false) => Streams::Both,
     };
     let reading = match (&args.lines, args.tail) {
-        (Some(_), Some(_)) => return fail(&port, "--lines and --tail do not go together").await,
+        (Some(_), Some(_)) => return fail("--lines and --tail do not go together"),
         (Some(lines), None) => match range(lines) {
             Some((from, to)) => Reading::Lines { from, to },
             None => {
                 let reason = format!(
                     "--lines {lines}: lines count from 1, and a range ends at or after its start"
                 );
-                return fail(&port, &reason).await;
+                return fail(&reason);
             }
         },
         (None, Some(lines)) => Reading::Tail { lines },
@@ -210,15 +208,11 @@ async fn output<H: HostResolver>(
     };
     let raw = args.raw == Some(true);
     if raw && !matches!(reading, Reading::Page) {
-        return fail(
-            &port,
-            "--raw prints all of the output; take part of it with sed or tail",
-        )
-        .await;
+        return fail("--raw prints all of the output; take part of it with sed or tail");
     }
     let found = match find(&call.tree, id).await {
         Ok(found) => found,
-        Err(reason) => return fail(&port, &reason).await,
+        Err(reason) => return fail(&reason),
     };
     if raw {
         let text = found.output.text(streams, None, Seen::default());
@@ -232,11 +226,7 @@ async fn output<H: HostResolver>(
     }
     let binary = found.output.binary_stdout_length();
     if binary.is_some() && streams == Streams::Only(StreamKind::Stdout) {
-        return fail(
-            &port,
-            &format!("the stdout of {id} is binary; save it: demi shell output {id} --raw --stdout > <file>"),
-        )
-        .await;
+        return fail(&format!("the stdout of {id} is binary; save it: demi shell output {id} --raw --stdout > <file>"));
     }
     let text = found.output.text(streams, binary, Seen::default());
     let page = Page {
@@ -250,7 +240,7 @@ async fn output<H: HostResolver>(
         Reading::Page => page.forward(1, last),
         Reading::Lines { from, to } if from > last => {
             let reason = format!("lines {from}-{to} are past the end: the output has {last} lines");
-            return fail(&port, &reason).await;
+            return fail(&reason);
         }
         Reading::Lines { from, to } => page.forward(from, to.min(last)),
         Reading::Tail { lines } => page.tail(lines),
@@ -515,9 +505,8 @@ fn chars(lines: &[String]) -> usize {
     lines.iter().map(|line| line.chars().count() + 1).sum()
 }
 
-/// A failure: `demi shell output: <reason>` on stderr, exit 1.
-async fn fail(port: &RpcPort, reason: &str) -> Result<u8, RpcError> {
-    port.stderr(format!("demi shell output: {reason}\n").into_bytes())
-        .await?;
-    Ok(1)
+/// A failure, which the dispatcher tells after the command's path:
+/// `demi shell output: <reason>` on stderr, exit 1.
+fn fail(reason: &str) -> Result<u8, RpcError> {
+    Err(RpcError::Failed(reason.to_owned()))
 }

@@ -96,6 +96,11 @@ pub struct Invocation {
     pub operation: String,
     #[garde(length(min = 1))]
     pub invocation_id: String,
+    /// The command's path, such as `demi file read`, which a handler that
+    /// takes several values puts before each failure it reports
+    /// (`commands.md` § Handle an rpc call).
+    #[garde(length(min = 1))]
+    pub command: String,
     #[garde(dive)]
     pub context: CommandContext,
     /// The operation's arguments, a JSON object.

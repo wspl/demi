@@ -39,6 +39,14 @@ pub struct BrowserFixture {
     pub stdout: Option<StdoutTarget>,
 }
 
+/// The command line that names `operation`, such as `demi browser click`.
+fn command(operation: &str) -> String {
+    format!(
+        "demi browser {}",
+        operation.trim_start_matches("browser.").replace('.', " ")
+    )
+}
+
 impl BrowserFixture {
     pub async fn call(&self, operation: &str, args: Value) -> Value {
         let (code, result) = self.result(operation, args, CancellationToken::new()).await;
@@ -74,6 +82,7 @@ impl BrowserFixture {
             request: Invocation {
                 operation: operation.into(),
                 invocation_id: uuid::Uuid::new_v4().to_string(),
+                command: command(operation),
                 context: CommandContext {
                     color_scheme: self.color_scheme,
                     conversation: self.conversation.clone(),

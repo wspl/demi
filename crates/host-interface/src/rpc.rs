@@ -86,10 +86,14 @@ pub trait RpcHandler {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RpcError {
     /// The call does not fit the command, such as arguments its input
-    /// refuses.
+    /// refuses: the usage error's whole text, in clap's shape
+    /// (`commands.md` § Parse input and render help), which the caller
+    /// receives as it is, with exit status 2.
     #[error("{0}")]
     Usage(String),
-    /// The handler failed.
+    /// The handler failed: what it concerns and why, `<object>: <reason>`
+    /// or the reason alone, which the dispatcher puts after the command's
+    /// path, as GNU tools write a runtime error, with exit status 1.
     #[error("{0}")]
     Failed(String),
     #[error(transparent)]

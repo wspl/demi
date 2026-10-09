@@ -68,7 +68,7 @@ pub(crate) fn file_group() -> GroupBuilder {
     .leaf(
         leaf(
             "read",
-            "Read a file. Text files print as text; an image or video file is shown to you as viewable media, and several reads in one script show each in order. Into a file or a pipe it writes the raw file bytes, so it also pipes cleanly into other commands (e.g. ffmpeg).",
+            "Read files, in order. Text files print as text; an image or video file is shown to you as viewable media, so demi file read a.png b.png shows both. Into a file or a pipe it writes the raw file bytes, so it also pipes cleanly into other commands (e.g. ffmpeg).",
         )
         .input::<ReadArgs>()
         .positionals(["path"])
@@ -77,7 +77,7 @@ pub(crate) fn file_group() -> GroupBuilder {
         )
         .media()
         .failure_output(
-            "writes the reason to stderr and exits non-zero if the path is missing or unreadable",
+            "a line per file that cannot be read, `demi file read: <path>: <reason>`, on stderr; the other files are still read, and the command exits 1. A binary file that is no image or video, read into your output, fails with how to copy it",
         ),
     )
     .leaf(

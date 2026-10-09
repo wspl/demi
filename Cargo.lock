@@ -2150,6 +2150,7 @@ dependencies = [
 name = "demi-command-declarations"
 version = "0.1.21"
 dependencies = [
+ "clap",
  "jsonschema",
  "schemars",
  "serde",
@@ -2301,6 +2302,7 @@ dependencies = [
  "demi-shared-types",
  "regex",
  "serde_json",
+ "shlex",
  "similar",
  "strsim",
  "tempfile",

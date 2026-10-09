@@ -112,6 +112,7 @@ async fn shot(stdout: Option<StdoutTarget>) -> Vec<Received> {
     let request = Invocation {
         operation: "shot".into(),
         invocation_id: "shot".into(),
+        command: "demi test".into(),
         context: CommandContext {
             color_scheme: demi_command_protocol::ColorScheme::Light,
             conversation: "conversation".into(),
