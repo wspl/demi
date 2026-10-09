@@ -134,6 +134,119 @@ fn strings(args: &[std::ffi::OsString]) -> Vec<String> {
         .collect()
 }
 
+/// The utility a child program's name names: a utility that starts a
+/// program by one of these bare names, as `find -exec`, `xargs` and `env`
+/// do, starts that utility, as the job's shell would run the name
+/// (`runner.md` § Standard utilities); a path names a program.
+pub(crate) fn named(program: &std::ffi::OsStr) -> Option<&'static str> {
+    let program = program.to_str()?;
+    UTILITIES
+        .iter()
+        .map(|(name, _)| *name)
+        .find(|name| *name == program)
+}
+
+/// Starts the utility `context.name`, which a utility started as its child
+/// program, on a thread of the shell's pool; killing the child cancels
+/// `cancellation`, which the context's control ends the run on.
+pub(crate) fn start(
+    tasks: &tokio_util::task::TaskTracker,
+    cancellation: tokio_util::sync::CancellationToken,
+    context: uucore::context::Context,
+    args: Vec<std::ffi::OsString>,
+) -> std::io::Result<Box<dyn uucore::context::UtilityRun>> {
+    let runtime = tokio::runtime::Handle::try_current().map_err(std::io::Error::other)?;
+    let (sender, exit) = std::sync::mpsc::channel();
+    let ended = cancellation.clone();
+    let stderr = context.stderr.clone();
+    let name = context.name;
+    tasks.spawn_blocking_on(
+        move || {
+            let status = match run(context, args) {
+                Ok(code) => exit_status(code),
+                Err(_) if ended.is_cancelled() => killed(),
+                Err(error) => {
+                    use std::io::Write as _;
+                    // The status says it failed whether or not its standard
+                    // error takes the reason.
+                    let _unwritten = writeln!(&*stderr, "{name}: {error}");
+                    exit_status(1)
+                }
+            };
+            // The utility that started this one may have stopped waiting.
+            let _unreceived = sender.send(status);
+        },
+        &runtime,
+    );
+    Ok(Box::new(UtilityChild {
+        cancellation,
+        exit,
+        status: None,
+    }))
+}
+
+/// A utility running as another utility's child program.
+struct UtilityChild {
+    cancellation: tokio_util::sync::CancellationToken,
+    exit: std::sync::mpsc::Receiver<std::process::ExitStatus>,
+    status: Option<std::process::ExitStatus>,
+}
+
+impl uucore::context::UtilityRun for UtilityChild {
+    fn kill(&mut self) -> std::io::Result<()> {
+        self.cancellation.cancel();
+        Ok(())
+    }
+
+    fn try_wait(&mut self) -> std::io::Result<Option<std::process::ExitStatus>> {
+        if self.status.is_none() {
+            match self.exit.try_recv() {
+                Ok(status) => self.status = Some(status),
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    return Err(std::io::Error::other("utility thread ended without a status"));
+                }
+            }
+        }
+        Ok(self.status)
+    }
+
+    fn wait(&mut self) -> std::io::Result<std::process::ExitStatus> {
+        if let Some(status) = self.status {
+            return Ok(status);
+        }
+        let status = self.exit.recv().map_err(std::io::Error::other)?;
+        self.status = Some(status);
+        Ok(status)
+    }
+}
+
+#[cfg(unix)]
+fn exit_status(code: i32) -> std::process::ExitStatus {
+    use std::os::unix::process::ExitStatusExt;
+    std::process::ExitStatus::from_raw((code & 0xff) << 8)
+}
+
+#[cfg(windows)]
+fn exit_status(code: i32) -> std::process::ExitStatus {
+    use std::os::windows::process::ExitStatusExt;
+    std::process::ExitStatus::from_raw(code as u32)
+}
+
+/// The status of a utility its starter killed: as a program killed by
+/// SIGKILL on Unix, and exit status 1 on Windows, as `TerminateProcess`
+/// gives.
+#[cfg(unix)]
+fn killed() -> std::process::ExitStatus {
+    use std::os::unix::process::ExitStatusExt;
+    std::process::ExitStatus::from_raw(libc::SIGKILL)
+}
+
+#[cfg(windows)]
+fn killed() -> std::process::ExitStatus {
+    exit_status(1)
+}
+
 pub fn run(
     context: uucore::context::Context,
     args: Vec<std::ffi::OsString>,

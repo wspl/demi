@@ -121,9 +121,7 @@ fn tail_file(
 ) -> UResult<()> {
     // some platform has different read error message
     #[cfg(not(unix))]
-    if path
-        .metadata()
-        .is_err_and(|e| e.kind() == ErrorKind::NotFound)
+    if uucore::context::fs::metadata(path).is_err_and(|e| e.kind() == ErrorKind::NotFound)
     {
         set_exit_code(1);
         show_error!(
@@ -228,7 +226,7 @@ fn open_file(path: &Path, use_nonblock_for_fifo: bool) -> io::Result<File> {
     use uucore::context::fs::OpenOptions;
     use std::os::unix::fs::{FileTypeExt, OpenOptionsExt};
 
-    let is_fifo = path.metadata().is_ok_and(|m| m.file_type().is_fifo());
+    let is_fifo = uucore::context::fs::metadata(path).is_ok_and(|m| m.file_type().is_fifo());
 
     if is_fifo && use_nonblock_for_fifo {
         let file = OpenOptions::new()

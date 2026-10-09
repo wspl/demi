@@ -161,4 +161,5 @@ check-cfg = [
 maintainer = "demi-runner"
 patches = [
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+    "en-US.ftl has tr-error-read-error, which the read error asks for and upstream's file lacks, with GNU tr's wording",
 ]
