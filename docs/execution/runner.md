@@ -490,10 +490,15 @@ runner reports, as messages of that watch:
   or renamed, both names of a rename. A file opened or read reports nothing,
   and neither does metadata alone under `.git`, as for the
   [working tree](#working-tree). Among them it names `entries`, the paths
-  that came, went or were renamed, by the platform's event kinds; a path the
-  platform's events leave in doubt, as FSEvents can merge a creation and a
-  write into one event, is named among them too, so a folder's listing is
-  never left stale. The runner gathers paths for 100 ms and sends
+  that came, went or were renamed, by the platform's event kinds. FSEvents
+  can leave that in doubt: it merges a creation and the writes after it into
+  one event, and keeps the creation flag on each further write while writes
+  keep coming, so a build log created once and appended to all the time
+  looks created again on every write. The runner settles the doubt by the
+  file's identity, its device and inode: a path that still holds the file it
+  held when last seen did not come again, and any other is named among
+  `entries`, so a folder's listing is never left stale and is not read again
+  for a file written in place. The runner gathers paths for 100 ms and sends
   each once; more than 1,000 at once it sends as `lost`. It names among them
   `ignored`, the paths git ignores in the working tree's repository by its own
   rules (untracked and matched by an ignore rule, or under an ignored folder),
