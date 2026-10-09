@@ -5,8 +5,11 @@
  * the Host. An entry read while a live watch covered its path is confirmed:
  * showing it again asks nothing until a report of that watch names its path.
  * Any other entry is unconfirmed: showing it shows it at once and reads it
- * again. Reads of one entry share one request, and a report that names an
- * entry being read reads it once more after. A report reads a shown entry
+ * again. An entry holds no way to read it: each view reads through its own
+ * route, and a report reads a shown entry through the route of the view
+ * that came on screen last. Reads of one entry share one request, and a
+ * report that names an entry being read reads it once more after. A report
+ * reads a shown entry
  * again at once, a folder's listing and a changes list at most once a
  * second. At most `budget`
  * of text stay, the entries shown longest ago leaving first.
@@ -135,11 +138,31 @@ function within(path: string, ancestor: string): boolean {
   return path === ancestor || path.startsWith(prefix)
 }
 
+/** How a view reads an entry: through the route of the place that shows it. */
+type ReadEntry<T> = KeptSpec<T>['read']
+
+/** A view's hold on an entry, with the way that view reads it. */
+interface Holder<T> {
+  read: ReadEntry<T>
+  /** The view holds it but is not on screen. */
+  away: boolean
+}
+
+/**
+ * One kept answer, shared by every view of its Host and path: data alone,
+ * what was read and whether a report left it unconfirmed, never a way to
+ * read it. Each view reads it through its own route, as a conversation's
+ * views through the conversation's and a device's folder dialog through the
+ * device's (`sessions-and-targets.md` § Every way to a Host), and every view
+ * sees what one of them read.
+ */
 class Entry<T> {
+  /** What it is, which decides which reports concern it; how to read it is each view's. */
+  readonly spec: Omit<KeptSpec<T>, 'read'>
   readonly state: ShownEntry<T> & { value: T | undefined; failure: FileBrowserFailure | null; reading: boolean }
+  /** The views that hold it, the one that came on screen last at the end. */
+  readonly holders = new Set<Holder<T>>()
   confirmed = false
-  /** How many views show it. */
-  shown = 0
   /** When it was last shown, by the cache's clock. */
   lastShown = 0
   size = 0
@@ -151,8 +174,30 @@ class Entry<T> {
   /** The read a report asked for that waits for the listing's second to end. */
   rereadTimer: ReturnType<typeof setTimeout> | null = null
 
-  constructor(readonly spec: KeptSpec<T>) {
+  // The way to read belongs to the view that brought the spec; the entry keeps none.
+  constructor({ read: _read, ...spec }: KeptSpec<T>) {
+    this.spec = spec
     this.state = reactive({ value: undefined, failure: null, reading: false }) as Entry<T>['state']
+  }
+
+  /** How many views show it on screen. */
+  get shown(): number {
+    let count = 0
+    for (const holder of this.holders) {
+      if (!holder.away)
+        count += 1
+    }
+    return count
+  }
+
+  /** The way the view that came on screen last reads it; null while none shows it. */
+  reader(): ReadEntry<T> | null {
+    let read: ReadEntry<T> | null = null
+    for (const holder of this.holders) {
+      if (!holder.away)
+        read = holder.read
+    }
+    return read
   }
 
   /**
@@ -225,12 +270,13 @@ export class HostFiles {
   }
 
   /**
-   * Reads `entry`, or joins the read on its way. The answer confirms it
+   * Reads `entry` through `read`, or joins the read on its way, whatever
+   * route that one took: what it answers is the Host's. The answer confirms it
    * when a live watch covered its path from the read's start to its end and
    * no report named it meanwhile; a report that did reads it once more for
    * the views that show it.
    */
-  private read<T>(entry: Entry<T>): Promise<void> {
+  private read<T>(entry: Entry<T>, read: ReadEntry<T>): Promise<void> {
     if (entry.reading)
       return entry.reading
     const stamp = entry.stamp
@@ -246,7 +292,7 @@ export class HostFiles {
     }
     const reading = (async () => {
       try {
-        const value = await entry.spec.read(entry.state.value)
+        const value = await read(entry.state.value)
         // An answer that is what the entry holds, as a read the Host
         // answered unchanged, changes nothing a view shows.
         if (value !== entry.state.value)
@@ -290,22 +336,28 @@ export class HostFiles {
    */
   private reread(entry: Entry<unknown>): void {
     if (entry.spec.kind !== 'listing' && entry.spec.kind !== 'changes') {
-      void this.read(entry)
+      this.readShown(entry)
       return
     }
     if (entry.rereadTimer !== null)
       return
     const wait = entry.readStart + SUMMARY_REREAD_MS - performance.now()
     if (wait <= 0) {
-      void this.read(entry)
+      this.readShown(entry)
       return
     }
     entry.rereadTimer = setTimeout(() => {
       entry.rereadTimer = null
       // A view that let go meanwhile reads it when it shows it next, as it is unconfirmed.
-      if (entry.shown > 0)
-        void this.read(entry)
+      this.readShown(entry)
     }, wait)
+  }
+
+  /** Reads an entry a view shows on screen again, through that view's route; one none shows is left for the next view to show it. */
+  private readShown(entry: Entry<unknown>): void {
+    const read = entry.reader()
+    if (read)
+      void this.read(entry, read)
   }
 
   private cancelReread(entry: Entry<unknown>): void {
@@ -351,41 +403,41 @@ export class HostFiles {
    */
   show<T>(spec: KeptSpec<T>): Showing<T> {
     const entry = this.entry(spec)
-    entry.shown += 1
+    const holder: Holder<T> = { read: spec.read, away: false }
+    entry.holders.add(holder)
     entry.lastShown = ++this.clock
     if (!entry.confirmed)
-      void this.read(entry)
+      void this.read(entry, spec.read)
     let released = false
-    let away = false
     return {
       entry: entry.state,
       retry: () => {
-        void this.read(entry)
+        void this.read(entry, spec.read)
       },
       release: () => {
         if (released)
           return
         released = true
-        if (!away)
-          entry.shown -= 1
+        entry.holders.delete(holder)
         entry.lastShown = ++this.clock
         this.evict()
       },
       away: () => {
-        if (released || away)
+        if (released || holder.away)
           return
-        away = true
-        entry.shown -= 1
+        holder.away = true
         entry.lastShown = ++this.clock
       },
       back: () => {
-        if (released || !away)
+        if (released || !holder.away)
           return
-        away = false
-        entry.shown += 1
+        holder.away = false
+        // Last on screen: its route reads the entry again for reports.
+        entry.holders.delete(holder)
+        entry.holders.add(holder)
         entry.lastShown = ++this.clock
         if (!entry.confirmed)
-          void this.read(entry)
+          void this.read(entry, spec.read)
       },
     }
   }
@@ -408,7 +460,7 @@ export class HostFiles {
 
   /** Reads the entry `spec` names again now, as a Refresh does. */
   retry<T>(spec: KeptSpec<T>): void {
-    void this.read(this.entry(spec))
+    void this.read(this.entry(spec), spec.read)
   }
 
   /** What is kept of the entry `spec` names, as a view would show it, without showing or reading it. */
@@ -421,7 +473,7 @@ export class HostFiles {
     const entry = this.entry(spec)
     entry.lastShown = ++this.clock
     if (!entry.confirmed)
-      await this.read(entry)
+      await this.read(entry, spec.read)
     const { value, failure } = entry.state
     if (value === undefined)
       throw new FileBrowserError(failure?.kind ?? 'other', failure?.message)
@@ -460,8 +512,8 @@ export class HostFiles {
   cover(coverage: Coverage): void {
     this.coverages.add(coverage)
     for (const entry of this.entries.values()) {
-      if (entry.shown > 0 && !entry.confirmed && coverage.covers(entry.spec.path))
-        void this.read(entry)
+      if (!entry.confirmed && coverage.covers(entry.spec.path))
+        this.readShown(entry)
     }
   }
 
@@ -478,16 +530,16 @@ export class HostFiles {
       if (!coverage.covers(entry.spec.path))
         continue
       this.unconfirm(entry)
-      if (reread && entry.shown > 0)
-        void this.read(entry)
+      if (reread)
+        this.readShown(entry)
     }
   }
 
   /** Reads every shown entry `where` picks again now, as a Refresh does. */
   refresh(where: (path: string) => boolean = () => true): void {
     for (const entry of this.entries.values()) {
-      if (entry.shown > 0 && where(entry.spec.path))
-        void this.read(entry)
+      if (where(entry.spec.path))
+        this.readShown(entry)
     }
   }
 }
