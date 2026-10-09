@@ -28,7 +28,8 @@ what it returns, then the page's state; a call ends after ten minutes unless
     demi.timeline(action, [0, 100, 1500], { region, name })      frames painted those ms after the action
     demi.pixel(x, y)                     the colour at a point
     demi.net.latency(ms) .bandwidth(kbps | null) .offline() .unreachable() .online() .cut(pattern) .reset() .status()
-    demi.ime(text, { into, commit })     compose text through an input method
+    demi.ime(text, { into, commit })     compose text through an input method, in the order of into's engine; commit 'enter' | 'escape' | 'none'
+    demi.webkit()                        a WebKit (Safari) page for this call, signed in; its goto takes app addresses
     demi.emulate({ viewport, scale, theme, device, locale, timeZone, reset })   without reloading
     demi.grant(permission, { origin })   such as 'clipboard' or 'local-network-access'
     demi.gallery(path)                   open a gallery page, such as '/session?view=blocks'

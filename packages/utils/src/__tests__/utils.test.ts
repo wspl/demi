@@ -47,8 +47,8 @@ test("an input method's keys stay with the field and a plain Enter reaches its h
   ]
   for (const { kept, ...key } of cases) {
     let stopped = false
-    keepComposition({ ...key, stopPropagation: () => { stopped = true } })
-    expect({ ...key, stopped }).toEqual({ ...key, stopped: kept })
+    const answer = keepComposition({ ...key, stopPropagation: () => { stopped = true } })
+    expect({ ...key, stopped, answer }).toEqual({ ...key, stopped: kept, answer: kept })
   }
 })
 

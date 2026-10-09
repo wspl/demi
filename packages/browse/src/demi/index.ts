@@ -17,6 +17,7 @@ import { stop } from './stop'
 import { timeline } from './timeline'
 import { turn } from './turn'
 import { up } from './up'
+import { webkitPage } from './webkit'
 
 export function createDemi(tool: Tool) {
   return {
@@ -29,6 +30,7 @@ export function createDemi(tool: Tool) {
     pixel: (x: number, y: number) => pixel(tool, x, y),
     net: net(tool),
     ime: (text: string, options?: Parameters<typeof ime>[2]) => ime(tool, text, options),
+    webkit: () => webkitPage(tool),
     emulate: (options: Parameters<typeof emulate>[1]) => emulate(tool, options),
     grant: (names: string | string[], options?: { origin?: string }) => grant(tool, names, options),
     gallery: (path?: string) => gallery(tool, path),

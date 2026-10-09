@@ -43,6 +43,7 @@ function toolOf(slot: Slot): Tool & { ended: () => boolean } {
     print: () => undefined,
     env: {},
     wrote: () => undefined,
+    release: () => undefined,
     endServer: () => {
       ended = true
     },
