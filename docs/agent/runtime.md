@@ -487,6 +487,15 @@ have fired at ten minutes.
   queue or among the pending steers.
 - A wakeup belongs to its session, not to the turn that scheduled it: a turn
   the user started meanwhile receives it like its own.
+- A turn that ends with its answer, a response that requests no tool, drops
+  the wakeups that wait only for time, scheduled and fired alike; a wakeup
+  that names commands still waits for them. For example, the root yields
+  ten minutes for its subagents, a report wakes it after four, and it
+  answers: the wakeup is dropped, so it no longer opens a turn six minutes
+  later that only says the work is done. Had it yielded for build 17 and
+  answered a message of the user's meanwhile, the wakeup for 17 would still
+  stand. A child drops every wakeup when it closes with its answer
+  ([Result](subagents.md#result)).
 - A session waits for one thing at a time: a `yield` replaces the wakeup
   scheduled before it, which then never fires. For example, the agent yields
   for ten minutes to wait for its subagents, a subagent's message wakes it
