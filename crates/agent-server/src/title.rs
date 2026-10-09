@@ -324,6 +324,7 @@ pub async fn request_title<S: AsRef<str>>(
         items: Arc::from([InferenceItem::UserMessage {
             content: vec![UserPart::Text(input)],
         }]),
+        blocks: Arc::from([]),
         tools: Arc::from([]),
         thinking: lowest_thinking(&selection.model),
         service_tier_id: None,

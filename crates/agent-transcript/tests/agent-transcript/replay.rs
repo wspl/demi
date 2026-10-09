@@ -16,6 +16,7 @@ use demi_shared_types::{
 fn replayed_text(text: &str) -> String {
     let model = test_model();
     let message = Block::User(UserBlock {
+        entries: Vec::new(),
         id: BlockId::try_from("u1").unwrap(),
         turn_id: TurnId::try_from("t1").unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
@@ -45,6 +46,7 @@ fn reasoning_between_the_last_boundary_and_its_marker_is_marked_as_kept_past_a_s
     let id = |value: &str| BlockId::try_from(value).unwrap();
     let thinking = |value: &str| {
         Block::Thinking(ThinkingBlock {
+            entries: Vec::new(),
             id: id(value),
             created_at: Timestamp::UNIX_EPOCH,
             model: model.clone(),
@@ -53,12 +55,14 @@ fn reasoning_between_the_last_boundary_and_its_marker_is_marked_as_kept_past_a_s
         })
     };
     let redacted = Block::RedactedThinking(RedactedThinkingBlock {
+        entries: Vec::new(),
         id: id("redacted"),
         created_at: Timestamp::UNIX_EPOCH,
         model: model.clone(),
         data: "anthropic:opaque".into(),
     });
     let boundary = Block::CompactionBoundary(CompactionBoundaryBlock {
+        entries: Vec::new(),
         id: id("boundary"),
         created_at: Timestamp::UNIX_EPOCH,
         model: model.clone(),
@@ -131,6 +135,7 @@ fn a_messages_reference_and_attachment_record_reach_the_model_as_their_text() {
     };
     let reference = "file:///home/demi/notes.md?host=laptop";
     let message = Block::User(UserBlock {
+        entries: Vec::new(),
         id: BlockId::try_from("u1").unwrap(),
         turn_id: TurnId::try_from("t1").unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
