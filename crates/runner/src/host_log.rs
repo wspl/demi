@@ -243,7 +243,7 @@ pub struct Console;
 
 impl<S: Subscriber> Layer<S> for Console {
     fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
-        crate::console::line(format_args!("demi-runner: {}", Fields::of(event).text));
+        crate::console::line(crate::console::runner_line(Fields::of(event).text));
     }
 }
 
