@@ -76,7 +76,10 @@ pub(crate) fn render(operation: &BrowserOperation, value: Value) -> Result<Strin
         BrowserOperation::ClipboardRead(_) => clipboard(&typed(value)?),
         BrowserOperation::Eval(_) => {
             let result: EvalResult = typed(value)?;
-            format!("{}\n", result.value)
+            match result.value {
+                Some(value) => format!("{value}\n"),
+                None => "undefined\n".into(),
+            }
         }
         BrowserOperation::Logs(_) => logs(&typed(value)?),
         BrowserOperation::ViewportSet(_) | BrowserOperation::ViewportReset(_) => {
@@ -590,7 +593,7 @@ fn action(operation: &BrowserOperation, result: &ActionResult) -> Result<String>
             Some(target) => format!("Pressed {} in {target}.", plain(&input.key)),
             None => format!("Pressed {}.", plain(&input.key)),
         },
-        BrowserOperation::Check(input) => on(if input.value { "Checked" } else { "Unchecked" }),
+        BrowserOperation::Check(input) => on(if input.checked() { "Checked" } else { "Unchecked" }),
         BrowserOperation::Select(_) => {
             let selected: Vec<SelectedOption> = typed(result.result.clone())?;
             let selected: Vec<String> = selected.iter().map(option).collect();
