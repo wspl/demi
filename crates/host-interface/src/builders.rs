@@ -6,7 +6,7 @@
 use std::{future::Future, marker::PhantomData, rc::Rc};
 
 use demi_command_declarations::{
-    Category, Group, Leaf, LeafKind, LeafOutput, NativeOperation, Node, Schema,
+    Category, Group, Leaf, LeafKind, LeafOutput, NativeOperation, Node, Schema, StdinRead,
     command_schema_settings,
 };
 use futures_util::future::{LocalBoxFuture, ready};
@@ -141,7 +141,7 @@ impl LeafBuilder {
                 input: None,
                 positionals: None,
                 stdin_field: None,
-                stdin_unless: Vec::new(),
+                stdin_read: None,
                 rest_field: None,
                 output: None,
                 media: false,
@@ -211,7 +211,20 @@ impl LeafBuilder {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.leaf.stdin_unless = options.into_iter().map(Into::into).collect();
+        self.leaf.stdin_read = Some(StdinRead::Unless(
+            options.into_iter().map(Into::into).collect(),
+        ));
+        self
+    }
+
+    /// The options of which one must be given for the stdin field to be
+    /// read; without one, the command leaves stdin to the calling process.
+    pub fn stdin_with<I, S>(mut self, options: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.leaf.stdin_read = Some(StdinRead::With(options.into_iter().map(Into::into).collect()));
         self
     }
 
