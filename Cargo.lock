@@ -2111,6 +2111,7 @@ dependencies = [
  "demi-command-package-browser-protocol",
  "demi-command-protocol",
  "demi-command-sdk",
+ "demi-shared-cli",
  "futures-util",
  "libc",
  "png",
@@ -2136,6 +2137,7 @@ dependencies = [
  "demi-command-package-claude-code-protocol",
  "demi-command-protocol",
  "demi-command-sdk",
+ "demi-shared-cli",
  "futures-util",
  "serde",
  "serde_json",
@@ -2298,6 +2300,7 @@ dependencies = [
  "demi-command-protocol",
  "demi-command-sdk",
  "demi-shared-artifacts",
+ "demi-shared-cli",
  "demi-shared-gates",
  "demi-shared-types",
  "regex",
@@ -2619,6 +2622,7 @@ dependencies = [
  "demi-runner-protocol",
  "demi-runner-shell",
  "demi-shared-artifacts",
+ "demi-shared-cli",
  "futures-util",
  "hostname",
  "libc",
@@ -2638,6 +2642,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2865,6 +2870,7 @@ dependencies = [
  "demi-backend-database",
  "demi-machine-manager-protocol",
  "demi-shared-artifacts",
+ "demi-shared-cli",
  "dotenvy",
  "jiff",
  "rusqlite",

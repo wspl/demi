@@ -128,10 +128,16 @@ opt-level = 3
 # (`builds-and-releases.md` § Build profiles). Measured on aarch64-apple-darwin,
 # runner and demi-commands: thin LTO at opt-level 3 36.0 and 23.8 MiB in 79 s;
 # these 20.4 and 14.0 MiB in 125 s. Panics unwind: the runner and the command
-# services contain a panic to one job or invocation.
+# services contain a panic to one job or invocation. The line tables go to a
+# debug file beside each executable, which stays out of what a device
+# downloads: Cargo writes it for the Apple and Windows targets (a .dSYM, a
+# .pdb), and `xtask native build` splits the Linux executables, which it
+# builds unstripped, since stripping one leaves its packed debug file unusable.
 [profile.release]
 lto = "thin"
 opt-level = "s"
+debug = "line-tables-only"
+split-debuginfo = "packed"
 strip = true
 
 [patch.crates-io]
