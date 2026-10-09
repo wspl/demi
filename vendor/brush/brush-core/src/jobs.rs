@@ -20,6 +20,10 @@ pub(crate) type JobResult = (Job, Result<ExecutionResult, error::Error>);
 pub struct JobManager {
     /// The jobs that are currently managed by the shell.
     pub jobs: Vec<Job>,
+
+    /// The process ID of the last job started in the background, which `$!` names after the job
+    /// is gone too.
+    last_background_pid: Option<sys::process::ProcessId>,
 }
 
 /// Represents a task that is part of a job.
@@ -84,6 +88,19 @@ impl JobManager {
         Self::default()
     }
 
+    /// The job manager of a subshell: no jobs, and the parent's `$!`.
+    pub(crate) fn for_subshell(&self) -> Self {
+        Self {
+            jobs: Vec::new(),
+            last_background_pid: self.last_background_pid,
+        }
+    }
+
+    /// The process ID of the last job started in the background, which `$!` names.
+    pub const fn last_background_pid(&self) -> Option<sys::process::ProcessId> {
+        self.last_background_pid
+    }
+
     /// Adds a job to the job manager and marks it as the current job;
     /// returns an immutable reference to the job.
     ///
@@ -105,6 +122,7 @@ impl JobManager {
         let id = self.jobs.len() + 1;
         job.id = id;
         job.annotation = JobAnnotation::Current;
+        self.last_background_pid = job.representative_pid();
         self.jobs.push(job);
 
         #[allow(clippy::unwrap_used, reason = "we just pushed an element")]
@@ -260,6 +278,10 @@ pub struct Job {
     /// If available, the process group ID of the job's processes.
     pgid: Option<sys::process::ProcessId>,
 
+    /// The id the embedding host gave the job's background task, if it gave one; it stands for
+    /// the job wherever a process ID does.
+    task_id: Option<sys::process::ProcessId>,
+
     /// The annotation of the job (e.g., current, previous).
     annotation: JobAnnotation,
 
@@ -302,10 +324,22 @@ impl Job {
             id: 0,
             tasks: tasks.into_iter().collect(),
             pgid: None,
+            task_id: None,
             annotation: JobAnnotation::None,
             command_line,
             state,
         }
+    }
+
+    /// The job with the id its background task's host gave it.
+    pub(crate) const fn with_task_id(mut self, task_id: Option<sys::process::ProcessId>) -> Self {
+        self.task_id = task_id;
+        self
+    }
+
+    /// The id the embedding host gave the job's background task, if it gave one.
+    pub const fn task_id(&self) -> Option<sys::process::ProcessId> {
+        self.task_id
     }
 
     /// Returns a pid-style string for the job.
@@ -435,7 +469,8 @@ impl Job {
         }
     }
 
-    /// Tries to retrieve a "representative" pid for the job.
+    /// Tries to retrieve a "representative" pid for the job: its first process's, or else the
+    /// id of its background task.
     pub fn representative_pid(&self) -> Option<sys::process::ProcessId> {
         for task in &self.tasks {
             match task {
@@ -447,12 +482,16 @@ impl Job {
                 JobTask::Internal(_) => (),
             }
         }
-        None
+        self.task_id
     }
 
-    /// Tries to retrieve the process group ID (PGID) of the job.
+    /// Tries to retrieve the process group ID (PGID) of the job; a background task's id is
+    /// none.
     pub fn process_group_id(&self) -> Option<sys::process::ProcessId> {
         // TODO(jobs): Don't assume that the first PID is the PGID.
-        self.pgid.or_else(|| self.representative_pid())
+        self.pgid.or_else(|| {
+            self.representative_pid()
+                .filter(|pid| self.task_id != Some(*pid))
+        })
     }
 }

@@ -49,11 +49,28 @@ impl builtins::Command for JobsCommand {
             for job in &context.shell.jobs().jobs {
                 self.display_job(&context, job)?;
             }
-        } else {
-            return error::unimp("jobs with job specs");
+            return Ok(ExecutionResult::success());
         }
 
-        Ok(ExecutionResult::success())
+        // Each job a spec names, as bash lists them: a spec that names none fails the command,
+        // and the others are still listed.
+        let mut result = ExecutionResult::success();
+        for spec in &self.job_specs {
+            let found = context
+                .shell
+                .jobs_mut()
+                .resolve_job_spec(spec)
+                .map(|job| job.id);
+            let job = found.and_then(|id| context.shell.jobs().jobs.iter().find(|job| job.id == id));
+            match job {
+                Some(job) => self.display_job(&context, job)?,
+                None => {
+                    writeln!(context.stderr(), "{}: {spec}: no such job", context.command_name)?;
+                    result = ExecutionResult::general_error();
+                }
+            }
+        }
+        Ok(result)
     }
 }
 
