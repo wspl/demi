@@ -526,7 +526,6 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
               filterable
               :autofocus="false"
               filter-placeholder="Filter options"
-              empty-text="No Items Found"
               :items="tallOptions"
               initial-query="zzz"
               :selected-id="filterEmptySelected"
