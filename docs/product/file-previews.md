@@ -281,7 +281,15 @@ longer unchanged stretch between two changes folded into one line that says
 how many lines it holds, which a click unfolds in place. For example, an
 edit of line 10 in a 400-line file shows lines 7 to 13, then one line for
 the 387 below; the stretch at the top folds only once it is longer than
-three lines.
+three lines. The diff is exact whatever the file's size, within 500 ms of
+work: a 30 KB file with twelve edits shows twelve changes, never the whole
+file removed and added again. When the file changes, the folds follow the
+new changes, so a change never hides inside a fold, and a stretch the user
+unfolded stays unfolded. The view keeps its place through the update
+([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)).
+
+The Change tab with no file picked shows the first file it lists, and keeps
+showing it when another changed file later sorts above it.
 
 A working directory outside a git repository has no changes to show: the
 Change view says so, and the page never lists changes for it, however often

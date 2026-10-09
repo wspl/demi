@@ -332,6 +332,17 @@ without a loading state.
   ([Backend communication](../product/web-application.md#backend-communication)).
   At most 64 MiB of them stay, counted by their text; past that the ones shown
   longest ago go first.
+- **A view keeps its place.** No update remounts or resets a view. A view is
+  keyed by what the user chose, such as the mode, the file, the edit or All
+  Changes, never by the version of its content. An update that changes
+  nothing the view shows changes nothing on screen; one that changes its
+  content replaces it in place, both sides of a diff in one step, with the
+  line at the top of the window kept where it is, as an editor keeps its
+  place when the file changes on disk. Only another choice of the user's, or
+  Reload, shows a loading state; a loading state never replaces content
+  already shown. A value the page derives anew on each frame, such as the
+  transcript, is compared by what it holds, never by its identity, so a new
+  frame that changes nothing is no change.
 - **Confirmed entries.** An entry read while a watch covering its path was
   live, and that no report named since, is the Host's content as its file
   system knows it. Showing it asks nothing.
