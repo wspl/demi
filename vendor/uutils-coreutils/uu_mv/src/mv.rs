@@ -805,8 +805,9 @@ fn rename(
     #[cfg(not(unix))] _hardlink_scanner: Option<()>,
 ) -> io::Result<()> {
     let mut backup_path = None;
+    let replacing = to.context_exists();
 
-    if to.context_exists() {
+    if replacing {
         if opts.update == UpdateMode::None {
             if opts.debug {
                 uucore::context_println!("{}", translate!("mv-debug-skipped", "target" => to.quote()));
@@ -842,7 +843,12 @@ fn rename(
                 }
             }
         }
+    }
 
+    // The edit spans the backup and the rename, never a prompt.
+    let _edit = uucore::context::edit_rename(from, to);
+
+    if replacing {
         backup_path = backup_control::get_backup_path(opts.backup, to, &opts.suffix);
         if let Some(ref backup_path) = backup_path {
             // For backup renames, we don't need to track hardlinks as we're just moving the existing file
