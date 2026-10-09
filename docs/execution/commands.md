@@ -636,29 +636,42 @@ Edited crates/backend/src/conversation/socket.rs (+1 −1)
   path argument, `--old beta --new gamma`, with `--occurrence` or
   `--context`, not both, to choose among several matches; with `--old` the
   command reads no stdin. Blocks and `--old` together are refused.
-- **Whole lines.** The markers `<<<<<<< SEARCH`, `=======` and
+- **Text, not lines.** The markers `<<<<<<< SEARCH`, `=======` and
   `>>>>>>> REPLACE` are whole lines and may carry trailing spaces or tabs. A
-  block's SEARCH is the lines between the first two, each with its line
-  ending, and it matches whole lines of the file; its REPLACE, the lines up
-  to the third, takes their place, written with the file's own line endings,
-  and an empty REPLACE deletes them.
+  block's SEARCH is the text between the first two, without the line ending
+  of its last line, and it matches that text anywhere in the file, part of a
+  line included, as Claude Code's Edit matches its `old_string`; its REPLACE,
+  the text up to the third, takes its place, with the file's own line
+  endings. So a SEARCH of whole lines replaces those lines, and a SEARCH of
+  `withinLimit(` inside a line changes only that call. A SEARCH that ends a
+  line, replaced by an empty REPLACE, takes its line ending with it, so
+  deleting lines leaves no blank one. The SEARCH matches as written:
+  whitespace, quotes and indentation included.
 - **A new file.** An empty SEARCH creates its file with the REPLACE as its
   content, and fails when the file exists, so an edit never overwrites a
   file it did not read. A file that is not to be created must exist. Writing
   a whole file the agent means to replace is `cat > file <<'EOF'`, which edit
   tracking records as well.
 - **A section.** A SEARCH line of seven dots, `.......`, stands for any run
-  of lines, none included, as short as the rest of the block allows: the
+  of lines, none included, as short as the rest of the block allows, and the
+  block then matches whole lines: the
   agent names a function by its first and last lines without copying its
   body. Seven dots, the markers' width, because a line of three is Python's
   `...` and a placeholder in many files. The REPLACE holds either no such
   line, and replaces the whole section, or as many as the SEARCH, in order,
   each keeping the lines its SEARCH line stood for, as the example keeps the
   function's body.
-- **Exactly once.** A SEARCH must match exactly one place. One that matches
-  nowhere fails, naming its file, its block and the lines of the file that
-  come closest; one that matches several fails, naming the lines of each
-  match, so the agent adds a line of context.
+- **Exactly once.** A SEARCH must match exactly one place; overlapping
+  matches count as one. An error names the file by its full path, the block,
+  the rule and that nothing was written, so the agent knows what to fix and
+  that no file changed:
+  `demi file edit: /work/app/src/limit.ts: block 2: its SEARCH is not in the
+  file; a SEARCH must match the file's text exactly, whitespace included, and
+  nothing was written. The closest lines are 40-42: …`, or
+  `…: block 2: its SEARCH occurs 3 times, at lines 12, 40 and 77; include more
+  of the text around it so it occurs once, and nothing was written`. A path
+  that does not exist, for a block whose SEARCH is not empty, fails as
+  `demi file edit: /work/app/src/limt.ts: No such file or directory`.
 - **Together or not at all.** Every block of every file is matched against
   the files as they were before the call, blocks of one file must not
   overlap, and nothing is written until every block matched; then the files
