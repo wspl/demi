@@ -684,7 +684,7 @@ pub async fn command_admitted(
                     &operation,
                 )
                 .await?;
-                if checkable.state.needs_check(input.value)? {
+                if checkable.state.needs_check(input.checked())? {
                     let element::Ready { element, state, .. } = crate::page::element::ready(
                         tab,
                         required_target(&target)?,
@@ -693,7 +693,7 @@ pub async fn command_admitted(
                         &operation,
                     )
                     .await?;
-                    if state.needs_check(input.value)? {
+                    if state.needs_check(input.checked())? {
                         crate::page::pointer::click_at(
                             tab,
                             state.point(),
@@ -707,7 +707,7 @@ pub async fn command_admitted(
                     let state = operation
                         .run(element::state(tab.page(), &element, &[], false))
                         .await?;
-                    if state.checked != Some(input.value) {
+                    if state.checked != Some(input.checked()) {
                         return Err(BrowserError::NotActionable {
                             condition: "click did not change checked state".into(),
                             interceptor: None,

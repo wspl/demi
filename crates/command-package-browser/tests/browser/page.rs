@@ -225,11 +225,9 @@ async fn exercise_browser(
         "setTimeout(()=>window.sideEffects++,0)",
         "window.sideEffects++",
         "({get x(){window.sideEffects++;return 1}})",
-        "({x:undefined})",
         "({x:NaN})",
         "document.body",
         "(()=>{const a={};a.self=a;return a})()",
-        "[1,,3]",
     ] {
         assert!(
             demi_command_package_browser_chrome::page::evaluation::evaluate(
@@ -250,6 +248,17 @@ async fn exercise_browser(
         .await?,
         json!([{"x":1},{"x":1}])
     );
+    // `undefined` reads as JSON.stringify reads it.
+    for (script, value) in [("({x:undefined})", json!({})), ("[1,,3]", json!([1, null, 3]))] {
+        assert_eq!(
+            demi_command_package_browser_chrome::page::evaluation::evaluate(
+                &tab, script, &live, DEADLINE
+            )
+            .await?,
+            value,
+            "{script}"
+        );
+    }
     // Storage getters are conservatively rejected by Chrome's debug evaluator.
     // Read the fixture's storage through an ordinary page action instead.
     demi_command_package_browser_chrome::page::testing::click_css(

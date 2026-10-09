@@ -66,10 +66,6 @@ fn every_operation_has_a_command_that_takes_each_operand_from_one_source() {
     );
     assert_eq!(value(&["browser", "cdp", "detach", TAB], "tab"), TAB);
     assert_eq!(
-        value(&["browser", "key", TAB, "--key", "ControlOrMeta+A"], "key"),
-        "ControlOrMeta+A"
-    );
-    assert_eq!(
         value(
             &[
                 "browser",
@@ -117,4 +113,60 @@ fn no_json_result_names_the_tab_list_number() {
         let schema = serde_json::to_string(leaf.json_output().expect("every leaf prints JSON")).unwrap();
         assert!(!schema.contains("\"list\""), "{}: {schema}", leaf.name);
     }
+}
+
+/// A reference is the locator models use most and outputs print as
+/// `[ref=e3]`, so it is also the positional after the tab; `key` takes its
+/// key positionally, after an optional reference; `check` checks unless
+/// `--value=false` (`browser.md` § Shared target grammar). Before, `click t1
+/// e27` and `key t1 Escape` failed as unexpected positionals, and a flag
+/// took the next token as its value, so `open --show <url>` lost its URL.
+#[test]
+fn a_reference_after_the_tab_is_the_element_and_key_takes_its_key_positionally() {
+    let root = roots(Browser::new().manifest()).remove(0);
+    let values = |line: &[&str]| {
+        let mut argv = vec!["browser"];
+        argv.extend(line);
+        serde_json::Value::Object(parse(&root, &argv, None).unwrap().values)
+    };
+    for line in [&["click", TAB, "e3"][..], &["click", TAB, "--ref", "e3"]] {
+        assert_eq!(values(line), serde_json::json!({"tab": TAB, "ref": "e3"}), "{line:?}");
+    }
+    assert_eq!(
+        values(&["read", TAB, "e21", "--property", "text"]),
+        serde_json::json!({"tab": TAB, "ref": "e21", "property": "text"})
+    );
+    assert_eq!(
+        values(&["key", TAB, "Enter"]),
+        serde_json::json!({"tab": TAB, "key": "Enter"})
+    );
+    assert_eq!(
+        values(&["key", TAB, "e1", "ControlOrMeta+A"]),
+        serde_json::json!({"tab": TAB, "ref": "e1", "key": "ControlOrMeta+A"})
+    );
+    assert_eq!(values(&["check", TAB, "e5"]), serde_json::json!({"tab": TAB, "ref": "e5"}));
+    assert_eq!(
+        values(&["check", TAB, "e5", "--value=false"]),
+        serde_json::json!({"tab": TAB, "ref": "e5", "value": false})
+    );
+    assert_eq!(
+        values(&["open", "--show", "https://example.test/"]),
+        serde_json::json!({"url": "https://example.test/", "show": true})
+    );
+    assert!(
+        help(&root, &["browser", "key"]).contains("  demi browser key <tab> [<ref>] <key> ")
+    );
+    let refused = |line: &[&str]| {
+        let mut argv = vec!["browser"];
+        argv.extend(line);
+        parse(&root, &argv, None).unwrap_err().to_string()
+    };
+    assert!(
+        refused(&["click", TAB, "e3", "--ref", "e4"])
+            .starts_with("error: the argument '[ref]' cannot be used with '--ref <ref>'\n"),
+    );
+    assert!(
+        refused(&["click", TAB, "--exact", "false"])
+            .contains("  tip: --exact alone is true; write --exact=false for false\n")
+    );
 }
