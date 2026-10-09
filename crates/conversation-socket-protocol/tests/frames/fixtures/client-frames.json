@@ -100,8 +100,7 @@
     "messageId": "msg-2"
   },
   {
-    "type": "steer_queued_message",
-    "messageId": "msg-2",
+    "type": "steer_now",
     "steerId": "steer-2"
   },
   {

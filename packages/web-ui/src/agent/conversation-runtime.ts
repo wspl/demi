@@ -1,6 +1,6 @@
 import { shallowRef, triggerRef } from 'vue'
-import { SessionError, SteerRejectedError, type ConversationClient, type ClientSessionEvent } from '@demicodes/conversation-client'
-import { asError, createId, deferred } from '@demicodes/utils'
+import { SessionError, type ConversationClient, type ClientSessionEvent } from '@demicodes/conversation-client'
+import { asError, createId } from '@demicodes/utils'
 import type { ClientContent, EditRequest, TranscriptVersion } from '@demicodes/protocol'
 import { ConversationSocketError } from '../transport/conversation-socket'
 import { waitToReconnect } from '../transport/liveness'
@@ -129,24 +129,12 @@ export class ConversationRuntime {
   }
 
   /**
-   * Sends a queued message now (`product.md` § Conversations and projects):
-   * while a turn runs, it becomes a steer of that turn; otherwise it moves to
-   * the front of the queue and runs next. A turn that refuses the steer, as
-   * one that is ending does, leaves the message queued, so it moves to the
-   * front instead and the refusal is no error.
+   * Sends a queued message now (`product.md` § Steer or queue): the running
+   * turn ends at once without stopping its commands, and the message runs
+   * next.
    */
   async sendQueuedNow(id: string): Promise<void> {
     const client = await this.ensureOpen()
-    if (this.options.state.phase !== 'idle') {
-      try {
-        await client.steerQueuedMessage(id)
-        return
-      } catch (error) {
-        if (!(error instanceof SteerRejectedError)) {
-          throw error
-        }
-      }
-    }
     client.sendQueuedMessage(id)
   }
 
@@ -156,42 +144,13 @@ export class ConversationRuntime {
   }
 
   /**
-   * Delivers a pending steer now: Stop writes the steers still pending into
-   * the stopped turn, and Continue goes on from there with it
-   * (`product.md` § Conversations and projects).
+   * Delivers a pending steer now (`product.md` § Steer or queue): the agent's
+   * running call returns at once with its command still running, and the
+   * turn goes on with the steer.
    */
   async interruptPendingSteer(id: string): Promise<void> {
-    if (!this.options.state.pendingSteers.some((item) => item.id === id)) {
-      return
-    }
-    await this.abort()
-    // The backend answers the abort before the stopped turn has saved, and
-    // takes Continue only once the session is idle (`runtime.md` § Actions).
-    await this.idle()
-    await this.resume()
-  }
-
-  /** Resolves once the server says the session is idle; rejects if the connection ends first. */
-  private async idle(): Promise<void> {
-    if (this.options.state.phase === 'idle') {
-      return
-    }
     const client = await this.ensureOpen()
-    const idle = deferred()
-    const unsubscribe = client.subscribe((event) => {
-      if (event.type === 'phase' && event.phase === 'idle') {
-        idle.resolve()
-      } else if (event.type === 'disconnected') {
-        idle.reject(event.error)
-      } else if (event.type === 'closed') {
-        idle.reject(new Error('Agent connection closed'))
-      }
-    })
-    try {
-      await idle.promise
-    } finally {
-      unsubscribe()
-    }
+    client.steerNow(id)
   }
 
   async abort(): Promise<void> {
