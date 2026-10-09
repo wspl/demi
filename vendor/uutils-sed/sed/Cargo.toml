@@ -221,6 +221,7 @@ maintainer = "demi-runner"
 patches = [
     "fancy-regex 0.19, the version the runner links, in place of 0.18",
     "Paths resolve against the shell job's working directory, and an in-place edit is recorded as the job's edit (edit-tracking.md)",
+    "-i reads a suffix only when attached, as GNU's getopt does: `-i` alone backs up nothing and never takes the next token, `-i.bak` and `-ni.bak` back up with .bak; upstream's optional value took the script after `-i` as the suffix, and clap's require_equals alone refused `-i.bak` (attached_in_place)",
     "The e and w commands' shells start through uucore::context, and a long script checks the job's cancellation",
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
     "The release's tests, benchmarks, examples and CI files are left out",

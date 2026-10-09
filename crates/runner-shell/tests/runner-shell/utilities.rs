@@ -227,6 +227,35 @@ fn search_edit_and_compare_utilities_keep_their_cli_and_local_paths() {
     }
 }
 
+/// `sed -i` as GNU sed reads it: a suffix only when attached, alone or after
+/// other short options, and the token after a bare `-i` or after `-e` is
+/// never a suffix.
+#[test]
+fn sed_in_place_takes_an_attached_suffix_as_gnu_sed_does() {
+    let root = tempfile::tempdir().unwrap();
+    let cases: [(&[&str], Option<&str>); 6] = [
+        (&["-i", "s/a/b/", "f"], None),
+        (&["-i.bak", "s/a/b/", "f"], Some("f.bak")),
+        (&["-ni.orig", "s/a/b/p", "f"], Some("f.orig")),
+        (&["--in-place=.old", "s/a/b/", "f"], Some("f.old")),
+        (&["-e", "s/a/b/", "-i~", "f"], Some("f~")),
+        (&["-E", "-i", "-e", "s/(a)/b/", "f"], None),
+    ];
+    for (args, backup) in cases {
+        std::fs::write(root.path().join("f"), "a\n").unwrap();
+        let (code, output, error) = invoke(root.path(), "sed", args);
+        assert_eq!(code, 0, "{args:?}: {output}; {error}");
+        assert_eq!(std::fs::read_to_string(root.path().join("f")).unwrap(), "b\n", "{args:?}");
+        if let Some(backup) = backup {
+            let path = root.path().join(backup);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "a\n", "{args:?}");
+            std::fs::remove_file(path).unwrap();
+        }
+        let left: Vec<_> = std::fs::read_dir(root.path()).unwrap().collect();
+        assert_eq!(left.len(), 1, "{args:?} left another file");
+    }
+}
+
 #[test]
 fn jq_uses_full_filters_files_arguments_and_invocation_environment() {
     let root = tempfile::tempdir().unwrap();
