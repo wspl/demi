@@ -5,7 +5,7 @@ import IconButton from '../../ui/IconButton.vue'
 import TextInput from '../../ui/TextInput.vue'
 import Tooltip from '../../ui/Tooltip.vue'
 import type { FindOptions } from '../searchPanel'
-import type { SentenceText } from '../../ui/ui-text'
+import { NO_RESULTS, type SentenceText } from '../../ui/ui-text'
 
 /**
  * The code view's find bar, below the text: the query with its match count,
@@ -37,7 +37,7 @@ const toggles: readonly { key: Toggle; icon: Component; label: SentenceText }[] 
 ]
 
 const status = computed(() => props.count === 0
-  ? 'No Results'
+  ? NO_RESULTS
   : `${props.current || '?'}/${props.count}${props.complete ? '' : '+'}`)
 
 function flip(key: Toggle): void {
