@@ -11,6 +11,11 @@ use crate::values::{BackendUrl, DeviceToken};
 /// backend's origin.
 pub const BACKEND_SOCKET: &str = "/run/demi-backend/runners.sock";
 
+/// A managed runner's temporary directory, on the system image and private
+/// to `demi`: the runner's environment names it as `TMPDIR`, and the runner
+/// empties it when it starts, once per boot (`managed-hosts.md` § Images).
+pub const TEMPORARY_DIRECTORY: &str = "/var/lib/demi/tmp";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ManagedBoot {
