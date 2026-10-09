@@ -184,7 +184,7 @@ impl Parsed {
         if self.help {
             return Ok(self);
         }
-        if let Some(field) = leaf.stdin_read(&self.values) {
+        if let Some(field) = leaf.stdin_target(&self.values) {
             self.values.insert(
                 field.to_owned(),
                 Value::String(stdin.ok_or_else(|| {
@@ -252,7 +252,7 @@ fn set_value(
 /// carries only text: a number, a boolean, or an array whose elements each
 /// convert by the items' schema. A token that spells no such value stays
 /// text, so the check names its field with every other failure.
-fn argv_value(value: Value, schema: &Value) -> Value {
+pub(crate) fn argv_value(value: Value, schema: &Value) -> Value {
     match (schema_type(schema), value) {
         (Some("array"), Value::Array(items)) => Value::Array(
             items
