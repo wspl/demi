@@ -26,6 +26,11 @@ pub trait Control: Send + Sync {
     fn edit_rename(&self, _from: &Path, _to: &Path) -> Option<Box<dyn Send>> {
         None
     }
+    /// A guard spans the removal of a file or a folder with all in it,
+    /// including its prompts.
+    fn edit_remove(&self, _path: &Path) -> Option<Box<dyn Send>> {
+        None
+    }
     fn check(&self) -> std::io::Result<()>;
     fn read(&self, file: &File, bytes: &mut [u8]) -> std::io::Result<usize>;
     fn write(&self, file: &File, bytes: &[u8]) -> std::io::Result<usize>;
@@ -117,6 +122,10 @@ pub fn edit(path: &Path) -> Option<Box<dyn Send>> {
 
 pub fn edit_rename(from: &Path, to: &Path) -> Option<Box<dyn Send>> {
     control().and_then(|control| control.edit_rename(&resolve(from), &resolve(to)))
+}
+
+pub fn edit_remove(path: &Path) -> Option<Box<dyn Send>> {
+    control().and_then(|control| control.edit_remove(&resolve(path)))
 }
 
 #[derive(Clone)]

@@ -4,7 +4,15 @@ import { Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
 import { agentReceiptMessages, callBeingWrittenBlocks, editedFile, lookAndWaitBlocks, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
-import { HELPER, helperBlocks, helperParentBlocks, signInRequestBlocks, standaloneRequest, uncopiedRequestBlocks } from '../fixtures/request-changes'
+import {
+  HELPER,
+  helperBlocks,
+  helperParentBlocks,
+  movedRequestBlocks,
+  signInRequestBlocks,
+  standaloneRequest,
+  uncopiedRequestBlocks,
+} from '../fixtures/request-changes'
 import { useGalleryTranscripts } from '../fixtures/transcripts'
 import GalleryTranscript from '../components/GalleryTranscript.vue'
 import GalleryCommandReferences from '../components/GalleryCommandReferences.vue'
@@ -485,7 +493,7 @@ const changeDocument = useChangeTab('conversation', null, {
     files: [{
       path: readmeChange.path,
       kind: readmeChange.kind,
-      edits: [{ call: 'gallery-readme-edit', title: 'Tidy the readme', segment: 0, created: false, copies: readmeChange.edits[0]!.copies }],
+      edits: [{ call: 'gallery-readme-edit', title: 'Tidy the readme', path: readmeChange.path, segment: 0, created: false, copies: readmeChange.edits[0]!.copies }],
     }],
     read: () => gallerySides('README.md'),
   },
@@ -657,10 +665,12 @@ const writingSpecimens = [
   { variant: 'finished text, then Requesting', calls: [] },
 ]
 const uncopiedBlocks = uncopiedRequestBlocks()
+const movedBlocks = movedRequestBlocks()
 const parentBlocks = helperParentBlocks()
 const childBlocks = helperBlocks()
 useGalleryTranscripts(() => ({ blocks: signInBlocks, subagents: [] }))
 useGalleryTranscripts(() => ({ blocks: uncopiedBlocks, subagents: [] }))
+useGalleryTranscripts(() => ({ blocks: movedBlocks, subagents: [] }))
 useGalleryTranscripts(() => ({ blocks: parentBlocks, subagents: [{ id: HELPER, blocks: childBlocks }] }))
 const changesSurface = ref<{ dockHeight: number }>()
 const changesList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
@@ -1960,6 +1970,21 @@ onBeforeUnmount(() => {
               class="h-full"
               conversation-id="gallery-request-uncopied"
               :blocks="uncopiedBlocks"
+              :pending-steers="[]"
+              :queue="[]"
+              phase="idle"
+              :bottom-offset="0"
+              :persisted-scroll-state="undefined"
+              read-only
+            />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="moved and removed · the page written in /tmp and moved in, scratch notes removed" wide>
+          <div class="gallery-frame h-[26rem] bg-surface">
+            <AgentMessageList
+              class="h-full"
+              conversation-id="gallery-request-moved"
+              :blocks="movedBlocks"
               :pending-steers="[]"
               :queue="[]"
               phase="idle"
