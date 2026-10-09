@@ -729,89 +729,92 @@ output:
 - The handle serves `demi shell status`, `input` and `stop` while the
   command runs. A result that reports the command's end releases it;
   `demi shell output` goes on reading the output by its `commandId`.
-- A result that reports a command's end attaches the command's media: the
-  images and videos its declared commands returned, and an image or a video
-  that is its whole stdout
-  ([Media a command returns](#media-a-command-returns)).
+- A result that reports a command's end attaches the media it viewed with
+  `demi file view` ([Media the model views](#media-the-model-views)).
 
-### Media a command returns
+### Media the model views
 
-A command's result can carry several images and videos. For example, the
-model looks at three tabs in one call:
+The model looks at an image, a video or a PDF with `demi file view`, the one
+command that shows the model a file. For example, it checks the sign-in page
+and two frames of a recording in one call:
 
 ```text
-$ for t in t1 t2 t3; do demi browser screenshot "$t"; done
+$ demi browser screenshot t1 | demi file view
 Screenshot of t1
 Image: 1280 × 720 px, one pixel per CSS pixel
 Viewport: 1280 × 720 CSS px, device pixel ratio 2, web
-[medium 1: image/png, 412000 bytes]
-Screenshot of t2
-...
-[medium 2: image/png, 398000 bytes]
-Screenshot of t3
-...
-[medium 3: image/png, 405000 bytes]
+[image 1: image/png, 1280 × 720 px, 412000 bytes]
+$ ffmpeg -loglevel error -i demo.mp4 -vf fps=1/5 frame-%02d.png && demi file view frame-01.png frame-02.png
+[image 2: image/png, 1920 × 1080 px, 801233 bytes]
+[image 3: image/png, 1920 × 1080 px, 799410 bytes]
 ```
 
 The result shows this output and attaches the three images after it, in
 that order; the page shows them under the call's row
 ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
 In this section the script that a `shell` call runs is the **job**, which the
-`commandId` names, and a **declared command** is one `demi` command the job
-runs ([Commands](../execution/commands.md)). A **medium** is one image or
-video, of an image or video type of the model-media table
-([Accepted attachment types](../providers/models.md#accepted-attachment-types)).
+`commandId` names. A **medium** is one image, video or PDF document that the
+job showed the model.
 
-#### Where a medium goes
+#### What `demi file view` shows
 
-A declared command that produces a medium sends it where its stdout goes. Its
-stdout is either **the job's output**, the pipe the runner reads as the job's
-stdout, or it goes **elsewhere**: into a pipe to another program, a file, a
-command substitution. The runner tells which for every declared command, a
-builtin or an alias, `native` or `rpc`, in the same way
-([Where a command's stdout goes](../execution/runner.md#where-a-commands-stdout-goes)),
-so one rule holds for every command:
+- **The command hands the medium over, not its stdout.** `demi file view
+  [<path>...]` reads each path, or its stdin when it names no path or names
+  `-`, and gives each one to its job as one medium: in a pipeline, a command
+  substitution, a loop or a background task alike. It writes nothing to its
+  stdout, and the rest of the script never sees the bytes. Stdin that is the
+  job's own input, which `demi shell input` feeds
+  ([A job's own input](../execution/runner.md#a-jobs-own-input)),
+  is not read: with no path, the command fails with
+  `demi file view: no file named, and stdin is the job's input; name a file or pipe one in`.
+- **Lines in the output.** The runner numbers the job's media from 1 in the
+  order they reach it and writes each one's line into the job's output as it
+  arrives, after the output before it: `[image 1: image/png, 1280 × 720 px,
+  412000 bytes]`, `[video 2: video/mp4, 12.4 s, 1920 × 1080 px, 8598311
+  bytes]` (the duration and size when the container's header gives them),
+  `[document 3: application/pdf, 182044 bytes]`. The word is the
+  medium's kind; the number is the job's.
+- **What it takes.** Bytes, at most 16 MiB, of a media type the conversation's
+  model reads in a tool result: a type of the model-media table
+  ([Accepted attachment types](../providers/models.md#accepted-attachment-types))
+  that the model accepts and its provider carries in a tool result
+  ([Media in tool results](../providers/providers.md#media-in-tool-results)).
+  The job carries that list from its start, as the backend gives it for the
+  node's model. A path that fails gets a line on stderr; the command goes on
+  with the next one and exits with status 1:
+  - `demi file view: notes.txt: a text file; read it with cat notes.txt`
+  - `demi file view: data.bin: not an image, a video or a PDF (48213 bytes)`
+  - `demi file view: report.pdf: this conversation's model, deepseek-v4.1-flash, does not read application/pdf in a tool result`
+  - `demi file view: capture.mov: 23.1 MiB; a medium is at most 16 MiB`
+  - `demi file view: shot.png: No such file or directory`, the system's own
+    words ([Handle an rpc call](../execution/commands.md#handle-an-rpc-call)).
 
-- **Stdout is the job's output.** The command returns the medium to the job.
-  The runner numbers the job's media from 1 in the order they reach it, and
-  writes the medium's line, `[medium 2: image/png, 412000 bytes]`, into the
-  command's stdout where the command returned it, among the text the command
-  prints. The result that reports the job's end attaches the medium
-  ([What a result attaches](#what-a-result-attaches)).
-- **Stdout goes elsewhere.** The medium's bytes are the command's whole
-  stdout, as they are of any program that prints an image, and nothing is
-  attached for the command. The bytes are then the reader's: a program that
-  passes an image on to the job's stdout, such as `convert … png:-`, makes the
-  job's stdout an image, which the result attaches by the rule for a binary
-  stdout ([What a result attaches](#what-a-result-attaches)).
-- **Several media, stdout elsewhere.** One stdout carries one medium, so a
-  command that returns a second one fails with status 1, writes nothing to
-  stdout, and says on stderr
-  `<command>: returns 2 media, but its stdout is not the job's output and carries only one; run it once per medium, or let its stdout reach the job's output`.
+  Stdin is named `stdin` in these lines.
+- **Every other command writes bytes.** A program that makes an image writes
+  its bytes as any program does, so `> shot.png` saves them and
+  `| demi file view` shows them; `demi browser screenshot` does the same
+  ([Images and large outputs](../browser/browser.md#images-and-large-outputs)).
+  A job's stdout that is not text is never shown to the model: the output
+  shows it as one line, `<binary stdout: 412000 bytes>`, and the result's
+  line says what to do instead:
+  `[binary stdout, 412000 bytes: not shown; to look at an image, a video or a PDF, pipe it into demi file view; to keep it, redirect it to a file]`.
 
-| The script | The screenshot's stdout | What the model gets |
-| --- | --- | --- |
-| `demi browser screenshot t1` | The job's output | The command's text with the line `[medium 1: …]`, and the image attached |
-| `demi browser screenshot t1 > shot.png` | A file | Nothing of the image: `shot.png` holds the PNG, and the output is empty, as for any command that writes a file |
-| `demi browser screenshot t1 \| convert - -resize 50% png:-` | A pipe to `convert` | The half-size image alone: `convert`'s PNG is the job's whole stdout, which the result attaches; the screenshot was never a medium of the job, so it is not attached as well |
-| `demi browser screenshot t1 \| tee shot.png` | A pipe to `tee` | The image, attached as the job's binary stdout, and the file |
-| `x=$(demi browser screenshot t1)` | A command substitution | Nothing: the bytes are the variable's |
-| `for t in t1 t2 t3; do demi browser screenshot "$t"; done` | The job's output, inherited by the loop's body | Three media, attached in the order of the loop |
-| `demi browser screenshot t1 & demi browser screenshot t2 & wait` | The job's output | Two media, numbered in the order they reached the runner; each line shows where its command printed |
-| `demi host shell --host laptop 'demi browser screenshot t1'` | The other job's stdout, which the backend relays into `demi host shell`'s stdout | The image as the invoking job's binary stdout, when it is that job's whole stdout: a relayed stdout is never a job's output ([Where a command's stdout goes](../execution/runner.md#where-a-commands-stdout-goes)) |
-| `demi shell output 17 --medium 2` | The job's output | Medium 2 of command 17, attached again ([The whole output](#the-whole-output)) |
-| `demi shell output 17 --medium 2 > shot.png` | A file | Nothing: `shot.png` holds the original bytes |
-| A command that returns two media, with `> out.bin` | A file | The command fails with the message above, and `out.bin` stays empty |
+| The script | What the model gets |
+| --- | --- |
+| `demi file view a.png b.png` | Two images, in that order |
+| `demi browser screenshot t1 \| demi file view` | The screenshot, with its description from the screenshot's stderr |
+| `demi browser screenshot t1 > shot.png` | Nothing of the image: `shot.png` holds the PNG |
+| `demi browser screenshot t1 \| convert - -resize 50% png:- \| demi file view` | The half-size image alone |
+| `for t in t1 t2 t3; do demi browser screenshot "$t" \| demi file view; done` | Three images, in the loop's order |
+| `demi file view a.png & demi file view b.png & wait` | Two images, numbered in the order they reached the runner |
+| `x=$(demi file view a.png)` | The image; `x` is empty |
+| `cat shot.png` | The line `<binary stdout: 412000 bytes>` and the result's line saying to pipe it into `demi file view` |
+| `demi host shell --host laptop 'cat shot.png' \| demi file view` | The laptop's image: the relayed bytes are this job's stdin to `demi file view` |
 
-The rule follows the user's intent as the shell states it: output that goes
-straight to the job's output is for the model to see, and output that is
-redirected or piped is for the file or the program that receives it. A
-medium is attached only where a job's output holds it, so a processed image
-is never attached together with the original it came from. A command with
-several media and a stdout that goes elsewhere fails rather than writing
-files of its own choosing, which the model would have to be told about and
-then find: the shell already says where each one goes, as in
-`for t in t1 t2; do demi browser screenshot "$t" > "$t.png"; done`.
+A medium goes to the model through the command that was asked to show it,
+never through where its bytes happen to flow, so a file the script only
+copies, pipes or saves never reaches the model, and one it views always
+does, whatever the shell did with the command's stdout.
 
 #### What a result attaches
 
@@ -819,61 +822,40 @@ Media reach the model only in the result that reports the job's end: the
 `shell` result when the job ends within its window, otherwise the report
 or `demi shell status` that reports the end. A
 result that shows the job running attaches none, so each medium is attached
-once and a job's media arrive together, in their order. The result's media
-are, in this order, the job's returned media by number, then its binary
-stdout.
-
-A **binary stdout** is a job's stdout that is not text. The output shows it as
-one line, `<binary stdout: 412000 bytes>`, and it is a medium of the result
-when the job's output kept all of it
-([The whole output](#the-whole-output)) and its bytes are an image or video
-type of the model-media table. A stdout larger than the output keeps is whole
-nowhere, so for it the result says to write it to a file instead and run the
-job again. A stdout of other bytes, such as an image after a line of text, is
-no medium either, and the result says so.
+once and a job's media arrive together, in their order.
 
 The result attaches each of its media, in order, while these rules hold:
 
 | Rule | Why |
 | --- | --- |
-| The model accepts the medium's type | A request carries nothing the model does not read |
-| An image fits as [Images in the transcript](#images-in-the-transcript) fits it, and enters fitted; a video is at most 16 MiB | Every request sends the same bytes, which every provider accepts |
+| The model reads the medium's type in a tool result | A request carries nothing the model does not read; the model can change while the job runs |
+| An image fits as [Images in the transcript](#images-in-the-transcript) fits it, and enters fitted; a video or a document is at most 16 MiB | Every request sends the same bytes, which every provider accepts |
 | It is one of the result's first 20 attached media | One step's result stays a small part of a request: the fewest images a documented vendor takes in one request is 100 ([Request limits](../providers/models.md#request-limits)) |
 | The base64 of the result's attached media, this one included, takes at most half of the model's request body limit ([Request limits](../providers/models.md#request-limits)) | A request still has room for the history around it. A medium that breaks this rule is skipped, and a later, smaller one may still be attached |
 
-After the output, the result gives one line for each returned medium it did
-not attach, and for each it attached in another form than it came, with what
-happened and how to read the original:
+After the output, the result gives one line for each medium it did not
+attach, and for each it attached in another form than it came, with what
+happened; the original is the file the model viewed, so a line needs no way
+to read it:
 
 ```text
-[medium 2: not attached: the model does not accept image/webp; save it: demi shell output 17 --medium 2 > <file>]
-[medium 3: attached as image/jpeg of 2000 × 1000 px, fitted from image/png of 3000 × 1500 px; the original: demi shell output 17 --medium 3 > <file>]
-[medium 21: not attached: a result attaches at most 20 media; save it: demi shell output 17 --medium 21 > <file>]
-[medium 4: not attached: lost with the Host's connection]
+[image 2: not attached: the model does not read image/webp]
+[image 3: attached as image/jpeg of 2000 × 1000 px, fitted from image/png of 3000 × 1500 px]
+[image 21: not attached: a result attaches at most 20 media; view it in another call]
+[image 4: not attached: lost with the Host's connection]
 ```
-
-A medium the backend does not have, because it was lost with the Host's
-connection, not read from the Host, or not stored
-([Where media are kept](#where-media-are-kept)), gets its line without a way
-to read it. A binary stdout gets one line as well: that it was attached and
-as what, or why not and how to save its bytes,
-`demi shell output 17 --raw --stdout > <file>`. A binary stdout that is no
-medium is most often a medium cut short by a pipe, as in
-`demi browser screenshot t1 | tail -3`, so its line says so first:
-`[binary stdout, 848 bytes: not an image or video; a pipe after the command
-may have cut it — run the command without it]`.
 
 #### Bounds and cut output
 
 - A medium is at most 16 MiB, and a job keeps at most 32 media and 64 MiB of
   them. The runner keeps none beyond these: in that medium's place the
-  command's stdout reads
-  `[medium not kept: a job keeps at most 32 media and 64 MiB]`, and the
-  command goes on. A job's media therefore take at most 64 MiB of its Host's
-  disk and of the backend's storage.
+  job's output reads
+  `[image 33: not kept: a job keeps at most 32 media and 64 MiB]`, and
+  `demi file view` goes on. A job's media therefore take at most 64 MiB of
+  its Host's disk.
 - Media are kept apart from the output, so neither the output's 16 MiB bound
   nor a result's cut touches them. A build that prints 20 MiB of log and then
-  takes a screenshot attaches the screenshot, even when its line lies in the
+  views a screenshot attaches the screenshot, even when its line lies in the
   part of the output left out.
 
 #### Where media are kept
@@ -881,13 +863,11 @@ may have cut it — run the command without it]`.
 The runner keeps a job's media in the job's directory as they arrive and
 tells the backend of each one
 ([Pipes and output](../execution/runner.md#pipes-and-output)). When the job
-ends, the backend stores each medium as a blob in the conversation owner's
-namespace before any result reports the end, as it stores the output, and
-records the media with the command's output
-([Command outputs](../backend/storage.md#command-outputs)). A medium the
-result attaches enters the transcript fitted, by reference, as every tool
-medium does ([Media](#media)). The original stays with the command's output,
-and `demi shell output 17 --medium 2` prints it.
+ends, the backend reads each medium the result attaches, fits it, and stores
+it as a blob in the conversation owner's namespace before the result reports
+the end; the result holds it by reference, as every tool medium
+([Media](#media)). A medium the result does not attach is not stored: the
+model views its file again when it needs it.
 
 ### The whole output
 
@@ -927,8 +907,7 @@ model:
 - **The bytes.** `--raw` prints the output as it is: unnumbered, unpaged,
   byte for byte, for pipes and files. Its lines are the pages' lines, so
   `grep -n` on it gives the numbers `--lines` takes, and
-  `demi shell output 17 --raw --stdout > shot.png` saves a binary stdout the
-  result did not attach. Printed into a result as it is, raw output is cut as
+  `demi shell output 17 --raw --stdout > shot.png` saves a binary stdout. Printed into a result as it is, raw output is cut as
   any output is. Searching is the standard tools' work on `--raw`; the command
   has no search of its own.
 - **A long line.** A page shows a line of more than 2,000 characters as its
@@ -951,21 +930,11 @@ model:
 - **A binary stdout** shows in the merged pages as the line the result shows,
   `<binary stdout: 412000 bytes>`; `--stdout` without `--raw` answers that the
   stream is binary and names `--raw`.
-- **A medium.** `--medium <n>` takes medium `n` of the command, the original
-  bytes it returned ([Media a command returns](#media-a-command-returns)), and
-  returns it as a declared command returns a medium: into a file or a pipe as
-  its bytes, so `> shot.png` saves it, and to the job's output as a medium
-  that this job's result attaches again, for example after a switch to a
-  model that reads it. The pages show a medium as its line in the output,
-  `[medium 2: image/png, 412000 bytes]`.
 - **Failures** go to stderr with exit status 1:
   - `demi shell output: no command 17 in this conversation`;
   - `demi shell output: the output of 17 was not stored: <reason>`, when the
     backend could not store it;
-  - `demi shell output: lines 5000-5100 are past the end: the output has 4720 lines`;
-  - `demi shell output: command 17 has no medium 4: it returned 3`;
-  - `demi shell output: medium 2 of 17 is not kept: lost with the Host's connection`,
-    or the other reason the backend does not have it.
+  - `demi shell output: lines 5000-5100 are past the end: the output has 4720 lines`.
 - **A reader that stops early**, such as `| head -n 20`, ends the command
   quietly ([Handle an rpc call](../execution/commands.md#handle-an-rpc-call)).
 
@@ -1160,7 +1129,7 @@ that replays it, and a short number is copied without a slip.
 | Identifier | Looks like | Unique within | Given out by |
 |---|---|---|---|
 | A command (`commandId`) | `17` | The conversation | The backend, when the command starts |
-| A command's medium | `2` | Its command | The runner, as the medium reaches it ([Media a command returns](#media-a-command-returns)) |
+| A command's medium | `2` | Its command | The runner, as the medium reaches it ([Media the model views](#media-the-model-views)) |
 | An agent | `0` for the root, then `1`, `2`, … in spawn order | The conversation | The backend, when the agent is spawned ([Model-facing surface](subagents.md#model-facing-surface)) |
 | An agent's round | `1` for its first run, one more at each resume | The agent | The agent's supervisor |
 | A conversation browser tab | `t7` | The conversation | The backend, when the tab is registered ([One tab registry](../browser/browser.md#one-tab-registry)) |
@@ -1349,8 +1318,8 @@ so its latest answered request is the last request that ended a turn. A title re
 
 ### Media
 
-A message's images, videos and documents and a tool result's images and
-videos are stored once, as blobs in the conversation owner's blob namespace,
+A message's images, videos and documents and a tool result's images,
+videos and documents are stored once, as blobs in the conversation owner's blob namespace,
 and blocks hold them by reference: `{ type: "ref", ref, mediaType }`, with an
 image's `width` and `height` in pixels, which its fitting reads, a video's
 when the backend reads them from its container's header, and a
@@ -1390,11 +1359,11 @@ a block cannot hold bytes and a provider cannot receive a reference:
   holds already ([The object store](../backend/storage.md#the-object-store)).
   A tool's medium whose put fails is gone from its result (below), so the
   turn goes on and no block names a blob that was not stored.
-- **A medium that is gone.** A tool result's image or video whose bytes
+- **A medium that is gone.** A tool result's medium whose bytes
   could not be stored gives way, in its place, to a part of its own that says
   what it was and why it is gone:
-  `{ type: "gone", kind, mediaType, cause }`, where `kind` is `image` or
-  `video` and `cause` is `{ type: "not_stored", error }`, with the store's
+  `{ type: "gone", kind, mediaType, cause }`, where `kind` is `image`,
+  `video` or `document`, and `cause` is `{ type: "not_stored", error }`, with the store's
   error. The model reads the part as one line of text, which the agent
   renders in one place: `[<kind> not stored: <reason>]`. Nothing that was
   stored is ever removed ([Retention](../backend/storage.md#retention)). The
@@ -1451,7 +1420,7 @@ a block cannot hold bytes and a provider cannot receive a reference:
 ### Images in the transcript
 
 An image enters the transcript once: when a tool result attaches it
-([Media a command returns](#media-a-command-returns)), or when a message's upload
+([Media the model views](#media-the-model-views)), or when a message's upload
 becomes its native medium
 ([Attachments](../product/product.md#attachments)). It is fitted then to what
 every provider accepts of one image, at most 2,000 px on each side and
@@ -1475,11 +1444,8 @@ as base64. A GIF becomes a PNG because Gemini does not read GIF and the other
 vendors read only its first frame. A fitted image carries no EXIF data, so its
 orientation is applied before it is scaled.
 
-The original stays where it came from: a tool's stdout in the command's
-whole output, which `demi shell output <commandId> --raw --stdout` prints,
-a medium a declared command returned with the command's media, which
-`demi shell output <commandId> --medium <n>` prints
-([The whole output](#the-whole-output)), and an upload in its attachment file
+The original stays where it came from: an image the model viewed in the
+file it viewed, and an upload in its attachment file
 on the Host and in its upload blob, whose attachment record keeps the
 original's size and hash. Fitting decodes and encodes on the
 blocking pool ([Blocking work](../architecture/concurrency.md#blocking-work)).
@@ -1551,7 +1517,7 @@ them: `toolName` selects the rendering, `input` is JSON text the renderer
 parses, `status` and `output` give the result, and `view` enriches the display
 with the command's own output and status.
 
-The images and videos a result carries are parts of its `output`, held by
+The media a result carries are parts of its `output`, held by
 reference ([Media](#media)); the view never holds them. Each tool's rendering
 shows them with the call, and a medium that is gone where it was
 ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
@@ -2026,19 +1992,22 @@ where a tool runs; no test calls a real model.
 | Scripted tool events | The `shell` tool renders with its own component and its `description` title; updates replace the block in place; an unknown tool name renders as a generic card |
 | A tool's result carries an image, a video, or a medium that is gone | The page shows each under the call's row, the media loaded from the blob route and a gone medium as what it was and why it is gone; a click on the image opens it large |
 | Tool calls | Input refusals, the repeat guard, the cut of a result, handle release and binary stdout verdicts match [Tools](#tools) |
-| A loop of three `demi browser screenshot` calls, its stdout the job's | The output holds each command's text and its line `[medium n: …]` in order; the result attaches the three images after the output, in that order |
-| `demi browser screenshot t1 > shot.png` | `shot.png` holds the PNG; the output is empty and the result attaches nothing |
-| `demi browser screenshot t1 \| convert - -resize 50% png:-` | The result attaches one image, the half-size one, as the binary stdout; the job has no returned medium |
-| A command that returns two media with its stdout redirected to a file | Status 1, the message naming both ways out on stderr, the file empty |
-| Two background screenshots and `wait` | Both attached, numbered in the order they reached the runner |
-| A job returns 25 small images | The result attaches the first 20 and gives a line for each other with its `demi shell output … --medium` command |
-| A job returns three images whose base64 together exceeds half the model's body limit, the second the largest | The first and third are attached; the second's line says why not |
-| A WebP image for a model that does not accept WebP | Its line says so; `demi shell output 17 --medium 1 > f` writes its original bytes |
-| A job returns its 33rd medium | Its place in stdout reads that it was not kept; the command goes on and succeeds |
-| A job prints 20 MiB and then returns a screenshot | The screenshot is attached |
-| A job returns a medium and is still running when the call's window ends | The `shell` result attaches nothing; the report or `demi shell status` that reports its end attaches the medium |
-| `demi shell output 17 --medium 2` with stdout the job's | The medium is attached to this job's result again |
-| The Host's connection is lost after a job returned a medium | The result that reports the end says the medium was lost with the connection |
+| A loop of three `demi browser screenshot … \| demi file view` | The output holds each screenshot's description and its line `[image n: …]` in order; the result attaches the three images after the output, in that order |
+| `demi browser screenshot t1 > shot.png` | `shot.png` holds the PNG; the output is the screenshot's description and the result attaches nothing |
+| `demi browser screenshot t1 \| convert - -resize 50% png:- \| demi file view` | The result attaches one image, the half-size one |
+| `cat shot.png` | The output's line `<binary stdout: …>`; the result attaches nothing and its line names `demi file view` |
+| `x=$(demi file view a.png)` and `demi file view a.png > /dev/null` | The image is attached either way; `x` is empty |
+| `demi file view notes.txt a.png` | `a.png` is attached; the line for `notes.txt` names `cat`, and the status is 1 |
+| `demi file view` with no path and the job's own stdin | Status 1 with the message naming a file or a pipe; nothing waits for input |
+| `demi file view report.pdf` for a model whose provider carries no document in a tool result | Status 1, the message naming the model and the type |
+| Two background views and `wait` | Both attached, numbered in the order they reached the runner |
+| A job views 25 small images | The result attaches the first 20 and gives a line for each other saying to view it in another call |
+| A job views three images whose base64 together exceeds half the model's body limit, the second the largest | The first and third are attached; the second's line says why not |
+| The model switches to one that does not read WebP after a job viewed a WebP image | That job's result says the image was not attached, and why |
+| A job views its 33rd medium | Its line reads that it was not kept; the command goes on and succeeds |
+| A job prints 20 MiB and then views a screenshot | The screenshot is attached |
+| A job views a medium and is still running when the call's window ends | The `shell` result attaches nothing; the report or `demi shell status` that reports its end attaches the medium |
+| The Host's connection is lost after a job viewed a medium | The result that reports the end says the medium was lost with the connection |
 | A command prints 200 KB of lines and exits | Its result shows whole lines from the start and the end and the line naming the lines between and `demi shell output 17 --lines`, and fits the replay bound, so every request carries it unchanged; the pages that command prints hold those lines, numbered, with the next page's command, and `--raw` prints the 200 KB in the order the runner read them |
 | A page of a command's output | At most 12,000 characters of whole lines, so the result that holds it is not cut; a line over 2,000 characters shows its start and how to read it whole |
 | `--raw \| grep -n` on a command's output | The numbers it prints select the same lines with `--lines` |
@@ -2046,7 +2015,7 @@ where a tool runs; no test calls a real model.
 | The same command for a model with a context window of a million tokens | The same result |
 | A running command's stdout goes beyond its first 8 KiB while no page is attached | Its result shows the stream's start, the line counting the bytes left out, and its newest lines from the last 2 seconds |
 | A command prints 20 MiB | The Host keeps 16 MiB of it while it runs, and the backend stores the same; `demi shell output` prints the first and last 8 MiB with the line where the rest was left out |
-| A binary stdout that the model does not accept | The result names `demi shell output 17 --raw --stdout`, which prints the bytes unchanged |
+| A binary stdout | The result says it is not shown and names `demi file view`; `demi shell output 17 --raw --stdout` prints the bytes unchanged |
 | `demi shell output 17 --raw \| head -n 1` | The line, and nothing on stderr |
 | A subagent reads the output of a command its parent ran | The whole output |
 | A stored conversation with images is opened by two pages, and one asks for the transcript again after a gap | No blob is put: every frame carries the references its rows hold |

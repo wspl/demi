@@ -17,7 +17,7 @@ command contract rather than a separate shell or model tool loop. The
 
 ## Declare a command
 
-For example, `demi file read notes.txt` reads a file on the execution target.
+For example, `demi file view shot.png` shows the model an image on the execution target.
 Its arguments are one Rust type:
 
 ```rust
@@ -55,7 +55,7 @@ pins ([Dispatch](#dispatch-the-same-declaration-on-each-surface)):
 }
 ```
 
-Placed under the `demi file` group, the leaf handles `demi file read notes.txt`.
+Placed under the `demi file` group, the leaf handles `demi file view shot.png`.
 The dispatcher validates `{ "path": "notes.txt" }` against `input` before
 invoking `file.read`, and the native service decodes the same value into
 `FileRead`, together with the invocation's cwd and IO. The arguments and
@@ -153,10 +153,10 @@ Each input field has one source:
 | `restField` | An array receiving raw tokens after `--`. It has no named-option form. |
 | Remaining input fields | Named options such as `--path notes.txt`. Their schemas define values, optionality, boolean flags, enums, and repeated array options. |
 | `output.json` | A schema enabling validated structured output through `--json`. |
-| `media` | The leaf may return media, images and videos sent where its stdout goes ([Return media](#return-media)). Help marks it, and the dispatcher fails a call of a leaf without it that returns one. |
+| `media` | The leaf shows media to the model, handing them to its job whatever its stdout is ([Return media](#return-media)). Only `file view` declares it, and the dispatcher fails a call of a leaf without it that returns one. |
 
-For example, a model runs `demi file read a.png b.png` on a leaf that takes
-one path, or `demi browser read t1 --selector main`:
+For example, a model runs `demi file edit a.ts b.ts` on a leaf that takes
+one optional path, or `demi browser read t1 --selector main`:
 
 ```text
 error: unexpected argument '--selector' found
@@ -200,7 +200,7 @@ swallowed the token after a boolean as the boolean's value, so
 it named no usage, so a model read the help after every mistake.
 
 A group-only invocation or `--help` prints help and exits successfully without
-running a handler or reading stdin. For example, `demi file read --help` must
+running a handler or reading stdin. For example, `demi file view --help` must
 work even if its input is an idle terminal. Help comes from the declaration, so
 adding an operation does not require a second manually maintained help
 definition.
@@ -251,10 +251,9 @@ stdout; failure writes an error message to stderr and exits non-zero; `--help`
 works at any level; usage writes `<placeholders>` for values and `[brackets]`
 for optional arguments; values containing spaces are quoted; stdin bodies use a
 quoted heredoc, pipe, or input redirection and have no option;
-`--name=value` and `--` pass values that begin with `--`; and a command
-marked as returning media attaches its images and videos to the result when
-its stdout is the job's output, and otherwise writes a single one's bytes as
-its stdout. Each group's entry, its operations' names and the pointer to its
+`--name=value` and `--` pass values that begin with `--`; text is read with
+the standard tools, and `file view` alone shows the model an image, a video
+or a PDF, from a file or a pipe. Each group's entry, its operations' names and the pointer to its
 `--help` follow. An empty command set renders no index.
 
 Help displays a complete usage template, value placeholders, required and
@@ -280,7 +279,7 @@ arguments. The agent substitutes actual values and quotes shell arguments.
 
 | Command | Positional input | Named options | Stdin |
 | --- | --- | --- | --- |
-| `file read` | path, repeated | none | unused |
+| `file view` | path or `-`, repeated, optional | none | one medium, read when no path or `-` is given |
 | `file edit` | path, optional | old, new, occurrence or context | SEARCH/REPLACE blocks with their files' paths, read only without `--old` |
 | `file patch` | none | none | unified diff |
 | `agent spawn` | none | profile, description, JSON output | task brief |
@@ -378,7 +377,6 @@ The invocation carries:
 | Command context | The [command context](native-runtime.md#command-context) from the backend's record of the job: conversation, caller, and locale. |
 | Caller | The agent node the job runs for, from the same record; none for a job no agent started. A job the handler starts on another Host carries it on. |
 | Stdin | Whether the calling process has a pipe on its stdin. |
-| Stdout | Where the calling process's stdout goes: `job`, the job's output, or `elsewhere` ([Where a command's stdout goes](runner.md#where-a-commands-stdout-goes)). |
 | Relayed pipes | The ids of the pipes relayed for the call's stdin and stdout. |
 
 The port is the handler's side of the call. Each of its operations is one
@@ -387,7 +385,6 @@ request and one reply:
 | Operation | Meaning |
 | --- | --- |
 | Write stdout, write stderr | Output. Stdout flows through the call's relayed pipe, so a write waits until the calling process has read enough; stderr goes to the runner as messages ([Deliver IO](#deliver-io-and-release-an-invocation)). |
-| Return a medium | One image or video, named as a blob of the conversation owner's namespace that the handler put first ([Return media](#return-media)). |
 | Read stdin | The next chunk of a finite stdin, on demand. |
 | Read live stdin | The next interactive write to the job, until the job ends. |
 | Cancellation | Whether, and when, the call was cancelled. |
@@ -404,7 +401,7 @@ without passing through the handler.
 
 A handler ends with an exit status. A handler's error is a runtime error,
 written as GNU tools write theirs: the command's path, the object it concerns
-when there is one, and the reason, `demi file read: /src/app.ts: No such file
+when there is one, and the reason, `demi file edit: /src/app.ts: No such file
 or directory`, on stderr, with exit status 1. The dispatcher writes the
 command's path once; the handler names the object, and an operating-system
 error gives its reason as `strerror` words it, without Rust's `(os error 2)`.
@@ -425,9 +422,8 @@ reported.
 An external program such as `xargs` calls a declared root through an alias to
 `demi-runner`. The alias basename selects the root. The client forwards raw argv,
 cwd, environment, and its live execution context, then streams command IO. It
-compares its own stdin and stdout with the job's, as a builtin does, and
-forwards the answers
-([Where a command's stdout goes](runner.md#where-a-commands-stdout-goes)). It
+compares its own stdin with the job's input, as a builtin does, and
+forwards the answer ([A job's own input](runner.md#a-jobs-own-input)). It
 contains no native command algorithms. Brush builtins call the dispatcher directly
 and do not need this extra process or connection.
 
@@ -499,60 +495,33 @@ a faulty handler that cannot stop follows the
 
 ## Return media
 
-Beside stdout and stderr, a declared command may return media: images and
-videos, which [Media a command returns](../agent/runtime.md#media-a-command-returns)
-sends where the command's stdout goes. That section owns the rule and what
-the model receives; this one says how a command returns a medium. For
-example, `demi browser screenshot t1` returns its PNG. Run on its own, its
-stdout is the job's output, so the runner keeps the PNG with the job and the
-job's result attaches it; with `> shot.png`, the runner writes the PNG's
-bytes into the file.
+Beside stdout and stderr, a declared command may return media: images,
+videos and PDF documents that it hands to its job for the model to see.
+[Media the model views](../agent/runtime.md#media-the-model-views) owns the
+rule and what the model receives; this section says how a command returns a
+medium. `demi file view` is the one command that does, so a model has one way
+to show itself a file, and every other command, a plugin's included, writes
+the bytes it makes to its stdout for a pipe into `demi file view` or a file.
 
-- **The handler returns, the dispatcher routes.** A `native` handler returns
-  a medium through its output writer, as medium records
-  ([Response records and completion](native-runtime.md#response-records-and-completion));
-  an `rpc` handler through its port, naming a blob it put, which the backend
-  streams to the runner as `rpc_medium { callId, after, size, pipe }`. No
-  handler writes a medium to stdout itself: the dispatcher in the runner
-  routes every medium by the invocation's `stdout`, so the rule is the same
-  for every command, a builtin or an alias, `native` or `rpc`.
-- **Stdout is the job's output (`job`).** The dispatcher hands the medium to
-  the job, which numbers and keeps it
-  ([Pipes and output](runner.md#pipes-and-output)), and writes the medium's
-  line into the command's stdout where the handler returned it: after the
-  stdout records before it, for a `native` call, and after the first `after`
-  bytes of the call's stdout, for an `rpc` call, whose stdout and media arrive
-  on different paths. Under `--json`, the lines follow the JSON value once the
-  dispatcher has released it, so the value stays one JSON value; a command
-  that returned media may print no value, and its lines are then its
-  stdout.
-- **Stdout goes elsewhere (`elsewhere`).** The dispatcher holds the medium in
-  the job's directory and, when the command completes with status 0, writes
-  its bytes as the command's stdout. A second medium, or stdout bytes beside
-  the medium, the `--json` value included, fail the command with status 1,
-  and the held medium is not written: a second medium with the message
-  [Where a medium goes](../agent/runtime.md#where-a-medium-goes) gives, and
-  stdout beside it with
-  `<command>: a medium must be all of its stdout when its stdout is not the job's output`.
-  Stdout a command wrote before its medium has passed already; a handler
-  that follows the next point writes none. A command that fails writes none
-  of its medium, as it releases no captured `--json` output.
-- **What the handler knows.** The invocation's `stdout` tells the handler
-  where its stdout goes, so a command that prints text about its medium,
-  such as a screenshot's size, prints it only when its stdout is the job's
-  output. It needs to know nothing else: the numbers, the lines and the
-  bounds are the runner's.
-- **Checks.** A medium from a leaf that does not declare `media`, a medium
-  whose bytes are not an image or video type of the model-media table
-  ([Accepted attachment types](../providers/models.md#accepted-attachment-types)),
-  and a medium over 16 MiB fail the command: each is a defect of its handler,
-  which the dispatcher reports rather than repairs. Only an invocation a job's
-  command makes can return media; a user stream's or a package call's writer
-  refuses them.
+- **The handler returns, the runner keeps.** A `native` handler returns a
+  medium through its output writer, as medium records
+  ([Response records and completion](native-runtime.md#response-records-and-completion)).
+  The dispatcher in the runner hands every medium to the invocation's job,
+  whatever the command's stdout is: a pipe, a file, a command substitution or
+  the job's output. The job numbers and keeps it
+  ([Pipes and output](runner.md#pipes-and-output)) and writes its line into
+  the job's output as it arrives. A medium never becomes stdout bytes.
+- **Checks.** A medium from a leaf that does not declare `media`, and a
+  medium over 16 MiB, fail the command: each is a defect of its handler,
+  which the dispatcher reports rather than repairs. `demi file view` checks
+  the bytes' type itself, against the list the job carries, before it returns
+  them ([Media the model views](../agent/runtime.md#what-demi-file-view-shows)).
+  Only an invocation a job's command makes can return media; a user stream's
+  or a package call's writer refuses them.
 
 ## File commands
 
-`demi file read`, `edit`, and `patch` run in the native `demi.file` service,
+`demi file view`, `edit`, and `patch` run in the native `demi.file` service,
 beside the file. Each resolves relative paths against the invocation's cwd
 and stops at the invocation's cancellation. Mutations run one at a time in a
 service: one mutation's planning and writes finish before the next begins.
@@ -703,9 +672,11 @@ Edited crates/backend/src/conversation/socket.rs (+1 −1)
   write it.
 
 The capability index entry for `demi file` says to use it whenever the
-agent changes the files of its task, and shows the shape of the example
-above, two files and a build in one call, since a model takes up a tool by
-the example it has seen.
+agent changes the files of its task or wants to see an image, a video or a
+PDF, and shows the shape of the example above, two files and a build in one
+call, and `demi browser screenshot t1 | demi file view`, since a model takes
+up a tool by the example it has seen. It says that text is read with `cat`,
+`sed -n` or `rg`.
 
 `demi file patch` applies a unified diff from stdin, as `git diff` writes it,
 to one or more files. It ignores the line counts of each hunk's header, as
@@ -722,16 +693,13 @@ second `@@`. An empty line in a hunk is an empty context line, as
 stays in its hunk. A hunk that matches nowhere fails the patch, naming its
 file and hunk, and changes nothing.
 
-`demi file read` prints a file's bytes, and declares `media`: a file of at
-most 16 MiB whose bytes are an image or video type of the model-media table it
-returns as a medium instead ([Return media](#return-media)). So
-`demi file read shot.png` shows the image to the model,
-`demi file read a.png b.png` shows it both in order, and
-`demi file read shot.png > copy.png` still copies the bytes. A file whose
-bytes are neither text nor a medium, read where its stdout is the job's
-output, prints nothing and fails with a line that says what it is and how to
-copy it: `demi file read: data.bin: a binary file (48213 bytes) that is not
-an image or video; redirect it to copy it: demi file read data.bin > copy.bin`.
+`demi file view` shows the model images, videos and PDF documents, from its
+paths or its stdin, and declares `media`; it prints nothing to stdout
+([Media the model views](../agent/runtime.md#media-the-model-views)). It
+has no reading of text: a model reads a file with `cat`, `sed -n` or `rg`,
+the standard utilities on every Host
+([Standard utilities](runner.md#standard-utilities)), and a text file given
+to `demi file view` fails with the line that names `cat`.
 
 ## Attachment commands
 
@@ -780,8 +748,8 @@ The sign-in page works again:
   `--json` prints `{ attachments: [{ id, path, mediaType,
   size }] }`.
 - **No medium.** The command prints the numbers and returns no medium: the
-  attachment is for the user, and the model reads a file with `demi file read`
-  when it needs to see it.
+  attachment is for the user, and the model views a file with
+  `demi file view` when it needs to see it.
 - **Where it runs.** `demi attachment` is the product's group beside
   `demi host`, handled by the backend: the runner of the invocation's Host
   ([Handle an rpc call](#handle-an-rpc-call)) first hashes the file beside the
@@ -805,10 +773,6 @@ Verify with a real runner and without calling a model:
 | `"7"` for an integer field in an `rpc` call's JSON arguments | A usage error; the handler does not run |
 | `--json` output that does not match the output schema | The command fails with nothing on stdout |
 | An `rpc` call cancelled while its handler runs | Exit status 130, the cause on stderr |
-| A `native` and an `rpc` command of one job, their stdout the job's, each print a line, return an image and print another line | The job's media 1 and 2, in the order they reached the runner; each medium's line lies between its command's two lines |
-| `xargs -n 1 demi file read` over two PNG files, its stdout the job's | Both are returned as media of the job: the alias makes the same comparison as a builtin |
-| `demi file read shot.png \| wc -c` | The file's size; the job has no medium |
-| `demi browser screenshot t1 --json --output x.png \| jq .path` | The path: a leaf that declares `media` but returns none writes its stdout as any command does |
-| A leaf without `media` returns a medium, and a handler returns a medium that is not an image or video | The command fails, and nothing is kept or written for it |
-| A command whose stdout goes elsewhere returns a medium and then prints a line | Status 1, nothing on stdout, the message on stderr |
-| A command whose stdout goes elsewhere returns two media | Status 1, nothing on stdout, the message naming both ways out on stderr |
+| `demi file view a.png` with its stdout a pipe, a file and the job's output | The image is the job's medium each time; the pipe and the file receive nothing |
+| `xargs -n 1 demi file view` over two PNG files | Both are media of the job, numbered in order: the alias hands them over as a builtin does |
+| A leaf without `media` returns a medium | The command fails, and nothing is kept for it |
