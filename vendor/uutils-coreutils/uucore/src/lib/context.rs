@@ -21,6 +21,11 @@ pub trait Control: Send + Sync {
     fn edit_file(&self, _file: &File) -> Option<Box<dyn Send>> {
         None
     }
+    /// A guard spans a rename of `from` to `to` that moves a file or a
+    /// folder, including its backup and its copying fallback.
+    fn edit_rename(&self, _from: &Path, _to: &Path) -> Option<Box<dyn Send>> {
+        None
+    }
     fn check(&self) -> std::io::Result<()>;
     fn read(&self, file: &File, bytes: &mut [u8]) -> std::io::Result<usize>;
     fn write(&self, file: &File, bytes: &[u8]) -> std::io::Result<usize>;
@@ -108,6 +113,10 @@ pub fn write(file: &File, bytes: &[u8]) -> std::io::Result<usize> {
 
 pub fn edit(path: &Path) -> Option<Box<dyn Send>> {
     control().and_then(|control| control.edit(path))
+}
+
+pub fn edit_rename(from: &Path, to: &Path) -> Option<Box<dyn Send>> {
+    control().and_then(|control| control.edit_rename(&resolve(from), &resolve(to)))
 }
 
 #[derive(Clone)]
