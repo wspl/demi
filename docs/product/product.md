@@ -255,18 +255,38 @@ conversation; the agent is told the decision
 boundaries. Interactive stdin is a `conversation-socket-protocol` capability; exposing a
 terminal input control remains separate from read-only job inspection.
 
-A pending steer can be delivered at once instead of at the next continuation
-boundary. The page then stops the running turn, which writes the steer into
-the transcript as the stop records it ([Stop](../agent/runtime.md#stop)), and
-continues the turn, so the model reads the steer next and it is never sent
-twice.
+### Steer or queue
 
-A queued message can be sent now. While a turn runs, the page turns it into a
-steer of that turn; otherwise it moves the message to the front of the queue,
-so it runs next. A turn that refuses the steer, because it is ending or being
-stopped, leaves the message queued
-([Messages and the queue](../agent/runtime.md#messages-and-the-queue)); the
-page then moves it to the front, and the user sees no error.
+While the agent works, a message the user sends either steers the running
+turn or waits in the queue, one or the other, and stays what it was sent as:
+
+- **Steer**: the agent reads the message within the running turn, as soon as
+  the call it is waiting on returns. Until then the message shows as pending
+  above the composer.
+- **Queue**: the message waits for the turn to end and then starts a turn of
+  its own.
+
+For example, the agent is running the test suite. The user types "skip the
+e2e tests" and presses Enter: with Steer chosen, the agent reads it when the
+test command's call returns and goes on in the same turn; with Queue chosen,
+it reads it after it has finished and answered.
+
+Settings › General chooses what Enter does while the agent works; Steer is the
+default, as in Claude Code and Codex. ⌘/Ctrl+Enter, or ⌘/Ctrl-click on the
+send button, sends that one message the other way. While the agent works, the
+send button's tooltip names what it does and the key for the other way. While
+nothing runs, both send the message at once. A steer the session refuses
+because its turn is ending is sent as a message instead, so it is answered
+next and the user sees no error.
+
+A pending steer or a queued message can be sent now with Send Now on its row:
+the agent does not wait for its running call or for the end of its turn. A
+command the agent is running moves to the background and keeps running, and
+the agent is told so; a reply it is writing is cut where it is. A steer sent
+now enters the turn at once, which goes on; a queued message sent now ends
+the turn there and starts its own
+([Send now](../agent/runtime.md#send-now)). Stop is different: it stops the
+turn and the commands it is running.
 
 ### Recovering an unfinished turn
 
@@ -566,7 +586,10 @@ model as typed. Copying a sent message gives its Markdown, each file by its
 name.
 
 Enter sends and Shift+Enter breaks the line; in a code block Enter breaks the
-line and ⌘/Ctrl+Enter sends. An input method's Enter never sends. Enter on a
+line and ⌘/Ctrl+Enter sends. While the agent works, ⌘/Ctrl+Enter outside a
+code block sends the other way than Enter
+([Steer or queue](#steer-or-queue)); in a code block it is the send key and
+sends the way Enter does elsewhere. An input method's Enter never sends. Enter on a
 message that cannot go yet does not send in silence: the send button says why
 it cannot, in the words it says when it is pointed at — an upload still
 running, one that failed, a model that cannot send — and the answer goes by
