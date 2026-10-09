@@ -21,6 +21,9 @@ export type SentenceText = string
  */
 export type HeadlineText = string
 
+/** What a search or a filter that matches nothing says, as macOS's search fields do. */
+export const NO_RESULTS: HeadlineText = 'No Results'
+
 /**
  * A field's hint: sentence style without ending punctuation ("Search
  * conversations"), or an example value written as the person would type it

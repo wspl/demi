@@ -19,7 +19,7 @@ import {
 import { provideLayerElevation } from '../overlay/layerElevation'
 import { useAutofocus } from './autofocus'
 import { ICON_PX } from './icon-metrics'
-import type { HeadlineText, PlaceholderText } from './ui-text'
+import { NO_RESULTS, type HeadlineText, type PlaceholderText } from './ui-text'
 
 /**
  * A menu: `items` it lays out itself, filterable and virtual when asked, or
@@ -38,6 +38,7 @@ const props = withDefaults(defineProps<{
   isItemDisabled?: (item: T) => boolean
   filterable?: boolean
   filterPlaceholder?: PlaceholderText
+  /** What the menu says when it has no item; a filter that matches none of its items says No Results. */
   emptyText?: HeadlineText
   itemHeight?: number
   filterFn?: (item: T, query: string) => boolean
@@ -332,7 +333,7 @@ function handleKeydown(event: KeyboardEvent) {
       v-if="items != null && filteredItems.length === 0"
       class="px-2 py-3 text-center text-chrome text-fg-subtle"
     >
-      {{ emptyText }}
+      {{ listItems.length > 0 ? NO_RESULTS : emptyText }}
     </div>
     <ScrollArea
       v-else
