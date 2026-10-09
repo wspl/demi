@@ -390,6 +390,13 @@ impl OpenFiles {
         }
     }
 
+    /// Moves every controlled file to `control`.
+    pub(crate) fn rebind(&mut self, control: &std::sync::Arc<dyn crate::execution_host::FileControl>) {
+        for file in self.files.values_mut().flatten() {
+            file.rebind(control);
+        }
+    }
+
     /// Retrieves the file backing standard input in this context.
     pub fn try_stdin(&self) -> Option<&OpenFile> {
         self.files.get(&Self::STDIN_FD).and_then(|f| f.as_ref())

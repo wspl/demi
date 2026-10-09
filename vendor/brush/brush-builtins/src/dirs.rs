@@ -6,7 +6,7 @@ use brush_core::{ExecutionResult, builtins};
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum DirError {
     /// Directory stack is empty.
-    #[error("directory stack is empty")]
+    #[error("directory stack empty")]
     DirStackEmpty,
 
     /// A shell error occurred.
