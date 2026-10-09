@@ -912,10 +912,12 @@ Root assistant text is the only user-visible reply stream. A child's `text`
 blocks are for nested UI, such as cards and inspection, not a second
 user-facing reply.
 
-The dock's agents chip counts live children only: *2 Running* while two run.
-Once none runs, a conversation that has had children keeps the chip, which
-then reads *Agents* with no count, so the children's history stays one click
-away; a conversation that never had one shows no chip. Completed, aborted,
+The dock's agents chip counts live children only: *2 Agents* while two run,
+beside the terminal chip's *N Running*. Once none runs, a conversation that
+has had children keeps the chip, which then reads *Agents* with no count, so
+the children's history stays one click away; a conversation that never had
+one shows no chip. With no live child, the chip opens the panel on the child
+that finished last, and its Completed menu lists the others. Completed, aborted,
 and failed children remain available as history but never count. A creation command exits independently and adds nothing to the
 Running terminal count for its child's lifetime. The Running count and its
 panel hold every command of the tree that still runs after its call
