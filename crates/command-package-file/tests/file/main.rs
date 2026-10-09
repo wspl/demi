@@ -47,6 +47,7 @@ async fn call(
         edits: Some(edits(cwd)),
         operation: operation.into(),
         invocation_id: operation.into(),
+        command: "demi test".into(),
         args,
         cwd: cwd.into(),
         env: BTreeMap::new(),
@@ -95,11 +96,11 @@ async fn the_resident_program_serves_every_file_operation_and_records_its_edits(
         let (result, output, error) = call(client, cwd, "file.patch", serde_json::json!({"patch":patch})).await;
         assert_eq!(result.exit_code, 0, "{}", String::from_utf8_lossy(&error));
         assert_eq!(output, b"Patched 2 file(s)\n");
-        let (_, output, _) = call(client, cwd, "file.read", serde_json::json!({"path":"nested/a.txt"})).await;
+        let (_, output, _) = call(client, cwd, "file.read", serde_json::json!({"path":["nested/a.txt"]})).await;
         assert_eq!(output, b"alpha\ndelta\n");
         let binary = [0, 255, 10, 13, 128];
         std::fs::write(root.path().join("image.bin"), binary).unwrap();
-        let (result, output, _) = call(client, cwd, "file.read", serde_json::json!({"path":"image.bin"})).await;
+        let (result, output, _) = call(client, cwd, "file.read", serde_json::json!({"path":["image.bin"]})).await;
         assert_eq!(result.exit_code, 0);
         assert_eq!(output, binary);
         let recorder = demi_command_sdk::edits::Recorder::new(demi_command_protocol::EditContext {

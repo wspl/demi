@@ -25,6 +25,7 @@ demi-shared-types = { path = "../shared-types" }
 demi-command-package-file-protocol = { path = "../command-package-file-protocol" }
 demi-shared-gates = { path = "../shared-gates" }
 regex = "1"
+shlex = "2"
 similar = "2"
 strsim = "0.11"
 thiserror.workspace = true
