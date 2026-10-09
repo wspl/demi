@@ -331,7 +331,12 @@ without a loading state.
   conversation cache is
   ([Backend communication](../product/web-application.md#backend-communication)).
   At most 64 MiB of them stay, counted by their text; past that the ones shown
-  longest ago go first.
+  longest ago go first. An entry holds what was read, never a way to read it:
+  each view reads through its own route, a conversation's views through the
+  conversation's host access or its direct channel, a device's folder dialog
+  through device access, and every view that shows the entry sees what any
+  of them read. A read nobody asked for, after a report, a watch going live
+  or Refresh, goes through the view that came on screen last.
 - **A view keeps its place.** No update remounts or resets a view. A view is
   keyed by what the user chose, such as the mode, the file, the edit or All
   Changes, never by the version of its content. An update that changes
@@ -391,7 +396,7 @@ without a loading state.
   connection to the Host or a watch stream that reconnected, may be out of
   date without a report saying so. Showing it shows it at once and reads it
   again in the background; an answer that differs replaces it in place.
-  Reads of one thing share one request.
+  Reads of one thing share one request, whichever view's route it took.
 - **A Host that cannot watch**, past an inotify limit or on a file system that
   reports nothing, is a fact the watch says. The view then says quietly that
   it shows files as they were last read and offers Refresh, and every entry
