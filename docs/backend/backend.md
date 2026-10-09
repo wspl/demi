@@ -652,8 +652,10 @@ differences.
 
 ### One-command development backend
 
-`bun xtask dev` builds the one Cargo selection and runs, until Ctrl-C or a
-termination, a backend for the page to talk to. For example, a developer runs
+`bun xtask dev` builds the one Cargo selection and runs, until Ctrl-C, a
+termination, a hang-up or the end of the program that started it, a backend
+for the page to talk to; however it ends, it stops the backend and removes
+its data directory. For example, a developer runs
 it, then starts the page with the command it prints, signs in with the
 account the sign-in page fills in, picks the model the developer's `.env`
 names, asks for `uname -a`, and the agent runs it on the Cloud. It starts the backend with the scripted manager
