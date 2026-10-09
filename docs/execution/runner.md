@@ -61,6 +61,12 @@ MessagePack message into the types of the runner wire's contract crate, which
 they both link, and validate it at entry; a message that fails closes the
 connection, since its sender broke the protocol
 ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
+The side that closes it names the message's type and the decoding error in
+the close frame's reason, and the other side reports that reason as the
+connection's end. For example, a test's stale runner that cannot read a
+command declaration's newer field ends the connection with that field's
+name, and the command lost with the connection says it, rather than only
+`runner disconnected`.
 Integer fields travel as MessagePack integers, and byte fields as MessagePack
 binary.
 
@@ -201,7 +207,10 @@ in the foreground until pairing ends:
   uninstall` (on Windows, `& '<installation>\run.ps1' uninstall`), and exits.
 
 The runner writes the same lines to its log, so a person who closed the
-terminal early finds them there; closing it does not stop the runner.
+terminal early finds them there; closing it does not stop the runner. A
+start appends to the log rather than emptying it, and the log keeps its last
+10 MiB, so what a runner printed before it crashed is still there after
+`run start` starts it again.
 
 `run start` starts the installation's runner in the background again, as the
 installer does, and returns once it is connected or has said why it cannot
