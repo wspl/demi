@@ -121,37 +121,73 @@ pub struct ToolInvocation {
     /// a result may attach.
     pub request_limits: RequestLimits,
     /// Cancelled when the action stops: a command the call started stops
-    /// with it, even after the call returned.
+    /// with it, even after the call returned. Sending now never cancels it
+    /// (`runtime.md` § Send now).
     pub cancel: CancellationToken,
-    /// Resolves once input arrives that joins the turn at its next boundary,
-    /// which ends the window a shell tool watches its command in
-    /// (`runtime.md` § The window).
+    /// What ends the window a shell tool watches its command in before its
+    /// time passes (`runtime.md` § The window).
     pub arrival: InputArrival,
 }
 
-/// The arrival of input that joins the running turn at its next boundary:
-/// a steer, an agent message or a fired wakeup (`runtime.md` § The window).
-/// A message sent to the queue is none.
+/// What a session tells the windows of its running calls.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Arrivals {
+    /// How many agent messages and fired wakeups arrived: input that joins
+    /// the turn at its next boundary and ends a window. A human steer and a
+    /// queued message are none.
+    pub(crate) joining: u64,
+    /// The user sent a steer or a queued message now, and the running turn
+    /// has not reached its boundary yet (`runtime.md` § Send now).
+    pub(crate) send_now: bool,
+}
+
+/// Why a window ended before its time passed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowEnd {
+    /// An agent message or a yield wakeup arrived.
+    Input,
+    /// The user sent a message now: the command moves to the background,
+    /// and the result says so.
+    SentNow,
+}
+
+/// The arrival of what ends a window (`runtime.md` § The window): an agent
+/// message or a fired wakeup, which joins the running turn at its next
+/// boundary, or the user's send now.
 #[derive(Debug, Clone)]
 pub struct InputArrival {
-    arrivals: watch::Receiver<u64>,
-    /// How many had arrived when the step started.
+    arrivals: watch::Receiver<Arrivals>,
+    /// How many joining inputs had arrived when the step started.
     since: u64,
 }
 
 impl InputArrival {
-    /// The arrivals after the `since`th that `arrivals` counts.
-    pub(crate) fn new(arrivals: watch::Receiver<u64>, since: u64) -> Self {
+    /// The arrivals after the `since`th joining input that `arrivals`
+    /// counts.
+    pub(crate) fn new(arrivals: watch::Receiver<Arrivals>, since: u64) -> Self {
         Self { arrivals, since }
     }
 
-    /// Resolves once input arrived after the step started.
-    pub async fn arrived(mut self) {
+    /// Resolves once input arrived after the step started, or the user
+    /// sent a message now, and says which.
+    pub async fn arrived(mut self) -> WindowEnd {
         let since = self.since;
-        if self.arrivals.wait_for(|count| *count > since).await.is_err() {
-            // The session is gone, and no input will arrive.
-            std::future::pending::<()>().await;
+        match self
+            .arrivals
+            .wait_for(|arrivals| arrivals.send_now || arrivals.joining > since)
+            .await
+        {
+            Ok(arrivals) if arrivals.send_now => WindowEnd::SentNow,
+            Ok(_) => WindowEnd::Input,
+            // The session is gone, and nothing will arrive.
+            Err(_) => std::future::pending().await,
         }
+    }
+
+    /// Whether the user sent a message now: a call that has not started
+    /// then never starts, and completes as [`ToolOutcome::not_run`].
+    pub fn sent_now(&self) -> bool {
+        self.arrivals.borrow().send_now
     }
 }
 
@@ -177,6 +213,12 @@ impl ToolOutcome {
             view: None,
             effect: None,
         }
+    }
+
+    /// A requested call that had not started when the user sent a message
+    /// now (`runtime.md` § Send now).
+    pub fn not_run() -> Self {
+        Self::error("Tool call not run: the user sent a message".to_owned())
     }
 }
 

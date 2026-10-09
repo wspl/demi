@@ -29,8 +29,6 @@ use super::{
 const NO_SESSION: &str = "No session is open";
 /// What a steer's refusal says then.
 const NO_SESSION_HERE: &str = "No session is open on this connection";
-/// What a queued message's steer says when the message is not queued.
-const NOT_QUEUED: &str = "Queued message not found";
 
 /// A connection's bounded outbox. When it is full, the client lags: the
 /// outbox closes, and the backend closes the socket with a code that says so;
@@ -273,8 +271,7 @@ impl<H: HostResolver> Connection<H> {
     /// The answer to a frame that needs a session when none is open.
     fn refuse(&self, frame: ClientFrame) {
         match frame {
-            ClientFrame::Steer { steer_id, .. }
-            | ClientFrame::SteerQueuedMessage { steer_id, .. } => {
+            ClientFrame::Steer { steer_id, .. } => {
                 self.send(ServerFrame::SteerResult {
                     steer_id,
                     outcome: SteerOutcome::Rejected {
@@ -283,6 +280,7 @@ impl<H: HostResolver> Connection<H> {
                 });
             }
             ClientFrame::CancelPendingSteer { .. }
+            | ClientFrame::SteerNow { .. }
             | ClientFrame::AbortSubagents {}
             | ClientFrame::AbortSubagent { .. } => {}
             frame => self.reject(frame.kind(), NO_SESSION),
@@ -320,20 +318,10 @@ impl<H: HostResolver> Connection<H> {
                 };
                 self.steer_result(steer_id, outcome);
             }
-            ClientFrame::SteerQueuedMessage {
-                message_id,
-                steer_id,
-            } => {
-                let outcome = match session.steer_queued_message(&message_id, steer_id.clone()) {
-                    Ok(true) => Ok(()),
-                    Ok(false) => Err(NOT_QUEUED.to_owned()),
-                    Err(error) => Err(error.to_string()),
-                };
-                self.steer_result(steer_id, outcome);
-            }
             ClientFrame::CancelPendingSteer { steer_id } => {
                 session.cancel_pending_steer(&steer_id);
             }
+            ClientFrame::SteerNow { steer_id } => session.steer_now(&steer_id),
             ClientFrame::DequeueMessage { message_id } => {
                 session.dequeue_message(&message_id);
             }

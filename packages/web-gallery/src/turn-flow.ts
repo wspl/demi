@@ -617,14 +617,29 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     state.queue = state.queue.filter((entry) => entry.id !== id)
   }
 
-  /** Send now: the queued message becomes a steer the running turn takes at its next step. */
+  /**
+   * Send now on a queued message, as the product's: while a turn runs, the
+   * turn ends at once without stopping anything, with its pending steers
+   * written, and the message starts the next turn; otherwise the message
+   * moves to the front of the queue.
+   */
   function sendQueued(id: string): void {
     const item = state.queue.find((entry) => entry.id === id)
     if (!item) {
       return
     }
     removeQueued(id)
-    state.pendingSteers = [...state.pendingSteers, { id: nextId('pending'), content: item.content }]
+    if (state.phase === 'idle') {
+      state.queue = [item, ...state.queue]
+      return
+    }
+    cutRound()
+    for (const pending of state.pendingSteers) {
+      append(steerBlock(pending.content))
+    }
+    state.pendingSteers = []
+    append(userBlock(item.content))
+    runTurn(token)
   }
 
   function removePendingSteer(id: string): void {
@@ -632,8 +647,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   }
 
   /**
-   * As the product delivers a pending steer now: Stop writes the steer into the
-   * stopped turn, before its marker, and Continue goes on with it from there.
+   * Send now on a pending steer, as the product's: the running round is cut
+   * short without stopping anything, the steer is written, and the turn
+   * goes on with it.
    */
   function interruptPendingSteer(id: string): void {
     const pending = state.pendingSteers.find((entry) => entry.id === id)
@@ -641,16 +657,36 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       return
     }
     removePendingSteer(id)
-    append({
+    cutRound()
+    append(steerBlock(pending.content))
+    thinkThenReply(token, WAIT_MS, THINK_2)
+  }
+
+  /**
+   * Cuts the running round short for a message sent now: the scripted reply
+   * stops where it is, and the running call returns at once while its
+   * command moves to the background and keeps running.
+   */
+  function cutRound(): void {
+    const call = runningTool
+    // The command is not stopped: `cancel` ends only the running call's.
+    runningTool = null
+    cancel()
+    const block = state.blocks.find((entry) => entry.id === call)
+    if (block?.type === 'tool_call') {
+      replace(block.id, { ...block, status: 'completed' })
+    }
+  }
+
+  function steerBlock(content: UserContentBlock[]): Block {
+    return {
       type: 'steer',
       id: nextId('steer'),
       turnId: nextId('turn'),
       createdAt: now(),
       model: demoModel,
-      content: pending.content,
-    })
-    stop()
-    resume()
+      content,
+    }
   }
 
   function abortSubagent(id: string): void {
