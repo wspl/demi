@@ -69,6 +69,16 @@ pub enum Error {
         target: &'static str,
         status: std::process::ExitStatus,
     },
+    #[error("{tool} could not run, which splits a Linux executable's debug information: {source}")]
+    Objcopy {
+        tool: &'static str,
+        source: std::io::Error,
+    },
+    #[error("splitting the debug information of {} failed: {status}", path.display())]
+    Split {
+        path: PathBuf,
+        status: std::process::ExitStatus,
+    },
     #[error("no build of {} for {target} at {}: run bun xtask native build first", executable.name(), path.display())]
     NotBuilt {
         executable: Executable,
@@ -167,6 +177,10 @@ fn windows(target: &str) -> bool {
 
 fn apple(target: &str) -> bool {
     target.contains("apple")
+}
+
+fn linux(target: &str) -> bool {
+    target.contains("linux")
 }
 
 /// The targets `executables` are built or packaged for, in the release
