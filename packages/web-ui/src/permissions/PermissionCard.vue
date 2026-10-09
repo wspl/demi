@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { ShieldQuestionMark } from '@lucide/vue'
 import Button from '../ui/Button.vue'
+import CodeText from '../ui/CodeText.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import {
@@ -70,10 +71,10 @@ const ran = computed(() => {
     <div class="flex flex-col gap-1 pl-6">
       <span class="text-fg-muted">{{ ran }}</span>
       <ScrollArea class="max-h-24 rounded-md bg-sunken" viewport-class="px-2 py-1.5">
-        <code
-          class="block whitespace-pre-wrap break-all font-mono text-[12px] leading-[18px] text-fg-body"
-          >{{ request.command }}</code
-        >
+        <CodeText
+          :text="request.command"
+          class="block font-mono text-[12px] leading-[18px] text-fg-body"
+        />
       </ScrollArea>
       <template v-if="request.categories.length > 1">
         <div
