@@ -583,6 +583,67 @@ pub fn kill(child: &mut dyn ChildWrapper) -> io::Result<()> {
     }
 }
 
+/// Sends signal number `signal` to `target` as kill(2) takes it: a process
+/// ID, or the negative of a process group's ID; signal 0 asks only whether
+/// it exists. A number no signal has is `EINVAL`, and a target no process
+/// has `ESRCH`, as are 0 and -1, which kill(2) takes for the caller's group
+/// and every process.
+#[cfg(unix)]
+pub fn signal_target(target: i32, signal: i32) -> io::Result<()> {
+    use rustix::process::{self as system, Pid};
+    let pid = Pid::from_raw(target.saturating_abs())
+        .filter(|_| target != -1)
+        .ok_or_else(|| io::Error::from(rustix::io::Errno::SRCH))?;
+    let named = || {
+        system::Signal::from_named_raw(signal).ok_or_else(|| io::Error::from(rustix::io::Errno::INVAL))
+    };
+    let sent = match (target < 0, signal) {
+        (false, 0) => system::test_kill_process(pid),
+        (true, 0) => system::test_kill_process_group(pid),
+        (false, _) => system::kill_process(pid, named()?),
+        (true, _) => system::kill_process_group(pid, named()?),
+    };
+    sent.map_err(io::Error::from)
+}
+
+/// Sends signal number `signal` to the process group `group`, as a stop
+/// signals each group a job started; a group that is gone or only exiting
+/// takes none (`gone`).
+#[cfg(unix)]
+pub fn signal_group(group: i32, signal: i32) -> io::Result<()> {
+    match signal_target(-group, signal) {
+        Err(error) if gone(&error) => Ok(()),
+        result => result,
+    }
+}
+
+/// Sends signal number `signal` to the process `pid` alone; a process that
+/// is gone takes none.
+#[cfg(unix)]
+pub fn signal_process(pid: i32, signal: i32) -> io::Result<()> {
+    match signal_target(pid, signal) {
+        Err(error) if error.raw_os_error() == Some(rustix::io::Errno::SRCH.raw_os_error()) => Ok(()),
+        result => result,
+    }
+}
+
+/// Ends once no process of the group `group` is left, as a stop waits for
+/// every process of a group it signalled (`runner.md` § Cancellation and
+/// completion). No call tells when a group empties: this asks the system
+/// every 25 ms, as a utility waits for its child.
+#[cfg(unix)]
+pub async fn group_ended(group: i32) {
+    const POLL: Duration = Duration::from_millis(25);
+    let Some(group) = rustix::process::Pid::from_raw(group) else {
+        return;
+    };
+    // Any failure, ESRCH or macOS's EPERM for a group of exiting members
+    // (`gone`), means no process of it runs on.
+    while rustix::process::test_kill_process_group(group).is_ok() {
+        tokio::time::sleep(POLL).await;
+    }
+}
+
 /// Whether signalling a child's process group failed only because the group
 /// is already ending: ESRCH when it is gone, and on macOS EPERM, which XNU's
 /// `killpg` returns while only exiting members remain. Its exit is still
@@ -614,8 +675,9 @@ fn send_signal(child: &mut dyn ChildWrapper, signal: Signal) -> io::Result<()> {
     }
 }
 
+/// The system's signal a request names.
 #[cfg(unix)]
-fn number(signal: Signal) -> rustix::process::Signal {
+pub fn number(signal: Signal) -> rustix::process::Signal {
     use rustix::process::Signal as Number;
     match signal {
         Signal::Terminate => Number::TERM,

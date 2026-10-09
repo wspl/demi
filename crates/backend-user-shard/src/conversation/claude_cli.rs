@@ -26,14 +26,17 @@ use demi_command_protocol::{
     ArtifactLocation, ArtifactUrl, CommandCaller, CommandContext, PackageArtifact,
 };
 use demi_host_interface::{
-    Host as _, HostError, MkdirOptions, Process, ProcessEnd, RmOptions, SpawnRequest,
+    FileContents, Host as _, HostError, MkdirOptions, Process, ProcessEnd, RmOptions, SpawnEnv,
+    SpawnRequest, WriteOptions,
 };
 use demi_provider_claude_code::{
-    AccountMachine, AccountWork, CliSite, ConfigDir, Placed, Placement, StartError,
+    AccountMachine, AccountWork, CliSite, CliStart, CliSystem, ConfigDir, Placed, Placement,
+    StartError,
 };
+use demi_shared_types::StreamKind;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{CliInstall, CliMachine};
-use futures_util::FutureExt as _;
+use futures_util::{FutureExt as _, StreamExt as _};
 use futures_util::future::{BoxFuture, LocalBoxFuture, Shared};
 use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
@@ -102,8 +105,9 @@ const CONFIG_PARENT: &str = "/tmp";
 
 /// The user's Cloud as the placement of a provider's process: each start
 /// wakes or admits the Cloud through machine access, makes sure it has the
-/// CLI, makes the process's configuration directory, private to the
-/// Cloud's user, and holds the Cloud's admission only until the process
+/// CLI, reads what the Cloud tells a process of itself, makes the process's
+/// configuration directory, private to the Cloud's user, with the files the
+/// start puts there, and holds the Cloud's admission only until the process
 /// started; a process that is retained holds none afterwards.
 pub(crate) struct CloudPlacement {
     shard: Weak<Shard>,
@@ -120,7 +124,7 @@ impl CloudPlacement {
 impl Placement for CloudPlacement {
     fn start<'a>(
         &'a self,
-        spawn: &'a dyn Fn(&CliSite) -> SpawnRequest,
+        start: &'a dyn Fn(&CliSite) -> CliStart,
     ) -> LocalBoxFuture<'a, Result<Placed, StartError>> {
         Box::pin(async move {
             let shard = self
@@ -161,15 +165,27 @@ impl Placement for CloudPlacement {
                     "Claude Code's configuration directory could not be made on the Cloud: {error}"
                 ))
             })?;
+            let system = system(&access.host, &run_dir).await.map_err(|error| {
+                StartError(format!(
+                    "The Cloud could not be asked what it tells Claude Code of itself: {error}"
+                ))
+            })?;
             let site = CliSite {
                 executable,
                 run_dir,
                 config_dir: config.path.clone(),
+                system,
             };
+            let CliStart { spawn, files } = start(&site);
+            config.write(files).await.map_err(|error| {
+                StartError(format!(
+                    "Claude Code's session could not be written on the Cloud: {error}"
+                ))
+            })?;
             let process = access
                 .host
                 .process()
-                .spawn(spawn(&site))
+                .spawn(spawn)
                 .await
                 .map_err(|error| {
                     StartError(format!(
@@ -208,6 +224,20 @@ impl CloudConfigDir {
         fs.mkdir(&self.path, MkdirOptions { recursive: false })
             .await?;
         fs.chmod(&self.path, 0o700).await
+    }
+
+    /// Writes `files` into the directory, each at its path there.
+    async fn write(&self, files: Vec<(String, Bytes)>) -> Result<(), HostError> {
+        let fs = self.host.fs();
+        for (name, bytes) in files {
+            let path = format!("{}/{name}", self.path);
+            if let Some((parent, _)) = path.rsplit_once('/') {
+                fs.mkdir(parent, MkdirOptions { recursive: true }).await?;
+            }
+            fs.write_file(&path, FileContents::Bytes(bytes), WriteOptions::default())
+                .await?;
+        }
+        Ok(())
     }
 
     /// Removes the directory once its process ended.
@@ -255,6 +285,59 @@ impl Drop for CloudConfigDir {
             shard.tasks().spawn_local(removal);
         }
     }
+}
+
+/// What `host` tells a process in `run_dir` of itself, as the CLI reads it
+/// to describe its environment (`claude-code.md` § The session a process
+/// resumes): the kernel's name and release, the `SHELL` the process
+/// inherits, and the directory with its links resolved. Only a process
+/// there knows the kernel and the variable, so the placement starts one.
+async fn system(host: &RemoteHost, run_dir: &str) -> Result<CliSystem, String> {
+    let working_directory = host
+        .fs()
+        .realpath(run_dir)
+        .await
+        .map_err(|error| error.to_string())?;
+    let spawn = SpawnRequest {
+        command: "/bin/sh".into(),
+        args: vec!["-c".into(), r#"uname -s; uname -r; printf '%s\n' "$SHELL""#.into()],
+        cwd: Some(run_dir.to_owned()),
+        env: SpawnEnv::Overlay(Default::default()),
+        descriptors: Vec::new(),
+        retained: false,
+    };
+    // Dropping the control before the end would kill the process.
+    let Process {
+        output,
+        control,
+        exit,
+    } = host
+        .process()
+        .spawn(spawn)
+        .await
+        .map_err(|error| error.to_string())?;
+    let printed: Vec<Bytes> = output
+        .filter_map(|chunk| async move {
+            (chunk.stream == StreamKind::Stdout).then_some(chunk.bytes)
+        })
+        .collect()
+        .await;
+    let end = exit.await;
+    drop(control);
+    if end != ProcessEnd::Exited(0) {
+        return Err(format!("/bin/sh ended with {end:?}"));
+    }
+    let printed = String::from_utf8_lossy(&printed.concat()).into_owned();
+    let mut lines = printed.lines().map(str::to_owned);
+    let (Some(kernel), Some(release), shell) = (lines.next(), lines.next(), lines.next()) else {
+        return Err(format!("/bin/sh printed {printed:?}"));
+    };
+    Ok(CliSystem {
+        kernel,
+        release,
+        shell: shell.filter(|shell| !shell.is_empty()),
+        working_directory,
+    })
 }
 
 /// Where a provider's process runs on a Cloud whose home is `home`.

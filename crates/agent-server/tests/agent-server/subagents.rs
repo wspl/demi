@@ -380,7 +380,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         json!({ "id": "1", "message": "late" }),
     )
     .await;
-    let abort_sibling = agent(&fixture.server, &alpha, "abort", json!({ "id": 3 })).await;
+    let abort_sibling = agent(&fixture.server, &alpha, "abort", json!({ "id": [3] })).await;
     let resume_foreign = agent(
         &fixture.server,
         &alpha,
@@ -399,20 +399,23 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
     )
     .await
     .unwrap();
-    let shown = agent(&fixture.server, &alpha, "show", json!({ "id": 3 })).await;
-    let show_root = agent(&fixture.server, &alpha, "show", json!({ "id": 0 })).await;
-    let show_archived = agent(&fixture.server, &alpha, "show", json!({ "id": 1 })).await;
+    let shown = agent(&fixture.server, &alpha, "show", json!({ "id": [3] })).await;
+    let show_root = agent(&fixture.server, &alpha, "show", json!({ "id": [0] })).await;
+    let show_archived = agent(&fixture.server, &alpha, "show", json!({ "id": [1] })).await;
     let show_archived_json = agent_call(
         &fixture.server,
         &alpha,
         "show",
-        json!({ "id": 1 }),
+        json!({ "id": [1] }),
         true,
         CancellationToken::new(),
     )
     .await
     .unwrap();
-    let show_missing = agent(&fixture.server, &alpha, "show", json!({ "id": 9 })).await;
+    let show_missing = agent(&fixture.server, &alpha, "show", json!({ "id": [9] })).await;
+    // Several ids: each in order, a line for the one that fails, as
+    // `cat a missing b` does.
+    let show_several = agent(&fixture.server, &alpha, "show", json!({ "id": [3, 9, 1] })).await;
 
     // Agents are numbered in spawn order: delta 1, alpha 2, beta 3, and
     // gamma, which alpha spawned, 4.
@@ -448,7 +451,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
     );
     assert_eq!(
         refused(&abort_sibling),
-        "demi agent abort: 3 is not one of your running children\n"
+        "demi agent abort: 3: not one of your running children\n"
     );
     // Agent 1 is the root's child, not alpha's.
     assert_eq!(
@@ -517,8 +520,15 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         .join("\n")
             + "\n"
     );
-    assert_eq!(refused(&show_root), "demi agent show: no subagent 0\n");
-    assert_eq!(refused(&show_missing), "demi agent show: no subagent 9\n");
+    assert_eq!(refused(&show_root), "demi agent show: 0: no such subagent\n");
+    assert_eq!(refused(&show_missing), "demi agent show: 9: no such subagent\n");
+    assert_eq!(
+        (refused(&show_several), show_several.stdout.clone()),
+        (
+            "demi agent show: 9: no such subagent\n",
+            format!("{}{}", shown.stdout, show_archived.stdout)
+        )
+    );
     // An archived child shows how it closed and its result.
     assert_eq!(
         show_archived.stdout,
@@ -595,7 +605,7 @@ async fn abort_closes_the_subtree_and_dispose_detaches_it_for_the_next_open() {
         &fixture.server,
         &root(),
         "abort",
-        json!({ "id": fixture.number(&alpha) }),
+        json!({ "id": [fixture.number(&alpha)] }),
     )
     .await;
     let frames = client.next_until(is_idle).await;
@@ -716,6 +726,7 @@ pub(crate) fn child_record(
 
 fn user(id: &str, words: &str) -> Block {
     Block::User(UserBlock {
+        entries: Vec::new(),
         id: BlockId::try_from(id).unwrap(),
         turn_id: TurnId::try_from(id).unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
@@ -727,6 +738,7 @@ fn user(id: &str, words: &str) -> Block {
 
 fn answer(id: &str, words: &str) -> Block {
     Block::Text(TextBlock {
+        entries: Vec::new(),
         id: BlockId::try_from(id).unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
         model: test_model(),

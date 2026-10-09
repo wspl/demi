@@ -134,18 +134,19 @@ fn registration_refuses_reserved_taken_malformed_and_unbound_commands() {
         ),
     );
     assert!(error.contains("multiple input sources for text"), "{error}");
-    let error = refused(
-        GroupBuilder::new("demi", "Demi.").leaf(
-            LeafBuilder::rpc("add", "Add.")
-                .input::<AddArgs>()
-                .positionals(["count", "text"])
-                .bind(TypedRpc::new(add)),
-        ),
-    );
-    assert!(
-        error.contains("required positional follows optional positional"),
-        "{error}"
-    );
+    // One optional positional directly before a required last one is the
+    // one such shape registration takes, as `key <tab> [<ref>] <key>`; the
+    // command-tree library's tests hold the refused ones.
+    CommandSet::new()
+        .register(
+            GroupBuilder::new("demi", "Demi.").leaf(
+                LeafBuilder::rpc("add", "Add.")
+                    .input::<AddArgs>()
+                    .positionals(["count", "text"])
+                    .bind(TypedRpc::new(add)),
+            ),
+        )
+        .unwrap();
     let error = refused(
         GroupBuilder::new("demi", "Demi.").leaf(
             LeafBuilder::native(
@@ -329,9 +330,11 @@ async fn dispatch_validates_wire_arguments_as_they_are_and_runs_the_handler() {
     };
     // Wire arguments are decoded JSON: "7" for a number is not converted.
     let error = call(json!({"text": "a", "count": "7"})).await.unwrap_err();
-    assert!(
-        matches!(&error, RpcError::Usage(text) if text.starts_with("Invalid command arguments")),
-        "{error}"
+    assert_eq!(
+        error,
+        RpcError::Usage(
+            "error: \"count\" is not of type \"integer\"\n\nUsage: demi note add <text> [--count <count>] [--json]\n\nFor more information, try '--help'.".into()
+        )
     );
     assert!(call(json!({"text": "a", "extra": 1})).await.is_err());
     // A length bound counts Unicode scalar values: one scalar value, two
@@ -344,7 +347,7 @@ async fn dispatch_validates_wire_arguments_as_they_are_and_runs_the_handler() {
         memory.port(cancel.clone()),
     );
     assert!(
-        matches!(native.await, Err(RpcError::Usage(text)) if text.contains("not an rpc command"))
+        matches!(native.await, Err(RpcError::Failed(text)) if text.contains("not an rpc command"))
     );
 }
 

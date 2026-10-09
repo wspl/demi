@@ -315,6 +315,9 @@ impl Opening {
                 .await
                 .map_err(|error| error.to_string())?;
             let invocation = Invocation {
+                // A user stream runs no command line: its failures name the
+                // operation instead.
+                command: operation.clone(),
                 operation,
                 invocation_id: stream_id.clone(),
                 context,

@@ -166,7 +166,7 @@ impl<SE: extensions::ShellExtensions> Clone for Shell<SE> {
             env: self.env.clone(),
             funcs: self.funcs.clone(),
             options: self.options.clone(),
-            jobs: jobs::JobManager::new(),
+            jobs: self.jobs.for_subshell(),
             aliases: self.aliases.clone(),
             last_exit_status: self.last_exit_status,
             last_exit_status_change_count: self.last_exit_status_change_count,
@@ -273,6 +273,36 @@ impl<SE: extensions::ShellExtensions> Shell<SE> {
     /// Keeps an asynchronous interpreter task owned until it returns.
     pub fn execution_guard(&self) -> Option<Box<dyn Send + Sync>> {
         self.execution_host.as_ref().map(|host| host.task_guard())
+    }
+
+    /// Moves this shell, a copy of another, to `host`, which owns its work from then on: every
+    /// descriptor the shell and `params` hold reads and writes under the host's control.
+    pub fn set_execution_host(
+        &mut self,
+        host: Arc<dyn crate::execution_host::ExecutionHost>,
+        params: &mut crate::interp::ExecutionParameters,
+    ) {
+        let control = host.file_control();
+        self.open_files.rebind(&control);
+        params.rebind(&control);
+        self.execution_host = Some(host);
+    }
+
+    /// Starts the ownership of a background task that this shell, a copy of another, is to run
+    /// with `params` (`ExecutionHost::background_task`): the task's id, when its host gives it
+    /// one, and what keeps the task owned while its list runs.
+    pub(crate) fn start_background_task(
+        &mut self,
+        params: &mut crate::interp::ExecutionParameters,
+    ) -> Result<(Option<i32>, Option<Box<dyn Send + Sync>>), error::Error> {
+        let Some(host) = &self.execution_host else {
+            return Ok((None, None));
+        };
+        let Some(task) = host.background_task()? else {
+            return Ok((None, None));
+        };
+        self.set_execution_host(task.host, params);
+        Ok((Some(task.id), Some(task.guard)))
     }
 
     /// Returns a new shell instance created with the given options.

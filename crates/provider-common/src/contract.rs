@@ -177,6 +177,11 @@ pub struct InferenceRequest {
     pub system_prompt: String,
     /// The transcript as the model receives it (`runtime.md` § Replay).
     pub items: Arc<[InferenceItem]>,
+    /// The replayed blocks that give `items`, in order: which items each
+    /// gives and the entries a vendor kept on it (`claude-code.md` § The
+    /// session a process resumes). A request that is no session's, such as
+    /// a title request, names none.
+    pub blocks: Arc<[RequestBlock]>,
     pub tools: Arc<[ToolDefinition]>,
     pub thinking: Option<ThinkingConfig>,
     pub service_tier_id: Option<String>,
@@ -213,6 +218,16 @@ impl InferenceRequest {
             (limit, cap) => limit.or(cap),
         }
     }
+}
+
+/// One replayed block of a request: the range of the request's items it
+/// gives, and the entries of the vendor's own record of the session that a
+/// provider kept on it, as the provider gave them
+/// ([`ProviderEvent::Entries`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct RequestBlock {
+    pub items: std::ops::Range<usize>,
+    pub entries: Vec<serde_json::Value>,
 }
 
 /// One entry of the transcript as a provider replays it. Its media hold
@@ -351,6 +366,27 @@ pub enum ProviderEvent {
     Response(TokenUsage),
     /// The run's failure; it is the run's last event.
     Error(ProviderFailure),
+    /// Entries of the vendor's own record of the session that belong to one
+    /// block, which the agent keeps on that block, after those it holds,
+    /// and gives back in the request's [`RequestBlock`]s
+    /// (`claude-code.md` § The session a process resumes). They change
+    /// nothing the model sees in this run.
+    Entries {
+        of: EntriesOf,
+        entries: Vec<serde_json::Value>,
+    },
+}
+
+/// The block entries belong to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntriesOf {
+    /// The block that gives the item at this index of the run's request.
+    Item(usize),
+    /// The block the run's events wrote at this position, counting from 0:
+    /// a thinking start or redacted reasoning writes a block, a text piece
+    /// writes one unless text was the last block written, a reasoning piece
+    /// writes one unless open reasoning was, and a tool call writes one.
+    Output(usize),
 }
 
 /// A tool call the model requested.

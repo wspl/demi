@@ -115,7 +115,7 @@ pub async fn execute(
         .await?;
     // The runner job owns asynchronous shell tasks until completion or cancellation.
     // Keep their interpreter and builtin threads alive while retaining the foreground status.
-    shell.jobs_mut().wait_all().await?;
+    crate::process_builtins::wait_tasks(&mut shell).await?;
     Ok(ShellResult {
         code: result.exit_code.into(),
     })

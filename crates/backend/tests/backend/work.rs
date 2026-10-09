@@ -856,7 +856,7 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
         ])
         .await;
     assert!(
-        stranger.received[0].contains("host nope is not reachable"),
+        stranger.received[0].contains("demi host shell: nope: not reachable from this conversation"),
         "{}",
         stranger.received[0]
     );
@@ -966,8 +966,9 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     assert!(alive(&pid));
     // `demi shell stop` stops it, from another shell of the conversation,
     // and waits until it has ended; a second stop is safe, and a number no
-    // command has fails, as it fails a yield.
-    let stop = format!("demi shell stop {command}; demi shell stop {command}; demi shell stop 999");
+    // command has fails, as it fails a yield, while the others it names are
+    // still stopped, as `cat a missing b` goes on.
+    let stop = format!("demi shell stop {command}; demi shell stop 999 {command}");
     let stopped = work
         .turn(vec![
             shell("t3", &stop, 30_000),
@@ -983,7 +984,7 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     assert_eq!(
         shown_output(stop),
         format!(
-            "[command {command} stopped]\n[command {command} had already ended]\ndemi shell stop: no command 999 in this conversation\n"
+            "[command {command} stopped]\ndemi shell stop: 999: no such command in this conversation\n[command {command} had already ended]\n"
         )
     );
     assert!(look.starts_with("status: aborted"), "{look}");

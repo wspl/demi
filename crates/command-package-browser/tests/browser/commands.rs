@@ -87,6 +87,7 @@ async fn conversation_browser_commands_share_state_and_retire() {
         let request = |operation: &str, args: Value| Invocation {
             operation: operation.into(),
             invocation_id: uuid::Uuid::new_v4().to_string(),
+            command: "demi test".into(),
             cwd: root.path().to_str().unwrap().into(),
             args,
             env: BTreeMap::new(),
@@ -289,11 +290,12 @@ async fn conversation_browser_commands_share_state_and_retire() {
         invalid_key.json = Some(false);
         let (completion, _, stderr) = exchange(&client, &invalid_key, false).await;
         assert_eq!(completion.exit_code, 2);
-        let text = String::from_utf8(stderr).unwrap();
-        assert!(text.starts_with("Error: invalid_input\n"));
-        assert!(text.contains("\nAction: not_started.\n"));
-        assert!(text.contains(&format!("Tab: {tab}\n")));
-        assert!(!text.contains("Details: {"));
+        assert!(!String::from_utf8(stderr).unwrap().contains("Details: {"));
+        // The error is one last line, which the dispatcher writes after
+        // the command's path.
+        let error = completion.error.unwrap().message;
+        assert!(error.starts_with(&format!("{tab}: ")), "{error}");
+        assert!(error.ends_with(" (invalid_input, action not started)"), "{error}");
 
         let mut inspect = request("browser.inspect", json!({"tab": tab, "limit": 1000}));
         inspect.json = Some(false);
@@ -393,6 +395,7 @@ fn invocation(
     Invocation {
         operation: operation.into(),
         invocation_id: uuid::Uuid::new_v4().to_string(),
+        command: "demi test".into(),
         cwd: root.to_str().unwrap().into(),
         args,
         env: BTreeMap::new(),
@@ -601,20 +604,20 @@ async fn a_host_without_chrome_or_its_runtime_names_the_next_step() {
     );
     let megabytes = (size as f64 / (1024.0 * 1024.0)).round();
     let not_installed = format!(
-        "Error: browser_unavailable\n\
-         {} is not installed on this Host yet. Install it with `demi browser install` ({megabytes} MB), then run this command again.\n\
-         Action: not_started.\n",
+        "{} is not installed on this Host yet. Install it with `demi browser install` ({megabytes} MB), then run this command again (browser_unavailable, action not started)",
         release.title()
     );
 
     let (completion, _, stderr) = exchange(&client, &open, false).await;
     assert_eq!(completion.exit_code, 1);
-    assert_eq!(String::from_utf8(stderr).unwrap(), not_installed);
+    assert!(stderr.is_empty());
+    assert_eq!(completion.error.unwrap().message, not_installed);
 
     installed.store(true, Ordering::SeqCst);
     let (completion, _, stderr) = exchange(&client, &open, false).await;
     assert_eq!(completion.exit_code, 1);
-    assert_eq!(String::from_utf8(stderr).unwrap(), not_installed);
+    assert!(stderr.is_empty());
+    assert_eq!(completion.error.unwrap().message, not_installed);
 }
 
 /// A Linux Host whose glibc is older than the Chrome runtime's installs
@@ -647,11 +650,9 @@ async fn a_host_with_too_old_a_glibc_installs_nothing() {
     )
     .await;
     assert_eq!(completion.exit_code, 1);
-    assert!(stdout.is_empty());
+    assert!(stdout.is_empty() && stderr.is_empty());
     assert_eq!(
-        String::from_utf8(stderr).unwrap(),
-        "Error: browser_unavailable\n\
-         Chrome on Linux needs glibc 2.28 or newer; this Host has 2.26\n\
-         Action: not_started.\n"
+        completion.error.unwrap().message,
+        "Chrome on Linux needs glibc 2.28 or newer; this Host has 2.26 (browser_unavailable, action not started)"
     );
 }

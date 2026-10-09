@@ -1530,7 +1530,7 @@ async fn a_call_stops_on_its_first_cause_releases_its_live_input_and_exits_after
         link.send(job_exit(job.id(), Some(7), None)).await;
         let (stderr, exit_code) = call_outcome(&mut link).await;
         assert!(ended.get(), "{event}: the handler was released");
-        assert_eq!(stderr, format!("probe: {expected}\n"), "{event}");
+        assert_eq!(stderr, format!("probe live: {expected}\n"), "{event}");
         assert_eq!(
             exit_code,
             if event == "cancel" { 130 } else { 1 },
@@ -1638,7 +1638,7 @@ async fn a_call_that_fails_at_once_keeps_its_standard_output_until_drained() {
     assert!(futures_util::StreamExt::next(&mut body).await.is_none());
     assert_eq!(
         call_outcome(&mut link).await,
-        ("probe: refused\n".to_owned(), 1)
+        ("probe live: refused\n".to_owned(), 1)
     );
 }
 
@@ -1703,7 +1703,7 @@ async fn a_call_runs_only_for_a_live_job_the_policy_admits_and_a_refusal_mints_n
     assert_eq!(
         outcome,
         (
-            "probe: rpc requires a live job dispatched to this device\n".into(),
+            "probe live: rpc requires a live job dispatched to this device\n".into(),
             1
         )
     );
@@ -1723,7 +1723,7 @@ async fn a_call_runs_only_for_a_live_job_the_policy_admits_and_a_refusal_mints_n
             _ => None,
         })
         .collect();
-    assert_eq!(stderr, "probe: rpc job belongs to another conversation\n");
+    assert_eq!(stderr, "probe live: rpc job belongs to another conversation\n");
     assert!(
         frames
             .iter()

@@ -70,7 +70,9 @@ name, and the command lost with the connection says it, rather than only
 Integer fields travel as MessagePack integers, and byte fields as MessagePack
 binary.
 
-The authenticated local management endpoint exposes status and drain. Draining
+The authenticated local management endpoint exposes status, drain, and a
+request to write the runner's current pairing state to its log again, which
+the installers use on a runner they find running ([Installation, pairing and removal](#installation-pairing-and-removal)). Draining
 stops admission, waits for active work, and releases the installation lock so
 the next runner, such as a newer release, can start. A runner that drains or
 stops ends its backend connection in order: it sends the messages it has
@@ -210,13 +212,21 @@ in the foreground until pairing ends:
 
 The runner writes the same lines to its log, so a person who closed the
 terminal early finds them there; closing it does not stop the runner. The
-runner writes its log itself, rather than the installer redirecting its
-output: it appends to `runner.log`, and when the file passes 10 MiB it
+runner writes its log itself when it is started with `run --log`, as the
+installers and `run start` start it, rather than the installer redirecting
+its output: it appends to `runner.log`, and when the file passes 10 MiB it
 renames it `runner.log.1`, replacing the one before, and starts a new one.
 So what a runner printed before it crashed is still there after `run start`
 starts it again. The installer and `run start` read the pairing codes and
-the connection's outcome from where the log ended when they started the
-runner.
+the connection's outcome from where the log ended when they began waiting,
+whether they started the runner or found it running, and follow the log
+across a rotation. A runner they find running wrote its state before they
+began, so they first ask it, through its management endpoint, to write its
+current state to its log again: its current pairing code while it waits to
+be paired, the device's name and the removal command once it is paired, or
+why it cannot connect. The lines come from the runner alone, so the
+installers and `run start` never compose them, and a pairing code still
+reaches no channel but the log.
 
 `run start` starts the installation's runner in the background again, as the
 installer does, and returns once it is connected or has said why it cannot

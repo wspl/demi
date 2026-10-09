@@ -122,6 +122,9 @@ pub struct Leaf<B = Binding> {
     pub running_hint: Option<String>,
     pub input: Option<Schema>,
     pub positionals: Option<Vec<String>>,
+    /// Positionals that may also be given as a named option, as a browser
+    /// target's `ref` is both `click t1 e3` and `--ref e3`.
+    pub positional_options: Option<Vec<String>>,
     pub stdin_field: Option<String>,
     /// When the stdin field is read; always, without one.
     pub stdin_read: Option<StdinRead>,
@@ -143,7 +146,7 @@ pub struct Leaf<B = Binding> {
 /// When it does not, stdin stays with the calling process, as a `while read`
 /// loop's input or a job's `</dev/null` (`commands.md` § Demi command
 /// inputs). An option counts as given unless its value is `false`, which
-/// `--query false` spells.
+/// `--query=false` spells.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase", deny_unknown_fields)]
 pub enum StdinRead {
@@ -456,6 +459,7 @@ impl Node<NativeOperation> {
                 running_hint: leaf.running_hint.clone(),
                 input: leaf.input.clone(),
                 positionals: leaf.positionals.clone(),
+                positional_options: leaf.positional_options.clone(),
                 stdin_field: leaf.stdin_field.clone(),
                 stdin_read: leaf.stdin_read.clone(),
                 rest_field: leaf.rest_field.clone(),
@@ -604,16 +608,45 @@ impl<B> Leaf<B> {
                 "only the last positional may be an array: {field}"
             )));
         }
+        // One optional positional may stand directly before a required
+        // last one, which the parser fills from the end.
         let mut optional = false;
         for field in positionals {
-            if self.required(field) && optional {
+            if self.required(field) && optional && !self.missing_positional() {
                 return Err(invalid(
                     "required positional follows optional positional".into(),
                 ));
             }
             optional |= !self.required(field);
         }
+        if let Some(field) = self
+            .positional_options
+            .iter()
+            .flatten()
+            .find(|field| !positionals.contains(field))
+        {
+            return Err(invalid(format!(
+                "positionalOptions names {field}, which is no positional"
+            )));
+        }
         Ok(())
+    }
+
+    /// Whether the leaf's positionals end in the one shape where a required
+    /// positional follows an optional one: the last required, directly
+    /// after the only optional one, as `key <tab> [<ref>] <key>`.
+    pub(crate) fn missing_positional(&self) -> bool {
+        let positionals = self.positionals.as_deref().unwrap_or_default();
+        let optional: Vec<&String> = positionals
+            .iter()
+            .filter(|field| !self.required(field))
+            .collect();
+        match (positionals, optional.as_slice()) {
+            ([.., before, last], [only]) => {
+                before == *only && self.required(last) && self.property_type(last) != Some("array")
+            }
+            _ => false,
+        }
     }
 
     /// The stdin field the dispatcher reads stdin into, given the values
@@ -632,15 +665,9 @@ impl<B> Leaf<B> {
     /// Whether the command line gives the option `option`: a value, but
     /// `false` for a flag.
     fn given(&self, values: &serde_json::Map<String, Value>, option: &str) -> bool {
-        let schema = self.properties().and_then(|properties| properties.get(option));
-        match (values.get(option), schema) {
-            (Some(value), Some(schema)) => {
-                parse::argv_value(value.clone(), schema) != Value::Bool(false)
-            }
-            // A validated declaration names only declared options.
-            (Some(_), None) => true,
-            (None, _) => false,
-        }
+        values
+            .get(option)
+            .is_some_and(|value| *value != Value::Bool(false))
     }
 
     /// The JSON type a declared input property has.
@@ -661,7 +688,7 @@ pub fn is_command_name(name: &str) -> bool {
 
 /// Whether `field` is one of `leaf`'s named options: a declared input that
 /// no other source fills.
-fn is_option<B>(leaf: &Leaf<B>, field: &str) -> bool {
+pub(crate) fn is_option<B>(leaf: &Leaf<B>, field: &str) -> bool {
     leaf.properties()
         .is_some_and(|properties| properties.contains_key(field))
         && leaf.stdin_field.as_deref() != Some(field)
@@ -718,6 +745,12 @@ struct RawLeaf<B> {
         with = "unwrap_or_skip"
     )]
     positionals: Option<Vec<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    positional_options: Option<Vec<String>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -790,6 +823,7 @@ impl<B> TryFrom<RawLeaf<B>> for Leaf<B> {
             running_hint: raw.running_hint,
             input: raw.input,
             positionals: raw.positionals,
+            positional_options: raw.positional_options,
             stdin_field: raw.stdin_field,
             stdin_read: raw.stdin_read,
             rest_field: raw.rest_field,
@@ -816,6 +850,7 @@ impl<B> From<Leaf<B>> for RawLeaf<B> {
             running_hint: leaf.running_hint,
             input: leaf.input,
             positionals: leaf.positionals,
+            positional_options: leaf.positional_options,
             stdin_field: leaf.stdin_field,
             stdin_read: leaf.stdin_read,
             rest_field: leaf.rest_field,

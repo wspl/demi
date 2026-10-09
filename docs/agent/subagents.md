@@ -73,10 +73,10 @@ declares an `agent` group of its own, since the plugin host refuses the name
 
 ```text
 demi agent spawn [--profile <name>] [--description <title>] < task-brief.txt
-demi agent abort <id>
+demi agent abort <id>...
 demi agent resume <id> < message.txt
 demi agent send <id|parent> < message.txt
-demi agent show <id>
+demi agent show <id>...
 demi agent list
 demi agent profiles
 ```
@@ -351,7 +351,7 @@ Two snapshot reads:
 | Command | Answers | Does not answer |
 | --- | --- | --- |
 | `demi agent list` | The whole live tree, plus archived children | One agent's recent work |
-| `demi agent show <id>` | A bounded snapshot of one agent, live or archived | The full transcript, tool outputs, or thinking |
+| `demi agent show <id>...` | A bounded snapshot of each agent named, live or archived; `--json` takes one id | The full transcript, tool outputs, or thinking |
 
 Durations read like `45s`, `4m`, `1m5s`, `2h`, or `1h3m`, rounded to the
 nearest second.

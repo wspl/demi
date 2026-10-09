@@ -243,8 +243,8 @@ impl CommandSet {
         let (leaf, handler) = self
             .leaf(&invocation.path)
             .zip(self.handlers.get(&invocation.path))
-            .ok_or_else(|| RpcError::Usage(format!("\"{named}\" is not an rpc command")))?;
-        leaf.check_arguments(&invocation.args)
+            .ok_or_else(|| RpcError::Failed("not an rpc command of this conversation".into()))?;
+        leaf.check_arguments(&named, &invocation.args)
             .map_err(|error| RpcError::Usage(error.to_string()))?;
         let category = leaf.permission.as_deref().map(|id| {
             self.category(id)

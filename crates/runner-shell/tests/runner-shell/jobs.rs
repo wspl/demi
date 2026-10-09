@@ -28,10 +28,11 @@ async fn wait_for_job_ready(job: &mut Job) {
     .unwrap();
 }
 
-/// Each signal runs in a job of its own, and the jobs run together: each is a
-/// login shell that reads the machine's profile first.
+/// A stopped job reports the signal that ended it, and `SIGKILL` for a
+/// cancellation. Each signal runs in a job of its own, and the jobs run
+/// together: each is a login shell that reads the machine's profile first.
 #[tokio::test]
-async fn shell_cancellation_reports_the_requesting_signal() {
+async fn a_stopped_job_reports_the_signal_that_ended_it() {
     let signals = [
         Some(Signal::Terminate),
         Some(Signal::Interrupt),
@@ -57,13 +58,9 @@ async fn shell_cancellation_reports_the_requesting_signal() {
         wait_for_job_ready(&mut job).await;
         assert!(job.signal(Signal::User1).is_err());
         assert!(!job.is_cancelled());
-        if let Some(signal) = signal {
-            job.signal(signal).unwrap();
-            // Cleanup or repeated requests cannot replace the original cause.
-            job.signal(Signal::Kill).unwrap();
-        } else {
-            job.cancel();
-            job.signal(Signal::Terminate).unwrap();
+        match signal {
+            Some(signal) => job.signal(signal).unwrap(),
+            None => job.cancel(),
         }
         let exit = tokio::time::timeout(Duration::from_secs(3), job.wait())
             .await
@@ -76,6 +73,88 @@ async fn shell_cancellation_reports_the_requesting_signal() {
         assert_eq!(scope.tasks.len(), 0);
     });
     futures_util::future::join_all(signals).await;
+}
+
+/// Reads the job's output until it holds `text`, and gives all it read.
+async fn output_until(job: &mut Job, read: &mut String, text: &str) {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        while !read.contains(text) {
+            let Some(chunk) = job.output.recv().await else {
+                panic!("the job ended before {text:?}, after {read:?}");
+            };
+            read.push_str(std::str::from_utf8(&chunk.bytes).unwrap());
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("no {text:?} in {read:?}"));
+}
+
+/// `TERM` stops a job's shell work and reaches every program it started,
+/// which then ends in its own time: a program that traps `TERM` prints and
+/// exits, and its output reaches the job's. A program that ignores `TERM`
+/// keeps the job running until `KILL` ends it. Before, `TERM` killed every
+/// program at once, so no trap ran. About 0.5 s: the jobs are login shells,
+/// which start together. Each program is in `wait` when `TERM` comes, which
+/// runs its trap at once; a shell that is still starting its `sleep` would
+/// run the trap only after it.
+#[cfg(unix)]
+#[tokio::test]
+async fn term_lets_a_jobs_programs_end_and_kill_ends_what_ignores_it() {
+    let trapping = async {
+        let root = tempfile::tempdir().unwrap();
+        let mut job = Job::start(
+            "/bin/sh -c 'trap \"echo got TERM; exit 0\" TERM; /bin/sleep 30 & echo ready; wait'"
+                .into(),
+            root.path().into(),
+            crate::home(root.path()),
+            false,
+            true,
+            Scope::new(CancellationToken::new(), None),
+            &ShellRuntime::current(),
+        )
+        .await
+        .unwrap();
+        let mut read = String::new();
+        output_until(&mut job, &mut read, "ready\n").await;
+        job.signal(Signal::Terminate).unwrap();
+        output_until(&mut job, &mut read, "got TERM\n").await;
+        let exit = tokio::time::timeout(Duration::from_secs(60), job.wait())
+            .await
+            .unwrap();
+        assert_eq!(exit.signal.as_deref(), Some("SIGTERM"));
+    };
+    let ignoring = async {
+        let root = tempfile::tempdir().unwrap();
+        let scope = Scope::new(CancellationToken::new(), None);
+        let mut job = Job::start(
+            "/bin/sh -c 'trap \"echo ignored\" TERM; echo $$; while :; do /bin/sleep 1 & wait; done'"
+                .into(),
+            root.path().into(),
+            crate::home(root.path()),
+            false,
+            true,
+            scope.clone(),
+            &ShellRuntime::current(),
+        )
+        .await
+        .unwrap();
+        let mut read = String::new();
+        output_until(&mut job, &mut read, "\n").await;
+        let pid: i32 = read.trim().parse().unwrap();
+        job.signal(Signal::Terminate).unwrap();
+        output_until(&mut job, &mut read, "ignored\n").await;
+        // The program took `TERM` and runs on, and so does the job.
+        assert_eq!(unsafe { libc::kill(pid, 0) }, 0);
+        assert_ne!(scope.tasks.len(), 0);
+        job.signal(Signal::Kill).unwrap();
+        let exit = tokio::time::timeout(Duration::from_secs(3), job.wait())
+            .await
+            .unwrap();
+        assert_eq!(exit.signal.as_deref(), Some("SIGKILL"));
+        assert_eq!(scope.tasks.len(), 0);
+        assert_eq!(unsafe { libc::kill(pid, 0) }, -1, "{pid} survived");
+    };
+    tokio::join!(trapping, ignoring);
 }
 
 /// Waits until the job of `scope` blocks or loops: one of its units waits

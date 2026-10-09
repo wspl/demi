@@ -367,10 +367,13 @@ pub(crate) fn message(
     MockResponse::event_stream(events(&frames))
 }
 
-/// The frame that starts a message whose usage at its start is `usage`.
+/// The frame that starts a message whose usage at its start is `usage`,
+/// with an id of its own, as a vendor gives each message.
 pub(crate) fn message_start(usage: Value) -> Value {
+    static MESSAGES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let id = MESSAGES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     json!({ "type": "message_start", "message": {
-        "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-4-8", "content": [],
+        "id": format!("msg_{id}"), "type": "message", "role": "assistant", "model": "claude-opus-4-8", "content": [],
         "usage": usage } })
 }
 

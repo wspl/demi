@@ -6,6 +6,7 @@ mod edit_tracking;
 mod gnu;
 mod jobs;
 mod shell;
+mod tasks;
 mod utilities;
 
 // Each test's whole-body timeout is a hang guard of 60 s, not a latency
