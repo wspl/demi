@@ -1302,6 +1302,82 @@ test('the list waits for the new conversations this web browser keeps, so a relo
   }
 })
 
+test('unsent drafts lead the list, newest first, live and after a reload whether their storage or the channel answers first', async () => {
+  const third = '00000000-0000-4000-8000-000000000003'
+  let store = useConversations()
+  const older = store.create()
+  store.items.find((item) => item.id === older)!.draft = 'Older draft'
+  const newer = store.create()
+  store.items.find((item) => item.id === newer)!.draft = 'Newer draft'
+  // Another page creates a conversation, which takes the front of the saved order.
+  records.unshift(record(third))
+  await changed(third)
+  channels.last().send({ type: 'conversation_order', ids: records.map((item) => item.id) })
+  await nextTick()
+  const expected = [newer, older, third, FIRST, SECOND]
+  expect(store.items.map((item) => item.id)).toEqual(expected)
+
+  // The drafts as this web browser's storage gives them back, in no particular order.
+  const kept = [older, newer].map((id): draftStorage.SavedDraft => ({
+    messageEdit: null, pendingSend: null, base: null, model: null, files: [], scroll: null,
+    text: id === older ? 'Older draft' : 'Newer draft',
+    local: {
+      phase: 'draft',
+      conversation: {
+        id, title: 'New conversation', pinned: false, archived: false, target: { kind: 'cloud' },
+        createdAt: id === older ? '2026-10-01T00:00:00.000Z' : '2026-10-02T00:00:00.000Z',
+        updatedAt: '2026-10-02T00:00:00.000Z',
+      },
+    },
+  }))
+  for (const storageFirst of [true, false]) {
+    store.stopAll()
+    useProduct().stop()
+    disposePinia(pinia)
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const signOut = signIn()
+    const listed = deferred<draftStorage.SavedDraft[]>()
+    const read = spyOn(draftStorage, 'readLocalDrafts').mockReturnValue(listed.promise)
+    try {
+      store = useConversations()
+      const initialized = store.initialize()
+      if (storageFirst) {
+        listed.resolve(kept)
+        await initialized
+        channels.last().connect(backendState())
+        await nextTick()
+      } else {
+        await connect()
+        listed.resolve(kept)
+        await initialized
+      }
+      expect(store.items.map((item) => item.id)).toEqual(expected)
+    } finally {
+      read.mockRestore()
+      signOut()
+    }
+  }
+})
+
+test('a draft moves only among the drafts, which keep the front', async () => {
+  const signOut = signIn()
+  try {
+    const store = useConversations()
+    const older = store.create()
+    store.items.find((item) => item.id === older)!.draft = 'Older draft'
+    const newer = store.create()
+    store.items.find((item) => item.id === newer)!.draft = 'Newer draft'
+    await store.reorder(newer, SECOND)
+    expect(store.items.map((item) => item.id)).toEqual([older, newer, FIRST, SECOND])
+    await store.reorder(newer, older)
+    expect(store.items.map((item) => item.id)).toEqual([newer, older, FIRST, SECOND])
+    expect(requests.some((request) => request.path === '/api/sidebar/reorder')).toBe(false)
+  } finally {
+    signOut()
+  }
+})
+
 test('the first load at a new conversation\'s address that its history entry marks reads nothing of it', async () => {
   useConversations().stopAll()
   useProduct().stop()
