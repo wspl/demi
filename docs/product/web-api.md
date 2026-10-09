@@ -584,11 +584,14 @@ not provided.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, locale?, contextLimits? } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, locale?, contextLimits?, sendWhileRunning? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
-`settings`). A null shortcut removes that override. `lastModel` stores the explicit new-conversation
+`settings`). A null shortcut removes that override. `sendWhileRunning` is
+`"steer"` or `"queue"`: what Enter does with a message while the agent works
+([Steer or queue](product.md#steer-or-queue)); absent means `"steer"`, and a
+patch sets it. `lastModel` stores the explicit new-conversation
 default as model settings, `{ providerId, modelId, thinkingEffort, serviceTierId }`
 ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
 Every explicit choice of a model, an effort or a tier saves it, in an unsent

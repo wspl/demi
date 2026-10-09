@@ -125,7 +125,8 @@ input, which the multi-worker control service also relies on
   contract to [Web API](../product/web-api.md#account-api), and sessions and
   lockout to [Backend](backend.md#authentication-and-ownership).
 - **Preferences:** `user_preferences` stores validated appearance and shortcut
-  overrides, the last explicit model settings for new conversations, where
+  overrides, whether a message sent while the agent works steers or queues,
+  the last explicit model settings for new conversations, where
   New Project last pointed, the locale the web app last reported, and the
   context limit the user set on each model
   ([Context limit](../providers/models.md#context-limit)). A patch merges specified fields in one
