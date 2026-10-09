@@ -8,7 +8,7 @@ const pill: RequestEditSelection = {
   node: null,
   request: 'user-1',
   file: 'src/index.ts',
-  edit: { call: 'call-b', segment: 0 },
+  edit: { call: 'call-b', path: 'src/index.ts', segment: 0 },
 }
 
 test('a request opens Conversation, and returning to Uncommitted keeps its file', () => {

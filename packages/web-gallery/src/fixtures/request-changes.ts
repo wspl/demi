@@ -1,4 +1,4 @@
-import type { Block, EditedFile } from '@demicodes/protocol'
+import type { Block, EditedFile, PathChange } from '@demicodes/protocol'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import { demoModel, shellView, uncopiedFile } from './blocks'
 import { editCopies } from './blobs'
@@ -27,11 +27,20 @@ const COOKIE = [
   'export const COOKIE = \'sid\'\n',
   'export const COOKIE = \'session\'\n',
 ]
+/** src/page.ts before the request, and the new layout written in /tmp first. */
+const PAGE = [
+  'export function Page() {\n  return <main>Hello</main>\n}\n',
+  'export function Page() {\n  return (\n    <main className="page">\n      <Header />\n      <Content />\n    </main>\n  )\n}\n',
+]
+const NOTES = 'Check the header on mobile.\nCheck the footer links.\n'
 
-/** A file of the gallery workspace a call changed, one segment per step between `versions`. */
+/**
+ * A file a call changed, one segment per step between `versions`: of the
+ * gallery workspace, or anywhere when `path` is absolute.
+ */
 function file(path: string, kind: EditedFile['kind'], versions: readonly string[], counts: { added: number; removed: number }): EditedFile {
   return {
-    path: `${WORKSPACE_ROOT}/${path}`,
+    path: path.startsWith('/') ? path : `${WORKSPACE_ROOT}/${path}`,
     kind,
     ...counts,
     edits: versions.slice(1).map((modified, n) => ({ copies: editCopies(versions[n]!, modified) })),
@@ -46,7 +55,14 @@ function text(id: string, offsetMs: number, body: string): Block {
   return { type: 'text', id, createdAt: ago(offsetMs), model: demoModel, text: body, forkable: true }
 }
 
-function shell(id: string, offsetMs: number, script: string, description: string, files?: EditedFile[]): ToolCallBlock {
+function shell(
+  id: string,
+  offsetMs: number,
+  script: string,
+  description: string,
+  files?: EditedFile[],
+  pathChanges?: PathChange[],
+): ToolCallBlock {
   return {
     type: 'tool_call',
     id,
@@ -57,7 +73,12 @@ function shell(id: string, offsetMs: number, script: string, description: string
     input: JSON.stringify({ script, description }),
     status: 'completed',
     output: [],
-    view: shellView({ commandId: `cmd-${id}`, chunks: [{ stream: 'stdout', text: 'done\n' }], files }),
+    view: shellView({
+      commandId: `cmd-${id}`,
+      chunks: [{ stream: 'stdout', text: 'done\n' }],
+      files,
+      ...(pathChanges ? { pathChanges } : {}),
+    }),
   }
 }
 
@@ -111,6 +132,31 @@ export function uncopiedRequestBlocks(): Block[] {
       file('README.md', 'modified', README, { added: 1, removed: 1 }),
     ]),
     text('uncopied-reply', 370_000, 'The logo is replaced and the readme says so.'),
+  ]
+}
+
+/**
+ * A request whose files are listed as they stand after its last call: the
+ * new page, written in /tmp and moved over src/page.ts, is src/page.ts with
+ * both edits; the scratch notes a later call removed are not listed, though
+ * their call's own pill still names them.
+ */
+export function movedRequestBlocks(): Block[] {
+  return [
+    user('moved-user', 260_000, 'Give the page the new layout, and clean up after yourself.'),
+    shell('moved-write', 250_000, 'cat > /tmp/page.ts.new <<\'EOF\'\n…\nEOF', 'Write the new page', [
+      file('/tmp/page.ts.new', 'added', ['', PAGE[1]!], { added: 8, removed: 0 }),
+    ]),
+    shell('moved-place', 240_000, 'mv /tmp/page.ts.new src/page.ts', 'Put the new page in place', [
+      file('src/page.ts', 'modified', PAGE, { added: 6, removed: 1 }),
+    ], [{ kind: 'renamed', from: '/tmp/page.ts.new', to: `${WORKSPACE_ROOT}/src/page.ts` }]),
+    shell('moved-notes', 230_000, 'printf … > notes.tmp', 'Note what to check', [
+      file('notes.tmp', 'added', ['', NOTES], { added: 2, removed: 0 }),
+    ]),
+    shell('moved-clean', 220_000, 'rm notes.tmp', 'Remove the scratch notes', [], [
+      { kind: 'removed', path: `${WORKSPACE_ROOT}/notes.tmp` },
+    ]),
+    text('moved-reply', 210_000, 'The page has the new layout, and the scratch notes are gone.'),
   ]
 }
 

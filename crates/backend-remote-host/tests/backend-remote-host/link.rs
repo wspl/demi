@@ -134,6 +134,7 @@ fn job_exit(job_id: &str, exit_code: Option<i32>, signal: Option<&str>) -> Outbo
         cwd: None,
         output: None,
         files: Vec::new(),
+        path_changes: Vec::new(),
         files_truncated: false,
     }
 }
@@ -978,6 +979,7 @@ async fn a_watched_command_is_followed_and_its_pages_view_holds_what_the_runner_
             stderr_bytes: 0,
         }),
         files: Vec::new(),
+        path_changes: Vec::new(),
         files_truncated: false,
     })
     .await;
@@ -1182,6 +1184,7 @@ async fn a_job_the_runner_could_not_run_ends_127_with_the_runners_reason() {
         cwd: None,
         output: None,
         files: Vec::new(),
+        path_changes: Vec::new(),
         files_truncated: false,
     })
     .await;
@@ -1342,6 +1345,7 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
             added: 1,
             removed: 1,
         }],
+        path_changes: Vec::new(),
         files_truncated: true,
     })
     .await;
@@ -1823,6 +1827,7 @@ async fn an_unread_output_ends_with_the_newest_bytes_the_runner_sent() {
             stderr_bytes: 0,
         }),
         files: Vec::new(),
+        path_changes: Vec::new(),
         files_truncated: false,
     })
     .await;
