@@ -146,7 +146,7 @@ test('retry reconciles an already accepted message before submitting again', asy
   }
 })
 
-test('a pending steer delivered now stops the turn, which writes it, and continues the turn', async () => {
+test('send now on a pending steer or a queued message stops nothing and never turns the message into a steer', async () => {
   const h = clientHarness()
   const current = state()
   const runtime = new ConversationRuntime({ state: current, connect: async () => h.client })
@@ -155,45 +155,15 @@ test('a pending steer delivered now stops the turn, which writes it, and continu
     const steer: PendingSteer = { id: 'steer', turnId: 'turn', model, content: [{ type: 'text', text: 'now' }] }
     h.receive({ type: 'phase', phase: 'running' })
     h.receive({ type: 'pending_steers', pendingSteers: [steer] })
-    const delivered = runtime.interruptPendingSteer('steer')
-    await waitFor(() => h.sent.some((frame) => frame.type === 'abort'))
-    // The backend answers the abort before the stopped turn has saved, and
-    // takes Continue only once the session is idle.
-    h.receive({ type: 'abort_result', result: { target: 'active_turn', canAbortAgain: false } })
-    await delay(0)
-    expect(h.sent.some((frame) => frame.type === 'resume')).toBe(false)
-    h.receive({ type: 'phase', phase: 'idle' })
-    await waitFor(() => h.sent.some((frame) => frame.type === 'resume'))
-    h.receive({ type: 'phase', phase: 'running' })
-    h.receive({ type: 'phase', phase: 'idle' })
-    await delivered
-    expect(h.sent.map((frame) => frame.type)).toEqual(['open', 'abort', 'resume'])
-  } finally {
-    runtime.dispose()
-  }
-})
-
-test('a queued message sent now steers the running turn, and runs next without an error when the ending turn refuses the steer', async () => {
-  const h = clientHarness()
-  const current = state()
-  const runtime = new ConversationRuntime({ state: current, connect: async () => h.client })
-  try {
-    await runtime.connect()
     h.receive({ type: 'queue', queue: [{ id: 'queued', content: [{ type: 'text', text: 'next' }] }] })
-    // Idle: the message moves to the front and runs next.
+    await runtime.interruptPendingSteer('steer')
     await runtime.sendQueuedNow('queued')
-    expect(h.sent.at(-1)).toEqual({ type: 'send_queued_message', messageId: 'queued' })
-    // Running, but ending: the turn refuses the steer and keeps the message queued.
-    h.receive({ type: 'phase', phase: 'running' })
-    const sending = runtime.sendQueuedNow('queued')
-    await waitFor(() => h.sent.at(-1)?.type === 'steer_queued_message')
-    const steer = h.sent.at(-1)
-    if (steer?.type !== 'steer_queued_message') {
-      throw new Error('a steer was expected')
-    }
-    h.receive({ type: 'steer_result', steerId: steer.steerId, outcome: { status: 'rejected', reason: 'The running turn is finishing' } })
-    await sending
-    expect(h.sent.at(-1)).toEqual({ type: 'send_queued_message', messageId: 'queued' })
+    // The session cuts the running round short itself: no Stop, no Continue.
+    expect(h.sent).toEqual([
+      { type: 'open' },
+      { type: 'steer_now', steerId: 'steer' },
+      { type: 'send_queued_message', messageId: 'queued' },
+    ])
   } finally {
     runtime.dispose()
   }

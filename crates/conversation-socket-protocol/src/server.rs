@@ -111,7 +111,7 @@ pub enum ServerFrame {
         #[garde(dive)]
         pending_calls: Vec<PendingCall>,
     },
-    /// Answers `steer` and `steer_queued_message`.
+    /// Answers `steer`.
     SteerResult {
         #[garde(skip)]
         steer_id: BlockId,

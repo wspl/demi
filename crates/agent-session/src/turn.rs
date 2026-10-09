@@ -6,7 +6,8 @@
 //! response requests no tool or a tool ends the turn, unless input arrived
 //! during the round. Every wait on the provider, a hook or a tool is raced
 //! against the action's stop and dropped when it comes; a save is never
-//! raced.
+//! raced. A message the user sends now cuts a provider request and a step's
+//! calls short without stopping anything (`runtime.md` § Send now).
 
 use std::rc::Rc;
 
@@ -21,13 +22,13 @@ use demi_provider_common::{
 };
 use demi_shared_types::{Block, CommandId, ModelSelection, ToolView, WakeupId};
 use futures_util::StreamExt;
-use tokio_util::task::AbortOnDropHandle;
+use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use super::{
     ErrorReport, SessionEvent, SessionShared, TurnError,
     cancel::TurnCancel,
     compaction,
-    core::{TurnStage, with_request_id},
+    core::{SendNow, SessionCore, TurnStage, with_request_id},
     input::Take,
     media::model_view,
     persist,
@@ -75,6 +76,11 @@ async fn run_turn(
             s.update(|core| core.push_resume());
         }
         switch_first = true;
+        // A message sent now during a compaction or a save ends the turn
+        // once that is done.
+        if ends_for_message(s).await? {
+            return Ok(());
+        }
         write_inputs(s).await?;
         let before = s.read(|core| core.inputs.arrivals());
         let recover = stream(s, cancel, continues).await?;
@@ -84,6 +90,9 @@ async fn run_turn(
             write_inputs_since(s, before).await?;
         }
         let tools = run_tools(s, cancel, recover).await?;
+        if ends_for_message(s).await? {
+            return Ok(());
+        }
         if recover && auto_compactions < MAX_AUTO_COMPACTIONS {
             let before_compaction = estimate(s, cancel).await?;
             let compacted = compaction::compacting(s, compaction::run_pass(s, cancel)).await?;
@@ -140,6 +149,29 @@ async fn write_inputs(s: &SessionShared) -> Result<(), TurnError> {
     Ok(())
 }
 
+/// Takes what the user sent now at this boundary (`runtime.md` § Send now):
+/// a queued message ends the turn here, once all waiting input is written,
+/// and true says so; a steer goes on as any input that arrived.
+async fn ends_for_message(s: &SessionShared) -> Result<bool, TurnError> {
+    match s.update(SessionCore::take_send_now) {
+        Some(SendNow::Message) => {
+            write_inputs(s).await?;
+            Ok(true)
+        }
+        Some(SendNow::Steer) | None => Ok(false),
+    }
+}
+
+/// Resolves once the user sent a message now (`runtime.md` § Send now),
+/// which cuts a provider request short.
+async fn sent_now(s: &SessionShared) {
+    let mut arrivals = s.arrivals.subscribe();
+    if arrivals.wait_for(|arrivals| arrivals.send_now).await.is_err() {
+        // The sender lives in `s`, which outlives this wait.
+        std::future::pending::<()>().await;
+    }
+}
+
 /// Writes the waiting input when some arrived since `arrivals` was read.
 async fn write_inputs_since(s: &SessionShared, arrivals: u64) -> Result<(), TurnError> {
     if s.read(|core| core.inputs.arrivals()) > arrivals {
@@ -156,7 +188,8 @@ async fn write_inputs_since(s: &SessionShared, arrivals: u64) -> Result<(), Turn
 /// runs); `continues` says it continues a running turn, so a pass is
 /// followed by a `resume` block. Returns whether a response's usage reached
 /// the compaction threshold. The stage stays streaming across the waits, so
-/// steers keep being accepted.
+/// steers keep being accepted. A message the user sent now cuts the stream,
+/// or the wait before a retry, short: what streamed stays.
 async fn stream(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
@@ -188,7 +221,8 @@ async fn stream(
         let mut runtime = s
             .update(|core| core.take_runtime())
             .expect("the provider runtime is in its slot between runs");
-        let read = read(s, cancel, window, runtime.run(request)).await;
+        let request_cancel = request.cancel.clone();
+        let read = read(s, cancel, window, runtime.run(request), &request_cancel).await;
         // However the request ended, no call of it is being written.
         s.update(|core| core.end_writing());
         s.return_runtime(runtime);
@@ -225,7 +259,14 @@ async fn stream(
             code: failure.code.as_ref().map(|code| code.as_str().to_owned()),
             diagnostics: failure.diagnostics.map(|diagnostics| *diagnostics),
         });
-        cancel.guard(tokio::time::sleep(delay)).await?;
+        tokio::select! {
+            biased;
+            () = sent_now(s) => {
+                s.update(|core| core.set_stage(TurnStage::Preparing));
+                return Ok(false);
+            }
+            slept = cancel.guard(tokio::time::sleep(delay)) => slept?,
+        }
         attempt += 1;
     }
 }
@@ -326,16 +367,31 @@ pub(super) async fn system_prompt(
 /// open answer text completes when anything but more text follows it. The
 /// run's failure is handed back unrecorded, for the retry to decide on; the
 /// inner result says whether a response's usage reached the compaction
-/// threshold of `window`, the window in use for the run's model.
+/// threshold of `window`, the window in use for the run's model. A message
+/// the user sent now ends it where it is, cancelling the request through
+/// `request_cancel`, as a Stop would, and what streamed stays.
 async fn read(
     s: &SessionShared,
     cancel: &TurnCancel,
     window: Option<u64>,
     mut events: ProviderRun<'_>,
+    request_cancel: &CancellationToken,
 ) -> Result<Result<bool, ProviderFailure>, TurnError> {
     let mut thinking_started = false;
     let mut recover = false;
-    while let Some(event) = cancel.guard(events.next()).await? {
+    let mut cut = std::pin::pin!(sent_now(s));
+    loop {
+        let event = tokio::select! {
+            biased;
+            () = &mut cut => {
+                request_cancel.cancel();
+                break;
+            }
+            event = cancel.guard(events.next()) => event?,
+        };
+        let Some(event) = event else {
+            break;
+        };
         cancel.check()?;
         match event {
             ProviderEvent::ThinkingStart => thinking_started = true,
@@ -398,13 +454,21 @@ async fn run_tools(
     let mut calls = calls.into_iter().peekable();
     while let Some(first) = calls.next() {
         cancel.check()?;
+        if s.read(SessionCore::send_now_pending) {
+            // The user sent a message now: no other call starts
+            // (`runtime.md` § Send now).
+            for call in std::iter::once(first).chain(calls.by_ref()) {
+                record_result(s, &call, ToolOutcome::not_run(), &mut round).await;
+            }
+            break;
+        }
         let mut step = vec![first];
         if s.runtime.runs_together(&step[0].tool_name) {
             while let Some(next) = calls.next_if(|call| call.tool_name == step[0].tool_name) {
                 step.push(next);
             }
         }
-        let before = s.read(|core| core.inputs.arrivals());
+        let (before, joined) = s.read(|core| (core.inputs.arrivals(), core.inputs.joining()));
         let ran = if tools.iter().any(|tool| tool.name == step[0].tool_name) {
             let (model, request_limits) =
                 s.read(|core| (core.model.clone(), core.request_limits()));
@@ -417,7 +481,7 @@ async fn run_tools(
                     model: model.clone(),
                     request_limits,
                     cancel: cancel.child_token(),
-                    arrival: InputArrival::new(s.arrivals.subscribe(), before),
+                    arrival: InputArrival::new(s.arrivals.subscribe(), joined),
                 })
                 .collect();
             let mut returned = s.runtime.invoke_step(invocations);

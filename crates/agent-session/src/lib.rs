@@ -60,7 +60,7 @@ pub use editing::{
 pub use retry::RetryPolicy;
 pub use runtime::{
     InputArrival, NewContext, SeenContext, SessionRuntime, StepOutcomes, ToolEffect, ToolFailure,
-    ToolInvocation, ToolOutcome,
+    ToolInvocation, ToolOutcome, WindowEnd,
 };
 
 use self::{
@@ -420,9 +420,9 @@ pub(crate) struct SessionShared {
     /// started finishes before the next one starts.
     persist_gate: SerialGate,
     status: watch::Sender<Status>,
-    /// How many inputs arrived for a boundary: a shell tool's window ends
-    /// when one more arrives (`runtime.md` § The window).
-    arrivals: watch::Sender<u64>,
+    /// What ends a shell tool's window early: one more agent message or
+    /// fired wakeup, or the user's send now (`runtime.md` § The window).
+    arrivals: watch::Sender<runtime::Arrivals>,
     /// Wakes the worker when an action starts.
     work: Rc<Notify>,
     /// Wakes the persister when a change makes a save due.
@@ -448,11 +448,11 @@ impl SessionShared {
         let (result, effects, arrivals) = {
             let mut core = self.core.borrow_mut();
             let result = change(&mut core);
-            (result, core.take_effects(), core.inputs.arrivals())
+            (result, core.take_effects(), core.window_arrivals())
         };
-        self.arrivals.send_if_modified(|count| {
-            let changed = *count != arrivals;
-            *count = arrivals;
+        self.arrivals.send_if_modified(|published| {
+            let changed = *published != arrivals;
+            *published = arrivals;
             changed
         });
         if effects.wake_worker {
@@ -586,7 +586,7 @@ impl AgentSession {
 
     fn start(core: SessionCore, deps: SessionDeps) -> Self {
         let status = core.status();
-        let arrivals = core.inputs.arrivals();
+        let arrivals = core.window_arrivals();
         let shared = Rc::new(SessionShared {
             core: RefCell::new(core),
             bus: EventBus::default(),
@@ -748,8 +748,12 @@ impl AgentSession {
         self.shared.update(|core| core.dequeue(id))
     }
 
+    /// Sends a queued message now (`runtime.md` § Send now): while a turn
+    /// runs, the turn ends at once and the message runs next; otherwise it
+    /// moves to the front of the queue. False when no queued message has
+    /// the id.
     pub fn send_queued_message(&self, id: &TurnId) -> bool {
-        self.shared.update(|core| core.send_next(id))
+        self.shared.update(|core| core.send_queued_now(id))
     }
 
     pub fn clear_message_queue(&self) -> usize {
@@ -767,14 +771,11 @@ impl AgentSession {
         self.shared.update(|core| core.cancel_steer(id))
     }
 
-    /// Turns a queued message into a steer of the running turn; false when no
-    /// queued message has the id.
-    pub fn steer_queued_message(
-        &self,
-        message: &TurnId,
-        steer: BlockId,
-    ) -> Result<bool, SteerError> {
-        self.shared.update(|core| core.steer_queued(message, steer))
+    /// Delivers a pending steer now (`runtime.md` § Send now): the running
+    /// round is cut short without stopping anything, and the turn goes on
+    /// with the steer. A steer that is no longer pending changes nothing.
+    pub fn steer_now(&self, id: &BlockId) {
+        self.shared.update(|core| core.steer_now(id));
     }
 
     /// Admits a message from another agent of the tree; it returns once the

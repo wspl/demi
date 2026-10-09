@@ -58,6 +58,9 @@ pub(super) struct InputQueue {
     /// grow during a round asks the provider once more, and a withdrawn steer
     /// causes no request.
     arrivals: u64,
+    /// How many of them were agent messages and fired wakeups, which end a
+    /// shell tool's window (`runtime.md` § The window).
+    joining: u64,
 }
 
 impl InputQueue {
@@ -71,12 +74,26 @@ impl InputQueue {
     }
 
     pub(super) fn add(&mut self, input: Input) {
+        if !matches!(input, Input::Steer(_)) {
+            self.joining += 1;
+        }
         self.entries.push(input);
         self.arrivals += 1;
     }
 
     pub(super) fn arrivals(&self) -> u64 {
         self.arrivals
+    }
+
+    pub(super) fn joining(&self) -> u64 {
+        self.joining
+    }
+
+    /// Whether the human steer `id` is pending.
+    pub(super) fn has_steer(&self, id: &BlockId) -> bool {
+        self.entries
+            .iter()
+            .any(|input| matches!(input, Input::Steer(steer) if &steer.id == id))
     }
 
     /// Withdraws the pending human steer `id`; false when none is pending.
