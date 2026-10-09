@@ -22,7 +22,9 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_agent_session::{StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome};
+use demi_agent_session::{
+    StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome, WindowEnd,
+};
 use demi_agent_store::AgentTreeStore;
 use demi_host_interface::{
     CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller,
@@ -357,6 +359,11 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             input,
             target,
         } = exec;
+        // A call after one that the user's send now returned never starts
+        // (`runtime.md` § Send now).
+        if call.arrival.sent_now() {
+            return Ok(ToolOutcome::not_run());
+        }
         let handle = input.shell_id.as_ref().map_or(Handle::None, Handle::Shell);
         let (slot, environment) = self.environment(handle).await?;
         if let Some(suppressed) = slot.repeated(&input.script) {
@@ -371,7 +378,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             tool_use_id: call.tool_use_id,
         };
         let command = environment.start(request, call.cancel).await?;
-        let status = watch(
+        let (status, ended_by) = watch(
             environment.as_ref(),
             &command,
             Some(window(input.timeout_ms)),
@@ -381,6 +388,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         let called = Called {
             model: &call.model,
             limits: call.request_limits,
+            sent_now: ended_by == Some(WindowEnd::SentNow),
         };
         Ok(finish(environment.as_ref(), status, called).await)
     }
@@ -391,12 +399,15 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     async fn status(&self, call: ToolInvocation) -> Result<ToolOutcome, CallError> {
         let input: StatusInput =
             parse(StandardTool::ShellStatus.name(), call.input).map_err(CallError::Refused)?;
+        if call.arrival.sent_now() {
+            return Ok(ToolOutcome::not_run());
+        }
         let command = &input.command_id;
         let (_, environment) = self.environment(Handle::Command(command)).await?;
         if let Some(stdin) = input.stdin {
             environment.write(command, Bytes::from(stdin.0)).await?;
         }
-        let status = watch(
+        let (status, ended_by) = watch(
             environment.as_ref(),
             command,
             input.timeout_ms.map(window),
@@ -406,6 +417,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         let called = Called {
             model: &call.model,
             limits: call.request_limits,
+            sent_now: ended_by == Some(WindowEnd::SentNow),
         };
         Ok(finish(environment.as_ref(), status, called).await)
     }
@@ -495,12 +507,13 @@ impl From<ShellError> for CallError {
     }
 }
 
-/// The model of the request that asked for a call, and what its vendor
-/// takes in one request.
+/// The model of the request that asked for a call, what its vendor takes in
+/// one request, and whether the user's send now ended the call's window.
 #[derive(Clone, Copy)]
 struct Called<'a> {
     model: &'a ModelSelection,
     limits: RequestLimits,
+    sent_now: bool,
 }
 
 /// A shell tool's outcome. A result that reports the command's end releases
@@ -510,7 +523,8 @@ async fn finish(
     status: CommandStatus,
     called: Called<'_>,
 ) -> ToolOutcome {
-    let outcome = result::shell_outcome(&status, &called.model.model, called.limits).await;
+    let outcome =
+        result::shell_outcome(&status, &called.model.model, called.limits, called.sent_now).await;
     if !matches!(status.state, CommandState::Running { .. }) {
         // A command the environment already forgot has nothing to release.
         environment.release_command(&status.command_id).await;

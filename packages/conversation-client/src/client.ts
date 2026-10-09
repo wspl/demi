@@ -189,15 +189,13 @@ export class ConversationClient {
     this.settleQueuedSend(messageId)
   }
 
-  /** Moves a queued message to the front, so that it runs next. */
+  /**
+   * Sends a queued message now (`runtime.md` § Send now): while a turn runs,
+   * the turn ends at once and the message runs next; otherwise it moves to
+   * the front of the queue. The caller watches the queue and the transcript.
+   */
   sendQueuedMessage(messageId: string): void {
     this.sendFrame({ type: 'send_queued_message', messageId })
-  }
-
-  /** Turns a queued message into a steer of the running turn; resolves when the steer is accepted. */
-  async steerQueuedMessage(messageId: string, steerId: string = createId()): Promise<void> {
-    await this.steerRequest(steerId, { type: 'steer_queued_message', messageId, steerId })
-    this.settleQueuedSend(messageId)
   }
 
   clearMessageQueue(): void {
@@ -212,6 +210,15 @@ export class ConversationClient {
   /** Adds input to the running turn; resolves when the steer is accepted. */
   steer(content: ClientContent[], steerId: string = createId()): Promise<void> {
     return this.steerRequest(steerId, { type: 'steer', steerId, content })
+  }
+
+  /**
+   * Delivers a pending steer now (`runtime.md` § Send now): the running call
+   * returns at once with its command still running, and the turn goes on
+   * with the steer. The caller watches the pending steers and the transcript.
+   */
+  steerNow(steerId: string): void {
+    this.sendFrame({ type: 'steer_now', steerId })
   }
 
   cancelPendingSteer(steerId: string): void {
