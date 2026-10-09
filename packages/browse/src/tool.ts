@@ -24,6 +24,8 @@ export interface Tool {
   env: Record<string, string>
   /** Records a screenshot the call wrote, for its report. */
   wrote(shot: Shot): void
+  /** Runs `release` when the call ends, however it ends, for what a helper opened only for the call. */
+  release(release: () => Promise<void>): void
   /** Ends the server once the call has answered, as `demi.stop` and `demi.down` do. */
   endServer(): void
 }

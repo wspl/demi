@@ -50,7 +50,8 @@ function answer(accept: boolean): void {
 function key(event: KeyboardEvent): void {
   // The dialog's keys are the dialog's, never the page's under it.
   event.stopPropagation()
-  const accept = event.isComposing ? null : keyAnswer(event.key, props.dialog.type)
+  // The prompt's field keeps an input method's keys (TextInput), so a candidate's Enter never gets here.
+  const accept = keyAnswer(event.key, props.dialog.type)
   if (accept === null) {
     return
   }
