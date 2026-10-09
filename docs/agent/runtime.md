@@ -641,7 +641,10 @@ repeat; a number that names no command of the conversation fails with
 `demi shell stop: no command 17 in this conversation`. Like `demi shell
 output`, it is an `rpc` command, handled in the backend from any of the
 conversation's shells, and it stops the command as the page's stop does,
-through the command's shell environment.
+through the command's shell environment: `TERM` first, so the command and
+every program it started can end cleanly, and `KILL` for what has not
+ended after 5 seconds
+([Cancellation and completion](../execution/runner.md#cancellation-and-completion)).
 
 ### Results and previews
 

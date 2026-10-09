@@ -789,8 +789,55 @@ completion. For example:
 
 The caller sees `started`, then a running job, then `done` and completion.
 A tool timeout returns the running job's handle. `shell_status` observes that job,
-and `demi shell stop` cancels it. Background tasks remain job-owned rather than
-becoming detached services. Brush's internal tasks do not expose OS PIDs in `$!`.
+and `demi shell stop` stops it ([Cancellation and completion](#cancellation-and-completion)).
+Background tasks remain job-owned rather than becoming detached services.
+
+### Background tasks and timeouts
+
+For example, a script starts a dev server in the background, checks it, and
+stops it:
+
+```sh
+(cd app && bun run dev) &
+server=$!
+curl -fsS localhost:3000/health
+kill $server
+wait $server
+```
+
+`kill` stops the subshell and everything it started, `bun` and the backend
+`bun` runs included, and `wait` gives `143`, the status of a task that `TERM`
+ended. In bash the same `kill` signals only the subshell's own process, and
+the dev server it started runs on, holding its port.
+
+- **`$!`.** A background task, a list after `&` or a coprocess, runs in the
+  runner, so no operating-system process stands for it. `$!` names it with
+  an id that no process ID takes, from 4194305, one more than Linux's
+  largest process ID, numbered within the job, and `jobs -p` lists the
+  same ids. `kill`, `wait` and `jobs -p` take a task's id wherever bash
+  takes a process ID.
+- **`kill`.** The default signal is `TERM`, as in bash. A task's id signals
+  the whole task: `TERM` stops its shell work at its next step and sends
+  `SIGTERM` to every process group it started; `KILL` kills them and the
+  rest of its work. A process ID or a negative process group ID, after `--`
+  or not, signals that process or group, as in bash. Errors are bash's:
+  `kill: (999999) - No such process`, ``kill: `abc': not a pid or valid job spec``,
+  and `kill` alone prints bash's usage with status 2. `kill $$` and `kill 0`
+  still fail ([Builtins that act on a process](#builtins-that-act-on-a-process)).
+- **`wait`.** `wait <id>` waits for that task, or for a process the job
+  started, and gives its status as bash does: the task's last status, or
+  128 plus the signal that ended it. An id that is neither fails with
+  `wait: pid 999999 is not a child of this shell` and status 127. `wait`
+  alone waits for every task and gives 0.
+- **`timeout DURATION COMMAND…`** runs COMMAND as `command` would, a builtin,
+  a standard utility or a program, so its writes are tracked like any
+  other, and stops it as `kill` stops a task once DURATION has passed. Its
+  options, durations and statuses are GNU's: `-s SIGNAL` (`TERM` by
+  default), `-k DURATION` to send `KILL` after that much more, `--preserve-status`,
+  `--foreground`, `-v`; `124` when the time ran out, `137` when `KILL` ended
+  it, `125` for its own failure, `126` and `127` when COMMAND cannot run.
+  For example, `timeout 600 cargo test` ends a hung suite after ten minutes
+  and leaves `124` for the script to test.
 
 ### Standard utilities
 
@@ -869,7 +916,7 @@ it is made in.
 | `exec CMD` | Runs CMD as `command CMD` would, a standard utility in the runner or a program through the job's process start, then ends the shell with CMD's status. In a subshell it ends the subshell. With only redirections, they stay with the shell, as in bash. |
 | `ulimit` | Sets and shows the limits of the processes the shell starts from then on; a subshell keeps its own. Without `-S` or `-H` it sets both limits, as in bash. A hard limit raised above the job's own without privilege fails at once, as in bash. The system checks every other new limit when it is set: the shell starts `/bin/sh -c :` with it, and a limit the system refuses, such as open files above macOS's cap, fails there and changes nothing, as it would in bash. |
 | `umask` | Sets and shows the mask of the processes the shell starts and of the files its redirections and standard utilities create. The runner's own mask still applies beneath it inside the runner, so there a job's mask can only take permissions away. For example, under a runner mask of `022`, a job's `umask 002` gives its programs group-writable files, but its redirections still create files with mode `644`. |
-| `kill` | Signals any process but the runner. `$$` is the runner's process ID and 0 its process group, so `kill $$` and `kill 0` fail with a message. |
+| `kill` | Signals any process but the runner, and a background task by its id ([Background tasks and timeouts](#background-tasks-and-timeouts)). `$$` is the runner's process ID and 0 its process group, so `kill $$` and `kill 0` fail with a message. |
 | `suspend`, `fg` | Fail: a job has no job control, as a bash script has none, and `suspend` would stop the runner. |
 
 A job's limits apply to its processes only: its builtins and standard
@@ -939,7 +986,7 @@ workers, and external children until they finish.
 | --- | --- |
 | Success | Join remaining job-owned work and preserve produced output. |
 | Failure | Cancel remaining work, join it, and report the failure. |
-| Cancellation | Stop shell work, command invocations, and external descendants; release IO and reap children. |
+| Stop | `TERM`, then `KILL`, below; release IO and reap children. |
 
 Embedded execution cooperates with cancellation. Blocking IO must be
 interruptible: on Unix, a unit blocked on a read or write waits on the file and
@@ -948,8 +995,18 @@ Windows, the runner cancels the blocked call. External children belong to a Unix
 process group or Windows Job Object. The runner continues handling control
 requests while a job blocks on input or output.
 
-A cancelled job reports the signal that requested its cancellation, or `SIGKILL`
-when cancellation had no signal request and forcibly terminates external descendants.
+A job is stopped in two steps, as a program in a terminal is. `TERM` stops
+its shell work at its next step, so the script runs no further command and
+its builtins and utilities end, and sends `SIGTERM` to every process group
+the job started, so a dev server can close its connections, stop the
+programs it started and remove its socket. The job ends once every process
+of those groups has exited. `KILL` kills whatever remains, and is what a
+stop sends when the job has not ended 5 seconds after `TERM`
+([Stopping a command](../agent/runtime.md#stopping-a-command)). Before, a
+stop went straight to `SIGKILL`, and a dev server killed that way left its
+backend running in a group of its own, holding its port.
+
+A stopped job reports the signal that ended it.
 
 A job or raw process ends with its exit code, or else the name of the signal
 that ended it. With neither, the runner says why it has no status: the work
