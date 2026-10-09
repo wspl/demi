@@ -486,6 +486,65 @@ fn mode(path: &Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777
 }
 
+/// An installer that finds its runner running and waiting to be paired
+/// asks it to write its state again and shows the code it waits with, not
+/// the lines of an earlier pairing that its log holds (`runner.md`
+/// § Installation, pairing and removal).
+// Several seconds: the first installer downloads this build's runner
+// (170 MB) and starts it; the second finds it running.
+#[tokio::test]
+async fn an_installer_that_finds_its_runner_waiting_shows_its_code_and_no_earlier_pairing() {
+    use tokio::io::AsyncBufReadExt as _;
+    let releases = Releases::new(runner_binary());
+    releases.publish("initial");
+    let harness = Harness::new().with_runner_releases(releases.path());
+    let (backend, master) = harness.start_set_up().await;
+    let installations = Installations::new();
+    let state = installations.state(&format!("{}/", backend.url));
+
+    // The person closes the first installer once it shows the code; the
+    // runner keeps waiting to be paired.
+    let script = installations.script(&backend).await;
+    let mut first = installations
+        .shell()
+        .arg(&script)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let mut lines = tokio::io::BufReader::new(first.stdout.take().unwrap()).lines();
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        while let Some(line) = lines.next_line().await.unwrap() {
+            if line.starts_with(CODES[0]) {
+                return;
+            }
+        }
+        panic!("the first installer ended without a code");
+    })
+    .await
+    .expect("the first installer shows a code");
+    first.kill().await.unwrap();
+    // The log holds an earlier pairing's lines after the runner's own.
+    let mut log = std::fs::OpenOptions::new()
+        .append(true)
+        .open(state.join("runner.log"))
+        .unwrap();
+    std::io::Write::write_all(
+        &mut log,
+        format!("{PAIRING_CODE}STALE-CODE\n{PAIRED}earlier-laptop\n{REMOVAL}earlier-removal\n")
+            .as_bytes(),
+    )
+    .unwrap();
+
+    let again = installations.install(&backend, &master).await;
+    assert!(again.contains("already running"), "{again}");
+    assert!(!again.contains("STALE-CODE"), "{again}");
+    says_paired(&again, &state);
+    drop(installations);
+    backend.close().await;
+}
+
 /// An installer shows the codes of the runner it started and no earlier
 /// runner's, whose lines its log keeps (`runner.md` § Installation, pairing
 /// and removal).
