@@ -1,6 +1,7 @@
 import type { MessageListBlock } from './pending-steers'
-import type { ToolCallBlock } from './block-types'
-import { toolRenderKind } from './tool-rendering'
+import { upperFirst } from '@demicodes/utils'
+import { parseToolCallInput } from './block-helpers'
+import { commandIdText, toolRenderKind, type ToolRenderKind } from './tool-rendering'
 
 /** A step of the agent's work: a thinking block, a tool call, or a call the model is still writing. */
 export type WorkStep = Extract<MessageListBlock, { type: 'thinking' | 'tool_call' | 'pending_call' }>
@@ -88,23 +89,83 @@ export function groupWork(blocks: readonly MessageListBlock[], running: boolean)
   return rows
 }
 
-function commandCount(steps: readonly WorkStep[]): number {
-  return steps.filter((step) =>
-    (step.type === 'tool_call' && toolRenderKind(step.toolName) === 'shell_exec')
-    || (step.type === 'pending_call' && toolRenderKind(step.call.toolName) === 'shell_exec')).length
+/** A command count as a row says it. */
+function commands(count: number): string {
+  return count === 1 ? '1 command' : `${count} commands`
 }
 
-/** What an open group that still runs says it is doing: its steps show under it, so it stands still. */
+/** A step's tool, for a call written or being written. */
+function stepTool(step: WorkStep): string | null {
+  switch (step.type) {
+    case 'thinking':
+      return null
+    case 'tool_call':
+      return step.toolName
+    case 'pending_call':
+      return step.call.toolName
+  }
+}
+
+/**
+ * The run's calls by tool, in the order the run first called each, with the
+ * commands each touched: a `shell_exec` call starts a command of its own, a
+ * `shell_status` call looks at the command its input names. A call still
+ * being written, or one whose input names no command, counts as a command
+ * of its own. A failed call counts as any other.
+ */
+function callsByTool(steps: readonly WorkStep[]): Map<string, Set<string>> {
+  const tools = new Map<string, Set<string>>()
+  for (const step of steps) {
+    const tool = stepTool(step)
+    if (tool === null)
+      continue
+    const named = step.type === 'tool_call' && toolRenderKind(tool) === 'shell_status'
+      ? commandIdText(parseToolCallInput(step).commandId)
+      : undefined
+    const touched = tools.get(tool) ?? new Set<string>()
+    touched.add(named === undefined ? stepKey(step) : `command:${named}`)
+    tools.set(tool, touched)
+  }
+  return tools
+}
+
+/** How a row words each kind of call, in the past once the run ended and in the present while it runs. */
+const WORDS = {
+  ended: {
+    shell_exec: (count: number) => `ran ${commands(count)}`,
+    shell_status: (count: number) => `checked ${commands(count)}`,
+    yield: () => 'waited',
+    generic: (_count: number, tool: string) => `used ${tool}`,
+  },
+  running: {
+    shell_exec: (count: number) => `running ${commands(count)}`,
+    shell_status: (count: number) => `checking ${commands(count)}`,
+    yield: () => 'waiting',
+    generic: (_count: number, tool: string) => `using ${tool}`,
+  },
+} satisfies Record<string, Record<ToolRenderKind, (count: number, tool: string) => string>>
+
+/** Each kind of call the run made, once, in the order it first made it, joined as one phrase. */
+function describeCalls(steps: readonly WorkStep[], tense: keyof typeof WORDS): string {
+  const parts = [...callsByTool(steps)].map(([tool, touched]) =>
+    WORDS[tense][toolRenderKind(tool)](touched.size, tool))
+  return upperFirst(parts.join(', '))
+}
+
+/**
+ * What an open group that still runs says it is doing: its steps show under
+ * it, so it stands still. A run that starts commands says how many; one
+ * that only looks, waits or uses other tools says so as its ended row
+ * would, in the present; a run of thinking alone is thinking.
+ */
 export function workRunning(steps: readonly WorkStep[]): string {
-  const ran = commandCount(steps)
-  return ran === 1 ? 'Running 1 command' : `Running ${ran} commands`
+  const ran = callsByTool(steps).get('shell_exec')?.size ?? 0
+  if (ran > 0)
+    return `Running ${commands(ran)}`
+  return describeCalls(steps, 'running') || 'Thinking'
 }
 
-/** What an ended group says it did: the commands it ran, or else how many steps it took. */
+/** What an ended group says it did: each kind of call once, in the order the run first made it (`runtime.md` § Work groups). */
 export function workSummary(steps: readonly WorkStep[]): string {
-  const calls = steps.filter((step): step is ToolCallBlock => step.type === 'tool_call')
-  const ran = calls.filter((call) => toolRenderKind(call.toolName) === 'shell_exec').length
-  if (ran > 0)
-    return ran === 1 ? 'Ran 1 command' : `Ran ${ran} commands`
-  return calls.length === 1 ? '1 step' : `${calls.length} steps`
+  return describeCalls(steps, 'ended')
 }
