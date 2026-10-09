@@ -8,9 +8,12 @@ use std::{
 
 use bytes::Bytes;
 use demi_command_package_file_protocol::{Operation, PatchArgs, ReadArgs};
-use demi_command_protocol::{CommandError, Completion, MAX_MEDIUM_BYTES, sniff_media_type};
+use demi_command_protocol::{
+    CommandError, Completion, MAX_MEDIUM_BYTES, StdoutTarget, is_text, sniff_media_type,
+};
 use demi_command_sdk::{
     InvocationContext, ServiceError,
+    errors::reason,
     edits::{Recorder, Recording},
 };
 use demi_shared_artifacts::{Mode, Permissions, Publication};
@@ -34,10 +37,14 @@ pub enum FileError {
     Cancelled,
     #[error(transparent)]
     Arguments(#[from] DecodeError),
-    #[error(transparent)]
+    #[error("{}", reason(.0))]
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Publication(#[from] demi_shared_artifacts::Error),
+    #[error(
+        "a binary file ({size} bytes) that is not an image or video; redirect it to copy it: {copy}"
+    )]
+    Binary { size: usize, copy: String },
     #[error("File has no parent directory")]
     NoParent,
     #[error("Occurrence {0} is out of range")]
@@ -100,7 +107,7 @@ pub async fn invoke(
     mutations: SerialGate,
 ) -> Result<Completion, ServiceError> {
     let result = match operation {
-        Operation::Read(args) => read(&context, &args).await,
+        Operation::Read(args) => return read(&context, &args).await,
         Operation::Edit(args) => {
             mutate(&context, &mutations, move |cwd, cancellation, recording| {
                 edit::edit(cwd, &args, cancellation, recording)
@@ -136,12 +143,41 @@ pub fn failure(error: &FileError) -> Completion {
     }
 }
 
-/// Streams the file to stdout. A job's command reading a regular file of at
-/// most 16 MiB whose bytes are an image or video a model reads returns it as
-/// a medium instead (`commands.md` § File commands).
-async fn read(context: &InvocationContext, args: &ReadArgs) -> Result<(), FileError> {
-    let path = demi_command_sdk::paths::resolve(&context.request.cwd, &args.path)?;
-    let mut file = tokio::fs::File::open(path).await?;
+/// Reads each file in order (`commands.md` § File commands). A file that
+/// cannot be read writes `<command>: <path>: <reason>` to stderr, as `cat`
+/// does, and the next file is read; the command exits 1 when any failed.
+async fn read(context: &InvocationContext, args: &ReadArgs) -> Result<Completion, ServiceError> {
+    let mut failed = false;
+    for path in &args.path {
+        match read_one(context, path).await {
+            Ok(()) => {}
+            Err(FileError::Cancelled) => return Err(ServiceError::Cancelled),
+            Err(FileError::Output(error)) => return Err(error),
+            Err(error) => {
+                failed = true;
+                context
+                    .output
+                    .stderr(Bytes::from(format!(
+                        "{}: {path}: {error}\n",
+                        context.request.command
+                    )))
+                    .await?;
+            }
+        }
+    }
+    Ok(Completion {
+        exit_code: u8::from(failed),
+        error: None,
+    })
+}
+
+/// Streams the file at `path` to stdout. A job's command reading a regular
+/// file of at most 16 MiB whose bytes are an image or video a model reads
+/// returns it as a medium instead, and one that is neither text nor a
+/// medium fails, since its bytes would mean nothing in the job's output.
+async fn read_one(context: &InvocationContext, path: &str) -> Result<(), FileError> {
+    let resolved = demi_command_sdk::paths::resolve(&context.request.cwd, path)?;
+    let mut file = tokio::fs::File::open(resolved).await?;
     let metadata = file.metadata().await?;
     if context.request.stdout.is_some() && metadata.is_file() && metadata.len() <= MAX_MEDIUM_BYTES
     {
@@ -153,6 +189,11 @@ async fn read(context: &InvocationContext, args: &ReadArgs) -> Result<(), FileEr
         let bytes = Bytes::from(bytes);
         if sniff_media_type(&bytes).is_some() {
             context.output.medium(bytes).await?;
+        } else if context.request.stdout == Some(StdoutTarget::Job) && !is_text(&bytes) {
+            return Err(FileError::Binary {
+                size: bytes.len(),
+                copy: copy_command(&context.request.command, path),
+            });
         } else {
             context.output.stdout(bytes).await?;
         }
@@ -172,6 +213,17 @@ async fn read(context: &InvocationContext, args: &ReadArgs) -> Result<(), FileEr
             .stdout(Bytes::copy_from_slice(&buffer[..count]))
             .await?;
     }
+}
+
+/// The command line that copies the file at `path` by redirecting
+/// `command`'s stdout, such as `demi file read data.bin > copy.bin`.
+fn copy_command(command: &str, path: &str) -> String {
+    let copy = match Path::new(path).extension().and_then(|extension| extension.to_str()) {
+        Some(extension) => format!("copy.{extension}"),
+        None => "copy".to_owned(),
+    };
+    let quoted = shlex::try_quote(path).map_or_else(|_| path.into(), |quoted| quoted.into_owned());
+    format!("{command} {quoted} > {copy}")
 }
 
 /// Runs `mutation` on the blocking pool while it holds `mutations`, and

@@ -28,7 +28,7 @@ const SPAWN_SUMMARY: &str = "Start a child agent session and return its id immed
 
 const SEND_SUMMARY: &str = "Deliver information to any live agent in the tree, or parent. A busy recipient incorporates it through internal steering; an idle recipient wakes. Returns after durable acceptance, without waiting for an answer. Use for interim information, questions, or blockers; your final answer is delivered automatically. Archived recipients must be reopened by their parent with resume.";
 
-const ABORT_SUMMARY: &str = "Abort one of your own running children and its whole subtree. Siblings are untouched; only the spawning session may abort a child.";
+const ABORT_SUMMARY: &str = "Abort your own running children, each with its whole subtree. Siblings are untouched; only the spawning session may abort a child. --json takes one id.";
 
 const RESUME_SUMMARY: &str = "Revive one of your own archived children with a new user message on its preserved transcript. Return its id immediately after accepting the message; completion is delivered separately to the parent. Use agent send to communicate and agent abort to stop it. Archived ids are in agent list.";
 
@@ -41,7 +41,7 @@ const PROFILES_SUMMARY: &str = "List the user's enabled subagent profiles with w
 /// settings (`subagents.md` § Command help).
 const PROFILE_OPTION: &str = "The name of one of the user's subagent profiles; `demi agent profiles` lists them with when to use each. Omit to inherit the parent's model, prompt, Host and commands.";
 
-const SHOW_SUMMARY: &str = "Bounded snapshot of any agent in the tree (root excluded): for a live one, execution state, recent tool titles with durations, last assistant text; for an archived one, how and when it closed with its result or failure. Every duration is relative to now — use the ages to tell motion from stall. Omits tool outputs, file contents, and older turns. A read, not a wait — not for polling loops.";
+const SHOW_SUMMARY: &str = "Bounded snapshot of any agent in the tree (root excluded): for a live one, execution state, recent tool titles with durations, last assistant text; for an archived one, how and when it closed with its result or failure. Every duration is relative to now — use the ages to tell motion from stall. Omits tool outputs, file contents, and older turns. Several ids show each in order; --json takes one. A read, not a wait — not for polling loops.";
 
 /// The input of `demi agent spawn`.
 #[derive(Deserialize, JsonSchema)]
@@ -68,8 +68,9 @@ struct SendArgs {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct AbortArgs {
-    /// subagentId from spawn stdout
-    id: u64,
+    /// subagentIds from spawn stdout, aborted in order
+    #[schemars(length(min = 1))]
+    id: Vec<u64>,
 }
 
 /// The input of `demi agent resume`.
@@ -96,8 +97,9 @@ struct ProfilesArgs {}
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ShowArgs {
-    /// Agent number from the tree
-    id: u64,
+    /// Agent numbers from the tree, shown in order
+    #[schemars(length(min = 1))]
+    id: Vec<u64>,
 }
 
 /// The group's entry in the model's capability index (`system-prompt.md`
@@ -238,6 +240,9 @@ fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -
 pub(super) struct Invoked<H: HostResolver, A> {
     pub(super) tree: Rc<Tree<H>>,
     caller: NodeId,
+    /// The command's path, which a failure of one of several values
+    /// begins with (`commands.md` § Handle an rpc call).
+    pub(super) command: String,
     json: bool,
     pub(super) args: A,
 }
@@ -278,6 +283,7 @@ where
             let invoked = Invoked {
                 tree,
                 caller,
+                command: call.invocation.path.join(" "),
                 json: call.invocation.json,
                 args: call.args,
             };
@@ -292,7 +298,7 @@ async fn spawn<H: HostResolver>(
 ) -> Result<u8, RpcError> {
     let prompt = trim(&call.args.prompt);
     if prompt.is_empty() {
-        return fail(&port, "spawn", "prompt must not be empty").await;
+        return fail("prompt must not be empty");
     }
     let input = StartInput::Spawn {
         prompt: prompt.to_owned(),
@@ -301,7 +307,7 @@ async fn spawn<H: HostResolver>(
     };
     match call.tree.start(&call.caller, input).await {
         Ok(child) => started(&port, call.json, child).await,
-        Err(error) => fail(&port, "spawn", &error).await,
+        Err(error) => fail(&error),
     }
 }
 
@@ -311,16 +317,16 @@ async fn resume<H: HostResolver>(
 ) -> Result<u8, RpcError> {
     let message = trim(&call.args.message);
     if message.is_empty() {
-        return fail(&port, "resume", "message must not be empty").await;
+        return fail("message must not be empty");
     }
     let number = call.args.id;
     let id = match call.tree.child_of(&call.caller, number).await {
         Ok(Some(id)) => id,
         Ok(None) => {
             let reason = format!("no archived subagent {number} (see `demi agent list`)");
-            return fail(&port, "resume", &reason).await;
+            return fail(&reason);
         }
-        Err(error) => return fail(&port, "resume", &error).await,
+        Err(error) => return fail(&error),
     };
     let input = StartInput::Resume {
         id,
@@ -328,13 +334,13 @@ async fn resume<H: HostResolver>(
     };
     match call.tree.start(&call.caller, input).await {
         Ok(child) => started(&port, call.json, child).await,
-        Err(error) => fail(&port, "resume", &error).await,
+        Err(error) => fail(&error),
     }
 }
 
 async fn send<H: HostResolver>(call: Invoked<H, SendArgs>, port: RpcPort) -> Result<u8, RpcError> {
     if is_blank(&call.args.message) {
-        return fail(&port, "send", "message must not be empty").await;
+        return fail("message must not be empty");
     }
     let message = trim(&call.args.message).to_owned();
     match call
@@ -353,7 +359,7 @@ async fn send<H: HostResolver>(call: Invoked<H, SendArgs>, port: RpcPort) -> Res
             .await
         }
         Ok(target) => out(&port, format!("sent to {target}\n")).await,
-        Err(error) => fail(&port, "send", &error).await,
+        Err(error) => fail(&error),
     }
 }
 
@@ -361,33 +367,34 @@ async fn abort<H: HostResolver>(
     call: Invoked<H, AbortArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
-    let number = call.args.id;
-    let Some(child) = call.tree.live_child_of(&call.caller, number) else {
-        return fail(
-            &port,
-            "abort",
-            &format!("{number} is not one of your running children"),
-        )
-        .await;
-    };
-    call.tree.abort_child(&child).await;
-    if call.json {
-        return json(
-            &port,
-            &Aborted {
-                id: number,
-                aborted: true,
-            },
-        )
-        .await;
+    one_for_json(&call, call.args.id.len())?;
+    let mut failed = false;
+    for &number in &call.args.id {
+        let Some(child) = call.tree.live_child_of(&call.caller, number) else {
+            failed = true;
+            fail_one(&port, &call.command, number, "not one of your running children").await?;
+            continue;
+        };
+        call.tree.abort_child(&child).await;
+        if call.json {
+            return json(
+                &port,
+                &Aborted {
+                    id: number,
+                    aborted: true,
+                },
+            )
+            .await;
+        }
+        out(&port, format!("aborted {number}\n")).await?;
     }
-    out(&port, format!("aborted {number}\n")).await
+    Ok(u8::from(failed))
 }
 
 async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let listing = match call.tree.listing().await {
         Ok(listing) => listing,
-        Err(error) => return fail(&port, "list", &error).await,
+        Err(error) => return fail(&error),
     };
     if call.json {
         return json(
@@ -402,16 +409,28 @@ async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Res
 }
 
 async fn show<H: HostResolver>(call: Invoked<H, ShowArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let number = call.args.id;
-    let (snapshot, text) = match call.tree.show(number).await {
-        Ok(Some(shown)) => shown,
-        Ok(None) => return fail(&port, "show", &format!("no subagent {number}")).await,
-        Err(error) => return fail(&port, "show", &error).await,
-    };
-    if call.json {
-        return json(&port, &Shown { agent: snapshot }).await;
+    one_for_json(&call, call.args.id.len())?;
+    let mut failed = false;
+    for &number in &call.args.id {
+        let (snapshot, text) = match call.tree.show(number).await {
+            Ok(Some(shown)) => shown,
+            Ok(None) => {
+                failed = true;
+                fail_one(&port, &call.command, number, "no such subagent").await?;
+                continue;
+            }
+            Err(error) => {
+                failed = true;
+                fail_one(&port, &call.command, number, &error).await?;
+                continue;
+            }
+        };
+        if call.json {
+            return json(&port, &Shown { agent: snapshot }).await;
+        }
+        out(&port, text).await?;
     }
-    out(&port, text).await
+    Ok(u8::from(failed))
 }
 
 async fn profiles<H: HostResolver>(
@@ -420,7 +439,7 @@ async fn profiles<H: HostResolver>(
 ) -> Result<u8, RpcError> {
     let listing = match call.tree.profiles().await {
         Ok(listing) => listing,
-        Err(error) => return fail(&port, "profiles", &error).await,
+        Err(error) => return fail(&error),
     };
     if call.json {
         return json(&port, &listing).await;
@@ -445,9 +464,32 @@ async fn out(port: &RpcPort, text: String) -> Result<u8, RpcError> {
     Ok(0)
 }
 
-/// A verb's failure: `demi agent <verb>: <reason>` on stderr, exit 1.
-async fn fail(port: &RpcPort, verb: &str, reason: &str) -> Result<u8, RpcError> {
-    port.stderr(format!("demi agent {verb}: {reason}\n").into_bytes())
+/// A verb's failure, which the dispatcher tells after the command's path:
+/// `demi agent <verb>: <reason>` on stderr, exit 1.
+fn fail(reason: &str) -> Result<u8, RpcError> {
+    Err(RpcError::Failed(reason.to_owned()))
+}
+
+/// The failure of one of several ids, told at once as GNU tools tell
+/// theirs, `demi agent show: 9: no such subagent`; the verb goes on with
+/// the next.
+pub(super) async fn fail_one(
+    port: &RpcPort,
+    command: &str,
+    id: impl std::fmt::Display,
+    reason: &str,
+) -> Result<(), RpcError> {
+    port.stderr(format!("{command}: {id}: {reason}\n").into_bytes())
         .await?;
-    Ok(1)
+    Ok(())
+}
+
+/// Refuses `--json` with several ids: its output is one JSON value.
+fn one_for_json<H: HostResolver, A>(call: &Invoked<H, A>, ids: usize) -> Result<(), RpcError> {
+    if call.json && ids > 1 {
+        return Err(RpcError::Failed(
+            "--json takes one id; give the others a call each".into(),
+        ));
+    }
+    Ok(())
 }

@@ -87,6 +87,7 @@ async fn conversation_browser_commands_share_state_and_retire() {
         let request = |operation: &str, args: Value| Invocation {
             operation: operation.into(),
             invocation_id: uuid::Uuid::new_v4().to_string(),
+            command: "demi test".into(),
             cwd: root.path().to_str().unwrap().into(),
             args,
             env: BTreeMap::new(),
@@ -393,6 +394,7 @@ fn invocation(
     Invocation {
         operation: operation.into(),
         invocation_id: uuid::Uuid::new_v4().to_string(),
+        command: "demi test".into(),
         cwd: root.to_str().unwrap().into(),
         args,
         env: BTreeMap::new(),
