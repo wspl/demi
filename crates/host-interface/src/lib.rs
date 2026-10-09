@@ -35,10 +35,9 @@ pub mod testing;
 pub use builders::{Call, GroupBuilder, LeafBuilder, TypedRpc};
 pub use commands::{Checked, CommandSet, DEMI_ROOT, Declared, RegisterError};
 pub use environment::{
-    BinaryOutput, CommandState, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES, DefaultShell,
+    BinaryOutput, CommandState, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, ExecRequest, JobCaller, MAX_OBSERVATION, Newest,
-    Numbers, ObservationWindow, PageFeed, ShellEnvironment, ShellError, ShellTarget, WholeView,
-    watch,
+    Numbers, ObservationWindow, PageFeed, ShellEnvironment, ShellError, WholeView, watch,
 };
 pub use host::{
     ByteRange, ByteStream, CpOptions, Descriptor, DirEntry, FileContents, FileKind, FileStat, Host, HostError,

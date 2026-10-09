@@ -13,7 +13,7 @@ use std::{
 use demi_agent_session::ToolOutcome;
 use demi_host_interface::{HostError, HostKey, PageView, ShellEnvironment};
 use demi_provider_common::ResultPart;
-use demi_shared_types::{CommandId, ShellId, ToolView};
+use demi_shared_types::{CommandId, ToolView};
 use futures_util::future::join_all;
 use tokio::{sync::OnceCell, time::Instant};
 
@@ -48,7 +48,6 @@ struct Repeat {
 #[derive(Clone, Copy)]
 pub(super) enum Handle<'a> {
     None,
-    Shell(&'a ShellId),
     Command(&'a CommandId),
 }
 
@@ -78,13 +77,11 @@ impl Environments {
             environment.dispose_all().await;
             return Err(DISPOSED.to_owned());
         }
-        if let Some(owner) = self.owner(handle)?
+        if let Handle::Command(command) = handle
+            && let Some(owner) = self.owner(command)?
             && owner.key != slot.key
         {
-            return Err(format!(
-                "Shell handle \"{}\" belongs to a different Host",
-                handle.id()
-            ));
+            return Err(format!("Command \"{command}\" belongs to a different Host"));
         }
         Ok((slot, environment))
     }
@@ -103,32 +100,25 @@ impl Environments {
         slot
     }
 
-    /// The slot whose environment owns `handle`, when one does.
-    fn owner(&self, handle: Handle<'_>) -> Result<Option<Rc<Slot>>, String> {
-        let owns = |environment: &Rc<dyn ShellEnvironment>| match handle {
-            Handle::None => false,
-            Handle::Shell(shell) => environment.owns_shell(shell),
-            Handle::Command(command) => environment.owns_command(command),
-        };
+    /// The slot whose environment owns `command`, when one does.
+    fn owner(&self, command: &CommandId) -> Result<Option<Rc<Slot>>, String> {
         let owners: Vec<Rc<Slot>> = self
             .slots
             .borrow()
             .iter()
-            .filter(|slot| slot.environment.get().is_some_and(owns))
+            .filter(|slot| {
+                slot.environment
+                    .get()
+                    .is_some_and(|environment| environment.owns_command(command))
+            })
             .cloned()
             .collect();
         match owners.as_slice() {
             [] => Ok(None),
             [owner] => Ok(Some(owner.clone())),
-            _ => Err(match handle {
-                Handle::Shell(shell) => {
-                    format!("Shell id \"{shell}\" is not unique in this session")
-                }
-                Handle::Command(command) => {
-                    format!("Command id \"{command}\" is not unique in this session")
-                }
-                Handle::None => unreachable!("no environment owns no handle"),
-            }),
+            _ => Err(format!(
+                "Command id \"{command}\" is not unique in this session"
+            )),
         }
     }
 
@@ -152,7 +142,7 @@ impl Environments {
             .cloned()
     }
 
-    /// Ends every shell of every environment made so far and forgets them,
+    /// Stops every command of every environment made so far and forgets them,
     /// so the next call on a Host makes a fresh environment there.
     pub async fn end_all(&self) {
         let slots: Vec<Rc<Slot>> = self.slots.borrow_mut().drain(..).collect();
@@ -168,8 +158,8 @@ impl Environments {
         .await;
     }
 
-    /// Ends every shell of every environment, and every environment made
-    /// from now on.
+    /// Stops every command of every environment, and of every environment
+    /// made from now on.
     pub async fn dispose(&self) {
         self.disposed.set(true);
         let environments: Vec<Rc<dyn ShellEnvironment>> = self
@@ -189,16 +179,6 @@ impl Environments {
 
 /// What a call answers once the node is being disposed.
 const DISPOSED: &str = "The node's shells are closed";
-
-impl Handle<'_> {
-    fn id(&self) -> &str {
-        match self {
-            Handle::None => "",
-            Handle::Shell(shell) => shell.as_str(),
-            Handle::Command(command) => command.as_str(),
-        }
-    }
-}
 
 impl Slot {
     /// Counts `script` against the repeat guard: within the window of the
@@ -279,10 +259,6 @@ mod tests {
             Err(ShellError::UnknownCommand(command.clone()))
         }
 
-        fn default_shell(&self) -> Option<demi_host_interface::DefaultShell> {
-            None
-        }
-
         fn read_output<'a>(
             &'a self,
             command: &'a CommandId,
@@ -321,17 +297,9 @@ mod tests {
             Box::pin(async { false })
         }
 
-        fn dispose_shell<'a>(&'a self, _: &'a ShellId) -> LocalBoxFuture<'a, bool> {
-            Box::pin(async { false })
-        }
-
         fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {
             self.disposed.set(self.disposed.get() + 1);
             Box::pin(async {})
-        }
-
-        fn owns_shell(&self, _: &ShellId) -> bool {
-            false
         }
 
         fn owns_command(&self, command: &CommandId) -> bool {
@@ -389,7 +357,7 @@ mod tests {
             .await;
         assert_eq!(
             elsewhere.err().as_deref(),
-            Some("Shell handle \"cmd-a\" belongs to a different Host")
+            Some("Command \"cmd-a\" belongs to a different Host")
         );
         assert!(
             environments

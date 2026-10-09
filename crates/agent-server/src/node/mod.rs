@@ -245,7 +245,7 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     environments: Environments,
     /// Where its environments tell the pages of its commands.
     feed: Rc<dyn PageFeed>,
-    /// The conversation's command and shell numbers, from the tree store.
+    /// The conversation's command numbers, from the tree store.
     numbers: Rc<dyn Numbers>,
     /// The node's agent number.
     agent: u64,

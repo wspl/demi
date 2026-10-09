@@ -17,14 +17,14 @@ use crate::support::{Fixture, exec, is_idle, last_result, reply, scripts, turn, 
 // Several seconds: five scripts over two messages run a shell job each, and
 // the first `demi file` starts the `demi.file` service.
 #[tokio::test(flavor = "local")]
-async fn a_coding_workflow_edits_files_and_keeps_its_shell_across_messages() {
+async fn a_coding_workflow_edits_files_and_every_command_starts_in_the_workspace() {
     within(async {
         let (turns, recorded) = scripts(&[
             &[
                 "demi file edit <<'EOF'\nsrc/app.ts\n<<<<<<< SEARCH\n=======\nexport const value = 1\n>>>>>>> REPLACE\nEOF",
                 "grep -q 'value = 2' src/app.ts",
                 "demi file edit src/app.ts --old \"1\" --new \"2\" && cd src",
-                "grep -q 'value = 2' app.ts && echo passed",
+                "grep -q 'value = 2' src/app.ts && echo passed",
             ],
             &["pwd"],
         ]);
@@ -45,7 +45,8 @@ async fn a_coding_workflow_edits_files_and_keeps_its_shell_across_messages() {
         }
         assert_eq!(field(&results[0], "exitCode"), "0");
         assert_eq!(shown_output(&results[0]), "Created src/app.ts (1 line)\n");
-        // The failing check, then the fix and the passing one.
+        // The failing check, then the fix, whose `cd` the passing check
+        // does not inherit.
         assert_eq!(field(&results[1], "exitCode"), "1");
         assert_eq!(
             shown_output(&results[2]),
@@ -79,10 +80,10 @@ async fn a_coding_workflow_edits_files_and_keeps_its_shell_across_messages() {
             "{answer:?}"
         );
 
-        // The next message finds the directory the last script ended in.
+        // A command starts in the workspace, wherever the last one went.
         turn(&mut client, "message-2", "Where are you?").await;
         let last = recorded.borrow()[4].clone();
-        assert_eq!(shown_output(&last), format!("{}/src\n", fixture.workspace));
+        assert_eq!(shown_output(&last), format!("{}\n", fixture.workspace));
         assert_eq!(
             std::fs::read_to_string(format!("{}/src/app.ts", fixture.workspace)).unwrap(),
             "export const value = 2\n"
