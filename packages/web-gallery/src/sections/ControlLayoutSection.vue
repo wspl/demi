@@ -11,6 +11,7 @@ import CopyCode from '@demicodes/web-ui/ui/CopyCode.vue'
 import GalleryLoadingStates from '../components/GalleryLoadingStates.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
+import { productWould } from '../product-would'
 
 const sizes = ['sm', 'md', 'lg'] as const
 const widths = [240, 400] as const
@@ -71,7 +72,13 @@ const surfaces = [
         <Segmented v-model="selected" :options="segmentOptions" disabled />
         <Segmented v-model="changes" :options="changesOptions" size="sm" />
         <Segmented v-model="view" :options="viewOptions" size="sm" icon-only />
-        <IconButton :icon="Search" variant="solid" circle aria-label="Solid icon button" />
+        <IconButton
+          :icon="Search"
+          variant="solid"
+          circle
+          aria-label="Solid icon button"
+          @click="productWould('Search')"
+        />
       </div>
     </div>
     <GallerySpecimen variant="segmented · 200px container" class="mb-6">

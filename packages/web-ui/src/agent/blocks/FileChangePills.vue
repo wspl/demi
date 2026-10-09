@@ -95,8 +95,8 @@ watch([() => props.files, expanded], () => { void measure() })
       v-show="index < visibleCount"
       :key="file.path"
       ref="pillEls"
-      class="group/pill inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full bg-btn pl-1.5 pr-2 text-xs leading-4 text-fg-muted [--shadow-btn:var(--shadow-pill)] shadow-[var(--shadow-pill)] transition-colors duration-200 ease-out"
-      :class="selectable ? 'btn hover:text-fg-body' : ''"
+      class="group/pill inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full pl-1.5 pr-2 text-xs leading-4 text-fg-muted transition-colors duration-200 ease-out"
+      :class="selectable ? 'btn [--shadow-btn:var(--shadow-pill)] hover:text-fg-body' : 'bg-btn shadow-[var(--shadow-pill)]'"
       @click="selectable && emit('select', file.path)"
       :title="file.from ? `${file.from} → ${file.path}` : file.path"
     >
