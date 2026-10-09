@@ -9,9 +9,12 @@ mod interpreter;
 mod job;
 mod process_builtins;
 mod scope;
+#[cfg(unix)]
+mod timeout;
 #[cfg(feature = "testing")]
 pub mod testing;
 mod utilities;
+mod work;
 
 use demi_runner_process::job_shell::{JobShell, JobStart, ShellJob};
 use futures_util::future::BoxFuture;

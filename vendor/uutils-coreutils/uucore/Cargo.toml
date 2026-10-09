@@ -569,4 +569,5 @@ patches = [
     "Owners, metadata, file systems and extended attributes are asked for at paths resolved against the invocation's directory: perms (get_metadata, chown, the walk of chown -R), fsext::statfs and fsxattr's path functions",
     "chown words a failure to change an owner as GNU's does, without the operating system's error number",
     "fsxattr::remove_xattrs (added) removes a file's extended attributes but those the system protects, for cp's copy made by macOS's clonefile(2), which carries the source's",
+    "A child program a utility waits for ends in its own time once the invocation's work is to stop, and is killed only once the owner's Control::check_processes fails, as when its job kills its processes; before, Child::wait killed it as soon as the work was to stop",
 ]

@@ -331,4 +331,6 @@ maintainer = "demi-runner"
 patches = [
     "fancy-regex 0.19 and uucore 0.11, the versions the runner and the other utilities link, in place of 0.17 and 0.8: one copy of each",
     "cd and pushd word their failures as bash does: cd: ./browse: No such file or directory, cd: too many arguments with status 2, cd: OLDPWD not set",
+    "popd words an empty stack as bash does: popd: directory stack empty",
+    "jobs lists the jobs its job specs name, and words a spec that names none as bash does: jobs: %9: no such job with status 1; upstream refused job specs as unimplemented",
 ]
