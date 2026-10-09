@@ -275,7 +275,7 @@ impl Shard {
     ) -> PlayedRunner {
         use demi_runner_protocol::wire::{self, Outbound};
         let driver = self.connect_for_tests(device, home);
-        let (answers, answered) = tokio::sync::mpsc::channel::<Result<Vec<u8>, String>>(8);
+        let (answers, answered) = tokio::sync::mpsc::channel::<Result<Vec<u8>, demi_backend_remote_host::SocketEnd>>(8);
         let (frames, mut sent) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
         let incoming = futures_util::stream::unfold(answered, |mut answered| async move {
             answered.recv().await.map(|frame| (frame, answered))
@@ -316,7 +316,7 @@ impl Shard {
 
 /// A runner a test plays, which says what the test has it say.
 #[cfg(test)]
-pub(crate) struct PlayedRunner(tokio::sync::mpsc::Sender<Result<Vec<u8>, String>>);
+pub(crate) struct PlayedRunner(tokio::sync::mpsc::Sender<Result<Vec<u8>, demi_backend_remote_host::SocketEnd>>);
 
 #[cfg(test)]
 impl PlayedRunner {
