@@ -144,10 +144,11 @@ async fn a_call_between_two_execs_splits_them() {
             }),
             Box::new(|results| {
                 let reader = field(result(results, "reader"), "commandId").to_owned();
+                // A window above the cap is taken as the cap.
                 vec![call(
                     "wait",
                     "shell_status",
-                    json!({"commandId": reader, "timeoutMs": 600_000}),
+                    json!({"commandId": reader, "timeoutMs": 900_000}),
                 )]
             }),
         ]);
@@ -164,7 +165,10 @@ async fn a_call_between_two_execs_splits_them() {
         assert_eq!(field(result(&results, "writer"), "status"), "exited");
         // The reader ended once the writer ran.
         let waited = result(&results, "wait");
-        assert_eq!(field(waited, "status"), "exited", "{waited}");
+        assert!(
+            waited.starts_with("timeoutMs 900000 is above the cap; watched for 600000\nstatus: exited\n"),
+            "{waited}"
+        );
         assert_eq!(shown_output(waited), "through\n");
         fixture.stop().await;
     })
