@@ -10,14 +10,19 @@ export function composingKey(event: { key: string; keyCode: number; isComposing:
 }
 
 /**
- * Keeps a composition's key to the field it is typed in, for a listener in
- * the capture phase on the field's frame: no handler on the field or around
- * it sees the key, so a candidate's Enter submits nothing and its Escape
- * closes nothing. The input method still acts on it: only the page's
- * listeners, the field's own among them, stop seeing it.
+ * Keeps a composition's key to the field it is typed in; true when it kept
+ * it. Every text field calls it first for each `keydown`: TextInput and
+ * TextArea in the capture phase on their frame, a menu's filter on its row,
+ * and the message editor before its keymap. No handler on the field or
+ * around it sees the key, so a candidate's Enter submits nothing and its
+ * Escape closes nothing. The input method still acts on it: only the page's
+ * listeners, the field's own among them, stop seeing it, and the default
+ * action stays.
  */
-export function keepComposition(event: { key: string; keyCode: number; isComposing: boolean; stopPropagation(): void }): void {
-  if (composingKey(event)) {
-    event.stopPropagation()
+export function keepComposition(event: { key: string; keyCode: number; isComposing: boolean; stopPropagation(): void }): boolean {
+  if (!composingKey(event)) {
+    return false
   }
+  event.stopPropagation()
+  return true
 }

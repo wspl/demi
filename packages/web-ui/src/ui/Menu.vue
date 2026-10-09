@@ -1,6 +1,7 @@
 <script setup lang="ts" generic="T extends import('./menu-context').MenuListItem">
 import { computed, inject, onBeforeUnmount, provide, ref, shallowRef, watch } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
+import { keepComposition } from '@demicodes/utils'
 import { Search, CircleX } from '@lucide/vue'
 import { useTypeSelect } from '../composables/useTypeSelect'
 import HighlightText from './HighlightText.vue'
@@ -305,9 +306,11 @@ function handleKeydown(event: KeyboardEvent) {
     <div v-if="$slots.header" class="border-b border-line p-1">
       <slot name="header" />
     </div>
+    <!-- An input method's keys stay with the filter: a candidate's Enter picks no row. -->
     <div
       v-if="filterable"
       class="flex shrink-0 items-center gap-2 border-b border-line px-3 py-2.5 text-fg-subtle"
+      @keydown.capture="keepComposition"
     >
       <Search :size="ICON_PX.in28" class="shrink-0" />
       <input
