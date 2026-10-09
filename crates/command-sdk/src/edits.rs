@@ -57,6 +57,30 @@ impl Recorder {
         result
     }
 
+    /// Records the rename of `from` to `to` that runs while the returned
+    /// guard lives. A file at `to` is replaced: an edit of it with both
+    /// sides, as any whole-file write. Otherwise the rename moves `from`,
+    /// which carries what this job recorded under the old name, or within
+    /// it, to the new name once it happened; a move of a file the job did not
+    /// change records nothing (`edit-tracking.md` § Scope).
+    pub fn rename(&self, from: &Path, to: &Path) -> Renaming {
+        let to = normalize(to);
+        let replacing = if fs::metadata(&to).is_ok_and(|metadata| metadata.is_file()) {
+            self.begin().map(|mut recording| {
+                recording.track(&to);
+                recording
+            })
+        } else {
+            None
+        };
+        Renaming {
+            recorder: self.clone(),
+            from: normalize(from),
+            to,
+            replacing,
+        }
+    }
+
     /// Called after all writers have stopped; contents come only from snapshots.
     pub fn report(&self) -> io::Result<EditJournal> {
         let mut recording = self.locked()?;
@@ -157,6 +181,52 @@ impl Recording {
     pub fn restored(&mut self, path: &Path) {
         let path = normalize(path);
         self.before.retain(|(existing, _)| existing != &path);
+    }
+
+    /// Moves the entries of `from` and of the paths within it to the same
+    /// names under `to`, after the rename that moved them. An entry the new
+    /// name already has, from a file there that the job changed and that
+    /// went, keeps its kind and takes the moved segments after its own; any
+    /// other is `added`, as nothing was at the new name before the move.
+    fn carry(&mut self, from: &Path, to: &Path) -> io::Result<()> {
+        let mut moved = false;
+        let mut index = 0;
+        while index < self.journal.files.len() {
+            let Ok(within) = Path::new(&self.journal.files[index].path).strip_prefix(from) else {
+                index += 1;
+                continue;
+            };
+            // `join` of an empty path would add a trailing separator.
+            let path = if within.as_os_str().is_empty() {
+                to.to_owned()
+            } else {
+                to.join(within)
+            };
+            let path = path.to_string_lossy().into_owned();
+            moved = true;
+            match self.journal.files.iter().position(|file| file.path == path) {
+                Some(existing) => {
+                    let edits = self.journal.files.remove(index).edits;
+                    let existing = existing - usize::from(existing > index);
+                    self.journal.files[existing].edits.extend(edits);
+                }
+                None => {
+                    let file = &mut self.journal.files[index];
+                    file.path = path;
+                    file.kind = EditKind::Added;
+                    index += 1;
+                }
+            }
+        }
+        if moved {
+            self.write_journal()?;
+        }
+        Ok(())
+    }
+
+    fn write_journal(&self) -> io::Result<()> {
+        let bytes = serde_json::to_vec(&self.journal).map_err(io::Error::other)?;
+        publish_file(&self.directory.join("journal.json"), &bytes)
     }
 
     fn publish(&mut self, path: &Path, before: Contents, after: Contents) -> io::Result<()> {
@@ -296,10 +366,38 @@ impl Drop for Recording {
                 }
             }
         }
-        let result = serde_json::to_vec(&self.journal)
-            .map_err(io::Error::other)
-            .and_then(|bytes| publish_file(&self.directory.join("journal.json"), &bytes));
-        if let Err(error) = result {
+        if let Err(error) = self.write_journal() {
+            diagnostic(&error);
+        }
+    }
+}
+
+/// The guard of [`Recorder::rename`]. A replacement holds the lock across
+/// the rename, as a temporary file's publication does; a move takes it only
+/// afterwards, so moving a large folder across devices blocks no other
+/// job's writes.
+pub struct Renaming {
+    recorder: Recorder,
+    from: PathBuf,
+    to: PathBuf,
+    replacing: Option<Recording>,
+}
+
+impl Drop for Renaming {
+    fn drop(&mut self) {
+        if self.replacing.take().is_some() {
+            // Its own drop has recorded the replaced file.
+            return;
+        }
+        // A rename that failed left the old name in place.
+        let happened = fs::symlink_metadata(&self.from).is_err_and(|error| absent(&error))
+            && fs::symlink_metadata(&self.to).is_ok();
+        if !happened {
+            return;
+        }
+        if let Some(mut recording) = self.recorder.begin()
+            && let Err(error) = recording.carry(&self.from, &self.to)
+        {
             diagnostic(&error);
         }
     }
