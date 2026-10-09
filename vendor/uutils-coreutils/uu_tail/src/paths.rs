@@ -234,7 +234,7 @@ impl PathExtTail for Path {
 }
 
 pub fn path_is_tailable(path: &Path) -> bool {
-    path.context_is_file() || path.context_exists() && path.metadata().is_ok_and(|meta| meta.is_tailable())
+    path.context_is_file() || path.context_exists() && uucore::context::fs::metadata(path).is_ok_and(|meta| meta.is_tailable())
 }
 
 #[inline]

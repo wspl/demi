@@ -176,4 +176,5 @@ patches = [
     "A library entry point in place of the rg binary, with its build script, allocator, test target and release profiles left out",
     "Output belongs to one invocation (src/invocation.rs, added): parallel searches buffer into the invocation's stdout instead of the process's",
     "Paths, the configuration file and standard input are the shell job's, through uucore::context",
+    "Child programs take uucore::context::process::Stdio for their streams",
 ]
