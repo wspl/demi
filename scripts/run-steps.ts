@@ -11,18 +11,30 @@ import { constants } from 'node:os'
 export interface Step {
   command: string[]
   cwd: string
+  /**
+   * Runs the step in a session of its own, out of reach of a signal sent to
+   * this program's process group, such as the SIGKILL that stops a shell job
+   * or a terminal's Ctrl-C; this program passes SIGINT, SIGTERM and SIGHUP on
+   * to it. For a step that stops what it started in order and so must not be
+   * killed with the group, and that ends by itself when this program ends,
+   * which `xtask` does.
+   */
+  detached?: boolean
 }
+
+/** The signals that stop the running step and every later one. */
+const stops = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
 
 /**
  * Runs `steps` one after another with this process's terminal and
  * environment, and ends this process with the first failing step's exit code,
- * or the last step's. SIGINT and SIGTERM reach the running step, which stops
- * what it started; no step starts after one of them.
+ * or the last step's. SIGINT, SIGTERM and SIGHUP reach the running step,
+ * which stops what it started; no step starts after one of them.
  */
 export async function runSteps(steps: Step[]): Promise<never> {
   let child: Bun.Subprocess | undefined
-  let stop: 'SIGINT' | 'SIGTERM' | undefined
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  let stop: (typeof stops)[number] | undefined
+  for (const signal of stops) {
     process.on(signal, () => {
       stop = signal
       // Between steps the last child has exited, and killing it does nothing.
@@ -42,6 +54,7 @@ export async function runSteps(steps: Step[]): Promise<never> {
       cwd: step.cwd,
       env: process.env,
       stdio: ['inherit', 'inherit', 'inherit'],
+      detached: step.detached ?? false,
     })
     code = await child.exited
     if (code !== 0) {
