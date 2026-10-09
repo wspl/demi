@@ -155,11 +155,13 @@ rm -rf "$work/var/lib/apt/lists/"*
 in_chroot userdel --remove ubuntu
 in_chroot groupadd -g 1000 demi
 in_chroot useradd -m -u 1000 -g 1000 -s /bin/bash demi
-# The runner's Host log and its job output live on the system layer, so they
-# outlive a stop and a wake (runner.md § Host log, managed-hosts.md § Images).
+# The runner's Host log, its job output and the temporary directory its
+# TMPDIR names live on the system layer, so the log outlives a stop and a
+# wake, and a build's temporary files do not fill /tmp's memory (runner.md
+# § Host log, managed-hosts.md § Images).
 # Made inside the tree, where `demi` is a name: uutils' install on the build
 # host refuses a numeric owner.
-in_chroot install -d -m 0700 -o demi -g demi /var/log/demi /var/lib/demi
+in_chroot install -d -m 0700 -o demi -g demi /var/log/demi /var/lib/demi /var/lib/demi/tmp
 cp -a --no-preserve=ownership "$here/rootfs/overlay/." "$work/"
 chmod 0440 "$work/etc/sudoers.d/demi"
 echo demi > "$work/etc/hostname"
