@@ -225,6 +225,18 @@ export async function fileLineCounts(
   return pair ? diffLineCounts(pair.original, pair.modified) : null
 }
 
+/**
+ * Whether two derivations of a request's files hold the same files and
+ * edits. The transcript is derived anew on each frame of a turn, so the same
+ * files come as new objects; a view compares them by what they hold and
+ * keeps what it shows while a frame changes none of it (`plugin-pages.md`
+ * § What the service keeps). They are plain data the derivation builds in
+ * one order, so their JSON tells them apart, whatever fields they gain.
+ */
+export function sameRequestFiles(a: readonly RequestFile[], b: readonly RequestFile[]): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b)
+}
+
 /** Names files' ends, which their counts follow: they change only when a later call changes a file. */
 export function filesEndsKey(files: readonly RequestFile[]): string {
   return files.map((file) => {

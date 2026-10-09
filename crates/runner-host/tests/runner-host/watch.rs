@@ -182,6 +182,43 @@ async fn a_watch_reports_a_file_created_written_renamed_and_removed_under_the_pa
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_file_written_on_after_it_came_is_an_entry_only_when_it_came() {
+    use std::io::Write as _;
+    tokio::time::timeout(GUARD, async {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let (host, mut replies) = server(&root, "http://127.0.0.1:1");
+        watch(&host, &root, true);
+        ready(&mut replies).await;
+
+        // A log a build makes and then appends to without a pause, each
+        // line opened and closed as a shell's `>>` does, which FSEvents goes
+        // on flagging as created.
+        let log = root.join("build.log");
+        let append = |line: &str| {
+            let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&log).unwrap();
+            file.write_all(line.as_bytes()).unwrap();
+        };
+        append("1\n");
+        let came = until_reported(&mut replies, std::slice::from_ref(&log)).await;
+        assert!(came.entries.contains(&spelled(&log)), "{:?}", came.entries);
+        for line in 2..5 {
+            append(&format!("{line}\n"));
+            let written = until_reported(&mut replies, std::slice::from_ref(&log)).await;
+            assert!(!written.entries.contains(&spelled(&log)), "write {line}: {:?}", written.entries);
+        }
+        // Made anew under the same name, it came again.
+        std::fs::remove_file(&log).unwrap();
+        append("again\n");
+        let again = until_reported(&mut replies, std::slice::from_ref(&log)).await;
+        assert!(again.entries.contains(&spelled(&log)), "{:?}", again.entries);
+        host.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_watch_of_one_folder_reports_its_entries_and_not_what_lies_below_them() {
     tokio::time::timeout(GUARD, async {
         let dir = tempfile::tempdir().unwrap();
