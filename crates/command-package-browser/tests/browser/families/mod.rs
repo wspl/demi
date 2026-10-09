@@ -39,6 +39,14 @@ pub struct BrowserFixture {
     pub stdout: Option<StdoutTarget>,
 }
 
+/// The command line that names `operation`, such as `demi browser click`.
+fn command(operation: &str) -> String {
+    format!(
+        "demi browser {}",
+        operation.trim_start_matches("browser.").replace('.', " ")
+    )
+}
+
 impl BrowserFixture {
     pub async fn call(&self, operation: &str, args: Value) -> Value {
         let (code, result) = self.result(operation, args, CancellationToken::new()).await;
@@ -74,6 +82,7 @@ impl BrowserFixture {
             request: Invocation {
                 operation: operation.into(),
                 invocation_id: uuid::Uuid::new_v4().to_string(),
+                command: command(operation),
                 context: CommandContext {
                     color_scheme: self.color_scheme,
                     conversation: self.conversation.clone(),
@@ -145,11 +154,16 @@ impl BrowserFixture {
             }
             Err(error) => panic!("{operation}: {error}"),
         };
-        let bytes = if completion.exit_code == 0 {
+        let mut bytes = if completion.exit_code == 0 {
             stdout
         } else {
             stderr
         };
+        // The error's last line, as the dispatcher writes it after the
+        // command's path.
+        if let Some(error) = &completion.error {
+            bytes.extend_from_slice(format!("{}: {}\n", command(operation), error.message).as_bytes());
+        }
         let value = serde_json::from_slice(&bytes)
             .unwrap_or_else(|_| json!({"diagnostic": String::from_utf8_lossy(&bytes)}));
         (completion.exit_code, value)

@@ -97,7 +97,7 @@ async fn upload(
     let Call { args, invocation } = call;
     let conversation = conversation_of(&invocation)?;
     let device = DeviceId::try_from(invocation.host.as_str())
-        .map_err(|_| RpcError::Failed(format!("{} names no device", invocation.host)))?;
+        .map_err(|_| RpcError::Failed(format!("{}: names no device", invocation.host)))?;
     let mut uploaded = Vec::new();
     let mut failed = false;
     for path in args.path {
@@ -114,7 +114,7 @@ async fn upload(
             }),
             Err(reason) => {
                 failed = true;
-                port.stderr(format!("demi attachment upload: {path}: {reason}\n"))
+                port.stderr(format!("{}: {path}: {reason}\n", invocation.path.join(" ")))
                     .await?;
             }
         }

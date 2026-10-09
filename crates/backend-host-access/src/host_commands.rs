@@ -103,6 +103,7 @@ struct ShellArgs {
     host: String,
     /// One quoted shell script argument; stdin is streamed to the remote
     /// program, not read as script text
+    #[schemars(length(min = 1))]
     script: String,
 }
 
@@ -308,11 +309,9 @@ async fn attach(
         .find(|device| device.name == wanted)
         .or_else(|| paired.iter().find(|device| device.id.as_str() == wanted));
     let Some(device) = found else {
-        port.stderr(format!(
-            "host attach: no paired device {wanted} (see `demi host devices`); the Cloud is attached only when the conversation moves off it\n"
-        ))
-        .await?;
-        return Ok(1);
+        return Err(RpcError::Failed(format!(
+            "{wanted}: no paired device of this name or id (see `demi host devices`); the Cloud is attached only when the conversation moves off it"
+        )));
     };
     let alias = name
         .as_deref()
@@ -328,17 +327,12 @@ async fn attach(
     match shard.transition(&conversation, change.into()).await {
         Ok(()) => {}
         Err(ChangeRefusal::HostIsPrimary) => {
-            port.stderr(format!(
-                "host attach: {} is this conversation's primary host already\n",
+            return Err(RpcError::Failed(format!(
+                "{}: this conversation's primary host already",
                 device.name
-            ))
-            .await?;
-            return Ok(1);
+            )));
         }
-        Err(refusal) => {
-            port.stderr(format!("host attach: {refusal}\n")).await?;
-            return Ok(1);
-        }
+        Err(refusal) => return Err(RpcError::Failed(format!("{}: {refusal}", device.name))),
     }
     let hosts = reachable(&*shard, &conversation).await?;
     let attached = hosts
@@ -362,19 +356,15 @@ async fn detach(
     let hosts = reachable(&*shard, &conversation).await?;
     let wanted = &call.args.host;
     let Some(host) = named_host(&hosts, wanted) else {
-        port.stderr(format!(
-            "host detach: host {wanted} is not attached to this conversation (see `demi host list`)\n"
-        ))
-        .await?;
-        return Ok(1);
+        return Err(RpcError::Failed(format!(
+            "{wanted}: not attached to this conversation (see `demi host list`)"
+        )));
     };
     if host.role == HostRole::Primary {
-        port.stderr(format!(
-            "host detach: {} is this conversation's primary host, which cannot be detached\n",
+        return Err(RpcError::Failed(format!(
+            "{}: this conversation's primary host, which cannot be detached",
             host.name
-        ))
-        .await?;
-        return Ok(1);
+        )));
     }
     let marked = shard
         .control()
@@ -382,9 +372,9 @@ async fn detach(
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     if !marked {
-        port.stderr(format!("host detach: host {wanted} is not attached to this conversation\n"))
-            .await?;
-        return Ok(1);
+        return Err(RpcError::Failed(format!(
+            "{wanted}: not attached to this conversation"
+        )));
     }
     shard.settle_when_idle(&conversation);
     port.stdout(format!(
@@ -461,27 +451,16 @@ async fn shell(
         },
         invocation,
     } = call;
-    if script.trim().is_empty() {
-        port.stderr("usage: demi host shell --host <name|id> <script>\n")
-            .await?;
-        return Ok(2);
-    }
     let conversation = conversation_of(&invocation)?;
     let hosts = reachable(&*shard, &conversation).await?;
     let Some(host) = named_host(&hosts, &wanted) else {
-        port.stderr(format!(
-            "host shell: host {wanted} is not reachable from this conversation (see `demi host list`)\n"
-        ))
-        .await?;
-        return Ok(1);
+        return Err(RpcError::Failed(format!(
+            "{wanted}: not reachable from this conversation (see `demi host list`)"
+        )));
     };
-    match run_on_host(&*shard, &conversation, host, script, &invocation, &port).await {
-        Ok(code) => Ok(code),
-        Err(reason) => {
-            port.stderr(format!("host shell: {reason}\n")).await?;
-            Ok(1)
-        }
-    }
+    run_on_host(&*shard, &conversation, host, script, &invocation, &port)
+        .await
+        .map_err(RpcError::Failed)
 }
 
 /// Runs `script` as one job on `target` through the conversation's host
@@ -616,7 +595,11 @@ async fn run_on_host(
             // Bash could not run the script at all: 127, as a shell answers.
             // A caller that went away reads nothing more.
             let _ = port
-                .stderr(format!("host shell: {}{detail}\n", error.kind))
+                .stderr(format!(
+                    "{}: {}{detail}\n",
+                    invocation.path.join(" "),
+                    error.kind
+                ))
                 .await;
             Ok(127)
         }

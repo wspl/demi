@@ -1078,7 +1078,8 @@ impl Link {
             Outbound::RpcCall {
                 job_id,
                 call_id,
-                root,
+                // The path names the root first, which runs it.
+                root: _,
                 path,
                 argv,
                 args,
@@ -1091,7 +1092,6 @@ impl Link {
                 crate::relay::RpcCall {
                     job_id,
                     call_id,
-                    root,
                     path,
                     argv,
                     args,

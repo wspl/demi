@@ -89,7 +89,7 @@ fn invocation_decoding_checks_nested_values_and_optional_nulls() {
         "locale": {"timeZone": "UTC", "languages": ["en-US"]},
         "colorScheme": "light",
     });
-    let valid = serde_json::json!({"operation":"read", "invocationId":"call", "context":context, "args":{}, "cwd":"/work", "env":{}});
+    let valid = serde_json::json!({"operation":"read", "invocationId":"call", "command":"demi file read", "context":context, "args":{}, "cwd":"/work", "env":{}});
     assert!(decode_invocation(valid.clone()).is_ok());
     let mut user = valid.clone();
     user["context"]["caller"] = serde_json::json!({"kind": "user"});
