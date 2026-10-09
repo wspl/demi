@@ -86,10 +86,19 @@ interface Connection {
   headed: boolean
   /** The browser's own user agent, which a page that stops emulating a phone gets back. */
   userAgent: string
+  /** The server's session with the browser itself, which its process answers whatever its pages do. */
+  session: CDPSession
 }
 
 export class Browser {
   private connected: Promise<Connection> | null = null
+  /** The connection once it is made, which `answers` asks without waiting for one being made. */
+  private attached: Connection | null = null
+  /**
+   * Whether the browser was closed because it hung: the server ends with
+   * the call, and a script still running meanwhile starts no other browser.
+   */
+  private hung = false
   private current: Page | null = null
   /** The server's session with each page, which holds the page's emulation. */
   private readonly sessions = new WeakMap<Page, Promise<CDPSession>>()
@@ -147,6 +156,9 @@ export class Browser {
   }
 
   private connection(): Promise<Connection> {
+    if (this.hung) {
+      return Promise.reject(new Failure('The browser did not answer and the tool closed it; the next call starts a new one'))
+    }
     if (!this.connected) {
       const connecting = this.connect()
       this.connected = connecting
@@ -182,13 +194,15 @@ export class Browser {
       headed = this.wantsWindow
       endpoint = await this.launch(headed)
     }
-    const browser = await chromium.connectOverCDP(endpoint)
+    // A browser that hangs never answers the connection, which has no limit of its own.
+    const browser = await chromium.connectOverCDP(endpoint, { timeout: START_MS })
     const context = browser.contexts()[0]
     if (!context) {
       throw new Failure(`The browser at ${endpoint} has no default context`)
     }
-    const version = await (await browser.newBrowserCDPSession()).send('Browser.getVersion')
-    const connection: Connection = { browser, context, headed, userAgent: version.userAgent }
+    const session = await browser.newBrowserCDPSession()
+    const version = await session.send('Browser.getVersion')
+    const connection: Connection = { browser, context, headed, userAgent: version.userAgent, session }
     // An action whose element never comes fails within seconds, not after
     // Playwright's half minute; a step that takes longer says so with its
     // own timeout. Navigations keep Playwright's half minute: the dev
@@ -199,6 +213,9 @@ export class Browser {
       // A browser that crashed or was closed by hand starts again on the next call.
       if (this.current?.context() === context) {
         this.current = null
+      }
+      if (this.attached === connection) {
+        this.attached = null
       }
       void this.connected?.then((open) => {
         if (open === connection) {
@@ -218,7 +235,23 @@ export class Browser {
     for (const page of context.pages()) {
       await this.session(page, connection)
     }
+    this.attached = connection
     return connection
+  }
+
+  /**
+   * Whether the attached browser answers a question of its own within `ms`:
+   * its version, which its process answers at once unless it hangs. True
+   * when none is attached, or when it went away, which the script's own
+   * steps report as they fail.
+   */
+  async answers(ms: number): Promise<boolean> {
+    if (!this.attached) {
+      return true
+    }
+    // A browser that went away answers with a failure, which is an answer: the script's steps say it crashed.
+    const asked = this.attached.session.send('Browser.getVersion').then(() => undefined, () => undefined)
+    return await withinLimit(asked, ms) !== OVERRAN
   }
 
   /** Starts the browser process; answers its DevTools endpoint. */
@@ -354,36 +387,49 @@ export class Browser {
   /**
    * Quits the browser and forgets it; the next call starts a new one.
    * It is asked to quit as a person quits it, which a signal is not on
-   * macOS: a browser ended by one restores its tabs when it starts again.
+   * macOS: a browser ended by one restores its tabs when it starts again,
+   * which `launch` prevents. A browser that `hung` would answer neither, so
+   * it is killed without a grace period, and no other starts until the
+   * server ends.
    */
-  async close(): Promise<void> {
+  async close(options: { hung?: boolean } = {}): Promise<void> {
     const connected = this.connected
     this.connected = null
+    this.attached = null
     this.current = null
+    this.hung ||= options.hung ?? false
     const recorded = readState(this.slot).browser
     if (!recorded) {
       return
     }
     if (ownGroupRuns(recorded)) {
-      try {
-        // A browser that hangs answers neither the connection nor the request.
-        const asked = await withinLimit((async () => {
-          const connection = connected ? await connected : null
-          const browser = connection?.browser ?? await chromium.connectOverCDP(recorded.endpoint, { timeout: QUIT_MS })
-          await (await browser.newBrowserCDPSession()).send('Browser.close')
-        })(), QUIT_MS)
-        if (asked === OVERRAN) {
-          throw new Error(`no answer within ${QUIT_MS / 1000} s`)
-        }
-      } catch (error) {
-        // A browser that does not answer is stopped by its group below.
-        this.print(`The browser did not quit when asked (${error instanceof Error ? error.message.split('\n')[0] : error}); stopping it`)
+      if (!options.hung) {
+        await this.askToQuit(connected, recorded.endpoint)
       }
-      await stopGroup(recorded, STOP_MS)
+      await stopGroup(recorded, options.hung ? 0 : STOP_MS)
     }
     updateState(this.slot, (state) => {
       delete state.browser
     })
+  }
+
+  /** Asks the browser to quit, attaching to it first when the server is not; says so when it does not answer. */
+  private async askToQuit(connected: Promise<Connection> | null, endpoint: string): Promise<void> {
+    try {
+      // A browser that hangs answers neither the connection nor the request.
+      const asked = await withinLimit((async () => {
+        const connection = connected ? await connected : null
+        const session = connection?.session
+          ?? await (await chromium.connectOverCDP(endpoint, { timeout: QUIT_MS })).newBrowserCDPSession()
+        await session.send('Browser.close')
+      })(), QUIT_MS)
+      if (asked === OVERRAN) {
+        throw new Error(`no answer within ${QUIT_MS / 1000} s`)
+      }
+    } catch (error) {
+      // A browser that does not answer is stopped by its group after this.
+      this.print(`The browser did not quit when asked (${error instanceof Error ? error.message.split('\n')[0] : error}); stopping it`)
+    }
   }
 }
 
