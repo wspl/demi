@@ -136,9 +136,12 @@ pub enum Choice {
     Context(usize),
 }
 
-/// One SEARCH/REPLACE block. An empty SEARCH creates its file with the
-/// REPLACE as its content. A REPLACE holds no section, or as many as the
-/// SEARCH, each standing for the lines its SEARCH section matched.
+/// One SEARCH/REPLACE block. A SEARCH without sections stands for the text
+/// of its lines, joined by line endings, found anywhere in the file, part
+/// of a line included; a SEARCH with a section matches whole lines. An
+/// empty SEARCH creates its file with the REPLACE as its content. A REPLACE
+/// holds no section, or as many as the SEARCH, each standing for the lines
+/// its SEARCH section matched.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Block {
     pub search: Vec<BlockLine>,
