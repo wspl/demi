@@ -152,8 +152,9 @@ its developer features ([Release workflow](#release-workflow)).
 `xtask` pins the remaining inputs: the Apple SDK version (macOS 26.5),
 the Windows SDK and C runtime versions, and the minimum macOS version (13.0).
 The Apple targets need an Apple SDK directory, passed with `--sdk` or
-`SDKROOT`; `bun xtask` checks its SDK metadata against the pin before
-building. The pinned SDK is the one the Command Line Tools and Xcode 26.6
+`SDKROOT`, or else the one `xcrun --show-sdk-path` names on a Mac, as Apple's
+own tools find it; `bun xtask` checks its SDK metadata against the pin before
+building, whichever way it came. The pinned SDK is the one the Command Line Tools and Xcode 26.6
 install, so a developer's Mac and the release workflow's macOS runner build
 against the same SDK; a runner image whose SDK differs fails the check rather
 than building against another one. On Windows the build checks the MSVC
@@ -175,7 +176,11 @@ The release profile makes the executables small, because every paired device
 downloads each one and every Cloud image carries them, without making a
 release wait on one processor core: thin link-time optimization
 (`lto = "thin"`) with Cargo's default code-generation units, optimization for
-size (`opt-level = "s"`) and stripped symbols (`strip = true`). Fat
+size (`opt-level = "s"`) and stripped symbols (`strip = true`). The
+symbols are kept beside the release instead, one debug file per executable
+and target, published with the release's assets but never shipped to a
+device, so a crash's addresses from a stripped runner can be read
+afterwards. Fat
 link-time optimization with one code-generation unit made the runner about a
 fifth smaller (24.1 MB against 30.9 MB for x86_64 Linux, 7.9 MB against
 8.7 MB compressed), but its final link runs on one core: it took about five
@@ -187,7 +192,10 @@ and the runner's utilities run searches and sorts in process. Panics unwind in
 every profile: the runner contains a utility's panic to its job
 ([Shell jobs](../execution/runner.md#shell-jobs)), and a resident command
 service fails one invocation, not every conversation it holds; `panic =
-"abort"` would end the whole process.
+"abort"` would end the whole process. A panic that ends a program anyway,
+such as one inside a destructor, which Rust turns into an abort, writes its
+message, its location and a backtrace to the program's log first, from a
+panic hook each program installs at start.
 
 The development profile keeps line tables for backtraces and no other debug
 information, builds dependencies without debug information, and optimizes the
