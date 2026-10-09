@@ -286,6 +286,7 @@ mod tests {
             cwd: "/work".into(),
             model: test_model(),
             edits: Vec::new(),
+            last_turn: demi_agent_store::TurnEnd::Answer,
         };
         let initial = CheckpointUpdate {
             state,

@@ -293,6 +293,21 @@ pub struct CheckpointState {
     /// The receipts of the accepted edits.
     #[garde(dive)]
     pub edits: Vec<EditReceipt>,
+    /// How the session's last turn ended, so that a restore decides whether
+    /// a child closes as the live session would (`subagents.md` § Result).
+    #[garde(skip)]
+    pub last_turn: TurnEnd,
+}
+
+/// How a turn ended (`subagents.md` § Result): with `yield`, after which the
+/// session waits for its wakeup, or with its answer, a response that
+/// requested no tool. A session that has ended no turn yet waits for no
+/// wakeup either, so it counts as answered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnEnd {
+    Answer,
+    Yield,
 }
 
 /// An agent message the session admitted and has not yet written into its
