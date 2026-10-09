@@ -34,8 +34,23 @@ pub struct ChildAttributes {
     pub limits: Vec<(rlimit::Resource, u64, u64)>,
 }
 
+/// A background task, a list after `&` or a coprocess, as its host runs it.
+pub struct BackgroundTask {
+    /// The id the task goes by: `$!` names it, and `jobs -p` lists it.
+    pub id: i32,
+    /// The host that owns the task's work, from then on the task's shell's.
+    pub host: Arc<dyn ExecutionHost>,
+    /// Held while the task's list runs.
+    pub guard: Box<dyn Send + Sync>,
+}
+
 /// Ownership hooks shared by a shell and every cloned subshell.
 pub trait ExecutionHost: Any + Send + Sync {
+    /// Starts a background task's ownership. With none, the task runs under this host and goes
+    /// by no id.
+    fn background_task(&self) -> io::Result<Option<BackgroundTask>> {
+        Ok(None)
+    }
     /// Open a path through the embedding owner's file-operation boundary.
     fn open_file(&self, path: &std::path::Path, options: &std::fs::OpenOptions, writing: bool) -> io::Result<File> {
         let _ = writing;
@@ -68,6 +83,14 @@ pub trait ExecutionHost: Any + Send + Sync {
 }
 
 impl OpenFile {
+    /// Moves a controlled file to another owner's IO behavior, as a shell that changes hosts
+    /// does; other files have none.
+    pub(crate) fn rebind(&mut self, owner: &Arc<dyn FileControl>) {
+        if let Self::Controlled { control, .. } = self {
+            *control = owner.clone();
+        }
+    }
+
     /// Attach the embedding owner's IO behavior to a native file or pipe.
     pub fn controlled(self, control: Arc<dyn FileControl>) -> io::Result<Self> {
         let file = match self {

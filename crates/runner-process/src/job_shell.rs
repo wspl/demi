@@ -68,8 +68,10 @@ pub trait ShellJob: Send + Sync {
     /// finished.
     fn output(&mut self) -> &mut mpsc::Receiver<OutputChunk>;
 
-    /// Cancels the job for a signal that ends it, which its exit reports;
-    /// other signals are refused.
+    /// Stops the job for a signal that ends it, which its exit reports:
+    /// `KILL` at once, the others by ending its shell work and signalling
+    /// every process group it started (`runner.md` § Cancellation and
+    /// completion); other signals are refused.
     fn signal(&self, signal: Signal) -> io::Result<()>;
 
     fn cancel(&self);
