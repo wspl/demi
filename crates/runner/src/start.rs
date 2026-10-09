@@ -26,24 +26,42 @@ const FAILURES: [&str; 2] = [
 ];
 
 /// Starts the runner of the installation in `directory` with `arguments`,
-/// the ones `run` takes, and says how it went: 0 once it is connected or was
-/// running already, 1 when it stopped or cannot connect yet.
+/// the ones `run` takes, and says how it went: 0 once it is connected, 1
+/// when it stopped or cannot connect yet. A runner running already is left
+/// as it is, and asked to write its pairing state to its log again, which
+/// the start reads as it reads a runner's it started.
 pub async fn start(directory: &Path, arguments: Vec<String>) -> io::Result<u8> {
     let state = RunnerState::open(directory.to_owned()).await?;
-    match state.try_lock()? {
+    let lease = state.try_lock()?;
+    let mut log = Follower::new(directory).await?;
+    let mut child = match lease {
+        Some(lease) => {
+            lease.release()?;
+            Some(spawn(directory, arguments)?)
+        }
         // The active runner holds the installation's lock.
         None => {
             println!("The runner is running already.");
-            return Ok(0);
+            // A runner that ends meanwhile says so below.
+            let _ = crate::manage(&state, management::Action::Announce, None, tokio::io::sink()).await;
+            None
         }
-        Some(lease) => lease.release()?,
-    }
-    let mut log = Follower::new(directory).await?;
-    let mut child = spawn(directory, arguments)?;
+    };
     loop {
         let lines = log.lines().await?;
-        if let Some(status) = child.try_wait()? {
-            eprintln!("The runner stopped ({status}):");
+        let stopped = match &mut child {
+            Some(child) => child.try_wait()?.map(|status| format!(" ({status})")),
+            // A runner it found running released the lock as it ended.
+            None => match state.try_lock()? {
+                Some(lease) => {
+                    lease.release()?;
+                    Some(String::new())
+                }
+                None => None,
+            },
+        };
+        if let Some(status) = stopped {
+            eprintln!("The runner stopped{status}:");
             eprint!("{}", String::from_utf8_lossy(&log.written().await?));
             return Ok(1);
         }

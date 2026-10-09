@@ -35,6 +35,12 @@ pub fn to_log(directory: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// The console line of a message of the runner's own, such as one its
+/// host log's console layer writes.
+pub fn runner_line(message: impl Display) -> String {
+    format!("demi-runner: {message}")
+}
+
 /// Writes `line` to standard error as one write, so that no other line
 /// cuts into it; a log that has passed its size starts again first.
 pub fn line(line: impl Display) {

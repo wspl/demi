@@ -129,7 +129,7 @@ async fn manage(
         management::Action::Status if release.is_some_and(|release| release != active.release) => {
             Ok(3)
         }
-        management::Action::Status => Ok(0),
+        management::Action::Status | management::Action::Announce => Ok(0),
     }
 }
 
@@ -199,6 +199,14 @@ enum Action {
         #[command(flatten)]
         installation: Installation,
     },
+    /// Asks the installation's runner to write its pairing state to its log
+    /// again: its code, the device it is paired as, or why it cannot
+    /// connect. An installer that finds the runner running reads them there.
+    #[command(hide = true)]
+    Announce {
+        #[command(flatten)]
+        installation: Installation,
+    },
     /// Stops admitting work, waits for the running jobs, and releases the
     /// installation.
     Drain {
@@ -250,6 +258,11 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             let release = installation.release.as_deref();
             let stdout = tokio::fs::File::from_std(standard_file(1)?);
             return manage(&state, management::Action::Status, release, stdout).await;
+        }
+        Action::Announce { installation } => {
+            let state = RunnerState::open(directory(&installation, None)?).await?;
+            // The answer is the status, which the asker does not need.
+            return manage(&state, management::Action::Announce, None, tokio::io::sink()).await;
         }
         Action::Drain { installation } => {
             let state = RunnerState::open(directory(&installation, None)?).await?;

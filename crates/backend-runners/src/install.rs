@@ -314,13 +314,19 @@ size_of() {
     echo 0
   fi
 }
-# Where the log ended when this installer started the runner: what it held
-# before is an earlier runner's. One that runs already is read whole. The
-# size of runner.log.1 tells when the log was moved there.
+# Where the log ended when this installer began waiting, whether it started
+# the runner or found it running: what it held before is an earlier
+# runner's, or an earlier state's. The size of runner.log.1 tells when the
+# log was moved there.
 seen=0
 previous_size=$(size_of "$previous")
 if DEMI_HOME="$state" DEMI_RELEASE_ID="$release" "$bin/demi-runner" status --backend "$backend" >/dev/null 2>&1; then
   echo "Runner already running: $state"
+  # It wrote its state before this installer began: it writes it again,
+  # its code or the device it is paired as, to its log alone. A runner that
+  # ended meanwhile is found stopped below.
+  seen=$(size_of "$log")
+  DEMI_HOME="$state" "$bin/demi-runner" announce --backend "$backend" >/dev/null 2>&1 || true
 else
   status=$?
   if [ "$status" -eq 3 ]; then
@@ -467,9 +473,10 @@ $demiPrevious = Join-Path $demiState 'runner.log.1'
 function Get-DemiSize([string]$Path) {
   if (Test-Path $Path) { (Get-Item $Path).Length } else { [long]0 }
 }
-# Where the log ended when this installer started the runner: what it held
-# before is an earlier runner's. One that runs already is read whole. The
-# size of runner.log.1 tells when the log was moved there.
+# Where the log ended when this installer began waiting, whether it started
+# the runner or found it running: what it held before is an earlier
+# runner's, or an earlier state's. The size of runner.log.1 tells when the
+# log was moved there.
 $demiSeen = [long]0
 $demiPreviousSize = Get-DemiSize $demiPrevious
 # The bytes of the file at `$Path` from `$From` on, read beside the runner,
@@ -545,6 +552,11 @@ try {
     $demiStatus = Invoke-DemiControl 'status'
     if ($demiStatus -eq 0) {
       Write-Output "Runner already running: $demiState"
+      # It wrote its state before this installer began: it writes it again,
+      # its code or the device it is paired as, to its log alone. A runner
+      # that ended meanwhile is found stopped below.
+      $demiSeen = Get-DemiSize $demiLog
+      Invoke-DemiControl 'announce' | Out-Null
     } else {
       if ($demiStatus -eq 3) {
         Write-Output 'Waiting for existing jobs before upgrading this runner...'
