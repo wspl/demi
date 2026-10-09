@@ -7,6 +7,7 @@ use std::{cell::RefCell, time::Duration};
 use demi_agent_server::ServerConfig;
 use demi_agent_store::{
     AgentTreeStore, CheckpointState, CheckpointUpdate, ClosePhase, NodeClose, NodeRecord,
+    ScheduledWakeup,
     testing::{MemoryTreeStore, test_model, text},
 };
 use demi_conversation_socket_protocol::{
@@ -19,7 +20,7 @@ use demi_provider_common::{
 use demi_agent_tools::{Profile, ProfileModel, SubagentSettings};
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
-    QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock,
+    QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock, WakeupId,
 };
 use serde_json::{Value, json};
 use tokio::task::JoinHandle;
@@ -401,6 +402,17 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
     let shown = agent(&fixture.server, &alpha, "show", json!({ "id": 3 })).await;
     let show_root = agent(&fixture.server, &alpha, "show", json!({ "id": 0 })).await;
     let show_archived = agent(&fixture.server, &alpha, "show", json!({ "id": 1 })).await;
+    let show_archived_json = agent_call(
+        &fixture.server,
+        &alpha,
+        "show",
+        json!({ "id": 1 }),
+        true,
+        CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+    let show_missing = agent(&fixture.server, &alpha, "show", json!({ "id": 9 })).await;
 
     // Agents are numbered in spawn order: delta 1, alpha 2, beta 3, and
     // gamma, which alpha spawned, 4.
@@ -505,10 +517,33 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         .join("\n")
             + "\n"
     );
-    assert_eq!(refused(&show_root), "demi agent show: no live agent 0\n");
+    assert_eq!(refused(&show_root), "demi agent show: no subagent 0\n");
+    assert_eq!(refused(&show_missing), "demi agent show: no subagent 9\n");
+    // An archived child shows how it closed and its result.
     assert_eq!(
-        refused(&show_archived),
-        "demi agent show: no live agent 1\n"
+        show_archived.stdout,
+        [
+            "id: 1",
+            "parent: 0",
+            "description: delta",
+            "phase: archived (completed 0s ago)",
+            "result:",
+            "delta done",
+        ]
+        .join("\n")
+            + "\n"
+    );
+    let archived: Value = serde_json::from_str(&show_archived_json.stdout).unwrap();
+    assert_eq!(
+        archived["agent"],
+        json!({
+            "subagentId": 1,
+            "parentSessionId": 0,
+            "description": "delta",
+            "phase": "completed",
+            "closedAgoMs": 0,
+            "result": "delta done",
+        })
     );
 
     // A child with a message waiting does not close before it reads it.
@@ -650,6 +685,7 @@ pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> Check
             cwd: "/workspace".into(),
             model: test_model(),
             edits: Vec::new(),
+            last_turn: demi_agent_store::TurnEnd::Answer,
         },
         block_count: blocks.len(),
         changed_blocks: blocks.into_iter().enumerate().collect(),
@@ -722,15 +758,22 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
         .create_node(lost, checkpoint(vec![brief], Vec::new()))
         .await
         .unwrap();
-    // Its final checkpoint saved, its close not yet.
+    // Its final checkpoint saved, its close not yet. Its last turn ended
+    // with its answer while a wakeup an earlier `yield` scheduled was still
+    // due: it closes with the answer, and the wakeup never fires.
+    let mut quiet = checkpoint(
+        Vec::new(),
+        vec![user("q1", "task quiet"), answer("q2", "quiet result")],
+    );
+    quiet.state.wakeups = vec![ScheduledWakeup {
+        id: WakeupId::try_from("quiet-wakeup").unwrap(),
+        duration_ms: 600_000,
+        command_ids: Vec::new(),
+        ended: None,
+        due_at: Some(Timestamp::UNIX_EPOCH),
+    }];
     store
-        .create_node(
-            child_record("quiet", 2, "conversation", None),
-            checkpoint(
-                Vec::new(),
-                vec![user("q1", "task quiet"), answer("q2", "quiet result")],
-            ),
-        )
+        .create_node(child_record("quiet", 2, "conversation", None), quiet)
         .await
         .unwrap();
     // Closed, its completion not in the parent's checkpoint.
@@ -758,8 +801,23 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
         store.clone(),
         ServerConfig::default(),
     );
-    let mut client = fixture.client();
-    client.send(open()).await;
+    // The quiet child reads its own children before its supervisor first
+    // looks at it; its wakeup, due meanwhile, opens no turn.
+    let quiet = NodeId::try_from("quiet").unwrap();
+    let reading = store.hold_children_of(&quiet);
+    let opening = tokio::task::spawn_local({
+        let client = fixture.client();
+        async move {
+            client.send(open()).await;
+            client
+        }
+    });
+    until(|| reading.waiting() == 1).await;
+    for _ in 0..200 {
+        tokio::task::yield_now().await;
+    }
+    reading.release();
+    let mut client = opening.await.unwrap();
 
     until(|| root_receipts(&fixture).len() == 3).await;
     let tree = fixture.server.tree(&root()).unwrap();
@@ -785,6 +843,8 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
         );
         assert!(store.record(&id).unwrap().delivered, "{id}");
     }
+    assert!(model.requests_of("task quiet").is_empty());
+    assert!(store.checkpoint(&quiet).unwrap().state.wakeups.is_empty());
     let restored = &model.requests_of("task lost")[0];
     assert!(restored.system_prompt.starts_with("retired prompt\n"));
     let frames = client.received();
@@ -1232,8 +1292,63 @@ async fn a_reopened_tree_restores_a_childs_own_children_before_the_child_can_set
     assert!(model.is_done());
 }
 
+// A child whose turn ended with its answer while a wakeup it scheduled
+// earlier still waits closes with that answer, and the wakeup is dropped
+// (`subagents.md` § Result): a research child yields for ten minutes for its
+// helper, the helper's report wakes it, and it answers with its own report.
+// On Tokio's paused clock: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
-async fn a_child_waiting_on_its_yield_stays_live_while_no_action_holds_the_tree() {
+async fn a_child_that_answers_after_its_yield_closes_with_the_answer_and_drops_the_wakeup() {
+    let model = Model::default();
+    let gate = Gate::new();
+    model.root([said("noted")]);
+    model.child(
+        "task research",
+        [
+            held(
+                &gate,
+                vec![
+                    event::tool_call("wait-1", "yield", json!({ "durationMs": 600_000 })),
+                    event::response(1, 1),
+                ],
+            ),
+            said("the full report"),
+        ],
+    );
+    model.child("task helper", [said("helper findings")]);
+    let fixture = Fixture::with_model_on_tokio_time(&model, TestProduct::default());
+    let mut client = fixture.opened().await;
+    let research = spawn(&fixture, &root(), json!({ "prompt": "task research" })).await;
+    until(|| model.requests_of("task research").len() == 1).await;
+    let helper_start =
+        spawn_during_turn(&fixture, &research, json!({ "prompt": "task helper" }));
+    gate.open();
+    let helper = helper_start.await.unwrap();
+
+    let frames = client.next_until(is_closed(&research)).await;
+    client.next_until(is_idle).await;
+
+    // The helper's completion opened the turn that answered; nothing ran
+    // after it.
+    assert!(lifecycle(&frames).contains(&(SubagentEvent::Closed, helper, JobPhase::Completed)));
+    assert_eq!(model.requests_of("task research").len(), 2);
+    assert_eq!(
+        closed_phase(&fixture, &research),
+        Some(ClosePhase::Completed {
+            result: "the full report".into()
+        })
+    );
+    let receipts = root_receipts(&fixture);
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].content, "the full report");
+    // The final checkpoint keeps no wakeup a resume would arm again.
+    let state = fixture.store.checkpoint(&research).unwrap().state;
+    assert!(state.wakeups.is_empty(), "{:?}", state.wakeups);
+    assert!(model.is_done());
+}
+
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_child_whose_turn_ended_with_its_yield_stays_live_while_no_action_holds_the_tree() {
     let model = Model::default();
     let gate = Gate::new();
     model.root([said("noted")]);

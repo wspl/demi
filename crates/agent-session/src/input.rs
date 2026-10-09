@@ -184,6 +184,12 @@ impl InputQueue {
         }
     }
 
+    /// Drops the wakeups that fired and wait to be written.
+    pub(super) fn drop_wakeups(&mut self) {
+        self.entries
+            .retain(|input| !matches!(input, Input::Wakeup(_)));
+    }
+
     /// Drops the human steers still pending when their action ended
     /// normally.
     pub(super) fn discard_steers(&mut self) {
