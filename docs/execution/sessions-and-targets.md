@@ -168,13 +168,16 @@ example, a new conversation on the user's Cloud starts with:
 
 ```text
 [Execution context 0]
-Primary host: Cloud, Ubuntu 26.04 (x86_64). Shells start in /home/demi/sessions/0f4e7597-e889-4baa-ac98-93fa61b68d28.
+Primary host: Cloud, Ubuntu 26.04 (x86_64). Shells start in /home/demi/sessions/0f4e7597-e889-4baa-ac98-93fa61b68d28. Standard utilities (sed, grep, cp, ls, find, …) are GNU's on every host.
 Attached hosts: none. `demi host list` shows every host this conversation can reach.
 ```
 
 Every block names the primary Host this way: its name, its operating system
-and release as its runner last reported them with the architecture, and the
-directory its shells start in. A Host whose runner never connected, such as
+and release as its runner last reported them with the architecture, the
+directory its shells start in, and that the standard utilities are GNU's
+([Standard utilities](runner.md#standard-utilities)). On macOS it adds where
+the system's own are: `Standard utilities (sed, grep, cp, ls, find, …) are
+GNU's on every host; macOS's own are in /usr/bin.` A Host whose runner never connected, such as
 a Cloud that has not run yet, is named without the system.
 Its persisted context block describes the switch, attached hosts, and any Cloud
 reset. Observation is node-specific: the root seeing an update does not consume
