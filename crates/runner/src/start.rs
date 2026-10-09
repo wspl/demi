@@ -38,31 +38,16 @@ pub async fn start(directory: &Path, arguments: Vec<String>) -> io::Result<u8> {
         }
         Some(lease) => lease.release()?,
     }
-    let log = directory.join(console::LOG);
-    // What the log holds already is an earlier runner's.
-    let mut started = match tokio::fs::metadata(&log).await {
-        Ok(metadata) => metadata.len(),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => 0,
-        Err(error) => return Err(error),
-    };
+    let mut log = Follower::new(directory).await?;
     let mut child = spawn(directory, arguments)?;
-    let mut read = started;
     loop {
-        let (from, output) = since(&log, read).await?;
-        if from < read {
-            // The log started again past its size: what this runner wrote is
-            // in the new one.
-            started = from;
-        }
+        let lines = log.lines().await?;
         if let Some(status) = child.try_wait()? {
-            let (_, output) = since(&log, started).await?;
             eprintln!("The runner stopped ({status}):");
-            eprint!("{}", String::from_utf8_lossy(&output));
+            eprint!("{}", String::from_utf8_lossy(&log.written().await?));
             return Ok(1);
         }
-        // Only complete lines are read.
-        let complete = output.iter().rposition(|byte| *byte == b'\n').map_or(0, |end| end + 1);
-        for line in String::from_utf8_lossy(&output[..complete]).lines() {
+        for line in lines.lines() {
             if let Some(code) = line.strip_prefix(PAIRING_CODE) {
                 println!("The runner is not paired; enter this pairing code in Add Device: {code}");
                 return Ok(1);
@@ -73,7 +58,6 @@ pub async fn start(directory: &Path, arguments: Vec<String>) -> io::Result<u8> {
                 return Ok(1);
             }
         }
-        read = from + complete as u64;
         if connected(&state).await {
             println!("The runner is connected.");
             return Ok(0);
@@ -82,20 +66,93 @@ pub async fn start(directory: &Path, arguments: Vec<String>) -> io::Result<u8> {
     }
 }
 
-/// What the log at `log` holds from `offset` on, and the offset it was read
-/// from: the log's start when the log is shorter, since it started again
-/// past its size; nothing when there is no log yet.
-async fn since(log: &Path, offset: u64) -> io::Result<(u64, Vec<u8>)> {
-    let mut file = match tokio::fs::File::open(log).await {
+/// Reads the installation's log from where it ended when the start began
+/// waiting: what it held before is an earlier runner's. It follows the log
+/// when the runner starts it again past its size, finishing what was left
+/// in the old one, `runner.log.1` by then, before reading the new one from
+/// its start.
+struct Follower {
+    log: PathBuf,
+    previous: PathBuf,
+    /// Where the next read of the log starts: past the complete lines read.
+    read: u64,
+    /// The size `runner.log.1` had at the last read; another size means the
+    /// log was moved there since.
+    previous_size: u64,
+    /// Where this runner's output begins in the log.
+    begin: u64,
+}
+
+impl Follower {
+    async fn new(directory: &Path) -> io::Result<Self> {
+        let log = directory.join(console::LOG);
+        let previous = directory.join(console::PREVIOUS_LOG);
+        let read = size(&log).await?;
+        Ok(Self {
+            previous_size: size(&previous).await?,
+            log,
+            previous,
+            read,
+            begin: read,
+        })
+    }
+
+    /// The complete lines written since the last read.
+    async fn lines(&mut self) -> io::Result<String> {
+        let mut text = Vec::new();
+        let previous_size = size(&self.previous).await?;
+        if size(&self.log).await? < self.read || previous_size != self.previous_size {
+            take(&self.previous, self.read, &mut text).await?;
+            self.read = 0;
+            self.begin = 0;
+        }
+        self.previous_size = previous_size;
+        self.read = take(&self.log, self.read, &mut text).await?;
+        Ok(String::from_utf8_lossy(&text).into_owned())
+    }
+
+    /// What the runner wrote to the log since it began, or since the log
+    /// started again.
+    async fn written(&self) -> io::Result<Vec<u8>> {
+        let mut file = match tokio::fs::File::open(&self.log).await {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error),
+        };
+        file.seek(io::SeekFrom::Start(self.begin)).await?;
+        let mut written = Vec::new();
+        file.read_to_end(&mut written).await?;
+        Ok(written)
+    }
+}
+
+/// The size of the file at `path`; 0 when there is none.
+async fn size(path: &Path) -> io::Result<u64> {
+    match tokio::fs::metadata(path).await {
+        Ok(metadata) => Ok(metadata.len()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(0),
+        Err(error) => Err(error),
+    }
+}
+
+/// Appends the complete lines of the file at `path` from `offset` on to
+/// `text`, and returns the offset past them: `offset` itself when there is
+/// no such file or no complete line past it.
+async fn take(path: &Path, offset: u64, text: &mut Vec<u8>) -> io::Result<u64> {
+    let mut file = match tokio::fs::File::open(path).await {
         Ok(file) => file,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok((offset, Vec::new())),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(offset),
         Err(error) => return Err(error),
     };
-    let from = if file.metadata().await?.len() < offset { 0 } else { offset };
-    file.seek(io::SeekFrom::Start(from)).await?;
+    if file.metadata().await?.len() <= offset {
+        return Ok(offset);
+    }
+    file.seek(io::SeekFrom::Start(offset)).await?;
     let mut output = Vec::new();
     file.read_to_end(&mut output).await?;
-    Ok((from, output))
+    let complete = output.iter().rposition(|byte| *byte == b'\n').map_or(0, |end| end + 1);
+    text.extend_from_slice(&output[..complete]);
+    Ok(offset + complete as u64)
 }
 
 /// Whether the installation's active runner says it is online; not before

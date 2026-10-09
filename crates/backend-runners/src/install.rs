@@ -305,9 +305,20 @@ else
 fi
 pid=
 log="$state/runner.log"
+previous="$state/runner.log.1"
+# The size of the file "$1"; 0 when there is none.
+size_of() {
+  if [ -f "$1" ]; then
+    echo $(($(wc -c < "$1")))
+  else
+    echo 0
+  fi
+}
 # Where the log ended when this installer started the runner: what it held
-# before is an earlier runner's. One that runs already is read whole.
+# before is an earlier runner's. One that runs already is read whole. The
+# size of runner.log.1 tells when the log was moved there.
 seen=0
+previous_size=$(size_of "$previous")
 if DEMI_HOME="$state" DEMI_RELEASE_ID="$release" "$bin/demi-runner" status --backend "$backend" >/dev/null 2>&1; then
   echo "Runner already running: $state"
 else
@@ -332,9 +343,7 @@ LAUNCHER
   printf '%s\n' "$release" > "$state/release-id"
   chmod 755 "$state/run.next"
   mv "$state/run.next" "$state/run"
-  if [ -f "$log" ]; then
-    seen=$(($(wc -c < "$log")))
-  fi
+  seen=$(size_of "$log")
   # The runner writes its log itself. With job control on, it starts in a
   # process group of its own, so that interrupting this installer at its
   # terminal leaves the runner running.
@@ -352,28 +361,18 @@ cleanup
 # receives, then the device's name and the removal command once it is
 # paired. Only complete lines are read; of the codes read at once, only the
 # last is still live.
-begin=$seen
-shown=
-while :; do
-  size=0
-  if [ -f "$log" ]; then
-    size=$(($(wc -c < "$log")))
-  fi
-  # A log shorter than what was read started again past its size.
-  if [ "$size" -lt "$seen" ]; then
-    seen=0
-    begin=0
-  fi
-  code=
-  name=
-  removal=
+# Reads the complete lines of the file "$1" from byte $seen on and moves
+# $seen past them, keeping the last code, name and removal command they
+# name.
+read_lines() {
+  size=$(size_of "$1")
   lines=0
   if [ "$size" -gt "$seen" ]; then
-    lines=$(($(tail -c +"$((seen + 1))" "$log" | head -c "$((size - seen))" | wc -l)))
+    lines=$(($(tail -c +"$((seen + 1))" "$1" | head -c "$((size - seen))" | wc -l)))
   fi
   if [ "$lines" -gt 0 ]; then
-    chunk=$(tail -c +"$((seen + 1))" "$log" | head -n "$lines")
-    seen=$((seen + $(tail -c +"$((seen + 1))" "$log" | head -n "$lines" | wc -c)))
+    chunk=$(tail -c +"$((seen + 1))" "$1" | head -n "$lines")
+    seen=$((seen + $(tail -c +"$((seen + 1))" "$1" | head -n "$lines" | wc -c)))
     while IFS= read -r line; do
       case "$line" in
         "$pairing_prefix"*) code=${line#"$pairing_prefix"} ;;
@@ -384,6 +383,24 @@ while :; do
 $chunk
 CHUNK
   fi
+}
+begin=$seen
+shown=
+while :; do
+  code=
+  name=
+  removal=
+  # The runner started its log again past its size: what was left in the
+  # old one, runner.log.1 by now, comes first, then the new one from its
+  # start.
+  previous_now=$(size_of "$previous")
+  if [ "$(size_of "$log")" -lt "$seen" ] || [ "$previous_now" -ne "$previous_size" ]; then
+    read_lines "$previous"
+    seen=0
+    begin=0
+  fi
+  previous_size=$previous_now
+  read_lines "$log"
   if [ -n "$removal" ]; then
     printf 'Paired as %s\nTo remove this runner, run: %s\n' "$name" "$removal"
     exit 0
@@ -445,15 +462,22 @@ $demiPreviousHome = $env:DEMI_HOME
 $demiPreviousRelease = $env:DEMI_RELEASE_ID
 $demiProcess = $null
 $demiLog = Join-Path $demiState 'runner.log'
+$demiPrevious = Join-Path $demiState 'runner.log.1'
+# The size of the file at `$Path`; 0 when there is none.
+function Get-DemiSize([string]$Path) {
+  if (Test-Path $Path) { (Get-Item $Path).Length } else { [long]0 }
+}
 # Where the log ended when this installer started the runner: what it held
-# before is an earlier runner's. One that runs already is read whole.
-$demiSeen = 0
-# The bytes of the log from `$From` on, read beside the runner, which writes
-# it and may rename it.
-function Read-DemiLog([long]$From) {
+# before is an earlier runner's. One that runs already is read whole. The
+# size of runner.log.1 tells when the log was moved there.
+$demiSeen = [long]0
+$demiPreviousSize = Get-DemiSize $demiPrevious
+# The bytes of the file at `$Path` from `$From` on, read beside the runner,
+# which writes it and may rename it.
+function Read-DemiLog([string]$Path, [long]$From) {
   # The comma keeps an array, even an empty one, from being unrolled.
-  if (-not (Test-Path $demiLog)) { return ,[byte[]]::new(0) }
-  $stream = [IO.FileStream]::new($demiLog, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
+  if (-not (Test-Path $Path)) { return ,[byte[]]::new(0) }
+  $stream = [IO.FileStream]::new($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
   try {
     $bytes = [byte[]]::new([Math]::Max(0, $stream.Length - $From))
     $stream.Position = [Math]::Min($From, $stream.Length)
@@ -550,7 +574,7 @@ exit $demiExit
 '@
       [IO.File]::WriteAllText((Join-Path $demiState 'run.ps1'), $demiLauncher, $demiUtf8)
       Write-Output 'Starting runner...'
-      if (Test-Path $demiLog) { $demiSeen = (Get-Item $demiLog).Length }
+      $demiSeen = Get-DemiSize $demiLog
       # The runner writes its log itself.
       $demiProcess = Start-Process -FilePath $demiExe -ArgumentList @('run', '--backend', $demiBackend, '--log') -WorkingDirectory $demiHome -WindowStyle Hidden -PassThru
       Write-Output "Runner installed for $demiBackend"
@@ -578,17 +602,25 @@ exit $demiExit
     $demiCode = $null
     $demiName = $null
     $demiRemoval = $null
-    # A log shorter than what was read started again past its size.
-    if ((Test-Path $demiLog) -and (Get-Item $demiLog).Length -lt $demiSeen) {
-      $demiSeen = 0
-      $demiBegin = 0
+    # The runner started its log again past its size: what was left in the
+    # old one, runner.log.1 by now, comes first, then the new one from its
+    # start.
+    $demiPaths = @($demiLog)
+    $demiPreviousNow = Get-DemiSize $demiPrevious
+    if ((Get-DemiSize $demiLog) -lt $demiSeen -or $demiPreviousNow -ne $demiPreviousSize) {
+      $demiPaths = @($demiPrevious, $demiLog)
     }
-    $demiBytes = Read-DemiLog $demiSeen
-    $demiEnd = if ($demiBytes.Length -gt 0) { [Array]::LastIndexOf($demiBytes, [byte]10) } else { -1 }
-    if ($demiEnd -ge 0) {
+    $demiPreviousSize = $demiPreviousNow
+    foreach ($demiPath in $demiPaths) {
+      if ($demiPath -eq $demiLog -and $demiPaths.Count -eq 2) {
+        $demiSeen = [long]0
+        $demiBegin = [long]0
+      }
+      $demiBytes = Read-DemiLog $demiPath $demiSeen
+      $demiEnd = if ($demiBytes.Length -gt 0) { [Array]::LastIndexOf($demiBytes, [byte]10) } else { -1 }
+      if ($demiEnd -lt 0) { continue }
       $demiSeen += $demiEnd + 1
-      $demiLines = [Text.Encoding]::UTF8.GetString($demiBytes, 0, $demiEnd).Split("`n")
-      foreach ($demiLine in $demiLines) {
+      foreach ($demiLine in [Text.Encoding]::UTF8.GetString($demiBytes, 0, $demiEnd).Split("`n")) {
         $demiLine = $demiLine.TrimEnd("`r")
         if ($demiLine.StartsWith($demiPairingPrefix)) {
           $demiCode = $demiLine.Substring($demiPairingPrefix.Length)
@@ -614,7 +646,7 @@ exit $demiExit
     }
     $demiAlive = if ($demiProcess) { -not $demiProcess.HasExited } else { (Invoke-DemiControl 'status') -eq 0 }
     if (-not $demiAlive) {
-      throw ('The runner stopped:' + [Environment]::NewLine + [Text.Encoding]::UTF8.GetString((Read-DemiLog $demiBegin)))
+      throw ('The runner stopped:' + [Environment]::NewLine + [Text.Encoding]::UTF8.GetString((Read-DemiLog $demiLog $demiBegin)))
     }
     Start-Sleep -Milliseconds 200
   }
