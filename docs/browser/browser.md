@@ -50,8 +50,9 @@ Agent -> demi browser commands -> Host browser -> Application :3000
 This document covers browser automation for agents. The work panel shows the
 same tabs live and lets the user operate them at the same time;
 [Live browser view](live-view.md) owns that view, its capture and its
-transport. There is no Managed/Free mode. Explicit screenshots use the
-command media contract ([Images and large outputs](#images-and-large-outputs)).
+transport. There is no Managed/Free mode. A screenshot is an image file's
+bytes, which the model views with `demi file view`
+([Images and large outputs](#images-and-large-outputs)).
 
 The design uses Codex's observable, programmable browser tools and readable
 feedback as the primary reference when correcting browser API behavior. Where
@@ -790,7 +791,7 @@ $ demi browser find t1 --role button --name 'Sign in' --json
 
 | Outcome | stdout | stderr | Exit code |
 | --- | --- | --- | --- |
-| Success, default | Readable result, or a returned medium ([Images and large outputs](#images-and-large-outputs)) | Necessary diagnostics | 0 |
+| Success, default | Readable result, or a screenshot's PNG bytes ([Images and large outputs](#images-and-large-outputs)) | Necessary diagnostics, or what a screenshot captured | 0 |
 | Success, `--json` | One schema-validated JSON value | Necessary diagnostics | 0 |
 | Normal empty result | Empty-result text or valid empty collection | None | 0 |
 | Normal false value | The false value | None | 0 |
@@ -809,42 +810,38 @@ booleans such as `clicked`, `submitted`, and `actionCompleted`.
 
 ### Images and large outputs
 
-`screenshot <tab>` without `--output` returns its PNG as a medium, which goes
-where its stdout goes
-([Media a command returns](../agent/runtime.md#media-a-command-returns)).
-When its stdout is the job's output, the command prints what it captured, as
-the `--output` form does, and the job's result attaches the image; otherwise
-the PNG's bytes are its whole stdout, so `> shot.png` saves them and
-`| convert - png:-` processes them, and it prints nothing else. If the model
-cannot accept the image, the result says so; do not claim that the agent saw
-it.
+`screenshot <tab>` without `--output` writes its PNG's bytes to stdout and
+what it captured to stderr, as a program that makes an image does. The model
+looks at it by piping it into `demi file view`, the one command that shows
+the model a file
+([Media the model views](../agent/runtime.md#media-the-model-views)); a
+redirection saves it, and a pipe into another program processes it. If the
+model cannot read the image, `demi file view` says so; do not claim that the
+agent saw it.
 
 ```bash
-demi browser screenshot t1
-for t in t1 t2 t3; do demi browser screenshot "$t"; done
+demi browser screenshot t1 | demi file view
+for t in t1 t2 t3; do demi browser screenshot "$t" | demi file view; done
+demi browser screenshot t1 > /tmp/login.png
 ```
 
 One `screenshot` captures one tab. Several tabs are a loop in one shell call,
 whose result attaches every screenshot in the loop's order: Bash composes the
-calls, so the command has no list of tabs, and with a stdout that goes
-elsewhere it never has several images to put in it.
+calls, so the command has no list of tabs.
 
-With `--output`, save the file and return file information instead. To show the
-saved image, use the file command, which returns an image file as a medium in
-the same way:
+With `--output`, it saves the file and prints what it captured on stdout,
+and the model views the file when it wants to see it:
 
 ```bash
-demi browser screenshot t1 --output /tmp/login.png
-demi file read /tmp/login.png
+demi browser screenshot t1 --output /tmp/login.png && demi file view /tmp/login.png
 ```
 
 A full-page screenshot can be large, and two bounds apply to it:
 
-- A medium is at most 16 MiB
-  ([Bounds and cut output](../agent/runtime.md#bounds-and-cut-output)). A job's
-  command whose PNG is larger fails with `result_too_large`, wherever its
-  stdout goes, and its message names the PNG's size and says to save it with
-  `--output <file>`, which keeps the whole capture in a file.
+- A medium the model views is at most 16 MiB
+  ([Bounds and cut output](../agent/runtime.md#bounds-and-cut-output)), so
+  `demi file view` refuses a larger PNG and names its size; the capture
+  itself is whole, in the file or the pipe.
 - Chrome sends the PNG in one CDP message, in base64, a third larger than the
   PNG. A capture whose message is over the CDP message limit fails with
   `result_too_large`, with or without `--output`, and its message names the
@@ -852,8 +849,9 @@ A full-page screenshot can be large, and two bounds apply to it:
   browser and the tab go on ([Native driver](#native-driver)).
 
 For example, a full page 1280 pixels wide and 6000 tall whose pixels do not
-compress makes a PNG of about 23 MB: `demi browser screenshot t1 --full-page`
-fails and says so, and `--full-page --output /tmp/page.png` saves it. A page
+compress makes a PNG of about 23 MB: `--full-page --output /tmp/page.png`
+saves it, and `demi file view /tmp/page.png` refuses it as over 16 MiB, so
+the model views parts of the page taken with `--clip`. A page
 14000 pixels tall makes about 54 MB, over 64 MiB in base64, and only parts of
 it taken with `--clip` fit.
 
@@ -1278,11 +1276,11 @@ A missing attribute returns null. Reading a protected input's value fails with
 ### Screenshot and probe
 
 ```text
-$ demi browser screenshot t1
+$ demi browser screenshot t1 | demi file view
 Screenshot of t1
 Image: 1280 × 720 px, one pixel per CSS pixel
 Viewport: 1280 × 720 CSS px, device pixel ratio 2, web
-[medium 1: image/png, 412000 bytes]
+[image 1: image/png, 1280 × 720 px, 412000 bytes]
 
 $ demi browser screenshot t1 --output /tmp/login.png
 Screenshot saved: /tmp/login.png
@@ -2143,8 +2141,8 @@ demi browser viewport reset t1
 ```
 
 A script needing restoration on every exit should use a shell trap and surface
-cleanup failures. To inspect the image, `demi file read /tmp/mobile.png`
-returns it to the model, in the same script or a later one. Browser commands do not add another batch language or a
+cleanup failures. To inspect the image, `demi file view /tmp/mobile.png`
+shows it to the model, in the same script or a later one. Browser commands do not add another batch language or a
 persistent JavaScript REPL; Bash already composes their operations.
 
 ## Acceptance
@@ -2218,10 +2216,11 @@ part of every acceptance that touches the browser, not an optional run.
    without closing unrelated tabs or claiming rollback of completed effects.
 9. Text preserves hierarchy; JSON validates independently. Truncation preserves
    valid JSON. Page text cannot forge terminal controls or tool metadata.
-10. A screenshot follows [Media a command returns](../agent/runtime.md#media-a-command-returns):
-    a loop over three tabs attaches three images in order, `> shot.png` saves
-    the PNG and attaches nothing, and `| convert - png:-` attaches only
-    `convert`'s image. Mixed streams are not misread as images. A printed path
+10. A screenshot follows [Media the model views](../agent/runtime.md#media-the-model-views):
+    a loop of `screenshot | demi file view` over three tabs attaches three
+    images in order, `> shot.png` saves the PNG and attaches nothing, and
+    `| convert - png:- | demi file view` attaches only `convert`'s image. A
+    screenshot alone shows as a binary stdout and attaches nothing. A printed path
     never triggers an automatic Host read.
 11. Run workflow fixtures through the embedded brush and jq, checking error exits,
     pipefail, empty matches, and business failure separately.

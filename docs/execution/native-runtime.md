@@ -768,14 +768,16 @@ that tail.
 
 The invocation request begins with a four-byte big-endian JSON byte length,
 followed by JSON containing `operation`, `invocationId`, the command's path,
-such as `demi file read`, which a handler that takes several values puts
+such as `demi file edit`, which a handler that takes several values puts
 before each failure it reports
 ([Handle an rpc call](commands.md#handle-an-rpc-call)), parsed `args`, whether
 the caller asked for `json`, `cwd`, `env`, the
 [command context](#command-context), for a job that records edits, its
-`edits` context, and, for an invocation a job's command makes, where its
-stdout goes, `stdout`: `job` or `elsewhere`
-([Where a command's stdout goes](runner.md#where-a-commands-stdout-goes)). Each subsequent stdin chunk has a four-byte big-endian length
+`edits` context, and, for an invocation a job's command makes, whether its
+stdin is the job's own input, `liveInput`
+([A job's own input](runner.md#a-jobs-own-input)), and the media types the
+job may show the model, `viewable`
+([Media the model views](../agent/runtime.md#what-demi-file-view-shows)). Each subsequent stdin chunk has a four-byte big-endian length
 and at most 64 KiB of binary payload.
 
 The service sends response headers before waiting for input. Input then follows
@@ -817,11 +819,10 @@ length, and payload. DATA frame boundaries are unrelated to record boundaries.
 A handler returns a medium through its output writer, which writes one
 medium record and then the medium's bytes in medium-bytes records, with no
 other record of the invocation between them, so a medium is never
-interleaved with output or with another medium, and its place among the
-stdout records is where the handler returned it. Bytes that do not add up to
+interleaved with output or with another medium. Bytes that do not add up to
 the medium's size, medium bytes without a medium, and a size over 16 MiB
 break the protocol. The service neither routes nor keeps media: the runner
-does, by the invocation's `stdout`
+hands each to the invocation's job
 ([Return media](commands.md#return-media)). An invocation without `stdout`, a
 [user stream](#user-streams) or a package call, cannot return media: its
 writer refuses them, and the handler learns so from the write.
@@ -943,7 +944,7 @@ decodes to and anything else by itself, against the size and SHA-256 the
 descriptor or the runner manifest gives, stores them, and answers the request.
 Needs of one artifact that arrive together share one fetch. When no source
 holds the artifact, or a download fails, the request fails with the reason,
-and the next need tries again. For example, the first `demi file read` on a
+and the next need tries again. For example, the first `demi file edit` on a
 Windows laptop paired with a server that runs a published release: the
 runner asks where `demi-file` for `x86_64-pc-windows-msvc` downloads from; the
 store does not hold it yet, so the backend downloads

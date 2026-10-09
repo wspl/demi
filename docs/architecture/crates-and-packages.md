@@ -174,9 +174,9 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     messages (`NumbersRequest`, `NumbersAnswer`);
   - record framing (`Record`, `RecordDecoder`), with the medium records a
     handler returns media in;
-  - the media a command returns: their bound (`MAX_MEDIUM_BYTES`), where a
-    calling process's stdout goes (`StdoutTarget`), and the recognition of
-    the image and video types a model reads in bytes (`sniff_media_type`),
+  - the media a command returns: their bound (`MAX_MEDIUM_BYTES`), and the
+    recognition of the image, video and document types a model reads in
+    bytes (`sniff_media_type`),
     which the runner, the agent and the backend share;
   - package descriptors and their identities (`PackageDescriptor`), artifact
     locations and target triples (`TargetTriple`), and the one canonical
@@ -544,9 +544,8 @@ Each crate implements the provider contract for one vendor family.
     its whole output, its media and its edit copies, which the product
     implements over its storage
     ([The whole output](../agent/runtime.md#the-whole-output)); a command's
-    media as the backend holds them when it ended (`CommandMedium`) and as
-    the conversation stores them (`StoredMedium`,
-    [Media a command returns](../agent/runtime.md#media-a-command-returns)).
+    media as the backend holds them when it ended (`CommandMedium`,
+    [Media the model views](../agent/runtime.md#media-the-model-views)).
 - **Public boundary:** the items above; `host_interface::testing` supplies the Host
   conformance cases, an in-memory port for rpc handler tests
   (`MemoryPort`) and sequences that count from 1 (`CountingNumbers`). The Host rules are in
@@ -816,9 +815,8 @@ demi-runner (executable: connection, registration, Host log, composition)
   ([Backend socket](../cloud/managed-hosts.md#backend-socket)); the pipe endpoints that carry
   file contents and output to the backend's pipe routes, and the report of a
   pipe's outcome ([Pipes and output](../execution/runner.md#pipes-and-output));
-  the identities of a job's live input and output, which tell a command
-  where its stdin comes from and its stdout goes
-  ([Where a command's stdout goes](../execution/runner.md#where-a-commands-stdout-goes));
+  the identity of a job's own input, which tells a command whether its
+  stdin is the job's input ([A job's own input](../execution/runner.md#a-jobs-own-input));
   the split of a stream into lines and the kept tail of a stream; private
   state files written atomically, through `shared-artifacts`'s publication; the line
   counts of a change to a file; the
@@ -901,8 +899,8 @@ demi-runner (executable: connection, registration, Host log, composition)
   media, the edit report at its end, and the command dispatcher (it parses
   argv with `command-declarations`, holds a `--json` command's output until it
   is checked against the leaf's output schema, routes native invocations to
-  their services and rpc calls to the backend, and routes the media they
-  return by where their stdout goes,
+  their services and rpc calls to the backend, and hands the media
+  `demi file view` returns to its job,
   [Return media](../execution/commands.md#return-media)) with local command
   forwarding.
 - **Conversation scope:** keeps each job's command context and writes it into

@@ -370,10 +370,10 @@ states:
 
 | State | Holds | `demi shell output` prints |
 |---|---|---|
-| Stored | The blob, and the bytes at the output's end that the backend does not have with why, when there are some: lost with the Host's connection, or not read from the Host; and the command's media ([Media a command returns](../agent/runtime.md#media-a-command-returns)), each with its number, media type and size, and its blob or why the backend does not have it: lost with the Host's connection, not read from the Host, or not stored | The output, and with `--medium` one medium |
+| Stored | The blob, and the bytes at the output's end that the backend does not have with why, when there are some: lost with the Host's connection, or not read from the Host | The output |
 | Not stored | Why the put failed | The reason |
 
-The puts come first, the output's and each medium's, and the row after
+The put comes first, and the row after it
 them, as for every blob
 ([Attachment and transcript media](#attachment-and-transcript-media)): a
 stored row never names an unpublished blob, and a crash between the two leaves
