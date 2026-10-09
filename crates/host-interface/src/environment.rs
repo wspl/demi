@@ -1,14 +1,16 @@
-//! The shell-environment contract behind the shell tools: a node's shells
-//! on one Host, the commands they run, the model's status view of each
-//! (`runtime.md` § Tools), and the pages' view of each, which the
-//! environment reports to the node's feed (`runtime.md` § Live output).
+//! The shell-environment contract behind the shell tools: a node's commands
+//! on one Host, each a job of its own that starts in the conversation's
+//! working directory there (`runtime.md` § Running shell tools), the
+//! model's status view of each (`runtime.md` § Tools), and the pages' view
+//! of each, which the environment reports to the node's feed (`runtime.md`
+//! § Live output).
 
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use demi_shared_types::{
-    BinaryStdout, CommandId, EditedFile, NodeId, OutputView, PathChange, Sequence, ShellId,
-    StreamKind, StreamView,
+    BinaryStdout, CommandId, EditedFile, NodeId, OutputView, PathChange, Sequence, StreamKind,
+    StreamView,
 };
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
@@ -28,14 +30,16 @@ pub const DEFAULT_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
 /// bound on a runaway producer.
 pub const DEFAULT_BINARY_LIMIT_BYTES: usize = 16 * 1024 * 1024;
 
-/// A node's shells on one Host. Its handles belong to it: a command id or
-/// shell id another environment made is unknown here. Every status it
-/// answers is the model's; the pages see its commands through the feed it
-/// was made with ([`PageFeed`]).
+/// A node's commands on one Host. Its handles belong to it: a command id
+/// another environment made is unknown here. Every status it answers is the
+/// model's; the pages see its commands through the feed it was made with
+/// ([`PageFeed`]).
 pub trait ShellEnvironment {
-    /// Starts `request.script` and returns its command's handle; the command
-    /// goes on by itself, and `cancel` stops it whenever it is cancelled.
-    /// [`watch`] watches it.
+    /// Starts `request.script` as a job of its own in the conversation's
+    /// working directory on the Host, carrying nothing of an earlier
+    /// command, and returns its command's handle; the command goes on by
+    /// itself, and `cancel` stops it whenever it is cancelled. [`watch`]
+    /// watches it.
     fn start(
         &self,
         request: ExecRequest,
@@ -48,11 +52,6 @@ pub trait ShellEnvironment {
 
     /// The command's status, with its output since the model last looked.
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError>;
-
-    /// The default shell and its directory now, where a new shell beside it
-    /// starts; none while the environment has no default shell, whose first
-    /// command starts in the Host's default directory.
-    fn default_shell(&self) -> Option<DefaultShell>;
 
     /// The kept output of a command that runs, as its Host holds it now
     /// (`runtime.md` § The whole output).
@@ -87,18 +86,13 @@ pub trait ShellEnvironment {
     /// Forgets a command, stopping it first when it runs; false when unknown.
     fn release_command<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, bool>;
 
-    /// Ends a shell, stopping its command; false when unknown.
-    fn dispose_shell<'a>(&'a self, shell: &'a ShellId) -> LocalBoxFuture<'a, bool>;
-
-    /// Ends every shell.
+    /// Stops every command that runs, and waits until each has ended.
     fn dispose_all(&self) -> LocalBoxFuture<'_, ()>;
-
-    fn owns_shell(&self, shell: &ShellId) -> bool;
 
     fn owns_command(&self, command: &CommandId) -> bool;
 }
 
-/// Where an environment's command and shell numbers come from: the
+/// Where an environment's command numbers come from: the
 /// conversation's sequences, which give each number once, in order
 /// (`runtime.md` § Identifiers the model sees).
 pub trait Numbers {
@@ -143,37 +137,15 @@ pub async fn watch<T>(
     Ok((environment.status(command)?, ended_by))
 }
 
-/// An environment's default shell, and the directory it is in.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DefaultShell {
-    pub id: ShellId,
-    pub cwd: String,
-}
-
 /// One exec, with every rule an environment enforces in its type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecRequest {
     pub script: String,
-    pub shell: ShellTarget,
     /// The agent node the job's `rpc` calls act for.
     pub caller: JobCaller,
     /// The `shell_exec` call that runs the script, which the pages' view of
     /// the command names.
     pub tool_use_id: String,
-}
-
-/// Which shell an exec runs in (`runtime.md` § Dispatch and failures).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ShellTarget {
-    /// The environment's default shell, or, while that one runs a command,
-    /// a new shell that starts in its directory, so a long command never
-    /// blocks the next exec.
-    Default,
-    /// This shell; it must be idle.
-    Existing(ShellId),
-    /// A new shell that starts in `cwd`, the Host's default when none, so
-    /// its directory changes reach no other shell.
-    New { cwd: Option<String> },
 }
 
 /// How long a call watches its command: from a millisecond to
@@ -205,7 +177,6 @@ pub struct JobCaller {
 /// A command's status and its output since the last look.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandStatus {
-    pub shell_id: ShellId,
     pub command_id: CommandId,
     /// While the command runs: each stream's start, which the backend holds.
     pub stdout: StreamView,
@@ -286,12 +257,8 @@ pub struct EditedFiles {
 /// Why an environment refused a request. The texts are the model's.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ShellError {
-    #[error("Unknown shell session \"{0}\"")]
-    UnknownShell(ShellId),
     #[error("Unknown command \"{0}\"")]
     UnknownCommand(CommandId),
-    #[error("Shell session \"{shell}\" is already running command \"{command}\"")]
-    ShellBusy { shell: ShellId, command: CommandId },
     #[error("Command \"{0}\" is not running")]
     NotRunning(CommandId),
     #[error("command {command} has no medium {number}: it returned {returned}")]

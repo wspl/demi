@@ -25,7 +25,7 @@ use demi_host_interface::{
     ShellError, WholeOutput,
 };
 use demi_provider_common::testing::{FixedClock, ScriptedRuntime, Turn, event};
-use demi_shared_types::{CommandId, NodeId, ShellId, StreamKind};
+use demi_shared_types::{CommandId, NodeId, StreamKind};
 use futures_util::future::LocalBoxFuture;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
@@ -117,7 +117,6 @@ impl ShellEnvironment for ScriptedShell {
     ) -> LocalBoxFuture<'_, Result<CommandId, ShellError>> {
         let command = CommandId::try_from("1").unwrap();
         let record = Rc::new(RefCell::new(CommandRecord::new(
-            ShellId::try_from("1").unwrap(),
             command.clone(),
             request.tool_use_id,
         )));
@@ -142,10 +141,6 @@ impl ShellEnvironment for ScriptedShell {
         let record = self.record(command)?;
         let status = record.borrow_mut().status(DEFAULT_OUTPUT_LIMIT_BYTES, None);
         Ok(status)
-    }
-
-    fn default_shell(&self) -> Option<demi_host_interface::DefaultShell> {
-        None
     }
 
     fn read_output<'a>(
@@ -187,19 +182,8 @@ impl ShellEnvironment for ScriptedShell {
         Box::pin(async { false })
     }
 
-    fn dispose_shell<'a>(&'a self, _shell: &'a ShellId) -> LocalBoxFuture<'a, bool> {
-        Box::pin(async { false })
-    }
-
     fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async {})
-    }
-
-    fn owns_shell(&self, shell: &ShellId) -> bool {
-        let command = self.command.borrow();
-        command
-            .as_ref()
-            .is_some_and(|record| record.borrow().shell_id() == shell)
     }
 
     fn owns_command(&self, command: &CommandId) -> bool {

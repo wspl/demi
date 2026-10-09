@@ -3,8 +3,9 @@
 //! `web-api.md` § Workspaces, devices, and attached hosts): a target switch
 //! moves the work and attaches the device it leaves, a switch ends the
 //! conversation's open transfers instead of waiting for them, attached
-//! hosts are detached, and each change of them, the directory a host's
-//! shell recorded included, raises the revision a page reads them by. The
+//! hosts are detached, each change of them raises the revision a page
+//! reads them by, and an attached host's commands start where it was
+//! attached, whatever an earlier one did. The
 //! conversation's agents attach devices, which these tests write to
 //! storage. The devices are real runners.
 
@@ -357,9 +358,11 @@ async fn until_hosts_revision(page: &mut SyncChannel, revision: u64) {
 }
 
 // About a second: two real devices install the builtin package, and a turn
-// runs `demi host shell` from one on the other.
+// runs `demi host shell` from one on the other. Before the fix, the second
+// shell started in `sub` and the hosts list recorded it.
 #[tokio::test]
-async fn each_change_of_the_attached_hosts_reaches_a_page_as_a_higher_hosts_revision() {
+async fn an_attached_hosts_commands_start_where_it_was_attached_and_each_change_of_the_hosts_raises_the_revision()
+ {
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_file_package();
     let (backend, master) = conversation(&harness).await;
@@ -376,29 +379,30 @@ async fn each_change_of_the_attached_hosts_reaches_a_page_as_a_higher_hosts_revi
     assert_eq!(state.conversations[0].hosts_revision, 1);
     let route = format!("/api/conversations/{CONVERSATION}/hosts");
 
-    // The first shell ends in another directory, which the hosts list
-    // records; the second ends where it started, which changes nothing.
+    // A device attached by name runs every command in its home: a `cd` in
+    // one shell moves neither the next one nor the hosts list.
     let provider = anthropic_at(&backend, &master, &vendor, "/laptop").await;
     let mut driven = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/laptop").await;
     let moved = "demi host shell --host builder 'mkdir -p sub && cd sub' && demi host shell --host builder pwd";
     let ran = driven
         .turn(vec![shell("t1", moved, 20_000), say("moved")])
         .await;
-    let sub = ci.runner.home_dir().join("sub");
+    // The shell reports its directory with links resolved.
+    let home = std::fs::canonicalize(ci.runner.home_dir()).unwrap();
     assert!(
-        ran.received[0].contains(sub.to_str().unwrap()),
+        ran.received[0]
+            .lines()
+            .any(|line| line == home.to_str().unwrap()),
         "{}",
         ran.received[0]
     );
-    until_hosts_revision(&mut page, 2).await;
-    assert_eq!(summary(&backend, &master).await["hostsRevision"], json!(2));
-    // The shell reports where it ended with links resolved.
-    let resolved = std::fs::canonicalize(&sub).unwrap();
-    assert_eq!(hosts(&backend, &master).await[0]["cwd"], json!(resolved.to_str().unwrap()));
+    assert!(!ran.received[0].contains("/sub"), "{}", ran.received[0]);
+    assert_eq!(hosts(&backend, &master).await[0]["cwd"], Value::Null);
+    assert_eq!(summary(&backend, &master).await["hostsRevision"], json!(1));
 
     let detached = backend.delete(&format!("{route}/{}", ci.id()), &master).await;
     assert_eq!(detached.status, StatusCode::NO_CONTENT);
-    until_hosts_revision(&mut page, 3).await;
+    until_hosts_revision(&mut page, 2).await;
     backend.close().await;
 }
 

@@ -64,11 +64,11 @@ const ATTACH_SUMMARY: &str = "Attach one of the user's paired devices to this co
 
 const DETACH_SUMMARY: &str = "Detach an attached host, by name or id from `demi host list`, once this conversation's work ends.";
 
-const LIST_SUMMARY: &str = "Hosts this conversation can reach with `demi host shell --host`: name, id, online, the directory shells start in; the primary one marked.";
+const LIST_SUMMARY: &str = "Hosts this conversation can reach with `demi host shell --host`: name, id, online, the directory commands start in; the primary one marked.";
 
 const CURRENT_SUMMARY: &str = "The primary host: where shell_exec runs.";
 
-const SHELL_SUMMARY: &str = "Run a shell string in another host's bash: `demi host shell --host <name|id> <script>`. The script starts where the last shell on that host ended (its home before one ran) with this command's stdin and stdout, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --host ci \"tar c -C /work .\" | tar x`, `tar c . | demi host shell --host ci \"tar x -C /work\"`). stderr and the exit code pass through.";
+const SHELL_SUMMARY: &str = "Run a shell string in another host's bash: `demi host shell --host <name|id> <script>`. The script starts in that host's directory, which `demi host list` shows and no `cd` changes, with this command's stdin and stdout, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --host ci \"tar c -C /work .\" | tar x`, `tar c . | demi host shell --host ci \"tar x -C /work\"`). stderr and the exit code pass through.";
 
 /// The input of a leaf that takes none, such as `demi host list`.
 #[derive(Deserialize, JsonSchema)]
@@ -607,18 +607,6 @@ async fn run_on_host(
     let Some(ran) = ran else {
         return Ok(130);
     };
-    if target.role == HostRole::Attached
-        && let Some(cwd) = ran.cwd.clone()
-    {
-        let changed = shard
-            .control()
-            .set_attached_cwd(conversation.clone(), target.device.clone(), cwd)
-            .await
-            .map_err(|error| error.to_string())?;
-        if changed {
-            shard.hosts_changed(&conversation);
-        }
-    }
     match ran.status {
         ProcessEnd::NotStarted(error) => {
             let detail = error

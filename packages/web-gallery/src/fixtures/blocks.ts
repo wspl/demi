@@ -16,7 +16,6 @@ export function shellView(
   const view: ShellView = {
     kind: 'shell',
     status: 'exited',
-    shellId: 'shell-demo',
     commandId: 'cmd-demo',
     runningMs: 1_200,
     idleMs: 0,

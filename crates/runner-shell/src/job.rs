@@ -26,10 +26,9 @@ use tokio_util::sync::CancellationToken;
 pub struct Job {
     pub input: mpsc::Sender<ProcessInput>,
     pub output: mpsc::Receiver<OutputChunk>,
-    /// Ends with the job's exit and last working directory, once everything
-    /// the job ran has finished.
-    owner: Option<tokio::task::JoinHandle<(ProcessExit, Option<String>)>>,
-    exited: Option<(ProcessExit, Option<String>)>,
+    /// Ends with the job's exit, once everything the job ran has finished.
+    owner: Option<tokio::task::JoinHandle<ProcessExit>>,
+    exited: Option<ProcessExit>,
     cancel: CancellationToken,
     requested_signal: Arc<OnceLock<String>>,
 }
@@ -87,7 +86,6 @@ impl Job {
     pub async fn start(
         script: String,
         cwd: PathBuf,
-        workspace: PathBuf,
         mut env: BTreeMap<String, String>,
         live: bool,
         output: bool,
@@ -148,7 +146,6 @@ impl Job {
                         scope: scope.clone(),
                         login: true,
                         cwd,
-                        workspace,
                         env,
                         stdin,
                         stdout,
@@ -191,28 +188,25 @@ impl Job {
                     _ => {}
                 }
             }
-            let (code, cwd) = match outcome {
-                Ok(Ok(Ok(result))) => (
-                    Some(i32::from(result.code)),
-                    Some(result.cwd.to_string_lossy().into_owned()),
-                ),
+            let code = match outcome {
+                Ok(Ok(Ok(result))) => Some(i32::from(result.code)),
                 Ok(Ok(Err(failure))) => {
                     error = Some(failure.to_string());
-                    (None, None)
+                    None
                 }
                 Ok(Err(_)) => {
                     error = Some("shell worker panicked".into());
-                    (None, None)
+                    None
                 }
                 Err(failure) => {
                     error = Some(failure.to_string());
-                    (None, None)
+                    None
                 }
             };
             // A cancelled job reports the signal that asked for its end, or
             // `SIGKILL`, and no exit code: bash's own is the interruption's
             // (`runner.md` § Cancellation and completion).
-            let exit = if owner_cancel.is_cancelled() {
+            if owner_cancel.is_cancelled() {
                 ProcessExit {
                     code: None,
                     signal: Some(
@@ -229,8 +223,7 @@ impl Job {
                     signal: None,
                     error,
                 }
-            };
-            (exit, cwd)
+            }
         });
         Ok(Self {
             input,
@@ -280,18 +273,13 @@ impl ShellJob for Job {
         }
     }
 
-    fn wait(&mut self) -> BoxFuture<'_, (ProcessExit, Option<String>)> {
+    fn wait(&mut self) -> BoxFuture<'_, ProcessExit> {
         Box::pin(async move {
             if let Some(owner) = self.owner.take() {
-                self.exited = Some(owner.await.unwrap_or_else(|_| {
-                    (
-                        ProcessExit {
-                            code: None,
-                            signal: None,
-                            error: Some("the shell job's owner panicked".into()),
-                        },
-                        None,
-                    )
+                self.exited = Some(owner.await.unwrap_or_else(|_| ProcessExit {
+                    code: None,
+                    signal: None,
+                    error: Some("the shell job's owner panicked".into()),
                 }));
             }
             self.exited.clone().expect("the owner left the exit")
