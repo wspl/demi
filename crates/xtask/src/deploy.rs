@@ -70,7 +70,8 @@ pub struct Options {
     /// server's own; repeat for several [default: this machine's].
     #[arg(long = "target", value_name = "TRIPLE", value_parser = native::target)]
     targets: Vec<&'static str>,
-    /// The Apple SDK, which the Apple targets need.
+    /// The Apple SDK, which the Apple targets need [default: the one xcrun
+    /// --show-sdk-path names on a Mac].
     #[arg(long, env = "SDKROOT", value_name = "DIRECTORY")]
     sdk: Option<PathBuf>,
     /// Builds and assembles here, asks the server only its architecture and
