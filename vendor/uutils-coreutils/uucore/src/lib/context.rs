@@ -32,6 +32,12 @@ pub trait Control: Send + Sync {
         None
     }
     fn check(&self) -> std::io::Result<()>;
+    /// Fails once the programs the invocation started are to be killed,
+    /// which may come after its own work is to stop: a program it waits for
+    /// then ends in its own time.
+    fn check_processes(&self) -> std::io::Result<()> {
+        self.check()
+    }
     fn read(&self, file: &File, bytes: &mut [u8]) -> std::io::Result<usize>;
     fn write(&self, file: &File, bytes: &[u8]) -> std::io::Result<usize>;
     fn sleep(&self, duration: std::time::Duration) -> std::io::Result<()>;
@@ -107,6 +113,15 @@ fn is_cancelled() -> bool {
 /// not unwind again, which would abort the whole embedding process.
 pub fn check_cancelled() {
     if is_cancelled() && !std::thread::panicking() {
+        std::panic::resume_unwind(Box::new(Cancelled));
+    }
+}
+
+/// Unwinds the invocation once the programs it started are to be killed
+/// (`Control::check_processes`), unless it is unwinding already.
+pub(crate) fn check_processes() {
+    let killed = control().is_some_and(|control| control.check_processes().is_err());
+    if killed && !std::thread::panicking() {
         std::panic::resume_unwind(Box::new(Cancelled));
     }
 }

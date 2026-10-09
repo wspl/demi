@@ -11,7 +11,7 @@ use std::{
 };
 
 use brush_core::{
-    execution_host::{ExecutionHost, FileControl},
+    execution_host::{BackgroundTask, ExecutionHost, FileControl},
     processes::ChildProcess,
 };
 use demi_runner_process::{
@@ -20,6 +20,8 @@ use demi_runner_process::{
     process::{self, ChildAttributes},
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
+
+use crate::work::{Stop, Work};
 
 #[derive(Debug, thiserror::Error)]
 #[error("shell job cancelled")]
@@ -97,7 +99,15 @@ impl Interrupt {
 
 #[derive(Clone)]
 pub struct Scope {
+    /// Ends the scope's shell work. A part of the job's work (`Stop`) ends
+    /// with it, and so may a narrower one, such as a declared command's
+    /// reading of its input.
     pub cancellation: CancellationToken,
+    /// The part of the job the scope's work belongs to, which a signal to it
+    /// stops.
+    pub(crate) stop: Arc<Stop>,
+    /// The job's background tasks and process groups.
+    pub(crate) work: Arc<Work>,
     pub tasks: TaskTracker,
     pub commands: Option<JobCommands>,
     pub edits: Option<demi_command_sdk::edits::Recorder>,
@@ -115,9 +125,14 @@ pub struct Scope {
 }
 
 impl Scope {
+    /// A job's scope, which `cancellation` ends with everything the job
+    /// runs.
     pub fn new(cancellation: CancellationToken, commands: Option<JobCommands>) -> Self {
+        let stop = Stop::job(&cancellation);
         Self {
-            cancellation,
+            cancellation: stop.shell.clone(),
+            stop,
+            work: Arc::new(Work::new(cancellation)),
             tasks: TaskTracker::new(),
             commands,
             edits: None,
@@ -166,6 +181,37 @@ impl Scope {
     pub async fn finish(&self) {
         self.tasks.close();
         self.tasks.wait().await;
+    }
+
+    /// A part of this scope's work that a signal stops on its own: a
+    /// background task, or the command a `timeout` runs.
+    pub(crate) fn part(&self) -> Self {
+        let stop = self.stop.part(self.cancellation.child_token());
+        Self {
+            cancellation: stop.shell.clone(),
+            stop,
+            #[cfg(unix)]
+            interrupt: Arc::new(Mutex::new(None)),
+            ..self.clone()
+        }
+    }
+
+    /// Sends `signal` to the scope's part of the job (`Work::signal`).
+    pub(crate) fn signal(&self, signal: i32, leaders: bool) -> io::Result<()> {
+        self.work.signal(&self.stop, signal, leaders)
+    }
+
+    /// Fails once the processes the scope started are to be killed: when
+    /// its part of the job is killed, or its work ends for another reason
+    /// than a signal that stops the part, after which they end in their own
+    /// time.
+    pub(crate) fn check_processes(&self) -> io::Result<()> {
+        let ended_otherwise = self.cancellation.is_cancelled() && !self.stop.shell.is_cancelled();
+        if self.stop.kill.is_cancelled() || ended_otherwise {
+            Err(io::Error::other(Cancelled))
+        } else {
+            Ok(())
+        }
     }
 
     pub fn with_cancellation(&self, cancellation: CancellationToken) -> Self {
@@ -436,6 +482,19 @@ impl FileControl for Scope {
 }
 
 impl ExecutionHost for Scope {
+    /// A background task is a part of the job of its own, numbered within
+    /// the job (`runner.md` § Background tasks and timeouts).
+    fn background_task(&self) -> io::Result<Option<BackgroundTask>> {
+        self.check()?;
+        let task = self.part();
+        let id = self.work.add_task(task.stop.clone());
+        Ok(Some(BackgroundTask {
+            id,
+            guard: Box::new(task.stop.done.clone().drop_guard()),
+            host: Arc::new(task),
+        }))
+    }
+
     fn open_file(
         &self,
         path: &Path,
@@ -512,6 +571,9 @@ impl ExecutionHost for Scope {
         }
         let command = tokio::process::Command::from(command);
         let mut command = process::wrap(command, true, &child_attributes(attributes));
+        // A signal waits until the child is in the table, which it may act
+        // on before the start returns.
+        let starting = self.work.starting();
         // A start that waits (`demi_runner_process::process::start`) ends
         // with the job.
         let mut child = process::start_blocking(|| {
@@ -519,13 +581,15 @@ impl ExecutionHost for Scope {
             command.spawn()
         })?;
         let pid = child.id().expect("new child has a PID") as i32;
-        let cancellation = self.cancellation.clone();
+        let group = self.work.add_group(pid, self.stop.clone(), true);
+        drop(starting);
+        let kill = self.stop.kill.clone();
         let (result, receiver) = tokio::sync::oneshot::channel();
         self.tasks.spawn(async move {
             let mut failure = None;
             let status = tokio::select! {
                 biased;
-                _ = cancellation.cancelled() => {
+                _ = kill.cancelled() => {
                     if let Err(error) = process::kill(child.as_mut()) {
                         failure = Some(error);
                     }
@@ -533,7 +597,15 @@ impl ExecutionHost for Scope {
                 }
                 status = child.wait() => status,
             };
-            if let Err(error) = process::kill(child.as_mut()) {
+            if let Ok(status) = &status {
+                group.ended(shell_status(*status));
+            }
+            // After a signal that ends a process, the rest of the group ends
+            // in its own time, unless it is killed (`runner.md`
+            // § Cancellation and completion); otherwise it ends with its
+            // leader.
+            let signalled = group.signalled();
+            if !signalled && let Err(error) = process::kill(child.as_mut()) {
                 failure = Some(error);
             }
             let outcome = match (status, failure) {
@@ -546,12 +618,35 @@ impl ExecutionHost for Scope {
             };
             // The shell may have failed before waiting; the owner still reaps the child.
             let _receiver_closed = result.send(outcome);
+            #[cfg(unix)]
+            if signalled {
+                tokio::select! {
+                    _ = kill.cancelled() => {}
+                    () = process::group_ended(pid) => {}
+                }
+                if let Err(error) = process::kill(child.as_mut()) {
+                    // The leader has been reaped; its status went to the shell.
+                    tracing::warn!("killing what remains of process group {pid} failed: {error}");
+                }
+            }
+            drop(group);
         });
         Ok(ChildProcess::managed(
             pid,
             Box::pin(async move { receiver.await.map_err(io::Error::other)? }),
         ))
     }
+}
+
+/// The status a shell gives a process's end: its exit code, or 128 plus the
+/// signal that ended it, as brush gives it.
+pub(crate) fn shell_status(status: std::process::ExitStatus) -> u8 {
+    let output = std::process::Output {
+        status,
+        stdout: Vec::new(),
+        stderr: Vec::new(),
+    };
+    brush_core::ExecutionResult::from(output).exit_code.into()
 }
 
 /// The attributes a process gets from the shell that starts it: what its
@@ -619,6 +714,9 @@ impl uucore::context::Control for UtilityControl {
     fn check(&self) -> io::Result<()> {
         self.scope.check()
     }
+    fn check_processes(&self) -> io::Result<()> {
+        self.scope.check_processes()
+    }
     fn duplicate(&self, file: &File) -> io::Result<File> {
         self.scope.duplicate(file)
     }
@@ -647,10 +745,27 @@ impl uucore::context::Control for UtilityControl {
     ) -> io::Result<Box<dyn process_wrap::std::ChildWrapper>> {
         #[cfg(unix)]
         process::set_attributes(command.command_mut(), &self.attributes);
-        process::start_blocking(|| {
+        // As the shell's start (`Scope::spawn`).
+        #[cfg(unix)]
+        let starting = self.scope.work.starting();
+        let child = process::start_blocking(|| {
             self.scope.check()?;
             command.spawn()
-        })
+        })?;
+        // The child leads a group of its own, which a signal to the
+        // utility's part of the job reaches.
+        #[cfg(unix)]
+        let child = Box::new(Signalled {
+            _group: self.scope.work.add_group(
+                child.id() as i32,
+                self.scope.stop.clone(),
+                false,
+            ),
+            child,
+        });
+        #[cfg(unix)]
+        drop(starting);
+        Ok(child)
     }
     fn utility(&self, program: &std::ffi::OsStr) -> Option<&'static str> {
         crate::utilities::named(program)
@@ -662,6 +777,10 @@ impl uucore::context::Control for UtilityControl {
         mut context: uucore::context::Context,
         args: Vec<std::ffi::OsString>,
     ) -> io::Result<Box<dyn uucore::context::UtilityRun>> {
+        #[cfg(unix)]
+        if context.name == crate::timeout::NAME {
+            return crate::timeout::start(self, context, args);
+        }
         let cancellation = self.scope.cancellation.child_token();
         context.control = Some(Arc::new(UtilityControl {
             scope: self.scope.with_cancellation(cancellation.clone()),
@@ -702,4 +821,26 @@ fn file_identity(file: &File) -> io::Result<FileIdentity> {
         u64::from(info.dwVolumeSerialNumber),
         (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow),
     ))
+}
+
+/// A utility's child program, in its job's table of process groups while it
+/// lives.
+#[cfg(unix)]
+#[derive(Debug)]
+struct Signalled {
+    child: Box<dyn process_wrap::std::ChildWrapper>,
+    _group: crate::work::GroupEntry,
+}
+
+#[cfg(unix)]
+impl process_wrap::std::ChildWrapper for Signalled {
+    fn inner(&self) -> &dyn process_wrap::std::ChildWrapper {
+        self.child.as_ref()
+    }
+    fn inner_mut(&mut self) -> &mut dyn process_wrap::std::ChildWrapper {
+        self.child.as_mut()
+    }
+    fn into_inner(self: Box<Self>) -> Box<dyn process_wrap::std::ChildWrapper> {
+        self.child
+    }
 }
