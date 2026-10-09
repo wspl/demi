@@ -256,6 +256,32 @@ the request again.
 A run takes no input once it starts. Steers and agent messages reach the model
 with the next request ([Input](../agent/runtime.md#input)).
 
+### Media in tool results
+
+A tool result carries images, videos and PDF documents the model viewed
+([Media the model views](../agent/runtime.md#media-the-model-views)), but a
+model reads a medium there only when its provider's wire carries that kind in
+a tool result. Which types a model reads in a tool result is therefore its
+accepted types ([Accepted attachment types](models.md#accepted-attachment-types))
+narrowed to the kinds its provider carries there:
+
+| Provider | Kinds in a tool result | Where they go |
+| --- | --- | --- |
+| `anthropic-api` | Image, document | Inside `tool_result.content`, as `image` and `document` blocks |
+| `openai-api`, Responses | Image, document | A user message right after the call's output, as `input_image` and `input_file` parts; the output names each by its line |
+| `openai-api`, Chat Completions | Image, document | A user message right after the tool message, which takes only text, as `image_url` and `file` parts |
+| `google` | Image, video, document | `inlineData` parts beside the `functionResponse`, in the same content |
+| `codex` | Image | Inside `function_call_output.output`, as `input_image`; the backend documents no file part |
+| `claude-code` | Image | Inside the MCP tool result as `image` content; the CLI saves an MCP PDF resource to a file of its own instead of giving it to the model |
+| `grok-build` | None | The proxy takes no media in a tool message and documents no follow-up |
+
+The backend gives a job this list for the node's model when the job starts,
+so `demi file view` refuses at once what the model cannot see, and each
+request checks it again, since the model can change: a medium the request's
+model cannot read in a tool result is replayed as its line
+([Replay](../agent/runtime.md#replay)). A provider never drops a medium
+silently: what it cannot carry is not in its list.
+
 ### Failures
 
 A failure's typed code is what the agent's retry policy reads, and its
