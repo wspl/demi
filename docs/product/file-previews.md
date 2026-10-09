@@ -202,12 +202,11 @@ open, and a click opens it large:
 ```
 
 - **Which calls.** A call shows the images and videos its own result carries,
-  so a picture shows where the model saw it. A `shell_exec` whose command
+  so a picture shows where the model saw it. A `shell` call whose command
   exits within the call's window carries the command's media, several of
   them when its commands returned several. When the command exits after the
-  call returned, the `shell_status` that reports the exit carries it
-  instead. A
-  `yield` carries none. The generic tool card shows its result's media the
+  call returned, the report or the `demi shell status` that tells the end
+  carries them instead. The generic tool card shows its result's media the
   same way.
 - **Where.** Under the call's row, above the files the call changed, side
   by side in the order of the result and wrapping onto the next row when the

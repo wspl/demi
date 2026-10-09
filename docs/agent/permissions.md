@@ -28,7 +28,7 @@ demi skills add vercel-labs/agent-skills --skill web-design-guidelines
    request was sent to the user, and you will be told when the user decides
    ```
 
-   Nothing was fetched or changed. The `shell_exec` call returns as for any
+   Nothing was fetched or changed. The `shell` call returns as for any
    failed command, and the agent tells the user what it is waiting for and
    ends its turn.
 2. Every page of the user shows a yellow dot on the conversation's row in the
