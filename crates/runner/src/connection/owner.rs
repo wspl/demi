@@ -752,7 +752,6 @@ impl Owner<'_> {
                 context,
                 script,
                 cwd,
-                workspace,
                 env,
                 stdin,
                 stdout,
@@ -772,7 +771,6 @@ impl Owner<'_> {
                     env: values,
                     command: TaskCommand::Shell {
                         script: script.clone(),
-                        workspace: PathBuf::from(workspace),
                         stdin: stdin.clone(),
                         stdout: stdout.clone(),
                         commands: manifest_hash.clone().map(|hash| (hash, context.clone())),

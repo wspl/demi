@@ -416,8 +416,8 @@ test('a command\'s live frames build what the page shows of it, until its end', 
   const frame = (status: 'running' | 'exited', tail: string, chars: number) => ({
     type: 'shell_output' as const,
     status: status === 'running'
-      ? { status, shellId: 'sh', commandId: 'cmd', toolUseId: 'call-1', tail, chars, runningMs: 10 }
-      : { status, shellId: 'sh', commandId: 'cmd', toolUseId: 'call-1', tail, chars, runningMs: 10, exitCode: 0 },
+      ? { status, commandId: 'cmd', toolUseId: 'call-1', tail, chars, runningMs: 10 }
+      : { status, commandId: 'cmd', toolUseId: 'call-1', tail, chars, runningMs: 10, exitCode: 0 },
   })
   applyConversationEvent(conversation, frame('running', 'one\n', 4))
   // The frame's tail holds only the newest characters; the page adds them.
@@ -428,7 +428,7 @@ test('a command\'s live frames build what the page shows of it, until its end', 
   // After a gap, the page shows the tail anew; a transcript event keeps the live view.
   applyConversationEvent(conversation, frame('running', 'ninety\n', 100))
   conversation.blocks = [{ ...execCall('call-1', 'npm test', 'completed', 'Run the unit tests'), view: {
-    kind: 'shell', status: 'exited', exitCode: 0, shellId: 'sh', commandId: 'cmd', runningMs: 10, idleMs: 0,
+    kind: 'shell', status: 'exited', exitCode: 0, commandId: 'cmd', runningMs: 10, idleMs: 0,
     chunks: [{ stream: 'stdout', text: 'one\n' }], viewTruncated: false,
   } }]
   applyConversationEvent(conversation, { type: 'transcript_patch', patches: [], blocks: conversation.blocks, failures: {} })
@@ -450,7 +450,7 @@ test('a command\'s live frames build what the page shows of it, until its end', 
   })
   applyConversationEvent(conversation, {
     type: 'shell_output', subagentId: 'child',
-    status: { status: 'running', shellId: 'sh-2', commandId: 'cmd-2', toolUseId: 'call-1', tail: 'Compiling\n', chars: 10, runningMs: 5 },
+    status: { status: 'running', commandId: 'cmd-2', toolUseId: 'call-1', tail: 'Compiling\n', chars: 10, runningMs: 5 },
   })
   expect(toRaw(conversation.terminals)[1]).toMatchObject({
     id: 'cmd-2', title: 'cargo build', script: 'cargo build', subagentId: 'child', toolUseId: 'call-1', output: 'Compiling\n',
@@ -463,14 +463,14 @@ test('a stopped command stays stopped, live and after a reload', () => {
   const conversation = useConversations().items[0]!
   conversation.blocks = [execCall('call-1', 'npm run watch', 'executing')]
   conversation.terminals = []
-  const view = { shellId: 'sh', commandId: 'cmd', toolUseId: 'call-1', tail: 'watching\n', chars: 9, runningMs: 10 }
+  const view = { commandId: 'cmd', toolUseId: 'call-1', tail: 'watching\n', chars: 9, runningMs: 10 }
   applyConversationEvent(conversation, { type: 'shell_output', status: { status: 'running', ...view } })
   applyConversationEvent(conversation, { type: 'shell_output', status: { status: 'aborted', ...view } })
   expect(toRaw(conversation.terminals)).toMatchObject([{ id: 'cmd', phase: 'aborted' }])
 
   conversation.terminals = []
   conversation.blocks = [{ ...execCall('call-1', 'npm run watch', 'completed'), view: {
-    kind: 'shell', status: 'aborted', shellId: 'sh', commandId: 'cmd', runningMs: 10, idleMs: 0,
+    kind: 'shell', status: 'aborted', commandId: 'cmd', runningMs: 10, idleMs: 0,
     chunks: [{ stream: 'stdout', text: 'watching\n' }], viewTruncated: false,
   } }]
   applyConversationEvent(conversation, { type: 'transcript_reset', blocks: conversation.blocks, failures: {} })

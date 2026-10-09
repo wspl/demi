@@ -537,13 +537,12 @@ impl dyn HostShard + '_ {
         })
     }
 
-    /// The Hosts the web app's host routes and `demi host shell --host` accept
-    /// (§ Attached hosts): the primary Host, and the attached ones. A shell on
-    /// the primary Host starts in the conversation's directory there; one on an
-    /// attached Host where the last shell there ended, or in its home before
-    /// one ran.
-    /// The Hosts the user's conversation `id` reaches: its primary Host, then
-    /// its attached ones.
+    /// The Hosts the user's conversation `id` reaches, which the web app's
+    /// host routes and `demi host shell --host` accept
+    /// (`sessions-and-targets.md` § Attached hosts): its primary Host, then
+    /// its attached ones. A command on the primary Host starts in the
+    /// conversation's directory there; one on an attached Host in the
+    /// directory fixed when it was attached, or in its home when none was.
     pub async fn conversation_hosts(
         &self,
         id: &ConversationId,

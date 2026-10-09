@@ -7,7 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
-use crate::{BlobRef, CommandId, MAX_SAFE_INTEGER, ShellId, WakeupId};
+use crate::{BlobRef, CommandId, MAX_SAFE_INTEGER, WakeupId};
 
 /// A tool call's view.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -50,8 +50,6 @@ pub enum ToolView {
 pub struct ShellToolView {
     #[garde(skip)]
     pub status: ShellViewStatus,
-    #[garde(skip)]
-    pub shell_id: ShellId,
     #[garde(skip)]
     pub command_id: CommandId,
     /// Present once the command exited.

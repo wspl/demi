@@ -19,9 +19,8 @@ use crate::scope::Scope;
 pub struct ShellOptions {
     pub scope: Scope,
     pub login: bool,
+    /// Where the job starts.
     pub cwd: PathBuf,
-    /// Where the job starts when `cwd` no longer exists.
-    pub workspace: PathBuf,
     pub env: BTreeMap<String, String>,
     pub stdin: File,
     pub stdout: File,
@@ -30,14 +29,25 @@ pub struct ShellOptions {
 
 pub struct ShellResult {
     pub code: u8,
-    pub cwd: PathBuf,
 }
 
 pub async fn execute(
     script: &str,
     options: ShellOptions,
 ) -> Result<ShellResult, brush_core::Error> {
-    let cwd = start_directory(&options)?;
+    // A directory that does not exist fails the job before its script runs
+    // (`runner.md` § Shell jobs). Standard output stays the script's alone,
+    // so a job whose stdout is piped elsewhere carries no line of the
+    // runner's.
+    if !options.cwd.try_exists()? {
+        let line = format!(
+            "demi: cannot start in {}: No such file or directory\n",
+            options.cwd.display()
+        );
+        (&options.stderr).write_all(line.as_bytes())?;
+        return Ok(ShellResult { code: 1 });
+    }
+    let cwd = options.cwd;
     // Every copy the shell makes of these goes through the job's scope, which
     // waits out a lack of open files (`runner.md` § Load).
     let control: Arc<dyn FileControl> = Arc::new(options.scope.clone());
@@ -108,26 +118,7 @@ pub async fn execute(
     shell.jobs_mut().wait_all().await?;
     Ok(ShellResult {
         code: result.exit_code.into(),
-        cwd: shell.working_dir().to_owned(),
     })
-}
-
-/// Where the job starts (`runner.md` § Shell jobs): the requested cwd, or,
-/// when that no longer exists, such as a directory under the previous job's
-/// scratch directory, the conversation's working directory, which the job's
-/// standard error says first. Standard output stays the script's alone, so a
-/// job whose stdout is piped elsewhere carries only the script's bytes.
-fn start_directory(options: &ShellOptions) -> io::Result<PathBuf> {
-    if options.cwd.try_exists()? {
-        return Ok(options.cwd.clone());
-    }
-    let line = format!(
-        "demi: {} no longer exists; starting in {}\n",
-        options.cwd.display(),
-        options.workspace.display()
-    );
-    (&options.stderr).write_all(line.as_bytes())?;
-    Ok(options.workspace.clone())
 }
 
 /// The builtins every job's shell has: brush's, the runner's own in place of
@@ -164,13 +155,15 @@ pub(crate) fn scope(shell: &Shell) -> io::Result<Scope> {
         .ok_or_else(|| io::Error::other("missing shell execution owner"))
 }
 
-/// Login profiles configure user tools; runner-owned context stays authoritative.
+/// Login profiles configure user tools; the runner's own variables, its
+/// `DEMI_*` names, stay authoritative. `TMPDIR` is the device's, which a
+/// profile may set as for any other program (`runner.md` § Shell jobs).
 fn restore_execution_context(
     shell: &mut Shell,
     env: &BTreeMap<String, String>,
 ) -> Result<(), brush_core::Error> {
     for (name, value) in env {
-        if name.starts_with("DEMI_") || matches!(name.as_str(), "TMPDIR" | "TEMP") {
+        if name.starts_with("DEMI_") {
             let mut variable = brush_core::ShellVariable::new(value.clone());
             variable.export();
             shell.env_mut().set_global(name, variable)?;

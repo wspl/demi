@@ -295,7 +295,6 @@
     "type": "shell_output",
     "status": {
       "status": "running",
-      "shellId": "sh-1",
       "commandId": "cmd-1",
       "toolUseId": "toolu_1",
       "tail": "ok 12 tests\n",
@@ -308,7 +307,6 @@
     "subagentId": "node-2",
     "status": {
       "status": "exited",
-      "shellId": "sh-2",
       "commandId": "cmd-2",
       "toolUseId": "toolu_2",
       "tail": "[... 20000000 bytes of stdout not shown ...]\n<binary stdout: 20000000 bytes, exceeds the 16777216-byte binary limit; raw bytes at /home/demi/.demi/output/cmd-2/stdout.txt>\n",
@@ -321,7 +319,6 @@
     "type": "shell_output",
     "status": {
       "status": "aborted",
-      "shellId": "sh-1",
       "commandId": "cmd-1",
       "toolUseId": "toolu_1",
       "tail": "ok 12 tests\n",

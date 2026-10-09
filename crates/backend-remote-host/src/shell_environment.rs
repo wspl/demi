@@ -5,9 +5,9 @@
 //! holds the newest output the runner sends while a page watches and the job
 //! is therefore followed (`runtime.md` § Live output). At the job's end the
 //! product's keeper stores the whole output, and the runner lets the job's
-//! directory go (`runtime.md` § The whole output). The directory a script
-//! ends in carries into the shell's next exec; nothing else of the shell's
-//! state does.
+//! directory go (`runtime.md` § The whole output). Every job starts in the
+//! conversation's working directory on the Host, and nothing of an earlier
+//! one carries over (`runtime.md` § Running shell tools).
 
 use std::{
     cell::{Cell, RefCell},
@@ -21,10 +21,9 @@ use bytes::Bytes;
 use demi_command_protocol::{CommandContext, EditKind as JobEditKind};
 use demi_host_interface::{
     BinaryOutput, CommandMedium, CommandRecord, CommandSet, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
-    DefaultShell,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, Ending, ExecRequest, Host, HostError, HostKey,
     JobCaller, Missing, Numbers, OutputRecord, PageFeed, PageView, ProcessEnd, Seen,
-    ShellEnvironment, ShellError, ShellTarget, SpawnErrorKind, Streams, WholeOutput, binary_line,
+    ShellEnvironment, ShellError, SpawnErrorKind, Streams, WholeOutput, binary_line,
 };
 use demi_runner_protocol::{
     manifest::ManifestError,
@@ -32,7 +31,7 @@ use demi_runner_protocol::{
 };
 use demi_shared_types::{
     BlobRef, CommandEnd, CommandId, EditCopies, EditKind, EditSegment, EditedFile, PathChange,
-    Sequence, ShellId, StreamKind,
+    Sequence, StreamKind,
 };
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
@@ -101,12 +100,12 @@ pub struct EnvironmentOptions {
     /// Where the pages' views of its commands go, and whether a page
     /// watches, which its jobs follow.
     pub feed: Rc<dyn PageFeed>,
-    /// Where its commands' and shells' numbers come from: the
-    /// conversation's sequences.
+    /// Where its commands' numbers come from: the conversation's
+    /// sequences.
     pub numbers: Rc<dyn Numbers>,
     pub access: Option<Rc<dyn HostAccess>>,
     pub keeper: Option<Rc<dyn CommandKeeper>>,
-    /// The variables every shell starts with, above the device's own.
+    /// The variables every job starts with, above the device's own.
     pub initial_env: BTreeMap<String, String>,
     /// The budget of one status view's new output, per stream.
     pub output_limit: usize,
@@ -157,7 +156,7 @@ impl RemoteShellEnvironmentFactory {
     }
 }
 
-/// A node's shells on a Host behind a runner.
+/// A node's commands on a Host behind a runner.
 #[derive(Clone)]
 pub struct RemoteShellEnvironment(Rc<Environment>);
 
@@ -173,18 +172,8 @@ struct Environment {
 
 #[derive(Default)]
 struct State {
-    shells: HashMap<ShellId, Shell>,
-    default_shell: Option<ShellId>,
-    /// A shell number taken for a shell not made yet.
-    spare_shell: Option<ShellId>,
     records: HashMap<CommandId, Rc<RefCell<CommandRecord>>>,
     running: HashMap<CommandId, Rc<Running>>,
-}
-
-struct Shell {
-    cwd: String,
-    env: BTreeMap<String, String>,
-    foreground: Option<CommandId>,
 }
 
 /// How a command ended and the whole output it settles with, which
@@ -255,29 +244,15 @@ impl RemoteShellEnvironment {
         }))
     }
 
-    /// Starts the command: it takes the conversation's next command number,
-    /// then picks the exec's shell and reserves it in one step that nothing
-    /// awaits in, so two execs never share a shell. A new shell takes the
-    /// conversation's next shell number, fetched first when none is spare.
-    /// An exec refused before its number is taken takes none.
+    /// Starts the command, numbered with the conversation's next command
+    /// number, as a job of its own.
     async fn start_command(
         &self,
         request: ExecRequest,
         cancel: CancellationToken,
     ) -> Result<CommandId, ShellError> {
-        if let ShellTarget::Existing(id) = &request.shell {
-            check_free(&self.0.state.borrow(), id)?;
-        }
-        let command = numbered::<CommandId>(self.0.options.numbers.next(Sequence::Command).await?);
-        let shell_id = loop {
-            if let Some(shell) = self.reserve(&request.shell, &command)? {
-                break shell;
-            }
-            let spare = numbered::<ShellId>(self.0.options.numbers.next(Sequence::Shell).await?);
-            self.0.state.borrow_mut().spare_shell = Some(spare);
-        };
+        let command = numbered(self.0.options.numbers.next(Sequence::Command).await?);
         let record = Rc::new(RefCell::new(CommandRecord::new(
-            shell_id.clone(),
             command.clone(),
             request.tool_use_id,
         )));
@@ -299,76 +274,10 @@ impl RemoteShellEnvironment {
         let task_command = command.clone();
         self.0.tasks.spawn_local(async move {
             environment
-                .run(
-                    shell_id,
-                    task_command,
-                    request.script,
-                    request.caller,
-                    running,
-                    record,
-                )
+                .run(task_command, request.script, request.caller, running, record)
                 .await;
         });
         Ok(command)
-    }
-
-    /// Picks `target`'s shell and makes `command` its foreground; none when
-    /// the pick needs a new shell and no shell number is spare. The shell
-    /// it picks runs nothing: an existing one is checked again, since the
-    /// state may have changed while the command's number was fetched.
-    fn reserve(
-        &self,
-        target: &ShellTarget,
-        command: &CommandId,
-    ) -> Result<Option<ShellId>, ShellError> {
-        let mut state = self.0.state.borrow_mut();
-        let shell_id = match target {
-            ShellTarget::Existing(id) => {
-                check_free(&state, id)?;
-                id.clone()
-            }
-            ShellTarget::New { cwd } => match self.create_shell(&mut state, cwd.clone()) {
-                Some(id) => id,
-                None => return Ok(None),
-            },
-            ShellTarget::Default => match state.default_shell.clone() {
-                Some(id) if state.shells[&id].foreground.is_none() => id,
-                busy => {
-                    // A shell beside the busy default one starts where it is.
-                    let cwd = busy.as_ref().map(|id| state.shells[id].cwd.clone());
-                    let Some(id) = self.create_shell(&mut state, cwd) else {
-                        return Ok(None);
-                    };
-                    if busy.is_none() {
-                        state.default_shell = Some(id.clone());
-                    }
-                    id
-                }
-            },
-        };
-        state
-            .shells
-            .get_mut(&shell_id)
-            .expect("the shell was just found")
-            .foreground = Some(command.clone());
-        Ok(Some(shell_id))
-    }
-
-    /// Makes a shell with the spare shell number, which starts in `cwd`, the
-    /// Host's default when none, with the variables every shell starts
-    /// with: no shell's variables carry from one exec to the next. None
-    /// when no number is spare.
-    fn create_shell(&self, state: &mut State, cwd: Option<String>) -> Option<ShellId> {
-        let id = state.spare_shell.take()?;
-        state.shells.insert(
-            id.clone(),
-            Shell {
-                cwd: cwd.unwrap_or_else(|| self.0.options.host.default_cwd().to_owned()),
-                env: self.0.options.initial_env.clone(),
-                foreground: None,
-            },
-        );
-        Some(id)
     }
 
     /// Tells the pages that `record`'s view changed.
@@ -380,7 +289,6 @@ impl RemoteShellEnvironment {
     /// there is one.
     async fn run(
         &self,
-        shell: ShellId,
         command: CommandId,
         script: String,
         caller: JobCaller,
@@ -390,7 +298,7 @@ impl RemoteShellEnvironment {
         let failure: RefCell<Option<String>> = RefCell::new(None);
         let job = async {
             if let Err(error) = self
-                .execute(&shell, &command, script, caller, &running, &record)
+                .execute(&command, script, caller, &running, &record)
                 .await
             {
                 *failure.borrow_mut() = Some(error);
@@ -429,14 +337,7 @@ impl RemoteShellEnvironment {
             };
             self.end(&command, &record, settlement, None).await;
         }
-        let mut state = self.0.state.borrow_mut();
-        state.running.remove(&command);
-        if let Some(shell) = state.shells.get_mut(&shell)
-            && shell.foreground.as_ref() == Some(&command)
-        {
-            shell.foreground = None;
-        }
-        drop(state);
+        self.0.state.borrow_mut().running.remove(&command);
         running.settled.send_replace(true);
     }
 
@@ -444,7 +345,6 @@ impl RemoteShellEnvironment {
     /// ran.
     async fn execute(
         &self,
-        shell: &ShellId,
         command: &CommandId,
         script: String,
         caller: JobCaller,
@@ -457,13 +357,11 @@ impl RemoteShellEnvironment {
         if running.stop.is_cancelled() {
             return Err("Shell command aborted".into());
         }
-        let (cwd, env) = {
-            let state = self.0.state.borrow();
-            let shell = &state.shells[shell];
-            let mut env = shell.env.clone();
-            env.insert("PWD".into(), shell.cwd.clone());
-            (shell.cwd.clone(), env)
-        };
+        // Every job starts in the conversation's working directory on the
+        // Host (`runtime.md` § Running shell tools).
+        let cwd = self.0.options.host.default_cwd().to_owned();
+        let mut env = self.0.options.initial_env.clone();
+        env.insert("PWD".into(), cwd.clone());
         let job = self
             .0
             .options
@@ -530,16 +428,15 @@ impl RemoteShellEnvironment {
             end,
             streams,
         };
-        self.finish(shell, command, running, record, ended).await;
+        self.finish(command, running, record, ended).await;
         Ok(())
     }
 
-    /// Settles the record from the job's end: its edits, its directory, and
-    /// its whole output, which the backend received or reads from the Host
+    /// Settles the record from the job's end: its edits and its whole
+    /// output, which the backend received or reads from the Host
     /// now; the runner then lets the job's directory go.
     async fn finish(
         &self,
-        shell: &ShellId,
         command: &CommandId,
         running: &Running,
         record: &Rc<RefCell<CommandRecord>>,
@@ -563,11 +460,6 @@ impl RemoteShellEnvironment {
                 truncated: end.files_truncated,
             })
         };
-        if let Some(cwd) = end.cwd.clone()
-            && let Some(shell) = self.0.state.borrow_mut().shells.get_mut(shell)
-        {
-            shell.cwd = cwd;
-        }
         let mut received = running.received.take();
         let set_files = |files: Option<EditedFiles>| {
             if let Some(files) = files {
@@ -849,24 +741,6 @@ impl RemoteShellEnvironment {
         }
         Ok(())
     }
-
-    async fn dispose(&self, shell: &ShellId) -> bool {
-        let foreground = match self.0.state.borrow().shells.get(shell) {
-            None => return false,
-            Some(shell) => shell.foreground.clone(),
-        };
-        if let Some(command) = foreground
-            && let Err(error) = self.stop_command(&command).await
-        {
-            tracing::debug!(%command, "could not abort the shell's command: {error}");
-        }
-        let mut state = self.0.state.borrow_mut();
-        state.shells.remove(shell);
-        if state.default_shell.as_ref() == Some(shell) {
-            state.default_shell = None;
-        }
-        true
-    }
 }
 
 impl ShellEnvironment for RemoteShellEnvironment {
@@ -896,13 +770,6 @@ impl ShellEnvironment for RemoteShellEnvironment {
 
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
         self.view(command)
-    }
-
-    fn default_shell(&self) -> Option<DefaultShell> {
-        let state = self.0.state.borrow();
-        let id = state.default_shell.clone()?;
-        let cwd = state.shells[&id].cwd.clone();
-        Some(DefaultShell { id, cwd })
     }
 
     fn read_output<'a>(
@@ -1005,15 +872,13 @@ impl ShellEnvironment for RemoteShellEnvironment {
         })
     }
 
-    fn dispose_shell<'a>(&'a self, shell: &'a ShellId) -> LocalBoxFuture<'a, bool> {
-        Box::pin(self.dispose(shell))
-    }
-
     fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async move {
-            let shells: Vec<_> = self.0.state.borrow().shells.keys().cloned().collect();
-            for shell in shells {
-                self.dispose(&shell).await;
+            let running: Vec<_> = self.0.state.borrow().running.keys().cloned().collect();
+            for command in running {
+                if let Err(error) = self.stop_command(&command).await {
+                    tracing::debug!(%command, "could not abort the command: {error}");
+                }
             }
             let running: Vec<_> = self.0.state.borrow().running.values().cloned().collect();
             for running in running {
@@ -1022,37 +887,14 @@ impl ShellEnvironment for RemoteShellEnvironment {
         })
     }
 
-    fn owns_shell(&self, shell: &ShellId) -> bool {
-        self.0.state.borrow().shells.contains_key(shell)
-    }
-
     fn owns_command(&self, command: &CommandId) -> bool {
         self.0.state.borrow().records.contains_key(command)
     }
 }
 
-/// Refuses `id` when the environment has no such shell or it runs a
-/// command.
-fn check_free(state: &State, id: &ShellId) -> Result<(), ShellError> {
-    let shell = state
-        .shells
-        .get(id)
-        .ok_or_else(|| ShellError::UnknownShell(id.clone()))?;
-    match &shell.foreground {
-        Some(command) => Err(ShellError::ShellBusy {
-            shell: id.clone(),
-            command: command.clone(),
-        }),
-        None => Ok(()),
-    }
-}
-
-/// The identity the model knows a command or a shell by: its number.
-fn numbered<T: TryFrom<String>>(number: u64) -> T
-where
-    T::Error: std::fmt::Debug,
-{
-    T::try_from(number.to_string()).expect("a number is a nonempty identity")
+/// The identity the model knows a command by: its number.
+fn numbered(number: u64) -> CommandId {
+    CommandId::try_from(number.to_string()).expect("a number is a nonempty identity")
 }
 
 fn stream_index(stream: StreamKind) -> usize {

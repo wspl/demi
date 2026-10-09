@@ -20,7 +20,7 @@ use futures_util::{StreamExt, future::BoxFuture};
 use std::{
     collections::{BTreeMap, BTreeSet},
     io,
-    path::{Path, PathBuf},
+    path::Path,
     sync::Arc,
     time::Duration,
 };
@@ -44,7 +44,6 @@ enum Reply {
         #[serde(rename = "exitCode")]
         exit_code: Option<f64>,
         signal: Option<String>,
-        cwd: Option<String>,
         output: Option<OutputLengths>,
     },
 }
@@ -56,7 +55,7 @@ struct Puppet {
     script: String,
     output: mpsc::Sender<OutputChunk>,
     input: mpsc::Receiver<ProcessInput>,
-    exit: oneshot::Sender<(ProcessExit, Option<String>)>,
+    exit: oneshot::Sender<ProcessExit>,
     cancellation: CancellationToken,
 }
 
@@ -82,8 +81,8 @@ impl Puppet {
         assert!(matches!(input, Some(ProcessInput::Bytes(bytes)) if bytes == "\n"));
     }
 
-    /// Ends the job's output, then the job with `code` in `cwd`.
-    fn exit(self, code: Option<i32>, cwd: Option<String>) {
+    /// Ends the job's output, then the job with `code`.
+    fn exit(self, code: Option<i32>) {
         drop(self.output);
         let exit = ProcessExit {
             code,
@@ -91,7 +90,7 @@ impl Puppet {
             error: None,
         };
         // A table that closed no longer waits for the exit.
-        let _ = self.exit.send((exit, cwd));
+        let _ = self.exit.send(exit);
     }
 }
 
@@ -132,8 +131,8 @@ impl JobShell for Puppets {
 struct Played {
     input: mpsc::Sender<ProcessInput>,
     output: mpsc::Receiver<OutputChunk>,
-    exit: Option<oneshot::Receiver<(ProcessExit, Option<String>)>>,
-    exited: Option<(ProcessExit, Option<String>)>,
+    exit: Option<oneshot::Receiver<ProcessExit>>,
+    exited: Option<ProcessExit>,
     cancellation: CancellationToken,
 }
 
@@ -159,16 +158,15 @@ impl ShellJob for Played {
         self.cancellation.is_cancelled()
     }
 
-    fn wait(&mut self) -> BoxFuture<'_, (ProcessExit, Option<String>)> {
+    fn wait(&mut self) -> BoxFuture<'_, ProcessExit> {
         Box::pin(async move {
             if let Some(exit) = self.exit.take() {
                 let killed = || {
-                    let exit = ProcessExit {
+                    ProcessExit {
                         code: None,
                         signal: Some("SIGKILL".into()),
                         error: None,
-                    };
-                    (exit, None)
+                    }
                 };
                 self.exited = Some(tokio::select! {
                     exit = exit => exit.unwrap_or_else(|_| killed()),
@@ -215,7 +213,6 @@ fn start(table: &mut JobTable, root: &Path, script: &str) {
             env: BTreeMap::new(),
             command: TaskCommand::Shell {
                 script: script.into(),
-                workspace: root.into(),
                 stdin: None,
                 stdout: None,
                 commands: None,
@@ -256,8 +253,8 @@ fn stream_bytes(records: &[KeptRecord], stream: OutputStream) -> Vec<u8> {
 /// A shell job keeps every read of its output, and sends the backend the
 /// first `JOB_VIEW_BYTES` of each stream and, unfollowed, how long a stream
 /// grew beyond them with its newest `JOB_VIEW_BYTES`, the last of which
-/// leaves before its end; its end gives each stream's length and its last
-/// working directory, and its directory lasts until its release
+/// leaves before its end; its end gives each stream's length, and its
+/// directory lasts until its release
 /// (`runner.md` § Pipes and output).
 #[tokio::test]
 async fn a_shell_job_keeps_every_read_and_sends_only_its_views() {
@@ -266,13 +263,12 @@ async fn a_shell_job_keeps_every_read_and_sends_only_its_views() {
     start(&mut table, root.path(), "the views");
     let job = jobs.recv().await.unwrap();
     assert_eq!(job.script, "the views");
-    let child = root.path().join("child").to_string_lossy().into_owned();
     tokio::spawn(async move {
         job.print(OutputStream::Stdout, format!("{:060000}", 0).as_bytes())
             .await;
         job.print(OutputStream::Stderr, format!("{:040000}", 1).as_bytes())
             .await;
-        job.exit(Some(0), Some(child));
+        job.exit(Some(0));
     });
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
@@ -321,12 +317,10 @@ async fn a_shell_job_keeps_every_read_and_sends_only_its_views() {
             }
             Reply::Exit {
                 exit_code,
-                cwd,
                 output,
                 signal,
             } => {
                 assert_eq!(exit_code, Some(0.0), "{signal:?}");
-                assert_eq!(cwd.map(PathBuf::from), Some(root.path().join("child")));
                 let output = output.unwrap();
                 assert_eq!(stdout, printed_stdout[..JOB_VIEW_BYTES]);
                 assert_eq!(stderr, printed_stderr[..JOB_VIEW_BYTES]);
@@ -380,7 +374,7 @@ async fn an_endless_job_keeps_its_first_and_last_output_within_the_bound() {
             .collect();
         job.print(OutputStream::Stdout, &lines).await;
         job.print(OutputStream::Stdout, b"END").await;
-        job.exit(Some(0), None);
+        job.exit(Some(0));
     });
     let lengths = loop {
         if let Reply::Exit { output, .. } = reply(&mut receiver).await {
@@ -492,7 +486,7 @@ async fn a_followed_job_sends_its_newest_output_beyond_the_view() {
             .await;
         played.line().await;
         played.print(OutputStream::Stdout, b"end").await;
-        played.exit(Some(0), None);
+        played.exit(Some(0));
     });
     let view = JOB_VIEW_BYTES as u64;
     let live = JOB_LIVE_BYTES as u64;

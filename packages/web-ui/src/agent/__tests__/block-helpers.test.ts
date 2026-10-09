@@ -38,7 +38,6 @@ function shellView(overrides: Partial<ShellToolView> = {}): ShellToolView {
   return {
     kind: 'shell',
     status: 'exited',
-    shellId: 'shell-1',
     commandId: 'cmd-1',
     exitCode: 0,
     runningMs: 12,

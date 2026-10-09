@@ -11,7 +11,6 @@ use demi_shared_types::{Block, CommandId, NodeId, ShellViewStatus, ToolView};
 /// or of the root when none.
 pub fn shell_output(subagent: Option<NodeId>, view: PageView) -> ServerFrame {
     let command = CommandView {
-        shell_id: view.shell_id,
         command_id: view.command_id,
         tool_use_id: view.tool_use_id,
         tail: view.tail,

@@ -26,11 +26,11 @@ use demi_backend_runners::host_key::device_of;
 use demi_backend_runners::router::CommandRegistration;
 use demi_command_protocol::{CommandCaller, EDIT_FILE_BYTES};
 use demi_host_interface::{
-    CommandMedium, CommandStatus, DefaultShell, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
+    CommandMedium, CommandStatus, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
     MediumKept, PageView, ShellEnvironment, ShellError, StoredMedium, WholeOutput,
 };
 use demi_runner_protocol::wire::JobFileChange;
-use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile, ShellId};
+use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
@@ -487,10 +487,6 @@ impl ShellEnvironment for Registered {
         self.environment.status(command)
     }
 
-    fn default_shell(&self) -> Option<DefaultShell> {
-        self.environment.default_shell()
-    }
-
     fn read_output<'a>(
         &'a self,
         command: &'a CommandId,
@@ -526,16 +522,8 @@ impl ShellEnvironment for Registered {
         self.environment.release_command(command)
     }
 
-    fn dispose_shell<'a>(&'a self, shell: &'a ShellId) -> LocalBoxFuture<'a, bool> {
-        self.environment.dispose_shell(shell)
-    }
-
     fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {
         self.environment.dispose_all()
-    }
-
-    fn owns_shell(&self, shell: &ShellId) -> bool {
-        self.environment.owns_shell(shell)
     }
 
     fn owns_command(&self, command: &CommandId) -> bool {

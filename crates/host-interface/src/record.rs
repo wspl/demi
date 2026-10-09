@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use demi_shared_types::{CommandId, OutputChunk, OutputView, ShellId, StreamKind, StreamView};
+use demi_shared_types::{CommandId, OutputChunk, OutputView, StreamKind, StreamView};
 use tokio::time::Instant;
 
 use crate::{
@@ -23,7 +23,6 @@ pub const TAIL_CHARS: usize = 4096;
 /// pages' view.
 #[derive(Debug)]
 pub struct CommandRecord {
-    shell_id: ShellId,
     command_id: CommandId,
     /// The `shell_exec` call that started the command.
     tool_use_id: String,
@@ -71,13 +70,12 @@ impl PageText {
     }
 }
 
-/// A command as the pages see it (`runtime.md` § Live output): its handles,
+/// A command as the pages see it (`runtime.md` § Live output): its handle,
 /// the `shell_exec` call that started it, where it is, the last
 /// [`TAIL_CHARS`] characters of the pages' view of its output, and how many
 /// characters that view has held since the command started.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageView {
-    pub shell_id: ShellId,
     pub command_id: CommandId,
     pub tool_use_id: String,
     pub state: PageState,
@@ -134,10 +132,9 @@ pub enum Ending {
 
 impl CommandRecord {
     /// A running command that the `shell_exec` call `tool_use_id` started.
-    pub fn new(shell_id: ShellId, command_id: CommandId, tool_use_id: String) -> Self {
+    pub fn new(command_id: CommandId, tool_use_id: String) -> Self {
         let now = Instant::now();
         Self {
-            shell_id,
             command_id,
             tool_use_id,
             started: now,
@@ -155,10 +152,6 @@ impl CommandRecord {
 
     pub fn command_id(&self) -> &CommandId {
         &self.command_id
-    }
-
-    pub fn shell_id(&self) -> &ShellId {
-        &self.shell_id
     }
 
     pub fn is_running(&self) -> bool {
@@ -345,7 +338,6 @@ impl CommandRecord {
             Phase::Aborted => CommandState::Aborted,
         };
         CommandStatus {
-            shell_id: self.shell_id.clone(),
             command_id: self.command_id.clone(),
             stdout,
             stderr,
@@ -363,7 +355,6 @@ impl CommandRecord {
     /// The command as the pages see it now.
     pub fn page_view(&self) -> PageView {
         PageView {
-            shell_id: self.shell_id.clone(),
             command_id: self.command_id.clone(),
             tool_use_id: self.tool_use_id.clone(),
             state: match &self.phase {

@@ -163,12 +163,8 @@ crate::id!(
     WakeupId
 );
 crate::id!(
-    /// A shell of a node's shell environment.
-    ShellId
-);
-crate::id!(
-    /// A command a shell runs; its handle for `shell_status`, `yield` and
-    /// `demi shell stop`.
+    /// A command a `shell_exec` started; its handle for `shell_status`,
+    /// `yield` and `demi shell stop`.
     CommandId
 );
 crate::id!(
@@ -187,8 +183,6 @@ crate::id!(
 pub enum Sequence {
     /// Commands, from 1: `17`.
     Command,
-    /// Shells, from 1: `3`.
-    Shell,
     /// Subagents, from 1; the root is agent 0.
     Agent,
     /// Conversation browser tabs, from 1: `t7`. The `demi.browser` service

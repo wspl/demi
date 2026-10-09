@@ -1,6 +1,6 @@
 //! The installation's job directories (`runner.md` § Pipes and output): each
-//! shell job keeps its kept output, its media, its recorded edits and its
-//! scratch directory in `<job root>/job-<random>/`. The job root is `jobs/` in a
+//! shell job keeps its kept output, its media and its recorded edits in
+//! `<job root>/job-<random>/`. The job root is `jobs/` in a
 //! paired device's installation state, and `/var/lib/demi/jobs` on a Cloud's
 //! system image. A job's directory lasts until the backend has what it needs
 //! of the job: its `job_release`, the connection's end, or, for what a
@@ -31,12 +31,10 @@ struct Held {
     running: bool,
 }
 
-/// A job's directory, its kept output, and the scratch directory its
-/// `TMPDIR` names, which goes when the job ends. The directory counts as
-/// running until `running` drops.
+/// A job's directory and its kept output. The directory counts as running
+/// until `running` drops.
 pub struct JobDirectory {
     pub path: PathBuf,
-    pub scratch: tempfile::TempDir,
     pub output: KeptOutput,
     pub running: Running,
 }
@@ -80,15 +78,14 @@ impl JobDirectories {
         self.jobs.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Makes `job`'s directory, private to its user, with its scratch
-    /// directory and its kept output.
+    /// Makes `job`'s directory, private to its user, with its kept output.
     pub async fn create(
         self: &Arc<Self>,
         job: &str,
         cancel: &CancellationToken,
     ) -> io::Result<JobDirectory> {
         let root = self.root.clone();
-        let (path, scratch) = tokio::task::spawn_blocking(move || {
+        let path = tokio::task::spawn_blocking(move || {
             std::fs::create_dir_all(&root)?;
             let mut builder = tempfile::Builder::new();
             builder.prefix("job-");
@@ -99,11 +96,7 @@ impl JobDirectories {
                 use std::os::unix::fs::PermissionsExt;
                 builder.permissions(std::fs::Permissions::from_mode(0o700));
             }
-            let path = builder.tempdir_in(&root)?.keep();
-            let scratch = tempfile::Builder::new()
-                .prefix(".work-")
-                .tempdir_in(&path)?;
-            Ok::<_, io::Error>((path, scratch))
+            Ok::<_, io::Error>(builder.tempdir_in(&root)?.keep())
         })
         .await
         .map_err(io::Error::other)??;
@@ -122,7 +115,6 @@ impl JobDirectories {
                 job: job.to_owned(),
             },
             path,
-            scratch,
             output,
         })
     }

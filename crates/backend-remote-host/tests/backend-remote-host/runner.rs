@@ -26,7 +26,6 @@ use demi_host_interface::{
     ByteRange, Call, CommandSet, CommandState, CommandStatus, ExecRequest, FileContents, FileKind,
     GroupBuilder, Host, HostError, HostErrorKind, JobCaller, LeafBuilder, ObservationWindow,
     Process, ProcessEnd, ProcessOutput, RpcError, RpcPort, Seen, ShellEnvironment, ShellError,
-    ShellTarget,
     Signal, SpawnEnv, SpawnRequest, Streams, TypedRpc, WriteOptions,
     testing::{CountingNumbers, TestPages, host_conformance_cases, test_command_context},
 };
@@ -56,13 +55,11 @@ pub(crate) struct Exec {
     pub(crate) window: u64,
 }
 
-/// An exec of `script` in the default shell, watched for up to `window`
-/// milliseconds.
+/// An exec of `script`, watched for up to `window` milliseconds.
 pub(crate) fn exec(script: &str, window: u64) -> Exec {
     Exec {
         request: ExecRequest {
             script: script.into(),
-            shell: ShellTarget::Default,
             caller: caller(),
             tool_use_id: "call".into(),
         },
@@ -86,8 +83,8 @@ impl<E: ShellEnvironment> Watched for E {
     }
 }
 
-/// Shells on `host` that start with `PATH` and `env`, and whose jobs may run
-/// `commands`.
+/// An environment on `host` whose jobs start with `PATH` and `env`, and may
+/// run `commands`.
 pub(crate) fn shell_on(
     host: RemoteHost,
     env: &[(&str, &str)],
@@ -448,11 +445,11 @@ async fn a_job_runs_on_the_runner_with_its_streams_its_files_and_the_device_envi
     fixture.stop().await;
 }
 
-/// About 3.5 s here: eight jobs one after another, since each starts where the
-/// last one left the shell; each is a login shell that reads the machine's
-/// profile (about 0.4 s in the Linux container).
+/// About 1 s here: two login shells one after another (about 0.4 s each in
+/// the Linux container). Before the fix, the second job started in `sub`
+/// with the first one's directory.
 #[tokio::test(flavor = "local")]
-async fn the_working_directory_carries_between_a_shells_jobs_and_nothing_else_does() {
+async fn every_command_starts_in_the_conversations_directory_and_nothing_carries_over() {
     let fixture = RunnerFixture::start(FixtureOptions::default()).await;
     let home = fixture.home().to_owned();
     std::fs::create_dir(format!("{home}/sub")).unwrap();
@@ -469,80 +466,25 @@ async fn the_working_directory_carries_between_a_shells_jobs_and_nothing_else_do
             .await
             .stdout
             .delta,
-        format!("{home}/sub\nunset\n")
+        format!("{home}\nunset\n")
     );
-    assert_eq!(exited(&run(&shell, "cd ..; exit 3").await), 3);
-    assert_eq!(run(&shell, "pwd").await.stdout.delta, format!("{home}\n"));
-    // A script that does not parse leaves the directory as it was.
-    assert_eq!(exited(&run(&shell, "cd sub; do").await), 2);
-    assert_eq!(run(&shell, "pwd").await.stdout.delta, format!("{home}\n"));
-    // A new shell starts where it is told and leaves the default one alone.
-    let beside = shell
-        .exec(
-            Exec {
-                request: ExecRequest {
-                    script: "pwd".into(),
-                    shell: ShellTarget::New {
-                        cwd: Some(format!("{home}/sub")),
-                    },
-                    caller: caller(),
-                    tool_use_id: "call".into(),
-                },
-                window: 10_000,
-            },
-            CancellationToken::new(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(beside.stdout.delta, format!("{home}/sub\n"));
-    assert_eq!(run(&shell, "pwd").await.stdout.delta, format!("{home}\n"));
     fixture.stop().await;
 }
 
-/// About 2 s here: four login shells one after another (about 0.4 s each in
-/// the Linux container). Before the fix, every job after the first failed
-/// with `i/o error: No such file or directory (os error 2)`.
+/// About 0.5 s here: one job that fails before its login shell starts.
+/// Before the fix, the job failed with the runner's own `i/o error`.
 #[tokio::test(flavor = "local")]
-async fn a_job_whose_directory_went_with_the_last_job_starts_in_the_conversations_directory() {
+async fn a_job_whose_directory_does_not_exist_fails_before_its_script_runs() {
     let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let home = fixture.home().to_owned();
-    let shell = shell_on(fixture.host(), &[], None);
-    // A `mktemp -d` directory lives in the job's scratch directory, which
-    // goes when the job ends.
-    let first = run(&shell, "cd \"$(mktemp -d)\" && pwd").await;
-    assert_eq!(exited(&first), 0);
-    let gone = first.stdout.delta.trim_end().to_owned();
-    assert!(!Path::new(&gone).exists(), "{gone} outlived its job");
-    let said = format!("demi: {gone} no longer exists; starting in {home}\n");
-
-    let next = run(&shell, "pwd").await;
-    assert_eq!(exited(&next), 0, "{}", next.stderr.delta);
-    assert_eq!(next.stderr.delta, said);
-    assert_eq!(next.stdout.delta, format!("{home}\n"));
-    // The shell carries on from where that job ended.
-    let after = run(&shell, "pwd").await;
-    assert_eq!(after.stderr.delta, "");
-    assert_eq!(after.stdout.delta, format!("{home}\n"));
-
-    // A new shell told to start there does the same.
-    let fresh = shell
-        .exec(
-            Exec {
-                request: ExecRequest {
-                    script: "pwd".into(),
-                    shell: ShellTarget::New { cwd: Some(gone) },
-                    caller: caller(),
-                    tool_use_id: "call".into(),
-                },
-                window: 10_000,
-            },
-            CancellationToken::new(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(exited(&fresh), 0);
-    assert_eq!(fresh.stderr.delta, said);
-    assert_eq!(fresh.stdout.delta, format!("{home}\n"));
+    let gone = format!("{}/deleted", fixture.home());
+    let shell = shell_on(fixture.host_at(&gone), &[], None);
+    let failed = run(&shell, "echo ran").await;
+    assert_eq!(exited(&failed), 1, "{}", failed.stderr.delta);
+    assert_eq!(failed.stdout.delta, "");
+    assert_eq!(
+        failed.stderr.delta,
+        format!("demi: cannot start in {gone}: No such file or directory\n")
+    );
     fixture.stop().await;
 }
 

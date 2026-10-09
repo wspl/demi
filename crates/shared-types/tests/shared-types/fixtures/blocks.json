@@ -1076,7 +1076,6 @@
     "view": {
       "kind": "shell",
       "status": "exited",
-      "shellId": "sh-1",
       "commandId": "cmd-1",
       "exitCode": 0,
       "runningMs": 1200,
@@ -1269,7 +1268,6 @@
     "view": {
       "kind": "shell",
       "status": "running",
-      "shellId": "sh-1",
       "commandId": "cmd-2",
       "runningMs": 60000,
       "idleMs": 2000,

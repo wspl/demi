@@ -138,7 +138,7 @@ fn nested_values_are_validated_where_the_message_enters() {
     });
     let job = |context: &Value| {
         json!({"type": "job_start", "jobId": "job", "context": context, "script": "true",
-            "cwd": "/", "workspace": "/", "env": {}})
+            "cwd": "/", "env": {}})
     };
     assert!(wire::decode::<Inbound>(&msgpack(&job(&context))).is_err());
     context["conversation"] = json!("conversation");
@@ -176,7 +176,7 @@ fn a_conversation_name_is_letters_digits_dashes_and_underscores() {
             "locale": {"timeZone": "UTC", "languages": ["en"]}, "colorScheme": "light",
         });
         let job = json!({"type": "job_start", "jobId": "job", "context": context, "script": "true",
-            "cwd": "/", "workspace": "/", "env": {}});
+            "cwd": "/", "env": {}});
         let release =
             json!({"type": "conversation_release", "id": "release", "conversationId": name});
         for message in [job, release] {

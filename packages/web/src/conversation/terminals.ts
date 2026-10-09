@@ -26,7 +26,7 @@ export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] 
     const call = (block.toolName === 'shell_exec' ? shellCall(block.input) : undefined) ?? previous
     commands.set(view.commandId, {
       id: view.commandId,
-      title: call?.title ?? view.shellId,
+      title: call?.title ?? view.commandId,
       script: call?.script,
       phase: view.status === 'aborted' ? 'aborted' : 'exited',
       exitCode: view.status === 'exited' ? view.exitCode : undefined,

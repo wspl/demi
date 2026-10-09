@@ -46,7 +46,6 @@ async fn shell_cancellation_reports_the_requesting_signal() {
         let mut job = Job::start(
             "printf ready; sleep 60".into(),
             root.path().into(),
-            root.path().into(),
             crate::home(root.path()),
             true,
             true,
@@ -66,7 +65,7 @@ async fn shell_cancellation_reports_the_requesting_signal() {
             job.cancel();
             job.signal(Signal::Terminate).unwrap();
         }
-        let (exit, _) = tokio::time::timeout(Duration::from_secs(3), job.wait())
+        let exit = tokio::time::timeout(Duration::from_secs(3), job.wait())
             .await
             .unwrap();
         let expected = signal.map_or("SIGKILL".to_owned(), |signal| signal.to_string());
@@ -115,7 +114,6 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
     let mut sibling = Job::start(
         "printf '%s' $$; read go; printf done".into(),
         root.path().into(),
-        root.path().into(),
         crate::home(root.path()),
         false,
         true,
@@ -155,7 +153,6 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
         let mut job = Job::start(
             format!("printf ready; {script}"),
             root.path().into(),
-            root.path().into(),
             crate::home(root.path()),
             true,
             true,
@@ -167,7 +164,7 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
         wait_for_job_ready(&mut job).await;
         blocked_or_looping(&scope, script).await;
         job.cancel();
-        let (exit, _) = tokio::time::timeout(Duration::from_secs(3), job.wait())
+        let exit = tokio::time::timeout(Duration::from_secs(3), job.wait())
             .await
             .expect(script);
         assert_eq!(exit.signal.as_deref(), Some("SIGKILL"), "{script}");
@@ -189,7 +186,7 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
         rest.extend(chunk.bytes);
     }
     assert_eq!(rest, b"done");
-    let (exit, _) = sibling.wait().await;
+    let exit = sibling.wait().await;
     assert_eq!(exit.code, Some(0), "{:?}", exit.error);
     std::mem::ManuallyDrop::into_inner(shell).shutdown_background();
 }
@@ -212,7 +209,6 @@ async fn cancellation_reaps_external_programs_started_by_native_utilities() {
         let mut job = Job::start(
             script.into(),
             root.path().into(),
-            root.path().into(),
             crate::home(root.path()),
             false,
             true,
@@ -234,7 +230,7 @@ async fn cancellation_reaps_external_programs_started_by_native_utilities() {
         .await
         .expect(script);
         job.cancel();
-        let (exit, _) = tokio::time::timeout(Duration::from_secs(3), job.wait())
+        let exit = tokio::time::timeout(Duration::from_secs(3), job.wait())
             .await
             .expect(script);
         assert_eq!(exit.signal.as_deref(), Some("SIGKILL"));
@@ -260,7 +256,6 @@ async fn job_completion_preserves_process_substitution_output() {
     let mut job = Job::start(
         "cat input | tee >(sleep 0.1; cat > copied) > /dev/null".into(),
         root.path().into(),
-        root.path().into(),
         crate::home(root.path()),
         false,
         true,
@@ -269,7 +264,7 @@ async fn job_completion_preserves_process_substitution_output() {
     )
     .await
     .unwrap();
-    let (exit, _) = tokio::time::timeout(Duration::from_secs(5), job.wait())
+    let exit = tokio::time::timeout(Duration::from_secs(5), job.wait())
         .await
         .unwrap();
     assert_eq!(exit.code, Some(0), "{:?}", exit.error);

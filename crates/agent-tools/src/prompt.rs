@@ -10,12 +10,11 @@ const TOOL_RULES: &[&str] = &[
     "Shell tools:",
     "- Use shell_exec to run a script. timeoutMs is how long to watch, not a deadline: when it passes, or when the user steers, the command keeps running and the result carries its commandId.",
     "- Commands in one response run at the same time. Put commands that depend on each other in one script joined with &&, or in separate responses.",
-    "- A result shows the output since your last look at the command; while it runs, also shellId, runningMs and idleMs. A long output shows its first and last lines, and the line between names the demi shell output command that reads the rest.",
+    "- A result shows the output since your last look at the command; while it runs, also runningMs and idleMs. A long output shows its first and last lines, and the line between names the demi shell output command that reads the rest.",
     "- To look at a running command again, call shell_status with its commandId: with timeoutMs it waits up to that long for the command to end; without it, it looks at once. To answer a prompt the command waits for, pass stdin, with a newline for a line-based prompt.",
     "- To wait longer, or to let the user talk to you meanwhile, call yield with durationMs and the commandIds to wait for: you are woken when the first of them ends or the time passes. Only yield ends your turn.",
     "- Run dev servers, watchers and previews in the foreground with a short timeoutMs, not with \"&\". Stop a command with demi shell stop <commandId>, never with pkill or killall.",
     "- Once a long-running process has been checked and stopped, report what you observed instead of running it again to show the same thing.",
-    "- While a command runs in your shell, a new shell_exec without shellId runs beside it, in the same directory.",
     "- Prefer non-interactive flags. For an underspecified scaffold, choose a reasonable non-interactive default unless the choice is destructive or impossible.",
     "- For interactive stdin, keep the reader inside one process such as sh -c, node or python; the shell's own read builtin does not keep its input across calls.",
 ];

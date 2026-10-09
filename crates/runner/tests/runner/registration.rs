@@ -25,7 +25,6 @@ async fn manage(action: &str, state: &std::path::Path) -> Option<i32> {
     tokio::process::Command::new(runner_binary())
         .arg(action)
         .env("DEMI_HOME", state)
-        .env_remove("DEMI_RELEASE_ID")
         .output()
         .await
         .unwrap()
@@ -77,8 +76,7 @@ async fn backend_job_invokes_a_declared_builtin_and_drain_releases_installation(
             context: context(),
             job_id: "job".into(),
             script: "fixture --help && printf done".into(),
-            cwd: cwd.clone(),
-            workspace: cwd,
+            cwd,
             env: BTreeMap::new(),
             stdin: None,
             stdout: None,
@@ -231,7 +229,6 @@ async fn uninstall_removes_the_installation_and_keeps_a_shared_cache_and_other_i
             .arg("uninstall")
             .env("DEMI_HOME", &state)
             .env("DEMI_ARTIFACTS", cache.path())
-            .env_remove("DEMI_RELEASE_ID")
             .output();
         let (uninstalled, ()) = tokio::join!(uninstall, backend);
         let uninstalled = uninstalled.unwrap();
@@ -272,7 +269,6 @@ async fn uninstall_without_an_active_runner_asks_the_backend_itself() {
         let uninstall = tokio::process::Command::new(runner_binary())
             .arg("uninstall")
             .env("DEMI_HOME", &state)
-            .env_remove("DEMI_RELEASE_ID")
             .output();
         let (uninstalled, ()) = tokio::join!(uninstall, backend);
         let uninstalled = uninstalled.unwrap();
@@ -298,7 +294,6 @@ async fn uninstall_leaves_a_directory_without_an_installation_as_it_was() {
             .arg("--home")
             .arg(directory.path())
             .env_remove("DEMI_HOME")
-            .env_remove("DEMI_RELEASE_ID")
             .output()
             .await
             .unwrap();
@@ -348,7 +343,6 @@ async fn uninstall_keeps_a_home_and_its_parent_and_removes_only_the_runners_file
                 .arg(&installation)
                 .env("HOME", &home)
                 .env_remove("DEMI_HOME")
-                .env_remove("DEMI_RELEASE_ID")
                 .output()
                 .await
                 .unwrap();

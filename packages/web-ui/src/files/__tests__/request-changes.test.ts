@@ -44,7 +44,6 @@ function shellCall(id: string, description: string, files: EditedFile[], pathCha
     view: {
       kind: 'shell',
       status: 'exited',
-      shellId: 'shell',
       commandId: id,
       exitCode: 0,
       runningMs: 10,

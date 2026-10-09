@@ -20,7 +20,7 @@ use demi_runner_process::{
 };
 use demi_runner_process::backend::Backend;
 use demi_runner_protocol::{
-    boot::{BACKEND_SOCKET, ManagedBoot},
+    boot::{BACKEND_SOCKET, ManagedBoot, TEMPORARY_DIRECTORY},
     values::BackendUrl,
     wire::{self, RunnerPlatform},
 };
@@ -306,7 +306,12 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         .as_ref()
         .map(|boot| boot.backend_url.clone())
         .or(installation.backend);
-    let env: BTreeMap<_, _> = std::env::vars().collect();
+    // The device environment (`runner.md` § Host operations): the runner's
+    // own without the names that configure it or belong to whatever started
+    // it, which no program it starts is meant to read.
+    let env: BTreeMap<_, _> = std::env::vars()
+        .filter(|(name, _)| !name.starts_with("DEMI_"))
+        .collect();
     let home = home()?;
     let state = RunnerState::open(directory.clone()).await?;
     let backend = match backend {
@@ -387,6 +392,11 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     // stricter one (`process::umask`).
     #[cfg(unix)]
     let _umask = demi_runner_process::process::umask();
+    // A Cloud's temporary directory, which its runner's `TMPDIR` names,
+    // starts each boot empty (`managed-hosts.md` § Images).
+    if boot.is_some() {
+        empty(Path::new(TEMPORARY_DIRECTORY)).await;
+    }
     let installation_directory = directory.clone();
     // A Cloud's runner reaches its backend through the socket the machine
     // manager mounted (`managed-hosts.md` § Backend socket).
@@ -477,6 +487,35 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             Ok(0)
         }
         Err(_) => Ok(1),
+    }
+}
+
+/// Removes everything in `directory`, which stays; what cannot go is logged,
+/// since a file left behind only takes space.
+async fn empty(directory: &Path) {
+    let directory = directory.to_owned();
+    let emptied = tokio::task::spawn_blocking(move || {
+        let entries = match std::fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(error) => {
+                tracing::warn!(directory = %directory.display(), "the temporary directory could not be listed: {error}");
+                return;
+            }
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let removed = match entry.file_type() {
+                Ok(kind) if kind.is_dir() => std::fs::remove_dir_all(&path),
+                _ => std::fs::remove_file(&path),
+            };
+            if let Err(error) = removed {
+                tracing::warn!(path = %path.display(), "a temporary file was not removed: {error}");
+            }
+        }
+    })
+    .await;
+    if let Err(error) = emptied {
+        tracing::warn!("the temporary directory was not emptied: {error}");
     }
 }
 

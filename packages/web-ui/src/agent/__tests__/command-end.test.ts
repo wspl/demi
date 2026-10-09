@@ -6,7 +6,6 @@ function view(parts: Partial<ShellToolView>): ShellToolView {
   return {
     kind: 'shell',
     status: 'exited',
-    shellId: '1',
     commandId: '17',
     runningMs: 0,
     idleMs: 0,

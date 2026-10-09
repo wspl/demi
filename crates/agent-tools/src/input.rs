@@ -2,7 +2,7 @@
 //! Schema the model receives and the check a call runs come from the same
 //! type. An optional field is absent or a value, never null.
 
-use demi_shared_types::{CommandId, ShellId};
+use demi_shared_types::CommandId;
 use schemars::{JsonSchema, generate::SchemaSettings};
 use serde::de::{self, DeserializeOwned, Unexpected, Visitor};
 use serde::{Deserialize, Deserializer};
@@ -44,17 +44,6 @@ where
     T::try_from(number.to_string()).map_err(de::Error::custom)
 }
 
-/// The identity a number names, of an optional field that is absent or a
-/// number, never null.
-fn some_numbered<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: TryFrom<String>,
-    T::Error: std::fmt::Display,
-{
-    numbered(deserializer).map(Some)
-}
-
 /// The longest window a shell tool watches, and the longest yield.
 const MAX_DELAY_MS: u32 = 600_000;
 
@@ -73,9 +62,6 @@ pub(super) struct ShellExecInput {
         reason = "the call's title, which the renderer reads from its input"
     )]
     description: NonEmpty,
-    #[serde(default, deserialize_with = "some_numbered")]
-    #[schemars(with = "u64")]
-    pub(super) shell_id: Option<ShellId>,
     #[schemars(range(min = 1, max = MAX_DELAY_MS))]
     pub(super) timeout_ms: DelayMs,
 }
@@ -278,7 +264,6 @@ mod tests {
         assert_eq!(properties["timeoutMs"]["type"], "integer");
         assert_eq!(properties["timeoutMs"]["minimum"], 1);
         assert_eq!(properties["timeoutMs"]["maximum"], 600_000);
-        assert_eq!(properties["shellId"]["type"], "integer");
         assert_eq!(
             properties["description"],
             json!({"type": "string", "minLength": 1, "description": DESCRIPTION})
@@ -306,12 +291,8 @@ mod tests {
         let refusal = |input: Value| parse::<ShellExecInput>("shell_exec", input).unwrap_err();
         for (input, field) in [
             (
-                json!({"script": "true", "timeoutMs": 1, "description": "Run", "shellId": "main"}),
-                "shellId: ",
-            ),
-            (
-                json!({"script": "true", "timeoutMs": 1, "description": "Run", "shellId": null}),
-                "shellId: ",
+                json!({"script": "true", "timeoutMs": 1, "description": "Run", "shellId": 3}),
+                "unknown field `shellId`",
             ),
             (
                 json!({"script": "true", "timeoutMs": 1, "description": "Run", "maxOutputBytes": 10}),
@@ -388,8 +369,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            (exec.script.as_str(), exec.timeout_ms, exec.shell_id),
-            ("ls", DelayMs(600_000), None)
+            (exec.script.as_str(), exec.timeout_ms),
+            ("ls", DelayMs(600_000))
         );
     }
 }
