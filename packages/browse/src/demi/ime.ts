@@ -18,13 +18,16 @@
 // the composition is open, which is what a page sees of Safari's input
 // method, though its events are not trusted ones.
 //
-// Headless Chromium can stop answering, its browser process at full load,
-// when a dialog or menu with a field opens or closes within the same call
-// soon after a composition: in one call, composing in the search dialog,
-// closing it and opening it again hangs on the second opening, while the
-// same steps in separate calls do not; pacing the protocol's steps, or a
-// keyup whose code matches the keydown's, does not help. The call then
-// says that the browser does not answer, and `bun browse stop` closes it.
+// The ending key's keydown names no native key code. On macOS the protocol
+// takes `nativeVirtualKeyCode` as the Mac key code of the NSEvent the
+// browser builds for the key, and a keydown the page lets through
+// unhandled, as a field keeps a composing key without preventing its
+// default, goes back to the browser's own menus as that NSEvent. 229 is no
+// Mac key: given as one, the browser matched it to its own commands (a
+// plain page's tab went to chrome://settings/help, Chrome's About), and
+// with a menu that opens and closes in the same call its process spun in
+// AppKit's key equivalents and answered nothing more. Playwright's own key
+// presses give no native code either.
 import type { Locator } from 'playwright'
 import type { Tool } from '../tool'
 
@@ -70,7 +73,6 @@ export async function ime(tool: Tool, text: string, options: ImeOptions = {}): P
     key: key.key,
     code: key.code,
     windowsVirtualKeyCode: 229,
-    nativeVirtualKeyCode: 229,
   })
   if (commit === 'enter') {
     await cdp.send('Input.insertText', { text })
