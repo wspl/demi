@@ -12,7 +12,7 @@ function template(open: boolean): HTMLElement {
   if (cached)
     return cached
   const rendered = document.createElement('span')
-  rendered.className = 'flex size-[18px] items-center justify-center rounded-[3px] text-fg-subtle hover:bg-hover'
+  rendered.className = 'flex size-[18px] items-center justify-center rounded-[3px] text-fg-subtle hover:bg-active'
   render(h(FoldChevron, { open }), rendered)
   const copy = document.importNode(rendered, true)
   render(null, rendered)
