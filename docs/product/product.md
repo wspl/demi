@@ -589,7 +589,8 @@ Enter sends and Shift+Enter breaks the line; in a code block Enter breaks the
 line and ⌘/Ctrl+Enter sends. While the agent works, ⌘/Ctrl+Enter outside a
 code block sends the other way than Enter
 ([Steer or queue](#steer-or-queue)); in a code block it is the send key and
-sends the way Enter does elsewhere. An input method's Enter never sends. Enter on a
+sends the way Enter does elsewhere. An input method's Enter never sends, and
+its Escape never ends an edit ([Typing with an input method](#typing-with-an-input-method)). Enter on a
 message that cannot go yet does not send in silence: the send button says why
 it cannot, in the words it says when it is pointed at — an upload still
 running, one that failed, a model that cannot send — and the answer goes by
@@ -606,6 +607,22 @@ as the message needs more — a line break, a code block, an image, or text
 wider than the line — the composer opens into a box that wraps the text,
 grows to six lines and scrolls beyond them; it closes again once the message
 fits one line. No part of a message is ever cut off at the line's end.
+
+### Typing with an input method
+
+For example, the user types `nihao` with a Chinese input method in the
+filter of a menu and presses Enter to confirm 你好: the filter shows 你好,
+and no row is picked. A second Enter picks the highlighted row.
+
+A key that an input method uses to confirm or cancel a candidate, such as
+Enter, Escape, Tab or an arrow, belongs to the composition. In every text
+field of the app, the composer, a rename, a search, a dialog's field or a
+menu's filter, it sends, submits, picks, confirms or closes nothing. This
+holds in every browser, Safari included, which delivers the confirming Enter
+just after the composition has ended, as Chrome and Firefox do not. The
+`web-ui` text fields, the composer's editor and every key handler on them
+pass such a key through one shared guard, as VS Code, Lexical and Headless
+UI each do in one place.
 
 ## Attachments
 
