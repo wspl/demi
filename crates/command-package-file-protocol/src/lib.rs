@@ -24,13 +24,14 @@ pub enum OperationError {
     Invalid(#[from] DecodeError),
 }
 
-/// `file.read`: writes the file's bytes to stdout.
+/// `file.read`: writes each file's bytes to stdout, in order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ReadArgs {
-    /// File path to read
-    #[garde(skip)]
-    pub path: String,
+    /// Files to read, in order
+    #[schemars(length(min = 1))]
+    #[garde(length(min = 1))]
+    pub path: Vec<String>,
 }
 
 /// `file.edit` as the command line gives it: SEARCH/REPLACE blocks on
