@@ -18,7 +18,7 @@ use std::{
     fs::File,
     io,
     path::PathBuf,
-    sync::{Arc, OnceLock},
+    sync::{Arc, Mutex},
 };
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -29,8 +29,12 @@ pub struct Job {
     /// Ends with the job's exit, once everything the job ran has finished.
     owner: Option<tokio::task::JoinHandle<ProcessExit>>,
     exited: Option<ProcessExit>,
+    /// Ends the job and everything it runs.
     cancel: CancellationToken,
-    requested_signal: Arc<OnceLock<String>>,
+    scope: Scope,
+    /// The last signal other than `KILL` sent to stop the job, which its
+    /// exit reports unless `KILL` ended it.
+    stop_signal: Arc<Mutex<Option<Signal>>>,
 }
 
 /// The most one read of a job's output takes.
@@ -89,7 +93,7 @@ impl Job {
         mut env: BTreeMap<String, String>,
         live: bool,
         output: bool,
-        mut scope: Scope,
+        scope: Scope,
         shell: &ShellRuntime,
     ) -> io::Result<Self> {
         let Pipes {
@@ -112,11 +116,12 @@ impl Job {
         }
         let (input, receiver) = mpsc::channel(4);
         let (sender, output) = mpsc::channel(4);
-        let cancel = scope.cancellation.clone();
+        let cancel = scope.work.cancellation.clone();
         let owner_cancel = cancel.clone();
-        let requested_signal = Arc::new(OnceLock::<String>::new());
-        let owner_signal = requested_signal.clone();
-        scope.cancellation = cancel.child_token();
+        let stop_signal = Arc::new(Mutex::new(None::<Signal>));
+        let owner_signal = stop_signal.clone();
+        let job_scope = scope.clone();
+        let owner_scope = scope.clone();
         let input_cancel = cancel.child_token();
         let writer = feed(shell, input_writer, receiver, input_cancel.clone());
         let readers = [
@@ -154,9 +159,11 @@ impl Job {
                 ))
             }));
             // Preserve successful process-substitution output until its producer
-            // or consumer finishes. Failed execution cancels remaining work.
-            if !matches!(outcome, Ok(Ok(_))) {
-                scope.cancellation.cancel();
+            // or consumer finishes. Failed execution cancels remaining work,
+            // unless a stop's signal ended it: what that signalled then ends
+            // in its own time.
+            if !matches!(outcome, Ok(Ok(_))) && scope.stop.signal().is_none() {
+                scope.stop.abort();
             }
             runtime.block_on(scope.finish());
             outcome
@@ -203,18 +210,21 @@ impl Job {
                     None
                 }
             };
-            // A cancelled job reports the signal that asked for its end, or
-            // `SIGKILL`, and no exit code: bash's own is the interruption's
+            // A stopped job reports the signal that ended it, `KILL` once it
+            // was killed, and no exit code: bash's own is the interruption's
             // (`runner.md` § Cancellation and completion).
-            if owner_cancel.is_cancelled() {
+            let stopped_by = if owner_cancel.is_cancelled() {
+                Some(Signal::Kill)
+            } else {
+                owner_scope
+                    .stop
+                    .signal()
+                    .and(*owner_signal.lock().expect("the stop signal is intact"))
+            };
+            if let Some(signal) = stopped_by {
                 ProcessExit {
                     code: None,
-                    signal: Some(
-                        owner_signal
-                            .get()
-                            .cloned()
-                            .unwrap_or_else(|| "SIGKILL".into()),
-                    ),
+                    signal: Some(signal.to_string()),
                     error: None,
                 }
             } else {
@@ -231,7 +241,8 @@ impl Job {
             owner: Some(owner),
             exited: None,
             cancel,
-            requested_signal,
+            scope: job_scope,
+            stop_signal,
         })
     }
 }
@@ -253,18 +264,22 @@ impl ShellJob for Job {
         self.cancel.is_cancelled()
     }
 
+    /// `KILL` ends the job at once; the other signals that end a job stop
+    /// it the first way (`runner.md` § Cancellation and completion): its
+    /// shell work ends at its next step, every process group it started
+    /// takes the signal, and the job ends once every process of them has.
     fn signal(&self, signal: Signal) -> io::Result<()> {
         match signal {
-            Signal::Interrupt
-            | Signal::Terminate
-            | Signal::Kill
-            | Signal::Hangup
-            | Signal::Quit => {
-                if !self.cancel.is_cancelled() {
-                    self.requested_signal.get_or_init(|| signal.to_string());
-                }
+            Signal::Kill => {
                 self.cancel();
                 Ok(())
+            }
+            Signal::Interrupt | Signal::Terminate | Signal::Hangup | Signal::Quit => {
+                if self.cancel.is_cancelled() {
+                    return Ok(());
+                }
+                *self.stop_signal.lock().expect("the stop signal is intact") = Some(signal);
+                self.scope.signal(number(signal), false)
             }
             Signal::User1 | Signal::User2 | Signal::Stop | Signal::Continue => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -284,6 +299,18 @@ impl ShellJob for Job {
             }
             self.exited.clone().expect("the owner left the exit")
         })
+    }
+}
+
+/// The number of a signal that ends a job.
+fn number(signal: Signal) -> i32 {
+    #[cfg(unix)]
+    return demi_runner_process::process::number(signal).as_raw();
+    // Windows has no signals; any ends the job's work at once.
+    #[cfg(windows)]
+    {
+        let _ = signal;
+        1
     }
 }
 

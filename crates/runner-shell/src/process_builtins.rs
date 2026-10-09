@@ -6,7 +6,7 @@ use std::{collections::HashMap, io::Write};
 
 use brush_core::{
     CommandArg, ExecutionContext, ExecutionControlFlow, ExecutionExitCode, ExecutionResult,
-    ShellExtensions,
+    Shell, ShellExtensions,
     builtins::{self, BoxFuture, Registration},
     commands::{ShellForCommand, SimpleCommand},
     extensions::DefaultShellExtensions,
@@ -17,15 +17,30 @@ use brush_core::{
 pub(crate) fn register(registrations: &mut HashMap<String, Registration<DefaultShellExtensions>>) {
     registrations.insert("exec".into(), builtins::builtin::<Exec, _>().special());
     replace(registrations, "fg", fg);
+    // Statics hold brush's own builtins, which the runner's run for what they
+    // leave to them and which a registration's plain function pointer cannot
+    // capture. Setting one again fails, which is fine: brush's is the same
+    // function every time.
+    if let Some(brush_wait) = registrations.get("wait").map(|wait| wait.execute_func) {
+        let _already_set = BRUSH_WAIT.set(brush_wait);
+        replace(registrations, "wait", wait);
+    }
     #[cfg(unix)]
     {
         if let Some(brush_kill) = registrations.get("kill").map(|kill| kill.execute_func) {
-            // A static holds brush's own kill, which a registration's plain
-            // function pointer cannot capture. Setting it again fails, which
-            // is fine: brush's kill is the same function every time.
             let _already_set = BRUSH_KILL.set(brush_kill);
-            replace(registrations, "kill", kill);
+            replace(registrations, "kill", unix::kill);
         }
+        registrations.insert(
+            crate::timeout::NAME.into(),
+            Registration {
+                execute_func: unix::timeout,
+                content_func: |name, _, _| Ok(format!("{name}: use {name} --help for its options")),
+                disabled: false,
+                special_builtin: false,
+                declaration_builtin: false,
+            },
+        );
         replace(registrations, "suspend", suspend);
         replace(registrations, "ulimit", unix::ulimit);
         replace(registrations, "umask", unix::umask);
@@ -143,50 +158,125 @@ fn fg(
     Box::pin(async move { refused(&context, "no job control") })
 }
 
-/// Brush's `kill`, which the runner's runs for every other target.
+/// Brush's `kill`, which lists signals for the runner's.
 #[cfg(unix)]
 static BRUSH_KILL: std::sync::OnceLock<builtins::CommandExecuteFunc<DefaultShellExtensions>> =
     std::sync::OnceLock::new();
 
-/// `kill`, except to the runner itself: `$$` is the runner's process, and 0
-/// its process group.
-#[cfg(unix)]
-fn kill(
+/// Brush's `wait`, which takes the options of the runner's.
+static BRUSH_WAIT: std::sync::OnceLock<builtins::CommandExecuteFunc<DefaultShellExtensions>> =
+    std::sync::OnceLock::new();
+
+/// `wait`, as bash's (`runner.md` § Background tasks and timeouts): `wait
+/// <id>` waits for a background task or a process the job started and gives
+/// its status, the task's last or 128 plus the signal that ended it; `wait`
+/// alone waits for every task and gives 0. Its options are brush's.
+fn wait(
     context: ExecutionContext<'_>,
     args: Vec<CommandArg>,
 ) -> BoxFuture<'_, Result<ExecutionResult, brush_core::Error>> {
-    let runner = kill_target(&args).is_some_and(|target| {
-        brush_core::int_utils::parse::<i32>(&target, 10).is_ok_and(|pid| {
-            pid == 0 || u32::try_from(pid).is_ok_and(|pid| pid == std::process::id())
-        })
-    });
-    if runner {
-        return Box::pin(
-            async move { refused(&context, "a job cannot signal the runner it runs in") },
-        );
+    let mut words: Vec<String> = args.iter().skip(1).map(ToString::to_string).collect();
+    let option = words
+        .first()
+        .is_some_and(|word| word.starts_with('-') && word != "--" && word.parse::<i32>().is_err());
+    if option {
+        let brush_wait = BRUSH_WAIT
+            .get()
+            .expect("the runner's wait is registered only over brush's");
+        return brush_wait(context, args);
     }
-    let brush_kill = BRUSH_KILL
-        .get()
-        .expect("the runner's kill is registered only over brush's");
-    brush_kill(context, args)
+    if words.first().is_some_and(|word| word == "--") {
+        words.remove(0);
+    }
+    Box::pin(async move {
+        if words.is_empty() {
+            wait_tasks(context.shell).await?;
+            return Ok(ExecutionResult::success());
+        }
+        let scope = crate::interpreter::scope(context.shell)?;
+        let mut status = 0;
+        for word in &words {
+            let job = if word.starts_with('%') {
+                let job = context
+                    .shell
+                    .jobs_mut()
+                    .resolve_job_spec(word)
+                    .map(|job| job.id);
+                if job.is_none() {
+                    writeln!(context.stderr(), "wait: {word}: no such job")?;
+                    status = 127;
+                    continue;
+                }
+                job
+            } else if let Ok(id) = word.parse::<i32>() {
+                let job = context
+                    .shell
+                    .jobs()
+                    .jobs
+                    .iter()
+                    .find(|job| job.task_id() == Some(id))
+                    .map(|job| job.id);
+                if job.is_none() {
+                    status = match scope.work.process(id) {
+                        Some(crate::work::Process::Ended(ended)) => ended,
+                        Some(crate::work::Process::Running(mut ended)) => {
+                            match ended.wait_for(Option::is_some).await {
+                                Ok(ended) => ended.unwrap_or(127),
+                                // The process went without a status.
+                                Err(_) => 127,
+                            }
+                        }
+                        None => {
+                            writeln!(context.stderr(), "wait: pid {id} is not a child of this shell")?;
+                            127
+                        }
+                    };
+                    continue;
+                }
+                job
+            } else {
+                writeln!(context.stderr(), "wait: `{word}': not a pid or valid job spec")?;
+                status = 1;
+                continue;
+            };
+            let jobs = &mut context.shell.jobs_mut().jobs;
+            let at = jobs
+                .iter()
+                .position(|listed| Some(listed.id) == job)
+                .expect("the job was just found");
+            let job = jobs.remove(at);
+            status = task_status(&scope, job).await?;
+        }
+        Ok(ExecutionExitCode::from(status).into())
+    })
 }
 
-/// The process or job `kill` signals, read as brush's `kill` reads its
-/// arguments: the first that is not an option, unless it lists signals.
-#[cfg(unix)]
-fn kill_target(args: &[CommandArg]) -> Option<String> {
-    let mut args = args.iter().skip(1).map(ToString::to_string);
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "-s" | "-n" => {
-                args.next();
-            }
-            "-l" | "-L" => return None,
-            _ if arg.starts_with('-') => {}
-            _ => return Some(arg),
-        }
+/// Waits for the background task of `job` to end and gives its status: 128
+/// plus the signal that stopped it, as a subshell such a signal ends gives,
+/// or else its last command's.
+async fn task_status(
+    scope: &crate::scope::Scope,
+    mut job: brush_core::jobs::Job,
+) -> Result<u8, brush_core::Error> {
+    let ended = job.wait().await;
+    let signal = job
+        .task_id()
+        .and_then(|id| scope.work.task(id))
+        .and_then(|task| task.signal());
+    match (signal, ended) {
+        (Some(signal), _) => Ok((128 + signal) as u8),
+        (None, ended) => Ok(ended?.exit_code.into()),
     }
-    None
+}
+
+/// Waits for every background task of `shell` to end, as `wait` alone and
+/// the end of a job do. A task a signal stopped ended as asked.
+pub(crate) async fn wait_tasks(shell: &mut Shell) -> Result<(), brush_core::Error> {
+    let scope = crate::interpreter::scope(shell)?;
+    for job in std::mem::take(&mut shell.jobs_mut().jobs) {
+        task_status(&scope, job).await?;
+    }
+    Ok(())
 }
 
 /// `suspend` would stop the runner.
@@ -200,13 +290,228 @@ fn suspend(
 
 #[cfg(unix)]
 mod unix {
-    use std::io::Write;
+    use std::{io::Write, sync::Arc};
 
     use brush_core::{
-        CommandArg, ExecutionContext, ExecutionExitCode, ExecutionResult, builtins::BoxFuture,
+        CommandArg, ErrorKind, ExecutionContext, ExecutionExitCode, ExecutionResult,
+        builtins::BoxFuture,
+        commands::{ShellForCommand, SimpleCommand},
         execution_host::ChildAttributes,
+        traps::TrapSignal,
     };
     use rlimit::Resource;
+
+    use crate::timeout;
+
+    /// Bash's usage of `kill`.
+    const KILL_USAGE: &str = "kill: usage: kill [-s sigspec | -n signum | -sigspec] pid | jobspec ... or kill -l [sigspec]";
+
+    /// A signal's number by the name or number a command line gives it, as
+    /// bash reads it: any case, with or without `SIG`; 0 asks only whether
+    /// the target exists.
+    fn signal_number(spec: &str) -> Option<i32> {
+        spec.parse::<TrapSignal>()
+            .ok()
+            .and_then(|signal| i32::try_from(signal).ok())
+    }
+
+    /// `kill`, as bash's (`runner.md` § Background tasks and timeouts): the
+    /// default signal is `TERM`; a background task's id, or a job spec,
+    /// signals the whole task; a process ID or the negative of a process
+    /// group ID signals that process or group; the runner itself is refused
+    /// (§ Builtins that act on a process). As in a bash script, the first
+    /// target that fails ends the command with status 1. Listing signals is
+    /// brush's.
+    pub(super) fn kill(
+        context: ExecutionContext<'_>,
+        args: Vec<CommandArg>,
+    ) -> BoxFuture<'_, Result<ExecutionResult, brush_core::Error>> {
+        let words: Vec<String> = args.iter().skip(1).map(ToString::to_string).collect();
+        if words.iter().take_while(|word| *word != "--").any(|word| word == "-l" || word == "-L") {
+            let brush_kill = super::BRUSH_KILL
+                .get()
+                .expect("the runner's kill is registered only over brush's");
+            return brush_kill(context, args);
+        }
+        Box::pin(async move {
+            let mut stderr = context.stderr();
+            let mut spec = "TERM".to_owned();
+            let mut signal = Some(libc::SIGTERM);
+            let mut saw_signal = false;
+            let mut index = 0;
+            while let Some(word) = words.get(index) {
+                let given = match word.as_str() {
+                    "-s" | "-n" => {
+                        let Some(value) = words.get(index + 1) else {
+                            writeln!(stderr, "kill: {word}: option requires an argument")?;
+                            return Ok(ExecutionResult::general_error());
+                        };
+                        index += 1;
+                        value.clone()
+                    }
+                    "--" => {
+                        index += 1;
+                        break;
+                    }
+                    "-?" => {
+                        writeln!(stderr, "{KILL_USAGE}")?;
+                        return Ok(ExecutionExitCode::InvalidUsage.into());
+                    }
+                    word if word.len() > 2
+                        && ((word.starts_with("-s") && word.as_bytes()[2].is_ascii_alphabetic())
+                            || (word.starts_with("-n") && word.as_bytes()[2].is_ascii_digit())) =>
+                    {
+                        word[2..].to_owned()
+                    }
+                    word if word.len() > 1 && word.starts_with('-') && !saw_signal => {
+                        word[1..].to_owned()
+                    }
+                    _ => break,
+                };
+                signal = signal_number(&given);
+                spec = given;
+                saw_signal = true;
+                index += 1;
+            }
+            let Some(signal) = signal else {
+                writeln!(stderr, "kill: {spec}: invalid signal specification")?;
+                return Ok(ExecutionResult::general_error());
+            };
+            let targets = &words[index.min(words.len())..];
+            if targets.is_empty() {
+                writeln!(stderr, "{KILL_USAGE}")?;
+                return Ok(ExecutionExitCode::InvalidUsage.into());
+            }
+            let scope = crate::interpreter::scope(context.shell)?;
+            for target in targets {
+                let task = if target.starts_with('%') {
+                    let task = context
+                        .shell
+                        .jobs_mut()
+                        .resolve_job_spec(target)
+                        .and_then(|job| job.task_id());
+                    let Some(id) = task else {
+                        writeln!(stderr, "kill: {target}: no such job")?;
+                        return Ok(ExecutionResult::general_error());
+                    };
+                    Some(id)
+                } else {
+                    let Ok(pid) = target.parse::<i32>() else {
+                        writeln!(stderr, "kill: `{target}': not a pid or valid job spec")?;
+                        return Ok(ExecutionResult::general_error());
+                    };
+                    if runner(pid) {
+                        return super::refused(&context, "a job cannot signal the runner it runs in");
+                    }
+                    // A task's id stands for the task with a minus sign too,
+                    // as a process group's does.
+                    if scope.work.task(pid.saturating_abs()).is_some() {
+                        Some(pid.saturating_abs())
+                    } else {
+                        let sent = demi_runner_process::process::signal_target(pid, signal);
+                        if let Err(error) = sent {
+                            if error.raw_os_error() == Some(libc::EINVAL) {
+                                writeln!(stderr, "kill: {spec}: invalid signal specification")?;
+                            } else {
+                                let reason = uucore::error::strip_errno(&error);
+                                writeln!(stderr, "kill: ({pid}) - {reason}")?;
+                            }
+                            return Ok(ExecutionResult::general_error());
+                        }
+                        None
+                    }
+                };
+                let Some(id) = task else {
+                    continue;
+                };
+                let task = scope
+                    .work
+                    .task(id)
+                    .expect("a job's task stays in its table");
+                if task.done.is_cancelled() {
+                    writeln!(stderr, "kill: ({id}) - No such process")?;
+                    return Ok(ExecutionResult::general_error());
+                }
+                if let Err(error) = scope.work.signal(&task, signal, false) {
+                    let reason = uucore::error::strip_errno(&error);
+                    writeln!(stderr, "kill: ({id}) - {reason}")?;
+                    return Ok(ExecutionResult::general_error());
+                }
+            }
+            Ok(ExecutionResult::success())
+        })
+    }
+
+    /// Whether `kill`'s `pid` reaches the runner: `$$` is its process, 0 and
+    /// -1 its process group and every process, and the negative of its
+    /// group ID its group.
+    fn runner(pid: i32) -> bool {
+        let process = rustix::process::getpid().as_raw_nonzero().get();
+        let group = rustix::process::getpgrp().as_raw_nonzero().get();
+        pid == 0 || pid == -1 || pid == process || pid == -group
+    }
+
+    /// `timeout` in the job's shell: COMMAND runs as `command` would run it,
+    /// a builtin, a standard utility or a program, in a part of the job of
+    /// its own (`timeout::supervise`).
+    pub(super) fn timeout(
+        context: ExecutionContext<'_>,
+        args: Vec<CommandArg>,
+    ) -> BoxFuture<'_, Result<ExecutionResult, brush_core::Error>> {
+        Box::pin(async move {
+            let words: Vec<String> = args.iter().skip(1).map(ToString::to_string).collect();
+            let mut stderr = context.stderr();
+            let options = match timeout::parse(&words) {
+                timeout::Parsed::Run(options) => options,
+                parsed => {
+                    let status = timeout::answer(&parsed, &mut context.stdout(), &mut stderr);
+                    return Ok(ExecutionExitCode::from(status).into());
+                }
+            };
+            let parent = crate::interpreter::scope(context.shell)?;
+            let part = parent.part();
+            let mut target = context.shell.clone();
+            let mut params = context.params;
+            target.set_execution_host(Arc::new(part.clone()), &mut params);
+            let program = options.command[0].clone();
+            let mut command = SimpleCommand::new(
+                ShellForCommand::OwnedShell {
+                    target: Box::new(target),
+                    parent: context.shell,
+                },
+                params,
+                program.clone(),
+                options
+                    .command
+                    .iter()
+                    .map(|arg| CommandArg::String(arg.clone()))
+                    .collect(),
+            );
+            command.use_functions = false;
+            let run = async move {
+                let result: ExecutionResult = command.execute().await?.wait().await?.into();
+                Ok::<u8, brush_core::Error>(result.exit_code.into())
+            };
+            let status = match timeout::supervise(&options, &part, run, &mut stderr).await {
+                Ok(status) => status,
+                // The job or the task COMMAND belongs to is stopping.
+                Err(error) if parent.check().is_err() => return Err(error),
+                Err(error) => match error.kind() {
+                    ErrorKind::CommandNotFound(_) => {
+                        timeout::not_run(&program, "No such file or directory", true, &mut stderr)
+                    }
+                    ErrorKind::FailedToExecuteCommand(_, reason) => timeout::not_run(
+                        &program,
+                        &uucore::error::strip_errno(reason),
+                        reason.kind() == std::io::ErrorKind::NotFound,
+                        &mut stderr,
+                    ),
+                    _ => return Err(error),
+                },
+            };
+            Ok(ExecutionExitCode::from(status).into())
+        })
+    }
 
     /// How `ulimit` counts a resource's limit, and what bash calls that.
     #[derive(Clone, Copy)]
