@@ -441,13 +441,13 @@ stays a steer, and a queued message starts a turn of its own.
 ## Yield wakeups
 
 For example, the model starts a build, command 17, that takes about eight
-minutes, and calls `yield` with `durationMs: 900000` and `commandIds: [17]`.
+minutes, and calls `yield` with `durationMs: 600000` and `commandIds: [17]`.
 The turn ends after that round of tools, and the user can talk to the agent
 meanwhile. The build ends after eight minutes, and the wakeup fires at once.
 Nothing is running, so the session starts a continuation whose input is a
 `wakeup` block saying that command 17 ended and with what exit code, and the
 model reads its end with `shell_status`. Had the build hung, the wakeup would
-have fired at fifteen minutes.
+have fired at ten minutes.
 
 - `yield` returns an effect for the session to apply: schedule one wakeup and
   end the turn after this round of tools. The tool result says
@@ -517,10 +517,15 @@ have fired at fifteen minutes.
   resumes it, so restoring it with no page would fire nothing. A child's
   wakeups count, since a restored child resumes its interrupted turn.
 - A scheduled wakeup is not conversation activity: it keeps no Cloud awake
-  ([Activity](../execution/resource-lifecycle.md#activity)). A subagent with a
-  scheduled wakeup stays live ([Result](subagents.md#result)), and message
-  editing is refused while a wakeup is scheduled
+  ([Activity](../execution/resource-lifecycle.md#activity)). A subagent whose
+  last turn ended with `yield` stays live, and one whose turn ended with its
+  answer closes and drops its wakeups ([Result](subagents.md#result)).
+  Message editing is refused while a wakeup is scheduled
   ([Message editing](message-editing.md)).
+- `yield` ends the turn, and the user reads only the text the model wrote
+  before it. The tool rules say so, so the model answers the user, or says
+  what it is waiting for, before it yields: turns that ended with `yield`
+  alone left the user asking why the agent had stopped.
 
 ## Tools
 
@@ -556,8 +561,13 @@ the three completes as an error `Tool not found: <name>`.
 - Unknown fields and wrong types are refused. A refused call completes as an
   error whose text starts with `<tool> input is invalid:` and names each
   offending field, so the model can correct the call.
-- `timeoutMs` and `durationMs` are whole milliseconds from 1 to 600,000,
-  declared to the model as `integer`. A fraction is refused, not rounded.
+- `timeoutMs` and `durationMs` are whole milliseconds from 1, declared to the
+  model as `integer`, whose description gives the cap of 600,000, ten
+  minutes. A larger value is taken as the cap, and the result's first line
+  says so (`timeoutMs 900000 is above the cap; watched for 600000`), since
+  the window only watches and the command goes on either way: models asked
+  for fifteen minutes for a test suite six times in one conversation, and a
+  refusal only cost them a call each time. A fraction is refused, not rounded.
   `shell_status` without `timeoutMs` looks without waiting.
 - `stdin` is a non-empty string; `commandIds` a non-empty list of command
   numbers.
