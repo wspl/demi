@@ -54,6 +54,7 @@ async fn invoke(service: &ServiceProcess, operation: &str, input: Vec<u8>) -> (V
         .invoke(&Invocation {
             operation: operation.into(),
             invocation_id: "invocation".into(),
+            command: "demi test".into(),
             context: CommandContext {
                 color_scheme: demi_command_protocol::ColorScheme::Light,
                 conversation: "conversation".into(),

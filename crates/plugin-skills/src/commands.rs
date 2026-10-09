@@ -148,10 +148,8 @@ pub(crate) async fn run(
             rpc.stdout(text).await?;
             Ok(0)
         }
-        Err(reason) => {
-            rpc.stderr(format!("skills {leaf}: {reason}\n")).await?;
-            Ok(1)
-        }
+        // The dispatcher tells it after the command's path.
+        Err(reason) => Err(PluginError::failed(reason)),
     }
 }
 

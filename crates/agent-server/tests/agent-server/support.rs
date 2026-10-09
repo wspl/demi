@@ -435,12 +435,22 @@ pub async fn agent_call(
         stdout: RefCell::new(Vec::new()),
         stderr: RefCell::new(Vec::new()),
     });
-    let code = live
+    let path = invocation.path.join(" ");
+    // A failure is told as the backend's dispatcher tells it: a runtime
+    // error after the command's path, a usage error whole
+    // (`commands.md` § Handle an rpc call).
+    let (code, told) = match live
         .commands()
         .dispatch(invocation, RpcPort::new(port.clone(), cancel))
-        .await?;
+        .await
+    {
+        Ok(code) => (code, String::new()),
+        Err(RpcError::Failed(reason)) => (1, format!("{path}: {reason}\n")),
+        Err(RpcError::Usage(text)) => (2, format!("{text}\n")),
+        Err(error) => return Err(error),
+    };
     let stdout = String::from_utf8(port.stdout.borrow().clone()).expect("stdout is text");
-    let stderr = String::from_utf8(port.stderr.borrow().clone()).expect("stderr is text");
+    let stderr = String::from_utf8(port.stderr.borrow().clone()).expect("stderr is text") + &told;
     Ok(CommandRun {
         code,
         stdout,

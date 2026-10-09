@@ -56,6 +56,7 @@ fn request(operation: &str) -> Invocation {
         edits: None,
         operation: operation.into(),
         invocation_id: "benchmark".into(),
+        command: "demi test".into(),
         args: serde_json::json!({}),
         cwd: std::env::current_dir()
             .unwrap()

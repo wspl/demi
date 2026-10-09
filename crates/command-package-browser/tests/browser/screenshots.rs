@@ -51,7 +51,7 @@ async fn a_screenshot_over_16_mib_fails_and_names_its_size_and_the_output_file_t
         let (code, text) = full_page_medium(&mut fixture, &tab).await;
         assert_eq!(code, 1, "{text}");
         let size = named_size(
-            r"^Error: result_too_large\nthe screenshot is (\d+) bytes, more than the 16777216 a command returns as an image; save it to a file with --output <file>\n",
+            r"^demi browser screenshot: t\d+: the screenshot is (\d+) bytes, more than the 16777216 a command returns as an image; save it to a file with --output <file> \(result_too_large, action not started\)\n$",
             &text,
         );
         assert!(size > 16 * 1024 * 1024, "{size}");
@@ -96,7 +96,7 @@ async fn a_capture_chrome_cannot_send_fails_alone_and_the_browser_goes_on() {
         let (code, text) = full_page_medium(&mut fixture, &tab).await;
         assert_eq!(code, 1, "{text}");
         let size = named_size(
-            r"^Error: result_too_large\nthe screenshot is too large for Chrome to send: the CDP message is (\d+) bytes, more than the 67108864 bytes a message may have; capture a part of the page with --clip x,y,width,height\n",
+            r"^demi browser screenshot: t\d+: the screenshot is too large for Chrome to send: the CDP message is (\d+) bytes, more than the 67108864 bytes a message may have; capture a part of the page with --clip x,y,width,height \(result_too_large, action not started\)\n$",
             &text,
         );
         assert!(size > 64 * 1024 * 1024, "{size}");

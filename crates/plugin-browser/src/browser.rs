@@ -56,8 +56,8 @@ operations! {
     "scroll" => ScrollInput, ActionResult, "Scroll at an element or viewport coordinate.";
     "fill" => FillInput, ActionResult, "Replace an editable element’s contents with text.";
     "type" => TypeInput, ActionResult, "Type characters into a target or the current focus, preserving selection.";
-    "key" => KeyInput, ActionResult, "Press --key at the current focus or focus a supplied target first; use a key name or a + joined combination, such as Space, Enter or ControlOrMeta+A.";
-    "check" => CheckInput, ActionResult, "Set a checkbox or radio to the requested checked value.";
+    "key" => KeyInput, ActionResult, "Press a key at the current focus, or focus a target first: key t1 Enter, key t1 e1 Enter; a key name or a + joined combination, such as Space, Enter or ControlOrMeta+A.";
+    "check" => CheckInput, ActionResult, "Check a checkbox or radio; --value=false unchecks it.";
     "select" => SelectInput, ActionResult, "Select native select options by value, label or index.";
     "select-text" => SelectTextInput, ActionResult, "Select rendered text or position its cursor; prefix and suffix disambiguate.";
     "wait" => WaitInput, WaitResult, "Wait for a URL glob, element state or current-document load state, within a bounded deadline.";
@@ -65,7 +65,7 @@ operations! {
     "download" => DownloadInput, DownloadResult, "Trigger and save a completed download on this Host.";
     "clipboard.write" => ClipboardWriteInput, ClipboardWriteResult, "Write finite raw stdin to the managed clipboard with the declared MIME type.";
     "clipboard.read" => ClipboardReadInput, ClipboardReadResult, "Read clipboard text or export supported MIME entries to Host files.";
-    "eval" => EvalInput, EvalResult, "Evaluate a read-only JavaScript expression; Chrome rejects side effects.";
+    "eval" => EvalInput, EvalResult, "Run a read-only script from stdin and print the value of its last statement, as JSON; Chrome refuses side effects, and nothing waits for a Promise. Change the page with click, fill, scroll and the other actions.";
     "logs" => LogsInput, LogsResult, "Read console entries without clearing them; use the returned cursor to continue.";
     "viewport.set" => ViewportSetInput, ViewportResult, "Set this tab’s viewport in CSS pixels and its pixel ratio (--scale), until the user picks another mode.";
     "viewport.reset" => ViewportResetInput, ViewportResult, "Return this tab to Web mode, where the user’s live view decides its size.";
@@ -141,7 +141,7 @@ fn leaf<I: BrowserInput + schemars::JsonSchema, R: schemars::JsonSchema>(
                 I::DEFAULT_TIMEOUT_MS
             ),
         )
-        .positionals(positionals(name).iter().copied())
+        .positionals(positionals::<I>(name))
         .json_output::<R>()
         .success_output(match name {
             "screenshot" => {
@@ -161,12 +161,39 @@ fn leaf<I: BrowserInput + schemars::JsonSchema, R: schemars::JsonSchema>(
     if name == "screenshot" {
         leaf = leaf.media();
     }
+    if targeted::<I>() {
+        leaf = leaf.positional_options(["ref"]);
+    }
     leaf
 }
 
+/// Whether `I` takes an element target, whose reference is also the
+/// positional after the tab, as outputs print it (`browser.md` § Shared
+/// target grammar).
+fn targeted<I: schemars::JsonSchema>() -> bool {
+    schemars::schema_for!(I)
+        .get("properties")
+        .and_then(|properties| properties.get("ref"))
+        .is_some()
+}
+
 /// The operands a command line gives in order: every operation but `open`,
-/// `tabs`, `content.fetch` and `install` acts on a tab, named first.
-fn positionals(name: &str) -> &'static [&'static str] {
+/// `tabs`, `content.fetch` and `install` acts on a tab, named first; a
+/// target's reference follows it, and `key`'s key comes last, after an
+/// optional reference: `key t1 Enter`, `key t1 e1 Enter`.
+fn positionals<I: schemars::JsonSchema>(name: &str) -> Vec<&'static str> {
+    let mut fields = operands(name).to_vec();
+    if targeted::<I>() {
+        fields.push("ref");
+    }
+    if name == "key" {
+        fields.push("key");
+    }
+    fields
+}
+
+/// The operands before a target's reference.
+fn operands(name: &str) -> &'static [&'static str] {
     match name {
         "open" => &["url"],
         "goto" => &["tab", "url"],

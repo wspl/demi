@@ -48,6 +48,7 @@ fn invocation(operation: &str, conversation: &str) -> Invocation {
         context: command_context(conversation),
         operation: operation.into(),
         invocation_id: operation.into(),
+        command: "demi test".into(),
         args: json!({}),
         cwd: std::env::temp_dir().to_string_lossy().into_owned(),
         env: BTreeMap::new(),

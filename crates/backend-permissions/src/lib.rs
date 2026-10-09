@@ -162,7 +162,7 @@ fn joined<'a>(actions: impl Iterator<Item = &'a str>) -> String {
 /// the root's name, quoted for a POSIX shell.
 fn command_line(invocation: &RpcInvocation) -> Result<String, RpcError> {
     shlex::try_join(invocation.argv.iter().map(String::as_str))
-        .map_err(|error| RpcError::Usage(error.to_string()))
+        .map_err(|error| RpcError::Failed(error.to_string()))
 }
 
 /// The conversation's undecided requests, as a page reads them, with the

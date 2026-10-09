@@ -67,6 +67,7 @@ async fn draw(client: &Client, conversation: &str, count: u32) -> String {
         .invoke(&Invocation {
             operation: "draw".into(),
             invocation_id: "draw".into(),
+            command: "demi test".into(),
             context: CommandContext {
                 color_scheme: demi_command_protocol::ColorScheme::Light,
                 conversation: conversation.into(),

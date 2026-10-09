@@ -172,16 +172,39 @@ pub fn render(operation: &BrowserOperation, mut value: Value, json: bool) -> Res
     Ok(result.into_bytes())
 }
 
-/// Render browser failures with the same progress and details as their JSON form.
-pub fn render_error(code: BrowserErrorCode, message: &str, details: &ErrorDetails) -> String {
-    let action = details.action.unwrap_or(ActionProgress::NotStarted);
+/// A browser failure as text: lines of context, then the error.
+pub struct RenderedError {
+    /// The failure's details, a line each, such as `Current URL: …`.
+    pub context: String,
+    /// The last line without the command's path, which the dispatcher puts
+    /// first: the tab, the message, the code and what became of the action,
+    /// `t1: 2 elements match (ambiguous_target, action not started)`.
+    pub error: String,
+}
+
+/// Renders a browser failure with the same progress and details as its JSON
+/// form (`browser.md` § Errors). The error is the last line, because models
+/// read the end of a command's output, often through `| tail -1`; a failure
+/// whose last line was `Tab: t2` looked like a success.
+pub fn render_error(code: BrowserErrorCode, message: &str, details: &ErrorDetails) -> RenderedError {
+    let action = match details.action.unwrap_or(ActionProgress::NotStarted) {
+        ActionProgress::NotStarted => "not started",
+        ActionProgress::Completed => "completed",
+        ActionProgress::Unknown => "unknown",
+    };
     // A message may carry a page's text, so it stays on its line.
     let message = crate::driver::text::plain(message);
-    let mut text = format!("Error: {code}\n{message}\nAction: {action}.\n");
+    let message = message.strip_suffix('.').unwrap_or(&message);
+    let tab = details
+        .tab
+        .as_deref()
+        .map(|tab| format!("{}: ", crate::driver::text::plain(tab)))
+        .unwrap_or_default();
+    let mut context = String::new();
     // Details are plain data, which always serializes to an object.
     if let Ok(Value::Object(details)) = serde_json::to_value(details) {
         for (key, value) in details {
-            if key == "action" {
+            if key == "action" || key == "tab" {
                 continue;
             }
             let title = match key.as_str() {
@@ -197,10 +220,13 @@ pub fn render_error(code: BrowserErrorCode, message: &str, details: &ErrorDetail
                 Value::String(value) => crate::driver::text::plain(&value),
                 _ => value.to_string(),
             };
-            text.push_str(&format!("{title}: {value}\n"));
+            context.push_str(&format!("{title}: {value}\n"));
         }
     }
-    text
+    RenderedError {
+        context,
+        error: format!("{tab}{message} ({code}, action {action})"),
+    }
 }
 
 #[cfg(test)]
@@ -227,8 +253,8 @@ mod tests {
     }
 
     #[test]
-    fn text_errors_show_progress_and_individual_details() {
-        let text = render_error(
+    fn a_text_error_ends_with_its_tab_message_code_and_progress_after_its_details() {
+        let rendered = render_error(
             BrowserErrorCode::NotActionable,
             "The button is covered.",
             &ErrorDetails {
@@ -240,19 +266,13 @@ mod tests {
                 ..ErrorDetails::default()
             },
         );
-        assert!(
-            text.starts_with(
-                "Error: not_actionable\nThe button is covered.\nAction: not_started.\n"
-            )
+        assert_eq!(
+            rendered.context,
+            "Current URL: https://example.test/\nInterceptor: <div id=overlay>\nDelivered: 0\n"
         );
-        for line in [
-            "Tab: t1\n",
-            "Current URL: https://example.test/\n",
-            "Interceptor: <div id=overlay>\n",
-            "Delivered: 0\n",
-        ] {
-            assert!(text.contains(line));
-        }
-        assert!(!text.contains("Details:"));
+        assert_eq!(
+            rendered.error,
+            "t1: The button is covered (not_actionable, action not started)"
+        );
     }
 }

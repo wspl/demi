@@ -23,9 +23,6 @@ const JSON_BYTES: usize = 1024 * 1024;
 pub struct CommandOutput<'a> {
     output: Output,
     json: Option<Capture<'a>>,
-    /// The command line that names the command, which its media failures
-    /// begin with.
-    name: String,
     /// Where its media go; none when its leaf does not declare `media`,
     /// so that a medium fails it.
     media: Option<Media>,
@@ -71,14 +68,8 @@ impl Media {
 }
 
 impl<'a> CommandOutput<'a> {
-    /// `json` is the leaf's output schema when the caller passed `--json`;
-    /// `name` names the command in what its media failures say.
-    pub fn new(
-        output: Output,
-        json: Option<&'a Schema>,
-        name: String,
-        media: Option<Media>,
-    ) -> Self {
+    /// `json` is the leaf's output schema when the caller passed `--json`.
+    pub fn new(output: Output, json: Option<&'a Schema>, media: Option<Media>) -> Self {
         Self {
             output,
             json: json.map(|schema| Capture {
@@ -86,7 +77,6 @@ impl<'a> CommandOutput<'a> {
                 bytes: Vec::new(),
                 lines: Vec::new(),
             }),
-            name,
             media,
             wrote: false,
             line_start: true,
@@ -220,7 +210,7 @@ impl<'a> CommandOutput<'a> {
     }
 
     fn failure(&self, failure: MediaFailure) -> ServiceError {
-        ServiceError::failed(CommandFailure(format!("{}: {failure}", self.name)))
+        ServiceError::failed(failure)
     }
 }
 
@@ -268,8 +258,3 @@ enum MediaFailure {
     BesideStdout,
 }
 
-/// A failure whose text names its command and is told as it is, on the
-/// command's stderr.
-#[derive(Debug, thiserror::Error)]
-#[error("{0}")]
-pub struct CommandFailure(String);

@@ -716,8 +716,18 @@ input! {
     targeted
     /// `check`: checks or unchecks the target's checkbox or radio button.
     pub struct CheckInput {
+        /// Whether it ends checked; --value=false unchecks
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "bool")]
         #[garde(skip)]
-        pub value: bool,
+        pub value: Option<bool>,
+    }
+}
+
+impl CheckInput {
+    /// Whether the element ends checked: checked unless `--value=false`.
+    pub fn checked(&self) -> bool {
+        self.value.unwrap_or(true)
     }
 }
 
@@ -970,9 +980,12 @@ pub enum ClipboardReadResult {
 
 input! {
     targeted
-    /// `eval`: evaluates a read-only expression in the page, or a function of
-    /// the target's element.
+    /// `eval`: runs a read-only script in the page, with the target's
+    /// element bound when it names one, and returns its last value.
     pub struct EvalInput {
+        /// Statements run as one block; the value of the last is returned.
+        /// `document` is the page's, `element` the target's, `elements` its
+        /// matches with --all
         #[garde(length(chars, max = STDIN_BYTES))]
         pub expression: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
@@ -985,7 +998,11 @@ input! {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EvalResult {
-    pub value: Value,
+    /// The value of the script's last statement; absent when it is
+    /// `undefined`, as `JSON.stringify` leaves it out of an object.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Value")]
+    pub value: Option<Value>,
 }
 
 input! {

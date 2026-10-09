@@ -28,8 +28,17 @@ pub enum BrowserError {
     CdpMethodDenied(String),
     #[error("some browser items failed")]
     PartialFailure { export: AssetsExportResult },
-    #[error("read-only evaluation rejected a possible side effect")]
+    #[error(
+        "eval is read-only, and Chrome refused a possible side effect, such as a change to the page or a Promise eval cannot wait for; change the page with click, fill, scroll and the other actions"
+    )]
     SideEffectRejected,
+    /// An eval's script that does not compile, or that throws.
+    #[error("{0}")]
+    ScriptRefused(String),
+    /// An eval's value JSON cannot hold, with its place, such as
+    /// `result[2] is a function`.
+    #[error("{0}")]
+    UnsupportedResult(String),
     #[error("browser environment is closed")]
     Closed,
     #[error("{0}")]
@@ -328,7 +337,10 @@ impl BrowserError {
             Self::InvalidDialogAction => BrowserErrorCode::InvalidDialogAction,
             Self::Ambiguous(_) => BrowserErrorCode::AmbiguousTarget,
             Self::StaleReference => BrowserErrorCode::StaleRef,
-            Self::InvalidResult(_) => BrowserErrorCode::UnsupportedResult,
+            Self::InvalidResult(_) | Self::UnsupportedResult(_) => {
+                BrowserErrorCode::UnsupportedResult
+            }
+            Self::ScriptRefused(_) => BrowserErrorCode::InvalidInput,
             Self::Configuration(_) => BrowserErrorCode::InvalidInput,
             Self::Io(_) => BrowserErrorCode::IoError,
             Self::Cdp(_)

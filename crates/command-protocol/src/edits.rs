@@ -131,6 +131,13 @@ pub fn is_text(bytes: &[u8]) -> bool {
     !bytes.contains(&0) && std::str::from_utf8(bytes).is_ok()
 }
 
+/// Whether `bytes`, the first bytes of a longer file, are text as
+/// [`is_text`] reads it, allowing a character cut where they end.
+pub fn begins_as_text(bytes: &[u8]) -> bool {
+    !bytes.contains(&0)
+        && std::str::from_utf8(bytes).map_or_else(|error| error.error_len().is_none(), |_| true)
+}
+
 /// Why a file is not shown as text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum TextRefusal {

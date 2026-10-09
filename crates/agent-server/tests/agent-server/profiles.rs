@@ -8,7 +8,6 @@ use std::{cell::Cell, rc::Rc};
 use demi_agent_store::ClosePhase;
 use demi_agent_tools::{Profile, ProfileModel, SubagentSettings};
 use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
-use demi_host_interface::RpcError;
 use demi_provider_common::{InferenceRequest, ProviderRun, ProviderRuntime, RequestLimits};
 use demi_shared_types::{AgentMessageEvent, CompletionOutcome};
 use futures_util::future::LocalBoxFuture;
@@ -255,7 +254,7 @@ async fn each_spawn_reads_the_settings_as_they_are_and_a_child_keeps_what_it_was
     let asked_again = model.requests_of("task one").pop().unwrap();
     assert!(asked_again.system_prompt.starts_with("explore prompt one\n"));
     assert!(
-        matches!(&from_resumed, Err(RpcError::Usage(message)) if message == "\"demi agent spawn\" is not an rpc command"),
+        matches!(&from_resumed, Ok(run) if run.code == 1 && run.stderr == "demi agent spawn: not an rpc command of this conversation\n"),
         "{from_resumed:?}"
     );
     let record = fixture.store.record(&one).unwrap();
@@ -403,7 +402,7 @@ async fn turning_subagents_off_stops_spawns_at_every_depth_and_leaves_running_ch
         &fixture.server,
         &root(),
         "abort",
-        json!({ "id": fixture.number(&outer) }),
+        json!({ "id": [fixture.number(&outer)] }),
     )
     .await;
     assert_eq!(aborted.code, 0, "{aborted:?}");
