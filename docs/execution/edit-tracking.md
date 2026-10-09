@@ -25,7 +25,8 @@ web app fetches them when a file is opened.
 | Recorded | Not recorded |
 | --- | --- |
 | A file a brush redirection opens for writing (`>`, `>>`, `<>`, `exec 3>f`). | Writes by external programs that do not participate in recording: git, python, node, user-installed tools. |
-| A file an embedded utility opens for writing, writes whole, or renames over (`sed -i`, `tee`, `sort -o`, `uniq` with an output file). | Copies and hard links (`cp`), deletions, renames as moves, directories, permissions, ownership, times. |
+| A file an embedded utility opens for writing, writes whole, or renames over (`sed -i`, `tee`, `sort -o`, `uniq` with an output file, `mv` onto an existing file). | Copies and hard links (`cp`), deletions, a rename of a file the job did not change (a move), directories, permissions, ownership, times. |
+| The edits the job recorded under a file's old name, carried to its new name when an embedded `mv` renames it. | |
 | Files created or modified by `demi file edit` and `demi file patch`, including when one call changes several files. | Edits prepared by a native command but never written, or successfully rolled back. |
 | Every in-process part of the job: subshells, functions, background tasks, process substitutions. | Reads, and the empty file `mktemp` creates. |
 
@@ -34,6 +35,12 @@ A file is `added` when it did not exist before this job first changed it,
 it existed before the job or was created during it. An operation with identical
 captured before and after bytes is omitted. A successfully rolled-back native
 patch is also omitted.
+
+For example, a job writes `/tmp/x` and runs `mv /tmp/x src/new.ts`:
+`src/new.ts` is `added` with the contents written, and `/tmp/x`, gone, is
+omitted. A job that runs `mv /tmp/x src/page.ts` over an existing
+`src/page.ts` modifies it, from its old contents to the new. A job that only
+runs `mv a.ts b.ts` records nothing, since it changed no file's contents.
 
 | Limit | Value | Beyond it |
 | --- | --- | --- |
