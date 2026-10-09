@@ -792,6 +792,56 @@ A tool timeout returns the running job's handle. `shell_status` observes that jo
 and `demi shell stop` cancels it. Background tasks remain job-owned rather than
 becoming detached services. Brush's internal tasks do not expose OS PIDs in `$!`.
 
+### Standard utilities
+
+A job's standard utilities behave as GNU's do on every Host, macOS included.
+For example, on a Mac `sed -i 's/a/b/' notes.txt` edits the file in place
+as on Linux, and `sed -i '' 's/a/b/' notes.txt`, the form macOS's own sed
+takes, fails as GNU sed fails, reading the empty argument as the script and
+the script as a file: `sed: can't read s/a/b/: No such file or directory`.
+The context block tells the model so
+([Switch the primary target](sessions-and-targets.md#switch-the-primary-target)).
+
+These utilities run in the runner, from uutils and the GNU-compatible tools
+vendored beside it, so their writes pass through the job's scope and edit
+tracking records them ([Edit tracking](edit-tracking.md)): `basename`, `cat`,
+`chmod`, `chown`, `cmp`, `cp`, `cut`, `date`, `df`, `diff`, `dirname`, `du`,
+`env`, `find`, `grep`, `head`, `jq`, `ls`, `mkdir`, `mktemp`, `mv`, `nl`,
+`od`, `paste`, `realpath`, `rg`, `rm`, `rmdir`, `sed`, `seq`, `sleep`, `sort`,
+`stat`, `tac`, `tail`, `tee`, `timeout`, `touch`, `tr`, `uniq`, `wc` and
+`xargs`. A Host's own programs of these names stay where the system keeps
+them, such as macOS's BSD tools in `/usr/bin`.
+
+- **What they print.** Options, output, exit statuses and messages are
+  GNU's, in English, as uutils prints them where it has the utility:
+  `ls: cannot access 'nope': No such file or directory` with status 2, and
+  `wc` ends its counts with `total`. `sed` follows GNU sed: an unreadable
+  input file prints `sed: can't read <file>: No such file or directory`, the
+  other files are still processed, and the status is 2.
+- **Paths.** Every path a utility takes is resolved against the job's
+  directory, never the runner's own, for reading its metadata, changing its
+  mode or owner, setting its times and asking for its file system alike.
+- **Copies.** `cp` makes the copy as GNU's does: its times are the time of
+  the copy and its mode the source's less the job's umask, unless `-p`,
+  `-a` or `--preserve` keeps them, and an existing destination is written in
+  place, so a hard link to it stays one. It clones the data where the file
+  system can, as `--reflink=auto`, which is GNU's default; `-c`, macOS
+  `cp`'s flag for a clone, means the same. For example, restoring a source
+  file from a copy with `cp` gives it a new time, so a build sees it changed.
+- **Programs a utility starts.** `find -exec`, `xargs`, `env` and `timeout`
+  start a command; a bare name that is one of these utilities runs that
+  utility in the runner, as the shell would, and a path such as
+  `/usr/bin/sed` runs that program. `type sed` says the shell's utility;
+  `which sed` names the system's program, since `which` searches only `PATH`.
+- **The shell's own builtins** word their errors as bash does:
+  `cd: ./browse: No such file or directory`,
+  `nosuch: command not found` with status 127.
+
+GNU's behaviour on every Host is one behaviour to know, whatever the Host's
+system: a script written on a Linux Cloud runs on a Mac unchanged. A model
+that writes a BSD form gets GNU's error for it, which names the problem, as
+GNU's messages are the ones models know best.
+
 ### Builtins that act on a process
 
 In bash, a few builtins act on the shell's own process: `exec` replaces it
