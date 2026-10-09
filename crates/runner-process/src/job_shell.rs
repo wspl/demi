@@ -33,10 +33,9 @@ pub struct JobCommands {
 /// What a job starts with.
 pub struct JobStart {
     pub script: String,
+    /// Where the job starts; a directory that does not exist fails the job
+    /// before its script runs (`runner.md` § Shell jobs).
     pub cwd: PathBuf,
-    /// Where the job starts instead when `cwd` no longer exists: the
-    /// conversation's working directory (`runner.md` § Shell jobs).
-    pub workspace: PathBuf,
     pub env: BTreeMap<String, String>,
     /// Whether the job's input is its live terminal rather than a finite body.
     pub live: bool,
@@ -77,7 +76,6 @@ pub trait ShellJob: Send + Sync {
 
     fn is_cancelled(&self) -> bool;
 
-    /// The job's exit and its last working directory, once everything it ran
-    /// has finished.
-    fn wait(&mut self) -> BoxFuture<'_, (ProcessExit, Option<String>)>;
+    /// The job's exit, once everything it ran has finished.
+    fn wait(&mut self) -> BoxFuture<'_, ProcessExit>;
 }

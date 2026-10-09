@@ -434,13 +434,11 @@ impl<E: Clone, C> Shared<E, C> {
     }
 }
 
-/// How a job ended: its status, where its script ended, its retained output
-/// and the files it changed.
+/// How a job ended: its status, its retained output and the files it
+/// changed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobEnd {
     pub status: ProcessEnd,
-    /// The directory the script ended in; none when bash never ran it.
-    pub cwd: Option<String>,
     /// Each stream's length; none when bash never ran the script.
     pub output: Option<wire::OutputLengths>,
     pub files: Vec<wire::JobFileChange>,
@@ -452,7 +450,6 @@ impl JobEnd {
     pub(crate) fn lost(reason: &str) -> Self {
         Self {
             status: ProcessEnd::Lost(reason.into()),
-            cwd: None,
             output: None,
             files: Vec::new(),
             path_changes: Vec::new(),
@@ -1011,7 +1008,6 @@ impl Link {
                 exit_code,
                 signal,
                 spawn_error,
-                cwd,
                 output,
                 files,
                 path_changes,
@@ -1036,7 +1032,6 @@ impl Link {
                     job.cancel.cancel();
                     job.shared.finish(JobEnd {
                         status: process_end(exit_code, signal, spawn_error),
-                        cwd,
                         output,
                         files,
                         path_changes,

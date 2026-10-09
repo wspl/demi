@@ -146,7 +146,6 @@ async fn ready_job(cwd: &Path, script: &str) -> Job {
     let mut job = Job::start(
         script.into(),
         cwd.to_owned(),
-        cwd.to_owned(),
         BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
         false,
         true,
@@ -189,7 +188,7 @@ async fn starved_job(name: &str, mut job: Job, input: &'static [u8]) {
         panic!("{name} ended with no open file left: {outcome:?}");
     }
     drop(hog);
-    let (exit, _) = tokio::time::timeout(Duration::from_secs(30), task)
+    let exit = tokio::time::timeout(Duration::from_secs(30), task)
         .await
         .unwrap_or_else(|_| panic!("{name} still waits after files were freed"))
         .unwrap();
@@ -439,7 +438,6 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
             let mut job = Job::start(
                 "true".into(),
                 cwd.clone(),
-                cwd.clone(),
                 BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
                 false,
                 true,
@@ -448,7 +446,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
             )
             .await
             .map_err(|error| error.to_string())?;
-            let (exit, _) = job.wait().await;
+            let exit = job.wait().await;
             (exit.code == Some(0))
                 .then_some(())
                 .ok_or(format!("{exit:?}"))
@@ -503,7 +501,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
             .unwrap();
         paused("a cancelled job", before).await;
         job.cancel();
-        let (exit, _) = tokio::time::timeout(Duration::from_secs(10), job.wait())
+        let exit = tokio::time::timeout(Duration::from_secs(10), job.wait())
             .await
             .expect("a cancelled job stops waiting for descriptors");
         assert_eq!(exit.signal.as_deref(), Some("SIGKILL"), "{exit:?}");
@@ -654,7 +652,6 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     let mut job = Job::start(
         "/bin/sh -c 'ulimit -n'; env /bin/sh -c 'ulimit -n'".into(),
         cwd.clone(),
-        cwd.clone(),
         BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
         false,
         true,
@@ -669,7 +666,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
             printed.extend_from_slice(&chunk.bytes);
         }
     }
-    let (exit, _) = job.wait().await;
+    let exit = job.wait().await;
     assert_eq!(exit.code, Some(0), "{exit:?}");
     assert_eq!(String::from_utf8(printed).unwrap(), "1024\n1024\n");
 }

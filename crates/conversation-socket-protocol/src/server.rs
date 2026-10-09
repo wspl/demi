@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use demi_shared_types::{
     Block, BlockId, CommandId, ContextUsage, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId, PendingCall, PendingSteer,
-    ProviderErrorDiagnostics, ProviderFailureFacts, QueuedMessage, SessionPhase, ShellId,
+    ProviderErrorDiagnostics, ProviderFailureFacts, QueuedMessage, SessionPhase,
     Timestamp, TurnId,
 };
 use schemars::JsonSchema;
@@ -404,8 +404,6 @@ impl ShellStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandView {
-    #[garde(skip)]
-    pub shell_id: ShellId,
     #[garde(skip)]
     pub command_id: CommandId,
     /// The `shell_exec` call that started it, in the subagent's transcript

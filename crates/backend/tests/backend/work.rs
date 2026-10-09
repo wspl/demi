@@ -248,23 +248,24 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
         "{system}"
     );
 
-    // The shell keeps its directory between turns.
-    let script = "pwd && demi file read notes.md | grep -n a | sort -r";
+    // The next command starts in the conversation's directory again, not in
+    // `src`.
+    let script = "pwd && demi file read src/notes.md | grep -n a | sort -r";
     let read = work
         .turn(vec![shell("t2", script, 10_000), say("read")])
         .await;
     assert!(
-        read.received[0].contains("/src\n3:gamma\n2:beta\n1:alpha"),
+        read.received[0].contains(&format!("{}\n3:gamma\n2:beta\n1:alpha", home.display())),
         "{}",
         read.received[0]
     );
 
-    let script = "demi file edit notes.md --old beta --new delta && cat notes.md";
+    let script = "demi file edit src/notes.md --old beta --new delta && cat src/notes.md";
     let edited = work
         .turn(vec![shell("t3", script, 10_000), say("edited")])
         .await;
     assert!(
-        edited.received[0].contains("Edited notes.md (+1 \u{2212}1)\n   1  alpha\n   2  delta\n   3  gamma\nalpha\ndelta\ngamma"),
+        edited.received[0].contains("Edited src/notes.md (+1 \u{2212}1)\n   1  alpha\n   2  delta\n   3  gamma\nalpha\ndelta\ngamma"),
         "{}",
         edited.received[0]
     );
@@ -275,7 +276,7 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
 
     let listed = work
         .turn(vec![
-            shell("t4", "ls && demi host current", 10_000),
+            shell("t4", "ls src && demi host current", 10_000),
             say("listed"),
         ])
         .await;
@@ -422,7 +423,7 @@ async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_
 // Several seconds: a real device installs the builtin package, and two
 // conversations run two turns each on it at once.
 #[tokio::test]
-async fn two_conversations_on_one_device_keep_their_directories_and_shells_apart() {
+async fn two_conversations_on_one_device_keep_apart_and_each_command_starts_in_its_directory() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
@@ -457,15 +458,15 @@ async fn two_conversations_on_one_device_keep_their_directories_and_shells_apart
         second.received[0]
     );
 
-    // A's shell carries its directory to the next turn and nothing else;
-    // B's never moved.
+    // A's next command starts in the conversation's directory again, with
+    // nothing of the last one; B's never moved.
     let again = "echo \"a: $(pwd) mark=${MARK:-unset}\"";
     let (third, fourth) = tokio::join!(
         a.turn(vec![shell("a2", again, 10_000), say("a again")]),
         b.turn(vec![shell("b2", staying, 10_000), say("b again")]),
     );
     assert!(
-        third.received[0].contains(&format!("a: {} mark=unset", sub.display())),
+        third.received[0].contains(&format!("a: {} mark=unset", home.display())),
         "{}",
         third.received[0]
     );
@@ -823,8 +824,8 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
     );
     assert!(std::fs::read(a.join("push.bin")).unwrap() == payload[..250_000]);
 
-    // Where a shell on the attached host ends is where the next one starts,
-    // and `--host` takes the device's id as well.
+    // Every shell on the attached host starts in its directory, whatever
+    // the last one did, and `--host` takes the device's id as well.
     let wander = format!(
         "demi host shell --host alpha \"mkdir -p sub && cd sub && pwd\" && demi host shell --host {a_id} \"pwd\" && demi host list"
     );
@@ -833,12 +834,12 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
         .await;
     let sub = format!("{a_path}/sub");
     assert!(
-        wandered.received[0].contains(&format!("{sub}\n{sub}\n")),
+        wandered.received[0].contains(&format!("{sub}\n{a_path}\n")),
         "{}",
         wandered.received[0]
     );
     assert!(
-        wandered.received[0].contains(&format!("alpha  {a_id}  online  {sub}  (attached)")),
+        wandered.received[0].contains(&format!("alpha  {a_id}  online  {a_path}  (attached)")),
         "{}",
         wandered.received[0]
     );

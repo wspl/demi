@@ -87,11 +87,6 @@ pub trait HostShard {
     /// A job of the conversation ended, finished or stopped, which may have
     /// changed what its plugins show (`plugins.md` § Topics).
     fn job_ended(&self, conversation: &ConversationId);
-    /// The conversation's attached hosts changed outside a change the user
-    /// asked for, such as the directory a host's shell recorded, so its
-    /// summary goes to the user's pages (`web-api.md` § Page
-    /// synchronization).
-    fn hosts_changed(&self, conversation: &ConversationId);
     /// Applies `change` to the conversation through the shard's one entry
     /// for its changes, and shows it on the user's pages, as a change the
     /// user makes.

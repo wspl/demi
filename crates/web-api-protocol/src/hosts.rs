@@ -17,8 +17,8 @@ pub struct AttachedHost {
     /// What the model and the user call the host; unique within the
     /// conversation.
     pub name: String,
-    /// Where the last shell on the host ended, where the next one starts;
-    /// null until one ran.
+    /// The directory its commands start in, fixed when it was attached; null
+    /// for a device attached by name, whose commands start in its home.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub cwd: Option<String>,

@@ -1,10 +1,10 @@
 //! The shell tools' timing on a real runner (`runtime.md` § Dispatch and
 //! failures, § The window, § Stopping a command): the `shell_exec` calls of
-//! one response start together and a call of another tool splits them, the
-//! first takes the default shell and the others start beside it, an agent
-//! message ends a window and a human steer does not, Send Now ends one
-//! without stopping its command, and `shell_status` watches a command up to
-//! its end. `demi shell stop` runs in the backend, which these
+//! one response start together and a call of another tool splits them,
+//! every one starts in the working directory whatever the one before did,
+//! an agent message ends a window and a human steer does not, Send Now ends
+//! one without stopping its command, and `shell_status` watches a command
+//! up to its end. `demi shell stop` runs in the backend, which these
 //! scenarios lack: the backend's own scenarios cover it.
 //!
 //! A command that cannot end until another runs, one that waits for the
@@ -173,14 +173,14 @@ async fn a_call_between_two_execs_splits_them() {
 
 // About two seconds: four scripts, each a shell job.
 #[tokio::test(flavor = "local")]
-async fn the_first_exec_keeps_its_directory_and_the_others_start_beside_it() {
+async fn every_exec_starts_in_the_working_directory_whatever_the_one_before_did() {
     within(async {
         let (turns, results) = model(vec![
             Box::new(|_| vec![exec("enter", "mkdir -p sub/one sub/two && cd sub", 20_000)]),
             Box::new(|_| {
                 vec![
-                    exec("first", "pwd && cd one", 20_000),
-                    exec("second", "pwd && cd two", 20_000),
+                    exec("first", "pwd && cd sub/one", 20_000),
+                    exec("second", "pwd && cd sub/two", 20_000),
                 ]
             }),
             Box::new(|_| vec![exec("after", "pwd", 20_000)]),
@@ -191,13 +191,10 @@ async fn the_first_exec_keeps_its_directory_and_the_others_start_beside_it() {
         turn(&mut client, "message-1", "Look around.").await;
 
         let results = results.borrow();
-        let sub = format!("{}/sub", fixture.workspace);
-        // The second runs in a new shell that starts where the default
-        // shell was when the step started.
-        assert_eq!(shown_output(result(&results, "first")), format!("{sub}\n"));
-        assert_eq!(shown_output(result(&results, "second")), format!("{sub}\n"));
-        // Only the default shell's directory carries over.
-        assert_eq!(shown_output(result(&results, "after")), format!("{sub}/one\n"));
+        let workspace = format!("{}\n", fixture.workspace);
+        for id in ["first", "second", "after"] {
+            assert_eq!(shown_output(result(&results, id)), workspace, "{id}");
+        }
         fixture.stop().await;
     })
     .await;
@@ -376,51 +373,6 @@ async fn send_now_on_a_steer_moves_the_command_to_the_background_and_the_turn_go
         assert_eq!(field(answered, "status"), "exited", "{answered}");
         assert_eq!(shown_output(answered), "got go\n");
         assert!(!fixture.kinds().contains(&"abort".to_owned()));
-        fixture.stop().await;
-    })
-    .await;
-}
-
-// About two seconds: four scripts, each a shell job.
-#[tokio::test(flavor = "local")]
-async fn a_shell_a_call_names_is_never_given_to_a_call_that_names_none() {
-    within(async {
-        let (turns, results) = model(vec![
-            Box::new(|_| vec![exec("enter", "mkdir -p sub && cd sub && sleep 0.3", 50)]),
-            Box::new(|results| {
-                let enter = field(result(results, "enter"), "commandId").to_owned();
-                vec![call(
-                    "ended",
-                    "shell_status",
-                    json!({"commandId": enter, "timeoutMs": 20_000}),
-                )]
-            }),
-            // The call without a shell comes first: given the default shell,
-            // it would leave the call that names that shell refused as busy.
-            Box::new(|results| {
-                let default = field(result(results, "enter"), "shellId").to_owned();
-                vec![
-                    exec("unnamed", "pwd", 20_000),
-                    call(
-                        "named",
-                        "shell_exec",
-                        json!({"description": "Run the test script", "script": "pwd", "timeoutMs": 20_000, "shellId": default}),
-                    ),
-                ]
-            }),
-        ]);
-        let script = ScriptedRuntime::new(turns);
-        let fixture = Fixture::start(&script).await;
-        let mut client = fixture.opened().await;
-        turn(&mut client, "message-1", "Look around.").await;
-
-        let results = results.borrow();
-        let sub = format!("{}/sub\n", fixture.workspace);
-        for id in ["unnamed", "named"] {
-            let text = result(&results, id);
-            assert_eq!(field(text, "status"), "exited", "{text}");
-            assert_eq!(shown_output(text), sub);
-        }
         fixture.stop().await;
     })
     .await;
