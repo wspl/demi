@@ -19,6 +19,7 @@ import TokenInput from '@demicodes/web-ui/ui/TokenInput.vue'
 import HighlightText from '@demicodes/web-ui/ui/HighlightText.vue'
 import ThemeToggle from '@demicodes/web-ui/ui/ThemeToggle.vue'
 import ConversationStatusDot from '@demicodes/web-ui/agent/ConversationStatusDot.vue'
+import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
 import DeviceIcon from '@demicodes/web-ui/devices/DeviceIcon.vue'
 import ContextUsageIndicator from '@demicodes/web-ui/agent/ContextUsageIndicator.vue'
 import ProviderIcon from '@demicodes/web-ui/agent/providers/ProviderIcon.vue'
@@ -74,6 +75,7 @@ const compactDanger = ref(false)
 const compactPinned = ref(false)
 const buttonPressed = ref(true)
 const buttonGhostPressed = ref(true)
+const buttonPrimaryPressed = ref(true)
 const iconPressed = ref(true)
 const iconCirclePressed = ref(true)
 
@@ -132,7 +134,15 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
             >Default</Button>
           </GallerySpecimen>
           <GallerySpecimen variant="primary">
-            <Button size="md" variant="primary">Primary</Button>
+            <Button size="md" variant="primary" @click="productWould('Save the Changes')">Primary</Button>
+          </GallerySpecimen>
+          <GallerySpecimen variant="primary · pressed">
+            <Button
+              size="md"
+              variant="primary"
+              :pressed="buttonPrimaryPressed"
+              @click="buttonPrimaryPressed = !buttonPrimaryPressed"
+            >Primary</Button>
           </GallerySpecimen>
           <GallerySpecimen variant="danger · a confirmation’s answer">
             <Button size="md" variant="danger" @click="productWould('Remove the Provider')">Remove</Button>
@@ -232,6 +242,15 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
               @click="iconPressed = !iconPressed"
             />
           </GallerySpecimen>
+          <GallerySpecimen variant="solid · over scrolling content">
+            <IconButton
+              :icon="ChevronDown"
+              variant="solid"
+              circle
+              aria-label="Scroll to bottom"
+              @click="productWould('Scroll to the Bottom')"
+            />
+          </GallerySpecimen>
           <GallerySpecimen variant="accent">
             <IconButton :icon="Send" variant="accent" />
           </GallerySpecimen>
@@ -301,6 +320,20 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
               :disabled-reason="IN_DEVELOPMENT"
               aria-label="In development"
             />
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="SessionDockChip"
+        note="A chip in the conversation’s dock, over the scrolling transcript: a raised button, solid whatever runs under it, hovered and pressed in its fill as every bordered control is."
+      >
+        <div class="specimen-row">
+          <GallerySpecimen variant="running">
+            <SessionDockChip dot="accent" breathing @click="productWould('Show the Running Tasks')">3 Running</SessionDockChip>
+          </GallerySpecimen>
+          <GallerySpecimen variant="done">
+            <SessionDockChip dot="success" @click="productWould('Show the Finished Tasks')">2 Done</SessionDockChip>
           </GallerySpecimen>
         </div>
       </GallerySection>

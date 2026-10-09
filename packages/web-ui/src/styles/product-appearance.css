@@ -79,7 +79,6 @@ html[data-theme="dark"][data-tone="ink"] {
   --line-focus: rgba(255, 255, 255, 0.32);
   --line-overlay: #5a5a5a;
   --btn-mix: rgb(255 255 255) 8%;
-  --btn-hover-mix: rgb(255 255 255) 15%;
 }
 
 html[data-theme="light"][data-tone="ink"] {
@@ -105,9 +104,7 @@ html[data-theme="light"][data-tone="ink"] {
   --line-strong: rgba(0, 0, 0, 0.14);
   --line-focus: #1a93fe;
   --line-overlay: rgba(0, 0, 0, 0.12);
-  /* A white button greys by the 5 points a hover takes. */
   --btn-mix: #ffffff 100%;
-  --btn-hover-mix: #eeeeee 100%;
 }
 
 html[data-shadow="hairline"] .input-float {
@@ -134,7 +131,6 @@ html[data-theme="dark"][data-tone="warm"] {
      surface (a menu) less than the page and would leave its hover faint. */
   --hover-mix: oklch(80% 0.009 106.68) 10%;
   --active-mix: oklch(80% 0.009 106.68) 15%;
-  --btn-hover-mix: oklch(80% 0.009 106.68) 18%;
   --line-subtle: oklch(55% 0.002 107 / 0.22);
   --line: oklch(55% 0.002 107 / 0.32);
   --line-strong: oklch(55% 0.002 107 / 0.4);
@@ -159,7 +155,6 @@ html[data-theme="light"][data-tone="warm"] {
   --hover-mix: oklch(20% 0.004 107) 7.5%;
   --active-mix: oklch(20% 0.004 107) 12%;
   --btn-mix: #ffffff 100%;
-  --btn-hover-mix: oklch(95% 0.006 107) 100%;
   --line-subtle: oklch(20% 0.004 107 / 0.06);
   --line: oklch(20% 0.004 107 / 0.1);
   --line-strong: oklch(20% 0.004 107 / 0.16);

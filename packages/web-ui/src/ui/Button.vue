@@ -101,7 +101,7 @@ const sizeClass = computed(() => {
       role="button"
       :tabindex="disabled ? undefined : -1"
       :data-default-action="variant === 'primary' || undefined"
-      class="relative inline-flex w-full cursor-default items-center justify-center gap-1 whitespace-nowrap rounded-md transition-[color,background-color,box-shadow,filter] duration-200 ease-out select-none"
+      class="relative inline-flex w-full cursor-default items-center justify-center gap-1 whitespace-nowrap rounded-md transition-[color,background-color,box-shadow] duration-200 ease-out select-none"
       :aria-disabled="disabled || loading || undefined"
       :aria-busy="loading || undefined"
       :data-loading="loading || undefined"
@@ -109,10 +109,7 @@ const sizeClass = computed(() => {
       :class="[
         sizeClass,
         variant === 'primary'
-          ? [
-              'btn-primary font-medium text-white',
-              pressed ? 'brightness-110' : 'hover:brightness-110',
-            ]
+          ? 'btn-primary font-medium text-white'
           : variant === 'ghost'
             ? pressed
               ? 'font-normal bg-hover text-fg-body'
