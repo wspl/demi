@@ -3,7 +3,7 @@
 
 use demi_command_protocol::{Completion, LocalInvocation};
 use demi_command_sdk::{Handler, InvocationContext, ServiceError};
-use demi_runner_jobs::commands::dispatch::{Dispatcher, completed, reported};
+use demi_runner_jobs::commands::dispatch::{Dispatcher, RUNNER, completed, reported};
 use serde::{Deserialize, Serialize};
 use std::{future::Future, pin::Pin, sync::Arc};
 use tokio::sync::watch;
@@ -217,7 +217,7 @@ impl Handler for Endpoint {
         let management = self.management.clone();
         Box::pin(async move {
             let output = context.output.clone();
-            reported(management.answer(context).await, &output).await
+            reported(management.answer(context).await, &output, RUNNER).await
         })
     }
 }

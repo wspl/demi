@@ -10,7 +10,7 @@ mod host_commands {
     use demi_backend_host_access::host_commands::host_group;
     use demi_command_protocol::{CommandCaller, CommandContext};
     use demi_host_interface::testing::MemoryPort;
-    use demi_host_interface::{CommandSet, GroupBuilder, RpcInvocation};
+    use demi_host_interface::{CommandSet, GroupBuilder, RpcError, RpcInvocation};
     use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
     use serde_json::{Value, json};
     use tokio_util::sync::CancellationToken;
@@ -112,10 +112,11 @@ mod host_commands {
                     .unwrap();
                 let run = async |leaf: &str, args: Value| {
                     let port = MemoryPort::new();
+                    // A failure is the dispatcher's to tell after the
+                    // command's path (`commands.md` § Handle an rpc call).
                     let code = commands
                         .dispatch(invocation(leaf, args), port.port(CancellationToken::new()))
-                        .await
-                        .unwrap();
+                        .await;
                     let stdout = String::from_utf8(port.stdout()).unwrap();
                     let stderr = String::from_utf8(port.stderr()).unwrap();
                     (code, stdout, stderr)
@@ -124,11 +125,11 @@ mod host_commands {
                     run("list", json!({})).await,
                     run("current", json!({})).await,
                     run("shell", json!({ "host": "elsewhere", "script": "pwd" })).await,
-                    run("shell", json!({ "host": "ci", "script": "  " })).await,
+                    run("shell", json!({ "host": "ci", "script": "" })).await,
                     // A caller that is no job on a device has no pipes to
                     // hand over.
                     run("shell", json!({ "host": "ci", "script": "pwd" })).await,
-                    (0, laptop.to_string(), ci.to_string()),
+                    (Ok(0), laptop.to_string(), ci.to_string()),
                 ]
             })
             .await
@@ -137,7 +138,7 @@ mod host_commands {
         assert_eq!(
             answers[0],
             (
-                0,
+                Ok(0),
                 format!(
                     "laptop  {laptop}  online  /work  (primary)\nci  {ci}  offline  ?  (attached)\n"
                 ),
@@ -147,7 +148,7 @@ mod host_commands {
         assert_eq!(
             answers[1],
             (
-                0,
+                Ok(0),
                 format!("host: machine \"laptop\" ({laptop}, online) — /work\n"),
                 String::new()
             )
@@ -155,25 +156,31 @@ mod host_commands {
         assert_eq!(
             answers[2],
             (
-                1,
+                Err(RpcError::Failed(
+                    "elsewhere: not reachable from this conversation (see `demi host list`)".into()
+                )),
                 String::new(),
-                "host shell: host elsewhere is not reachable from this conversation (see `demi host list`)\n".into()
+                String::new()
             )
         );
         assert_eq!(
             answers[3],
             (
-                2,
+                Err(RpcError::Usage(
+                    "error: \"script\" is shorter than 1 character\n\nUsage: demi host shell <script> --host <host>\n\nFor more information, try '--help'.".into()
+                )),
                 String::new(),
-                "usage: demi host shell --host <name|id> <script>\n".into()
+                String::new()
             )
         );
         assert_eq!(
             answers[4],
             (
-                1,
+                Err(RpcError::Failed(
+                    "cross-host execution requires a machine job".into()
+                )),
                 String::new(),
-                "host shell: cross-host execution requires a machine job\n".into()
+                String::new()
             )
         );
         pool.close().await;

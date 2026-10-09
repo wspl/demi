@@ -311,6 +311,7 @@ async fn agent_call(
     let invocation = demi_command_protocol::Invocation {
         operation: operation.into(),
         invocation_id: uuid::Uuid::new_v4().to_string(),
+        command: "demi test".into(),
         context: service_context(),
         json: Some(true),
         edits: None,
@@ -339,6 +340,7 @@ async fn release_and_shut_down(
     let release = demi_command_protocol::Invocation {
         operation: "release".into(),
         invocation_id: uuid::Uuid::new_v4().to_string(),
+        command: "demi test".into(),
         context: service_context(),
         json: Some(true),
         edits: None,

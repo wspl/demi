@@ -4,7 +4,7 @@
 
 use serde_json::Value;
 
-use crate::{Group, Leaf, Node, StdinRead};
+use crate::{Group, Leaf, Node, StdinRead, parse::placeholder};
 
 /// The paragraph the capability index opens with: what every command does
 /// unless its own help says otherwise (`commands.md` § Help).
@@ -56,6 +56,47 @@ fn operation_names<'a, B>(node: &'a Node<B>, path: &mut Vec<&'a str>, names: &mu
     path.pop();
 }
 
+impl<B> Leaf<B> {
+    /// The usage line of this leaf, named by the command line `path`: its
+    /// positionals, its options, `--json` and its rest field, an optional
+    /// one in brackets. Help, the capability index and a usage error show
+    /// it alike.
+    pub fn usage(&self, path: &str) -> String {
+        let mut arguments = self.positionals.clone().unwrap_or_default();
+        if let Some(properties) = self.properties() {
+            arguments.extend(
+                properties
+                    .keys()
+                    .filter(|field| source(self, field) == Source::Option)
+                    .cloned(),
+            );
+        }
+        if let Some(field) = &self.rest_field {
+            arguments.push(field.clone());
+        }
+        let mut arguments: Vec<String> = arguments
+            .iter()
+            .map(|field| {
+                let schema = &self.properties().expect("validated field schemas")[field];
+                let syntax = syntax(field, schema, source(self, field));
+                if self.required(field) {
+                    syntax
+                } else {
+                    format!("[{syntax}]")
+                }
+            })
+            .collect();
+        if self.json_output().is_some() {
+            let index = arguments.len() - usize::from(self.rest_field.is_some());
+            arguments.insert(index, "[--json]".into());
+        }
+        std::iter::once(path.to_owned())
+            .chain(arguments)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
 impl<B> Node<B> {
     /// The help of this node: a group's lists its subcommands with their
     /// summaries, and a command's gives its full usage; `path` is the
@@ -64,38 +105,7 @@ impl<B> Node<B> {
         let mut lines = vec![format!("{path}: {}", self.summary())];
         if let Some(leaf) = self.leaf() {
             lines.extend([String::new(), "Usage:".into(), String::new()]);
-            let mut arguments = leaf.positionals.clone().unwrap_or_default();
-            if let Some(properties) = leaf.properties() {
-                arguments.extend(
-                    properties
-                        .keys()
-                        .filter(|field| source(leaf, field) == Source::Option)
-                        .cloned(),
-                );
-            }
-            if let Some(field) = &leaf.rest_field {
-                arguments.push(field.clone());
-            }
-            let mut arguments: Vec<String> = arguments
-                .iter()
-                .map(|field| {
-                    let schema = &leaf.properties().expect("validated field schemas")[field];
-                    let syntax = syntax(field, schema, source(leaf, field));
-                    if leaf.required(field) {
-                        syntax
-                    } else {
-                        format!("[{syntax}]")
-                    }
-                })
-                .collect();
-            if leaf.json_output().is_some() {
-                let index = arguments.len() - usize::from(leaf.rest_field.is_some());
-                arguments.insert(index, "[--json]".into());
-            }
-            let invocation = std::iter::once(path.to_owned())
-                .chain(arguments)
-                .collect::<Vec<_>>()
-                .join(" ");
+            let invocation = leaf.usage(path);
             if let Some(field) = &leaf.stdin_field {
                 lines.extend([
                     format!("  {invocation} <<'EOF'"),
@@ -145,8 +155,13 @@ impl<B> Node<B> {
                         } else {
                             ""
                         };
+                        let option = if leaf.positional_option(field) {
+                            format!(", or --{field} <{}>", placeholder(field, schema))
+                        } else {
+                            String::new()
+                        };
                         lines.push(format!(
-                            "      {} ({required}{repeatable}){}",
+                            "      {} ({required}{repeatable}{option}){}",
                             syntax(field, schema, source),
                             description(schema)
                         ));
@@ -219,28 +234,8 @@ fn syntax(field: &str, schema: &Value, source: Source) -> String {
         }
         Source::Positional => format!("<{field}>"),
         Source::Rest => format!("-- <{field}>..."),
-        _ if schema.get("type").and_then(Value::as_str) == Some("boolean") => {
-            format!("--{field} [true|false]")
-        }
-        _ => {
-            let label = schema
-                .get("enum")
-                .and_then(Value::as_array)
-                .map(|values| {
-                    values
-                        .iter()
-                        .map(|value| {
-                            value
-                                .as_str()
-                                .map(str::to_owned)
-                                .unwrap_or_else(|| value.to_string())
-                        })
-                        .collect::<Vec<_>>()
-                        .join("|")
-                })
-                .unwrap_or_else(|| field.to_owned());
-            format!("--{field} <{label}>")
-        }
+        _ if schema.get("type").and_then(Value::as_str) == Some("boolean") => format!("--{field}"),
+        _ => format!("--{field} <{}>", placeholder(field, schema)),
     }
 }
 
