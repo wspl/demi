@@ -132,9 +132,12 @@ One implementation of everything this section describes, the command-tree
 library ([Crates](../architecture/crates-and-packages.md#crates)), serves both
 the runner and the backend. The runner parses argv and answers `--help` with it;
 the backend renders the model's capability index and checks registrations with it.
-Both validate arguments with the `jsonschema` validator over the schema
-schemars derived, so a usage error reads the same wherever it is raised, and no
-second set of rules exists to drift from the declaration.
+The library builds a clap command for the selected leaf from its declaration,
+and clap parses argv; the `jsonschema` validator over the schema schemars
+derived checks what clap cannot express, and validates arguments that arrive
+as JSON. Both report a usage error in clap's shape, so it reads the same
+wherever it is raised, and no second set of rules exists to drift from the
+declaration.
 
 Each input field has one source:
 
@@ -149,27 +152,49 @@ Each input field has one source:
 | `output.json` | A schema enabling validated structured output through `--json`. |
 | `media` | The leaf may return media, images and videos sent where its stdout goes ([Return media](#return-media)). Help marks it, and the dispatcher fails a call of a leaf without it that returns one. |
 
-Unknown options, unknown fields, missing required values, duplicate scalar
-values, and schema failures reject execution, and one rejection names every
-field that failed. It names the field rather than repeating its value, which
-may be a whole stdin body: `"count" is not of type "integer"; "path" is a
-required property`. An unknown option's rejection also names the command, such
-as `Unknown option "--bogus" for "demi skills add"`, since a script may run
-several commands. The parser reports a missing option value before it
-consumes the next option. `--name=value` supplies an option value that begins
-with `--`. Without `restField`, a standalone `--` ends option parsing and the
-tokens after it are positionals; with `restField`, they fill that field. A body
-option such as `--content` is rejected with a diagnostic directing the caller to
-remove it and use stdin. A finite stdin body is at most 1 MiB.
+For example, a model runs `demi file read a.png b.png` on a leaf that takes
+one path, or `demi browser read t1 --selector main`:
 
-Conversion belongs to the CLI alone. An argv token is text, so the parser turns
-it into the number, boolean, or array element its field declares, each element
-of a repeated option separately, and then validates the whole input at once. A
-token that spells no such value, such as `twelve` for a number, stays text, so
-that validation rejects it together with every other failure. Arguments that
-arrive as JSON, such as an `rpc` call's arguments at the backend
-or the arguments of a one-shot user call, are validated as they arrive: `"7"`
-for a numeric field is a usage error there, not a 7.
+```text
+error: unexpected argument '--selector' found
+
+  tip: a similar argument exists: '--css'
+
+Usage: demi browser read <tab> [--css <selector>] …
+
+For more information, try '--help'.
+```
+
+A usage error is clap's: one error at a time, in clap's words, with no
+colour, the leaf's usage line and the pointer to `--help`, on stderr, with
+exit status 2, as every program built with clap reports it and as models
+know. The usage line is the one help renders from the declaration, so the
+error, `--help` and the capability index show the same usage. Demi adds its
+own hints as clap's `tip:` lines, such as `"demi file edit" reads blocks only
+from stdin; remove --content and use a quoted heredoc`, and clap suggests a
+near name for a misspelt option or operation. What clap cannot express, a
+length, a pattern, a range or an item count, the validator checks once clap
+has parsed, and reports in the same shape: `error: "path" is longer than 4096
+characters`. Arguments that arrive as JSON, such as an `rpc` call's arguments
+at the backend or the arguments of a one-shot user call, are validated as
+they arrive and reported the same way: `"7"` for a numeric field is a usage
+error there, not a 7.
+
+- **Fields.** A positional field is a positional argument; the last may take
+  every token left. A named option is `--name <value>`; a value may begin
+  with `-`, and one that begins with `--` is given as `--name=value`. A
+  repeated array option takes each occurrence. `restField` takes the tokens
+  after `--`; without one, `--` ends options.
+- **Booleans** are flags: `--exact` alone is true, `--exact=false` is false.
+  A `true` or `false` token right after a boolean flag is refused with the
+  tip to write `--exact=false`, rather than taken as the next positional.
+- **A body option** such as `--content` is refused with the tip to use stdin.
+  A finite stdin body is at most 1 MiB.
+
+The earlier parser listed every failed field in one message and exited 1; it
+swallowed the token after a boolean as the boolean's value, so
+`demi browser open --show https://example.com` failed as a missing URL, and
+it named no usage, so a model read the help after every mistake.
 
 A group-only invocation or `--help` prints help and exits successfully without
 running a handler or reading stdin. For example, `demi file read --help` must
@@ -252,12 +277,12 @@ arguments. The agent substitutes actual values and quotes shell arguments.
 
 | Command | Positional input | Named options | Stdin |
 | --- | --- | --- | --- |
-| `file read` | path | none | unused |
+| `file read` | path, repeated | none | unused |
 | `file edit` | path, optional | old, new, occurrence or context | SEARCH/REPLACE blocks with their files' paths, read only without `--old` |
 | `file patch` | none | none | unified diff |
 | `agent spawn` | none | profile, description, JSON output | task brief |
 | `agent send`, `resume` | id | JSON output | message |
-| `agent abort`, `show` | id | JSON output | unused |
+| `agent abort`, `show` | id, repeated | JSON output | unused |
 | `agent list`, `profiles` | none | JSON output | unused |
 | `host shell` | one quoted script | host | streamed to the remote program |
 | `host list`, `current` | none | none | unused |
@@ -374,8 +399,16 @@ ids let it hand the call's stdin and stdout to a job it starts on another
 device, so those bytes flow between the two devices through the backend's pipes
 without passing through the handler.
 
-A handler ends with an exit status. A handler error writes `<root>: <message>`
-to stderr and exits 1. A call the runner cancels ends with 130. A call whose
+A handler ends with an exit status. A handler's error is a runtime error,
+written as GNU tools write theirs: the command's path, the object it concerns
+when there is one, and the reason, `demi file read: /src/app.ts: No such file
+or directory`, on stderr, with exit status 1. The dispatcher writes the
+command's path once; the handler names the object, and an operating-system
+error gives its reason as `strerror` words it, without Rust's `(os error 2)`.
+No prefix of Demi's own precedes it, `demi-runner:` or `command_failed:`. A
+command that takes several values handles each in order, writes one such line
+for each that fails, goes on with the others, and exits 1 when any failed, as
+`cat a missing b` does. A call the runner cancels ends with 130. A call whose
 calling process closed its stdout, as `head` does once it has read its lines,
 ends with 141 and nothing on stderr, as a program that writes to a closed pipe
 ends in a shell; so `demi shell output 17 --raw | head -n 20` prints its
@@ -676,9 +709,13 @@ file and hunk, and changes nothing.
 `demi file read` prints a file's bytes, and declares `media`: a file of at
 most 16 MiB whose bytes are an image or video type of the model-media table it
 returns as a medium instead ([Return media](#return-media)). So
-`demi file read shot.png` shows the image to the model, several such reads in
-one script show it each image in order, and `demi file read shot.png > copy.png`
-still copies the bytes.
+`demi file read shot.png` shows the image to the model,
+`demi file read a.png b.png` shows it both in order, and
+`demi file read shot.png > copy.png` still copies the bytes. A file whose
+bytes are neither text nor a medium, read where its stdout is the job's
+output, prints nothing and fails with a line that says what it is and how to
+copy it: `demi file read: data.bin: a binary file (48213 bytes) that is not
+an image or video; redirect it to copy it: demi file read data.bin > copy.bin`.
 
 ## Attachment commands
 
