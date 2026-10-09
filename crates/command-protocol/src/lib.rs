@@ -21,8 +21,9 @@ pub use artifacts::{
 };
 pub use conversation::{ConversationRequest, ConversationStatus};
 pub use edits::{
-    EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS, EditContext, EditCopies,
-    EditFile, EditJournal, EditKind, TextRefusal, is_text, text_of,
+    EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_PATH_CHANGES, EDIT_JOB_SEGMENTS,
+    EditContext, EditCopies, EditFile, EditJournal, EditKind, PathChange, TextRefusal, is_text,
+    text_of,
 };
 pub use invocation::{
     COMMAND_LOCALE_LANGUAGES, CONVERSATION_NAME_CHARS, CommandCaller, CommandContext, CommandError,

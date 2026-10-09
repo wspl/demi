@@ -1,4 +1,4 @@
-use demi_command_protocol::{EditContext, EditKind};
+use demi_command_protocol::{EditContext, EditKind, PathChange};
 use demi_command_sdk::edits::Recorder;
 use demi_runner_shell::testing::{Scope, ShellOptions, execute};
 use std::{collections::BTreeMap, fs, path::Path};
@@ -300,5 +300,92 @@ async fn a_move_carries_the_jobs_edits_to_the_new_name() {
             ("b.ts".into(), Some("a\n".into()), "a\nmore\n".into()),
             ("moved/x.ts".into(), Some("x\n".into()), "x\ny\n".into()),
         ] as [(std::path::PathBuf, Option<String>, String); 3]
+    );
+}
+
+/// A job lists its renames and removals, in order, beside its edits, so a
+/// request can follow its earlier calls' files (`edit-tracking.md`
+/// § A request): a move of a file the job did not change, a replacement
+/// from outside the workspace, and a removed folder named once by its own
+/// path; an `rm` that removed nothing lists nothing. A file removed and
+/// made again starts anew.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_job_lists_its_renames_and_removals_in_order() {
+    let root = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let tracking = recorder(root.path(), "job");
+    fs::write(root.path().join("untouched.ts"), "same\n").unwrap();
+    fs::write(root.path().join("page.ts"), "old page\n").unwrap();
+    fs::create_dir_all(root.path().join("scratch/deep")).unwrap();
+    fs::write(root.path().join("scratch/a.txt"), "a\n").unwrap();
+    fs::write(root.path().join("scratch/deep/b.txt"), "b\n").unwrap();
+    let outside_path = outside.path().display();
+    run(
+        root.path(),
+        tracking.clone(),
+        &format!(
+            "mv untouched.ts renamed.ts; \
+             printf 'new page\\n' > {outside_path}/page.ts.new; mv {outside_path}/page.ts.new page.ts; \
+             rm -r scratch/; rm -f missing.txt; \
+             printf 'first\\n' > again.txt; rm again.txt; printf 'second\\n' > again.txt"
+        ),
+    )
+    .await;
+    let report = tracking.report().unwrap();
+    let at = |name: &str| root.path().join(name).to_string_lossy().into_owned();
+    assert_eq!(
+        report.path_changes,
+        [
+            PathChange::Renamed {
+                from: at("untouched.ts"),
+                to: at("renamed.ts"),
+            },
+            PathChange::Renamed {
+                from: outside.path().join("page.ts.new").to_string_lossy().into_owned(),
+                to: at("page.ts"),
+            },
+            PathChange::Removed {
+                path: at("scratch"),
+            },
+            PathChange::Removed {
+                path: at("again.txt"),
+            },
+        ]
+    );
+    let files: Vec<_> = report
+        .files
+        .iter()
+        .map(|file| {
+            let sides: Vec<_> = file
+                .edits
+                .iter()
+                .map(|edit| {
+                    (
+                        edit.original.as_ref().map(|path| fs::read_to_string(path).unwrap()),
+                        fs::read_to_string(edit.modified.as_ref().unwrap()).unwrap(),
+                    )
+                })
+                .collect();
+            (
+                Path::new(&file.path).strip_prefix(root.path()).unwrap().to_owned(),
+                file.kind,
+                sides,
+            )
+        })
+        .collect();
+    assert_eq!(
+        files,
+        [
+            (
+                "page.ts".into(),
+                EditKind::Modified,
+                vec![(Some("old page\n".into()), "new page\n".into())]
+            ),
+            (
+                "again.txt".into(),
+                EditKind::Added,
+                vec![(None, "second\n".into())]
+            ),
+        ] as [(std::path::PathBuf, EditKind, Vec<(Option<String>, String)>); 2]
     );
 }
