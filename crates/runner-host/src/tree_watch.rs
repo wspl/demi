@@ -140,14 +140,60 @@ fn from_flags(path: PathBuf, flags: fsevent_sys::FSEventStreamEventFlags) -> Wat
         | fs::kFSEventStreamEventFlagItemRenamed;
     let metadata = flags & METADATA != 0 && flags & CONTENT == 0;
     // FSEvents merges an item's flags over a short history, so a file
-    // created and then written shows both: it counts as having come.
+    // created and then written shows both: it counts as having come, unless
+    // the stream's `Arrivals` tell it is the file that came before.
     let entry = flags & ENTRY != 0;
     WatchEvent::Changed { path, metadata, entry }
 }
 
+/// The most paths a stream remembers the file of; past it, it forgets them
+/// all, and the next doubtful event of each counts as one that came.
+#[cfg(target_os = "macos")]
+const ARRIVALS_KEPT: usize = 65_536;
+
+/// The file each path flagged as come, gone or renamed was, by device and
+/// inode, as one stream last saw it. FSEvents keeps a file's creation in
+/// its flags for as long as writes to it come without a pause, so a log a
+/// build creates and then appends to says on every write that it came
+/// (measured: 120 of 120 writes, 250 ms apart, over 30 s). A path still
+/// holding the file last seen there has not come, gone or been renamed
+/// since, so its folder's listing is not read again for a write in place.
+#[cfg(target_os = "macos")]
+#[derive(Default)]
+struct Arrivals {
+    seen: std::collections::HashMap<PathBuf, (u64, u64)>,
+}
+
+#[cfg(target_os = "macos")]
+impl Arrivals {
+    /// `event` with an entry the flags left in doubt confirmed or dropped
+    /// by what is at its path now.
+    fn confirm(&mut self, event: WatchEvent) -> WatchEvent {
+        use std::os::unix::fs::MetadataExt;
+        let WatchEvent::Changed { path, metadata, entry: true } = event else {
+            return event;
+        };
+        // A path that cannot be read is gone, or not what was seen there.
+        let now = std::fs::symlink_metadata(&path).ok().map(|file| (file.dev(), file.ino()));
+        let same = now.is_some() && self.seen.get(&path) == now.as_ref();
+        match now {
+            Some(file) => {
+                if self.seen.len() >= ARRIVALS_KEPT && !self.seen.contains_key(&path) {
+                    self.seen.clear();
+                }
+                self.seen.insert(path.clone(), file);
+            }
+            None => {
+                self.seen.remove(&path);
+            }
+        }
+        WatchEvent::Changed { path, metadata, entry: !same }
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod platform {
-    use super::{Depth, Report, WatchEvent, from_flags};
+    use super::{Arrivals, Depth, Report, WatchEvent, from_flags};
     use fsevent_sys as fs;
     use fsevent_sys::core_foundation as cf;
     use std::ffi::{CStr, OsStr, c_char, c_void};
@@ -272,11 +318,18 @@ mod platform {
         }
     }
 
+    /// What a stream's callback holds: where it reports, and the files it
+    /// saw come.
+    struct Listener {
+        report: Report,
+        arrivals: Arrivals,
+    }
+
     /// A stream over `trees` handing `report` what changes under them;
     /// `None` when FSEvents cannot be given a tree.
     fn create_stream(trees: &[PathBuf], report: Report) -> Option<fs::FSEventStreamRef> {
         // SAFETY: every Core Foundation object made here is released here,
-        // except the report, which the stream releases with itself.
+        // except the listener, which the stream releases with itself.
         unsafe {
             let paths =
                 cf::CFArrayCreateMutable(cf::kCFAllocatorDefault, 0, &cf::kCFTypeArrayCallBacks);
@@ -300,12 +353,16 @@ mod platform {
                     }
                 }
             }
-            let info = Box::into_raw(Box::new(report)).cast::<c_void>();
+            let listener = Listener {
+                report,
+                arrivals: Arrivals::default(),
+            };
+            let info = Box::into_raw(Box::new(listener)).cast::<c_void>();
             let context = fs::FSEventStreamContext {
                 version: 0,
                 info,
                 retain: None,
-                release: Some(release_report),
+                release: Some(release_listener),
                 copy_description: None,
             };
             let stream = fs::FSEventStreamCreate(
@@ -319,8 +376,8 @@ mod platform {
             );
             cf::CFRelease(paths);
             if stream.is_null() {
-                // No stream took the report.
-                drop(Box::from_raw(info.cast::<Report>()));
+                // No stream took the listener.
+                drop(Box::from_raw(info.cast::<Listener>()));
                 return None;
             }
             Some(stream)
@@ -335,20 +392,21 @@ mod platform {
         flags: *const fs::FSEventStreamEventFlags,
         _ids: *const fs::FSEventStreamEventId,
     ) {
-        // SAFETY: `info` is the report the stream was made with, used only on
-        // the stream's thread; FSEvents passes `count` C paths and flags.
-        let report = unsafe { &mut *info.cast::<Report>() };
+        // SAFETY: `info` is the listener the stream was made with, used only
+        // on the stream's thread; FSEvents passes `count` C paths and flags.
+        let listener = unsafe { &mut *info.cast::<Listener>() };
         let paths = paths.cast::<*const c_char>();
         for index in 0..count {
             let (path, flags) = unsafe { (CStr::from_ptr(*paths.add(index)), *flags.add(index)) };
             let path = PathBuf::from(OsStr::from_bytes(path.to_bytes()));
-            report(from_flags(path, flags));
+            let event = listener.arrivals.confirm(from_flags(path, flags));
+            (listener.report)(event);
         }
     }
 
-    extern "C" fn release_report(info: *const c_void) {
-        // SAFETY: the stream releases the report it was made with once, as
+    extern "C" fn release_listener(info: *const c_void) {
+        // SAFETY: the stream releases the listener it was made with once, as
         // it is released itself.
-        drop(unsafe { Box::from_raw(info.cast_mut().cast::<Report>()) });
+        drop(unsafe { Box::from_raw(info.cast_mut().cast::<Listener>()) });
     }
 }
