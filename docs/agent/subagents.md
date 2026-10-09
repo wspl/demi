@@ -303,18 +303,29 @@ resurrect the sending child.
 
 ## Result
 
-A child is quiescent when it has no running or queued action, no unread agent
-message, no scheduled yield wakeup, and no live child of its own. The
-supervisor closes a quiescent child with its last assistant text, cut at a
-character boundary to at most 32 KiB of UTF-8. A child whose action fails
-terminally closes as `error` with the failure text. Checking quiescence and
+For example, a research child yields for ten minutes to wait for a helper of
+its own. The helper's report wakes it after four; it writes its own report,
+and its turn ends with that answer. The child closes with the report at once,
+and the wakeup it scheduled is dropped: it can no longer fire six minutes
+later and open a turn whose short reply would replace the report.
+
+A child's turn ends in one of two ways: with `yield`, after which the child
+waits for its wakeup, or with its answer, a response that requests no tool.
+A child is quiescent when its last turn ended with its answer and it has no
+running or queued action, no unread agent message and no live child of its
+own. The supervisor closes a quiescent child with its last assistant text,
+cut at a character boundary to at most 32 KiB of UTF-8, and drops its
+wakeups, scheduled and fired alike. The session's checkpoint records how its
+last turn ended, so a restore decides the same way. A child whose action
+fails terminally closes as `error` with the failure text. Checking quiescence and
 deciding to close are one step: a message accepted before it keeps the child
 open, and a send after it is refused because the child is closing.
 
 The supervisor saves the result before it delivers a completion message to the
 parent. A naturally idle parent wakes; a busy parent incorporates the receipt
 at its next continuation boundary. The creation command carries no completion
-result. A child with a scheduled wakeup or live descendants stays live.
+result. A child whose last turn ended with `yield`, or that has live
+descendants, stays live.
 
 Each execution round has a distinct completion message ID that contains the
 child ID and the round. A child's first run is round 1, and resume starts the
@@ -344,7 +355,7 @@ Two snapshot reads:
 | Command | Answers | Does not answer |
 | --- | --- | --- |
 | `demi agent list` | The whole live tree, plus archived children | One agent's recent work |
-| `demi agent show <id>` | A bounded snapshot of one live agent | The full transcript, tool outputs, or thinking |
+| `demi agent show <id>` | A bounded snapshot of one agent, live or archived | The full transcript, tool outputs, or thinking |
 
 Durations read like `45s`, `4m`, `1m5s`, `2h`, or `1h3m`, rounded to the
 nearest second.
@@ -375,7 +386,10 @@ to the query instant. It is a snapshot, not a wait, and not for polling loops.
 
 ### `demi agent show <id>`
 
-The session-content read, valid for any live agent except the root. Every
+The session-content read, valid for any agent of the tree except the root.
+An archived child shows its description, its phase, how it closed
+(`completed`, `error` or `aborted`), how long ago, and its result or failure
+with the bound of a completion; the rest is for live agents. Every
 duration is relative to the query instant, never a wall-clock timestamp. The
 caller has no other clock for the target; this snapshot is how it tells motion
 from stall.
@@ -423,7 +437,7 @@ state that has lasted 12 minutes on the same title is stuck. Counts without
 ages cannot tell those apart.
 
 It does not return tool output bodies, file contents, thinking, or older turns.
-A missing or archived ID fails. `--json` is `{ agent }` with the same fields,
+A missing ID fails. `--json` is `{ agent }` with the same fields,
 durations as millisecond offsets from now.
 
 `show` is for deciding the next action, such as `send` or `abort`. It is not a
@@ -613,7 +627,7 @@ summarize the parent transcript into the child.
 | Layer | Owner | Content |
 | --- | --- | --- |
 | System prompt | The runtime, the product and the plugins, or the profile | The identity (a profile's instructions replace the parent's), the harness guide, the runtime's rules for its tools, the capability index of the node's commands and the model identity ([System prompt](system-prompt.md)). |
-| Preamble | The agent server, for every child | This session is a subagent; its ID and its parent's ID; ending the turn with nothing pending returns the last assistant text as the result; `demi agent send` reaches the parent (`parent`) and any agent in `demi agent list`; spawn delegates further, or this session may not spawn; the session is not talking to the product user and does not address them. |
+| Preamble | The agent server, for every child | This session is a subagent; its ID and its parent's ID; a turn that ends with its answer, without `yield`, returns that answer as the result and ends the session once nothing is pending, while `yield` waits for its wakeup; `demi agent send` reaches the parent (`parent`) and any agent in `demi agent list`; spawn delegates further, or this session may not spawn; the session is not talking to the product user and does not address them. |
 | First user message | The parent model | The spawn prompt from stdin. Demi does not inspect or pad it. |
 
 The inherit profile carries the parent's system prompt, so the child already
@@ -716,7 +730,7 @@ restores its own: a tree restore, with one rule per node.
   ([Recovery is one mechanism](failures-and-recovery.md#recovery-is-one-mechanism)).
 - The messages queued in the checkpoint are sent again, in order.
 - Saved yield wakeups are armed again, and one already due fires at once, so a
-  child waiting on a wakeup keeps waiting instead of closing
+  child whose last turn ended with `yield` keeps waiting instead of closing
   ([Yield wakeups](runtime.md#yield-wakeups)).
 - A child that is quiescent closes with its result. Whether it is quiescent is
   read only once its own live children are back, so a child waiting for its
