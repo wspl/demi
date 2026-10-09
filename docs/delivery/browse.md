@@ -110,7 +110,13 @@ conversation's turn to end.
   the tool never reloads the page.
 - **Input Playwright cannot give.** `demi.ime(text, { into })` composes text
   through an input method and commits it, as a Chinese or Japanese input
-  method does.
+  method does, with the confirming Enter in the order the page's engine
+  gives it: in Chromium during the composition, in WebKit just after it ends;
+  `{ commit: 'escape' }` cancels the composition instead. `demi.webkit()`
+  opens a signed-in WebKit page for the call, for checks that Safari's order
+  of events matters to.
+- **A browser that stops answering** ends the call with "the browser did not
+  answer" instead of holding the tool; `bun browse stop` then closes it.
 - **Conditions.** `demi.emulate({ viewport, scale, theme, device, locale,
   timeZone })` applies to the page as it is, without reloading it; the theme
   reaches the gallery's own setting too. `demi.grant(permission)` gives a
