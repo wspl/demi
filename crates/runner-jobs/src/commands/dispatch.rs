@@ -106,7 +106,7 @@ impl Dispatcher {
                 .node
                 .leaf()
                 .ok_or_else(|| ServiceError::failed(DispatchError::NotALeaf))?;
-            let body = if leaf.stdin_read(&parsed.values).is_some() {
+            let body = if leaf.stdin_target(&parsed.values).is_some() {
                 // A terminal is the live channel, not a finite command body.
                 let mut bytes = Vec::new();
                 if !raw.live {

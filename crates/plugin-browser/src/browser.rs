@@ -153,6 +153,11 @@ fn leaf<I: BrowserInput + schemars::JsonSchema, R: schemars::JsonSchema>(
     if let Some(field) = stdin_field(name) {
         leaf = leaf.stdin_field(field);
     }
+    if name == "find" {
+        // A find by target flags leaves stdin to the calling process, as a
+        // job's `</dev/null` or a loop's input.
+        leaf = leaf.stdin_with(["query"]);
+    }
     if name == "screenshot" {
         leaf = leaf.media();
     }

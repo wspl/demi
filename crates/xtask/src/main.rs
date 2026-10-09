@@ -135,8 +135,94 @@ fn stop_requested() -> std::io::Result<impl Future<Output = ()>> {
     })
 }
 
+/// Makes this process end as a termination ends it when the program that
+/// started it ends: `bun xtask` runs it in a session of its own, which the
+/// SIGKILL that stops a shell job's process group does not reach, and a
+/// command that handles the termination, such as `xtask dev`, then stops
+/// what it started.
+#[cfg(target_os = "macos")]
+fn end_with_parent() -> std::io::Result<()> {
+    use std::mem::MaybeUninit;
+
+    use rustix::event::kqueue::{Event, EventFilter, EventFlags, ProcessEvents, kevent, kqueue};
+    use rustix::io::Errno;
+    use rustix::process::{Signal, getpid, getppid, kill_process};
+
+    // Without a parent there is nothing to follow.
+    let Some(parent) = getppid() else {
+        return Ok(());
+    };
+    let queue = kqueue()?;
+    let exit = Event::new(
+        EventFilter::Proc {
+            pid: parent,
+            flags: ProcessEvents::EXIT,
+        },
+        EventFlags::ADD | EventFlags::ONESHOT,
+        std::ptr::null_mut(),
+    );
+    // With no room for events, the call only registers the change.
+    let none: &mut [MaybeUninit<Event>] = &mut [];
+    // SAFETY: the event refers to a process, not to a file descriptor.
+    let registered = unsafe { kevent(&queue, &[exit], none, None) };
+    match registered {
+        Ok(_) => {}
+        // The parent ended before the watch began.
+        Err(Errno::SRCH) => return Ok(kill_process(getpid(), Signal::TERM)?),
+        Err(error) => return Err(error.into()),
+    }
+    // The thread lives as long as the process, which releases it and its
+    // queue when it ends.
+    std::thread::spawn(move || {
+        let mut events = [MaybeUninit::<Event>::uninit(); 1];
+        loop {
+            // SAFETY: as above, the queue holds only the process's event.
+            match unsafe { kevent(&queue, &[], &mut events, None) } {
+                Ok((ended, _)) if !ended.is_empty() => break,
+                Ok(_) | Err(Errno::INTR) => {}
+                Err(error) => {
+                    eprintln!("xtask: cannot follow the program that started it: {error}");
+                    return;
+                }
+            }
+        }
+        if let Err(error) = kill_process(getpid(), Signal::TERM) {
+            eprintln!("xtask: cannot end with the program that started it: {error}");
+        }
+    });
+    Ok(())
+}
+
+/// Makes this process end as a termination ends it when the program that
+/// started it ends; see the macOS version. The kernel sends the signal when
+/// the thread that started this process ends, so the parent has to start it
+/// from a thread that lives as long as the parent does.
+#[cfg(target_os = "linux")]
+fn end_with_parent() -> std::io::Result<()> {
+    use rustix::process::{Signal, getpid, getppid, kill_process, set_parent_process_death_signal};
+
+    let parent = getppid();
+    set_parent_process_death_signal(Some(Signal::TERM))?;
+    // The parent ended before the signal was set.
+    if getppid() != parent {
+        kill_process(getpid(), Signal::TERM)?;
+    }
+    Ok(())
+}
+
+/// Elsewhere xtask does not follow the program that started it.
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn end_with_parent() -> std::io::Result<()> {
+    Ok(())
+}
+
 fn main() -> ExitCode {
-    match Cli::parse().command {
+    let cli = Cli::parse();
+    if let Err(error) = end_with_parent() {
+        // xtask still runs; only the end of its parent no longer ends it.
+        eprintln!("xtask: cannot follow the program that started it: {error}");
+    }
+    match cli.command {
         #[cfg(all(unix, feature = "developer"))]
         Command::Contracts => match contracts::run() {
             Ok(written) => {

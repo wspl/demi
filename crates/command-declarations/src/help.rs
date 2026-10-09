@@ -4,7 +4,7 @@
 
 use serde_json::Value;
 
-use crate::{Group, Leaf, Node};
+use crate::{Group, Leaf, Node, StdinRead};
 
 /// The paragraph the capability index opens with: what every command does
 /// unless its own help says otherwise (`commands.md` § Help).
@@ -153,20 +153,20 @@ impl<B> Node<B> {
                     }
                 }
                 if let Some(field) = &leaf.stdin_field {
-                    let unless = if leaf.stdin_unless.is_empty() {
-                        String::new()
-                    } else {
-                        format!(
-                            ", not read with {}",
-                            leaf.stdin_unless
-                                .iter()
-                                .map(|option| format!("--{option}"))
-                                .collect::<Vec<_>>()
-                                .join(" or ")
-                        )
+                    let condition = match &leaf.stdin_read {
+                        None => String::new(),
+                        Some(read) => {
+                            let words = match read {
+                                StdinRead::Unless(_) => "not read with",
+                                StdinRead::With(_) => "read only with",
+                            };
+                            let options: Vec<String> =
+                                read.options().iter().map(|option| format!("--{option}")).collect();
+                            format!(", {words} {}", options.join(" or "))
+                        }
                     };
                     lines.push(format!(
-                        "    Stdin body: {field}{unless}{}",
+                        "    Stdin body: {field}{condition}{}",
                         description(&properties[field])
                     ));
                 }
