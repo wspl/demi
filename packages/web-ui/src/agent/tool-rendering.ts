@@ -92,7 +92,7 @@ export function unknownCommand(commandId: string): string {
 }
 
 /** A command's number as a call names it: the model writes it as a number or its digits. */
-function commandIdText(value: unknown): string | undefined {
+export function commandIdText(value: unknown): string | undefined {
   const number = numberOrNull(value)
   return number === null ? nonEmptyString(value) : String(number)
 }

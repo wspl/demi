@@ -8,23 +8,31 @@ import { createdAt, model } from './agent-harness'
 
 const thinking = (id: string, text = ''): Block => ({ type: 'thinking', id, createdAt, model, text, signature: null })
 const text = (id: string): Block => ({ type: 'text', id, createdAt, model, text: 'Done.' })
-const call = (id: string, toolName = 'shell_exec'): Block => ({
+const call = (
+  id: string,
+  toolName = 'shell_exec',
+  input: Record<string, unknown> = { script: 'true', description: `Run ${id}` },
+  status: 'completed' | 'error' = 'completed',
+): Block => ({
   type: 'tool_call',
   id,
   createdAt,
   model,
   toolUseId: `${id}-use`,
   toolName,
-  status: 'completed',
-  input: JSON.stringify({ script: 'true', description: `Run ${id}` }),
+  status,
+  input: JSON.stringify(input),
   output: [],
   view: null,
 })
-const writing = (id: string): MessageListBlock => ({
+const check = (id: string, commandId: number | string): Block => call(id, 'shell_status', { commandId })
+const wait = (id: string): Block => call(id, 'yield', { durationMs: 60_000 })
+const writing = (id: string, toolName = 'shell_exec'): MessageListBlock => ({
   type: 'pending_call',
   id: `pending-call:${id}-use`,
-  call: { toolUseId: `${id}-use`, toolName: 'shell_exec', description: null },
+  call: { toolUseId: `${id}-use`, toolName, description: null },
 })
+const steps = (...blocks: (Block | MessageListBlock)[]) => blocks as WorkGroupBlock['steps']
 
 /** Each row as its id, a group as the ids of its steps. */
 function rows(list: readonly MessageListBlock[]): (string | string[])[] {
@@ -61,11 +69,31 @@ describe('the steps the transcript shows as one row', () => {
     expect(rows(later)).toEqual(['r', ['a', 'pending-call:b-use']])
     expect(later[1]!.id).toBe(live[1]!.id)
   })
+})
 
-  test('a group says what it ran, while it runs and once it ended', () => {
-    const steps = [call('a'), call('b', 'shell_status'), call('c')] as WorkGroupBlock['steps']
-    expect(workSummary(steps)).toBe('Ran 2 commands')
-    expect(workRunning([...steps, writing('d')] as WorkGroupBlock['steps'])).toBe('Running 3 commands')
-    expect(workSummary([call('w', 'yield')] as WorkGroupBlock['steps'])).toBe('1 step')
+describe('what a group says it did', () => {
+  const plan = thinking('t', 'See whether the build ended.')
+
+  test('an ended group names each kind of call once, in the order the run first made it', () => {
+    expect(workSummary(steps(plan, check('s', 17)))).toBe('Checked 1 command')
+    expect(workSummary(steps(plan, wait('w')))).toBe('Waited')
+    // The design's example: command 17 checked twice, then a yield.
+    expect(workSummary(steps(plan, check('s1', 17), thinking('t2', 'Still building.'), check('s2', '17'), wait('w'))))
+      .toBe('Checked 1 command, waited')
+    expect(workSummary(steps(call('a'), check('s', 17), call('b')))).toBe('Ran 2 commands, checked 1 command')
+    expect(workSummary(steps(check('s1', 17), check('s2', 18), call('a')))).toBe('Checked 2 commands, ran 1 command')
+  })
+
+  test('a failed call and a tool of another kind count by their tool', () => {
+    expect(workSummary(steps(call('a', 'shell_exec', { script: 'false' }, 'error'), call('r', 'read_file', { path: 'a.ts' }))))
+      .toBe('Ran 1 command, used read_file')
+  })
+
+  test('a running group counts the calls being written, and names what it does when it runs no command', () => {
+    expect(workRunning(steps(call('a'), check('s', 17), call('c'), writing('d')))).toBe('Running 3 commands')
+    expect(workRunning(steps(plan, check('s', 17)))).toBe('Checking 1 command')
+    expect(workRunning(steps(plan, check('s', 17), writing('w', 'yield')))).toBe('Checking 1 command, waiting')
+    expect(workRunning(steps(plan, writing('s', 'shell_status')))).toBe('Checking 1 command')
+    expect(workRunning(steps(plan))).toBe('Thinking')
   })
 })
