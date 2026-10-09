@@ -100,8 +100,27 @@ export function formatSubagentDuration(
   return formatDuration(subagentDurationMs(agent, nowMs))
 }
 
-export function agentsChipLabel(count: number): string {
-  return count === 1 ? '1 Agent' : `${count} Agents`
+/** What the dock's agents chip shows; `running` breathes its dot. */
+export interface AgentsChipState {
+  label: string
+  running: boolean
+}
+
+/**
+ * The dock's agents chip (`subagents.md` § Product rendering): the live
+ * children's count while any runs; once none does, plain Agents, so the
+ * children's history stays one click away; no chip for a conversation that
+ * never had a child. Finished children never count.
+ */
+export function agentsChip(agents: readonly SubagentRecord[]): AgentsChipState | null {
+  if (agents.length === 0) {
+    return null
+  }
+  const running = agents.filter((agent) => isSubagentRunning(agent.phase)).length
+  if (running === 0) {
+    return { label: 'Agents', running: false }
+  }
+  return { label: running === 1 ? '1 Agent' : `${running} Agents`, running: true }
 }
 
 /** Running tabs stay up; a finished inspect adds that child beside them. */
