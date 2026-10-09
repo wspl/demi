@@ -25,7 +25,7 @@ web app fetches them when a file is opened.
 | Recorded | Not recorded |
 | --- | --- |
 | A file a brush redirection opens for writing (`>`, `>>`, `<>`, `exec 3>f`). | Writes by external programs that do not participate in recording: git, python, node, user-installed tools. |
-| A file an embedded utility opens for writing, writes whole, or renames over (`sed -i`, `tee`, `sort -o`, `uniq` with an output file, `mv` onto an existing file). | Copies and hard links (`cp`), deletions, a rename of a file the job did not change (a move), directories, permissions, ownership, times. |
+| A file an embedded utility opens for writing, writes whole, or renames over (`sed -i`, `tee`, `sort -o`, `uniq` with an output file, `mv` onto an existing file). | Copies and hard links (`cp`), deletions and a rename of a file the job did not change (a move), as edits: the report lists them apart ([The report](#the-report)); directories, permissions, ownership, times. |
 | The edits the job recorded under a file's old name, carried to its new name when an embedded `mv` renames it. | |
 | Files created or modified by `demi file edit` and `demi file patch`, including when one call changes several files. | Edits prepared by a native command but never written, or successfully rolled back. |
 | Every in-process part of the job: subshells, functions, background tasks, process substitutions. | Reads, and the empty file `mktemp` creates. |
@@ -49,6 +49,7 @@ to `old/x.ts` followed by `mv old moved` shows as `moved/x.ts`.
 | File size, before or after | 8 MiB | The file remains in the list, with no diff or line counts for that edit. Binary and non-UTF-8 content are treated the same. |
 | Snapshot bytes written per job | 64 MiB | Further edits have no contents. This includes replacement snapshots when successive writes are combined. |
 | Recorded paths per job | 500 | Later paths go unrecorded; `filesTruncated` is true. |
+| Renames and removals per job | 500 | Later ones go unlisted; `filesTruncated` is true. |
 | Edit segments per job | 1,000 | Further edits retain the file entry without contents; `filesTruncated` is true. |
 
 ## Recording actual writes
@@ -132,7 +133,13 @@ command writes, not filesystem isolation from other applications.
 
 ## The report
 
-`job_exit` carries `files` in first-change order and `filesTruncated`:
+`job_exit` carries `files` in first-change order, `pathChanges` and
+`filesTruncated`. `pathChanges` lists the renames and removals the job's
+embedded utilities made, in the order they happened: `renamed` with `from`
+and `to`, whether or not the job changed the file, and `removed` with
+`path`, once per argument of `rm`, so `rm -r scratch/` is one entry. A
+removal also clears the job's own edits at or under its path, so a file made
+there again starts anew. Each entry of `files`:
 
 | Field | Meaning |
 | --- | --- |
@@ -209,9 +216,26 @@ name, its earlier edits with it, and a file that a later call renamed away,
 or removed with an embedded `rm`, is no longer listed. For example, one call
 writes `/tmp/page.ts.new` and the next runs `mv /tmp/page.ts.new
 src/page.ts`: the request lists `src/page.ts`, modified, and never
-`page.ts.new`. To make this possible, a call's report names, beside its
-edits, each rename an embedded utility made (`from` and `to`) and each path
-an embedded `rm` removed, a folder once by its own path. A message sent while the agent works waits in the queue and starts
+`page.ts.new`. A call's report names, beside its edits, the renames and
+removals its embedded utilities made ([The report](#the-report)), and the
+request applies each call's before adding the call's own files:
+
+- A file a rename brought to a name the request had not listed is `added`,
+  unless the renaming call lists that name as `modified`, as when it
+  replaced an existing file. A rename onto a listed file merges into it,
+  which keeps its kind and the earlier of the two places in the list.
+- An edit a later call's rename carried shows as it was made, its two sides
+  those of the file it then was, and the view's heading names both paths,
+  `/tmp/page.ts.new → src/page.ts`.
+- All Changes of a file that was there before the request starts from the
+  original of its first edit that did not create its file, so a replaced
+  page shows the old page against the new; of a file the request created,
+  from its first edit.
+- A call's own pills still show what that call did. A pill opens its file
+  under its current name, and a pill for a file a later call of the request
+  removed is no control.
+
+A message sent while the agent works waits in the queue and starts
 its own request when it runs. The request is derived from the transcript
 when shown, never stored.
 
