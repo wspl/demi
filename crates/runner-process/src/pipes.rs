@@ -177,11 +177,9 @@ impl PipeClient {
                 let bytes = match chunk {
                     Ok(bytes) => bytes,
                     Err(error) => {
-                        let reason = error.to_string();
-                        let reason = &reason[..reason.floor_char_boundary(wire::STREAM_PIPE_REASON_BYTES)];
                         let frame = CloseFrame {
                             code: CloseCode::Error,
-                            reason: reason.into(),
+                            reason: wire::close_reason(&error.to_string()).into(),
                         };
                         // The pipe fails either way; a close that does not
                         // go out fails it as a lost connection.

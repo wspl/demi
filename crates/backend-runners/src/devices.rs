@@ -20,7 +20,9 @@ use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::devices::DeviceRecord;
 use demi_backend_page_sync::{Part, UserMarks};
-use demi_backend_remote_host::{Admission, DeviceLink, Link, LinkDriver, LinkEnd, RemoteHost};
+use demi_backend_remote_host::{
+    Admission, DeviceLink, Link, LinkDriver, LinkEnd, RemoteHost, close_frame, socket_frame,
+};
 use demi_host_interface::{HostIdentity, HostKey};
 use demi_runner_protocol::wire::{self, HostArtifact, Inbound, OperatingSystem};
 use demi_runner_protocol::values::BackendUrl;
@@ -489,14 +491,7 @@ impl Serving {
             seen,
         } = self;
         let (mut outgoing, incoming) = socket.split();
-        let incoming = incoming.filter_map(|message| {
-            ready(match message {
-                Ok(Message::Binary(frame)) => Some(Ok(frame.to_vec())),
-                Ok(Message::Text(_)) => Some(Err("the runner sent a text frame".to_owned())),
-                Ok(Message::Ping(_) | Message::Pong(_) | Message::Close(_)) => None,
-                Err(error) => Some(Err(error.to_string())),
-            })
-        });
+        let incoming = incoming.filter_map(|message| ready(socket_frame(message)));
         let served = driver.serve(
             incoming,
             (&mut outgoing)
@@ -523,7 +518,7 @@ impl Serving {
             () = held => unreachable!("the installed artifacts are watched until the connection ends"),
         };
         match &end {
-            LinkEnd::Refused(reason) => {
+            LinkEnd::Refused(reason) | LinkEnd::RunnerRefused(reason) => {
                 tracing::warn!(device = %device, "runner connection closed: {reason}")
             }
             LinkEnd::Closed(reason) | LinkEnd::Disconnected(reason) => {
@@ -539,7 +534,7 @@ impl Serving {
             let _ = outgoing.send(Message::Binary(frame.into())).await;
         }
         // The connection is over whether or not the close reaches the runner.
-        let _ = outgoing.send(Message::Close(None)).await;
+        let _ = outgoing.send(Message::Close(close_frame(&end))).await;
         slot.went_offline(&link, identity);
         seen.touch(device).await;
     }

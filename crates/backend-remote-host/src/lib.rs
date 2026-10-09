@@ -26,6 +26,8 @@ mod relay;
 mod remote_host;
 mod shell_environment;
 #[cfg(feature = "edge")]
+mod runner_socket;
+#[cfg(feature = "edge")]
 mod stream_pipe;
 #[cfg(feature = "testing")]
 pub mod testing;
@@ -33,7 +35,7 @@ pub mod testing;
 pub use file_watch::{HostWatch, WatchUpdate};
 pub use link::{
     DirectAdmission, DirectAnswer, PeerEvent, JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions,
-    LinkPolicy,
+    LinkPolicy, SocketEnd,
     OUTBOUND_FRAMES, PING_INTERVAL, WeakLink,
 };
 pub use manifest::{ArtifactResolver, CommandCatalog, CommandSelection};
@@ -46,6 +48,8 @@ pub use remote_host::{
     Admission, AttachedArtifact, DeviceLink, DirectoryFile, JobStart, LogPage, Look, LookAt, ConditionalRead, OpenedRead, RemoteHost, RemoteJob,
     ServiceCallError, ServiceEnd, ServiceRequest, ServiceStream, byte_stream, collect_pipe, host_identity,
 };
+#[cfg(feature = "edge")]
+pub use runner_socket::{close_frame, socket_frame};
 #[cfg(feature = "edge")]
 pub use stream_pipe::accept_stream_pipe;
 pub use shell_environment::{

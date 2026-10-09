@@ -46,9 +46,8 @@ pub const JOB_GROWTH_INTERVAL: Duration = Duration::from_secs(2);
 /// The most bytes of one binary message of a stream pipe's WebSocket
 /// (`runner.md` § Host operations): the runner splits larger writes.
 pub const STREAM_PIPE_MESSAGE_BYTES: usize = 64 * 1024;
-/// The most bytes of the reason a stream pipe's close frame carries, the
-/// most a WebSocket close frame holds.
-pub const STREAM_PIPE_REASON_BYTES: usize = 123;
+/// The most bytes of a WebSocket close frame's reason.
+const CLOSE_REASON_BYTES: usize = 123;
 /// The most bytes of one live stdin frame.
 pub const STDIN_CHUNK_BYTES: usize = 64 * 1024;
 /// The most paths one `fs_watch_changed` carries: more changed at once
@@ -113,6 +112,30 @@ pub fn decode<M: DeserializeOwned + garde::Validate<Context = ()>>(
         .validate()
         .map_err(|report| WireError::Invalid(report.to_string()))?;
     Ok(message)
+}
+
+/// Why a message cannot be decoded, naming its type and the decoding error,
+/// as the side that closes the connection over it says
+/// (`runner.md` § Connection and identity): `cannot decode job_start:
+/// unknown field `shell``. A message whose type cannot be read is named
+/// as a message.
+pub fn refusal(bytes: &[u8], error: &WireError) -> String {
+    /// The tag every message of the wire carries.
+    #[derive(serde::Deserialize)]
+    struct Typed {
+        #[serde(rename = "type")]
+        kind: String,
+    }
+    match rmp_serde::from_slice::<Typed>(bytes) {
+        Ok(Typed { kind }) => format!("cannot decode {kind}: {error}"),
+        Err(_) => format!("cannot decode a message: {error}"),
+    }
+}
+
+/// `reason` as a WebSocket close frame carries it: its first
+/// [`CLOSE_REASON_BYTES`], cut at a character's boundary.
+pub fn close_reason(reason: &str) -> &str {
+    &reason[..reason.floor_char_boundary(CLOSE_REASON_BYTES)]
 }
 
 /// A reply over [`MAX_MESSAGE_BYTES`] fails its own request instead of the

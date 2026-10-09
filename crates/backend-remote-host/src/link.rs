@@ -152,10 +152,39 @@ pub struct LinkOptions {
 pub enum LinkEnd {
     /// The runner's side went away.
     Closed(String),
-    /// The runner broke the protocol.
+    /// The runner broke the protocol: the backend cannot decode its
+    /// message, which the refusal names with the decoding error
+    /// ([`wire::refusal`]).
     Refused(String),
+    /// The runner closed it over a message of the backend's that it cannot
+    /// decode, naming the message and the decoding error.
+    RunnerRefused(String),
     /// The backend ended it, for this reason.
     Disconnected(String),
+}
+
+impl LinkEnd {
+    /// What the connection's end fails its work with: a refusal on either
+    /// side names the message, so a command lost with the connection says
+    /// why (`runner.md` § Connection and identity).
+    fn reason(&self) -> String {
+        match self {
+            Self::Closed(_) => "runner disconnected".to_owned(),
+            Self::Refused(refusal) => format!("runner disconnected: the backend {refusal}"),
+            Self::RunnerRefused(refusal) => format!("runner disconnected: the runner {refusal}"),
+            Self::Disconnected(reason) => reason.clone(),
+        }
+    }
+}
+
+/// Why a runner's socket carries no more frames, as the driver reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SocketEnd {
+    /// The transport failed, or the runner broke the WebSocket protocol.
+    Broken(String),
+    /// The runner closed it over a message of the backend's that it cannot
+    /// decode, and its close frame says which and why.
+    Refused(String),
 }
 
 /// One runner connection, as the Hosts on its device reach it. Cloning it is
@@ -779,6 +808,13 @@ impl Link {
                 let _ = link.send_frame(frame).await;
             });
         }
+    }
+
+    /// Sends `frame` to the runner as it is, for a test of a message the
+    /// runner cannot decode.
+    #[cfg(feature = "testing")]
+    pub async fn send_raw(&self, frame: Vec<u8>) -> Result<(), HostError> {
+        self.send_frame(frame).await
     }
 
     async fn send_frame(&self, frame: Vec<u8>) -> Result<(), HostError> {
@@ -1560,7 +1596,7 @@ impl LinkDriver {
     /// ends it. Everything in flight then ends with the reason.
     pub async fn serve<I, O>(self, incoming: I, outgoing: O) -> LinkEnd
     where
-        I: Stream<Item = Result<Vec<u8>, String>>,
+        I: Stream<Item = Result<Vec<u8>, SocketEnd>>,
         O: Sink<Vec<u8>>,
         O::Error: Display,
     {
@@ -1575,8 +1611,11 @@ impl LinkDriver {
             loop {
                 let frame = match incoming.next().await {
                     None => return LinkEnd::Closed("runner disconnected".into()),
-                    Some(Err(error)) => {
+                    Some(Err(SocketEnd::Broken(error))) => {
                         return LinkEnd::Closed(format!("runner disconnected: {error}"));
+                    }
+                    Some(Err(SocketEnd::Refused(refusal))) => {
+                        return LinkEnd::RunnerRefused(refusal);
                     }
                     Some(Ok(frame)) => frame,
                 };
@@ -1588,7 +1627,7 @@ impl LinkDriver {
                         }
                         link.receive(message);
                     }
-                    Err(error) => return LinkEnd::Refused(error.to_string()),
+                    Err(error) => return LinkEnd::Refused(wire::refusal(&frame, &error)),
                 }
             }
         };
@@ -1631,11 +1670,7 @@ impl LinkDriver {
                 LinkEnd::Disconnected(reason)
             }
         };
-        let reason = match &end {
-            LinkEnd::Closed(_) | LinkEnd::Refused(_) => "runner disconnected".to_owned(),
-            LinkEnd::Disconnected(reason) => reason.clone(),
-        };
-        link.teardown(&reason);
+        link.teardown(&end.reason());
         link.0.tasks.wait().await;
         end
     }

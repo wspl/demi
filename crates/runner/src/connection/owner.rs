@@ -233,8 +233,10 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
     drop(requests);
     owner.close().await;
     let closed = transport.close().await;
+    // A connection that failed fails the owner too, whose own error, such
+    // as a queue that closed with it, says less than why it failed.
     match (result, closed) {
-        (Err(error), _) | (_, Err(error)) => Err(error),
+        (_, Err(error)) | (Err(error), _) => Err(error),
         (Ok(end), Ok(())) => Ok(end),
     }
 }

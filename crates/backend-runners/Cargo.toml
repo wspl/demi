@@ -24,7 +24,7 @@ demi-backend-database = { path = "../backend-database" }
 demi-backend-page-sync = { path = "../backend-page-sync" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-shared-gates = { path = "../shared-gates" }
-demi-backend-remote-host = { path = "../backend-remote-host" }
+demi-backend-remote-host = { path = "../backend-remote-host", features = ["edge"] }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
