@@ -188,7 +188,8 @@ the view, without involving the Host; an added segment's original is empty.
 ## Delivery to the conversation
 
 For example, the user asks "fix the sign-in page". The agent edits
-`login.ts` and `form.css`, starts a build and yields until it ends; woken,
+`login.ts` and `form.css`, starts a build and ends its turn; woken by the
+build's end,
 it edits `login.ts` again and replies. The pills under its work name
 `login.ts` and `form.css`; a click on `login.ts` opens the Change view on
 that request: a sidebar lists both files, and `login.ts` shows its change
@@ -205,7 +206,7 @@ asking starts no request and belongs to the request it continues:
 | --- | --- |
 | `user`: a message sent, edited or regenerated | Yes |
 | `steer`: the user adds to the running turn | No |
-| `wakeup`: a yield's wakeup | No |
+| `wakeup`: command reports | No |
 | `agent_message`: a receipt, a message from another agent, or the user's permission decision or move notice, which can start a continuation | No |
 | `resume`: Resume, or a turn continued after compaction or a model switch | No |
 

@@ -335,7 +335,7 @@ A vendor bills the part of a request it has cached at a fraction of the input
 price, and it finds that part only when the request begins with exactly what
 an earlier request sent. For example, a turn on the Anthropic API sends
 request 1: the tools, the system prompt and the user's message. The model
-calls `shell_exec`. Request 2 is request 1 unchanged, then the model's call
+calls `shell`. Request 2 is request 1 unchanged, then the model's call
 and its result. The vendor reads request 1's part of request 2 from its cache
 at a tenth of the input price or less, and processes only what follows. Had
 request 2 changed one byte of request 1, the vendor would have processed all
@@ -376,7 +376,7 @@ models offer it.
 - **The system prompt and the tools** follow from the runtime's rules, the
   product's fixed instructions, the node's profile and its commands, rendered once when the node is assembled. They hold no time, id,
   Host or state, and nothing that differs by user: what does reaches the model
-  as a `context` block ([Context](../agent/runtime.md#context)). The tools are the five standard tools in one order
+  as a `context` block ([Context](../agent/runtime.md#context)). The tool is the one `shell` tool
   ([Tools](../agent/runtime.md#tools)).
 - **The items** come from replay, which reads only what the blocks hold for
   the model, keeps each block in its place and never changes what a block
@@ -430,8 +430,9 @@ to the nearest block before it that can. The marks are the block form, not the
 top-level automatic form, which compatible endpoints do not all accept. Each
 has a one-hour lifetime (`"ttl": "1h"`), because an entry lives from the start
 of the request that wrote or last read it, and Demi's requests are often more
-than five minutes apart: `shell_exec` watches a command for up to ten minutes,
-`yield` waits up to ten, and a user reads an answer before replying. The hour
+than five minutes apart: a `shell` call watches a command for up to ten
+minutes, a command reports at most every ten, and a user reads an answer
+before replying. The hour
 costs twice the input price on what each request adds, where a lost entry
 costs 1.25 times the input price on the whole history. A prefix shorter than
 the model's minimum, 512 to 4,096 tokens, is not cached, and the vendor

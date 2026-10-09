@@ -17,7 +17,7 @@ and the agent executes it.
 For example, a conversation on a paired laptop uses Claude Code. Its request
 wakes the user's Cloud and starts the CLI there with the account's token. The
 CLI streams the model's answer back as stream-json. When the model calls
-`shell_exec`, the CLI asks Demi for the result over the SDK MCP channel and
+`shell`, the CLI asks Demi for the result over the SDK MCP channel and
 waits. The run ends with that tool call, and the agent runs the command on the
 laptop. The next run gives the waiting CLI the result, and the model continues
 in the same process.
@@ -361,7 +361,7 @@ file that holds the three Claude turns exactly as the CLI wrote them, the GPT
 turn written in Claude's format, and the user's new message last. The request
 the CLI sends begins with the bytes the third Claude turn's last request sent,
 so the vendor reads that part from its cache; the model sees its own tool
-calls under their real names, `mcp__main__shell_exec`, and their results, not
+calls under their real names, `mcp__main__shell`, and their results, not
 a retelling.
 
 Writing the history as text, as an earlier design did, cost both: every new

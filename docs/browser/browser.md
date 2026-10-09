@@ -602,7 +602,7 @@ runner's shutdown deadline, cannot retire them, and three rules cover that case:
 Browser commands are ordinary declared `demi` commands:
 
 ```text
-Agent shell_exec
+Agent shell call
        |
        v
 Brush on Host -> Declared-command dispatcher

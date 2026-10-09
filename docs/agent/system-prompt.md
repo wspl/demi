@@ -15,7 +15,7 @@ page of the site they are building. The model has never been told about
 ```text
 You are Demi, an agent that does work for the user on their computers …     identity
 How Demi works: Hosts and devices, the workspace, files for the user, …      harness guide
-Shell tools: shell_exec's window, shell_status, yield, …                     tool rules
+The shell tool: its window, command reports, …                     tool rules
 Capabilities                                                                 capability index
   demi browser  Drives a real browser on the Host: opens pages, reads …
                 Use it when a task needs a live page: a site the user is
@@ -42,7 +42,7 @@ five layers in this order, and holds no time, Host or other state
 | --- | --- | --- |
 | Identity | The product; a [subagent profile](subagents.md#profiles)'s instructions replace it | What Demi is and how it works for the user |
 | Harness guide | The product | The facts of Demi's world the model cannot infer and that hold in every turn |
-| Tool rules | The agent runtime | How the three tools behave |
+| Tool rules | The agent runtime | How the `shell` tool behaves |
 | Capability index | Each command group's declaration | One entry per command group of the node, sorted by group |
 | Model identity | The agent runtime, from the node's model selection | Which model serves the node |
 

@@ -71,7 +71,7 @@ backend resolves neither kind of reference.
 
 The agent server coordinates admission with the node's children. Editing
 requires no active action, queued message, pending steer, pending agent
-message, scheduled wakeup, live child, child start or close in progress, or
+message, pending command report, live child, child start or close in progress, or
 child completion awaiting delivery. Admission excludes competing actions and
 completion delivery while the edit is prepared and committed. The
 reservation ends when the edit is accepted or rejected: the replacement's turn
@@ -206,7 +206,7 @@ result with the production replay would conceal replay defects.
   model account is required.
 - Barriers hold the operation at preparation, save, publication, and provider
   start, and both orders of competing operations are exercised explicitly.
-  Wakeups run on a controlled clock; arbitrary sleeps are not synchronization.
+  Command reports run on a controlled clock; arbitrary sleeps are not synchronization.
 - Database cases use a temporary on-disk conversation database and blob store,
   and inject a failure inside a real transaction after some statements have
   run. A fake store that fails before any write does not establish
@@ -247,7 +247,7 @@ inference items and on patch sequences.
 | Preparation is aborted | The candidate is discarded, the accepted transcript gains no candidate abort or output blocks, and acquired resources are released. |
 | An abort arrives while the commit is in progress | The durable outcome decides: a failure preserves the accepted history; a success keeps the replacement and does not start generation once the cancellation has been accepted. |
 | The model fails before output or after a completed tool | The replacement stays accepted. Explicit recovery follows the resume contract and does not repeat a completed tool because submission was retried. |
-| An active action, queued message, pending steer, pending agent message, wakeup, live child, or undelivered completion | Editing is rejected without deleting, consuming, or silently cancelling that work. |
+| An active action, queued message, pending steer, pending agent message, pending command report, live child, or undelivered completion | Editing is rejected without deleting, consuming, or silently cancelling that work. |
 | A send, a model or target change, a child resume, or a completion delivery races with the edit | Exactly one admissible ordering takes effect; the loser observes busy or conflict, or operates on the committed state. A model switch always waits and lands on the committed state ([Model switch](runtime.md#model-switch)). Nothing enters the preparation window. |
 | The target is a `steer`, `context`, `wakeup`, or `agent_message` block, or a block the model produced | The edit is rejected without mutation. |
 | Completed external effects | A file written in the removed suffix and an archived child record remain; delivered child completions are not replayed because their blocks in the parent were removed. |

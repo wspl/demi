@@ -136,7 +136,7 @@ conversation ([What the agent can change](#what-the-agent-can-change)) runs
 while its tree works, which a switch refuses. The command therefore records
 the switch as the conversation's **pending move** and answers at once; the
 backend makes it, as above, when the tree is next idle, before it admits
-anything else, so the next turn, the user's or a wakeup's, runs in the new
+anything else, so the next turn, the user's or a report's, runs in the new
 place and reads it from its block. A newer pending move replaces an older
 one; an archive drops it, and an agent's pending detaches with it. A pending move is stored with the conversation
 ([Storage](../backend/storage.md#control-records)), so a restart does not
@@ -478,7 +478,7 @@ Conversation and device admission protect different resources:
 
 | Scope | Protected transition | Work that prevents an idle transition |
 | --- | --- | --- |
-| One conversation tree | Target change | Root and child turns, restores, queued work, and wakeups admitted by the tree lifecycle |
+| One conversation tree | Target change | Root and child turns, restores, queued work, and command reports admitted by the tree lifecycle |
 | Conversation files | Target change | Host operations: uploads, the working tree, file text. File transfers, user streams and the one-shot user calls admitted like them are ended, not awaited. |
 | One Cloud device | Shutdown or reset | Device operations, and the agent trees of the conversations that cannot work without that Cloud |
 
@@ -576,7 +576,7 @@ those records:
 
 | The runner lists the job as | The command |
 | --- | --- |
-| Running | Goes on: the backend follows it again where a page shows it, reads the output it missed from the kept output, and the command's handle works again for `shell_status`, `yield` and `demi shell stop` |
+| Running | Goes on: the backend follows it again where a page shows it, reads the output it missed from the kept output, and the command's handle works again for `demi shell status` and `demi shell stop` |
 | Ended | Ends with the status the runner kept, and its whole output is read as for any end |
 | Not listed | Is lost, with the reason the backend can tell from what it knows of the device: Demi was upgraded and the runner replaced itself, the Cloud restarted, the runner started anew after it ended, or it stopped its jobs after 10 minutes without a connection |
 

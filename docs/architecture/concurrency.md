@@ -345,7 +345,7 @@ and the edge cuts the response short so it never looks complete.
 - **Every task has an owner.** A spawned task belongs to its owner's
   `TaskTracker` or `JoinSet`; there is no detached spawn. Shutdown cancels,
   then joins. Timers are such tasks, owned by their component, for example a
-  session's persister and yield driver, idle watches and expiry timers; no
+  session's persister and report timers, idle watches and expiry timers; no
   record stores a timer handle.
 - **Guards release on drop.** Gate leases, reservations, transfer leases and
   admissions release when dropped, on success, failure and cancellation alike.

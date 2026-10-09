@@ -1026,7 +1026,7 @@ agent of the tree is acting, or a child is still open. An agent acts until the
 save that ends its action commits, which is also when the page sees its phase
 go idle ([A turn](../agent/runtime.md#a-turn)), so once a conversation no
 longer runs, its transcript route shows what the live tree showed. An open child counts
-whatever it is doing, a wait for its own `yield` wakeup included, because it
+whatever it is doing, a wait for its own commands included, because it
 resumes by itself and its close wakes its parent
 ([Subagents](../agent/subagents.md#result)). A shell command that outlives its
 turn does not count: its exit wakes no one, so nothing follows until the user
