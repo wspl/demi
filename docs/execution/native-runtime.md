@@ -767,7 +767,10 @@ that tail.
 ### Request body and input demand
 
 The invocation request begins with a four-byte big-endian JSON byte length,
-followed by JSON containing `operation`, `invocationId`, parsed `args`, whether
+followed by JSON containing `operation`, `invocationId`, the command's path,
+such as `demi file read`, which a handler that takes several values puts
+before each failure it reports
+([Handle an rpc call](commands.md#handle-an-rpc-call)), parsed `args`, whether
 the caller asked for `json`, `cwd`, `env`, the
 [command context](#command-context), for a job that records edits, its
 `edits` context, and, for an invocation a job's command makes, where its
