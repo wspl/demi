@@ -1,6 +1,6 @@
 import { shallowRef, triggerRef } from 'vue'
-import { SessionError, type ConversationClient, type ClientSessionEvent } from '@demicodes/conversation-client'
-import { asError, createId } from '@demicodes/utils'
+import { SessionError, SteerRejectedError, type ConversationClient, type ClientSessionEvent } from '@demicodes/conversation-client'
+import { asError, createId, deferred } from '@demicodes/utils'
 import type { ClientContent, EditRequest, TranscriptVersion } from '@demicodes/protocol'
 import { ConversationSocketError } from '../transport/conversation-socket'
 import { waitToReconnect } from '../transport/liveness'
