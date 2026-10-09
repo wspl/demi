@@ -203,7 +203,15 @@ asking starts no request and belongs to the request it continues:
 | `resume`: Resume, or a turn continued after compaction or a model switch | No |
 
 So a request's turns may be several, and its changes are those of all of
-them. A message sent while the agent works waits in the queue and starts
+them. The request's files are listed as they stand after its latest call: a
+file that a later call renamed with an embedded `mv` is listed under its new
+name, its earlier edits with it, and a file that a later call renamed away,
+or removed with an embedded `rm`, is no longer listed. For example, one call
+writes `/tmp/page.ts.new` and the next runs `mv /tmp/page.ts.new
+src/page.ts`: the request lists `src/page.ts`, modified, and never
+`page.ts.new`. To make this possible, a call's report names, beside its
+edits, each rename an embedded utility made (`from` and `to`) and each path
+an embedded `rm` removed, a folder once by its own path. A message sent while the agent works waits in the queue and starts
 its own request when it runs. The request is derived from the transcript
 when shown, never stored.
 
