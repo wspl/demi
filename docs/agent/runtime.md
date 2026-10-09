@@ -1550,8 +1550,14 @@ commands*, and a click opens it to every step.
   Requesting row shows under it.
 - An ended run stays one row when it holds a call and another step, and a
   lone thinking stays its own row; a lone call is its own row. The row reads
-  what the run did: *Ran 5 commands*, counting the shell runs. A failed
-  command shows its tag on its own row inside, not on the group's.
+  what the run did, each kind of call once, in the order the run first did
+  it: *Ran 5 commands* for `shell_exec` calls, *checked 2 commands* for
+  `shell_status` calls, counting the commands they looked at, and *waited*
+  for a `yield`; a tool of another kind reads *used* and its name. For
+  example, a run that thinks, checks command 17 twice and yields reads
+  *Checked 1 command, waited*. The row never reads a bare count of steps,
+  which says nothing of what happened. A failed command shows its tag on its
+  own row inside, not on the group's.
 - Folded, the files the run's calls changed show under the row, each once,
   counted from its two ends within the run ([What the conversation
   shows](../execution/edit-tracking.md#what-the-conversation-shows)); open,
