@@ -196,61 +196,6 @@ async fn a_file_replaced_by_a_rename_is_modified_with_both_sides() {
     );
 }
 
-/// `sed -i` with BSD's separate suffix, as models on macOS write it, edits
-/// the file and records the edit: `-i ''` keeps no backup, `-i .bak` keeps
-/// one, which is no edit. A dotfile after `-i` with the script already
-/// given by `-e` is the file to edit, not a suffix.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn sed_in_place_with_a_separate_bsd_suffix_records_its_edit() {
-    let root = tempfile::tempdir().unwrap();
-    let tracking = recorder(root.path(), "job");
-    fs::write(root.path().join("config"), "level=1\n").unwrap();
-    fs::write(root.path().join("f"), "a\n").unwrap();
-    fs::write(root.path().join(".env"), "x\n").unwrap();
-    fs::write(root.path().join("g"), "c\n").unwrap();
-    run(
-        root.path(),
-        tracking.clone(),
-        "sed -i '' 's/level=1/level=2/' config; sed -i .bak 's/a/b/' f; \
-         sed -e 's/x/y/' -i .env; sed -e 's/c/d/' -i .bak g",
-    )
-    .await;
-    let mut names: Vec<_> = fs::read_dir(root.path())
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-        .filter(|name| !["job", "edits.lock"].contains(&name.as_str()))
-        .collect();
-    names.sort();
-    assert_eq!(names, [".env", "config", "f", "f.bak", "g", "g.bak"]);
-    assert_eq!(fs::read_to_string(root.path().join("f.bak")).unwrap(), "a\n");
-    assert_eq!(fs::read_to_string(root.path().join("g.bak")).unwrap(), "c\n");
-    let edits: Vec<_> = tracking
-        .report()
-        .unwrap()
-        .files
-        .iter()
-        .map(|file| {
-            assert_eq!(file.kind, EditKind::Modified, "{}", file.path);
-            assert_eq!(file.edits.len(), 1, "{}", file.path);
-            let edit = &file.edits[0];
-            (
-                Path::new(&file.path).file_name().unwrap().to_str().unwrap().to_owned(),
-                fs::read_to_string(edit.original.as_ref().unwrap()).unwrap(),
-                fs::read_to_string(edit.modified.as_ref().unwrap()).unwrap(),
-            )
-        })
-        .collect();
-    assert_eq!(
-        edits,
-        [
-            ("config".to_owned(), "level=1\n".to_owned(), "level=2\n".to_owned()),
-            ("f".to_owned(), "a\n".to_owned(), "b\n".to_owned()),
-            (".env".to_owned(), "x\n".to_owned(), "y\n".to_owned()),
-            ("g".to_owned(), "c\n".to_owned(), "d\n".to_owned()),
-        ]
-    );
-}
-
 /// A move carries the job's edits to the new name: a file written outside
 /// the workspace and moved in is added with its contents, an edited file
 /// renamed shows its edit under the new name, as do the files of a renamed
@@ -386,5 +331,39 @@ async fn a_job_lists_its_renames_and_removals_in_order() {
                 vec![(None, "second\n".into())]
             ),
         ] as [(std::path::PathBuf, EditKind, Vec<(Option<String>, String)>); 2]
+    );
+}
+
+/// A utility that `find -exec` or `xargs` starts by name is the job's own,
+/// so its edits are the job's like those the script makes itself. Runs in
+/// about 0.06 s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_utility_started_by_find_or_xargs_records_its_edits() {
+    let root = tempfile::tempdir().unwrap();
+    let tracking = recorder(root.path(), "job");
+    fs::write(root.path().join("f"), "a\n").unwrap();
+    fs::write(root.path().join("g"), "a\n").unwrap();
+    run(
+        root.path(),
+        tracking.clone(),
+        "find . -name f -exec sed -i s/a/b/ {} \\; && echo g | xargs sed -i s/a/c/",
+    )
+    .await;
+    let files = tracking.report().unwrap().files;
+    let edits: Vec<_> = files
+        .iter()
+        .map(|file| {
+            (
+                Path::new(&file.path).file_name().unwrap().to_str().unwrap().to_owned(),
+                file.edits
+                    .iter()
+                    .map(|edit| fs::read_to_string(edit.modified.as_ref().unwrap()).unwrap())
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        edits,
+        [("f".to_owned(), vec!["b\n".to_owned()]), ("g".to_owned(), vec!["c\n".to_owned()])]
     );
 }

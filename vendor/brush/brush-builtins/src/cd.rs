@@ -26,8 +26,8 @@ pub(crate) struct CdCommand {
     file_with_xattr_as_dir: bool,
 
     /// By default it is the value of the HOME shell variable. If `TARGET_DIR` is "-", it is
-    /// converted to $OLDPWD.
-    target_dir: Option<PathBuf>,
+    /// converted to $OLDPWD. bash takes one; more are an error it words itself.
+    target_dirs: Vec<PathBuf>,
 }
 
 impl builtins::Command for CdCommand {
@@ -42,15 +42,19 @@ impl builtins::Command for CdCommand {
             return error::unimp("cd -@");
         }
 
+        if self.target_dirs.len() > 1 {
+            writeln!(context.stderr(), "cd: too many arguments")?;
+            return Ok(brush_core::ExecutionExitCode::InvalidUsage.into());
+        }
         let mut should_print = false;
-        let mut target_dir = if let Some(target_dir) = &self.target_dir {
+        let mut target_dir = if let Some(target_dir) = self.target_dirs.first() {
             // `cd -', equivalent to `cd $OLDPWD'
             if target_dir.as_os_str() == "-" {
                 should_print = true;
                 if let Some(oldpwd) = context.shell.env_str("OLDPWD") {
                     PathBuf::from(oldpwd.to_string())
                 } else {
-                    writeln!(context.stderr(), "OLDPWD not set")?;
+                    writeln!(context.stderr(), "cd: OLDPWD not set")?;
                     return Ok(ExecutionResult::general_error());
                 }
             } else {
@@ -62,11 +66,13 @@ impl builtins::Command for CdCommand {
             if let Some(home_var) = context.shell.env_str("HOME") {
                 PathBuf::from(home_var.to_string())
             } else {
-                writeln!(context.stderr(), "HOME not set")?;
+                writeln!(context.stderr(), "cd: HOME not set")?;
                 return Ok(ExecutionResult::general_error());
             }
         };
 
+        // bash names the directory as the user wrote it in a failure.
+        let operand = target_dir.clone();
         if self.use_physical_dir
             || context
                 .shell
@@ -78,10 +84,17 @@ impl builtins::Command for CdCommand {
                 return error::unimp("cd -e");
             }
 
-            target_dir = context.shell.absolute_path(target_dir).canonicalize()?;
+            target_dir = context
+                .shell
+                .absolute_path(target_dir)
+                .canonicalize()
+                .map_err(|error| brush_core::Error::from(error).for_operand(&operand))?;
         }
 
-        context.shell.set_working_dir(&target_dir)?;
+        context
+            .shell
+            .set_working_dir(&target_dir)
+            .map_err(|error| error.for_operand(&operand))?;
 
         // Bash compatibility
         // https://www.gnu.org/software/bash/manual/bash.html#index-cd

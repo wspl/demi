@@ -32,6 +32,7 @@ fn is_xattr_unsupported(_err: &crate::context::io::Error) -> bool {
 /// All errors propagate, including `ENOTSUP` / `EOPNOTSUPP`; for
 /// best-effort callers see [`copy_xattrs_ignore_unsupported`].
 pub fn copy_xattrs<P: AsRef<Path>>(source: P, dest: P) -> crate::context::io::Result<()> {
+    let (source, dest) = (crate::context::resolve(source), crate::context::resolve(dest));
     for attr_name in xattr::list(&source)? {
         if let Some(value) = xattr::get(&source, &attr_name)? {
             xattr::set(&dest, &attr_name, &value)?;
@@ -78,6 +79,7 @@ pub fn copy_xattrs_fd_ignore_unsupported(
 /// Like `copy_xattrs`, but skips the security.selinux attribute.
 #[cfg(unix)]
 pub fn copy_xattrs_skip_selinux<P: AsRef<Path>>(source: P, dest: P) -> crate::context::io::Result<()> {
+    let (source, dest) = (crate::context::resolve(source), crate::context::resolve(dest));
     for attr_name in xattr::list(&source)? {
         if attr_name.as_bytes() != b"security.selinux"
             && let Some(value) = xattr::get(&source, &attr_name)?
@@ -102,6 +104,7 @@ pub fn copy_xattrs_skip_selinux<P: AsRef<Path>>(source: P, dest: P) -> crate::co
 /// failures here when `mode` is the only thing being preserved.
 #[cfg(unix)]
 pub fn copy_acls<P: AsRef<Path>>(source: P, dest: P) {
+    let (source, dest) = (crate::context::resolve(source), crate::context::resolve(dest));
     for name in ["system.posix_acl_access", "system.posix_acl_default"] {
         if let Ok(Some(value)) = xattr::get(&source, name) {
             // Best-effort: silently skip if dest doesn't support ACL xattrs.
@@ -120,6 +123,7 @@ pub fn copy_acls<P: AsRef<Path>>(source: P, dest: P) {
 ///
 /// A result containing a HashMap of attributes names and values, or an error.
 pub fn retrieve_xattrs<P: AsRef<Path>>(source: P) -> crate::context::io::Result<FxHashMap<OsString, Vec<u8>>> {
+    let source = crate::context::resolve(source);
     let mut attrs = FxHashMap::default();
     for attr_name in xattr::list(&source)? {
         if let Some(value) = xattr::get(&source, &attr_name)? {
@@ -167,6 +171,7 @@ pub fn apply_xattrs<P: AsRef<Path>>(
     dest: P,
     xattrs: FxHashMap<OsString, Vec<u8>>,
 ) -> crate::context::io::Result<()> {
+    let dest = crate::context::resolve(dest);
     for (attr, value) in xattrs {
         xattr::set(&dest, &attr, &value)?;
     }
@@ -221,7 +226,7 @@ pub fn apply_xattrs_fd_ignore_unsupported(
 /// `true` if the file has extended attributes (indicating an ACL), `false` otherwise.
 pub fn has_acl<P: AsRef<Path>>(file: P) -> bool {
     // don't use exacl here, it is doing more getxattr call then needed
-    xattr::list_deref(file).is_ok_and(|acl| {
+    xattr::list_deref(crate::context::resolve(file)).is_ok_and(|acl| {
         // if we have extra attributes, we have an acl
         acl.count() > 0
     })
@@ -238,7 +243,7 @@ pub fn has_acl<P: AsRef<Path>>(file: P) -> bool {
 /// `true` if the file has an extended attribute named "security.capability", `false` otherwise.
 pub fn has_security_cap_acl<P: AsRef<Path>>(file: P) -> bool {
     // don't use exacl here, it is doing more getxattr call then needed
-    xattr::list_deref(file).is_ok_and(|mut acl| {
+    xattr::list_deref(crate::context::resolve(file)).is_ok_and(|mut acl| {
         #[cfg(unix)]
         return acl.contains(OsStr::from_bytes(b"security.capability"));
 
