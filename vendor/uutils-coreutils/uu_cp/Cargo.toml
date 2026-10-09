@@ -207,7 +207,7 @@ maintainer = "demi-runner"
 patches = [
     "Symbolic links, FIFOs and the directory walk take paths resolved against the shell job's working directory",
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
-    "On macOS a copy made by clonefile(2) gets the time it was made, as GNU cp's does, unless -p, -a or --preserve keeps the source's; an existing destination is written in place, so a hard link to it stays one, where upstream removed it to clone again",
+    "On macOS a copy made by clonefile(2) gets the time it was made and none of the source's extended attributes, as GNU cp's does, unless -p, -a or --preserve keeps the source's times, or -a or --preserve=xattr its attributes; an existing destination is written in place, so a hard link to it stays one, where upstream removed it to clone again",
     "-c, macOS cp's flag for a clone, means --reflink=auto (cp-help-clone)",
     "-p sets the destination's times at its path resolved against the shell job's working directory",
 ]

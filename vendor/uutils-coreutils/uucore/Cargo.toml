@@ -568,4 +568,5 @@ patches = [
     "A child program that names one of the embedding owner's utilities runs that utility in the owner's process (Control::utility, Control::run_utility, UtilityRun), with the command's arguments, directory, environment and streams; context::process::Stdio keeps what a stream is (inherit, null, piped or a file) so the utility gets the same, and Child::id is none for such a child",
     "Owners, metadata, file systems and extended attributes are asked for at paths resolved against the invocation's directory: perms (get_metadata, chown, the walk of chown -R), fsext::statfs and fsxattr's path functions",
     "chown words a failure to change an owner as GNU's does, without the operating system's error number",
+    "fsxattr::remove_xattrs (added) removes a file's extended attributes but those the system protects, for cp's copy made by macOS's clonefile(2), which carries the source's",
 ]
