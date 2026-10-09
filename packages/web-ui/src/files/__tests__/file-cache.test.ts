@@ -279,3 +279,60 @@ test('past the budget the entries shown longest ago go first, and none that show
   expect(b.entry.value).toBe('bbbb')
   expect(asked().slice(3)).toEqual(['text /w/a'])
 })
+
+test('a shared entry is read again through the route of the view that shows it, never of the one that read it first', async () => {
+  jest.useFakeTimers()
+  try {
+    await sharedEntryRoutes()
+  } finally {
+    jest.useRealTimers()
+  }
+})
+
+/** The views of the test above, under fake timers. */
+async function sharedEntryRoutes(): Promise<void> {
+  const files = new HostFiles()
+  files.cover(everything)
+  /** One route to the Host, such as a device's or a conversation's, which counts its reads. */
+  const route = (name: string, asked: string[]): KeptSpec<string> => ({
+    kind: 'listing',
+    path: '/w',
+    read: async () => {
+      asked.push(name)
+      return `listed by ${name}`
+    },
+    size: (text) => text.length,
+  })
+  const asked: string[] = []
+  const settle = async () => {
+    for (let tick = 0; tick < 10; tick++)
+      await Promise.resolve()
+  }
+  // A device's folder dialog lists the folder first, then closes.
+  const dialog = files.show(route('device', asked))
+  await settle()
+  dialog.release()
+  // The conversation's tree shows the folder: confirmed, it asks nothing.
+  const tree = files.show(route('conversation', asked))
+  expect(tree.entry.value).toBe('listed by device')
+  files.changed(['/w/new.txt'])
+  // A listing is read again at most once a second.
+  jest.advanceTimersByTime(SUMMARY_REREAD_MS)
+  await settle()
+  expect(asked).toEqual(['device', 'conversation'])
+  expect(tree.entry.value).toBe('listed by conversation')
+
+  // While both show it, a report reads it once, through the route of the
+  // view that came on screen last, and both see the answer.
+  const again = files.show(route('device', asked))
+  files.changed(['/w/other.txt'])
+  jest.advanceTimersByTime(SUMMARY_REREAD_MS)
+  await settle()
+  expect(asked).toEqual(['device', 'conversation', 'device'])
+  expect(tree.entry.value).toBe('listed by device')
+  again.release()
+  files.refresh()
+  await settle()
+  expect(asked.at(-1)).toBe('conversation')
+  tree.release()
+}
