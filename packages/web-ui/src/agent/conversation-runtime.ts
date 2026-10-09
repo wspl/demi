@@ -58,6 +58,12 @@ export class ConversationRuntime {
   private opening: Promise<ConversationClient> | null = null
   private controller: AbortController | null = null
   private unsubscribe: (() => void) | null = null
+  /**
+   * The clients whose session has listed its pending steers, the last of the
+   * frames that show the conversation as it opens
+   * (`runtime.md` § Pending steers).
+   */
+  private readonly listedSteers = new WeakSet<ConversationClient>()
   /** Consecutive connections lost or not made since the session last opened. */
   private connectionFailures = 0
   private disposed = false
@@ -93,6 +99,76 @@ export class ConversationRuntime {
           throw error
         }
       }
+    }
+  }
+
+  /**
+   * Steers the running turn with a message (`product.md` § Steer or queue);
+   * resolves once the session holds it as a pending steer. A steer the
+   * session refuses, because its turn is ending or nothing runs, is sent as
+   * a message instead, with the same id and no error. A connection lost
+   * before the session answered fails nothing: once the conversation is open
+   * again and has listed its pending steers, a steer it neither lists nor
+   * holds in the transcript is sent as a message, so it is never lost and
+   * never delivered twice.
+   */
+  async steer(content: ClientContent[], id: string = createId()): Promise<void> {
+    this.options.state.lastError = null
+    const client = await this.ensureOpen()
+    try {
+      await client.steer(content, id)
+      return
+    } catch (error) {
+      if (error instanceof ConversationSocketError) {
+        if (await this.holdsSteer(id)) {
+          return
+        }
+      } else if (!(error instanceof SteerRejectedError)) {
+        throw error
+      }
+    }
+    await this.submit(content, id)
+  }
+
+  /** Whether the session, open again after a lost connection, holds the steer `id`: pending, or in the transcript. */
+  private async holdsSteer(id: string): Promise<boolean> {
+    for (;;) {
+      const client = await this.ensureOpen()
+      try {
+        await this.steersListed(client)
+      } catch (error) {
+        if (!(error instanceof ConversationSocketError)) {
+          throw error
+        }
+        continue
+      }
+      return hasAcceptedSubmission(this.options.state, id)
+    }
+  }
+
+  /**
+   * Resolves once `client`'s session has listed its pending steers, so the
+   * page holds what the session holds; rejects when the connection ends first.
+   */
+  private async steersListed(client: ConversationClient): Promise<void> {
+    if (this.listedSteers.has(client)) {
+      return
+    }
+    if (this.client.value !== client) {
+      throw new ConversationSocketError('The connection ended before the session listed its steers')
+    }
+    const listed = deferred()
+    const unsubscribe = client.subscribe((event) => {
+      if (event.type === 'pending_steers') {
+        listed.resolve()
+      } else if (event.type === 'disconnected' || event.type === 'closed') {
+        listed.reject(new ConversationSocketError('The connection ended before the session listed its steers'))
+      }
+    })
+    try {
+      await listed.promise
+    } finally {
+      unsubscribe()
     }
   }
 
@@ -337,7 +413,11 @@ export class ConversationRuntime {
     try {
       client = await this.options.connect(attempt.signal)
       attempt.signal.throwIfAborted()
+      const opened = client
       unsubscribe = client.subscribe((event) => {
+        if (event.type === 'pending_steers') {
+          this.listedSteers.add(opened)
+        }
         if (this.controller !== controller) {
           return
         }

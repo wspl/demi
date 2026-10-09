@@ -12,6 +12,7 @@ import {
 import { useProduct } from './product'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import { appThemeStore } from '@demicodes/web-ui/theme/appTheme'
+import { DEFAULT_SEND_WHILE_RUNNING } from '@demicodes/web-ui/agent/send-way'
 
 export const usePreferences = defineStore('preferences', () => {
   const product = useProduct()
@@ -29,6 +30,12 @@ export const usePreferences = defineStore('preferences', () => {
   const lastProjectHost = computed(() =>
     pending.value.lastProjectHost ??
     product.snapshot?.preferences.lastProjectHost,
+  )
+  /** What Enter does with a message while the agent works (`product.md` § Steer or queue). */
+  const sendWhileRunning = computed(() =>
+    pending.value.sendWhileRunning ??
+    product.snapshot?.preferences.sendWhileRunning ??
+    DEFAULT_SEND_WHILE_RUNNING,
   )
 
   /**
@@ -120,6 +127,9 @@ export const usePreferences = defineStore('preferences', () => {
         ...(pending.value.lastProjectHost
           ? { lastProjectHost: pending.value.lastProjectHost }
           : {}),
+        ...(pending.value.sendWhileRunning
+          ? { sendWhileRunning: pending.value.sendWhileRunning }
+          : {}),
         appearance: { ...pending.value.appearance },
         shortcuts: { ...pending.value.shortcuts },
       } satisfies PreferencesPatch
@@ -127,7 +137,8 @@ export const usePreferences = defineStore('preferences', () => {
         !Object.keys(patch.appearance).length &&
         !Object.keys(patch.shortcuts).length &&
         !patch.lastModel &&
-        !patch.lastProjectHost
+        !patch.lastProjectHost &&
+        !patch.sendWhileRunning
       ) {
         return
       }
@@ -144,6 +155,9 @@ export const usePreferences = defineStore('preferences', () => {
           }
           if (pending.value.lastProjectHost === patch.lastProjectHost) {
             delete pending.value.lastProjectHost
+          }
+          if (pending.value.sendWhileRunning === patch.sendWhileRunning) {
+            delete pending.value.sendWhileRunning
           }
           for (const field of ['appearance', 'shortcuts'] as const) {
             const queued = pending.value[field] as Record<string, unknown>
@@ -247,6 +261,7 @@ export const usePreferences = defineStore('preferences', () => {
   return {
     lastModel,
     lastProjectHost,
+    sendWhileRunning,
     contextLimit,
     setContextLimit,
     appearance,

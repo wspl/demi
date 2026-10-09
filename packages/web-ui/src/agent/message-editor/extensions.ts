@@ -295,8 +295,13 @@ function inCode(state: EditorState): boolean {
 }
 
 export interface MessageKeyOptions {
-  /** Enter outside a code block, or ⌘/Ctrl+Enter anywhere: send. */
-  submit: () => void
+  /**
+   * Enter outside a code block, or ⌘/Ctrl+Enter anywhere: send. `otherWay`
+   * is true for ⌘/Ctrl+Enter outside a code block, which sends the message
+   * the other way while the agent works; in a code block ⌘/Ctrl+Enter is the
+   * send key, as Enter is elsewhere (`product.md` § Steer or queue).
+   */
+  submit: (otherWay: boolean) => void
   /** Escape: true when it ended something, such as an edit. */
   cancel: () => boolean
   /** Up Arrow in an empty composer: true when it opened something, such as the editor on the last message. */
@@ -305,7 +310,8 @@ export interface MessageKeyOptions {
 
 /**
  * The composer's keys: Enter sends and Shift+Enter breaks the line; in a
- * code block Enter breaks the line and ⌘/Ctrl+Enter sends. A line typed as a
+ * code block Enter breaks the line and ⌘/Ctrl+Enter sends. Outside a code
+ * block ⌘/Ctrl+Enter sends the other way. A line typed as a
  * fence opens or closes a code block when it ends. Up Arrow in a composer
  * with no text and no files may open the editor on the last message. During
  * an input method's composition ProseMirror gives none of these keys to the
@@ -329,12 +335,12 @@ const MessageKeys = Extension.create<MessageKeyOptions>({
         if (lineEnd(editor)) {
           return true
         }
-        this.options.submit()
+        this.options.submit(false)
         return true
       },
       'Shift-Enter': ({ editor }) => lineEnd(editor) || editor.commands.setHardBreak(),
-      'Mod-Enter': () => {
-        this.options.submit()
+      'Mod-Enter': ({ editor }) => {
+        this.options.submit(!inCode(editor.state))
         return true
       },
       Escape: () => this.options.cancel(),
