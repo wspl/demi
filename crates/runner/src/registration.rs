@@ -270,7 +270,7 @@ async fn reconnect(registered: &Registered, installed: Option<&Installed>) -> io
             Err(error) => {
                 let text = format!("connection ended: {error}");
                 if failure.as_ref() == Some(&text) {
-                    eprintln!("demi-runner: {text}");
+                    crate::console::line(format_args!("demi-runner: {text}"));
                 } else {
                     tracing::warn!("{text}");
                 }
