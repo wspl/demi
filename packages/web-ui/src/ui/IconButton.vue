@@ -105,7 +105,7 @@ const glyphPx = computed(() => {
         blockUnavailableButtonEvent($event, disabled || loading)
       "
       role="button"
-      class="inline-flex shrink-0 cursor-default items-center justify-center transition-[color,background-color,box-shadow,filter] duration-200 ease-out"
+      class="inline-flex shrink-0 cursor-default items-center justify-center transition-[color,background-color,box-shadow] duration-200 ease-out"
       :aria-disabled="disabled || loading || undefined"
       :aria-busy="loading || undefined"
       :data-pressed="!disabled && pressed ? true : undefined"
@@ -121,10 +121,7 @@ const glyphPx = computed(() => {
         disabled
           ? 'pointer-events-none cursor-not-allowed text-fg-ghost'
           : variant === 'accent'
-            ? [
-                'btn-primary text-white',
-                pressed ? 'brightness-110' : 'hover:brightness-110',
-              ]
+            ? 'btn-primary text-white'
             : variant === 'ghost'
               ? circle
                 ? pressed
