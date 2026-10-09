@@ -12,6 +12,7 @@ import { Dropcursor, Placeholder, UndoRedo } from '@tiptap/extensions'
 import { Fragment, type Node as ProseMirrorNode, type ResolvedPos } from '@tiptap/pm/model'
 import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
+import { keepComposition } from '@demicodes/utils'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import { isHttpUrl, isLikelyFilePath } from '../../markdown/filePath'
 import { codeStyles } from '../../markdown/highlight'
@@ -313,9 +314,8 @@ export interface MessageKeyOptions {
  * code block Enter breaks the line and ⌘/Ctrl+Enter sends. Outside a code
  * block ⌘/Ctrl+Enter sends the other way. A line typed as a
  * fence opens or closes a code block when it ends. Up Arrow in a composer
- * with no text and no files may open the editor on the last message. During
- * an input method's composition ProseMirror gives none of these keys to the
- * keymap, so they act on the composition.
+ * with no text and no files may open the editor on the last message. An
+ * input method's keys never reach them (`KeepComposition`).
  */
 const MessageKeys = Extension.create<MessageKeyOptions>({
   name: 'messageKeys',
@@ -346,6 +346,30 @@ const MessageKeys = Extension.create<MessageKeyOptions>({
       Escape: () => this.options.cancel(),
       ArrowUp: ({ editor }) => editor.isEmpty && this.options.editLast(),
     }
+  },
+})
+
+/**
+ * An input method's keys are the composition's: the Enter that commits a
+ * candidate sends nothing and its Escape ends no edit, in Safari too, where
+ * the composition ends before that Enter's keydown. ProseMirror withholds
+ * keys from the keymap only while it sees a composition, and in Safari for
+ * half a second after one, so the composer keeps them as every text field
+ * does, before any keymap and before any listener around the editor.
+ */
+const KeepComposition = Extension.create({
+  name: 'keepComposition',
+  // Before every keymap, MessageKeys' among them.
+  priority: 10_000,
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: new PluginKey('keepComposition'),
+      props: {
+        // A DOM handler, not `handleKeyDown`, whose true would also cancel
+        // the key's default action, the input method's own.
+        handleDOMEvents: { keydown: (_view, event) => keepComposition(event) },
+      },
+    })]
   },
 })
 
@@ -435,6 +459,7 @@ export function composerExtensions(options: MessageKeyOptions & { placeholder: s
   return [
     ...messageExtensions(),
     MessageFormat,
+    KeepComposition,
     MessageKeys.configure({ submit: options.submit, cancel: options.cancel, editLast: options.editLast }),
     Placeholder.configure({ placeholder: options.placeholder }),
     UndoRedo,
