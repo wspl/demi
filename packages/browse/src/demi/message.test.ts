@@ -13,9 +13,12 @@ import { messageOn } from './message'
 
 const UNDELIVERED = '00000000-0000-4000-8000-000000000001'
 const FAILING = '00000000-0000-4000-8000-000000000002'
+const HELPING = '00000000-0000-4000-8000-000000000003'
 
 /** What the backend holds: a conversation is there once its message was delivered. */
-const conversations: ConversationSummary[] = []
+const conversations: ConversationSummary[] = [
+  conversationSummary(HELPING, 'Helping', { revision: 1, lastTurn: { id: 'block-1', outcome: 'finished', answerStart: 'Hi' } }),
+]
 
 /** The page of a conversation: a composer whose Enter sends, and the notice the send answers with. */
 const PAGE = `<!doctype html>
@@ -55,6 +58,15 @@ const server = Bun.serve({
       }))
       return new Response(notice('The provider returned an error.', 'Rate limit exceeded', 'Copy Report'))
     }
+    if (path === `/chat/${HELPING}/send`) {
+      // The message's turn ended, and a helper agent it started still runs.
+      conversations[0] = conversationSummary(HELPING, 'Helping', {
+        status: 'running',
+        revision: 2,
+        lastTurn: { id: 'block-2', outcome: 'finished', answerStart: 'A helper looks into it' },
+      })
+      return new Response('')
+    }
     return new Response(PAGE, { headers: { 'content-type': 'text/html' } })
   },
 })
@@ -88,5 +100,19 @@ test.skipIf(!existsSync(chromium.executablePath()))(
     expect(await failure(FAILING)).toBe(
       `The turn of the message failed in conversation ${FAILING}: The provider returned an error. Rate limit exceeded`,
     )
+  },
+)
+
+test.skipIf(!existsSync(chromium.executablePath()))(
+  'a message ends with its turn, while the helper agents the turn started still run',
+  async () => {
+    const page = await browser!.newPage()
+    await page.goto(`http://127.0.0.1:${server.port}/chat/${HELPING}`)
+    // Waiting for the helpers would run into this timeout.
+    const end = await messageOn(slot, page, 'Ask a helper', { timeout: 3000 })
+    expect(end).toEqual({
+      conversation: HELPING,
+      turn: { status: 'running', revision: 2, lastTurn: { id: 'block-2', outcome: 'finished' } },
+    })
   },
 )
