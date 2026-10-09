@@ -35,12 +35,15 @@ fn assert_shows(result: &str, texts: &[&str]) {
     }
 }
 
+/// The size of a binary file larger than a medium may be.
+const BIG: usize = 17 * 1024 * 1024;
+
 /// A PNG signature and three more bytes: not text, and not a whole image.
 const PNG: [u8; 11] = [
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe,
 ];
 
-// Several seconds: nine scripts run a shell job each, and the first
+// Several seconds: thirteen scripts run a shell job each, and the first
 // `demi file` starts the `demi.file` service.
 #[tokio::test(flavor = "local")]
 async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
@@ -57,8 +60,18 @@ async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
                 "demi file read shot.png",
                 "demi file read shot.png | wc -c",
                 "demi file --help && demi file edit --help",
+                // Several files: each in order, one line for each that
+                // fails, as `cat a missing b` does.
+                "demi file read note.txt missing.txt note.txt",
+                "demi file read --bogus note.txt",
+                "demi file read",
+                // Past the 16 MiB a medium may have, its first bytes decide.
+                "demi file read big.bin",
             ],
-            |workspace| std::fs::write(format!("{workspace}/shot.png"), PNG).unwrap(),
+            |workspace| {
+                std::fs::write(format!("{workspace}/shot.png"), PNG).unwrap();
+                std::fs::write(format!("{workspace}/big.bin"), vec![0u8; BIG]).unwrap();
+            },
         )
         .await;
         assert_exit(&results[0], "0");
@@ -70,12 +83,12 @@ async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
         for result in &results[4..6] {
             assert_exit(result, "0");
         }
-        // Binary stdout reaches the model as its size and the command that
-        // saves its bytes, and pipes as bytes.
-        assert_exit(&results[6], "0");
-        assert_shows(
-            &results[6],
-            &["<binary stdout: 11 bytes>\n", "save it: demi shell output "],
+        // A binary file that is no medium fails, saying how to copy it,
+        // and pipes as bytes.
+        assert_exit(&results[6], "1");
+        assert_eq!(
+            shown_output(&results[6]),
+            "demi file read: shot.png: a binary file (11 bytes) that is not an image or video; redirect it to copy it: demi file read shot.png > copy.png\n"
         );
         assert_eq!(shown_output(&results[7]).trim(), "11");
         assert_shows(
@@ -85,6 +98,29 @@ async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
                 "Created <path> (<n> lines)",
                 "shown to you as viewable media",
             ],
+        );
+
+        assert_exit(&results[9], "1");
+        assert_eq!(
+            shown_output(&results[9]),
+            "hello world\ndemi file read: missing.txt: No such file or directory\nhello world\n"
+        );
+        // A usage error is clap's, with the command's usage, and exits 2.
+        assert_exit(&results[10], "2");
+        assert_eq!(
+            shown_output(&results[10]),
+            "error: unexpected argument '--bogus' found\n\n  tip: to pass '--bogus' as a value, use '-- --bogus'\n\nUsage: demi file read <path>...\n\nFor more information, try '--help'.\n"
+        );
+        assert_exit(&results[11], "2");
+        assert_shows(
+            &results[11],
+            &["error: the following required arguments were not provided:\n  <path>...\n\nUsage: demi file read <path>...\n"],
+        );
+
+        assert_exit(&results[12], "1");
+        assert_eq!(
+            shown_output(&results[12]),
+            format!("demi file read: big.bin: a binary file ({BIG} bytes) that is not an image or video; redirect it to copy it: demi file read big.bin > copy.bin\n")
         );
 
         let home = fixture.runner.home().to_owned();
@@ -159,8 +195,8 @@ async fn demi_file_edit_and_patch_change_what_they_name_whole_or_not_at_all() {
             shown_output(&results[3]),
             "target\nmiddle\ntarget\nEdited context.txt (+1 \u{2212}1)\n   2  middle\n   3  changed\ntarget\nmiddle\nchanged\n"
         );
-        assert_exit(&results[4], "1");
-        assert_shows(&results[4], &["Invalid command arguments: \"old\" is shorter than 1 character"]);
+        assert_exit(&results[4], "2");
+        assert_shows(&results[4], &["error: \"old\" is shorter than 1 character\n\nUsage: demi file edit [<path>]"]);
         assert_eq!(read("empty-old.txt"), "content\n");
         assert_eq!(shown_output(&results[5]), QUOTED_SHOWN);
         assert_eq!(read("quoted.js"), QUOTED_AFTER);

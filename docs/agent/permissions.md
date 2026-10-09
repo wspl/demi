@@ -24,8 +24,9 @@ demi skills add vercel-labs/agent-skills --skill web-design-guidelines
    command exits 1 at once and prints:
 
    ```text
-   demi: this conversation needs the user's permission to manage skills; the
-   request was sent to the user, and you will be told when the user decides
+   demi skills add: this conversation needs the user's permission to manage
+   skills; the request was sent to the user, and you will be told when the
+   user decides
    ```
 
    Nothing was fetched or changed. The `shell` call returns as for any
@@ -130,7 +131,7 @@ never sees a permission.
   tree runs it: the call is dispatched.
 - **A category without a grant**: the backend records one request for every
   category the call needs and the conversation lacks, ends the call with exit
-  status 1 and the message `demi: this conversation needs the user's
+  status 1 and the message `<command>: this conversation needs the user's
   permission to <action>; the request was sent to the user, and you will be
   told when the user decides`, the actions joined with "and", and dispatches
   nothing. Nothing waits: the command ends as

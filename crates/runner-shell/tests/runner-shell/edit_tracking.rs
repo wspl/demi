@@ -367,3 +367,38 @@ async fn a_utility_started_by_find_or_xargs_records_its_edits() {
         [("f".to_owned(), vec!["b\n".to_owned()]), ("g".to_owned(), vec!["c\n".to_owned()])]
     );
 }
+
+/// A command `timeout` runs records its edits as any other, whether the
+/// job's shell or a utility starts `timeout`. Before, `timeout` was the
+/// system's program, whose `sed` wrote untracked. About 0.05 s.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_command_timeout_runs_records_its_edits() {
+    let root = tempfile::tempdir().unwrap();
+    let tracking = recorder(root.path(), "job");
+    fs::write(root.path().join("f"), "a\n").unwrap();
+    fs::write(root.path().join("g"), "a\n").unwrap();
+    run(
+        root.path(),
+        tracking.clone(),
+        "timeout 5 sed -i s/a/b/ f && echo g | xargs timeout 5 sed -i s/a/c/",
+    )
+    .await;
+    let files = tracking.report().unwrap().files;
+    let edits: Vec<_> = files
+        .iter()
+        .map(|file| {
+            (
+                Path::new(&file.path).file_name().unwrap().to_str().unwrap().to_owned(),
+                file.edits
+                    .iter()
+                    .map(|edit| fs::read_to_string(edit.modified.as_ref().unwrap()).unwrap())
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        edits,
+        [("f".to_owned(), vec!["b\n".to_owned()]), ("g".to_owned(), vec!["c\n".to_owned()])]
+    );
+}

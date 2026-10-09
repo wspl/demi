@@ -161,6 +161,26 @@ async fn utilities_and_builtins_print_gnu_and_bash_messages() {
             "",
             "nope.sh: No such file or directory\n",
         ),
+        ("popd", 1, "", "popd: directory stack empty\n"),
+        ("kill 999999", 1, "", "kill: (999999) - No such process\n"),
+        ("kill -- -999999", 1, "", "kill: (-999999) - No such process\n"),
+        ("kill %9", 1, "", "kill: %9: no such job\n"),
+        (
+            "kill",
+            2,
+            "",
+            "kill: usage: kill [-s sigspec | -n signum | -sigspec] pid | jobspec ... or kill -l [sigspec]\n",
+        ),
+        ("kill abc", 1, "", "kill: `abc': not a pid or valid job spec\n"),
+        ("kill -s FOO 1", 1, "", "kill: FOO: invalid signal specification\n"),
+        (
+            "wait 999999",
+            127,
+            "",
+            "wait: pid 999999 is not a child of this shell\n",
+        ),
+        ("wait %9", 127, "", "wait: %9: no such job\n"),
+        ("jobs -p %9", 1, "", "jobs: %9: no such job\n"),
     ];
     let mut failures = Vec::new();
     for &(script, code, stdout, stderr) in cases {

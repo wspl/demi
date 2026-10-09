@@ -1,63 +1,99 @@
 ((value, maxBytes) => {
   // CDP's JSON mode silently coerces some values. Validate and copy inside
   // Chrome's side-effect check, including getters, before serializing.
+  // `undefined` is treated as JSON.stringify treats it: null in an array,
+  // left out of an object, and no value as the whole result. Any other value
+  // JSON cannot hold fails, naming its place, such as `result[2]`.
   const ancestors = new Set();
   let remaining = maxBytes;
-  const copy = (value, depth) => {
+  const fail = (text) => {
+    throw new Error(`demi-unsupported-result: ${text}`);
+  };
+  const isIdentifier = (key) => {
+    if (key.length === 0) {
+      return false;
+    }
+    for (let index = 0; index < key.length; index++) {
+      const code = key.charCodeAt(index);
+      const letter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122) ||
+          code === 36 || code === 95;
+      const digit = code >= 48 && code <= 57;
+      if (!letter && !(digit && index > 0)) {
+        return false;
+      }
+    }
+    return true;
+  };
+  const copy = (value, place, depth) => {
     if (--remaining < 0 || depth > 64) {
-      throw new Error('Browser result exceeds its size or depth limit');
+      fail('the result exceeds its size or depth limit');
     }
     if (value === null || typeof value === 'boolean') {
       return value;
     }
-    if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value === undefined) {
+      return undefined;
+    }
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) {
+        fail(`${place} is ${value}, which JSON cannot hold`);
+      }
       return value;
     }
     if (typeof value === 'string') {
       remaining -= value.length;
       if (remaining < 0) {
-        throw new Error('Browser result exceeds its size limit');
+        fail('the result exceeds its size limit');
       }
       return value;
     }
+    if (typeof value === 'function') {
+      fail(`${place} is a function`);
+    }
     if (typeof value !== 'object') {
-      throw new Error('Unsupported browser result');
+      fail(`${place} is a ${typeof value}`);
+    }
+    if (value instanceof Promise) {
+      fail(`${place} is a Promise; eval returns values that are already there and cannot wait`);
     }
     if (ancestors.has(value)) {
-      throw new Error('Cyclic browser result');
+      fail(`${place} is a cycle back to an object that holds it`);
     }
     const array = Array.isArray(value);
-    if (!array && Object.getPrototypeOf(value) !== Object.prototype &&
-        Object.getPrototypeOf(value) !== null) {
-      throw new Error('Unsupported browser result object');
+    const prototype = Object.getPrototypeOf(value);
+    if (!array && prototype !== Object.prototype && prototype !== null) {
+      if (typeof Node === 'function' && value instanceof Node) {
+        fail(`${place} is a DOM node (${value.nodeName}); return its properties instead`);
+      }
+      const name = prototype.constructor && prototype.constructor.name;
+      fail(`${place} is ${name ? `a ${name}` : 'an object of its own kind'}, which JSON cannot hold`);
     }
     ancestors.add(value);
-    const result = array ? [] : Object.create(null);
-    for (const key of Reflect.ownKeys(value)) {
-      if (array && key === 'length') {
-        continue;
+    let result;
+    if (array) {
+      result = [];
+      for (let index = 0; index < value.length; index++) {
+        const item = copy(value[index], `${place}[${index}]`, depth + 1);
+        result.push(item === undefined ? null : item);
       }
-      if (typeof key !== 'string') {
-        throw new Error('Symbol key in browser result');
+    } else {
+      result = Object.create(null);
+      for (const key of Object.keys(value)) {
+        remaining -= key.length;
+        const inner = isIdentifier(key) ? `${place}.${key}` : `${place}[${JSON.stringify(key)}]`;
+        const item = copy(value[key], inner, depth + 1);
+        if (item !== undefined) {
+          result[key] = item;
+        }
       }
-      if (!Object.prototype.propertyIsEnumerable.call(value, key)) {
-        continue;
-      }
-      if (array && key !== String(result.length)) {
-        throw new Error('Unsupported array property in browser result');
-      }
-      remaining -= key.length;
-      result[key] = copy(value[key], depth + 1);
-    }
-    if (array && Object.keys(result).length !== value.length) {
-      throw new Error('Sparse array in browser result');
     }
     ancestors.delete(value);
     return result;
   };
-  const json = JSON.stringify(copy(value, 0));
+  const result = copy(value, 'result', 0);
+  const json = JSON.stringify(result === undefined ? {} : {value: result});
   if (json.length > maxBytes) {
-    throw new Error('Browser result exceeds its size limit');
+    fail('the result exceeds its size limit');
   }
   return json;
 })

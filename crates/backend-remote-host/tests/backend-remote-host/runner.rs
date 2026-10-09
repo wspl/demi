@@ -563,6 +563,40 @@ async fn a_job_outliving_its_window_runs_takes_input_and_can_be_aborted() {
     fixture.stop().await;
 }
 
+/// A stop sends `TERM` first: a program that traps it ends cleanly, and
+/// what it prints then is the command's last output (`runtime.md`
+/// § Stopping a command). Before, the runner killed the job's programs at
+/// once, so no trap ran. About 0.5 s: the job is a login shell.
+#[cfg(unix)]
+#[tokio::test(flavor = "local")]
+async fn a_stopped_command_lets_its_programs_end_cleanly() {
+    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
+    let shell = shell_on(fixture.host(), &[], None);
+    let running = shell
+        .exec(
+            exec(
+                "sh -c 'trap \"echo got TERM; exit 0\" TERM; sleep 30 & echo ready; wait'",
+                200,
+            ),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    until("the program's trap", || {
+        (shell.status(&running.command_id).unwrap().stdout.tail == "ready\n").then_some(())
+    })
+    .await;
+    shell.abort(&running.command_id).await.unwrap();
+    let aborted = shell.status(&running.command_id).unwrap();
+    assert!(
+        matches!(aborted.state, CommandState::Aborted),
+        "{:?}",
+        aborted.state
+    );
+    assert_eq!(aborted.stdout.tail, "ready\ngot TERM\n");
+    fixture.stop().await;
+}
+
 /// A command whose stream goes beyond what the backend receives while it
 /// runs ends with its whole output, which the backend reads once from the
 /// Host, and the Host then keeps nothing of it; while it runs, its output
@@ -1253,29 +1287,28 @@ async fn a_nested_command_prints_its_groups_help_and_only_json_output_that_match
         assert_eq!(exited(refused), 1, "{}", refused.stderr.tail);
         assert_eq!(refused.stdout.delta, "");
     }
-    // Each refusal says that the command's --json output failed, and how.
+    // Each refusal says that the command's --json output failed, and how,
+    // after the command's path.
     assert!(
         not_json
             .stderr
             .delta
-            .starts_with("demi-runner: --json output is not JSON: "),
+            .starts_with("probe json emit: --json output is not JSON: "),
         "{}",
         not_json.stderr.delta
     );
     assert_eq!(
         mismatch.stderr.delta,
-        "demi-runner: --json output does not match its schema: \"ok\" is not of type \"boolean\"\n"
+        "probe json emit: --json output does not match its schema: \"ok\" is not of type \"boolean\"\n"
     );
-    // A usage error exits 1 and names the field at fault.
+    // A usage error is clap's, with the command's usage, and exits 2.
     let usage = run(&shell, "probe json emit").await;
-    assert_eq!(exited(&usage), 1);
-    assert!(
-        usage
-            .stderr
-            .delta
-            .contains("\"text\" is a required property"),
-        "{}",
-        usage.stderr.delta
+    assert_eq!(
+        (exited(&usage), usage.stderr.delta.as_str()),
+        (
+            2,
+            "error: the following required arguments were not provided:\n  <text>\n\nUsage: probe json emit <text> [--json]\n\nFor more information, try '--help'.\n"
+        )
     );
     fixture.stop().await;
 }
