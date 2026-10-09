@@ -65,7 +65,7 @@ import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
 import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
 import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
-import { runningSubagents } from '@demicodes/web-ui/agent/subagents'
+import { firstInspectSubagentId, firstRunningSubagentId } from '@demicodes/web-ui/agent/subagents'
 import GalleryCachedSessions from '../components/GalleryCachedSessions.vue'
 import GalleryTranscriptEntrance from '../components/GalleryTranscriptEntrance.vue'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
@@ -125,6 +125,7 @@ import { demoDeviceStart } from '../fixtures/device-installation'
 import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow, type TurnFlowKind } from '../turn-flow'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
+import GalleryAgentsChip from '../components/GalleryAgentsChip.vue'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GalleryContextLimit from '../components/GalleryContextLimit.vue'
@@ -221,7 +222,7 @@ const terminals = reactive(galleryTerminals())
 useLiveGalleryCommand(terminals)
 const finishedOnly = agents.filter((agent) => agent.phase !== 'running')
 const exhibitAgentId = ref<string | null>(
-  runningSubagents(agents)[0]?.id ?? agents[0]?.id ?? null,
+  firstInspectSubagentId(agents),
 )
 const exhibitTerminalId = ref<string | null>(firstRunningTerminalId(terminals))
 /** Run Them Again: the windows' agents and jobs run again as the fixtures start them, each window open on its first. */
@@ -242,12 +243,12 @@ function resetWindows(): void {
       terminal.endedAt = fresh.endedAt
     }
   }
-  exhibitAgentId.value = runningSubagents(agents)[0]?.id ?? agents[0]?.id ?? null
+  exhibitAgentId.value = firstInspectSubagentId(agents)
   exhibitTerminalId.value = firstRunningTerminalId(terminals)
 }
 // The Agents panel open while a request waits: the card stands over the panel's lower part.
 const coverRequests = ref<PermissionRequestView[]>([rootRequest()])
-const coverAgentId = ref<string | null>(runningSubagents(agents)[0]?.id ?? null)
+const coverAgentId = ref<string | null>(firstRunningSubagentId(agents))
 const coverBlocks = transcriptDemoBlocks()
 const coverSurface = ref<{ dockHeight: number }>()
 /** The returned call's command, a Running job, which End Command stops. */
@@ -285,7 +286,7 @@ watch(
     if (next !== 'windows') {
       return
     }
-    exhibitAgentId.value = runningSubagents(agents)[0]?.id ?? agents[0]?.id ?? null
+    exhibitAgentId.value = firstInspectSubagentId(agents)
     exhibitTerminalId.value = firstRunningTerminalId(terminals)
   },
   { immediate: true },
@@ -1434,29 +1435,32 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="SessionDockChip"
-        note="28px capsule with status dots. The active Agents dot breathes gently. Running and Agents open their windows; a second click closes them."
+        note="28px capsule with status dots. The Agents chip counts the live children, and its dot breathes gently while they run; once none runs, a conversation that has had children keeps the chip as Agents with no count, so their history stays one click away, and one that never had a child shows none. Running and Agents open their windows; a second click closes them (Agents Chip in Windows)."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="resume">
-            <SessionDockChip>
+            <SessionDockChip @click="productWould('Resume the Turn')">
               <Play :size="ICON_PX.in28" />
               Resume
             </SessionDockChip>
           </GallerySpecimen>
           <GallerySpecimen variant="running">
-            <TerminalChip :terminals="terminals" />
+            <TerminalChip :terminals="terminals" @open="productWould('Open the Terminals Window')" />
           </GallerySpecimen>
           <GallerySpecimen variant="ready">
-            <SessionDockChip dot="success">Ready</SessionDockChip>
+            <SessionDockChip dot="success" @click="productWould('Show What Is Ready')">Ready</SessionDockChip>
           </GallerySpecimen>
           <GallerySpecimen variant="idle">
-            <SessionDockChip dot="muted">Idle</SessionDockChip>
+            <SessionDockChip dot="muted" @click="productWould('Show What Is Idle')">Idle</SessionDockChip>
           </GallerySpecimen>
-          <GallerySpecimen variant="agents">
-            <AgentsChip :agents="agents" />
+          <GallerySpecimen variant="agents · running">
+            <AgentsChip :agents="agents" @open="productWould('Open the Agents Window')" />
           </GallerySpecimen>
-          <GallerySpecimen variant="agents · none running · hidden">
-            <AgentsChip :agents="finishedOnly" />
+          <GallerySpecimen variant="agents · none running">
+            <AgentsChip :agents="finishedOnly" @open="productWould('Open the Agents Window')" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="agents · never had one · hidden">
+            <AgentsChip :agents="[]" @open="productWould('Open the Agents Window')" />
           </GallerySpecimen>
         </div>
       </GallerySection>
@@ -2201,6 +2205,37 @@ onBeforeUnmount(() => {
         </div>
       </GallerySection>
       <GallerySection
+        title="Agents Chip"
+        note="The dock's Agents chip opens this window and a second click closes it. While children run it counts them and the window opens on the oldest running one. Once none runs the chip reads Agents with no count and the window opens on the newest finished child, beside Completed with the rest. A conversation that never had a child has no chip."
+      >
+        <div class="grid grid-cols-1 gap-3 xl:grid-cols-3">
+          <GallerySpecimen variant="children running" wide>
+            <GalleryAgentsChip
+              :agents="agents"
+              :terminals="terminals"
+              @abort="sessionFlow.abortSubagents"
+              @abort-agent="sessionFlow.abortSubagent"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="none running" wide>
+            <GalleryAgentsChip
+              :agents="finishedOnly"
+              :terminals="terminals"
+              @abort="sessionFlow.abortSubagents"
+              @abort-agent="sessionFlow.abortSubagent"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="never had one" wide>
+            <GalleryAgentsChip
+              :agents="[]"
+              :terminals="terminals"
+              @abort="sessionFlow.abortSubagents"
+              @abort-agent="sessionFlow.abortSubagent"
+            />
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+      <GallerySection
         title="Terminals"
         note="The same window. Tabs are running jobs, each titled by its call’s description, cut at the end and whole in its tooltip; the body is a read-only xterm with ANSI color from bun, rg and git. The terminal opens with the script as a terminal shows what was typed: a muted $ and the first line, a muted > before each further line (Show the auth test changes), long lines wrapped at the terminal’s width (Find where the old cookie name is still used), the script in the emphasized text color, then the output. The watch tab’s output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame’s tail anew. A click on a tab only selects it; its menu, from a right-click or the Menu key or Shift+F10, ends a running command (End Command) or closes an ended one’s tab (Close Tab). Close (×) closes the window."
       >
@@ -2250,7 +2285,7 @@ onBeforeUnmount(() => {
                   <AgentsChip
                     :agents="agents"
                     :open="coverAgentId !== null"
-                    @open="coverAgentId = coverAgentId === null ? runningSubagents(agents)[0]?.id ?? agents[0]?.id ?? null : null"
+                    @open="coverAgentId = coverAgentId === null ? firstInspectSubagentId(agents) : null"
                   />
                 </template>
                 <GalleryComposer placeholder="Ask Demi…" />
