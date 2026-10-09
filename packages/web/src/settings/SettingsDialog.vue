@@ -424,6 +424,8 @@ function resetShortcuts(): void {
       @update:font-size="
         preferences.update({ appearance: { fontSize: $event } })
       "
+      :send-while-running="preferences.sendWhileRunning"
+      @update:send-while-running="preferences.update({ sendWhileRunning: $event })"
     />
     <SettingsAccount
       v-else-if="section === 'account'"

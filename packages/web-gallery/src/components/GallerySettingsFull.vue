@@ -12,6 +12,7 @@ import {
 } from '@demicodes/web-ui/theme/productAppearance'
 import { galleryState } from '../gallery-state'
 import { productWould } from '../product-would'
+import { galleryMessages } from '../fixtures/send-while-running'
 import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
 import SettingsArchived from '@demicodes/web-ui/settings/SettingsArchived.vue'
 import SettingsData from '@demicodes/web-ui/settings/SettingsData.vue'
@@ -257,6 +258,7 @@ function resetShortcuts() {
     v-model:tone="tone"
     v-model:accent="accent"
     v-model:font-size="s.general.fontSize"
+    v-model:send-while-running="galleryMessages.sendWhileRunning"
     :theme="s.general.theme"
     :overlay-store="appOverlayStore"
     :languages="['English', '简体中文', '日本語']"

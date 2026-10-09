@@ -32,6 +32,8 @@ import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protoc
 import { demoModels, demoProviders, usageAt } from '../fixtures/catalog'
 import { setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
 import { productWould } from '../product-would'
+import type { SendWay, SendWhileRunning } from '@demicodes/web-ui/agent/send-way'
+import { galleryMessages } from '../fixtures/send-while-running'
 import { demoInstructions, demoOpenInstruction } from '../fixtures/instructions'
 import type { SentMessage } from '../turn-flow'
 import { createGalleryRemoteFileHosts } from '../fixtures/files'
@@ -42,6 +44,8 @@ const props = withDefaults(
     placeholder: PlaceholderText
     running?: boolean
     compacting?: boolean
+    /** What Enter does while the agent works; the gallery's preference, which Settings › General sets, without it. */
+    sendWhileRunning?: SendWhileRunning
     disabled?: boolean
     /** The model catalog: `failed` tells it beside the model chip with Retry, as the product does. */
     modelLoad?: 'loading' | 'ready' | 'failed'
@@ -73,6 +77,10 @@ const props = withDefaults(
     offlineHost?: { name: string; start: DeviceStart } | null
     /** Compacts the specimen's conversation; without it, a toast says what the product would do. */
     onCompact?: () => void
+    /** Steers the specimen's running turn; without it, a toast says what the product would do. */
+    onSteer?: (content: UserContentBlock[], message: SentMessage) => void
+    /** Queues a message behind the specimen's running turn; without it, a toast says what the product would do. */
+    onQueue?: (content: UserContentBlock[]) => void
   }>(),
   {
     draft: '',
@@ -84,7 +92,6 @@ const props = withDefaults(
 )
 const emit = defineEmits<{
   send: [content: UserContentBlock[], message: SentMessage]
-  queue: [content: UserContentBlock[]]
   stop: []
   configure: []
   restore: []
@@ -152,7 +159,16 @@ const settings = ref<ModelSettings>({
 })
 /** What the composer takes of the specimen's props: the model it starts with is the settings'. */
 const composerProps = computed(() => {
-  const { selectedProviderId: _provider, selectedModelId: _model, serviceTierId: _tier, onCompact: _compact, ...rest } = props
+  const {
+    selectedProviderId: _provider,
+    selectedModelId: _model,
+    serviceTierId: _tier,
+    onCompact: _compact,
+    onSteer: _steer,
+    onQueue: _queue,
+    sendWhileRunning: _sendWhileRunning,
+    ...rest
+  } = props
   return rest
 })
 
@@ -218,7 +234,8 @@ function sentBlocks(item: ComposerAttachment): UserContentBlock[] {
   return item.src ? [{ type: 'image', source: { type: 'url', url: item.src } }, record] : [record]
 }
 
-function submit() {
+/** Sends the draft the way the composer chose: at once, as a steer, or to the queue. */
+function submit(way: SendWay) {
   const sent = carried.value.flatMap((id) => attached.value.filter((item) => item.id === id))
   const content = joinMessageContent(draft.value, sent.map(sentBlocks))
   if (!content.length) {
@@ -231,8 +248,18 @@ function submit() {
   while (attached.value.length) {
     forget(attached.value[0]!.id, false)
   }
-  if (props.running) {
-    emit('queue', content)
+  if (way === 'steer') {
+    if (props.onSteer) {
+      props.onSteer(content, message)
+    } else {
+      productWould('Steer the Running Turn')
+    }
+  } else if (way === 'queue') {
+    if (props.onQueue) {
+      props.onQueue(content)
+    } else {
+      productWould('Queue the Message')
+    }
   } else {
     emit('send', content, message)
   }
@@ -333,6 +360,7 @@ onBeforeUnmount(() => {
     ref="composer"
     v-bind="composerProps"
     v-model:draft="draft"
+    :send-while-running="props.sendWhileRunning ?? galleryMessages.sendWhileRunning"
     @update:message-edit="emit('update:messageEdit', $event)"
     @submit-edit="emit('submitEdit')"
     :attachments="attached"
