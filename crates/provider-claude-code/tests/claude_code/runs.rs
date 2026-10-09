@@ -10,10 +10,9 @@ use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider};
 use demi_provider_common::credentials::MemoryCredentialPool;
 use demi_provider_common::quota::MemorySnapshots;
 use demi_provider_common::{
-    ErrorCode, InferenceItem, InferenceRequest, MediaBytes, Medium, ProviderEvent, ProviderFailure,
-    ProviderRun, UserPart,
+    ErrorCode, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
 };
-use demi_shared_types::{B64Bytes, ThinkingConfig, TokenUsage};
+use demi_shared_types::{ThinkingConfig, TokenUsage};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
@@ -32,8 +31,24 @@ fn text(text: &str) -> ProviderEvent {
     ProviderEvent::TextDelta(text.into())
 }
 
+fn user_message(text: &str) -> Value {
+    json!({ "role": "user", "content": [{ "type": "text", "text": text }] })
+}
+
 fn user_line(text: &str) -> Value {
-    json!({ "type": "user", "message": { "role": "user", "content": [{ "type": "text", "text": text }] } })
+    json!({ "type": "user", "message": user_message(text) })
+}
+
+/// A message of another provider's turn, in the CLI's format: the `index`
+/// of its first entry names it.
+fn assistant_message(index: usize, content: Value) -> Value {
+    json!({
+        "id": format!("msg_demi_{index}"),
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-test",
+        "content": [content],
+    })
 }
 
 fn failure(event: &ProviderEvent) -> &ProviderFailure {
@@ -71,8 +86,7 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
         ..request_without_tools(vec![user("hi")])
     };
     let (events, cli) = tokio::join!(all_events(runtime.run(request)), async {
-        let mut cli = starts.next().await;
-        assert_eq!(cli.read().await, user_line("hi"));
+        let cli = starts.next().await;
         cli.say(json!({ "type": "system", "subtype": "init", "tools": [] }));
         cli.text("hel");
         cli.text("lo");
@@ -94,6 +108,11 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
         cache_write_tokens: 3,
     });
     assert_eq!(events, [text("hel"), text("lo"), cached]);
+    // The process resumes the session written for it, named by a UUID the
+    // session's id gives, and mirrors it.
+    let session = cli.session();
+    let resumed = session[0]["sessionId"].as_str().unwrap().to_owned();
+    assert!(uuid::Uuid::parse_str(&resumed).is_ok(), "{resumed}");
     let args: Vec<String> = [
         "--print",
         "--output-format",
@@ -102,7 +121,11 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
         "--input-format",
         "stream-json",
         "--include-partial-messages",
-        "--no-session-persistence",
+        "--resume",
+        &resumed,
+        "--session-mirror",
+        "--system-prompt-snapshot",
+        "off",
         "--safe-mode",
         "--disable-slash-commands",
         "--tools",
@@ -122,7 +145,8 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
     .collect();
     // The access token is on descriptor 3, never in the environment, which
     // removes a token the machine's own environment holds; the process
-    // claims to be no other client.
+    // claims to be no other client, finds its sessions in a directory of
+    // Demi's and answers what the session ends with.
     let env = BTreeMap::from([
         ("CLAUDECODE".to_owned(), None),
         ("CLAUDE_CODE_OAUTH_TOKEN".to_owned(), None),
@@ -133,6 +157,14 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
         (
             "CLAUDE_CONFIG_DIR".to_owned(),
             Some(cli.config_dir().to_owned()),
+        ),
+        (
+            "CLAUDE_CODE_PROJECT_DIR_NAME".to_owned(),
+            Some("demi".to_owned()),
+        ),
+        (
+            "CLAUDE_CODE_RESUME_INTERRUPTED_TURN".to_owned(),
+            Some("1".to_owned()),
         ),
         ("DISABLE_AUTOUPDATER".to_owned(), Some("1".to_owned())),
         ("DISABLE_AUTO_COMPACT".to_owned(), Some("1".to_owned())),
@@ -229,7 +261,6 @@ fn a_line_the_cli_prints_before_answering_initialize_is_read_by_the_run_after_th
                     "type": "control_response",
                     "response": { "subtype": "success", "request_id": initialize["request_id"] },
                 }));
-                    assert_eq!(cli.read().await, user_line("hi"));
                     cli.text("hello");
                     cli.result(1, 1);
                 });
@@ -254,7 +285,6 @@ async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_a
     let (events, mut cli) = tokio::join!(all_events(runtime.run(request(first.clone()))), async {
         let mut cli = starts.next().await;
         cli.initialized().await;
-        assert_eq!(cli.read().await, user_line("do work"));
         cli.text("one");
         // The last iteration is the last API call's usage, not the turn's
         // total.
@@ -291,19 +321,23 @@ async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_a
     assert!(cli.signals().is_empty());
 
     // An edit of the first message: the process is closed and a new one
-    // receives the transcript as one message.
+    // resumes the edited transcript.
     let mut edited = second.clone();
     edited[0] = user("do other work");
     let (events, mut replayed) = tokio::join!(all_events(runtime.run(request(edited))), async {
         let mut replayed = starts.next().await;
         replayed.initialized().await;
-        assert_eq!(
-            replayed.read().await,
-            user_line("User: do other work\n\nAssistant: one\n\nUser: second question")
-        );
         replayed.result(1, 1);
         replayed
     });
+    assert_eq!(
+        replayed.messages(),
+        [
+            user_message("do other work"),
+            assistant_message(1, json!({ "type": "text", "text": "one" })),
+            user_message("second question"),
+        ]
+    );
     assert!(replayed.unread().is_empty());
     assert_eq!(events, [usage(1, 1)]);
     assert_eq!(cli.signals(), [Signal::Terminate]);
@@ -317,7 +351,7 @@ async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_a
     let (_, other) = tokio::join!(
         all_events(runtime.run(other_model(request_without_tools(second.clone())))),
         async {
-            let mut other = starts.next().await;
+            let other = starts.next().await;
             assert!(
                 other
                     .spawn
@@ -325,7 +359,6 @@ async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_a
                     .windows(2)
                     .any(|pair| pair == ["--model", "claude-other"])
             );
-            other.read().await;
             other.result(1, 1);
             other
         }
@@ -338,57 +371,12 @@ async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_a
         async {
             let mut offered = starts.next().await;
             offered.initialized().await;
-            offered.read().await;
             offered.result(1, 1);
         }
     );
     assert_eq!(other.signals(), [Signal::Terminate]);
     assert_eq!(placement.starts(), 4);
     runtime.close().await;
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_new_process_receives_the_transcript_as_one_user_message_that_names_each_speaker() {
-    let provider = provider().await;
-    let (placement, mut starts) = ScriptedPlacement::new();
-    let mut runtime = runtime_of(&provider, &placement);
-    let screenshot = UserPart::Image(Medium::Bytes(MediaBytes {
-        data: B64Bytes::from(Bytes::from_static(b"png")),
-        media_type: "image/png".into(),
-    }));
-    let items = vec![
-        InferenceItem::UserMessage {
-            content: vec![UserPart::Text("previous work".into()), screenshot],
-        },
-        InferenceItem::AssistantThinking {
-            model_id: "claude-test".into(),
-            text: "thinking".into(),
-            signature: Some("signed".into()),
-            kept_past_summary: false,
-        },
-        tool_use("tool-1", "pwd"),
-        tool_result("tool-1", "/tmp"),
-        user("continue"),
-    ];
-    let (events, mut cli) = tokio::join!(all_events(runtime.run(request(items))), async {
-        let mut cli = starts.next().await;
-        cli.initialized().await;
-        // The image stays in its place; the reasoning is left out; the tool
-        // call and its result are the model's own words.
-        let transcript = json!({ "type": "user", "message": { "role": "user", "content": [
-            { "type": "text", "text": "User: previous work" },
-            { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "cG5n" } },
-            { "type": "text", "text": concat!(
-                "Assistant: [Earlier in this conversation I called the tool shell_exec with input: {\"script\":\"pwd\"}.",
-                "\n\nIt returned from shell_exec: /tmp]\n\nUser: continue",
-            ) },
-        ] } });
-        assert_eq!(cli.read().await, transcript);
-        cli.result(3, 1);
-        cli
-    });
-    assert_eq!(events, [usage(3, 1)]);
-    assert!(cli.unread().is_empty());
 }
 
 #[tokio::test(flavor = "local")]
@@ -401,8 +389,7 @@ async fn a_process_that_ends_is_reported_by_its_status_and_the_next_request_star
     let (events, ()) = tokio::join!(
         all_events(runtime.run(request_without_tools(vec![user("hi")]))),
         async {
-            let mut cli = starts.next().await;
-            cli.read().await;
+            let cli = starts.next().await;
             cli.exit(ProcessEnd::Exited(0));
         }
     );
@@ -412,8 +399,7 @@ async fn a_process_that_ends_is_reported_by_its_status_and_the_next_request_star
     let (events, ()) = tokio::join!(
         all_events(runtime.run(request_without_tools(vec![user("hi")]))),
         async {
-            let mut cli = starts.next().await;
-            cli.read().await;
+            let cli = starts.next().await;
             cli.stderr("the configuration home cannot be written\n");
             cli.exit(ProcessEnd::Exited(1));
         }
@@ -425,8 +411,7 @@ async fn a_process_that_ends_is_reported_by_its_status_and_the_next_request_star
     let (events, ()) = tokio::join!(
         all_events(runtime.run(request_without_tools(vec![user("hi")]))),
         async {
-            let mut cli = starts.next().await;
-            cli.read().await;
+            let cli = starts.next().await;
             cli.exit(ProcessEnd::Exited(2));
         }
     );
@@ -439,8 +424,7 @@ async fn a_process_that_ends_is_reported_by_its_status_and_the_next_request_star
     let (events, ()) = tokio::join!(
         all_events(runtime.run(request_without_tools(vec![user("hi")]))),
         async {
-            let mut cli = starts.next().await;
-            cli.read().await;
+            let cli = starts.next().await;
             cli.stderr(&"x".repeat(100 * 1024));
             cli.stderr("end");
             cli.exit(ProcessEnd::Exited(1));
@@ -453,15 +437,14 @@ async fn a_process_that_ends_is_reported_by_its_status_and_the_next_request_star
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_process_that_ended_while_kept_is_replaced_by_one_that_replays_the_transcript() {
+async fn a_process_that_ended_while_kept_is_replaced_by_one_that_resumes_the_transcript() {
     let provider = provider().await;
     let (placement, mut starts) = ScriptedPlacement::new();
     let mut runtime = runtime_of(&provider, &placement);
     let (_, cli) = tokio::join!(
         all_events(runtime.run(request_without_tools(vec![user("hi")]))),
         async {
-            let mut cli = starts.next().await;
-            cli.read().await;
+            let cli = starts.next().await;
             cli.result(1, 1);
             cli
         }
@@ -469,21 +452,16 @@ async fn a_process_that_ended_while_kept_is_replaced_by_one_that_replays_the_tra
     // The Cloud stopped with the process in it.
     cli.exit(ProcessEnd::Lost("runner disconnected".into()));
     let items = vec![user("hi"), user("again")];
-    let (events, ()) = tokio::join!(
+    let (events, replayed) = tokio::join!(
         all_events(runtime.run(request_without_tools(items))),
         async {
-            let mut replayed = starts.next().await;
-            assert_eq!(
-                replayed.read().await,
-                json!({ "type": "user", "message": { "role": "user", "content": [
-                { "type": "text", "text": "hi" },
-                { "type": "text", "text": "again" },
-            ] } })
-            );
+            let replayed = starts.next().await;
             replayed.result(2, 2);
+            replayed
         }
     );
     assert_eq!(events, [usage(2, 2)]);
+    assert_eq!(replayed.messages(), [user_message("hi"), user_message("again")]);
     assert_eq!(placement.starts(), 2);
 }
 
@@ -497,8 +475,7 @@ async fn a_run_whose_machine_went_away_got_no_answer_and_is_retried() {
     let (events, ()) = tokio::join!(
         all_events(runtime.run(request_without_tools(vec![user("hi")]))),
         async {
-            let mut cli = starts.next().await;
-            cli.read().await;
+            let cli = starts.next().await;
             cli.exit(ProcessEnd::Lost("replaced by a new connection of the device's runner".into()));
         }
     );
@@ -520,8 +497,7 @@ async fn output_cut_in_the_middle_of_a_line_by_a_machine_that_went_away_is_retri
     let (events, ()) = tokio::join!(
         all_events(runtime.run(request_without_tools(vec![user("hi")]))),
         async {
-            let mut cli = starts.next().await;
-            cli.read().await;
+            let cli = starts.next().await;
             cli.say_text(r#"{"type":"user","message":{"content":[{"type":"text","text":"iVBORw0KGgo"#);
             cli.exit(ProcessEnd::Lost("replaced by a new connection of the device's runner".into()));
         }
@@ -542,8 +518,7 @@ async fn a_cancelled_run_closes_its_process_and_ends_without_an_event() {
     };
     let mut run = runtime.run(cancelled);
     let (first, cli) = tokio::join!(next_event(&mut run), async {
-        let mut cli = starts.next().await;
-        cli.read().await;
+        let cli = starts.next().await;
         cli.text("partial");
         cli
     });
@@ -562,9 +537,8 @@ async fn a_cancelled_run_closes_its_process_and_ends_without_an_event() {
     };
     let started = tokio::time::Instant::now();
     let (events, cli) = tokio::join!(all_events(runtime.run(cancelled)), async {
-        let mut cli = starts.next().await;
+        let cli = starts.next().await;
         cli.ignore_terminate();
-        cli.read().await;
         cancel.cancel();
         cli
     });
@@ -582,8 +556,7 @@ async fn dropping_a_run_or_a_runtime_kills_the_process_without_waiting() {
     {
         let mut run = runtime.run(request_without_tools(vec![user("hi")]));
         let (first, mut cli) = tokio::join!(next_event(&mut run), async {
-            let mut cli = starts.next().await;
-            cli.read().await;
+            let cli = starts.next().await;
             cli.text("first");
             cli
         });
@@ -595,8 +568,7 @@ async fn dropping_a_run_or_a_runtime_kills_the_process_without_waiting() {
     let (_, cli) = tokio::join!(
         all_events(runtime.run(request_without_tools(vec![user("hi")]))),
         async {
-            let mut cli = starts.next().await;
-            cli.read().await;
+            let cli = starts.next().await;
             cli.result(1, 1);
             cli
         }
@@ -607,8 +579,7 @@ async fn dropping_a_run_or_a_runtime_kills_the_process_without_waiting() {
     let (_, other) = tokio::join!(
         all_events(fresh.run(request_without_tools(vec![user("elsewhere")]))),
         async {
-            let mut other = starts.next().await;
-            assert_eq!(other.read().await, user_line("elsewhere"));
+            let other = starts.next().await;
             other.result(1, 1);
             other
         }
@@ -635,8 +606,7 @@ async fn the_clis_error_ends_the_turn_and_keeps_the_process_while_a_broken_line_
     let (events, mut cli) = tokio::join!(
         as_the_agent_reads(runtime.run(request_without_tools(vec![user("huge")]))),
         async {
-            let mut cli = starts.next().await;
-            cli.read().await;
+            let cli = starts.next().await;
             cli.say(result.clone());
             cli
         }
@@ -679,7 +649,7 @@ async fn the_clis_error_ends_the_turn_and_keeps_the_process_while_a_broken_line_
 }
 
 #[tokio::test(flavor = "local", start_paused = true)]
-async fn a_retry_with_nothing_new_replays_the_transcript_in_a_new_process() {
+async fn a_retry_with_nothing_new_resumes_the_transcript_in_a_new_process() {
     let provider = provider().await;
     let (placement, mut starts) = ScriptedPlacement::new();
     let mut runtime = runtime_of(&provider, &placement);
@@ -687,24 +657,24 @@ async fn a_retry_with_nothing_new_replays_the_transcript_in_a_new_process() {
     let (_, cli) = tokio::join!(
         as_the_agent_reads(runtime.run(request_without_tools(items.clone()))),
         async {
-            let mut cli = starts.next().await;
-            cli.read().await;
+            let cli = starts.next().await;
             cli.say(json!({ "type": "result", "is_error": true, "result": "overloaded" }));
             cli
         }
     );
 
     // The agent retries the same transcript: the kept process already holds
-    // it and would wait for input that never comes, so a new one replays it.
-    let (events, ()) = tokio::join!(
+    // it and would wait for input that never comes, so a new one resumes it.
+    let (events, replayed) = tokio::join!(
         all_events(runtime.run(request_without_tools(items))),
         async {
-            let mut replayed = starts.next().await;
-            assert_eq!(replayed.read().await, user_line("hi"));
+            let replayed = starts.next().await;
             replayed.result(1, 1);
+            replayed
         }
     );
     assert_eq!(events, [usage(1, 1)]);
+    assert_eq!(replayed.messages(), [user_message("hi")]);
     assert_eq!(cli.signals(), [Signal::Terminate]);
     assert_eq!(placement.starts(), 2);
 }

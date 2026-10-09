@@ -94,6 +94,7 @@ impl Shard {
             items: Arc::new([InferenceItem::UserMessage {
                 content: vec![UserPart::Text("ping".into())],
             }]),
+            blocks: Arc::new([]),
             tools: Arc::new([]),
             thinking: None,
             service_tier_id: None,

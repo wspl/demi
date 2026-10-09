@@ -1,9 +1,9 @@
 //! A CLI process a runtime keeps across the turns of a session
 //! (`claude-code.md` § Process lifetime): its input and output, its SDK MCP
-//! server, what it has received of the transcript, and the tool calls it
-//! holds, and the account's access token it holds, with that token's
-//! expiry. Its standard error is drained all the time, keeping
-//! the last 64 KiB. Dropping it asks the Host to kill the process without
+//! server, what it has received of the transcript, the tool calls it holds,
+//! the blocks its session's entries belong to, and the account's access
+//! token it holds, with that token's expiry. Its standard error is drained
+//! all the time, keeping the last 64 KiB. Dropping it asks the Host to kill the process without
 //! waiting, and its configuration directory goes once it ended;
 //! [`LiveCli::close`] ends it, removes the directory and waits.
 
@@ -19,8 +19,8 @@ use demi_host_interface::{Process, ProcessControl, ProcessEnd, ProcessOutput, Si
 use demi_provider_common::quota::Observation;
 use demi_provider_common::wire::Tagged;
 use demi_provider_common::{
-    InferenceItem, InferenceRequest, ProviderFailure, ResultPart, Secret, ToolCall, UserPart,
-    encode_body,
+    InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ResultPart, Secret, ToolCall,
+    UserPart, encode_body,
 };
 use demi_shared_types::{StreamKind, ThinkingConfig, Timestamp};
 use futures_channel::mpsc;
@@ -36,8 +36,10 @@ use tokio_util::task::AbortOnDropHandle;
 
 use crate::input::{self, ControlRequest, ControlResponse, Input, MCP_SERVER, McpReply};
 use crate::mcp::{self, Mcp, McpEvent};
+use crate::mirror::Mirror;
 use crate::output::{ControlRequestLine, Line};
 use crate::placement::{CliSite, ConfigDir, Placed, Placement};
+use crate::session::SessionFile;
 use crate::account::expiring;
 use crate::{FAMILY, Shared, cli};
 
@@ -194,13 +196,17 @@ pub(crate) struct LiveCli {
     /// The batch the last run yielded, whose results the next run delivers.
     pub(crate) held: Vec<ToolCall>,
     pub(crate) mcp: Option<Mcp>,
+    /// Which block each entry the process mirrors belongs to.
+    pub(crate) mirror: Mirror,
 }
 
 impl LiveCli {
     /// Starts a new process for `request` through `placement`, with the
     /// account's access token, refreshed first when it expires within thirty
     /// minutes or is still the one the vendor `refused`; the CLI is never
-    /// started without one.
+    /// started without one. The process resumes the session written from
+    /// the request's blocks (`claude-code.md` § The session a process
+    /// resumes).
     pub(crate) async fn start(
         shared: &Arc<Shared>,
         http: &reqwest::Client,
@@ -215,21 +221,31 @@ impl LiveCli {
             .map_err(|failure| failure.failure())?;
         let expires_at = secret.expires_at;
         let token = secret.access_token;
-        let spawn = |site: &CliSite| {
-            let spawn = cli::spawn_request(site, request, &token);
+        let file = {
+            let session = request.session_id.clone();
+            let items = request.items.clone();
+            let blocks = request.blocks.clone();
+            let timestamp = shared.clock.now().to_jiff().to_string();
+            encode_body(FAMILY, move || {
+                SessionFile::new(&session, &items, &blocks, timestamp)
+            })
+            .await?
+        };
+        let start = |site: &CliSite| {
+            let start = cli::start(site, request, &token, &file);
             // The environment and the descriptors are left out: a
             // descriptor holds the token.
             tracing::trace!(
                 target: WIRE,
                 direction = "spawn",
-                command = %spawn.command,
-                cwd = ?spawn.cwd,
-                args = ?spawn.args,
+                command = %start.spawn.command,
+                cwd = ?start.spawn.cwd,
+                args = ?start.spawn.args,
             );
-            spawn
+            start
         };
         let Placed { process, config } = placement
-            .start(&spawn)
+            .start(&start)
             .await
             // The machine could not be reached or readied, as when its
             // connection is being replaced or its network fails a lookup:
@@ -270,6 +286,7 @@ impl LiveCli {
             writing: HashMap::new(),
             held: Vec::new(),
             mcp,
+            mirror: Mirror::default(),
         })
     }
 
@@ -297,7 +314,8 @@ impl LiveCli {
 
     /// Sets a new process up for `request`: when the request offers tools,
     /// the `initialize` control request that declares the SDK MCP server,
-    /// and its success; then the transcript as one user message.
+    /// and its success. The process holds the whole transcript in the
+    /// session it resumed, and answers the input it ends with.
     pub(crate) async fn prepare(
         &mut self,
         request: &InferenceRequest,
@@ -305,9 +323,6 @@ impl LiveCli {
         if self.mcp.is_some() {
             self.initialize(&request.system_prompt).await?;
         }
-        let items = request.items.clone();
-        let transcript = encode_body(FAMILY, move || input::transcript(&items)).await?;
-        self.write(transcript).await?;
         self.sent = Sent::of(&request.items);
         Ok(())
     }
@@ -416,27 +431,43 @@ impl LiveCli {
 
     /// Reads what the CLI printed after the run before this one ended: that
     /// output belongs to no request, as when the CLI answered a steer in a
-    /// turn of its own. Its control requests are answered and every other
-    /// line is skipped, a `result` included.
-    pub(crate) async fn skip_leftovers(&mut self) -> Result<(), ProviderFailure> {
+    /// turn of its own. Its control requests are answered, the entries it
+    /// mirrored give their events for `request`, and every other line is
+    /// skipped, a `result` included; what such a line printed wrote no
+    /// block.
+    pub(crate) async fn skip_leftovers(
+        &mut self,
+        request: &InferenceRequest,
+    ) -> Result<Vec<ProviderEvent>, ProviderFailure> {
+        let mut events = Vec::new();
         loop {
             let (text, line) = match self.pending.pop_front() {
                 Some(pending) => pending,
                 None => {
                     let Some(line) = self.lines.next().now_or_never() else {
-                        return Ok(());
+                        return Ok(events);
                     };
                     match self.read(line) {
                         Read::Line(text, line) => (text, line),
                         Read::Blank => continue,
                         // The end is the run's to meet.
-                        Read::End => return Ok(()),
+                        Read::End => return Ok(events),
                         Read::Broken(failure) => return Err(failure),
                     }
                 }
             };
             match line {
                 Some(Line::ControlRequest(line)) => self.control_request(line).await?,
+                Some(Line::TranscriptMirror(line)) => {
+                    events.extend(self.mirror.mirrored(line.entries, request));
+                }
+                Some(Line::Assistant(line)) => {
+                    let id = line.message_id();
+                    for printed in line.content() {
+                        self.mirror.printed(id.clone(), printed.raw, false);
+                    }
+                    tracing::debug!(line = %text, "skipped a line that belongs to no request");
+                }
                 _ => tracing::debug!(line = %text, "skipped a line that belongs to no request"),
             }
         }
@@ -588,6 +619,10 @@ impl LiveCli {
         let sent = self.sent.count;
         let lines = encode_body(FAMILY, move || input::new_user_messages(&items, sent)).await?;
         self.write(lines).await?;
+        let given = input::user_message_items(&request.items)
+            .skip(sent)
+            .map(|(index, _)| index);
+        self.mirror.gave(given);
         self.sent.count = count;
         if self.sent.first.is_none() {
             self.sent.first = first_user_message(&request.items).cloned();

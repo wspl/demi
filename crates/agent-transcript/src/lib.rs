@@ -19,7 +19,7 @@ pub use cut::{
 pub use ids::{IdSource, RandomIds};
 pub use journal::{DirtyRows, PatchBatch};
 pub use log::{PendingCall, TranscriptLog};
-pub use replay::{REPLAY_CHARS, Replay, RequestView, replay, tool_input};
+pub use replay::{REPLAY_CHARS, Replay, ReplayedBlock, RequestView, replay, tool_input};
 
 use demi_shared_types::{Block, GoneCause, ModelMediaKind, WakeupPlacement};
 
