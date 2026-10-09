@@ -133,7 +133,7 @@ async function serve(socket: net.Socket): Promise<void> {
     }
     const outcome = await runCall({ slot, browser, network: openNetwork, keep }, request, print)
     exit = outcome.exit
-    after = outcome.overran ? 'leave' : outcome.endServer ? 'end' : 'stay'
+    after = outcome.after
   } catch (error) {
     // The call reports its script's failures itself: this is the tool's own.
     send({ err: `bun browse failed: ${error instanceof Error ? error.message : String(error)}; the server's log is ${paths.daemonLog}` })
@@ -144,6 +144,9 @@ async function serve(socket: net.Socket): Promise<void> {
   }
   if (after === 'leave') {
     await leave(send, 'the script ran into its time limit')
+  } else if (after === 'end') {
+    // The caller's next call starts a new server rather than reach this one as it ends.
+    stopListening()
   }
   send({ exit })
   socket.end()
