@@ -227,9 +227,9 @@ fn search_edit_and_compare_utilities_keep_their_cli_and_local_paths() {
     }
 }
 
-/// `sed -i` with GNU sed's attached suffix, alone or after other short
-/// options; the script after a bare `-i` and the token after `-e` are never
-/// a suffix. BSD's separate suffix is covered with edit tracking.
+/// `sed -i` as GNU sed reads it: a suffix only when attached, alone or after
+/// other short options, and the token after a bare `-i` or after `-e` is
+/// never a suffix.
 #[test]
 fn sed_in_place_takes_an_attached_suffix_as_gnu_sed_does() {
     let root = tempfile::tempdir().unwrap();

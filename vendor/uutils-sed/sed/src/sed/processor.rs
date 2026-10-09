@@ -27,7 +27,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use uucore::context::io::{self, IsTerminal, Read};
 use uucore::display::Quotable;
-use uucore::error::{FromIo, UResult, set_exit_code};
+use uucore::error::{UResult, set_exit_code, strip_errno};
 
 /// Return the specified command variant or panic.
 // Example: let path = extract_variant!(command, Path);
@@ -944,12 +944,27 @@ pub fn process_all_files(
     context.unbuffered = context.unbuffered || io::stdout().is_terminal();
 
     let mut in_place = InPlace::new(context.clone());
-    let last_file_index = files.len() - 1;
+    // As GNU sed: a file that cannot be read is named and passed over, the
+    // others are still processed, and the status is 2.
+    let mut unreadable = false;
+    let mut inputs = files
+        .iter()
+        .filter_map(|path| match LineReader::open(path) {
+            Ok(reader) => Some((path, reader)),
+            Err(error) => {
+                uucore::show_error!("can't read {}: {}", path.display(), strip_errno(&error));
+                unreadable = true;
+                None
+            }
+        })
+        .enumerate()
+        .peekable();
 
-    for (index, path) in files.iter().enumerate() {
-        context.last_file = index == last_file_index;
-        let mut reader = LineReader::open(path)
-            .map_err_context(|| format!("error opening input file {}", path.quote()))?;
+    while let Some((index, (path, mut reader))) = inputs.next() {
+        // Separate files each have a last line. Otherwise the last line is
+        // the last readable file's, and the next file is opened now to
+        // know whether this one is the last.
+        context.last_file = context.separate || inputs.peek().is_none();
         let output = in_place.begin(path)?;
 
         if context.separate || index == 0 {
@@ -980,6 +995,11 @@ pub fn process_all_files(
         if context.stop_processing {
             break;
         }
+    }
+    // The inputs note unreadable files, so they end before it is read.
+    drop(inputs);
+    if unreadable {
+        set_exit_code(2);
     }
 
     // Flush all output files

@@ -17,19 +17,16 @@ use std::rc::Rc;
 use uucore::error::{UResult, USimpleError};
 
 #[derive(Clone, Debug)]
-/// The location in a script where a command is defined
+/// The location in a script where a command is defined, as GNU sed names
+/// it in a message (`ScriptLineProvider::describe`).
 pub struct ScriptLocation {
-    pub input_name: Rc<str>,  // Shared input name
-    pub line_number: usize,   // 1-based line number
-    pub column_number: usize, // 1-based column number
+    pub description: Rc<str>,
 }
 
 impl Default for ScriptLocation {
     fn default() -> Self {
         ScriptLocation {
-            input_name: Rc::from("<unknown>"),
-            line_number: 1,
-            column_number: 1,
+            description: Rc::from("-e expression #1, char 0"),
         }
     }
 }
@@ -38,9 +35,7 @@ impl ScriptLocation {
     /// Construct with position information from the given providers.
     pub fn at_position(lines: &ScriptLineProvider, line: &ScriptCharProvider) -> Self {
         ScriptLocation {
-            line_number: lines.get_line_number(),
-            column_number: line.get_pos() + 1,
-            input_name: Rc::from(lines.get_input_name()),
+            description: Rc::from(lines.describe(line.get_pos() + 1)),
         }
     }
 }
@@ -54,13 +49,7 @@ pub fn compilation_error<T>(
 ) -> UResult<T> {
     Err(USimpleError::new(
         1,
-        format!(
-            "{}:{}:{}: error: {}",
-            lines.get_input_name(),
-            lines.get_line_number(),
-            line.get_pos() + 1,
-            msg.to_string()
-        ),
+        format!("{}: {}", lines.describe(line.get_pos() + 1), msg.to_string()),
     ))
 }
 
@@ -69,13 +58,7 @@ pub fn compilation_error<T>(
 fn location_error<T>(location: &ScriptLocation, msg: impl ToString, exit_code: i32) -> UResult<T> {
     Err(USimpleError::new(
         exit_code,
-        format!(
-            "{}:{}:{}: error: {}",
-            location.input_name,
-            location.line_number,
-            location.column_number,
-            msg.to_string()
-        ),
+        format!("{}: {}", location.description, msg.to_string()),
     ))
 }
 
@@ -104,10 +87,8 @@ pub fn input_runtime_error<T>(
     Err(USimpleError::new(
         2,
         format!(
-            "{}:{}:{}: {}:{} error: {}",
-            location.input_name,
-            location.line_number,
-            location.column_number,
+            "{}: {}:{} error: {}",
+            location.description,
             context.input_name,
             context.line_number,
             msg.to_string()

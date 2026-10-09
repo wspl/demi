@@ -358,8 +358,9 @@ async fn a_child_works_in_its_parents_files_keeps_its_identity_and_runs_on_after
     // directory its shells start in.
     let host = "[Execution context 0]\\nPrimary host: laptop, ";
     let started = format!(
-        " ({}). Shells start in {root}.\\nAttached hosts: none.",
-        std::env::consts::ARCH
+        " ({}). Shells start in {root}. {}\\nAttached hosts: none.",
+        std::env::consts::ARCH,
+        crate::support::device_utilities()
     );
     let roots = scripts.asked(|session| session == FIRST);
     let children = scripts.asked(|session| session != FIRST);

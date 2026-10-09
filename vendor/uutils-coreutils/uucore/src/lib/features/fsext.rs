@@ -922,6 +922,7 @@ impl FsMeta for StatFs {
 
 #[cfg(unix)]
 pub fn statfs(path: &OsStr) -> Result<StatFs, String> {
+    let path = crate::context::resolve(path).into_os_string();
     #[cfg(unix)]
     let p = path.as_bytes();
     #[cfg(not(unix))]
