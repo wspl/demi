@@ -12,6 +12,7 @@ use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::{
     Message,
     handshake::server::{Request, Response},
+    protocol::{CloseFrame, frame::coding::CloseCode},
 };
 
 use crate::Host;
@@ -78,6 +79,32 @@ async fn malformed_input_fails_the_connection() {
         host.send_raw(Message::Text("{}".into())).await;
         host.ended().await;
         host.reconnected().await;
+        host.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+/// A connection the backend closes over a message of the runner's that it
+/// cannot decode ends with the backend's reason, which the runner's log
+/// reports; the runner connects again (`runner.md` § Connection and
+/// identity). About 0.5 s: a runner's start and a reconnect.
+#[tokio::test]
+async fn a_backend_that_cannot_decode_a_message_ends_the_connection_with_its_reason() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let mut host = Host::start(BTreeMap::new()).await.online().await;
+        host.send_raw(Message::Close(Some(CloseFrame {
+            code: CloseCode::Invalid,
+            reason: "cannot decode pong: unknown field `load`".into(),
+        })))
+        .await;
+        host.ended().await;
+        host.reconnected().await;
+        let log = host.process.output();
+        assert!(
+            log.contains("connection ended: the backend cannot decode pong: unknown field `load`"),
+            "{log}"
+        );
         host.close().await;
     })
     .await

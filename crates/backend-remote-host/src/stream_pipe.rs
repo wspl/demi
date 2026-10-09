@@ -6,7 +6,7 @@
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade, close_code};
 use axum::response::Response;
-use demi_runner_protocol::wire::{STREAM_PIPE_MESSAGE_BYTES, STREAM_PIPE_REASON_BYTES};
+use demi_runner_protocol::wire::{STREAM_PIPE_MESSAGE_BYTES, close_reason};
 use futures_util::{SinkExt as _, StreamExt as _};
 
 use crate::DeviceSource;
@@ -52,14 +52,10 @@ async fn relay(socket: WebSocket, source: DeviceSource) {
             code: close_code::NORMAL,
             reason: "drained".into(),
         },
-        Err(failure) => {
-            let reason = failure.to_string();
-            let reason = &reason[..reason.floor_char_boundary(STREAM_PIPE_REASON_BYTES)];
-            CloseFrame {
-                code: close_code::ERROR,
-                reason: reason.into(),
-            }
-        }
+        Err(failure) => CloseFrame {
+            code: close_code::ERROR,
+            reason: close_reason(&failure.to_string()).into(),
+        },
     };
     // A runner that went meanwhile hears nothing, and its pipe has ended
     // either way. After the runner's own close the WebSocket refuses this

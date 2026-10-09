@@ -488,6 +488,42 @@ async fn a_job_whose_directory_does_not_exist_fails_before_its_script_runs() {
     fixture.stop().await;
 }
 
+/// A message the runner cannot decode ends the connection: the runner's
+/// close frame names its type and the decoding error, and the command lost
+/// with the connection says it (`runner.md` § Connection and identity).
+/// About 0.5 s: one job, a login shell.
+#[tokio::test(flavor = "local")]
+async fn a_message_the_runner_cannot_decode_ends_the_connection_and_the_lost_command_says_which() {
+    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
+    let shell = shell_on(fixture.host(), &[], None);
+    let running = shell
+        .exec(exec("echo ready; sleep 30", 200), CancellationToken::new())
+        .await
+        .unwrap();
+    assert!(matches!(running.state, CommandState::Running { .. }));
+    // A newer backend's ping, with a field this runner does not know: the
+    // MessagePack map of one field gains a second, `shell: 1`.
+    let mut newer = wire::encode(&wire::Inbound::Ping {})
+        .unwrap()
+        .into_bytes();
+    assert_eq!(newer[0], 0x81, "a map of one field");
+    newer[0] = 0x82;
+    newer.extend(b"\xa5shell\x01");
+    fixture.link().await.send_raw(newer).await.unwrap();
+    let lost = settled(&shell, &running).await;
+    assert_eq!(exited(&lost), 127);
+    let whole = lost.whole.expect("the whole output");
+    let stderr = whole
+        .output
+        .text(Streams::Only(StreamKind::Stderr), None, Seen::default());
+    let stderr = String::from_utf8_lossy(stderr.bytes()).into_owned();
+    assert!(
+        stderr.starts_with("runner disconnected: the runner cannot decode ping: unknown field `shell`"),
+        "{stderr}"
+    );
+    fixture.stop().await;
+}
+
 #[tokio::test(flavor = "local")]
 async fn a_job_outliving_its_window_runs_takes_input_and_can_be_aborted() {
     let fixture = RunnerFixture::start(FixtureOptions::default()).await;
