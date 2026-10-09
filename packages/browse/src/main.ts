@@ -86,11 +86,15 @@ function scriptOf(): { text: string, file: string | null } {
   }
 }
 
-/** The caller's `DEMI_*` variables, which the processes the tool starts get. */
+/**
+ * The caller's `DEMI_*` variables and `PATH`, which the processes the tool starts
+ * get: a server finds the same programs (`cargo`) as the shell that asked for it,
+ * not those of the shell that happened to start the tool's server.
+ */
 function callerEnv(): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [name, value] of Object.entries(process.env)) {
-    if (name.startsWith('DEMI_') && value !== undefined) {
+    if ((name.startsWith('DEMI_') || name === 'PATH') && value !== undefined) {
       env[name] = value
     }
   }
