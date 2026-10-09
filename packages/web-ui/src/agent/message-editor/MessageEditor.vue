@@ -68,7 +68,8 @@ const emit = defineEmits<{
    * files of its capsules in the order of their marks.
    */
   change: [markdown: string, attachments: MessageCapsule[]]
-  submit: []
+  /** Enter, or ⌘/Ctrl+Enter; `otherWay` for ⌘/Ctrl+Enter outside a code block (`MessageKeyOptions`). */
+  submit: [otherWay: boolean]
   cancel: []
   /** Files pasted, or a paste long enough to be one; their capsules land where the cursor was. */
   files: [files: File[]]
@@ -96,7 +97,7 @@ const editor = new Editor({
   extensions: props.composer
     ? composerExtensions({
         placeholder: props.placeholder,
-        submit: () => emit('submit'),
+        submit: (otherWay) => emit('submit', otherWay),
         cancel: () => {
           if (props.cancelable) {
             emit('cancel')

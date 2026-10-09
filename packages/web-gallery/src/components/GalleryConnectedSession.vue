@@ -174,6 +174,7 @@ function detach(id: string): void {
             @restore="session.archived = false"
             :attachments="[{ name: 'ready-example.png', phase: 'ready' }]"
             @send="flow.turn"
+            @steer="flow.steer"
             @queue="flow.queue"
             @stop="flow.stop"
             @compact="flow.compact"

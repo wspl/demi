@@ -59,7 +59,7 @@ async fn preference_patches_merge_field_by_field_refuse_what_is_invalid_and_surv
         "serviceTierId": null,
     });
     let project_host = json!({ "kind": "device", "deviceId": "laptop" });
-    let (theme, shortcut, font, model, host) = tokio::join!(
+    let (theme, shortcut, font, model, host, send) = tokio::join!(
         backend.patch(
             PREFERENCES,
             &master,
@@ -81,8 +81,13 @@ async fn preference_patches_merge_field_by_field_refuse_what_is_invalid_and_surv
             &master,
             json!({ "lastProjectHost": project_host })
         ),
+        backend.patch(
+            PREFERENCES,
+            &device,
+            json!({ "sendWhileRunning": "queue" })
+        ),
     );
-    for answer in [theme, shortcut, font, model, host] {
+    for answer in [theme, shortcut, font, model, host, send] {
         assert_eq!(answer.status, StatusCode::OK);
     }
     let expected = json!({ "preferences": {
@@ -90,6 +95,7 @@ async fn preference_patches_merge_field_by_field_refuse_what_is_invalid_and_surv
         "shortcuts": { "new": "⌘⇧N" },
         "lastModel": last_model,
         "lastProjectHost": project_host,
+        "sendWhileRunning": "queue",
     } });
     assert_eq!(saved(&backend, &device).await, expected);
 
@@ -102,6 +108,8 @@ async fn preference_patches_merge_field_by_field_refuse_what_is_invalid_and_surv
         json!({ "lastModel": { "providerId": "", "modelId": "chosen-model", "thinkingEffort": null, "serviceTierId": null } }),
         json!({ "lastModel": { "providerId": "codex-account", "modelId": "chosen-model" } }),
         json!({ "lastProjectHost": { "kind": "laptop" } }),
+        json!({ "sendWhileRunning": "later" }),
+        json!({ "sendWhileRunning": null }),
         json!({ "contextLimit": { "providerId": "codex-account", "modelId": "chosen-model", "tokens": 400000 } }),
         json!({ "remember": true }),
     ] {
@@ -131,7 +139,20 @@ async fn preference_patches_merge_field_by_field_refuse_what_is_invalid_and_surv
             "shortcuts": {},
             "lastModel": last_model,
             "lastProjectHost": project_host,
+            "sendWhileRunning": "queue",
         } })
+    );
+    // A patch sets the choice back to steer.
+    let steer = backend
+        .patch(
+            PREFERENCES,
+            &master,
+            json!({ "sendWhileRunning": "steer" }),
+        )
+        .await;
+    assert_eq!(
+        steer.json::<UserPreferences>().preferences.send_while_running,
+        Some(demi_web_api_protocol::settings::SendWhileRunning::Steer)
     );
     backend.close().await;
 }
