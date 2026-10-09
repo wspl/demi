@@ -147,8 +147,9 @@ const OWN_RETURN = 'button, a[href], select, textarea, [contenteditable]:not([co
 
 const footer = ref<HTMLElement>()
 // Return presses the default button wherever the focus is in the panel, as a sheet's does.
+// An input method's Enter never gets here: every text field keeps it (`keepComposition`).
 function pressDefault(event: KeyboardEvent): void {
-  if (event.key !== 'Enter' || event.defaultPrevented || event.isComposing || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey)
+  if (event.key !== 'Enter' || event.defaultPrevented || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey)
     return
   if (!container && !props.overlayStore.isTop(id))
     return
