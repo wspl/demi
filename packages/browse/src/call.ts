@@ -18,6 +18,7 @@ import { Script, type ScriptScope } from './script'
 import { pngSize, shotPath } from './shots'
 import { slotPaths, type Slot } from './slot'
 import { webBase, type Shot, type Tool } from './tool'
+import { OVERRAN, withinLimit } from './limit'
 
 /** What the server lends a call. */
 export interface Server {
@@ -45,12 +46,13 @@ export interface Outcome {
  */
 const USES_PAGE = /\b(page|context|cdp)\b/
 
-/** What `withinLimit` answers when the limit came first. */
-const OVERRAN = Symbol('overran')
+/** How long each step of the report after the script, such as its screenshot, may wait for the browser. */
+const REPORT_MS = 10_000
 
 export async function runCall(server: Server, request: Request, print: (line: string) => void): Promise<Outcome> {
   const { slot, browser } = server
   const shots: Shot[] = []
+  const releases: (() => Promise<void>)[] = []
   let endServer = false
   const tool: Tool = {
     slot,
@@ -59,6 +61,7 @@ export async function runCall(server: Server, request: Request, print: (line: st
     print,
     env: request.env,
     wrote: (shot) => shots.push(shot),
+    release: (release) => releases.push(release),
     endServer: () => {
       endServer = true
     },
@@ -81,6 +84,14 @@ export async function runCall(server: Server, request: Request, print: (line: st
   } finally {
     script.remove()
   }
+  for (const release of releases.reverse()) {
+    // What a helper opened for the call and cannot close, such as a browser that crashed, is gone already; the report says so.
+    const released = await withinLimit(release(), REPORT_MS)
+      .catch((error: unknown) => print(`Not released: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`))
+    if (released === OVERRAN) {
+      print(`Not released: no answer within ${REPORT_MS / 1000} s`)
+    }
+  }
 
   if (ending.kind === 'overran') {
     print(`Failed: the script ran for ${request.limitMs / 1000} s, its time limit (--limit); the tool's server restarts to stop it and keeps the browser`)
@@ -92,17 +103,25 @@ export async function runCall(server: Server, request: Request, print: (line: st
     }
   }
   const page = await browser.existingPage()
+  // A browser that hangs answers none of the report's questions: each waits
+  // a bounded time, so the call still ends and says so.
+  let hangs = false
   if (page && ending.kind !== 'done') {
-    await failureShot(tool)
+    hangs = await withinLimit(failureShot(tool), REPORT_MS) === OVERRAN
   }
   let state: PageState | null = null
-  if (page) {
+  if (page && !hangs) {
     try {
-      state = await readPageState(page, await browser.cdp())
+      const read = await withinLimit(browser.cdp().then((cdp) => readPageState(page, cdp)), REPORT_MS)
+      hangs = read === OVERRAN
+      state = read === OVERRAN ? null : read
     } catch (error) {
       // A page that is navigating or crashed has no state to read; the report says so instead.
       print(`Page      could not be read: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`)
     }
+  }
+  if (hangs) {
+    print(`Page      the browser did not answer within ${REPORT_MS / 1000} s; \`bun browse stop\` closes it`)
   }
   for (const line of composeFooter({ shots, page: state, problems: browser.logs.problems(since) })) {
     print(line)
@@ -166,22 +185,6 @@ function scriptConsole(print: (line: string) => void): Console {
 function printLines(print: (line: string) => void, text: string): void {
   for (const line of text.split('\n')) {
     print(line)
-  }
-}
-
-/** Runs until `work` settles or `ms` pass, whichever comes first. */
-async function withinLimit<T>(work: Promise<T>, ms: number): Promise<T | typeof OVERRAN> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const limit = new Promise<typeof OVERRAN>((resolve) => {
-    timer = setTimeout(() => resolve(OVERRAN), ms)
-  })
-  // Once the limit came first, the script's failure has no one to report
-  // to: the server ends to stop it.
-  work.catch(() => undefined)
-  try {
-    return await Promise.race([work, limit])
-  } finally {
-    clearTimeout(timer)
   }
 }
 

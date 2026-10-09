@@ -13,6 +13,7 @@ import { chromium, type BrowserContext, type CDPSession, type Browser as Playwri
 import { Failure } from './tool'
 import { applyEmulation } from './emulation'
 import { Logs } from './logs'
+import { OVERRAN, withinLimit } from './limit'
 import { ownGroupRuns, startGroup, stopGroup } from './processes'
 import { freshLog, untilReady } from './servers'
 import { local, slotPaths, type Slot } from './slot'
@@ -23,7 +24,7 @@ import type { Clip } from './shots'
 const START_MS = 30_000
 /** How long the browser may take to stop before it is killed. */
 const STOP_MS = 10_000
-/** How long attaching to a browser only to ask it to quit may take. */
+/** How long asking the browser to quit may take, attaching to it first when the server is not. */
 const QUIT_MS = 5_000
 /** How long a script's action waits for its element by default. */
 const ACTION_MS = 10_000
@@ -223,7 +224,7 @@ export class Browser {
   /** Starts the browser process; answers its DevTools endpoint. */
   private async launch(headed: boolean): Promise<string> {
     if (!existsSync(chromium.executablePath())) {
-      await install(this.print)
+      await install('chromium', this.print)
     }
     const paths = slotPaths(this.slot)
     const portFile = join(paths.profile, 'DevToolsActivePort')
@@ -365,9 +366,15 @@ export class Browser {
     }
     if (ownGroupRuns(recorded)) {
       try {
-        const connection = connected ? await connected : null
-        const browser = connection?.browser ?? await chromium.connectOverCDP(recorded.endpoint, { timeout: QUIT_MS })
-        await (await browser.newBrowserCDPSession()).send('Browser.close')
+        // A browser that hangs answers neither the connection nor the request.
+        const asked = await withinLimit((async () => {
+          const connection = connected ? await connected : null
+          const browser = connection?.browser ?? await chromium.connectOverCDP(recorded.endpoint, { timeout: QUIT_MS })
+          await (await browser.newBrowserCDPSession()).send('Browser.close')
+        })(), QUIT_MS)
+        if (asked === OVERRAN) {
+          throw new Error(`no answer within ${QUIT_MS / 1000} s`)
+        }
       } catch (error) {
         // A browser that does not answer is stopped by its group below.
         this.print(`The browser did not quit when asked (${error instanceof Error ? error.message.split('\n')[0] : error}); stopping it`)
@@ -380,12 +387,12 @@ export class Browser {
   }
 }
 
-/** Installs Playwright's Chromium with Playwright's own installer, into its usual cache. */
-async function install(print: (line: string) => void): Promise<void> {
-  print('Installing Playwright\'s Chromium, once for every checkout')
+/** Installs one of Playwright's browsers with Playwright's own installer, into its usual cache. */
+export async function install(name: 'chromium' | 'webkit', print: (line: string) => void): Promise<void> {
+  print(`Installing Playwright's ${name === 'chromium' ? 'Chromium' : 'WebKit'}, once for every checkout`)
   const require = createRequire(import.meta.url)
   const cli = join(dirname(require.resolve('playwright/package.json')), 'cli.js')
-  const installer = Bun.spawn([process.execPath, cli, 'install', 'chromium'], { stdout: 'pipe', stderr: 'pipe' })
+  const installer = Bun.spawn([process.execPath, cli, 'install', name], { stdout: 'pipe', stderr: 'pipe' })
   const [code, output, errors] = await Promise.all([
     installer.exited,
     new Response(installer.stdout).text(),

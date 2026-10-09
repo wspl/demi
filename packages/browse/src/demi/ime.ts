@@ -1,21 +1,52 @@
 // `demi.ime(text, { into, commit })`: composes text through an input method
-// and commits it, as a Chinese or Japanese input method does: the field sees
-// a composition grow character by character, then the Enter that commits
-// the candidate, whose keydown carries keyCode 229 and must not submit.
-// Playwright types and inserts text but composes none, so this uses the
-// DevTools protocol's input method events. `into` (a Playwright locator) is
-// focused first; `commit: 'none'` leaves the composition open.
+// as a Chinese or Japanese input method does: the field sees a composition
+// grow character by character, then the key that ends it: `commit: 'enter'`
+// (the default) commits the candidate, `'escape'` cancels the composition,
+// and `'none'` leaves it open. `into` (a Playwright locator) is focused
+// first. Each engine gets its own order of events, the one its browser
+// produces on macOS:
+//
+//   Chromium                          WebKit (Safari)
+//   keydown Enter  229 isComposing    compositionend
+//   compositionend                    keydown Enter  229, isComposing false
+//   keyup Enter    13                 keyup Enter    13
+//
+// Playwright types and inserts text but composes none. In Chromium this uses
+// the DevTools protocol's input method events, so the browser itself
+// composes; WebKit's protocol has none, so on a page of `demi.webkit()` the
+// events are dispatched in Safari's order and the text is inserted while
+// the composition is open, which is what a page sees of Safari's input
+// method, though its events are not trusted ones.
+//
+// Headless Chromium can stop answering, its browser process at full load,
+// when a dialog or menu with a field opens or closes within the same call
+// soon after a composition: in one call, composing in the search dialog,
+// closing it and opening it again hangs on the second opening, while the
+// same steps in separate calls do not; pacing the protocol's steps, or a
+// keyup whose code matches the keydown's, does not help. The call then
+// says that the browser does not answer, and `bun browse stop` closes it.
 import type { Locator } from 'playwright'
 import type { Tool } from '../tool'
 
 export interface ImeOptions {
   into?: Locator
-  commit?: 'enter' | 'none'
+  commit?: 'enter' | 'escape' | 'none'
 }
 
+/** The key that ends a composition, as the page's events name it. */
+const ENDING = {
+  enter: { key: 'Enter', code: 'Enter', keyCode: 13 },
+  escape: { key: 'Escape', code: 'Escape', keyCode: 27 },
+} as const
+
 export async function ime(tool: Tool, text: string, options: ImeOptions = {}): Promise<void> {
+  const commit = options.commit ?? 'enter'
   if (options.into !== undefined) {
     await options.into.focus()
+    if (options.into.page().context().browser()?.browserType().name() === 'webkit') {
+      await options.into.page().evaluate(safariComposition, { text, commit })
+      return
+    }
   }
   const cdp = await tool.browser.cdp()
   const characters = [...text]
@@ -27,19 +58,67 @@ export async function ime(tool: Tool, text: string, options: ImeOptions = {}): P
       selectionEnd: composing.length,
     })
   }
-  if (options.commit === 'none') {
+  if (commit === 'none') {
     return
   }
-  // Chrome's order on macOS: the Enter's keydown reaches the page as 229
-  // while the input method holds it, the candidate is inserted, and the
-  // keyup is a plain Enter's.
+  // The key's keydown reaches the page as 229 while the input method holds
+  // it, the input method commits or cancels the composition, and the keyup
+  // is a plain key's.
+  const key = ENDING[commit]
   await cdp.send('Input.dispatchKeyEvent', {
     type: 'rawKeyDown',
-    key: 'Enter',
-    code: 'Enter',
+    key: key.key,
+    code: key.code,
     windowsVirtualKeyCode: 229,
     nativeVirtualKeyCode: 229,
   })
-  await cdp.send('Input.insertText', { text })
-  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+  if (commit === 'enter') {
+    await cdp.send('Input.insertText', { text })
+  } else {
+    await cdp.send('Input.imeSetComposition', { text: '', selectionStart: 0, selectionEnd: 0 })
+  }
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: key.key, code: key.code, windowsVirtualKeyCode: key.keyCode })
+}
+
+/**
+ * Runs in the page: Safari's events for a composition of `text` in the
+ * focused field, ended by `commit`. Safari ends the composition before the
+ * ending key's keydown, which it marks only with key code 229.
+ */
+function safariComposition({ text, commit }: { text: string, commit: 'enter' | 'escape' | 'none' }): void {
+  const field = document.activeElement
+  if (field === null) {
+    throw new Error('Nothing has the focus to compose in')
+  }
+  const composition = (type: string, data: string) =>
+    field.dispatchEvent(new CompositionEvent(type, { bubbles: true, cancelable: true, data }))
+  const key = (type: string, name: string, keyCode: number) =>
+    field.dispatchEvent(new KeyboardEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      key: name,
+      code: name,
+      keyCode,
+      which: keyCode,
+    }))
+  composition('compositionstart', '')
+  const characters = [...text]
+  for (let count = 1; count <= characters.length; count += 1) {
+    composition('compositionupdate', characters.slice(0, count).join(''))
+  }
+  // The composed text stands in the field while the composition is open.
+  document.execCommand('insertText', false, text)
+  if (commit === 'none') {
+    return
+  }
+  if (commit === 'escape') {
+    for (let count = 0; count < characters.length; count += 1) {
+      document.execCommand('delete')
+    }
+  }
+  composition('compositionend', commit === 'enter' ? text : '')
+  const name = commit === 'enter' ? 'Enter' : 'Escape'
+  key('keydown', name, 229)
+  key('keyup', name, commit === 'enter' ? 13 : 27)
 }

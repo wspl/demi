@@ -110,6 +110,7 @@ test('the conditions demi.net sets outlive the tool\'s server, for the next one 
     print: () => undefined,
     env: {},
     wrote: () => undefined,
+    release: () => undefined,
     endServer: () => undefined,
   })
   await netHelper(toolWith(await listen(target, slot))).latency(200)
