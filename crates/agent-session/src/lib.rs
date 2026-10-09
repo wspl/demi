@@ -37,7 +37,9 @@ use std::{
     time::Duration,
 };
 
-use demi_agent_store::{Checkpoint, CheckpointUpdate, SessionStore, StoreError, media::HeldMedia};
+use demi_agent_store::{
+    Checkpoint, CheckpointUpdate, SessionStore, StoreError, TurnEnd, media::HeldMedia,
+};
 use demi_agent_transcript::{IdSource, TranscriptLog, last_assistant_text};
 use demi_conversation_socket_protocol::{AbortResult, TranscriptPatch, TranscriptVersion};
 use demi_provider_common::{ProviderFailure, ProviderRuntime};
@@ -369,6 +371,8 @@ pub struct Status {
     pub wakeups: bool,
     /// An agent message waits for a boundary.
     pub agent_input: bool,
+    /// How the last turn that ended, ended.
+    pub last_turn: TurnEnd,
 }
 
 /// What a session is doing, as a supervisor observes it (`subagents.md`
@@ -509,6 +513,7 @@ impl AgentSession {
             inputs: InputQueue::default(),
             wakeups: Wakeups::default(),
             edits: Vec::new(),
+            last_turn: TurnEnd::Answer,
             held: false,
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
@@ -569,6 +574,7 @@ impl AgentSession {
             inputs: InputQueue::restored(state.agent_inputs),
             wakeups,
             edits: state.edits,
+            last_turn: state.last_turn,
             held,
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
@@ -848,6 +854,20 @@ impl AgentSession {
     /// checkpoint, and runs nothing more.
     pub fn hold(&self) {
         self.shared.update(SessionCore::hold);
+    }
+
+    /// Lets waiting input and due wakeups open a continuation again after
+    /// [`hold`](Self::hold), and opens one when nothing runs.
+    pub fn release(&self) {
+        self.shared.update(SessionCore::release);
+    }
+
+    /// Drops every wakeup, scheduled or fired, so none opens a turn again:
+    /// the supervisor calls it in the step that closes a child with its
+    /// answer, and the final checkpoint saves none (`subagents.md`
+    /// § Result).
+    pub fn drop_wakeups(&self) {
+        self.shared.update(SessionCore::drop_wakeups);
     }
 
     /// Stops one thing (`runtime.md` § Stop): the running action, which has

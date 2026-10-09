@@ -11,7 +11,7 @@
 
 use std::rc::Rc;
 
-use demi_agent_store::media;
+use demi_agent_store::{TurnEnd, media};
 use demi_agent_transcript::{
     PendingCall,
     estimate::{context_tokens, request_size},
@@ -109,6 +109,12 @@ async fn run_turn(
             continue;
         }
         if tools.stop_after_result || !tools.executed {
+            let end = if tools.stop_after_result {
+                TurnEnd::Yield
+            } else {
+                TurnEnd::Answer
+            };
+            s.update(|core| core.end_turn(end));
             return Ok(());
         }
     }

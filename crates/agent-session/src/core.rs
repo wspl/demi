@@ -14,7 +14,7 @@ use std::{
 };
 
 use demi_agent_store::{
-    CheckpointState, CheckpointUpdate, EditReceipt, PendingAgentInput, ScheduledWakeup,
+    CheckpointState, CheckpointUpdate, EditReceipt, PendingAgentInput, ScheduledWakeup, TurnEnd,
     media::{self, HeldMedia, ModelView},
 };
 use demi_agent_transcript::{
@@ -74,6 +74,8 @@ pub(crate) struct SessionCore {
     pub(super) inputs: InputQueue,
     pub(super) wakeups: Wakeups,
     pub(super) edits: Vec<EditReceipt>,
+    /// How the last turn that ended, ended (`subagents.md` § Result).
+    pub(super) last_turn: TurnEnd,
     /// The edit being prepared or run, from its admission until its action
     /// ends.
     pub(super) editing: Option<EditInFlight>,
@@ -276,6 +278,7 @@ pub(super) struct CoreParts {
     pub(super) inputs: InputQueue,
     pub(super) wakeups: Wakeups,
     pub(super) edits: Vec<EditReceipt>,
+    pub(super) last_turn: TurnEnd,
     pub(super) held: bool,
     pub(super) ids: Rc<dyn IdSource>,
     pub(super) clock: Arc<dyn Clock>,
@@ -298,6 +301,7 @@ impl SessionCore {
             inputs: parts.inputs,
             wakeups: parts.wakeups,
             edits: parts.edits,
+            last_turn: parts.last_turn,
             editing: None,
             activity: Activity::Idle,
             held: parts.held,
@@ -560,6 +564,21 @@ impl SessionCore {
     /// the node's next action.
     pub(super) fn hold(&mut self) {
         self.held = true;
+    }
+
+    /// Lets waiting input and due wakeups open a continuation again, and
+    /// opens one when nothing runs or waits.
+    pub(super) fn release(&mut self) {
+        self.held = false;
+        self.wake();
+    }
+
+    /// The turn that ran ended as `end`.
+    pub(super) fn end_turn(&mut self, end: TurnEnd) {
+        if self.last_turn != end {
+            self.last_turn = end;
+            self.mark_state_changed();
+        }
     }
 
     /// Opens a continuation when waiting input wants one and nothing runs or
@@ -1110,6 +1129,15 @@ impl SessionCore {
         self.wakeups.command_ended(id, ended, self.clock.now());
     }
 
+    /// Drops every wakeup, scheduled or fired and not yet written: a child
+    /// that closes with its answer never wakes again (`subagents.md`
+    /// § Result).
+    pub(super) fn drop_wakeups(&mut self) {
+        // Dropping a scheduled wakeup's watch stops it.
+        self.wakeups = Wakeups::default();
+        self.inputs.drop_wakeups();
+    }
+
     /// Fires the wakeups due now: each joins the running action at its next
     /// boundary, or opens a continuation.
     pub(super) fn fire_due_wakeups(&mut self) {
@@ -1559,6 +1587,7 @@ impl SessionCore {
             cwd: self.cwd.clone(),
             model: self.model.clone(),
             edits: self.edits.clone(),
+            last_turn: self.last_turn,
         }
     }
 
@@ -1635,6 +1664,7 @@ impl SessionCore {
             settle: self.settle(),
             wakeups: !self.wakeups.is_empty() || self.inputs.has_fired_wakeup(),
             agent_input: self.inputs.has_agent_input(),
+            last_turn: self.last_turn,
         }
     }
 

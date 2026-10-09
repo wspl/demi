@@ -184,10 +184,17 @@ impl<H: HostResolver> Node<H> {
     /// policy (`subagents.md` § Persistence): a child resumes the turn the
     /// process interrupted, while the root records the interruption and
     /// leaves the turn to its client; the queued messages run again in
-    /// order; waiting input and due wakeups wake the node only when its last
-    /// turn was not interrupted. What this changed is saved at once.
+    /// order; waiting input and due wakeups wake the root only when its last
+    /// turn was not interrupted, and a child only once its supervisor has
+    /// looked at it, which closes it instead when it is quiescent. What this
+    /// changed is saved at once.
     pub(crate) async fn continue_from(&self, continuation: Continuation) -> Result<(), StoreError> {
         let session = &self.session;
+        if self.role == NodeRole::Child {
+            // Its supervision releases the hold at its first look; an action
+            // that starts first releases it too.
+            session.hold();
+        }
         if continuation.interrupted {
             match self.role {
                 NodeRole::Root => session.record_interruption(),

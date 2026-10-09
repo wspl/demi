@@ -236,6 +236,7 @@ impl Conversation {
                 cwd: fixture.cwd.clone(),
                 model: model.clone(),
                 edits: Vec::new(),
+                last_turn: demi_agent_store::TurnEnd::Answer,
             },
             changed_blocks: fixture.blocks.into_iter().enumerate().collect(),
             block_count,

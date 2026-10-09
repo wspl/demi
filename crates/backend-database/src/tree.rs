@@ -40,8 +40,8 @@ use super::conversations::ConversationDb;
 use super::sequences;
 
 /// What a tree store tells after each commit that writes a node's
-/// checkpoint or deletes a node, with that node and the conversation's
-/// earliest saved wakeup after the commit: a conversation's summary reads
+/// checkpoint, closes, reopens or deletes a node, with that node and the
+/// conversation's earliest saved wakeup after the commit: a conversation's summary reads
 /// its root's checkpoint, and the index of conversations keeps the wakeup
 /// (`storage.md` § Control records).
 pub type Saved = Rc<dyn Fn(&NodeId, Option<WakeupDue>)>;
@@ -83,10 +83,15 @@ impl WakeupDue {
     }
 }
 
-/// The earliest wakeup the nodes of the tree `connection` holds save.
+/// The earliest wakeup the live nodes of the tree `connection` holds save:
+/// a closed node's never fire, since restore skips it (`subagents.md`
+/// § Persistence).
 fn earliest_wakeup(connection: &Connection) -> Result<Option<WakeupDue>, StorageError> {
-    let earliest: Option<i64> =
-        connection.query_row("SELECT MIN(wakeup_at) FROM nodes", [], |row| row.get(0))?;
+    let earliest: Option<i64> = connection.query_row(
+        "SELECT MIN(wakeup_at) FROM nodes WHERE closed_phase IS NULL",
+        [],
+        |row| row.get(0),
+    )?;
     earliest
         .map(|value| WakeupDue::from_column("nodes", value))
         .transpose()
@@ -222,21 +227,28 @@ impl AgentTreeStore for SqliteTreeStore {
         let node = id.clone();
         Box::pin(async move {
             let (phase, closed_at, result, failure) = close_columns(Some(&close));
-            let changed = self
+            let wakeup = self
                 .db
                 .call(move |connection| {
-                    let changed = connection.execute(
+                    let transaction = connection.transaction()?;
+                    let changed = transaction.execute(
                         "UPDATE nodes SET closed_phase = ?2, closed_at = ?3, result = ?4, failure = ?5, delivered = 0
                          WHERE id = ?1",
                         params![node.as_str(), phase, closed_at, result, failure],
                     )?;
-                    Ok(changed)
+                    if changed == 0 {
+                        return Ok(None);
+                    }
+                    let wakeup = earliest_wakeup(&transaction)?;
+                    transaction.commit()?;
+                    Ok(Some(wakeup))
                 })
                 .await
                 .map_err(store_error)?;
-            if changed == 0 {
+            let Some(wakeup) = wakeup else {
                 return Err(missing(id));
-            }
+            };
+            (self.saved)(id, wakeup);
             Ok(())
         })
     }
@@ -250,12 +262,12 @@ impl AgentTreeStore for SqliteTreeStore {
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         let node = id.clone();
         Box::pin(async move {
-            let found = self
+            let wakeup = self
                 .db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
                     let Some(state) = node_state(&transaction, &node)? else {
-                        return Ok(false);
+                        return Ok(None);
                     };
                     let state = CheckpointState {
                         queue: vec![message],
@@ -267,14 +279,16 @@ impl AgentTreeStore for SqliteTreeStore {
                          WHERE id = ?1",
                         params![node.as_str(), integer(round), started_at.as_millisecond(), to_json(&state)],
                     )?;
+                    let wakeup = earliest_wakeup(&transaction)?;
                     transaction.commit()?;
-                    Ok(true)
+                    Ok(Some(wakeup))
                 })
                 .await
                 .map_err(store_error)?;
-            if !found {
+            let Some(wakeup) = wakeup else {
                 return Err(missing(id));
-            }
+            };
+            (self.saved)(id, wakeup);
             Ok(())
         })
     }
@@ -1185,6 +1199,7 @@ mod tests {
             cwd: "/w".into(),
             model: test_model(),
             edits: Vec::new(),
+            last_turn: demi_agent_store::TurnEnd::Answer,
         }
     }
 
@@ -1375,6 +1390,20 @@ mod tests {
         tree.create_node(record("child", Some("root"), 1), running)
             .await
             .unwrap();
+        // A closed node's wakeups never fire, since restore skips it, until
+        // a resume makes it live again.
+        let close = NodeClose {
+            phase: ClosePhase::Aborted,
+            at: Timestamp::UNIX_EPOCH,
+        };
+        tree.close_node(&id("child"), close).await.unwrap();
+        let message = QueuedMessage {
+            id: TurnId::try_from("t2").unwrap(),
+            content: text("again"),
+        };
+        tree.reopen_node(&id("child"), 2, Timestamp::UNIX_EPOCH, message)
+            .await
+            .unwrap();
         assert_eq!(
             *told.borrow(),
             [
@@ -1385,6 +1414,8 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
+                at(9_000),
                 None,
                 at(9_000)
             ]
