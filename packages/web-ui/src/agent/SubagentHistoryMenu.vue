@@ -54,7 +54,7 @@ function select(id: string, close: () => void): void {
         class="w-80"
         filterable
         filter-placeholder="Search completed"
-        empty-text="No Completed Sub-agents"
+        empty-text="No Completed Subagents"
         :items="items"
         :selected-id="activeId ?? undefined"
         :item-height="28"

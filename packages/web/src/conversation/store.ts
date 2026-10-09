@@ -303,12 +303,14 @@ export const useConversations = defineStore('conversations', () => {
       for (const record of snapshot.conversations) {
         deleted.delete(record.id)
       }
+      // New conversations before their first send, which only this page
+      // has; they keep the front, in their own order.
       const local = previous.filter(
         (item) =>
           item.persistence !== 'synced' &&
           !snapshot.conversations.some((record) => record.id === item.id),
       )
-      const next = snapshot.conversations.map((record) => {
+      const synced = snapshot.conversations.map((record) => {
         const current = items.value.find((item) => item.id === record.id)
         if (!current) {
           return newConversation(record)
@@ -345,15 +347,7 @@ export const useConversations = defineStore('conversations', () => {
         }
         return current
       })
-      for (const item of local.toReversed()) {
-        const following = previous
-          .slice(previous.indexOf(item) + 1)
-          .find((candidate) => next.some((entry) => entry.id === candidate.id))
-        const index = following
-          ? next.findIndex((entry) => entry.id === following.id)
-          : next.length
-        next.splice(index, 0, item)
-      }
+      const next = [...local, ...synced]
       items.value = next
       cache.retain(new Set(next.map((item) => item.id)))
       // Reads started for an address the state does not name are nobody's.
@@ -508,11 +502,7 @@ export const useConversations = defineStore('conversations', () => {
     }
     const signal = lifetime.signal
     try {
-      const drafts = (await readLocalDrafts(userId)).sort((a, b) =>
-        (a.local?.conversation.createdAt ?? '').localeCompare(
-          b.local?.conversation.createdAt ?? '',
-        ),
-      )
+      const drafts = await readLocalDrafts(userId)
       signal.throwIfAborted()
       for (const draft of drafts) {
         if (
@@ -550,7 +540,11 @@ export const useConversations = defineStore('conversations', () => {
         })
         conversation.persistence = draft.local.phase
         conversation.load = 'ready'
-        items.value.unshift(conversation)
+        // Drafts lead the list, newest first, whether the channel's state
+        // is here yet or not (`product.md` § Conversations and projects).
+        const index = items.value.findIndex((item) =>
+          item.persistence === 'synced' || item.createdAt < conversation.createdAt)
+        items.value.splice(index < 0 ? items.value.length : index, 0, conversation)
         const restoredConversation = items.value.find(
           (item) => item.id === conversation.id,
         )!
@@ -1366,10 +1360,15 @@ export const useConversations = defineStore('conversations', () => {
 
   async function reorder(id: string, beforeId: string | null): Promise<void> {
     const conversation = items.value.find((item) => item.id === id)
+    // A new conversation before its first send moves among the others
+    // like it, which keep the front; its first send gives it its place.
     if (conversation && conversation.persistence !== 'synced') {
       const reordered = items.value.filter((item) => item.id !== id)
-      const index = reordered.findIndex((item) => item.id === beforeId)
-      reordered.splice(index < 0 ? reordered.length : index, 0, conversation)
+      const before = reordered.find((item) => item.id === beforeId)
+      const index = before && before.persistence !== 'synced'
+        ? reordered.indexOf(before)
+        : reordered.filter((item) => item.persistence !== 'synced').length
+      reordered.splice(index, 0, conversation)
       items.value = reordered
       return
     }
