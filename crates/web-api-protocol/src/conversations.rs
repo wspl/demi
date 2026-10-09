@@ -318,6 +318,8 @@ pub struct ReadRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Transcript {
+    #[serde(with = "demi_shared_types::client_blocks")]
+    #[schemars(with = "Vec<Block>")]
     pub blocks: Vec<Block>,
     /// The facts of the root's error blocks, by block id; absent when none
     /// yields one.
@@ -337,6 +339,8 @@ pub struct Transcript {
 #[serde(rename_all = "camelCase")]
 pub struct SubagentHistory {
     pub subagent: SubagentJob,
+    #[serde(with = "demi_shared_types::client_blocks")]
+    #[schemars(with = "Vec<Block>")]
     pub blocks: Vec<Block>,
     #[serde(
         default,
@@ -557,6 +561,34 @@ pub struct ForkAnswer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The entries a provider keeps on a block never leave the backend
+    // (`claude-code.md` § The session a process resumes): a transcript
+    // whose blocks hold them has the wire shape of one whose blocks hold
+    // none, the root's and each subagent's.
+    #[test]
+    fn a_transcript_reaches_the_page_without_the_entries_its_provider_kept() {
+        let text = serde_json::json!({
+            "type": "text", "id": "t1", "createdAt": "2026-09-21T14:13:20.000Z",
+            "model": { "providerId": "stub", "model": { "id": "stub-model", "name": "Stub",
+                "contextWindow": 1000, "outputLimit": null, "thinking": [], "acceptedExtensions": [] },
+                "thinking": null, "serviceTierId": null },
+            "text": "Hello",
+        });
+        let job = serde_json::json!({
+            "subagentId": "child-1", "parentSessionId": "root", "description": "Runs the tests",
+            "profile": null, "phase": "running", "startedAt": "2026-09-21T14:13:20.000Z", "endedAt": null,
+        });
+        let wire = serde_json::json!({
+            "blocks": [text],
+            "subagents": [{ "subagent": job, "blocks": [text] }],
+        });
+        let mut transcript: Transcript = serde_json::from_value(wire.clone()).unwrap();
+        let kept = || vec![serde_json::json!({ "type": "assistant", "uuid": "kept" })];
+        *transcript.blocks[0].entries_mut().unwrap() = kept();
+        *transcript.subagents[0].blocks[0].entries_mut().unwrap() = kept();
+        assert_eq!(serde_json::to_value(&transcript).unwrap(), wire);
+    }
 
     #[test]
     fn a_target_refuses_what_its_kind_does_not_hold() {
