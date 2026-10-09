@@ -81,8 +81,8 @@
   --fg-subtle: #737373;
   --fg-faint: #525252;
   --fg-ghost: #404040;
-  --hover-mix: rgb(255 255 255) 6%;
-  --active-mix: rgb(255 255 255) 10%;
+  --hover-mix: rgb(255 255 255) 7%;
+  --active-mix: rgb(255 255 255) 11%;
   /* A well set into its surface: code, a table's header, a track. */
   --well-mix: rgb(255 255 255) 4%;
   --line-subtle: rgba(255, 255, 255, 0.06);
@@ -153,7 +153,7 @@
     inset 0 0.5px 0 rgba(255, 255, 255, 0.22),
     0 0 0 0.5px rgba(255, 255, 255, 0.18);
   --btn-mix: rgb(255 255 255) 6%;
-  --btn-hover-mix: rgb(255 255 255) 10%;
+  --btn-hover-mix: rgb(255 255 255) 13%;
 }
 
 [data-theme="light"] {
@@ -174,8 +174,8 @@
   --fg-subtle: #8b919c;
   --fg-faint: #b4b9c2;
   --fg-ghost: #dadde3;
-  --hover-mix: rgb(0 0 0) 6%;
-  --active-mix: rgb(0 0 0) 10%;
+  --hover-mix: rgb(0 0 0) 7%;
+  --active-mix: rgb(0 0 0) 11%;
   --well-mix: rgb(0 0 0) 4%;
   --line-subtle: rgba(0, 0, 0, 0.05);
   --line: rgba(0, 0, 0, 0.09);
@@ -228,7 +228,7 @@
     inset 0 0.5px 0 rgba(255, 255, 255, 1),
     0 0 0 0.5px rgba(0, 0, 0, 0.14);
   --btn-mix: #ffffff 100%;
-  --btn-hover-mix: #f7f8fa 100%;
+  --btn-hover-mix: #edeef1 100%;
 }
 
 /* Interface text keeps the platform's own smoothing, as the system's own
@@ -278,7 +278,7 @@ svg.lucide {
    --surface-current is the color a control sits on. The root and every surface (a surface
    utility below, a floating layer, a primitive with a fill of its own such as a tab) set it,
    and an element inherits it from the nearest one. A theme gives each fill as the color
-   and amount mixed into that surface (--hover-mix: white 6%), an opaque color at 100% where
+   and amount mixed into that surface (--hover-mix: white 7%), an opaque color at 100% where
    the fill does not depend on the surface. A fill also names the color it paints,
    --fill-color, as surfaces do: an element that sits on a filled row (the row's end controls,
    a status dot's ring) takes it from there, the controls through an on-fill slot. Translucency
