@@ -1183,6 +1183,60 @@ async fn catalog_queries_patterns_pagination_and_read_only_elements() {
     }).await;
 }
 
+/// `browser.md` § Evaluation: a script of statements returns its last
+/// value, with or without a target; `undefined` reads as `JSON.stringify`
+/// reads it; a value JSON cannot hold names its place; and nothing waits.
+/// Before, a `const` was a syntax error, an `undefined` in an array failed
+/// as a driver error with a Rust dump, and a Promise looked like any side
+/// effect.
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CHROME; launches a real browser"]
+async fn eval_runs_statements_and_returns_what_json_holds() {
+    with_fixture(|browser, base| async move {
+        let tab = browser.open(&base, &CancellationToken::new(), TIMEOUT).await?;
+        let eval = async |args: Value| command(&tab, "eval", args).await;
+        let statements = eval(json!({"expression": "const rows = [...document.querySelectorAll('.catalog-delete')];\nconst names = rows.map(row => row.textContent)\nnames.length"})).await?;
+        assert_eq!(statements, json!({"value": 2}));
+        let chained = eval(json!({"expression": "const rows = document.querySelectorAll('.catalog-delete');\n[...rows]\n  .map(row => row.textContent)"})).await?;
+        assert_eq!(chained, json!({"value": ["Delete", "Delete"]}));
+        let targeted = eval(json!({"css": ".catalog-delete", "nth": 0, "expression": "const text = element.textContent; text.toUpperCase()"})).await?;
+        assert_eq!(targeted, json!({"value": "DELETE"}));
+        assert_eq!(
+            eval(json!({"expression": "[1, undefined, document.querySelector('#nope')?.id]"})).await?,
+            json!({"value": [1, null, null]})
+        );
+        assert_eq!(
+            eval(json!({"expression": "({a: 1, b: undefined})"})).await?,
+            json!({"value": {"a": 1}})
+        );
+        assert_eq!(eval(json!({"expression": "undefined"})).await?, json!({}));
+        assert_eq!(eval(json!({"expression": "const unused = 1;"})).await?, json!({}));
+        let message = |error: BrowserError| error.to_string();
+        assert_eq!(
+            message(error(eval(json!({"expression": "[1, 2, () => 3]"})).await, "unsupported_result", "not_started")),
+            "result[2] is a function"
+        );
+        assert_eq!(
+            message(error(eval(json!({"expression": "({page: document.body})"})).await, "unsupported_result", "not_started")),
+            "result.page is a DOM node (BODY); return its properties instead"
+        );
+        assert_eq!(
+            message(error(eval(json!({"expression": "await 1"})).await, "invalid_input", "not_started")),
+            "eval returns values that are already there and cannot wait: `await` needs the side effects eval refuses"
+        );
+        assert_eq!(
+            message(error(eval(json!({"expression": "({ready: document.fonts.ready})"})).await, "unsupported_result", "not_started")),
+            "result.ready is a Promise; eval returns values that are already there and cannot wait"
+        );
+        error(eval(json!({"expression": "Promise.resolve(1)"})).await, "side_effect_rejected", "not_started");
+        assert_eq!(
+            message(error(eval(json!({"expression": "document.querySelector('#nope').id"})).await, "invalid_input", "not_started")),
+            "the script threw TypeError: Cannot read properties of null (reading 'id')"
+        );
+        Ok(())
+    }).await;
+}
+
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME; launches a real browser"]
 async fn catalog_untargeted_keys_selection_drag_and_console_cursors() {

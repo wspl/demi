@@ -14,6 +14,7 @@ mod content;
 pub mod download;
 mod element;
 pub mod evaluation;
+mod script;
 pub mod fetch;
 pub mod keyboard;
 mod observation;
