@@ -96,7 +96,12 @@ The sidebar lists a new conversation as *New conversation* from the moment
 it opens, whether or not its draft holds anything yet, so the user sees where
 they are. Leaving it while its draft is still empty, with no character and no
 file, drops it, so opening New conversation and leaving it leaves nothing
-behind; once its draft holds something, it stays listed.
+behind; once its draft holds something, it stays listed. Until its first
+send, such a draft is listed above every conversation with a record, newest
+draft first, on every page and after a reload; a conversation created
+meanwhile, on this page or another, enters below the drafts. Its first send
+gives it the front of the saved order. A drag moves a draft only among the
+drafts.
 
 The first send creates the backend record and starts its
 [title](#conversation-titles). From then on the backend keeps the
