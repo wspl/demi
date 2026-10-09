@@ -573,12 +573,22 @@ the three completes as an error `Tool not found: <name>`.
   ([Host operations](../execution/sessions-and-targets.md#host-operations)).
   Their jobs run in the runner's shell
   ([Shell jobs](../execution/runner.md#shell-jobs)).
-- Each node keeps one shell environment per Host it has used. Concurrent calls
-  for one Host create one environment.
-- A handle belongs to its environment. A `shellId` or `commandId` of another
-  Host's environment is refused with `Shell handle "<id>" belongs to a
-  different Host`, and a handle that two environments claim is refused as not
-  unique.
+- Every `shell_exec` starts a job of its own in the conversation's working
+  directory on its Host, the directory the context block names
+  ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)).
+  Nothing of an earlier command carries over: not its directory, its
+  variables or its functions. For example, after a script that runs
+  `cd browse && npm test`, the next call starts in the working directory
+  again, not in `browse`. Where a call starts is therefore never a guess: a
+  carried directory made a model's next `cd ./browse` fail inside `browse`,
+  and models began every script with `cd <workspace>` because the context
+  block's directory stopped being true after the first `cd`.
+- Each node keeps one shell environment per Host it has used, which holds
+  its commands' handles. Concurrent calls for one Host create one
+  environment.
+- A handle belongs to its environment. A `commandId` of another Host's
+  environment is refused with `Command "<id>" belongs to a different Host`,
+  and a handle that two environments claim is refused as not unique.
 - The repeat guard counts identical scripts. In one environment, a `shell_exec`
   of the same script within 60 seconds of the previous one is allowed six times
   in a row. The seventh and later identical calls do not run: the result is an
@@ -646,7 +656,7 @@ output:
   running command's new output; the model's next `shell_status` still shows
   all of it.
 - A result gives the command's status, its exit code once it has exited, its
-  `commandId`, its `shellId` and timings while it runs, the output, and a hint
+  `commandId`, its timings while it runs, the output, and a hint
   for the next step while it runs or once it was stopped.
 - A result's `idleMs` counts from the last time the command's output grew,
   also beyond the first 8 KiB of a stream: the runner reports such growth
@@ -1045,15 +1055,9 @@ What keeps the output coming, and where each part is released:
   ([Input](#input)). For example, `shell_status 17`, `shell_exec A`,
   `shell_exec B`, `yield` runs the look, then A and B together, then the
   yield.
-- In a step, the first `shell_exec` without a `shellId` runs in the node's
-  default shell for its Host, as a single call does. Each other call without
-  one runs in a new shell, and so does any call while the default shell runs
-  a command; a new shell starts in the default shell's directory and with its
-  environment as they are when the step starts. Only the default shell's
-  directory carries over to the next command there. Calls of one step that
-  name the same `shellId` run one after another, each when the previous has
-  returned, and a shell a call of the step names is never given to a call
-  that names none.
+- Each `shell_exec` of a step is a job of its own
+  ([Running shell tools](#running-shell-tools)), so the calls of a step never
+  wait for one another.
 - A Stop during a step ends the calls still running; a call that had
   already returned keeps its result.
 - Each call takes its own lease of the conversation's file gate, so a step's
@@ -1082,7 +1086,6 @@ that replays it, and a short number is copied without a slip.
 | Identifier | Looks like | Unique within | Given out by |
 |---|---|---|---|
 | A command (`commandId`) | `17` | The conversation | The backend, when the command starts |
-| A shell (`shellId`) | `3` | The conversation | The backend, when the shell starts |
 | A command's medium | `2` | Its command | The runner, as the medium reaches it ([Media a command returns](#media-a-command-returns)) |
 | An agent | `0` for the root, then `1`, `2`, … in spawn order | The conversation | The backend, when the agent is spawned ([Model-facing surface](subagents.md#model-facing-surface)) |
 | An agent's round | `1` for its first run, one more at each resume | The agent | The agent's supervisor |
@@ -1414,7 +1417,7 @@ file bodies or raw bytes, and its type is fixed per tool by `kind`:
 
 | `kind` | Fields |
 | --- | --- |
-| `shell` | `status` (`running`, `exited` or `aborted`); `shellId`; `commandId`; `exitCode`, once exited; `runningMs`; `idleMs`; `chunks`, the last 32,768 characters of the output the result covers, stdout and stderr merged, each chunk tagged with its stream, a line that stands for bytes the output does not hold tagged as stderr; `viewTruncated`, true when that window or the output itself was cut; `files` and `filesTruncated`, once the command has exited and changed files |
+| `shell` | `status` (`running`, `exited` or `aborted`); `commandId`; `exitCode`, once exited; `runningMs`; `idleMs`; `chunks`, the last 32,768 characters of the output the result covers, stdout and stderr merged, each chunk tagged with its stream, a line that stands for bytes the output does not hold tagged as stderr; `viewTruncated`, true when that window or the output itself was cut; `files` and `filesTruncated`, once the command has exited and changed files |
 | `repeated_shell_exec` | `script`, `count` |
 | `yield_wakeup` | `wakeupId`, `durationMs`, `commandIds` |
 
@@ -1712,7 +1715,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | `steer_result` | The steer id and an `outcome`: `{ status: "accepted" }` or `{ status: "rejected", reason }` |
 | `edit_result` | The operation id and an `outcome`: `{ status: "accepted", turnId }` or `{ status: "rejected", reason }` |
 | `abort_result` | What was stopped, and whether another `abort` would stop more |
-| `shell_output` | A command's live view ([Live output](#live-output)): `subagentId` when the command is a subagent's, and its `status`: `running`, `exited` with the `exitCode`, or `aborted`, each with the `shellId`, the `commandId`, the `toolUseId` of the `shell_exec` call that started it, the `tail` and `chars` of the pages' view, and `runningMs` |
+| `shell_output` | A command's live view ([Live output](#live-output)): `subagentId` when the command is a subagent's, and its `status`: `running`, `exited` with the `exitCode`, or `aborted`, each with the `commandId`, the `toolUseId` of the `shell_exec` call that started it, the `tail` and `chars` of the pages' view, and `runningMs` |
 | `shell_write_result` | The command id |
 | `pending_calls` | The calls the model is writing, each `{ toolUseId, toolName, description }`, `description` null until written, and `subagentId` when they are a subagent's ([Calls being written](#calls-being-written)) |
 | `retry_scheduled` | The attempt, the delay in milliseconds, the code and the diagnostics of a failure being retried ([Retries](failures-and-recovery.md#retries)) |

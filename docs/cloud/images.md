@@ -148,8 +148,9 @@ Cloud is pinned to
   ([Preinstalled artifacts](../execution/native-runtime.md#preinstalled-artifacts)).
 
 The image also makes the runner's two directories on the system layer,
-private to `demi`: `/var/lib/demi` for the job directories and
-`/var/log/demi` for the Host log ([Images](managed-hosts.md#images)). The
+private to `demi`: `/var/lib/demi` for the job directories and the
+temporary directory, and `/var/log/demi` for the Host log
+([Images](managed-hosts.md#images)). The
 embedded artifacts' identities must match the backend's selected releases:
 the runner downloads a selected artifact that the image does not hold, on the
 first command after every wake and reset. Since the image and the backend

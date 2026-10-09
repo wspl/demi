@@ -329,10 +329,19 @@ Raw process environment selection follows these rules:
 
 | Request | Child environment |
 | --- | --- |
-| No `env` | Inherit the device process environment. |
+| No `env` | Inherit the device environment. |
 | Explicit `env` | Use the supplied values. |
 | `env` with `inheritEnv: true` | Overlay supplied values on the device environment. |
 | Null value in an overlay | Remove that inherited variable. |
+
+The device environment is the runner's own environment without the names
+that begin with `DEMI_`. Those configure the runner, such as
+`DEMI_RELEASE_ID` and `DEMI_RUNNER_NAME`, or belong to whatever started it,
+such as the `DEMI_*` settings of a developer's shell; none of them is meant
+for the programs the runner starts. For example, a test that a job runs and
+that reads `DEMI_RELEASE_ID` to choose a release would otherwise read the
+runner's. The same environment reaches jobs, raw processes and resident
+services.
 
 Runner-owned variables, the local endpoint, the opaque context handle,
 `DEMI_HOME` and the alias directory on `PATH`, override caller values. The
@@ -724,17 +733,33 @@ Runner process
 +--------------------------------------------------+
 ```
 
-Each job starts a fresh login shell. Brush loads the system profile and first
-readable user login profile. The runner then restores its execution context,
-places command aliases first in PATH, and restores the requested cwd. A
-requested cwd that no longer exists, such as a `mktemp -d` directory under
-the previous job's scratch directory, which went with that job, does not fail
-the job: the job starts in the conversation's working directory instead, and
-its stderr begins with the line
-`demi: <cwd> no longer exists; starting in <directory>`. The job's start
-names that directory as its `workspace` beside the requested cwd. Shell
-variables and functions do not carry over to the next job; persisted profile
-changes do. The backend receives the final cwd and foreground exit status.
+Each job starts a fresh login shell in the directory its request names, which
+for a conversation's command is always the conversation's working directory
+on that Host ([Running shell tools](../agent/runtime.md#running-shell-tools)).
+Brush loads the system profile and first readable user login profile. The
+runner then restores its execution context and places command aliases first
+in PATH. Nothing of an earlier job carries over, neither its directory nor its
+shell variables and functions; only persisted profile changes do. A directory
+that does not exist, such as a workspace the user deleted, fails the job
+before its script runs, with exit status 1 and the line
+`demi: cannot start in <directory>: No such file or directory`. The backend
+receives the foreground exit status.
+
+A job's environment is the device environment
+([Host operations](#host-operations)) with the job's own variables added:
+the command endpoint and context handle, `DEMI_HOME`, the alias directory on
+`PATH`, `DEMI_JOB_ID`, `DEMI_JOB_OUTPUT` and `DEMI_LIVE_INPUT`
+([Command context](native-runtime.md#command-context),
+[Where a command's stdout goes](#where-a-commands-stdout-goes)). The runner
+sets no temporary directory for a job: `TMPDIR` is the device environment's,
+or unset, so a job's temporary files go where any program of the device's
+user puts them, `/var/folders/…/T/` on macOS and `/tmp` on a Linux device
+without `TMPDIR` (a Cloud names one, [Images](../cloud/managed-hosts.md#images)).
+For example, a dev server a job starts creates its Unix socket in `$TMPDIR`
+and keeps it after the job ends. A temporary directory of the job's own
+would break both: macOS limits a socket's path to 104 bytes, which a path
+under the job root exceeds, and a daemon the job started would outlive the
+directory.
 
 The user login profile is the one in the job's home, the directory the job's
 `HOME` names, and the profiles see that directory as `$HOME`. A job's `HOME`
@@ -991,7 +1016,6 @@ jobs/                               the job root
       end-<n>                       the segments of its last part
     media/<n>                       each medium of the job, numbered from 1
     changes/                        what the job's edits recorded
-    .work-<random>/                 the scratch directory TMPDIR names; goes when the job ends
 ```
 
 A job's directory lasts until the backend has what it needs of the job:
@@ -1014,8 +1038,8 @@ On a paired device the job root is `jobs/` in the installation state, which is
 `~/.demi/instances/<backend>/` or the directory `DEMI_HOME` names
 ([Connection and identity](#connection-and-identity)). A Cloud keeps its
 installation state in `/run/demi`, which every boot makes anew, and its job
-root at `/var/lib/demi/jobs/` on its system image, since the kept output and
-scratch directories of a few busy jobs can outgrow `/run`'s memory
+root at `/var/lib/demi/jobs/` on its system image, since the kept output of a
+few busy jobs can outgrow `/run`'s memory
 ([Images](../cloud/managed-hosts.md#images)).
 
 A job starts unfollowed. `job_follow { jobId, follow }` starts or stops the

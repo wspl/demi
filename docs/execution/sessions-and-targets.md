@@ -39,8 +39,8 @@ Cloud sleep is not unavailability: selecting or using a Cloud target must not
 require a live runner in advance. The operation joins wake and waits for access.
 
 Scripts run in embedded brush on the target. Cloud jobs use the guest account;
-paired-device jobs use the device account. Login profiles, cwd between jobs,
-background work, and cancellation follow the [runner job contract](runner.md#shell-jobs).
+paired-device jobs use the device account. Login profiles, the directory each
+job starts in, background work, and cancellation follow the [runner job contract](runner.md#shell-jobs).
 [Managed hosts](../cloud/managed-hosts.md) defines Cloud permissions and persistent volumes.
 
 ## Bind jobs to their caller
@@ -101,7 +101,7 @@ For a switch from an allocated Cloud device to a laptop, the result is:
 | State | Before | After |
 | --- | --- | --- |
 | Primary device | Cloud | laptop |
-| Attached devices | None | Cloud, with its last cwd |
+| Attached devices | None | Cloud, its commands starting in the conversation's directory there |
 | `report.txt` created on Cloud | On Cloud | Still on Cloud |
 | Conversation transcript | Backend | Same backend transcript |
 
@@ -207,8 +207,12 @@ device; the Cloud becomes attached when it is a departed primary target. A
 new conversation's draft has no attached hosts, and the target it leaves
 when the user moves it is not attached, since nothing has run there.
 
-Attached cwd is a starting directory, not a permission boundary. It is updated
-from completed cross-host jobs. Files can be transferred explicitly with ordinary
+Every command on an attached host starts in that host's starting directory:
+the conversation's directory there for a departed primary target, and the
+device's home for a device `demi host attach` attached. It is fixed when the
+host is attached, never moved by a command's `cd`, as on the primary Host
+([Running shell tools](../agent/runtime.md#running-shell-tools)), and it is not
+a permission boundary. Files can be transferred explicitly with ordinary
 shell pipelines:
 
 ```sh

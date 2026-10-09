@@ -786,7 +786,8 @@ The role is a node option, not a depth. Every child has its parent's commands.
   ([How a conversation uses a device](../execution/sessions-and-targets.md#how-a-conversation-uses-a-device)).
   A model switch changes the root's selection only; a child keeps its own.
 - The transcript starts empty.
-- A node inherits the spawner's cwd. Every node reaches its Host through the
+- A node's commands start in the conversation's working directory, as every
+  node's do ([Running shell tools](runtime.md#running-shell-tools)). Every node reaches its Host through the
   conversation's host access, because the execution target belongs to the
   conversation ([Resolve a target](../execution/sessions-and-targets.md#resolve-a-target)).
 - Each node has at most 8 live children. The limit is the same for every node
