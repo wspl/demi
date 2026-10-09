@@ -415,8 +415,8 @@ stays a steer, and a queued message starts a turn of its own.
   `send_queued_message { messageId }` names a queued message
   ([Messages and the queue](#messages-and-the-queue)).
 - The session cuts the running round short:
-  - a streaming provider request is cancelled, and what it streamed stays in
-    the transcript, as with [Stop](#stop);
+  - a streaming provider request, or the wait before its retry, is cancelled,
+    and what it streamed stays in the transcript, as with [Stop](#stop);
   - each running shell call returns at once with the result its window's end
     gives ([The window](#the-window)), preceded in its hint by the line
     `[The user sent a message, so command 17 moved to the background. It
@@ -429,7 +429,9 @@ stays a steer, and a queued message starts a turn of its own.
   the transcript as any boundary does: the pending human steers, the agent
   messages and the fired wakeups. After `steer_now` the turn goes on with the
   next provider request. After `send_queued_message` the turn ends there, and
-  the message runs next, ahead of the rest of the queue.
+  the message runs next, ahead of the rest of the queue. A queued message sent
+  now before the turn's first request ends the turn at once, so the message
+  that started it is not answered on its own.
 - When no turn runs, `send_queued_message` moves the message to the front of
   the queue, and it runs as soon as the running action, if any, ends.
   `steer_now` for a steer that is no longer pending changes nothing.
