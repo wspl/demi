@@ -41,6 +41,23 @@ pub fn copy_xattrs<P: AsRef<Path>>(source: P, dest: P) -> crate::context::io::Re
     Ok(())
 }
 
+/// Demi's: removes the extended attributes of `path`, for a copy whose file
+/// system copied the source's along with its data, as macOS's clonefile(2)
+/// does, where GNU cp's copy has none unless it preserves them. An
+/// attribute the system protects is left: removing it is refused with
+/// `EPERM`, and the system gives every file this process makes one anyway.
+#[cfg(unix)]
+pub fn remove_xattrs<P: AsRef<Path>>(path: P) -> crate::context::io::Result<()> {
+    let path = crate::context::resolve(path);
+    for attr_name in xattr::list(&path)? {
+        match xattr::remove(&path, &attr_name) {
+            Err(e) if e.raw_os_error() == Some(libc::EPERM) => {}
+            removed => removed?,
+        }
+    }
+    Ok(())
+}
+
 /// Like [`copy_xattrs`], but maps `ENOTSUP` / `EOPNOTSUPP` to `Ok(())`
 /// for callers where xattr preservation is best-effort.
 pub fn copy_xattrs_ignore_unsupported<P: AsRef<Path>>(source: P, dest: P) -> crate::context::io::Result<()> {

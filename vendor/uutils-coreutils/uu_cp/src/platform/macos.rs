@@ -73,11 +73,14 @@ pub(crate) fn copy_on_write(
             error = pfn(src.as_ptr(), dst.as_ptr(), 0);
         }
         if error == 0 {
-            // clonefile(2) copied the source's times too; a copy has the
-            // time it was made, as GNU cp's has, unless it is to preserve
-            // them, which the caller does after this.
+            // clonefile(2) copied the source's times and extended
+            // attributes too; a copy has the time it was made and no
+            // attributes, as GNU cp's has, unless it is to preserve them,
+            // which the caller does after this.
             let now = filetime::FileTime::now();
             filetime::set_file_times(uucore::context::resolve(dest), now, now)
+                .map_err(|e| CpError::IoErrContext(e, context.to_owned()))?;
+            uucore::fsxattr::remove_xattrs(dest)
                 .map_err(|e| CpError::IoErrContext(e, context.to_owned()))?;
         }
     }
