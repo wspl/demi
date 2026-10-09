@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
-import { agentReceiptMessages, callBeingWrittenBlocks, editedFile, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
+import { agentReceiptMessages, callBeingWrittenBlocks, editedFile, lookAndWaitBlocks, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
 import { HELPER, helperBlocks, helperParentBlocks, signInRequestBlocks, standaloneRequest, uncopiedRequestBlocks } from '../fixtures/request-changes'
 import { useGalleryTranscripts } from '../fixtures/transcripts'
 import GalleryTranscript from '../components/GalleryTranscript.vue'
@@ -649,6 +649,8 @@ const signInRunningBlocks = signInRequestBlocks('sign-in-running').slice(0, -1)
 // The calls being written: a finished sentence, then a call without its title
 // yet, one with it, and none, where Requesting follows the text.
 const writingBlocks = callBeingWrittenBlocks()
+// Runs that only look at a command or wait for it: their rows name what they did, never a count of steps.
+const lookBlocks = lookAndWaitBlocks()
 const writingSpecimens = [
   { variant: 'being written, no description yet', calls: [{ toolUseId: 'writing-1', toolName: 'shell_exec', description: null }] },
   { variant: 'being written, with its description', calls: [{ toolUseId: 'writing-1', toolName: 'shell_exec', description: 'Write the categorizer' }] },
@@ -1837,7 +1839,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'changes'">
       <GallerySection
         title="Work Groups"
-        note="Consecutive steps show as one row. While they run, each new step rolls over the one before, shimmering while it runs: Requesting, thinking, a call being written and its description, the call. Thinking without text is covered by the step after it. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did; a failure shows on its own call inside. Folded, the files the steps changed show under it, each once; open, each call shows its own."
+        note="Consecutive steps show as one row. While they run, each new step rolls over the one before, shimmering while it runs: Requesting, thinking, a call being written and its description, the call. Thinking without text is covered by the step after it. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did, each kind of call once, in the order the run first made it, such as Checked 1 command, waited, never a count of steps; a failure shows on its own call inside. Folded, the files the steps changed show under it, each once; open, each call shows its own."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="workFlow.play('work')">Replay</Button>
@@ -1871,6 +1873,21 @@ onBeforeUnmount(() => {
             </template>
           </SessionSurface>
         </div>
+        <GallerySpecimen variant="runs that look, wait, or run and wait" wide>
+          <div class="gallery-frame h-[34rem] bg-surface">
+            <AgentMessageList
+              class="h-full"
+              conversation-id="gallery-work-looks"
+              :blocks="lookBlocks"
+              :pending-steers="[]"
+              :queue="[]"
+              phase="idle"
+              :bottom-offset="0"
+              :persisted-scroll-state="undefined"
+              read-only
+            />
+          </div>
+        </GallerySpecimen>
       </GallerySection>
       <GallerySection
         title="A Heavy Turn"
