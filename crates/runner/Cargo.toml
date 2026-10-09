@@ -26,6 +26,7 @@ demi-runner-protocol = { path = "../runner-protocol" }
 demi-runner-command-packages = { path = "../runner-command-packages" }
 demi-runner-shell = { path = "../runner-shell" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
+demi-shared-cli = { path = "../shared-cli" }
 clap = { version = "4", features = ["derive", "env"] }
 futures-util.workspace = true
 hostname = "0.4"
@@ -45,7 +46,11 @@ url = "2"
 uuid = { version = "1", features = ["v4"] }
 
 [target.'cfg(unix)'.dependencies]
-rustix = { version = "1", features = ["process"] }
+rustix = { version = "1", features = ["process", "stdio"] }
+
+# The standard handles a runner in the background points at its log.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
 
 # sha2's ARM hardware backend is opt-in; artifact verification must not use
 # its unoptimized software fallback on supported Unix ARM hosts.

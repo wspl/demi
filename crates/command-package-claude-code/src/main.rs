@@ -4,6 +4,9 @@ use std::sync::Arc;
 // (`concurrency.md` § demi-claude-code and the command-sdk).
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+    // A panic leaves its report on standard error (`builds-and-releases.md`
+    // § Build profiles).
+    demi_shared_cli::install_panic_hook();
     demi_command_sdk::Launch::from_process();
     let result =
         demi_command_sdk::serve_stdio(Arc::new(demi_claude_code::DemiClaude::default())).await;

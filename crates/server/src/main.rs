@@ -77,6 +77,9 @@ enum Action {
 }
 
 fn main() -> ExitCode {
+    // A panic leaves its report on standard error (`builds-and-releases.md`
+    // § Build profiles).
+    demi_shared_cli::install_panic_hook();
     let cli = Cli::parse();
     let layout = Layout::new(cli.root.clone());
     let result = match cli.command {

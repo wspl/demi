@@ -5,12 +5,9 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    io::{self, Write as _},
+    io,
     path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::Arc,
     time::Duration,
 };
 
@@ -38,7 +35,6 @@ use demi_runner_process::{
     pipes::{PipeClient, report_pipe},
 };
 use demi_runner_protocol::{
-    console::{PAIRED, PAIRING_CODE, REMOVAL},
     values::DeviceToken,
     wire::{self, Inbound},
 };
@@ -97,26 +93,17 @@ pub struct Registered {
     pub volumes: Vec<ManagedVolume>,
     /// The command that removes this runner; none for a managed guest's.
     pub removal: Option<String>,
-    /// Whether this process told its console that the device is paired.
-    pub announced: AtomicBool,
 }
 
 impl Registered {
     /// Tells the person at the console, once per process, that the device
     /// is paired as `name` and how to remove the runner again; an installer
     /// shows them these lines (`runner.md` § Installation, pairing and
-    /// removal).
+    /// removal). A managed guest's runner, which nobody pairs, says nothing.
     fn announce_paired(&self, name: &str) {
-        let Some(removal) = &self.removal else {
-            return;
-        };
-        if self.announced.swap(true, Ordering::Relaxed) {
-            return;
+        if let Some(removal) = &self.removal {
+            self.management.tell_paired(name, removal);
         }
-        // One write, so that whoever reads the log sees both lines at once.
-        let lines = format!("{PAIRED}{name}\n{REMOVAL}{removal}\n");
-        // A console that went away loses nothing the runner needs.
-        let _ = io::stderr().write_all(lines.as_bytes());
     }
 }
 
@@ -416,7 +403,7 @@ impl Owner<'_> {
                 management.set_phase(Phase::ClaimPending);
                 // The code is a secret for the person at the console; the log
                 // only says that one is waiting.
-                eprintln!("{PAIRING_CODE}{claim_token}");
+                management.tell_code(&claim_token);
                 tracing::info!("waiting to be paired");
             }
             Inbound::Claimed {
@@ -446,10 +433,10 @@ impl Owner<'_> {
                 if code == wire::HelloErrorCode::UnknownDevice
                     && let Some(removal) = &registered.removal
                 {
-                    eprintln!(
+                    crate::console::line(format_args!(
                         "demi-runner: this device is no longer paired with {}; to remove this runner, run: {removal}",
                         registered.backend.url()
-                    );
+                    ));
                 }
                 management.set_phase(Phase::Rejected);
                 return Ok(Some(End::Rejected));
