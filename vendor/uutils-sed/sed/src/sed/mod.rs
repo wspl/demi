@@ -55,77 +55,125 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
     Ok(())
 }
 
-/// The short options whose value is the rest of the token or the next one.
-const SHORT_VALUES: [char; 3] = ['e', 'f', 'l'];
+/// The options with a value, short and long: a short one's value is the
+/// rest of its token or the next token, a long one's, without `=`, is the
+/// next token. The flag says whether the value gives the script.
+const VALUE_OPTIONS: [(char, &str, bool); 3] = [
+    ('e', "expression", true),
+    ('f', "script-file", true),
+    ('l', "length", false),
+];
 
-/// The long options whose value, without `=`, is the next token.
-const LONG_VALUES: [&str; 3] = ["expression", "script-file", "length"];
+/// What `attached_in_place` reads a token of sed's arguments as.
+enum Token {
+    /// A script or a file.
+    Operand,
+    /// The program name, an option, an option's value or `--`, passed on
+    /// as it is.
+    Kept,
+    /// Short options ending in `-i`: the options before it and the suffix
+    /// attached to it, which may be empty.
+    InPlace { flags: String, suffix: String },
+}
 
-/// `args` with each `-i` written as GNU's getopt reads it: a suffix only
-/// when attached, so `-i.bak` and `-ni.bak` back up with `.bak`, `-i` alone
-/// backs up nothing, and the token after `-i` is never its suffix. clap has
-/// no optional value that only attaches, so `-i` requires `=` there and an
-/// attached suffix becomes `--in-place=SUFFIX` here. The values of `-e`,
-/// `-f`, `-l` and their long forms are skipped, and nothing after `--` is
-/// read.
+/// `args` with each `-i` written as clap reads it. An attached suffix is
+/// read as GNU's getopt reads it, so `-i.bak` and `-ni.bak` back up with
+/// `.bak`. The operand after a bare `-i` is BSD's suffix, as macOS's sed
+/// reads it, when it is empty (`sed -i '' s/a/b/ f`), since no file is
+/// named so, or when it starts with `.` and enough operands follow it for
+/// the rest of the command: a file when `-e` or `-f` gave the script, else
+/// a script and a file (`sed -i .bak s/a/b/ f`, `sed -e X -i .bak f`).
+/// Otherwise it is the script or a file, as GNU sed reads it, so
+/// `sed -e X -i .env` edits `.env`. clap has no optional value that only
+/// attaches, so `-i` requires `=` there and a suffix becomes
+/// `--in-place=SUFFIX` here. The values of `-e`, `-f`, `-l` and their long
+/// forms are no operands, and everything after `--` is one.
 fn attached_in_place(args: impl Iterator<Item = std::ffi::OsString>) -> Vec<std::ffi::OsString> {
-    let mut out = Vec::new();
-    let mut args = args.enumerate();
-    while let Some((index, arg)) = args.next() {
-        let Some(text) = arg.to_str().filter(|_| index > 0).map(str::to_owned) else {
-            out.push(arg);
+    let args: Vec<_> = args.collect();
+    let mut tokens = Vec::with_capacity(args.len());
+    let mut script_option = false;
+    let mut takes_value = false;
+    let mut operands_only = false;
+    for (index, arg) in args.iter().enumerate() {
+        if index == 0 || std::mem::take(&mut takes_value) {
+            tokens.push(Token::Kept);
+            continue;
+        }
+        // No option is spelled in other than UTF-8, so such a token is a file.
+        let Some(text) = arg.to_str().filter(|_| !operands_only) else {
+            tokens.push(Token::Operand);
             continue;
         };
         if text == "--" {
-            out.push(arg);
-            out.extend(args.map(|(_, arg)| arg));
-            break;
+            operands_only = true;
+            tokens.push(Token::Kept);
+            continue;
         }
-        if let Some(name) = text.strip_prefix("--") {
-            out.push(arg);
-            let takes_next = !name.contains('=')
-                && !name.is_empty()
-                && LONG_VALUES.iter().any(|long| long.starts_with(name));
-            if takes_next && let Some((_, value)) = args.next() {
-                out.push(value);
+        if let Some(long) = text.strip_prefix("--") {
+            let (name, attached) = long.split_once('=').map_or((long, false), |(name, _)| (name, true));
+            if let Some(&(_, _, script)) = VALUE_OPTIONS
+                .iter()
+                .find(|(_, option, _)| !name.is_empty() && option.starts_with(name))
+            {
+                script_option |= script;
+                takes_value = !attached;
             }
+            tokens.push(Token::Kept);
             continue;
         }
         let Some(cluster) = text.strip_prefix('-').filter(|cluster| !cluster.is_empty()) else {
-            out.push(arg);
+            tokens.push(Token::Operand);
             continue;
         };
-        let mut flags = String::new();
-        let mut rewritten = None;
-        let mut takes_next = false;
+        let mut token = Token::Kept;
         for (at, option) in cluster.char_indices() {
             let rest = &cluster[at + option.len_utf8()..];
             if option == 'i' {
-                rewritten = Some(if rest.is_empty() {
-                    "--in-place".to_owned()
-                } else {
-                    format!("--in-place={rest}")
-                });
+                token = Token::InPlace {
+                    flags: cluster[..at].to_owned(),
+                    suffix: rest.to_owned(),
+                };
                 break;
             }
-            if SHORT_VALUES.contains(&option) {
-                takes_next = rest.is_empty();
+            if let Some(&(_, _, script)) = VALUE_OPTIONS.iter().find(|(short, ..)| *short == option) {
+                script_option |= script;
+                takes_value = rest.is_empty();
                 break;
             }
-            flags.push(option);
         }
-        match rewritten {
-            Some(in_place) => {
-                if !flags.is_empty() {
-                    out.push(format!("-{flags}").into());
-                }
-                out.push(in_place.into());
-            }
-            None => out.push(arg),
+        tokens.push(token);
+    }
+
+    let needed = if script_option { 1 } else { 2 };
+    let bsd_suffix = |at: usize| -> Option<&str> {
+        let text = args.get(at)?.to_str().filter(|_| matches!(tokens[at], Token::Operand))?;
+        let following = tokens[at + 1..]
+            .iter()
+            .filter(|token| matches!(token, Token::Operand))
+            .count();
+        (text.is_empty() || text.starts_with('.') && following >= needed).then_some(text)
+    };
+    let mut out = Vec::with_capacity(args.len());
+    let mut taken = false;
+    for (index, (arg, token)) in args.iter().zip(&tokens).enumerate() {
+        if std::mem::take(&mut taken) {
+            continue;
         }
-        if takes_next && let Some((_, value)) = args.next() {
-            out.push(value);
+        let Token::InPlace { flags, suffix } = token else {
+            out.push(arg.clone());
+            continue;
+        };
+        let separate = if suffix.is_empty() { bsd_suffix(index + 1) } else { None };
+        taken = separate.is_some();
+        let suffix = separate.unwrap_or(suffix);
+        if !flags.is_empty() {
+            out.push(format!("-{flags}").into());
         }
+        out.push(if suffix.is_empty() {
+            "--in-place".into()
+        } else {
+            format!("--in-place={suffix}").into()
+        });
     }
     out
 }
