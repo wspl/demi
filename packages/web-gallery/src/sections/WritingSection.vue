@@ -129,9 +129,9 @@ const rules: readonly ElementRule[] = [
   },
   {
     kind: 'Empty state',
-    where: 'Menu and ChangeTree emptyText, an empty list',
+    where: 'Menu and ChangeTree emptyText, an empty list; a search or filter that matches nothing says No Results',
     style: 'headline',
-    right: ['No Hosts Found', 'This folder is empty.'],
+    right: ['No Hosts Found', 'This folder is empty.', 'No Results'],
     wrong: ['No hosts found'],
     source: { label: `${SYSTEM_SETTINGS}: No Accounts, No external volumes are connected.` },
   },
