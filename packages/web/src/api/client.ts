@@ -193,15 +193,17 @@ async function send(path: string, options: Omit<ApiRequestOptions, 'waits'>): Pr
     cache: 'no-store',
     signal,
   })
-  if (response.status === 204) {
+  // An answer without content: a 204, or a 304 the caller allowed, which says
+  // the version it named is still the Host's.
+  if (response.status === 204 || (allowNotModified && response.status === 304)) {
     // Chrome counts a request whose answer the page never reads as aborted
-    // (net::ERR_ABORTED), though the backend answered it, and most callers
-    // of an answer without content never read it. It is read to its end
+    // (net::ERR_ABORTED), though the backend answered it, and a caller of an
+    // answer without content has nothing to read. It is read to its end
     // here, and the caller gets the same answer with nothing left to read.
     await response.arrayBuffer()
-    return new Response(null, { status: 204, statusText: response.statusText, headers: response.headers })
+    return new Response(null, { status: response.status, statusText: response.statusText, headers: response.headers })
   }
-  if (response.ok || (allowNotModified && response.status === 304)) {
+  if (response.ok) {
     return response
   }
 
