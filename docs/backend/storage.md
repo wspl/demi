@@ -169,14 +169,7 @@ input, which the multi-worker control service also relies on
   switch, Cloud reset marker, the conversation's model selection as JSON
   ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)),
   the counts of messages the user sent and the last generated title had
-  seen, and when the earliest yield
-  wakeup its tree saved is due (`wakeup_at`), at which the next start
-  restores the tree ([Yield wakeups](../agent/runtime.md#yield-wakeups)).
-  `wakeup_at` is milliseconds since the Unix epoch, 0 for a wakeup whose
-  action had not ended, which is due at start, and null when the tree saved
-  none. The user's shard writes it after a commit of the tree that changed
-  it, from the `nodes` rows ([Conversation state and
-  transactions](#conversation-state-and-transactions)). The target is
+  seen. The target is
   typed columns: its kind (Cloud, a device directory, or a workspace) and the
   device, path or workspace that kind names, checked per kind. A target switch
   compares and sets these columns, so it commits only against the selection it
@@ -287,7 +280,7 @@ Host. The node lifecycle and its commits are defined in
 
 | Table | Meaning |
 |---|---|
-| `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description, its profile's name and the instructions the profile replaced ([Persistence](../agent/subagents.md#persistence)), whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, output revision, and when the earliest wakeup the checkpoint state saves is due (`wakeup_at`, encoded as the index of conversations encodes it), which each save writes with the state, so the conversation's earliest wakeup is the least over its nodes; a root whose last turn was interrupted has none, since its wakeups wait for the user to resume it ([Yield wakeups](../agent/runtime.md#yield-wakeups)) |
+| `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description, its profile's name and the instructions the profile replaced ([Persistence](../agent/subagents.md#persistence)), whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, output revision |
 | `sequences` | The next number of each sequence the model sees in the conversation: commands, agents, conversation browser tabs and attachments. The backend advances a sequence in its own transaction before it gives the number out, by the count a native service asks for when it reserves several ([Conversation numbers](../execution/native-runtime.md#conversation-numbers)), so a crash leaves a gap and never gives a number twice |
 | `blocks` | One transcript block per node and block index |
 | `command_outputs` | The record of each ended command's whole output, by command id ([Command outputs](#command-outputs)) |
@@ -314,7 +307,7 @@ carries and its order belong to the tree store contract
 
 Changed output advances `output_revision` in the checkpoint transaction; input
 alone does not. Input is the user's messages and steers, and the context,
-wakeup, agent-message and resume blocks the session writes before a request;
+command-report (`wakeup`), agent-message and resume blocks the session writes before a request;
 everything else a save changes, and rows a rewrite removes, is output. A
 summary read takes the phase, the output revision and the latest terminal
 block without loading the transcript; a conversation that has no database file
@@ -371,9 +364,9 @@ within 16 MiB, as a blob in the conversation owner's namespace
 ([The whole output](../agent/runtime.md#the-whole-output)), and records it in
 the conversation's `command_outputs` table, one row per command, keyed by the
 command's id. The row holds when the command ended and how: its exit code,
-or that it was stopped or ended with its Host's connection, which a yield's
-wakeup names ([Yield wakeups](../agent/runtime.md#yield-wakeups)); and one
-of two states:
+or that it was stopped or lost with its reason, which its report names
+([Command reports](../agent/runtime.md#command-reports)); and one of two
+states:
 
 | State | Holds | `demi shell output` prints |
 |---|---|---|
@@ -392,8 +385,12 @@ A running command has a row of its own in `running_commands`, written when
 its job starts and deleted in the transaction that writes its
 `command_outputs` row: its number, the node that ran it, its device, its
 job's id on that device, the tool call that started it, and when it started.
-A backend that starts again reads them to take the commands up when their
-runners connect
+The control database's `running_jobs` table indexes them by device: each
+running job's id with its device and conversation, written before the job
+starts and deleted with the command's end. A runner's hello names its jobs,
+and the table says which conversation each belongs to, so a backend that
+starts again takes the commands up when their runners connect, and restores
+a conversation's tree when one of its commands reports
 ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence));
 a command whose runner lost it ends as lost, with its reason, in
 `command_outputs`.
@@ -602,7 +599,7 @@ column value outside its set, a JSON value that does not match its type, or a
 sealed value that does not open is corrupt: the read fails with an error that
 names the table and column, and nothing repairs, replaces or defaults the
 value. The tree store reads a checkpoint the same way: its model selection,
-transcript blocks, queued input, scheduled wakeups and edit
+transcript blocks, queued input, command reports, command intervals and edit
 receipts are decoded into their types, and corrupt data stops the restore.
 
 A digest of a JSON value is SHA-256 over its RFC 8785 canonical form, which

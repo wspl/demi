@@ -28,7 +28,7 @@ layout and interaction; these documents do not repeat it.
 
 ## How does the agent run a conversation?
 
-- [Agent runtime](agent/runtime.md): sessions and turns with what the product supplies, input, yield wakeups, the standard tools, the transcript and its context blocks, the rendering boundary, the frame protocol and the tree store.
+- [Agent runtime](agent/runtime.md): sessions and turns with what the product supplies, input, command reports, the tool, the transcript and its context blocks, the rendering boundary, the frame protocol and the tree store.
 - [Subagents](agent/subagents.md): the session tree, `demi agent` commands, agent messages, results, profiles and persistence.
 - [Compaction](agent/compaction.md): compaction through a session copy, token estimates, request sizes and window switches.
 - [Failures and recovery](agent/failures-and-recovery.md): the failure record and how it is read, retries, and resuming an interrupted turn.

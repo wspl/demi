@@ -799,7 +799,7 @@ completion. For example:
 ```
 
 The caller sees `started`, then a running job, then `done` and completion.
-A tool timeout returns the running job's handle. `shell_status` observes that job,
+A tool timeout returns the running job's handle. `demi shell status` observes that job,
 and `demi shell stop` stops it ([Cancellation and completion](#cancellation-and-completion)).
 Background tasks remain job-owned rather than becoming detached services.
 
@@ -1191,7 +1191,7 @@ few busy jobs can outgrow `/run`'s memory
 
 A job starts unfollowed. `job_follow { jobId, follow }` starts or stops the
 following; the backend follows a job while a page shows its conversation
-([Live output](../agent/runtime.md#live-output)). The model's `shell_status`
+([Live output](../agent/runtime.md#live-output)). The model's `demi shell status`
 shows the output since its previous look; `demi shell output` prints the whole
 output ([The whole output](../agent/runtime.md#the-whole-output)).
 
