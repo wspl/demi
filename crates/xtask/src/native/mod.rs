@@ -46,7 +46,7 @@ pub enum Error {
         target: &'static str,
     },
     #[error(
-        "the Apple targets need the Apple SDK {}: pass --sdk or set SDKROOT",
+        "the Apple targets need the Apple SDK {}: pass --sdk or set SDKROOT, or on a Mac install the Command Line Tools, whose SDK xcrun --show-sdk-path names",
         build::APPLE_SDK_VERSION
     )]
     NoSdk,
