@@ -380,7 +380,12 @@ impl Child {
     pub fn wait(&mut self) -> std::io::Result<ExitStatus> {
         self.stdin.take();
         loop {
-            super::check_cancelled();
+            // A program ends in its own time once the invocation's work is
+            // to stop, unless it is to be killed; a utility ends with it.
+            match self.inner {
+                Running::Process(_) => super::check_processes(),
+                Running::Utility(_) => super::check_cancelled(),
+            }
             if let Some(status) = self.try_wait()? {
                 return Ok(status);
             }

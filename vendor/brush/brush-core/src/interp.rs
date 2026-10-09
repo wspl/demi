@@ -154,6 +154,11 @@ impl ExecutionParameters {
         self.open_files.set_fd(fd, file);
     }
 
+    /// Moves every controlled file of this context to `control`.
+    pub(crate) fn rebind(&mut self, control: &std::sync::Arc<dyn crate::execution_host::FileControl>) {
+        self.open_files.rebind(control);
+    }
+
     /// Iterates over all open file descriptors in this context.
     ///
     /// # Arguments
@@ -258,7 +263,7 @@ impl Execute for ast::CompoundList {
             let run_async = matches!(sep, ast::SeparatorOperator::Async);
 
             if run_async {
-                let job = spawn_async_ao_list_in_task(ao_list, shell, params);
+                let job = spawn_async_ao_list_in_task(ao_list, shell, params)?;
                 let job_formatted = job.to_pid_style_string();
 
                 if shell.options().interactive && !shell.is_subshell() {
@@ -286,11 +291,13 @@ fn spawn_async_ao_list_in_task<'a, SE: extensions::ShellExtensions>(
     ao_list: &ast::AndOrList,
     shell: &'a mut Shell<SE>,
     params: &ExecutionParameters,
-) -> &'a jobs::Job {
+) -> Result<&'a jobs::Job, error::Error> {
     // Clone the inputs.
     let mut cloned_shell = shell.clone();
     let mut cloned_params = params.clone();
     let cloned_ao_list = ao_list.clone();
+    // The task's host, if it gives the task one, owns its work from here on.
+    let (task_id, task_guard) = cloned_shell.start_background_task(&mut cloned_params)?;
 
     // Mark the child shell as not interactive; we don't want it messing with the terminal too much.
     cloned_shell.options_mut().interactive = false;
@@ -303,7 +310,7 @@ fn spawn_async_ao_list_in_task<'a, SE: extensions::ShellExtensions>(
     });
     cloned_params.set_fd(openfiles::OpenFiles::STDIN_FD, null);
 
-    let guard = cloned_shell.execution_guard();
+    let guard = (cloned_shell.execution_guard(), task_guard);
     let join_handle = tokio::task::spawn_blocking(move || {
         let _guard = guard;
         tokio::runtime::Handle::current().block_on(async move {
@@ -313,10 +320,13 @@ fn spawn_async_ao_list_in_task<'a, SE: extensions::ShellExtensions>(
         })
     });
 
-    shell.jobs_mut().add_as_current(jobs::Job::new(
-        [jobs::JobTask::Internal(join_handle)],
-        ao_list.to_string(),
-        jobs::JobState::Running,
+    Ok(shell.jobs_mut().add_as_current(
+        jobs::Job::new(
+            [jobs::JobTask::Internal(join_handle)],
+            ao_list.to_string(),
+            jobs::JobState::Running,
+        )
+        .with_task_id(task_id),
     ))
 }
 
@@ -807,8 +817,11 @@ impl Execute for ast::CoprocessCommand {
             .open_files
             .set_fd(OpenFiles::STDOUT_FD, stdout_writer);
 
+        // The coprocess's host, if it gives it one, owns its work from here on.
+        let (task_id, task_guard) = child_shell.start_background_task(&mut child_params)?;
+
         let body = self.body.clone();
-        let guard = child_shell.execution_guard();
+        let guard = (child_shell.execution_guard(), task_guard);
         let join_handle = tokio::task::spawn_blocking(move || {
             let _guard = guard;
             tokio::runtime::Handle::current().block_on(async move {
@@ -826,12 +839,18 @@ impl Execute for ast::CoprocessCommand {
             })
         });
 
-        let job = shell.jobs_mut().add_as_current(jobs::Job::new(
-            [jobs::JobTask::Internal(join_handle)],
-            format!("coproc {name}"),
-            jobs::JobState::Running,
-        ));
-        let job_id = job.id;
+        let job = shell.jobs_mut().add_as_current(
+            jobs::Job::new(
+                [jobs::JobTask::Internal(join_handle)],
+                format!("coproc {name}"),
+                jobs::JobState::Running,
+            )
+            .with_task_id(task_id),
+        );
+        // As bash sets the coprocess's process ID: its task's id where it has one.
+        let job_id = job
+            .representative_pid()
+            .map_or_else(|| job.id.to_string(), |pid| pid.to_string());
 
         // Fill out the fd variable.
         let arr_value = ShellValue::from(vec![stdout_fd.to_string(), stdin_fd.to_string()]);
@@ -843,7 +862,7 @@ impl Execute for ast::CoprocessCommand {
         let pid_name = format!("{name}_PID");
         shell
             .env_mut()
-            .set_global(pid_name, ShellVariable::new(job_id.to_string()))?;
+            .set_global(pid_name, ShellVariable::new(job_id))?;
 
         Ok(ExecutionResult::success())
     }
