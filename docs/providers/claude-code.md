@@ -5,8 +5,10 @@ installs and updates its own copy of that CLI on the machines that run it. It
 never uses a `claude` found on `PATH`, a copy the machine's owner installed, or
 a system package: what runs is a version Demi chose and verified.
 
-The CLI is started with no tools of its own, no session persistence and no
-device configuration, so it is a channel to the vendor and nothing else. It
+The CLI is started with no tools of its own and no device configuration, so
+it is a channel to the vendor and nothing else, and every process resumes a
+session file the provider writes from the conversation's blocks, so the model
+sees its real history and the vendor's cache holds across processes. It
 does not touch the workspace, which is why **where it runs is a choice**, not a
 consequence of where the conversation's files are. The model's tools still run
 where the conversation's tools run: the CLI hands each tool call back to Demi,
@@ -48,10 +50,11 @@ backend's as well. The runner keeps no credential of its own: an access
 token reaches the Cloud only on a CLI process's file descriptor, and the
 process's private directory goes with the process.
 
-The provider replays the transcript itself and turns the CLI's session
-persistence off. A new process, after a Cloud stop or reset or a change of
-account, model or thinking setting, starts from the backend's transcript, so
-nothing depends on an earlier CLI session.
+The backend's transcript stays the only record. A new process, after a Cloud
+stop or reset, a change of account, model or thinking setting, or any other
+reason, resumes a session file the provider writes from the transcript
+([The session a process resumes](#the-session-a-process-resumes)), so nothing
+depends on an earlier process or on files the Cloud kept.
 
 The provider uses the same Host process interface as every other Host
 operation ([Host operations](../execution/runner.md#host-operations)), not a
@@ -262,7 +265,8 @@ afterwards. Nothing in the lifecycle names Claude Code.
 The process is **retained** between turns and is not activity
 ([Activity](../execution/resource-lifecycle.md#activity)): a Cloud that goes
 idle stops with the process in it, and the next request wakes the Cloud, starts
-the CLI again and replays the transcript. It runs in `~/.demi/claude/run` on the
+the CLI again, which resumes the conversation's session
+([The session a process resumes](#the-session-a-process-resumes)). It runs in `~/.demi/claude/run` on the
 Cloud, with a private configuration directory of its own
 ([Accounts and sign-in](#accounts-and-sign-in)), not in the
 conversation's directory, which on a paired device is a path the Cloud does not
@@ -321,8 +325,12 @@ thinking setting.
 
 **Starting.** A new process gets:
 
-- no tools of its own, no session persistence, no slash commands and no
-  permission prompts;
+- no tools of its own, no slash commands and no permission prompts;
+- `--resume <session>` of the session file the provider wrote, with
+  `--session-mirror`, so the CLI prints every entry it adds to the session,
+  and `--system-prompt-snapshot off`, so each request carries the system
+  prompt and tools the provider passes rather than those recorded in the
+  session;
 - the request's model, system prompt and thinking effort;
 - stream-json input and output with partial messages, so reasoning and text
   stream as they are generated;
@@ -330,8 +338,11 @@ thinking setting.
   configuration directory, and an environment with the CLI's
   updater and its automatic compaction turned off (Demi compacts the
   conversation itself), an MCP tool-output limit of one million tokens so the
-  CLI does not cut a result Demi sends, and `CLAUDECODE` unset so the CLI never
-  treats itself as running inside another Claude Code session.
+  CLI does not cut a result Demi sends, `CLAUDECODE` unset so the CLI never
+  treats itself as running inside another Claude Code session,
+  `CLAUDE_CODE_PROJECT_DIR_NAME` naming the session's directory, and
+  `CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1`, so a session that ends with input
+  not yet answered is answered at once.
 
 When the request offers tools, the provider first sends the CLI an `initialize`
 control request that declares one SDK MCP server, and waits for its success,
@@ -339,21 +350,70 @@ answering the control requests the CLI sends meanwhile and keeping its other
 lines, such as the `system` line it prints first, for the run; a refusal, or
 an exit before the answer, fails the run.
 
-It then writes the transcript as one user message. The CLI keeps no order
-among the lines of a history: it adds an `assistant` line to its history at
-once, and merges every `user` line into the prompt of its next turn,
-`shouldQuery: false` included, so the lines `[user, assistant, user]` reach
-the vendor as `[assistant, user + user]` (Claude Code 2.1.283). The one
-message holds the transcript as text in order. Each speaker's part opens with
-`User:` or `Assistant:`, and a blank line separates the parts: the user's
-messages and steers with only the user's real input, their images and
-documents as blocks in their places; the model's text; its earlier tool calls
-and their results in its own words; and no earlier reasoning, whose signatures
-do not hold for a new process. The user's new input is the last part. For
-example, the process that starts after a Stop receives `User: Write a long
-answer.`, `Assistant: The long answer begins` and `User: Answer briefly
-instead.` as one text. A transcript of the user's input alone, as at a
-conversation's first request, is written as that input.
+It does not write the transcript into the process: the session file holds it,
+and the process answers the input at its end.
+
+### The session a process resumes
+
+For example, a conversation ran three turns with Claude Code, switched to a
+GPT model for one, and switches back. The new CLI process resumes a session
+file that holds the three Claude turns exactly as the CLI wrote them, the GPT
+turn written in Claude's format, and the user's new message last. The request
+the CLI sends begins with the bytes the third Claude turn's last request sent,
+so the vendor reads that part from its cache; the model sees its own tool
+calls under their real names, `mcp__main__shell_exec`, and their results, not
+a retelling.
+
+Writing the history as text, as an earlier design did, cost both: every new
+process sent a new prefix and paid for the whole history again, and the model
+read its own tool calls as `[Earlier in this conversation I called the tool
+shell_exec with input: …]`, under names unlike its tools'.
+
+- **Entries are kept on the blocks.** The CLI prints each batch of entries it
+  adds to its session (`transcript_mirror`). The provider keeps each entry on
+  the block it belongs to, as other vendors' fields are kept on theirs
+  ([Per vendor](providers.md#per-vendor)): the user's message on its `user`
+  block, the model's text, thinking and tool calls on theirs, the result of a
+  call on its `tool_call` block. An entry that stands for no block, such as
+  a `date` attachment, belongs to the next block. A medium in an entry is
+  kept as a reference to the medium the block already holds, and its bytes
+  return when the file is written.
+- **The file is written from the blocks** the replay would send
+  ([Replay](../agent/runtime.md#replay)), in their order, into the process's
+  configuration directory, before the process starts. A block with entries
+  gives them as they are. A block without, one another provider produced or
+  input Demi wrote, gives entries in the CLI's format: the user's input as a
+  `user` entry, text and tool calls as `assistant` entries with the tool
+  names the CLI gives them, results as `tool_result` entries; reasoning of
+  another vendor is left out, and stays on its block for that vendor. Each
+  entry's `parentUuid` names the entry before it, so the chain is whole
+  wherever blocks were cut out. The vendor does not see these fields, so
+  the bytes it reads are those the blocks hold.
+- **The input to answer is last.** A session file ends with the input the
+  request carries: a user message, which the CLI answers as it is, or the
+  results of a batch a process held when it ended, after which the CLI adds
+  its own `Continue from where you left off.`, which is what happened.
+- **The CLI's context.** The CLI adds its own context after the first user
+  message of a session: an `environment` entry, with the directory, system
+  and shell it runs in, `model` and `date` entries. The environment would
+  describe the Cloud the CLI runs on, not the conversation's Host, which the
+  agent learns from its context block
+  ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)).
+  So the provider writes that entry itself, with no text, and with the
+  snapshot of the machine the CLI runs on, its run directory, platform, shell
+  and kernel release, which the CLI compares with its own and so adds no
+  other. The `model` and `date` entries are the CLI's and stay true.
+- **What cuts or copies history** needs nothing of the CLI: an edit, a retry
+  or a resume cuts the blocks, and the next process resumes the file written
+  from what remains. A fork copies the blocks with their entries; its file
+  carries the fork's session id in every entry and new entry ids, as the
+  Agent SDK's fork does. After a compaction the file starts with the summary.
+
+These rules use the session file as the CLI 2.1.295 reads it, which the
+vendor documents only as a file to move between machines; the
+[Claude Code suite](../delivery/scenarios.md#claude-code-suite) checks each
+of them against the CLI it is given, so a release that changes them is found
+before it reaches a user.
 
 **Continuing.** A kept process receives only what the transcript gained since
 its last request: the new user messages, steers included. The provider closes
@@ -366,7 +426,7 @@ the same when the request gains nothing to send: no new user message and no
 results for calls the process holds. That is a retry of a turn that failed,
 such as one the vendor refused as overloaded; the kept process already holds
 the transcript and would wait for input that never comes, so a new one
-replays it.
+resumes the history the retry cut back to.
 
 Output that a kept process printed after the previous run ended belongs to no
 request, as when the CLI answered a steer in a turn of its own after the run
@@ -534,9 +594,13 @@ a failed installation. The routes are listed in
   only after the first was answered, is answered at once from the stored
   result.
 - A second request continues in the same process and writes only the new user
-  message; after the first message is edited, a new process starts and replays
-  the transcript. A retry of a failed turn, which gains no input, starts a new
-  process that replays the transcript.
+  message; after the first message is edited, a new process resumes a
+  session file written from the edited blocks. A retry of a failed turn,
+  which gains no input, starts a new process that resumes the cut history.
+- A new process's first request begins with the bytes of the previous
+  process's last request, history included; a turn of another provider in
+  between is written in Claude's format; the request carries no environment
+  text of the CLI's.
 - Cancelling a run closes the process and ends the run without an event; a
   process that ignores SIGTERM is killed after five seconds.
 - After another account is selected, the next request starts a new process
