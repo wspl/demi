@@ -85,7 +85,15 @@ failed.
 
 A migration is SQL, or a Rust function on the transaction where SQL cannot
 express the change, such as re-encoding a stored value; what it writes goes
-through the same encoding and validation as any write. The control database
+through the same encoding and validation as any write.
+
+A value stored as JSON is part of its schema too: the schema's text names the
+format of each such column in a comment, such as
+`-- blocks.block: transcript block format 2`. A release that changes what such
+a value holds, such as a field a stored block no longer carries, raises that
+number, so the schema's text and version change, and its migration re-encodes
+the stored values. Decoding stays strict, so a value of an earlier format is
+never read as if it were the current one. The control database
 is migrated as the backend starts, before it serves
 ([Startup and shutdown](backend.md#startup-and-shutdown)); a conversation's
 database when its conversation is next opened, so a start does not wait for
@@ -180,7 +188,8 @@ input, which the multi-worker control service also relies on
   transaction, so a move a restart interrupted is made at the next start,
   as soon as the tree is idle, which a closed tree is. The full agent checkpoint
   belongs to the conversation database. `conversation_hosts` stores attached
-  devices with a name unique within the conversation, their last cwd, and
+  devices with a name unique within the conversation, the directory their
+  commands start in, and
   whether an agent's `demi host detach` waits for the tree to be idle.
   `conversation_panels` stores each conversation's
   [work panel tabs](../product/web-api.md#work-panel-state): the revision,
@@ -279,7 +288,7 @@ Host. The node lifecycle and its commits are defined in
 | Table | Meaning |
 |---|---|
 | `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description, its profile's name and the instructions the profile replaced ([Persistence](../agent/subagents.md#persistence)), whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, output revision, and when the earliest wakeup the checkpoint state saves is due (`wakeup_at`, encoded as the index of conversations encodes it), which each save writes with the state, so the conversation's earliest wakeup is the least over its nodes; a root whose last turn was interrupted has none, since its wakeups wait for the user to resume it ([Yield wakeups](../agent/runtime.md#yield-wakeups)) |
-| `sequences` | The next number of each sequence the model sees in the conversation: commands, shells, agents, conversation browser tabs and attachments. The backend advances a sequence in its own transaction before it gives the number out, by the count a native service asks for when it reserves several ([Conversation numbers](../execution/native-runtime.md#conversation-numbers)), so a crash leaves a gap and never gives a number twice |
+| `sequences` | The next number of each sequence the model sees in the conversation: commands, agents, conversation browser tabs and attachments. The backend advances a sequence in its own transaction before it gives the number out, by the count a native service asks for when it reserves several ([Conversation numbers](../execution/native-runtime.md#conversation-numbers)), so a crash leaves a gap and never gives a number twice |
 | `blocks` | One transcript block per node and block index |
 | `command_outputs` | The record of each ended command's whole output, by command id ([Command outputs](#command-outputs)) |
 | `attachments` | Each attachment the agent uploaded, by its number: the file's name, its media type, its size and its blob ([Attachment commands](../execution/commands.md#attachment-commands)); a Fork's seed copies the rows, and the blobs stay shared |

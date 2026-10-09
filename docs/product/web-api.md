@@ -206,8 +206,8 @@ not have 404 `device_not_found`. A rename reaches every page of the user in
 the product state; the names a conversation gives its attached hosts are its
 own and do not change with it.
 
-Attached-host responses contain device identity, name, cwd, online state, and
-attachment time. A detach is a transition, like a target
+Attached-host responses contain device identity, name, the directory its
+commands start in (`cwd`), online state, and attachment time. A detach is a transition, like a target
 change; detaching a device that is not attached answers 204.
 Changes follow [Attached hosts](../execution/sessions-and-targets.md#attached-hosts).
 
@@ -986,8 +986,7 @@ the revision of the conversation's
 draft itself only when this number is higher than the revision it holds, so a
 summary carries no draft's text. `hostsRevision` is the revision of the
 conversation's [attached hosts](../execution/sessions-and-targets.md#attached-hosts),
-which an attach, a detach, a rename or the directory a host's shell recorded
-raises, read by the page the same way. `panelRevision` is the revision of the
+which an attach, a detach or a rename raises, read by the page the same way. `panelRevision` is the revision of the
 conversation's [work panel](#work-panel-state), 0 before its first change,
 read the same way. `pluginRevisions` does the same for each
 plugin's [conversation state](#conversation-state-of-plugins), as

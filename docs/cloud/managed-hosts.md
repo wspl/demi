@@ -281,18 +281,22 @@ runner's are on the system image, in directories the image makes for the
 `demi` user ([Root filesystem contents](images.md#root-filesystem-contents)):
 
 - `/var/lib/demi/jobs/`, the job root: the directory of each running job,
-  with its kept output of up to 16 MiB and its scratch directory
+  with its kept output of up to 16 MiB
   ([Pipes and output](../execution/runner.md#pipes-and-output)). It goes once
   the backend has read the job's end, so it holds nothing after a stop, and the
   runner removes any job directory it finds there when it starts.
+- `/var/lib/demi/tmp/`, the temporary directory: the runner's environment
+  names it as `TMPDIR`, so jobs and every program they start put their
+  temporary files there ([Shell jobs](../execution/runner.md#shell-jobs)).
+  The runner empties it when it starts, which in a Cloud is once per boot.
 - `/var/log/demi/`, the [Host log](../execution/runner.md#host-log), which
   outlives a stop.
 
-Neither belongs in `/run`, 256 MiB of memory: a few busy jobs' kept output and
-scratch directories alone can fill it, and the Host log must outlive the stop
-that empties `/run`. Neither belongs under `/home` either: home is the user's
-volume and survives a reset, while these are Demi's working files, which a
-reset removes with the rest of the system.
+None belongs in `/run` or `/tmp`, 256 MiB of memory each: a few busy jobs'
+kept output, or one build's temporary files, can fill them, and the Host log
+must outlive the stop that empties `/run`. None belongs under `/home`
+either: home is the user's volume and survives a reset, while these are
+Demi's working files, which a reset removes with the rest of the system.
 
 The manager keeps bases, generations, and working pairs under its state
 directory, `DEMI_MANAGED_DATA`, which must be one filesystem
@@ -404,7 +408,8 @@ The OCI process is a shipped minimal init (`tini`) running as `demi`, UID/GID
 1000, which starts the runner, `/opt/demi/bin/demi-runner`, and reaps orphaned
 descendants. The runner's environment names its release in `DEMI_RELEASE_ID`,
 from the manifest of the base it comes from, which the runner presents to the
-backend ([Runner updates](../execution/runner.md#runner-updates)). The manager
+backend ([Runner updates](../execution/runner.md#runner-updates)), and its
+temporary directory in `TMPDIR`, `/var/lib/demi/tmp` ([Images](#images)). The manager
 supplies mounts, network configuration, and, with its
 [resource limits](#resource-limits) on, the cgroup limits before start. The
 runner is an ordinary process; it does not mount a root filesystem, configure
