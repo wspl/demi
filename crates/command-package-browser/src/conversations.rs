@@ -30,7 +30,7 @@ use demi_command_package_browser_chrome::tabs::{
 };
 use demi_command_package_browser_protocol::OperationError;
 use demi_command_protocol::{
-    ColorScheme, CommandLocale, Completion, ConversationRequest, ConversationStatus,
+    ColorScheme, CommandError, CommandLocale, Completion, ConversationRequest, ConversationStatus,
     MAX_MEDIUM_BYTES,
     StdoutTarget,
 };
@@ -924,25 +924,37 @@ impl Conversations {
                         details.debugging_callers = Some(callers);
                     }
                 }
-                let bytes = if json {
-                    serde_json::to_vec(&FailureDocument {
+                let exit_code = match code {
+                    BrowserErrorCode::InvalidInput => 2,
+                    BrowserErrorCode::Cancelled => 130,
+                    _ => 1,
+                };
+                if json {
+                    let document = serde_json::to_vec(&FailureDocument {
                         error: BrowserFailure {
                             code,
                             message,
                             details: Some(details),
                         },
-                    })?
-                } else {
-                    output::render_error(code, &message, &details).into_bytes()
-                };
-                context.output.stderr(Bytes::from(bytes)).await?;
+                    })?;
+                    context.output.stderr(Bytes::from(document)).await?;
+                    return Ok(Completion {
+                        exit_code,
+                        error: None,
+                    });
+                }
+                // The context first; the dispatcher writes the error as the
+                // last line, after the command's path.
+                let rendered = output::render_error(code, &message, &details);
+                if !rendered.context.is_empty() {
+                    context.output.stderr(Bytes::from(rendered.context)).await?;
+                }
                 Ok(Completion {
-                    exit_code: match code {
-                        BrowserErrorCode::InvalidInput => 2,
-                        BrowserErrorCode::Cancelled => 130,
-                        _ => 1,
-                    },
-                    error: None,
+                    exit_code,
+                    error: Some(CommandError {
+                        code: code.to_string(),
+                        message: rendered.error,
+                    }),
                 })
             }
         }

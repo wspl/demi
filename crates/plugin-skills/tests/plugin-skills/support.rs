@@ -57,12 +57,17 @@ impl Plugged {
             user: user(),
             invocation: Box::new(invocation),
         };
-        let reply = self.plugin.call(request, self.demi.port()).await.unwrap();
-        let Reply::Exit { code } = reply else {
-            panic!("{reply:?}")
-        };
         let text = |bytes: Vec<u8>| String::from_utf8(bytes).unwrap();
-        (code, text(memory.stdout()), text(memory.stderr()))
+        // A failure is told as the backend's dispatcher tells it, after the
+        // command's path (`commands.md` § Handle an rpc call).
+        let (code, told) = match self.plugin.call(request, self.demi.port()).await {
+            Ok(Reply::Exit { code }) => (code, String::new()),
+            Err(PluginError::Failed { message }) => {
+                (1, format!("{}: {message}\n", parsed.path.join(" ")))
+            }
+            other => panic!("{other:?}"),
+        };
+        (code, text(memory.stdout()), text(memory.stderr()) + &told)
     }
 
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, PluginError> {
