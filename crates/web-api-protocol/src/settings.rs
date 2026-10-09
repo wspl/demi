@@ -214,6 +214,16 @@ pub struct ProjectHostChoice {
     pub device_id: Option<DeviceId>,
 }
 
+/// What a message the user sends while the agent works does (`product.md` §
+/// Steer or queue): steer the running turn or wait in the queue. Absent
+/// means steer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SendWhileRunning {
+    Steer,
+    Queue,
+}
+
 /// A user's saved preferences.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -262,6 +272,15 @@ pub struct Preferences {
     #[schemars(with = "ColorScheme")]
     #[garde(skip)]
     pub color_scheme: Option<ColorScheme>,
+    /// What Enter does with a message while the agent works.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "SendWhileRunning")]
+    #[garde(skip)]
+    pub send_while_running: Option<SendWhileRunning>,
     /// The limit the user set on the context window of each model, in
     /// tokens, by provider entry id and then model id (`models.md` § Context
     /// limit); a model it does not name uses its full window.
@@ -369,6 +388,15 @@ pub struct PreferencesPatch {
     #[schemars(with = "ColorScheme")]
     #[garde(skip)]
     pub color_scheme: Option<ColorScheme>,
+    /// What Enter does with a message while the agent works.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "SendWhileRunning")]
+    #[garde(skip)]
+    pub send_while_running: Option<SendWhileRunning>,
     /// One model's context limit; the other models keep theirs.
     #[serde(
         default,

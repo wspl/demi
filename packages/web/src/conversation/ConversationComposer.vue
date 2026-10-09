@@ -15,6 +15,7 @@ import {
   remoteAttachmentError,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
+import type { SendWay } from '@demicodes/web-ui/agent/send-way'
 import { executionFor } from '../targets/execution'
 import { composerModel } from '@demicodes/web-ui/agent/model-selection'
 import { useConversations } from './store'
@@ -82,9 +83,9 @@ const replaced = computed(() => {
 function openProviders() {
   void settings.open('models')
 }
-function send() {
+function send(way: SendWay) {
   if (canSend.value) {
-    void store.send(props.conversation)
+    void store.send(props.conversation, way === 'steer' ? 'steer' : 'message')
   }
 }
 
@@ -195,6 +196,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       focus-on-show
       :running="conversation.phase === 'running' || startingTurn"
       :compacting="conversation.phase === 'compacting'"
+      :send-while-running="preferences.sendWhileRunning"
       :disabled="!!conversation.pendingSend"
       :can-configure="resources.canConfigure"
       :attachments="

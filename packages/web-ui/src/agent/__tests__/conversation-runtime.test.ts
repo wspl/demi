@@ -199,6 +199,98 @@ test('a queued message sent now steers the running turn, and runs next without a
   }
 })
 
+test('a steer the session accepts waits as a pending steer, and one it refuses, as an ending turn does, goes as a message with its id and no error', async () => {
+  const h = clientHarness()
+  const current = state()
+  const runtime = new ConversationRuntime({ state: current, connect: async () => h.client })
+  const content = [{ type: 'text' as const, text: 'skip the e2e tests' }]
+  try {
+    await runtime.connect()
+    h.receive({ type: 'phase', phase: 'running' })
+    const accepted = runtime.steer(content, 'first')
+    await waitFor(() => h.sent.at(-1)?.type === 'steer')
+    expect(h.sent.at(-1)).toEqual({ type: 'steer', steerId: 'first', content })
+    h.receive({ type: 'steer_result', steerId: 'first', outcome: { status: 'accepted' } })
+    await accepted
+    // The turn is ending: the session refuses the next steer.
+    const refused = runtime.steer(content, 'second')
+    await waitFor(() => h.sent.at(-1)?.type === 'steer')
+    h.receive({ type: 'steer_result', steerId: 'second', outcome: { status: 'rejected', reason: 'The running turn is finishing' } })
+    await waitFor(() => h.sent.at(-1)?.type === 'send')
+    expect(h.sent.at(-1)).toEqual({ type: 'send', messageId: 'second', content })
+    h.receive({ type: 'queue', queue: [{ id: 'second', content }] })
+    await refused
+    expect(h.sent.map((frame) => frame.type)).toEqual(['open', 'steer', 'steer', 'send'])
+    expect(current.lastError).toBeNull()
+  } finally {
+    runtime.dispose()
+  }
+})
+
+for (const held of [true, false]) {
+  test(`a steer whose socket is lost before the session answered is ${held ? 'not sent again when the reopened session lists it' : 'sent as a message when the reopened session holds it nowhere'}`, async () => {
+    const sockets = playSockets()
+    const current = state()
+    const runtime = new ConversationRuntime({
+      state: current,
+      connect: (signal) => connectConversationClient('ws://fixture', signal),
+    })
+    jest.useFakeTimers()
+    const random = spyOn(Math, 'random').mockReturnValue(0)
+    const content = [{ type: 'text' as const, text: 'skip the e2e tests' }]
+    const steer: PendingSteer = { id: 'steer', turnId: 'turn', model, content }
+    try {
+      const opening = runtime.connect()
+      const lost = sockets.last()
+      lost.open()
+      await turn()
+      lost.receive({ type: 'opened' })
+      await opening
+      lost.receive({ type: 'phase', phase: 'running' })
+      lost.receive({ type: 'pending_steers', pendingSteers: [] })
+      let settled = false
+      const steering = runtime.steer(content, 'steer').finally(() => {
+        settled = true
+      })
+      await turn()
+      expect(lost.sent.at(-1)).toEqual({ type: 'steer', steerId: 'steer', content })
+      // The network drops the socket before the session's answer arrives.
+      lost.end()
+      await turn()
+      expect(settled).toBe(false)
+      jest.advanceTimersByTime(1000)
+      await turn()
+      const next = sockets.last()
+      expect(next).not.toBe(lost)
+      next.open()
+      await turn()
+      next.receive({ type: 'opened' })
+      await turn()
+      // Nothing goes before the session has shown what it holds.
+      expect(next.sent).toEqual([{ type: 'open' }])
+      next.receive({ type: 'transcript_reset', version: { epoch: 'epoch', revision: 1 }, blocks: [] })
+      next.receive({ type: 'phase', phase: 'running' })
+      next.receive({ type: 'queue', queue: [] })
+      next.receive({ type: 'pending_steers', pendingSteers: held ? [steer] : [] })
+      await turn()
+      if (held) {
+        await steering
+        expect(next.sent).toEqual([{ type: 'open' }])
+      } else {
+        expect(next.sent).toEqual([{ type: 'open' }, { type: 'send', messageId: 'steer', content }])
+        next.receive({ type: 'queue', queue: [{ id: 'steer', content }] })
+        await steering
+      }
+      expect(current.lastError).toBeNull()
+    } finally {
+      random.mockRestore()
+      jest.useRealTimers()
+      runtime.dispose()
+      sockets.restore()
+    }
+  })
+}
+
 test('a view whose tree another client disposed opens it again after the first wait, as after a lost connection', async () => {
   const harnesses = [clientHarness(), clientHarness()]
   const current = state()
