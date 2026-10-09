@@ -1,4 +1,4 @@
-use demi_command_protocol::EditContext;
+use demi_command_protocol::{EditContext, EditKind};
 use demi_command_sdk::edits::Recorder;
 use demi_runner_shell::testing::{Scope, ShellOptions, execute};
 use std::{collections::BTreeMap, fs, path::Path};
@@ -141,5 +141,109 @@ async fn another_job_cannot_change_an_already_captured_after_side() {
             ("before\n".to_owned(), "A\n".to_owned()),
             ("B\n".to_owned(), "C\n".to_owned())
         ]
+    );
+}
+
+/// The edit `mv` makes: a file renamed over another, as an editor or a
+/// formatter replaces it from a temporary file, is that file modified with
+/// both sides, as is `sed -i`'s rename; a backup it keeps is no edit.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_file_replaced_by_a_rename_is_modified_with_both_sides() {
+    let root = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let tracking = recorder(root.path(), "job");
+    for (name, contents) in [
+        ("page.ts", "old page\n"),
+        ("style.css", "old style\n"),
+        ("config", "debug=1\n"),
+    ] {
+        fs::write(root.path().join(name), contents).unwrap();
+    }
+    // A formatter's output, written before the job.
+    fs::write(outside.path().join("style.css"), "new style\n").unwrap();
+    let outside = outside.path().display();
+    run(
+        root.path(),
+        tracking.clone(),
+        &format!(
+            "printf 'new page\\n' > {outside}/page.ts; mv {outside}/page.ts page.ts; \
+             mv -b {outside}/style.css style.css; sed -i 's/1/2/' config"
+        ),
+    )
+    .await;
+    let edits: Vec<_> = tracking
+        .report()
+        .unwrap()
+        .files
+        .iter()
+        .map(|file| {
+            assert_eq!(file.kind, EditKind::Modified, "{}", file.path);
+            assert_eq!(file.edits.len(), 1, "{}", file.path);
+            let edit = &file.edits[0];
+            (
+                Path::new(&file.path).strip_prefix(root.path()).unwrap().to_owned(),
+                fs::read_to_string(edit.original.as_ref().unwrap()).unwrap(),
+                fs::read_to_string(edit.modified.as_ref().unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        edits,
+        [
+            ("page.ts".into(), "old page\n".into(), "new page\n".into()),
+            ("style.css".into(), "old style\n".into(), "new style\n".into()),
+            ("config".into(), "debug=1\n".into(), "debug=2\n".into()),
+        ] as [(std::path::PathBuf, String, String); 3]
+    );
+}
+
+/// A move carries the job's edits to the new name: a file written outside
+/// the workspace and moved in is added with its contents, an edited file
+/// renamed shows its edit under the new name, as do the files of a renamed
+/// folder, and a file moved unchanged records nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_move_carries_the_jobs_edits_to_the_new_name() {
+    let root = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let tracking = recorder(root.path(), "job");
+    fs::write(root.path().join("a.ts"), "a\n").unwrap();
+    fs::write(root.path().join("unchanged.ts"), "same\n").unwrap();
+    fs::create_dir(root.path().join("old")).unwrap();
+    fs::write(root.path().join("old/x.ts"), "x\n").unwrap();
+    let outside = outside.path().display();
+    run(
+        root.path(),
+        tracking.clone(),
+        &format!(
+            "printf 'created\\n' > {outside}/new.ts; mv {outside}/new.ts new.ts; \
+             printf 'more\\n' >> a.ts; mv a.ts b.ts; \
+             mv unchanged.ts still.ts; \
+             printf 'y\\n' >> old/x.ts; mv old moved"
+        ),
+    )
+    .await;
+    let edits: Vec<_> = tracking
+        .report()
+        .unwrap()
+        .files
+        .iter()
+        .map(|file| {
+            assert_eq!(file.kind, EditKind::Added, "{}", file.path);
+            assert_eq!(file.edits.len(), 1, "{}", file.path);
+            let edit = &file.edits[0];
+            (
+                Path::new(&file.path).strip_prefix(root.path()).unwrap().to_owned(),
+                edit.original.as_ref().map(|path| fs::read_to_string(path).unwrap()),
+                fs::read_to_string(edit.modified.as_ref().unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        edits,
+        [
+            ("new.ts".into(), None, "created\n".into()),
+            ("b.ts".into(), Some("a\n".into()), "a\nmore\n".into()),
+            ("moved/x.ts".into(), Some("x\n".into()), "x\ny\n".into()),
+        ] as [(std::path::PathBuf, Option<String>, String); 3]
     );
 }

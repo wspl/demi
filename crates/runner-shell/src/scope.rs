@@ -611,6 +611,11 @@ impl uucore::context::Control for UtilityControl {
         }
         self.scope.edit(&self.scope.file_path(file)?)
     }
+    /// `mv`'s own writes are untracked, its copying fallback being no
+    /// edit; its rename is recorded as the rename it is.
+    fn edit_rename(&self, from: &Path, to: &Path) -> Option<Box<dyn Send>> {
+        Some(Box::new(self.scope.edits.as_ref()?.rename(from, to)))
+    }
     fn check(&self) -> io::Result<()> {
         self.scope.check()
     }
