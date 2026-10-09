@@ -40,7 +40,9 @@ For example, a job writes `/tmp/x` and runs `mv /tmp/x src/new.ts`:
 `src/new.ts` is `added` with the contents written, and `/tmp/x`, gone, is
 omitted. A job that runs `mv /tmp/x src/page.ts` over an existing
 `src/page.ts` modifies it, from its old contents to the new. A job that only
-runs `mv a.ts b.ts` records nothing, since it changed no file's contents.
+runs `mv a.ts b.ts` records nothing, since it changed no file's contents. A
+renamed folder carries the edits recorded under each file in it: an append
+to `old/x.ts` followed by `mv old moved` shows as `moved/x.ts`.
 
 | Limit | Value | Beyond it |
 | --- | --- | --- |
