@@ -1,7 +1,7 @@
 //! A conversation whose Host changes, as after a target switch
-//! (`sessions-and-targets.md` § Host operations): a node keeps a shell per
-//! Host it used, and a command's handle answers only on the Host that runs
-//! it.
+//! (`sessions-and-targets.md` § Host operations): each command starts in
+//! the conversation's directory on the Host it runs on, and a command's
+//! handle answers only on the Host that runs it.
 
 use demi_agent_tools::testing::shown_output;
 use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
@@ -11,7 +11,7 @@ use crate::support::{Fixture, exec, reply, scripts, turn, within};
 
 // About two seconds: four messages run a shell job each, on two Hosts.
 #[tokio::test(flavor = "local")]
-async fn a_node_keeps_each_hosts_shell_and_a_handle_answers_only_on_its_host() {
+async fn each_command_starts_in_its_hosts_directory_and_a_handle_answers_only_on_its_host() {
     within(async {
         let (mut turns, recorded) =
             scripts(&[&["mkdir nested && cd nested && pwd"], &["pwd"], &["pwd"]]);
@@ -27,9 +27,9 @@ async fn a_node_keeps_each_hosts_shell_and_a_handle_answers_only_on_its_host() {
         let alice = fixture.work_in("alice");
         turn(&mut client, "message-1", "Make a nested directory.").await;
         let bob = fixture.work_in("bob");
-        turn(&mut client, "message-2", "Where is Bob's shell?").await;
+        turn(&mut client, "message-2", "Where does Bob's command run?").await;
         fixture.work_in("alice");
-        turn(&mut client, "message-3", "Where is Alice's shell?").await;
+        turn(&mut client, "message-3", "Where does Alice's command run?").await;
         let results = recorded.borrow().clone();
         let places: Vec<String> = results.iter().map(|result| shown_output(result)).collect();
         assert_eq!(
@@ -37,7 +37,7 @@ async fn a_node_keeps_each_hosts_shell_and_a_handle_answers_only_on_its_host() {
             [
                 format!("{alice}/nested\n"),
                 format!("{bob}\n"),
-                format!("{alice}/nested\n")
+                format!("{alice}\n")
             ]
         );
 

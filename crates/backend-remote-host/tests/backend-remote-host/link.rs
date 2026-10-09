@@ -90,7 +90,7 @@ fn watched_environment(host: RemoteHost, pages: Rc<TestPages>) -> RemoteShellEnv
     ))
 }
 
-/// An exec of `script` in the default shell, watched for a millisecond.
+/// An exec of `script`, watched for a millisecond.
 fn exec(script: &str) -> crate::runner::Exec {
     crate::runner::exec(script, 1)
 }
@@ -131,7 +131,6 @@ fn job_exit(job_id: &str, exit_code: Option<i32>, signal: Option<&str>) -> Outbo
         exit_code,
         signal: signal.map(str::to_owned),
         spawn_error: None,
-        cwd: None,
         output: None,
         files: Vec::new(),
         path_changes: Vec::new(),
@@ -973,7 +972,6 @@ async fn a_watched_command_is_followed_and_its_pages_view_holds_what_the_runner_
         exit_code: Some(0),
         signal: None,
         spawn_error: None,
-        cwd: None,
         output: Some(OutputLengths {
             stdout_bytes: stream.len() as u64,
             stderr_bytes: 0,
@@ -1181,7 +1179,6 @@ async fn a_job_the_runner_could_not_run_ends_127_with_the_runners_reason() {
             kind: demi_runner_protocol::wire::SpawnErrorKind::Other,
             detail: Some("the job was cancelled before it started".into()),
         }),
-        cwd: None,
         output: None,
         files: Vec::new(),
         path_changes: Vec::new(),
@@ -1333,7 +1330,6 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
         exit_code: Some(7),
         signal: None,
         spawn_error: None,
-        cwd: None,
         output: None,
         files: vec![JobFileChange {
             path: "/work/file".into(),
@@ -1821,7 +1817,6 @@ async fn an_unread_output_ends_with_the_newest_bytes_the_runner_sent() {
         exit_code: Some(1),
         signal: None,
         spawn_error: None,
-        cwd: None,
         output: Some(OutputLengths {
             stdout_bytes: length,
             stderr_bytes: 0,

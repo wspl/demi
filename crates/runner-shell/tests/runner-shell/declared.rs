@@ -69,7 +69,6 @@ async fn a_declared_command_reaches_the_jobs_handler() {
             .start(JobStart {
                 script: "/usr/bin/env; printf body | fixture --flag; echo \" $?\"".into(),
                 cwd: root.path().into(),
-                workspace: root.path().into(),
                 env: crate::home(root.path()),
                 live: false,
                 output: true,
@@ -89,7 +88,7 @@ async fn a_declared_command_reaches_the_jobs_handler() {
                 stdout.extend(chunk.bytes);
             }
         }
-        let (exit, _) = job.wait().await;
+        let exit = job.wait().await;
         assert_eq!(exit.code, Some(0), "{:?}", exit.error);
         let stdout = String::from_utf8(stdout).unwrap();
         let (environment, answered) = stdout.trim_end().rsplit_once('\n').unwrap();

@@ -95,7 +95,6 @@ fn result_text(status: &CommandStatus, text: &OutputText, sent_now: bool) -> Str
     }
     before.push(format!("commandId: {command}"));
     if running {
-        before.push(format!("shellId: {}", status.shell_id));
         before.push(format!("runningMs: {}", status.running_ms));
         before.push(format!("idleMs: {}", status.idle_ms));
     }
@@ -621,7 +620,6 @@ fn shell_view(status: &CommandStatus, text: &OutputText) -> ShellToolView {
     };
     ShellToolView {
         status: view_status(&status.state),
-        shell_id: status.shell_id.clone(),
         command_id: status.command_id.clone(),
         exit_code: match status.state {
             CommandState::Exited { exit_code, .. } => Some(exit_code),
@@ -709,7 +707,6 @@ mod tests {
             None,
         );
         CommandStatus {
-            shell_id: "3".try_into().unwrap(),
             command_id: "17".try_into().unwrap(),
             stdout: stream(),
             stderr: stream(),
@@ -769,7 +766,6 @@ mod tests {
         use demi_host_interface::{CommandRecord, Ending};
 
         let mut record = CommandRecord::new(
-            "3".try_into().unwrap(),
             "17".try_into().unwrap(),
             "call".into(),
         );
@@ -875,7 +871,6 @@ mod tests {
             [
                 "status: running",
                 "commandId: 17",
-                "shellId: 3",
                 "runningMs: 5",
                 "idleMs: 1",
                 "output:",
@@ -915,7 +910,6 @@ mod tests {
             [
                 "status: running",
                 "commandId: 17",
-                "shellId: 3",
                 "runningMs: 5",
                 "idleMs: 1",
                 "output:",

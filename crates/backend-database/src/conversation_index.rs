@@ -50,8 +50,7 @@ pub struct ConversationRecord {
     /// change.
     pub panel_revision: u64,
     /// The revision of the conversation's attached hosts, raised by each
-    /// change of them and of the directory a host's shell recorded; 0
-    /// before the first.
+    /// change of them; 0 before the first.
     pub hosts_revision: u64,
     /// How many of the conversation's permission requests are undecided.
     pub permission_requests: u64,
@@ -850,8 +849,10 @@ pub struct AttachedHostRecord {
     /// conversation.
     #[garde(length(min = 1))]
     pub name: String,
-    /// Where the last `demi host shell --host` there ended; none until one
-    /// ran.
+    /// The directory its commands start in, fixed when it was attached: the
+    /// conversation's directory there for a departed primary target; none
+    /// for a device `demi host attach` attached, whose commands start in its
+    /// home (`sessions-and-targets.md` § Attached hosts).
     #[serde(deserialize_with = "Option::deserialize")]
     #[garde(skip)]
     pub cwd: Option<String>,
@@ -963,33 +964,6 @@ impl ControlService {
             }
             transaction.commit()?;
             Ok(Some(revision))
-        })
-        .await
-    }
-
-    /// Records where the last `demi host shell --host` on the attached
-    /// `device` ended, which is where the next one there starts; answers
-    /// whether that changed the directory recorded, which raises the
-    /// hosts' revision.
-    pub async fn set_attached_cwd(
-        &self,
-        id: ConversationId,
-        device: DeviceId,
-        cwd: String,
-    ) -> Result<bool, StorageError> {
-        self.call(move |connection, _| {
-            let transaction = connection.transaction()?;
-            // `IS NOT` treats a directory not recorded yet as different.
-            let changed = transaction.execute(
-                "UPDATE conversation_hosts SET cwd = ?3
-                 WHERE conversation_id = ?1 AND device_id = ?2 AND cwd IS NOT ?3",
-                params![id.as_str(), device.as_str(), cwd],
-            )? > 0;
-            if changed {
-                raise_hosts_revision(&transaction, &id)?;
-            }
-            transaction.commit()?;
-            Ok(changed)
         })
         .await
     }

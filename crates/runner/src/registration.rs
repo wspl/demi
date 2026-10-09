@@ -48,6 +48,8 @@ pub struct Options {
     pub jobs: PathBuf,
     pub executable: PathBuf,
     pub cwd: PathBuf,
+    /// The device environment, which jobs, raw processes and resident
+    /// services start from (`runner.md` § Host operations).
     pub env: BTreeMap<String, String>,
     pub runner: wire::RunnerInfo,
     pub token: Option<DeviceToken>,

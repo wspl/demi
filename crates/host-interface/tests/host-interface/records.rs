@@ -5,11 +5,10 @@ use demi_host_interface::{
     BinaryOutput, CommandRecord, CommandState, Ending, OutputRecord, PageState, Seen, TAIL_CHARS,
     WholeOutput,
 };
-use demi_shared_types::{BinaryStdout, CommandId, ShellId, StreamKind};
+use demi_shared_types::{BinaryStdout, CommandId, StreamKind};
 
 fn new_record() -> CommandRecord {
     CommandRecord::new(
-        ShellId::try_from("shell").unwrap(),
         CommandId::try_from("command").unwrap(),
         "call".into(),
     )
