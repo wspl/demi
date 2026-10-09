@@ -335,10 +335,14 @@ fn parse_character_class(
 
 /// Scan and return the opening delimiter of a delimited string
 /// Advances the line past the opening delimiter
-fn scan_delimiter(lines: &ScriptLineProvider, line: &mut ScriptCharProvider) -> UResult<char> {
+fn scan_delimiter(
+    lines: &ScriptLineProvider,
+    line: &mut ScriptCharProvider,
+    unterminated: &str,
+) -> UResult<char> {
     // Sanity check
     if line.eol() {
-        return compilation_error(lines, line, "unexpected end of line".to_string());
+        return compilation_error(lines, line, unterminated);
     }
 
     let delimiter = line.current();
@@ -359,17 +363,28 @@ pub fn parse_regex(
     line: &mut ScriptCharProvider,
     regex_mode: RegexMode,
 ) -> UResult<Vec<u8>> {
-    parse_regex_for_mode(lines, line, regex_mode, CharacterMode::Utf8)
+    parse_regex_for_mode(lines, line, regex_mode, CharacterMode::Utf8, UNTERMINATED_ADDRESS)
 }
 
-/// Parse a regular expression according to the current character mode.
+/// GNU sed's message for an address regular expression without its end.
+pub const UNTERMINATED_ADDRESS: &str = "unterminated address regex";
+
+/// GNU sed's message for an `s` command without its end.
+pub const UNTERMINATED_S: &str = "unterminated `s' command";
+
+/// GNU sed's message for a `y` command without its end.
+const UNTERMINATED_Y: &str = "unterminated `y' command";
+
+/// Parse a regular expression according to the current character mode;
+/// a regular expression without its end fails with `unterminated`.
 pub fn parse_regex_for_mode(
     lines: &ScriptLineProvider,
     line: &mut ScriptCharProvider,
     regex_mode: RegexMode,
     character_mode: CharacterMode,
+    unterminated: &str,
 ) -> UResult<Vec<u8>> {
-    let delimiter = scan_delimiter(lines, line)?;
+    let delimiter = scan_delimiter(lines, line, unterminated)?;
     let mut result = Vec::new();
     while !line.eol() {
         match line.current() {
@@ -381,7 +396,7 @@ pub fn parse_regex_for_mode(
             '\\' => {
                 line.advance();
                 if line.eol() {
-                    return compilation_error(lines, line, "unterminated regular expression");
+                    return compilation_error(lines, line, unterminated);
                 }
                 if line.current() == delimiter {
                     // Push escaped delimiter
@@ -431,7 +446,7 @@ pub fn parse_regex_for_mode(
         }
         line.advance();
     }
-    compilation_error(lines, line, "unterminated regular expression")
+    compilation_error(lines, line, unterminated)
 }
 
 // Check for closing brace and the structure/content.
@@ -602,7 +617,7 @@ fn parse_transliteration_bytes(
     line: &mut ScriptCharProvider,
     character_mode: CharacterMode,
 ) -> UResult<Vec<u8>> {
-    let delimiter = scan_delimiter(lines, line)?;
+    let delimiter = scan_delimiter(lines, line, UNTERMINATED_Y)?;
     let mut result = Vec::new();
 
     while !line.eol() {
@@ -610,7 +625,7 @@ fn parse_transliteration_bytes(
             '\\' => {
                 line.advance();
                 if line.eol() {
-                    return compilation_error(lines, line, "unterminated transliteration string");
+                    return compilation_error(lines, line, UNTERMINATED_Y);
                 }
                 if line.current() == delimiter || line.current() == '\\' {
                     // Push only the escaped character
@@ -633,7 +648,7 @@ fn parse_transliteration_bytes(
         }
         line.advance();
     }
-    compilation_error(lines, line, "unterminated transliteration string")
+    compilation_error(lines, line, UNTERMINATED_Y)
 }
 
 /// Parse a transliteration string according to the current character mode.
@@ -1471,7 +1486,7 @@ mod tests {
         let err = parse_transliteration(&lines, &mut line).unwrap_err();
         assert!(
             err.to_string()
-                .contains("unterminated transliteration string")
+                .contains(UNTERMINATED_Y)
         );
     }
 
@@ -1481,7 +1496,7 @@ mod tests {
         let err = parse_transliteration(&lines, &mut line).unwrap_err();
         assert!(
             err.to_string()
-                .contains("unterminated transliteration string")
+                .contains(UNTERMINATED_Y)
         );
     }
 }

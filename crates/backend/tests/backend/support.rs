@@ -977,6 +977,20 @@ pub fn pattern(length: usize, seed: u8) -> Vec<u8> {
     bytes
 }
 
+/// What a context block says of the standard utilities on a Linux Host,
+/// such as the Cloud.
+pub const GNU_UTILITIES: &str = "Standard utilities (sed, grep, cp, ls, find, …) are GNU's on every host.";
+
+/// What a context block says of the standard utilities on a paired device
+/// of this machine's system: a Mac adds where its own are.
+pub fn device_utilities() -> String {
+    if cfg!(target_os = "macos") {
+        GNU_UTILITIES.replace("host.", "host; macOS's own are in /usr/bin.")
+    } else {
+        GNU_UTILITIES.to_owned()
+    }
+}
+
 /// How long a scenario waits for something that should come true before it
 /// fails as hung.
 pub const PATIENCE: Duration = Duration::from_secs(20);

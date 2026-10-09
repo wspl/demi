@@ -3,9 +3,8 @@
 // For the full copyright and license information, please view the LICENSE
 // file that was distributed with this source code.
 // spell-checker:ignore reflink
-use uucore::context::FileKindExt as _;
 use std::ffi::CString;
-use uucore::context::fs::{self, File, OpenOptions};
+use uucore::context::fs::{File, OpenOptions};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
@@ -67,34 +66,19 @@ pub(crate) fn copy_on_write(
                 dst: *const core::ffi::c_char,
                 flags: u32,
             ) -> core::ffi::c_int = std::mem::transmute(raw_pfn);
+            // Demi's: clonefile(2) fails when the destination exists, and
+            // the copy below then writes it in place, as GNU cp does, so a
+            // hard link to it stays one; removing it to clone again would
+            // make a new file.
             error = pfn(src.as_ptr(), dst.as_ptr(), 0);
-            if uucore::context::io::Error::last_os_error().kind() == uucore::context::io::ErrorKind::AlreadyExists
-                // Only remove the `dest` if the `source` and `dest` are not the same
-                && source != dest
-            {
-                // clonefile(2) fails if the destination exists.  Remove it and try again.  Do not
-                // bother to check if removal worked because we're going to try to clone again.
-                // first lets make sure the dest file is not read only.
-                //
-                // If dest is a symlink, GNU cp follows it and writes through to
-                // the target rather than replacing the link itself. Removing
-                // dest here would unlink the symlink and the retry would
-                // clonefile a regular file in its place. Skip the retry — the
-                // AlreadyExists error stays in `error` and we fall through to
-                // fs::copy below, which follows the symlink via O_TRUNC.
-                let dest_is_symlink =
-                    fs::symlink_metadata(dest).is_ok_and(|md| md.file_type().context_is_symlink());
-                if !dest_is_symlink
-                    && fs::metadata(dest).is_ok_and(|md| !md.permissions().readonly())
-                {
-                    // remove and copy again
-                    // TODO: rewrite this to better match linux behavior
-                    // linux first opens the source file and destination file then uses the file
-                    // descriptors to do the clone.
-                    let _ = fs::remove_file(dest);
-                    error = pfn(src.as_ptr(), dst.as_ptr(), 0);
-                }
-            }
+        }
+        if error == 0 {
+            // clonefile(2) copied the source's times too; a copy has the
+            // time it was made, as GNU cp's has, unless it is to preserve
+            // them, which the caller does after this.
+            let now = filetime::FileTime::now();
+            filetime::set_file_times(uucore::context::resolve(dest), now, now)
+                .map_err(|e| CpError::IoErrContext(e, context.to_owned()))?;
         }
     }
 
