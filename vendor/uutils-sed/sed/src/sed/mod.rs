@@ -37,7 +37,7 @@ const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (uutils)");
 
 #[uucore::main]
 pub fn uumain(args: impl uucore::Args) -> UResult<()> {
-    let matches = uu_app().try_get_matches_from(args)?;
+    let matches = uu_app().try_get_matches_from(attached_in_place(args))?;
 
     // Don't use arg_required_else_help when declaring command
     // as it exits with code 2 and we use it to check
@@ -53,6 +53,81 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
     let executable = compile(scripts, &mut context)?;
     process_all_files(executable, files, &mut context)?;
     Ok(())
+}
+
+/// The short options whose value is the rest of the token or the next one.
+const SHORT_VALUES: [char; 3] = ['e', 'f', 'l'];
+
+/// The long options whose value, without `=`, is the next token.
+const LONG_VALUES: [&str; 3] = ["expression", "script-file", "length"];
+
+/// `args` with each `-i` written as GNU's getopt reads it: a suffix only
+/// when attached, so `-i.bak` and `-ni.bak` back up with `.bak`, `-i` alone
+/// backs up nothing, and the token after `-i` is never its suffix. clap has
+/// no optional value that only attaches, so `-i` requires `=` there and an
+/// attached suffix becomes `--in-place=SUFFIX` here. The values of `-e`,
+/// `-f`, `-l` and their long forms are skipped, and nothing after `--` is
+/// read.
+fn attached_in_place(args: impl Iterator<Item = std::ffi::OsString>) -> Vec<std::ffi::OsString> {
+    let mut out = Vec::new();
+    let mut args = args.enumerate();
+    while let Some((index, arg)) = args.next() {
+        let Some(text) = arg.to_str().filter(|_| index > 0).map(str::to_owned) else {
+            out.push(arg);
+            continue;
+        };
+        if text == "--" {
+            out.push(arg);
+            out.extend(args.map(|(_, arg)| arg));
+            break;
+        }
+        if let Some(name) = text.strip_prefix("--") {
+            out.push(arg);
+            let takes_next = !name.contains('=')
+                && !name.is_empty()
+                && LONG_VALUES.iter().any(|long| long.starts_with(name));
+            if takes_next && let Some((_, value)) = args.next() {
+                out.push(value);
+            }
+            continue;
+        }
+        let Some(cluster) = text.strip_prefix('-').filter(|cluster| !cluster.is_empty()) else {
+            out.push(arg);
+            continue;
+        };
+        let mut flags = String::new();
+        let mut rewritten = None;
+        let mut takes_next = false;
+        for (at, option) in cluster.char_indices() {
+            let rest = &cluster[at + option.len_utf8()..];
+            if option == 'i' {
+                rewritten = Some(if rest.is_empty() {
+                    "--in-place".to_owned()
+                } else {
+                    format!("--in-place={rest}")
+                });
+                break;
+            }
+            if SHORT_VALUES.contains(&option) {
+                takes_next = rest.is_empty();
+                break;
+            }
+            flags.push(option);
+        }
+        match rewritten {
+            Some(in_place) => {
+                if !flags.is_empty() {
+                    out.push(format!("-{flags}").into());
+                }
+                out.push(in_place.into());
+            }
+            None => out.push(arg),
+        }
+        if takes_next && let Some((_, value)) = args.next() {
+            out.push(value);
+        }
+    }
+    out
 }
 
 #[allow(clippy::cognitive_complexity)]
