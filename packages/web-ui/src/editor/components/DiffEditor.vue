@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { reactive, ref, toRef } from 'vue'
 import { EditorView, highlightActiveLine, highlightActiveLineGutter, lineNumbers } from '@codemirror/view'
-import { unifiedMergeView } from '@codemirror/merge'
 import { activeLineVisibilityExtension } from '../activeLineVisibility'
 import { customScrollbarExtension } from '../scrollbars/extension'
+import { unifiedDiff } from '../unifiedDiff'
 import { useCodeView } from '../useCodeView'
 
 /**
  * Two versions of one file as a unified diff, read-only: the current text,
  * with each removed stretch shown above what replaced it, and the unchanged
  * stretches between changes folded but for three lines around each change
- * (`file-previews.md` § Changes). New texts of the file replace the old in
- * place; another file needs another editor.
+ * (`file-previews.md` § Changes, `unifiedDiff`). New texts of the file
+ * replace the old in place, keeping the place the user is looking at;
+ * another file needs another editor.
  */
 const props = defineProps<{
   original: string
@@ -42,27 +43,20 @@ const diffTheme = EditorView.theme({
 
 const container = ref<HTMLDivElement>()
 
+// The view is built once its language loads: by then the original may have
+// been read again, and the diff compares against the one it has then.
 useCodeView(container, reactive({
   path: props.path,
   text: toRef(props, 'modified'),
   original: toRef(props, 'original'),
-}), [
+}), () => [
   diffTheme,
   lineNumbers(),
   highlightActiveLine(),
   highlightActiveLineGutter(),
   activeLineVisibilityExtension(),
   customScrollbarExtension(),
-  unifiedMergeView({
-    original: props.original,
-    highlightChanges: true,
-    gutter: false,
-    mergeControls: false,
-    syntaxHighlightDeletions: true,
-    // Three lines of context, as GitHub and git show; a stretch of four or
-    // more beyond that folds into one line a click unfolds.
-    collapseUnchanged: { margin: 3, minSize: 4 },
-  }),
+  unifiedDiff(props.original),
 ])
 </script>
 

@@ -7,7 +7,7 @@ const presentation = ref<'diff' | 'preview'>('diff')
 </script>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import {
   ChangeView,
   joinPath,
@@ -15,7 +15,7 @@ import {
   usePage,
   type ChangeSources,
 } from '@demicodes/plugin-sdk'
-import { changePath, goBack, goForward, showChange, showEdit, type ChangeData } from './data'
+import { changePath, goBack, goForward, holdShownChange, showChange, showEdit, type ChangeData } from './data'
 
 /**
  * The Change view of one conversation (`file-previews.md` § Changes): the
@@ -44,6 +44,14 @@ const changes = computed<ChangeSources>(() => ({
 }))
 const selected = computed(() => changePath(props.data, props.data.mode, changes.value.uncommitted.files))
 const root = computed(() => files.workspace?.root ?? files.root ?? '/')
+
+// The first listed file, shown while the user has picked none, stays shown:
+// a file the agent or a build changes later may list before it.
+watch(selected, () => {
+  const held = holdShownChange(props.data, changes.value.uncommitted.files)
+  if (held !== props.data)
+    emit('update', held)
+}, { immediate: true })
 
 /** A changed file opens in whatever shows files, by its absolute path. */
 function open(path: string): void {
