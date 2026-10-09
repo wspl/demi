@@ -187,8 +187,8 @@ const toneClass = computed(() => {
     return props.pointerless ? 'text-fg-body' : 'text-fg-body hover:bg-hover hover:text-fg'
   }
   if (isFocused.value || submenuOpen.value)
-    return 'bg-hover text-fg-emphasis'
-  return 'text-fg-body hover:bg-hover hover:text-fg-emphasis'
+    return 'bg-active text-fg-emphasis'
+  return 'text-fg-body hover:bg-active hover:text-fg-emphasis'
 })
 </script>
 

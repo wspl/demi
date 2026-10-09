@@ -81,8 +81,8 @@
   --fg-subtle: #737373;
   --fg-faint: #525252;
   --fg-ghost: #404040;
-  --hover-mix: rgb(255 255 255) 7%;
-  --active-mix: rgb(255 255 255) 11%;
+  --hover-mix: rgb(255 255 255) 6%;
+  --active-mix: rgb(255 255 255) 10%;
   /* A well set into its surface: code, a table's header, a track. */
   --well-mix: rgb(255 255 255) 4%;
   --line-subtle: rgba(255, 255, 255, 0.06);
@@ -154,8 +154,8 @@
     0 0 0 0.5px rgba(255, 255, 255, 0.18);
   --btn-mix: rgb(255 255 255) 6%;
   /* The accent fill's hover and pressed steps in OKLCH lightness (control fills, below). */
-  --hover-step-l: 0.06;
-  --active-step-l: 0.1;
+  --hover-step-l: 0.03;
+  --active-step-l: 0.045;
 }
 
 [data-theme="light"] {
@@ -176,8 +176,8 @@
   --fg-subtle: #8b919c;
   --fg-faint: #b4b9c2;
   --fg-ghost: #dadde3;
-  --hover-mix: rgb(0 0 0) 7%;
-  --active-mix: rgb(0 0 0) 11%;
+  --hover-mix: rgb(0 0 0) 6%;
+  --active-mix: rgb(0 0 0) 10%;
   --well-mix: rgb(0 0 0) 4%;
   --line-subtle: rgba(0, 0, 0, 0.05);
   --line: rgba(0, 0, 0, 0.09);
@@ -230,8 +230,8 @@
     inset 0 0.5px 0 rgba(255, 255, 255, 1),
     0 0 0 0.5px rgba(0, 0, 0, 0.14);
   --btn-mix: #ffffff 100%;
-  --hover-step-l: -0.05;
-  --active-step-l: -0.08;
+  --hover-step-l: -0.03;
+  --active-step-l: -0.045;
 }
 
 /* Interface text keeps the platform's own smoothing, as the system's own
@@ -281,23 +281,26 @@ svg.lucide {
    --surface-current is the color a control sits on. The root and every surface (a surface
    utility below, a floating layer, a primitive with a fill of its own such as a tab) set it,
    and an element inherits it from the nearest one. A theme gives each fill as the color
-   and amount mixed into that surface (--hover-mix: white 7%), an opaque color at 100% where
+   and amount mixed into that surface (--hover-mix: white 6%), an opaque color at 100% where
    the fill does not depend on the surface. A fill also names the color it paints,
    --fill-color, as surfaces do: an element that sits on a filled row (the row's end controls,
    a status dot's ring) takes it from there, the controls through an on-fill slot. Translucency
    is for scrims, shadows and edges only.
    Hover and pressed show in the fill, one rule for everything that responds to the pointer:
    the hovered fill is the resting fill one hover step on (bg-hover), the pressed fill one
-   step further (bg-active), toward the overlay color, about 5 and 8 points of OKLCH lightness
-   in light and about 6 and 9 in dark. A row, a menu item or a ghost control rests on its
-   surface, so it steps from the surface. A control drawn with a border or hairline (a button,
-   a chip, a file pill, a choice card) rests on a fill of its own, its --rest-fill, and steps
-   from that, so its hover reads on every surface, a white button on a white card included.
+   step further (bg-active), toward the overlay color: in light about 3 (Ink) to 3.5 (Warm)
+   points of OKLCH lightness and 4.5 to 5.5 pressed, in dark about 4 to 6 and 5 to 7.5, less
+   on the lighter surface of a menu. A row or a ghost control rests on its surface, so it
+   steps from the surface; an action menu's item hovers with the pressed fill. A control
+   drawn with a border or hairline (a button, a chip, a file pill, a choice card) rests on a
+   fill of its own, its --rest-fill, and steps from that, so its hover reads on every
+   surface, a white button on a white card included.
    Its edge may strengthen with the fill, but an edge never carries hover alone. --rest-fill
    belongs to the element that sets it, never inherited, so a row inside a control still steps
-   from its own surface. The accent fill takes the same steps in lightness itself
-   (--hover-step-l, --active-step-l): mixing black or white into a saturated mid-tone moves it
-   about half as far as it moves a near-white or near-black fill. */
+   from its own surface. The accent fill takes a light-theme row's steps in lightness itself,
+   about 3 points hovered and 4 pressed (--hover-step-l, --active-step-l), in dark too, where
+   a larger lift would leave its white text too faint: mixing black or white into a saturated
+   mid-tone moves it about half as far as it moves a near-white or near-black fill. */
 :root {
   /* A file pill's edge: a button's, except in light, below. */
   --shadow-pill: var(--shadow-btn);
