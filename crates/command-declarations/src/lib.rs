@@ -123,10 +123,8 @@ pub struct Leaf<B = Binding> {
     pub input: Option<Schema>,
     pub positionals: Option<Vec<String>>,
     pub stdin_field: Option<String>,
-    /// The options whose presence means the stdin field is not read, so
-    /// stdin stays with the calling process, as a `while read` loop's
-    /// input does (`commands.md` § Demi command inputs).
-    pub stdin_unless: Vec<String>,
+    /// When the stdin field is read; always, without one.
+    pub stdin_read: Option<StdinRead>,
     pub rest_field: Option<String>,
     pub output: Option<LeafOutput>,
     /// Whether the command may return media (`commands.md` § Return media).
@@ -139,6 +137,30 @@ pub struct Leaf<B = Binding> {
     /// `rpc` leaf names one.
     pub brings_host: Option<String>,
     pub kind: LeafKind<B>,
+}
+
+/// When a leaf reads its stdin field, by the options the command line gives.
+/// When it does not, stdin stays with the calling process, as a `while read`
+/// loop's input or a job's `</dev/null` (`commands.md` § Demi command
+/// inputs). An option counts as given unless its value is `false`, which
+/// `--query false` spells.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase", deny_unknown_fields)]
+pub enum StdinRead {
+    /// Read unless one of these options is given, as `file edit` reads no
+    /// blocks with `--old`.
+    Unless(Vec<String>),
+    /// Read only when one of these options is given, as `browser find`
+    /// reads a query tree only with `--query`.
+    With(Vec<String>),
+}
+
+impl StdinRead {
+    fn options(&self) -> &[String] {
+        match self {
+            Self::Unless(options) | Self::With(options) => options,
+        }
+    }
 }
 
 /// The JSON Schema of a command's `--json` output.
@@ -435,7 +457,7 @@ impl Node<NativeOperation> {
                 input: leaf.input.clone(),
                 positionals: leaf.positionals.clone(),
                 stdin_field: leaf.stdin_field.clone(),
-                stdin_unless: leaf.stdin_unless.clone(),
+                stdin_read: leaf.stdin_read.clone(),
                 rest_field: leaf.rest_field.clone(),
                 output: leaf.output.clone(),
                 media: leaf.media,
@@ -550,17 +572,18 @@ impl<B> Leaf<B> {
         {
             return Err(invalid("stdin input must be a string".into()));
         }
-        if !self.stdin_unless.is_empty() && self.stdin_field.is_none() {
-            return Err(invalid("stdinUnless without a stdin field".into()));
-        }
-        if let Some(option) = self
-            .stdin_unless
-            .iter()
-            .find(|option| !is_option(self, option))
-        {
-            return Err(invalid(format!(
-                "stdinUnless names {option}, which is no option"
-            )));
+        if let Some(read) = &self.stdin_read {
+            if self.stdin_field.is_none() {
+                return Err(invalid("stdinRead without a stdin field".into()));
+            }
+            if read.options().is_empty() {
+                return Err(invalid("stdinRead names no option".into()));
+            }
+            if let Some(option) = read.options().iter().find(|option| !is_option(self, option)) {
+                return Err(invalid(format!(
+                    "stdinRead names {option}, which is no option"
+                )));
+            }
         }
         if let Some(field) = &self.rest_field {
             let items = self
@@ -594,15 +617,30 @@ impl<B> Leaf<B> {
     }
 
     /// The stdin field the dispatcher reads stdin into, given the values
-    /// the command line filled: the leaf's, unless one of the options that
-    /// skip it is given.
-    pub fn stdin_read(&self, values: &serde_json::Map<String, Value>) -> Option<&str> {
-        self.stdin_field.as_deref().filter(|_| {
-            !self
-                .stdin_unless
-                .iter()
-                .any(|option| values.contains_key(option))
-        })
+    /// the command line filled: the leaf's, when its `stdin_read` lets it.
+    pub fn stdin_target(&self, values: &serde_json::Map<String, Value>) -> Option<&str> {
+        let given = |option: &String| self.given(values, option);
+        self.stdin_field
+            .as_deref()
+            .filter(|_| match &self.stdin_read {
+                None => true,
+                Some(StdinRead::Unless(options)) => !options.iter().any(given),
+                Some(StdinRead::With(options)) => options.iter().any(given),
+            })
+    }
+
+    /// Whether the command line gives the option `option`: a value, but
+    /// `false` for a flag.
+    fn given(&self, values: &serde_json::Map<String, Value>, option: &str) -> bool {
+        let schema = self.properties().and_then(|properties| properties.get(option));
+        match (values.get(option), schema) {
+            (Some(value), Some(schema)) => {
+                parse::argv_value(value.clone(), schema) != Value::Bool(false)
+            }
+            // A validated declaration names only declared options.
+            (Some(_), None) => true,
+            (None, _) => false,
+        }
     }
 
     /// The JSON type a declared input property has.
@@ -686,8 +724,12 @@ struct RawLeaf<B> {
         with = "unwrap_or_skip"
     )]
     stdin_field: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    stdin_unless: Vec<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    stdin_read: Option<StdinRead>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -749,7 +791,7 @@ impl<B> TryFrom<RawLeaf<B>> for Leaf<B> {
             input: raw.input,
             positionals: raw.positionals,
             stdin_field: raw.stdin_field,
-            stdin_unless: raw.stdin_unless,
+            stdin_read: raw.stdin_read,
             rest_field: raw.rest_field,
             output: raw.output,
             media: raw.media,
@@ -775,7 +817,7 @@ impl<B> From<Leaf<B>> for RawLeaf<B> {
             input: leaf.input,
             positionals: leaf.positionals,
             stdin_field: leaf.stdin_field,
-            stdin_unless: leaf.stdin_unless,
+            stdin_read: leaf.stdin_read,
             rest_field: leaf.rest_field,
             output: leaf.output,
             media: leaf.media,

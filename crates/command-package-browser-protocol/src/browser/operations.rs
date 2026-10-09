@@ -464,7 +464,7 @@ input! {
         #[schemars(with = "bool")]
         #[garde(skip)]
         pub query: Option<bool>,
-        /// JSON query tree when --query is supplied
+        /// JSON query tree
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
         #[garde(length(chars, max = STDIN_BYTES))]
