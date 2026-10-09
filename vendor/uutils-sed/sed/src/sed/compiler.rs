@@ -13,8 +13,8 @@ use crate::sed::command::{
     RegexMode, ReplacementPart, ReplacementTemplate, Substitution, Transliteration,
 };
 use crate::sed::delimited_parser::{
-    os_string_from_bytes, parse_char_escape, parse_regex_for_mode, parse_transliteration_for_mode,
-    push_script_char,
+    UNTERMINATED_ADDRESS, UNTERMINATED_S, os_string_from_bytes, parse_char_escape,
+    parse_regex_for_mode, parse_transliteration_for_mode, push_script_char,
 };
 use crate::sed::error_handling::{ScriptLocation, compilation_error, semantic_error};
 use crate::sed::fast_regex::Regex;
@@ -36,7 +36,7 @@ const ERR_ADDRESS_0_USAGE: &str =
     "address 0 can only be used with ~step, a second regular expression, or a read command";
 const ERR_SANDBOX: &str = "command not allowed with --sandbox";
 
-const ERR_UNKNOWN_OPTION_TO_S: &str = "unknown option to 's'";
+const ERR_UNKNOWN_OPTION_TO_S: &str = "unknown option to `s'";
 const ERR_TRANSLITERATION_LENGTH: &str = "transliteration strings are not the same length";
 
 // Handling required after processing a command
@@ -226,11 +226,7 @@ fn resolve_branch_targets(
                         .get(&label)
                         .cloned()
                         .ok_or_else(|| {
-                            semantic_error::<()>(
-                                &cmd.location,
-                                format!("undefined label `{label}'"),
-                            )
-                            .unwrap_err()
+                            USimpleError::new(1, format!("can't find label for jump to `{label}'"))
                         })?;
                     CommandData::BranchTarget(Some(target))
                 }
@@ -433,7 +429,7 @@ fn read_file_path(lines: &ScriptLineProvider, line: &mut ScriptCharProvider) -> 
     }
 
     if path.is_empty() {
-        compilation_error(lines, line, "missing file path")
+        compilation_error(lines, line, "missing filename in r/R/w/W commands")
     } else {
         os_string_from_bytes(path).map(PathBuf::from).map_err(|e| {
             compilation_error::<PathBuf>(lines, line, format!("invalid characters file path: {e}"))
@@ -468,7 +464,13 @@ fn compile_address(
             } else {
                 RegexMode::Basic
             };
-            let re = parse_regex_for_mode(lines, line, regex_mode, context.character_mode)?;
+            let re = parse_regex_for_mode(
+                lines,
+                line,
+                regex_mode,
+                context.character_mode,
+                UNTERMINATED_ADDRESS,
+            )?;
             // Skip over delimiter
             line.advance();
 
@@ -529,11 +531,7 @@ fn parse_number(
 }
 
 /// Parse the end of a command, failing with an error on extra characters.
-fn parse_command_ending(
-    lines: &ScriptLineProvider,
-    line: &mut ScriptCharProvider,
-    cmd: &mut Command,
-) -> UResult<()> {
+fn parse_command_ending(lines: &ScriptLineProvider, line: &mut ScriptCharProvider) -> UResult<()> {
     if !line.eol() && line.current() == ';' {
         line.advance();
         return Ok(());
@@ -547,7 +545,7 @@ fn parse_command_ending(
         return compilation_error(
             lines,
             line,
-            format!("extra characters at the end of the {} command", cmd.code),
+            "extra characters after command",
         );
     }
 
@@ -736,11 +734,7 @@ pub fn compile_replacement(
                             *line = ScriptCharProvider::new(next_line);
                             continue;
                         }
-                        return compilation_error(
-                            lines,
-                            line,
-                            "unterminated substitute replacement (unexpected EOF)",
-                        );
+                        return compilation_error(lines, line, UNTERMINATED_S);
                     }
 
                     match line.current() {
@@ -793,11 +787,7 @@ pub fn compile_replacement(
                 }
 
                 '\n' => {
-                    return compilation_error(
-                        lines,
-                        line,
-                        "unescaped newline inside substitute replacement",
-                    );
+                    return compilation_error(lines, line, UNTERMINATED_S);
                 }
 
                 c if c == delimiter => {
@@ -819,7 +809,7 @@ pub fn compile_replacement(
         if let Some(next_line) = lines.next_line()? {
             *line = ScriptCharProvider::new(next_line);
         } else {
-            return compilation_error(lines, line, "unterminated substitute replacement");
+            return compilation_error(lines, line, UNTERMINATED_S);
         }
     }
 }
@@ -833,6 +823,9 @@ fn compile_subst_command(
 ) -> UResult<CommandHandling> {
     line.advance(); // move past 's'
 
+    if line.eol() {
+        return compilation_error(lines, line, UNTERMINATED_S);
+    }
     let delimiter = line.current();
     if delimiter == '\0' || delimiter == '\\' {
         return compilation_error(
@@ -847,7 +840,13 @@ fn compile_subst_command(
     } else {
         RegexMode::Basic
     };
-    let pattern = parse_regex_for_mode(lines, line, regex_mode, context.character_mode)?;
+    let pattern = parse_regex_for_mode(
+        lines,
+        line,
+        regex_mode,
+        context.character_mode,
+        UNTERMINATED_S,
+    )?;
     let mut subst = Box::new(Substitution::default());
 
     subst.replacement = compile_replacement(lines, line, context.character_mode)?;
@@ -886,7 +885,7 @@ fn compile_subst_command(
     }
     cmd.data = CommandData::Substitution(subst);
 
-    parse_command_ending(lines, line, cmd)?;
+    parse_command_ending(lines, line)?;
     Ok(CommandHandling::Continue)
 }
 
@@ -928,7 +927,7 @@ fn compile_trans_command(
     cmd.data = CommandData::Transliteration(transliteration);
 
     line.advance(); // move past last delimiter
-    parse_command_ending(lines, line, cmd)?;
+    parse_command_ending(lines, line)?;
     Ok(CommandHandling::Continue)
 }
 
@@ -1046,12 +1045,8 @@ pub fn compile_subst_flags(
 
             ';' | '\n' => break,
 
-            other => {
-                return compilation_error(
-                    lines,
-                    line,
-                    format!("invalid substitute flag: '{other}'"),
-                );
+            _ => {
+                return compilation_error(lines, line, ERR_UNKNOWN_OPTION_TO_S);
             }
         }
     }
@@ -1063,7 +1058,7 @@ pub fn compile_subst_flags(
 fn compile_end_group_command(
     lines: &mut ScriptLineProvider,
     line: &mut ScriptCharProvider,
-    cmd: &mut Command,
+    _cmd: &mut Command,
     context: &mut ProcessingContext,
 ) -> UResult<CommandHandling> {
     if context.parsed_block_nesting == 0 {
@@ -1072,7 +1067,7 @@ fn compile_end_group_command(
     context.parsed_block_nesting -= 1;
     line.advance();
     line.eat_spaces();
-    parse_command_ending(lines, line, cmd)?;
+    parse_command_ending(lines, line)?;
     Ok(CommandHandling::Return)
 }
 
@@ -1086,7 +1081,7 @@ fn compile_negation_command(
     line.advance();
     line.eat_spaces();
     if cmd.non_select {
-        return compilation_error(lines, line, "negation already applied");
+        return compilation_error(lines, line, "multiple `!'s");
     }
     cmd.non_select = true;
     Ok(CommandHandling::GetNext)
@@ -1097,13 +1092,13 @@ fn compile_negation_command(
 fn compile_empty_command(
     lines: &mut ScriptLineProvider,
     line: &mut ScriptCharProvider,
-    cmd: &mut Command,
+    _cmd: &mut Command,
     _context: &mut ProcessingContext,
 ) -> UResult<CommandHandling> {
     line.advance(); // Skip the command character
     line.eat_spaces(); // Skip any trailing whitespace
 
-    parse_command_ending(lines, line, cmd)?;
+    parse_command_ending(lines, line)?;
     Ok(CommandHandling::Continue)
 }
 
@@ -1176,7 +1171,7 @@ fn compile_label_command(
 
     if label.is_empty() {
         if cmd.code == ':' {
-            return compilation_error(lines, line, "empty label");
+            return compilation_error(lines, line, "\":\" lacks a label");
         }
         cmd.data = CommandData::Label(None);
     } else {
@@ -1184,7 +1179,7 @@ fn compile_label_command(
     }
 
     line.eat_spaces(); // Skip any trailing whitespace
-    parse_command_ending(lines, line, cmd)?;
+    parse_command_ending(lines, line)?;
     Ok(CommandHandling::Continue)
 }
 
@@ -1224,7 +1219,7 @@ fn compile_number_command(
     }
 
     line.eat_spaces(); // Skip any trailing whitespace
-    parse_command_ending(lines, line, cmd)?;
+    parse_command_ending(lines, line)?;
     Ok(CommandHandling::Continue)
 }
 
@@ -1266,7 +1261,7 @@ fn compile_text_command_gnu(
         return compilation_error(
             lines,
             line,
-            format!("command `{}' expects \\ followed by text", cmd.code),
+            "expected \\ after `a', `c' or `i'",
         );
     }
 
@@ -1335,7 +1330,7 @@ fn compile_text_command_posix(
         return compilation_error(
             lines,
             line,
-            format!("command `{}' expects \\ followed by text", cmd.code),
+            "expected \\ after `a', `c' or `i'",
         );
     }
 
@@ -1546,7 +1541,7 @@ fn get_verified_cmd_spec(
     posix: bool,
 ) -> UResult<CommandSpec> {
     if line.eol() {
-        return compilation_error(lines, line, "command expected");
+        return compilation_error(lines, line, "missing command");
     }
 
     let ch = line.current();
@@ -1656,7 +1651,7 @@ fn get_cmd_spec(
             n_addr: 0,
             handler: compile_version_command,
         }),
-        _ => compilation_error(lines, line, format!("invalid command code `{cmd_code}'")),
+        _ => compilation_error(lines, line, format!("unknown command: `{cmd_code}'")),
     }
 }
 
@@ -1732,7 +1727,7 @@ mod tests {
             ..Default::default()
         };
 
-        let err = parse_command_ending(&lines, &mut chars, &mut cmd).unwrap_err();
+        let err = parse_command_ending(&lines, &mut chars).unwrap_err();
         assert!(
             err.to_string()
                 .contains("extra characters at the end of the p command")

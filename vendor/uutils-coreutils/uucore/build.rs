@@ -269,12 +269,26 @@ fn embed_static_utility_locales(
         Path::new(&manifest_dir).join(format!("locales/errors/{locale}.ftl"))
     })?;
 
-    // Demi's: only a registry unpack has the utilities unpacked beside it as
-    // `uu_<util>-<version>`, which the scan below matches. A path dependency's
-    // siblings carry no version, so the scan would match none of them, and
-    // watching the lock file would only rebuild uucore, and every utility,
-    // whenever the consumer's lock file changes.
+    // Demi's: as a path dependency, uucore's siblings are the vendored
+    // utilities, `uu_<util>` without a version; each one's messages are
+    // embedded under its name. No directory is watched: a watch is compared
+    // by mtime, which would rerun this script, and rebuild uucore and every
+    // utility, after every fresh checkout. A utility vendored beside uucore
+    // later is embedded once this script runs again, as it does when this
+    // file changes.
     if !unpacked_from_registry(Path::new(&manifest_dir)) {
+        let mut entries: Vec<_> = std::fs::read_dir(registry_dir)?
+            .filter_map(Result::ok)
+            .collect();
+        entries.sort_by_key(std::fs::DirEntry::file_name);
+        for entry in entries {
+            let file_name = entry.file_name();
+            if let Some(util_name) = file_name.to_str().and_then(|name| name.strip_prefix("uu_")) {
+                embed_component_locales(embedded_file, locales_to_embed, util_name, |locale| {
+                    entry.path().join(format!("locales/{locale}.ftl"))
+                })?;
+            }
+        }
         return Ok(());
     }
 

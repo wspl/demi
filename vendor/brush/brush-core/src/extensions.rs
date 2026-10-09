@@ -37,7 +37,13 @@ pub trait ErrorFormatter: Clone + Default + Send + Sync + 'static {
         shell: &Shell<impl extensions::ShellExtensions>,
     ) -> String {
         let _ = shell;
-        std::format!("error: {error:#}\n")
+        match error.kind() {
+            error::ErrorKind::BuiltinError(inner, _) if !inner.names_builtin() => {
+                std::format!("{inner}\n")
+            }
+            _ if error.worded_as_bash() => std::format!("{error}\n"),
+            _ => std::format!("error: {error:#}\n"),
+        }
     }
 }
 

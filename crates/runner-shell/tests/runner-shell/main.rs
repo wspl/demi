@@ -3,6 +3,7 @@
 
 mod declared;
 mod edit_tracking;
+mod gnu;
 mod jobs;
 mod shell;
 mod utilities;
