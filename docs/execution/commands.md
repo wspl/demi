@@ -112,7 +112,9 @@ these declarations:
 - a group with no subcommands;
 - an input source that names a field the input does not have, overlapping
   input sources, duplicate positional fields, a required positional after
-  an optional one, and an array positional that is not the last;
+  an optional one unless it is the last positional and directly follows the
+  only optional one, an array positional that is not the last, and a
+  `positionalOptions` field that is not a positional;
 - an option named `help` or `json`;
 - a `permission` on a `native` leaf, a `permission` that names a category
   none of the leaf's groups declares, and a category declared twice in the
@@ -144,7 +146,8 @@ Each input field has one source:
 | Declaration | Source and behavior |
 | --- | --- |
 | `input` | The JSON Schema of the leaf's argument type. It validates the whole input. |
-| `positionals` | Ordered fields supplied as positional arguments. They have no named-option form. The last may be an array, which takes every positional token left, as `demi attachment upload <path>...` does; usage shows it with `...`. |
+| `positionals` | Ordered fields supplied as positional arguments. They have no named-option form, unless `positionalOptions` names them. The last may be an array, which takes every positional token left, as `demi attachment upload <path>...` does; usage shows it with `...`. One optional positional may stand directly before a required last one, as `demi browser key <tab> [<ref>] <key>` does: two tokens fill the tab and the key, three fill all three. |
+| `positionalOptions` | Positionals that may also be given as a named option, as a browser target's `ref` is both `demi browser click t1 e3` and `--ref e3`, since outputs print it as `[ref=e3]` and models write it both ways. Usage shows the positional form. Giving both is a usage error. |
 | `stdinField` | A string field populated from finite stdin: a quoted heredoc, a pipe, or input redirection. It has no option or positional form. |
 | `stdinRead` | When the `stdinField` is read; absent, always. `{ unless: [options] }` leaves it unread, and stdin with the calling process, when one of the options is given, as `file edit` reads no blocks with `--old`. `{ with: [options] }` reads it only when one of them is given, as `browser find` reads a query body only with `--query`, so a call from a shell whose stdin is an empty pipe is not refused for an empty body. An option counts as given unless its value is `false`. It names only options of the leaf, and only beside a `stdinField`; help shows it on the stdin line: `Stdin body: blocks, not read with --old`, `Stdin body: body, read only with --query`. |
 | `restField` | An array receiving raw tokens after `--`. It has no named-option form. |
