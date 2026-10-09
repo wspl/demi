@@ -14,6 +14,7 @@ fn id(value: &str) -> BlockId {
 
 fn user(value: &str) -> Block {
     Block::User(UserBlock {
+        entries: Vec::new(),
         id: id(value),
         turn_id: TurnId::try_from(value).unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
@@ -25,6 +26,7 @@ fn user(value: &str) -> Block {
 
 fn text(value: &str) -> Block {
     Block::Text(TextBlock {
+        entries: Vec::new(),
         id: id("text"),
         created_at: Timestamp::UNIX_EPOCH,
         model: test_model(),
@@ -46,6 +48,7 @@ fn completed(value: &str) -> Block {
 
 fn thinking() -> Block {
     Block::Thinking(ThinkingBlock {
+        entries: Vec::new(),
         id: id("thinking"),
         created_at: Timestamp::UNIX_EPOCH,
         model: test_model(),
@@ -77,6 +80,7 @@ fn response() -> Block {
 
 fn tool_call(status: ToolCallStatus) -> Block {
     Block::ToolCall(ToolCallBlock {
+        entries: Vec::new(),
         id: id("call"),
         created_at: Timestamp::UNIX_EPOCH,
         model: test_model(),

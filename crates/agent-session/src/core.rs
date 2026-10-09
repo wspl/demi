@@ -24,8 +24,8 @@ use demi_agent_transcript::{
 };
 use demi_conversation_socket_protocol::AbortTarget;
 use demi_provider_common::{
-    InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, ProviderRuntime, RequestLimits,
-    ToolDefinition,
+    EntriesOf, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, ProviderRuntime,
+    RequestBlock, RequestLimits, ToolDefinition,
 };
 use demi_shared_types::{
     AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, FailureSource,
@@ -49,6 +49,9 @@ pub(crate) struct SessionCore {
     /// The calls of the running request that the model is writing, live
     /// only (`runtime.md` § Calls being written).
     pub(super) writing: Vec<WritingCall>,
+    /// The blocks the running request's entries name (`EntriesOf`), live
+    /// only.
+    request_blocks: RequestBlocks,
     pub(super) id: NodeId,
     pub(super) cwd: String,
     /// The selection current now; every block records the one current when
@@ -265,6 +268,15 @@ impl ProviderSlot {
     }
 }
 
+/// The blocks of the running request that its run's entries name: the
+/// block of each item it carries, and each block its events wrote, in
+/// order.
+#[derive(Default)]
+struct RequestBlocks {
+    items: Vec<BlockId>,
+    written: Vec<BlockId>,
+}
+
 /// What a new or restored session starts with.
 pub(super) struct CoreParts {
     pub(super) id: NodeId,
@@ -288,6 +300,7 @@ impl SessionCore {
     pub(super) fn new(parts: CoreParts) -> Self {
         let mut core = Self {
             writing: Vec::new(),
+            request_blocks: RequestBlocks::default(),
             id: parts.id,
             cwd: parts.cwd,
             model: parts.model,
@@ -1257,6 +1270,45 @@ impl SessionCore {
     /// Applies one provider event. `thinking_started` says a thinking start
     /// came before it, which opens a reasoning block first.
     pub(super) fn apply_event(&mut self, event: ProviderEvent, thinking_started: bool) {
+        // Entries write no block, so a thinking start waits on.
+        if let ProviderEvent::Entries { of, entries } = event {
+            self.keep_entries(of, entries);
+            return;
+        }
+        let before = self.transcript.blocks().len();
+        self.apply_event_to_transcript(event, thinking_started);
+        // The blocks a run's events write, which its entries name by
+        // position (`EntriesOf::Output`).
+        let written = self.transcript.blocks()[before..]
+            .iter()
+            .filter(|block| {
+                matches!(
+                    block,
+                    Block::Thinking(_) | Block::RedactedThinking(_) | Block::Text(_) | Block::ToolCall(_)
+                )
+            })
+            .map(|block| block.id().clone());
+        self.request_blocks.written.extend(written);
+        self.commit();
+    }
+
+    /// Keeps a run's entries on the block they belong to: one that gives an
+    /// item of the request, or one the run wrote. Entries that name no such
+    /// block belong to nothing the session keeps.
+    pub(super) fn keep_entries(&mut self, of: EntriesOf, entries: Vec<serde_json::Value>) {
+        let blocks = &self.request_blocks;
+        let block = match of {
+            EntriesOf::Item(index) => blocks.items.get(index),
+            EntriesOf::Output(index) => blocks.written.get(index),
+        };
+        let Some(block) = block.cloned() else {
+            return;
+        };
+        self.transcript.add_entries(&block, entries);
+        self.commit();
+    }
+
+    fn apply_event_to_transcript(&mut self, event: ProviderEvent, thinking_started: bool) {
         match event {
             ProviderEvent::ThinkingDelta(text) if thinking_started => {
                 self.transcript.open_thinking(&self.model, text);
@@ -1322,10 +1374,12 @@ impl SessionCore {
                         self.transcript.push_response(&self.model, usage)
                     }
                     ProviderEvent::Error(failure) => self.push_failure(&(&failure).into()),
+                    ProviderEvent::Entries { .. } => {
+                        unreachable!("apply_event keeps entries before it writes blocks")
+                    }
                 }
             }
         }
-        self.commit();
     }
 
     /// The request ended, failed or was cancelled: no call is being written
@@ -1384,7 +1438,7 @@ impl SessionCore {
     /// The next request, whose items replay `view`, the model's view of the
     /// replayed blocks ([`Self::model_view`]).
     pub(super) fn inference_request(
-        &self,
+        &mut self,
         view: &ModelView,
         system_prompt: String,
         tools: Arc<[ToolDefinition]>,
@@ -1392,6 +1446,19 @@ impl SessionCore {
         cancel: CancellationToken,
     ) -> InferenceRequest {
         let replayed = replay(&self.request_view(view));
+        let mut items = Vec::with_capacity(replayed.items.len());
+        let mut blocks = Vec::with_capacity(replayed.blocks.len());
+        for block in replayed.blocks {
+            items.extend(block.items.clone().map(|_| block.id.clone()));
+            blocks.push(RequestBlock {
+                items: block.items,
+                entries: block.entries,
+            });
+        }
+        self.request_blocks = RequestBlocks {
+            items,
+            written: Vec::new(),
+        };
         InferenceRequest {
             session_id: self.id.to_string(),
             turn_id: self.turn().to_string(),
@@ -1401,6 +1468,7 @@ impl SessionCore {
             output_cap: None,
             system_prompt,
             items: replayed.items.into(),
+            blocks: blocks.into(),
             tools,
             thinking: self.model.thinking.clone(),
             service_tier_id: self.model.service_tier_id.clone(),
