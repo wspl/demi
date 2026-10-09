@@ -23,7 +23,7 @@ import { provideEditReads, provideEditSelection } from '@demicodes/web-ui/agent/
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
 import { galleryFiles, useGalleryWork, type GalleryWork } from '../fixtures/work-panel'
-import { changePath, firstChangeData, goBack as changeBack, goForward as changeForward, showChange, showEdit, showRequestEdit } from '@demicodes/plugin-changes/data'
+import { changePath, firstChangeData, goBack as changeBack, goForward as changeForward, holdShownChange, showChange, showEdit, showRequestEdit } from '@demicodes/plugin-changes/data'
 import { selectedTab } from '@demicodes/web-ui/agent/panel-tabs'
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
 import { NEW_TAB_URL, STARTING_LABELS, browserTabDataSchema, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
@@ -394,8 +394,11 @@ function useChangeTab(
   request: RequestEditSelection | null = null,
 ) {
   const tab = ref(request ? showRequestEdit(firstChangeData(), request) : showChange(firstChangeData(), mode, path))
-  /** The file the view holds in its mode, else the first there is. */
+  /** The file the view holds in its mode, else the first there is, which it then holds. */
   const selected = computed(() => changePath(tab.value, tab.value.mode, changes.uncommitted.files))
+  watch(selected, () => {
+    tab.value = holdShownChange(tab.value, changes.uncommitted.files)
+  }, { immediate: true })
   function show(mode: ChangeMode, path: string | null) {
     tab.value = showChange(tab.value, mode, path)
   }
