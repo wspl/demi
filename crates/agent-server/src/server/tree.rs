@@ -30,7 +30,7 @@ use tokio::sync::watch;
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
 
 pub(crate) use self::profiles::ProfileListing;
-pub(crate) use self::supervisor::{AgentSnapshot, StartInput, TreeEntry};
+pub(crate) use self::supervisor::{ShownAgent, StartInput, TreeEntry};
 use self::{live::LiveOutput, supervisor::Child};
 use super::{AgentServer, ResolveError, commands, connection::Outbox};
 use crate::{
