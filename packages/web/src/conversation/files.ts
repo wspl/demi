@@ -54,24 +54,22 @@ export function conversationFiles(conversationId: string): ConversationFileServi
       onCleanup(() => moving?.())
     }, { immediate: true })
   })
-  const workspace = computed(() => {
-    const target = execution.value
-    if (!target || !device.value || !target.path) {
-      return null
-    }
-    return {
-      source: fileSource(conversationFileRoutes(conversationId), device.value, watcher, (reads) =>
-        directFileReads(() => directRoute(conversationId), reads)),
-      root: target.path,
-      // The Cloud's own session directory has no name worth showing; it is the workspace.
-      name: target.directory === null ? 'Workspace' : undefined,
-    }
-  })
-  // The working tree's place, as plain values: a product state that leaves
-  // the Host and the directory as they are keeps the change set, so what
-  // shows it is not shown again, which would read an unconfirmed list anew.
+  // The workspace and the working tree's place, from plain values and the
+  // source the device's files keep: a product state that leaves the Host
+  // and the directory as they are, as each frame of a turn does, keeps them
+  // as they are, so the views that show them have nothing to render, and the
+  // change set is not shown again, which would read an unconfirmed list anew.
   const deviceId = computed(() => device.value?.id ?? null)
   const root = computed(() => execution.value?.path ?? null)
+  const source = computed(() => device.value
+    ? fileSource(conversationFileRoutes(conversationId), device.value, watcher, (reads) =>
+      directFileReads(() => directRoute(conversationId), reads))
+    : null)
+  // The Cloud's own session directory has no name worth showing; it is the workspace.
+  const name = computed(() => execution.value?.directory === null ? 'Workspace' : undefined)
+  const workspace = computed(() => source.value && root.value
+    ? { source: source.value, root: root.value, name: name.value }
+    : null)
   const changes = computed(() => {
     if (!root.value || deviceId.value === null) {
       return null

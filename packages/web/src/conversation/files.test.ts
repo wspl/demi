@@ -81,15 +81,20 @@ async function settle(): Promise<void> {
   }
 }
 
-test('the changes list is read when shown, and a product state that keeps its Host and directory reads it no more', async () => {
+test('the changes list is read when shown, and a product state that keeps its Host and directory reads it no more and keeps the workspace', async () => {
   const scope = effectScope()
-  scope.run(() => conversationFiles(CONVERSATION).showChanges())
+  const files = conversationFiles(CONVERSATION)
+  scope.run(() => files.showChanges())
   await settle()
   expect(listed).toBe(1)
+  const workspace = files.workspace
+  expect(workspace?.root).toBe('/home/ada/work')
   // The device changes in a way that leaves where the working tree is: renamed, as any device update.
   channels.last().send({ type: 'devices', devices: [laptop('ada’s laptop')] })
   channels.last().send({ type: 'devices', devices: [laptop('laptop')] })
   await settle()
   expect(listed).toBe(1)
+  // The File view has nothing to render again.
+  expect(files.workspace).toBe(workspace)
   scope.stop()
 })
