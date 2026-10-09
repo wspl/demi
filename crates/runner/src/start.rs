@@ -11,8 +11,9 @@ use std::{
 };
 
 use demi_runner_protocol::console::PAIRING_CODE;
+use tokio::io::{AsyncReadExt as _, AsyncSeekExt as _};
 
-use crate::{management, state::RunnerState};
+use crate::{console, management, state::RunnerState};
 
 /// How often the start looks at the runner it started.
 const POLL: Duration = Duration::from_millis(100);
@@ -37,19 +38,31 @@ pub async fn start(directory: &Path, arguments: Vec<String>) -> io::Result<u8> {
         }
         Some(lease) => lease.release()?,
     }
-    let log = directory.join("runner.log");
-    let mut child = spawn(directory, &log, arguments)?;
-    let mut read = 0;
+    let log = directory.join(console::LOG);
+    // What the log holds already is an earlier runner's.
+    let mut started = match tokio::fs::metadata(&log).await {
+        Ok(metadata) => metadata.len(),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => 0,
+        Err(error) => return Err(error),
+    };
+    let mut child = spawn(directory, arguments)?;
+    let mut read = started;
     loop {
+        let (from, output) = since(&log, read).await?;
+        if from < read {
+            // The log started again past its size: what this runner wrote is
+            // in the new one.
+            started = from;
+        }
         if let Some(status) = child.try_wait()? {
+            let (_, output) = since(&log, started).await?;
             eprintln!("The runner stopped ({status}):");
-            eprint!("{}", tokio::fs::read_to_string(&log).await.unwrap_or_default());
+            eprint!("{}", String::from_utf8_lossy(&output));
             return Ok(1);
         }
-        let output = tokio::fs::read_to_string(&log).await?;
         // Only complete lines are read.
-        let complete = output.rfind('\n').map_or(0, |end| end + 1);
-        for line in output[read.min(complete)..complete].lines() {
+        let complete = output.iter().rposition(|byte| *byte == b'\n').map_or(0, |end| end + 1);
+        for line in String::from_utf8_lossy(&output[..complete]).lines() {
             if let Some(code) = line.strip_prefix(PAIRING_CODE) {
                 println!("The runner is not paired; enter this pairing code in Add Device: {code}");
                 return Ok(1);
@@ -60,13 +73,29 @@ pub async fn start(directory: &Path, arguments: Vec<String>) -> io::Result<u8> {
                 return Ok(1);
             }
         }
-        read = complete;
+        read = from + complete as u64;
         if connected(&state).await {
             println!("The runner is connected.");
             return Ok(0);
         }
         tokio::time::sleep(POLL).await;
     }
+}
+
+/// What the log at `log` holds from `offset` on, and the offset it was read
+/// from: the log's start when the log is shorter, since it started again
+/// past its size; nothing when there is no log yet.
+async fn since(log: &Path, offset: u64) -> io::Result<(u64, Vec<u8>)> {
+    let mut file = match tokio::fs::File::open(log).await {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok((offset, Vec::new())),
+        Err(error) => return Err(error),
+    };
+    let from = if file.metadata().await?.len() < offset { 0 } else { offset };
+    file.seek(io::SeekFrom::Start(from)).await?;
+    let mut output = Vec::new();
+    file.read_to_end(&mut output).await?;
+    Ok((from, output))
 }
 
 /// Whether the installation's active runner says it is online; not before
@@ -81,22 +110,21 @@ async fn connected(state: &RunnerState) -> bool {
         .is_ok_and(|status| status.phase == management::Phase::Online)
 }
 
-/// Starts the runner with `arguments` apart from this process, its output
-/// in the installation's log as the installer makes it: private to the
-/// user, since it holds pairing codes.
-fn spawn(directory: &Path, log: &Path, arguments: Vec<String>) -> io::Result<tokio::process::Child> {
-    let output = private_file(log)?;
+/// Starts the runner with `arguments` apart from this process; it writes
+/// its output to the installation's log itself.
+fn spawn(directory: &Path, arguments: Vec<String>) -> io::Result<tokio::process::Child> {
     let mut command = tokio::process::Command::new(std::env::current_exe()?);
     command
         .args(arguments)
         .current_dir(home_or(directory))
-        .stdin(Stdio::null());
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     #[cfg(unix)]
     {
         // A group of its own: the terminal's interrupt and its closing do
         // not reach it.
         command.process_group(0);
-        command.stdout(output.try_clone()?).stderr(output);
     }
     #[cfg(windows)]
     {
@@ -104,9 +132,6 @@ fn spawn(directory: &Path, log: &Path, arguments: Vec<String>) -> io::Result<tok
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
-        // As the installer redirects it: the console lines in the log.
-        let standard = private_file(&directory.join("runner.stdout.log"))?;
-        command.stdout(standard).stderr(output);
     }
     command.spawn()
 }
@@ -115,16 +140,4 @@ fn spawn(directory: &Path, log: &Path, arguments: Vec<String>) -> io::Result<tok
 /// when there is none.
 fn home_or(directory: &Path) -> PathBuf {
     std::env::home_dir().unwrap_or_else(|| directory.to_owned())
-}
-
-/// `path`, emptied, readable and writable by its owner only.
-fn private_file(path: &Path) -> io::Result<std::fs::File> {
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt as _;
-        options.mode(0o600);
-    }
-    options.open(path)
 }

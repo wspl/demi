@@ -14,7 +14,10 @@ use demi_provider_common::testing::MockVendor;
 use demi_runner_protocol::release::{
     RELEASE_HEADER, RUNNER, TARGET_HEADER, TOKEN_HEADER, compressed_file,
 };
-use demi_runner_protocol::wire;
+use demi_runner_protocol::{
+    console::{PAIRED, PAIRING_CODE, REMOVAL},
+    wire,
+};
 use demi_web_api_protocol::devices::DeviceState;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
@@ -483,6 +486,9 @@ fn mode(path: &Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777
 }
 
+/// An installer shows the codes of the runner it started and no earlier
+/// runner's, whose lines its log keeps (`runner.md` § Installation, pairing
+/// and removal).
 // Several seconds (8 s here under load): the installer downloads this build's
 // runner (170 MB) from its backend, verifies it and starts it, and shows a
 // code that expires after two seconds before it shows the one claimed; a
@@ -497,6 +503,16 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the
     let (backend, master) = harness.start_set_up().await;
     let installations = Installations::new();
     let state = installations.state(&format!("{}/", backend.url));
+    // An earlier runner of the installation, which the person removed by
+    // hand, wrote its code and was paired as another device.
+    let earlier = format!(
+        "{PAIRING_CODE}EXPIRED-CODE\n{PAIRED}earlier-laptop\n{REMOVAL}earlier-removal\n"
+    );
+    std::fs::create_dir_all(&state).unwrap();
+    std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::write(state.join("runner.log"), &earlier).unwrap();
+    std::fs::set_permissions(state.join("runner.log"), std::fs::Permissions::from_mode(0o600))
+        .unwrap();
 
     // The user's shell lets the group write, as some systems' shells do. The
     // installer shows the runner's code, and the next one once it expired,
@@ -505,7 +521,10 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the
         .install_with_umask(&backend, &master, "002", 1)
         .await;
     assert!(printed.contains(CODES[1]), "{printed}");
+    assert!(!printed.contains("EXPIRED-CODE"), "{printed}");
     says_paired(&printed, &state);
+    let log = std::fs::read_to_string(state.join("runner.log")).unwrap();
+    assert!(log.starts_with(&earlier), "{log}");
     // The installation stays the user's alone: its log holds the pairing code.
     assert_eq!(mode(&state), 0o700);
     assert_eq!(mode(&state.join("runner.log")), 0o600);

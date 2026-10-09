@@ -301,6 +301,13 @@ jobs:
         with:
           pattern: files-*
           path: ${{ runner.temp }}/files
+      # Each executable's debug file for each target, which the release
+      # publishes beside its assets and no device downloads.
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: symbols-*
+          path: dist
+          merge-multiple: true
       # Each architecture's server release assembled the release's files,
       # which both roots' manifests name: one copy is published, so the two
       # must be the same file for file.

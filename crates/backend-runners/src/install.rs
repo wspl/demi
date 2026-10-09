@@ -304,6 +304,10 @@ else
   mkdir "$stage"
 fi
 pid=
+log="$state/runner.log"
+# Where the log ended when this installer started the runner: what it held
+# before is an earlier runner's. One that runs already is read whole.
+seen=0
 if DEMI_HOME="$state" DEMI_RELEASE_ID="$release" "$bin/demi-runner" status --backend "$backend" >/dev/null 2>&1; then
   echo "Runner already running: $state"
 else
@@ -320,17 +324,22 @@ state=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 IFS= read -r backend < "$state/backend-url"
 IFS= read -r release < "$state/release-id"
 export DEMI_HOME="$state" DEMI_RELEASE_ID="$release"
-exec "$state/releases/$release/demi-runner" "${1:-run}" --backend "$backend"
+action=${1:-run}
+[ "$#" -eq 0 ] || shift
+exec "$state/releases/$release/demi-runner" "$action" --backend "$backend" "$@"
 LAUNCHER
   printf '%s\n' "$backend" > "$state/backend-url"
   printf '%s\n' "$release" > "$state/release-id"
   chmod 755 "$state/run.next"
   mv "$state/run.next" "$state/run"
-  # The log is made here, under 077: it holds the pairing code. With job
-  # control on, the runner starts in a process group of its own, so that
-  # interrupting this installer at its terminal leaves the runner running.
+  if [ -f "$log" ]; then
+    seen=$(($(wc -c < "$log")))
+  fi
+  # The runner writes its log itself. With job control on, it starts in a
+  # process group of its own, so that interrupting this installer at its
+  # terminal leaves the runner running.
   set -m 2>/dev/null
-  nohup sh -c 'umask "$1" && exec "$2"' sh "$user_umask" "$state/run" > "$state/runner.log" 2>&1 < /dev/null &
+  nohup sh -c 'umask "$1" && exec "$2" run --log' sh "$user_umask" "$state/run" > /dev/null 2>&1 < /dev/null &
   pid=$!
   set +m
   printf 'Runner installed for %s\n' "$backend"
@@ -343,17 +352,28 @@ cleanup
 # receives, then the device's name and the removal command once it is
 # paired. Only complete lines are read; of the codes read at once, only the
 # last is still live.
-log="$state/runner.log"
-seen=0
+begin=$seen
 shown=
 while :; do
-  lines=$(($(wc -l < "$log")))
+  size=0
+  if [ -f "$log" ]; then
+    size=$(($(wc -c < "$log")))
+  fi
+  # A log shorter than what was read started again past its size.
+  if [ "$size" -lt "$seen" ]; then
+    seen=0
+    begin=0
+  fi
   code=
   name=
   removal=
-  if [ "$lines" -gt "$seen" ]; then
-    chunk=$(sed -n "$((seen + 1)),${lines}p" "$log")
-    seen=$lines
+  lines=0
+  if [ "$size" -gt "$seen" ]; then
+    lines=$(($(tail -c +"$((seen + 1))" "$log" | head -c "$((size - seen))" | wc -l)))
+  fi
+  if [ "$lines" -gt 0 ]; then
+    chunk=$(tail -c +"$((seen + 1))" "$log" | head -n "$lines")
+    seen=$((seen + $(tail -c +"$((seen + 1))" "$log" | head -n "$lines" | wc -c)))
     while IFS= read -r line; do
       case "$line" in
         "$pairing_prefix"*) code=${line#"$pairing_prefix"} ;;
@@ -383,7 +403,9 @@ CHUNK
   fi
   if [ "$alive" = no ]; then
     echo 'The runner stopped:' >&2
-    cat "$log" >&2
+    if [ -f "$log" ]; then
+      tail -c +"$((begin + 1))" "$log" >&2
+    fi
     exit 1
   fi
   sleep 0.2
@@ -422,6 +444,31 @@ $demiStage = Join-Path $demiReleases ('.download-' + [Guid]::NewGuid().ToString(
 $demiPreviousHome = $env:DEMI_HOME
 $demiPreviousRelease = $env:DEMI_RELEASE_ID
 $demiProcess = $null
+$demiLog = Join-Path $demiState 'runner.log'
+# Where the log ended when this installer started the runner: what it held
+# before is an earlier runner's. One that runs already is read whole.
+$demiSeen = 0
+# The bytes of the log from `$From` on, read beside the runner, which writes
+# it and may rename it.
+function Read-DemiLog([long]$From) {
+  # The comma keeps an array, even an empty one, from being unrolled.
+  if (-not (Test-Path $demiLog)) { return ,[byte[]]::new(0) }
+  $stream = [IO.FileStream]::new($demiLog, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
+  try {
+    $bytes = [byte[]]::new([Math]::Max(0, $stream.Length - $From))
+    $stream.Position = [Math]::Min($From, $stream.Length)
+    $read = 0
+    while ($read -lt $bytes.Length) {
+      $count = $stream.Read($bytes, $read, $bytes.Length - $read)
+      if ($count -eq 0) { break }
+      $read += $count
+    }
+    [Array]::Resize([ref]$bytes, $read)
+    return ,$bytes
+  } finally {
+    $stream.Dispose()
+  }
+}
 function Invoke-DemiControl([string]$Action) {
   $control = [Diagnostics.ProcessStartInfo]::new()
   $control.FileName = $demiExe
@@ -503,7 +550,9 @@ exit $demiExit
 '@
       [IO.File]::WriteAllText((Join-Path $demiState 'run.ps1'), $demiLauncher, $demiUtf8)
       Write-Output 'Starting runner...'
-      $demiProcess = Start-Process -FilePath $demiExe -ArgumentList @('run', '--backend', $demiBackend) -WorkingDirectory $demiHome -WindowStyle Hidden -RedirectStandardOutput (Join-Path $demiState 'runner.stdout.log') -RedirectStandardError (Join-Path $demiState 'runner.log') -PassThru
+      if (Test-Path $demiLog) { $demiSeen = (Get-Item $demiLog).Length }
+      # The runner writes its log itself.
+      $demiProcess = Start-Process -FilePath $demiExe -ArgumentList @('run', '--backend', $demiBackend, '--log') -WorkingDirectory $demiHome -WindowStyle Hidden -PassThru
       Write-Output "Runner installed for $demiBackend"
     }
   } catch {
@@ -520,17 +569,27 @@ exit $demiExit
   }
   # Shows the runner's log as pairing goes: each pairing code the runner
   # receives, then the device's name and the removal command once it is
-  # paired. Of the codes read at once, only the last is still live.
-  # Interrupting this installer leaves the runner running.
-  $demiLog = Join-Path $demiState 'runner.log'
-  $demiReader = [IO.StreamReader]::new([IO.FileStream]::new($demiLog, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete'))
-  try {
-    $demiShown = $null
-    while ($true) {
-      $demiCode = $null
-      $demiName = $null
-      $demiRemoval = $null
-      while ($null -ne ($demiLine = $demiReader.ReadLine())) {
+  # paired. Only complete lines are read; of the codes read at once, only
+  # the last is still live. Interrupting this installer leaves the runner
+  # running.
+  $demiBegin = $demiSeen
+  $demiShown = $null
+  while ($true) {
+    $demiCode = $null
+    $demiName = $null
+    $demiRemoval = $null
+    # A log shorter than what was read started again past its size.
+    if ((Test-Path $demiLog) -and (Get-Item $demiLog).Length -lt $demiSeen) {
+      $demiSeen = 0
+      $demiBegin = 0
+    }
+    $demiBytes = Read-DemiLog $demiSeen
+    $demiEnd = if ($demiBytes.Length -gt 0) { [Array]::LastIndexOf($demiBytes, [byte]10) } else { -1 }
+    if ($demiEnd -ge 0) {
+      $demiSeen += $demiEnd + 1
+      $demiLines = [Text.Encoding]::UTF8.GetString($demiBytes, 0, $demiEnd).Split("`n")
+      foreach ($demiLine in $demiLines) {
+        $demiLine = $demiLine.TrimEnd("`r")
         if ($demiLine.StartsWith($demiPairingPrefix)) {
           $demiCode = $demiLine.Substring($demiPairingPrefix.Length)
         } elseif ($demiLine.StartsWith($demiPairedPrefix)) {
@@ -539,27 +598,25 @@ exit $demiExit
           $demiRemoval = $demiLine.Substring($demiRemovalPrefix.Length)
         }
       }
-      if ($demiRemoval) {
-        Write-Output "Paired as $demiName"
-        Write-Output "To remove this runner, run: $demiRemoval"
-        break
-      }
-      if ($demiCode -and $demiCode -ne $demiShown) {
-        if ($demiShown) {
-          Write-Output "The code expired; enter this one instead: $demiCode"
-        } else {
-          Write-Output "Enter this pairing code in Add Device: $demiCode"
-        }
-        $demiShown = $demiCode
-      }
-      $demiAlive = if ($demiProcess) { -not $demiProcess.HasExited } else { (Invoke-DemiControl 'status') -eq 0 }
-      if (-not $demiAlive) {
-        throw ('The runner stopped:' + [Environment]::NewLine + [IO.File]::ReadAllText($demiLog))
-      }
-      Start-Sleep -Milliseconds 200
     }
-  } finally {
-    $demiReader.Dispose()
+    if ($demiRemoval) {
+      Write-Output "Paired as $demiName"
+      Write-Output "To remove this runner, run: $demiRemoval"
+      break
+    }
+    if ($demiCode -and $demiCode -ne $demiShown) {
+      if ($demiShown) {
+        Write-Output "The code expired; enter this one instead: $demiCode"
+      } else {
+        Write-Output "Enter this pairing code in Add Device: $demiCode"
+      }
+      $demiShown = $demiCode
+    }
+    $demiAlive = if ($demiProcess) { -not $demiProcess.HasExited } else { (Invoke-DemiControl 'status') -eq 0 }
+    if (-not $demiAlive) {
+      throw ('The runner stopped:' + [Environment]::NewLine + [Text.Encoding]::UTF8.GetString((Read-DemiLog $demiBegin)))
+    }
+    Start-Sleep -Milliseconds 200
   }
 } finally {
   $env:DEMI_HOME = $demiPreviousHome

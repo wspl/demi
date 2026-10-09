@@ -24,6 +24,7 @@ demi-command-sdk = { path = "../command-sdk" }
 demi-shared-types = { path = "../shared-types" }
 demi-command-package-file-protocol = { path = "../command-package-file-protocol" }
 demi-shared-gates = { path = "../shared-gates" }
+demi-shared-cli = { path = "../shared-cli" }
 regex = "1"
 similar = "2"
 strsim = "0.11"
