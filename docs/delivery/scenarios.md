@@ -407,8 +407,12 @@ Linux, the Cloud's platform. The scenarios cover what the product relies on from
 - a batch of tool calls through Demi's tools, and their results;
 - usage;
 - Stop in the middle of a stream;
-- a new process that replays the transcript, and a change of model and
-  effort, which needs one;
+- a new process that resumes the session written from the blocks: its
+  first request, on the same model, begins with the bytes of the previous
+  process's last request, also across a change of effort and across a turn
+  of another provider written in Claude's format; it carries no environment
+  text of the CLI's; and a change of system prompt or tools reaches it;
+- a change of model, which needs a new process;
 - a vendor error as the request's failure;
 - the token on a file descriptor, the process's private directory and its
   removal, and a refused token refreshed and the request sent again.
