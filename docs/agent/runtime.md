@@ -632,7 +632,7 @@ either.
 
 ### Stopping a command
 
-`demi shell stop <commandId>` stops a running command of the conversation,
+`demi shell stop <commandId>…` stops each running command of the conversation it names,
 whichever agent ran it, and waits until it has ended: it prints
 `[command 17 stopped]`, and the command's next `shell_status` shows it
 `aborted` with its last output. A command that had already ended prints
