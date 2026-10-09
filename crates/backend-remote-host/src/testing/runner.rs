@@ -372,21 +372,17 @@ async fn adopt(
         ping: None,
     });
     device.send_replace(DeviceLink::Online(link.clone()));
-    let incoming = incoming.filter_map(|message| {
-        ready(match message {
-            Ok(Message::Binary(frame)) => Some(Ok(frame.to_vec())),
-            Ok(Message::Text(_)) => Some(Err("the runner sent a text frame".into())),
-            Ok(_) => None,
-            Err(error) => Some(Err(error.to_string())),
-        })
-    });
-    let outgoing =
-        outgoing.with(|frame: Vec<u8>| ready(Ok::<_, axum::Error>(Message::Binary(frame.into()))));
+    let incoming = incoming.filter_map(|message| ready(crate::socket_frame(message)));
+    let frames = (&mut outgoing)
+        .with(|frame: Vec<u8>| ready(Ok::<_, axum::Error>(Message::Binary(frame.into()))));
     let driver = match tap {
         Some(tap) => driver.tap(tap),
         None => driver,
     };
-    driver.serve(incoming, outgoing).await;
+    let end = driver.serve(incoming, frames).await;
+    // As the backend's edge ends it: a refusal names the runner's message.
+    // A runner that went away hears nothing.
+    let _ = outgoing.send(Message::Close(crate::close_frame(&end))).await;
     super::went_offline(&device, &link, identity);
 }
 

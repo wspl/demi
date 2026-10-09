@@ -1775,12 +1775,44 @@ async fn an_unanswered_ping_ends_the_connection_unless_liveness_is_paused() {
     );
 }
 
+// A message the backend cannot decode ends the connection, and the
+// refusal names its type and the decoding error, which the work lost with
+// the connection says (`runner.md` § Connection and identity). A few
+// milliseconds.
 #[tokio::test(flavor = "local")]
-async fn a_malformed_frame_ends_the_connection() {
+async fn a_message_the_backend_cannot_decode_ends_the_connection_naming_it() {
     let device = device();
+    let mut link = device.connect(None);
+    let host = device.host("/work", Admission::Free);
+    let job = host.start_job(job_start("sleep 10")).await.unwrap();
+    drain(&mut link).await;
+    // A newer runner's pong, with a field this backend does not know: the
+    // MessagePack map of two fields gains a third, `load: 1`.
+    let mut newer = demi_runner_protocol::wire::encode(&Outbound::Pong { jobs: 0 })
+        .unwrap()
+        .into_bytes();
+    assert_eq!(newer[0], 0x82, "a map of two fields");
+    newer[0] = 0x83;
+    newer.extend(b"\xa4load\x01");
+    link.send_frame(newer).await;
+    let LinkEnd::Refused(refusal) = link.ended().await else {
+        panic!("the connection did not end with a refusal");
+    };
+    assert!(
+        refusal.starts_with("cannot decode pong: unknown field `load`"),
+        "{refusal}"
+    );
+    assert_eq!(
+        job.end().await.status,
+        ProcessEnd::Lost(format!("runner disconnected: the backend {refusal}"))
+    );
+    // Bytes that are no message at all are named as a message.
     let link = device.connect(None);
     link.send_frame(b"not a message".to_vec()).await;
-    assert!(matches!(link.ended().await, LinkEnd::Refused(_)));
+    let LinkEnd::Refused(refusal) = link.ended().await else {
+        panic!("the connection did not end with a refusal");
+    };
+    assert!(refusal.starts_with("cannot decode a message: "), "{refusal}");
 }
 
 /// When the kept output cannot be read once the job ended, the command's

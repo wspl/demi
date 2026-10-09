@@ -130,18 +130,31 @@ impl Transport {
         let stopped = cancel.clone();
         let owner = tokio::spawn(async move {
             let (mut writer, mut reader) = socket.split();
+            // Ends with the refusal of a message this side cannot decode,
+            // which the connection then closes over.
             let receive = async {
                 while let Some(message) = reader.next().await {
                     match message.map_err(io::Error::other)? {
                         Message::Binary(bytes) => {
-                            let message = wire::decode(&bytes).map_err(io::Error::other)?;
+                            let message = match wire::decode(&bytes) {
+                                Ok(message) => message,
+                                Err(error) => return Ok(Some(wire::refusal(&bytes, &error))),
+                            };
                             // A full queue stops the reading until the
                             // connection's owner takes a message.
                             if incoming.send(message).await.is_err() {
-                                return Ok(());
+                                return Ok(None);
                             }
                         }
-                        Message::Close(_) => return Ok(()),
+                        // The backend closed it over a message of this
+                        // runner's that it cannot decode, and says which.
+                        Message::Close(Some(frame)) if frame.code == CloseCode::Invalid => {
+                            return Err(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                format!("the backend {}", frame.reason),
+                            ));
+                        }
+                        Message::Close(_) => return Ok(None),
                         Message::Ping(_) | Message::Pong(_) => {}
                         _ => {
                             return Err(io::Error::new(
@@ -151,7 +164,7 @@ impl Transport {
                         }
                     }
                 }
-                Ok::<_, io::Error>(())
+                Ok::<_, io::Error>(None)
             };
             let send = async {
                 loop {
@@ -170,10 +183,26 @@ impl Transport {
             let ended = tokio::select! {
                 _ = stopped.cancelled() => None,
                 result = receive => Some(result),
-                result = send => Some(result),
+                result = send => Some(result.map(|()| None)),
             };
-            if let Some(result) = ended {
-                return result;
+            match ended {
+                // The connection closes over a message the runner cannot
+                // decode, naming it, so the backend reports why it ended
+                // (`runner.md` § Connection and identity).
+                Some(Ok(Some(refusal))) => {
+                    let frame = CloseFrame {
+                        code: CloseCode::Invalid,
+                        reason: wire::close_reason(&refusal).into(),
+                    };
+                    // The connection ends with the refusal either way; a
+                    // backend that is gone or slow only misses its reason.
+                    let _sent =
+                        tokio::time::timeout(CLOSE_TIMEOUT, writer.send(Message::Close(Some(frame))))
+                            .await;
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, refusal));
+                }
+                Some(result) => return result.map(|_| ()),
+                None => {}
             }
             // The runner ends this connection on purpose: what is queued
             // goes first, then a close frame, and the connection ends with
