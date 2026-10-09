@@ -126,6 +126,57 @@ impl Block {
     }
 }
 
+/// How a block a client receives is serialized: without the entries of the
+/// vendor's own record, which never leave the backend (`claude-code.md`
+/// § The session a process resumes). Use with `#[serde(with = ...)]`.
+pub mod client_block {
+    use std::borrow::Cow;
+
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    use super::Block;
+
+    pub fn serialize<S: Serializer>(block: &Block, serializer: S) -> Result<S::Ok, S::Error> {
+        sent(block).serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Block, D::Error> {
+        Block::deserialize(deserializer)
+    }
+
+    /// `block` as a client receives it.
+    pub(super) fn sent(block: &Block) -> Cow<'_, Block> {
+        if block.entries().is_empty() {
+            return Cow::Borrowed(block);
+        }
+        let mut sent = block.clone();
+        if let Some(entries) = sent.entries_mut() {
+            entries.clear();
+        }
+        Cow::Owned(sent)
+    }
+}
+
+/// The same for blocks a client receives together.
+pub mod client_blocks {
+    use serde::ser::SerializeSeq as _;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    use super::{Block, client_block::sent};
+
+    pub fn serialize<S: Serializer>(blocks: &[Block], serializer: S) -> Result<S::Ok, S::Error> {
+        let mut sequence = serializer.serialize_seq(Some(blocks.len()))?;
+        for block in blocks {
+            sequence.serialize_element(&sent(block))?;
+        }
+        sequence.end()
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<Block>, D::Error> {
+        Vec::<Block>::deserialize(deserializer)
+    }
+}
+
 /// Written by hand because the derive's `Self::Context` would name the
 /// `Context` variant: a block is valid when its variant is, and a failure's
 /// path starts at the variant's fields.
@@ -166,8 +217,9 @@ pub struct UserBlock {
     pub preamble: Option<String>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
-    /// a process resumes); omitted when there are none. The web app reads
-    /// none of them, so its contract leaves them out.
+    /// a process resumes); omitted when there are none. They never leave
+    /// the backend: a block a client receives is serialized without them
+    /// ([`client_block`]), so the web contract leaves them out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
@@ -201,8 +253,9 @@ pub struct ContextBlock {
     pub instructions: Vec<InstructionEntry>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
-    /// a process resumes); omitted when there are none. The web app reads
-    /// none of them, so its contract leaves them out.
+    /// a process resumes); omitted when there are none. They never leave
+    /// the backend: a block a client receives is serialized without them
+    /// ([`client_block`]), so the web contract leaves them out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
@@ -261,8 +314,9 @@ pub struct WakeupBlock {
     pub command: Option<WakeupCommand>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
-    /// a process resumes); omitted when there are none. The web app reads
-    /// none of them, so its contract leaves them out.
+    /// a process resumes); omitted when there are none. They never leave
+    /// the backend: a block a client receives is serialized without them
+    /// ([`client_block`]), so the web contract leaves them out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
@@ -332,8 +386,9 @@ pub struct SteerBlock {
     pub content: Vec<UserContentBlock>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
-    /// a process resumes); omitted when there are none. The web app reads
-    /// none of them, so its contract leaves them out.
+    /// a process resumes); omitted when there are none. They never leave
+    /// the backend: a block a client receives is serialized without them
+    /// ([`client_block`]), so the web contract leaves them out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
@@ -356,8 +411,9 @@ pub struct AgentMessageBlock {
     pub message: AgentMessage,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
-    /// a process resumes); omitted when there are none. The web app reads
-    /// none of them, so its contract leaves them out.
+    /// a process resumes); omitted when there are none. They never leave
+    /// the backend: a block a client receives is serialized without them
+    /// ([`client_block`]), so the web contract leaves them out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
@@ -391,8 +447,9 @@ pub struct ResumeBlock {
     pub model: ModelSelection,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
-    /// a process resumes); omitted when there are none. The web app reads
-    /// none of them, so its contract leaves them out.
+    /// a process resumes); omitted when there are none. They never leave
+    /// the backend: a block a client receives is serialized without them
+    /// ([`client_block`]), so the web contract leaves them out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
@@ -433,8 +490,9 @@ pub struct ThinkingBlock {
     pub signature: Option<String>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
-    /// a process resumes); omitted when there are none. The web app reads
-    /// none of them, so its contract leaves them out.
+    /// a process resumes); omitted when there are none. They never leave
+    /// the backend: a block a client receives is serialized without them
+    /// ([`client_block`]), so the web contract leaves them out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
@@ -455,8 +513,9 @@ pub struct RedactedThinkingBlock {
     pub data: String,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
-    /// a process resumes); omitted when there are none. The web app reads
-    /// none of them, so its contract leaves them out.
+    /// a process resumes); omitted when there are none. They never leave
+    /// the backend: a block a client receives is serialized without them
+    /// ([`client_block`]), so the web contract leaves them out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
@@ -482,8 +541,9 @@ pub struct TextBlock {
     pub forkable: bool,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
-    /// a process resumes); omitted when there are none. The web app reads
-    /// none of them, so its contract leaves them out.
+    /// a process resumes); omitted when there are none. They never leave
+    /// the backend: a block a client receives is serialized without them
+    /// ([`client_block`]), so the web contract leaves them out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
@@ -521,8 +581,9 @@ pub struct ToolCallBlock {
     pub view: Option<ToolView>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
-    /// a process resumes); omitted when there are none. The web app reads
-    /// none of them, so its contract leaves them out.
+    /// a process resumes); omitted when there are none. They never leave
+    /// the backend: a block a client receives is serialized without them
+    /// ([`client_block`]), so the web contract leaves them out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
@@ -612,8 +673,9 @@ pub struct CompactionBoundaryBlock {
     pub summary_tokens: u64,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
-    /// a process resumes); omitted when there are none. The web app reads
-    /// none of them, so its contract leaves them out.
+    /// a process resumes); omitted when there are none. They never leave
+    /// the backend: a block a client receives is serialized without them
+    /// ([`client_block`]), so the web contract leaves them out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
