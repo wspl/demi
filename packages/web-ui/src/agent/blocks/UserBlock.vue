@@ -24,8 +24,8 @@ const props = defineProps<{
    * A message the agent has not read yet, drawn faded, with what happens to
    * it said under it and its controls in view: a steer, which the running
    * turn reads at its next step, or a queued message, which runs after it.
-   * Send Now delivers either at once (`product.md` § Conversations and
-   * projects); Remove takes it back.
+   * Send Now delivers either at once (`product.md` § Steer or queue);
+   * Remove takes it back.
    */
   pending?: 'steer' | 'queued'
   /** Keep the hover actions visible (a catalog specimen, not a hover). */

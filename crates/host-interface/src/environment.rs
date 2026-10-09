@@ -121,25 +121,26 @@ pub trait PageFeed {
 }
 
 /// Watches `command` until the first of: it ends, `window` passes, or
-/// `until` resolves; then returns its status (`runtime.md` § The window).
-/// Without a window it looks at once. Ending the watch never stops the
-/// command.
-pub async fn watch(
+/// `until` resolves; then returns its status, with what `until` gave when
+/// it ended the watch (`runtime.md` § The window). Without a window it
+/// looks at once. Ending the watch never stops the command.
+pub async fn watch<T>(
     environment: &dyn ShellEnvironment,
     command: &CommandId,
     window: Option<ObservationWindow>,
-    until: impl Future<Output = ()>,
-) -> Result<CommandStatus, ShellError> {
+    until: impl Future<Output = T>,
+) -> Result<(CommandStatus, Option<T>), ShellError> {
+    let mut ended_by = None;
     if let Some(window) = window {
         tokio::select! {
             ended = environment.ended(command) => {
                 ended?;
             }
             () = tokio::time::sleep(window.duration()) => {}
-            () = until => {}
+            reason = until => ended_by = Some(reason),
         }
     }
-    environment.status(command)
+    Ok((environment.status(command)?, ended_by))
 }
 
 /// An environment's default shell, and the directory it is in.

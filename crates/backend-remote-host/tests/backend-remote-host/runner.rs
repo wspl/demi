@@ -79,7 +79,10 @@ impl<E: ShellEnvironment> Watched for E {
     async fn exec(&self, exec: Exec, cancel: CancellationToken) -> Result<CommandStatus, ShellError> {
         let command = self.start(exec.request, cancel).await?;
         let window = ObservationWindow::from_millis(exec.window);
-        demi_host_interface::watch(self, &command, window, std::future::pending()).await
+        let (status, _) =
+            demi_host_interface::watch(self, &command, window, std::future::pending::<()>())
+                .await?;
+        Ok(status)
     }
 }
 

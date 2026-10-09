@@ -1,9 +1,10 @@
 //! The shell tools' timing on a real runner (`runtime.md` § Dispatch and
 //! failures, § The window, § Stopping a command): the `shell_exec` calls of
 //! one response start together and a call of another tool splits them, the
-//! first takes the default shell and the others start beside it, a steer
-//! ends a window without stopping its command, and `shell_status` watches a
-//! command up to its end. `demi shell stop` runs in the backend, which these
+//! first takes the default shell and the others start beside it, an agent
+//! message ends a window and a human steer does not, Send Now ends one
+//! without stopping its command, and `shell_status` watches a command up to
+//! its end. `demi shell stop` runs in the backend, which these
 //! scenarios lack: the backend's own scenarios cover it.
 //!
 //! A command that cannot end until another runs, one that waits for the
@@ -19,9 +20,10 @@ use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderEvent, ResultPart, UserPart,
     testing::{ScriptedRuntime, Turn, event},
 };
+use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, Sender, Timestamp};
 use serde_json::{Value, json};
 
-use crate::support::{Fixture, exec, is_idle, reply, turn, within};
+use crate::support::{Fixture, conversation, exec, is_idle, reply, turn, within};
 
 /// What the model was shown of each tool call it made, by the call's id, in
 /// the order the request carries them.
@@ -201,9 +203,110 @@ async fn the_first_exec_keeps_its_directory_and_the_others_start_beside_it() {
     .await;
 }
 
+/// The text of the first steer `request` carries.
+fn steer_text(request: &InferenceRequest) -> Option<String> {
+    request.items.iter().find_map(|item| match item {
+        InferenceItem::UserSteer { content } => content.iter().find_map(|part| match part {
+            UserPart::Text(text) => Some(text.clone()),
+            _ => None,
+        }),
+        _ => None,
+    })
+}
+
+/// Whether `frame` shows the command the call `call` started.
+fn shows_call(frame: &ServerFrame, call: &str) -> bool {
+    matches!(frame, ServerFrame::ShellOutput { status, .. } if status.command().tool_use_id == call)
+}
+
+/// A message to the conversation's root from a subagent.
+fn agent_message(content: &str) -> AgentMessage {
+    AgentMessage {
+        id: BlockId::try_from("subagent:child:1").unwrap(),
+        sender: Some(Sender {
+            id: NodeId::try_from("child").unwrap(),
+            number: 1,
+            description: "Test triage".into(),
+            round: 1,
+        }),
+        recipient_id: conversation(),
+        timestamp: Timestamp::UNIX_EPOCH,
+        content: content.to_owned(),
+        event: AgentMessageEvent::Message {},
+    }
+}
+
 // About a second: two scripts, each a shell job.
 #[tokio::test(flavor = "local")]
-async fn a_steer_ends_the_window_and_the_command_runs_on() {
+async fn a_human_steer_waits_for_the_window_and_an_agent_message_ends_it() {
+    within(async {
+        let steered: Rc<RefCell<Option<String>>> = Rc::default();
+        let seen = steered.clone();
+        let results: Results = Rc::default();
+        let recorded = results.clone();
+        let turns = vec![
+            // Windows far longer than the test.
+            Turn::Events(vec![exec("flagged", AWAIT_FLAG, 600_000)]),
+            Turn::Respond(Box::new(move |request| {
+                record(&recorded, request);
+                *seen.borrow_mut() = steer_text(request);
+                vec![exec("second", "until [ -e second ]; do sleep 0.05; done", 600_000)]
+            })),
+            Turn::Respond(Box::new({
+                let recorded = results.clone();
+                move |request| {
+                    record(&recorded, request);
+                    reply("done")
+                }
+            })),
+        ];
+        let script = ScriptedRuntime::new(turns);
+        let fixture = Fixture::start(&script).await;
+        let mut client = fixture.opened().await;
+        client
+            .send(ClientFrame::Send {
+                message_id: "message-1".try_into().unwrap(),
+                content: client_text("Wait for the flag."),
+            })
+            .await;
+        // The command runs: the user steers, and the steer waits for the
+        // call, which returns only once the command ends.
+        client.next_until(|frame| shows_call(frame, "flagged")).await;
+        client
+            .send(ClientFrame::Steer {
+                steer_id: "steer-1".try_into().unwrap(),
+                content: client_text("Then look at the log."),
+            })
+            .await;
+        client
+            .next_until(|frame| matches!(frame, ServerFrame::SteerResult { .. }))
+            .await;
+        std::fs::write(format!("{}/flag", fixture.workspace), "").unwrap();
+        // The next command runs: a subagent's message ends its window.
+        client.next_until(|frame| shows_call(frame, "second")).await;
+        let root = fixture.server.node(&conversation(), &conversation()).unwrap();
+        root.session()
+            .accept_agent_message(agent_message("The failing test is flaky."))
+            .await
+            .unwrap();
+        client.next_until(is_idle).await;
+
+        let results = results.borrow();
+        let flagged = result(&results, "flagged");
+        assert_eq!(field(flagged, "status"), "exited", "{flagged}");
+        assert_eq!(shown_output(flagged), "through\n");
+        assert_eq!(steered.borrow().as_deref(), Some("Then look at the log."));
+        let second = result(&results, "second");
+        assert_eq!(field(second, "status"), "running", "{second}");
+        assert!(!second.contains("moved to the background"), "{second}");
+        fixture.stop().await;
+    })
+    .await;
+}
+
+// About a second: two scripts, each a shell job.
+#[tokio::test(flavor = "local")]
+async fn send_now_on_a_steer_moves_the_command_to_the_background_and_the_turn_goes_on() {
     within(async {
         let steered: Rc<RefCell<Option<String>>> = Rc::default();
         let seen = steered.clone();
@@ -214,13 +317,7 @@ async fn a_steer_ends_the_window_and_the_command_runs_on() {
             Turn::Events(vec![exec("read", "read line; echo \"got $line\"", 600_000)]),
             Turn::Respond(Box::new(move |request| {
                 record(&recorded, request);
-                *seen.borrow_mut() = request.items.iter().find_map(|item| match item {
-                    InferenceItem::UserSteer { content } => content.iter().find_map(|part| match part {
-                        UserPart::Text(text) => Some(text.clone()),
-                        _ => None,
-                    }),
-                    _ => None,
-                });
+                *seen.borrow_mut() = steer_text(request);
                 let command = field(result(&recorded.borrow(), "read"), "commandId").to_owned();
                 vec![call(
                     "answer",
@@ -245,14 +342,20 @@ async fn a_steer_ends_the_window_and_the_command_runs_on() {
                 content: client_text("Read a line."),
             })
             .await;
-        // The command runs: the user steers.
-        client
-            .next_until(|frame| matches!(frame, ServerFrame::ShellOutput { .. }))
-            .await;
+        // The command runs: the user steers and sends the steer now.
+        client.next_until(|frame| shows_call(frame, "read")).await;
         client
             .send(ClientFrame::Steer {
                 steer_id: "steer-1".try_into().unwrap(),
                 content: client_text("Answer go."),
+            })
+            .await;
+        client
+            .next_until(|frame| matches!(frame, ServerFrame::SteerResult { .. }))
+            .await;
+        client
+            .send(ClientFrame::SteerNow {
+                steer_id: "steer-1".try_into().unwrap(),
             })
             .await;
         client.next_until(is_idle).await;
@@ -260,11 +363,19 @@ async fn a_steer_ends_the_window_and_the_command_runs_on() {
         let results = results.borrow();
         let read = result(&results, "read");
         assert_eq!(field(read, "status"), "running", "{read}");
+        let command = field(read, "commandId");
+        let lines: Vec<&str> = read.lines().collect();
+        let line = format!(
+            "[The user sent a message, so command {command} moved to the background. It keeps running.]"
+        );
+        let at = lines.iter().position(|shown| *shown == line).expect(read);
+        assert!(lines[at + 1].starts_with("next:"), "{read}");
         assert_eq!(steered.borrow().as_deref(), Some("Answer go."));
         // The command ran on: it read the answer and ended.
         let answered = result(&results, "answer");
         assert_eq!(field(answered, "status"), "exited", "{answered}");
         assert_eq!(shown_output(answered), "got go\n");
+        assert!(!fixture.kinds().contains(&"abort".to_owned()));
         fixture.stop().await;
     })
     .await;
