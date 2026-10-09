@@ -590,10 +590,6 @@ pub fn resolve_path(path: &Path, cwd: &Path) -> PathBuf {
 /// the shell that ran it for the programs it starts.
 pub(crate) struct UtilityControl {
     pub(crate) scope: Scope,
-    #[cfg_attr(
-        not(unix),
-        expect(dead_code, reason = "only Unix applies a umask and limits to a child")
-    )]
     pub(crate) attributes: ChildAttributes,
 }
 
@@ -655,6 +651,23 @@ impl uucore::context::Control for UtilityControl {
             self.scope.check()?;
             command.spawn()
         })
+    }
+    fn utility(&self, program: &std::ffi::OsStr) -> Option<&'static str> {
+        crate::utilities::named(program)
+    }
+    /// A utility a utility starts by name runs as the job's shell runs it,
+    /// under a scope of its own that killing the child cancels.
+    fn run_utility(
+        &self,
+        mut context: uucore::context::Context,
+        args: Vec<std::ffi::OsString>,
+    ) -> io::Result<Box<dyn uucore::context::UtilityRun>> {
+        let cancellation = self.scope.cancellation.child_token();
+        context.control = Some(Arc::new(UtilityControl {
+            scope: self.scope.with_cancellation(cancellation.clone()),
+            attributes: self.attributes.clone(),
+        }));
+        crate::utilities::start(&self.scope.tasks, cancellation, context, args)
     }
 }
 

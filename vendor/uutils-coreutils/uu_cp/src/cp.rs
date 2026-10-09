@@ -482,6 +482,7 @@ mod options {
     pub const ARCHIVE: &str = "archive";
     pub const ATTRIBUTES_ONLY: &str = "attributes-only";
     pub const CLI_SYMBOLIC_LINKS: &str = "cli-symbolic-links";
+    pub const CLONE: &str = "clone";
     pub const CONTEXT: &str = "context";
     pub const COPY_CONTENTS: &str = "copy-contents";
     pub const DEREFERENCE: &str = "dereference";
@@ -537,6 +538,7 @@ pub fn uu_app() -> Command {
     const MODE_ARGS: &[&str] = &[
         options::LINK,
         options::REFLINK,
+        options::CLONE,
         options::SYMBOLIC_LINK,
         options::ATTRIBUTES_ONLY,
         options::COPY_CONTENTS,
@@ -660,6 +662,14 @@ pub fn uu_app() -> Command {
                 .value_parser(ShortcutValueParser::new(["auto", "always", "never"]))
                 .num_args(0..=1)
                 .help(translate!("cp-help-reflink")),
+        )
+        .arg(
+            // Demi's: macOS cp's flag for a clone, which GNU cp leaves free.
+            Arg::new(options::CLONE)
+                .short('c')
+                .overrides_with_all(MODE_ARGS)
+                .help(translate!("cp-help-clone"))
+                .action(ArgAction::SetTrue),
         )
         .arg(
             Arg::new(options::ATTRIBUTES_ONLY)
@@ -1253,6 +1263,8 @@ impl Options {
                             ));
                         }
                     }
+                } else if matches.get_flag(options::CLONE) {
+                    ReflinkMode::Auto
                 } else {
                     ReflinkMode::default()
                 }
@@ -1933,10 +1945,11 @@ pub(crate) fn copy_attributes(
         };
         #[cfg(not(unix))]
         let no_open = dest.context_is_symlink();
+        let dest = uucore::context::resolve(dest);
         if no_open {
-            filetime::set_symlink_file_times(dest, atime, mtime)?;
+            filetime::set_symlink_file_times(&dest, atime, mtime)?;
         } else {
-            filetime::set_file_times(dest, atime, mtime)?;
+            filetime::set_file_times(&dest, atime, mtime)?;
         }
 
         Ok(())

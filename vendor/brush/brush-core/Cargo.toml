@@ -128,6 +128,10 @@ version = "2.0.18"
 [dependencies.tracing]
 version = "0.1.44"
 
+[dependencies.uucore]
+version = "0.11.0"
+default-features = false
+
 [dev-dependencies.anyhow]
 version = "1.0.102"
 
@@ -301,4 +305,5 @@ patches = [
     "Subshells, command substitutions, shell functions and compound pipeline stages run on blocking tasks under an execution guard, so they run beside their consumers and the job waits for them",
     "Builtins use uucore::context for their files, streams and environment",
     "A shell embedded in a host process never changes that process's umask or resource limits: the shell keeps what its `umask` and `ulimit` set (ChildAttributes, which a subshell copies), the host applies them to each process the shell starts (ExecutionHost::spawn), and the shell's redirections create files with the mode its umask allows",
+    "Errors bash words itself are printed as bash prints them, without the shell's error: prefix: a builtin's as <builtin>: <reason>, nosuch: command not found with status 127, ./nosuch: No such file or directory with status 127, ./file: Permission denied with status 126, a script source cannot read as <file>: <reason>; a command that does not start is reported the same with or without an execution host (spawn_failure); reasons drop the operating system's error number with uucore's strip_errno, so brush-core depends on uucore 0.11",
 ]

@@ -38,7 +38,7 @@ pub enum ErrorKind {
     ConvertingIndexedArrayToAssociativeArray,
 
     /// An error occurred while sourcing the indicated script file.
-    #[error("failed to source file: {0}")]
+    #[error("{path}: {reason}", path = .0.display(), reason = uucore::error::strip_errno(.1))]
     FailedSourcingFile(PathBuf, #[source] std::io::Error),
 
     /// The shell failed to send a signal to a process.
@@ -58,7 +58,7 @@ pub enum ErrorKind {
     FunctionNotFound(String),
 
     /// Command was not found.
-    #[error("command not found: {0}")]
+    #[error("{0}: command not found")]
     CommandNotFound(String),
 
     /// Not a builtin.
@@ -70,8 +70,13 @@ pub enum ErrorKind {
     WorkingDirMissing(PathBuf),
 
     /// Failed to execute command.
-    #[error("failed to execute command '{0}': {1}")]
+    #[error("{name}: {reason}", name = .0, reason = uucore::error::strip_errno(.1))]
     FailedToExecuteCommand(String, #[source] std::io::Error),
+
+    /// An operation on the operand a builtin was given failed, such as `cd`'s
+    /// change to the directory it names.
+    #[error("{path}: {reason}", path = .0.display(), reason = uucore::error::strip_errno(.1))]
+    OperandFailed(PathBuf, #[source] std::io::Error),
 
     /// History item was not found.
     #[error("history item not found")]
@@ -329,11 +334,22 @@ pub trait BuiltinError: std::error::Error + ConvertibleToExitCode + Send + Sync 
     fn as_io_error(&self) -> Option<&std::io::Error> {
         None
     }
+
+    /// Whether a message about this error names the builtin first, as bash's
+    /// `cd: ./browse: No such file or directory` does; bash names no builtin
+    /// for a script that `source` cannot read.
+    fn names_builtin(&self) -> bool {
+        true
+    }
 }
 
 impl BuiltinError for Error {
     fn as_io_error(&self) -> Option<&std::io::Error> {
         self.as_io_error()
+    }
+
+    fn names_builtin(&self) -> bool {
+        !matches!(self.kind, ErrorKind::FailedSourcingFile(..))
     }
 }
 
@@ -362,6 +378,11 @@ impl From<&ErrorKind> for results::ExecutionExitCode {
             ErrorKind::ParseError(..) => Self::InvalidUsage,
             ErrorKind::FunctionParseError(..) => Self::InvalidUsage,
             ErrorKind::TestCommandParseError(..) => Self::InvalidUsage,
+            ErrorKind::FailedToExecuteCommand(_, error)
+                if error.kind() == std::io::ErrorKind::NotFound =>
+            {
+                Self::NotFound
+            }
             ErrorKind::FailedToExecuteCommand(..) => Self::CannotExecute,
             ErrorKind::FunctionNameShadowsSpecialBuiltin { .. } => Self::InvalidUsage,
             ErrorKind::IoError(io_err) => io_err.into(),
@@ -410,6 +431,37 @@ impl Error {
     /// Returns whether or not this error is fatal.
     pub const fn is_fatal(&self) -> bool {
         self.fatal
+    }
+
+    /// This error as the failure of an operation on `operand`, as the user
+    /// wrote it, which bash names before the reason:
+    /// `cd: ./browse: No such file or directory`.
+    #[must_use]
+    pub fn for_operand(self, operand: &std::path::Path) -> Self {
+        let error = match self.kind {
+            ErrorKind::IoError(error) => error,
+            ErrorKind::NotADirectory(_) => {
+                std::io::Error::new(std::io::ErrorKind::NotADirectory, "Not a directory")
+            }
+            _ => return self,
+        };
+        Self {
+            kind: ErrorKind::OperandFailed(operand.to_owned(), error),
+            fatal: self.fatal,
+        }
+    }
+
+    /// Whether bash words this error itself, as `<name>: <reason>`, rather
+    /// than the shell's own `error: ` line.
+    pub(crate) const fn worded_as_bash(&self) -> bool {
+        matches!(
+            self.kind,
+            ErrorKind::BuiltinError(..)
+                | ErrorKind::CommandNotFound(..)
+                | ErrorKind::FailedToExecuteCommand(..)
+                | ErrorKind::FailedSourcingFile(..)
+                | ErrorKind::OperandFailed(..)
+        )
     }
 
     /// Returns a reference to the error kind.

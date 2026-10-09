@@ -32,7 +32,7 @@ use tokio::sync::Notify;
 use crate::conversations::{Socket, anthropic_at, choose, create};
 use crate::families::{self, ScriptedKey};
 use crate::streams::{self, received};
-use crate::support::{Harness, PATIENCE, Session, TestBackend, eventually};
+use crate::support::{GNU_UTILITIES, Harness, PATIENCE, Session, TestBackend, eventually};
 use crate::work::{Driven, say, shell};
 
 /// The conversation ids the scenarios create.
@@ -586,7 +586,7 @@ async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_
     // The model learned its Host before its first request; a Cloud whose
     // runner never connected is named without its system.
     let unmade = format!(
-        "[Execution context 0]\\nPrimary host: Cloud. Shells start in /home/demi/sessions/{FIRST}.\\nAttached hosts: none."
+        "[Execution context 0]\\nPrimary host: Cloud. Shells start in /home/demi/sessions/{FIRST}. {GNU_UTILITIES}\\nAttached hosts: none."
     );
     assert!(
         wrote.first_request().contains(&unmade),
@@ -642,7 +642,7 @@ async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_
     // The block names the Cloud with the system its runner reported now.
     let home = harness.manager.home(&the_cloud(&harness));
     let named = format!(
-        " ({}). Shells start in {home}/sessions/{FIRST}.\\n[Cloud reset {RESET}]",
+        " ({}). Shells start in {home}/sessions/{FIRST}. {GNU_UTILITIES}\\n[Cloud reset {RESET}]",
         std::env::consts::ARCH
     );
     assert!(

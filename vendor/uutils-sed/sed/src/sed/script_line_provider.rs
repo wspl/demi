@@ -29,6 +29,12 @@ pub enum ScriptValue {
 pub struct ScriptLineProvider {
     sources: Vec<ScriptValue>,
     state: State,
+    /// The bytes of the current source read so far.
+    consumed: usize,
+    /// Where the line last read is: its source's index, its line number
+    /// and the offset of its start in the source. It stays once every
+    /// script is read, for a message about the end of the script.
+    last: Option<(usize, usize, usize)>,
 }
 
 /// Encapsulation of the script line provider's state
@@ -49,6 +55,33 @@ impl ScriptLineProvider {
         Self {
             sources,
             state: State::NotStarted,
+            consumed: 0,
+            last: None,
+        }
+    }
+
+    /// Where `column`, 1-based, of the line last read is, as GNU sed names
+    /// it in a message: `-e expression #N, char C` for the Nth script given
+    /// as text, C counted from that text's start and at most its length, and
+    /// `file F line L` for a script file.
+    pub fn describe(&self, column: usize) -> String {
+        let Some((index, line_number, start)) = self.last else {
+            return "-e expression #1, char 0".to_owned();
+        };
+        match &self.sources[index] {
+            ScriptValue::StringVal(text) => {
+                let expression = self.sources[..=index]
+                    .iter()
+                    .filter(|source| matches!(source, ScriptValue::StringVal(_)))
+                    .count();
+                format!(
+                    "-e expression #{expression}, char {}",
+                    (start + column).min(text.len())
+                )
+            }
+            ScriptValue::PathVal(path) => {
+                format!("file {} line {line_number}", path.display())
+            }
         }
     }
 
@@ -87,6 +120,8 @@ impl ScriptLineProvider {
                         Some(*index + 1) // finished reading this source
                     } else {
                         *line_number += 1;
+                        self.last = Some((*index, *line_number, self.consumed));
+                        self.consumed += bytes;
                         // Remove trailing newline
                         if line.ends_with(b"\n") {
                             line.pop();
@@ -107,6 +142,7 @@ impl ScriptLineProvider {
 
     // Move to the next available script source.
     fn advance_source(&mut self, next_index: usize) -> UResult<()> {
+        self.consumed = 0;
         if next_index >= self.sources.len() {
             self.state = State::Done;
             return Ok(());
@@ -173,6 +209,8 @@ impl ScriptLineProvider {
     pub fn with_active_state(input_name: &str, line_number: usize) -> Self {
         Self {
             sources: vec![],
+            consumed: 0,
+            last: None,
             state: State::Active {
                 input_name: input_name.to_string(),
                 line_number,

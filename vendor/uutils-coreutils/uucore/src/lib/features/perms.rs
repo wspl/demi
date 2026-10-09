@@ -73,7 +73,7 @@ impl Default for Verbosity {
 
 /// Actually perform the change of owner on a path
 fn chown<P: AsRef<Path>>(path: P, uid: uid_t, gid: gid_t, follow: bool) -> IOResult<()> {
-    let path = path.as_ref();
+    let path = crate::context::resolve(path);
     let s = CString::new(path.as_os_str().as_bytes()).unwrap();
     let ret = unsafe {
         if follow {
@@ -110,13 +110,14 @@ pub fn wrap_chown<P: AsRef<Path>>(
             VerbosityLevel::Silent => (),
             level => {
                 out = format!(
-                    "changing {} of {}: {e}",
+                    "changing {} of {}: {}",
                     if verbosity.groups_only {
                         "group"
                     } else {
                         "ownership"
                     },
                     path.quote(),
+                    strip_errno(&e),
                 );
                 if level == VerbosityLevel::Verbose {
                     out = if verbosity.groups_only {
@@ -280,7 +281,7 @@ fn is_root(path: &Path, would_traverse_symlink: bool) -> bool {
 
 pub fn get_metadata(file: &Path, follow: bool) -> crate::context::io::Result<Metadata> {
     if follow {
-        file.metadata()
+        crate::context::fs::metadata(file)
     } else {
         file.context_symlink_metadata()
     }
@@ -619,7 +620,11 @@ impl ChownExecutor {
         }
 
         let mut ret = 0;
-        let mut iterator = WalkDir::new(root)
+        // The walk reads the tree where the job's directory puts it, and
+        // each entry is named as under `root`, as the user wrote it.
+        let resolved = crate::context::resolve(root);
+        let shown = |path: &Path| root.join(path.strip_prefix(&resolved).unwrap_or(path));
+        let mut iterator = WalkDir::new(&resolved)
             .follow_links(self.traverse_symlinks == TraverseSymlinks::All)
             .min_depth(1)
             .into_iter();
@@ -631,7 +636,7 @@ impl ChownExecutor {
                     if let Some(path) = e.path() {
                         show_error!(
                             "cannot access {}: {}",
-                            path.quote(),
+                            shown(path).quote(),
                             if let Some(error) = e.io_error() {
                                 strip_errno(error)
                             } else {
@@ -645,7 +650,7 @@ impl ChownExecutor {
                 }
                 Ok(entry) => entry,
             };
-            let path = entry.path();
+            let path = &shown(entry.path());
 
             let Some(meta) = self.obtain_meta(path, self.dereference) else {
                 ret = 1;
