@@ -250,6 +250,28 @@ async fn cp_makes_copies_as_gnu_cp_does() {
     }
 }
 
+/// A copy carries none of the source's extended attributes unless it
+/// preserves them, as GNU cp's does, also where macOS's clonefile(2) copied
+/// them with the data. Runs in about 50 ms: macOS's own `xattr` reads them.
+#[cfg(target_os = "macos")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cp_copies_extended_attributes_only_when_preserving_them() {
+    let root = fixture();
+    fs::write(root.path().join("src"), "source\n").unwrap();
+    let (code, output, error) = job(
+        root.path(),
+        "/usr/bin/xattr -w demi.test kept src && cp src copy && cp -c src cloned && cp -p src stamped \
+         && cp --preserve=xattr src preserved && cp -a src archived \
+         && for f in copy cloned stamped preserved archived; do echo \"$f: $(/usr/bin/xattr $f)\"; done",
+    )
+    .await;
+    assert_eq!((code, error.as_str()), (0, ""), "{output}");
+    assert_eq!(
+        output,
+        "copy: \ncloned: \nstamped: \npreserved: demi.test\narchived: demi.test\n"
+    );
+}
+
 /// `chmod`, `chown` and `stat -f` take a relative path against the job's
 /// directory, and `chown` words a failure as GNU's does. Runs in about
 /// 5 ms.

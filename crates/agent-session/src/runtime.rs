@@ -229,10 +229,13 @@ pub enum ToolEffect {
     /// `yield`: schedule one wakeup `duration_ms` after the action ends, or
     /// sooner when one of `commands` ends, and end the turn after this round
     /// of tools unless input arrived during it. The call's result says
-    /// `yield scheduled` with the duration and the commands.
+    /// `yield scheduled` with the duration and the commands, after
+    /// `above_cap`, the line that says the duration asked for was above the
+    /// cap and `duration_ms` is the cap (`runtime.md` § Tool input).
     ScheduleYield {
         duration_ms: u32,
         commands: Vec<CommandId>,
+        above_cap: Option<String>,
     },
 }
 

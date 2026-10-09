@@ -186,7 +186,7 @@ impl TestDevice {
             policy: self.policy.clone(),
             ping,
         });
-        let (runner, incoming) = mpsc::channel::<Result<Vec<u8>, String>>(8);
+        let (runner, incoming) = mpsc::channel::<Result<Vec<u8>, crate::SocketEnd>>(8);
         let (outgoing, sent) = mpsc::channel::<Vec<u8>>(crate::OUTBOUND_FRAMES);
         let incoming = futures_util::stream::unfold(incoming, |mut incoming| async move {
             incoming.recv().await.map(|frame| (frame, incoming))
@@ -230,7 +230,7 @@ fn went_offline(device: &watch::Sender<DeviceLink>, link: &Link, identity: HostI
 pub struct TestLink {
     link: Link,
     sent: mpsc::Receiver<Vec<u8>>,
-    runner: Option<mpsc::Sender<Result<Vec<u8>, String>>>,
+    runner: Option<mpsc::Sender<Result<Vec<u8>, crate::SocketEnd>>>,
     served: tokio::task::JoinHandle<LinkEnd>,
 }
 

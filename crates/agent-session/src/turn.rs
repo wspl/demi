@@ -532,9 +532,10 @@ async fn record_result(s: &Rc<SessionShared>, call: &PendingCall, outcome: ToolO
         Some(ToolEffect::ScheduleYield {
             duration_ms,
             commands,
+            above_cap,
         }) => {
             round.stop_after_result = true;
-            schedule_yield(s, duration_ms, commands)
+            schedule_yield(s, duration_ms, commands, above_cap)
         }
         None => outcome,
     };
@@ -547,10 +548,16 @@ async fn record_result(s: &Rc<SessionShared>, call: &PendingCall, outcome: ToolO
 
 /// Schedules the wakeup a `yield` asked for and, when it names commands,
 /// the task that makes it due once the first of them ends; answers the
-/// call's result.
-fn schedule_yield(s: &Rc<SessionShared>, duration_ms: u32, commands: Vec<CommandId>) -> ToolOutcome {
+/// call's result, which starts with `above_cap` when the duration asked for
+/// was above the cap.
+fn schedule_yield(
+    s: &Rc<SessionShared>,
+    duration_ms: u32,
+    commands: Vec<CommandId>,
+    above_cap: Option<String>,
+) -> ToolOutcome {
     let id = s.update(|core| core.schedule_wakeup(duration_ms, commands.clone()));
-    let outcome = yield_result(id.clone(), duration_ms, commands.clone());
+    let outcome = yield_result(id.clone(), duration_ms, commands.clone(), above_cap);
     if commands.is_empty() {
         return outcome;
     }
@@ -569,8 +576,14 @@ fn schedule_yield(s: &Rc<SessionShared>, duration_ms: u32, commands: Vec<Command
 
 /// The result of a `yield` call, which the session writes because the
 /// wakeup's id is its own. The text names no wakeup: no tool takes one.
-fn yield_result(wakeup_id: WakeupId, duration_ms: u32, command_ids: Vec<CommandId>) -> ToolOutcome {
-    let mut text = format!("yield scheduled\ndurationMs: {duration_ms}");
+fn yield_result(
+    wakeup_id: WakeupId,
+    duration_ms: u32,
+    command_ids: Vec<CommandId>,
+    above_cap: Option<String>,
+) -> ToolOutcome {
+    let mut text = above_cap.map(|line| line + "\n").unwrap_or_default();
+    text.push_str(&format!("yield scheduled\ndurationMs: {duration_ms}"));
     if !command_ids.is_empty() {
         let commands: Vec<&str> = command_ids.iter().map(CommandId::as_str).collect();
         text.push_str(&format!("\ncommandIds: {}", commands.join(", ")));

@@ -32,15 +32,19 @@ const RUNNING_NEXT: &str = "next: command is still running; look again with shel
 /// A shell tool's outcome for `status`: its text, the media it attaches and
 /// the lines about them, and its view. `model` is the call's, and its
 /// vendor takes requests within `limits`; `sent_now` says that the user's
-/// send now ended the call's window.
+/// send now ended the call's window, and `above_cap` is the line that says
+/// the window asked for was above the cap.
 pub(super) async fn shell_outcome(
     status: &CommandStatus,
     model: &Model,
     limits: RequestLimits,
     sent_now: bool,
+    above_cap: Option<&str>,
 ) -> ToolOutcome {
     let text = unseen_output(status);
-    let mut output = vec![ResultPart::Text(result_text(status, &text, sent_now))];
+    let mut output = vec![ResultPart::Text(result_text(
+        status, &text, sent_now, above_cap,
+    ))];
     if let CommandState::Exited {
         binary_stdout,
         media,
@@ -80,16 +84,24 @@ fn unseen_output(status: &CommandStatus) -> OutputText {
     }
 }
 
-/// The lines the model reads: the status, the handles and timings that
+/// The lines the model reads: first the line that says the window asked for
+/// was above the cap, if it was (`runtime.md` § Tool input), then the
+/// status, the handles and timings that
 /// matter, the output since the model's last look within the replay bound,
 /// while the command runs each stream's newest lines beyond its start, and
 /// the next step, after the line that says the command moved to the
 /// background when the user's send now ended the window
 /// (`runtime.md` § Send now).
-fn result_text(status: &CommandStatus, text: &OutputText, sent_now: bool) -> String {
+fn result_text(
+    status: &CommandStatus,
+    text: &OutputText,
+    sent_now: bool,
+    above_cap: Option<&str>,
+) -> String {
     let command = &status.command_id;
     let running = matches!(status.state, CommandState::Running { .. });
-    let mut before = vec![format!("status: {}", view_status(&status.state))];
+    let mut before: Vec<String> = above_cap.into_iter().map(str::to_owned).collect();
+    before.push(format!("status: {}", view_status(&status.state)));
     if let CommandState::Exited { exit_code, .. } = status.state {
         before.push(format!("exitCode: {exit_code}"));
     }
@@ -513,10 +525,15 @@ async fn binary_verdict(
             ),
         );
     }
+    // Bytes of no medium are most often a medium a pipe after the command
+    // cut short, as `demi browser screenshot t1 | tail -3` does, so the
+    // line says so first.
     let Some(media) = media else {
         return (
             None,
-            format!("Binary stdout does not match any model-viewable media type; {save}."),
+            format!(
+                "[binary stdout, {total} bytes: not an image or video; a pipe after the command may have cut it — run the command without it; {save}]"
+            ),
         );
     };
     if !model_accepts_media_type(model, media.media_type) {
@@ -749,7 +766,7 @@ mod tests {
     }
 
     async fn result(status: &CommandStatus) -> String {
-        let outcome = shell_outcome(status, &test_model().model, RequestLimits::default(), false).await;
+        let outcome = shell_outcome(status, &test_model().model, RequestLimits::default(), false, None).await;
         text_of(&outcome)[0].to_owned()
     }
 
@@ -957,7 +974,7 @@ mod tests {
             }),
             media: Vec::new(),
         };
-        let outcome = shell_outcome(&status, model, limits, false).await;
+        let outcome = shell_outcome(&status, model, limits, false, None).await;
         text_of(&outcome)[1..].join(" | ")
     }
 
@@ -1031,7 +1048,9 @@ mod tests {
         );
         assert_eq!(
             verdict(&model, limits, &opaque, false, 12).await,
-            format!("Binary stdout does not match any model-viewable media type; {save}.")
+            format!(
+                "[binary stdout, 12 bytes: not an image or video; a pipe after the command may have cut it — run the command without it; {save}]"
+            )
         );
         assert_eq!(
             verdict(&model, limits, &png, true, 20_000_000).await,
@@ -1078,7 +1097,7 @@ mod tests {
             }),
             media,
         };
-        let outcome = shell_outcome(&status, model, limits, false).await;
+        let outcome = shell_outcome(&status, model, limits, false, None).await;
         text_of(&outcome)[1..]
             .iter()
             .flat_map(|part| part.lines())
