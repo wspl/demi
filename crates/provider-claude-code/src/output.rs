@@ -20,7 +20,16 @@ tagged_wire! {
         "control_response" => ControlResponse(ControlResponseLine),
         "result" => Result(ResultLine),
         "error" => Error(ErrorLine),
+        "transcript_mirror" => TranscriptMirror(MirrorLine),
     }
+}
+
+/// A batch of entries the CLI wrote to its session (`--session-mirror`),
+/// as it wrote them.
+#[derive(Deserialize)]
+pub(crate) struct MirrorLine {
+    #[serde(default)]
+    pub(crate) entries: Vec<serde_json::Value>,
 }
 
 /// A whole assistant message. With partial messages the CLI streams the
@@ -38,7 +47,25 @@ pub(crate) struct AssistantLine {
 #[derive(Deserialize)]
 struct AssistantMessage {
     #[serde(default)]
-    content: Option<Vec<Tagged<ContentBlock>>>,
+    id: Option<String>,
+    #[serde(default)]
+    content: Option<Vec<Printed>>,
+}
+
+/// A content block as the CLI printed it, and as Demi reads it: `None` for
+/// a type Demi does not read.
+pub(crate) struct Printed {
+    pub(crate) raw: serde_json::Value,
+    pub(crate) block: Option<ContentBlock>,
+}
+
+impl<'de> Deserialize<'de> for Printed {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = serde_json::Value::deserialize(deserializer)?;
+        let Tagged(block) =
+            Tagged::<ContentBlock>::deserialize(&raw).map_err(serde::de::Error::custom)?;
+        Ok(Self { raw, block })
+    }
 }
 
 impl AssistantLine {
@@ -48,12 +75,16 @@ impl AssistantLine {
         self.error.as_deref().is_some()
     }
 
-    pub(crate) fn content(self) -> impl Iterator<Item = ContentBlock> {
+    /// The id of the message the line is part of.
+    pub(crate) fn message_id(&self) -> Option<String> {
+        self.message.as_ref().and_then(|message| message.id.clone())
+    }
+
+    pub(crate) fn content(self) -> impl Iterator<Item = Printed> {
         self.message
             .and_then(|message| message.content)
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|block| block.0)
     }
 }
 
@@ -71,6 +102,12 @@ tagged_wire! {
 pub(crate) struct TextBlock {
     #[serde(default)]
     text: String,
+}
+
+impl TextBlock {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.text.is_empty()
+    }
 }
 
 #[derive(Deserialize)]

@@ -335,7 +335,7 @@ async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequ
     let tools = s.runtime.tools();
     let request_id = s.ids.next_id();
     let view = model_view(s, cancel).await?;
-    Ok(s.read(|core| {
+    Ok(s.update(|core| {
         core.inference_request(
             &view,
             system_prompt,
@@ -402,6 +402,11 @@ async fn read(
         match event {
             ProviderEvent::ThinkingStart => thinking_started = true,
             ProviderEvent::Error(failure) => return Ok(Err(failure)),
+            // Entries write no block: open text stays open, and a thinking
+            // start still waits for what follows it.
+            ProviderEvent::Entries { of, entries } => {
+                s.update(|core| core.keep_entries(of, entries));
+            }
             event => {
                 let completes_text = thinking_started
                     || !matches!(
