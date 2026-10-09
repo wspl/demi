@@ -639,7 +639,8 @@ whichever agent ran it, and waits until it has ended: it prints
 `aborted` with its last output. A command that had already ended prints
 `[command 17 had already ended]` and also succeeds, so stopping is safe to
 repeat; a number that names no command of the conversation fails with
-`demi shell stop: no command 17 in this conversation`. It stops the command
+`demi shell stop: 17: no such command in this conversation`, while the
+others it names are still stopped. It stops the command
 as the page's stop does,
 through the command's shell environment: `TERM` first, so the command and
 every program it started can end cleanly, and `KILL` for what has not
