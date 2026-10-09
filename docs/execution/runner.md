@@ -210,13 +210,15 @@ in the foreground until pairing ends:
 
 The runner writes the same lines to its log, so a person who closed the
 terminal early finds them there; closing it does not stop the runner. The
-runner writes its log itself, rather than the installer redirecting its
-output: it appends to `runner.log`, and when the file passes 10 MiB it
+runner writes its log itself when it is started with `run --log`, as the
+installers and `run start` start it, rather than the installer redirecting
+its output: it appends to `runner.log`, and when the file passes 10 MiB it
 renames it `runner.log.1`, replacing the one before, and starts a new one.
 So what a runner printed before it crashed is still there after `run start`
 starts it again. The installer and `run start` read the pairing codes and
-the connection's outcome from where the log ended when they started the
-runner.
+the connection's outcome from where the log ended when they began waiting,
+whether they started the runner or found it running, and follow the log
+across a rotation.
 
 `run start` starts the installation's runner in the background again, as the
 installer does, and returns once it is connected or has said why it cannot
