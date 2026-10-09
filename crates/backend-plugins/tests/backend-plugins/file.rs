@@ -35,12 +35,15 @@ fn assert_shows(result: &str, texts: &[&str]) {
     }
 }
 
+/// The size of a binary file larger than a medium may be.
+const BIG: usize = 17 * 1024 * 1024;
+
 /// A PNG signature and three more bytes: not text, and not a whole image.
 const PNG: [u8; 11] = [
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe,
 ];
 
-// Several seconds: twelve scripts run a shell job each, and the first
+// Several seconds: thirteen scripts run a shell job each, and the first
 // `demi file` starts the `demi.file` service.
 #[tokio::test(flavor = "local")]
 async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
@@ -62,8 +65,13 @@ async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
                 "demi file read note.txt missing.txt note.txt",
                 "demi file read --bogus note.txt",
                 "demi file read",
+                // Past the 16 MiB a medium may have, its first bytes decide.
+                "demi file read big.bin",
             ],
-            |workspace| std::fs::write(format!("{workspace}/shot.png"), PNG).unwrap(),
+            |workspace| {
+                std::fs::write(format!("{workspace}/shot.png"), PNG).unwrap();
+                std::fs::write(format!("{workspace}/big.bin"), vec![0u8; BIG]).unwrap();
+            },
         )
         .await;
         assert_exit(&results[0], "0");
@@ -107,6 +115,12 @@ async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
         assert_shows(
             &results[11],
             &["error: the following required arguments were not provided:\n  <path>...\n\nUsage: demi file read <path>...\n"],
+        );
+
+        assert_exit(&results[12], "1");
+        assert_eq!(
+            shown_output(&results[12]),
+            format!("demi file read: big.bin: a binary file ({BIG} bytes) that is not an image or video; redirect it to copy it: demi file read big.bin > copy.bin\n")
         );
 
         let home = fixture.runner.home().to_owned();
