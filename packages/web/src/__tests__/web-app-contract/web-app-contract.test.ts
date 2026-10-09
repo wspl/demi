@@ -505,12 +505,12 @@ test('messages sent while a turn runs wait in the queue, where the page removes 
     const afterRemove = queueOf(client, (ids) => !ids.includes(removed))
     client.dequeueMessage(removed)
     expect(await afterRemove).toEqual([waiting, moved])
+    // Sent now, the moved message also ends the running turn.
+    const ended = idle(client)
     const afterMove = queueOf(client, (ids) => ids[0] === moved)
     client.sendQueuedMessage(moved)
     expect(await afterMove).toEqual([moved, waiting])
-
-    const ended = idle(client)
-    held.release()
+    await held.cancelled
     await ended
     const turns = client.transcript().blocks.flatMap((block) => (block.type === 'user' ? [JSON.stringify(block.content)] : []))
     expect(turns.map((content) => content.match(/(\w+) message/)?.[1])).toEqual(['Running', 'Moved', 'Waiting'])
@@ -520,7 +520,7 @@ test('messages sent while a turn runs wait in the queue, where the page removes 
   }
 })
 
-test('a queued message sent now steers the running turn: the page lists it as pending, and the model reads it at the next boundary', async () => {
+test('a steer of the running turn is listed as pending, and the model reads it at the next boundary', async () => {
   const model = await scriptedModel()
   const id = await createConversation(model)
   const held = vendor.hold({ type: 'text', text: 'Running the tests.' })
@@ -529,15 +529,10 @@ test('a queued message sent now steers the running turn: the page lists it as pe
   try {
     await client.submit([text('Run the tests')])
     await held.requested
-    const queued = crypto.randomUUID()
-    await client.submit([text('Skip the flaky suite')], queued)
     const steerId = crypto.randomUUID()
     const listed = nextEvent(client, (event) => (event.type === 'pending_steers' && event.pendingSteers.length > 0 ? event.pendingSteers : undefined))
-    const emptied = queueOf(client, (ids) => ids.length === 0)
-    // The page's Send now while a turn runs.
-    await client.steerQueuedMessage(queued, steerId)
+    await client.steer([text('Skip the flaky suite')], steerId)
     expect(await listed).toMatchObject([{ id: steerId, content: [{ type: 'text', text: 'Skip the flaky suite' }] }])
-    expect(await emptied).toEqual([])
 
     const ended = idle(client)
     held.release()
@@ -553,6 +548,58 @@ test('a queued message sent now steers the running turn: the page lists it as pe
   }
 })
 
+test('Send now returns the running call at once and its command runs on: a steer goes on in the turn, a queued message ends it without a stopped marker and runs next', async () => {
+  const model = await scriptedModel()
+  const { id } = await conversationOnDevice(model)
+  vendor.reply({
+    type: 'tool_use',
+    name: 'shell_exec',
+    input: { script: 'read line; echo "got $line"', description: 'Wait for a line', timeoutMs: 600_000 },
+  })
+  const client = await openConversation(id)
+  try {
+    const view = (event: ClientSessionEvent) => (event.type === 'shell_output' ? event.status : undefined)
+    const started = nextEvent(client, (event) => view(event)?.commandId)
+    await client.submit([text('Read a line')])
+    const commandId = await started
+    // The model then watches the command again.
+    vendor.reply({ type: 'tool_use', name: 'shell_status', input: { commandId, timeoutMs: 600_000 } })
+    vendor.reply({ type: 'text', text: 'Answering the queued message.' })
+    const steerId = crypto.randomUUID()
+    await client.steer([text('Answer with go')], steerId)
+    // The model's second call watches the command once its block is executing.
+    const watching = nextEvent(client, () => (client.transcript().blocks.filter((block) => block.type === 'tool_call').at(1)?.status === 'executing') || undefined)
+    client.steerNow(steerId)
+    await watching
+    const queued = crypto.randomUUID()
+    await client.submit([text('Stop waiting')], queued)
+    const ended = idle(client)
+    client.sendQueuedMessage(queued)
+    await ended
+
+    const blocks = client.transcript().blocks
+    expect(kinds(blocks)).toEqual(['user', 'context', 'tool_call', 'response', 'steer', 'tool_call', 'response', 'user', 'text', 'response'])
+    const background = `[The user sent a message, so command ${commandId} moved to the background. It keeps running.]`
+    for (const call of [blocks[2], blocks[5]]) {
+      expect(call).toMatchObject({ type: 'tool_call', status: 'completed', view: { kind: 'shell', status: 'running' } })
+      expect(JSON.stringify(call)).toContain(background)
+    }
+    expect(blocks[4]).toMatchObject({ type: 'steer', id: steerId })
+    // The model's second request carried the steer; its third, the queued message.
+    expect(userTexts(vendor.turns().at(-2))).toContain('Answer with go')
+    expect(userTexts(vendor.turns().at(-1))).toContain('Stop waiting')
+    // The command ran on through both: it still reads its line.
+    const exited = nextEvent(client, (event) => {
+      const status = view(event)
+      return status && status.status !== 'running' ? status : undefined
+    })
+    await client.shellWrite(commandId, 'go\n')
+    expect(await exited).toMatchObject({ status: 'exited', exitCode: 0, commandId, tail: 'got go\n' })
+  } finally {
+    client.disconnect()
+  }
+})
+
 test('Stop ends the running turn with its pending steer written, and Continue goes on from there', async () => {
   const model = await scriptedModel()
   const id = await createConversation(model)
@@ -562,10 +609,8 @@ test('Stop ends the running turn with its pending steer written, and Continue go
   try {
     await client.submit([text('Start something long')])
     await held.requested
-    const queued = crypto.randomUUID()
-    await client.submit([text('Use the other approach')], queued)
-    await client.steerQueuedMessage(queued)
-    // The page's interrupt with a pending steer: Stop, then Continue.
+    await client.steer([text('Use the other approach')])
+    // Stop with a pending steer, then Continue.
     const stopped = idle(client)
     expect(await client.abort()).toEqual({ target: 'active_provider_stream', canAbortAgain: false })
     // The answer comes once the stop is in the transcript, and the backend

@@ -144,17 +144,6 @@ test('a queued send ends when the next message runs or the session is idle, and 
   expect(settled).toEqual(['second', 'first', 'third'])
 })
 
-test('a queued message turned into a steer settles its send when the steer is accepted', async () => {
-  const h = harness()
-  const queued = h.client.send([{ type: 'text', text: 'queued' }])
-  const send = sentOfType(h.sent, 'send')
-  const steering = h.client.steerQueuedMessage(send.messageId, 'steer-1')
-  expect(h.sent.at(-1)).toEqual({ type: 'steer_queued_message', messageId: send.messageId, steerId: 'steer-1' })
-  h.receive({ type: 'steer_result', steerId: 'steer-1', outcome: { status: 'accepted' } })
-  await steering
-  await queued
-})
-
 test('a steer resolves on its own accepted result and fails on a rejected one', async () => {
   const h = harness()
   const accepted = h.client.steer([{ type: 'text', text: 'also this' }], 'steer-1')
