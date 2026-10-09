@@ -12,7 +12,10 @@ use std::path::Path;
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use sha2::{Digest, Sha256};
 
+use demi_agent_store::{CheckpointState, TurnEnd};
+
 use super::StorageError;
+use super::columns::{decode, json, to_json};
 
 /// A database's schema: its SQL, whose digest names it, and the schemas
 /// that published releases shipped before it, oldest first.
@@ -32,10 +35,6 @@ pub(crate) struct Shipped {
 pub(crate) enum Migration {
     Sql(&'static str),
     /// A change SQL cannot express, such as re-encoding a stored value.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "every migration so far is SQL")
-    )]
     Code(fn(&Transaction<'_>) -> rusqlite::Result<()>),
 }
 
@@ -81,8 +80,8 @@ pub(crate) const CONTROL: Schema = Schema {
 };
 
 /// Each conversation's database's. Its history holds the schema of each
-/// published release before the one that ships the current schema; 0.1.12
-/// to 0.1.20 shipped the last one in it.
+/// published release before the one that ships the current schema; 0.1.21
+/// shipped the last one in it.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -93,6 +92,10 @@ pub(crate) const CONVERSATION: Schema = Schema {
         Shipped {
             sql: include_str!("schema/conversation-0.1.20.sql"),
             migration: Migration::Sql(CONVERSATION_FROM_0_1_20),
+        },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.21.sql"),
+            migration: Migration::Code(record_last_turns),
         },
     ],
 };
@@ -293,6 +296,37 @@ INSERT INTO command_outputs_next
 DROP TABLE command_outputs;
 ALTER TABLE command_outputs_next RENAME TO command_outputs;
 ";
+
+/// From 0.1.21's conversation schema: a node's checkpoint state records how
+/// its last turn ended (checkpoint state format 2, `subagents.md`
+/// § Result). 0.1.21 kept a child live while it saved a wakeup, so a node
+/// that saves one ended its last turn with `yield`, and any other with its
+/// answer, which keeps what each restore decides. Each state is decoded
+/// and checked as the format it becomes before it is written back.
+fn record_last_turns(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
+    let states = transaction
+        .prepare("SELECT id, state FROM nodes")?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut update = transaction.prepare("UPDATE nodes SET state = ?2 WHERE id = ?1")?;
+    for (id, state) in states {
+        let corrupt = |error: StorageError| {
+            rusqlite::Error::FromSqlConversionFailure(1, rusqlite::types::Type::Text, Box::new(error))
+        };
+        let mut fields: serde_json::Map<String, serde_json::Value> =
+            decode("nodes", "state", serde_json::from_str(&state)).map_err(corrupt)?;
+        let waits = fields
+            .get("wakeups")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|wakeups| !wakeups.is_empty());
+        let last_turn = if waits { TurnEnd::Yield } else { TurnEnd::Answer };
+        fields.insert("lastTurn".to_owned(), serde_json::to_value(last_turn).expect("a turn end is JSON"));
+        let state: CheckpointState =
+            json("nodes", "state", &to_json(&fields)).map_err(corrupt)?;
+        update.execute(rusqlite::params![id, to_json(&state)])?;
+    }
+    Ok(())
+}
 
 /// A kind of database, as a server's upgrade asks about it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -835,7 +869,7 @@ CREATE TABLE nodes (
   failure          TEXT,
   delivered        INTEGER NOT NULL CHECK (delivered IN (0, 1)),
   -- The session's checkpoint state as JSON, with whether a Stop holds its
-  -- waiting input until the user's next action.
+  -- waiting input until the user's next action: checkpoint state format 2.
   state            TEXT NOT NULL,
   block_count      INTEGER NOT NULL CHECK (block_count >= 0),
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
@@ -1179,5 +1213,68 @@ mod tests {
             .query_row("SELECT removed_at FROM command_outputs WHERE command_id = 'c3'", [], |row| row.get(0))
             .unwrap();
         assert_eq!(removed_at, 2000);
+    }
+
+    /// 0.1.21's checkpoint states record how each node's last turn ended:
+    /// with `yield` for one that saves a wakeup, as 0.1.21 kept such a child
+    /// waiting, and with its answer otherwise; a state that is not one of
+    /// 0.1.21's stops the migration.
+    #[test]
+    fn a_conversation_of_0_1_21_records_how_each_nodes_last_turn_ended() {
+        use demi_agent_store::{ScheduledWakeup, testing::test_model};
+        use demi_shared_types::{SessionPhase, WakeupId};
+
+        use crate::columns::json;
+
+        let shipped = CONVERSATION.history[2].sql;
+        let state = |wakeups: Vec<ScheduledWakeup>| {
+            let mut fields = serde_json::to_value(CheckpointState {
+                phase: SessionPhase::Idle,
+                queue: Vec::new(),
+                agent_inputs: Vec::new(),
+                wakeups,
+                cwd: "/w".into(),
+                model: test_model(),
+                edits: Vec::new(),
+                last_turn: TurnEnd::Answer,
+            })
+            .unwrap();
+            fields.as_object_mut().unwrap().remove("lastTurn");
+            fields.to_string()
+        };
+        let wakeup = ScheduledWakeup {
+            id: WakeupId::try_from("w1").unwrap(),
+            duration_ms: 60_000,
+            command_ids: Vec::new(),
+            ended: None,
+            due_at: None,
+        };
+        let insert = "INSERT INTO nodes (id, number, parent_id, description, round, started_at, can_spawn,
+                        delivered, state, block_count, output_revision)
+                      VALUES (?1, ?2, ?3, '', 1, 0, 1, 0, ?4, 0, 0)";
+        let (_directory, path, mut connection) = database(shipped);
+        connection
+            .execute(insert, rusqlite::params!["root", 0, None::<String>, state(Vec::new())])
+            .unwrap();
+        connection
+            .execute(insert, rusqlite::params!["waiting", 1, "root", state(vec![wakeup])])
+            .unwrap();
+
+        CONVERSATION.apply(&mut connection, &path).unwrap();
+        let last_turn = |id: &str| {
+            let state: String = connection
+                .query_row("SELECT state FROM nodes WHERE id = ?1", [id], |row| row.get(0))
+                .unwrap();
+            json::<CheckpointState>("nodes", "state", &state).unwrap().last_turn
+        };
+        assert_eq!(last_turn("root"), TurnEnd::Answer);
+        assert_eq!(last_turn("waiting"), TurnEnd::Yield);
+
+        let (_corrupt_directory, corrupt_path, mut corrupt) = database(shipped);
+        corrupt
+            .execute(insert, rusqlite::params!["root", 0, None::<String>, "{\"phase\":\"idle\"}"])
+            .unwrap();
+        let refused = CONVERSATION.apply(&mut corrupt, &corrupt_path);
+        assert!(matches!(refused, Err(StorageError::Migration { .. })), "{refused:?}");
     }
 }

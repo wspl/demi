@@ -13,7 +13,7 @@ use std::{
 use demi_agent_session::{
     AgentMessageError, AgentSession, Execution, SessionEvent, Settle, Subscription,
 };
-use demi_agent_store::{ClosePhase, NodeClose, NodeRecord};
+use demi_agent_store::{ClosePhase, NodeClose, NodeRecord, TurnEnd};
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
 use demi_provider_common::ProviderRuntime;
@@ -650,8 +650,11 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Looks at `child` and decides, in one step with no await, whether it
-    /// closes: a message accepted before this step keeps it open, one sent
-    /// after it is refused.
+    /// closes (`subagents.md` § Result): a message accepted before this step
+    /// keeps it open, one sent after it is refused. A child is quiescent
+    /// once its last turn ended with its answer and nothing else is left for
+    /// it to do; it closes with that answer, and its wakeups are dropped in
+    /// the same step, so none opens a turn before the close.
     fn decide(&self, child: &Child<H>) -> Decision {
         if child.closing.get() || self.disposing.get() {
             return Decision::Stop;
@@ -659,15 +662,17 @@ impl<H: HostResolver> Tree<H> {
         let kind = if child.failure.borrow().is_some() {
             CloseKind::Error
         } else {
-            let status = child.node.session().status();
+            let session = child.node.session();
+            let status = session.status();
             let quiescent = status.settle == Settle::Settled
-                && !status.wakeups
+                && status.last_turn == TurnEnd::Answer
                 && !status.agent_input
                 && self.children_of(child.id()).is_empty()
                 && !self.starting.borrow().contains_key(child.id());
             if !quiescent {
                 return Decision::Wait;
             }
+            session.drop_wakeups();
             CloseKind::Completed
         };
         child.closing.set(true);
@@ -968,16 +973,64 @@ impl<H: HostResolver> Tree<H> {
         })
     }
 
-    /// A bounded snapshot of the live child the model knows by `number`, as
-    /// JSON and as text (`subagents.md` § `demi agent show`); none for the
-    /// root and for a number no live child has.
-    pub(crate) fn show(&self, number: u64) -> Option<(AgentSnapshot, String)> {
-        let child = self.child_numbered(number)?;
-        let parent = self.node(child.parent())?.record().number;
+    /// A bounded snapshot of the child the model knows by `number`, live or
+    /// archived, as JSON and as text (`subagents.md` § `demi agent show`);
+    /// none for the root, for a child whose start is under way and for a
+    /// number no child of the tree has.
+    pub(crate) async fn show(&self, number: u64) -> Result<Option<(ShownAgent, String)>, String> {
         let now = self.clock.now().as_millisecond();
-        let snapshot = snapshot(&child, parent, now);
-        let text = show_text(&snapshot);
-        Some((snapshot, text))
+        if let Some(child) = self.child_numbered(number) {
+            let Some(parent) = self.node(child.parent()) else {
+                return Ok(None);
+            };
+            let snapshot = snapshot(&child, parent.record().number, now);
+            let text = show_text(&snapshot);
+            return Ok(Some((ShownAgent::Live(snapshot), text)));
+        }
+        let Some((record, parent)) = self.stored_child(number).await? else {
+            return Ok(None);
+        };
+        let Some(close) = record.closed else {
+            return Ok(None);
+        };
+        let (result, failure) = match close.phase {
+            ClosePhase::Completed { ref result } => (Some(bounded(result).to_owned()), None),
+            ClosePhase::Error { ref failure } => (None, Some(bounded(failure).to_owned())),
+            ClosePhase::Aborted => (None, None),
+        };
+        let archived = ArchivedSnapshot {
+            subagent_id: record.number,
+            parent_session_id: parent,
+            description: record.description,
+            phase: close.phase.job_phase(),
+            closed_ago_ms: age(now, close.at.as_millisecond()),
+            result,
+            failure,
+        };
+        let text = archived_text(&archived);
+        Ok(Some((ShownAgent::Archived(archived), text)))
+    }
+
+    /// The stored child the model knows by `number`, live or archived, with
+    /// its parent's number: the tree read from the root down, as `list`
+    /// reads it.
+    async fn stored_child(&self, number: u64) -> Result<Option<(NodeRecord, u64)>, String> {
+        let root = self.root.record();
+        let mut owners = vec![(root.id.clone(), root.number)];
+        while let Some((owner, owner_number)) = owners.pop() {
+            let children = self
+                .store
+                .children(&owner)
+                .await
+                .map_err(|error| error.to_string())?;
+            for child in children {
+                if child.number == number {
+                    return Ok(Some((child, owner_number)));
+                }
+                owners.push((child.id, child.number));
+            }
+        }
+        Ok(None)
     }
 
     /// The live child of `owner` the model knows by `number`.
@@ -1064,6 +1117,11 @@ async fn supervision<H: HostResolver>(tree: Weak<Tree<H>>, child: Weak<Child<H>>
             live_child.wake.clone(),
         )
     };
+    // A start holds the child's waiting input and due wakeups until this
+    // first look, which closes a child that is quiescent once its own
+    // children are back, before a wakeup could open a turn (`subagents.md`
+    // § Persistence).
+    let mut held = true;
     loop {
         status.mark_unchanged();
         changes.mark_unchanged();
@@ -1072,6 +1130,10 @@ async fn supervision<H: HostResolver>(tree: Weak<Tree<H>>, child: Weak<Child<H>>
                 return;
             };
             match live_tree.decide(&live_child) {
+                Decision::Wait if held => {
+                    held = false;
+                    live_child.node.session().release();
+                }
                 Decision::Wait => {}
                 Decision::Stop => return,
                 Decision::Close(kind) => {
@@ -1162,7 +1224,7 @@ fn subagent_preamble(child: u64, parent: u64, can_spawn: bool) -> String {
     };
     [
         format!("You are a subagent: agent {child} of this conversation, spawned by agent {parent}. Your transcript starts empty; the task brief in the first user message is your entire context."),
-        "When you end your turn with nothing pending — no queued messages, no scheduled wakeups, no running children of your own — the session ends and your last assistant text is returned to the parent as the result. Write it for the parent agent, in the shape the task brief asked for.".to_owned(),
+        "A turn you end with your answer, without `yield`, returns that answer to the parent as the result and ends the session once nothing is pending: no queued or unread messages, no running children of your own. A turn you end with `yield` waits for its wakeup instead. Write the answer for the parent agent, in the shape the task brief asked for.".to_owned(),
         spawning.to_owned(),
         "`demi agent send <id|parent>` delivers useful interim information, questions, or blockers through internal steering or an idle wakeup. It reads the message only from stdin (use a quoted heredoc). Your final answer is delivered automatically; do not send a duplicate final result. `demi agent list` renders the whole agent tree with your position.".to_owned(),
         "You are not talking to the product user; do not address them.".to_owned(),
@@ -1479,6 +1541,32 @@ pub(crate) struct AgentSnapshot {
     last_assistant_text_ago_ms: Option<u64>,
 }
 
+/// `demi agent show --json`'s agent: a live child's snapshot, or what an
+/// archived child closed with; an archived child's phase is how it closed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(untagged)]
+pub(crate) enum ShownAgent {
+    Live(AgentSnapshot),
+    Archived(ArchivedSnapshot),
+}
+
+/// An archived child as `demi agent show --json` gives it: how it closed,
+/// how long ago, and its result or failure with the bound of a completion.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ArchivedSnapshot {
+    subagent_id: u64,
+    parent_session_id: u64,
+    description: String,
+    /// How it closed: `completed`, `error` or `aborted`.
+    phase: JobPhase,
+    closed_ago_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    failure: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct ToolSnapshot {
@@ -1532,15 +1620,10 @@ fn snapshot<H: HostResolver>(child: &Child<H>, parent: u64, now: i64) -> AgentSn
 
 /// `demi agent show`'s text.
 fn show_text(snapshot: &AgentSnapshot) -> String {
-    let description = if snapshot.description.is_empty() {
-        "(none)"
-    } else {
-        &snapshot.description
-    };
     let mut lines = vec![
         format!("id: {}", snapshot.subagent_id),
         format!("parent: {}", snapshot.parent_session_id),
-        format!("description: {description}"),
+        format!("description: {}", description_text(&snapshot.description)),
         format!(
             "profile: {}",
             snapshot.profile.as_deref().unwrap_or(INHERIT_LABEL)
@@ -1585,6 +1668,43 @@ fn show_text(snapshot: &AgentSnapshot) -> String {
         _ => lines.push("last assistant text: (none yet)".to_owned()),
     }
     format!("{}\n", lines.join("\n"))
+}
+
+/// `demi agent show`'s text of an archived child; its phase line reads as
+/// `list`'s line of it.
+fn archived_text(archived: &ArchivedSnapshot) -> String {
+    let mut lines = vec![
+        format!("id: {}", archived.subagent_id),
+        format!("parent: {}", archived.parent_session_id),
+        format!("description: {}", description_text(&archived.description)),
+        format!(
+            "phase: archived ({} {} ago)",
+            archived.phase,
+            duration(archived.closed_ago_ms)
+        ),
+    ];
+    match (&archived.result, &archived.failure) {
+        (Some(result), _) if result.is_empty() => lines.push("result: (none)".to_owned()),
+        (Some(result), _) => {
+            lines.push("result:".to_owned());
+            lines.push(result.clone());
+        }
+        (None, Some(failure)) => {
+            lines.push("failure:".to_owned());
+            lines.push(failure.clone());
+        }
+        (None, None) => {}
+    }
+    format!("{}\n", lines.join("\n"))
+}
+
+/// A description as `show` prints it.
+fn description_text(description: &str) -> &str {
+    if description.is_empty() {
+        "(none)"
+    } else {
+        description
+    }
 }
 
 impl ToolStatus {
