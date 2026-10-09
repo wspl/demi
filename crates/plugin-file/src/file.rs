@@ -29,7 +29,7 @@ EOF";
 /// The help of `demi file edit`'s stdin: the blocks, with an example the
 /// model can copy. Its lines start at the margin, since a marker is a whole
 /// line and indentation copied with it would make it text.
-const EDIT_BLOCKS: &str = r"SEARCH/REPLACE blocks, each after a line naming its file, or all for the path argument. A SEARCH is whole lines copied exactly from the file and must match one place; its REPLACE takes their place, and an empty REPLACE deletes them. An empty SEARCH creates its file, which must not exist. A SEARCH line of seven dots ....... stands for the lines between the ones around it: give the REPLACE as many to keep those lines, or none to replace them. Every block of every file applies, or none does. For a one-line change, pass the path, --old and --new instead. Pass blocks in a quoted heredoc, so quotes, $ and backslashes need no escaping, for example:
+const EDIT_BLOCKS: &str = r"SEARCH/REPLACE blocks, each after a line naming its file, or all for the path argument. A SEARCH is text copied exactly from the file, whitespace and indentation included: whole lines, or part of one, such as withinLimit( inside a line. It must occur once in the file; its REPLACE takes its place. An empty REPLACE deletes the SEARCH, with its line ending when the SEARCH ends a line, so deleted lines leave no blank one. An empty SEARCH creates its file, which must not exist. A SEARCH line of seven dots ....... stands for the lines between the ones around it, and the block then matches whole lines: give the REPLACE as many to keep those lines, or none to replace them. Every block of every file applies, or none does. For a one-line change, pass the path, --old and --new instead. Pass blocks in a quoted heredoc, so quotes, $ and backslashes need no escaping, for example:
 demi file edit <<'EOF' && cargo check
 src/stream.rs
 <<<<<<< SEARCH
@@ -98,7 +98,7 @@ pub(crate) fn file_group() -> GroupBuilder {
             "a line for each file, \"Created <path> (<n> lines)\" or \"Edited <path> (+<added> −<removed>)\", and under an edited file each change as the file now reads, numbered, with a line of context on each side",
         )
         .failure_output(
-            "names the file and block that match nowhere, with the file's closest lines, or that match several places, with each place's lines, and exits non-zero without changing any file",
+            "names the file by its full path and the block whose SEARCH is not in the file, with the file's closest lines, or occurs more than once, with the line of each, and exits non-zero without changing any file",
         ),
     )
     .leaf(
