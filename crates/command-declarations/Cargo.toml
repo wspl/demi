@@ -13,6 +13,8 @@ doctest = false
 bench = false
 
 [dependencies]
+# Feature `string` names arguments at run time, from the declaration.
+clap = { version = "4", default-features = false, features = ["std", "help", "usage", "error-context", "suggestions", "string"] }
 jsonschema = { version = "0.56", default-features = false }
 serde.workspace = true
 serde_json.workspace = true

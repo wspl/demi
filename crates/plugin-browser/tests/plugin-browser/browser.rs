@@ -19,11 +19,12 @@ fn every_operation_has_a_command_that_takes_each_operand_from_one_source() {
         line.extend(name.split('.'));
         line.push("--help");
         let parsed = parse(&root, &line, None);
+        let parsed = parsed.unwrap();
+        assert!(parsed.help, "{operation}");
         if name == "stop" {
-            // The agent waits for its commands rather than stopping a load.
-            assert!(parsed.is_err(), "{operation}");
-        } else {
-            assert!(parsed.unwrap().help, "{operation}");
+            // The agent waits for its commands rather than stopping a load:
+            // the help asked for is the group's.
+            assert_eq!(parsed.path, ["demi", "browser"], "{operation}");
         }
     }
     for (line, body, field) in [
@@ -96,7 +97,7 @@ fn find_reads_stdin_only_with_query() {
         line.extend(flags);
         parse(&root, &line, stdin)
     };
-    for flags in [&["--role", "radio"][..], &["--role", "radio", "--query", "false"]] {
+    for flags in [&["--role", "radio"][..], &["--role", "radio", "--query=false"]] {
         let parsed = find(flags, None).unwrap();
         assert!(!parsed.values.contains_key("body"), "{flags:?}");
     }

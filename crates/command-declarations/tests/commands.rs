@@ -118,6 +118,15 @@ fn filer() -> Node {
             {"name": "list", "summary": "List files.", "kind": "rpc",
                 "output": {"json": object(json!({"files": {"type": "array",
                     "items": {"type": "string"}}}), &["files"])}},
+            {"name": "click", "summary": "Click an element.", "kind": "rpc",
+                "input": object(json!({"tab": {"type": "string"},
+                    "ref": {"type": "string", "pattern": "^e[1-9][0-9]*$"},
+                    "exact": {"type": "boolean"}, "dy": {"type": "integer"}}), &["tab"]),
+                "positionals": ["tab", "ref"], "positionalOptions": ["ref"]},
+            {"name": "key", "summary": "Press a key.", "kind": "rpc",
+                "input": object(json!({"tab": {"type": "string"}, "ref": {"type": "string"},
+                    "key": {"type": "string"}}), &["tab", "key"]),
+                "positionals": ["tab", "ref", "key"], "positionalOptions": ["ref"]},
             {"name": "watch", "summary": "Background pollers.", "subcommands": [
                 {"name": "get", "summary": "Read a poller.", "kind": "rpc",
                     "input": object(json!({"id": {"type": "string"}}), &["id"]),
@@ -128,6 +137,135 @@ fn filer() -> Node {
     tree
 }
 
+/// What `filer <line>` comes to on stderr when it is refused: clap's
+/// error, Demi's tip, the command's usage and the pointer to `--help`.
+fn usage_error(line: &[&str], stdin: Option<&str>) -> String {
+    refusal(&filer(), line, stdin)
+}
+
+#[test]
+fn a_usage_error_is_clap_s_with_the_command_s_usage_and_demi_s_tips() {
+    let cases: &[(&[&str], Option<&str>, &str)] = &[
+        // One value too many, as `demi file read a.png b.png` was.
+        (
+            &["edit", "a.txt", "b.txt", "--old", "a", "--new", "b"],
+            None,
+            "error: unexpected argument 'b.txt' found\n\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]\n\nFor more information, try '--help'.",
+        ),
+        // A near name for a misspelt option and a misspelt command.
+        (
+            &["edit", "a.txt", "--olf", "a"],
+            None,
+            "error: unexpected argument '--olf' found\n\n  tip: a similar argument exists: '--old'\n\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]\n\nFor more information, try '--help'.",
+        ),
+        (
+            &["crete", "a.txt"],
+            None,
+            "error: unrecognized subcommand 'crete'\n\n  tip: a similar subcommand exists: 'create'\n\nUsage: filer <command>\n\nFor more information, try '--help'.",
+        ),
+        // A body read from stdin, given as an option.
+        (
+            &["create", "a.txt", "--content", "inline"],
+            Some("body"),
+            "error: unexpected argument '--content' found\n\n  tip: \"filer create\" reads content only from stdin; remove --content and use a quoted heredoc\n\nUsage: filer create <path>\n\nFor more information, try '--help'.",
+        ),
+        // A positional, and the rest field, given as options.
+        (
+            &["create", "--path", "a.txt"],
+            Some("body"),
+            "error: unexpected argument '--path' found\n\n  tip: \"filer create\" takes <path> as a positional argument; remove --path and give the value alone\n\nUsage: filer create <path>\n\nFor more information, try '--help'.",
+        ),
+        (
+            &["forward", "--args", "x"],
+            None,
+            "error: unexpected argument '--args' found\n\n  tip: \"filer forward\" takes args after --; remove --args and write them after --\n\nUsage: filer forward -- <args>...\n\nFor more information, try '--help'.",
+        ),
+        // A missing option value never swallows the next option, and the
+        // usage line is there although clap leaves it out of this error.
+        (
+            &["edit", "a.txt", "--old", "--new", "b"],
+            None,
+            "error: a value is required for '--old <old>' but none was supplied\n\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]\n\nFor more information, try '--help'.",
+        ),
+        (
+            &["edit", "a.txt", "--old", "a", "--old", "b", "--new", "c"],
+            None,
+            "error: the argument '--old <old>' cannot be used multiple times\n\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]\n\nFor more information, try '--help'.",
+        ),
+        (
+            &["measure", "--v", "twelve"],
+            None,
+            "error: invalid value 'twelve' for '--v <v>': invalid float literal\n\nUsage: filer measure --v <v> [--label <label>] [--quiet]\n\nFor more information, try '--help'.",
+        ),
+        (
+            &["status", "--status", "finished"],
+            None,
+            "error: invalid value 'finished' for '--status <pending|in_progress|done>'\n  [possible values: pending, in_progress, done]\n\nUsage: filer status [--status <pending|in_progress|done>]\n\nFor more information, try '--help'.",
+        ),
+        (
+            &["upload"],
+            None,
+            "error: the following required arguments were not provided:\n  <path>...\n\nUsage: filer upload <path>...\n\nFor more information, try '--help'.",
+        ),
+        (
+            &["status", "--json"],
+            None,
+            "error: unexpected argument '--json' found\n\nUsage: filer status [--status <pending|in_progress|done>]\n\nFor more information, try '--help'.",
+        ),
+        // A true or false after a flag is refused rather than taken as the
+        // optional positional after it.
+        (
+            &["click", "t1", "--exact", "false"],
+            None,
+            "error: unexpected argument 'false' found\n\n  tip: --exact alone is true; write --exact=false for false\n\nUsage: filer click <tab> [<ref>] [--exact] [--dy <dy>]\n\nFor more information, try '--help'.",
+        ),
+        (
+            &["click", "t1", "e3", "--ref", "e4"],
+            None,
+            "error: the argument '[ref]' cannot be used with '--ref <ref>'\n\nUsage: filer click <tab> [<ref>] [--exact] [--dy <dy>]\n\nFor more information, try '--help'.",
+        ),
+        // What clap cannot express, the validator checks after it, in the
+        // same shape and one failure at a time.
+        (
+            &["create", "a.txt"],
+            Some("a long body"),
+            "error: \"content\" is longer than 8 characters\n\nUsage: filer create <path>\n\nFor more information, try '--help'.",
+        ),
+        (
+            &["click", "t1", "x3"],
+            None,
+            "error: \"ref\" does not match \"^e[1-9][0-9]*$\"\n\nUsage: filer click <tab> [<ref>] [--exact] [--dy <dy>]\n\nFor more information, try '--help'.",
+        ),
+    ];
+    for (line, stdin, expected) in cases {
+        assert_eq!(usage_error(line, *stdin), *expected, "{line:?}");
+    }
+}
+
+#[test]
+fn arguments_that_arrive_as_json_are_refused_in_the_same_shape() {
+    let filer = filer();
+    let Node::Group(group) = &filer else {
+        unreachable!("filer is a group")
+    };
+    let edit = group.subcommands[1].leaf().unwrap();
+    let arguments = |value: Value| value.as_object().unwrap().clone();
+    assert_eq!(
+        edit.check_arguments(
+            "filer edit",
+            &arguments(json!({"path": "a", "old": "b", "new": "c", "occurrence": "7"}))
+        )
+        .unwrap_err()
+        .to_string(),
+        "error: \"occurrence\" is not of type \"integer\"\n\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]\n\nFor more information, try '--help'."
+    );
+    edit.check_arguments(
+        "filer edit",
+        &arguments(json!({"path": "a", "old": "b", "new": "c", "occurrence": 7})),
+    )
+    .unwrap();
+}
+
 #[test]
 fn each_field_takes_its_value_from_its_one_source() {
     let filer = filer();
@@ -135,29 +273,7 @@ fn each_field_takes_its_value_from_its_one_source() {
         values(&filer, &["create", "note.txt"], Some("body")),
         json!({"path": "note.txt", "content": "body"})
     );
-    // A stdin body has no option form, even beside a body.
-    for option in [
-        &["--content"][..],
-        &["--content", "inline"],
-        &["--content=inline"],
-    ] {
-        let argv = [&["create", "note.txt"][..], option].concat();
-        let error = refusal(&filer, &argv, Some("body"));
-        assert!(
-            error.starts_with("\"filer create\" reads content only from stdin. Remove --content"),
-            "{error}"
-        );
-    }
-    // A positional has no option form, and a standalone -- ends the options.
-    assert_eq!(
-        refusal(&filer, &["create", "note.txt", "inline"], Some("body")),
-        "Unexpected positional argument \"inline\""
-    );
-    let error = refusal(&filer, &["create", "--path", "note.txt"], Some("body"));
-    assert!(
-        error.starts_with("\"path\" is a positional argument for \"filer create\""),
-        "{error}"
-    );
+    // A standalone -- ends the options.
     assert_eq!(
         values(&filer, &["create", "--", "--help"], Some("body"))["path"],
         "--help"
@@ -167,142 +283,91 @@ fn each_field_takes_its_value_from_its_one_source() {
         values(&filer, &["forward", "--", "--help", "--json"], None),
         json!({"args": ["--help", "--json"]})
     );
-    let error = refusal(&filer, &["forward", "--args", "value"], None);
-    assert!(
-        error.starts_with("\"args\" is passed after -- for \"filer forward\""),
-        "{error}"
+    // A trailing array positional takes every positional argument left.
+    assert_eq!(
+        values(&filer, &["upload", "out/login.png", "demo.mp4"], None),
+        json!({"path": ["out/login.png", "demo.mp4"]})
+    );
+    // A positional with its option form takes either, never both.
+    for line in [&["click", "t1", "e3"][..], &["click", "t1", "--ref", "e3"]] {
+        assert_eq!(values(&filer, line, None), json!({"tab": "t1", "ref": "e3"}));
+    }
+    // An optional positional before a required last one: two tokens fill
+    // the first and the last, three fill all three.
+    assert_eq!(
+        values(&filer, &["key", "t1", "Enter"], None),
+        json!({"tab": "t1", "key": "Enter"})
+    );
+    assert_eq!(
+        values(&filer, &["key", "t1", "e1", "Enter"], None),
+        json!({"tab": "t1", "ref": "e1", "key": "Enter"})
     );
     // Help shows each field in its source's form, never a body as an option.
-    let help = [help(&filer, &["create"]), help(&filer, &["forward"])].join("\n\n");
-    assert!(
-        help.contains("  filer create <path> <<'EOF'\n  <content>\n  EOF\n"),
-        "{help}"
-    );
-    assert!(
-        help.contains("    Stdin body: content - File content"),
-        "{help}"
-    );
-    assert!(help.contains("  filer forward -- <args>...\n"), "{help}");
+    let help = [
+        help(&filer, &["create"]),
+        help(&filer, &["forward"]),
+        help(&filer, &["upload"]),
+        help(&filer, &["key"]),
+    ]
+    .join("\n\n");
+    for shown in [
+        "  filer create <path> <<'EOF'\n  <content>\n  EOF\n",
+        "    Stdin body: content - File content",
+        "  filer forward -- <args>...\n",
+        "  filer upload <path>...\n",
+        "      <path>... (required, repeatable)",
+        "  filer key <tab> [<ref>] <key>\n",
+        "      <ref> (optional, or --ref <ref>)",
+    ] {
+        assert!(help.contains(shown), "{shown} not in {help}");
+    }
     for option in ["--path", "--content", "--args"] {
         assert!(!help.contains(option), "{option} in {help}");
     }
 }
 
 #[test]
-fn a_trailing_array_positional_takes_every_positional_argument_after_the_others() {
-    let filer = filer();
-    assert_eq!(
-        values(&filer, &["upload", "out/login.png", "demo.mp4"], None),
-        json!({"path": ["out/login.png", "demo.mp4"]})
-    );
-    assert_eq!(
-        values(&filer, &["upload", "demo.mp4"], None),
-        json!({"path": ["demo.mp4"]})
-    );
-    let error = refusal(&filer, &["upload"], None);
-    assert!(error.contains("\"path\""), "{error}");
-    let help = help(&filer, &["upload"]);
-    assert!(help.contains("  filer upload <path>...\n"), "{help}");
-    assert!(help.contains("      <path>... (required, repeatable)"), "{help}");
-    // Only the last positional may take the rest.
-    let first: Node = serde_json::from_value(json!({"name": "copy", "summary": "Copy.",
-        "kind": "rpc",
-        "input": object(json!({"from": {"type": "array", "items": {"type": "string"}},
-            "to": {"type": "string"}}), &["from", "to"]),
-        "positionals": ["from", "to"]}))
-    .unwrap();
-    let refused = first.validate().unwrap_err().to_string();
-    assert!(refused.contains("only the last positional may be an array: from"), "{refused}");
-}
-
-#[test]
-fn an_option_value_never_swallows_the_next_option() {
-    let filer = filer();
-    assert_eq!(
-        refusal(
-            &filer,
-            &["edit", "note.txt", "--old", "--new", "replacement"],
-            None
-        ),
-        "Missing value for \"--old\""
-    );
-    // --name=value passes a value that begins with --, or an empty one.
-    assert_eq!(
-        values(
-            &filer,
-            &["edit", "note.txt", "--old=--help", "--new="],
-            None
-        ),
-        json!({"path": "note.txt", "old": "--help", "new": ""})
-    );
-    assert_eq!(
-        refusal(
-            &filer,
-            &["edit", "note.txt", "--old", "a", "--old", "b", "--new", "c"],
-            None
-        ),
-        "Duplicate value for \"old\""
-    );
-}
-
-#[test]
-fn argv_text_becomes_the_value_its_field_declares_and_one_refusal_names_every_failure() {
+fn a_value_converts_to_its_field_s_type_and_may_begin_with_a_single_dash() {
     let filer = filer();
     // Each element of a repeated option converts on its own.
     assert_eq!(
-        values(&filer, &["measure", "--v", "12", "--v", "13"], None),
-        json!({"v": [12, 13]})
-    );
-    assert_eq!(
-        values(
-            &filer,
-            &["measure", "--v", "1.5", "--label", "a", "--quiet"],
-            None
-        ),
-        json!({"v": [1.5], "label": ["a"], "quiet": true})
+        values(&filer, &["measure", "--v", "12", "--v", "1.5", "--label", "a", "--quiet"], None),
+        json!({"v": [12, 1.5], "label": ["a"], "quiet": true})
     );
     assert_eq!(
         values(&filer, &["measure", "--v", "1", "--quiet=false"], None)["quiet"],
         false
     );
+    // A value beginning with one dash follows its option; one beginning with
+    // -- is given as --name=value, as is an empty one.
     assert_eq!(
-        values(
-            &filer,
-            &["edit", "f", "--old", "a", "--new", "b", "--occurrence", "2"],
-            None
-        )["occurrence"],
-        2
+        values(&filer, &["click", "t1", "--dy", "-300", "--exact"], None),
+        json!({"tab": "t1", "dy": -300, "exact": true})
     );
-    // Text that spells no such value stays text, and the one refusal names
-    // its field beside every other failure without repeating a value.
-    let error = refusal(&filer, &["measure", "--v", "twelve", "--quiet=maybe"], None);
-    assert!(error.starts_with("Invalid command arguments: "), "{error}");
-    for failure in [
-        "\"v.0\" is not of type \"number\"",
-        "\"quiet\" is not of type \"boolean\"",
-    ] {
-        assert!(error.contains(failure), "{error} lacks {failure}");
-    }
-    assert!(
-        !error.contains("twelve") && !error.contains("maybe"),
-        "{error}"
-    );
-    let error = refusal(&filer, &["edit", "f", "--occurrence", "NaN"], None);
-    for failure in [
-        "\"occurrence\" is not of type \"integer\"",
-        "\"old\" is a required property",
-        "\"new\" is a required property",
-    ] {
-        assert!(error.contains(failure), "{error} lacks {failure}");
-    }
     assert_eq!(
-        refusal(&filer, &["create", "note.txt"], Some("a long body")),
-        "Invalid command arguments: \"content\" is longer than 8 characters"
+        values(&filer, &["edit", "note.txt", "--old", "-x", "--new="], None),
+        json!({"path": "note.txt", "old": "-x", "new": ""})
+    );
+    assert_eq!(
+        values(&filer, &["edit", "note.txt", "--old=--help", "--new", "b"], None)["old"],
+        "--help"
     );
 }
 
 #[test]
-fn a_command_is_found_and_named_by_its_full_path() {
+fn help_is_asked_anywhere_and_a_group_alone_asks_for_it() {
+    let filer = filer();
+    for line in [
+        &["watch"][..],
+        &["watch", "--help"],
+        &["edit", "a.txt", "b.txt", "--bogus", "--help"],
+        &["watch", "missing", "--help"],
+    ] {
+        assert!(read(&filer, line, None).unwrap().help, "{line:?}");
+    }
+    assert_eq!(read(&filer, &["watch", "missing", "--help"], None).unwrap().path, ["filer", "watch"]);
+    // After --, --help is data.
+    assert!(!read(&filer, &["create", "--", "--help"], Some("b")).unwrap().help);
     // A bare root leaf reads its arguments right after its name.
     let kcenv: Node = serde_json::from_value(json!({"name": "kcenv",
         "summary": "Read an environment key.", "kind": "rpc",
@@ -313,39 +378,40 @@ fn a_command_is_found_and_named_by_its_full_path() {
         serde_json::to_value(read(&kcenv, &["HOME"], None).unwrap()).unwrap(),
         json!({"path": ["kcenv"], "help": false, "values": {"key": "HOME"}, "json": false})
     );
-    let filer = filer();
-    // A group with nothing after it asks for its help.
-    let group = read(&filer, &["watch"], None).unwrap();
-    assert!(group.help);
-    assert_eq!(group.path, ["filer", "watch"]);
+    assert!(read(&filer, &["list", "--json"], None).unwrap().json);
     assert_eq!(
         values(&filer, &["watch", "get", "my-id"], None),
         json!({"id": "my-id"})
     );
-    assert_eq!(
-        refusal(&filer, &["watch", "missing"], None),
-        "Unknown subcommand \"filer watch missing\""
-    );
-    assert_eq!(
-        refusal(&filer, &["watch", "get", "my-id", "--missing", "x"], None),
-        "Unknown option \"--missing\" for \"filer watch get\""
-    );
 }
 
 #[test]
-fn json_output_is_offered_and_accepted_only_where_declared() {
-    let filer = filer();
-    // Help shows an enum's choices, and --json only where an output schema is.
-    let help = [help(&filer, &["status"]), help(&filer, &["list"])].join("\n\n");
-    assert!(
-        help.contains("  filer status [--status <pending|in_progress|done>]\n"),
-        "{help}"
-    );
-    assert!(help.contains("  filer list [--json]\n"), "{help}");
-    assert!(read(&filer, &["list", "--json"], None).unwrap().json);
+fn registration_takes_the_one_optional_positional_before_a_required_last_and_positional_options_of_positionals() {
+    let leaf = |positionals: Value, required: &[&str], options: Value| {
+        serde_json::from_value::<Node>(json!({"name": "key", "summary": "Key.",
+            "kind": "rpc",
+            "input": object(json!({"a": {"type": "string"}, "b": {"type": "string"},
+                "c": {"type": "string"}, "d": {"type": "string"}}), required),
+            "positionals": positionals, "positionalOptions": options}))
+        .unwrap()
+        .validate()
+        .map_err(|error| error.to_string())
+    };
+    leaf(json!(["a", "b", "c"]), &["a", "c"], json!(["b"])).unwrap();
+    for (positionals, required) in [
+        (json!(["a", "b", "c"]), &["c"][..]),
+        (json!(["a", "b", "c", "d"]), &["a", "d"]),
+        (json!(["a", "b", "c"]), &["b"]),
+    ] {
+        assert_eq!(
+            leaf(positionals.clone(), required, json!([])).unwrap_err(),
+            "required positional follows optional positional",
+            "{positionals} requiring {required:?}"
+        );
+    }
     assert_eq!(
-        refusal(&filer, &["status", "--json"], None),
-        "Command \"filer status\" does not define JSON output"
+        leaf(json!(["a"]), &[], json!(["d"])).unwrap_err(),
+        "positionalOptions names d, which is no positional"
     );
 }
 

@@ -140,6 +140,7 @@ impl LeafBuilder {
                 running_hint: None,
                 input: None,
                 positionals: None,
+                positional_options: None,
                 stdin_field: None,
                 stdin_read: None,
                 rest_field: None,
@@ -195,6 +196,17 @@ impl LeafBuilder {
         S: Into<String>,
     {
         self.leaf.positionals = Some(fields.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Positionals that may also be given as a named option, as a browser
+    /// target's `ref` is both `click t1 e3` and `--ref e3`.
+    pub fn positional_options<I, S>(mut self, fields: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.leaf.positional_options = Some(fields.into_iter().map(Into::into).collect());
         self
     }
 
