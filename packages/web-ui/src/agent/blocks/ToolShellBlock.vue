@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { useResizeObserver } from '@vueuse/core'
+import { computed, ref } from 'vue'
 import { SquareTerminal } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import CodeText from '@demicodes/web-ui/ui/CodeText.vue'
 import AnsiText from './AnsiText.vue'
 import ShellEditPills from './ShellEditPills.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
@@ -47,14 +47,16 @@ const isOpen = defineModel<boolean>('open', { default: false })
 /** How many lines the command shows until a click shows it whole: the template's `line-clamp-2`. */
 const COMMAND_LINES = 2
 
-const commandRef = ref<HTMLElement>()
+const commandText = ref<InstanceType<typeof CodeText>>()
 // Whether the command takes more lines than it shows clamped; only then is it a toggle.
 const commandOverflows = ref(false)
 const commandWhole = ref(false)
 
-// The element's scroll height is the command's full height, clamped or not.
+// Measured each time the command is laid out anew, as its text streams in or
+// the width changes. The element's scroll height is the command's full
+// height, clamped or not.
 function measureCommand(): void {
-  const element = commandRef.value
+  const element = commandText.value?.element
   if (!element) {
     commandOverflows.value = false
     return
@@ -63,18 +65,13 @@ function measureCommand(): void {
   commandOverflows.value = element.scrollHeight > COMMAND_LINES * line + 1
 }
 
-// Wrapping follows the width, and a clamped box keeps its size while the
-// command streams in, so the text is watched as well.
-useResizeObserver(commandRef, measureCommand)
-watch(command, measureCommand, { flush: 'post' })
-
 function toggleCommand(): void {
   if (!commandOverflows.value) {
     return
   }
   // A drag that selected part of the command is a selection, not a click.
   const selection = window.getSelection()
-  if (selection && !selection.isCollapsed && commandRef.value?.contains(selection.anchorNode)) {
+  if (selection && !selection.isCollapsed && commandText.value?.element?.contains(selection.anchorNode)) {
     return
   }
   commandWhole.value = !commandWhole.value
@@ -105,9 +102,10 @@ function toggleCommand(): void {
           A command longer than two lines shows two, the second ending in an
           ellipsis; a click shows it whole and another clamps it again. One
           that fits is no control: a click selects it whole for copying.
-        --><span
-          ref="commandRef"
-          class="min-w-0 terminal-wrap"
+        --><CodeText
+          ref="commandText"
+          :text="command"
+          class="min-w-0"
           :class="[
             commandOverflows ? 'select-text transition-colors duration-200 ease-out hover:text-fg-body' : 'select-all',
             commandOverflows && commandWhole ? '' : 'line-clamp-2',
@@ -118,7 +116,8 @@ function toggleCommand(): void {
           @click="toggleCommand"
           @keydown.enter.self.prevent="toggleCommand"
           @keydown.space.self.prevent="toggleCommand"
-        >{{ command }}</span>
+          @layout="measureCommand"
+        />
       </div>
     </template>
 
