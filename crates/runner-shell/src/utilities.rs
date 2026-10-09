@@ -140,10 +140,10 @@ fn strings(args: &[std::ffi::OsString]) -> Vec<String> {
 /// (`runner.md` § Standard utilities); a path names a program.
 pub(crate) fn named(program: &std::ffi::OsStr) -> Option<&'static str> {
     let program = program.to_str()?;
-    UTILITIES
-        .iter()
-        .map(|(name, _)| *name)
-        .find(|name| *name == program)
+    let names = UTILITIES.iter().map(|(name, _)| *name);
+    #[cfg(unix)]
+    let names = names.chain([crate::timeout::NAME]);
+    names.into_iter().find(|name| *name == program)
 }
 
 /// Starts the utility `context.name`, which a utility started as its child
@@ -155,14 +155,27 @@ pub(crate) fn start(
     context: uucore::context::Context,
     args: Vec<std::ffi::OsString>,
 ) -> std::io::Result<Box<dyn uucore::context::UtilityRun>> {
+    let stderr = context.stderr.clone();
+    let name = context.name;
+    start_with(tasks, cancellation, name, stderr, move || run(context, args))
+}
+
+/// Starts `work`, the run of `name` as a utility's child program, as
+/// `start` starts a utility: on a thread of the shell's pool, ended when
+/// `cancellation` is; why it failed goes to `stderr`.
+pub(crate) fn start_with(
+    tasks: &tokio_util::task::TaskTracker,
+    cancellation: tokio_util::sync::CancellationToken,
+    name: &'static str,
+    stderr: std::sync::Arc<std::fs::File>,
+    work: impl FnOnce() -> Result<i32, String> + Send + 'static,
+) -> std::io::Result<Box<dyn uucore::context::UtilityRun>> {
     let runtime = tokio::runtime::Handle::try_current().map_err(std::io::Error::other)?;
     let (sender, exit) = std::sync::mpsc::channel();
     let ended = cancellation.clone();
-    let stderr = context.stderr.clone();
-    let name = context.name;
     tasks.spawn_blocking_on(
         move || {
-            let status = match run(context, args) {
+            let status = match work() {
                 Ok(code) => exit_status(code),
                 Err(_) if ended.is_cancelled() => killed(),
                 Err(error) => {
