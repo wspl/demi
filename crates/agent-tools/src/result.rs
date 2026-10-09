@@ -525,10 +525,15 @@ async fn binary_verdict(
             ),
         );
     }
+    // Bytes of no medium are most often a medium a pipe after the command
+    // cut short, as `demi browser screenshot t1 | tail -3` does, so the
+    // line says so first.
     let Some(media) = media else {
         return (
             None,
-            format!("Binary stdout does not match any model-viewable media type; {save}."),
+            format!(
+                "[binary stdout, {total} bytes: not an image or video; a pipe after the command may have cut it — run the command without it; {save}]"
+            ),
         );
     };
     if !model_accepts_media_type(model, media.media_type) {
@@ -1043,7 +1048,9 @@ mod tests {
         );
         assert_eq!(
             verdict(&model, limits, &opaque, false, 12).await,
-            format!("Binary stdout does not match any model-viewable media type; {save}.")
+            format!(
+                "[binary stdout, 12 bytes: not an image or video; a pipe after the command may have cut it — run the command without it; {save}]"
+            )
         );
         assert_eq!(
             verdict(&model, limits, &png, true, 20_000_000).await,
