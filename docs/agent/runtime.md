@@ -329,9 +329,10 @@ more, even when the model had finished or a tool had asked to end the turn.
 - Only messages appear in the queue, never continuations or other actions. A
   `queue` frame carries the whole queue, each entry `{ id, content }`; the page
   derives the text it shows from the content.
-- `dequeue_message` removes one message. `send_queued_message` moves one to the
-  front, so it runs next. `steer_queued_message` turns one into a steer of the
-  running turn, and puts it back in its place when the steer is refused.
+- `dequeue_message` removes one message. `send_queued_message` sends one now
+  ([Send now](#send-now)): while a turn runs, it ends that turn at once and
+  the message runs next; otherwise the message moves to the front of the
+  queue and runs next. A queued message never becomes a steer.
   `clear_message_queue` removes them all.
 - The queue is part of the checkpoint. A change to the queue is saved even when
   the transcript does not change, dispose keeps the queue, and a restored
@@ -391,6 +392,49 @@ second time. When S1 enters the transcript, the client stops listing it.
 `ConversationClient.open()` resolves on the `opened` frame; the snapshot frames follow
 it, so a caller that needs the initial list subscribes to `pending_steers`,
 which also reports an empty list.
+
+### Send now
+
+For example, the agent runs `npm test` with a ten-minute window, and two
+minutes in the user steers "skip the e2e tests". The steer waits for the call:
+it would reach the model only when the call returns, up to eight minutes
+later. The user presses Send Now on it. The call returns at once with the
+output so far and a line saying that the command moved to the background
+because the user sent a message; the command keeps running. The steer enters
+the transcript, the turn goes on, and the model can stop the command and run
+it again without the e2e tests. Had the user pressed Send Now on a queued
+message instead, the turn would have ended at the same point and the message
+would have started the next turn.
+
+A human steer waits for the next continuation boundary, and a queued message
+waits for the end of the turn. Sending one now delivers it at once without
+stopping anything the agent started, and without changing what it is: a steer
+stays a steer, and a queued message starts a turn of its own.
+
+- `steer_now { steerId }` names a pending steer of the running turn.
+  `send_queued_message { messageId }` names a queued message
+  ([Messages and the queue](#messages-and-the-queue)).
+- The session cuts the running round short:
+  - a streaming provider request is cancelled, and what it streamed stays in
+    the transcript, as with [Stop](#stop);
+  - each running shell call returns at once with the result its window's end
+    gives ([The window](#the-window)), preceded in its hint by the line
+    `[The user sent a message, so command 17 moved to the background. It
+    keeps running.]`; its command keeps running;
+  - a requested call that has not started completes as the error `Tool call
+    not run: the user sent a message`.
+- Nothing is stopped and no `abort` marker is written. A compaction or a save
+  in progress is not cut: the session sends now once it ends.
+- At the boundary the cut reaches, the session writes all waiting input into
+  the transcript as any boundary does: the pending human steers, the agent
+  messages and the fired wakeups. After `steer_now` the turn goes on with the
+  next provider request. After `send_queued_message` the turn ends there, and
+  the message runs next, ahead of the rest of the queue.
+- When no turn runs, `send_queued_message` moves the message to the front of
+  the queue, and it runs as soon as the running action, if any, ends.
+  `steer_now` for a steer that is no longer pending changes nothing.
+- Neither frame has a reply; the client observes the transcript, the
+  `pending_steers` list and the queue.
 
 ## Yield wakeups
 
@@ -543,22 +587,26 @@ the three completes as an error `Tool not found: <name>`.
 ### The window
 
 For example, the model runs the test suite with a ten-minute window, and two
-minutes in the user steers: "skip the e2e tests". The window ends at once:
-the call returns the running command's handle and its output so far, the
-steer enters the transcript, and the model can stop the command and run it
-again without the e2e tests. Without that, the steer would wait up to eight
-more minutes.
+minutes in a subagent reports that the failing test is a flaky one. The window
+ends at once: the call returns the running command's handle and its output so
+far, the agent message enters the transcript, and the model can stop the
+command and run it again without that test. Without that, the message would
+wait up to eight more minutes.
 
 A `shell_exec` or `shell_status` call watches its command until the first of:
 
 - the command ends;
 - `timeoutMs` passes;
-- input arrives that joins the turn at its next boundary: a steer, an agent
-  message, or a wakeup ([Input](#input)).
+- an agent message or a yield wakeup arrives, which joins the turn at its
+  next boundary ([Input](#input));
+- the user sends a steer or a queued message now, and the result says so
+  ([Send now](#send-now)).
 
 Ending the window never stops the command: it keeps running, and the result
-carries its handle, as when the time passes. A message sent to the queue
-does not join the turn, so it ends no window.
+carries its handle, as when the time passes. A human steer ends no window: by
+steering rather than sending now, the user chose to wait for the running call.
+A message sent to the queue does not join the turn, so it ends no window
+either.
 
 ### Stopping a command
 
@@ -1609,8 +1657,9 @@ open ------------------------------> attach to the live tree
 | `edit_and_send { request }` | Replace a user message and its suffix ([Message editing](message-editing.md)) | `edit_result` at durable acceptance |
 | `steer { steerId, content }` | Add input to the running turn | `steer_result` |
 | `cancel_pending_steer { steerId }` | Withdraw a pending steer | None; the `pending_steers` list |
-| `dequeue_message`, `send_queued_message { messageId }` | Remove a queued message; run one next | `queue` |
-| `steer_queued_message { messageId, steerId }` | Turn a queued message into a steer | `steer_result` |
+| `steer_now { steerId }` | Deliver a pending steer now ([Send now](#send-now)) | None; the transcript and the `pending_steers` list |
+| `dequeue_message { messageId }` | Remove a queued message | `queue` |
+| `send_queued_message { messageId }` | Send a queued message now ([Send now](#send-now)) | `queue` |
 | `clear_message_queue` | Remove every queued message | `queue` |
 | `abort` | Stop one thing ([Stop](#stop)) | `abort_result`, in request order |
 | `abort_subagents`, `abort_subagent { subagentId }` | Stop subagents ([Abort](subagents.md#abort)) | `subagent` frames |
@@ -1716,9 +1765,9 @@ ended while no page watched shows as ended.
   it sees a gap. Subagent transcripts follow the same rule.
 
 Without an open session, most commands are answered with `rejected`
-(`No session is open`), `steer` and `steer_queued_message` with a rejected
-`steer_result`, and `cancel_pending_steer`, `abort_subagents` and
-`abort_subagent` with nothing. A second `open` on one connection is rejected.
+(`No session is open`), `steer` with a rejected `steer_result`, and
+`cancel_pending_steer`, `steer_now`, `abort_subagents` and `abort_subagent`
+with nothing. A second `open` on one connection is rejected.
 
 `ConversationClient` validates every frame it receives with the generated schemas and
 drops the connection when one does not match, applies patches with the one
