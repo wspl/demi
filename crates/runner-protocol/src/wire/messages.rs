@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use demi_command_protocol::{
     ArtifactLocation, CommandContext, EditCopies, EditKind, MAX_NUMBERS, PackageDescriptor,
-    ServiceSequence, conversation_name, digest, without_nul,
+    PathChange, ServiceSequence, conversation_name, digest, without_nul,
 };
 use demi_shared_types::BlobRef;
 use schemars::JsonSchema;
@@ -914,6 +914,10 @@ pub enum Outbound {
         output: Option<OutputLengths>,
         #[garde(length(max = demi_command_protocol::EDIT_JOB_FILES), dive)]
         files: Vec<JobFileChange>,
+        /// The renames and removals of the job's embedded utilities, in
+        /// order (`edit-tracking.md` § A request).
+        #[garde(length(max = demi_command_protocol::EDIT_JOB_PATH_CHANGES), dive)]
+        path_changes: Vec<PathChange>,
         files_truncated: bool,
     },
     /// A medium a command whose stdout is the job's output returned, once

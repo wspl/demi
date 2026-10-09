@@ -91,6 +91,12 @@ pub struct ShellToolView {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub files_truncated: Option<bool>,
+    /// The renames and removals the command's embedded utilities made, in
+    /// order, by which a request's file list follows its files to where
+    /// they stand (`edit-tracking.md` § A request).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(dive)]
+    pub path_changes: Vec<PathChange>,
 }
 
 /// Where a command is: running, exited, or stopped.
@@ -155,6 +161,24 @@ pub enum EditKind {
 
 serde_plain::derive_display_from_serialize!(EditKind);
 serde_plain::derive_fromstr_from_deserialize!(EditKind);
+
+/// A rename an embedded utility made, or a path an embedded `rm` removed: a
+/// folder once, by its own path. Paths are absolute, as the Host names
+/// them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PathChange {
+    Renamed {
+        #[garde(length(chars, min = 1))]
+        from: String,
+        #[garde(length(chars, min = 1))]
+        to: String,
+    },
+    Removed {
+        #[garde(length(chars, min = 1))]
+        path: String,
+    },
+}
 
 /// One edit segment of a file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]

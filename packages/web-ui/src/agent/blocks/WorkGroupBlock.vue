@@ -149,17 +149,20 @@ onBeforeUnmount(() => {
 
 const select = useEditSelection()
 const transcript = useTranscript()
-/** A summed pill opens its file at the first of the group's calls that changed it. */
+/**
+ * A summed pill opens its file at the first of the group's calls that
+ * changed it, under the name the file had in that call.
+ */
 function selection(path: string) {
   if (!transcript)
     return null
-  const call = calls.value.find((step) => storedShellView(step)?.files?.some((file) => file.path === path))
-  return call ? pillSelection(transcript.node, transcript.requests(), call, path) : null
+  const first = changed.value.find((file) => file.path === path)?.edits[0]
+  const call = first && calls.value.find((step) => storedShellView(step)?.commandId === first.call)
+  return call ? pillSelection(transcript.node, transcript.requests(), call, first.path) : null
 }
-const selectable = computed(() => {
-  const first = files.value[0]
-  return select() !== undefined && first !== undefined && selection(first.path) !== null
-})
+function selectable(path: string): boolean {
+  return select() !== undefined && selection(path) !== null
+}
 function pick(path: string): void {
   const picked = selection(path)
   if (picked)
