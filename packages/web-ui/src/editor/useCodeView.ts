@@ -1,5 +1,5 @@
 import { onBeforeUnmount, onMounted, watch, type Ref } from 'vue'
-import { ChangeSet, EditorState, type Extension, type StateEffect, type Text } from '@codemirror/state'
+import { ChangeSet, EditorState, type Extension, type StateEffect, type Text, type TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { getOriginalDoc, originalDocChangeEffect } from '@codemirror/merge'
 import { baseName } from '@demicodes/utils'
@@ -42,17 +42,37 @@ function replacement(doc: Text, next: string): { from: number; to: number; inser
 }
 
 /**
+ * What turns the view's `state` into `file`: the text's change, and a
+ * diff's new original, in one transaction; null when it shows them already.
+ */
+export function codeViewUpdate(state: EditorState, file: CodeViewFile): TransactionSpec | null {
+  const change = replacement(state.doc, file.text)
+  const original = file.original === undefined ? null : getOriginalDoc(state)
+  const originalChange = original && replacement(original, file.original!)
+  if (!change && !originalChange)
+    return null
+  return {
+    ...(change ? { changes: change } : {}),
+    ...(original && originalChange
+      ? { effects: originalDocChangeEffect(state, ChangeSet.of(originalChange, original.length)) }
+      : {}),
+  }
+}
+
+/**
  * A read-only code view in `container` for the component's lifetime: one
  * file's text in the app's code theme, colored by the file's language. A new
  * text replaces the old in place, as an editor reloads a file it has not
- * changed: the scroll, the selection and the folds outside what changed
- * stay. The view is built once the language has loaded, because a diff
- * colors its removed lines only as it builds them.
+ * changed: the lines the user is looking at stay where they are on screen,
+ * and the selection and the folds outside what changed stay. The view is
+ * built once the language has loaded, because a diff colors its removed
+ * lines only as it builds them; `extensions` may be a function, which then
+ * builds them at that moment from what the file is then.
  */
 export function useCodeView(
   container: Readonly<Ref<HTMLElement | undefined>>,
   file: CodeViewFile,
-  extensions: Extension,
+  extensions: Extension | (() => Extension),
   options: CodeViewOptions = {},
 ): void {
   let view: EditorView | null = null
@@ -73,7 +93,7 @@ export function useCodeView(
           EditorView.contentAttributes.of({ 'aria-label': baseName(file.path) }),
           editorTheme(),
           language,
-          extensions,
+          typeof extensions === 'function' ? extensions() : extensions,
         ],
       }),
       ...(options.scrollTo ? { scrollTo: options.scrollTo } : {}),
@@ -81,19 +101,17 @@ export function useCodeView(
     trackEditorView(view)
   })
 
-  watch(() => file.text, (text) => {
-    const change = view && replacement(view.state.doc, text)
-    if (view && change)
-      view.dispatch({ changes: change })
-  })
-
-  watch(() => file.original, (original) => {
-    if (!view || original === undefined)
-      return
-    const doc = getOriginalDoc(view.state)
-    const change = replacement(doc, original)
-    if (change)
-      view.dispatch({ effects: originalDocChangeEffect(view.state, ChangeSet.of(change, doc.length)) })
+  // Both sides of a diff arrive together and land in one transaction. The
+  // view goes back to the place it was scrolled to, carried through the
+  // change (a later spec's effects map through the earlier one's changes),
+  // as an editor keeps the line at the top of the window where it is when
+  // the file changes above it; the stretches a new version folds or unfolds
+  // above would otherwise move it. A view out of sight, as in a tab not
+  // selected, has no place on screen to keep: its scroll reads as its top.
+  watch([() => file.text, () => file.original], () => {
+    const update = view && codeViewUpdate(view.state, file)
+    if (view && update)
+      view.dispatch(update, view.inView ? { effects: view.scrollSnapshot() } : {})
   })
 
   onBeforeUnmount(() => {
