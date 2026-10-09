@@ -103,7 +103,7 @@ unmarked: a Fork on it is refused, and a Fork on `A1` succeeds. When the
 response ends, `A2` is marked and a Fork on it keeps all four blocks.
 
 The destination starts idle, with an empty queue and a new root identity. It
-has no inherited wakeup, pending steer, pending agent message, edit receipt,
+has no inherited command report, pending steer, pending agent message, edit receipt,
 child, or running shell handle. Provider execution begins through ordinary node
 assembly, with a fresh runtime, when the destination is opened for use.
 
@@ -207,7 +207,7 @@ Acceptance uses scripted providers and local fixtures, never a real model.
   receives a child completion: the source keeps running, and its later changes
   do not enter the Fork.
 - A source edit racing with the capture has one coherent ordering.
-- A destination cannot resume source jobs, children, queues, or wakeups.
+- A destination cannot resume source jobs, children, queues, or command reports.
 - A source child continues running and delivers its result only to the source;
   the destination keeps only child references and results already in its
   prefix.

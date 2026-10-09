@@ -130,7 +130,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     sees them (`AccountInfo`, `LoginPending`); and an account's quota snapshot
     (`QuotaSnapshot`, `QuotaWindow`, `QuotaPlan` and their sets);
   - the identities blocks and frames name (`BlockId`, `TurnId`, `NodeId`,
-    `WakeupId`, `ShellId`, `CommandId`, `OperationId`), and the macro every
+    `CommandId`, `OperationId`), and the macro every
     crate declares a checked identity with (`id!`): a string newtype that
     serializes as itself and holds only the strings its check accepts;
   - the file-type table the product previews by (`preview_media_type`,
@@ -605,8 +605,8 @@ Each crate implements the provider contract for one vendor family.
   (`replay`).
 - **Public boundary:** the items above; `agent_transcript::testing` supplies
   predictable identities (`SequentialIds`) and the texts the model receives
-  for a resume, a fired wakeup and an agent message (`RESUME_TEXT`,
-  `WAKEUP_TEXT`, `agent_message_envelope`), which a session's tests compare
+  for a resume and an agent message (`RESUME_TEXT`,
+  `agent_message_envelope`), which a session's tests compare
   its requests with.
 - **Must not:** run a turn, call a provider or store anything itself.
 
@@ -614,7 +614,7 @@ Each crate implements the provider contract for one vendor family.
 
 - **Owns:** the runtime of one session: `AgentSession`, a handle over one
   session's `SessionCore`, with its turns, input admission, steers and
-  wakeups, cancellation, retry and resume, compaction
+  command reports, cancellation, retry and resume, compaction
   ([Compaction](../agent/compaction.md)), message editing
   ([Message editing](../agent/message-editing.md)), persistence through the
   tree store, and its events and status; and the tool-call contract a session
@@ -633,8 +633,8 @@ Each crate implements the provider contract for one vendor family.
 
 #### `agent-tools`
 
-- **Owns:** the standard tools (`StandardTool`: `shell_exec`, `shell_status`
-  and `yield`), their input and results and the
+- **Owns:** the `shell` tool, its input and results, the `demi shell`
+  commands' rules for looking at, feeding and timing commands, and the
   rules for them that open every node's system prompt, with the durable
   dispatch of every tool call over each node's shell environment per Host,
   which the product's `ShellEnvironmentFactory` makes; and what the product

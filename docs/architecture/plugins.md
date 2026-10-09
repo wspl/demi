@@ -48,7 +48,7 @@ first request      the session asks each context source for news; plugin-skills
                    answers the catalog of the skills that are on, with the path
                    of each SKILL.md; the session appends it as a context block
   -> model         reads it, runs `cat ~/.demi/plugins/skills/tdd-9f2c1a7b3e40/SKILL.md`
-                   through shell_exec
+                   through shell
   -> host access   before that job runs, installs the directory on the Host
                    once per runner connection
 ```

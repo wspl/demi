@@ -442,9 +442,9 @@ At startup the backend:
    ([Managed hosts](../cloud/managed-hosts.md#system-reset)), and Fork
    creations whose destination root was committed are published
    ([Conversation Fork](../agent/conversation-fork.md#backend-creation-and-retries)).
-   Each saved yield wakeup is armed again: its conversation's shard restores
-   the tree when the wakeup is due
-   ([Yield wakeups](../agent/runtime.md#yield-wakeups)). The manager's
+   Running commands are taken up as their runners connect, and a command
+   that reports restores its conversation's tree
+   ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)). The manager's
    `hello` on the first connection names its wire version, so a manager of
    another release stops the start here
    ([Control and ownership](../cloud/managed-hosts.md#control-and-ownership)).
@@ -469,7 +469,7 @@ runs on a Host: commands and Clouds go on, and the next start takes them up
 2. Each shard ends its user's work in this order. The synchronization
    channels close, so no page is sent what the steps below change; a page
    reads the state again from the next backend. Idle watches stop. Title requests are aborted. Open file transfers and user streams end. Conversation sockets
-   close and the waits for saved wakeups end, so no tree opens and no frame
+   close, so no tree opens and no frame
    reaches a tree after its shutdown. Agent turns are
    aborted: a running turn records that its session was shut down, and a
    command it watched keeps running

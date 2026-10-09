@@ -15,7 +15,7 @@ send ----------------------> conversation socket
                                -> tree -> root session
                                     user block
                                     provider request
-                                    text + shell_exec call
+                                    text + shell call
                                     save, run the tool ----------------> runner job
                                     tool result <----------------------
                                     provider request
@@ -25,14 +25,14 @@ transcript_patch <---------- one outbox per connection
 ```
 
 The root session appends the message as a `user` block and asks the provider
-for a response. The model answers with some text and a `shell_exec` call. The
+for a response. The model answers with some text and a `shell` call. The
 session saves the call as executing, runs the command on the conversation's
 Host, records the result, and asks the provider again. When a response
 requests no tool, the turn ends. Each change reaches the web app as a
 transcript patch and the conversation's database as changed rows.
 
-This document owns sessions and turns, their input, yield wakeups, the
-standard tools, the transcript and its views, the rendering boundary, the frame
+This document owns sessions and turns, their input, command reports, the
+`shell` tool, the transcript and its views, the rendering boundary, the frame
 protocol, and the tree store contract. Related rules have their own homes:
 
 - The session tree, `demi agent` and agent messages:
@@ -52,7 +52,7 @@ A session belongs to one agent node: the root of a conversation or one of its
 subagents. Every node has the same kind of session, built by the same assembly
 ([Runtime](subagents.md#runtime)). A session holds its transcript and command
 state, its model selection with its own provider runtime, the actions waiting
-to run, the pending steers, the scheduled yield wakeups, and one status.
+to run, the pending steers, the command reports not yet written, and one status.
 Sessions run on the user's shard thread, where no other work runs while a
 session changes its state.
 
@@ -76,7 +76,7 @@ reaches the next spawn ([Profiles](subagents.md#profiles)).
 
 A node's system prompt is therefore its identity (the instructions, or a
 profile's, which replace them), the harness guide, the runtime's rules for
-its three tools, the capability index of the node's commands and the model
+its tool, the capability index of the node's commands and the model
 identity, in that order ([System prompt](system-prompt.md)). It is rendered once, when the node is
 assembled, and holds no time, id, Host or state
 ([Prompt cache](../providers/providers.md#prompt-cache)).
@@ -89,7 +89,7 @@ wait in arrival order.
 | Action | Comes from | What it does |
 | --- | --- | --- |
 | Send | A `send` frame, or the next queued message | Appends a `user` block and runs a turn |
-| Continuation | A yield wakeup or an agent message while nothing runs | Appends a `wakeup` block, or the waiting agent messages, and runs a turn; never shown in the queue |
+| Continuation | A command report or an agent message while nothing runs | Appends a `wakeup` block, or the waiting agent messages, and runs a turn; never shown in the queue |
 | Retry | A `retry` frame | Rewinds the last input turn and runs it again ([Recovery](failures-and-recovery.md#recovery-is-one-mechanism)) |
 | Resume | A `resume` frame | Unwinds the unfinished turn to its resume point and continues it ([Recovery](failures-and-recovery.md#recovery-is-one-mechanism)) |
 | Compact | A `compact` frame | Runs one compaction pass ([Compaction](compaction.md#compaction)) |
@@ -99,7 +99,7 @@ Admission is decided when an action arrives:
 
 - A disposed session refuses every action.
 - While an edit is being prepared, the session refuses sends, the other
-  actions, steers, agent messages and new yield wakeups. A model switch waits
+  actions, steers, agent messages and command reports. A model switch waits
   for the edit instead ([Model switch](#model-switch)).
 - `retry`, `resume` and `compact` are refused unless the session is idle, with
   the reason `Session is busy (<phase>)`. A `compact` is also refused below
@@ -135,13 +135,12 @@ action starts
   +-- tools ran and none asked to end the turn: loop
   |
 action ends
-  discard human steers still pending, arm yield wakeups, save,
+  discard human steers still pending, save,
   start the next waiting action
 ```
 
-A turn ends when a response requests no tool, or when a tool asks to end the
-turn after its result, as `yield` does. Input that arrived during the round
-overrides both: the turn asks the provider once more. Transient provider
+A turn ends when a response requests no tool. Input that arrived during the
+round overrides that: the turn asks the provider once more. Transient provider
 failures are retried inside the request
 ([Retries](failures-and-recovery.md#retries)); compaction inside a turn,
 before a request that would be too large and after one that was refused, is
@@ -177,15 +176,14 @@ The user's Stop sends `abort`. Each `abort` stops one thing, in this order:
    stream, a tool, a compaction, or the turn.
 2. Otherwise, the first waiting action. A queued message leaves the queue; any
    other action is dropped.
-3. Otherwise, the oldest scheduled yield wakeup is cancelled.
-4. Otherwise, nothing is stopped.
+3. Otherwise, nothing is stopped.
 
 The `abort_result` frame says what was stopped and whether another `abort`
 would have stopped something more at the moment the stop was recorded.
 
 A stopped action records the stop itself. It writes all the input waiting
 for its next boundary: the human steers still pending, the agent messages and
-the yield wakeups that fired. It completes each running tool call as an error
+the command reports. It completes each running tool call as an error
 that says why and what became of its command
 ([Interrupted calls](#interrupted-calls)), and appends an `abort` block, the
 stopped marker. An action that has written nothing into the transcript, with the
@@ -208,9 +206,8 @@ afterwards, whether or not it wrote a marker:
   ([Abort](subagents.md#abort)).
 - An agent message that arrives after the Stop wakes the node as it wakes an
   idle one ([Delivery and scheduling](subagents.md#delivery-and-scheduling)).
-- A yield wakeup that comes due after the Stop fires
-  ([Yield wakeups](#yield-wakeups)). Only a Stop sent while nothing runs or
-  waits cancels one (item 3 above).
+- A command report that arrives after the Stop wakes the node as it wakes an
+  idle one ([Command reports](#command-reports)).
 
 For example, the user stops a turn while a subagent is still reading files.
 The turn ends with the stopped marker, the subagent finishes, and its
@@ -231,8 +228,8 @@ Dispose does the following:
    turn was running." says why the turn is unfinished. A message whose turn
    has not written its `user` block yet is not interrupted: it goes back to
    the front of the queue.
-3. Keeps the queued messages, the agent messages waiting for a boundary and
-   the yield wakeups, scheduled or fired, in the checkpoint.
+3. Keeps the queued messages and the agent messages and command reports
+   waiting for a boundary in the checkpoint.
 4. Waits for a save in progress, then writes the final checkpoint. Its phase
    is `running` when a turn was interrupted.
 5. Closes the provider runtimes, including the one a pending model switch had
@@ -246,9 +243,8 @@ again when its runner connects
 ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)):
 its outcome is unknown, and it never runs again
 ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)).
-The restored session is idle, with its saved wakeups armed
-([Yield wakeups](#yield-wakeups)). A session restored from an interrupted
-turn holds its waiting input and due wakeups until the node's next action.
+The restored session is idle. A session restored from an interrupted
+turn holds its waiting input until the node's next action.
 Until then its transcript ends with the interruption record, so a later
 restart holds them again. It hands back its queued messages and
 whether a turn was interrupted; the node's lifecycle policy decides what
@@ -270,7 +266,7 @@ No client frame names a model.
 - A switch lands at the root's next provider request: at the start of the
   next action, once the action has written its input, or inside a running
   turn at its next continuation boundary. A send's `user` block and a
-  continuation's wakeup or agent messages are written first, so a switch
+  continuation's command reports or agent messages are written first, so a switch
   that fails to compact, or is stopped while it compacts, ends a turn that
   holds the input ([The unfinished turn](failures-and-recovery.md#the-unfinished-turn)).
   A request that is streaming finishes with the model it started with. A
@@ -367,7 +363,7 @@ transcript. Each entry holds:
 | `model` | The model selection when the steer was accepted. |
 | `content` | The steer's content, attachments included. |
 
-The list never contains yield wakeups or agent messages.
+The list never contains command reports or agent messages.
 
 - The server sends a `pending_steers` frame with the complete list when a
   client opens the conversation, after the transcript, phase and queue frames,
@@ -432,7 +428,7 @@ stays a steer, and a queued message starts a turn of its own.
   in progress is not cut: the session sends now once it ends.
 - At the boundary the cut reaches, the session writes all waiting input into
   the transcript as any boundary does: the pending human steers, the agent
-  messages and the fired wakeups. After `steer_now` the turn goes on with the
+  messages and the command reports. After `steer_now` the turn goes on with the
   next provider request. After `send_queued_message` the turn ends there, and
   the message runs next, ahead of the rest of the queue. A queued message sent
   now before the turn's first request ends the turn at once, so the message
@@ -443,131 +439,109 @@ stays a steer, and a queued message starts a turn of its own.
 - Neither frame has a reply; the client observes the transcript, the
   `pending_steers` list and the queue.
 
-## Yield wakeups
+## Command reports
 
-For example, the model starts a build, command 17, that takes about eight
-minutes, and calls `yield` with `durationMs: 600000` and `commandIds: [17]`.
-The turn ends after that round of tools, and the user can talk to the agent
-meanwhile. The build ends after eight minutes, and the wakeup fires at once.
-Nothing is running, so the session starts a continuation whose input is a
-`wakeup` block saying that command 17 ended and with what exit code, and the
-model reads its end with `shell_status`. Had the build hung, the wakeup would
-have fired at ten minutes.
+For example, the model starts the test suite, command 17, with
+`intervalMs: 300000`. The suite runs on after five minutes, so the call
+returns its handle and output, and the model tells the user that the tests
+are running and ends its turn: the user can talk to the agent meanwhile.
+Five minutes later the node is woken with a report, "Command 17 is still
+running; no output for 4 minutes 50 seconds", and the newest lines. The model
+sees that the suite hangs in one test, stops it and runs that test alone.
+Had the suite ended first, the node would have been woken with "Command 17
+ended with exit code 1; look at it with demi shell status 17." The model never
+asks to be woken: as Claude Code wakes its model when a background command
+or a subagent ends, the work it waits for wakes it.
 
-- `yield` returns an effect for the session to apply: schedule one wakeup and
-  end the turn after this round of tools. The tool result says
-  `yield scheduled` with the duration and the commands, and its view is
-  `yield_wakeup`. It names no wakeup, since no tool takes one
-  ([Identifiers the model sees](#identifiers-the-model-sees)).
-- The wakeup fires after `durationMs`, or as soon as one of the commands
-  `commandIds` names ends, whichever comes first, as `wait -n` returns at the
-  first child's end. A named command that has ended already, or ends before
-  the action does, makes the wakeup due when the action ends. A command ends
-  for this rule however it ends: an exit, a stop, or the end of its node's
-  shells. An id that names no command of the conversation fails the call,
-  `yield: no command 17 in this conversation`, and schedules nothing. Each
-  named command can be any agent's of the conversation, as `demi shell
-  output` reads any.
-- The wait starts when the action ends, not when `yield` is called.
-- When a wakeup fires during a turn that accepts steers, it joins that turn at
-  the next continuation boundary as a `wakeup` block with the placement
-  `steer`. Otherwise it starts a continuation whose input is a `wakeup` block
-  with the placement `new_turn`. Either way, the model receives the text
-  "Scheduled yield wakeup fired. Continue the previous work and inspect any
-  running command with shell_status when needed." when the time came, and
-  "Command 17 ended with exit code 1. Continue the previous work; read its
-  output with demi shell output 17." when a command ended first, with the
-  exit code the conversation's record of the command holds, whichever agent
-  ran it; a command that was stopped says "Command 17 was stopped.", and one
-  that was lost says so with its reason
-  ([Lost commands](#lost-commands)): "Command 17 was lost: Demi was upgraded
-  and the Host's runner replaced itself."
- `demi shell output` reads any command of
-  the conversation, where `shell_status` reads only the node's own. A wakeup never appears in the
-  queue or among the pending steers.
-- A wakeup belongs to its session, not to the turn that scheduled it: a turn
-  the user started meanwhile receives it like its own.
-- A turn that ends with its answer, a response that requests no tool, drops
-  the wakeups that wait only for time, scheduled and fired alike; a wakeup
-  that names commands still waits for them. For example, the root yields
-  ten minutes for its subagents, a report wakes it after four, and it
-  answers: the wakeup is dropped, so it no longer opens a turn six minutes
-  later that only says the work is done. Had it yielded for build 17 and
-  answered a message of the user's meanwhile, the wakeup for 17 would still
-  stand. A child drops every wakeup when it closes with its answer
-  ([Result](subagents.md#result)).
-- A session waits for one thing at a time: a `yield` replaces the wakeup
-  scheduled before it, which then never fires. For example, the agent yields
-  for ten minutes to wait for its subagents, a subagent's message wakes it
-  after four, and it yields again; only the second wakeup stands, so the
-  first does not wake it six minutes later with nothing left to wait for.
-- When no action runs or waits, Stop cancels the scheduled wakeup.
-  Any other Stop leaves the wakeups as they are, and one that comes due
-  afterwards fires ([Stop](#stop)).
-- A wakeup is saved in the checkpoint with its id, its duration, its
-  commands and, once the
-  action that scheduled it has ended, the wall-clock time it is due, so it
-  survives dispose and a backend restart; a fired wakeup stays saved until
-  the transcript holds it. Restoring the session arms it again: a wakeup
-  whose time passed while the session was not live is due at once, and one
-  whose action the process died in starts its wait at the restore. A
-  restored wakeup whose commands no longer run is due at once, since they
-  ended with the shells of the session that was disposed. A
-  restored root whose last turn was interrupted holds its due wakeups as it
-  holds its pending agent input ([Persistence](subagents.md#persistence)).
-- A backend restart keeps a saved wakeup's time. For example, a turn ends
-  at minute 0 with a `yield` for 10 minutes to check a build, and the
-  backend is down from minute 2 to minute 12. At its start the backend restores the
-  conversation's tree with no page attached, the wakeup is due at once, and
-  its turn runs; once the tree is quiescent the idle rule evicts it
-  ([Connections and the live tree](#connections-and-the-live-tree)). Had the
-  backend come back at minute 5, it would restore the tree at minute 10.
-  The backend's index of conversations keeps when the earliest wakeup each
-  conversation's tree saved is due, which every commit of the tree updates
-  ([Control records](../backend/storage.md#control-records)); at start, each
-  conversation in it that is not archived has its tree restored at that
-  time, as an `open` restores it, and one whose wakeup's action had not
-  ended at once, since the restore starts that wakeup's wait. A tree that
-  is live by then is left as it is. A root whose last turn was interrupted
-  is left out of the index, whether it was saved under that turn or has
-  saved the interruption record since: it holds its wakeups until the user
-  resumes it, so restoring it with no page would fire nothing. A child's
-  wakeups count, since a restored child resumes its interrupted turn.
-- A scheduled wakeup is not conversation activity: it keeps no Cloud awake
-  ([Activity](../execution/resource-lifecycle.md#activity)). A subagent whose
-  last turn ended with `yield` stays live, and one whose turn ended with its
-  answer closes and drops its wakeups ([Result](subagents.md#result)).
-  Message editing is refused while a wakeup is scheduled
-  ([Message editing](message-editing.md)).
-- `yield` ends the turn, and the user reads only the text the model wrote
-  before it. The tool rules say so, so the model answers the user, or says
-  what it is waiting for, before it yields: turns that ended with `yield`
-  alone left the user asking why the agent had stopped.
+- **Every command says how it is watched.** `shell` takes
+  `intervalMs`, a number or `null`, and no default, so the model decides when
+  it starts the command:
+  - **A number**, from 15,000 to 600,000 milliseconds, for a command that
+    ends, such as a build or a test suite: short for one that should end
+    within minutes, long for one that takes long, since each report is a
+    request of the whole conversation. The call watches the command for
+    up to that long; if it still runs, the call returns its handle, and the
+    node then gets a report every interval until the command ends. A report
+    carries what `demi shell status` would show: the output since the
+    model's last look, how long the command has printed nothing, and how to
+    change the interval. A smaller value is taken as 15,000 and a larger one
+    as 600,000, and the result says so.
+  - **`null`** for a command that runs until it is stopped, such as a dev
+    server or a watcher. The call returns once the command's output has been
+    quiet for 2 seconds, or after 30 seconds, so the model sees it start,
+    and the node gets no reports while it runs.
+  - `demi shell status --interval` and `--resident` change a running
+    command's interval from then on: longer when a report shows the command needs
+    more time, `null` when the model learns that a command it started with a
+    number serves, a number when it wants to hear from a resident one. A
+    report says how, so the model changes it where it already looks at the
+    command.
+- **Every end is reported.** A command whose call returned while it still
+  ran tells its node when it ends, however it ends: an exit with its status,
+  a stop by the user or another agent, or a loss with its reason
+  ([Lost commands](#lost-commands)). A command the node stopped itself with
+  `demi shell stop`, which printed `[command 17 stopped]`, and one whose end
+  the model saw in a result already, tell nothing more.
+- **How a report arrives.** A report joins a turn that accepts steers at its
+  next continuation boundary, as a `wakeup` block with the placement
+  `steer`; otherwise it starts a continuation whose input is a `wakeup` block
+  with the placement `new_turn`. Reports that arrive together are one block,
+  one paragraph each: `Command 18 was stopped by the user.`,
+  `Command 19 was lost: Demi was upgraded and the Host's runner replaced
+  itself. Start it again if it is still needed.` A report never appears in
+  the queue or among the pending steers, and a running call's window ends
+  when one arrives ([The window](#the-window)). A report moves the model's
+  place in the command's output as a look does.
+- **Waiting is ending the turn.** A model that has nothing left to do but
+  wait for a command or a subagent ends its turn, with a reply that says
+  what it waits for, since the user reads only what the model wrote. The
+  tool rules say so, and say not to poll. To come back after a while for
+  something no command stands for, such as a deployment that becomes
+  visible minutes later, the model starts `sleep 600` with an interval and
+  ends its turn; a command that must end by a deadline runs under `timeout`
+  ([Background tasks and timeouts](../execution/runner.md#background-tasks-and-timeouts)).
+- **Restarts.** A report that has arrived but is not yet in the transcript
+  is saved in the checkpoint, as agent messages are, and so is each running
+  command's interval, so both survive dispose and a backend restart. A
+  command that reports while its conversation's tree is not live, such as
+  one the backend took up again after a restart
+  ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)),
+  restores the tree, as an `open` does, to tell its node. A root whose last
+  turn was interrupted holds its reports as it holds its agent input, until
+  the user resumes it.
+- **Children.** A subagent whose background commands still run stays live,
+  as one with live children does, and closes once they have ended and it
+  has answered ([Result](subagents.md#result)).
 
 ## Tools
 
-The model has three tools, and only these:
+The model has one tool, `shell`, and only it:
 
 | Tool | What it does |
 | --- | --- |
-| `shell_exec` | Starts a script in a shell on the conversation's Host and watches it for up to `timeoutMs`. The window is for watching, not a deadline: a command still running when it ends keeps running, and the result carries its handle (`commandId`). Completed short output returns directly. |
-| `shell_status` | Looks at a command: writes `stdin` to it first when given, then watches it for up to `timeoutMs`, or not at all without one, and returns its status and the output since the model last looked. A command that still acquires its Host, as while a Cloud wakes, shows as running, and the input waits until it starts; input for a command that is not running fails the call. |
-| `yield` | Ends the turn and schedules one wakeup after `durationMs`, or sooner when one of the commands `commandIds` names ends ([Yield wakeups](#yield-wakeups)). |
+| `shell` | Starts a script in a shell on the conversation's Host and watches it as its `intervalMs` says ([Command reports](#command-reports)). The window is for watching, not a deadline: a command still running when it ends keeps running, the result carries its handle (`commandId`), and the node hears from it again as its interval says. Completed short output returns directly. |
 
-A tool is only what the shell cannot do: start a script and watch it, look
-at a command from where the model last looked, and end the turn. Stopping a
-command is something a shell does, as `kill` does, so it is the command
-`demi shell stop <commandId>` ([Stopping a command](#stopping-a-command)).
-OpenAI's Codex CLI has the same two shell tools, one that starts a command
-and one that writes to a running command, where writing nothing looks.
+A tool is only what the shell cannot do: start a script and watch it. Looking
+at a command again, writing to its input and stopping it are things a shell
+does, so they are the commands `demi shell status`, `demi shell input` and
+`demi shell stop` ([The `demi shell` commands](#the-demi-shell-commands)),
+which a script can combine with anything else. Ending a turn needs no tool,
+since a response that calls none ends it, and waiting needs none, since the
+work's end wakes the node ([Command reports](#command-reports)). Earlier
+designs had three tools: `shell_status` to look at a command, which a
+command does as well, and `yield`, which ended the turn and set a timer;
+models used the timer to wait for work that wakes them anyway, and a timer
+that fired after the work had ended opened a turn that only said so. Claude
+Code likewise has no tool to look at a background command: its output is a
+file the model reads like any other.
 
 Everything else the agent does runs as commands in the shell
 ([Commands](../execution/commands.md)). The runtime grafts its own groups,
 `demi agent` ([Subagents](subagents.md)) and `demi shell`
-([The whole output](#the-whole-output)), into each node's command set; the
-others, such as `demi file`, `demi browser` and `demi host`, come
-from the command set the product supplies. A tool call whose name is not one of
-the three completes as an error `Tool not found: <name>`.
+([The `demi shell` commands](#the-demi-shell-commands)), into each node's
+command set; the others, such as `demi file`, `demi browser` and `demi
+host`, come from the command set the product supplies. A tool call whose name
+is not `shell` completes as an error `Tool not found: <name>`.
 
 ### Tool input
 
@@ -578,20 +552,15 @@ the three completes as an error `Tool not found: <name>`.
 - Unknown fields and wrong types are refused. A refused call completes as an
   error whose text starts with `<tool> input is invalid:` and names each
   offending field, so the model can correct the call.
-- `timeoutMs` and `durationMs` are whole milliseconds from 1, declared to the
-  model as `integer`, whose description gives the cap of 600,000, ten
-  minutes. A larger value is taken as the cap, and the result's first line
-  says so (`timeoutMs 900000 is above the cap; watched for 600000`), since
-  the window only watches and the command goes on either way: models asked
-  for fifteen minutes for a test suite six times in one conversation, and a
-  refusal only cost them a call each time. A fraction is refused, not rounded.
-  `shell_status` without `timeoutMs` looks without waiting.
-- `stdin` is a non-empty string; `commandIds` a non-empty list of command
-  numbers.
-- Every tool takes a `description`, the call's title for the user: required
-  for `shell_exec`, and for `shell_status` when it writes `stdin`, optional
-  otherwise
-  ([Tool descriptions](#tool-descriptions)).
+- `intervalMs` is required: whole milliseconds, or `null`, declared to the
+  model as `integer`, whose description gives its bounds, 15,000 to 600,000.
+  A value outside them is taken as the nearest bound, and the result's first
+  line says so (`intervalMs 900000 is above the cap; taken as 600000`), since
+  the command goes on either way: models asked for fifteen minutes for a
+  test suite six times in one conversation, and a refusal only cost them a
+  call each time. A fraction is refused, not rounded.
+- `shell` takes a `description`, the call's title for the user, and requires
+  it ([Tool descriptions](#tool-descriptions)).
 
 ### Running shell tools
 
@@ -600,7 +569,7 @@ the three completes as an error `Tool not found: <name>`.
   ([Host operations](../execution/sessions-and-targets.md#host-operations)).
   Their jobs run in the runner's shell
   ([Shell jobs](../execution/runner.md#shell-jobs)).
-- Every `shell_exec` starts a job of its own in the conversation's working
+- Every `shell` call starts a job of its own in the conversation's working
   directory on its Host, the directory the context block names
   ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)).
   Nothing of an earlier command carries over: not its directory, its
@@ -616,27 +585,29 @@ the three completes as an error `Tool not found: <name>`.
 - A handle belongs to its environment. A `commandId` of another Host's
   environment is refused with `Command "<id>" belongs to a different Host`,
   and a handle that two environments claim is refused as not unique.
-- The repeat guard counts identical scripts. In one environment, a `shell_exec`
+- The repeat guard counts identical scripts. In one environment, a `shell` call
   of the same script within 60 seconds of the previous one is allowed six times
   in a row. The seventh and later identical calls do not run: the result is an
   error that asks the model to inspect the previous output, and its view is
-  `repeated_shell_exec` with the script and the count. Another script resets
+  `repeated_shell` with the script and the count. Another script resets
   the count.
 
 ### The window
 
-For example, the model runs the test suite with a ten-minute window, and two
+For example, the model runs the test suite with a ten-minute interval, and two
 minutes in a subagent reports that the failing test is a flaky one. The window
 ends at once: the call returns the running command's handle and its output so
 far, the agent message enters the transcript, and the model can stop the
 command and run it again without that test. Without that, the message would
 wait up to eight more minutes.
 
-A `shell_exec` or `shell_status` call watches its command until the first of:
+A `shell` call watches its command until the first of:
 
 - the command ends;
-- `timeoutMs` passes;
-- an agent message or a yield wakeup arrives, which joins the turn at its
+- the interval passes, or, for a command whose interval is `null`, its
+  output has been quiet for 2 seconds or 30 seconds have passed
+  ([Command reports](#command-reports));
+- an agent message or a command report arrives, which joins the turn at its
   next boundary ([Input](#input));
 - the user sends a steer or a queued message now, and the result says so
   ([Send now](#send-now)).
@@ -647,21 +618,35 @@ steering rather than sending now, the user chose to wait for the running call.
 A message sent to the queue does not join the turn, so it ends no window
 either.
 
-### Stopping a command
+### The `demi shell` commands
+
+The runtime's own command group works on the conversation's commands. Each
+is an `rpc` command, handled in the backend from any of the conversation's
+shells, so a script combines them freely: `demi shell input 17 <<'EOF'`
+answers a prompt and `demi shell status 17` in the same script shows what
+the command did with the answer.
+
+| Command | What it does |
+| --- | --- |
+| `demi shell status <commandId>…` | Prints each command's status, its exit code once it has ended, how long it has run and printed nothing, and its output since the node's last look at it, as a result shows it ([Results and previews](#results-and-previews)); a command that has ended attaches its media. `--wait <duration>` waits up to that long for the commands to end first; the `shell` call that runs it watches as any call does. `--interval <duration>` or `--resident` changes how the node hears from the commands from then on ([Command reports](#command-reports)). |
+| `demi shell input <commandId>` | Writes its stdin to the command's input, such as an answer to a prompt, and prints nothing; input for a command that is not running fails. A command that still acquires its Host, as while a Cloud wakes, takes the input once it starts. |
+| `demi shell output <commandId>` | Prints the command's whole output ([The whole output](#the-whole-output)). |
+| `demi shell stop <commandId>…` | Stops each command, below. |
 
 `demi shell stop <commandId>…` stops each running command of the conversation it names,
 whichever agent ran it, and waits until it has ended: it prints
-`[command 17 stopped]`, and the command's next `shell_status` shows it
+`[command 17 stopped]`, and the command's next status shows it
 `aborted` with its last output. A command that had already ended prints
 `[command 17 had already ended]` and also succeeds, so stopping is safe to
 repeat; a number that names no command of the conversation fails with
-`demi shell stop: no command 17 in this conversation`. Like `demi shell
-output`, it is an `rpc` command, handled in the backend from any of the
-conversation's shells, and it stops the command as the page's stop does,
+`demi shell stop: no command 17 in this conversation`. It stops the command
+as the page's stop does,
 through the command's shell environment: `TERM` first, so the command and
 every program it started can end cleanly, and `KILL` for what has not
 ended after 5 seconds
 ([Cancellation and completion](../execution/runner.md#cancellation-and-completion)).
+`status` and `stop` read any command of the conversation, whichever agent
+ran it; the place a status moves is the calling node's own.
 
 ### Results and previews
 
@@ -683,7 +668,7 @@ output:
 - The model keeps its own place in each command's output: a result shows the
   output since the model's last look at the command. What the pages are sent
   never moves it ([Live output](#live-output)). For example, a page shows a
-  running command's new output; the model's next `shell_status` still shows
+  running command's new output; the model's next `demi shell status` still shows
   all of it.
 - A result gives the command's status, its exit code once it has exited, its
   `commandId`, its timings while it runs, the output, and a hint
@@ -730,7 +715,7 @@ output:
   that prints `rea`, then `dy` and a newline, shows `rea`, then `ready`.
   Once the command ends, its last line counts as whole even without a
   newline.
-- The handle serves `shell_status`, `yield` and `demi shell stop` while the
+- The handle serves `demi shell status`, `input` and `stop` while the
   command runs. A result that reports the command's end releases it;
   `demi shell output` goes on reading the output by its `commandId`.
 - A result that reports a command's end attaches the command's media: the
@@ -760,7 +745,7 @@ Screenshot of t3
 The result shows this output and attaches the three images after it, in
 that order; the page shows them under the call's row
 ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
-In this section the script that `shell_exec` runs is the **job**, which the
+In this section the script that a `shell` call runs is the **job**, which the
 `commandId` names, and a **declared command** is one `demi` command the job
 runs ([Commands](../execution/commands.md)). A **medium** is one image or
 video, of an image or video type of the model-media table
@@ -820,8 +805,8 @@ then find: the shell already says where each one goes, as in
 #### What a result attaches
 
 Media reach the model only in the result that reports the job's end: the
-`shell_exec` result when the job ends within its window, otherwise the
-`shell_status` result that reports the end. A
+`shell` result when the job ends within its window, otherwise the report
+or `demi shell status` that reports the end. A
 result that shows the job running attaches none, so each medium is attached
 once and a job's media arrive together, in their order. The result's media
 are, in this order, the job's returned media by number, then its binary
@@ -1085,16 +1070,15 @@ What keeps the output coming, and where each part is released:
   during a tool leaves the call executing, and restore completes it as
   interrupted without running it again ([Dispose and restore](#dispose-and-restore)).
 - A round's calls run in steps, in the order the model requested them:
-  consecutive `shell_exec` calls are one step and start together; each other
+  consecutive `shell` calls are one step and start together; each other
   call is a step of its own. A step ends when each of its calls has returned,
   and the next starts then. Each result is recorded as its call returns, in
   its call's block, so the page shows a call's end and its changed files
   while the step's other calls run; the model still reads the results in the
   order of the calls. Waiting input is written after each step
-  ([Input](#input)). For example, `shell_status 17`, `shell_exec A`,
-  `shell_exec B`, `yield` runs the look, then A and B together, then the
-  yield.
-- Each `shell_exec` of a step is a job of its own
+  ([Input](#input)). Since every call is `shell`, consecutive calls are one
+  step: a response's calls all start together.
+- Each `shell` call of a step is a job of its own
   ([Running shell tools](#running-shell-tools)), so the calls of a step never
   wait for one another.
 - A Stop during a step ends the calls still running; a call that had
@@ -1111,6 +1095,7 @@ What keeps the output coming, and where each part is released:
   dispatch fails, completes them as aborted, with that failure as the
   reason, as a stop does, so the next request replays no call without a
   result.
+- A tool never reaches into its session. It returns its result.
 
 ### Interrupted calls
 
@@ -1119,7 +1104,7 @@ model watches command 254, a test suite. The model's next request shows the
 call ended:
 
 ```text
-Tool call interrupted: the backend shut down while this call watched command 254, which keeps running; look at it with shell_status 254.
+Tool call interrupted: the backend shut down while this call watched command 254, which keeps running; look at it with demi shell status 254.
 ```
 
 A call that something other than its tool ends completes as an error that
@@ -1131,29 +1116,26 @@ out:
 | --- | --- |
 | The user's Stop | `Tool call aborted: the user stopped the turn; command 254 was stopped.` |
 | A hold of the conversation, such as a Cloud reset or a deletion | `Tool call aborted: <the hold, such as "the Cloud is being reset">; command 254 was stopped.` |
-| The backend's shutdown | `Tool call interrupted: the backend shut down while this call watched command 254, which keeps running; look at it with shell_status 254.` |
+| The backend's shutdown | `Tool call interrupted: the backend shut down while this call watched command 254, which keeps running; look at it with demi shell status 254.` |
 | The backend's crash, found at restore | `Tool call interrupted: the backend stopped before its result was recorded; command 254 keeps running if its Host kept it.` |
 | An action that failed before its calls ran | `Tool call aborted: <the failure>.` |
 
-A call with no command, such as `yield`, ends the line after the reason.
+A call that watched no command ends the line after the reason.
 
 ### Lost commands
 
 A command whose runner lost it, which the backend learns when the runner
 connects again ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)),
-ends as lost with its reason, and the node that ran it reads that at its
-next request, as input that joins it the way a wakeup joins a turn:
+ends as lost with its reason, and the node that ran it is told as of any
+other end ([Command reports](#command-reports)):
 `Command 437 (bun run dev) was lost: Demi was upgraded and the Host's runner
 replaced itself. Start it again if it is still needed.` A conversation
 browser tab that its browser lost reaches the node the same way:
-`Tab t1 was closed: the browser ended with the Host's runner.` Such input
-wakes no idle node: the agent learns it when it next works, and the
-command's handle answers `shell_status` and `demi shell output` with the
-same reason meanwhile. Before, a dev server lost with a two-second
-connection drop went unnoticed for three hours, until the agent's next
-`demi shell stop` said it had already ended.
-- A tool never reaches into its session. It returns its result and, for
-  `yield`, an effect that the session applies.
+`Tab t1 was closed: the browser ended with the Host's runner.` The command's
+handle answers `demi shell status` and `demi shell output` with the same reason.
+Before, a dev server lost with a two-second connection drop went unnoticed
+for three hours, until the agent's next `demi shell stop` said it had
+already ended.
 
 ## Identifiers the model sees
 
@@ -1181,7 +1163,7 @@ that replays it, and a short number is copied without a slip.
   goes on from its source's numbers, since its history names them
   ([Storage](../backend/storage.md#conversation-state-and-transactions)).
 - **Only what the model uses.** The model's text carries no identifier it has
-  no use for: a yield's result names no wakeup, an agent message names no
+  no use for: a command report names no report, an agent message names no
   message id, and a missing medium is named by its kind, not by its blob's
   hash.
 - **Paths stay whole.** A path keeps the identifiers it is made of, since
@@ -1210,7 +1192,7 @@ Words used for session data:
 | --- | --- | --- | --- |
 | `user` | A send or an edit: the submitted content and, for a subagent, its identity (`preamble`, [Child context](subagents.md#child-context)) | A user message: the preamble, then the content | Yes; the only editable block ([Message editing](message-editing.md)) |
 | `context` | The session before a provider request, with the text one context source answered ([Context](#context)), the source's name (`source`), and for the instructions source the list of what the text holds (`instructions`, [What the card lists](instructions.md#what-the-card-lists)) | A user message with its text | No |
-| `wakeup` | A fired yield wakeup, with the placement `new_turn` or `steer` | The fixed wakeup text, as a user message or as a steer | No |
+| `wakeup` | Command reports that arrived together, with the placement `new_turn` or `steer` | The reports' text, as a user message or as a steer | No |
 | `steer` | A human steer, at a continuation boundary | A steer in the current turn | Yes |
 | `agent_message` | Another agent of the tree ([Communication](subagents.md#communication)) | A steer holding the message's source envelope | As a receipt row |
 | `resume` | A turn continuing after a cut: `resume`, compaction inside a turn, or a model switch that landed inside a turn and compacted | A user message: "Continue from where you left off." | No |
@@ -1292,7 +1274,10 @@ reference is replayed as its text, and an attachment record
 ([Attachments](../product/product.md#attachments)) as a tag that names the
 file, its media type, its size and its path, never its content. A tool
 call's input is replayed as the JSON value the provider supplied, or as text
-when it is not valid JSON.
+when it is not valid JSON. A call of a tool the request no longer declares,
+such as `yield` or `shell_status` in a transcript from before they were
+removed, is replayed with its result as the model's text, `[called yield {"durationMs":600000}: yield
+scheduled]`, since a vendor may refuse a call of a tool it was not given.
 
 An image, video or document is replayed as a text that names it and says why
 it was not sent when the request's model does not accept its type
@@ -1499,8 +1484,7 @@ file bodies or raw bytes, and its type is fixed per tool by `kind`:
 | `kind` | Fields |
 | --- | --- |
 | `shell` | `status` (`running`, `exited` or `aborted`); `commandId`; `exitCode`, once exited; `runningMs`; `idleMs`; `chunks`, the last 32,768 characters of the output the result covers, stdout and stderr merged, each chunk tagged with its stream, a line that stands for bytes the output does not hold tagged as stderr; `viewTruncated`, true when that window or the output itself was cut; `files` and `filesTruncated`, once the command has exited and changed files |
-| `repeated_shell_exec` | `script`, `count` |
-| `yield_wakeup` | `wakeupId`, `durationMs`, `commandIds` |
+| `repeated_shell` | `script`, `count` |
 
 The shell view's characters are Unicode scalar values, counted from the end so
 the newest output stays. `files` lists one entry per changed path with its line
@@ -1539,10 +1523,13 @@ Renderers read them directly; there is no separate render model.
 1. A `tool_call` block is the stored envelope of a call, not a render type.
 2. A renderer dispatches on the block's `type` first and, for `tool_call`, on
    its `toolName`.
-3. Each of the three tools has its own rendering; none falls through to the
+3. The `shell` tool has its own rendering; it never falls through to the
    generic tool card. A call to a tool the runtime no longer has, such as
-   `shell_write` or `shell_abort` in a transcript from before they were
-   removed, renders as the generic card.
+   `shell_status`, `yield`, `shell_write` or `shell_abort` in a transcript
+   from before they were removed, renders as the generic card. A stored
+   `shell_exec` call became a `shell` call when its conversation's database
+   was migrated, since `shell` is what it became
+   ([Schemas and migrations](../backend/storage.md#schemas-and-migrations)).
 4. The generic tool card is only for a tool name the runtime does not have. A
    model can request one; its call then ends with `Tool not found`.
 5. The renderers live in `web-ui`. `web` and `web-gallery` feed them the same
@@ -1562,7 +1549,7 @@ Live frames add to the transcript; they do not replace it:
 
 - `transcript_reset` and `transcript_patch` are the primary input.
 - `shell_output` adds a command's live output and status
-  ([Live output](#live-output)). While the `shell_exec` call that started the
+  ([Live output](#live-output)). While the `shell` call that started the
   command runs, the page shows them under that call, which the frame names
   (`toolUseId`, in the subagent's transcript when `subagentId` is set). Once
   the call has returned, a command that still runs is one of the
@@ -1635,11 +1622,11 @@ commands*, and a click opens it to every step.
 - An ended run stays one row when it holds a call and another step, and a
   lone thinking stays its own row; a lone call is its own row. The row reads
   what the run did, each kind of call once, in the order the run first did
-  it: *Ran 5 commands* for `shell_exec` calls, *checked 2 commands* for
-  `shell_status` calls, counting the commands they looked at, and *waited*
-  for a `yield`; a tool of another kind reads *used* and its name. For
-  example, a run that thinks, checks command 17 twice and yields reads
-  *Checked 1 command, waited*. The row never reads a bare count of steps,
+  it: *Ran 5 commands* for `shell` calls, *checked 2 commands* for calls
+  whose script only runs `demi shell status`, counting the commands they
+  looked at; a tool of
+  another kind reads *used* and its name. For example, a run that thinks
+  and checks command 17 twice reads *Checked 1 command*. The row never reads a bare count of steps,
   which says nothing of what happened. A failed command shows its tag on its
   own row inside, not on the group's.
 - Folded, the files the run's calls changed show under the row, each once,
@@ -1654,7 +1641,7 @@ commands*, and a click opens it to every step.
 
 A model writes a call's input before Demi can run it, and a command with a
 long script takes seconds to write. For example, the model writes "Let me
-write a categorizer." and then a `shell_exec` whose script is a 200-line
+write a categorizer." and then a `shell` call whose script is a 200-line
 file. For the 14 seconds the model spends writing the script, the page shows
 a shimmering *Write the categorizer* row under that sentence; when the call
 is whole, the row becomes the call's block, and the command runs.
@@ -1676,8 +1663,7 @@ is whole, the row becomes the call's block, and the command runs.
 - The page shows each call as the newest step of the run at the transcript's
   end ([Work groups](#work-groups)), its tool's row, shimmering, titled by its
   `description`. Until that is written the
-  title is by tool: *Preparing a command…* for `shell_exec`, *Checking a
-  command…* for `shell_status` and *Waiting…* for `yield`. A page drops a
+  title is *Preparing a command…*. A page drops a
   pending call whose `toolUseId` it already holds as a block.
 - A call's start completes the text before it
   ([Eligibility](conversation-fork.md#eligibility)).
@@ -1697,18 +1683,13 @@ while the download still runs, and still claim it after the step failed. The
 block shows whether the step runs, ended or failed beside the title. The title
 names the work the user cares about, not how the tool works.
 
-1. `shell_exec`, and `shell_status` when it writes `stdin`, require a
-   non-empty `description`: they start or feed work, and without a title the
-   block would show the raw script or input, which tells the user little. A
-   call without one is refused as invalid input, so the model adds the title
-   and calls again.
-2. `shell_status` without `stdin` and `yield` accept it as optional: they
-   look at a command that already has its title, or only wait, so the
-   renderer's fallback title says enough. A non-empty `description` is their
-   preferred title.
-3. `description` affects display only. It changes neither the shell's
+1. `shell` requires a non-empty `description`: without a title the block
+   would show the raw script, which tells the user little. A call without
+   one is refused as invalid input, so the model adds the title and calls
+   again.
+2. `description` affects display only. It changes neither the shell's
    behavior, the tool result, nor what the model receives on replay.
-4. A `description` does not state a result or a state reached, does not
+3. A `description` does not state a result or a state reached, does not
    describe waiting, pausing or tool mechanics, is not a generic action or a
    bare noun, and does not hold scripts, output, protocol state, step numbers,
    tool names, ids, internal labels or reasons.
@@ -1908,7 +1889,7 @@ connection B --+                    +--> B's outbox: events, and B's replies
   disposal changed, then `closed`, and is detached; a connection that sends
   `close` while attached to nothing receives `closed` alone.
 - A tree that has been detached and quiescent (no action running or waiting,
-  no live subagent, no command of any node running, no scheduled wakeup) for
+  no live subagent, no command of any node running) for
   10 minutes is disposed; an `open` or new activity within those 10 minutes
   keeps it live. For example, a dev server the agent started goes on serving
   after the user closes the page, and the tree's 10 minutes start once it
@@ -1952,7 +1933,7 @@ A node's checkpoint has two parts:
 | Part | Holds |
 | --- | --- |
 | Transcript rows | One row per block, by index |
-| State row | The phase; the queued messages, each `{ id, content }`; the agent messages waiting for a boundary; the yield wakeups not yet in the transcript, each with its id, its duration and its due time once its action ended; the working directory; the model selection; the accepted edit receipts |
+| State row | The phase; the queued messages, each `{ id, content }`; the agent messages and command reports waiting for a boundary; each running command's interval; the working directory; the model selection; the accepted edit receipts |
 
 Human pending steers are not part of it. Creating,
 closing, reopening and deleting nodes, and delivering subagent completions, are
@@ -2020,7 +2001,7 @@ where a tool runs; no test calls a real model.
 | Two connections of one conversation | Both receive the same events of a turn; a reply reaches only the connection that asked; a `close` sends `closed` to both |
 | One of two connections stops reading | It alone closes as lagging; the other receives the whole turn |
 | Two connections act at once | Two sends run in the order they arrived; a send while the other's edit is prepared is refused, and so is an edit while the other's send waits or runs |
-| A command prints while its `shell_exec` call runs | The attached connections receive the output before the call's result |
+| A command prints while its `shell` call runs | The attached connections receive the output before the call's result |
 | A command prints after its call returned | Every attached connection receives the new output, with no frame from any client |
 | A connection attaches while a command runs | Its handshake carries the command's view, whatever another connection or the model read; it then receives each change as the others do |
 | A command prints faster than a page reads | A page receives at most one frame of it every 250 ms, and its outbox does not fill; the view shows the output beyond the first 8 KiB of each stream |
@@ -2031,7 +2012,7 @@ where a tool runs; no test calls a real model.
 | A model switch while an edit is being prepared | The switch is not refused; the replacement turn's first request carries the model it was prepared with, and its next request the new one |
 | A client stops reading | The connection closes as lagging; a reconnect adopts the running tree and its turn completes |
 | Frames of an open | The handshake order above; patch revisions increase by one; a stale patch after a reset is ignored; a gap triggers `sync_transcript` |
-| Scripted tool events | Each of the three tools renders with its own component and its `description` title; updates replace the block in place; an unknown tool name renders as a generic card |
+| Scripted tool events | The `shell` tool renders with its own component and its `description` title; updates replace the block in place; an unknown tool name renders as a generic card |
 | A tool's result carries an image, a video, or a medium that is gone | The page shows each under the call's row, the media loaded from the blob route and a gone medium as what it was and why it is gone; a click on the image opens it large |
 | Tool calls | Input refusals, the repeat guard, the cut of a result, handle release and binary stdout verdicts match [Tools](#tools) |
 | A loop of three `demi browser screenshot` calls, its stdout the job's | The output holds each command's text and its line `[medium n: …]` in order; the result attaches the three images after the output, in that order |
@@ -2044,7 +2025,7 @@ where a tool runs; no test calls a real model.
 | A WebP image for a model that does not accept WebP | Its line says so; `demi shell output 17 --medium 1 > f` writes its original bytes |
 | A job returns its 33rd medium | Its place in stdout reads that it was not kept; the command goes on and succeeds |
 | A job prints 20 MiB and then returns a screenshot | The screenshot is attached |
-| A job returns a medium and is still running when the call's window ends | The `shell_exec` result attaches nothing; the `shell_status` result that reports its end attaches the medium |
+| A job returns a medium and is still running when the call's window ends | The `shell` result attaches nothing; the report or `demi shell status` that reports its end attaches the medium |
 | `demi shell output 17 --medium 2` with stdout the job's | The medium is attached to this job's result again |
 | The Host's connection is lost after a job returned a medium | The result that reports the end says the medium was lost with the connection |
 | A command prints 200 KB of lines and exits | Its result shows whole lines from the start and the end and the line naming the lines between and `demi shell output 17 --lines`, and fits the replay bound, so every request carries it unchanged; the pages that command prints hold those lines, numbered, with the next page's command, and `--raw` prints the 200 KB in the order the runner read them |
@@ -2061,7 +2042,7 @@ where a tool runs; no test calls a real model.
 | A restored conversation with images before and after its last `compaction_boundary` runs a turn of two requests | The first request reads the blob of each replayed medium once and none from before the boundary; the second reads none; both carry the replayed media's bytes |
 | A tool's medium cannot be stored | Its result holds the medium as gone, not stored, with the store's error; the model receives `[<kind> not stored: <reason>]`, and the turn goes on |
 | A replayed medium's blob is missing | The model receives `[missing <kind>]` in its place, in every request of the live tree, and the turn goes on |
-| One scripted conversation with tools, images, thinking, a steer, a subagent's result and a yield, for each provider, Codex over each of its transports | Each request's body begins with the previous request's body, byte for byte apart from the Anthropic cache marks, which the vendor does not count as content; each exception of [The rule](../providers/providers.md#the-rule) changes only what that rule names; Codex's WebSocket message is its server-sent events body, byte for byte, after the message's type |
+| One scripted conversation with tools, images, thinking, a steer, a subagent's result and a command report, for each provider, Codex over each of its transports | Each request's body begins with the previous request's body, byte for byte apart from the Anthropic cache marks, which the vendor does not count as content; each exception of [The rule](../providers/providers.md#the-rule) changes only what that rule names; Codex's WebSocket message is its server-sent events body, byte for byte, after the message's type |
 | A switch to a model that does not accept video | Every request to it carries the history's videos as the same text |
 | A video whose base64 is over half of a model's request body limit | A tool result does not attach it, and replay sends one already in the history as the same text in every request to that model |
 | An image over 2,000 px enters from a tool result and from an upload | It enters fitted, every later request carries the same bytes, and the original stays on the Host |

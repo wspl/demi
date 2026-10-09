@@ -11,7 +11,7 @@ Every node of the tree, the root included, is the same kind of session: built by
 the same assembly, stored under the same contract ([Runtime](#runtime),
 [Persistence](#persistence)), carrying the same `demi agent` command group, and
 supervising its own children. The model-facing tool surface stays the five
-standard tools ([Tools](runtime.md#tools)). The web app receives the whole
+`shell` tool ([Tools](runtime.md#tools)). The web app receives the whole
 tree on the conversation's socket, beside the root's own frames
 ([Protocol](#protocol)).
 
@@ -60,9 +60,7 @@ Authority is split by verb, not by depth:
 The model still sees:
 
 ```text
-shell_exec
-shell_status
-yield
+shell
 ```
 
 The agent server grafts a `demi agent` group into every node's command set; the
@@ -96,10 +94,10 @@ invoking shell job, its stdout pipe, and its cancellation
 same acceptance-only response after durably queuing the next round's message.
 
 Use `agent send` to communicate and `agent abort` to stop a child. Spawn's
-`shell_status` only describes the completed creation command. A parent can
+`shell` result only describes the completed creation command. A parent can
 start several children one after another and continue its work; ending its turn
 lets completion receipts wake the parent when the results are available. No
-polling or timed yields are required.
+polling is required.
 
 Starts are serialized within the owning supervisor, including concurrent
 command calls. Resume requires the previous completion to be saved in the
@@ -261,7 +259,7 @@ check and keeps a child open ([Result](#result)).
 The recipient treats receipts as context for its active task. It does not owe a
 separate user-facing acknowledgement for each message. If nothing else can
 advance until a child returns, it ends its turn and relies on delivery; it does
-not poll or schedule short timed wakeups.
+not poll.
 
 ### Durable ownership and replay
 
@@ -279,7 +277,7 @@ unacknowledged rounds with their original IDs. Admission deduplicates against
 pending input IDs and materialized `agent_message` IDs: the same ID with the
 same content counts as already admitted, and the same ID with different content
 is refused. Replaying a committed message neither creates a second receipt nor
-schedules a second wakeup.
+wakes the recipient twice.
 
 Provider interruptions follow the ordinary recovery rules
 ([Failures and recovery](failures-and-recovery.md)). A message enters the
@@ -303,29 +301,27 @@ resurrect the sending child.
 
 ## Result
 
-For example, a research child yields for ten minutes to wait for a helper of
-its own. The helper's report wakes it after four; it writes its own report,
-and its turn ends with that answer. The child closes with the report at once,
-and the wakeup it scheduled is dropped: it can no longer fire six minutes
-later and open a turn whose short reply would replace the report.
+For example, a research child starts its tests in the background and ends
+its turn, saying it waits for them. The tests' end wakes it; it writes its
+report, and its turn ends with that answer. Nothing it started runs any more,
+so the child closes with the report. Had it left a dev server running for
+its parent to use, it would stay live, and close once the server ends.
 
-A child's turn ends in one of two ways: with `yield`, after which the child
-waits for its wakeup, or with its answer, a response that requests no tool.
-A child is quiescent when its last turn ended with its answer and it has no
-running or queued action, no unread agent message and no live child of its
-own. The supervisor closes a quiescent child with its last assistant text,
-cut at a character boundary to at most 32 KiB of UTF-8, and drops its
-wakeups, scheduled and fired alike. The session's checkpoint records how its
-last turn ended, so a restore decides the same way. A child whose action
-fails terminally closes as `error` with the failure text. Checking quiescence and
+A child is quiescent when it has no running or queued action, no unread
+agent message or command report, no live child of its own and no command it
+started still running. The supervisor closes a quiescent child with its last
+assistant text, cut at a character boundary to at most 32 KiB of UTF-8. A
+child whose action fails terminally closes as `error` with the failure
+text. Checking quiescence and
 deciding to close are one step: a message accepted before it keeps the child
 open, and a send after it is refused because the child is closing.
 
 The supervisor saves the result before it delivers a completion message to the
 parent. A naturally idle parent wakes; a busy parent incorporates the receipt
 at its next continuation boundary. The creation command carries no completion
-result. A child whose last turn ended with `yield`, or that has live
-descendants, stays live.
+result. A child with a running command or a live descendant stays live,
+which is no fault: it ends when that work does, or when its parent aborts
+it.
 
 Each execution round has a distinct completion message ID that contains the
 child ID and the round. A child's first run is round 1, and resume starts the
@@ -374,7 +370,7 @@ closed phase and age:
 ├─● 1  running  up 4m  last-event 8s ago  profile=(inherit)  "refactor auth"  execution=provider_streaming  activity=streaming
 │ ├─● 3  running  up 1m  last-event 5s ago  profile=(inherit)  "search call sites"  execution=tool_executing  activity=grep call sites ← you
 │ └─○ 4  archived (completed 3m ago)  "update tests"
-└─● 2  running  up 2m  last-event 40s ago  profile=(inherit)  "write docs"  execution=pending_yield  activity=pending_yield
+└─● 2  running  up 2m  last-event 40s ago  profile=(inherit)  "write docs"  execution=waiting  activity=waiting
 ```
 
 The root renders its identity only: it is not a `demi agent` job and has no
@@ -399,11 +395,12 @@ It returns only:
 - the job: ID, parent, description, profile, phase, and time elapsed since
   spawn;
 - `execution`: `idle`, `provider_streaming`, `tool_executing`, `compacting`,
-  `finalizing`, or `pending_yield`. This is an observation the supervisor
+  `finalizing`, or `waiting`, which is idle while commands it started or
+  its children still run. This is an observation the supervisor
   derives, not the session phase (`idle`, `running`, `compacting`) that `phase`
   frames carry;
 - how long the current `execution` state has lasted: this stream, this tool, or
-  this yield wait;
+  this wait;
 - the time since the last child event (a tool start or end, or assistant text);
 - the current activity: the in-flight tool's title, or `streaming`, or the
   execution state;
@@ -627,7 +624,7 @@ summarize the parent transcript into the child.
 | Layer | Owner | Content |
 | --- | --- | --- |
 | System prompt | The runtime, the product and the plugins, or the profile | The identity (a profile's instructions replace the parent's), the harness guide, the runtime's rules for its tools, the capability index of the node's commands and the model identity ([System prompt](system-prompt.md)). |
-| Preamble | The agent server, for every child | This session is a subagent; its ID and its parent's ID; a turn that ends with its answer, without `yield`, returns that answer as the result and ends the session once nothing is pending, while `yield` waits for its wakeup; `demi agent send` reaches the parent (`parent`) and any agent in `demi agent list`; spawn delegates further, or this session may not spawn; the session is not talking to the product user and does not address them. |
+| Preamble | The agent server, for every child | This session is a subagent; its ID and its parent's ID; a turn that ends with its answer returns it as the result and ends the session once nothing it started still runs; to wait for its commands or children it ends its turn, and their end wakes it; `demi agent send` reaches the parent (`parent`) and any agent in `demi agent list`; spawn delegates further, or this session may not spawn; the session is not talking to the product user and does not address them. |
 | First user message | The parent model | The spawn prompt from stdin. Demi does not inspect or pad it. |
 
 The inherit profile carries the parent's system prompt, so the child already
@@ -729,9 +726,9 @@ restores its own: a tree restore, with one rule per node.
 - A turn the process interrupted resumes from its resume point
   ([Recovery is one mechanism](failures-and-recovery.md#recovery-is-one-mechanism)).
 - The messages queued in the checkpoint are sent again, in order.
-- Saved yield wakeups are armed again, and one already due fires at once, so a
-  child whose last turn ended with `yield` keeps waiting instead of closing
-  ([Yield wakeups](runtime.md#yield-wakeups)).
+- Saved command reports are written at the child's next action, and a
+  command the backend takes up again keeps it live
+  ([Command reports](runtime.md#command-reports)).
 - A child that is quiescent closes with its result. Whether it is quiescent is
   read only once its own live children are back, so a child waiting for its
   children keeps waiting.
@@ -743,8 +740,8 @@ restores its own: a tree restore, with one rule per node.
 The root's interrupted turn is its client's to resume: the root records the
 interruption, and the web app offers Resume
 ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
-The root's queued messages run, and its pending agent input and due wakeups
-wake it only when its last turn was not interrupted
+The root's queued messages run, and its pending agent input and command
+reports wake it only when its last turn was not interrupted
 ([Dispose and restore](runtime.md#dispose-and-restore)).
 
 **Archive.** A closed child is archived: its rows stay, marked with the closed
@@ -770,7 +767,7 @@ open restores the tree by the rules above, exactly as after a restart.
 ## Runtime
 
 Every agent is one kind of node, built by one assembly: the same session, the
-same store contract, the same standard tools over per-Host shell environments
+same store contract, the same `shell` tool over per-Host shell environments
 with handle ownership checks, the same supervision of its own children, the
 same `demi agent` group, and the same events. Parent and child are a
 relationship that the tree manages (delegation, messages, and result delivery),
@@ -883,7 +880,7 @@ stopping children are described in [Abort](#abort).
 ## Sequence
 
 ```text
-transcript_patch                 parent tool_call shell_exec executing
+transcript_patch                 parent tool_call shell executing
 subagent started                 job.subagentId=ag_1  phase=running
 subagent_transcript_reset        subagentId=ag_1  blocks=[]
 transcript_patch                 parent creation tool_call completed, stdout=subagentId
@@ -1057,7 +1054,7 @@ Persistence:
    saves only its own rows, and a stale completion that cannot mark a newer
    round delivered.
 3. A tree detached and quiescent for 10 minutes is disposed; a detached tree
-   with a live child, a running command or a scheduled wakeup is not. An evicted tree
+   with a live child or a running command is not. An evicted tree
    reopens with the same transcripts, model selection, and
    archived children as before eviction.
 
