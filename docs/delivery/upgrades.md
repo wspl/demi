@@ -23,6 +23,12 @@ interruption lasts as long as a restart, plus the copy. Afterwards:
 - A turn that was running ends with the shutdown's error record, and its
   conversation offers **Resume**
   ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
+- Commands running on Hosts end: a paired device's runner replaces itself
+  and a Cloud restarts, and the shell work of a command runs in its runner.
+  Each node that ran one learns at its next request that it was lost to the
+  upgrade ([Lost commands](../agent/runtime.md#lost-commands)). A backend that
+  only restarts, on the same release, ends none
+  ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)).
 - Each paired device's runner reconnects, finds that the backend serves
   another runner release, replaces itself with it and connects again, without
   its user doing anything ([Runner updates](../execution/runner.md#runner-updates)).
@@ -238,11 +244,11 @@ current release serves:
 From here the server is interrupted, and `demi-server` records each step in
 its journal, `/opt/demi/server/upgrade.json`, before taking it:
 
-1. Stop the backend. Its shutdown ends every turn with the shutdown record,
-   hibernates every Cloud and closes every runner connection
+1. Stop the backend. Its shutdown ends every turn with the shutdown record
+   and closes every runner connection
    ([Startup and shutdown](../backend/backend.md#startup-and-shutdown)).
-2. Stop the machine manager. Its stop saves every device that is still
-   running.
+2. Stop the machine manager. Its stop saves and stops every device that is
+   still running, so each Cloud boots with the new release's programs.
 3. Copy the databases that will migrate into
    `<DEMI_BACKEND_DATA>/snapshots/<old version>/`, cloning where the file
    system can, and sync the copy. With both services stopped, the files are

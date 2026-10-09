@@ -567,9 +567,31 @@ these cases:
 | Dispatched, result absent | Record an unknown outcome; do not automatically replay side effects. |
 | Not dispatched | Continue through the normal resume path. |
 
-Runner connection loss and subsequent reconnection follow the
-[runner lifetime contract](runner.md#command-lifetime). New connections do not
-resurrect old jobs.
+A command outlives a connection loss and a backend restart, but not its
+runner ([Command lifetime](runner.md#command-lifetime)). The conversation's
+database records each running command, with its job and its device
+([Command outputs](../backend/storage.md#command-outputs)), and when the
+device's runner connects, the backend matches the jobs its hello lists with
+those records:
+
+| The runner lists the job as | The command |
+| --- | --- |
+| Running | Goes on: the backend follows it again where a page shows it, reads the output it missed from the kept output, and the command's handle works again for `shell_status`, `yield` and `demi shell stop` |
+| Ended | Ends with the status the runner kept, and its whole output is read as for any end |
+| Not listed | Is lost, with the reason the backend can tell from what it knows of the device: Demi was upgraded and the runner replaced itself, the Cloud restarted, the runner started anew after it ended, or it stopped its jobs after 10 minutes without a connection |
+
+A lost command is recorded as ended for that reason, and the node that ran
+it learns it at its next request
+([Lost commands](../agent/runtime.md#lost-commands)).
+
+Two kinds of interruption follow ([Upgrades](../delivery/upgrades.md)):
+
+- **The release stays.** A backend that restarts, crashes or loses its
+  network stops nothing on the Hosts: runners keep their jobs, Clouds keep
+  running, and every command goes on once its runner is back.
+- **The release changes.** Each runner replaces itself with the new
+  release's, and each Cloud restarts with the new release's programs, so
+  their commands end, and each is reported as lost to the upgrade.
 
 Conversation trees remain in backend storage. Working files
 remain on their devices. Cloud system and home volumes persist across ordinary

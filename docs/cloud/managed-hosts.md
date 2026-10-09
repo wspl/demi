@@ -134,15 +134,18 @@ socket.
 | --- | --- |
 | `current_base_version`, `image_state` | Read the configured base and a device's committed generation. |
 | `runtime_state` | Read whether the manager runs a sandbox for the device, after the device's earlier operations. |
-| `reconcile` | Stop and save every device, recover incomplete operations, and install the network policy again. |
+| `reconcile` | Report the devices it runs, which stay running, recover incomplete operations, and install the network policy again. |
 | `wake` | Create first-use storage or recover existing storage, then start one sandbox with the supplied boot credential. |
 | `checkpoint` | Publish paired system/home storage while preserving the running processes. |
 | `hibernate` | Stop execution, save storage, and release runtime resources. No memory image is saved. |
 | `grow_volume` | Increase one writable filesystem's capacity within policy limits. |
 | `reset` | Publish a clean system paired with retained home, idempotently by operation id; do not boot. |
 
-The backend sends `reconcile` when it starts, before it serves requests, and
-again over a live connection when it closes. It keeps one connection to the
+The backend sends `reconcile` when it starts, before it serves requests. Its
+close leaves the manager's sandboxes running, so a backend restart stops no
+Cloud and no command on one; the manager's own stop, as an upgrade makes it,
+saves and stops every device
+([Upgrades](../delivery/upgrades.md)). It keeps one connection to the
 manager, opened on first use. When that connection drops, every call in flight
 fails with a manager-unavailable error, and the next call connects again. The
 backend routes each death event to the shard of the device's owner

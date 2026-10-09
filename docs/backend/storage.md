@@ -388,6 +388,16 @@ an unreferenced blob. A row is written once, when its command ends, and never
 changes. No session holds the rows: `demi shell output` reads a row, then its
 blob, on the conversation's read-only connection.
 
+A running command has a row of its own in `running_commands`, written when
+its job starts and deleted in the transaction that writes its
+`command_outputs` row: its number, the node that ran it, its device, its
+job's id on that device, the tool call that started it, and when it started.
+A backend that starts again reads them to take the commands up when their
+runners connect
+([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence));
+a command whose runner lost it ends as lost, with its reason, in
+`command_outputs`.
+
 ## The object store
 
 A deployment has one object store, and it holds every object the backend
