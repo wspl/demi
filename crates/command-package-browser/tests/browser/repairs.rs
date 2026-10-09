@@ -1183,12 +1183,12 @@ async fn catalog_queries_patterns_pagination_and_read_only_elements() {
     }).await;
 }
 
-/// `browser.md` § Evaluation: a script of statements returns its last
-/// value, with or without a target; `undefined` reads as `JSON.stringify`
-/// reads it; a value JSON cannot hold names its place; and nothing waits.
-/// Before, a `const` was a syntax error, an `undefined` in an array failed
-/// as a driver error with a Rust dump, and a Promise looked like any side
-/// effect.
+/// `browser.md` § Evaluation: a script of statements runs as one block and
+/// returns its last value, with or without a target, in a frame too;
+/// `undefined` reads as `JSON.stringify` reads it; a value JSON cannot hold
+/// names its place; and nothing waits. Before, a `const` was a syntax
+/// error, an `undefined` in an array failed as a driver error with a Rust
+/// dump, and a Promise looked like any side effect.
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME; launches a real browser"]
 async fn eval_runs_statements_and_returns_what_json_holds() {
@@ -1201,6 +1201,19 @@ async fn eval_runs_statements_and_returns_what_json_holds() {
         assert_eq!(chained, json!({"value": ["Delete", "Delete"]}));
         let targeted = eval(json!({"css": ".catalog-delete", "nth": 0, "expression": "const text = element.textContent; text.toUpperCase()"})).await?;
         assert_eq!(targeted, json!({"value": "DELETE"}));
+        let all = eval(json!({"css": ".catalog-delete", "all": true, "expression": "const texts = elements.map(e => e.textContent);\ntexts.length"})).await?;
+        assert_eq!(all, json!({"value": 2}));
+        let frame = command(&tab, "find", json!({"css": "#frame"})).await?["matches"][0]["ref"].clone();
+        let inside = eval(json!({"frame": [frame], "css": "#inside", "expression": "const text = element.textContent;\ntext + ' in ' + document.body.tagName"})).await?;
+        assert_eq!(inside, json!({"value": "Frame button in BODY"}));
+        // A last expression after a newline that starts with `(` is what a
+        // console makes of it: after a `;` its own statement, without one a
+        // call of the line before.
+        assert_eq!(eval(json!({"expression": "const n = 2;\n(n + 1)"})).await?, json!({"value": 3}));
+        assert_eq!(
+            error(eval(json!({"expression": "const ps = [1]\n(ps.length)"})).await, "invalid_input", "not_started").to_string(),
+            "the script threw ReferenceError: Cannot access 'ps' before initialization"
+        );
         assert_eq!(
             eval(json!({"expression": "[1, undefined, document.querySelector('#nope')?.id]"})).await?,
             json!({"value": [1, null, null]})
