@@ -680,6 +680,7 @@ pub(crate) fn child_record(
 
 fn user(id: &str, words: &str) -> Block {
     Block::User(UserBlock {
+        entries: Vec::new(),
         id: BlockId::try_from(id).unwrap(),
         turn_id: TurnId::try_from(id).unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
@@ -691,6 +692,7 @@ fn user(id: &str, words: &str) -> Block {
 
 fn answer(id: &str, words: &str) -> Block {
     Block::Text(TextBlock {
+        entries: Vec::new(),
         id: BlockId::try_from(id).unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
         model: test_model(),
