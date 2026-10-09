@@ -34,7 +34,11 @@ export function firstChangeData(): ChangeData {
   return { mode: 'uncommitted', uncommitted: null, request: null, back: [], forward: [] }
 }
 
-/** Conversation paths come from the request's selection; only the working tree holds a list selection. */
+/**
+ * The file the view shows. Conversation paths come from the request's
+ * selection; only the working tree holds a list selection, and while it
+ * holds none or one no longer listed, the first listed file shows.
+ */
 export function changePath(data: ChangeStep, mode: ChangeMode = data.mode, files?: readonly ChangeFile[]): string | null {
   if (mode === 'conversation') {
     return data.request?.file ?? null
@@ -43,6 +47,20 @@ export function changePath(data: ChangeStep, mode: ChangeMode = data.mode, files
     return data.uncommitted
   }
   return files[0]?.path ?? null
+}
+
+/**
+ * `data` holding the working-tree file it shows while it held none: the
+ * first listed file then stays shown as the list changes, as a file the
+ * user picked does, since only the user moves the view. No step for Back:
+ * the view shows what it showed.
+ */
+export function holdShownChange(data: ChangeData, files: readonly ChangeFile[]): ChangeData {
+  if (data.mode !== 'uncommitted' || data.uncommitted !== null) {
+    return data
+  }
+  const shown = changePath(data, 'uncommitted', files)
+  return shown === null ? data : { ...data, uncommitted: shown }
 }
 
 function step(data: ChangeData): ChangeStep {

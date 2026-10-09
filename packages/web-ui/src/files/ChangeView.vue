@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Diff, Eye, FileOutput, History, RefreshCw } from '@lucide/vue'
 import DiffEditor from '../editor/components/DiffEditor.vue'
 import type { DocumentPlace } from '../markdown/document'
@@ -13,6 +13,7 @@ import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import ChangeTree from './ChangeTree.vue'
 import RequestFileList from './RequestFileList.vue'
+import { useRequestSides } from './request-sides'
 import { useShowing } from './showing'
 import FilePreview from './FilePreview.vue'
 import FileIcon from './FileIcon.vue'
@@ -29,7 +30,7 @@ import { TREE_WIDTH } from './file-view'
 import { baseName } from '@demicodes/utils'
 import { relativePath, resolveHostPath } from './paths'
 import { hasSourceView, previewKind, svgImageUrl } from './preview'
-import { FileBrowserError, type FileContents } from './types'
+import type { FileContents } from './types'
 
 /**
  * One working-tree file, or one file of a request of the conversation
@@ -98,10 +99,18 @@ const edits = computed(() => requestFile.value?.edits ?? [])
 const allChanges = computed(() => requestFile.value !== null && offersAllChanges(requestFile.value))
 /** Where the shown edit stands among the file's edits; null for All Changes. */
 const editAt = computed(() => requestFile.value ? editIndex(requestFile.value, edit.value) : null)
-/** The two sides the selection shows, as the blobs that hold them; null when one was not kept. */
-const requestCopies = computed(() => requestFile.value ? selectionCopies(requestFile.value, editAt.value) : null)
-/** Names the pair shown, which a new pair replaces: the blobs, whatever object holds them. */
-const requestKey = computed(() => requestCopies.value ? `${requestCopies.value.original}:${requestCopies.value.modified}` : null)
+/**
+ * Names what the diff shows as the user chose it: the mode, the file and,
+ * in Conversation, its edit or All Changes. Only another choice is another
+ * editor; new texts of the same one replace the old in place, the scroll
+ * kept, as the agent's next edit gives All Changes a new end.
+ */
+const shownKey = computed(() => {
+  const change = selectedChange.value
+  if (!change)
+    return null
+  return mode.value === 'conversation' ? `conversation:${change.path}:${editAt.value ?? 'all'}` : `uncommitted:${change.path}`
+})
 /** The step the edit control goes to, each way: All Changes, where offered, comes before the first edit. */
 const previousEdit = computed(() => {
   const at = editAt.value
@@ -240,47 +249,14 @@ const staleBecause = computed(() => {
   return entry?.value !== undefined && entry.failure ? entry.failure.message ?? 'The read failed.' : null
 })
 
-// A request's file, read from the copies the selection names, which never change.
-const callState = ref<State>({ phase: 'idle' })
-let controller: AbortController | null = null
+// A request's file, read from the copies the selection names.
+const callSides = useRequestSides(
+  () => request.value && requestFile.value ? shownKey.value : null,
+  () => requestFile.value ? selectionCopies(requestFile.value, editAt.value) : null,
+  () => request.value?.read ?? null,
+)
 
-async function readCall(): Promise<void> {
-  controller?.abort()
-  controller = null
-  const shown = request.value
-  if (!shown || !requestFile.value) {
-    callState.value = { phase: 'idle' }
-    return
-  }
-  // A selection without both sides kept has no diff to show.
-  const copies = requestCopies.value
-  if (!copies) {
-    callState.value = { phase: 'unavailable' }
-    return
-  }
-  const current = new AbortController()
-  controller = current
-  callState.value = { phase: 'loading' }
-  try {
-    const result = await shown.read(copies, current.signal)
-    if (current.signal.aborted)
-      return
-    callState.value = result === null ? { phase: 'unavailable' } : { phase: 'ready', sides: result }
-  } catch (error) {
-    if (current.signal.aborted)
-      return
-    if (error instanceof FileBrowserError && (error.kind === 'binary' || error.kind === 'too-large')) {
-      callState.value = { phase: 'binary' }
-      return
-    }
-    callState.value = { phase: 'failed', message: error instanceof Error ? error.message : String(error) }
-  }
-}
-
-// The transcript is derived anew as it grows: only another pair of sides, or another file, is read again.
-watch(() => [request.value !== null, requestFile.value?.path, requestKey.value], readCall, { immediate: true })
-
-const state = computed<State>(() => mode.value === 'conversation' ? callState.value : workingState.value)
+const state = computed<State>(() => mode.value === 'conversation' ? callSides.state.value : workingState.value)
 /**
  * The header's line counts: a working-tree file's as git counts them, and in
  * Conversation those of the diff shown, All Changes or one edit, once its
@@ -289,13 +265,13 @@ const state = computed<State>(() => mode.value === 'conversation' ? callState.va
 const counts = computed(() => {
   if (mode.value === 'uncommitted')
     return workingChange.value
-  const shown = callState.value
+  const shown = callSides.state.value
   return shown.phase === 'ready' ? diffLineCounts(shown.sides.original, shown.sides.modified) : null
 })
 
 function retry(): void {
   if (mode.value === 'conversation')
-    void readCall()
+    callSides.retry()
   else
     workingSides.retry()
 }
@@ -306,10 +282,6 @@ function pick(path: string): void {
   frame.value?.dismiss()
   selected.value = path
 }
-
-onBeforeUnmount(() => {
-  controller?.abort()
-})
 </script>
 
 <template>
@@ -433,7 +405,7 @@ onBeforeUnmount(() => {
       </PreviewPair>
       <PreviewPair
         v-else-if="state.phase === 'ready' && sourceView && presentation === 'preview'"
-        :key="`${mode}:${absolutePath}:${requestKey}`"
+        :key="shownKey ?? ''"
         v-bind="labels"
       >
         <template v-if="hasBefore" #before>
@@ -445,10 +417,10 @@ onBeforeUnmount(() => {
           <ImagePreview v-else :src="svgImageUrl(state.sides.modified)" :name="baseName(absolutePath)" />
         </template>
       </PreviewPair>
-      <!-- A diff is built for one pair of texts: a new file is a new editor. -->
+      <!-- Another file, or another edit of it, is a new editor; new texts of the one shown replace the old in place. -->
       <DiffEditor
         v-else-if="state.phase === 'ready' && selectedChange"
-        :key="`${mode}:${selectedChange.path}:${requestKey}`"
+        :key="shownKey ?? ''"
         :original="state.sides.original"
         :modified="state.sides.modified"
         :path="selectedChange.path"
