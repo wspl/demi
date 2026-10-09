@@ -388,8 +388,12 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   so a misspelt setting is never ignored. The machine manager refuses an
   unknown `DEMI_MANAGED_*` variable, and the backend an unknown `DEMI_*`
   variable outside that prefix, so that both read one configuration file
-  ([Backend configuration](../backend/backend.md#configuration)).
-- **Public boundary:** `unknown_variable`, over the program's clap command.
+  ([Backend configuration](../backend/backend.md#configuration)). And the
+  panic hook every program installs at start, which writes a panic's
+  message, location and backtrace to standard error before an abort can
+  end the process ([Builds and releases](../delivery/builds-and-releases.md)).
+- **Public boundary:** `unknown_variable`, over the program's clap command,
+  and `install_panic_hook`.
 - **Must not:** parse a program's settings, which its clap command does.
 
 #### `shared-artifacts`
@@ -1653,11 +1657,11 @@ backend-user-shard -> agent-server, conversation-socket-protocol, agent-session,
 backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-permissions, backend-plugins, plugin-interface
 backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills
 machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runner-protocol
-server -> backend-database, machine-manager-protocol, shared-artifacts
-runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts
-command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
-command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk
-command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk
+server -> backend-database, machine-manager-protocol, shared-artifacts, shared-cli
+runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts, shared-cli
+command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates, shared-cli
+command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk, shared-cli
+command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk, shared-cli
 xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, plugin-interface
 ```
 

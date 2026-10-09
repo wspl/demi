@@ -176,11 +176,17 @@ The release profile makes the executables small, because every paired device
 downloads each one and every Cloud image carries them, without making a
 release wait on one processor core: thin link-time optimization
 (`lto = "thin"`) with Cargo's default code-generation units, optimization for
-size (`opt-level = "s"`) and stripped symbols (`strip = true`). The
-symbols are kept beside the release instead, one debug file per executable
-and target, published with the release's assets but never shipped to a
-device, so a crash's addresses from a stripped runner can be read
-afterwards. Fat
+size (`opt-level = "s"`) and stripped symbols. The symbols are kept beside
+the release instead, one debug file per executable and target, published
+with the release's assets but never shipped to a device, so a crash's
+addresses from a stripped runner can be read afterwards. The profile keeps
+line tables (`debug = "line-tables-only"`); the Apple and Windows targets
+split them with Cargo (`split-debuginfo = "packed"`, a `.dSYM` and a
+`.pdb`), and for the Linux targets, where stripping removes what a packed
+debug file depends on, `xtask` builds unstripped and splits each executable
+itself (`objcopy --only-keep-debug`, then `--strip-debug` and
+`--add-gnu-debuglink`). These are the only compiler options a release sets
+besides the ones above. Fat
 link-time optimization with one code-generation unit made the runner about a
 fifth smaller (24.1 MB against 30.9 MB for x86_64 Linux, 7.9 MB against
 8.7 MB compressed), but its final link runs on one core: it took about five
@@ -194,8 +200,9 @@ every profile: the runner contains a utility's panic to its job
 service fails one invocation, not every conversation it holds; `panic =
 "abort"` would end the whole process. A panic that ends a program anyway,
 such as one inside a destructor, which Rust turns into an abort, writes its
-message, its location and a backtrace to the program's log first, from a
-panic hook each program installs at start.
+message, its location and a backtrace to the program's standard error first,
+which its log keeps, from a panic hook each program installs at start. The
+hook lives in `shared-cli`, which every program links for its command line.
 
 The development profile keeps line tables for backtraces and no other debug
 information, builds dependencies without debug information, and optimizes the
