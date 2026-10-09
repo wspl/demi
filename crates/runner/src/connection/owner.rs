@@ -5,7 +5,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    io::{self, Write as _},
+    io,
     path::PathBuf,
     sync::{
         Arc,
@@ -114,9 +114,7 @@ impl Registered {
             return;
         }
         // One write, so that whoever reads the log sees both lines at once.
-        let lines = format!("{PAIRED}{name}\n{REMOVAL}{removal}\n");
-        // A console that went away loses nothing the runner needs.
-        let _ = io::stderr().write_all(lines.as_bytes());
+        crate::console::line(format_args!("{PAIRED}{name}\n{REMOVAL}{removal}"));
     }
 }
 
@@ -416,7 +414,7 @@ impl Owner<'_> {
                 management.set_phase(Phase::ClaimPending);
                 // The code is a secret for the person at the console; the log
                 // only says that one is waiting.
-                eprintln!("{PAIRING_CODE}{claim_token}");
+                crate::console::line(format_args!("{PAIRING_CODE}{claim_token}"));
                 tracing::info!("waiting to be paired");
             }
             Inbound::Claimed {
@@ -446,10 +444,10 @@ impl Owner<'_> {
                 if code == wire::HelloErrorCode::UnknownDevice
                     && let Some(removal) = &registered.removal
                 {
-                    eprintln!(
+                    crate::console::line(format_args!(
                         "demi-runner: this device is no longer paired with {}; to remove this runner, run: {removal}",
                         registered.backend.url()
-                    );
+                    ));
                 }
                 management.set_phase(Phase::Rejected);
                 return Ok(Some(End::Rejected));

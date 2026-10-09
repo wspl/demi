@@ -14,6 +14,9 @@ use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
 fn main() -> ExitCode {
+    // A panic leaves its report on standard error (`builds-and-releases.md`
+    // § Build profiles).
+    demi_shared_cli::install_panic_hook();
     // An unusable value stops here, naming its variable, and so does a
     // variable no setting reads, such as a misspelt one. The machine
     // manager's own settings, which share the configuration file, are its

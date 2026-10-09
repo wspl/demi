@@ -180,7 +180,7 @@ impl HostLogWriter {
         let thread = self.thread;
         let joined = tokio::task::spawn_blocking(move || thread.join()).await;
         if !matches!(joined, Ok(Ok(()))) {
-            eprintln!("demi-runner: the host log writer failed");
+            crate::console::line("demi-runner: the host log writer failed");
         }
     }
 }
@@ -243,7 +243,7 @@ pub struct Console;
 
 impl<S: Subscriber> Layer<S> for Console {
     fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
-        eprintln!("demi-runner: {}", Fields::of(event).text);
+        crate::console::line(format_args!("demi-runner: {}", Fields::of(event).text));
     }
 }
 
@@ -336,7 +336,7 @@ impl Files {
             Err(error) => {
                 self.newer = None;
                 if !self.failing {
-                    eprintln!("demi-runner: host log write failed: {error}");
+                    crate::console::line(format_args!("demi-runner: host log write failed: {error}"));
                 }
                 self.failing = true;
             }
