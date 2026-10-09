@@ -18,6 +18,7 @@ use demi_shared_types::{
 
 fn user(id: &str, text: &str) -> Block {
     Block::User(UserBlock {
+        entries: Vec::new(),
         id: id.try_into().unwrap(),
         turn_id: TurnId::try_from("turn").unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
@@ -53,6 +54,7 @@ fn estimate(blocks: &[Block], window: u32) -> u64 {
 #[test]
 fn the_latest_usage_anchors_the_estimate_unless_it_exceeds_the_window() {
     let answer = Block::Text(TextBlock {
+        entries: Vec::new(),
         id: "t".try_into().unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
         model: test_model(),
@@ -78,6 +80,7 @@ fn the_latest_usage_anchors_the_estimate_unless_it_exceeds_the_window() {
 #[test]
 fn a_compaction_after_the_latest_response_leaves_no_anchor() {
     let boundary = Block::CompactionBoundary(CompactionBoundaryBlock {
+        entries: Vec::new(),
         id: "b".try_into().unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
         model: test_model(),
@@ -112,6 +115,7 @@ fn a_medium_weighs_what_the_request_to_its_model_carries() {
     let document = B64Bytes::from(vec![1; 40_000]);
     let screenshot = B64Bytes::from(vec![2; 1_800_000]);
     let message = Block::User(UserBlock {
+        entries: Vec::new(),
         id: "u".try_into().unwrap(),
         turn_id: TurnId::try_from("turn").unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
@@ -141,6 +145,7 @@ fn a_medium_weighs_what_the_request_to_its_model_carries() {
         preamble: None,
     });
     let call = Block::ToolCall(ToolCallBlock {
+        entries: Vec::new(),
         id: "c".try_into().unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
         model: test_model(),

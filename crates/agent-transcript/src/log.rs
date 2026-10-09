@@ -93,6 +93,7 @@ impl TranscriptLog {
             model: model.clone(),
             content,
             preamble,
+            entries: Vec::new(),
         }));
     }
 
@@ -113,6 +114,7 @@ impl TranscriptLog {
             source,
             text,
             instructions,
+            entries: Vec::new(),
         }));
     }
 
@@ -131,6 +133,7 @@ impl TranscriptLog {
             created_at,
             model: model.clone(),
             content,
+            entries: Vec::new(),
         }));
     }
 
@@ -152,6 +155,7 @@ impl TranscriptLog {
             model: model.clone(),
             placement,
             command,
+            entries: Vec::new(),
         }));
     }
 
@@ -169,6 +173,7 @@ impl TranscriptLog {
             created_at,
             model: model.clone(),
             message,
+            entries: Vec::new(),
         }));
     }
 
@@ -180,6 +185,7 @@ impl TranscriptLog {
             turn_id,
             created_at,
             model: model.clone(),
+            entries: Vec::new(),
         }));
     }
 
@@ -232,6 +238,7 @@ impl TranscriptLog {
             model: model.clone(),
             summary,
             summary_tokens,
+            entries: Vec::new(),
         });
         self.journal.add(index, &block);
         self.blocks.insert(index, block);
@@ -309,6 +316,7 @@ impl TranscriptLog {
             model: model.clone(),
             text,
             signature: None,
+            entries: Vec::new(),
         }));
     }
 
@@ -349,6 +357,7 @@ impl TranscriptLog {
             created_at,
             model: model.clone(),
             data,
+            entries: Vec::new(),
         }));
     }
 
@@ -370,6 +379,7 @@ impl TranscriptLog {
             model: model.clone(),
             text: text.to_owned(),
             forkable: false,
+            entries: Vec::new(),
         }));
     }
 
@@ -415,6 +425,7 @@ impl TranscriptLog {
             status: ToolCallStatus::Executing,
             output: Vec::new(),
             view: None,
+            entries: Vec::new(),
         }));
     }
 
@@ -469,6 +480,19 @@ impl TranscriptLog {
             call.output = output;
             call.view = view;
         }
+        self.record_replace(index);
+    }
+
+    /// Adds `entries` after those the block `id` holds. A block that is
+    /// gone, as after an edit cut it, or one that holds none, takes none.
+    pub fn add_entries(&mut self, id: &BlockId, entries: Vec<Value>) {
+        let Some(index) = self.blocks.iter().rposition(|block| block.id() == id) else {
+            return;
+        };
+        let Some(held) = self.blocks[index].entries_mut() else {
+            return;
+        };
+        held.extend(entries);
         self.record_replace(index);
     }
 

@@ -20,9 +20,37 @@ pub struct CliSite {
     pub executable: String,
     /// The process's working directory, `~/.demi/claude/run`.
     pub run_dir: String,
-    /// The process's own configuration directory: new, empty, private to
-    /// the machine's user, outside every workspace.
+    /// The process's own configuration directory: new, private to the
+    /// machine's user, outside every workspace, holding only the files the
+    /// start put there.
     pub config_dir: String,
+    /// What the machine tells a process there of itself.
+    pub system: CliSystem,
+}
+
+/// What the CLI reads of its machine to describe its environment, which
+/// the session it resumes holds so that it describes none
+/// (`claude-code.md` § The session a process resumes).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CliSystem {
+    /// The kernel's name, as `uname -s` prints it, such as `Linux`.
+    pub kernel: String,
+    /// The kernel's release, as `uname -r` prints it.
+    pub release: String,
+    /// The machine's `SHELL`; none when it names none.
+    pub shell: Option<String>,
+    /// The run directory as a process there sees it, its links resolved.
+    pub working_directory: String,
+}
+
+/// What a start puts on the machine: the process, and the files its
+/// configuration directory holds before it starts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CliStart {
+    pub spawn: SpawnRequest,
+    /// Each file's path relative to the configuration directory, and its
+    /// bytes.
+    pub files: Vec<(String, Bytes)>,
 }
 
 /// Why a CLI process could not be started: the machine could not be reached,
@@ -37,13 +65,13 @@ pub struct StartError(pub String);
 /// placement chooses. It lives on the user's shard with its user.
 pub trait Placement {
     /// Starts a new CLI process: the placement readies the machine, Demi's
-    /// CLI and a new configuration directory there, `spawn` builds the
-    /// request from the site it found, and the placement starts that
-    /// request on the machine's Host. Dropping the future gives the start
-    /// up, and removes the directory.
+    /// CLI and a new configuration directory there, `start` says what to
+    /// start at the site it found, and the placement writes its files into
+    /// the directory and starts its request on the machine's Host. Dropping
+    /// the future gives the start up, and removes the directory.
     fn start<'a>(
         &'a self,
-        spawn: &'a dyn Fn(&CliSite) -> SpawnRequest,
+        start: &'a dyn Fn(&CliSite) -> CliStart,
     ) -> LocalBoxFuture<'a, Result<Placed, StartError>>;
 }
 

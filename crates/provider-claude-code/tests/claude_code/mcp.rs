@@ -39,7 +39,6 @@ async fn the_server_lists_the_requests_tools_and_a_call_before_any_streaming_is_
             initialize["request"],
             json!({ "subtype": "initialize", "sdkMcpServers": ["main"], "systemPrompt": "system" })
         );
-        cli.read().await;
         cli.handshake().await;
         cli.mcp(
             "list",
@@ -103,7 +102,6 @@ async fn a_whole_batch_reaches_the_agent_before_any_answer_and_a_later_call_is_a
     let (events, mut cli) = tokio::join!(all_events(runtime.run(request(first.clone()))), async {
         let mut cli = starts.next().await;
         cli.initialized().await;
-        cli.read().await;
         cli.handshake().await;
         cli.message_start();
         cli.text("running both");
@@ -180,7 +178,6 @@ async fn a_tool_result_goes_back_as_mcp_content_with_images_as_base64_and_errors
     let (events, mut cli) = tokio::join!(all_events(runtime.run(request(first.clone()))), async {
         let mut cli = starts.next().await;
         cli.initialized().await;
-        cli.read().await;
         cli.handshake().await;
         // A call that names no tool-use id gets a new unique one.
         cli.mcp(
@@ -247,7 +244,6 @@ async fn a_malformed_call_is_refused_by_the_server_and_an_unknown_request_by_dem
     let (events, cli) = tokio::join!(all_events(runtime.run(request(vec![user("hi")]))), async {
         let mut cli = starts.next().await;
         cli.initialized().await;
-        cli.read().await;
         cli.handshake().await;
         cli.mcp(
             "call-1",
@@ -289,7 +285,6 @@ async fn a_batch_without_all_its_results_or_results_never_asked_for_fail_the_run
     let (_, cli) = tokio::join!(all_events(runtime.run(request(first.clone()))), async {
         let mut cli = starts.next().await;
         cli.initialized().await;
-        cli.read().await;
         batch(&cli);
         cli
     });
@@ -310,7 +305,6 @@ async fn a_batch_without_all_its_results_or_results_never_asked_for_fail_the_run
     let (_, cli) = tokio::join!(all_events(runtime.run(request(first.clone()))), async {
         let mut cli = starts.next().await;
         cli.initialized().await;
-        cli.read().await;
         batch(&cli);
         cli
     });
@@ -338,7 +332,6 @@ async fn output_a_run_left_behind_belongs_to_no_request() {
     let (_, mut cli) = tokio::join!(all_events(runtime.run(request(first.clone()))), async {
         let mut cli = starts.next().await;
         cli.initialized().await;
-        cli.read().await;
         cli.handshake().await;
         cli.message_start();
         cli.tool_use("toolu_1", "pwd");

@@ -81,8 +81,8 @@ pub(crate) const CONTROL: Schema = Schema {
 };
 
 /// Each conversation's database's. Its history holds the schema of each
-/// published release before the one that ships the current schema; 0.1.12
-/// to 0.1.20 shipped the last one in it.
+/// published release before the one that ships the current schema; 0.1.21
+/// shipped the last one in it.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -93,6 +93,10 @@ pub(crate) const CONVERSATION: Schema = Schema {
         Shipped {
             sql: include_str!("schema/conversation-0.1.20.sql"),
             migration: Migration::Sql(CONVERSATION_FROM_0_1_20),
+        },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.21.sql"),
+            migration: Migration::Sql(BLOCKS_KEEP_ENTRIES),
         },
     ],
 };
@@ -293,6 +297,13 @@ INSERT INTO command_outputs_next
 DROP TABLE command_outputs;
 ALTER TABLE command_outputs_next RENAME TO command_outputs;
 ";
+
+/// From 0.1.21's conversation schema, block format 1, to block format 2: a
+/// block may keep the entries of a vendor's own record of the session
+/// (`claude-code.md` § The session a process resumes). A block 0.1.21
+/// stored keeps none, which format 2 writes by leaving the field out, so
+/// every stored block is already a block of format 2.
+const BLOCKS_KEEP_ENTRIES: &str = "";
 
 /// A kind of database, as a server's upgrade asks about it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -858,6 +869,7 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
+-- blocks.block: transcript block format 2.
 CREATE TABLE blocks (
   node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx     INTEGER NOT NULL CHECK (idx >= 0),

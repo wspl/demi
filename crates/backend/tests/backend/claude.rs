@@ -55,10 +55,11 @@ const LOGIN: &str = "/api/providers/subscription-login";
 /// the login, and any other, `account#state`, signs in `account` with the
 /// access token `access-account-state`, whose tokens and account it writes
 /// as the CLI writes them. Its other runs read
-/// the access token from descriptor 3, answer `initialize`, answer each user
-/// message with the executable, the token, how many environment variables
-/// hold it, the directory they run in, their configuration directory and
-/// its mode, and record their start and their end.
+/// the access token from descriptor 3, answer the message the session they
+/// resume ends with, answer `initialize`, answer each user message with the
+/// executable, the token, how many environment variables hold it, the
+/// directory they run in, their configuration directory and its mode, and
+/// record their start and their end.
 const SCRIPTED_CLI: &str = r#"#!/bin/sh
 if [ "$1" = auth ]; then
   echo "login $CLAUDE_CONFIG_DIR $(ls -ld "$CLAUDE_CONFIG_DIR" | cut -c1-10)" >> "$HOME/claude-logins.log"
@@ -83,17 +84,20 @@ log="$HOME/claude-processes.log"
 token=$(cat <&3)
 echo "started $token $CLAUDE_CONFIG_DIR" >> "$log"
 trap 'echo "ended $token" >> "$log"; exit 0' TERM
+answer() {
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"cli=%s token=%s environment=%s cwd=%s config=%s mode=%s"}]}}\n' \
+    "$0" "$token" "$(env | grep -c "$token")" "$(pwd)" "$CLAUDE_CONFIG_DIR" "$(ls -ld "$CLAUDE_CONFIG_DIR" | cut -c1-10)"
+  printf '{"type":"result","usage":{"input_tokens":3,"output_tokens":2}}\n'
+}
+# The session it resumes ends with the message to answer.
+answer
 while IFS= read -r line; do
   case "$line" in
     '{"type":"control_request"'*'"subtype":"initialize"'*)
       id=$(printf '%s\n' "$line" | sed 's/^{"type":"control_request","request_id":"\([^"]*\)".*/\1/')
       printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s"}}\n' "$id"
       ;;
-    '{"type":"user"'*)
-      printf '{"type":"assistant","message":{"content":[{"type":"text","text":"cli=%s token=%s environment=%s cwd=%s config=%s mode=%s"}]}}\n' \
-        "$0" "$token" "$(env | grep -c "$token")" "$(pwd)" "$CLAUDE_CONFIG_DIR" "$(ls -ld "$CLAUDE_CONFIG_DIR" | cut -c1-10)"
-      printf '{"type":"result","usage":{"input_tokens":3,"output_tokens":2}}\n'
-      ;;
+    '{"type":"user"'*) answer ;;
   esac
 done
 "#;

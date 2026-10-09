@@ -3,7 +3,9 @@
 //! signed in by the CLI's own login on the user's Cloud, inferring through
 //! Demi's own copy of the vendor's CLI. A session's runtime keeps one CLI
 //! process and exchanges stream-json with it over the `shell` process a
-//! [`Placement`] starts; each process gets only its account's access token,
+//! [`Placement`] starts; a new process resumes a session written from the
+//! conversation's blocks, whose entries the CLI mirrors back onto them;
+//! each process gets only its account's access token,
 //! which the backend alone refreshes; the model's tools reach Demi over the
 //! SDK MCP channel, an rmcp server inside the run, with the model's parallel
 //! tool batches kept whole. The catalog is models.dev's Claude models, and
@@ -19,8 +21,10 @@ mod mcp;
 mod models;
 mod output;
 mod placement;
+mod mirror;
 mod quota;
 mod run;
+mod session;
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -40,7 +44,8 @@ use futures_util::future::BoxFuture;
 use reqwest::Url;
 
 pub use placement::{
-    AccountMachine, AccountWork, CliSite, ConfigDir, Placed, Placement, StartError,
+    AccountMachine, AccountWork, CliSite, CliStart, CliSystem, ConfigDir, Placed, Placement,
+    StartError,
 };
 
 use crate::account::ClaudeAuth;

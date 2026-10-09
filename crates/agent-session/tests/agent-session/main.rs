@@ -19,7 +19,7 @@ use demi_agent_session::{
 };
 use demi_conversation_socket_protocol::{AbortResult, AbortTarget, TranscriptPatch};
 use demi_provider_common::{
-    ErrorCode, InferenceItem, MediaBytes, PromptCache, ProviderEvent, ProviderRuntime,
+    EntriesOf, ErrorCode, InferenceItem, MediaBytes, PromptCache, ProviderEvent, ProviderRuntime,
     RequestLimits, ResultPart, ToolDefinition, UserPart,
     testing::{FixedClock, ScriptedRuntime, Turn, event},
 };
@@ -1770,6 +1770,123 @@ async fn each_request_says_how_many_of_its_items_the_latest_answered_request_car
         [first, after_calls, next_turn].map(|request| request.prompt_cache),
         [0, 1, 7].map(|answered_items| PromptCache::Session { answered_items })
     );
+}
+
+// 0.01 s.
+#[tokio::test(flavor = "local")]
+async fn a_runs_entries_are_kept_on_the_blocks_they_name_and_come_back_with_them() {
+    let entries = |of: EntriesOf, names: &[&str]| ProviderEvent::Entries {
+        of,
+        entries: names.iter().map(|name| json!({ "uuid": name })).collect(),
+    };
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![
+            ProviderEvent::ThinkingStart,
+            event::thinking("plan"),
+            event::text("Hel"),
+            // Entries write no block: the text goes on in its block.
+            entries(EntriesOf::Output(0), &["attachment", "thinking"]),
+            event::text("lo"),
+            entries(EntriesOf::Item(0), &["message"]),
+            entries(EntriesOf::Output(1), &["text"]),
+            event::tool_call("call-1", "look", json!({})),
+            entries(EntriesOf::Output(2), &["call"]),
+            // A block no request carried nor the run wrote names nothing.
+            entries(EntriesOf::Output(3), &["nowhere"]),
+            event::response(1, 1),
+        ]),
+        // The call's result, an item of the next request.
+        Turn::Events(vec![
+            entries(EntriesOf::Item(4), &["result"]),
+            event::text("done"),
+            event::response(1, 1),
+        ]),
+        Turn::Events(vec![event::text("done again"), event::response(1, 1)]),
+    ]);
+    let store = MemoryTreeStore::new();
+    let (look, _) = counted("look", "seen");
+    let session = start(&provider, vec![look], &store, SessionConfig::default()).await;
+    session
+        .send(text("look"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+    session
+        .send(text("again"), turn("t2"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    let blocks = session.transcript().blocks;
+    assert_eq!(
+        kinds(&blocks),
+        [
+            "user",
+            "thinking",
+            "text",
+            "tool_call:completed",
+            "response",
+            "text",
+            "response",
+            "user",
+            "text",
+            "response"
+        ]
+    );
+    let names = |block: &Block| -> Vec<String> {
+        block
+            .entries()
+            .iter()
+            .map(|entry| entry["uuid"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let kept: Vec<Vec<String>> = blocks[..4].iter().map(names).collect();
+    assert_eq!(
+        kept,
+        [
+            vec!["message"],
+            vec!["attachment", "thinking"],
+            vec!["text"],
+            vec!["call", "result"]
+        ]
+    );
+    let Block::Text(answer) = &blocks[2] else {
+        unreachable!()
+    };
+    assert_eq!(answer.text, "Hello");
+
+    // The next request gives each block's entries back with the items the
+    // block gives.
+    let requests = provider.requests();
+    let last = requests.last().unwrap();
+    let given: Vec<(std::ops::Range<usize>, Vec<String>)> = last
+        .blocks
+        .iter()
+        .map(|block| {
+            let names = block
+                .entries
+                .iter()
+                .map(|entry| entry["uuid"].as_str().unwrap().to_owned())
+                .collect();
+            (block.items.clone(), names)
+        })
+        .collect();
+    assert_eq!(
+        given,
+        [
+            (0..1, vec!["message".to_owned()]),
+            (1..2, vec!["attachment".to_owned(), "thinking".to_owned()]),
+            (2..3, vec!["text".to_owned()]),
+            (3..5, vec!["call".to_owned(), "result".to_owned()]),
+            (5..6, vec![]),
+            (6..7, vec![]),
+        ]
+    );
+    assert_eq!(last.items.len(), 7);
+
+    // The saved transcript keeps them.
+    let saved = store.checkpoint(&root()).unwrap().transcript;
+    assert_eq!(saved[..4], blocks[..4]);
 }
 
 #[tokio::test(flavor = "local")]

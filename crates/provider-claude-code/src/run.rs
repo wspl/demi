@@ -21,7 +21,7 @@ use futures_util::stream::{self, Stream};
 
 use crate::Shared;
 use crate::live::{LiveCli, Next};
-use crate::output::{ContentBlock, Line, StreamEvent, TurnEnd};
+use crate::output::{ContentBlock, Line, Printed, StreamEvent, TurnEnd};
 use crate::placement::Placement;
 
 /// The HTTP status of a call the vendor refused for its token.
@@ -92,8 +92,9 @@ impl ProviderRuntime for ClaudeCodeRuntime {
 }
 
 /// One run: the process kept for the session when it can go on with the
-/// request, else a new one that replays the transcript; then the CLI's
-/// output until the turn's end or a batch of tool calls. A turn the vendor
+/// request, else a new one that resumes the session written from the
+/// request's blocks; then the CLI's output until the turn's end or a batch
+/// of tool calls, with the entries the CLI mirrors of its session. A turn the vendor
 /// refuses for its token is run once more in a new process with a refreshed
 /// token (`claude-code.md` § Accounts and sign-in).
 fn run(
@@ -113,11 +114,13 @@ fn run(
                         mcp.offer(request.tools.clone());
                     }
                     let continued = async {
-                        live.skip_leftovers().await?;
+                        let mut entries = live.mirror.begin(&request);
+                        entries.extend(live.skip_leftovers(&request).await?);
                         if !live.held.is_empty() {
                             live.deliver(&request).await?;
                         }
-                        live.send_new_user_messages(&request).await
+                        live.send_new_user_messages(&request).await?;
+                        Ok(entries)
                     };
                     match cancel.run_until_cancelled(continued).await {
                         None => {
@@ -129,7 +132,12 @@ fn run(
                             live.close().await;
                             return;
                         }
-                        Some(Ok(())) => live,
+                        Some(Ok(entries)) => {
+                            for event in entries {
+                                yield event;
+                            }
+                            live
+                        }
                     }
                 }
                 previous => {
@@ -163,7 +171,11 @@ fn run(
                             live.close().await;
                             return;
                         }
-                        Some(Ok(())) => live,
+                        Some(Ok(())) => {
+                            // A new process mirrored nothing yet.
+                            live.mirror.begin(&request);
+                            live
+                        }
                     }
                 }
             };
@@ -196,8 +208,14 @@ fn run(
                         }
                         live.collecting.clear();
                         live.held = vec![call.clone()];
+                        let call = ProviderEvent::ToolCall(call);
+                        live.mirror.observe(&call);
+                        let entries = live.mirror.place(&request, false);
                         runtime.live = Some(live);
-                        yield ProviderEvent::ToolCall(call);
+                        yield call;
+                        for event in entries {
+                            yield event;
+                        }
                         return;
                     }
                     Next::Line(text, line) => (text, line),
@@ -205,15 +223,21 @@ fn run(
                 match line {
                     None | Some(Line::ControlResponse(_)) => {}
                     // A notice of a refused call repeats the failure the result
-                    // reports, so the failure shows once.
-                    Some(Line::Assistant(message)) if message.is_refusal_notice() => {}
+                    // reports, so the failure shows once; it writes no block.
+                    Some(Line::Assistant(message)) if message.is_refusal_notice() => {
+                        let id = message.message_id();
+                        for printed in message.content() {
+                            live.mirror.printed(id.clone(), printed.raw, false);
+                        }
+                    }
                     Some(Line::Assistant(message)) => {
                         // Once the process streams, a whole message repeats what
                         // streamed, but its tool uses are whole only here.
                         let streamed = live.streamed;
-                        for block in message.content() {
+                        let id = message.message_id();
+                        for Printed { raw, block } in message.content() {
                             match block {
-                                ContentBlock::ToolUse(tool_use) => match tool_use.call() {
+                                Some(ContentBlock::ToolUse(tool_use)) => match tool_use.call() {
                                     Ok(call) => live.collect(call),
                                     Err(error) => {
                                         yield ProviderEvent::Error(ProviderFailure::protocol(error.to_string(), text));
@@ -221,14 +245,35 @@ fn run(
                                         return;
                                     }
                                 },
-                                block if !streamed => {
-                                    for event in block.events() {
+                                Some(block) if !streamed => {
+                                    let events = block.events();
+                                    let wrote = !events.is_empty();
+                                    for event in events {
+                                        live.mirror.observe(&event);
                                         yielded = true;
                                         yield event;
                                     }
+                                    live.mirror.printed(id.clone(), raw, wrote);
                                 }
-                                _ => {}
+                                // What streamed wrote the block: reasoning
+                                // opens one at its start, and text with its
+                                // first piece; redacted reasoning streams no
+                                // event.
+                                Some(block) => {
+                                    let wrote = match &block {
+                                        ContentBlock::Thinking(_) => true,
+                                        ContentBlock::Text(text) => !text.is_empty(),
+                                        ContentBlock::RedactedThinking(_) | ContentBlock::ToolUse(_) => false,
+                                    };
+                                    live.mirror.printed(id.clone(), raw, wrote);
+                                }
+                                None => live.mirror.printed(id.clone(), raw, false),
                             }
+                        }
+                    }
+                    Some(Line::TranscriptMirror(line)) => {
+                        for event in live.mirror.mirrored(line.entries, &request) {
+                            yield event;
                         }
                     }
                     Some(Line::StreamEvent(line)) => {
@@ -248,14 +293,20 @@ fn run(
                                 return;
                             }
                             live.held = std::mem::take(&mut live.collecting);
-                            let batch = live.held.clone();
+                            let batch: Vec<ProviderEvent> =
+                                live.held.iter().cloned().map(ProviderEvent::ToolCall).collect();
+                            for call in &batch {
+                                live.mirror.observe(call);
+                            }
+                            let entries = live.mirror.place(&request, false);
                             runtime.live = Some(live);
-                            for call in batch {
-                                yield ProviderEvent::ToolCall(call);
+                            for event in batch.into_iter().chain(entries) {
+                                yield event;
                             }
                             return;
                         }
                         for event in event.events(&mut live.writing) {
+                            live.mirror.observe(&event);
                             yielded = true;
                             yield event;
                         }
@@ -273,7 +324,7 @@ fn run(
                         // The vendor refused the process's token, before
                         // anything of the attempt reached the agent: the
                         // token is refreshed and the request sent again,
-                        // once, in a new process, which replays the
+                        // once, in a new process, which resumes the
                         // transcript.
                         if let TurnEnd::Failed {
                             status: Some(UNAUTHORIZED),
