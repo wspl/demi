@@ -31,8 +31,8 @@ use demi_runner_protocol::{
     wire::{self, JobFileChange},
 };
 use demi_shared_types::{
-    BlobRef, CommandEnd, CommandId, EditCopies, EditKind, EditSegment, EditedFile, Sequence, ShellId,
-    StreamKind,
+    BlobRef, CommandEnd, CommandId, EditCopies, EditKind, EditSegment, EditedFile, PathChange,
+    Sequence, ShellId, StreamKind,
 };
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
@@ -550,7 +550,7 @@ impl RemoteShellEnvironment {
         // § Host operations): the edits' copies, the kept output and the
         // media.
         let retained = async {
-            if end.files.is_empty() {
+            if end.files.is_empty() && end.path_changes.is_empty() {
                 return None;
             }
             let files = match &self.0.options.keeper {
@@ -559,6 +559,7 @@ impl RemoteShellEnvironment {
             };
             Some(EditedFiles {
                 files,
+                path_changes: end.path_changes.iter().map(path_change).collect(),
                 truncated: end.files_truncated,
             })
         };
@@ -1109,6 +1110,19 @@ pub fn edited_file(
                 copies: copies(segment),
             })
             .collect(),
+    }
+}
+
+/// A rename or a removal as the view lists it.
+fn path_change(change: &demi_command_protocol::PathChange) -> PathChange {
+    match change {
+        demi_command_protocol::PathChange::Renamed { from, to } => PathChange::Renamed {
+            from: from.clone(),
+            to: to.clone(),
+        },
+        demi_command_protocol::PathChange::Removed { path } => PathChange::Removed {
+            path: path.clone(),
+        },
     }
 }
 

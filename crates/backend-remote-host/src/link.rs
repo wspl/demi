@@ -444,6 +444,7 @@ pub struct JobEnd {
     /// Each stream's length; none when bash never ran the script.
     pub output: Option<wire::OutputLengths>,
     pub files: Vec<wire::JobFileChange>,
+    pub path_changes: Vec<demi_command_protocol::PathChange>,
     pub files_truncated: bool,
 }
 
@@ -454,6 +455,7 @@ impl JobEnd {
             cwd: None,
             output: None,
             files: Vec::new(),
+            path_changes: Vec::new(),
             files_truncated: false,
         }
     }
@@ -1012,6 +1014,7 @@ impl Link {
                 cwd,
                 output,
                 files,
+                path_changes,
                 files_truncated,
             } => {
                 let calls: Vec<_> = self
@@ -1036,6 +1039,7 @@ impl Link {
                         cwd,
                         output,
                         files,
+                        path_changes,
                         files_truncated,
                     });
                 }

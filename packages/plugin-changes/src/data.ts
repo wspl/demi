@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   requestEditSelectionSchema,
+  sameEditRef,
   type ChangeFile,
   type ChangeMode,
   type RequestEditRef,
@@ -67,13 +68,9 @@ function step(data: ChangeData): ChangeStep {
   return { mode: data.mode, uncommitted: data.uncommitted, request: data.request }
 }
 
-function sameEdit(a: RequestEditRef | null, b: RequestEditRef | null): boolean {
-  return a === b || (a !== null && b !== null && a.call === b.call && a.segment === b.segment)
-}
-
 function sameRequest(a: RequestEditSelection | null, b: RequestEditSelection | null): boolean {
   return a === b || (a !== null && b !== null && a.node === b.node && a.request === b.request
-    && a.file === b.file && sameEdit(a.edit, b.edit))
+    && a.file === b.file && sameEditRef(a.edit, b.edit))
 }
 
 /** `data` showing `next`, the step it showed kept for Back; the same step again changes nothing. */

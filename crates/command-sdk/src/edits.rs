@@ -12,8 +12,8 @@ use std::{
 use demi_shared_artifacts::{Mode, Permissions, Publication};
 
 use demi_command_protocol::{
-    EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS, EditContext, EditCopies,
-    EditFile, EditJournal, EditKind,
+    EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_PATH_CHANGES, EDIT_JOB_SEGMENTS,
+    EditContext, EditCopies, EditFile, EditJournal, EditKind, PathChange,
 };
 
 #[derive(Clone)]
@@ -62,7 +62,9 @@ impl Recorder {
     /// sides, as any whole-file write. Otherwise the rename moves `from`,
     /// which carries what this job recorded under the old name, or within
     /// it, to the new name once it happened; a move of a file the job did not
-    /// change records nothing (`edit-tracking.md` § Scope).
+    /// change records no edit (`edit-tracking.md` § Scope). Either way the
+    /// rename itself is listed, for a request's earlier calls' edits
+    /// (`edit-tracking.md` § A request).
     pub fn rename(&self, from: &Path, to: &Path) -> Renaming {
         let to = normalize(to);
         let replacing = if fs::metadata(&to).is_ok_and(|metadata| metadata.is_file()) {
@@ -78,6 +80,19 @@ impl Recorder {
             from: normalize(from),
             to,
             replacing,
+        }
+    }
+
+    /// Records the removal of `path`, a file or a folder with all in it,
+    /// that runs while the returned guard lives: once it is gone, the
+    /// removal is listed, and what this job recorded at or within it goes,
+    /// so a file made again there starts anew (`edit-tracking.md`
+    /// § A request). Nothing is locked meanwhile, so a prompt or a large
+    /// folder blocks no other job's writes.
+    pub fn remove(&self, path: &Path) -> Removing {
+        Removing {
+            recorder: self.clone(),
+            path: normalize(path),
         }
     }
 
@@ -127,6 +142,7 @@ impl Recorder {
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => EditJournal {
                 files: Vec::new(),
+                path_changes: Vec::new(),
                 bytes_copied: 0,
                 next_segment: 0,
                 files_truncated: false,
@@ -138,6 +154,7 @@ impl Recorder {
             directory,
             journal,
             before: Vec::new(),
+            changed: false,
         })
     }
 }
@@ -148,6 +165,9 @@ pub struct Recording {
     directory: PathBuf,
     journal: EditJournal,
     before: Vec<(PathBuf, Contents)>,
+    /// Whether a rename or a removal changed the journal, which its drop
+    /// then writes.
+    changed: bool,
 }
 
 impl Recording {
@@ -188,8 +208,7 @@ impl Recording {
     /// name already has, from a file there that the job changed and that
     /// went, keeps its kind and takes the moved segments after its own; any
     /// other is `added`, as nothing was at the new name before the move.
-    fn carry(&mut self, from: &Path, to: &Path) -> io::Result<()> {
-        let mut moved = false;
+    fn carry(&mut self, from: &Path, to: &Path) {
         let mut index = 0;
         while index < self.journal.files.len() {
             let Ok(within) = Path::new(&self.journal.files[index].path).strip_prefix(from) else {
@@ -203,7 +222,7 @@ impl Recording {
                 to.join(within)
             };
             let path = path.to_string_lossy().into_owned();
-            moved = true;
+            self.changed = true;
             match self.journal.files.iter().position(|file| file.path == path) {
                 Some(existing) => {
                     let edits = self.journal.files.remove(index).edits;
@@ -218,10 +237,28 @@ impl Recording {
                 }
             }
         }
-        if moved {
-            self.write_journal()?;
+    }
+
+    /// Lets go of what the job recorded at `path` or within it, which a
+    /// removal took.
+    fn forget(&mut self, path: &Path) {
+        for file in &mut self.journal.files {
+            if Path::new(&file.path).starts_with(path) && !file.edits.is_empty() {
+                // As a write that leaves the path absent does (`publish`).
+                file.edits.clear();
+                self.changed = true;
+            }
         }
-        Ok(())
+    }
+
+    /// Lists a rename or a removal, within the job's bound.
+    fn list(&mut self, change: PathChange) {
+        self.changed = true;
+        if self.journal.path_changes.len() >= EDIT_JOB_PATH_CHANGES {
+            self.journal.files_truncated = true;
+        } else {
+            self.journal.path_changes.push(change);
+        }
     }
 
     fn write_journal(&self) -> io::Result<()> {
@@ -349,7 +386,7 @@ impl Recording {
 
 impl Drop for Recording {
     fn drop(&mut self) {
-        if self.before.is_empty() {
+        if self.before.is_empty() && !self.changed {
             return;
         }
         for (path, before) in std::mem::take(&mut self.before) {
@@ -385,20 +422,48 @@ pub struct Renaming {
 
 impl Drop for Renaming {
     fn drop(&mut self) {
-        if self.replacing.take().is_some() {
-            // Its own drop has recorded the replaced file.
-            return;
-        }
         // A rename that failed left the old name in place.
         let happened = fs::symlink_metadata(&self.from).is_err_and(|error| absent(&error))
             && fs::symlink_metadata(&self.to).is_ok();
+        // A replacement's own drop records the replaced file.
+        let recording = match self.replacing.take() {
+            Some(recording) => Some(recording),
+            None if happened => self.recorder.begin(),
+            None => None,
+        };
+        let Some(mut recording) = recording else {
+            return;
+        };
         if !happened {
             return;
         }
-        if let Some(mut recording) = self.recorder.begin()
-            && let Err(error) = recording.carry(&self.from, &self.to)
-        {
-            diagnostic(&error);
+        if !recording.before.iter().any(|(path, _)| path == &self.to) {
+            recording.carry(&self.from, &self.to);
+        }
+        recording.list(PathChange::Renamed {
+            from: self.from.to_string_lossy().into_owned(),
+            to: self.to.to_string_lossy().into_owned(),
+        });
+    }
+}
+
+/// The guard of [`Recorder::remove`].
+pub struct Removing {
+    recorder: Recorder,
+    path: PathBuf,
+}
+
+impl Drop for Removing {
+    fn drop(&mut self) {
+        // A removal that failed, or was declined at a prompt, left it.
+        if !fs::symlink_metadata(&self.path).is_err_and(|error| absent(&error)) {
+            return;
+        }
+        if let Some(mut recording) = self.recorder.begin() {
+            recording.forget(&self.path);
+            recording.list(PathChange::Removed {
+                path: self.path.to_string_lossy().into_owned(),
+            });
         }
     }
 }
@@ -510,7 +575,12 @@ fn publish_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
 
 fn normalize(path: &Path) -> PathBuf {
     // Preserve `..`: collapsing it lexically changes paths through symlinks.
-    std::path::absolute(path).unwrap_or_else(|_| path.to_owned())
+    // Rebuilding from the components drops a trailing separator, as in
+    // `rm -r dir/`, so a folder is named as its files' paths start.
+    std::path::absolute(path)
+        .unwrap_or_else(|_| path.to_owned())
+        .components()
+        .collect()
 }
 
 /// Inside the runner the event reaches the Host log; inside a command service

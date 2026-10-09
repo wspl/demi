@@ -1,9 +1,10 @@
-import type { Block, EditCopies } from '@demicodes/protocol'
+import type { Block, EditCopies, PathChange } from '@demicodes/protocol'
 import { z } from 'zod'
 import { storedShellView, toolCallTitle } from '../agent/block-helpers'
 import type { ToolCallBlock } from '../agent/block-types'
 import type { ReadCallChange } from './changes'
 import { diffLineCounts } from './diff-counts'
+import { isWithinPath } from './paths'
 
 /**
  * A request's changes (`edit-tracking.md` § Delivery to the conversation):
@@ -19,6 +20,8 @@ export interface RequestEdit {
   call: string
   /** The call's title, as its row in the transcript names it. */
   title: string
+  /** The file's path in the call, which a later call may have renamed. */
+  path: string
   /** Which of the call's segments of the file it is. */
   segment: number
   /** The segment created the file, so nothing came before it. */
@@ -27,7 +30,12 @@ export interface RequestEdit {
   copies?: EditCopies
 }
 
-/** A file a request changed, with its edits in the order they were made. */
+/**
+ * A file a request changed, as it stands after the request's latest call,
+ * with its edits in the order they were made: a file a later call renamed
+ * is listed under its new name with its earlier edits, and one a later call
+ * renamed away or removed is not listed (`edit-tracking.md` § A request).
+ */
 export interface RequestFile {
   /** As the Host names it. */
   path: string
@@ -56,10 +64,10 @@ export interface TranscriptRequests {
 export function transcriptRequests(blocks: readonly Block[]): TranscriptRequests {
   const requests: TranscriptRequest[] = []
   const requestOf = new Map<string, TranscriptRequest>()
-  let current: { request: TranscriptRequest; byPath: Map<string, RequestFile> } | null = null
+  let current: { request: TranscriptRequest; calls: Map<string, number> } | null = null
   for (const block of blocks) {
     if (block.type === 'user') {
-      current = { request: { id: block.id, files: [] }, byPath: new Map() }
+      current = { request: { id: block.id, files: [] }, calls: new Map() }
       requests.push(current.request)
     }
     if (!current) {
@@ -67,7 +75,7 @@ export function transcriptRequests(blocks: readonly Block[]): TranscriptRequests
     }
     requestOf.set(block.id, current.request)
     if (block.type === 'tool_call') {
-      addCall(current.request.files, current.byPath, block)
+      addCall(current.request.files, current.calls, block)
     }
   }
   return { requests, requestOf }
@@ -80,35 +88,86 @@ export function transcriptRequests(blocks: readonly Block[]): TranscriptRequests
  */
 export function callFiles(calls: readonly ToolCallBlock[]): RequestFile[] {
   const files: RequestFile[] = []
-  const byPath = new Map<string, RequestFile>()
+  const order = new Map<string, number>()
   for (const call of calls) {
-    addCall(files, byPath, call)
+    addCall(files, order, call)
   }
   return files
 }
 
-function addCall(files: RequestFile[], byPath: Map<string, RequestFile>, block: ToolCallBlock): void {
+/**
+ * Adds a call to the files of the calls before it, `order` numbering the
+ * calls as they come: first its renames and removals, in the order it made
+ * them, move or drop the files the earlier calls changed; then its own
+ * files, which its job already names as they stand after it, join them.
+ */
+function addCall(files: RequestFile[], order: Map<string, number>, block: ToolCallBlock): void {
   const view = storedShellView(block)
-  if (!view?.files) {
+  if (!view) {
     return
   }
+  order.set(view.commandId, order.size)
+  // Files a rename of this call brought to a name the list did not hold:
+  // whether a file was there before, only the call's own entry can tell.
+  const arrived = new Set<string>()
+  for (const change of view.pathChanges ?? []) {
+    applyPathChange(files, order, change, arrived)
+  }
   const title = toolCallTitle(block)
-  for (const file of view.files) {
-    let entry = byPath.get(file.path)
+  for (const file of view.files ?? []) {
+    let entry = files.find((existing) => existing.path === file.path)
     if (!entry) {
       entry = { path: file.path, kind: file.kind, edits: [] }
-      byPath.set(file.path, entry)
       files.push(entry)
+    } else if (arrived.has(file.path)) {
+      entry.kind = file.kind
     }
     file.edits.forEach((edit, segment) => {
       entry.edits.push({
         call: view.commandId,
         title,
+        path: file.path,
         segment,
         created: file.kind === 'added' && segment === 0,
         ...(edit.copies ? { copies: edit.copies } : {}),
       })
     })
+  }
+}
+
+/**
+ * Follows one rename or removal: a removed path, or a folder with all in it,
+ * leaves the list; a renamed one takes its new name with its edits, merged
+ * into the entry the new name already has, if any, which keeps its kind and
+ * its place, or the earlier of the two.
+ */
+function applyPathChange(
+  files: RequestFile[],
+  order: ReadonlyMap<string, number>,
+  change: PathChange,
+  arrived: Set<string>,
+): void {
+  if (change.kind === 'removed') {
+    const kept = files.filter((file) => !isWithinPath(file.path, change.path))
+    files.splice(0, files.length, ...kept)
+    return
+  }
+  for (const moved of files.filter((file) => isWithinPath(file.path, change.from))) {
+    const path = change.to + moved.path.slice(change.from.length)
+    const target = files.find((file) => file.path === path)
+    if (!target) {
+      moved.path = path
+      moved.kind = 'added'
+      arrived.add(path)
+      continue
+    }
+    // Each call's edits stay in their order, the replaced file's first.
+    const callOrder = (edit: RequestEdit) => order.get(edit.call) ?? 0
+    target.edits = [...target.edits, ...moved.edits].sort((a, b) => callOrder(a) - callOrder(b))
+    const at = Math.min(files.indexOf(moved), files.indexOf(target))
+    files.splice(files.indexOf(moved), 1)
+    files.splice(files.indexOf(target), 1)
+    files.splice(at, 0, target)
   }
 }
 
@@ -133,9 +192,13 @@ export function findRequest(
   return transcriptRequests(blocks).requests.find((entry) => entry.id === request) ?? null
 }
 
-/** One edit of a request's file, by its call and segment, which stay as later calls add edits. */
+/**
+ * One edit of a request's file, by its call, the file's path in that call
+ * and the segment, which stay as later calls add edits or rename the file.
+ */
 export const requestEditRefSchema = z.object({
   call: z.string(),
+  path: z.string(),
   segment: z.int().min(0),
 })
 export type RequestEditRef = z.infer<typeof requestEditRefSchema>
@@ -156,7 +219,11 @@ export const requestEditSelectionSchema = z.object({
 })
 export type RequestEditSelection = z.infer<typeof requestEditSelectionSchema>
 
-/** What a file pill under a call opens: the file at that call's first edit, in the call's request. */
+/**
+ * What a file pill under a call opens: the file `path` names in the call,
+ * at the call's first edit of it, in the call's request, under the name it
+ * has there now; null once a later call removed it.
+ */
 export function pillSelection(
   node: string | null,
   requests: TranscriptRequests,
@@ -165,12 +232,23 @@ export function pillSelection(
 ): RequestEditSelection | null {
   const request = requests.requestOf.get(block.id)
   const call = storedShellView(block)?.commandId
-  const file = request?.files.find((entry) => entry.path === path)
-  const first = file?.edits.find((edit) => edit.call === call)
-  if (!request || !first) {
-    return null
+  for (const file of request?.files ?? []) {
+    const first = file.edits.find((edit) => edit.call === call && edit.path === path)
+    if (request && first) {
+      return { node, request: request.id, file: file.path, edit: editRef(first) }
+    }
   }
-  return { node, request: request.id, file: path, edit: { call: first.call, segment: first.segment } }
+  return null
+}
+
+/** How a selection names `edit`. */
+export function editRef(edit: RequestEdit): RequestEditRef {
+  return { call: edit.call, path: edit.path, segment: edit.segment }
+}
+
+/** Whether two references name the same edit. */
+export function sameEditRef(a: RequestEditRef | null, b: RequestEditRef | null): boolean {
+  return a === b || (a !== null && b !== null && a.call === b.call && a.path === b.path && a.segment === b.segment)
 }
 
 /** Whether the file offers All Changes: its first edit's original and its last edit's result were both kept. */
@@ -184,7 +262,7 @@ export function offersAllChanges(file: RequestFile): boolean {
  * does not offer it answers with its first edit with contents, or its first.
  */
 export function editIndex(file: RequestFile, edit: RequestEditRef | null): number | null {
-  const index = edit ? file.edits.findIndex((entry) => entry.call === edit.call && entry.segment === edit.segment) : -1
+  const index = edit ? file.edits.findIndex((entry) => sameEditRef(editRef(entry), edit)) : -1
   if (index >= 0) {
     return index
   }
@@ -195,15 +273,26 @@ export function editIndex(file: RequestFile, edit: RequestEditRef | null): numbe
 }
 
 /**
- * The two sides a selection shows: one edit's own, or for All Changes the
- * first edit's original and the last edit's result; null when a side was
- * not stored.
+ * The edit All Changes starts from: the first. A file that was there
+ * before the request, and that a rename replaced with one an earlier call
+ * created, starts from the first edit made to it, not from that creation.
+ */
+export function allChangesStart(file: RequestFile): RequestEdit | undefined {
+  return file.kind === 'modified'
+    ? file.edits.find((edit) => !edit.created) ?? file.edits[0]
+    : file.edits[0]
+}
+
+/**
+ * The two sides a selection shows: one edit's own, or for All Changes its
+ * start's original and the last edit's result; null when a side was not
+ * stored.
  */
 export function selectionCopies(file: RequestFile, index: number | null): EditCopies | null {
   if (index !== null) {
     return file.edits[index]?.copies ?? null
   }
-  const original = file.edits[0]?.copies?.original
+  const original = allChangesStart(file)?.copies?.original
   const modified = file.edits.at(-1)?.copies?.modified
   return original && modified ? { original, modified } : null
 }

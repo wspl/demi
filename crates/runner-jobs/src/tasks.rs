@@ -687,7 +687,7 @@ impl JobConfig {
             // then lasts until the backend releases it.
             Some((logs, scratch, recorder, _running)) => {
                 let output = logs.lengths();
-                let (files, files_truncated) = tokio::task::spawn_blocking(move || {
+                let edits = tokio::task::spawn_blocking(move || {
                     scratch.close()?;
                     Ok::<_, io::Error>(crate::edit_report::finish(recorder.as_ref()))
                 })
@@ -700,8 +700,9 @@ impl JobConfig {
                     spawn_error,
                     cwd,
                     output: Some(output),
-                    files,
-                    files_truncated,
+                    files: edits.files,
+                    path_changes: edits.path_changes,
+                    files_truncated: edits.truncated,
                 })
                 .map_err(io::Error::other)
             }
@@ -783,6 +784,7 @@ pub fn failure_exit(work: &WorkId, reason: String) -> Result<wire::Frame, wire::
             cwd: None,
             output: None,
             files: Vec::new(),
+            path_changes: Vec::new(),
             files_truncated: false,
         }),
         WorkId::Spawn(id) => wire::encode(&wire::Outbound::SpawnExit {

@@ -14,6 +14,8 @@ pub const EDIT_JOB_BYTES: u64 = 64 * 1024 * 1024;
 pub const EDIT_JOB_FILES: usize = 500;
 /// The most edit segments a job's edit record holds.
 pub const EDIT_JOB_SEGMENTS: u64 = 1000;
+/// The most renames and removals a job's edit record lists.
+pub const EDIT_JOB_PATH_CHANGES: usize = 500;
 
 /// Where an invoked command records its edits: the job's edit directory and
 /// the lock that serializes writers to it. Both paths are absolute.
@@ -72,12 +74,34 @@ pub struct EditFile {
     pub edits: Vec<EditCopies>,
 }
 
+/// A rename an embedded utility made or a path an embedded `rm` removed,
+/// which a request's file list follows across its calls
+/// (`edit-tracking.md` § A request). Paths are absolute; a folder is named
+/// once by its own path, never by each file in it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
+pub enum PathChange {
+    Renamed {
+        #[garde(length(min = 1), custom(without_nul))]
+        from: String,
+        #[garde(length(min = 1), custom(without_nul))]
+        to: String,
+    },
+    Removed {
+        #[garde(length(min = 1), custom(without_nul))]
+        path: String,
+    },
+}
+
 /// A job's edit record as the command left it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditJournal {
     #[garde(length(max = EDIT_JOB_FILES), dive)]
     pub files: Vec<EditFile>,
+    /// The job's renames and removals, in the order they happened.
+    #[garde(length(max = EDIT_JOB_PATH_CHANGES), dive)]
+    pub path_changes: Vec<PathChange>,
     #[garde(range(max = EDIT_JOB_BYTES))]
     pub bytes_copied: u64,
     #[garde(range(max = EDIT_JOB_SEGMENTS))]

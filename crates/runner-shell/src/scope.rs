@@ -616,6 +616,10 @@ impl uucore::context::Control for UtilityControl {
     fn edit_rename(&self, from: &Path, to: &Path) -> Option<Box<dyn Send>> {
         Some(Box::new(self.scope.edits.as_ref()?.rename(from, to)))
     }
+    /// `rm`'s removal is listed, for a request's earlier edits there.
+    fn edit_remove(&self, path: &Path) -> Option<Box<dyn Send>> {
+        Some(Box::new(self.scope.edits.as_ref()?.remove(path)))
+    }
     fn check(&self) -> io::Result<()> {
         self.scope.check()
     }
