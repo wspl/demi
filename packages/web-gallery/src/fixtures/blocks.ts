@@ -1021,6 +1021,74 @@ export function transcriptDemoBlocks(): Block[] {
 }
 
 /**
+ * Runs that start no command, and one that does (`runtime.md` § Work
+ * groups): the agent starts the end-to-end suite, then, asked, only looks
+ * at it, only waits for its end, and runs it again and waits. Each run's
+ * row reads what it did: Checked 1 command, Waited, Ran 1 command, waited.
+ */
+export function lookAndWaitBlocks(): Block[] {
+  const user = (id: string, at: number, text: string): Block => ({
+    type: 'user', id, turnId: `${id}-turn`, createdAt: iso(at), model: demoModel,
+    content: [{ type: 'text', text }], preamble: null,
+  })
+  const think = (id: string, at: number, text: string): Block => ({
+    type: 'thinking', id, createdAt: iso(at), model: demoModel, text, signature: null,
+  })
+  const reply = (id: string, at: number, text: string): Block => ({
+    type: 'text', id, createdAt: iso(at), model: demoModel, text,
+  })
+  const run = (id: string, at: number, commandId: string): Block => toolCall({
+    id,
+    createdAt: iso(at),
+    toolName: 'shell_exec',
+    status: 'completed',
+    input: JSON.stringify({ script: 'bun run e2e', description: 'Run the end-to-end suite', timeoutMs: 5_000 }),
+    view: shellView({ commandId, status: 'running', chunks: [{ stream: 'stdout', text: 'Running 140 specs\n' }] }),
+  })
+  const look = (id: string, at: number, output: string): Block => toolCall({
+    id,
+    createdAt: iso(at),
+    toolName: 'shell_status',
+    status: 'completed',
+    input: JSON.stringify({ commandId: 51 }),
+    view: shellView({ commandId: '51', status: 'running', chunks: [{ stream: 'stdout', text: output }] }),
+  })
+  const wait = (id: string, at: number, commandId: number): Block => toolCall({
+    id,
+    createdAt: iso(at),
+    toolName: 'yield',
+    status: 'completed',
+    input: JSON.stringify({ durationMs: 600_000, commandIds: [commandId] }),
+    view: { kind: 'yield_wakeup', wakeupId: `${id}-wakeup`, durationMs: 600_000, commandIds: [String(commandId)] },
+  })
+  const wakeup = (id: string, at: number): Block => ({
+    type: 'wakeup', id, turnId: `${id}-turn`, createdAt: iso(at), model: demoModel, placement: 'new_turn',
+  })
+  return [
+    user('look-start', 900_000, 'Run the end-to-end suite.'),
+    run('look-suite', 890_000, '51'),
+    reply('look-started', 880_000, 'The suite is running. It takes a few minutes.'),
+    user('look-ask', 700_000, 'Is it done?'),
+    think('look-think', 690_000, 'Look at how far the suite got.'),
+    look('look-first', 685_000, '[84/140] checkout.spec.ts\n'),
+    think('look-think-again', 680_000, 'It is on the checkout specs. Look once more before answering.'),
+    look('look-second', 675_000, '[86/140] checkout.spec.ts\n'),
+    reply('look-answer', 670_000, 'Not yet: 86 of 140 specs passed so far, and none failed.'),
+    user('wait-ask', 500_000, 'Tell me once it ends.'),
+    think('wait-think', 495_000, 'Wait for the suite to end.'),
+    wait('wait-first', 490_000, 51),
+    wakeup('wait-woken', 300_000),
+    reply('wait-answer', 295_000, 'The suite ended: all 140 specs passed.'),
+    user('again-ask', 200_000, 'Run it once more and tell me when it ends.'),
+    run('again-suite', 195_000, '52'),
+    think('again-think', 190_000, 'Wait for the second run to end.'),
+    wait('again-wait', 185_000, 52),
+    wakeup('again-woken', 60_000),
+    reply('again-answer', 55_000, 'The second run passed too: 140 of 140 specs.'),
+  ]
+}
+
+/**
  * A turn whose model has finished its sentence and goes on writing a call
  * (`runtime.md` § Calls being written): the user's message and the finished
  * text, which the specimens follow with a call being written or with
