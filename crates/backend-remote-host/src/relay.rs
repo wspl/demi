@@ -15,7 +15,8 @@ use std::{
 
 use bytes::Bytes;
 use demi_host_interface::{
-    PortError, PortRequest, PortResponse, PortTransport, RelayedPipes, RpcInvocation, RpcPort,
+    PortError, PortRequest, PortResponse, PortTransport, RelayedPipes, RpcError, RpcInvocation,
+    RpcPort,
 };
 use demi_runner_protocol::wire::{Inbound, STDIN_CHUNK_BYTES, WireBytes};
 use demi_shared_gates::SerialGate;
@@ -36,7 +37,6 @@ use crate::{
 pub(crate) struct RpcCall {
     pub(crate) job_id: String,
     pub(crate) call_id: String,
-    pub(crate) root: String,
     pub(crate) path: Vec<String>,
     pub(crate) argv: Vec<String>,
     pub(crate) args: Map<String, Value>,
@@ -191,21 +191,31 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
     let relaying = link.clone();
     link.spawn(async move {
         let call_id = call.call_id.clone();
-        let root = call.root.clone();
+        let command = call.path.join(" ");
         let exit_code = match run(&relaying, call, origin, &entry).await {
             Ok(code) => code,
-            Err(message) => {
+            Err(ended) => {
+                // A usage error is clap's text whole; a runtime error is
+                // GNU's line, the command's path first (`commands.md`
+                // § Handle an rpc call).
+                let (text, code) = match ended {
+                    Ended::Usage(text) => (format!("{text}\n"), 2),
+                    Ended::Failed(message) => (
+                        format!("{command}: {message}\n"),
+                        match entry.cause() {
+                            Some(Stop::Cancelled) => 130,
+                            _ => 1,
+                        },
+                    ),
+                };
                 let error = Inbound::RpcOutput {
                     call_id: call_id.clone(),
-                    bytes: WireBytes(format!("{root}: {message}\n").into_bytes()),
+                    bytes: WireBytes(text.into_bytes()),
                 };
                 if let Err(error) = relaying.send(&error).await {
                     tracing::debug!(call = %call_id, "rpc error not sent: {error}");
                 }
-                match entry.cause() {
-                    Some(Stop::Cancelled) => 130,
-                    _ => 1,
-                }
+                code
             }
         };
         relaying.with_state(|state| state.remove_call(&call_id));
@@ -220,13 +230,33 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
     });
 }
 
-/// Runs the call to its exit code, or the text of what stopped it.
+/// Why a call ended without its handler's exit code.
+enum Ended {
+    /// Its arguments do not fit its command: the usage error's whole text.
+    Usage(String),
+    /// What stopped it, as a runtime error's object and reason.
+    Failed(String),
+}
+
+impl From<String> for Ended {
+    fn from(message: String) -> Self {
+        Self::Failed(message)
+    }
+}
+
+impl From<&str> for Ended {
+    fn from(message: &str) -> Self {
+        Self::Failed(message.to_owned())
+    }
+}
+
+/// Runs the call to its exit code, or what stopped it.
 async fn run(
     link: &Link,
     call: RpcCall,
     origin: Option<Rc<JobOrigin>>,
     entry: &Rc<CallEntry>,
-) -> Result<u8, String> {
+) -> Result<u8, Ended> {
     let origin = origin.ok_or("rpc requires a live job dispatched to this device")?;
     link.policy().admit_call(&origin)?;
     let stdout = link.pipes().to_device(link.device());
@@ -317,8 +347,11 @@ async fn run(
         () = entry.stopped.cancelled() => Err(entry.cause().map_or_else(String::new, |cause| cause.text().into())),
         drained = stdout.done() => drained.map_err(|failure| failure.to_string()),
     };
-    let code = result.map_err(|error| error.to_string())?;
-    drained.map(|()| code)
+    let code = result.map_err(|error| match error {
+        RpcError::Usage(text) => Ended::Usage(text),
+        error => Ended::Failed(error.to_string()),
+    })?;
+    Ok(drained.map(|()| code)?)
 }
 
 /// The handler's port over the relay.

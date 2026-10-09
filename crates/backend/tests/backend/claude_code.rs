@@ -4,9 +4,12 @@
 //! conversation infers through it as in the product. The CLI declares Demi's
 //! SDK MCP server and offers the model its tools, streams reasoning and
 //! text, runs a batch of tool calls through Demi and sends back their
-//! results, reports usage, stops in the middle of a stream, starts again
-//! from the transcript, for another model and effort too, and reports a
-//! vendor error as the request's failure. It reads the account's access
+//! results, reports usage, stops in the middle of a stream, and reports a
+//! vendor error as the request's failure. Each new process, for another
+//! model and effort, after another provider's turn or after a stop,
+//! resumes the session the blocks hold: its first request begins with the
+//! last request of the process before it, with no account of the CLI's
+//! machine. It reads the account's access
 //! token from a descriptor and runs in a private directory of its own that
 //! goes with it; a turn the vendor refuses for its token is refreshed at the
 //! token endpoint and sent again in a new process. Every assertion is on what the product
@@ -45,8 +48,8 @@ use sha2::{Digest as _, Sha256};
 
 use crate::claude::{claude_models, settled};
 use crate::conversations::{
-    Socket, choose, create, events, kinds, last_text, message, message_start, send, text_block,
-    thinking_block, tool_use_block, transcript, usage,
+    Socket, anthropic, choose, create, events, kinds, last_text, message, message_start, send,
+    text_block, thinking_block, tool_use_block, transcript, usage,
 };
 use crate::support::{Harness, Session, TestBackend};
 
@@ -183,6 +186,9 @@ fn cloud_env(vendor: &MockVendor, ca: &str) -> BTreeMap<String, String> {
 /// distribution, with a Claude Code entry whose account's token is made up,
 /// and the scripted vendor the CLI infers from.
 struct World {
+    /// Held while the world lives: the scenarios' CLI processes keep their
+    /// directories in the one `/tmp`, which a scenario counts.
+    _serial: tokio::sync::MutexGuard<'static, ()>,
     harness: Harness,
     backend: TestBackend,
     master: Session,
@@ -196,6 +202,8 @@ impl World {
     /// Adding the account installs the CLI on the Cloud; the world is ready
     /// once it is installed.
     async fn start() -> Self {
+        static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+        let serial = SERIAL.lock().await;
         let supplied = &*SUPPLIED;
         let ca = trusted_ca();
         let distribution = MockVendor::start_tls(CERTIFICATE, KEY).await;
@@ -264,6 +272,7 @@ impl World {
             "the Cloud did not install the CLI: {installed:?}"
         );
         Self {
+            _serial: serial,
             harness,
             backend,
             master,
@@ -322,12 +331,19 @@ impl World {
     }
 }
 
-/// The CLI process a request came from: each process is a session of its
-/// own, since it persists none.
+/// The CLI process a request came from: every process resumes the
+/// conversation's session, but in a configuration directory of its own,
+/// whose device id the CLI names in each request.
 fn process(request: &RecordedRequest) -> String {
-    request
-        .header("x-claude-code-session-id")
-        .expect("the CLI names its session")
+    let user: Value = serde_json::from_str(
+        request.json()["metadata"]["user_id"]
+            .as_str()
+            .expect("the CLI names its user"),
+    )
+    .expect("the CLI's user is JSON");
+    user["device_id"]
+        .as_str()
+        .expect("the CLI names its device")
         .to_owned()
 }
 
@@ -357,21 +373,47 @@ fn messages(request: &Value) -> Vec<(String, Vec<String>)> {
         .collect()
 }
 
-/// Asserts that a new process received the transcript as one user message
-/// that holds `parts` in order: the earlier turns, then the new input.
-fn replayed(request: &Value, parts: &[&str]) {
-    let messages = messages(request);
-    let [(role, texts)] = messages.as_slice() else {
-        panic!("the new process did not receive the transcript as one message: {messages:?}");
-    };
-    assert_eq!(role, "user", "{messages:?}");
-    let text = texts.join("\n");
-    let mut from = 0;
-    for part in parts {
-        let Some(at) = text[from..].find(part) else {
-            panic!("{part:?} is not in its place in the replayed transcript: {text}");
-        };
-        from += at + part.len();
+/// A request's messages as the vendor caches them: without the CLI's cache
+/// marks, which move to each request's end, and a text the CLI sends as a
+/// string read as the one text block it is.
+fn as_cached(request: &Value) -> Vec<Value> {
+    fn unmarked(value: &Value) -> Value {
+        match value {
+            Value::Object(fields) => fields
+                .iter()
+                .filter(|(name, _)| *name != "cache_control")
+                .map(|(name, value)| (name.clone(), unmarked(value)))
+                .collect(),
+            Value::Array(values) => values.iter().map(unmarked).collect(),
+            value => value.clone(),
+        }
+    }
+    request["messages"]
+        .as_array()
+        .expect("the request has messages")
+        .iter()
+        .map(|message| {
+            let mut message = unmarked(message);
+            if let Some(text) = message["content"].as_str() {
+                message["content"] = json!([{ "type": "text", "text": text }]);
+            }
+            message
+        })
+        .collect()
+}
+
+/// Asserts that `later` begins with every message `earlier` sent, as the
+/// vendor caches them.
+fn begins_with(later: &Value, earlier: &Value) {
+    let (earlier, later) = (as_cached(earlier), as_cached(later));
+    assert!(
+        later.len() > earlier.len(),
+        "{} messages after {}: {later:#?}",
+        later.len(),
+        earlier.len(),
+    );
+    for (index, (sent, again)) in earlier.iter().zip(&later).enumerate() {
+        assert_eq!(again, sent, "message {index} differs");
     }
 }
 
@@ -393,11 +435,11 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
     // The install: the pointer, the manifest and this machine's build, each
     // read once, and an executable that is the supplied one, byte for byte.
     let cli = settled(&world.backend, &world.master, &world.provider).await;
-    let path = format!("{}/.demi/claude/{}/claude", world.home(), supplied.version);
-    assert_eq!(
-        cli.install,
-        Some(CliInstall::Installed { path: path.clone() })
-    );
+    // The CLI is an artifact of the package, in the runner's cache, where
+    // it is the supplied one, byte for byte.
+    let Some(CliInstall::Installed { path }) = &cli.install else {
+        panic!("the CLI is not installed: {cli:?}");
+    };
     assert_eq!(
         cli.newest,
         NewestVersion::Read {
@@ -449,8 +491,12 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
         .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a11", "Say hello.")
         .await;
     let blocks = world.blocks().await;
-    assert_eq!(kinds(&blocks), ["user", "thinking", "text", "response"]);
-    let Block::Thinking(thinking) = &blocks[1] else {
+    // The conversation's first request tells the model where it runs.
+    assert_eq!(
+        kinds(&blocks),
+        ["user", "context", "thinking", "text", "response"]
+    );
+    let Block::Thinking(thinking) = &blocks[2] else {
         unreachable!()
     };
     assert_eq!(
@@ -458,7 +504,7 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
         ("Weighing a greeting.", Some("signature-1"))
     );
     assert_eq!(last_text(&blocks), "Hello from the vendor.");
-    let Block::Response(response) = &blocks[3] else {
+    let Block::Response(response) = &blocks[4] else {
         unreachable!()
     };
     let counted = TokenUsage {
@@ -494,7 +540,7 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
     assert!(
         body["system"]
             .to_string()
-            .contains("You are a coding agent"),
+            .contains("You are Demi"),
         "{}",
         body["system"]
     );
@@ -505,10 +551,15 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
         .filter_map(|tool| tool["name"].as_str())
         .collect();
     assert!(tools.contains(&SHELL), "{tools:?}");
-    assert_eq!(
-        messages(&body),
-        [("user".to_owned(), vec!["Say hello.".to_owned()])]
-    );
+    // The message and the execution context the conversation's first
+    // request tells, which the CLI sends as one user message.
+    let sent = messages(&body);
+    let [(role, texts)] = sent.as_slice() else {
+        panic!("one message: {sent:?}");
+    };
+    assert_eq!(role, "user");
+    assert_eq!(texts[0].trim_end(), "Say hello.");
+    assert!(texts[1].starts_with("[Execution context"), "{texts:?}");
 
     // A batch of two tool calls in one message: the CLI asks Demi for each
     // over the SDK MCP channel, Demi runs both commands on the Cloud, and
@@ -546,12 +597,12 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
         .await;
     let blocks = world.blocks().await;
     assert_eq!(
-        kinds(&blocks[4..]),
+        kinds(&blocks[5..]),
         ["user", "tool_call", "tool_call", "text", "response"],
         "{:?}",
         kinds(&blocks)
     );
-    for (block, (id, printed)) in blocks[5..7].iter().zip([
+    for (block, (id, printed)) in blocks[6..8].iter().zip([
         ("toolu_suite_1", "the first ran on the Cloud"),
         ("toolu_suite_2", "the second ran on the Cloud"),
     ]) {
@@ -577,7 +628,7 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
     // The CLI's result reports the turn's two calls together and lists no
     // calls one by one, so the response carries their sum
     // (`claude-code.md` § Reading).
-    let Block::Response(response) = &blocks[8] else {
+    let Block::Response(response) = &blocks[9] else {
         unreachable!()
     };
     assert_eq!(
@@ -631,16 +682,215 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
     world.backend.close().await;
 }
 
-// Several seconds: see the first scenario.
+// Several seconds: see the first scenario. It runs five CLI processes and a
+// turn of another provider, since what it proves is what one process's
+// session gives the next.
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
-async fn stop_ends_the_clis_stream_and_each_new_process_replays_the_transcript_for_its_model_and_effort()
+async fn each_new_process_resumes_the_session_the_blocks_hold_and_its_first_request_begins_with_the_last_one()
  {
     let world = World::start().await;
     let mut socket = world.conversation().await;
+    let change = |body: Value| {
+        let world = &world;
+        async move {
+            let changed = world
+                .backend
+                .patch(&format!("/api/conversations/{CONVERSATION}"), &world.master, body)
+                .await;
+            assert_eq!(
+                changed.status,
+                StatusCode::OK,
+                "{}",
+                String::from_utf8_lossy(&changed.body)
+            );
+        }
+    };
 
-    // Text reaches the page while the vendor's message is still open; Stop
-    // closes the process, which leaves the vendor's stream.
+    // A turn of reasoning and text, and a turn of a two-call batch, in one
+    // process.
+    world.answers(message(
+        vec![
+            thinking_block(0, "Weighing a greeting.", "signature-1"),
+            text_block(1, &["Hello."]),
+        ],
+        "end_turn",
+        json!({ "input_tokens": 10, "output_tokens": 1 }),
+        3,
+    ));
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a21", "Say hello.")
+        .await;
+    let call = |text: &str| json!({ "description": "Print the text", "script": format!("printf '{text}'"), "timeoutMs": 60_000 });
+    world.answers(message(
+        vec![
+            tool_use_block(0, "toolu_suite_1", SHELL, &call("one")),
+            tool_use_block(1, "toolu_suite_2", SHELL, &call("two")),
+        ],
+        "tool_use",
+        json!({ "input_tokens": 20, "output_tokens": 1 }),
+        5,
+    ));
+    world.answers(message(
+        vec![text_block(0, &["Both ran."])],
+        "end_turn",
+        json!({ "input_tokens": 30, "output_tokens": 1 }),
+        3,
+    ));
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a22", "Run the tools.")
+        .await;
+    let first = world.inferences();
+    let first_last = first.last().unwrap().json();
+
+    // Another effort needs another process, which resumes the session the
+    // blocks hold: its first request begins with the last request of the
+    // process before it, history and all, so the vendor reads that part
+    // from its cache.
+    change(json!({ "thinkingEffort": "medium" })).await;
+    world.answers(message(
+        vec![text_block(0, &["With more effort."])],
+        "end_turn",
+        json!({ "input_tokens": 14, "output_tokens": 1 }),
+        3,
+    ));
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a23", "Once more.")
+        .await;
+    let inferences = world.inferences();
+    let [.., effort] = inferences.as_slice() else {
+        unreachable!()
+    };
+    assert_ne!(process(effort), process(&first[0]));
+    let effort = effort.json();
+    assert_eq!(effort["output_config"]["effort"], "medium");
+    begins_with(&effort, &first_last);
+
+    // Another model's process carries its own request's system prompt,
+    // which names the model, not the one the session recorded.
+    change(json!({ "model": { "providerId": world.provider, "modelId": OTHER_MODEL } })).await;
+    world.answers(message(
+        vec![text_block(0, &["Another model answers."])],
+        "end_turn",
+        json!({ "input_tokens": 15, "output_tokens": 1 }),
+        3,
+    ));
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a24", "Again, briefly.")
+        .await;
+    let inferences = world.inferences();
+    let [.., other] = inferences.as_slice() else {
+        unreachable!()
+    };
+    let other_process = process(other);
+    let other = other.json();
+    assert_eq!(other["model"], OTHER_MODEL);
+    assert!(
+        first_last["system"].to_string().contains(MODEL)
+            && other["system"].to_string().contains(OTHER_MODEL),
+        "the system prompt did not follow the model: {}",
+        other["system"]
+    );
+
+    // A turn of another provider, then back to Claude Code: the next
+    // process resumes that turn written in Claude's format, the call under
+    // the name the CLI gives Demi's tool, after what the process before it
+    // sent.
+    let anthropic = anthropic(&world.backend, &world.master, &world.vendor).await;
+    choose(
+        &world.backend,
+        &world.master,
+        CONVERSATION,
+        &anthropic,
+        OTHER_MODEL,
+    )
+    .await;
+    world.answers(message(
+        vec![
+            text_block(0, &["Looking."]),
+            tool_use_block(1, "toolu_api_1", "shell_exec", &call("three")),
+        ],
+        "tool_use",
+        json!({ "input_tokens": 40, "output_tokens": 1 }),
+        5,
+    ));
+    world.answers(message(
+        vec![text_block(0, &["Seen."])],
+        "end_turn",
+        json!({ "input_tokens": 50, "output_tokens": 1 }),
+        2,
+    ));
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a25", "Look at it.")
+        .await;
+    choose(
+        &world.backend,
+        &world.master,
+        CONVERSATION,
+        &world.provider,
+        OTHER_MODEL,
+    )
+    .await;
+    world.answers(message(
+        vec![text_block(0, &["Back."])],
+        "end_turn",
+        json!({ "input_tokens": 60, "output_tokens": 1 }),
+        2,
+    ));
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a26", "Back to you.")
+        .await;
+    let inferences = world.inferences();
+    let [.., resumed] = inferences.as_slice() else {
+        unreachable!()
+    };
+    assert_ne!(process(resumed), other_process);
+    let resumed = resumed.json();
+    begins_with(&resumed, &other);
+    let contents: Vec<Value> = resumed["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|message| message["content"].as_array().cloned().unwrap_or_default())
+        .collect();
+    let written_call = contents
+        .iter()
+        .find(|block| block["id"] == "toolu_api_1")
+        .unwrap_or_else(|| panic!("the other provider's call is not in its place: {resumed}"));
+    assert_eq!(written_call["name"], SHELL);
+    assert!(
+        contents.iter().any(|block| block["tool_use_id"] == "toolu_api_1"
+            && block.to_string().contains("three")),
+        "the other provider's result is not in its place: {resumed}"
+    );
+    let said: Vec<(String, Vec<String>)> = messages(&resumed)
+        .into_iter()
+        .map(|(role, texts)| {
+            // The CLI's reminders the model reads beside a message.
+            let texts = texts
+                .into_iter()
+                .filter(|text| !text.starts_with("<system-reminder>"))
+                .collect();
+            (role, texts)
+        })
+        .collect();
+    let tail: Vec<(&str, Vec<&str>)> = said[said.len() - 5..]
+        .iter()
+        .map(|(role, texts)| (role.as_str(), texts.iter().map(String::as_str).collect()))
+        .collect();
+    assert_eq!(
+        tail,
+        [
+            ("user", vec!["Look at it."]),
+            ("assistant", vec!["Looking."]),
+            ("user", vec![]),
+            ("assistant", vec!["Seen."]),
+            ("user", vec!["Back to you."]),
+        ]
+    );
+
+    // Stop in the middle of a stream closes the process; the next one
+    // resumes the text that reached the page.
     let mut streaming = vec![message_start(
         json!({ "input_tokens": 12, "output_tokens": 1 }),
     )];
@@ -648,7 +898,7 @@ async fn stop_ends_the_clis_stream_and_each_new_process_replays_the_transcript_f
     world.answers(MockResponse::event_stream(events(&streaming)).stay_open());
     socket
         .send(&send(
-            "5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a21",
+            "5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a27",
             "Write a long answer.",
         ))
         .await;
@@ -657,11 +907,7 @@ async fn stop_ends_the_clis_stream_and_each_new_process_replays_the_transcript_f
         .await;
     socket.stop().await;
     world.vendor.disconnected().await;
-    let blocks = world.blocks().await;
-    assert_eq!(last_text(&blocks), "The long answer begins");
-
-    // The next message starts a new process, which receives the
-    // transcript, not a session of the CLI's.
+    assert_eq!(last_text(&world.blocks().await), "The long answer begins");
     world.answers(message(
         vec![text_block(0, &["A short answer."])],
         "end_turn",
@@ -670,72 +916,41 @@ async fn stop_ends_the_clis_stream_and_each_new_process_replays_the_transcript_f
     ));
     socket
         .chat(
-            "5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a22",
+            "5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a28",
             "Answer briefly instead.",
         )
         .await;
     assert_eq!(last_text(&world.blocks().await), "A short answer.");
     let inferences = world.inferences();
-    let [stopped, second] = inferences.as_slice() else {
-        panic!("two requests: {inferences:?}");
+    let [.., stopped, after] = inferences.as_slice() else {
+        unreachable!()
     };
-    assert_ne!(process(second), process(stopped));
-    replayed(
-        &second.json(),
-        &[
+    assert_ne!(process(after), process(stopped));
+    let texts: Vec<String> = messages(&after.json())
+        .into_iter()
+        .flat_map(|(_, texts)| texts)
+        .filter(|text| !text.starts_with("<system-reminder>"))
+        .collect();
+    assert_eq!(
+        texts[texts.len() - 3..],
+        [
             "Write a long answer.",
             "The long answer begins",
-            "Answer briefly instead.",
-        ],
+            "Answer briefly instead."
+        ]
     );
 
-    // Another model and effort need another process, started with them,
-    // which receives the transcript too.
-    let switch = json!({ "model": { "providerId": world.provider, "modelId": OTHER_MODEL }, "thinkingEffort": "medium" });
-    let switched = world
-        .backend
-        .patch(
-            &format!("/api/conversations/{CONVERSATION}"),
-            &world.master,
-            switch,
-        )
-        .await;
-    assert_eq!(
-        switched.status,
-        StatusCode::OK,
-        "{}",
-        String::from_utf8_lossy(&switched.body)
-    );
-    world.answers(message(
-        vec![text_block(0, &["Another model answers."])],
-        "end_turn",
-        json!({ "input_tokens": 14, "output_tokens": 1 }),
-        3,
-    ));
-    socket
-        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a23", "Once more.")
-        .await;
-    assert_eq!(last_text(&world.blocks().await), "Another model answers.");
-    let inferences = world.inferences();
-    let [_, second, third] = inferences.as_slice() else {
-        panic!("three requests: {inferences:?}");
-    };
-    assert_ne!(process(third), process(second));
-    let body = third.json();
-    assert_eq!(
-        (&body["model"], &body["output_config"]["effort"]),
-        (&json!(OTHER_MODEL), &json!("medium"))
-    );
-    replayed(
-        &body,
-        &[
-            "Write a long answer.",
-            "The long answer begins",
-            "Answer briefly instead.",
-            "A short answer.",
-            "Once more.",
-        ],
-    );
+    // No request carries the CLI's own account of its machine.
+    let run_dir = format!("{}/.demi/claude/run", world.home());
+    for request in world.inferences() {
+        let sent = request.json()["messages"].to_string();
+        assert!(
+            !sent.contains("Primary working directory")
+                && !sent.contains("OS Version")
+                && !sent.contains(&run_dir),
+            "a request carries the CLI's environment: {sent}"
+        );
+    }
     drop(socket);
     world.backend.close().await;
 }
@@ -750,19 +965,23 @@ async fn a_vendor_error_fails_the_request_in_the_clis_words_and_the_kept_process
 
     // The vendor refuses the request: the request fails with the CLI's words
     // for it, and the ledger has no row for it.
+    // Claude Code 2.1.293 sends a refused call once more without its
+    // thinking display before it gives up.
     let refusal = json!({ "type": "error", "error": {
         "type": "invalid_request_error", "message": "The scripted vendor refuses this request." } });
-    world.answers(
-        MockResponse::status(400)
-            .header("content-type", "application/json")
-            .chunk(refusal.to_string()),
-    );
+    for _ in 0..2 {
+        world.answers(
+            MockResponse::status(400)
+                .header("content-type", "application/json")
+                .chunk(refusal.to_string()),
+        );
+    }
     socket
         .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a31", "Hello?")
         .await;
     let blocks = world.blocks().await;
-    assert_eq!(kinds(&blocks), ["user", "error"]);
-    let Block::Error(failed) = &blocks[1] else {
+    assert_eq!(kinds(&blocks), ["user", "context", "error"]);
+    let Block::Error(failed) = &blocks[2] else {
         unreachable!()
     };
     assert!(
@@ -786,15 +1005,15 @@ async fn a_vendor_error_fails_the_request_in_the_clis_words_and_the_kept_process
         .await;
     let blocks = world.blocks().await;
     assert_eq!(
-        kinds(&blocks[2..]),
+        kinds(&blocks[3..]),
         ["user", "text", "response"],
         "{:?}",
         kinds(&blocks)
     );
     assert_eq!(last_text(&blocks), "Better now.");
     let inferences = world.inferences();
-    let [refused, answered] = inferences.as_slice() else {
-        panic!("two requests: {inferences:?}");
+    let [refused, _, answered] = inferences.as_slice() else {
+        panic!("three requests: {inferences:?}");
     };
     assert_eq!(process(answered), process(refused));
     assert_eq!(
@@ -867,7 +1086,7 @@ async fn the_cli_reads_its_token_from_a_descriptor_in_its_own_directory_and_a_re
         .await;
     // The user sees the turn once.
     let blocks = world.blocks().await;
-    assert_eq!(kinds(&blocks), ["user", "text", "response"]);
+    assert_eq!(kinds(&blocks), ["user", "context", "text", "response"]);
     assert_eq!(last_text(&blocks), "Fresh again.");
     let inferences = world.inferences();
     let tokens: Vec<Option<String>> = inferences

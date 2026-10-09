@@ -24,7 +24,7 @@ use crate::subagents::{Scripts, WAIT, say, shell, tree_on};
 use crate::support::{Harness, Session, TestBackend, eventually};
 
 /// What a refused command prints, which the agent reads.
-const REFUSED: &str = "demi: this conversation needs the user's permission to manage skills; the request was sent to the user, and you will be told when the user decides";
+const REFUSED: &str = "this conversation needs the user's permission to manage skills; the request was sent to the user, and you will be told when the user decides";
 
 /// The repository `acme/tools` with the skills `review` and `lint`.
 fn repos() -> Arc<Repos> {
@@ -167,7 +167,7 @@ async fn a_command_without_the_grant_asks_and_the_users_allow_grants_the_categor
     );
     socket.chat("m1", "Install acme/tools").await;
     let refused = last_asked(&scripts, FIRST);
-    assert!(refused.contains(REFUSED), "{refused}");
+    assert!(refused.contains(&format!("demi skills add: {REFUSED}")), "{refused}");
     assert!(refused.contains("exit=1"), "{refused}");
     // The plugin never received the command: nothing was fetched or added.
     assert_eq!(sources(&harness), 0);
@@ -231,7 +231,7 @@ async fn a_command_without_the_grant_asks_and_the_users_allow_grants_the_categor
         ],
     );
     second.chat("n1", "Turn lint off").await;
-    assert!(last_asked(&scripts, SECOND).contains(REFUSED));
+    assert!(last_asked(&scripts, SECOND).contains(&format!("demi skills disable: {REFUSED}")));
     let other = permissions(&backend, &master, SECOND).await;
     assert_eq!(other.requests.len(), 1, "{other:?}");
     assert!(granted(&harness, SECOND).is_empty());
@@ -298,7 +298,7 @@ async fn a_newer_command_replaces_the_request_and_a_deny_remembers_nothing() {
         vec![shell("t3", "demi skills add acme/tools"), say("asked")],
     );
     socket.chat("m2", "Try again").await;
-    assert!(last_asked(&scripts, FIRST).contains(REFUSED));
+    assert!(last_asked(&scripts, FIRST).contains(&format!("demi skills add: {REFUSED}")));
     let read = permissions(&backend, &master, FIRST).await;
     assert_eq!(read.requests.len(), 1, "{read:?}");
     backend.close().await;
@@ -646,7 +646,7 @@ async fn a_move_that_brings_a_device_asks_for_both_categories_in_one_request() {
     socket.chat("m1", "Move into ledable-app").await;
     let refused = last_asked(&scripts, FIRST);
     assert!(
-        refused.contains("demi: this conversation needs the user's permission to organize conversations and manage devices; the request was sent to the user"),
+        refused.contains("demi conversation move: this conversation needs the user's permission to organize conversations and manage devices; the request was sent to the user"),
         "{refused}"
     );
     assert!(refused.contains("exit=1"), "{refused}");

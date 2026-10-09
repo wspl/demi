@@ -213,8 +213,7 @@ async fn the_quota_is_probed_with_the_accounts_token_and_observed_on_the_clis_li
     let (_, ()) = tokio::join!(
         all_events(runtime.run(request_without_tools(vec![user("hi")]))),
         async {
-            let mut cli = starts.next().await;
-            cli.read().await;
+            let cli = starts.next().await;
             cli.say(json!({
                 "type": "rate_limit_event",
                 "rate_limit_info": {

@@ -14,7 +14,8 @@ use demi_host_interface::{
     HostError, Process, ProcessControl, ProcessEnd, ProcessOutput, Signal, SpawnRequest,
 };
 use demi_provider_claude_code::{
-    ClaudeCodeConfig, ClaudeCodeProvider, CliSite, ConfigDir, Placed, Placement, StartError,
+    ClaudeCodeConfig, ClaudeCodeProvider, CliSite, CliStart, CliSystem, ConfigDir, Placed,
+    Placement, StartError,
 };
 use demi_provider_common::credentials::{
     AccountMeta, CredentialPool, MemoryCredentialPool, credential_id_for,
@@ -34,13 +35,19 @@ use futures_util::future::LocalBoxFuture;
 use serde_json::{Value, json};
 use tokio::sync::watch;
 
-/// The executable and run directory the scripted placement says every
-/// process has; each process's configuration directory is its own.
+/// The executable, run directory and machine the scripted placement says
+/// every process has; each process's configuration directory is its own.
 pub fn site() -> CliSite {
     CliSite {
         executable: "/home/demi/.demi/claude/2.1.3/claude".into(),
         run_dir: "/home/demi/.demi/claude/run".into(),
         config_dir: String::new(),
+        system: CliSystem {
+            kernel: "Linux".into(),
+            release: "6.8.0-test".into(),
+            shell: Some("/bin/bash".into()),
+            working_directory: "/home/demi/.demi/claude/run".into(),
+        },
     }
 }
 
@@ -257,7 +264,7 @@ impl Starts {
 impl Placement for ScriptedPlacement {
     fn start<'a>(
         &'a self,
-        spawn: &'a dyn Fn(&CliSite) -> SpawnRequest,
+        start: &'a dyn Fn(&CliSite) -> CliStart,
     ) -> LocalBoxFuture<'a, Result<Placed, StartError>> {
         Box::pin(async move {
             if let Some(failure) = self.failure.borrow_mut().take() {
@@ -269,7 +276,7 @@ impl Placement for ScriptedPlacement {
                 config_dir: format!("/tmp/demi-claude-{started}"),
                 ..site()
             };
-            let (process, cli) = scripted(spawn(&site), site.config_dir);
+            let (process, cli) = scripted(start(&site), site.config_dir);
             let config = Box::new(ScriptedConfig(cli.state.clone()));
             // A test that dropped its end of the placement starts nothing more.
             let _ = self.started.unbounded_send(cli);
@@ -330,7 +337,8 @@ impl State {
     }
 }
 
-fn scripted(spawn: SpawnRequest, config_dir: String) -> (Process, Cli) {
+fn scripted(start: CliStart, config_dir: String) -> (Process, Cli) {
+    let CliStart { spawn, files } = start;
     let (output, outputs) = mpsc::unbounded();
     let (input, inputs) = mpsc::unbounded();
     let state = Rc::new(State {
@@ -361,6 +369,7 @@ fn scripted(spawn: SpawnRequest, config_dir: String) -> (Process, Cli) {
     };
     let cli = Cli {
         spawn,
+        files,
         state,
         inputs,
     };
@@ -419,6 +428,9 @@ impl Drop for Control {
 pub struct Cli {
     /// What the provider asked the placement to start.
     pub spawn: SpawnRequest,
+    /// The files the provider put in the configuration directory, by their
+    /// path there.
+    pub files: Vec<(String, Bytes)>,
     state: Rc<State>,
     inputs: mpsc::UnboundedReceiver<Value>,
 }
@@ -434,6 +446,40 @@ impl Cli {
     /// Every line the provider wrote and the test did not read yet.
     pub fn unread(&mut self) -> Vec<Value> {
         std::iter::from_fn(|| self.inputs.try_recv().ok()).collect()
+    }
+
+    /// The session the process resumes: the path of the one file under
+    /// `projects/demi`, which the argument after `--resume` names, and its
+    /// entries.
+    pub fn session(&self) -> Vec<Value> {
+        let [(path, bytes)] = self.files.as_slice() else {
+            panic!("one file: {:?}", self.files);
+        };
+        let resumed = self
+            .spawn
+            .args
+            .windows(2)
+            .find(|pair| pair[0] == "--resume")
+            .map(|pair| pair[1].clone())
+            .expect("the process resumes a session");
+        assert_eq!(path, &format!("projects/demi/{resumed}.jsonl"));
+        let text = std::str::from_utf8(bytes).expect("the session is text");
+        text.lines()
+            .map(|line| serde_json::from_str(line).expect("each line is an entry"))
+            .collect()
+    }
+
+    /// The messages of the session's entries, in order.
+    pub fn messages(&self) -> Vec<Value> {
+        self.session()
+            .into_iter()
+            .filter_map(|entry| entry.get("message").cloned())
+            .collect()
+    }
+
+    /// A batch of `entries` the CLI wrote to its session.
+    pub fn mirror(&self, entries: Vec<Value>) {
+        self.say(json!({ "type": "transcript_mirror", "filePath": "/session.jsonl", "entries": entries }));
     }
 
     /// Writes `line` to the process's standard output.

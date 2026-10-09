@@ -5,13 +5,14 @@
 //! request's model cannot take as a text that says why.
 
 use std::borrow::Cow;
+use std::ops::Range;
 
 use demi_agent_store::media::{Held, ModelView, missing_text};
 use demi_provider_common::{
     InferenceItem, MediaBytes, Medium, RequestLimits, ResultPart, UserPart,
 };
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, B64Bytes, INSTRUCTIONS_SOURCE, BlobRef, Block, CommandEnd, CompletionOutcome,
+    AgentMessage, AgentMessageEvent, B64Bytes, INSTRUCTIONS_SOURCE, BlobRef, Block, BlockId, CommandEnd, CompletionOutcome,
     DocumentSource,
     PermissionOutcome,
     FileExtension, MediaSource, Model, ModelMediaKind, Timestamp, ToolCallStatus, ToolMediaSource,
@@ -62,9 +63,19 @@ pub const REPLAY_CHARS: usize = HEAD_CHARS + TAIL_CHARS;
 pub struct Replay {
     /// The inference items of the blocks, in order.
     pub items: Vec<InferenceItem>,
+    /// The blocks that give items, in order: each one's id, the items it
+    /// gives and the entries kept on it.
+    pub blocks: Vec<ReplayedBlock>,
     /// How many leading items the latest answered request carried: those of
     /// the blocks before its answer.
     pub answered: usize,
+}
+
+/// A block a request carries.
+pub struct ReplayedBlock {
+    pub id: BlockId,
+    pub items: Range<usize>,
+    pub entries: Vec<Value>,
 }
 
 /// What `request` carries of its model's view.
@@ -74,11 +85,13 @@ pub fn replay(request: &RequestView) -> Replay {
     let answer = latest_answer(blocks);
     let kept = kept_past_summary(blocks, start);
     let mut items = Vec::new();
+    let mut replayed = Vec::new();
     let mut answered = 0;
     for (index, block) in blocks.iter().enumerate().skip(start) {
         if Some(index) == answer {
             answered = items.len();
         }
+        let first = items.len();
         let kept_past_summary = kept.contains(&index);
         match block {
             Block::User(user) => {
@@ -168,8 +181,19 @@ pub fn replay(request: &RequestView) -> Replay {
             Block::Abort(_) | Block::Response(_) | Block::Error(_) | Block::CompactionMarker(_) => {
             }
         }
+        if items.len() > first {
+            replayed.push(ReplayedBlock {
+                id: block.id().clone(),
+                items: first..items.len(),
+                entries: block.entries().to_vec(),
+            });
+        }
     }
-    Replay { items, answered }
+    Replay {
+        items,
+        blocks: replayed,
+        answered,
+    }
 }
 
 /// The blocks compaction kept after the summary replay starts at: those

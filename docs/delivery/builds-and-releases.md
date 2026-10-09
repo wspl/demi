@@ -184,8 +184,11 @@ line tables (`debug = "line-tables-only"`); the Apple and Windows targets
 split them with Cargo (`split-debuginfo = "packed"`, a `.dSYM` and a
 `.pdb`), and for the Linux targets, where stripping removes what a packed
 debug file depends on, `xtask` builds unstripped and splits each executable
-itself (`objcopy --only-keep-debug`, then `--strip-debug` and
-`--add-gnu-debuglink`). These are the only compiler options a release sets
+itself, with `objcopy` on Linux and `llvm-objcopy` elsewhere
+(`--only-keep-debug`, then `--strip-all` and `--add-gnu-debuglink`), so the
+shipped executable keeps neither debug information nor a symbol table. The
+debug files are published as `<executable>-<target>.debug`,
+`<executable>-<target>.dSYM.zip` and `<executable>-<target>.pdb`. These are the only compiler options a release sets
 besides the ones above. Fat
 link-time optimization with one code-generation unit made the runner about a
 fifth smaller (24.1 MB against 30.9 MB for x86_64 Linux, 7.9 MB against

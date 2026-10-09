@@ -3,6 +3,7 @@
 
 pub mod descriptors;
 pub mod edits;
+pub mod errors;
 pub mod paths;
 
 #[cfg(feature = "testing")]

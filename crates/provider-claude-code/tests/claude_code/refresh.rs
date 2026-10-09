@@ -88,8 +88,7 @@ async fn a_token_expiring_within_thirty_minutes_is_refreshed_and_a_kept_process_
     let mut runtime = runtime_of(&provider, &placement);
     let first = request_without_tools(vec![user("hi")]);
     let (_, first_cli) = tokio::join!(all_events(runtime.run(first)), async {
-        let mut cli = starts.next().await;
-        cli.read().await;
+        let cli = starts.next().await;
         cli.result(1, 1);
         cli
     });
@@ -98,12 +97,11 @@ async fn a_token_expiring_within_thirty_minutes_is_refreshed_and_a_kept_process_
     assert!(vendor.requests().is_empty());
 
     // Twenty minutes left: the next request refreshes first and starts a new
-    // process, which replays the transcript, and the kept one goes.
+    // process, which resumes the transcript, and the kept one goes.
     now.set("2026-09-24T08:40:00Z".parse().unwrap());
     let second = request_without_tools(vec![user("hi"), user("again")]);
     let (_, second_cli) = tokio::join!(all_events(runtime.run(second)), async {
-        let mut cli = starts.next().await;
-        cli.read().await;
+        let cli = starts.next().await;
         cli.result(1, 1);
         cli
     });
@@ -135,12 +133,11 @@ async fn a_turn_refused_for_its_token_runs_once_more_in_a_new_process_and_the_ag
     let (events, (refused, answered)) = tokio::join!(
         all_events(runtime.run(request_without_tools(vec![user("hi")]))),
         async {
-            let mut refused = starts.next().await;
-            refused.read().await;
+            let refused = starts.next().await;
             refused.refused();
-            let mut answered = starts.next().await;
-            // The new process replays the transcript, as any new one does.
-            answered.read().await;
+            let answered = starts.next().await;
+            // The new process resumes the transcript, as any new one does.
+            assert_eq!(answered.messages(), refused.messages());
             answered.text("hello");
             answered.result(3, 1);
             (refused, answered)
@@ -170,8 +167,7 @@ async fn a_turn_refused_for_its_token_runs_once_more_in_a_new_process_and_the_ag
             let mut kept = answered;
             kept.read().await;
             kept.refused();
-            let mut retried = starts.next().await;
-            retried.read().await;
+            let retried = starts.next().await;
             retried.refused();
         }
     );
@@ -200,17 +196,13 @@ async fn processes_refused_together_get_one_refresh_and_the_same_fresh_token() {
     let mut second = runtime_of(&provider, &placement);
     // The vendor refuses both processes' token before either is answered.
     let refusals = async {
-        let mut clis = [starts.next().await, starts.next().await];
-        for cli in &mut clis {
-            cli.read().await;
-        }
+        let clis = [starts.next().await, starts.next().await];
         for cli in &clis {
             cli.refused();
         }
         let mut tokens = Vec::new();
         for _ in 0..2 {
-            let mut retried = starts.next().await;
-            retried.read().await;
+            let retried = starts.next().await;
             tokens.push(token_of(&retried).to_vec());
             retried.result(1, 1);
         }
@@ -251,8 +243,7 @@ async fn a_refresh_the_vendor_refuses_fails_the_request_and_starts_no_process() 
     let (events, ()) = tokio::join!(
         all_events(runtime.run(request_without_tools(vec![user("hi")]))),
         async {
-            let mut cli = starts.next().await;
-            cli.read().await;
+            let cli = starts.next().await;
             cli.refused();
         }
     );

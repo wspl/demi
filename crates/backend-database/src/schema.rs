@@ -298,7 +298,10 @@ ALTER TABLE command_outputs_next RENAME TO command_outputs;
 ";
 
 /// From 0.1.21's conversation schema: commands no longer run in shells, and
-/// a node's checkpoint state records how its last turn ended.
+/// a node's checkpoint state records how its last turn ended. Block format 2
+/// also lets a block keep the entries of a vendor's own record of the
+/// session (`claude-code.md` § The session a process resumes), which no
+/// block 0.1.21 stored has, so leaving the field out writes them as format 2.
 fn from_0_1_21(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     conversation_without_shells(transaction)?;
     record_last_turns(transaction)
@@ -956,6 +959,7 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
+-- blocks.block: transcript block format 2.
 CREATE TABLE blocks (
   node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx     INTEGER NOT NULL CHECK (idx >= 0),

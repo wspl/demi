@@ -24,6 +24,7 @@ async fn release_cancels_a_browser_command_blocked_on_output() {
         request: Invocation {
             operation: "browser.tabs".into(),
             invocation_id: "blocked-output".into(),
+            command: "demi test".into(),
             context: CommandContext {
                 color_scheme: demi_command_protocol::ColorScheme::Light,
                 conversation: "conversation".into(),
@@ -85,6 +86,7 @@ async fn invoked_for(
             request: Invocation {
                 operation: operation.into(),
                 invocation_id: "listed".into(),
+                command: "demi test".into(),
                 context: CommandContext {
                     color_scheme: demi_command_protocol::ColorScheme::Light,
                     conversation: "conversation".into(),

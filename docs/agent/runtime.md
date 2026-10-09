@@ -485,7 +485,11 @@ or a subagent ends, the work it waits for wakes it.
 - **How a report arrives.** A report joins a turn that accepts steers at its
   next continuation boundary, as a `wakeup` block with the placement
   `steer`; otherwise it starts a continuation whose input is a `wakeup` block
-  with the placement `new_turn`. Reports that arrive together are one block,
+  with the placement `new_turn`. Each report names the command by its
+  number and its call's title, as Claude Code's notice names a background
+  command by its description, since a model may have several running:
+  `Command 17 (Run the test suite) ended with exit code 1; look at it with
+  demi shell status 17.` Reports that arrive together are one block,
   one paragraph each: `Command 18 was stopped by the user.`,
   `Command 19 was lost: Demi was upgraded and the Host's runner replaced
   itself. Start it again if it is still needed.` A report never appears in
@@ -639,7 +643,8 @@ whichever agent ran it, and waits until it has ended: it prints
 `aborted` with its last output. A command that had already ended prints
 `[command 17 had already ended]` and also succeeds, so stopping is safe to
 repeat; a number that names no command of the conversation fails with
-`demi shell stop: no command 17 in this conversation`. It stops the command
+`demi shell stop: 17: no such command in this conversation`, while the
+others it names are still stopped. It stops the command
 as the page's stop does,
 through the command's shell environment: `TERM` first, so the command and
 every program it started can end cleanly, and `KILL` for what has not
@@ -672,7 +677,13 @@ output:
   all of it.
 - A result gives the command's status, its exit code once it has exited, its
   `commandId`, its timings while it runs, the output, and a hint
-  for the next step while it runs or once it was stopped.
+  for the next step while it runs or once it was stopped: that the node
+  will hear from the command as its interval says, and that
+  `demi shell status`, `input` and `stop` look at it, answer it and stop it.
+- A result whose command exited with a status other than 0, or was stopped
+  or lost, is marked as an error to the provider (`is_error` on Anthropic's
+  API), as Claude Code marks a failed command, so the model weighs it as a
+  failure; its text is the same.
 - A result's `idleMs` counts from the last time the command's output grew,
   also beyond the first 8 KiB of a stream: the runner reports such growth
   within 2 seconds even while no page follows the command

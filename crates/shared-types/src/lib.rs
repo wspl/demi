@@ -38,7 +38,8 @@ pub use agent_message::{
 pub use block::{
     AbortBlock, AgentMessageBlock, Block, CommandEnd, CompactionBoundaryBlock, CompactionMarkerBlock,
     ContextBlock, ErrorBlock, INSTRUCTIONS_SOURCE, InstructionEntry, RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock,
-    TextBlock, ThinkingBlock, ToolCallBlock, ToolCallStatus, UserBlock, WakeupBlock,
+    TextBlock, ThinkingBlock, ToolCallBlock, ToolCallStatus, UserBlock, WakeupBlock, client_block,
+    client_blocks,
     WakeupCommand, WakeupPlacement,
 };
 pub use bytes::B64Bytes;

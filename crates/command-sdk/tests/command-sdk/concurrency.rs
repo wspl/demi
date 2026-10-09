@@ -51,6 +51,7 @@ fn request(operation: &str) -> Invocation {
         edits: None,
         operation: operation.into(),
         invocation_id: operation.into(),
+        command: "demi test".into(),
         args: serde_json::json!({}),
         cwd: "/tmp".into(),
         env: BTreeMap::new(),

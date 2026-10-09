@@ -47,6 +47,8 @@ pub enum ServerFrame {
     },
     /// Every block, with the transcript's version.
     TranscriptReset {
+        #[serde(with = "demi_shared_types::client_blocks")]
+        #[schemars(with = "Vec<Block>")]
         #[garde(dive)]
         blocks: Vec<Block>,
         #[garde(dive)]
@@ -194,6 +196,8 @@ pub enum ServerFrame {
     SubagentTranscriptReset {
         #[garde(skip)]
         subagent_id: NodeId,
+        #[serde(with = "demi_shared_types::client_blocks")]
+        #[schemars(with = "Vec<Block>")]
         #[garde(dive)]
         blocks: Vec<Block>,
         #[garde(range(max = MAX_SAFE_INTEGER))]
