@@ -164,10 +164,12 @@ async fn a_search_lists_title_matches_then_the_newest_messages_and_follows_edits
         search(&backend, &master, "mapping ts2307").await,
         vec![(FIRST.to_owned(), false, marks(&[]), found("Missing 路径 mapping for TS2307", &["mapping", "TS2307"]))]
     );
-    assert_eq!(
-        search(&backend, &master, "kubeconfig").await,
-        vec![(THIRD.to_owned(), true, marks(&[]), found("Also check the kubeconfig", &["kubeconfig"]))]
-    );
+    // The steer Stop wrote may reach the index after the rest, under load.
+    let steered = vec![(THIRD.to_owned(), true, marks(&[]), found("Also check the kubeconfig", &["kubeconfig"]))];
+    eventually("the index holds the steer", || async {
+        search(&backend, &master, "kubeconfig").await == steered
+    })
+    .await;
     assert_eq!(search(&backend, &master, "relogin cache").await, vec![]);
     assert_eq!(search(&backend, &master, "unsearchedthought").await, vec![]);
     let empty = backend.get("/api/search?q=%20%20", Some(&master)).await;

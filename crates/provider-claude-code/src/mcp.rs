@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use demi_provider_common::{ResultPart, ToolCall, ToolDefinition};
+use demi_provider_common::{MediaBytes, ResultPart, ToolCall, ToolDefinition};
 use futures_channel::mpsc;
 use futures_util::StreamExt as _;
 use rmcp::model::{
@@ -306,7 +306,7 @@ pub(crate) fn tool_result(output: &[ResultPart], is_error: bool) -> CallToolResu
             ResultPart::Image(bytes) => {
                 ContentBlock::image(STANDARD.encode(&bytes.data), bytes.media_type.clone())
             }
-            ResultPart::Video(bytes) => ContentBlock::text(format!("[video:{}]", bytes.media_type)),
+            ResultPart::Video(bytes) => ContentBlock::text(video_text(bytes)),
         })
         .collect();
     if is_error {
@@ -314,4 +314,9 @@ pub(crate) fn tool_result(output: &[ResultPart], is_error: bool) -> CallToolResu
     } else {
         CallToolResult::success(content)
     }
+}
+
+/// A video of a tool's result, which MCP content cannot hold, named in text.
+pub(crate) fn video_text(bytes: &MediaBytes) -> String {
+    format!("[video:{}]", bytes.media_type)
 }

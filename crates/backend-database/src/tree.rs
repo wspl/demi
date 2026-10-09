@@ -1219,6 +1219,7 @@ mod tests {
             model: test_model(),
             content: text("hi"),
             preamble: None,
+            entries: Vec::new(),
         })
     }
 
@@ -1229,6 +1230,7 @@ mod tests {
             model: test_model(),
             text: "hello".into(),
             forkable: false,
+            entries: Vec::new(),
         })
     }
 

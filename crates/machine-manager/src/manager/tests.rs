@@ -47,6 +47,7 @@ fn fixture() -> Fixture {
         runsc: PathBuf::from("/nonexistent/runsc"),
         image: directory.path().join("image"),
         backend_url: "http://203.0.113.10:3271".parse().unwrap(),
+        runner_socket: PathBuf::from("/nonexistent/runner/runners.sock"),
         limits: Some(Limits {
             cpus: NonZeroU32::new(2).unwrap(),
             memory_mib: NonZeroU32::new(2048).unwrap(),

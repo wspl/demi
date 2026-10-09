@@ -109,6 +109,7 @@ pub fn inference_request() -> InferenceRequest {
         items: Arc::new([InferenceItem::UserMessage {
             content: vec![UserPart::Text("hello".into())],
         }]),
+        blocks: Arc::new([]),
         tools: Arc::new([]),
         thinking: None,
         service_tier_id: None,

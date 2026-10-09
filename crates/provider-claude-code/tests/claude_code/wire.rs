@@ -19,8 +19,7 @@ async fn answer(lines: Vec<Value>) -> (Vec<ProviderEvent>, Vec<Signal>) {
     let (events, cli) = tokio::join!(
         all_events(runtime.run(request_without_tools(vec![user("hi")]))),
         async {
-            let mut cli = starts.next().await;
-            cli.read().await;
+            let cli = starts.next().await;
             for line in lines {
                 cli.say(line);
             }
