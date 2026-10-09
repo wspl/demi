@@ -42,6 +42,7 @@ use super::{
     editing::{EditCheck, EditError, EditInFlight, EditSubmission},
     input::{Input, InputQueue, Take, Wakeups},
     persist::PersistMarks,
+    runtime::Arrivals,
 };
 
 pub(crate) struct SessionCore {
@@ -121,8 +122,21 @@ pub(super) struct ActionRun {
     /// written: waiting input meanwhile, whose held bytes stay
     /// (`runtime.md` § Media).
     unwritten_media: Vec<BlobRef>,
+    /// What the user sent now, which the turn takes at its next boundary.
+    send_now: Option<SendNow>,
     /// Taken by the worker when it starts the action.
     start: Option<StartedAction>,
+}
+
+/// What the user sent now (`runtime.md` § Send now). A queued message
+/// outranks a steer: both are written at the boundary, and the turn ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum SendNow {
+    /// A pending steer: the turn goes on with the next request.
+    Steer,
+    /// A queued message, now first in the queue: the turn ends at the
+    /// boundary, and the message runs next.
+    Message,
 }
 
 /// Where a running action is.
@@ -525,6 +539,7 @@ impl SessionCore {
             stage: TurnStage::Preparing,
             started_at: self.transcript.version().revision,
             unwritten_media,
+            send_now: None,
             start: Some(StartedAction {
                 kind,
                 turn,
@@ -835,6 +850,18 @@ impl SessionCore {
         true
     }
 
+    /// Sends a queued message now (`runtime.md` § Send now): it moves to the
+    /// front of the queue and, while a turn runs, cuts the turn's round
+    /// short and ends the turn at the boundary. False when no queued message
+    /// has the id.
+    pub(super) fn send_queued_now(&mut self, id: &TurnId) -> bool {
+        if !self.send_next(id) {
+            return false;
+        }
+        self.cut_round(SendNow::Message);
+        true
+    }
+
     pub(super) fn clear_queue(&mut self) -> usize {
         if self.disposing {
             return 0;
@@ -908,27 +935,50 @@ impl SessionCore {
         self.inputs.cancel_steer(id)
     }
 
-    /// Turns a queued message into a steer of the running action; false when
-    /// no queued message has the id. A refused steer leaves the message
-    /// queued.
-    pub(super) fn steer_queued(
-        &mut self,
-        message: &TurnId,
-        steer: BlockId,
-    ) -> Result<bool, SteerError> {
-        self.steerable_turn()?;
-        let Some(PendingAction { kind, reply, .. }) = self.take_queued(message) else {
-            return Ok(false);
-        };
-        let ActionKind::Send { content } = kind else {
-            unreachable!("a queued message is a send");
-        };
-        if let Some(reply) = reply {
-            // A caller that dropped its handle wants no answer.
-            let _ = reply.send(Ok(ActionEnd::Dropped));
+    /// Delivers the pending steer `id` now (`runtime.md` § Send now): the
+    /// turn's round is cut short, and the turn goes on with the steer. A
+    /// steer that is no longer pending changes nothing.
+    pub(super) fn steer_now(&mut self, id: &BlockId) {
+        if self.inputs.has_steer(id) {
+            self.cut_round(SendNow::Steer);
         }
-        self.steer(steer, content)?;
-        Ok(true)
+    }
+
+    /// Asks the running turn to cut its round short for what the user sent
+    /// now. A stopped action, and one that prepares an edit, runs no turn to
+    /// cut; nor does a finishing or an idle session.
+    fn cut_round(&mut self, now: SendNow) {
+        if self.preparing_edit() {
+            return;
+        }
+        if let Activity::Running(run) = &mut self.activity
+            && !run.cancel.is_cancelled()
+        {
+            run.send_now = run.send_now.max(Some(now));
+        }
+    }
+
+    /// Whether the user sent a message now that the running turn has not
+    /// taken yet.
+    pub(super) fn send_now_pending(&self) -> bool {
+        matches!(&self.activity, Activity::Running(run) if run.send_now.is_some())
+    }
+
+    /// What the windows of the running calls watch for
+    /// (`runtime.md` § The window).
+    pub(super) fn window_arrivals(&self) -> Arrivals {
+        Arrivals {
+            joining: self.inputs.joining(),
+            send_now: self.send_now_pending(),
+        }
+    }
+
+    /// Takes what the user sent now, at a boundary.
+    pub(super) fn take_send_now(&mut self) -> Option<SendNow> {
+        match &mut self.activity {
+            Activity::Running(run) => run.send_now.take(),
+            _ => None,
+        }
     }
 
     /// Admits an agent message for the next boundary. A message the session
