@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import {
-  agentsChipLabel,
+  agentsChip,
   firstInspectSubagentId,
   formatDuration,
   formatSubagentDuration,
@@ -165,8 +165,19 @@ test('inspect opens the oldest running child, or the newest finished child', () 
   expect(firstInspectSubagentId([])).toBeNull()
 })
 
-test('the dock chip names the roster size', () => {
-  expect(agentsChipLabel(0)).toBe('0 Agents')
-  expect(agentsChipLabel(1)).toBe('1 Agent')
-  expect(agentsChipLabel(5)).toBe('5 Agents')
+test('the dock chip counts live children, reads Agents once none runs, and hides without children', () => {
+  const running = (id: string) => agent({ id, name: id, phase: 'running' })
+  const completed = agent({ id: 'done', name: 'Done', phase: 'completed' })
+  const aborted = agent({ id: 'stopped', name: 'Stopped', phase: 'aborted' })
+  const failed = agent({ id: 'failed', name: 'Failed', phase: 'error' })
+  // Two live children: the finished ones beside them never count.
+  expect(agentsChip([running('a'), completed, running('b'), aborted, failed])).toEqual({
+    label: '2 Agents',
+    running: true,
+  })
+  expect(agentsChip([running('a'), completed])).toEqual({ label: '1 Agent', running: true })
+  // Every child has finished: the chip stays, with no count, for their history.
+  expect(agentsChip([completed, aborted, failed])).toEqual({ label: 'Agents', running: false })
+  // The conversation never had a child.
+  expect(agentsChip([])).toBeNull()
 })
