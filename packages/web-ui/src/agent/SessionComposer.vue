@@ -36,6 +36,16 @@ import MenuItem from '../ui/MenuItem.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import type { PlaceholderText } from '../ui/ui-text'
 import { useTouchOnly } from '../ui/touch-only'
+import {
+  DEFAULT_SEND_WHILE_RUNNING,
+  SEND_WAY_LABELS,
+  chooseSendWay,
+  clickAsksOtherWay,
+  otherWay,
+  otherWayKeys,
+  type SendWay,
+  type SendWhileRunning,
+} from './send-way'
 
 const props = withDefaults(
   defineProps<{
@@ -46,6 +56,8 @@ const props = withDefaults(
      */
     running?: boolean
     compacting?: boolean
+    /** What Enter does with a message while the agent works; ⌘/Ctrl+Enter does the other. */
+    sendWhileRunning?: SendWhileRunning
     disabled?: boolean
     attachments?: ComposerAttachment[]
     messageEdit?: MessageEditState | null
@@ -102,12 +114,14 @@ const props = withDefaults(
   {
     attachments: () => [],
     canConfigure: true,
+    sendWhileRunning: DEFAULT_SEND_WHILE_RUNNING,
   },
 )
 const draft = defineModel<string>('draft', { default: '' })
 const emit = defineEmits<{
   retryModels: []
-  submit: []
+  /** The draft goes: at once while nothing runs, otherwise as a steer or to the queue. */
+  submit: [way: SendWay]
   stop: []
   compact: []
   /** Opens where an instructions entry of the context card is written. */
@@ -270,12 +284,20 @@ const compactUnavailable = computed(() => {
   }
   return null
 })
+/** The agent works: a message steers it or waits in the queue, one or the other (`product.md` § Steer or queue). */
+const working = computed(() => props.running || props.compacting)
 const submitLabel = computed(() => shownEdit.value
   ? shownEdit.value.phase === 'uncertain' ? 'Retry' : 'Save and resend'
-  : props.running ? 'Queue' : 'Send',
+  : working.value ? SEND_WAY_LABELS[props.sendWhileRunning] : 'Send',
+)
+/** The send button's tip: while the agent works, also the key that sends the other way. */
+const submitTip = computed(() => !shownEdit.value && working.value
+  ? `${submitLabel.value} · ${otherWayKeys()} to ${SEND_WAY_LABELS[otherWay(props.sendWhileRunning)].toLowerCase()}`
+  : submitLabel.value,
 )
 
-function submit() {
+/** Sends the message; `asksOtherWay` for ⌘/Ctrl+Enter outside a code block, or a ⌘/Ctrl-click on the send button. */
+function submit(asksOtherWay: boolean) {
   if (sendDisabled.value) {
     // Enter on a message that cannot go: the send button says why, unpointed.
     sendButton.value?.showReason()
@@ -289,7 +311,7 @@ function submit() {
     emit('submitEdit')
     return
   }
-  emit('submit')
+  emit('submit', chooseSendWay(working.value, props.sendWhileRunning, asksOtherWay))
   // The next message is typed at once, wherever the focus was when it was sent.
   editor.value?.focus()
 }
@@ -537,7 +559,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               @keydown.enter.space.prevent="edit.cancel"
             />
           </Tooltip>
-          <!-- Stop stays for the whole turn, beside Queue while the message holds text. -->
+          <!-- Stop stays for the whole turn, beside the send button while the message holds text. -->
           <Tooltip v-if="(running || compacting) && !shownEdit" content="Stop">
             <IconButton
               :icon="Square"
@@ -548,10 +570,11 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               @click="emit('stop')"
             />
           </Tooltip>
-          <!-- A press on the send button takes no focus: the message keeps it. -->
+          <!-- A press on the send button takes no focus: the message keeps it. A ⌘/Ctrl-click sends
+               the other way while the agent works. -->
           <Tooltip
             v-if="hasDraft"
-            :content="submitLabel"
+            :content="submitTip"
             :disabled="sendDisabled"
           >
             <IconButton
@@ -564,7 +587,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               :disabled-reason="sendBlockReason"
               :aria-label="submitLabel"
               @mousedown.prevent
-              @click="submit"
+              @click="submit(clickAsksOtherWay($event))"
             />
           </Tooltip>
           <IconButton
