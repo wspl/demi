@@ -66,5 +66,9 @@ demi-web-api-protocol = { path = "../web-api-protocol", optional = true }
 axum = { version = "0.8", optional = true }
 process-wrap = { workspace = true, optional = true }
 
+# Follows the program that started xtask, to end with it.
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+rustix = { version = "1", features = ["event", "process"] }
+
 [dev-dependencies]
 demi-shared-artifacts = { path = "../shared-artifacts", features = ["testing"] }
