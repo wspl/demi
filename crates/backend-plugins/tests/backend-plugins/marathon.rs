@@ -191,7 +191,8 @@ impl Model {
                 // Far longer than the test: only the reader's end wakes it.
                 vec![self.call(
                     "yield",
-                    json!({"durationMs": 600_000, "commandIds": [self.reader]}),
+                    // Above the cap, which the wakeup is taken down to.
+                    json!({"durationMs": 900_000, "commandIds": [self.reader]}),
                 )]
             }
             Phase::Yielded => {
@@ -341,7 +342,7 @@ async fn the_shell_tools_feed_a_waiting_command_and_a_yield_wakes_at_a_commands_
             // reader's end, not the time, woke the model.
             assert!(
                 model.seen.iter().any(|seen| seen == &format!(
-                    "yield scheduled\ndurationMs: 600000\ncommandIds: {reader}"
+                    "durationMs 900000 is above the cap; scheduled for 600000\nyield scheduled\ndurationMs: 600000\ncommandIds: {reader}"
                 )),
                 "{:#?}",
                 model.seen

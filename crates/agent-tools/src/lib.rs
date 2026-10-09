@@ -311,6 +311,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             model: &call.model,
             limits: call.request_limits,
             sent_now: ended_by == Some(WindowEnd::SentNow),
+            above_cap: watched_above_cap(Some(input.timeout_ms)),
         };
         Ok(finish(environment.as_ref(), status, called).await)
     }
@@ -340,6 +341,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             model: &call.model,
             limits: call.request_limits,
             sent_now: ended_by == Some(WindowEnd::SentNow),
+            above_cap: watched_above_cap(input.timeout_ms),
         };
         Ok(finish(environment.as_ref(), status, called).await)
     }
@@ -368,8 +370,9 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             is_error: false,
             view: None,
             effect: Some(ToolEffect::ScheduleYield {
-                duration_ms: input.duration_ms.0,
+                duration_ms: input.duration_ms.taken(),
                 commands,
+                above_cap: input.duration_ms.above_cap("durationMs", "scheduled for"),
             }),
         })
     }
@@ -400,10 +403,16 @@ fn outcome(ran: Result<ToolOutcome, CallError>) -> Result<ToolOutcome, ToolFailu
     }
 }
 
-/// The window a call's `timeoutMs` names.
+/// The window a call's `timeoutMs` names, at most the cap.
 fn window(timeout: DelayMs) -> ObservationWindow {
-    ObservationWindow::from_millis(u64::from(timeout.0))
-        .expect("the input admits only windows an environment takes")
+    ObservationWindow::from_millis(u64::from(timeout.taken()))
+        .expect("the cap is a window an environment takes")
+}
+
+/// The line a shell tool's result starts with when its `timeoutMs` was above
+/// the cap (`runtime.md` § Tool input).
+fn watched_above_cap(timeout: Option<DelayMs>) -> Option<String> {
+    timeout?.above_cap("timeoutMs", "watched for")
 }
 
 /// Why a call did not produce a result of its tool.
@@ -430,12 +439,13 @@ impl From<ShellError> for CallError {
 }
 
 /// The model of the request that asked for a call, what its vendor takes in
-/// one request, and whether the user's send now ended the call's window.
-#[derive(Clone, Copy)]
+/// one request, whether the user's send now ended the call's window, and
+/// the line that says its window was above the cap.
 struct Called<'a> {
     model: &'a ModelSelection,
     limits: RequestLimits,
     sent_now: bool,
+    above_cap: Option<String>,
 }
 
 /// A shell tool's outcome. A result that reports the command's end releases
@@ -445,8 +455,14 @@ async fn finish(
     status: CommandStatus,
     called: Called<'_>,
 ) -> ToolOutcome {
-    let outcome =
-        result::shell_outcome(&status, &called.model.model, called.limits, called.sent_now).await;
+    let outcome = result::shell_outcome(
+        &status,
+        &called.model.model,
+        called.limits,
+        called.sent_now,
+        called.above_cap.as_deref(),
+    )
+    .await;
     if !matches!(status.state, CommandState::Running { .. }) {
         // A command the environment already forgot has nothing to release.
         environment.release_command(&status.command_id).await;
