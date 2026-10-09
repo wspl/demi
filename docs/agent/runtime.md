@@ -186,8 +186,9 @@ would have stopped something more at the moment the stop was recorded.
 A stopped action records the stop itself. It writes all the input waiting
 for its next boundary: the human steers still pending, the agent messages and
 the yield wakeups that fired. It completes each running tool call as an error
-`Tool call aborted: <tool>`, and appends an `abort` block, the stopped
-marker. An action that has written nothing into the transcript, with the
+that says why and what became of its command
+([Interrupted calls](#interrupted-calls)), and appends an `abort` block, the
+stopped marker. An action that has written nothing into the transcript, with the
 input its stop writes counted, appends no marker: it began no turn, so
 nothing is left to continue
 ([The unfinished turn](failures-and-recovery.md#the-unfinished-turn)). Only a
@@ -223,8 +224,9 @@ Dispose does the following:
 
 1. Refuses new actions.
 2. Stops the running action as a shutdown. The human steers still pending
-   are written, running tool calls complete as
-   `Tool call aborted: <tool>`, and an `error` block with the code
+   are written, running tool calls complete as interrupted by the shutdown,
+   their commands still running
+   ([Interrupted calls](#interrupted-calls)), and an `error` block with the code
    `interrupted` and the message "The agent session was shut down while this
    turn was running." says why the turn is unfinished. A message whose turn
    has not written its `user` block yet is not interrupted: it goes back to
@@ -238,7 +240,10 @@ Dispose does the following:
 
 Restoring reads the checkpoint ([Tree store](#tree-store)). A tool call still
 marked executing completes as an error
-`Tool call interrupted: <tool> (the process died before a result was recorded)`:
+`Tool call interrupted: the backend stopped before its result was recorded`,
+followed by its command's number when it had one, which the backend takes up
+again when its runner connects
+([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)):
 its outcome is unknown, and it never runs again
 ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)).
 The restored session is idle, with its saved wakeups armed
@@ -473,8 +478,11 @@ have fired at ten minutes.
   "Command 17 ended with exit code 1. Continue the previous work; read its
   output with demi shell output 17." when a command ended first, with the
   exit code the conversation's record of the command holds, whichever agent
-  ran it; a command that was stopped, or that a restore found gone, says
-  "Command 17 was stopped." instead. `demi shell output` reads any command of
+  ran it; a command that was stopped says "Command 17 was stopped.", and one
+  that was lost says so with its reason
+  ([Lost commands](#lost-commands)): "Command 17 was lost: Demi was upgraded
+  and the Host's runner replaced itself."
+ `demi shell output` reads any command of
   the conversation, where `shell_status` reads only the node's own. A wakeup never appears in the
   queue or among the pending steers.
 - A wakeup belongs to its session, not to the turn that scheduled it: a turn
@@ -1091,8 +1099,50 @@ What keeps the output coming, and where each part is released:
   as independent, and harnesses such as Claude Code run them together.
 - A tool that fails completes its call as an error `Tool failed: <message>`.
 - An action that fails before its calls ran, such as when the save before
-  dispatch fails, completes them as `Tool call aborted: <tool>`, as a stop
-  does, so the next request replays no call without a result.
+  dispatch fails, completes them as aborted, with that failure as the
+  reason, as a stop does, so the next request replays no call without a
+  result.
+
+### Interrupted calls
+
+For example, the backend restarts for a configuration change while the
+model watches command 254, a test suite. The model's next request shows the
+call ended:
+
+```text
+Tool call interrupted: the backend shut down while this call watched command 254, which keeps running; look at it with shell_status 254.
+```
+
+A call that something other than its tool ends completes as an error that
+says what ended it and what became of its command, since a model told only
+`Tool call aborted: shell_exec` spent calls on `ps` and `journalctl` to find
+out:
+
+| What ended the call | Its result |
+| --- | --- |
+| The user's Stop | `Tool call aborted: the user stopped the turn; command 254 was stopped.` |
+| A hold of the conversation, such as a Cloud reset or a deletion | `Tool call aborted: <the hold, such as "the Cloud is being reset">; command 254 was stopped.` |
+| The backend's shutdown | `Tool call interrupted: the backend shut down while this call watched command 254, which keeps running; look at it with shell_status 254.` |
+| The backend's crash, found at restore | `Tool call interrupted: the backend stopped before its result was recorded; command 254 keeps running if its Host kept it.` |
+| An action that failed before its calls ran | `Tool call aborted: <the failure>.` |
+
+A call with no command, such as `yield`, ends the line after the reason.
+
+### Lost commands
+
+A command whose runner lost it, which the backend learns when the runner
+connects again ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)),
+ends as lost with its reason, and the node that ran it reads that at its
+next request, as input that joins it the way a wakeup joins a turn:
+`Command 437 (bun run dev) was lost: Demi was upgraded and the Host's runner
+replaced itself. Start it again if it is still needed.` A conversation
+browser tab that its browser lost reaches the node the same way:
+`Tab t1 was closed: the browser ended with the Host's runner.` Such input
+wakes no idle node: the agent learns it when it next works, and the
+command's handle answers `shell_status` and `demi shell output` with the
+same reason meanwhile. Before, a dev server lost with a two-second
+connection drop went unnoticed for three hours, until the agent's next
+`demi shell stop` said it had already ended.
 - A tool never reaches into its session. It returns its result and, for
   `yield`, an effect that the session applies.
 
