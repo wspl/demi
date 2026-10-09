@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { Bot } from '@lucide/vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import SessionDockChip from './SessionDockChip.vue'
-import { agentsChipLabel, runningSubagents, type SubagentRecord } from './subagents'
+import { agentsChip, type SubagentRecord } from './subagents'
 
 const props = defineProps<{
   agents: readonly SubagentRecord[]
@@ -14,20 +14,20 @@ const emit = defineEmits<{
   open: []
 }>()
 
-const running = computed(() => runningSubagents(props.agents))
+const chip = computed(() => agentsChip(props.agents))
 </script>
 
 <template>
   <SessionDockChip
-    v-if="running.length"
+    v-if="chip"
     data-session-overlay-toggle
-    dot="accent"
-    breathing
+    :dot="chip.running ? 'accent' : undefined"
+    :breathing="chip.running"
     :aria-expanded="open === true"
     aria-haspopup="dialog"
     @click="emit('open')"
   >
     <Bot :size="ICON_PX.in28" />
-    {{ agentsChipLabel(running.length) }}
+    {{ chip.label }}
   </SessionDockChip>
 </template>
