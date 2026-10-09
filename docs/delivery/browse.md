@@ -73,8 +73,8 @@ page's state. A step's failure is never silent and never a raw stack of the
 tool's own frames.
 
 **Waiting.** Playwright's actions and `expect` wait for what they need, so a
-script never sleeps for a fixed time; `demi.turn()` waits for the open
-conversation's turn to end.
+script never sleeps for a fixed time; `demi.turn()` waits until the open
+conversation no longer runs, its helper agents and background jobs included.
 
 ## What `demi` adds
 
@@ -91,7 +91,9 @@ conversation's turn to end.
   does and see the page come back to the same account and conversations.
   `up` copies the user's `.env` into the slot for the backend and `down`
   deletes it.
-- **Seeing.** `demi.shot(name, { element, region, zoom })` writes a PNG at the
+- **Seeing.** `demi.shot(name, { element, region, zoom, page })` writes a PNG
+  of the slot's page, of `page` such as one of `demi.webkit()`, or of the page
+  `element` is on (`zoom` only on the slot's page), at the
   page's real size and pixel ratio, once the page's finite animations end, up
   to two seconds, into `.cache/browse/shots/`, and returns its path, which the
   agent lists in its report for the lead to send. `demi.timeline(action,
@@ -113,10 +115,12 @@ conversation's turn to end.
   method does, with the confirming Enter in the order the page's engine
   gives it: in Chromium during the composition, in WebKit just after it ends;
   `{ commit: 'escape' }` cancels the composition instead. `demi.webkit()`
-  opens a signed-in WebKit page for the call, for checks that Safari's order
-  of events matters to.
-- **A browser that stops answering** ends the call with "the browser did not
-  answer" instead of holding the tool; `bun browse stop` then closes it.
+  opens a signed-in WebKit page for the call, with the slot's screen, pixel
+  ratio, theme, locale and time zone, for checks that Safari's order of
+  events matters to.
+- **A browser that stops answering** for 5 seconds ends the call, whatever
+  the script waits on, with "the browser did not answer"; the tool kills it,
+  and the next call starts a new one.
 - **Conditions.** `demi.emulate({ viewport, scale, theme, device, locale,
   timeZone })` applies to the page as it is, without reloading it; the theme
   reaches the gallery's own setting too. `demi.grant(permission)` gives a
@@ -125,7 +129,8 @@ conversation's turn to end.
   page of the slot's gallery.
 - **The product's other parts.** `demi.message(text)` replaces any draft,
   sends the text in the open conversation and waits for its turn to end, not
-  for background jobs; it fails at once, with the page's words, when the
+  for the helper agents and background jobs it started (`demi.turn()` after it
+  waits for those too); it fails at once, with the page's words, when the
   page marks the message not delivered or the turn ends with an error. `demi.runner()` starts the slot's built runner with its
   own installation folder under `.cache/browse/` and pairs it through Add
   Device, or reuses the one it paired; `demi.runner.stop()` and `.start()`
