@@ -16,6 +16,7 @@ use demi_backend_database::conversation_index::{
     AttachedHostRecord, ExecutionTarget, TargetSwitch,
 };
 use demi_backend_database::devices::CLOUD_NAME;
+use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api_protocol::ids::ConversationId;
 
 use crate::shard::Shard;
@@ -25,6 +26,13 @@ const CONTEXT: &str = "[Execution context ";
 
 /// The line that opens a switch's announcement.
 const SWITCHED: &str = "[Execution target switched]";
+
+/// What every block says of a job's standard utilities (`runner.md`
+/// § Standard utilities).
+const UTILITIES: &str = "Standard utilities (sed, grep, cp, ls, find, …) are GNU's on every host";
+
+/// Where a Mac keeps its own, BSD utilities, which a block for a Mac adds.
+const MACOS_UTILITIES: &str = "macOS's own are in /usr/bin";
 
 /// What a node learns once the user's Cloud was reset.
 const CLOUD_RESET: &str = "Cloud was reset: system packages and configuration were rebuilt from the base image. Files under /home remain. Running processes, temporary files, and previous shell state are gone; check the environment before continuing.";
@@ -91,8 +99,9 @@ impl Shard {
     }
 
     /// The primary Host as the model reads it: its name, its operating
-    /// system with its architecture as its runner last reported them, and
-    /// the directory its shells start in. A Host whose runner never
+    /// system with its architecture as its runner last reported them, the
+    /// directory its shells start in, and that its standard utilities are
+    /// GNU's, with where a Mac's own are. A Host whose runner never
     /// connected, such as a Cloud not made yet, is named without its system.
     async fn primary_host_line(&self, target: &ExecutionTarget) -> Result<String, StorageError> {
         let device = match target.device() {
@@ -104,12 +113,16 @@ impl Shard {
             (None, Some(device)) => device.to_string(),
             (None, None) => CLOUD_NAME.to_owned(),
         };
+        let utilities = match device.as_ref().map(|record| &record.platform) {
+            Some(RunnerPlatform::Darwin) => format!("{UTILITIES}; {MACOS_UTILITIES}."),
+            _ => format!("{UTILITIES}."),
+        };
         let host = match device.and_then(|record| record.os) {
             Some(os) => format!("{name}, {} ({})", os.name, os.arch),
             None => name,
         };
         Ok(format!(
-            "Primary host: {host}. Shells start in {}.",
+            "Primary host: {host}. Shells start in {}. {utilities}",
             target.path()
         ))
     }

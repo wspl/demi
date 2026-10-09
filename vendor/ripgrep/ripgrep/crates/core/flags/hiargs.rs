@@ -1347,7 +1347,7 @@ fn hostname(bin: Option<&Path>) -> Option<String> {
         }
     };
     let mut cmd = uucore::context::process::Command::new(&bin);
-    cmd.stdin(std::process::Stdio::null());
+    cmd.stdin(uucore::context::process::Stdio::null());
     let rdr = match grep::cli::CommandReader::new(&mut cmd) {
         Ok(rdr) => rdr,
         Err(err) => {

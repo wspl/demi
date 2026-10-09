@@ -13,11 +13,12 @@ use crate::error::UError;
 use fluent::{FluentArgs, FluentBundle, FluentResource};
 use fluent_syntax::parser::ParserError;
 
-use std::cell::Cell;
+use std::cell::RefCell;
+use std::collections::BTreeMap;
 use crate::context::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock, PoisonError};
 
 use os_display::Quotable;
 use thiserror::Error;
@@ -187,8 +188,12 @@ fn build_errors_bundle_with(
 // Cache localizer. FluentResource cannot be shared between threads while FluentBundle can be shared
 static UUCORE_FLUENT: OnceLock<FluentResource> = OnceLock::new();
 static CHECKSUM_FLUENT: OnceLock<FluentResource> = OnceLock::new();
-static UTIL_FLUENT: OnceLock<FluentResource> = OnceLock::new();
+/// Each utility's own strings, by its name: one process may run many
+/// utilities, one after another and side by side.
+static UTIL_FLUENT: Mutex<BTreeMap<String, &'static FluentResource>> = Mutex::new(BTreeMap::new());
 thread_local! {
+    /// The localizer of the utility this thread runs, by the utility's name:
+    /// a thread may run one utility after another.
     #[cfg_attr(
         target_os = "android",
         expect(
@@ -196,7 +201,7 @@ thread_local! {
             reason = "https://github.com/rust-lang/rust-clippy/issues/13422"
         )
     )]
-    static LOCALIZER: OnceLock<Localizer> = const { OnceLock::new() };
+    static LOCALIZER: RefCell<Option<(String, Localizer)>> = const { RefCell::new(None) };
     /// Built on the first lookup that misses every ordinary bundle; `None`
     /// when there are no error strings to be found at all.
     #[cfg_attr(
@@ -321,11 +326,14 @@ fn init_localization(
         }
     };
 
-    LOCALIZER.with(|lock| {
-        lock.set(loc)
-            .map_err(|_| LocalizationError::Bundle("Localizer already initialized".into()))
-    })?;
+    set_localizer(util_name, loc);
     Ok(())
+}
+
+/// Makes `localizer` the one this thread looks messages up in, for the
+/// utility `util_name`.
+fn set_localizer(util_name: &str, localizer: Localizer) {
+    LOCALIZER.with(|current| current.replace(Some((util_name.to_owned(), localizer))));
 }
 
 fn parse_fluent_resource_owned(content: &str) -> Result<FluentResource, LocalizationError> {
@@ -369,6 +377,23 @@ fn parse_fluent_resource(
     }
 }
 
+/// The parsed strings of the utility `util_name`, parsed from `content` once
+/// per process.
+fn utility_resource(
+    util_name: &str,
+    content: &str,
+) -> Result<&'static FluentResource, LocalizationError> {
+    // A panic while the cache is held leaves it whole: an entry is inserted
+    // complete or not at all.
+    let mut cache = UTIL_FLUENT.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(resource) = cache.get(util_name) {
+        return Ok(resource);
+    }
+    let resource: &'static FluentResource = Box::leak(Box::new(parse_fluent_resource_owned(content)?));
+    cache.insert(util_name.to_owned(), resource);
+    Ok(resource)
+}
+
 /// Create a bundle from embedded English locale files with common uucore strings
 fn create_english_bundle_from_embedded(
     locale: &LanguageIdentifier,
@@ -401,8 +426,7 @@ fn create_english_bundle_from_embedded(
     // Then, try to load utility-specific strings
     let locale_key = format!("{util_name}/en-US.ftl");
     if let Some(ftl_content) = get_embedded_locale(&locale_key) {
-        let resource = parse_fluent_resource(ftl_content, &UTIL_FLUENT)?;
-        bundle.add_resource_overriding(resource);
+        bundle.add_resource_overriding(utility_resource(util_name, ftl_content)?);
     }
 
     // Return the bundle if we have at least common or utility-specific strings.
@@ -453,9 +477,11 @@ fn create_wasi_bundle_from_embedded(
 }
 
 fn get_message_internal(id: &str, args: Option<FluentArgs>) -> String {
-    LOCALIZER.with(|lock| {
-        lock.get()
-            .map_or_else(|| id.to_string(), |loc| loc.format(id, args.as_ref())) // Return the key ID if localizer not initialized
+    LOCALIZER.with(|current| {
+        current
+            .borrow()
+            .as_ref()
+            .map_or_else(|| id.to_string(), |(_, loc)| loc.format(id, args.as_ref())) // Return the key ID if localizer not initialized
     })
 }
 
@@ -595,18 +621,10 @@ fn detect_system_locale() -> Result<LanguageIdentifier, LocalizationError> {
 /// }
 /// ```
 pub fn setup_localization(p: &str) -> Result<(), LocalizationError> {
-    // Avoid duplicated and high-cost localizer setup
-    thread_local! {
-        #[cfg_attr(
-            target_os = "android",
-            expect(
-                clippy::missing_const_for_thread_local,
-                reason = "https://github.com/rust-lang/rust-clippy/issues/13422"
-            )
-        )]
-        static LOCALIZER_IS_SET: Cell<bool> = const { Cell::new(false) };
-    }
-    if LOCALIZER_IS_SET.with(Cell::get) {
+    // Avoid duplicated and high-cost localizer setup: a thread that ran this
+    // utility last keeps its localizer, and one that ran another utility
+    // sets this one's up.
+    if LOCALIZER.with(|current| current.borrow().as_ref().is_some_and(|(name, _)| name == p)) {
         return Ok(());
     }
 
@@ -641,12 +659,8 @@ pub fn setup_localization(p: &str) -> Result<(), LocalizationError> {
             Localizer::new(english_bundle)
         };
 
-        LOCALIZER.with(|lock| {
-            lock.set(localizer)
-                .map_err(|_| LocalizationError::Bundle("Localizer already initialized".into()))
-        })?;
+        set_localizer(p, localizer);
     }
-    LOCALIZER_IS_SET.with(|f| f.set(true));
     Ok(())
 }
 
@@ -923,10 +937,7 @@ mod tests {
             }
         };
 
-        LOCALIZER.with(|lock| {
-            lock.set(loc)
-                .map_err(|_| LocalizationError::Bundle("Localizer already initialized".into()))
-        })?;
+        set_localizer("test", loc);
         Ok(())
     }
 

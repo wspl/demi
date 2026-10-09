@@ -649,6 +649,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "uucore",
  "uuid",
  "uzers",
  "whoami",

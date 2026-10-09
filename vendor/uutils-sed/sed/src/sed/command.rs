@@ -171,7 +171,7 @@ impl ReplacementTemplate {
             return runtime_error(
                 &command.location,
                 format!(
-                    "invalid reference \\{} on command's RHS",
+                    "invalid reference \\{} on `s' command's RHS",
                     self.max_group_number
                 ),
             );

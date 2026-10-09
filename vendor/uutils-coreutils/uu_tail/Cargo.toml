@@ -167,4 +167,5 @@ maintainer = "demi-runner"
 patches = [
     "Following a file checks the shell job's cancellation at least every 25 ms",
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+    "A file's metadata is read at its path resolved against the shell job's working directory",
 ]

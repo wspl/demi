@@ -298,7 +298,7 @@ impl<W: WriteColor> SearchWorker<W> {
         &mut self,
         path: &Path,
     ) -> io::Result<SearchResult> {
-        use std::process::Stdio;
+        use uucore::context::process::Stdio;
         use uucore::context::fs::File;
 
         let bin = self.config.preprocessor.as_ref().unwrap();

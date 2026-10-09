@@ -692,7 +692,9 @@ pub(crate) fn execute_external_command(
 
     if let Some(host) = context.shell.execution_host() {
         let outputs = forward_external_outputs(&context, &mut cmd)?;
-        let child = host.spawn(cmd, context.shell.child_attributes())?;
+        let child = host
+            .spawn(cmd, context.shell.child_attributes())
+            .map_err(|error| spawn_failure(&context, error))?;
         return Ok(ExecutionSpawnResult::StartedProcess(child.with_outputs(outputs)));
     }
 
@@ -719,22 +721,27 @@ pub(crate) fn execute_external_command(
                 sys::terminal::move_self_to_foreground()?;
             }
 
-            if spawn_err.kind() == std::io::ErrorKind::NotFound {
-                if !context.shell.working_dir().exists() {
-                    Err(
-                        error::ErrorKind::WorkingDirMissing(context.shell.working_dir().to_owned())
-                            .into(),
-                    )
-                } else {
-                    Err(error::ErrorKind::CommandNotFound(context.command_name).into())
-                }
-            } else {
-                Err(
-                    error::ErrorKind::FailedToExecuteCommand(context.command_name, spawn_err)
-                        .into(),
-                )
-            }
+            Err(spawn_failure(&context, spawn_err))
         }
+    }
+}
+
+/// Why the command `context` names did not start, worded as bash words it:
+/// a name not found is `nosuch: command not found` and a path's failure is
+/// the path with the reason, `./nosuch: No such file or directory`.
+fn spawn_failure<SE: extensions::ShellExtensions>(
+    context: &ExecutionContext<'_, SE>,
+    spawn_err: std::io::Error,
+) -> error::Error {
+    let name = context.command_name.clone();
+    if spawn_err.kind() != std::io::ErrorKind::NotFound {
+        error::ErrorKind::FailedToExecuteCommand(name, spawn_err).into()
+    } else if !context.shell.working_dir().exists() {
+        error::ErrorKind::WorkingDirMissing(context.shell.working_dir().to_owned()).into()
+    } else if sys::fs::contains_path_separator(&name) {
+        error::ErrorKind::FailedToExecuteCommand(name, spawn_err).into()
+    } else {
+        error::ErrorKind::CommandNotFound(name).into()
     }
 }
 

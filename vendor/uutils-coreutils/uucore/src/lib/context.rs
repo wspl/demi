@@ -50,6 +50,30 @@ pub trait Control: Send + Sync {
     ) -> std::io::Result<Box<dyn process_wrap::std::ChildWrapper>> {
         command.spawn()
     }
+    /// The embedding owner's own utility that the child program `program`
+    /// names, which the owner runs in its process, as its shell runs that
+    /// name; none for any other program.
+    fn utility(&self, _program: &std::ffi::OsStr) -> Option<&'static str> {
+        None
+    }
+    /// Runs the owner's utility `context.name` with `args`, its own name
+    /// first, as a child program a utility started.
+    fn run_utility(
+        &self,
+        _context: Context,
+        _args: Vec<std::ffi::OsString>,
+    ) -> std::io::Result<Box<dyn UtilityRun>> {
+        Err(std::io::ErrorKind::Unsupported.into())
+    }
+}
+
+/// A child program that is one of the embedding owner's utilities, running
+/// in its process.
+pub trait UtilityRun: Send {
+    /// Ends the run, without waiting for it.
+    fn kill(&mut self) -> std::io::Result<()>;
+    fn try_wait(&mut self) -> std::io::Result<Option<std::process::ExitStatus>>;
+    fn wait(&mut self) -> std::io::Result<std::process::ExitStatus>;
 }
 
 /// Cancellation unwinds one utility invocation, never the embedding process.

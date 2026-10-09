@@ -32,6 +32,7 @@ cp-help-symbolic-link = make symbolic links instead of copying
 cp-help-force = if an existing destination file cannot be opened, remove it and try again (this option is ignored when the -n option is also used). Currently not implemented for Windows.
 cp-help-remove-destination = remove each existing destination file before attempting to open it (contrast with --force). On Windows, currently only works for writeable files.
 cp-help-reflink = control clone/CoW copies. See below
+cp-help-clone = clone the data where the file system can, as --reflink=auto
 cp-help-attributes-only = Don't copy the file data, just the attributes
 cp-help-preserve = Preserve the specified attributes (default: mode, ownership (unix only), timestamps), if possible additional attributes: context, links, xattr, all
 cp-help-preserve-default = same as --preserve=mode,ownership(unix only),timestamps

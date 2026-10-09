@@ -132,7 +132,7 @@ impl FileHandling {
         self.get_mut(path).metadata = if metadata.is_some() {
             metadata
         } else {
-            path.metadata().ok()
+            uucore::context::fs::metadata(path).ok()
         };
     }
 
@@ -208,6 +208,6 @@ impl PathData {
             None
         };
 
-        Self::new(reader, path.metadata().ok(), data.display_name.as_str())
+        Self::new(reader, uucore::context::fs::metadata(path).ok(), data.display_name.as_str())
     }
 }

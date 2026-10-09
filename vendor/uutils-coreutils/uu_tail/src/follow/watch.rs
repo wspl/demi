@@ -170,7 +170,7 @@ impl Observer {
             } else {
                 path.to_owned()
             };
-            let metadata = path.metadata().ok();
+            let metadata = uucore::context::fs::metadata(&path).ok();
             self.files.insert(
                 &path,
                 PathData::new(reader, metadata, display_name),
@@ -336,7 +336,7 @@ impl Observer {
             // `Modify(Data(..))`/`Modify(Metadata(..))` instead, so this is a no-op there.
             EventKind::Modify(ModifyKind::Any | ModifyKind::Metadata(MetadataKind::Any | MetadataKind::WriteTime) | ModifyKind::Data(DataChange::Any) | ModifyKind::Name(RenameMode::To)) |
             EventKind::Create(CreateKind::File | CreateKind::Folder | CreateKind::Any) => {
-                if let Ok(new_md) = event_path.metadata() {
+                if let Ok(new_md) = uucore::context::fs::metadata(event_path) {
                     // `metadata()` follows symlinks, so under --follow=name a
                     // watched file swapped for a symlink would otherwise be
                     // silently followed to its target. GNU treats such a
@@ -545,7 +545,7 @@ pub fn follow(mut observer: Observer, settings: &Settings) -> UResult<()> {
             for new_path in &observer.orphans {
                 // Use metadata() directly instead of exists() + metadata().unwrap()
                 // to avoid a TOCTOU race where the file is removed between the two calls.
-                if let Ok(md) = new_path.metadata() {
+                if let Ok(md) = uucore::context::fs::metadata(new_path) {
                     let pd = observer.files.get(new_path);
                     if md.is_tailable() && pd.reader.is_none() {
                         show_error!(
