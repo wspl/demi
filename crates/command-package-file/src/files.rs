@@ -58,34 +58,48 @@ pub enum FileError {
     NoMatch(String),
     #[error("Multiple matches in {0}; specify --occurrence or --context")]
     MultipleMatches(String),
-    #[error("{name}, block {block}: its SEARCH matches no lines. {closest}")]
+    /// A file an edit reads, named by its full path, as the system words
+    /// why it cannot be read.
+    #[error("{}: {}", .path.display(), reason(.error))]
+    Unreadable { path: PathBuf, error: std::io::Error },
+    #[error(
+        "{}: block {block}: its SEARCH is not in the file; a SEARCH must match the file's text exactly, whitespace included, and nothing was written. {closest}",
+        .path.display()
+    )]
     BlockNoMatch {
         block: usize,
-        name: String,
+        path: PathBuf,
         closest: String,
     },
     #[error(
-        "{name}, block {block}: its SEARCH matches at {places}; add a line around it so it matches one place"
+        "{}: block {block}: its SEARCH occurs {count} times, at {places}; include more of the text around it so it occurs once, and nothing was written",
+        .path.display()
     )]
     BlockMatchesSeveral {
         block: usize,
-        name: String,
+        path: PathBuf,
+        count: usize,
         places: String,
     },
-    #[error("{name}: blocks {first} and {second} overlap; make them one block")]
+    #[error(
+        "{}: blocks {first} and {second} overlap; make them one block, and nothing was written",
+        .path.display()
+    )]
     BlocksOverlap {
         first: usize,
         second: usize,
-        name: String,
+        path: PathBuf,
     },
-    #[error("{name}, block {block}: the file exists; a block with an empty SEARCH creates a new file")]
-    FileExists { name: String, block: usize },
-    #[error("{name}: the file does not exist; a block with an empty SEARCH creates it")]
-    FileMissing { name: String },
     #[error(
-        "{name}, block {block}: a block with an empty SEARCH creates the file, so it is the file's only block"
+        "{}: block {block}: the file exists; a block with an empty SEARCH creates a new file, and nothing was written",
+        .path.display()
     )]
-    CreateWithOthers { name: String, block: usize },
+    FileExists { path: PathBuf, block: usize },
+    #[error(
+        "{}: block {block}: a block with an empty SEARCH creates the file, so it is the file's only block, and nothing was written",
+        .path.display()
+    )]
+    CreateWithOthers { path: PathBuf, block: usize },
     #[error(transparent)]
     Patch(#[from] PatchError),
     /// The result could not be sent back.
