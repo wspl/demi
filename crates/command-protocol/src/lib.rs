@@ -22,7 +22,8 @@ pub use artifacts::{
 pub use conversation::{ConversationRequest, ConversationStatus};
 pub use edits::{
     EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_PATH_CHANGES, EDIT_JOB_SEGMENTS,
-    EditContext, EditCopies, EditFile, EditJournal, EditKind, PathChange, TextRefusal, is_text,
+    EditContext, EditCopies, EditFile, EditJournal, EditKind, PathChange, TextRefusal, begins_as_text,
+    is_text,
     text_of,
 };
 pub use invocation::{
