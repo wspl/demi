@@ -436,7 +436,7 @@ At startup the backend:
    ([The plugin host](../architecture/plugins.md#the-plugin-host)). Then it
    starts the shard threads.
 6. Recovers before it serves: the machine manager reconciles its machines,
-   which stops every Cloud, an
+   which keeps every running Cloud and its sandbox, an
    interrupted Cloud reset finishes committing its disks and is marked failed
    so that a retry starts the Cloud
    ([Managed hosts](../cloud/managed-hosts.md#system-reset)), and Fork
@@ -459,8 +459,11 @@ kept: the start finishes, and shutdown follows at once.
 
 Shutdown closes the listener first, so that no new work starts and no runner
 reconnects into a backend that is closing. A new request on a connection that
-is already open answers 503 `backend_closing`. Runner connections and pipes
-keep working, because the steps below need them:
+is already open answers 503 `backend_closing`. Runner connections that are
+open keep working until step 2 closes them; a pipe a runner would open now is
+refused, so shutdown reads nothing from a Host. Shutdown stops nothing that
+runs on a Host: commands and Clouds go on, and the next start takes them up
+([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)):
 
 1. Login flows are cancelled.
 2. Each shard ends its user's work in this order. The synchronization
@@ -468,13 +471,15 @@ keep working, because the steps below need them:
    reads the state again from the next backend. Idle watches stop. Title requests are aborted. Open file transfers and user streams end. Conversation sockets
    close and the waits for saved wakeups end, so no tree opens and no frame
    reaches a tree after its shutdown. Agent turns are
-   aborted: a running turn records that its session was shut down, and its
-   jobs are killed while their runners are still connected. Claude Code CLI
-   installs are cancelled; the next need starts them again. A Cloud boot
-   waiting for its runner ends at once, since the closed listener lets no
-   runner connect, and saves what the sandbox wrote, as a failed boot does.
-   The Cloud hibernates. Then the shard's runner connections close, and after
-   them its pipes fail.
+   aborted: a running turn records that its session was shut down, and a
+   command it watched keeps running
+   ([Dispose and restore](../agent/runtime.md#dispose-and-restore)). Claude
+   Code CLI installs are cancelled; the next need starts them again. A Cloud
+   boot waiting for its runner ends at once, since the closed listener lets
+   no runner connect, and saves what the sandbox wrote, as a failed boot
+   does. A running Cloud keeps running. Then the shard's runner connections
+   close, with the reason `backend shutting down`, and after them its pipes
+   fail.
 3. Runners waiting to be paired are disconnected, and the machine manager's
    client closes
    ([Control and ownership](../cloud/managed-hosts.md#control-and-ownership));
