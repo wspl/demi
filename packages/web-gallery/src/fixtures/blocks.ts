@@ -247,9 +247,7 @@ export const returnedFailingShellTool = toolCall({
 
 /**
  * The running call's script: long enough to wrap over more than two lines,
- * so the command shows two above the output, which scrolls under it. Its
- * flags' hyphens show the wrap a terminal makes: each line fills to the
- * box's edge.
+ * so the command shows two above the output, which scrolls under it.
  */
 export const RUNNING_SHELL_SCRIPT = [
   'DEMI_LOG=auth=debug,cookie=debug,session=info bun test --watch --timeout 20000 --rerun-each 1 --bail 5 packages/web/src/auth.test.ts packages/web/src/cookie.test.ts packages/web/src/session.test.ts \\',
@@ -313,6 +311,41 @@ export const longScriptShellTool = toolCall({
           { length: 40 },
           (_, index) => `packages/web/src/${['auth', 'cookie', 'session', 'login'][index % 4]}.ts:${index * 3 + 7}:  const sid = cookies.get("sid")\n`,
         ).join(''),
+      },
+    ],
+  }),
+})
+
+/**
+ * One long line of words with hyphens inside them and a signed address
+ * longer than any line: the command wraps at its spaces, each word whole,
+ * and only the address breaks inside, filling its lines to the edge.
+ */
+export const longLineShellTool = toolCall({
+  id: 'tool-shell-long-line',
+  toolName: 'shell_exec',
+  status: 'completed',
+  input: JSON.stringify({
+    script: [
+      'cd "$(mktemp -d)" && sudo apt-get install -y --no-install-recommends libatk-bridge2.0-0t64 libgtk-3-0t64 libxkbcommon-x11-0;',
+      'echo "exit=$?"; curl -fsSL',
+      'https://downloads.example.test/runner/demi-runner-aarch64-apple-darwin.tar.gz?expires=1791763200&signature=3q2-7wAAAAB1dGYtOC1lbmNvZGVkLXNpZ25hdHVyZS1mb3ItdGhlLWdhbGxlcnk',
+      '| tar -xz && ./demi-runner --version',
+    ].join(' '),
+    description: 'Install the browser libraries and the runner',
+  }),
+  view: shellView({
+    commandId: 'cmd-long-line',
+    chunks: [
+      {
+        stream: 'stdout',
+        text: [
+          'Reading package lists... Done',
+          'libatk-bridge2.0-0t64 is already the newest version (2.52.0-1build1).',
+          'exit=0',
+          'demi-runner 0.42.0',
+          '',
+        ].join('\n'),
       },
     ],
   }),

@@ -4,8 +4,14 @@
 use demi_command_protocol::{Completion, LocalInvocation};
 use demi_command_sdk::{Handler, InvocationContext, ServiceError};
 use demi_runner_jobs::commands::dispatch::{Dispatcher, RUNNER, completed, reported};
+use demi_runner_protocol::console::{PAIRED, PAIRING_CODE, REMOVAL};
 use serde::{Deserialize, Serialize};
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::{
+    fmt::Display,
+    future::Future,
+    pin::Pin,
+    sync::{Arc, Mutex, PoisonError},
+};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
@@ -37,6 +43,10 @@ pub enum Action {
     /// Asks the backend to revoke the device, then drains (`runner.md`
     /// § Installation, pairing and removal).
     Uninstall,
+    /// Writes the runner's pairing state to its log again, for an installer
+    /// that finds it running (`runner.md` § Installation, pairing and
+    /// removal); the answer is the status, which carries no code.
+    Announce,
 }
 
 /// What came of asking the backend to revoke the device, which `uninstall`
@@ -63,6 +73,18 @@ pub struct Status {
     jobs: usize,
 }
 
+/// The lines the runner wrote to its console about its pairing, as it
+/// wrote them, which it writes again when asked: the device it is paired
+/// as, the code it waits with, and why it cannot connect. A connection
+/// that brings a code or the pairing ends the failure, and one that fails
+/// ends the code, which the backend then no longer holds.
+#[derive(Default)]
+struct Told {
+    paired: Option<String>,
+    code: Option<String>,
+    failure: Option<String>,
+}
+
 /// What the registration and its connection change while they run.
 #[derive(Clone, Copy)]
 struct Snapshot {
@@ -84,6 +106,7 @@ pub struct Management {
     revocation: watch::Sender<Option<Revocation>>,
     pub draining: CancellationToken,
     pub stop: CancellationToken,
+    told: Mutex<Told>,
 }
 
 impl Management {
@@ -99,7 +122,66 @@ impl Management {
             revocation: watch::Sender::new(None),
             draining: CancellationToken::new(),
             stop,
+            told: Mutex::default(),
         })
+    }
+
+    fn told<T>(&self, change: impl FnOnce(&mut Told) -> T) -> T {
+        change(&mut self.told.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+
+    /// Tells the person at the console the pairing code the runner waits
+    /// with; the code goes nowhere else, and the host log only says that one
+    /// is waiting.
+    pub fn tell_code(&self, code: impl Display) {
+        let line = format!("{PAIRING_CODE}{code}");
+        self.told(|told| {
+            told.code = Some(line.clone());
+            told.failure = None;
+        });
+        crate::console::line(line);
+    }
+
+    /// Tells the person at the console, the first time, that the device is
+    /// paired as `name` and how to remove the runner again; an installer
+    /// shows them these lines.
+    pub fn tell_paired(&self, name: &str, removal: &str) {
+        // One write, so that whoever reads the log sees both lines at once.
+        let lines = format!("{PAIRED}{name}\n{REMOVAL}{removal}");
+        let first = self.told(|told| {
+            told.code = None;
+            told.failure = None;
+            told.paired.replace(lines.clone()).is_none()
+        });
+        if first {
+            crate::console::line(lines);
+        }
+    }
+
+    /// Keeps why the runner cannot connect, as its console line, which the
+    /// registration writes.
+    pub fn failed(&self, line: String) {
+        self.told(|told| {
+            told.code = None;
+            told.failure = Some(line);
+        });
+    }
+
+    /// Writes the lines of the runner's pairing state to its console again,
+    /// as one write: the device it is paired as, the code it waits with, and
+    /// why it cannot connect, whichever it has.
+    pub fn tell_again(&self) {
+        let lines = self.told(|told| {
+            [&told.paired, &told.code, &told.failure]
+                .into_iter()
+                .flatten()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n")
+        });
+        if !lines.is_empty() {
+            crate::console::line(lines);
+        }
     }
 
     /// Whether `request` carries the secret, compared in constant time.
@@ -168,6 +250,10 @@ impl Management {
             Action::Status => serde_json::to_vec(&self.status())?,
             Action::Drain => {
                 self.draining.cancel();
+                serde_json::to_vec(&self.status())?
+            }
+            Action::Announce => {
+                self.tell_again();
                 serde_json::to_vec(&self.status())?
             }
             Action::Uninstall => {

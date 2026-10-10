@@ -184,7 +184,7 @@ async fn demi_file_edit_and_patch_change_what_they_name_whole_or_not_at_all() {
         .await;
         let read = |name: &str| std::fs::read_to_string(format!("{}/{name}", fixture.workspace)).unwrap();
         assert_exit(&results[0], "1");
-        assert_shows(&results[0], &["Multiple matches in file.txt; specify --occurrence or --context"]);
+        assert_shows(&results[0], &["/file.txt: --old occurs 2 times, at lines 2 and 3; choose one with --occurrence or --context"]);
         assert_eq!(shown_output(&results[1]), "Edited file.txt (+1 \u{2212}1)\n   2  two\n   3  changed\none\ntwo\nchanged\n");
         assert_exit(&results[2], "1");
         assert_shows(
