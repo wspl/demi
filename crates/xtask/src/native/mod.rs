@@ -69,9 +69,9 @@ pub enum Error {
         target: &'static str,
         status: std::process::ExitStatus,
     },
-    #[error("{tool} could not run, which splits a Linux executable's debug information: {source}")]
+    #[error("{} could not run, which splits a Linux executable's debug information (rustup component add llvm-tools): {source}", tool.display())]
     Objcopy {
-        tool: &'static str,
+        tool: PathBuf,
         source: std::io::Error,
     },
     #[error("splitting the debug information of {} failed: {status}", path.display())]
