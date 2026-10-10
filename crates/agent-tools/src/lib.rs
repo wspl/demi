@@ -36,6 +36,7 @@ use demi_host_interface::{
 use demi_provider_common::ToolDefinition;
 use demi_shared_types::{CommandId, NodeId, Sequence};
 use futures_util::{future::LocalBoxFuture, stream::FuturesUnordered};
+use tokio_util::sync::CancellationToken;
 
 pub use environments::{Environments, Stopper};
 use environments::Handle;
@@ -243,7 +244,14 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             },
             tool_use_id: call.tool_use_id,
         };
-        let command = environment.start(request, call.cancel).await?;
+        // The command stops with the call while the call watches it: a Stop
+        // of the action drops the call with its step, and the call's result
+        // says what became of the command. Once the call returned, the
+        // command runs on, and a Stop of the action leaves it running
+        // (`runtime.md` § Stop).
+        let stop = CancellationToken::new();
+        let stopping = stop.clone().drop_guard();
+        let command = environment.start(request, stop).await?;
         let (status, ended_by) = watch(
             environment.as_ref(),
             &command,
@@ -251,6 +259,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             call.arrival.arrived(),
         )
         .await?;
+        stopping.disarm();
         let mut outcome = result::shell_outcome(
             &status,
             &call.model.model,

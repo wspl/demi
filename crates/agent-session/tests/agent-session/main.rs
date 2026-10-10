@@ -77,8 +77,8 @@ struct TestCommands {
     ended: RefCell<std::collections::HashMap<CommandId, tokio::sync::watch::Sender<bool>>>,
     /// How many progress reports each command made.
     reports: RefCell<std::collections::HashMap<CommandId, u32>>,
-    /// Whether a command ends when the action that started it is stopped,
-    /// as a real command does.
+    /// Whether a command a call watches ends when the call is stopped, as
+    /// a real command does.
     end_on_stop: Cell<bool>,
 }
 
@@ -285,16 +285,7 @@ fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>)
 fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
     let commands = commands.clone();
     tool("work", move |call| {
-        let id = call.input["commandId"].as_str().unwrap().to_owned();
-        let command = commands.start(&id);
-        if commands.end_on_stop.get() {
-            let cancel = call.cancel.clone();
-            let commands = commands.clone();
-            tokio::task::spawn_local(async move {
-                cancel.cancelled().await;
-                commands.end(&id);
-            });
-        }
+        let command = commands.start(call.input["commandId"].as_str().unwrap());
         let interval_ms = call.input["intervalMs"]
             .as_u64()
             .map(|interval| u32::try_from(interval).unwrap());
@@ -321,6 +312,31 @@ fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
                 }),
                 ..output("status: running")
             })
+        })
+    })
+}
+
+/// A tool `watch` that starts the command its input's `commandId` names in
+/// `commands` and watches it until the test ends; stopped, the call ends
+/// its command when `commands` says so, as a real call does.
+fn command_watching_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
+    /// Ends the command of a call that is dropped while it watches.
+    struct Watching(Rc<TestCommands>, String);
+    impl Drop for Watching {
+        fn drop(&mut self) {
+            if self.0.end_on_stop.get() {
+                self.0.end(&self.1);
+            }
+        }
+    }
+    let commands = commands.clone();
+    tool("watch", move |call| {
+        let id = call.input["commandId"].as_str().unwrap().to_owned();
+        commands.start(&id);
+        let watching = Watching(commands.clone(), id);
+        Box::pin(async move {
+            let _watching = watching;
+            std::future::pending().await
         })
     })
 }
