@@ -385,7 +385,7 @@ async fn a_process_that_ends_is_reported_by_its_status_and_the_next_request_star
     let (placement, mut starts) = ScriptedPlacement::new();
     let mut runtime = runtime_of(&provider, &placement);
 
-    // Ended with success and no result: nothing to report.
+    // Ended with success but no result line: the reply never completed.
     let (events, ()) = tokio::join!(
         all_events(runtime.run(request_without_tools(vec![user("hi")]))),
         async {
@@ -393,7 +393,10 @@ async fn a_process_that_ends_is_reported_by_its_status_and_the_next_request_star
             cli.exit(ProcessEnd::Exited(0));
         }
     );
-    assert_eq!(events, []);
+    assert_eq!(
+        (failure(&events[0]).message.as_str(), &failure(&events[0]).code),
+        ("The provider's stream ended before the reply was complete", &Some(demi_provider_common::ErrorCode::Overloaded))
+    );
 
     // A nonzero exit is the tail of standard error, else its code.
     let (events, ()) = tokio::join!(

@@ -34,7 +34,7 @@ pub use contract::{
     RuntimeError, ToolCall, ToolDefinition, ToolResultKinds, UserPart,
 };
 pub use endpoint::endpoint_url;
-pub use failure::{ErrorCode, FailureReader, ProviderFailure};
+pub use failure::{EarlyEnd, ErrorCode, FailureReader, ProviderFailure};
 pub use http_record::{HttpFailureRecord, http_failure, read_http_failure, retry_at};
 pub use secret::{Secret, SecretError};
 pub use vendor::VendorPolicy;
