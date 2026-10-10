@@ -143,13 +143,7 @@ pub fn run(options: Options) -> Result<(), Error> {
 /// from it every time; the stripped one replaces it by a rename, which
 /// leaves Cargo's own copy, the file it links there, unstripped.
 fn split(executable: &Path) -> Result<(), Error> {
-    // The C toolchain's own on Linux; on a Mac, LLVM's, which the cross
-    // builds need anyway (`builds-and-releases.md` § Toolchain).
-    let tool = if Platform::HOST == Platform::Linux {
-        "objcopy"
-    } else {
-        "llvm-objcopy"
-    };
+    let tool = objcopy()?;
     let suffixed = |suffix: &str| {
         let mut path = executable.as_os_str().to_owned();
         path.push(suffix);
@@ -167,10 +161,13 @@ fn split(executable: &Path) -> Result<(), Error> {
         &["--strip-all".as_ref(), &link, executable.as_ref(), stripped.as_ref()],
     ];
     for arguments in steps {
-        let status = Command::new(tool)
+        let status = Command::new(&tool)
             .args(arguments)
             .status()
-            .map_err(|source| Error::Objcopy { tool, source })?;
+            .map_err(|source| Error::Objcopy {
+                tool: tool.clone(),
+                source,
+            })?;
         if !status.success() {
             return Err(Error::Split {
                 path: executable.to_owned(),
@@ -180,6 +177,23 @@ fn split(executable: &Path) -> Result<(), Error> {
     }
     std::fs::rename(&stripped, executable)?;
     Ok(())
+}
+
+/// The pinned toolchain's `llvm-objcopy`, from its `llvm-tools` component
+/// (`rust-toolchain.toml`), beside the host's target libraries, so every
+/// machine splits with the same tool whatever its own toolchains are
+/// (`builds-and-releases.md` § Release profile).
+fn objcopy() -> Result<PathBuf, Error> {
+    let tool = PathBuf::from("llvm-objcopy");
+    let output = Command::new("rustc")
+        .args(["--print", "target-libdir"])
+        .output()
+        .map_err(|source| Error::Objcopy {
+            tool: tool.clone(),
+            source,
+        })?;
+    let libdir = String::from_utf8_lossy(&output.stdout);
+    Ok(Path::new(libdir.trim()).with_file_name("bin").join(tool))
 }
 
 /// The Apple SDK at `named` (`--sdk` or `SDKROOT`), or else the one

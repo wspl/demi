@@ -184,7 +184,8 @@ line tables (`debug = "line-tables-only"`); the Apple and Windows targets
 split them with Cargo (`split-debuginfo = "packed"`, a `.dSYM` and a
 `.pdb`), and for the Linux targets, where stripping removes what a packed
 debug file depends on, `xtask` builds unstripped and splits each executable
-itself, with `objcopy` on Linux and `llvm-objcopy` elsewhere
+itself, with the pinned toolchain's `llvm-objcopy`, from the `llvm-tools`
+component `rust-toolchain.toml` lists, the same tool on every machine
 (`--only-keep-debug`, then `--strip-all` and `--add-gnu-debuglink`), so the
 shipped executable keeps neither debug information nor a symbol table. The
 debug files are published as `<executable>-<target>.debug`,
