@@ -1115,8 +1115,13 @@ impl SessionCore {
         None
     }
 
-    /// A `wakeup` block of command reports, in the order they arrived.
-    fn push_reports(&mut self, turn: TurnId, placement: WakeupPlacement, reports: Vec<CommandReport>) {
+    /// A `wakeup` block of command reports, in the order they arrived, each
+    /// readied as it is written: only now does it move the node's place in
+    /// its command's output.
+    fn push_reports(&mut self, turn: TurnId, placement: WakeupPlacement, mut reports: Vec<CommandReport>) {
+        for report in &mut reports {
+            self.runtime.write_report(report);
+        }
         let id = BlockId::try_from(self.ids.next_id())
             .expect("an id source never gives an empty identity");
         self.transcript
@@ -1144,7 +1149,14 @@ impl SessionCore {
         if self.disposing || end_seen(self.runtime.as_ref(), &report) {
             return;
         }
-        self.inputs.add(Input::Report(report));
+        // The end report of a command a running call looks at ends no
+        // window: the call shows the end itself (`runtime.md` § Command
+        // reports).
+        if is_end(&report) && self.runtime.looks_at(&report.command_id) {
+            self.inputs.add_quiet(report);
+        } else {
+            self.inputs.add(Input::Report(report));
+        }
         self.wake();
     }
 
@@ -1855,5 +1867,10 @@ fn replace_switch(
 /// admission and delivery both ask here, since a look that runs while the
 /// report is made shows the end after it.
 fn end_seen(runtime: &dyn SessionRuntime, report: &CommandReport) -> bool {
-    !matches!(report.event, ReportEvent::Running { .. }) && runtime.end_seen(&report.command_id)
+    is_end(report) && runtime.end_seen(&report.command_id)
+}
+
+/// Whether `report` tells its command's end, not its progress.
+fn is_end(report: &CommandReport) -> bool {
+    !matches!(report.event, ReportEvent::Running { .. })
 }
