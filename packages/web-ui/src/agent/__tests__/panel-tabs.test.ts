@@ -9,6 +9,8 @@ import {
   selectedTab,
   shownSelection,
   type PanelState,
+  type PinnedTabs,
+  type ShownPanel,
 } from '../panel-tabs'
 import type { PanelTabKind } from '../panel-kinds/kind'
 import { definePage, type PanelKind } from '../../plugins/page'
@@ -68,6 +70,11 @@ function fileKind(kind: string, pinned: boolean, opened: unknown[] = []): PanelK
   }
 }
 
+/** A closed panel with no tabs, whose pinned tabs show `pinned`. */
+function closed(pinned: PinnedTabs): ShownPanel {
+  return { open: false, panel: { history: [], tabs: [] }, pinned }
+}
+
 test('an intent opens the first enabled page that declares it, in its pinned tab', () => {
   const opened: unknown[] = []
   const pages = [
@@ -75,21 +82,22 @@ test('an intent opens the first enabled page that declares it, in its pinned tab
     definePage({ plugin: 'files', kinds: [fileKind('file', true, opened)] }),
   ]
   const enabled = (plugin: string) => plugin !== 'off'
-  const first = openIntent({}, pages, enabled, { intent: 'file', payload: { path: '/a' } })
-  expect(first).toEqual({ selection: 'file', pinned: { file: 'null > /a' }, created: null })
-  const second = openIntent(first!.pinned, pages, enabled, { intent: 'file', payload: { path: '/b' } })
-  expect(second?.pinned).toEqual({ file: 'null > /a > /b' })
+  const first = openIntent(closed({}), pages, enabled, { intent: 'file', payload: { path: '/a' } })
+  expect(first).toEqual({ action: 'open', selection: 'file', pinned: { file: 'null > /a' }, created: null })
+  const shown = first?.action === 'open' ? first.pinned : {}
+  const second = openIntent(closed(shown), pages, enabled, { intent: 'file', payload: { path: '/b' } })
+  expect(second).toMatchObject({ pinned: { file: 'null > /a > /b' } })
   expect(opened).toEqual([null, 'null > /a'])
   // No enabled page opens `edit`: the shell shows no control for it.
   const edit: RequestEditSelection = { node: null, request: 'u', file: 'x', edit: null }
-  expect(openIntent(first!.pinned, pages, enabled, { intent: 'edit', payload: edit })).toBeNull()
+  expect(openIntent(closed(shown), pages, enabled, { intent: 'edit', payload: edit })).toBeNull()
 })
 
 test('an intent a kind that is not pinned opens gets a new tab of its own, selected', () => {
   const pages = [definePage({ plugin: 'pages', kinds: [fileKind('page', false)] })]
-  const opened = openIntent({}, pages, () => true, { intent: 'file', payload: { path: '/a' } })
-  const tab = opened!.created!
-  expect(opened).toEqual({ selection: tab.id, pinned: {}, created: { id: tab.id, kind: 'page', data: 'null > /a' } })
+  const opened = openIntent(closed({}), pages, () => true, { intent: 'file', payload: { path: '/a' } })
+  const tab = opened?.action === 'open' ? opened.created! : null
+  expect(opened).toEqual({ action: 'open', selection: tab!.id, pinned: {}, created: { id: tab!.id, kind: 'page', data: 'null > /a' } })
 })
 
 test('a content once shown stays until its tab leaves the panel', () => {
