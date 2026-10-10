@@ -159,9 +159,8 @@ impl Successor {
         Err(self.command().exec())
     }
 
-    /// Starts the successor beside this process, which then exits; the
-    /// successor shares its standard streams, as the installer redirected
-    /// them.
+    /// Starts the successor beside this process, which then exits; with
+    /// this process's arguments, it writes the log this one wrote.
     #[cfg(windows)]
     pub fn start(self) -> io::Result<()> {
         use std::os::windows::process::CommandExt as _;

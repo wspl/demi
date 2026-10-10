@@ -29,7 +29,7 @@ use std::{
     convert::Infallible,
     io,
     path::PathBuf,
-    sync::{Arc, atomic::AtomicBool},
+    sync::Arc,
     time::Duration,
 };
 use tokio::sync::watch;
@@ -179,7 +179,6 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         env: options.env,
         volumes: options.volumes,
         removal: options.removal,
-        announced: AtomicBool::new(false),
     };
     let outcome = tokio::select! {
         outcome = reconnect(&registered, installed.as_ref()) => outcome,
@@ -270,10 +269,11 @@ async fn reconnect(registered: &Registered, installed: Option<&Installed>) -> io
             Err(error) => {
                 let text = format!("connection ended: {error}");
                 if failure.as_ref() == Some(&text) {
-                    eprintln!("demi-runner: {text}");
+                    crate::console::line(crate::console::runner_line(&text));
                 } else {
                     tracing::warn!("{text}");
                 }
+                management.failed(crate::console::runner_line(&text));
                 failure = Some(text);
             }
         }

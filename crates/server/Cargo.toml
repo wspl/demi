@@ -16,6 +16,7 @@ clap = { version = "4", features = ["derive"] }
 demi-backend-database = { path = "../backend-database" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
+demi-shared-cli = { path = "../shared-cli" }
 dotenvy = "0.15"
 jiff.workspace = true
 rustix = { version = "1", features = ["fs", "process"] }

@@ -84,8 +84,8 @@ const RUNNER_ENTRIES: &[&str] = &[
     "runner-token",
     "runner.json",
     "runner.lock",
-    "runner.log",
-    "runner.stdout.log",
+    crate::console::LOG,
+    crate::console::PREVIOUS_LOG,
 ];
 
 /// What a removal took.

@@ -9,6 +9,9 @@ fn main() -> std::process::ExitCode {
 
 #[cfg(target_os = "linux")]
 fn main() -> std::process::ExitCode {
+    // A panic leaves its report on standard error (`builds-and-releases.md`
+    // § Build profiles).
+    demi_shared_cli::install_panic_hook();
     use tracing_subscriber::{fmt, prelude::*};
 
     let config = match demi_machine_manager::config::Config::from_env() {
