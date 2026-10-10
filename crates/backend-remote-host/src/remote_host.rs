@@ -249,6 +249,7 @@ impl RemoteHost {
             media: claimed.media,
             attachments: claimed.attachments,
             device: self.0.link.clone(),
+            jobs: self.0.jobs.clone(),
         }
     }
 
@@ -855,6 +856,8 @@ pub struct RemoteJob {
     attachments: watch::Receiver<u64>,
     /// The device's connection.
     device: watch::Receiver<DeviceLink>,
+    /// The device's jobs, which keep it.
+    jobs: DeviceJobs,
 }
 
 impl RemoteJob {
@@ -873,6 +876,13 @@ impl RemoteJob {
     /// The connection that serves the job while it runs.
     fn live(&self) -> Option<Link> {
         self.link().filter(|_| self.shared.ended().is_none())
+    }
+
+    /// Lets go of the job, which runs on: the device keeps its end for the
+    /// next [`RemoteHost::adopt_job`] of it (`runtime.md` § Dispose and
+    /// restore).
+    pub fn let_go(&self) {
+        self.jobs.park(&self.id);
     }
 
     /// The next message of the job's output views; none once the job ended

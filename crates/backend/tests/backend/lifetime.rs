@@ -308,3 +308,40 @@ async fn a_release_change_loses_running_commands_to_the_upgrade() {
     .await;
     backend.close().await;
 }
+
+// About three seconds: a real device pairs, and the call that starts the
+// command waits for two quiet seconds.
+#[tokio::test]
+async fn a_command_that_ends_while_its_conversation_is_closed_reports_its_end_when_it_opens() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    let mut work = on_device(&backend, &master, &vendor, &alpha).await;
+    let home = alpha.runner.home_dir().to_owned();
+    let script = "printf 'started\\n'; while [ ! -f finish ]; do sleep 0.05; done; printf 'ended\\n'; touch done; exit 3";
+    let command = started(&mut work, "t1", script).await;
+
+    // The page closes the conversation, whose command runs on, and ends.
+    work.socket
+        .send(&demi_conversation_socket_protocol::ClientFrame::Close {})
+        .await;
+    work.socket
+        .until(|frame| matches!(frame, demi_conversation_socket_protocol::ServerFrame::Closed))
+        .await;
+    std::fs::write(home.join("finish"), "").unwrap();
+    until_exists(&home.join("done")).await;
+    assert_eq!(running_jobs(&harness), 1, "no agent recorded its end");
+
+    // Opened again, the agent takes the command up and hears of its end.
+    work.script(vec![say("noted")]);
+    let provider = anthropic_at(&backend, &master, &vendor, "/lifetime").await;
+    work.reconnect(&backend, &master, FIRST, &provider).await;
+    until_requested(&vendor, &format!("Command {command} (t1) ended with exit code 3.")).await;
+    eventually("the job's record goes with its end", || {
+        let running = running_jobs(&harness);
+        async move { running == 0 }
+    })
+    .await;
+    backend.close().await;
+}
