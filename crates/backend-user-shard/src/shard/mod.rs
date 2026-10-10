@@ -296,14 +296,14 @@ impl Shard {
 
     /// Ends the user's work in order (`backend.md` § Startup and shutdown):
     /// the synchronization channels close; the idle watches stop, and a
-    /// retirement already running finishes;
-    /// title requests are aborted; the conversation sockets end, and so do
-    /// the restores of trees with no page attached; open file transfers
-    /// and user streams end, and stay closed; the agent turns are aborted while their runners are
-    /// still connected; the Cloud is saved and stopped; the runner
-    /// connections close, their work ends with them, and then the pipes
-    /// fail. The answer says why the Cloud was not saved, when it was not.
-    async fn close(&self) -> Option<String> {
+    /// retirement already running finishes; title requests are aborted; the
+    /// conversation sockets end, and so do the restores of trees with no
+    /// page attached; open file transfers and user streams end, and stay
+    /// closed; the agent turns are aborted, and the commands they watched
+    /// run on; a reset or transition of the Cloud finishes, and a running
+    /// Cloud keeps running; the runner connections close, and then the pipes
+    /// fail. Nothing on a Host stops.
+    async fn close(&self) {
         self.closing.cancel();
         self.sync_channels.close();
         self.sync_channels.wait().await;
@@ -315,14 +315,11 @@ impl Shard {
         self.tree_openers.wait().await;
         let _transfers_closed = self.conversations.end_transfers().await;
         self.agent.shutdown().await;
-        let saved = self.cloud_shard().close_cloud().await;
+        self.cloud_shard().close_cloud().await;
         self.devices.shut_down(&self.services.control).await;
         self.tasks.close();
         self.tasks.wait().await;
         self.pipes.close().await;
-        saved
-            .err()
-            .map(|error| format!("the Cloud of {}: {error}", self.user))
     }
 }
 
@@ -437,8 +434,8 @@ impl ShardRef<'_> {
 
 enum Message {
     Call(Box<dyn Job>),
-    /// Answered with why each shard's Cloud was not saved.
-    Close(oneshot::Sender<Vec<String>>),
+    /// Answered once every shard closed.
+    Close(oneshot::Sender<()>),
 }
 
 /// Work on its way to a shard, which either runs it or refuses it.
@@ -580,19 +577,17 @@ impl ShardPool {
     }
 
     /// Refuses new calls, waits for the running ones and stops the shard
-    /// threads; answers why a shard's Cloud was not saved, for each that was
-    /// not.
-    pub async fn close(self) -> Vec<String> {
-        Self::stop(self.shards.queues.to_vec(), self.workers).await
+    /// threads.
+    pub async fn close(self) {
+        Self::stop(self.shards.queues.to_vec(), self.workers).await;
     }
 
-    async fn stop(queues: Vec<mpsc::Sender<Message>>, workers: Vec<Worker>) -> Vec<String> {
-        let mut failures = Vec::new();
+    async fn stop(queues: Vec<mpsc::Sender<Message>>, workers: Vec<Worker>) {
         for queue in &queues {
             let (closed, done) = oneshot::channel();
             if queue.send(Message::Close(closed)).await.is_ok() {
                 // A shard loop that ended already has nothing left to stop.
-                failures.extend(done.await.unwrap_or_default());
+                let _ = done.await;
             }
         }
         for worker in workers {
@@ -613,7 +608,6 @@ impl ShardPool {
                 }
             }
         }
-        failures
     }
 }
 
@@ -684,9 +678,9 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
     }
     let closing = futures_util::future::join_all(shards.values().map(|shard| shard.close()));
     tokio::pin!(closing);
-    let failures: Vec<String> = loop {
+    loop {
         tokio::select! {
-            closed = &mut closing => break closed.into_iter().flatten().collect(),
+            _ = &mut closing => break,
             message = queue.recv() => match message {
                 // A shard that closes takes no new user.
                 Some(Message::Call(job)) => match shards.get(job.user()) {
@@ -699,10 +693,13 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                 Some(Message::Close(done)) => drop(done),
                 // Every sender is gone: nothing more arrives while the
                 // shards close.
-                None => break (&mut closing).await.into_iter().flatten().collect(),
+                None => {
+                    (&mut closing).await;
+                    break;
+                }
             },
         }
-    };
+    }
     queue.close();
     while let Some(message) = queue.recv().await {
         match message {
@@ -715,7 +712,7 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
     if let Some(done) = closer {
         // The closer waits for this answer; if it went away, no one is left
         // to tell.
-        let _ = done.send(failures);
+        let _ = done.send(());
     }
 }
 

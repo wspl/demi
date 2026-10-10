@@ -91,10 +91,6 @@ pub enum ShutdownError {
     Edge(io::Error),
     #[error(transparent)]
     Storage(#[from] CloseError),
-    /// A reset or transition of a user's Cloud under way at the close
-    /// failed.
-    #[error("a Cloud's reset or transition failed: {0}")]
-    Cloud(String),
 }
 
 /// Every shutdown step that failed.
@@ -124,6 +120,30 @@ async fn take_over_clouds(
             .await
             .map_err(|error| error.to_string())?
             .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+/// Forgets each Cloud the last shutdown disconnected that does not run, as
+/// after an upgrade stopped it: no operation waits for its runner, which
+/// does not come back by itself (`sessions-and-targets.md` § Recovery and
+/// persistence).
+async fn forget_stopped_clouds(
+    running: &[demi_backend_database::devices::DeviceRecord],
+    services: &demi_backend_user_shard::services::Services,
+) -> Result<(), demi_backend_database::StorageError> {
+    for device in services.returning.devices() {
+        if running.iter().any(|running| running.id == device) {
+            continue;
+        }
+        let managed = services
+            .control
+            .device(device.clone())
+            .await?
+            .is_some_and(|record| record.kind == demi_web_api_protocol::devices::DeviceKind::Managed);
+        if managed {
+            services.returning.forget(&device);
+        }
     }
     Ok(())
 }
@@ -270,6 +290,12 @@ impl Backend {
             shards.close().await;
             services.close_providers().await;
             return Err(StartError::Cloud(error));
+        }
+        // A Cloud the manager does not run has no runner to wait for.
+        if let Err(error) = forget_stopped_clouds(&running, &services).await {
+            shards.close().await;
+            services.close_providers().await;
+            return Err(StartError::Storage(error));
         }
         // Fork destinations whose root committed before their publication are
         // published before the backend serves.
@@ -489,13 +515,7 @@ impl Backend {
         let mut failures = Vec::new();
         self.edge.stop_accepting();
         self.services.logins.close().await;
-        failures.extend(
-            self.shards
-                .close()
-                .await
-                .into_iter()
-                .map(ShutdownError::Cloud),
-        );
+        self.shards.close().await;
         self.services.claims.close();
         // No shard is left to route a death to.
         drop(self.deaths);

@@ -734,18 +734,19 @@ impl dyn CloudShard {
     /// transition under way finishes. A running machine keeps running, and
     /// the next backend takes it over (`managed-hosts.md` § Control and
     /// ownership).
-    pub async fn close_cloud(&self) -> Result<(), CloudError> {
+    pub async fn close_cloud(&self) {
         self.cloud().stop();
         let Some(machine) = self.cloud().machine() else {
-            return Ok(());
+            return;
         };
+        // A failed reset is recorded with its operation, and a boot the
+        // close cut short saved what its sandbox wrote.
         if let Some(reset) = machine.reset_task() {
-            reset.await?;
+            let _ = reset.await;
         }
         if let Some(transition) = machine.transition() {
-            transition.await?;
+            let _ = transition.await;
         }
-        Ok(())
     }
 
     /// Takes over the user's Cloud `device`, whose sandbox the machine

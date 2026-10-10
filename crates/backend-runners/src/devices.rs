@@ -58,7 +58,9 @@ pub const RETURN_GRACE: Duration = Duration::from_secs(30);
 /// an operation waits for them.
 #[derive(Debug, Default)]
 pub struct Returning {
-    devices: HashSet<DeviceId>,
+    /// A `std` mutex, never held across a wait: a Cloud the machine
+    /// manager does not run is forgotten once the start learns it.
+    devices: std::sync::Mutex<HashSet<DeviceId>>,
     /// When the grace after the start ends.
     until: jiff::Timestamp,
 }
@@ -74,13 +76,40 @@ impl Returning {
         let until = started
             .checked_add(RETURN_GRACE)
             .map_err(StorageError::Time)?;
-        Ok(Self { devices, until })
+        Ok(Self {
+            devices: std::sync::Mutex::new(devices),
+            until,
+        })
+    }
+
+    /// The devices whose runners the start waits for.
+    pub fn devices(&self) -> Vec<DeviceId> {
+        self.devices
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .cloned()
+            .collect()
+    }
+
+    /// Forgets `device`, whose runner does not come back by itself: its
+    /// Cloud does not run, as after an upgrade stopped it.
+    pub fn forget(&self, device: &DeviceId) {
+        self.devices
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(device);
     }
 
     /// The rest of the grace at `now` for `device`, when the last shutdown
     /// ended its connection.
     fn rest(&self, device: &DeviceId, now: jiff::Timestamp) -> Option<Duration> {
-        if !self.devices.contains(device) {
+        let returning = self
+            .devices
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(device);
+        if !returning {
             return None;
         }
         Duration::try_from(self.until.duration_since(now))
