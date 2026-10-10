@@ -381,9 +381,12 @@ impl<H: HostResolver> Tree<H> {
     /// end. The reservation is answered once every action has let go of
     /// the admission; what waits to run stays queued and runs once it is
     /// dropped.
-    pub async fn interrupt(self: &Rc<Self>) -> Reservation {
+    /// `hold` names the transition, as the stopped calls' results say it
+    /// (`runtime.md` § Interrupted calls), such as "the Cloud is being
+    /// reset".
+    pub async fn interrupt(self: &Rc<Self>, hold: &str) -> Reservation {
         let stop = async {
-            self.root.session().stop_running().await;
+            self.root.session().stop_running(hold).await;
             self.abort_children_of(self.root.id()).await;
             self.root.end_shells().await;
         };
