@@ -813,7 +813,7 @@ length, and payload. DATA frame boundaries are unrelated to record boundaries.
 | 2: stderr | Raw bytes. |
 | 3: completion | JSON: `exitCode` from 0 to 255, optionally `error: { code, message }`. |
 | 4: input pull | Empty; requests one input chunk or EOF. |
-| 5: medium | JSON: `size`, at most 16 MiB. A [returned medium](commands.md#return-media) begins, and its bytes follow. |
+| 5: medium | JSON: `size`, at most 16 MiB, `mediaType`, a document's `name`, and the facts its header gives: an image's or video's `width` and `height`, a video's `durationMs`. A [returned medium](commands.md#return-media) begins, and its bytes follow. |
 | 6: medium bytes | Raw bytes of the medium that began last. |
 
 A handler returns a medium through its output writer, which writes one

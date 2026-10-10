@@ -507,7 +507,8 @@ or a subagent ends, the work it waits for wakes it.
   report moves the model's place in the command's output as a look does,
   when it is written into the transcript; an end report dropped because a
   look showed the end first moves nothing, so the look shows the last
-  lines.
+  lines. An end report whose job viewed media is never dropped: it carries
+  the media, without the output the look showed.
 - **What the user sees.** The transcript shows each report as a row where
   its block lies, as an agent message shows as its receipt row, so a reply
   the agent writes after it never appears without its cause, as Claude Code
@@ -799,15 +800,26 @@ job showed the model.
   arrives, after the output before it: `[image 1: image/png, 1280 × 720 px,
   412000 bytes]`, `[video 2: video/mp4, 12.4 s, 1920 × 1080 px, 8598311
   bytes]` (the duration and size when the container's header gives them),
-  `[document 3: application/pdf, 182044 bytes]`. The word is the
-  medium's kind; the number is the job's.
+  `[document 3: report.pdf, application/pdf, 182044 bytes]`. The word is the
+  medium's kind; the number is the job's. A document carries its file's
+  name to the model, which a provider's document part takes as its title;
+  one from stdin is named `document-3.pdf`. The handler of `demi file view`
+  reads these facts from the medium's header, once, and they travel with the
+  medium; the runner writes the line only after it has read what the job's
+  output already holds, so a line never comes before output written before
+  the command.
 - **What it takes.** Bytes, at most 16 MiB, of a media type the conversation's
   model reads in a tool result: a type of the model-media table
   ([Accepted attachment types](../providers/models.md#accepted-attachment-types))
   that the model accepts and its provider carries in a tool result
   ([Media in tool results](../providers/providers.md#media-in-tool-results)).
   The job carries that list from its start, as the backend gives it for the
-  node's model. A path that fails gets a line on stderr; the command goes on
+  node's model, with the model's name for the refusal line. A job that
+  `demi host shell` starts on another Host carries none, since its output
+  is relayed into the invoking command and no result reports its end: there
+  the command fails with
+  `demi file view: shot.png: a job on another Host shows the model nothing; pipe its bytes into demi file view in your own script`,
+  as `demi host shell --host laptop 'cat shot.png' | demi file view` does. A path that fails gets a line on stderr; the command goes on
   with the next one and exits with status 1:
   - `demi file view: notes.txt: a text file; read it with cat notes.txt`
   - `demi file view: data.bin: not an image, a video or a PDF (48213 bytes)`
@@ -846,10 +858,13 @@ does, whatever the shell did with the command's stdout.
 #### What a result attaches
 
 Media reach the model only in the result that reports the job's end: the
-`shell` result when the job ends within its window, otherwise the report
-or `demi shell status` that reports the end. A
-result that shows the job running attaches none, so each medium is attached
-once and a job's media arrive together, in their order.
+`shell` result when the job ends within its window, otherwise its end
+report ([Command reports](#command-reports)). A result that shows the job
+running attaches none, so each medium is attached once and a job's media
+arrive together, in their order. A `demi shell status` that shows the end
+shows the media's lines and attaches nothing, since it is a job of its own:
+the end report then still comes, carrying the media alone, though the look
+showed the end.
 
 The result attaches each of its media, in order, while these rules hold:
 
@@ -2033,7 +2048,7 @@ where a tool runs; no test calls a real model.
 | The model switches to one that does not read WebP after a job viewed a WebP image | That job's result says the image was not attached, and why |
 | A job views its 33rd medium | Its line reads that it was not kept; the command goes on and succeeds |
 | A job prints 20 MiB and then views a screenshot | The screenshot is attached |
-| A job views a medium and is still running when the call's window ends | The `shell` result attaches nothing; the report or `demi shell status` that reports its end attaches the medium |
+| A job views a medium and is still running when the call's window ends | The `shell` result attaches nothing; the end report attaches the medium, also after a `demi shell status` showed the end, which shows only the medium's line |
 | The Host's connection is lost after a job viewed a medium | The result that reports the end says the medium was lost with the connection |
 | A command prints 200 KB of lines and exits | Its result shows whole lines from the start and the end and the line naming the lines between and `demi shell output 17 --lines`, and fits the replay bound, so every request carries it unchanged; the pages that command prints hold those lines, numbered, with the next page's command, and `--raw` prints the 200 KB in the order the runner read them |
 | A page of a command's output | At most 12,000 characters of whole lines, so the result that holds it is not cut; a line over 2,000 characters shows its start and how to read it whole |
