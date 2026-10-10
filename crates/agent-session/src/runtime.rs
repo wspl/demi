@@ -92,6 +92,14 @@ pub trait SessionRuntime {
         Box::pin(async { None })
     }
 
+    /// Whether a look showed the node `command`'s end: a `demi shell status`
+    /// or a `shell` result that reported it (`runtime.md` § Command
+    /// reports). None by default.
+    fn end_seen(&self, command: &CommandId) -> bool {
+        let _ = command;
+        false
+    }
+
     /// Releases what the node's tools hold, such as its shell environments
     /// and the commands they run, once its session is disposed; the session's
     /// dispose finishes only after it. Nothing by default.
