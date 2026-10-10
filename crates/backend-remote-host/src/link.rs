@@ -984,8 +984,14 @@ impl Link {
                     self.disconnect("a job medium's digest is no SHA-256");
                     return;
                 };
+                // A runner announces a job's media again on each new
+                // connection; the backend keeps each number once.
                 self.0.device_jobs.with(&job_id, |job| {
-                    job.media.borrow_mut().push(JobMedium {
+                    let mut media = job.media.borrow_mut();
+                    if media.iter().any(|medium| medium.number == number) {
+                        return;
+                    }
+                    media.push(JobMedium {
                         number,
                         media_type,
                         size,

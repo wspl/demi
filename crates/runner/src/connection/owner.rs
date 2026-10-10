@@ -290,13 +290,14 @@ impl Owner<'_> {
     }
 
     /// The backend took this connection: the jobs' messages and their
-    /// commands' requests go to it, after the exits of the jobs that ended
-    /// and are not released, which a connection that ended may have lost.
+    /// commands' requests go to it, after what a connection that ended may
+    /// have lost of the jobs not released: their media's announcements and
+    /// the exits of those that ended.
     async fn online(&mut self) -> io::Result<()> {
-        let exits = self.kept.connected(self.live.clone(), self.output.clone());
-        for exit in exits {
+        let announcements = self.kept.connected(self.live.clone(), self.output.clone());
+        for announcement in announcements {
             self.output
-                .send(exit)
+                .send(announcement)
                 .await
                 .map_err(|_| io::Error::other("host connection closed"))?;
         }
