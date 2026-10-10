@@ -90,7 +90,11 @@ conversation no longer runs, its helper agents and background jobs included.
   `bun xtask dev --data`, so a check can restart the backend as an upgrade
   does and see the page come back to the same account and conversations.
   `up` copies the user's `.env` into the slot for the backend and `down`
-  deletes it.
+  deletes it. That `.env` names the development model with the file types
+  it reads (`DEMI_DEV_PROVIDER_ACCEPTED_EXTENSIONS`), so a check that shows
+  the model an image sees it attached; a model whose types are left unknown
+  is shown no file, and a check would then report a refusal that says
+  nothing about the change it checks.
 - **Seeing.** `demi.shot(name, { element, region, zoom, page })` writes a PNG
   of the slot's page, of `page` such as one of `demi.webkit()`, or of the page
   `element` is on (`zoom` only on the slot's page), at the
