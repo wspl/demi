@@ -3,32 +3,38 @@ import { inject, provide, type InjectionKey } from 'vue'
 import type { CommandEndMark } from './command-end'
 
 /**
- * What a report row reads (`runtime.md` § Command reports): the call's title
- * and what happened, in the user's words. A report of a call whose title is
- * not known names the command by its number.
+ * The call a report row names (`runtime.md` § Command reports): its title, or
+ * the command by its number when the title is not known.
  */
-export function reportSentence(report: CommandReport): string {
-  const title = report.title.trim() || `Command ${report.commandId}`
+export function reportTitle(report: CommandReport): string {
+  return report.title.trim() || `Command ${report.commandId}`
+}
+
+/**
+ * What happened, in the user's words, which a report row sets apart from the
+ * title: a title is an imperative, so the two never read as one sentence.
+ */
+export function reportOutcome(report: CommandReport): string {
   const event = report.event
   switch (event.kind) {
     case 'running':
-      return `${title} is still running`
+      return 'still running'
     case 'ended': {
       // An end whose status was not recorded reads as one that succeeded.
       const code = event.exitCode ?? 0
-      return code === 0 ? `${title} ended` : `${title} ended with exit code ${code}`
+      return code === 0 ? 'ended' : `ended with exit code ${code}`
     }
     case 'stopped':
       switch (event.by?.kind) {
         case 'user':
-          return `${title} was stopped by you`
+          return 'stopped by you'
         case 'agent':
-          return `${title} was stopped by another agent`
+          return 'stopped by another agent'
         default:
-          return `${title} was stopped`
+          return 'stopped'
       }
     case 'lost':
-      return `${title} was lost`
+      return 'lost'
   }
 }
 

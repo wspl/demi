@@ -12,7 +12,7 @@ use demi_host_interface::{GroupBuilder, LeafBuilder};
 const SUMMARY: &str = "Operate the conversation’s persistent browser tabs on the Host running this shell. A new Host needs demi browser install once before its first browser command. Use inspect to obtain node references; never guess them.";
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const ENTRY: &str = "Drives a real browser on the Host: opens pages, reads their text and structure, clicks, types, fills forms, uploads and downloads files, takes screenshots, and keeps tabs and sign-ins for the whole conversation. Use it when a task needs a live page: checking a site the user is building, using a site that needs JavaScript or a sign-in, or showing the user a page in their work panel. Not for fetching a static URL or an API, where curl is enough.";
+const ENTRY: &str = "Drives a real browser on the Host: opens pages, reads their text and structure, clicks, types, fills forms, uploads and downloads files, takes screenshots, reads values with read-only scripts (demi browser eval t1 'document.title'), and keeps tabs and sign-ins for the whole conversation. Use it when a task needs a live page: checking a site the user is building, using a site that needs JavaScript or a sign-in, or showing the user a page in their work panel. Not for fetching a static URL or an API, where curl is enough.";
 
 /// What every leaf but `screenshot` writes on success.
 const SUCCESS: &str = "readable page results; one validated JSON value with --json";
@@ -65,7 +65,7 @@ operations! {
     "download" => DownloadInput, DownloadResult, "Trigger and save a completed download on this Host.";
     "clipboard.write" => ClipboardWriteInput, ClipboardWriteResult, "Write finite raw stdin to the managed clipboard with the declared MIME type.";
     "clipboard.read" => ClipboardReadInput, ClipboardReadResult, "Read clipboard text or export supported MIME entries to Host files.";
-    "eval" => EvalInput, EvalResult, "Run a read-only script from stdin and print the value of its last statement, as JSON; Chrome refuses side effects, and nothing waits for a Promise. Change the page with click, fill, scroll and the other actions.";
+    "eval" => EvalInput, EvalResult, "Run a read-only script and print the value of its last statement, as JSON: a short expression as the last argument, eval t1 'document.title', or statements from stdin. Chrome refuses side effects, and nothing waits for a Promise. Change the page with click, fill, scroll and the other actions.";
     "logs" => LogsInput, LogsResult, "Read console entries without clearing them; use the returned cursor to continue.";
     "viewport.set" => ViewportSetInput, ViewportResult, "Set this tab’s viewport in CSS pixels and its pixel ratio (--scale), until the user picks another mode.";
     "viewport.reset" => ViewportResetInput, ViewportResult, "Return this tab to Web mode, where the user’s live view decides its size.";
@@ -177,14 +177,19 @@ fn targeted<I: schemars::JsonSchema>() -> bool {
 /// The operands a command line gives in order: every operation but `open`,
 /// `tabs`, `content.fetch` and `install` acts on a tab, named first; a
 /// target's reference follows it, and `key`'s key comes last, after an
-/// optional reference: `key t1 Enter`, `key t1 e1 Enter`.
+/// optional reference: `key t1 Enter`, `key t1 e1 Enter`; `eval`'s
+/// expression, which stdin may give instead, comes last too.
 fn positionals<I: schemars::JsonSchema>(name: &str) -> Vec<&'static str> {
     let mut fields = operands(name).to_vec();
     if targeted::<I>() {
         fields.push("ref");
     }
-    if name == "key" {
-        fields.push("key");
+    match name {
+        "key" => fields.push("key"),
+        // A short expression may follow the reference instead of stdin
+        // (`browser.md` § Evaluation, console, and viewport).
+        "eval" => fields.push("expression"),
+        _ => {}
     }
     fields
 }

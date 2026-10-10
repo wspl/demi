@@ -128,7 +128,8 @@ fn registration_refuses_reserved_taken_malformed_and_unbound_commands() {
         GroupBuilder::new("demi", "Demi.").leaf(
             LeafBuilder::rpc("add", "Add.")
                 .input::<AddArgs>()
-                .positionals(["text"])
+                // The stdin field may be a positional only as the last one.
+                .positionals(["text", "count"])
                 .stdin_field("text")
                 .bind(TypedRpc::new(add)),
         ),
@@ -333,7 +334,7 @@ async fn dispatch_validates_wire_arguments_as_they_are_and_runs_the_handler() {
     assert_eq!(
         error,
         RpcError::Usage(
-            "error: \"count\" is not of type \"integer\"\n\nUsage: demi note add <text> [--count <count>] [--json]\n\nFor more information, try '--help'.".into()
+            "error: \"count\" is not of type \"integer\"\nUsage: demi note add <text> [--count <count>] [--json]; more with --help".into()
         )
     );
     assert!(call(json!({"text": "a", "extra": 1})).await.is_err());

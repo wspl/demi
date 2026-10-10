@@ -69,13 +69,14 @@ pub fn handle(prefix: &str, random: [u8; 16]) -> String {
 /// Declares an identifier the model reads and writes, a fixed prefix and a
 /// number from 1 such as `t7` (`runtime.md` § Identifiers the model sees), as
 /// a checked newtype. Its pattern is both its check and its schema, which the
-/// browser reads.
+/// browser reads; `$what` says what the pattern stands for, in the schema
+/// and in the refusal of a value that does not match it.
 macro_rules! numbered {
     ($(#[$meta:meta])* $name:ident, $prefix:literal, $what:literal) => {
         $(#[$meta])*
         #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
         #[serde(try_from = "String")]
-        #[schemars(extend("pattern" = $name::PATTERN))]
+        #[schemars(extend("pattern" = $name::PATTERN, "patternDescription" = $what))]
         pub struct $name(String);
 
         impl $name {
@@ -104,7 +105,7 @@ macro_rules! numbered {
                 if PATTERN.is_match(&value) {
                     Ok(Self(value))
                 } else {
-                    Err(format!(concat!("{:?} is not a ", $what), value))
+                    Err(format!(concat!("{:?} is not ", $what), value))
                 }
             }
         }
@@ -136,7 +137,7 @@ numbered!(
     /// tab's number in the conversation (`browser.md` § One tab registry).
     TabId,
     "t",
-    "tab ID"
+    "a tab ID, such as t1"
 );
 numbered!(
     /// A node reference, which `inspect`, `find` and `probe` return: `e` and
@@ -144,7 +145,7 @@ numbered!(
     /// does.
     NodeRef,
     "e",
-    "node reference"
+    "a ref, such as e12"
 );
 
 closed_set! {
