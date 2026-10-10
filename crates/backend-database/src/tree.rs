@@ -317,12 +317,45 @@ impl AgentTreeStore for SqliteTreeStore {
                 .unwrap_or_default();
             Ok(rows
                 .into_iter()
-                .map(|row| RunningCommand {
+                .map(|mut row| RunningCommand {
+                    place: row.places.remove(node).unwrap_or_default(),
                     command: row.command,
                     job: row.job,
                     tool_use_id: row.tool_use_id,
+                    started: row.started,
                 })
                 .collect())
+        })
+    }
+
+    fn record_place<'a>(
+        &'a self,
+        command: &'a CommandId,
+        node: &'a NodeId,
+        seen: demi_host_interface::Seen,
+    ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
+        Box::pin(async move {
+            let (command, node) = (command.clone(), node.clone());
+            self.db
+                .call(move |connection| running::set_place(connection, &command, &node, seen))
+                .await
+                .map_err(store_error)
+        })
+    }
+
+    fn place<'a>(
+        &'a self,
+        command: &'a CommandId,
+        node: &'a NodeId,
+    ) -> LocalBoxFuture<'a, Result<Option<demi_host_interface::Seen>, StoreError>> {
+        Box::pin(async move {
+            let (command, node) = (command.clone(), node.clone());
+            Ok(self
+                .db
+                .read(move |connection| running::place(connection, &command, &node))
+                .await
+                .map_err(store_error)?
+                .flatten())
         })
     }
 
