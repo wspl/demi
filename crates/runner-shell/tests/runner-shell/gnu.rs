@@ -319,3 +319,150 @@ async fn permission_and_file_system_utilities_take_paths_in_the_jobs_directory()
         );
     }
 }
+
+/// Two directory trees, `a` and `b`, that differ in a file at the top, in a
+/// file two levels down, in entries on one side only, and in an entry that
+/// is a directory on one side and a file on the other.
+fn trees() -> tempfile::TempDir {
+    let root = tempfile::tempdir().unwrap();
+    let files = [
+        ("a/x", "one\ntwo\n"),
+        ("b/x", "one\nTWO\n"),
+        ("a/same", "same\n"),
+        ("b/same", "same\n"),
+        ("a/sub/deep/f", "A\n"),
+        ("b/sub/deep/f", "B\n"),
+        ("a/sub/onlya", "only\n"),
+        ("b/onlyb", "only\n"),
+        ("a/onlydir/in", "in\n"),
+        ("a/s/e", "e\n"),
+        ("b/s/e", "e\n"),
+        ("b/fd", "f\n"),
+    ];
+    for (path, text) in files {
+        let path = root.path().join(path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+    fs::create_dir(root.path().join("a/fd")).unwrap();
+    root
+}
+
+/// `diff` compares directories as GNU diff 3.12 does in the C locale, with
+/// short options clustered as its getopt reads them: `-r` descends, `-q`
+/// only names the files that differ, `-N` compares a file on one side only
+/// with an empty one, and without `-r` only the top level is compared. The
+/// expected outputs are GNU's for the same trees. Runs in about 0.05 s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn diff_compares_directories_as_gnu_diff_does() {
+    let cases: &[(&str, u8, &str, &str)] = &[
+        (
+            "diff -rq a b",
+            1,
+            concat!(
+                "File a/fd is a directory while file b/fd is a regular file\n",
+                "Only in b: onlyb\n",
+                "Only in a: onlydir\n",
+                "Files a/sub/deep/f and b/sub/deep/f differ\n",
+                "Only in a/sub: onlya\n",
+                "Files a/x and b/x differ\n",
+            ),
+            "",
+        ),
+        (
+            "diff -r a b",
+            1,
+            concat!(
+                "File a/fd is a directory while file b/fd is a regular file\n",
+                "Only in b: onlyb\n",
+                "Only in a: onlydir\n",
+                "diff -r a/sub/deep/f b/sub/deep/f\n",
+                "1c1\n< A\n---\n> B\n",
+                "Only in a/sub: onlya\n",
+                "diff -r a/x b/x\n",
+                "2c2\n< two\n---\n> TWO\n",
+            ),
+            "",
+        ),
+        (
+            "diff a b",
+            1,
+            concat!(
+                "File a/fd is a directory while file b/fd is a regular file\n",
+                "Only in b: onlyb\n",
+                "Only in a: onlydir\n",
+                "Common subdirectories: a/s and b/s\n",
+                "Common subdirectories: a/sub and b/sub\n",
+                "diff a/x b/x\n",
+                "2c2\n< two\n---\n> TWO\n",
+            ),
+            "",
+        ),
+        (
+            "diff -Naur a b | cut -f 1",
+            0,
+            concat!(
+                "File a/fd is a directory while file b/fd is a regular file\n",
+                "diff -Naur a/onlyb b/onlyb\n",
+                "--- a/onlyb\n+++ b/onlyb\n@@ -0,0 +1 @@\n+only\n",
+                "diff -Naur a/onlydir/in b/onlydir/in\n",
+                "--- a/onlydir/in\n+++ b/onlydir/in\n@@ -1 +0,0 @@\n-in\n",
+                "diff -Naur a/sub/deep/f b/sub/deep/f\n",
+                "--- a/sub/deep/f\n+++ b/sub/deep/f\n@@ -1 +1 @@\n-A\n+B\n",
+                "diff -Naur a/sub/onlya b/sub/onlya\n",
+                "--- a/sub/onlya\n+++ b/sub/onlya\n@@ -1 +0,0 @@\n-only\n",
+                "diff -Naur a/x b/x\n",
+                "--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n one\n-two\n+TWO\n",
+            ),
+            "",
+        ),
+        ("diff -rqN a b >/dev/null", 1, "", ""),
+        (
+            "seq 1 9 > p; seq 1 9 | sed s/5/X/ > q; diff -1ru p q | tail -n +3",
+            0,
+            "@@ -4,3 +4,3 @@\n 4\n-5\n+X\n 6\n",
+            "",
+        ),
+        ("diff -r a/s b/s", 0, "", ""),
+        ("diff -rs a/s b/s", 0, "Files a/s/e and b/s/e are identical\n", ""),
+        (
+            "diff -q a/sub b/sub",
+            1,
+            "Common subdirectories: a/sub/deep and b/sub/deep\nOnly in a/sub: onlya\n",
+            "",
+        ),
+        ("diff -N b/onlyb nope", 1, "1d0\n< only\n", ""),
+        ("diff a/x b", 1, "2c2\n< two\n---\n> TWO\n", ""),
+        (
+            "diff -r -- a/sub b/sub",
+            1,
+            "diff -r -- a/sub/deep/f b/sub/deep/f\n1c1\n< A\n---\n> B\nOnly in a/sub: onlya\n",
+            "",
+        ),
+        ("diff -rq a nope", 2, "", "diff: nope: No such file or directory\n"),
+        ("diff -N nope b/onlyb", 1, "0a1\n> only\n", ""),
+        ("diff -N nope other", 2, "", "diff: nope: No such file or directory\ndiff: other: No such file or directory\n"),
+    ];
+    let mut failures = Vec::new();
+    for &(script, code, stdout, stderr) in cases {
+        let root = trees();
+        let actual = job(root.path(), script).await;
+        if (actual.0, actual.1.as_str(), actual.2.as_str()) != (code, stdout, stderr) {
+            failures.push(format!(
+                "{script}\n  expected {code} {stdout:?} {stderr:?}\n  actual   {} {:?} {:?}",
+                actual.0, actual.1, actual.2
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+    // An absent file's time in a unified header is the epoch, in the local
+    // time zone.
+    let root = trees();
+    let (code, output, error) = job(root.path(), "diff -Nu a/sub/onlya b/sub/onlya").await;
+    assert_eq!((code, error.as_str()), (1, ""), "{output}");
+    let absent = output.lines().nth(1).unwrap();
+    assert!(
+        absent.starts_with("+++ b/sub/onlya\t1970-01-01 ") || absent.starts_with("+++ b/sub/onlya\t1969-12-31 "),
+        "{absent}"
+    );
+}
