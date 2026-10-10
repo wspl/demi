@@ -5,7 +5,6 @@
 use demi_conversation_socket_protocol::{Failures, SubagentJob};
 use demi_shared_types::{
     Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp,
-    ToolView,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -406,25 +405,19 @@ pub struct Subagents {
     pub subagents: Vec<SubagentJob>,
 }
 
-/// `GET /conversations/:id/commands/:commandId`: an ended command, from the
-/// `shell` call that started it, for its terminal (`web-api.md`
-/// § Subagents and commands).
+/// `GET /conversations/:id/commands/:commandId`: where the `shell` call that
+/// started a command lies, which a report's title brings into view
+/// (`web-api.md` § Subagents and commands).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct CommandRecord {
+pub struct CommandCall {
     pub command_id: CommandId,
     /// The subagent that ran it; null for the root.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<NodeId>")]
     pub subagent_id: Option<NodeId>,
-    /// The call's title, its `description`.
-    pub title: String,
-    pub script: String,
-    /// When the call that started it began.
-    pub started_at: Timestamp,
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<ToolView>")]
-    pub view: Option<ToolView>,
+    /// The call's block in that agent's transcript.
+    pub block_id: BlockId,
 }
 
 /// `PATCH /conversations/:id`: the fields to change, each applied on its

@@ -133,7 +133,7 @@ pub fn web() -> Vec<Root> {
         receives::<conversations::TranscriptPage>(),
         receives::<conversations::WholeBlock>(),
         receives::<conversations::Subagents>(),
-        receives::<conversations::CommandRecord>(),
+        receives::<conversations::CommandCall>(),
         sends::<conversations::ConversationPatch>(),
         receives::<conversations::ConversationUpdate>(),
         sends::<conversations::ConversationBatch>(),

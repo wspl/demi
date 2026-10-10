@@ -1,8 +1,8 @@
 //! A conversation's history as its database holds it (`web-api.md`
 //! § Conversation history): one page of an agent's transcript at a time,
-//! in light form, a block whole, the conversation's subagents, and the
-//! record of an ended command. Every route reads the database alone: it
-//! wakes no Host and needs no live session.
+//! in light form, a block whole, the conversation's subagents, and where
+//! the call that started a command lies. Every route reads the database
+//! alone: it wakes no Host and needs no live session.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -13,7 +13,7 @@ use demi_backend_user_shard::conversation::failure_facts;
 use demi_conversation_socket_protocol::{index_u32, light};
 use demi_shared_types::{BlockId, CommandId};
 use demi_web_api_protocol::conversations::{
-    CommandRecord, NodeQuery, Subagents, TranscriptPage, TranscriptQuery, WholeBlock,
+    CommandCall, NodeQuery, Subagents, TranscriptPage, TranscriptQuery, WholeBlock,
 };
 use demi_web_api_protocol::error::ErrorCode;
 
@@ -135,13 +135,13 @@ pub(super) async fn subagents(
     }))
 }
 
-/// `GET /conversations/:id/commands/:commandId`: an ended command, from the
-/// call that started it (`web-api.md` § Subagents and commands).
+/// `GET /conversations/:id/commands/:commandId`: where the call that started
+/// a command lies (`web-api.md` § Subagents and commands).
 pub(super) async fn command(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, command)): Path<(String, String)>,
-) -> Result<Json<CommandRecord>, ApiError> {
+) -> Result<Json<CommandCall>, ApiError> {
     let services = &state.services;
     let record = owned(services, &user.id, &id).await?;
     let no_command = || {
@@ -160,24 +160,10 @@ pub(super) async fn command(
         .await?
         .flatten()
         .ok_or_else(no_command)?;
-    // The input is the JSON the provider supplied for a call the session
-    // ran, so it parses; one that did not would leave the title and script
-    // empty, as the terminal then shows only the output.
-    let input: serde_json::Value = serde_json::from_str(&call.input).unwrap_or_default();
-    let text = |field: &str| {
-        input
-            .get(field)
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .to_owned()
-    };
-    Ok(Json(CommandRecord {
+    Ok(Json(CommandCall {
         command_id,
         subagent_id: (node != root).then_some(node),
-        title: text("description"),
-        script: text("script"),
-        started_at: call.created_at,
-        view: call.view,
+        block_id: call.id,
     }))
 }
 

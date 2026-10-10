@@ -57,7 +57,7 @@ export function useConversationNavigation() {
    * matched.
    */
   function openFound(id: string, blockId: string | null): void {
-    conversations.reveal = blockId === null ? null : { conversationId: id, blockId }
+    conversations.reveal = blockId === null ? null : { conversationId: id, node: null, blockId }
     open(id)
   }
 

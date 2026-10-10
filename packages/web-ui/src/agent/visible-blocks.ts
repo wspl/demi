@@ -1,9 +1,10 @@
 import type { Block } from '@demicodes/protocol'
+import { reportShown } from './command-reports'
 
 /**
  * The blocks the transcript shows. The hidden input, `context`, reaches the
- * model but never the reader; a `wakeup` shows as its reports' rows
- * (`runtime.md` § Block types).
+ * model but never the reader; a `wakeup` shows as the rows of the ends it
+ * reports, and not at all for progress alone (`runtime.md` § Block types).
  *
  * A compaction shows where it was triggered: at its marker, appended at the
  * end when the pass finished. Its boundary, which the pass inserted earlier,
@@ -25,6 +26,10 @@ export function getVisibleBlocks(blocks: readonly Block[]): Block[] {
       continue
     }
     if (block.type === 'abort' && block.isResumed) {
+      continue
+    }
+    // Reports of progress show nothing; a block of them alone has no row.
+    if (block.type === 'wakeup' && !block.reports.some(reportShown)) {
       continue
     }
     visible.push(block)

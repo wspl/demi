@@ -26,7 +26,7 @@ import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { useSessionPanels } from './useSessionPanels'
 import { provideLiveCalls } from './live-calls'
 import { callTerminal, dockTerminals } from './terminals'
-import { provideCommandOpener } from './command-reports'
+import { provideCommandRevealer } from './command-reports'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import type { ChatSessionState, PendingSubmissionState } from './types'
 import type { HostMenuHost } from '../hosts/types'
@@ -43,7 +43,7 @@ import { provideLabelRoom } from '../ui/label-room'
 import { resumeWaitsFor, sessionFailureNotice, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import { EMPTY_TRANSCRIPT, latestWindow } from '@demicodes/conversation-client'
-import { latestBlocks, shownWindow, windowEdges } from './history'
+import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
 import { provideBlockReader, type BlockReader } from './whole-blocks'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
 import PermissionCard from '../permissions/PermissionCard.vue'
@@ -80,14 +80,18 @@ const props = withDefaults(defineProps<{
   permissionRequests?: readonly PermissionRequestView[]
   /** A decision on a permission request is on its way. */
   decidingPermission?: boolean
-  /** A message to bring into view and mark for a moment, as a search result opened at it asks. */
-  revealBlockId?: string | null
   /**
-   * Reads the record of an ended command a report names, so its terminal tab
-   * can open (`web-api.md` § Subagents and commands); absent, such a report
-   * opens nothing.
+   * A block to bring into view and mark for a moment, as a search result
+   * opened at it or a report's title asks: in the list, or in the subagent
+   * panel, which then shows that subagent.
    */
-  readCommand?: (commandId: string) => Promise<void>
+  reveal?: TranscriptReveal | null
+  /**
+   * Finds the call that started a command a report names when the window
+   * shown does not hold it: the host reads where it lies and sets `reveal`
+   * (`web-api.md` § Subagents and commands). Absent, such a title is no link.
+   */
+  revealCommand?: (commandId: string) => void
   /** Reads a block whole for a row the page holds light (`web-api.md` § Light form); absent, no row is light. */
   readBlock?: BlockReader
   /**
@@ -123,7 +127,7 @@ const emit = defineEmits<{
   regenerate: [request: MessageEditRequest]
   saveScroll: [id: string, state: PersistedScrollState | null]
   decidePermission: [id: string, decision: PermissionDecision]
-  /** The message `revealBlockId` names is in view. */
+  /** The block `reveal` names is in view. */
   revealed: []
   /** The reader nears the start of the window shown, which does not reach the transcript's (`web-application.md` § Transcript windows). */
   readBefore: []
@@ -141,16 +145,11 @@ provideEditReads(() => props.readEdit)
 // returned, a command that still runs is the dock's (`runtime.md`
 // § Rendering boundary).
 provideLiveCalls((toolUseId) => callTerminal(props.conversation.terminals, undefined, toolUseId))
-// A report row opens its command's terminal tab, which the panel shows.
-// A report row opens its command's terminal tab, which the panel shows,
-// reading the record of a command that ended before the page saw it.
-provideCommandOpener((commandId) => {
-  if (terminals.value.some((terminal) => terminal.id === commandId)) {
-    return () => { activeTerminalId.value = commandId }
-  }
-  const read = props.readCommand
-  return read && (() => {
-    void read(commandId).then(() => { activeTerminalId.value = commandId }, () => {})
+// A report's title whose call the window shown does not hold asks the host where it lies.
+provideCommandRevealer((commandId) => {
+  const find = props.revealCommand
+  return find && (() => {
+    find(commandId)
   })
 })
 const terminals = computed(() =>
@@ -307,6 +306,15 @@ const { activeSubagentId, activeTerminalId, toggleAgents, toggleTerminals, close
     () => terminals.value,
   )
 watch(() => props.conversation.id, close)
+// A block in a subagent's transcript shows in the panel, on that subagent's tab.
+watch(
+  () => props.reveal?.node,
+  (node) => {
+    if (node) {
+      activeSubagentId.value = node
+    }
+  },
+)
 </script>
 
 <template>
@@ -422,7 +430,7 @@ watch(() => props.conversation.id, close)
             @retry-submission="emit('retrySubmission')"
             :bottom-offset="surface?.dockHeight ?? 0"
             :persisted-scroll-state="conversation.scroll ?? undefined"
-            :reveal-block-id="revealBlockId"
+            :reveal-block-id="reveal?.node === null ? reveal.blockId : null"
             @revealed="emit('revealed')"
             @save-scroll-state="(id, state) => emit('saveScroll', id, state ?? null)"
             @delete-queued="(id) => emit('removeQueued', id)"
@@ -489,7 +497,9 @@ watch(() => props.conversation.id, close)
             :terminals="conversation.terminals"
             @abort="emit('abortSubagents')"
             @abort-agent="(id) => emit('abortSubagent', id)"
+            :reveal="reveal?.node ? reveal : null"
             @read="(id, at) => emit('readSubagent', id, at)"
+            @revealed="emit('revealed')"
           />
           <TerminalPanel
             v-model:active-id="activeTerminalId"

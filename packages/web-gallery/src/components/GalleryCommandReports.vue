@@ -1,23 +1,17 @@
 <script setup lang="ts">
 import type { CommandReport } from '@demicodes/protocol'
 import CommandReportBlock from '@demicodes/web-ui/agent/blocks/CommandReportBlock.vue'
-import { provideCommandOpener } from '@demicodes/web-ui/agent/command-reports'
+import { provideCommandRevealer } from '@demicodes/web-ui/agent/command-reports'
 import { productWould } from '../product-would'
 
 /**
- * A `wakeup` block's report rows. A click on a row says what the product
- * would do, open the command's terminal tab, since the gallery has no
- * terminal panel beside the specimen; a command no terminal tab shows,
- * `untracked`, is no control.
+ * A `wakeup` block's report rows, shown without the transcript they lie in:
+ * a click on a title says what the product would do, bring the call that
+ * started the command into view.
  */
-const props = defineProps<{
-  reports: CommandReport[]
-  untracked?: string[]
-}>()
+defineProps<{ reports: CommandReport[] }>()
 
-provideCommandOpener((commandId) => props.untracked?.includes(commandId)
-  ? undefined
-  : () => productWould(`The Terminal Panel Opens on Command ${commandId}`))
+provideCommandRevealer((commandId) => () => productWould(`The Transcript Scrolls to the Call That Started Command ${commandId}`))
 </script>
 
 <template>

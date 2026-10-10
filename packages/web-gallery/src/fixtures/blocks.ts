@@ -945,7 +945,6 @@ const suite = 'Run the test suite'
  */
 export function commandReportCases(): { variant: string, reports: CommandReport[] }[] {
   return [
-    { variant: 'still running', reports: [report('17', suite, { kind: 'running', runningMs: 300_000, idleMs: 12_000, intervalMs: 300_000 }, '[412/980] packages/web')] },
     { variant: 'ended', reports: [report('17', suite, { kind: 'ended', exitCode: 0 }, '980 passed (6m 2s)')] },
     { variant: 'ended with a failure', reports: [report('17', suite, { kind: 'ended', exitCode: 1 }, 'FAIL auth.test.ts')] },
     { variant: 'stopped by you', reports: [report('18', 'Start the dev server', { kind: 'stopped', by: { kind: 'user' } })] },
@@ -962,12 +961,16 @@ export function commandReportCases(): { variant: string, reports: CommandReport[
   ]
 }
 
-/** Reports that arrived together, one block, one row each; the last title is too long for a narrow row. */
+/**
+ * Reports that arrived together, one block: a row for each end, none for the
+ * progress among them; the last title is too long for a narrow row.
+ */
 export function severalReports(): CommandReport[] {
   return [
     report('17', suite, { kind: 'ended', exitCode: 1 }, 'FAIL auth.test.ts'),
+    report('23', 'Watch the type check', { kind: 'running', runningMs: 300_000, idleMs: 0, intervalMs: 300_000 }),
     report('18', 'Start the dev server', { kind: 'stopped', by: { kind: 'user' } }),
-    report('22', 'Build the documentation site with every locale and the API reference', { kind: 'running', runningMs: 600_000, idleMs: 0, intervalMs: 600_000 }),
+    report('22', 'Build the documentation site with every locale and the API reference', { kind: 'ended', exitCode: 0 }, 'built 14 locales'),
   ]
 }
 

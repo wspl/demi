@@ -522,7 +522,11 @@ held:   [790 ──── 860]                    [2,880 ─────── 2
   switching back to the conversation shows it as the reader left it.
 - **One window shown.** The transcript shows the window the reader is in:
   the latest at its end on a first opening, the window and the place the
-  reader left on a return, the window around a block a search result opens.
+  reader left on a return, the window around a block a search result opens
+  or a report's title goes to. A subagent's panel shows one window, from
+  its latest back, as it has no scroll-to-bottom button: a block before it,
+  such as the call a report in the panel names, is reached by reading the
+  pages before the window until one holds it.
 - **Reading on.** When the reader comes within a screen of an edge of the
   shown window that is not the transcript's start or end, the page reads the
   next page there, and the edge shows a loading row until it arrives. Rows
@@ -547,9 +551,9 @@ the page does not hold reads the page around its `user` block. What a request
 does not hold, the page reads with the windows: the context card's
 instructions, from the latest window's newest instructions block or else
 the page's `instructions`; a compaction divider's size, from its boundary
-or else the page's `summaries`; an
-ended command's terminal, from the command's record; the subagents, from
-their list and the `subagent` frames, each subagent's transcript in windows
+or else the page's `summaries`; the call that started a command a report
+names, from the command's record; the subagents, from their list and the
+`subagent` frames, each subagent's transcript in windows
 of its own when the panel shows it
 ([Conversation history](web-api.md#conversation-history)).
 

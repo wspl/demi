@@ -16,6 +16,12 @@ export function latestBlocks(history: HeldTranscript): HeldBlock[] {
   return latestWindow(history)?.blocks ?? []
 }
 
+/** A block to bring into view and mark for a moment, in the transcript of the agent `node`, the root's for null. */
+export interface TranscriptReveal {
+  node: string | null
+  blockId: string
+}
+
 /**
  * The window the transcript shows: the one that holds `shownAt`, the block
  * the reader went to, or else the latest; none held yet, an empty one at

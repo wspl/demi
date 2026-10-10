@@ -20,7 +20,6 @@ import { DRAFT_SAVE_DELAY_MS } from './draft-sync'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { EMPTY_TRANSCRIPT } from '@demicodes/web-ui/transport/protocol'
 import { latestBlocks, wholeHistory } from '@demicodes/web-ui/agent/history'
-import { commandTerminal } from './terminals'
 
 /** The latest page of an empty transcript, as the backend answers it. */
 const EMPTY_PAGE = { start: 0, length: 0, blocks: [], instructions: [], summaries: [] }
@@ -458,9 +457,8 @@ test('a command\'s live frames build what the page shows of it, until its end', 
   })
 })
 
-// A command the user or the agent stopped shows as stopped, never as done:
-// from its last live frame, and from its record once the page reloads.
-test('a stopped command stays stopped, live and after a reload', () => {
+// A command the user or the agent stopped shows as stopped, never as done.
+test('a stopped command stays stopped', () => {
   const conversation = useConversations().items[0]!
   conversation.history = wholeHistory([execCall('call-1', 'npm run watch', 'executing')])
   conversation.terminals = []
@@ -468,15 +466,6 @@ test('a stopped command stays stopped, live and after a reload', () => {
   applyConversationEvent(conversation, { type: 'shell_output', status: { status: 'running', ...view } })
   applyConversationEvent(conversation, { type: 'shell_output', status: { status: 'aborted', ...view } })
   expect(toRaw(conversation.terminals)).toMatchObject([{ id: 'cmd', phase: 'aborted' }])
-
-  const reloaded = commandTerminal({
-    commandId: 'cmd', subagentId: null, title: 'Watch', script: 'npm run watch', startedAt: '2026-09-13T00:00:00.000Z',
-    view: {
-      kind: 'shell', status: 'aborted', commandId: 'cmd', runningMs: 10, idleMs: 0,
-      chunks: [{ stream: 'stdout', text: 'watching\n' }], viewTruncated: false,
-    },
-  })
-  expect(reloaded).toMatchObject({ id: 'cmd', phase: 'aborted', output: 'watching\n' })
 })
 
 test('a child keeps the failure facts of its transcript, which resets and patches add to', () => {

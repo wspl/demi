@@ -30,6 +30,8 @@ import MessageEditRegion from './MessageEditRegion.vue'
 import { messageEditSuffixIds, offeredEditId } from './message-editing'
 import { useMessageForks, type MessageForkHandler } from './message-fork'
 import { useFollowSentMessages } from './useFollowSentMessages'
+import { provideCommandRevealer, useCommandRevealer } from './command-reports'
+import { storedShellView } from './block-helpers'
 import { distanceFromBottom } from '../composables/scroll-bottom'
 import { highlightFound } from '../ui/found-highlight'
 import { provideTranscript } from './edit-selection'
@@ -298,6 +300,18 @@ watch(
   { immediate: true, flush: 'post' },
 )
 onBeforeUnmount(() => revealing?.abort())
+// A report row's title brings the call that started its command into view:
+// the first call whose view names the command, a later one being a look. A
+// call the window does not hold, the host finds.
+const findCommand = useCommandRevealer()
+provideCommandRevealer((commandId) => {
+  const call = props.blocks.find((block) => block.type === 'tool_call' && storedShellView(block)?.commandId === commandId)
+  return call
+    ? () => {
+        revealAndMark(call.id)
+      }
+    : findCommand(commandId)
+})
 
 // The part of the transcript the composer leaves visible, which caps a
 // message's image height (`file-previews.md` § Files named in messages). Until

@@ -8,12 +8,12 @@
 
 use demi_agent_tools::testing::{field, shown_output};
 use demi_provider_common::testing::MockVendor;
-use demi_shared_types::ToolView;
-use demi_web_api_protocol::conversations::CommandRecord;
+use demi_shared_types::Block;
+use demi_web_api_protocol::conversations::CommandCall;
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 
-use crate::conversations::{anthropic_at, create, on_device};
+use crate::conversations::{anthropic_at, create, on_device, transcript};
 use crate::support::{Harness, eventually};
 use crate::work::{Driven, say, shell};
 
@@ -281,19 +281,20 @@ async fn a_commands_record_keeps_how_it_ended_for_its_page_header() {
     let command = field(&failed.received[0], "commandId").to_owned();
     assert_eq!(field(&failed.received[0], "exitCode"), "3");
 
-    // Its terminal, opened after it ended, reads its record from the call
-    // that started it (`web-api.md` § Subagents and commands).
-    let record = backend
+    // A report's title brings the call that started it into view, wherever
+    // the transcript is (`web-api.md` § Subagents and commands).
+    let call = backend
         .get(&format!("/api/conversations/{ENDED}/commands/{command}"), Some(&master))
         .await;
-    assert_eq!(record.status, StatusCode::OK, "{}", String::from_utf8_lossy(&record.body));
-    let record: CommandRecord = record.json();
-    assert_eq!((record.script.as_str(), record.subagent_id), ("echo failing; exit 3", None));
-    let Some(ToolView::Shell(view)) = record.view else {
-        panic!("a shell call's view")
-    };
-    assert_eq!(view.exit_code, Some(3));
-    assert_eq!(view.chunks.iter().map(|chunk| chunk.text.as_str()).collect::<String>(), "failing\n");
+    assert_eq!(call.status, StatusCode::OK, "{}", String::from_utf8_lossy(&call.body));
+    let call: CommandCall = call.json();
+    let started = transcript(&backend, &master, ENDED)
+        .await
+        .blocks
+        .into_iter()
+        .find(|block| matches!(block, Block::ToolCall(_)))
+        .expect("the shell call");
+    assert_eq!((&call.block_id, call.subagent_id), (started.id(), None));
     let unknown = backend
         .get(&format!("/api/conversations/{ENDED}/commands/999"), Some(&master))
         .await;

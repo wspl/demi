@@ -520,17 +520,28 @@ or a subagent ends, the work it waits for wakes it.
   output are part of the record the backend keeps of a running command, so
   a report after a backend restart counts the time from the command's
   start and shows only output the model has not seen.
-- **What the user sees.** The transcript shows each report as a row where
-  its block lies, as an agent message shows as its receipt row, so a reply
-  the agent writes after it never appears without its cause, as Claude Code
-  shows a line when a background task ends. The row names the call's title
-  and, set apart from it, what happened, in the user's words: *Run the test
-  suite* · *ended with exit code 1*, *Start the dev server* · *stopped by
-  you*, *Run the test suite* · *still running*. A title is an imperative,
-  so joined into one sentence it read wrongly in the product: *Restart the
-  end-to-end suite is still running*; a failure, a stop and a loss carry the same tag a shell row
-  carries ([Rendering boundary](#rendering-boundary)), and a click opens the
-  command's terminal tab. So the block holds each report as data, its
+- **What the user sees.** The transcript shows each end report as a notice
+  row where its block lies, as Claude Code shows a line when a background
+  task ends, so a reply the agent writes after a command's end never
+  appears without its cause. For example, the model starts the suite, says
+  it will report back and ends its turn; when the suite ends, a row with a
+  bell reads *Command failed with exit code 1: Run the test suite*, and
+  under it Requesting stands until the model's answer arrives, as under a
+  message the user sent. The notice says what happened, in the user's
+  words, and then names the call by its title: *Command finished*, *Command
+  stopped by you*, *Command stopped by another agent*, *Command lost*. A
+  title is an imperative, so it is the notice's object, never its subject:
+  joined as the subject, it read wrongly in the product, *Restart the
+  end-to-end suite is still running*. A failure, a stop and a loss carry the
+  same tag a shell row carries ([Rendering boundary](#rendering-boundary)).
+  The title is underlined with dots, and a click brings the call that
+  started the command into view and marks it for a moment, as a search
+  result does, reading the page around it when the page does not hold it
+  ([Transcript windows](../product/web-application.md#transcript-windows)):
+  the call's row is where the command's script and output are. A report of
+  progress shows nothing, and a block of progress reports alone has no row:
+  the answer it wakes says what the model learned, and a row for every
+  interval would outnumber the answers it caused. So the block holds each report as data, its
   `commandId`, the call's `title`, its `event` (`running`, `ended` with
   its exit code, `stopped` with who stopped it, or `lost` with its reason),
   and the output and media it carried, and the text the model reads is
@@ -1248,7 +1259,7 @@ Words used for session data:
 | --- | --- | --- | --- |
 | `user` | A send or an edit: the submitted content and, for a subagent, its identity (`preamble`, [Child context](subagents.md#child-context)) | A user message: the preamble, then the content | Yes; the only editable block ([Message editing](message-editing.md)) |
 | `context` | The session before a provider request, with the text one context source answered ([Context](#context)), the source's name (`source`), and for the instructions source the list of what the text holds (`instructions`, [What the card lists](instructions.md#what-the-card-lists)) | A user message with its text | No |
-| `wakeup` | Command reports that arrived together, with the placement `new_turn` or `steer`: each report's command, its call's title and what it reports | The reports' text, as a user message or as a steer | As a report row ([Command reports](#command-reports)) |
+| `wakeup` | Command reports that arrived together, with the placement `new_turn` or `steer`: each report's command, its call's title and what it reports | The reports' text, as a user message or as a steer | As a notice row for each end it reports, none for progress ([Command reports](#command-reports)) |
 | `steer` | A human steer, at a continuation boundary | A steer in the current turn | Yes |
 | `agent_message` | Another agent of the tree ([Communication](subagents.md#communication)) | A steer holding the message's source envelope | As a receipt row |
 | `resume` | A turn continuing after a cut: `resume`, compaction inside a turn, or a model switch that landed inside a turn and compacted | A user message: "Continue from where you left off." | No |
