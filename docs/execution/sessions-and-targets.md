@@ -306,7 +306,7 @@ to 10m and report when it is back; the user can resume this turn once it
 is back.` The last clause comes only on a primary Host's `shell` result,
 the one case that leaves a turn unfinished
 ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn));
-an attached device's text, a page's answer and a user stream's end before
+an attached device's text, a page's answer and a user stream's stop short of
 it. In a product check, a model told only
 `runner disconnected` pinged the device seven times; told what the absence
 means, it can choose. An operation of the user's, such as a page's file
