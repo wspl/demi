@@ -186,7 +186,7 @@ impl<B> Node<B> {
                 if let Some(field) = &leaf.stdin_field {
                     let condition = match &leaf.stdin_read {
                         None if leaf.is_positional(field) => {
-                            format!(", unless given as <{field}>")
+                            format!(", not read when given as <{field}>")
                         }
                         None => String::new(),
                         Some(read) => {
