@@ -1,11 +1,11 @@
 //! Test support (feature `testing`): predictable identities, and the texts
-//! the model receives for a resume, a fired wakeup and an agent message,
-//! which a session's tests compare its requests with.
+//! the model receives for a resume and an agent message, which a session's
+//! tests compare its requests with.
 
 use std::cell::Cell;
 
 use crate::IdSource;
-pub use crate::replay::{RESUME_TEXT, WAKEUP_TEXT, agent_message_envelope};
+pub use crate::replay::{RESUME_TEXT, agent_message_envelope};
 
 /// Identities `<prefix>-1`, `<prefix>-2`, and on.
 #[derive(Debug)]

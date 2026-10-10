@@ -487,6 +487,10 @@ impl ShellEnvironment for Registered {
         self.environment.status(command)
     }
 
+    fn quiet(&self, command: &CommandId) -> Result<std::time::Duration, ShellError> {
+        self.environment.quiet(command)
+    }
+
     fn read_output<'a>(
         &'a self,
         command: &'a CommandId,

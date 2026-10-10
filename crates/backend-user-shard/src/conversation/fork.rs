@@ -282,11 +282,11 @@ mod tests {
             phase: SessionPhase::Idle,
             queue: Vec::new(),
             agent_inputs: Vec::new(),
-            wakeups: Vec::new(),
+            reports: Vec::new(),
+            intervals: Vec::new(),
             cwd: "/work".into(),
             model: test_model(),
             edits: Vec::new(),
-            last_turn: demi_agent_store::TurnEnd::Answer,
         };
         let initial = CheckpointUpdate {
             state,
@@ -297,7 +297,7 @@ mod tests {
         SqliteTreeStore::new(
             stores.db(id),
             blobs,
-            std::rc::Rc::new(|_: &demi_shared_types::NodeId, _| {}),
+            std::rc::Rc::new(|_: &demi_shared_types::NodeId| {}),
         )
         .create_node(NodeRecord::root(root_of(id), at), initial)
         .await

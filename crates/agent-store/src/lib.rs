@@ -26,7 +26,7 @@ use demi_conversation_socket_protocol::{JobPhase, SubagentJob};
 use demi_host_interface::{StoredMedium, WholeOutput};
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, CommandEnd, CommandId, CompletionId, ModelSelection, NodeId,
-    OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId, WakeupCommand, WakeupId,
+    OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId,
 };
 use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
@@ -283,9 +283,15 @@ pub struct CheckpointState {
     /// order.
     #[garde(dive)]
     pub agent_inputs: Vec<PendingAgentInput>,
-    /// The yield wakeups not yet written into the transcript, fired or not.
+    /// The command reports that arrived and are not yet written into the
+    /// transcript, in arrival order, each its paragraph of text
+    /// (`runtime.md` § Command reports).
+    #[garde(skip)]
+    pub reports: Vec<String>,
+    /// The commands the session's `shell` calls left running, each with
+    /// how often it reports (`runtime.md` § Command reports).
     #[garde(dive)]
-    pub wakeups: Vec<ScheduledWakeup>,
+    pub intervals: Vec<CommandInterval>,
     #[garde(length(min = 1))]
     pub cwd: String,
     #[garde(dive)]
@@ -293,21 +299,19 @@ pub struct CheckpointState {
     /// The receipts of the accepted edits.
     #[garde(dive)]
     pub edits: Vec<EditReceipt>,
-    /// How the session's last turn ended, so that a restore decides whether
-    /// a child closes as the live session would (`subagents.md` § Result).
-    #[garde(skip)]
-    pub last_turn: TurnEnd,
 }
 
-/// How a turn ended (`subagents.md` § Result): with `yield`, after which the
-/// session waits for its wakeup, or with its answer, a response that
-/// requested no tool. A session that has ended no turn yet waits for no
-/// wakeup either, so it counts as answered.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TurnEnd {
-    Answer,
-    Yield,
+/// A command a `shell` call left running, and how often it reports while
+/// it runs: every `interval_ms`, or, for a resident command, never; its end
+/// is reported either way (`runtime.md` § Command reports).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CommandInterval {
+    #[garde(skip)]
+    pub command_id: CommandId,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[garde(inner(range(min = 1)))]
+    pub interval_ms: Option<u32>,
 }
 
 /// An agent message the session admitted and has not yet written into its
@@ -324,31 +328,6 @@ pub struct PendingAgentInput {
     pub model: ModelSelection,
     #[garde(dive)]
     pub message: AgentMessage,
-}
-
-/// A yield wakeup (`runtime.md` § Yield wakeups).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ScheduledWakeup {
-    #[garde(skip)]
-    pub id: WakeupId,
-    /// How long after the scheduling action ended it fires.
-    #[garde(range(min = 1))]
-    pub duration_ms: u32,
-    /// The commands whose first end fires it sooner.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[garde(skip)]
-    pub command_ids: Vec<CommandId>,
-    /// The first of them that ended, and how; the text the wakeup gives
-    /// the model names it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[garde(skip)]
-    pub ended: Option<WakeupCommand>,
-    /// When it is due, in wall-clock time; null until the action that
-    /// scheduled it ended.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[garde(skip)]
-    pub due_at: Option<Timestamp>,
 }
 
 /// The receipt of an accepted edit (`message-editing.md` § Commit and

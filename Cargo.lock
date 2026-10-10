@@ -1508,6 +1508,7 @@ dependencies = [
  "demi-shared-types",
  "flate2",
  "futures-util",
+ "jiff",
  "reqwest",
  "schemars",
  "serde",

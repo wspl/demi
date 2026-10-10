@@ -84,7 +84,7 @@ const CERTIFICATE: &[u8] = include_bytes!("claude_code/distribution.pem");
 const KEY: &[u8] = include_bytes!("claude_code/distribution.key");
 /// Demi's shell tool, as the CLI names what it reaches over the SDK MCP
 /// server `main`.
-const SHELL: &str = "mcp__main__shell_exec";
+const SHELL: &str = "mcp__main__shell";
 /// The variables that keep the CLI to the scripted vendor, besides its
 /// address: the Cloud's own `PATH`, and the CLI's non-essential traffic,
 /// telemetry and error reporting off. Its updater is the product's to turn
@@ -565,7 +565,7 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
     // over the SDK MCP channel, Demi runs both commands on the Cloud, and
     // the CLI sends both results to the vendor, all in the process that kept
     // the conversation.
-    let call = |text: &str| json!({ "description": "Print the text", "script": format!("printf '{text}'"), "timeoutMs": 60_000 });
+    let call = |text: &str| json!({ "description": "Print the text", "script": format!("printf '{text}'"), "intervalMs": 60_000 });
     let batch = vec![
         tool_use_block(
             0,
@@ -611,7 +611,7 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
         };
         assert_eq!(
             (ran.tool_use_id.as_str(), ran.tool_name.as_str()),
-            (id, "shell_exec")
+            (id, "shell")
         );
         assert_eq!(ran.status, ToolCallStatus::Completed);
         let output: String = ran
@@ -721,7 +721,7 @@ async fn each_new_process_resumes_the_session_the_blocks_hold_and_its_first_requ
     socket
         .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a21", "Say hello.")
         .await;
-    let call = |text: &str| json!({ "description": "Print the text", "script": format!("printf '{text}'"), "timeoutMs": 60_000 });
+    let call = |text: &str| json!({ "description": "Print the text", "script": format!("printf '{text}'"), "intervalMs": 60_000 });
     world.answers(message(
         vec![
             tool_use_block(0, "toolu_suite_1", SHELL, &call("one")),
@@ -808,7 +808,7 @@ async fn each_new_process_resumes_the_session_the_blocks_hold_and_its_first_requ
     world.answers(message(
         vec![
             text_block(0, &["Looking."]),
-            tool_use_block(1, "toolu_api_1", "shell_exec", &call("three")),
+            tool_use_block(1, "toolu_api_1", "shell", &call("three")),
         ],
         "tool_use",
         json!({ "input_tokens": 40, "output_tokens": 1 }),

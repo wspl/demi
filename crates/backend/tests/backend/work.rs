@@ -35,12 +35,23 @@ const CONTEXT: &str = "[Execution context ";
 const SWITCHED: &str = "[Execution target switched]";
 
 /// The model's shell call `id` running `script`, watched for at most
-/// `timeout_ms`.
-pub(crate) fn shell(id: &str, script: &str, timeout_ms: u64) -> MockResponse {
+/// `interval_ms`, which then reports every `interval_ms` while it runs.
+pub(crate) fn shell(id: &str, script: &str, interval_ms: u64) -> MockResponse {
     tool_use(
         id,
-        "shell_exec",
-        &json!({ "description": id, "script": script, "timeoutMs": timeout_ms }),
+        "shell",
+        &json!({ "description": id, "script": script, "intervalMs": interval_ms }),
+    )
+}
+
+/// The model's shell call `id` running `script`, a command that runs until
+/// it ends or is stopped: the call returns once its output is quiet, and it
+/// reports only its end.
+pub(crate) fn resident(id: &str, script: &str) -> MockResponse {
+    tool_use(
+        id,
+        "shell",
+        &json!({ "description": id, "script": script, "intervalMs": null }),
     )
 }
 
@@ -902,21 +913,20 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/work").await;
 
     // The far job reports on standard error at once and waits for a line,
-    // then runs a process of its own; the model's window ends while it
-    // runs.
+    // then runs a process of its own; the model's call returns once its
+    // output is quiet, while it runs.
     let far = "printf \"ready\\n\" >&2; read line; printf \"%s\" \"$line\" > got.txt; sh -c \"echo \\$\\$ > far.pid; exec /bin/sleep 30\"";
     let script = format!("demi host shell --host alpha '{far}'");
-    let started = work
-        .turn(vec![shell("t1", &script, 500), say("waiting")])
-        .await;
+    let started = work.turn(vec![resident("t1", &script), say("waiting")]).await;
     let result = &started.received[0];
     assert!(result.starts_with("status: running"), "{result}");
     let command = field(result, "commandId").to_owned();
     // The far job's error output reaches the model while the job runs: the
-    // model reads the command's output, each read showing what came since
-    // the one before, until `ready` is there. The far job's start (a login
-    // shell on alpha) may outlast the window above, and its shell's printf
-    // writes a byte at a time, so `ready` may come split between reads.
+    // model looks at the command, each look showing what came since the one
+    // before, until `ready` is there. The far job's start (a login shell on
+    // alpha) may outlast the quiet that ended the call, and its shell's
+    // printf writes a byte at a time, so `ready` may come split between
+    // looks.
     let mut output = shown_output(result);
     let deadline = tokio::time::Instant::now() + crate::support::PATIENCE;
     let mut reads = 0;
@@ -930,21 +940,69 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
         // reads of the whole wait make at most 100.
         tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         reads += 1;
-        let status = json!({ "commandId": command });
+        let look = format!("demi shell status {command}");
         let read = work
-            .turn(vec![
-                tool_use(&format!("s{reads}"), "shell_status", &status),
-                say("still waiting"),
-            ])
+            .turn(vec![shell(&format!("s{reads}"), &look, 30_000), say("still waiting")])
             .await;
-        let result = read.received.first().expect("the read reaches the model");
-        assert!(result.starts_with("status: running"), "{result}");
-        output.push_str(&shown_output(result));
+        let shown = shown_output(read.received.first().expect("the look reaches the model"));
+        assert!(shown.starts_with("status: running"), "{shown}");
+        output.push_str(&shown_output(&shown));
     }
 
-    let write = json!({ "commandId": command, "description": "Answer the prompt", "stdin": "hello\n" });
-    work.turn(vec![tool_use("t2", "shell_status", &write), say("fed")])
+    // The model asks to hear from the command every two seconds: it reports
+    // what a look shows of it, and how to change that. Woken by the report,
+    // the model makes it report only its end.
+    let watch = format!("demi shell status {command} --interval 2s");
+    let resident_look = format!("demi shell status {command} --resident");
+    let before = work
+        .start(vec![
+            shell("t2", &watch, 30_000),
+            say("watching"),
+            shell("t3", &resident_look, 30_000),
+            say("resident"),
+        ])
         .await;
+    let report = format!("Command {command} (t1) is still running after");
+    eventually("the command's report and the turn it opened", || {
+        let requests = vendor.requests();
+        let answered = requests[before..]
+            .iter()
+            .any(|request| request.json().to_string().contains("demi shell status") && request.json().to_string().contains("reports only its end from now on"));
+        async move { answered }
+    })
+    .await;
+    // The turn of the message, then the turn the report opened, two seconds
+    // after the first ended.
+    work.socket.until_idle().await;
+    work.socket.until_idle().await;
+    let watched = work.observe(before);
+    let [interval, resident] = &watched.received[..] else {
+        panic!("{:#?}", watched.received);
+    };
+    assert!(
+        shown_output(interval)
+            .starts_with(&format!("[command {command} reports every 2s from now on]\nstatus: running\n")),
+        "{interval}"
+    );
+    let messages = watched.requests.last().unwrap()["messages"].to_string();
+    assert!(messages.contains(&report), "{messages}");
+    assert!(messages.contains("It reports every 2s; change that with demi shell status"), "{messages}");
+    let shown = shown_output(resident);
+    assert!(
+        shown.starts_with(&format!("[command {command} reports only its end from now on]\n")),
+        "{shown}"
+    );
+    // The look's own next step, which the shown output stops before.
+    assert!(
+        resident.contains(&format!("\nnext: command {command} keeps running and reports to you when it ends;")),
+        "{resident}"
+    );
+
+    // The model answers the far job's prompt through the command's input.
+    let answer = format!("printf 'hello\\n' | demi shell input {command}");
+    let fed = work.turn(vec![shell("t4", &answer, 30_000), say("fed")]).await;
+    assert_eq!(field(&fed.received[0], "exitCode"), "0", "{}", fed.received[0]);
+    assert_eq!(shown_output(&fed.received[0]), "");
     let got = a.join("got.txt");
     let pid = a.join("far.pid");
     crate::support::eventually("the far job read the line and went on", || {
@@ -966,20 +1024,12 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     assert!(alive(&pid));
     // `demi shell stop` stops it, from another shell of the conversation,
     // and waits until it has ended; a second stop is safe, and a number no
-    // command has fails, as it fails a yield, while the others it names are
-    // still stopped, as `cat a missing b` goes on.
+    // command has fails, while the others it names are still stopped, as
+    // `cat a missing b` goes on. The model stopped it itself, so its end
+    // reports nothing more.
     let stop = format!("demi shell stop {command}; demi shell stop 999 {command}");
-    let stopped = work
-        .turn(vec![
-            shell("t3", &stop, 30_000),
-            tool_use("t4", "shell_status", &json!({ "commandId": command })),
-            tool_use("t5", "yield", &json!({ "durationMs": 600_000, "commandIds": [999] })),
-            say("stopped"),
-        ])
-        .await;
-    let [stop, look, wait] = &stopped.received[..] else {
-        panic!("{:#?}", stopped.received);
-    };
+    let stopped = work.turn(vec![shell("t5", &stop, 30_000), say("stopped")]).await;
+    let stop = &stopped.received[0];
     assert_eq!(field(stop, "exitCode"), "1", "{stop}");
     assert_eq!(
         shown_output(stop),
@@ -987,8 +1037,14 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
             "[command {command} stopped]\ndemi shell stop: 999: no such command in this conversation\n[command {command} had already ended]\n"
         )
     );
-    assert!(look.starts_with("status: aborted"), "{look}");
-    assert_eq!(wait, "yield: no command 999 in this conversation");
+    let look = format!("demi shell status {command}; printf 'late\\n' | demi shell input {command}");
+    let looked = work.turn(vec![shell("t6", &look, 30_000), say("looked")]).await;
+    let looked = &looked.received[0];
+    assert!(shown_output(looked).starts_with("status: aborted"), "{looked}");
+    assert!(
+        looked.ends_with(&format!("\ndemi shell input: command {command} is not running")),
+        "{looked}"
+    );
     crate::support::eventually("the far job ended", || {
         let alive = alive(&pid);
         async move { !alive }
