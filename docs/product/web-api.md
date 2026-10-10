@@ -42,7 +42,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Instructions | `PUT /instructions { text }`; the text is part of the product state ([Instructions](#instructions)) |
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id, ... }`, `PATCH /conversations/:id`, `DELETE /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
 | Search | `GET /search?q=<query>` finds the caller's conversations ([Search](#search)) |
-| Conversation history | `GET /conversations/:id/transcript?node=&before=\|after=\|around=` reads one page of an agent's transcript, `GET /conversations/:id/transcript/blocks/:blockId?node=` one block whole, `GET /conversations/:id/subagents` the conversation's subagents and `GET /conversations/:id/commands/:commandId` the record of an ended command ([Conversation history](#conversation-history)); `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
+| Conversation history | `GET /conversations/:id/transcript?node=&before=\|after=\|around=` reads one page of an agent's transcript, `GET /conversations/:id/transcript/blocks/:blockId?node=` one block whole, `GET /conversations/:id/subagents` the conversation's subagents and `GET /conversations/:id/commands/:commandId` where the call that started a command lies ([Conversation history](#conversation-history)); `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `WS /conversations/:id/fs/watch`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
 | User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams) |
@@ -252,13 +252,12 @@ each subagent the conversation has had, in the order they started, as the
 `subagent` frame gives it ([Protocol](../agent/subagents.md#protocol)). A
 page reads a subagent's transcript, by its pages, when it shows it.
 
-`GET /api/conversations/:id/commands/:commandId` answers the record of a
-command of the tree that the page opens in the terminal panel after it
-ended, such as from the report that names it: `{ commandId, subagentId,
-title, script, startedAt, view }`, from the `shell` call that started it,
-`subagentId` null for the root's. A running command reaches the page by its live frames
-instead ([Live output](../agent/runtime.md#live-output)). A command the
-conversation does not hold answers 404 `not_found`.
+`GET /api/conversations/:id/commands/:commandId` answers where the `shell`
+call that started a command of the tree lies, which a report's title brings
+into view ([Command reports](../agent/runtime.md#command-reports)): `{
+commandId, subagentId, blockId }`, `subagentId` null for the root's. The
+page then reads the page around `blockId` in that agent's transcript. A
+command the conversation does not hold answers 404 `not_found`.
 
 ## Workspaces, devices, and attached hosts
 
