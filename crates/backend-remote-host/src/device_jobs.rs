@@ -80,6 +80,9 @@ pub(crate) struct JobEntry {
     /// The runner stopped it once its connection stayed away: its end is a
     /// loss, with its output kept.
     unreached: bool,
+    /// A restarted backend knows it only from its records: it stays, ended
+    /// or not, until the agent that ran it takes it up.
+    parked: bool,
 }
 
 /// What a job's consumer holds of it.
@@ -138,6 +141,7 @@ impl DeviceJobs {
                 seen: [0; 2],
                 resyncing: None,
                 unreached: false,
+                parked: false,
             },
         );
         claimed
@@ -161,7 +165,9 @@ impl DeviceJobs {
             seen: [0; 2],
             resyncing: None,
             unreached: false,
+            parked: false,
         });
+        job.parked = false;
         job.origin = entry.origin;
         job.commands = entry.commands;
         job._lease = entry.lease;
@@ -209,7 +215,8 @@ impl DeviceJobs {
     /// The job `id` ended with `end`: it leaves the table, and its consumer
     /// learns the end. False when the device does not know it.
     pub(crate) fn exited(&self, id: &str, mut end: JobEnd) -> bool {
-        let Some(mut job) = self.0.borrow_mut().jobs.remove(id) else {
+        let mut table = self.0.borrow_mut();
+        let Some(job) = table.jobs.get_mut(id) else {
             return false;
         };
         if let Some(waiting) = job.resyncing.take() {
@@ -222,6 +229,10 @@ impl DeviceJobs {
         }
         job.cancel.cancel();
         job.shared.finish(end);
+        // A parked job's end waits for the agent that takes it up.
+        if !job.parked {
+            table.jobs.remove(id);
+        }
         true
     }
 
@@ -230,8 +241,8 @@ impl DeviceJobs {
         for job in self.0.borrow_mut().jobs.values_mut() {
             if job.attached.as_ref().is_some_and(|attached| attached.is(link)) {
                 job.attached = None;
-                // Output read again for the connection that ended is read
-                // again for the next.
+                // A read again the ended connection cannot finish delivers
+                // what waited for it; the next connection reads again.
                 if let Some(waiting) = job.resyncing.take() {
                     for chunk in waiting {
                         job.deliver(chunk);
@@ -302,11 +313,15 @@ impl DeviceJobs {
                 adoption.resync.push((kept.job_id.clone(), kept.output));
             }
         }
+        // A parked job that ended waits for its agent whatever the runner
+        // lists.
         let unlisted: Vec<String> = table
             .jobs
-            .keys()
-            .filter(|job| !listed.contains(job.as_str()))
-            .cloned()
+            .iter()
+            .filter(|(id, job)| {
+                !listed.contains(id.as_str()) && !(job.parked && job.shared.ended().is_some())
+            })
+            .map(|(id, _)| id.clone())
             .collect();
         for id in unlisted {
             if let Some(job) = table.jobs.remove(&id) {
@@ -374,6 +389,7 @@ impl JobEntry {
             seen: [0; 2],
             resyncing: None,
             unreached: false,
+            parked: true,
         }
     }
 
