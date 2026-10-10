@@ -19,6 +19,10 @@ use crate::{
 /// How much of a stream's end a view carries.
 pub const TAIL_CHARS: usize = 4096;
 
+/// The exit code a lost command shows the user, in the pages and in its
+/// call's view: the failure it is, as for a command that could not run.
+pub const LOST_EXIT_CODE: i32 = 127;
+
 /// A command's output and state, the cursors of the model's view, and the
 /// pages' view.
 #[derive(Debug)]
@@ -39,6 +43,10 @@ pub struct CommandRecord {
     files: Option<EditedFiles>,
     /// The whole output, once the command ended.
     whole: Option<Arc<WholeOutput>>,
+    /// How many bytes of each stream that the model saw before the command
+    /// was taken up again are still to arrive: the model's view passes over
+    /// them (`storage.md` § Command outputs).
+    seen_before: Seen,
 }
 
 /// Where the next byte view of each stream and the model's next merged
@@ -101,6 +109,10 @@ enum Phase {
         media: Vec<CommandMedium>,
     },
     Aborted,
+    Lost {
+        reason: String,
+        media: Vec<CommandMedium>,
+    },
 }
 
 /// One stream's text as the record holds it.
@@ -123,21 +135,36 @@ struct Chunk {
 }
 
 /// How a command ended, when its streams are known.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ending {
     Exited(i32),
     /// It was stopped: its streams settle, its status is the stop.
     Aborted,
+    /// Its Host lost it, for this reason (`runtime.md` § Lost commands).
+    Lost(String),
 }
 
 impl CommandRecord {
     /// A running command that the `shell` call `tool_use_id` started.
     pub fn new(command_id: CommandId, tool_use_id: String) -> Self {
+        Self::taken_up(command_id, tool_use_id, std::time::Duration::ZERO, Seen::default())
+    }
+
+    /// A running command that the `shell` call `tool_use_id` started
+    /// `running` ago and that is taken up again, whose output the model had
+    /// seen as far as `seen`: its output arrives again from its start, and
+    /// the model's view passes over what it saw.
+    pub fn taken_up(
+        command_id: CommandId,
+        tool_use_id: String,
+        running: std::time::Duration,
+        seen: Seen,
+    ) -> Self {
         let now = Instant::now();
         Self {
             command_id,
             tool_use_id,
-            started: now,
+            started: now.checked_sub(running).unwrap_or(now),
             last_output: now,
             phase: Phase::Running,
             stdout: Stream::default(),
@@ -147,6 +174,7 @@ impl CommandRecord {
             page: PageText::default(),
             files: None,
             whole: None,
+            seen_before: seen,
         }
     }
 
@@ -164,10 +192,11 @@ impl CommandRecord {
         Instant::now() - self.last_output
     }
 
-    /// The media the command's job viewed, once it exited; no look moves.
+    /// The media the command's job viewed, once it exited or was lost; no
+    /// look moves.
     pub fn media(&self) -> &[CommandMedium] {
         match &self.phase {
-            Phase::Exited { media, .. } => media,
+            Phase::Exited { media, .. } | Phase::Lost { media, .. } => media,
             Phase::Running | Phase::Aborted => &[],
         }
     }
@@ -178,7 +207,31 @@ impl CommandRecord {
             Phase::Running => None,
             Phase::Exited { exit_code, .. } => Some(Ending::Exited(*exit_code)),
             Phase::Aborted => Some(Ending::Aborted),
+            Phase::Lost { reason, .. } => Some(Ending::Lost(reason.clone())),
         }
+    }
+
+    /// How far the model has seen each stream, as the model's place in the
+    /// merged output projects onto them; all of it once a view gave the
+    /// whole output. No look moves.
+    pub fn seen(&self) -> Seen {
+        if self.model.whole {
+            return Seen::ALL;
+        }
+        // The byte views may have delivered part of the next line.
+        let mut seen = Seen::default();
+        for chunk in &self.chunks {
+            let bytes = self
+                .model
+                .output
+                .saturating_sub(chunk.offset)
+                .min(chunk.text.len()) as u64;
+            match chunk.stream {
+                StreamKind::Stdout => seen.stdout += bytes,
+                StreamKind::Stderr => seen.stderr += bytes,
+            }
+        }
+        seen
     }
 
     /// The text of a stream so far.
@@ -261,6 +314,7 @@ impl CommandRecord {
                 media,
             },
             Ending::Aborted => Phase::Aborted,
+            Ending::Lost(reason) => Phase::Lost { reason, media },
         };
         running
     }
@@ -289,28 +343,7 @@ impl CommandRecord {
         outliving: Vec<String>,
     ) -> CommandStatus {
         let whole = self.whole.clone().map(|output| {
-            let seen = if self.model.whole {
-                Seen {
-                    stdout: u64::MAX,
-                    stderr: u64::MAX,
-                }
-            } else {
-                // Project the model's merged line boundary onto each stream.
-                // The byte views may have delivered part of the next line.
-                let mut seen = Seen::default();
-                for chunk in &self.chunks {
-                    let bytes = self
-                        .model
-                        .output
-                        .saturating_sub(chunk.offset)
-                        .min(chunk.text.len()) as u64;
-                    match chunk.stream {
-                        StreamKind::Stdout => seen.stdout += bytes,
-                        StreamKind::Stderr => seen.stderr += bytes,
-                    }
-                }
-                seen
-            };
+            let seen = self.seen();
             self.model.whole = true;
             WholeView { output, seen }
         });
@@ -357,6 +390,10 @@ impl CommandRecord {
                 media: media.clone(),
             },
             Phase::Aborted => CommandState::Aborted,
+            Phase::Lost { reason, media } => CommandState::Lost {
+                reason: reason.clone(),
+                media: media.clone(),
+            },
         };
         CommandStatus {
             command_id: self.command_id.clone(),
@@ -384,6 +421,9 @@ impl CommandRecord {
                     exit_code: *exit_code,
                 },
                 Phase::Aborted => PageState::Aborted,
+                Phase::Lost { .. } => PageState::Exited {
+                    exit_code: LOST_EXIT_CODE,
+                },
             },
             tail: self.page.tail.clone(),
             chars: self.page.chars,
@@ -410,6 +450,28 @@ impl CommandRecord {
             return;
         }
         let offset = merged_len(&self.chunks);
+        // Output the model saw before the command was taken up again
+        // arrives again from the start: the model's view passes over it
+        // while it has seen everything before it.
+        let before = match stream {
+            StreamKind::Stdout => &mut self.seen_before.stdout,
+            StreamKind::Stderr => &mut self.seen_before.stderr,
+        };
+        let skipped = usize::try_from(*before).unwrap_or(usize::MAX).min(text.len());
+        let skipped = text.floor_char_boundary(skipped);
+        *before -= skipped as u64;
+        if skipped > 0 && self.model.output == offset {
+            self.model.output += skipped;
+            // The stream's text holds this chunk already.
+            let stream_before = self.stream(stream).text.len() - text.len();
+            let position = match stream {
+                StreamKind::Stdout => &mut self.model.stdout,
+                StreamKind::Stderr => &mut self.model.stderr,
+            };
+            if *position == stream_before {
+                *position += skipped;
+            }
+        }
         self.chunks.push(Chunk {
             stream,
             text: text.to_owned(),

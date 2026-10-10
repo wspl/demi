@@ -10,7 +10,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 use bytes::Bytes;
 use demi_shared_types::{
     BinaryStdout, CommandId, EditedFile, NodeId, OutputView, PathChange, Sequence, StreamKind,
-    StreamView,
+    StreamView, Unreachable,
 };
 use demi_command_protocol::Viewable;
 use futures_util::future::LocalBoxFuture;
@@ -58,10 +58,19 @@ pub trait ShellEnvironment {
     /// its output.
     fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError>;
 
-    /// The command lines of the background tasks that keep the command
+    /// The command lines of the background tasks that keep `command`
     /// running once its script has ended, which moves no place in its
-    /// output; empty while its script runs and once it ended.
-    fn outliving(&self, command: &CommandId) -> Result<Vec<String>, ShellError>;
+    /// output (`runtime.md` § Results and previews); empty while its script
+    /// runs, and for a command that ended or that the environment does not
+    /// hold.
+    fn outliving(&self, command: &CommandId) -> Vec<String>;
+
+    /// How long the Host of `command`, which runs, has been unreachable as
+    /// far as the environment knows, and how long its runner keeps it so
+    /// (`runtime.md` § Command reports); none while its connection serves
+    /// it, and for a command that ended or that the environment does not
+    /// hold.
+    fn unreachable(&self, command: &CommandId) -> Option<Unreachable>;
 
     /// The kept output of a command that runs, as its Host holds it now
     /// (`runtime.md` § The whole output).
@@ -88,11 +97,9 @@ pub trait ShellEnvironment {
     /// Forgets a command, stopping it first when it runs; false when unknown.
     fn release_command<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, bool>;
 
-    /// Takes up `command`, which the call `tool_use_id` started as the job
-    /// `job` on this environment's Host and which still ran when the
-    /// backend last knew it, for the node `caller` (`sessions-and-targets.md`
-    /// § Recovery and persistence).
-    fn adopt(&self, command: &CommandId, tool_use_id: &str, job: &str, caller: JobCaller);
+    /// Takes up `taken`, a command that still ran when the backend last
+    /// knew it (`sessions-and-targets.md` § Recovery and persistence).
+    fn adopt(&self, taken: TakenUp);
 
     /// Lets go of every command, which runs on, as a disposed node does
     /// (`runtime.md` § Dispose and restore); waits until the environment
@@ -147,6 +154,20 @@ pub struct ExecRequest {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct JobCaller {
     pub node: NodeId,
+}
+
+/// A command an environment takes up again: the call `tool_use_id`
+/// started it as the job `job` on the environment's Host for the node
+/// `caller`, it has run for `running` since, and the node had seen `seen`
+/// of its output (`storage.md` § Command outputs).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TakenUp {
+    pub command: CommandId,
+    pub tool_use_id: String,
+    pub job: String,
+    pub caller: JobCaller,
+    pub running: Duration,
+    pub seen: Seen,
 }
 
 /// A command's status and its output since the last look.
@@ -205,6 +226,13 @@ pub enum CommandState {
     },
     /// It was stopped.
     Aborted,
+    /// Its Host lost it, for `reason` (`runtime.md` § Lost commands), with
+    /// the media its declared commands returned to the job, which went with
+    /// it.
+    Lost {
+        reason: String,
+        media: Vec<CommandMedium>,
+    },
 }
 
 /// The whole output of a command that ended, and how many bytes of each
