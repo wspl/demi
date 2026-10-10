@@ -23,7 +23,7 @@ const emit = defineEmits<{
 
 <template>
   <div
-    class="replaced-draft-notice flex w-full items-center gap-2 rounded-lg bg-surface-raised pl-3 text-chrome text-fg-muted"
+    class="replaced-draft-notice flex w-full items-center gap-2 rounded-lg bg-surface-card pl-3 text-chrome text-fg-muted"
     role="status"
   >
     <span class="min-w-0 flex-1 truncate">

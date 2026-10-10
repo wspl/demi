@@ -17,12 +17,12 @@ defineProps<{
 <template>
   <div class="flex items-center gap-3 px-[var(--agent-pad-x,2rem)]" :role="running ? 'status' : undefined">
     <div class="h-px flex-1 bg-line-subtle" />
-    <span v-if="running" class="flex items-center gap-2 text-chrome text-fg-subtle">
+    <span v-if="running" class="flex items-center gap-2 text-row text-fg-row">
       <IndeterminateSpinner />
       Compacting context…
     </span>
-    <span v-else-if="summaryTokens !== undefined" class="text-chrome text-fg-subtle">Context compacted to ~{{ formatTokens(summaryTokens) }} tokens</span>
-    <span v-else class="text-chrome text-fg-subtle">Context compacted</span>
+    <span v-else-if="summaryTokens !== undefined" class="text-row text-fg-row">Context compacted to ~{{ formatTokens(summaryTokens) }} tokens</span>
+    <span v-else class="text-row text-fg-row">Context compacted</span>
     <div class="h-px flex-1 bg-line-subtle" />
   </div>
 </template>

@@ -24,7 +24,7 @@ const emit = defineEmits<{
 
 <template>
   <div
-    class="session-notice-bar flex w-full items-center gap-3 rounded-lg bg-surface-raised px-3 py-2 text-chrome text-fg-muted"
+    class="session-notice-bar flex w-full items-center gap-3 rounded-lg bg-surface-card px-3 py-2 text-chrome text-fg-muted"
     role="status"
   >
     <IndeterminateSpinner v-if="busy" :size="14" class="shrink-0 text-fg-subtle" />

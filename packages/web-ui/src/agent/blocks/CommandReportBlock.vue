@@ -54,10 +54,10 @@ const rows = computed(() => props.reports.flatMap((report, index) => {
         <button
           v-if="row.go"
           type="button"
-          class="min-w-0 cursor-pointer truncate text-fg-body underline decoration-dotted decoration-fg-faint underline-offset-3 transition-colors duration-200 ease-out hover:text-fg-emphasis hover:decoration-current"
+          class="min-w-0 cursor-pointer truncate text-fg-muted underline decoration-dotted decoration-fg-faint underline-offset-3 transition-colors duration-200 ease-out hover:text-fg-body hover:decoration-current"
           @click="row.go"
         >{{ row.title }}</button>
-        <span v-else class="min-w-0 truncate text-fg-body">{{ row.title }}</span>
+        <span v-else class="min-w-0 truncate text-fg-muted">{{ row.title }}</span>
         <CommandEndTag v-if="row.mark" :mark="row.mark" />
       </FunctionalBlock>
       <ToolMedia :media="row.media" />

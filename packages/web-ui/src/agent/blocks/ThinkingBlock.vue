@@ -35,14 +35,12 @@ const rollKey = computed(() => (props.isStreaming ? 'live' : 'done'))
       :open-while="isStreaming && hasContent"
       :stick-bottom="isStreaming"
       :roll-key="rollKey"
+      :loading="isStreaming"
     >
       <template #icon>
         <Brain :size="ICON_PX.in28" />
       </template>
-      <span
-        class="min-w-0 truncate"
-        :class="isStreaming ? 'thinking-shimmer' : ''"
-      >{{ label }}</span>
+      <span class="min-w-0 truncate">{{ label }}</span>
       <template v-if="hasContent" #body>
         <StreamedMarkdown
           :content="thinking"

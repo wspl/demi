@@ -5,6 +5,7 @@ import ChromeRoll from '@demicodes/web-ui/ui/ChromeRoll.vue'
 import Fold from '@demicodes/web-ui/ui/Fold.vue'
 import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
+import Shimmer from '@demicodes/web-ui/ui/Shimmer.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useFollowEnd } from '../../composables/useFollowEnd'
@@ -109,8 +110,8 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
 <template>
   <div class="overflow-hidden">
     <div
-      class="flex h-7 cursor-default select-none items-center gap-2 text-chrome transition-colors duration-200 ease-out"
-      :class="isExpandable ? 'group text-fg-muted hover:text-fg-body' : 'text-fg-muted'"
+      class="flex h-7 cursor-default select-none items-center gap-2 text-row transition-colors duration-200 ease-out"
+      :class="isExpandable ? 'group text-fg-row hover:text-fg-muted' : 'text-fg-row'"
       :role="isExpandable ? 'button' : undefined"
       :tabindex="isExpandable ? 0 : undefined"
       :aria-expanded="isExpandable ? isOpen : undefined"
@@ -134,17 +135,13 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
             </slot>
           </div>
         </template>
-        <div class="flex h-7 min-w-0 items-center gap-2 overflow-hidden">
-          <span
-            v-if="label"
-            class="shrink-0"
-            :class="isLoading ? 'thinking-shimmer' : ''"
-          >{{ label }}</span>
-          <slot v-if="slots['default']" :loading="isLoading" />
+        <!-- A row still working shimmers as one, whatever parts its face holds. -->
+        <Shimmer :active="isLoading" class="h-7 items-center gap-2 overflow-hidden">
+          <span v-if="label" class="shrink-0">{{ label }}</span>
+          <slot v-if="slots['default']" />
           <span
             v-else-if="detail"
-            class="min-w-0 truncate font-mono text-fg-body group-hover:text-fg-emphasis"
-            :class="isLoading ? 'thinking-shimmer' : ''"
+            class="min-w-0 truncate font-mono text-fg-muted group-hover:text-fg-body"
           >{{ detail }}</span>
           <!-- A failed call reads as its row does, marked after its title, as a failed command is. -->
           <Tag v-if="tone === 'danger'" tone="danger" class="shrink-0">Failed</Tag>
@@ -152,10 +149,10 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
           <span v-if="isExpandable || chevron" class="-ml-1 shrink-0 text-xs">
             <FoldChevron
               :open="isOpen"
-              class="text-fg-faint group-hover:text-fg-muted"
+              class="text-fg-faint group-hover:text-fg-subtle"
             />
           </span>
-        </div>
+        </Shimmer>
       </ChromeRoll>
       <div class="flex-1"></div>
     </div>
