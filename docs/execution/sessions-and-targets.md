@@ -77,28 +77,15 @@ Switching requires an unarchived conversation with an idle agent tree and no
 conflicting conversation file operation. A running child counts as active even
 when the root is idle and the child is waiting for a provider.
 
-One kind of work does not block a switch: calls that wait for an offline
-primary Host ([Host operations](#host-operations)). When the user moves a
-conversation whose tree works only by waiting so, the backend first ends
-each waiting call, as an interrupted call ends
-([Interrupted calls](../agent/runtime.md#interrupted-calls)), with a result
-that says it did not run:
-
-```text
-Tool call not run: the user moved this conversation from Old Laptop to MacBook Pro while this call waited for Old Laptop, which was offline. Run it again there if it is still needed.
-```
-
-and then makes the switch as below and tells the agent with the `moved`
-message, which a move from a waiting turn always sends. The turn takes the
-message at its next boundary and goes on, its next request carrying the new
-execution context. Commands already running on the old Host run on there,
-now an attached device's, and report when it is back. Any other running
-work makes the move wait for it, as an ordinary switch does. Commands still
-running on the offline Host do not: their jobs hold the conversation's file
-gate on that Host, which the move leaves, so the switch takes the gate on
-the Hosts it keeps and leaves those jobs to the runner that keeps them.
-A call ended so shows on its row as not run, with a grey *Not run* tag, not
-as a failure.
+Commands still running on an offline device do not block a switch away
+from it: their jobs hold the conversation's file gate on that Host, which
+the switch leaves, so it takes the gate on the Hosts it keeps and leaves
+those jobs to the runner that keeps them, and they report when it is back.
+For example, the user's laptop goes offline with a build running, the agent
+says it cannot reach the laptop and ends its turn, and the user moves the
+conversation to the Cloud from the offline card
+([Where a conversation runs](../product/product.md#where-a-conversation-runs)),
+telling the agent.
 
 The backend performs one protected transition:
 
@@ -309,23 +296,17 @@ longer exists, such as a revoked device, is refused the same way. For normal dem
 for every kind of target: it resolves the target, refuses an archived
 conversation, wakes a stopped Cloud and holds it for the operation, and takes
 the conversation's file gate so the operation excludes an archive or a target
-switch. A primary Host whose runner is not connected makes an agent's
-operation, a tool call's or a job's `rpc` call's, wait for it, with no limit,
-as a Cloud's operation waits for its wake: the
-operation goes on when the runner is back, and ends when the user stops the
-turn or moves the conversation meanwhile
-([Switch the primary target](#switch-the-primary-target)). The agent never
-learns that its Host was away; it could do nothing with the news, and a
-model told `runner disconnected` pinged the device seven times in a product
-check. An attached device without a live runner fails the operation with
-the runner's offline error, worded for the model, since the agent chose
-that device and can choose another: `build-box is offline: its runner has
-been disconnected for 40 seconds, so nothing can run there now; commands
-already running there are kept for up to 10 minutes and report when it is
-back.` An operation of the user's, such as a page's file read, the Changes
-panel or an upload a message names, fails at once with the device's offline
-answer, as before: the page shows the device offline and offers what to do,
-and a page waiting on it could not even send Stop. There is no second way to a conversation's Host; the
+switch. A paired device without a live runner fails the operation at once
+with the runner's offline error, whether it is the primary Host or an
+attached one. A `shell` call gets it as its result, worded for the model so
+it can decide what to do, retry later, end its turn and wait, or tell the
+user: `MacBook Pro is offline: its runner has been disconnected for 40s, so
+nothing can run there now; commands already running there are kept for up
+to 10m and report when it is back.` In a product check, a model told only
+`runner disconnected` pinged the device seven times; told what the absence
+means, it can choose. An operation of the user's, such as a page's file
+read, the Changes panel or an upload a message names, fails the same way,
+and the page shows the device offline. There is no second way to a conversation's Host; the
 two ways to a device that touch no conversation's files are named in
 [Every way to a Host](#every-way-to-a-host). Lifecycle cleanup is the explicitly
 scoped extension in [Lifecycle access](#lifecycle-access); it still uses this
