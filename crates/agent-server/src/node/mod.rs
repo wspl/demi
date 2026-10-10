@@ -324,7 +324,7 @@ impl<H: HostResolver> NodeRuntime<H> {
         match end {
             Some(CommandEnd::Exited { exit_code }) => EndOf::Exited(exit_code),
             Some(CommandEnd::Stopped) => EndOf::Stopped(stopper),
-            Some(CommandEnd::Lost) => EndOf::Lost,
+            Some(CommandEnd::Lost { reason }) => EndOf::Lost(reason),
             Some(CommandEnd::Unrecorded) | None => EndOf::Unrecorded,
         }
     }

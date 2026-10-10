@@ -52,6 +52,7 @@ fn caller() -> JobCaller {
 
 fn job_start(script: &str) -> JobStart {
     JobStart {
+        id: RemoteHost::job_id(),
         script: script.into(),
         cwd: "/work".into(),
         env: BTreeMap::new(),
@@ -1258,6 +1259,10 @@ struct Publisher {
 }
 
 impl CommandKeeper for Publisher {
+    fn started<'a>(&'a self, _: &'a CommandId, _: &'a str, _: &'a str) -> LocalBoxFuture<'a, ()> {
+        Box::pin(async {})
+    }
+
     fn retain<'a>(
         &'a self,
         _: &'a CommandId,

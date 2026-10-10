@@ -318,9 +318,7 @@ pub struct WakeupBlock {
 
 /// How a command ended, as the conversation's record of its output keeps
 /// it (`storage.md` § Command outputs).
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, garde::Validate,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
     tag = "kind",
     rename_all = "snake_case",
@@ -335,8 +333,11 @@ pub enum CommandEnd {
     /// It was stopped: by a page, `demi shell stop`, a Stop of its action,
     /// or the end of its node's shells.
     Stopped,
-    /// It ended with its Host's connection.
-    Lost,
+    /// Its Host lost it, for this reason (`runtime.md` § Lost commands).
+    Lost {
+        #[garde(length(chars, min = 1, max = 1024))]
+        reason: String,
+    },
     /// Its record was made by a release before 0.1.21, which kept no end.
     Unrecorded,
 }

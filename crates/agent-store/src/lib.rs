@@ -127,6 +127,24 @@ pub trait AgentTreeStore {
         &'a self,
         command: &'a CommandId,
     ) -> LocalBoxFuture<'a, Result<Option<CommandEnd>, StoreError>>;
+
+    /// The commands `node` ran that the conversation records running
+    /// (`storage.md` § Command outputs), which the node takes up again when
+    /// it is restored (`sessions-and-targets.md` § Recovery and
+    /// persistence).
+    fn running_commands<'a>(
+        &'a self,
+        node: &'a NodeId,
+    ) -> LocalBoxFuture<'a, Result<Vec<RunningCommand>, StoreError>>;
+}
+
+/// A command the conversation records running: its job on its Host, and
+/// the `shell` call that started it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunningCommand {
+    pub command: CommandId,
+    pub job: String,
+    pub tool_use_id: String,
 }
 
 /// What a conversation holds of an ended command.

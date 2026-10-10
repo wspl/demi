@@ -14,8 +14,10 @@ use std::sync::Arc;
 use bytes::Bytes;
 use demi_agent_tools::{EnvironmentScope, ShellEnvironmentFactory};
 use demi_backend_blobs::blobs::UserBlobs;
-use demi_backend_database::command_outputs::{self, CommandOutput, OutputRow};
+use demi_backend_database::command_outputs::{CommandOutput, OutputRow};
+use demi_backend_database::control::ControlService;
 use demi_backend_database::conversations::ConversationDb;
+use demi_backend_database::running::{self, RunningCommand};
 use demi_backend_remote_host::{
     CommandCatalog, CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, RemoteHost,
     RemoteShellEnvironment, edited_file, encode_output,
@@ -27,10 +29,10 @@ use demi_backend_runners::router::CommandRegistration;
 use demi_command_protocol::{CommandCaller, EDIT_FILE_BYTES};
 use demi_host_interface::{
     CommandMedium, CommandStatus, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
-    MediumKept, PageView, ShellEnvironment, ShellError, StoredMedium, WholeOutput,
+    JobCaller, MediumKept, PageView, ShellEnvironment, ShellError, StoredMedium, WholeOutput,
 };
 use demi_runner_protocol::wire::JobFileChange;
-use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile};
+use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile, NodeId};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
@@ -197,10 +199,18 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
                 shard: self.shard.clone(),
                 conversation: conversation.clone(),
             }));
+            let device = device_of(&host.key())
+                .and_then(|device| DeviceId::try_from(device).ok())
+                .ok_or_else(|| {
+                    HostError::new(HostErrorKind::Protocol, "the node's Host is no device's")
+                })?;
             options.keeper = Some(Rc::new(Keeper {
                 conversation: conversation.clone(),
+                node: scope.node.clone(),
+                device,
                 host: host.clone(),
                 db: shard.conversation_db(&conversation),
+                control: shard.control().clone(),
                 blobs: shard.blobs(),
                 clock: shard.clock().clone(),
             }));
@@ -254,8 +264,13 @@ impl HostAccess for JobAccess {
 /// conversation's database (`storage.md` § Command outputs).
 struct Keeper {
     conversation: ConversationId,
+    /// The node whose commands these are.
+    node: NodeId,
+    /// The device of the node's Host.
+    device: DeviceId,
     host: Rc<RemoteHost>,
     db: ConversationDb,
+    control: ControlService,
     blobs: UserBlobs,
     clock: Arc<dyn Clock>,
 }
@@ -355,6 +370,44 @@ impl Keeper {
 }
 
 impl CommandKeeper for Keeper {
+    /// Records the job in the control database first, by its device, so a
+    /// runner's hello finds its conversation, then the command in the
+    /// conversation's (`storage.md` § Command outputs).
+    fn started<'a>(
+        &'a self,
+        command: &'a CommandId,
+        tool_use_id: &'a str,
+        job: &'a str,
+    ) -> LocalBoxFuture<'a, ()> {
+        Box::pin(async move {
+            let indexed = self
+                .control
+                .record_running_job(job.to_owned(), self.device.clone(), self.conversation.clone())
+                .await;
+            if let Err(error) = indexed {
+                // The command runs all the same; a backend that starts again
+                // does not take it up.
+                tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a running job was not recorded");
+                return;
+            }
+            let running = RunningCommand {
+                command: command.clone(),
+                node: self.node.clone(),
+                device: self.device.clone(),
+                job: job.to_owned(),
+                tool_use_id: tool_use_id.to_owned(),
+                started: self.clock.now(),
+            };
+            let recorded = self
+                .db
+                .call(move |connection| running::insert(connection, &running))
+                .await;
+            if let Err(error) = recorded {
+                tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a running command was not recorded");
+            }
+        })
+    }
+
     fn retain<'a>(
         &'a self,
         command: &'a CommandId,
@@ -452,12 +505,22 @@ impl CommandKeeper for Keeper {
             };
             let recorded = self
                 .db
-                .call(move |connection| command_outputs::insert(connection, &[row]))
+                .call(move |connection| running::end(connection, row))
                 .await;
-            // The command ends all the same; `demi shell output` then finds
-            // no record of it.
-            if let Err(error) = recorded {
-                tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a command's output was not recorded");
+            match recorded {
+                Ok(Some(job)) => {
+                    if let Err(error) = self.control.end_running_job(job).await {
+                        // A runner's next hello lists no such job, and the
+                        // backend finds nothing to take up.
+                        tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a running job's record was not removed");
+                    }
+                }
+                Ok(None) => {}
+                // The command ends all the same; `demi shell output` then
+                // finds no record of it.
+                Err(error) => {
+                    tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a command's output was not recorded");
+                }
             }
         })
     }
@@ -524,6 +587,14 @@ impl ShellEnvironment for Registered {
 
     fn release_command<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, bool> {
         self.environment.release_command(command)
+    }
+
+    fn adopt(&self, command: &CommandId, tool_use_id: &str, job: &str, caller: JobCaller) {
+        self.environment.adopt(command, tool_use_id, job, caller);
+    }
+
+    fn detach_all(&self) -> LocalBoxFuture<'_, ()> {
+        self.environment.detach_all()
     }
 
     fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {

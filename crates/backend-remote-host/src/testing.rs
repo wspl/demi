@@ -34,8 +34,8 @@ use tokio::sync::{mpsc, watch};
 use tokio_util::sync::{CancellationToken, PollSender};
 
 use crate::{
-    Admission, ArtifactResolver, DeviceLink, JobOrigin, Link, LinkEnd, LinkOptions, LinkPolicy,
-    Pipes, RemoteHost,
+    Admission, ArtifactResolver, DeviceJobs, DeviceLink, Hello, JobOrigin, Link, LinkEnd,
+    LinkOptions, LinkPolicy, Pipes, RemoteHost,
 };
 
 /// How many requests the runner answered among the messages a fixture's
@@ -143,6 +143,7 @@ impl LinkPolicy for CommandPolicy {
 /// A device whose runner is the test: connections to it are [`TestLink`]s.
 pub struct TestDevice {
     link: Rc<watch::Sender<DeviceLink>>,
+    jobs: DeviceJobs,
     pipes: Pipes,
     policy: Rc<dyn LinkPolicy>,
     identity: HostIdentity,
@@ -152,6 +153,7 @@ impl TestDevice {
     pub fn new(policy: Rc<dyn LinkPolicy>) -> Self {
         Self {
             link: Rc::new(watch::Sender::new(DeviceLink::Offline { last: None })),
+            jobs: DeviceJobs::default(),
             pipes: Pipes::new(crate::ARRIVAL),
             policy,
             identity: HostIdentity {
@@ -173,18 +175,40 @@ impl TestDevice {
             HostKey::new(format!("{TEST_DEVICE}:{cwd}")),
             cwd.into(),
             self.link.subscribe(),
+            self.jobs.clone(),
             admission,
         )
     }
 
-    /// Connects the device's runner; `ping` turns liveness on.
+    /// Connects the device's runner, which keeps no jobs; `ping` turns
+    /// liveness on.
     pub fn connect(&self, ping: Option<Duration>) -> TestLink {
+        self.connect_with(ping, 1, Vec::new())
+    }
+
+    /// Connects the device's runner of instance `instance`, which keeps
+    /// `jobs`; `ping` turns liveness on.
+    pub fn connect_with(
+        &self,
+        ping: Option<Duration>,
+        instance: u64,
+        jobs: Vec<wire::KeptJob>,
+    ) -> TestLink {
         let (link, driver) = Link::new(LinkOptions {
             device: TEST_DEVICE.into(),
             identity: self.identity.clone(),
             pipes: self.pipes.clone(),
             policy: self.policy.clone(),
             ping,
+            jobs: self.jobs.clone(),
+            hello: Hello {
+                instance,
+                release: "0".into(),
+                jobs,
+                last_release: None,
+                managed: false,
+                recorded: Default::default(),
+            },
         });
         let (runner, incoming) = mpsc::channel::<Result<Vec<u8>, crate::SocketEnd>>(8);
         let (outgoing, sent) = mpsc::channel::<Vec<u8>>(crate::OUTBOUND_FRAMES);

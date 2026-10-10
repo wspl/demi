@@ -179,10 +179,11 @@ impl CallEntry {
 /// and ends the connection.
 pub(crate) fn start(link: &Link, call: RpcCall) {
     let entry = CallEntry::new(call.job_id.clone());
-    let origin = link.with_state(|state| {
-        state
-            .add_call(call.call_id.clone(), entry.clone())
-            .then(|| state.job_origin(&call.job_id))
+    let added = link.with_state(|state| state.add_call(call.call_id.clone(), entry.clone()));
+    let origin = added.then(|| {
+        link.device_jobs()
+            .with(&call.job_id, |job| job.origin.clone())
+            .flatten()
     });
     let Some(origin) = origin else {
         link.disconnect(&format!("duplicate rpc call {}", call.call_id));

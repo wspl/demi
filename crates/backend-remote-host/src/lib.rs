@@ -17,6 +17,7 @@
 //! that a pipe route accepted ([`accept_stream_pipe`]). Everything but the
 //! pipe ends runs inside the user's shard.
 
+mod device_jobs;
 mod file_watch;
 mod link;
 mod manifest;
@@ -32,6 +33,7 @@ mod stream_pipe;
 #[cfg(feature = "testing")]
 pub mod testing;
 
+pub use device_jobs::{CLOUD_RESTARTED, DeviceJobs, Hello, NEVER_RECEIVED, RUNNER_RESTARTED, UNREACHED, UPGRADED};
 pub use file_watch::{HostWatch, WatchUpdate};
 pub use link::{
     DirectAdmission, DirectAnswer, PeerEvent, JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions,
