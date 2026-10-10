@@ -597,8 +597,14 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
             if let Some(environment) = self.environments.owning(command)
                 && environment.ended(command).now_or_never().is_none()
             {
-                // A resident command reports only its end.
+                // A resident command reports only its end, and one whose
+                // Host's connection is away nothing until it is back: the
+                // silence is the connection's (`runtime.md` § Command
+                // reports).
                 let interval = interval_ms?;
+                if environment.unreachable(command).is_some() {
+                    return None;
+                }
                 let running_ms = environment
                     .page_views()
                     .into_iter()
@@ -607,8 +613,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                 let idle_ms = environment
                     .quiet(command)
                     .map_or(0, |quiet| u64::try_from(quiet.as_millis()).unwrap_or(u64::MAX));
-                let unreachable = environment.unreachable(command);
-                return Some(progress_report(command, title, running_ms, idle_ms, interval, unreachable));
+                return Some(progress_report(command, title, running_ms, idle_ms, interval));
             }
             if self.environments.stopper(command) == Some(Stopper::Itself) {
                 return None;

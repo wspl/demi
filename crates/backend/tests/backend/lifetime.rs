@@ -501,10 +501,10 @@ async fn an_rpc_call_made_while_the_connection_is_away_waits_for_it_and_is_serve
     backend.close().await;
 }
 
-// About four seconds: a real device pairs through a network that goes away,
-// and the command reports every second.
+// About five seconds: a real device pairs through a network that goes away
+// for over two seconds, and the command reports every second.
 #[tokio::test]
-async fn an_interval_report_while_the_hosts_connection_is_away_says_so_instead_of_counting_the_silence() {
+async fn interval_reports_pause_while_the_hosts_connection_is_away_and_resume_when_it_is_back() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -512,33 +512,43 @@ async fn an_interval_report_while_the_hosts_connection_is_away_says_so_instead_o
     let alpha = backend.pair_through(&master, "alpha", &network.url).await;
     let mut work = on_device(&backend, &master, &vendor, &alpha).await;
     let home = alpha.runner.home_dir().to_owned();
-    let script = "printf 'started\\n'; while [ ! -f finish ]; do sleep 0.05; done";
+    // The command counts half seconds into a file, which shows the test how
+    // long it has run without a connection.
+    let script = "printf 'started\\n'; i=0; while [ ! -f finish ]; do i=$((i+1)); echo $i > ticks; sleep 0.5; done";
     let first = work.turn(vec![shell("t1", script, 1_000), say("waiting")]).await;
     let command = field(&first.received[0], "commandId").to_owned();
     work.script((0..20).map(|_| say("noted")).collect());
+    let ticks = || {
+        std::fs::read_to_string(home.join("ticks"))
+            .ok()
+            .and_then(|ticks| ticks.trim().parse::<u32>().ok())
+            .unwrap_or(0)
+    };
 
     network.cut();
     backend.until_online(&master, alpha.id(), false).await;
-    let away = format!(
-        "Command {command} (t1) is still running, as far as Demi knows: its Host has been unreachable for "
-    );
-    until_requested(&vendor, &away).await;
-    let report = vendor
-        .requests()
-        .iter()
-        .map(|request| request.json().to_string())
-        .find(|request| request.contains(&away))
-        .expect("a request carries the report");
-    let report = &report[report.find(&away).unwrap()..];
-    let report = &report[..report.find("\"").unwrap()];
-    assert!(
-        report.contains("and its runner keeps the command for up to 10m."),
-        "{report}"
-    );
-    assert!(!report.contains("no output for"), "{report}");
+    let away = wakeups(&backend, &master).await.len();
+    // Over two intervals pass while the connection is away.
+    let from = ticks();
+    eventually("the command ran over two seconds away", || {
+        let ran = ticks() >= from + 5;
+        async move { ran }
+    })
+    .await;
+    assert_eq!(wakeups(&backend, &master).await.len(), away, "no report while the Host is away");
 
     network.open();
     backend.until_online(&master, alpha.id(), true).await;
+    let mut resumed = Vec::new();
+    while resumed.len() <= away {
+        resumed = wakeups(&backend, &master).await;
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert!(
+        matches!(resumed[away].event, ReportEvent::Running { .. }),
+        "{:?}",
+        resumed[away]
+    );
     std::fs::write(home.join("finish"), "").unwrap();
     until_requested(&vendor, &format!("Command {command} (t1) ended with exit code 0.")).await;
     backend.close().await;
