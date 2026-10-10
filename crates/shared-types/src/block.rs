@@ -363,11 +363,6 @@ pub enum ReportEvent {
         idle_ms: u64,
         #[garde(skip)]
         interval_ms: u32,
-        /// Its Host's connection is away, so the silence is not the
-        /// command's (`runtime.md` § Command reports).
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[garde(dive)]
-        unreachable: Option<Unreachable>,
     },
     /// It exited, with its status when its end was recorded.
     Ended {
@@ -386,18 +381,6 @@ pub enum ReportEvent {
         #[garde(skip)]
         reason: String,
     },
-}
-
-/// How long a running command's Host has been unreachable, as far as Demi
-/// knows, and how long its runner keeps the command without a connection
-/// (`runner.md` § Command lifetime).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Unreachable {
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub away_ms: u64,
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub grace_ms: u64,
 }
 
 /// Who stopped a command, when it was not the node that ran it.

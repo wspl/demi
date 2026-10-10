@@ -80,7 +80,7 @@ fn make_diff(
 
     for result in crate::utils::diff_lines(&expected_lines, &actual_lines, params) {
         match result {
-            diff::Result::Left(str) => {
+            crate::utils::Edit::Left(str) => {
                 if lines_since_mismatch > 2 * context_size {
                     results.push(mismatch);
                     mismatch = Mismatch::new(
@@ -101,7 +101,7 @@ fn make_diff(
                 line_number_expected += 1;
                 lines_since_mismatch = 0;
             }
-            diff::Result::Right(str) => {
+            crate::utils::Edit::Right(str) => {
                 if lines_since_mismatch > 2 * context_size {
                     results.push(mismatch);
                     mismatch = Mismatch::new(
@@ -122,7 +122,7 @@ fn make_diff(
                 line_number_actual += 1;
                 lines_since_mismatch = 0;
             }
-            diff::Result::Both(str, to_str) => {
+            crate::utils::Edit::Both(str, to_str) => {
                 // if one of them is missing a newline and the other isn't, then they don't actually match
                 if (line_number_actual > actual_lines_count)
                     && (line_number_expected > expected_lines_count)
