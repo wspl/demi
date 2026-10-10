@@ -139,6 +139,14 @@ impl<'a> Driven<'a> {
         self.socket = Self::connect(backend, master, id, provider).await;
     }
 
+    /// Scripts the model's answers to requests the conversation makes by
+    /// itself, such as the turn a command's report opens.
+    pub(crate) fn script(&self, answers: Vec<MockResponse>) {
+        for response in answers {
+            self.vendor.respond_at(&self.route, response);
+        }
+    }
+
     /// Scripts the model's answers and sends a message, without waiting for
     /// its turn; answers how many requests the vendor had before.
     pub(crate) async fn start(&mut self, answers: Vec<MockResponse>) -> usize {
@@ -493,7 +501,7 @@ async fn two_conversations_on_one_device_keep_apart_and_each_command_starts_in_i
 // Several seconds: a real device installs the builtin package, loses its runner
 // in the middle of a job, and starts it again.
 #[tokio::test]
-async fn a_runner_lost_in_the_middle_of_a_command_ends_it_and_the_returned_runner_serves_the_next_turn()
+async fn a_runner_that_ends_in_the_middle_of_a_command_loses_it_and_its_next_start_serves_the_next_turn()
  {
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_file_package();
@@ -525,7 +533,11 @@ async fn a_runner_lost_in_the_middle_of_a_command_ends_it_and_the_returned_runne
         ])
         .await;
     until_exists(&started).await;
+    // The command waits for the runner, whose next start's hello lists no
+    // job: it was lost with the runner (`runner.md` § Command lifetime).
     alpha.runner.kill().await;
+    alpha.runner.start_again();
+    backend.until_online(&master, alpha.id(), true).await;
     work.socket.until_idle().await;
     let lost = work.observe(before);
     assert!(
@@ -534,13 +546,11 @@ async fn a_runner_lost_in_the_middle_of_a_command_ends_it_and_the_returned_runne
         lost.received[0]
     );
     assert!(
-        lost.received[0].contains("runner disconnected"),
+        lost.received[0].contains(demi_backend_remote_host::RUNNER_RESTARTED),
         "{}",
         lost.received[0]
     );
 
-    alpha.runner.start_again();
-    backend.until_online(&master, alpha.id(), true).await;
     let back = work
         .turn(vec![shell("t3", "cat before.txt", 10_000), say("back")])
         .await;
@@ -697,7 +707,7 @@ async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes
     assert_eq!(field(&kept.received[0], "commandId"), "1");
 
     // The backend stops under a running command: the call ends as an error
-    // and the turn as interrupted, with nothing left dangling.
+    // that says the command keeps running, and the turn as interrupted.
     let started = home.join("started");
     work.start(vec![shell("t2", "touch started; sleep 20", 30_000)])
         .await;
@@ -726,10 +736,9 @@ async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes
     let after = work
         .turn(vec![shell("t3", script, 10_000), say("and again")])
         .await;
-    assert!(
-        after.received[0].contains("Tool call aborted"),
-        "{}",
-        after.received[0]
+    assert_eq!(
+        after.received[0],
+        "Tool call interrupted: the backend shut down while this call watched command 2, which keeps running; look at it with demi shell status 2."
     );
     assert!(after.received[1].contains("kept"), "{}", after.received[1]);
     assert!(
