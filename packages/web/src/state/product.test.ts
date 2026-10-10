@@ -212,6 +212,47 @@ test('a write\'s answer shows at once, unless the channel brought its part since
   expect(titles()).toEqual(['Final', 'Second'])
 })
 
+test('a change shows over the state read until its write lands, and one the channel overtook leaves with the next value', () => {
+  const product = started(productState({ conversations: [summary(FIRST, 'First'), summary(SECOND, 'Second')] }))
+  const channel = channels.last()
+  const rename = (id: string, title: string) => product.change(`conversation:${id}`, (state) => ({
+    ...state,
+    conversations: state.conversations.map((item) => item.id === id ? { ...item, title } : item),
+  }))
+
+  // Shown at once; the channel's value of the part, read before the write
+  // went out, does not bring the old title back.
+  const first = rename(FIRST, 'Renamed')
+  expect(titles()).toEqual(['Renamed', 'Second'])
+  first.send()
+  channel.send({ type: 'conversation', conversation: summary(FIRST, 'First', { unread: true }) })
+  expect(product.snapshot?.conversations[0]).toMatchObject({ title: 'Renamed', unread: true })
+  // The answer came after the channel's value: the change stays until the
+  // part's next value, which is the write's own.
+  first.land({ type: 'conversation', conversation: summary(FIRST, 'Renamed') })
+  expect(titles()).toEqual(['Renamed', 'Second'])
+  channel.send({ type: 'conversation', conversation: summary(FIRST, 'Renamed') })
+  // Nothing of this page's holds the part any more: another page's title shows.
+  channel.send({ type: 'conversation', conversation: summary(FIRST, 'Elsewhere') })
+  expect(titles()).toEqual(['Elsewhere', 'Second'])
+
+  // A refused change leaves at once, and the backend's value shows.
+  const refused = rename(SECOND, 'Refused')
+  refused.send()
+  expect(titles()).toEqual(['Elsewhere', 'Refused'])
+  refused.drop()
+  expect(titles()).toEqual(['Elsewhere', 'Second'])
+
+  // An answer that came first lands the change; signing out releases those on their way.
+  const landed = rename(SECOND, 'Landed')
+  landed.send()
+  landed.land()
+  expect(product.read?.conversations[1]?.title).toBe('Landed')
+  rename(FIRST, 'Unsent')
+  product.stop()
+  expect(product.snapshot).toBeNull()
+})
+
 test('a closed channel connects again after a second, then twice as long each time, up to 30 seconds', () => {
   jest.useFakeTimers()
   const random = spyOn(Math, 'random').mockReturnValue(0)
