@@ -39,7 +39,14 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   pluginsChanged: boolean
   createdAt: string
   cwd: string
-  blocks: Block[]
+  /** The parts of the root's transcript the page holds (`web-application.md` § Transcript windows). */
+  history: ConversationState['history']
+  /** The block whose window the transcript shows; null for the latest. */
+  shownAt: string | null
+  /** The entries of the root's newest instructions block as a page named them. */
+  instructions: ConversationState['instructions']
+  /** Each compaction marker's boundary's summary size, by the marker's id, as pages named them. */
+  summaries: Record<string, number>
   phase: SessionPhase
   queue: QueuedMessage[]
   pendingSteers: PendingSteerMessage[]

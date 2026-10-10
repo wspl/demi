@@ -1,4 +1,5 @@
 import type { Block, EditCopies, PathChange } from '@demicodes/protocol'
+import { windowOf, type HeldTranscript } from '@demicodes/conversation-client'
 import { z } from 'zod'
 import { storedShellView, toolCallTitle } from '../agent/block-helpers'
 import type { ToolCallBlock } from '../agent/block-types'
@@ -173,8 +174,8 @@ function applyPathChange(
 
 /** The transcripts of one conversation: its own agent's, and each subagent's by its id. */
 export interface ConversationTranscripts {
-  blocks: readonly Block[]
-  subagents: readonly { id: string; blocks: readonly Block[] }[]
+  history: HeldTranscript
+  subagents: readonly { id: string; history: HeldTranscript }[]
 }
 
 /** The request `request` of the agent `node` (null for the conversation's own), as its transcript holds it now. */
@@ -183,13 +184,15 @@ export function findRequest(
   node: string | null,
   request: string,
 ): TranscriptRequest | null {
-  const blocks = node === null
-    ? transcripts.blocks
-    : transcripts.subagents.find((agent) => agent.id === node)?.blocks
-  if (!blocks) {
+  const history = node === null
+    ? transcripts.history
+    : transcripts.subagents.find((agent) => agent.id === node)?.history
+  // A page never cuts a request, so a window holds it whole or not at all.
+  const window = history && windowOf(history, request)
+  if (!window) {
     return null
   }
-  return transcriptRequests(blocks).requests.find((entry) => entry.id === request) ?? null
+  return transcriptRequests(window.blocks).requests.find((entry) => entry.id === request) ?? null
 }
 
 /**

@@ -475,7 +475,7 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     else {
         unreachable!()
     };
-    socket.send(&ClientFrame::SyncTranscript {}).await;
+    socket.send(&ClientFrame::SyncTranscript { from: None, edge: None }).await;
     let synced = socket
         .until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
         .await;

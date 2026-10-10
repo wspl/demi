@@ -15,15 +15,18 @@ const READER_BLOCK_TYPES: ReadonlySet<MessageListBlock['type']> = new Set([
  * when they had scrolled up to read: the list follows what they did, the way
  * a chat does. The reply that follows is tracked only while they stay at the
  * bottom, which is the scroller's own rule. Every transcript scroller applies
- * this one, so a send reads the same in the product and the gallery.
+ * this one, so a send reads the same in the product and the gallery. A
+ * message read from a page of history, in its light form, was not just
+ * sent, wherever the page puts it (`web-application.md` § Transcript
+ * windows).
  */
 export function useFollowSentMessages(
   blocks: () => readonly MessageListBlock[],
   scrollToBottom: () => void,
 ): void {
-  const readerBlockIds = computed(
-    () => new Set(blocks().filter((block) => READER_BLOCK_TYPES.has(block.type)).map((block) => block.id)),
-  )
+  const readerBlockIds = computed(() => new Set(blocks()
+    .filter((block) => READER_BLOCK_TYPES.has(block.type) && !('light' in block && block.light))
+    .map((block) => block.id)))
   watch(readerBlockIds, (ids, previous) => {
     for (const id of ids) {
       if (!previous.has(id)) {

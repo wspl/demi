@@ -1912,7 +1912,7 @@ async fn a_streamed_delta_touches_only_its_turns_blocks_on_a_long_transcript() {
             TranscriptPatch::Add { index, .. }
             | TranscriptPatch::ReplaceBlock { index, .. }
             | TranscriptPatch::AppendText { index, .. } => *index as usize,
-            TranscriptPatch::Replace { .. } => 0,
+            TranscriptPatch::Truncate { length } => *length as usize,
         };
         assert!(
             index >= history,

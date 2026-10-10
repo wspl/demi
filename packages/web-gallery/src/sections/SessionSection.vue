@@ -77,6 +77,7 @@ import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { firstInspectSubagentId, firstRunningSubagentId } from '@demicodes/web-ui/agent/subagents'
 import GalleryCachedSessions from '../components/GalleryCachedSessions.vue'
 import GalleryTranscriptEntrance from '../components/GalleryTranscriptEntrance.vue'
+import GalleryHistoryWindow from '../components/GalleryHistoryWindow.vue'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
 import GalleryMessageEditing from '../components/GalleryMessageEditing.vue'
 import GalleryAssistantMessages from '../components/GalleryAssistantMessages.vue'
@@ -2498,6 +2499,7 @@ onBeforeUnmount(() => {
     </template>
 
     <template v-if="view === 'states'">
+      <GalleryHistoryWindow />
       <GallerySection title="Transcript Entrance" note="Restored history appears without motion. Only blocks appended after restoration enter; switching or scrolling back to existing blocks does not replay their entrance.">
         <GalleryTranscriptEntrance />
       </GallerySection>

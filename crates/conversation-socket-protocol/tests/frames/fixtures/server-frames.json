@@ -25,6 +25,8 @@
   },
   {
     "type": "transcript_reset",
+    "start": 0,
+    "length": 2,
     "blocks": [
       {
         "type": "text",
@@ -82,6 +84,8 @@
   },
   {
     "type": "transcript_reset",
+    "start": 0,
+    "length": 0,
     "blocks": [],
     "version": {
       "epoch": "epoch-2",
@@ -143,28 +147,8 @@
         }
       },
       {
-        "op": "replace",
-        "value": [
-          {
-            "type": "text",
-            "id": "t1",
-            "createdAt": "2026-09-21T14:13:20.000Z",
-            "model": {
-              "providerId": "stub",
-              "model": {
-                "id": "stub-model",
-                "name": "Stub",
-                "contextWindow": 1000,
-                "outputLimit": null,
-                "thinking": [],
-                "acceptedExtensions": []
-              },
-              "thinking": null,
-              "serviceTierId": null
-            },
-            "text": "Hello!"
-          }
-        ]
+        "op": "truncate",
+        "length": 1
       }
     ],
     "revision": 4
@@ -385,6 +369,8 @@
   {
     "type": "subagent_transcript_reset",
     "subagentId": "child-1",
+    "start": 0,
+    "length": 1,
     "blocks": [
       {
         "type": "text",

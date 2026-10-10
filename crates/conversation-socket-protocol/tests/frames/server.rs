@@ -64,8 +64,7 @@ fn patched(patches: &mut [TranscriptPatch]) -> Vec<&mut Block> {
             TranscriptPatch::Add { value, .. } | TranscriptPatch::ReplaceBlock { value, .. } => {
                 vec![value]
             }
-            TranscriptPatch::Replace { value } => value.iter_mut().collect(),
-            TranscriptPatch::AppendText { .. } => Vec::new(),
+            TranscriptPatch::AppendText { .. } | TranscriptPatch::Truncate { .. } => Vec::new(),
         })
         .collect()
 }
@@ -86,7 +85,6 @@ fn a_block_reaches_the_page_without_the_entries_its_provider_kept_on_it() {
         }
         assert_eq!(serde_json::to_value(&frame).unwrap(), fixture);
     }
-    // A reset, an added, a replaced and a rewritten block, and a
-    // subagent's reset.
-    assert_eq!(holding, 5);
+    // A reset, an added and a replaced block, and a subagent's reset.
+    assert_eq!(holding, 4);
 }

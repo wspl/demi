@@ -20,6 +20,7 @@ mod error;
 mod file_watch;
 mod files;
 mod gate;
+mod history;
 mod hosts;
 mod install;
 mod instructions;
@@ -281,9 +282,15 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route("/conversations/{id}/fork", post(conversations::fork))
         .route("/conversations/{id}/title", post(conversations::title))
+        .route("/conversations/{id}/transcript", get(history::transcript))
         .route(
-            "/conversations/{id}/transcript",
-            get(conversations::transcript),
+            "/conversations/{id}/transcript/blocks/{block}",
+            get(history::block),
+        )
+        .route("/conversations/{id}/subagents", get(history::subagents))
+        .route(
+            "/conversations/{id}/commands/{command}",
+            get(history::command),
         )
         .route("/conversations/{id}/read", post(conversations::read))
         .route(

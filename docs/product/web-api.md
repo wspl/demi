@@ -196,7 +196,7 @@ as its work groups ([Work groups](../agent/runtime.md#work-groups)) and the
 files it changed ([Edit tracking](../execution/edit-tracking.md#what-the-conversation-shows)),
 is whole wherever it is shown.
 
-The answer is `{ start, length, blocks, failures, instructions }`:
+The answer is `{ start, length, blocks, failures, instructions, summaries }`:
 
 | Field | Meaning |
 | --- | --- |
@@ -205,6 +205,7 @@ The answer is `{ start, length, blocks, failures, instructions }`:
 | `blocks` | The page's blocks in their [light form](#light-form) |
 | `failures` | The [failure facts](../backend/backend.md#failure-facts) of its error blocks, by block id |
 | `instructions` | The entries of the agent's newest instructions block, which the context card lists ([What the card lists](../agent/instructions.md#what-the-card-lists)), empty before the first |
+| `summaries` | Each compaction marker of the page (`marker`) with its boundary's summary size (`summaryTokens`), which its divider tells; the boundary may be on another page |
 
 `edge` is how a page that extends what it holds knows the two still join: a
 retry, an accepted edit or a compaction can rewrite the transcript between
@@ -219,27 +220,25 @@ transcript, or two of `before`, `after` and `around`, answer 400
 
 A page's blocks leave out what only an open row shows, which is nearly all
 of a long conversation's bytes; the rows a folded transcript shows need
-nothing more. A block in light form is marked `omitted: true`, and every
-other field means what it means in the block whole
+nothing more. Every block of a page is in its light form: a field left out
+is empty, and every other field means what it means in the block whole
 ([Block types](../agent/runtime.md#block-types)):
 
 | Block | Left out | Carried instead |
 | --- | --- | --- |
-| `tool_call` | `input`; the text of `output`; the output text of `view` (its chunks) | The input's `description`; the media of `output`; the rest of `view`: the command, its status, exit code and times, the files it changed and their renames |
+| `tool_call` | An `input` past 512 bytes, but its `description`; the text of `output`; the output text of `view` (its chunks) | Such an `input` as JSON holding only the `description`, a shorter one whole, as a script that only looks at a command must be to name the look on its row ([Work groups](../agent/runtime.md#work-groups)); the media of `output`; the rest of `view`: the command, its status, exit code and times, the files it changed and their renames |
 | `thinking` | The text and its signature | Nothing: the row tells how long the agent thought |
 | `redacted_thinking` | The data | Nothing |
 | `agent_message` | The message | Its sender and what it reports |
 | `wakeup` | Each report's output | Each report's command, title, event and media |
 | `context` | The text and the instructions it lists | Its source |
 | `compaction_boundary` | The summary | Its size |
-| `compaction_marker` | Nothing | Its boundary's summary size, which its divider tells |
-| `response` | The usage | Nothing |
 
-`user`, `steer`, `text`, `error`, `abort` and `resume` blocks come whole. A
-block's model is its provider and model id, not the model's description,
-which the [catalog](#model-configuration-and-provider-inspection) gives.
-Live frames send blocks whole ([Frame protocol](../agent/runtime.md#frame-protocol)),
-so the page holds a block in light form only when it read it from a page.
+`user`, `steer`, `text`, `error`, `abort`, `resume`, `response` and
+`compaction_marker` blocks come whole. Live frames send blocks whole
+([Frame protocol](../agent/runtime.md#frame-protocol)), so the page holds a
+block in light form only when it read it from a page, and it marks such a
+block as light until the block arrives whole.
 
 `GET /api/conversations/:id/transcript/blocks/:blockId?node=` answers
 `{ block, failures }`, the block whole. The page reads it when the user opens
@@ -256,8 +255,8 @@ page reads a subagent's transcript, by its pages, when it shows it.
 `GET /api/conversations/:id/commands/:commandId` answers the record of a
 command of the tree that the page opens in the terminal panel after it
 ended, such as from the report that names it: `{ commandId, subagentId,
-title, script, view }`, from the `shell` call that started it, `subagentId`
-null for the root's. A running command reaches the page by its live frames
+title, script, startedAt, view }`, from the `shell` call that started it,
+`subagentId` null for the root's. A running command reaches the page by its live frames
 instead ([Live output](../agent/runtime.md#live-output)). A command the
 conversation does not hold answers 404 `not_found`.
 

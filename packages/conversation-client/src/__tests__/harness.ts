@@ -1,6 +1,7 @@
 import type { Block, ClientFrame, ModelSelection, PendingSteer, ServerFrame } from '@demicodes/protocol'
 import { ConversationClient } from '../client'
 import type { ClientSessionEvent } from '../events'
+import { EMPTY_TRANSCRIPT, applyTranscriptPatches, heldBlocks, resetTranscript, type HeldTranscript } from '../transcript'
 import type { ConversationClientTransport } from '../transport'
 
 export const model: ModelSelection = {
@@ -63,11 +64,24 @@ export function harness() {
     },
   }
   const client = new ConversationClient(transport)
-  client.subscribe((event) => events.push(event))
+  // The root's transcript as the page holds it, from the client's events.
+  let transcript: HeldTranscript = EMPTY_TRANSCRIPT
+  client.subscribe((event) => {
+    events.push(event)
+    if (event.type === 'transcript_reset') {
+      transcript = resetTranscript(transcript, event, event.asked)
+    } else if (event.type === 'transcript_patch') {
+      transcript = applyTranscriptPatches(transcript, event.patches)
+    } else if (event.type === 'closed') {
+      transcript = EMPTY_TRANSCRIPT
+    }
+  })
   return {
     client,
     sent,
     events,
+    /** The root's blocks the page holds, from the client's events. */
+    blocks: () => heldBlocks(transcript),
     /** Delivers a frame as the server would send it. */
     receive: (frame: ServerFrame) => deliver(frame),
     /** Delivers any JSON value, such as one the contract does not allow. */

@@ -41,4 +41,17 @@ export interface ModelInfo {
 // The session's events and the one transcript patch applier, which a host
 // reads through here: it reaches `@demicodes/conversation-client` only through this
 // package.
-export { applyTranscriptPatches, type ClientSessionEvent } from '@demicodes/conversation-client'
+export {
+  EMPTY_TRANSCRIPT,
+  addPage,
+  applyTranscriptPatches,
+  heldBlocks,
+  latestWindow,
+  resetTranscript,
+  windowEnd,
+  windowOf,
+  withWholeBlock,
+  type ClientSessionEvent,
+  type HeldBlock,
+  type HeldTranscript,
+} from '@demicodes/conversation-client'

@@ -155,9 +155,13 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   variants refer to files rather than carry them) with the edit request
   (`EditRequest`), `ServerFrame`, `TranscriptPatch`, `TranscriptVersion`, the
   nested edit and steer outcomes (`EditOutcome`, `SteerOutcome`),
-  `SubagentJob` and `ShellStatus`; and the decode function of client frames
+  `SubagentJob` and `ShellStatus`; the decode function of client frames
   (`decode_client_frame`), which tells a message that is not JSON from an
-  invalid frame.
+  invalid frame; and how a transcript travels in parts: a block's light form
+  (`light`), its requests and the page budget that selects a page of them
+  (`requests`, `page`), and where a reset starts (`reset_start`), which the
+  history routes and the stream share
+  ([Conversation history](../product/web-api.md#conversation-history)).
 - **Public boundary:** the types above. The agent resolves the files a
   frame's content refers to through the backend (`agent-server`'s
   `ContentResolver`) before the session sees the content. The protocol's
@@ -1644,7 +1648,7 @@ runner-shell -> command-protocol, command-sdk, runner-process, runner-protocol
 runner-jobs -> command-protocol, command-sdk, command-declarations, runner-process, runner-protocol, runner-command-packages
 command-package-browser-chrome -> command-package-browser-protocol, command-protocol, command-sdk, shared-artifacts, shared-types
 backend-page-sync -> backend-database, web-api-protocol
-backend-database -> agent-store, shared-types, shared-gates, backend-remote-host, machine-manager-protocol, runner-protocol, host-interface, web-api-protocol, plugin-interface
+backend-database -> agent-store, conversation-socket-protocol, shared-types, shared-gates, backend-remote-host, machine-manager-protocol, runner-protocol, host-interface, web-api-protocol, plugin-interface
 backend-blobs -> agent-store, shared-types, web-api-protocol
 backend-accounts -> backend-database, command-protocol, shared-types, web-api-protocol
 backend-providers -> backend-database, backend-page-sync, command-package-claude-code-protocol, shared-types, provider-common, provider-anthropic-api, provider-claude-code, provider-openai-api, web-api-protocol

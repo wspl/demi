@@ -3,6 +3,8 @@
     "name": "a turn with signed thinking, streamed text and a tool call",
     "reset": {
       "type": "transcript_reset",
+      "start": 0,
+      "length": 0,
       "blocks": [],
       "version": {
         "epoch": "id-1",

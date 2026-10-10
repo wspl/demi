@@ -121,6 +121,12 @@ pub enum ErrorCode {
     LogUnreadable,
     /// The caller owns no conversation of that id.
     ConversationNotFound,
+    /// The transcript does not hold the block a page read names.
+    BlockNotFound,
+    /// The block a page read extends from is no longer at its index: the
+    /// transcript was rewritten since the page read it (`web-api.md`
+    /// § Pages).
+    TranscriptChanged,
     /// The conversation is archived: restore it first.
     ConversationArchived,
     /// The conversation has no undecided permission request of that id:
