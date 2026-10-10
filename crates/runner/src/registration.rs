@@ -4,7 +4,7 @@
 //! connection in turn is served by its own owner
 //! ([`crate::connection::serve`]).
 
-use crate::connection::{self, Connected, End, Registered, Transport};
+use crate::connection::{self, Connected, End, Kept, Registered, Transport};
 use crate::update::{Installed, Successor};
 use crate::{
     host_log::HostLogReader,
@@ -65,6 +65,9 @@ pub struct Options {
     /// Whether this registration runs only to ask the backend to revoke the
     /// device, for an `uninstall` that found no active runner.
     pub removing: bool,
+    /// How long the runner keeps its jobs without a connection
+    /// (`runner.md` § Command lifetime).
+    pub unreached_grace: Duration,
 }
 
 /// How a registration ended.
@@ -179,11 +182,15 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         env: options.env,
         volumes: options.volumes,
         removal: options.removal,
+        instance: uuid::Uuid::new_v4().as_u64_pair().0,
     };
+    let mut kept = Kept::open(&registered, options.unreached_grace).await;
     let outcome = tokio::select! {
-        outcome = reconnect(&registered, installed.as_ref()) => outcome,
+        outcome = reconnect(&registered, &mut kept, installed.as_ref()) => outcome,
         never = revocation_window(&registered) => match never {},
     };
+    // A runner that ends loses its jobs (`runner.md` § Command lifetime).
+    kept.close().await;
     let management = &registered.management;
     // A drain, and a removal's answer to its `uninstall`, end before the
     // local endpoint does.
@@ -209,21 +216,28 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     Ok(ending)
 }
 
-async fn reconnect(registered: &Registered, installed: Option<&Installed>) -> io::Result<Ending> {
+async fn reconnect(
+    registered: &Registered,
+    kept: &mut Kept,
+    installed: Option<&Installed>,
+) -> io::Result<Ending> {
     let management = &registered.management;
     let mut delay = Duration::from_millis(250);
     // A backend that stays away fails the same way every few seconds. The
     // console hears each attempt; the log keeps one line per change.
     let mut failure: Option<String> = None;
     loop {
-        if management.stop.is_cancelled() || management.draining.is_cancelled() {
+        // Draining waits for the jobs, which run on without a connection.
+        if management.stop.is_cancelled()
+            || (management.draining.is_cancelled() && kept.jobs.is_empty())
+        {
             return Ok(Ending::Stopped);
         }
         management.set_phase(Phase::Connecting);
         if failure.is_none() {
             tracing::info!("connecting to {}", registered.backend.url());
         }
-        let result = connection(registered).await;
+        let result = connection(registered, kept).await;
         let result = match result {
             Ok(Attempt::Update(update)) => {
                 let Some(installed) = installed else {
@@ -237,7 +251,14 @@ async fn reconnect(registered: &Registered, installed: Option<&Installed>) -> io
                     .update(registered.backend.url(), &update, &management.stop)
                     .await
                 {
-                    Ok(successor) => return Ok(Ending::Replaced(successor)),
+                    // The new runner cannot take the jobs over: they are
+                    // stopped, and the backend learns from its hello that
+                    // they were lost to the update (`runner.md` § Runner
+                    // updates).
+                    Ok(successor) => {
+                        kept.stop_jobs(registered).await;
+                        return Ok(Ending::Replaced(successor));
+                    }
                     Err(error) => Err(io::Error::other(format!(
                         "the update to runner release {} failed: {error}",
                         update.release
@@ -277,10 +298,16 @@ async fn reconnect(registered: &Registered, installed: Option<&Installed>) -> io
                 failure = Some(text);
             }
         }
-        tokio::select! {
-            _ = management.stop.cancelled() => return Ok(Ending::Stopped),
-            _ = management.draining.cancelled() => return Ok(Ending::Stopped),
-            _ = tokio::time::sleep(delay) => {},
+        let waited = tokio::time::sleep(delay);
+        tokio::pin!(waited);
+        loop {
+            let idle = kept.jobs.is_empty();
+            tokio::select! {
+                _ = management.stop.cancelled() => return Ok(Ending::Stopped),
+                _ = management.draining.cancelled(), if idle => return Ok(Ending::Stopped),
+                () = &mut waited => break,
+                event = kept.next() => kept.handle(event, None, registered).await,
+            }
         }
         delay = (delay * 2).min(Duration::from_secs(10));
     }
@@ -316,16 +343,28 @@ enum Attempt {
     Update(demi_runner_protocol::release::RunnerUpdate),
 }
 
-/// Opens one backend connection and serves it until it ends.
-async fn connection(registered: &Registered) -> io::Result<Attempt> {
+/// Opens one backend connection and serves it until it ends; the kept jobs
+/// are served while it opens.
+async fn connection(registered: &Registered, kept: &mut Kept) -> io::Result<Attempt> {
     let management = &registered.management;
     let token = registered.token.borrow().clone();
-    let connected = tokio::select! {
-        _ = management.draining.cancelled() => return Ok(Attempt::Ended(End::Stopped)),
-        result = Transport::connect(&registered.backend, &registered.runner.version, token.as_ref(), management.stop.clone()) => result?,
+    let connecting = Transport::connect(
+        &registered.backend,
+        &registered.runner.version,
+        token.as_ref(),
+        management.stop.clone(),
+    );
+    tokio::pin!(connecting);
+    let connected = loop {
+        let idle = kept.jobs.is_empty();
+        tokio::select! {
+            _ = management.draining.cancelled(), if idle => return Ok(Attempt::Ended(End::Stopped)),
+            result = &mut connecting => break result?,
+            event = kept.next() => kept.handle(event, None, registered).await,
+        }
     };
     match connected {
-        Connected::Open(transport) => connection::serve(registered, transport)
+        Connected::Open(transport) => connection::serve(registered, kept, transport)
             .await
             .map(Attempt::Ended),
         Connected::Update(update) => Ok(Attempt::Update(update)),

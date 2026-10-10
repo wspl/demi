@@ -13,13 +13,13 @@ use demi_shared_types::{CommandId, CommandReport, ReportEvent, StoppedBy};
 use crate::{Stopper, result::report_output};
 
 /// How a command ended, as its end's report tells it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EndOf {
     Exited(i32),
     /// It was stopped, by whom when that is known.
     Stopped(Option<Stopper>),
-    /// It ended with its Host's connection.
-    Lost,
+    /// Its Host lost it, for this reason (`runtime.md` § Lost commands).
+    Lost(String),
     /// Its record keeps no end.
     Unrecorded,
 }
@@ -65,7 +65,7 @@ pub fn end_report(
             by: Some(StoppedBy::Agent { number }),
         },
         EndOf::Stopped(Some(Stopper::Itself) | None) => ReportEvent::Stopped { by: None },
-        EndOf::Lost => ReportEvent::lost_with_connection(),
+        EndOf::Lost(reason) => ReportEvent::Lost { reason },
         EndOf::Unrecorded => ReportEvent::Ended { exit_code: None },
     };
     let mut report = report(command, title, event);

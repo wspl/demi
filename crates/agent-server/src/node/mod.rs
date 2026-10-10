@@ -36,6 +36,10 @@ use futures_util::{FutureExt, future::LocalBoxFuture};
 
 use crate::server::ProviderResolver;
 
+/// What made Demi resume a child's turn the process interrupted, as its
+/// model reads it.
+const RESTARTED: &str = "the backend restarted";
+
 /// A node's place in its tree, which sets its lifecycle policy: a child
 /// resumes a turn the process interrupted and closes once it is quiescent;
 /// the root leaves both to its client.
@@ -226,6 +230,9 @@ impl<H: HostResolver> Node<H> {
     /// looked at it, which closes it instead when it is quiescent. What this
     /// changed is saved at once.
     pub(crate) async fn continue_from(&self, continuation: Continuation) -> Result<(), StoreError> {
+        // The commands the node left running go on where their Host kept
+        // them (`sessions-and-targets.md` § Recovery and persistence).
+        self.runtime.take_up(None).await;
         let session = &self.session;
         if self.role == NodeRole::Child {
             // Its supervision releases the hold at its first look; an action
@@ -237,7 +244,7 @@ impl<H: HostResolver> Node<H> {
                 NodeRole::Root => session.record_interruption(),
                 // The action reports its course as events, and a refusal
                 // means the session is closing.
-                NodeRole::Child => drop(session.resume()),
+                NodeRole::Child => drop(session.resume_after(RESTARTED)),
             }
         }
         for message in continuation.queued {
@@ -291,6 +298,30 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
 }
 
 impl<H: HostResolver> NodeRuntime<H> {
+    /// Takes up the commands the node ran that the conversation records
+    /// running and its environments do not hold: `only`, or every one
+    /// (`sessions-and-targets.md` § Recovery and persistence). A command
+    /// that cannot be taken up now stays recorded for the next try.
+    async fn take_up(&self, only: Option<&CommandId>) {
+        let running = match self.store.running_commands(&self.node).await {
+            Ok(running) => running,
+            Err(error) => {
+                tracing::warn!(node = %self.node, %error, "the node's running commands could not be read");
+                return;
+            }
+        };
+        for command in running {
+            if only.is_some_and(|only| *only != command.command)
+                || self.environments.owning(&command.command).is_some()
+            {
+                continue;
+            }
+            if let Err(error) = self.shell_access().adopt(&command).await {
+                tracing::warn!(node = %self.node, command = %command.command, %error, "a running command was not taken up");
+            }
+        }
+    }
+
     fn node_context(&self) -> NodeContext<'_> {
         NodeContext {
             node: &self.node,
@@ -335,7 +366,7 @@ impl<H: HostResolver> NodeRuntime<H> {
         match end {
             Some(CommandEnd::Exited { exit_code }) => EndOf::Exited(exit_code),
             Some(CommandEnd::Stopped) => EndOf::Stopped(stopper),
-            Some(CommandEnd::Lost) => EndOf::Lost,
+            Some(CommandEnd::Lost { reason }) => EndOf::Lost(reason),
             Some(CommandEnd::Unrecorded) | None => EndOf::Unrecorded,
         }
     }
@@ -358,7 +389,9 @@ impl<H: HostResolver> NodeRuntime<H> {
                 binary_stdout: None,
                 media: Vec::new(),
             },
-            CommandEnd::Stopped | CommandEnd::Lost | CommandEnd::Unrecorded => CommandState::Aborted,
+            CommandEnd::Stopped | CommandEnd::Lost { .. } | CommandEnd::Unrecorded => {
+                CommandState::Aborted
+            }
         };
         let place = self.environments.place(command);
         Some(whole_status(command, state, 0, 0, Arc::new(output), place))
@@ -480,17 +513,19 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         self.shell_access().invoke_step(calls)
     }
 
-    /// Waits on the environment that holds `command`, and holds nothing
-    /// else; a command no environment holds has ended, with the node's
-    /// shells or before the node was restored.
-    fn command_ended(&self, command: &CommandId) -> LocalBoxFuture<'static, ()> {
-        let environment = self.environments.owning(command);
-        let command = command.clone();
+    /// Waits on the environment that holds `command`; one no environment
+    /// holds is taken up when the conversation records it running, and has
+    /// ended otherwise, with the node's shells or before the node was
+    /// restored.
+    fn command_ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, ()> {
         Box::pin(async move {
-            if let Some(environment) = environment {
+            if self.environments.owning(command).is_none() {
+                self.take_up(Some(command)).await;
+            }
+            if let Some(environment) = self.environments.owning(command) {
                 // An environment that forgot the command answers an error:
                 // it has ended either way.
-                let _ = environment.ended(&command).await;
+                let _ = environment.ended(command).await;
             }
         })
     }
@@ -562,8 +597,8 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         }
     }
 
-    /// Ends the node's shells on every Host, their running commands with
-    /// them.
+    /// Lets go of the node's shells on every Host; their running commands
+    /// run on (`runtime.md` § Dispose and restore).
     fn dispose(&self) -> LocalBoxFuture<'_, ()> {
         Box::pin(self.environments.dispose())
     }
@@ -738,8 +773,9 @@ pub(crate) async fn assemble<H: HostResolver>(
     };
     let (session, continuation) = match origin {
         Origin::Stored { checkpoint, .. } => {
+            let running = store.running_commands(&record.id).await?;
             let (session, continuation) =
-                AgentSession::restore(checkpoint, record.id.clone(), runtime, deps)?;
+                AgentSession::restore(checkpoint, record.id.clone(), runtime, deps, &running)?;
             (session, Some(continuation))
         }
         Origin::New {

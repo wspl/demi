@@ -37,6 +37,8 @@ pub struct Host {
     pub process: RunnerProcess,
     listener: TcpListener,
     socket: WebSocketStream<TcpStream>,
+    /// The hello of the runner's current connection.
+    pub hello: Outbound,
 }
 
 impl Host {
@@ -68,6 +70,7 @@ impl Host {
             process,
             listener,
             socket,
+            hello,
         }
     }
 
@@ -110,16 +113,33 @@ impl Host {
     pub async fn restart(&mut self) {
         self.stop().await;
         self.process.start_again();
-        let (socket, hello) = accept(&self.listener, &self.process).await;
-        assert!(matches!(hello, Outbound::Hello { .. }), "{hello:?}");
-        self.socket = socket;
+        self.reconnected().await;
     }
 
-    /// Takes the runner's next connection, as after it lost the last one.
+    /// Takes the runner's next connection, as after it lost the last one,
+    /// and its hello.
     pub async fn reconnected(&mut self) {
         let (socket, hello) = accept(&self.listener, &self.process).await;
         assert!(matches!(hello, Outbound::Hello { .. }), "{hello:?}");
         self.socket = socket;
+        self.hello = hello;
+    }
+
+    /// Drops the connection without a close frame, as a network that went
+    /// away does; the runner connects again on its own.
+    pub async fn cut(&mut self) {
+        use tokio::io::AsyncWriteExt;
+        // The runner sees the connection end either way.
+        let _ = self.socket.get_mut().shutdown().await;
+    }
+
+    /// The jobs the current connection's hello lists, and the runner's
+    /// instance.
+    pub fn kept(&self) -> (u64, Vec<wire::KeptJob>) {
+        match &self.hello {
+            Outbound::Hello { instance, jobs, .. } => (*instance, jobs.clone()),
+            other => panic!("not a hello: {other:?}"),
+        }
     }
 
     /// Stops the runner, as a signal does, while the backend end reads on and
