@@ -10,13 +10,13 @@ use demi_shared_types::CommandId;
 use crate::{Look, Stopper, duration, look_text};
 
 /// How a command ended, as its end's report tells it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EndOf {
     Exited(i32),
     /// It was stopped, by whom when that is known.
     Stopped(Option<Stopper>),
-    /// It ended with its Host's connection.
-    Lost,
+    /// Its Host lost it, for this reason (`runtime.md` § Lost commands).
+    Lost(String),
     /// Its record keeps no end.
     Unrecorded,
 }
@@ -72,9 +72,9 @@ pub fn end_report(command: &CommandId, title: &str, end: EndOf) -> String {
             format!("{named} was stopped by agent {agent}.")
         }
         EndOf::Stopped(Some(Stopper::Itself) | None) => format!("{named} was stopped."),
-        EndOf::Lost => format!(
-            "{named} was lost with its Host's connection. Start it again if it is still needed."
-        ),
+        EndOf::Lost(reason) => {
+            format!("{named} was lost: {reason}. Start it again if it is still needed.")
+        }
         EndOf::Unrecorded => {
             format!("{named} ended; look at it with demi shell status {command}.")
         }
