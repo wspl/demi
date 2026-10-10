@@ -16,7 +16,9 @@
 //! (`demi_backend_host_access::transition`).
 
 use demi_backend_database::StorageError;
-use demi_backend_database::conversation_index::{ConversationChange, RecordChange, SettingsChange};
+use demi_backend_database::conversation_index::{
+    ConversationChange, ConversationRecord, RecordChange, SettingsChange,
+};
 use demi_backend_host_access::root_of;
 use demi_backend_host_access::transition::{ChangeRefusal, Switched};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId};
@@ -25,7 +27,8 @@ use demi_shared_gates::{Purpose, Reservation};
 use demi_web_api_protocol::conversations::{
     ConversationPatch, ConversationUpdate, FieldResult, PatchField,
 };
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::devices::DeviceKind;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 
 use crate::shard::Shard;
 
@@ -122,7 +125,17 @@ impl Shard {
             }
             change => change,
         };
-        let tree = self.reserve_idle_tree(&record.id)?;
+        // A switch away from an offline device leaves the commands still
+        // running there to its runner (`sessions-and-targets.md` § Switch
+        // the primary target).
+        let leaving = match &change {
+            ConversationChange::Target(_) => self.leaving_offline(&record).await?,
+            _ => None,
+        };
+        let tree = self.reserve_idle_tree(&record.id, leaving.is_some())?;
+        if let Some(device) = &leaving {
+            self.conversations().slot(&record.id).leave_jobs_on(device);
+        }
         let hold = host.hold_for_transition(&record.id, tree).await?;
         let committed = match change {
             ConversationChange::Target(to) => {
@@ -156,16 +169,38 @@ impl Shard {
         committed
     }
 
+    /// The paired device a switch of `record` leaves while its runner is not
+    /// connected, if it does.
+    async fn leaving_offline(&self, record: &ConversationRecord) -> Result<Option<DeviceId>, ChangeRefusal> {
+        let target = self.host_shard().resolve_target(record).await?;
+        let Some(device) = target.device() else {
+            return Ok(None);
+        };
+        let paired = self
+            .services()
+            .control
+            .device(device.clone())
+            .await?
+            .is_some_and(|device| device.kind == DeviceKind::User);
+        Ok((paired && !self.devices().online(device)).then(|| device.clone()))
+    }
+
     /// Reserves the conversation's live tree while it does nothing by itself
     /// (`runtime.md` § Actions): no action runs or waits, no child is live
-    /// and no command runs. A conversation without a live tree runs
-    /// nothing; one whose tree works refuses the transition.
-    fn reserve_idle_tree(&self, id: &ConversationId) -> Result<Option<Reservation>, ChangeRefusal> {
+    /// and no command runs, unless `commands_left`, for a switch away from
+    /// an offline device, whose commands run on there. A conversation
+    /// without a live tree runs nothing; one whose tree works refuses the
+    /// transition.
+    fn reserve_idle_tree(
+        &self,
+        id: &ConversationId,
+        commands_left: bool,
+    ) -> Result<Option<Reservation>, ChangeRefusal> {
         let Some(tree) = self.agent().tree(&root_of(id)) else {
             return Ok(None);
         };
         // The check and the reservation are one step: no await between them.
-        if !tree.is_quiescent() {
+        if tree.works() || (tree.runs_commands() && !commands_left) {
             return Err(ChangeRefusal::TurnInFlight);
         }
         tree.admission()

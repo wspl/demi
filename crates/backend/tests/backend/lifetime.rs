@@ -29,8 +29,8 @@ const FIRST: &str = "5e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a05";
 
 /// A network between a runner and the backend that can drop every
 /// connection it carries, and refuse new ones until it is opened again.
-struct Network {
-    url: String,
+pub(crate) struct Network {
+    pub(crate) url: String,
     /// Each change drops every connection.
     cuts: watch::Sender<u64>,
     refusing: Arc<AtomicBool>,
@@ -38,7 +38,7 @@ struct Network {
 }
 
 impl Network {
-    async fn start(backend: SocketAddr) -> Self {
+    pub(crate) async fn start(backend: SocketAddr) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let cuts = watch::Sender::new(0);
@@ -65,13 +65,13 @@ impl Network {
 
     /// Drops every connection without a close, as a network that went away
     /// does, and refuses new ones.
-    fn cut(&self) {
+    pub(crate) fn cut(&self) {
         self.refusing.store(true, Ordering::SeqCst);
         self.cuts.send_modify(|cut| *cut += 1);
     }
 
     /// Carries connections again.
-    fn open(&self) {
+    pub(crate) fn open(&self) {
         self.refusing.store(false, Ordering::SeqCst);
     }
 }
@@ -98,7 +98,7 @@ async fn until_exists(path: &Path) {
 }
 
 /// Waits until a request to the model holds `text`.
-async fn until_requested(vendor: &MockVendor, text: &str) {
+pub(crate) async fn until_requested(vendor: &MockVendor, text: &str) {
     eventually(&format!("a request holds {text:?}"), || {
         let held = vendor
             .requests()
