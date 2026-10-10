@@ -30,8 +30,13 @@ test('a text file over the text limit shows its first 8 MiB, without the charact
   scope.stop()
 })
 
-test('bytes that are not text show the card, as the text route refuses them', () => {
+test('binary bytes show the card, as the text route refuses them, and other bytes show as text', () => {
   expect(decodeTextStart(new Uint8Array([0x68, 0x00, 0x69]))).toBeNull()
-  expect(decodeTextStart(new Uint8Array([0x68, 0xff, 0x69]))).toBeNull()
+  // A Latin-1 byte is no reason to refuse the text: it shows as U+FFFD.
+  expect(decodeTextStart(new Uint8Array([0x68, 0xff, 0x69]))).toBe('h\uFFFDi')
+  // A NUL past the first 8 KiB does not make the bytes binary.
+  const late = new Uint8Array(8 * 1024 + 2).fill(0x61)
+  late[8 * 1024 + 1] = 0
+  expect(decodeTextStart(late)?.length).toBe(8 * 1024 + 2)
   expect(decodeTextStart(new TextEncoder().encode('plain'))).toBe('plain')
 })

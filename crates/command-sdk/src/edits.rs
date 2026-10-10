@@ -540,7 +540,7 @@ impl Contents {
     fn text_or_missing(&self) -> bool {
         match self {
             Self::Missing => true,
-            Self::Bytes(bytes, _) => demi_command_protocol::is_text(bytes),
+            Self::Bytes(bytes, _) => !demi_command_protocol::is_binary(bytes),
             _ => false,
         }
     }
