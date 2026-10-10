@@ -291,10 +291,11 @@ continuation attached to a stub of its own aborted output.
 
 Otherwise, the leftovers are dropped, the latest stopped marker is marked as resumed, a `resume` block is
 appended, and inference continues after the preserved progress. The model
-receives the `resume` block as "Continue from where you left off.", or,
-when the system resumed the turn, such as a subagent's after a backend
-restart, as "Demi resumed this turn after <the reason>; continue from where
-you left off."
+receives the `resume` block as "Continue from where you left off.", after
+the sentence its reason holds when it has one: "Demi resumed this turn
+after the backend restarted." when the system resumed a subagent's turn
+after a restart, or "MacBook Pro is back online." when the user resumed a
+turn its offline Host left unfinished.
 
 The product offers `resume` in one control above the composer, labeled Resume
 after an error and Continue after the user's Stop
