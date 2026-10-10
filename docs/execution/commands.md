@@ -148,7 +148,7 @@ Each input field has one source:
 | `input` | The JSON Schema of the leaf's argument type. It validates the whole input. |
 | `positionals` | Ordered fields supplied as positional arguments. They have no named-option form, unless `positionalOptions` names them. The last may be an array, which takes every positional token left, as `demi attachment upload <path>...` does; usage shows it with `...`. One optional positional may stand directly before a required last one, as `demi browser key <tab> [<ref>] <key>` does: two tokens fill the tab and the key, three fill all three. |
 | `positionalOptions` | Positionals that may also be given as a named option, as a browser target's `ref` is both `demi browser click t1 e3` and `--ref e3`, since outputs print it as `[ref=e3]` and models write it both ways. Usage shows the positional form. Giving both is a usage error. |
-| `stdinField` | A string field populated from finite stdin: a quoted heredoc, a pipe, or input redirection. It has no option or positional form. |
+| `stdinField` | A string field populated from finite stdin: a quoted heredoc, a pipe, or input redirection. It has no option form. It may also be the optional last positional, for a short value models write inline, as `demi browser eval t1 'document.title'`: given there, it is taken from argv and stdin is not read, so the command does not consume the input of a loop around it; an optional positional before it is skipped when its option is given or its token is no valid value for it, so `eval t1 e21 'element.textContent'`, `eval t1 'document.title'` and `eval t1 --ref e21 'element.textContent'` all read as meant. |
 | `stdinRead` | When the `stdinField` is read; absent, always. `{ unless: [options] }` leaves it unread, and stdin with the calling process, when one of the options is given, as `file edit` reads no blocks with `--old`. `{ with: [options] }` reads it only when one of them is given, as `browser find` reads a query body only with `--query`, so a call from a shell whose stdin is an empty pipe is not refused for an empty body. An option counts as given unless its value is `false`. It names only options of the leaf, and only beside a `stdinField`; help shows it on the stdin line: `Stdin body: blocks, not read with --old`, `Stdin body: body, read only with --query`. |
 | `restField` | An array receiving raw tokens after `--`. It has no named-option form. |
 | Remaining input fields | Named options such as `--path notes.txt`. Their schemas define values, optionality, boolean flags, enums, and repeated array options. |
@@ -156,11 +156,11 @@ Each input field has one source:
 | `media` | The leaf shows media to the model, handing them to its job whatever its stdout is ([Return media](#return-media)). Only `file view` declares it, and the dispatcher fails a call of a leaf without it that returns one. |
 
 For example, a model runs `demi file edit a.ts b.ts` on a leaf that takes
-one optional path, or `demi browser read t1 --selector main`:
+one optional path, or `demi browser read t1 --ccs main`:
 
 ```text
-error: unexpected argument '--selector' found; a similar argument exists: '--css'
-Usage: demi browser read <tab> [--css <selector>] …; more with --help
+error: unexpected argument '--ccs' found; a similar argument exists: '--css'
+Usage: demi browser read <tab> [--css <css>] …; more with --help
 ```
 
 A usage error is clap's: one error at a time, in clap's words, with no
@@ -211,12 +211,15 @@ definition.
 An input field is a string, a number, an integer, a boolean, a string enum, or
 an array of one of those, and any field may be optional. A string may carry
 length and pattern bounds, a number or integer a range, and an array bounds on
-its item count. A field's doc comment becomes its description in the schema
+its item count. A pattern comes with `patternDescription`, what the pattern
+stands for, such as `a ref, such as e12`, which errors name; registration
+refuses one without the other. A field's doc comment becomes its description in the schema
 and in help.
 
 In the derived JSON Schema, the leaf's input is an object that allows no other
 properties, and a property uses only `type`, `enum`, `items`, `description`,
-`format` for numbers, `minLength`, `maxLength`, `pattern`, `minimum`,
+`format` for numbers, `minLength`, `maxLength`, `pattern`,
+`patternDescription`, `minimum`,
 `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `minItems`, and `maxItems`.
 An optional field is an `Option` in the argument type: its schema leaves it out
 of `required` and never allows `null`. Registration rejects anything else and
