@@ -369,6 +369,9 @@ struct SharedState<E, C> {
     end: Option<E>,
     /// The running declared commands' hints, first registered first.
     hints: Vec<(String, String)>,
+    /// The background tasks that keep a job running once its script has
+    /// ended, by their command lines; empty while the script runs.
+    outliving: Vec<String>,
 }
 
 /// One message of a job's output (`runner.md` § Pipes and output): the
@@ -390,6 +393,7 @@ impl<E: Clone, C> Shared<E, C> {
                 output: VecDeque::new(),
                 end: None,
                 hints: Vec::new(),
+                outliving: Vec::new(),
             }),
             changed: watch::Sender::new(0),
         })
@@ -417,6 +421,7 @@ impl<E: Clone, C> Shared<E, C> {
         }
         state.end = Some(end);
         state.hints.clear();
+        state.outliving.clear();
         drop(state);
         self.bump();
     }
@@ -433,6 +438,20 @@ impl<E: Clone, C> Shared<E, C> {
                 None => state.hints.push((invocation, hint)),
             },
         }
+    }
+
+    /// The job's script has ended, and `tasks` still run.
+    pub(crate) fn outlived_by(&self, tasks: Vec<String>) {
+        let mut state = self.state.borrow_mut();
+        if state.end.is_none() {
+            state.outliving = tasks;
+        }
+    }
+
+    /// The background tasks that keep the job running once its script has
+    /// ended.
+    pub(crate) fn outliving(&self) -> Vec<String> {
+        self.state.borrow().outliving.clone()
     }
 
     /// The latest first-registered running command's hint.
@@ -1131,6 +1150,11 @@ impl Link {
             } => {
                 self.0.device_jobs.with(&job_id, |job| {
                     job.shared.hint(invocation_id, hint);
+                });
+            }
+            Outbound::JobOutliving { job_id, tasks } => {
+                self.0.device_jobs.with(&job_id, |job| {
+                    job.shared.outlived_by(tasks);
                 });
             }
             Outbound::JobExit {

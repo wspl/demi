@@ -366,6 +366,10 @@ mod tests {
             Err(ShellError::UnknownCommand(command.clone()))
         }
 
+        fn outliving(&self, _: &CommandId) -> Vec<String> {
+            Vec::new()
+        }
+
         fn unreachable(&self, _: &CommandId) -> Option<demi_shared_types::Unreachable> {
             None
         }
