@@ -67,7 +67,7 @@ viewer the page chose; and the user's browser must not guess a type on its
 own (`nosniff`).
 
 The table also names every type a model reads natively
-([Media a command returns](../agent/runtime.md#media-a-command-returns)), and shows
+([Media the model views](../agent/runtime.md#media-the-model-views)), and shows
 each in place: a tool's images and videos, and a message's, are served from
 their blobs by the same table
 ([Media a tool returned](#media-a-tool-returned)), and one it did not show in
@@ -186,15 +186,15 @@ so it wakes a stopped Cloud like any other
 
 ## Media a tool returned
 
-For example, the agent runs `demi browser screenshot t1`. The command returns
-a PNG, and the call's result attaches it as an image the model reads
-([Media a command returns](../agent/runtime.md#media-a-command-returns)). The page
+For example, the agent runs `demi browser screenshot t1 | demi file view`.
+The call's result attaches the PNG as an image the model reads
+([Media the model views](../agent/runtime.md#media-the-model-views)). The page
 shows the same picture under the call's row, whether the call is folded or
 open, and a click opens it large:
 
 ```text
 ▸ Take a screenshot of the login page    the call's row; its fold holds the
-                                         script and [medium 1: ...]
+                                         script and [image 1: ...]
   ┌──────────────────────┐
   │    the screenshot    │               what the model read; a click
   │                      │               opens it large
@@ -203,8 +203,8 @@ open, and a click opens it large:
 
 - **Which calls.** A call shows the images and videos its own result carries,
   so a picture shows where the model saw it. A `shell` call whose command
-  exits within the call's window carries the command's media, several of
-  them when its commands returned several. When the command exits after the
+  exits within the call's window carries the media the job viewed, several
+  of them when it viewed several. When the command exits after the
   call returned, the report or the `demi shell status` that tells the end
   carries them instead. The generic tool card shows its result's media the
   same way.
@@ -214,8 +214,9 @@ open, and a click opens it large:
   ([Files named in messages](#files-named-in-messages)). Every medium takes its box, a thumbnail's or a player's, before its
   bytes arrive, so the transcript does not move when they load. The fold
   still shows the command's own output, whose lines
-  `[medium 1: image/png, 412000 bytes]` and `<binary stdout: 412000 bytes>`
-  stand for the original bytes.
+  `[image 1: image/png, 1280 × 720 px, 412000 bytes]` stands for the
+  original file the job viewed, and `<binary stdout: 412000 bytes>` for bytes
+  the model did not see.
 - **An image** is a thumbnail: 80 pixels tall, as wide as its proportions
   make it within 64 and 200 pixels, never enlarged. An image whose
   proportions fall outside that range is cropped to it: a tall one, such as

@@ -23,6 +23,7 @@ demi-command-package-browser-chrome = { path = "../command-package-browser-chrom
 demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-sdk = { path = "../command-sdk" }
+demi-shared-cli = { path = "../shared-cli" }
 futures-util.workspace = true
 png = "0.18"
 serde_json.workspace = true

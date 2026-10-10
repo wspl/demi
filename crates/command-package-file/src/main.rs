@@ -2,6 +2,9 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
+    // A panic leaves its report on standard error (`builds-and-releases.md`
+    // § Build profiles).
+    demi_shared_cli::install_panic_hook();
     demi_command_sdk::Launch::from_process();
     // Diagnostics go to standard error, which the runner drains into the
     // Host's log line by line.

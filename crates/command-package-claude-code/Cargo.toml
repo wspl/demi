@@ -27,6 +27,7 @@ bytes.workspace = true
 demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-sdk = { path = "../command-sdk" }
+demi-shared-cli = { path = "../shared-cli" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

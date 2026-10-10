@@ -1,10 +1,13 @@
 # Collects the executables the job's `xtask native build` wrote, with
-# their paths in the Cargo target directory, as one workflow artifact.
+# their paths in the Cargo target directory, as one workflow artifact, and
+# their debug files, one per executable and target, named as the release
+# publishes them beside its assets (docs/delivery/builds-and-releases.md
+# § Build profiles). No device downloads a debug file.
 name: Collect programs
-description: Uploads the job's built executables as one tar archive.
+description: Uploads the job's built executables as one tar archive and their debug files.
 inputs:
   name:
-    description: The workflow artifact's name.
+    description: The workflow artifact's name, native-<target>-<group>.
     required: true
 runs:
   using: composite
@@ -15,10 +18,40 @@ runs:
       run: |
         cd .cache/native-target
         find . -maxdepth 3 -type f -path '*/release/demi-*' \
-          ! -name '*.d' ! -name '*.pdb' -print > built.txt
+          ! -name '*.d' ! -name '*.pdb' ! -name '*.debug' -print > built.txt
         tar -cf "../../${{ inputs.name }}.tar" -T built.txt
     - uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.name }}
         path: ${{ inputs.name }}.tar
+        retention-days: 1
+    # <executable>-<target> and the debug file's own extension: .debug,
+    # which xtask splits from a Linux executable; .dSYM, Cargo's directory
+    # for an Apple one, zipped as Apple's tools zip it; .pdb, which Cargo
+    # names after the crate on Windows.
+    - name: Collect the debug files
+      shell: bash
+      run: |
+        symbols="$PWD/symbols"
+        mkdir -p "$symbols"
+        cd .cache/native-target
+        while IFS= read -r executable; do
+          release=$(dirname "$executable")
+          target=$(basename "$(dirname "$release")")
+          name=$(basename "$executable" .exe)
+          if [ -f "$executable.debug" ]; then
+            cp "$executable.debug" "$symbols/$name-$target.debug"
+          elif [ -d "$executable.dSYM" ]; then
+            ditto -c -k --keepParent "$executable.dSYM" "$symbols/$name-$target.dSYM.zip"
+          elif [ -f "$release/$(echo "$name" | tr - _).pdb" ]; then
+            cp "$release/$(echo "$name" | tr - _).pdb" "$symbols/$name-$target.pdb"
+          else
+            echo "$executable has no debug file" >&2
+            exit 1
+          fi
+        done < built.txt
+    - uses: actions/upload-artifact@v7
+      with:
+        name: symbols-${{ inputs.name }}
+        path: symbols
         retention-days: 1
