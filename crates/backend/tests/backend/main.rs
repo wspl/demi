@@ -41,6 +41,7 @@ mod isolation;
 mod lifetime;
 mod machines;
 mod native;
+mod offline;
 mod organize;
 mod outputs;
 mod panel;

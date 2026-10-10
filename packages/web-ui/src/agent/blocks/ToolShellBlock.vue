@@ -11,7 +11,8 @@ import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText, shellTerminalOutputChunks, storedShellView } from '../block-helpers'
 import { commandEndMark, commandEndWords } from '../command-end'
 import CommandEndTag from './CommandEndTag.vue'
-import { useLiveCalls } from '../live-calls'
+import HostWaitNote from './HostWaitNote.vue'
+import { useCallWaits, useLiveCalls } from '../live-calls'
 import { shellRowEnd, shellRowRunning } from '../terminals'
 import { shellTitle } from '../tool-rendering'
 import { toolMedia } from '../tool-media'
@@ -38,6 +39,11 @@ const endWords = computed(() => commandEndWords(end.value))
 /** While the call runs, its command's output as it comes (`runtime.md` § Rendering boundary). */
 const liveOutput = computed(() =>
   props.block.status === 'executing' ? started.value?.output ?? '' : '',
+)
+const callWaits = useCallWaits()
+/** The Host whose runner the running call waits for, which its row names (`sessions-and-targets.md` § Host operations). */
+const waitingFor = computed(() =>
+  props.block.status === 'executing' ? callWaits(props.block.toolUseId) : undefined,
 )
 /** The row shimmers while its call runs and, after, while its command still does. */
 const running = computed(() => shellRowRunning(props.block.status, started.value))
@@ -98,6 +104,7 @@ function toggleCommand(): void {
 
     <template #default="{ loading }">
       <span class="min-w-0 truncate" :class="loading ? 'thinking-shimmer' : ''">{{ title }}</span>
+      <HostWaitNote v-if="waitingFor" :host="waitingFor" />
       <CommandEndTag v-if="endMark" :mark="endMark" />
     </template>
 

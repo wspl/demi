@@ -1,4 +1,4 @@
-import type { Block, ContextUsage, PendingCall, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import type { Block, ContextUsage, PendingCall, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase, WaitingCall } from '@demicodes/protocol'
 import type { PendingAction } from './activity-slot'
 import type { SessionLoad } from './session-status'
 import type { SubagentRecord } from './subagents'
@@ -38,6 +38,11 @@ export interface ConversationState {
   pendingSteers: PendingSteerMessage[]
   /** The calls the model is writing, as the server lists them (`runtime.md` § Calls being written). */
   pendingCalls: PendingCall[]
+  /**
+   * The calls that wait for their Host's runner, as the server lists them
+   * (`sessions-and-targets.md` § Host operations); absent while none has.
+   */
+  waitingCalls?: WaitingCall[]
   /** The conversation's model settings, which its composer shows. */
   model: ModelSettings
   lastError: string | null
@@ -68,6 +73,7 @@ export interface ChatSessionState
     | 'queue'
     | 'pendingSteers'
     | 'pendingCalls'
+    | 'waitingCalls'
     | 'phase'
     | 'load'
     | 'lastError'

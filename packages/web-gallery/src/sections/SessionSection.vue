@@ -84,7 +84,8 @@ import GalleryFindBar from '../components/GalleryFindBar.vue'
 import GalleryUserMessageLengths from '../components/GalleryUserMessageLengths.vue'
 import { regenerateMessage, submitMessageEdit, type MessageEditHost, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { callTerminal, firstRunningTerminalId, type TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
+import { provideCallWaits, provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
+import type { HostDeviceOption } from '@demicodes/web-ui/hosts/types'
 import type { AgentMessage, UserContentBlock } from '@demicodes/protocol'
 import { applyModelChange, type ModelSettings, type ModelSettingsChange } from '@demicodes/web-ui/agent/model-selection'
 import { composerAttachment, encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
@@ -106,6 +107,7 @@ import {
   notStoredVideoTool,
   recordingTool,
   runningShellTool,
+  waitingShellTool,
   screenshotTool,
   screenshotsTool,
   shellTool,
@@ -656,6 +658,18 @@ workFlow.settleWork()
 provideLiveCalls((toolUseId) =>
   callTerminal([...terminals, ...turnFlow.state.terminals, ...workFlow.state.terminals, returnedFailingCommand], undefined, toolUseId),
 )
+/** The devices an offline primary Host's card offers, as Run On lists them: it shows the online ones. */
+const offlineMenuDevices: HostDeviceOption[] = [
+  { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer' },
+  { id: 'studio', name: 'Studio PC', state: 'online', path: 'localNetwork' },
+  { id: 'old', name: 'Old Laptop', state: 'offline' },
+  { id: 'build', name: 'build-box', state: 'offline' },
+]
+// The waiting call's Host, until the specimen's runner comes back.
+const hostAway = ref(true)
+provideCallWaits((toolUseId) =>
+  hostAway.value && toolUseId === waitingShellTool.toolUseId ? 'Old Laptop' : undefined,
+)
 const changesFlow = useTurnFlow({ id: 'gallery-changes', title: 'Cookie rename', blocks: changesDemoBlocks() })
 useGalleryTranscripts(() => ({ blocks: changesFlow.state.blocks, subagents: [] }))
 useGalleryTranscripts(() => ({ blocks: workFlow.state.blocks, subagents: [] }))
@@ -1028,12 +1042,32 @@ onBeforeUnmount(() => {
             />
           </GallerySpecimen>
           <GallerySpecimen
-            variant="primary Host offline · how to start its runner again, with Copy"
+            variant="primary Host offline · how to start its runner again, with Copy · Move to Another Host… lists Run On’s online Hosts and moves it"
             wide
           >
             <GalleryComposer
               placeholder="Ask Demi…"
-              :offline-host="{ name: 'zan-mbp', start: demoDeviceStart('macos') }"
+              :offline-host="{
+                name: 'Old Laptop',
+                start: demoDeviceStart('macos'),
+                primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline' },
+                devices: offlineMenuDevices,
+              }"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="primary Host offline, in a project · a device opens its directory picker first"
+            wide
+          >
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              :offline-host="{
+                name: 'Old Laptop',
+                start: demoDeviceStart('windows'),
+                primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline' },
+                devices: offlineMenuDevices,
+                chooseDirectory: true,
+              }"
             />
           </GallerySpecimen>
           <GallerySpecimen
@@ -1691,6 +1725,18 @@ onBeforeUnmount(() => {
                 :block="runningShellTool"
                 :input="parseToolInput(runningShellTool.input)"
               />
+            </GallerySpecimen>
+            <GallerySpecimen
+              variant="shell · waiting for its offline Host"
+              wide
+            >
+              <ToolShellBlock
+                :block="waitingShellTool"
+                :input="parseToolInput(waitingShellTool.input)"
+              />
+              <Button size="sm" variant="ghost" class="mt-1" @click="hostAway = !hostAway">
+                {{ hostAway ? 'Connect Runner' : 'Disconnect Runner' }}
+              </Button>
             </GallerySpecimen>
             <GallerySpecimen
               variant="shell · returned, its command still runs · stopped"

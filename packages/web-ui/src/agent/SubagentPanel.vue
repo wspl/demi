@@ -7,7 +7,7 @@ import AgentMessageList from './AgentMessageList.vue'
 import SessionOverlay from './SessionOverlay.vue'
 import SubagentHistoryMenu from './SubagentHistoryMenu.vue'
 import TabItem from './TabItem.vue'
-import { provideLiveCalls } from './live-calls'
+import { provideCallWaits, provideLiveCalls, waitedHost } from './live-calls'
 import { subagentPanelTabs, subagentStatus, type SubagentRecord } from './subagents'
 import { callTerminal, type TerminalRecord } from './terminals'
 
@@ -40,6 +40,7 @@ const active = computed(
 provideLiveCalls((toolUseId) =>
   active.value ? callTerminal(props.terminals, active.value.id, toolUseId) : undefined,
 )
+provideCallWaits((toolUseId) => waitedHost(active.value?.waitingCalls, toolUseId))
 
 function activate(id: string): void {
   activeId.value = id

@@ -54,7 +54,11 @@ pub struct DeviceHost(Rc<RefCell<Rc<RemoteHost>>>);
 impl HostResolver for DeviceHost {
     type Host = RemoteHost;
 
-    async fn host(&self, _context: NodeContext<'_>) -> Result<Rc<RemoteHost>, HostError> {
+    async fn host(
+        &self,
+        _context: NodeContext<'_>,
+        _wait: &dyn demi_agent_tools::HostWait,
+    ) -> Result<Rc<RemoteHost>, HostError> {
         Ok(self.0.borrow().clone())
     }
 }

@@ -76,10 +76,7 @@ impl dyn HostShard + '_ {
         cancel: &CancellationToken,
     ) -> Result<Vec<HostFile>, ReadFilesError> {
         let access = self.admit_stream(id, Attention::Looks, cancel).await?;
-        let waits = Waits {
-            cancel,
-            ended: Some(&access.open.ended),
-        };
+        let waits = Waits::until_ended(cancel, &access.open.ended);
         let found = waits.wait(look(&access.host.host, reads)).await?;
         Ok(found.map_err(HostAccessError::Host)?)
     }

@@ -160,10 +160,7 @@ impl dyn HostShard + '_ {
             .writer()
             .expect("a pipe just made has its source free");
         let from_host = output.reader().expect("a pipe just made has its sink free");
-        let waits = Waits {
-            cancel,
-            ended: Some(&access.open.ended),
-        };
+        let waits = Waits::until_ended(cancel, &access.open.ended);
         let opened = waits
             .wait(
                 access
@@ -233,10 +230,7 @@ impl dyn HostShard + '_ {
                 Some(&call.args),
             )
             .await?;
-        let waits = Waits {
-            cancel,
-            ended: Some(&access.open.ended),
-        };
+        let waits = Waits::until_ended(cancel, &access.open.ended);
         let answer = waits
             .wait(
                 access

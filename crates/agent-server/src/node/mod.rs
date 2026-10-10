@@ -21,7 +21,7 @@ use demi_agent_store::{
     media::store_result,
 };
 use demi_agent_tools::{
-    CallError, ContextSource, EndOf, Environments, HostResolver, Looking, ModelIdentity, NodeContext,
+    CallError, ContextSource, EndOf, Environments, HostResolver, HostWaits, Looking, ModelIdentity, NodeContext,
     ShellAccess, ShellEnvironmentFactory, Stopper, StoreNumbers, definitions, end_report,
     fill_output, progress_report, report_media, report_output, runs_together, stored_running_commands,
     system_prompt, whole_status,
@@ -312,6 +312,8 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     environments: Environments,
     /// Where its environments tell the pages of its commands.
     feed: Rc<dyn PageFeed>,
+    /// The tree's calls in flight, which its calls register in.
+    waits: Rc<HostWaits>,
     /// The conversation's command numbers, from the tree store.
     numbers: Rc<dyn Numbers>,
     /// The node's agent number.
@@ -372,6 +374,7 @@ impl<H: HostResolver> NodeRuntime<H> {
             commands: &self.commands,
             feed: &self.feed,
             numbers: &self.numbers,
+            waits: &self.waits,
             interval_floor_ms: self.interval_floor_ms,
         }
     }
@@ -746,6 +749,8 @@ pub(crate) struct NodeSpec<H: HostResolver> {
     /// Where the node's environments tell the pages of its commands: the
     /// node's feed of its tree.
     pub(crate) feed: Rc<dyn PageFeed>,
+    /// The tree's calls in flight.
+    pub(crate) waits: Rc<HostWaits>,
     pub(crate) admission: ActivityGate,
     pub(crate) ids: Rc<dyn IdSource>,
     pub(crate) clock: Arc<dyn Clock>,
@@ -794,6 +799,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         store,
         shells,
         feed,
+        waits,
         admission,
         ids,
         clock,
@@ -829,6 +835,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         shells,
         environments: Environments::default(),
         feed,
+        waits,
         clock: clock.clone(),
     });
     let deps = SessionDeps {

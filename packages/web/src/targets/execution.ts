@@ -1,5 +1,7 @@
-import type { Conversation } from '../state/types'
+import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import type { Conversation, Device } from '../state/types'
 import { useProduct } from '../state/product'
+import { directPath } from '../direct'
 
 /** Resolve display metadata from the canonical target and account snapshot. */
 export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>) {
@@ -32,4 +34,24 @@ export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>)
     /** Whether the Host's runner serves it: a paired device's, or a running Cloud's. */
     state: device?.state ?? ('offline' as const),
   }
+}
+
+/** The Host a conversation runs on, as Run On checks it. */
+export function primaryHostOf(execution: ReturnType<typeof executionFor>): HostMenuHost {
+  return {
+    id: execution.deviceId ?? 'cloud',
+    name: execution.name,
+    kind: execution.kind,
+    state: execution.state,
+  }
+}
+
+/** The user's paired devices as Run On lists them, each with the path this page last reached it by; none for one it has not used this session. */
+export function hostDeviceOptions(devices: readonly Device[]): HostDeviceOption[] {
+  return devices.map((device) => ({
+    id: device.id,
+    name: device.name,
+    state: device.state,
+    path: directPath(device.id),
+  }))
 }

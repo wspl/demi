@@ -61,6 +61,7 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
             "phase",
             "queue",
             "pending_steers",
+            "waiting_calls",
             "pending_calls",
             "context_usage"
         ]
@@ -104,6 +105,7 @@ async fn a_page_that_opens_while_a_request_streams_receives_the_handshake_and_th
             "phase",
             "queue",
             "pending_steers",
+            "waiting_calls",
             "pending_calls",
             "context_usage"
         ]
@@ -159,8 +161,8 @@ async fn a_call_being_written_reaches_the_pages_as_a_list_and_an_opening_page_in
     second.send(open()).await;
     let handshake = second.received();
     let types: Vec<String> = handshake.iter().map(frame_type).collect();
-    assert_eq!(types[4..6], ["pending_steers", "pending_calls"]);
-    assert_eq!(calls(&handshake[5]), calls(listed.last().unwrap()));
+    assert_eq!(types[4..7], ["pending_steers", "waiting_calls", "pending_calls"]);
+    assert_eq!(calls(&handshake[6]), calls(listed.last().unwrap()));
 
     // The request ends without the call: the list is emptied.
     gate.open();
@@ -562,6 +564,7 @@ async fn a_connection_dropped_with_its_socket_detaches_and_its_outbox_ends() {
             "phase",
             "queue",
             "pending_steers",
+            "waiting_calls",
             "pending_calls",
             "context_usage"
         ]

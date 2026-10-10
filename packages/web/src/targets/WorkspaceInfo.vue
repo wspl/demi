@@ -12,12 +12,14 @@ import { browserHosts, fileSourceFor, placesFor } from '../devices/files'
 import { useConversations } from '../conversation/store'
 import { executionFor } from './execution'
 import HostMenu from './HostMenu.vue'
+import type { HostChoice } from '@demicodes/web-ui/hosts/types'
 
 /**
  * The header's place: the Host the conversation runs on and its directory
  * (`product.md` § Where a conversation runs). Every move the two menus
  * start, to another Host or another directory, comes through `move`, which
- * asks first when the conversation has messages.
+ * asks first when the conversation has messages; so does one the offline
+ * primary Host's card above the composer starts, through `choose`.
  */
 const props = defineProps<{
   project?: Project
@@ -33,6 +35,19 @@ const locked = computed(
     props.conversation.archived ||
     conversations.pendingChanges.includes(props.conversation.id),
 )
+/**
+ * A turn that waits for the offline primary Host may move all the same
+ * (`sessions-and-targets.md` § Switch the primary target); whether the
+ * turn does nothing but wait is the backend's to check, which refuses the
+ * move otherwise. Its agent is told of the move whatever the user chose.
+ */
+const waiting = computed(
+  () =>
+    props.conversation.phase !== 'idle' &&
+    execution.value.kind === 'device' &&
+    execution.value.state === 'offline',
+)
+const moveLocked = computed(() => locked.value && !waiting.value)
 const recentDirectories = computed(() =>
   resources.recentProjectIds
     .flatMap(
@@ -91,7 +106,7 @@ function sameTarget(a: ConversationTarget, b: ConversationTarget): boolean {
  * otherwise once the user answers the dialog. Answers whether it moved.
  */
 function move(target: ConversationTarget): Promise<boolean> {
-  if (locked.value) {
+  if (moveLocked.value) {
     return Promise.resolve(false)
   }
   // Where it runs already is no move.
@@ -100,6 +115,10 @@ function move(target: ConversationTarget): Promise<boolean> {
   }
   if (props.conversation.persistence !== 'synced') {
     return conversations.switchTarget(props.conversation.id, target)
+  }
+  // The waiting turn is told either way, so there is nothing to ask.
+  if (waiting.value) {
+    return conversations.switchTarget(props.conversation.id, target, true)
   }
   return moveQuestion.ask(
     { ...place(target), from: execution.value.name, fromCloud: execution.value.kind === 'cloud' },
@@ -114,7 +133,7 @@ function move(target: ConversationTarget): Promise<boolean> {
  * lists no directories to a page, so choosing it moves the conversation to
  * that directory of its own in either case.
  */
-function choose(host: { kind: 'cloud' } | { kind: 'device'; id: string }) {
+function choose(host: HostChoice) {
   const here = execution.value
   if (host.kind === 'cloud') {
     if (here.kind !== 'cloud') {
@@ -154,6 +173,8 @@ async function selectFolder(deviceId: string, path: string): Promise<boolean> {
   }
   return moved
 }
+
+defineExpose({ choose })
 </script>
 <template>
   <WorkspaceDirectoryMenu
@@ -163,7 +184,7 @@ async function selectFolder(deviceId: string, path: string): Promise<boolean> {
     :workspace-name="execution.workspaceName"
     :selected-project-id="project?.id"
     :device-id="execution.deviceId"
-    :locked="locked"
+    :locked="moveLocked"
     :browse-enabled="execution.kind !== 'cloud'"
     :recent-directories="recentDirectories"
     :hosts="hosts"

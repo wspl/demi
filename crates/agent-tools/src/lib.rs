@@ -15,6 +15,7 @@ mod product;
 mod prompt;
 mod reports;
 mod result;
+mod waits;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
@@ -53,6 +54,7 @@ pub use product::{
     SubagentSource, Toolset, ToolsetSource, Unavailable,
 };
 pub use prompt::{ModelIdentity, system_prompt};
+pub use waits::{CallWait, HeldWaits, HostWait, HostWaits};
 
 /// The most characters a page of `demi shell output` takes, so that a tool
 /// result printing one is never cut.
@@ -148,6 +150,8 @@ pub struct ShellAccess<'a, H: HostResolver> {
     pub feed: &'a Rc<dyn PageFeed>,
     /// The conversation's numbers, which its environments are made with.
     pub numbers: &'a Rc<dyn Numbers>,
+    /// The tree's calls in flight, which each call registers in.
+    pub waits: &'a Rc<HostWaits>,
     /// The least interval a command reports at, in milliseconds:
     /// [`INTERVAL_FLOOR_MS`] in the product.
     pub interval_floor_ms: u32,
@@ -165,14 +169,15 @@ impl<H: HostResolver> Copy for ShellAccess<'_, H> {}
 
 impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// The environment for the conversation's current Host, which `handle`
-    /// must belong to.
+    /// must belong to; `wait` hears while the Host's runner is waited for.
     async fn environment(
         &self,
         handle: Handle<'_>,
+        wait: &dyn HostWait,
     ) -> Result<(Rc<environments::Slot>, Rc<dyn ShellEnvironment>), CallError> {
         let host = self
             .hosts
-            .host(self.context)
+            .host(self.context, wait)
             .await
             .map_err(|error| CallError::Failed(error.to_string()))?;
         let scope = EnvironmentScope {
@@ -236,7 +241,21 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             }
             None => (None, None),
         };
-        let (slot, environment) = self.environment(Handle::None).await?;
+        // While the primary Host's runner is away the call waits for it,
+        // its row says so, and a move of the conversation meanwhile ends it
+        // as not run (`sessions-and-targets.md` § Switch the primary
+        // target); a move that holds it when the Host came back is waited
+        // for.
+        let wait = self.waits.enter(self.context.node, &call.tool_use_id);
+        let resolved = tokio::select! {
+            biased;
+            result = wait.ended() => return Ok(ToolOutcome::error(result.to_string())),
+            resolved = self.environment(Handle::None, &wait) => resolved,
+        };
+        if let Some(result) = wait.settled().await {
+            return Ok(ToolOutcome::error(result.to_string()));
+        }
+        let (slot, environment) = resolved?;
         if let Some(suppressed) = slot.repeated(&input.script) {
             return Ok(suppressed);
         }
@@ -312,7 +331,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// environment for the conversation's current Host
     /// (`sessions-and-targets.md` § Recovery and persistence).
     pub async fn adopt(&self, running: &RunningCommand, ran: Duration) -> Result<(), CallError> {
-        let (_, environment) = self.environment(Handle::None).await?;
+        let (_, environment) = self.environment(Handle::None, &()).await?;
         environment.adopt(TakenUp {
             command: running.command.clone(),
             tool_use_id: running.tool_use_id.clone(),
@@ -329,7 +348,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// Writes `stdin` to a running command of the current Host, as a page's
     /// input does.
     pub async fn write(&self, command: &CommandId, stdin: String) -> Result<(), CallError> {
-        let (_, environment) = self.environment(Handle::Command(command)).await?;
+        let (_, environment) = self.environment(Handle::Command(command), &()).await?;
         environment.write(command, Bytes::from(stdin)).await?;
         Ok(())
     }
@@ -337,7 +356,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// Stops a running command of the current Host, as a page's stop does:
     /// its end's report says the user stopped it.
     pub async fn abort(&self, command: &CommandId) -> Result<(), CallError> {
-        let (_, environment) = self.environment(Handle::Command(command)).await?;
+        let (_, environment) = self.environment(Handle::Command(command), &()).await?;
         self.environments.stopped_by(command, Stopper::User);
         environment.abort(command).await?;
         Ok(())

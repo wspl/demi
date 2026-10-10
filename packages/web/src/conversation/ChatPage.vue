@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, watch } from 'vue'
+import { computed, onUnmounted, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
@@ -35,6 +35,8 @@ const navigation = useConversationNavigation()
 const conversation = computed(() =>
   store.items.find((c) => c.id === props.id),
 )
+/** The header's place, which carries out a move the offline primary Host's card asks for. */
+const place = useTemplateRef<InstanceType<typeof WorkspaceInfo>>('place')
 const pageKind = computed(() =>
   !props.id && store.listStatus === 'ready'
     ? 'none'
@@ -225,13 +227,14 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @open-aside="work.setOpen(work.stateFor(conversation.id), true)"
   >
     <template #workspace
-      ><WorkspaceInfo :project="project" :conversation="conversation"
+      ><WorkspaceInfo ref="place" :project="project" :conversation="conversation"
     /></template>
     <template #composer
       ><ConversationComposer
         :key="conversation.id"
         :conversation="conversation"
         :open-file="files?.open"
+        @move-host="place?.choose($event)"
     /></template>
   </ChatSession>
   <section
