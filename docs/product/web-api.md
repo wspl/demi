@@ -1029,12 +1029,15 @@ longer runs, its transcript route shows what the live tree showed. An open child
 whatever it is doing, a wait for its own commands included, because it
 resumes by itself and its close wakes its parent
 ([Subagents](../agent/subagents.md#result)). A shell command that outlives its
-turn does not count: its exit wakes no one, so nothing follows until the user
-writes. For example, the root answers "two children are looking into it" and
+turn does not count: until it reports, nothing works, and a resident one such
+as a dev server may never end; its report starts the agent again, as a
+message would, and the conversation runs again then
+([Command reports](../agent/runtime.md#command-reports)). For example, the root answers "two children are looking into it" and
 ends its turn: the conversation stays running until both children close and the
 root has answered their results. The root answers "the build has started" while
 `npm run build` still runs: the conversation is completed, and the command shows
-as running only on its terminal tab. `web-ui` applies the same rule to a
+as running only on its terminal tab, until the build's end reports to the
+root and the conversation runs again for its answer. `web-ui` applies the same rule to a
 conversation the page is attached to.
 
 Checkpoint output changes advance a persisted revision; user input alone does
