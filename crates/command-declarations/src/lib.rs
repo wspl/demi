@@ -40,6 +40,12 @@ pub const MAX_DEPTH: usize = 32;
 /// (`system-prompt.md` § Capability index).
 pub const MAX_INDEX_ENTRY: usize = 600;
 
+/// The keyword beside a field's `pattern` that says what the pattern stands
+/// for, with an example, as a usage error names it: `"foo" is not a ref,
+/// such as e12` for `"a ref, such as e12"` (`commands.md` § Parse input and
+/// render help).
+pub const PATTERN_DESCRIPTION: &str = "patternDescription";
+
 /// A declaration that breaks one of the tree's rules.
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
@@ -204,12 +210,19 @@ impl Schema {
 
     /// Every way `instance` breaks the schema, in one text. Each failure
     /// names where it is, such as `"count" is not of type "integer"`, rather
-    /// than repeating the value, which may be a whole stdin body.
+    /// than repeating the value, which may be a whole stdin body; a value
+    /// that does not match a pattern is named with what the pattern stands
+    /// for, such as `"foo" is not a ref, such as e12`.
     pub fn check(&self, instance: &Value) -> Result<(), String> {
         let failures: Vec<String> = self
             .validator
             .iter_errors(instance)
             .map(|error| {
+                if let jsonschema::error::ValidationErrorKind::Pattern { .. } = error.kind()
+                    && let Some(description) = self.pattern_description(error.schema_path().as_str())
+                {
+                    return format!("{} is not {description}", error.instance());
+                }
                 let path: Vec<String> = error
                     .instance_path()
                     .segments()
@@ -229,6 +242,20 @@ impl Schema {
         } else {
             Err(failures.join("; "))
         }
+    }
+}
+
+impl Schema {
+    /// What the pattern at `location`, a JSON pointer to a `pattern`
+    /// keyword, stands for: the description beside it.
+    fn pattern_description(&self, location: &str) -> Option<&str> {
+        let parent = location.strip_suffix("/pattern")?;
+        let mut segments = parent.split('/').skip(1);
+        let mut node = self.value.get(segments.next()?)?;
+        for segment in segments {
+            node = node.get(segment)?;
+        }
+        node.get(PATTERN_DESCRIPTION)?.as_str()
     }
 }
 
@@ -533,6 +560,20 @@ impl<B> Leaf<B> {
             .is_some_and(|fields| fields.iter().any(|name| name.as_str() == Some(field)))
     }
 
+    /// Whether a command line must give `field`: a required field, but the
+    /// stdin field, which a positional may also take.
+    pub fn required_on_line(&self, field: &str) -> bool {
+        self.required(field) && self.stdin_field.as_deref() != Some(field)
+    }
+
+    /// Whether `field` is one of the leaf's positionals.
+    pub fn is_positional(&self, field: &str) -> bool {
+        self.positionals
+            .iter()
+            .flatten()
+            .any(|name| name == field)
+    }
+
     pub fn json_output(&self) -> Option<&Schema> {
         self.output.as_ref()?.json.as_ref()
     }
@@ -544,11 +585,13 @@ impl<B> Leaf<B> {
             return Err(invalid("command input must describe an object".into()));
         }
         let mut fields = HashSet::new();
-        let sources = self
-            .positionals
+        let positionals = self.positionals.as_deref().unwrap_or_default();
+        // The stdin field may also be the last positional, as `browser eval
+        // <tab> [<ref>] [<expression>]` takes a short expression.
+        let positional_stdin = self.stdin_field.is_some() && positionals.last() == self.stdin_field.as_ref();
+        let sources = positionals
             .iter()
-            .flatten()
-            .chain(self.stdin_field.iter())
+            .chain(self.stdin_field.iter().filter(|_| !positional_stdin))
             .chain(self.rest_field.iter());
         for field in sources {
             if !fields.insert(field) {
@@ -598,7 +641,6 @@ impl<B> Leaf<B> {
                 return Err(invalid("rest input must be a string array".into()));
             }
         }
-        let positionals = self.positionals.as_deref().unwrap_or_default();
         if let Some((_, before)) = positionals.split_last()
             && let Some(field) = before
                 .iter()
@@ -612,12 +654,12 @@ impl<B> Leaf<B> {
         // last one, which the parser fills from the end.
         let mut optional = false;
         for field in positionals {
-            if self.required(field) && optional && !self.missing_positional() {
+            if self.required_on_line(field) && optional && !self.missing_positional() {
                 return Err(invalid(
                     "required positional follows optional positional".into(),
                 ));
             }
-            optional |= !self.required(field);
+            optional |= !self.required_on_line(field);
         }
         if let Some(field) = self
             .positional_options
@@ -639,22 +681,27 @@ impl<B> Leaf<B> {
         let positionals = self.positionals.as_deref().unwrap_or_default();
         let optional: Vec<&String> = positionals
             .iter()
-            .filter(|field| !self.required(field))
+            .filter(|field| !self.required_on_line(field))
             .collect();
         match (positionals, optional.as_slice()) {
             ([.., before, last], [only]) => {
-                before == *only && self.required(last) && self.property_type(last) != Some("array")
+                before == *only
+                    && self.required_on_line(last)
+                    && self.property_type(last) != Some("array")
             }
             _ => false,
         }
     }
 
     /// The stdin field the dispatcher reads stdin into, given the values
-    /// the command line filled: the leaf's, when its `stdin_read` lets it.
+    /// the command line filled: the leaf's, when its `stdin_read` lets it
+    /// and the command line did not give it as its positional. Stdin is
+    /// then left to the calling process, as a loop's input.
     pub fn stdin_target(&self, values: &serde_json::Map<String, Value>) -> Option<&str> {
         let given = |option: &String| self.given(values, option);
         self.stdin_field
             .as_deref()
+            .filter(|field| !values.contains_key(*field))
             .filter(|_| match &self.stdin_read {
                 None => true,
                 Some(StdinRead::Unless(options)) => !options.iter().any(given),

@@ -62,7 +62,19 @@ impl<B> Leaf<B> {
     /// one in brackets. Help, the capability index and a usage error show
     /// it alike.
     pub fn usage(&self, path: &str) -> String {
-        let mut arguments = self.positionals.clone().unwrap_or_default();
+        self.usage_of(path, true)
+    }
+
+    /// The usage line, with the stdin field's positional form or without
+    /// it, as the line that a stdin body follows shows it.
+    fn usage_of(&self, path: &str, stdin_positional: bool) -> String {
+        let mut arguments: Vec<String> = self
+            .positionals
+            .iter()
+            .flatten()
+            .filter(|field| stdin_positional || self.stdin_field.as_ref() != Some(*field))
+            .cloned()
+            .collect();
         if let Some(properties) = self.properties() {
             arguments.extend(
                 properties
@@ -79,7 +91,7 @@ impl<B> Leaf<B> {
             .map(|field| {
                 let schema = &self.properties().expect("validated field schemas")[field];
                 let syntax = syntax(field, schema, source(self, field));
-                if self.required(field) {
+                if self.required_on_line(field) {
                     syntax
                 } else {
                     format!("[{syntax}]")
@@ -107,8 +119,12 @@ impl<B> Node<B> {
             lines.extend([String::new(), "Usage:".into(), String::new()]);
             let invocation = leaf.usage(path);
             if let Some(field) = &leaf.stdin_field {
+                // A stdin field that is also a positional has both forms.
+                if leaf.is_positional(field) {
+                    lines.push(format!("  {invocation}"));
+                }
                 lines.extend([
-                    format!("  {invocation} <<'EOF'"),
+                    format!("  {} <<'EOF'", leaf.usage_of(path, false)),
                     format!("  <{field}>"),
                     "  EOF".into(),
                 ]);
@@ -169,6 +185,9 @@ impl<B> Node<B> {
                 }
                 if let Some(field) = &leaf.stdin_field {
                     let condition = match &leaf.stdin_read {
+                        None if leaf.is_positional(field) => {
+                            format!(", not read when given as <{field}>")
+                        }
                         None => String::new(),
                         Some(read) => {
                             let words = match read {
@@ -211,17 +230,15 @@ enum Source {
     Option,
 }
 
+/// Where a field's value comes from on the command line; a stdin field that
+/// is also a positional shows as the positional.
 fn source<B>(leaf: &Leaf<B>, field: &str) -> Source {
-    if leaf.stdin_field.as_deref() == Some(field) {
+    if leaf.is_positional(field) {
+        Source::Positional
+    } else if leaf.stdin_field.as_deref() == Some(field) {
         Source::Stdin
     } else if leaf.rest_field.as_deref() == Some(field) {
         Source::Rest
-    } else if leaf
-        .positionals
-        .as_ref()
-        .is_some_and(|fields| fields.iter().any(|name| name == field))
-    {
-        Source::Positional
     } else {
         Source::Option
     }
