@@ -42,7 +42,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Instructions | `PUT /instructions { text }`; the text is part of the product state ([Instructions](#instructions)) |
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id, ... }`, `PATCH /conversations/:id`, `DELETE /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
 | Search | `GET /search?q=<query>` finds the caller's conversations ([Search](#search)) |
-| Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](../backend/backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
+| Conversation history | `GET /conversations/:id/transcript?node=&before=\|after=\|around=` reads one page of an agent's transcript, `GET /conversations/:id/transcript/blocks/:blockId?node=` one block whole, `GET /conversations/:id/subagents` the conversation's subagents and `GET /conversations/:id/commands/:commandId` the record of an ended command ([Conversation history](#conversation-history)); `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `WS /conversations/:id/fs/watch`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
 | User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams) |
@@ -150,6 +150,116 @@ conversation holds, 409 `id_unavailable`; and a block that is not a completed
 assistant text of the source's history, 400 `invalid_fork_target`. Which
 texts can end a Fork, and what the destination keeps, belong to
 [Conversation Fork](../agent/conversation-fork.md).
+
+## Conversation history
+
+A conversation's history reaches a page a page at a time, never whole. For
+example, the user opens a conversation of 3,000 blocks, most of them tool
+calls whose output runs to megabytes. The page reads the latest page of its
+transcript, the last few requests in about 64 KiB, and shows it; scrolling
+up reads the page before it, and a search result opens on the page around
+its message. A folded tool call arrives as the row the user sees, with its
+title, its outcome and the files it changed; its script and output are read
+when the user opens it. How the page holds and joins what it read belongs to
+[Transcript windows](web-application.md#transcript-windows).
+
+Every route here reads the conversation's database alone, as the archived
+list does: it wakes no Host and needs no live session, and an archived
+conversation answers it. A conversation the caller does not own answers 404
+`conversation_not_found`, and a `node` that is not one of its agents 404
+`not_found`.
+
+### Pages
+
+`GET /api/conversations/:id/transcript` answers one page of one agent's
+transcript: the conversation's own without `node`, a subagent's with
+`node=<subagentId>`. A block's place is its index in its agent's
+transcript, as the database stores it ([Conversation state and
+transactions](../backend/storage.md#conversation-state-and-transactions)).
+
+| Query | The page |
+| --- | --- |
+| None | The latest page |
+| `before=<index>&edge=<blockId>` | The page that ends just before the block at `index`, which the page holds as `edge` |
+| `after=<index>&edge=<blockId>` | The page that starts just after the block at `index`, which the page holds as `edge` |
+| `around=<blockId>` | The page that holds the block, with requests on both sides |
+
+A page holds whole requests. A request is a `user` block and the blocks after
+it up to the agent's next `user` block, and the blocks before the first
+`user` block belong to the first request. The latest page holds the last
+request, and before it as many whole requests as keep the page within
+64 KiB of its JSON; `before` and `after` take requests from their edge the
+same way, and `around` takes the block's request and then adds requests
+after and before it in turn. A page holds at least one request whatever its
+size, so a request is never cut: what the page derives from a request, such
+as its work groups ([Work groups](../agent/runtime.md#work-groups)) and the
+files it changed ([Edit tracking](../execution/edit-tracking.md#what-the-conversation-shows)),
+is whole wherever it is shown.
+
+The answer is `{ start, length, blocks, failures, instructions }`:
+
+| Field | Meaning |
+| --- | --- |
+| `start` | The index of the page's first block; the page reaches the transcript's start when it is 0 |
+| `length` | How many blocks the transcript holds; the page reaches its end when `start` plus its blocks is `length` |
+| `blocks` | The page's blocks in their [light form](#light-form) |
+| `failures` | The [failure facts](../backend/backend.md#failure-facts) of its error blocks, by block id |
+| `instructions` | The entries of the agent's newest instructions block, which the context card lists ([What the card lists](../agent/instructions.md#what-the-card-lists)), empty before the first |
+
+`edge` is how a page that extends what it holds knows the two still join: a
+retry, an accepted edit or a compaction can rewrite the transcript between
+two reads, and indices then name other blocks. A block at `index` that is not
+`edge` answers 409 `transcript_changed`, and the page reads around a block it
+shows ([Rewrites](web-application.md#rewrites)). `around` a block the
+transcript does not hold answers 404 `block_not_found`. An index outside the
+transcript, or two of `before`, `after` and `around`, answer 400
+`invalid_query`.
+
+### Light form
+
+A page's blocks leave out what only an open row shows, which is nearly all
+of a long conversation's bytes; the rows a folded transcript shows need
+nothing more. A block in light form is marked `omitted: true`, and every
+other field means what it means in the block whole
+([Block types](../agent/runtime.md#block-types)):
+
+| Block | Left out | Carried instead |
+| --- | --- | --- |
+| `tool_call` | `input`; the text of `output`; the output text of `view` (its chunks) | The input's `description`; the media of `output`; the rest of `view`: the command, its status, exit code and times, the files it changed and their renames |
+| `thinking` | The text and its signature | Nothing: the row tells how long the agent thought |
+| `redacted_thinking` | The data | Nothing |
+| `agent_message` | The message | Its sender and what it reports |
+| `wakeup` | Each report's output | Each report's command, title, event and media |
+| `context` | The text and the instructions it lists | Its source |
+| `compaction_boundary` | The summary | Its size |
+| `compaction_marker` | Nothing | Its boundary's summary size, which its divider tells |
+| `response` | The usage | Nothing |
+
+`user`, `steer`, `text`, `error`, `abort` and `resume` blocks come whole. A
+block's model is its provider and model id, not the model's description,
+which the [catalog](#model-configuration-and-provider-inspection) gives.
+Live frames send blocks whole ([Frame protocol](../agent/runtime.md#frame-protocol)),
+so the page holds a block in light form only when it read it from a page.
+
+`GET /api/conversations/:id/transcript/blocks/:blockId?node=` answers
+`{ block, failures }`, the block whole. The page reads it when the user opens
+a row whose block it holds in light form. A block the transcript does not
+hold answers 404 `block_not_found`.
+
+### Subagents and commands
+
+`GET /api/conversations/:id/subagents` answers `{ subagents }`, the job of
+each subagent the conversation has had, in the order they started, as the
+`subagent` frame gives it ([Protocol](../agent/subagents.md#protocol)). A
+page reads a subagent's transcript, by its pages, when it shows it.
+
+`GET /api/conversations/:id/commands/:commandId` answers the record of a
+command of the tree that the page opens in the terminal panel after it
+ended, such as from the report that names it: `{ commandId, subagentId,
+title, script, view }`, from the `shell` call that started it, `subagentId`
+null for the root's. A running command reaches the page by its live frames
+instead ([Live output](../agent/runtime.md#live-output)). A command the
+conversation does not hold answers 404 `not_found`.
 
 ## Workspaces, devices, and attached hosts
 
