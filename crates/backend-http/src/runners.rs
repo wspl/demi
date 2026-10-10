@@ -143,7 +143,7 @@ pub(super) async fn put(
     };
     match source.pump(body.into_data_stream()).await {
         Ok(()) => (StatusCode::OK, "drained").into_response(),
-        Err(failure) => (StatusCode::CONFLICT, failure.to_string()).into_response(),
+        Err(failure) => (StatusCode::CONFLICT, failure.reason().to_owned()).into_response(),
     }
 }
 
@@ -181,7 +181,7 @@ pub(super) async fn get(
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
     if let Err(failure) = sink.source_arrived().await {
-        return (StatusCode::CONFLICT, failure.to_string()).into_response();
+        return (StatusCode::CONFLICT, failure.reason().to_owned()).into_response();
     }
     (
         [
