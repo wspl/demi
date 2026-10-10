@@ -23,6 +23,7 @@ import type { ChangeFile } from '../../files/changes'
 import { useFileLineCounts } from '../useFileLineCounts'
 import { foldedMedia } from '../tool-media'
 import { useElapsedTime } from '../../composables/useElapsedTime'
+import BlockScope from './BlockScope.vue'
 
 /**
  * Consecutive steps as one row. While they run, the folded row's face is the
@@ -200,14 +201,17 @@ function pick(path: string): void {
           :key="stepKey(step)"
           v-bind="chromeEntrance(entering.has(stepKey(step)))"
         >
-          <ThinkingBlock
-            v-if="step.type === 'thinking'"
-            :thinking="step.text"
-            :is-streaming="thinkingLive && index === group.steps.length - 1"
-            :created-at="step.createdAt"
-            :ended-at="endedAt(index)"
-          />
-          <ToolCallBlock v-else-if="step.type === 'tool_call'" :block="step" />
+          <BlockScope v-if="step.type === 'thinking'" :block="step">
+            <ThinkingBlock
+              :thinking="step.text"
+              :is-streaming="thinkingLive && index === group.steps.length - 1"
+              :created-at="step.createdAt"
+              :ended-at="endedAt(index)"
+            />
+          </BlockScope>
+          <BlockScope v-else-if="step.type === 'tool_call'" :block="step">
+            <ToolCallBlock :block="step" />
+          </BlockScope>
           <PendingCallBlock v-else :call="step.call" />
         </div>
       </div>

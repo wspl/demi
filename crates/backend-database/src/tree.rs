@@ -16,6 +16,7 @@
 //! which keep the media references.
 
 use std::collections::HashMap;
+use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -25,9 +26,11 @@ use demi_agent_store::{
     media::BlobStore,
 };
 use demi_backend_remote_host::decode_output;
+use demi_conversation_socket_protocol::{PageAt, light_bytes, page, requests};
+use demi_web_api_protocol::conversations::{CompactionSummary, TranscriptQuery};
 use demi_shared_types::{
-    Block, BlockId, CommandEnd, CommandId, CompletionId, NodeId, QueuedMessage, Sequence, SessionPhase,
-    Timestamp, is_blank,
+    Block, BlockId, CommandEnd, CommandId, CompletionId, INSTRUCTIONS_SOURCE, InstructionEntry, NodeId,
+    QueuedMessage, Sequence, SessionPhase, Timestamp, ToolCallBlock, is_blank,
 };
 use futures_util::future::LocalBoxFuture;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
@@ -988,17 +991,9 @@ pub fn has_root(connection: &Connection) -> Result<bool, StorageError> {
     Ok(exists)
 }
 
-/// A tree's history as its database holds it: the root's blocks, and each
-/// subagent's record with its blocks, depth first in spawn order.
-#[derive(Debug, Default)]
-pub struct History {
-    pub blocks: Vec<Block>,
-    pub subagents: Vec<(NodeRecord, Vec<Block>)>,
-}
-
-/// The history of the tree `connection` holds; an empty one when it has no
-/// root yet.
-pub fn history(connection: &Connection) -> Result<History, StorageError> {
+/// The root's blocks as the database holds them; none when the tree has
+/// no root yet.
+pub fn root_blocks(connection: &Connection) -> Result<Vec<Block>, StorageError> {
     let root: Option<(String, i64)> = connection
         .query_row(
             "SELECT id, block_count FROM nodes WHERE parent_id IS NULL",
@@ -1007,47 +1002,272 @@ pub fn history(connection: &Connection) -> Result<History, StorageError> {
         )
         .optional()?;
     let Some((root, block_count)) = root else {
-        return Ok(History::default());
+        return Ok(Vec::new());
     };
-    let root = decode("nodes", "id", NodeId::try_from(root))?;
-    let blocks = blocks_of(connection, &root, block_count)?;
-    let mut children: HashMap<NodeId, Vec<NodeRecord>> = HashMap::new();
+    blocks_of(connection, &decode("nodes", "id", NodeId::try_from(root))?, block_count)
+}
+
+/// How many blocks the transcript of `node` holds; none when the tree has
+/// no such node (`web-api.md` § Pages).
+pub fn transcript_length(
+    connection: &Connection,
+    node: &NodeId,
+) -> Result<Option<usize>, StorageError> {
+    let length: Option<i64> = connection
+        .query_row(
+            "SELECT block_count FROM nodes WHERE id = ?1",
+            [node.as_str()],
+            |row| row.get(0),
+        )
+        .optional()?;
+    length
+        .map(|length| decode("nodes", "block_count", usize::try_from(length)))
+        .transpose()
+}
+
+/// The indices of the `user` blocks among the first `length` blocks of
+/// `node`, where its requests start.
+pub fn user_blocks(
+    connection: &Connection,
+    node: &NodeId,
+    length: usize,
+) -> Result<Vec<usize>, StorageError> {
+    let mut statement = connection.prepare(
+        "SELECT idx FROM blocks
+         WHERE node_id = ?1 AND json_extract(block, '$.type') = 'user' AND idx < ?2
+         ORDER BY idx",
+    )?;
+    let mut rows = statement.query(params![node.as_str(), count(length)])?;
+    let mut users = Vec::new();
+    while let Some(row) = rows.next()? {
+        let index: i64 = row.get(0)?;
+        users.push(decode("blocks", "idx", usize::try_from(index))?);
+    }
+    Ok(users)
+}
+
+/// The blocks of `node` at the indices `range`, all of which it holds.
+pub fn blocks_in(
+    connection: &Connection,
+    node: &NodeId,
+    range: Range<usize>,
+) -> Result<Vec<Block>, StorageError> {
+    let mut statement = connection.prepare(
+        "SELECT idx, block FROM blocks WHERE node_id = ?1 AND idx >= ?2 AND idx < ?3 ORDER BY idx",
+    )?;
+    let mut rows = statement.query(params![node.as_str(), count(range.start), count(range.end)])?;
+    let mut blocks = Vec::with_capacity(range.len());
+    while let Some(row) = rows.next()? {
+        let index: i64 = row.get(0)?;
+        if index != count(range.start + blocks.len()) {
+            return Err(gap(node, range.start + blocks.len()));
+        }
+        let text: String = row.get(1)?;
+        blocks.push(json("blocks", "block", &text)?);
+    }
+    if blocks.len() != range.len() {
+        return Err(gap(node, range.start + blocks.len()));
+    }
+    Ok(blocks)
+}
+
+/// The index of the block `id` among the first `length` blocks of `node`.
+pub fn block_index(
+    connection: &Connection,
+    node: &NodeId,
+    id: &BlockId,
+    length: usize,
+) -> Result<Option<usize>, StorageError> {
+    let index: Option<i64> = connection
+        .query_row(
+            "SELECT idx FROM blocks
+             WHERE json_extract(block, '$.id') = ?1 AND node_id = ?2 AND idx < ?3",
+            params![id.as_str(), node.as_str(), count(length)],
+            |row| row.get(0),
+        )
+        .optional()?;
+    index
+        .map(|index| decode("blocks", "idx", usize::try_from(index)))
+        .transpose()
+}
+
+/// The entries of the newest instructions block among the first `length`
+/// blocks of `node`, which the context card lists; none before the first
+/// (`instructions.md` § What the card lists).
+pub fn newest_instructions(
+    connection: &Connection,
+    node: &NodeId,
+    length: usize,
+) -> Result<Vec<InstructionEntry>, StorageError> {
+    let text: Option<String> = connection
+        .query_row(
+            "SELECT block FROM blocks
+             WHERE node_id = ?1 AND json_extract(block, '$.type') = 'context' AND idx < ?2
+               AND json_extract(block, '$.source') = ?3
+             ORDER BY idx DESC LIMIT 1",
+            params![node.as_str(), count(length), INSTRUCTIONS_SOURCE],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(text) = text else {
+        return Ok(Vec::new());
+    };
+    match json("blocks", "block", &text)? {
+        Block::Context(context) => Ok(context.instructions),
+        _ => unreachable!("the query selects a context block"),
+    }
+}
+
+/// What a page read found (`web-api.md` § Pages).
+pub enum PageRead {
+    /// The page: its first block's index, the transcript's length, its
+    /// blocks whole, the entries of the newest instructions block, and the
+    /// summary size of each compaction marker's boundary.
+    Page {
+        start: usize,
+        length: usize,
+        blocks: Vec<Block>,
+        instructions: Vec<InstructionEntry>,
+        summaries: Vec<CompactionSummary>,
+    },
+    NoNode,
+    NoBlock,
+    Changed,
+    Invalid(&'static str),
+}
+
+/// The page `query` asks of the transcript of `node`, its blocks whole:
+/// whole requests within the page budget (`web-api.md` § Pages).
+pub fn read_page(
+    connection: &Connection,
+    node: &NodeId,
+    query: &TranscriptQuery,
+) -> Result<PageRead, StorageError> {
+    let Some(length) = transcript_length(connection, node)? else {
+        return Ok(PageRead::NoNode);
+    };
+    // The index a page extends from, while the block there is still the
+    // `edge` the page holds; otherwise why the read is refused.
+    let edge_at = |index: u32| -> Result<Result<usize, PageRead>, StorageError> {
+        let Some(edge) = &query.edge else {
+            return Ok(Err(PageRead::Invalid("`before` and `after` take an `edge`")));
+        };
+        let index = usize::try_from(index).unwrap_or(usize::MAX);
+        if index >= length {
+            return Ok(Err(PageRead::Invalid("an index outside the transcript")));
+        }
+        let held = blocks_in(connection, node, index..index + 1)?;
+        Ok(if held[0].id() == edge { Ok(index) } else { Err(PageRead::Changed) })
+    };
+    let at = match (query.before, query.after, &query.around) {
+        (None, None, None) => PageAt::Latest,
+        (Some(index), None, None) => match edge_at(index)? {
+            Ok(index) => PageAt::Before(index),
+            Err(refusal) => return Ok(refusal),
+        },
+        (None, Some(index), None) => match edge_at(index)? {
+            Ok(index) => PageAt::After(index),
+            Err(refusal) => return Ok(refusal),
+        },
+        (None, None, Some(block)) => match block_index(connection, node, block, length)? {
+            Some(index) => PageAt::Around(index),
+            None => return Ok(PageRead::NoBlock),
+        },
+        _ => return Ok(PageRead::Invalid("one of `before`, `after` and `around`")),
+    };
+    let users = user_blocks(connection, node, length)?;
+    let requests = requests(length, &users);
+    // Each request the selection sizes is read once, and the page is made
+    // of those it keeps.
+    let mut read: HashMap<usize, Vec<Block>> = HashMap::new();
+    let mut failed = None;
+    let range = page(&requests, at, |request| {
+        match blocks_in(connection, node, request.clone()) {
+            Ok(blocks) => {
+                let bytes = blocks.iter().map(light_bytes).sum();
+                read.insert(request.start, blocks);
+                bytes
+            }
+            Err(error) => {
+                failed.get_or_insert(error);
+                0
+            }
+        }
+    });
+    if let Some(error) = failed {
+        return Err(error);
+    }
+    let blocks: Vec<Block> = requests
+        .iter()
+        .filter(|request| range.start <= request.start && request.end <= range.end)
+        .flat_map(|request| {
+            read.remove(&request.start)
+                .expect("each request of the page was read to size it")
+        })
+        .collect();
+    let mut summaries = Vec::new();
+    for block in &blocks {
+        if let Block::CompactionMarker(marker) = block
+            && let Some(index) = block_index(connection, node, &marker.boundary_id, length)?
+            && let Block::CompactionBoundary(boundary) =
+                &blocks_in(connection, node, index..index + 1)?[0]
+        {
+            summaries.push(CompactionSummary {
+                marker: marker.id.clone(),
+                summary_tokens: boundary.summary_tokens,
+            });
+        }
+    }
+    Ok(PageRead::Page {
+        start: range.start,
+        length,
+        blocks,
+        instructions: newest_instructions(connection, node, length)?,
+        summaries,
+    })
+}
+
+/// The subagents of the tree, in the order they started.
+pub fn subagents(connection: &Connection) -> Result<Vec<NodeRecord>, StorageError> {
     let mut statement = connection.prepare(&format!(
         "SELECT {NODE_COLUMNS} FROM nodes WHERE parent_id IS NOT NULL ORDER BY number"
     ))?;
     let mut rows = statement.query([])?;
+    let mut nodes = Vec::new();
     while let Some(row) = rows.next()? {
-        let node = node_row(row)?;
-        let parent = node
-            .parent
-            .clone()
-            .expect("the query selects nodes with a parent");
-        children.entry(parent).or_default().push(node);
+        nodes.push(node_row(row)?);
     }
-    let mut subagents = Vec::new();
-    let mut pending: Vec<NodeRecord> = children
-        .remove(&root)
-        .unwrap_or_default()
-        .into_iter()
-        .rev()
-        .collect();
-    while let Some(node) = pending.pop() {
-        let block_count: i64 = connection.query_row(
-            "SELECT block_count FROM nodes WHERE id = ?1",
-            [node.id.as_str()],
-            |row| row.get(0),
-        )?;
-        let blocks = blocks_of(connection, &node.id, block_count)?;
-        pending.extend(
-            children
-                .remove(&node.id)
-                .unwrap_or_default()
-                .into_iter()
-                .rev(),
-        );
-        subagents.push((node, blocks));
+    Ok(nodes)
+}
+
+/// The call that started the command `command`, with the node that ran
+/// it: of the calls whose view names the command, the first, since a stored
+/// look at a command, from before such looks were removed, came after it.
+pub fn command_call(
+    connection: &Connection,
+    command: &CommandId,
+) -> Result<Option<(NodeId, ToolCallBlock)>, StorageError> {
+    let row: Option<(String, String)> = connection
+        .query_row(
+            "SELECT blocks.node_id, blocks.block FROM blocks JOIN nodes ON nodes.id = blocks.node_id
+             WHERE json_extract(blocks.block, '$.view.commandId') = ?1
+               AND blocks.idx < nodes.block_count
+             ORDER BY json_extract(blocks.block, '$.createdAt') LIMIT 1",
+            [command.as_str()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((node, text)) = row else {
+        return Ok(None);
+    };
+    match json("blocks", "block", &text)? {
+        Block::ToolCall(call) => Ok(Some((decode("blocks", "node_id", NodeId::try_from(node))?, call))),
+        _ => Err(StorageError::Corrupt {
+            table: "blocks",
+            column: "block",
+            reason: format!("a block that is not a call names command {command}"),
+        }),
     }
-    Ok(History { blocks, subagents })
 }
 
 #[cfg(test)]
@@ -1214,41 +1434,6 @@ mod tests {
         root.save(update(Vec::new(), 1)).await.unwrap();
         let rewritten = facts(&stores).await;
         assert_eq!((rewritten.revision, rewritten.last), (2, None));
-    }
-
-    #[tokio::test(flavor = "local")]
-    async fn the_history_is_the_root_then_each_subagent_depth_first_in_spawn_order() {
-        let (tree, stores, _data) = store().await;
-        tree.create_node(record("root", None, 0), update(vec![(0, user("u1"))], 1))
-            .await
-            .unwrap();
-        for (node, parent, round) in [("b", "root", 5), ("a", "root", 3), ("a1", "a", 4)] {
-            let blocks = vec![(0, reply(&format!("{node}-text")))];
-            tree.create_node(record(node, Some(parent), round), update(blocks, 1))
-                .await
-                .unwrap();
-        }
-
-        let history = stores
-            .read(&conversation(), history)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(history.blocks, [user("u1")]);
-        let order: Vec<(&str, &Block)> = history
-            .subagents
-            .iter()
-            .map(|(node, blocks)| (node.id.as_str(), &blocks[0]))
-            .collect();
-        assert_eq!(
-            order,
-            [
-                ("a", &reply("a-text")),
-                ("a1", &reply("a1-text")),
-                ("b", &reply("b-text"))
-            ]
-        );
-        assert_eq!(history.subagents[0].0, record("a", Some("root"), 3));
     }
 
     #[tokio::test(flavor = "local")]

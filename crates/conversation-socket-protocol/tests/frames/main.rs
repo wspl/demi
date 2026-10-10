@@ -3,4 +3,5 @@
 //! validators are generated from.
 
 mod client;
+mod pages;
 mod server;

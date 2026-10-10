@@ -330,10 +330,12 @@ async fn retry_reruns_the_last_input_turn_with_its_steers_as_one_replacement() {
     assert!(
         matches!(&blocks[1], Block::Steer(SteerBlock { turn_id, .. }) if turn_id == &turn("t1"))
     );
-    // The rewrite is published as one replacement.
+    // The rewrite is published as a cut after the message, which it does not
+    // send again, and the steer it keeps, now right after the message.
     assert!(matches!(
-        patches.borrow().first(),
-        Some(TranscriptPatch::Replace { value }) if kinds(value) == ["user", "steer"]
+        &patches.borrow()[..2],
+        [TranscriptPatch::Truncate { length: 1 }, TranscriptPatch::Add { index: 1, value }]
+            if value == &blocks[1]
     ));
     let requests = provider.requests();
     assert_eq!(

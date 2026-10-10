@@ -4,17 +4,22 @@ import { baseName, parentPath, relativePath } from '../files/paths'
 /**
  * What the model holds of the user's and the project's instructions: the
  * entries of the newest instructions block of `blocks`, in its order
- * (`instructions.md` § What the card lists); none before the first, and
- * none once the newest says nothing is left.
+ * (`instructions.md` § What the card lists), and none once the newest says
+ * nothing is left. Without one, `before`: the entries a page of the
+ * transcript named for a block the page does not hold, none before the
+ * first.
  */
-export function loadedInstructions(blocks: readonly Block[]): InstructionEntry[] {
+export function loadedInstructions(
+  blocks: readonly Block[],
+  before: readonly InstructionEntry[] = [],
+): readonly InstructionEntry[] {
   for (let index = blocks.length - 1; index >= 0; index -= 1) {
     const block = blocks[index]
     if (block.type === 'context' && block.source === 'instructions') {
       return block.instructions ?? []
     }
   }
-  return []
+  return before
 }
 
 /** One row of the context card's Instructions. */

@@ -225,7 +225,13 @@ impl Shard {
         let _files = slot.file_gate().enter(Purpose::Demand).await;
         let _settings = slot.settings.acquire().await;
         match self
-            .prepare_frame(conversation, &ClientFrame::Open {})
+            .prepare_frame(
+                conversation,
+                &ClientFrame::Open {
+                    from: None,
+                    edge: None,
+                },
+            )
             .await
         {
             Ok(Prepared::Deliver) => {}
@@ -300,7 +306,7 @@ impl Shard {
         // tree opens with the selection the record holds, never with one a
         // change is about to replace.
         let _settings = match &frame {
-            ClientFrame::Open {} => Some(
+            ClientFrame::Open { .. } => Some(
                 self.conversations()
                     .slot(conversation)
                     .settings
@@ -360,7 +366,7 @@ impl Shard {
             ));
         }
         match frame {
-            ClientFrame::Open {} => {
+            ClientFrame::Open { .. } => {
                 let Some(model) = &record.model else {
                     return Ok(Prepared::Refused(
                         ErrorCode::ModelNotSelected,
@@ -433,10 +439,16 @@ impl Shard {
         let assembly = &services.assembly;
         match frame {
             ServerFrame::TranscriptReset {
-                blocks, version, ..
+                start,
+                length,
+                blocks,
+                version,
+                ..
             } => {
                 let failures = failure_facts(assembly, &blocks).await;
                 ServerFrame::TranscriptReset {
+                    start,
+                    length,
                     blocks,
                     version,
                     failures,
@@ -454,6 +466,8 @@ impl Shard {
             }
             ServerFrame::SubagentTranscriptReset {
                 subagent_id,
+                start,
+                length,
                 blocks,
                 revision,
                 ..
@@ -461,6 +475,8 @@ impl Shard {
                 let failures = failure_facts(assembly, &blocks).await;
                 ServerFrame::SubagentTranscriptReset {
                     subagent_id,
+                    start,
+                    length,
                     blocks,
                     revision,
                     failures,
@@ -534,23 +550,22 @@ fn blocks_added(patches: &[TranscriptPatch]) -> Vec<Block> {
             TranscriptPatch::Add { value, .. } | TranscriptPatch::ReplaceBlock { value, .. } => {
                 vec![value.clone()]
             }
-            TranscriptPatch::Replace { value } => value.clone(),
-            TranscriptPatch::AppendText { .. } => Vec::new(),
+            TranscriptPatch::AppendText { .. } | TranscriptPatch::Truncate { .. } => Vec::new(),
         })
         .collect()
 }
 
-/// A frame's JSON text. A frame that carries a whole transcript is
-/// serialized on the blocking pool, since a long one would hold the shard's
-/// thread; none when that pool is gone with its runtime, which is shutting
-/// down.
+/// A frame's JSON text. A frame that may carry many blocks, a reset or a
+/// rewrite's patches, is serialized on the blocking pool, since a long one
+/// would hold the shard's thread; none when that pool is gone with its
+/// runtime, which is shutting down.
 async fn serialize(frame: ServerFrame) -> Option<String> {
     let whole = match &frame {
         ServerFrame::TranscriptReset { .. } | ServerFrame::SubagentTranscriptReset { .. } => true,
         ServerFrame::TranscriptPatch { patches, .. }
         | ServerFrame::SubagentTranscriptPatch { patches, .. } => patches
             .iter()
-            .any(|patch| matches!(patch, TranscriptPatch::Replace { .. })),
+            .any(|patch| matches!(patch, TranscriptPatch::Truncate { .. })),
         _ => false,
     };
     if !whole {

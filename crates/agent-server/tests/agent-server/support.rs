@@ -629,7 +629,10 @@ pub fn turn(id: &str) -> TurnId {
 }
 
 pub fn open() -> ClientFrame {
-    ClientFrame::Open {}
+    ClientFrame::Open {
+        from: None,
+        edge: None,
+    }
 }
 
 /// Switches the conversation's live tree to `model`, as the backend does

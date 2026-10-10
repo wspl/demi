@@ -1,4 +1,5 @@
-import type { Block, PendingCall, ProviderFailureFacts } from '@demicodes/protocol'
+import type { PendingCall, ProviderFailureFacts } from '@demicodes/protocol'
+import type { HeldTranscript } from '@demicodes/conversation-client'
 import type { ConversationStatus } from './conversation-status'
 
 export type SubagentPhase = 'running' | 'completed' | 'aborted' | 'error'
@@ -9,7 +10,8 @@ export interface SubagentRecord {
   phase: SubagentPhase
   startedAt: string
   endedAt?: string
-  blocks: Block[]
+  /** The parts of this agent's transcript the page holds, from its pages and its stream. */
+  history: HeldTranscript
   /** The calls this agent's model is writing (`runtime.md` § Calls being written). */
   pendingCalls: PendingCall[]
   /** The failure facts of this agent's error blocks, by block id. */

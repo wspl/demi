@@ -146,12 +146,16 @@ async fn while_an_edit_saves_nothing_of_it_shows_and_the_session_admits_only_the
     assert_eq!(blocks[..3], before.blocks[..3]);
     assert!(matches!(&blocks[3], Block::User(user) if user.turn_id == receipt.turn_id));
     let patches = patches.borrow();
-    assert!(
-        matches!(patches.first(), Some(TranscriptPatch::Replace { value }) if value[..] == blocks[..4])
-    );
+    // The rewrite cuts after the kept turn and adds the message, never
+    // sending the kept turn again.
+    assert!(matches!(
+        &patches[..2],
+        [TranscriptPatch::Truncate { length: 3 }, TranscriptPatch::Add { index: 3, value }]
+            if value == &blocks[3]
+    ));
     let rewrites = patches
         .iter()
-        .filter(|patch| matches!(patch, TranscriptPatch::Replace { .. }))
+        .filter(|patch| matches!(patch, TranscriptPatch::Truncate { .. }))
         .count();
     assert_eq!(rewrites, 1);
     assert_eq!(stored().transcript, blocks);
@@ -518,9 +522,11 @@ async fn an_edit_of_the_first_a_middle_or_the_last_message_keeps_exactly_the_blo
         };
         assert_eq!(user.content, text(&replacement));
         assert_eq!(user.turn_id, receipt.turn_id);
-        assert!(
-            matches!(patches.borrow().first(), Some(TranscriptPatch::Replace { value }) if value[..] == blocks[..=index])
-        );
+        assert!(matches!(
+            &patches.borrow()[..2],
+            [TranscriptPatch::Truncate { length }, TranscriptPatch::Add { index: added, value }]
+                if *length as usize == index && *added as usize == index && value == &blocks[index]
+        ));
         assert_eq!(copy.checkpoint(&root()).unwrap().transcript, blocks);
         // What the replacement asks: the kept turns, then the message.
         let expected = [kept, vec![question(&replacement)]].concat();

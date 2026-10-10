@@ -159,7 +159,7 @@ impl<H: HostResolver> Connection<H> {
     /// it. A failure is answered as a frame, never returned.
     pub async fn handle(&self, frame: ClientFrame) {
         match frame {
-            ClientFrame::Open {} => self.open().await,
+            ClientFrame::Open { from, edge } => self.open(from, edge.as_ref()).await,
             ClientFrame::Close {} => self.close().await,
             frame => match self.attached() {
                 Some(tree) => self.dispatch(&tree, frame).await,
@@ -237,7 +237,7 @@ impl<H: HostResolver> Connection<H> {
     /// restoring the tree when it is not live; a live tree already follows
     /// the conversation's model selection. A second `open` on one connection
     /// is refused.
-    async fn open(&self) {
+    async fn open(&self, from: Option<u32>, edge: Option<&BlockId>) {
         if self.attached().is_some() {
             self.reject(
                 ClientFrameKind::Open,
@@ -253,7 +253,7 @@ impl<H: HostResolver> Connection<H> {
                 return;
             }
         };
-        tree.attach(self.id, self.outbox.clone());
+        tree.attach(self.id, self.outbox.clone(), from, edge);
         // The usage follows the handshake, since the window in use is asked
         // for (`compaction.md` § Context estimate). It is the estimate at
         // the moment it is sent, so a later change still arrives after it.
@@ -349,8 +349,8 @@ impl<H: HostResolver> Connection<H> {
                 let result = session.abort().await;
                 self.send(ServerFrame::AbortResult { result });
             }
-            ClientFrame::SyncTranscript {} => {
-                for frame in tree.fresh_transcripts() {
+            ClientFrame::SyncTranscript { from, edge } => {
+                for frame in tree.fresh_transcripts(from, edge.as_ref()) {
                     self.send(frame);
                 }
             }
@@ -393,7 +393,7 @@ impl<H: HostResolver> Connection<H> {
                     self.error(error);
                 }
             }
-            ClientFrame::Open {} | ClientFrame::Close {} => {
+            ClientFrame::Open { .. } | ClientFrame::Close {} => {
                 unreachable!("open and close are handled before dispatch")
             }
         }

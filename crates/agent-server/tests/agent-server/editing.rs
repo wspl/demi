@@ -150,39 +150,39 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
     let EditOutcome::Accepted { turn_id } = edit_outcome(&frames) else {
         panic!("{frames:#?}")
     };
-    let replaces: Vec<&Vec<Block>> = frames
+    // The rewrite is one batch: a cut after the kept turn and the message
+    // added, which never sends the kept turn again.
+    let rewrites: Vec<(usize, &[TranscriptPatch])> = frames
         .iter()
-        .flat_map(|frame| match frame {
-            ServerFrame::TranscriptPatch { patches, .. } => patches.as_slice(),
-            _ => &[],
-        })
-        .filter_map(|patch| match patch {
-            TranscriptPatch::Replace { value } => Some(value),
+        .enumerate()
+        .filter_map(|(position, frame)| match frame {
+            ServerFrame::TranscriptPatch { patches, .. }
+                if matches!(patches.first(), Some(TranscriptPatch::Truncate { .. })) =>
+            {
+                Some((position, patches.as_slice()))
+            }
             _ => None,
         })
         .collect();
-    assert_eq!(replaces.len(), 1, "one rewrite");
+    assert_eq!(rewrites.len(), 1, "one rewrite");
+    let (rewrite, patches) = rewrites[0];
     // The acceptance answers right after the rewrite, before the
     // replacement's turn writes anything.
-    let rewrite = frames
-        .iter()
-        .position(|frame| {
-            matches!(frame, ServerFrame::TranscriptPatch { patches, .. }
-            if matches!(patches.as_slice(), [TranscriptPatch::Replace { .. }]))
-        })
-        .unwrap();
     assert!(matches!(
         frames[rewrite + 1],
         ServerFrame::EditResult { .. }
     ));
-    assert_eq!(replaces[0][..3], before.blocks[..3]);
-    assert_eq!(kinds(replaces[0]), ["user", "text", "response", "user"]);
-    let Block::User(replacement) = &replaces[0][3] else {
-        unreachable!()
+    let [
+        TranscriptPatch::Truncate { length: 3 },
+        TranscriptPatch::Add { index: 3, value: Block::User(replacement) },
+    ] = patches
+    else {
+        panic!("{patches:#?}")
     };
     assert_eq!(replacement.turn_id, turn_id);
     assert_eq!(replacement.content, demi_agent_store::testing::text("B2"));
-    assert_eq!(accepted.blocks[..4], replaces[0][..]);
+    assert_eq!(accepted.blocks[..3], before.blocks[..3]);
+    assert_eq!(accepted.blocks[3], Block::User(replacement.clone()));
     assert_eq!(
         kinds(&accepted.blocks),
         ["user", "text", "response", "user", "text", "response"]

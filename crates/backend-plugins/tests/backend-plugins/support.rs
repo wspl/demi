@@ -177,7 +177,7 @@ impl Fixture {
     /// A client that opened the conversation; its handshake waits unread.
     pub async fn attach(&self) -> TestClient<DeviceHost> {
         let client = TestClient::connect(&self.server, &conversation(), &self.workspace);
-        client.send(ClientFrame::Open {}).await;
+        client.send(ClientFrame::Open { from: None, edge: None }).await;
         client
     }
 

@@ -1,6 +1,7 @@
 import type { Block } from '@demicodes/protocol'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import { demoModel, shellView, thinkingText } from './blocks'
+import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { ago } from './time'
 
 function user(id: string, createdAt: string, text: string): Block {
@@ -82,7 +83,7 @@ export function gallerySubagents(): SubagentRecord[] {
       startedAt: ago(134_000),
       failures: {},
     pendingCalls: [],
-      blocks: [
+      history: wholeHistory([
         user(
           'ag-cookie-user',
           ago(134_000),
@@ -96,7 +97,7 @@ export function gallerySubagents(): SubagentRecord[] {
           'packages/web/src/auth.test.ts:18:    expect(cookie.name).toBe("sid")\n',
           'executing',
         ),
-      ],
+      ]),
     },
     {
       id: 'ag-logout',
@@ -105,7 +106,7 @@ export function gallerySubagents(): SubagentRecord[] {
       startedAt: ago(48_000),
       failures: {},
     pendingCalls: [],
-      blocks: [
+      history: wholeHistory([
         user(
           'ag-logout-user',
           ago(48_000),
@@ -116,7 +117,7 @@ export function gallerySubagents(): SubagentRecord[] {
           ago(40_000),
           'Logout should drop the session cookie. The helper writes the new name; the test may still mention sid.',
         ),
-      ],
+      ]),
     },
     {
       id: 'ag-snapshot',
@@ -125,13 +126,13 @@ export function gallerySubagents(): SubagentRecord[] {
       startedAt: ago(12_000),
       failures: {},
     pendingCalls: [],
-      blocks: [
+      history: wholeHistory([
         user(
           'ag-snapshot-user',
           ago(12_000),
           'List snapshot strings that still mention the old cookie name.',
         ),
-      ],
+      ]),
     },
     {
       id: 'ag-comments',
@@ -141,7 +142,7 @@ export function gallerySubagents(): SubagentRecord[] {
       endedAt: ago(240_000),
       failures: {},
     pendingCalls: [],
-      blocks: [
+      history: wholeHistory([
         user(
           'ag-comments-user',
           ago(420_000),
@@ -164,7 +165,7 @@ export function gallerySubagents(): SubagentRecord[] {
           ago(240_000),
           'Comments now say `session`. The helper is unchanged.',
         ),
-      ],
+      ]),
     },
     {
       id: 'ag-ci',
@@ -174,7 +175,7 @@ export function gallerySubagents(): SubagentRecord[] {
       endedAt: ago(120_000),
       failures: {},
     pendingCalls: [],
-      blocks: [
+      history: wholeHistory([
         user(
           'ag-ci-user',
           ago(180_000),
@@ -192,7 +193,7 @@ export function gallerySubagents(): SubagentRecord[] {
           model: demoModel,
           isResumed: false,
         },
-      ],
+      ]),
     },
   ]
 }

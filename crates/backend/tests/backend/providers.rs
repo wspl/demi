@@ -337,7 +337,7 @@ async fn on_a_shared_instance_only_the_master_configures_and_everyone_infers_wit
     let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     let bob = backend.login("bob@example.test", "bob-pass-1").await;
     let mut socket = Socket::connect(&backend, &bob, FIRST).await;
-    socket.send(&ClientFrame::Open {}).await;
+    socket.send(&ClientFrame::Open { from: None, edge: None }).await;
     let ServerFrame::Error { code, .. } = socket.frame().await else {
         panic!("another user's entry is not the user's to open with");
     };

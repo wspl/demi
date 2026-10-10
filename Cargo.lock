@@ -1762,6 +1762,7 @@ version = "0.1.21"
 dependencies = [
  "demi-agent-store",
  "demi-backend-remote-host",
+ "demi-conversation-socket-protocol",
  "demi-host-interface",
  "demi-machine-manager-protocol",
  "demi-plugin-interface",

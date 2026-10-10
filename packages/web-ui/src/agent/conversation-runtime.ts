@@ -1,5 +1,14 @@
 import { shallowRef, triggerRef } from 'vue'
-import { SessionError, SteerRejectedError, type ConversationClient, type ClientSessionEvent } from '@demicodes/conversation-client'
+import {
+  SessionError,
+  SteerRejectedError,
+  applyTranscriptPatches,
+  heldEdge,
+  resetTranscript,
+  windowOf,
+  type ConversationClient,
+  type ClientSessionEvent,
+} from '@demicodes/conversation-client'
 import { asError, createId, deferred } from '@demicodes/utils'
 import type { ClientContent, EditRequest, TranscriptVersion } from '@demicodes/protocol'
 import { ConversationSocketError } from '../transport/conversation-socket'
@@ -18,7 +27,7 @@ export function isRecordedTurnFailure(error: unknown): boolean {
 
 export type RuntimeState = Pick<
   ConversationState,
-  | 'blocks'
+  | 'history'
   | 'phase'
   | 'queue'
   | 'pendingSteers'
@@ -178,9 +187,7 @@ export class ConversationRuntime {
 
   async editAndSend(request: EditRequest): Promise<void> {
     const client = await this.ensureOpen()
-    const replacesVisibleTarget = client.transcript().blocks.some(
-      (block) => block.id === request.targetBlockId,
-    )
+    const replacesVisibleTarget = windowOf(this.options.state.history, request.targetBlockId) !== undefined
     let receivedError = false
     const unsubscribe = client.subscribe((event) => {
       if (event.type === 'error') {
@@ -389,7 +396,7 @@ export class ConversationRuntime {
         this.applyEvent(event)
         triggerRef(this.client)
       })
-      await client.open()
+      await client.open(() => heldEdge(this.options.state.history))
       attempt.signal.throwIfAborted()
       this.client.value = client
       this.unsubscribe = unsubscribe
@@ -427,9 +434,12 @@ export class ConversationRuntime {
     const state = this.options.state
     switch (event.type) {
       case 'transcript_reset':
+        state.history = resetTranscript(state.history, event, event.asked)
+        state.failures = { ...state.failures, ...event.failures }
+        break
       case 'transcript_patch':
-        state.blocks = event.blocks
-        state.failures = event.failures
+        state.history = applyTranscriptPatches(state.history, event.patches)
+        state.failures = { ...state.failures, ...event.failures }
         break
       case 'phase':
         // A failure the session reported is over once the session starts

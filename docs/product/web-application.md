@@ -546,7 +546,8 @@ and the answer that offers Regenerate. A Change tab that names a request
 the page does not hold reads the page around its `user` block. What a request
 does not hold, the page reads with the windows: the context card's
 instructions, from the latest window's newest instructions block or else
-the page's `instructions`; a compaction divider's size, from its marker; an
+the page's `instructions`; a compaction divider's size, from its boundary
+or else the page's `summaries`; an
 ended command's terminal, from the command's record; the subagents, from
 their list and the `subagent` frames, each subagent's transcript in windows
 of its own when the panel shows it

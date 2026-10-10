@@ -407,7 +407,7 @@ async fn a_child_works_in_its_parents_files_keeps_its_identity_and_runs_on_after
     let jobs: Vec<(&str, JobPhase)> = history
         .subagents
         .iter()
-        .map(|child| (child.subagent.description.as_str(), child.subagent.phase))
+        .map(|child| (child.description.as_str(), child.phase))
         .collect();
     assert_eq!(jobs, [("reader", JobPhase::Completed)]);
     backend.close().await;

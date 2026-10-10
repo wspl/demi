@@ -1,4 +1,5 @@
 import type { ConversationState } from './types'
+import { latestBlocks } from './history'
 
 /**
  * Admission is visible in the transcript or the server queue for a message,
@@ -6,10 +7,10 @@ import type { ConversationState } from './types'
  * sent as a steer keeps its id for.
  */
 export function hasAcceptedSubmission(
-  state: Pick<ConversationState, 'blocks' | 'queue' | 'pendingSteers'>,
+  state: Pick<ConversationState, 'history' | 'queue' | 'pendingSteers'>,
   id: string,
 ): boolean {
-  return state.blocks.some((block) =>
+  return latestBlocks(state.history).some((block) =>
     (block.type === 'user' && block.turnId === id) || (block.type === 'steer' && block.id === id)) ||
     state.queue.some((message) => message.id === id) ||
     state.pendingSteers.some((steer) => steer.id === id)

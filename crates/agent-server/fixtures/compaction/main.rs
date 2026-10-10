@@ -279,7 +279,12 @@ impl Conversation {
         // A turn of the real model may take minutes.
         let mut client =
             TestClient::connect(&server, &root, &fixture.cwd).with_hang_guard(TURN_TIMEOUT);
-        client.send(ClientFrame::Open {}).await;
+        client
+            .send(ClientFrame::Open {
+                from: None,
+                edge: None,
+            })
+            .await;
         client
             .next_until(|frame| matches!(frame, ServerFrame::PendingSteers { .. }))
             .await;

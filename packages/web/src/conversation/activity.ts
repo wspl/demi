@@ -1,9 +1,12 @@
 import {
+  EMPTY_TRANSCRIPT,
   applyTranscriptPatches,
+  resetTranscript,
   type ClientSessionEvent,
 } from '@demicodes/web-ui/transport/protocol'
+import { latestBlocks } from '@demicodes/web-ui/agent/history'
 import type { Conversation } from '../state/types'
-import { findShellCall, transcriptTerminals } from './terminals'
+import { findShellCall } from './terminals'
 import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
 import { followLiveOutput, type TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 
@@ -13,13 +16,13 @@ export function updateLiveStatus(conversation: Conversation): void {
     conversation.status = 'active'
     return
   }
-  const last = conversation.blocks.at(-1)
+  const last = latestBlocks(conversation.history).at(-1)
   conversation.status =
     conversation.lastError || last?.type === 'error'
       ? 'error'
       : last?.type === 'abort'
         ? 'aborted'
-        : conversation.blocks.length
+        : conversation.history.length
           ? 'done'
           : 'idle'
 }
@@ -28,22 +31,6 @@ export function applyConversationEvent(
   conversation: Conversation,
   event: ClientSessionEvent,
 ): void {
-  if (event.type === 'transcript_reset' || event.type === 'transcript_patch') {
-    // A stored end (`endedAt`) is final, unless the page follows the command
-    // live and keeps its live view; otherwise a stored view only names it.
-    const stored = transcriptTerminals(conversation.blocks)
-    for (const terminal of stored) {
-      const current = conversation.terminals.find((item) => item.id === terminal.id)
-      if (!current) {
-        conversation.terminals.push(terminal)
-      } else if (terminal.endedAt && current.chars === undefined) {
-        Object.assign(current, terminal)
-      } else {
-        current.title = terminal.title
-        current.script = terminal.script
-      }
-    }
-  }
   if (event.type === 'subagent') {
     const job = event.job
     const existing = conversation.subagents.find(
@@ -61,7 +48,7 @@ export function applyConversationEvent(
         phase: job.phase,
         startedAt: job.startedAt,
         endedAt: job.endedAt ?? undefined,
-        blocks: [],
+        history: EMPTY_TRANSCRIPT,
         pendingCalls: [],
         failures: {},
       })
@@ -75,12 +62,11 @@ export function applyConversationEvent(
     )
     if (child) {
       if (event.type === 'subagent_transcript_reset') {
-        child.blocks = event.blocks
-        child.failures = event.failures
+        child.history = resetTranscript(child.history, event)
       } else {
-        child.blocks = applyTranscriptPatches(child.blocks, event.patches)
-        child.failures = { ...child.failures, ...event.failures }
+        child.history = applyTranscriptPatches(child.history, event.patches)
       }
+      child.failures = { ...child.failures, ...event.failures }
     }
   } else if (event.type === 'pending_calls' && event.subagentId !== undefined) {
     const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
@@ -95,9 +81,9 @@ export function applyConversationEvent(
     const current = conversation.terminals.find(
       (terminal) => terminal.id === status.commandId,
     )
-    const blocks = subagentId === undefined
-      ? conversation.blocks
-      : conversation.subagents.find((agent) => agent.id === subagentId)?.blocks ?? []
+    const blocks = latestBlocks(subagentId === undefined
+      ? conversation.history
+      : conversation.subagents.find((agent) => agent.id === subagentId)?.history ?? EMPTY_TRANSCRIPT)
     // The call that started it names it; the command's id stands in until the transcript has the call.
     const call = current ?? findShellCall(blocks, status.toolUseId)
     const record: TerminalRecord = {

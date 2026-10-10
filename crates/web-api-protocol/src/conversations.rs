@@ -3,7 +3,10 @@
 //! state and page synchronization).
 
 use demi_conversation_socket_protocol::{Failures, SubagentJob};
-use demi_shared_types::{Block, BlockId, MAX_SAFE_INTEGER, Nullable, Timestamp};
+use demi_shared_types::{
+    Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp,
+    ToolView,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::{double_option, unwrap_or_skip};
@@ -311,17 +314,48 @@ pub struct ReadRequest {
     pub revision: u64,
 }
 
-/// `GET /conversations/:id/transcript`: the conversation's history as its
-/// database holds it, the root's blocks and each subagent's, with the failure
-/// facts of their error blocks (`backend.md` § Failure facts). Media travels
-/// by blob reference.
+/// `?node=&before=|after=|around=&edge=` of `GET /conversations/:id/transcript`
+/// (`web-api.md` § Pages). Queries are the backend's alone and are not
+/// emitted.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TranscriptQuery {
+    /// The subagent whose transcript the page is of; the root's without it.
+    #[serde(default)]
+    pub node: Option<NodeId>,
+    #[serde(default)]
+    pub before: Option<u32>,
+    #[serde(default)]
+    pub after: Option<u32>,
+    #[serde(default)]
+    pub around: Option<BlockId>,
+    /// The block the page holds at `before` or `after`.
+    #[serde(default)]
+    pub edge: Option<BlockId>,
+}
+
+/// `?node=` of the block and command reads.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeQuery {
+    #[serde(default)]
+    pub node: Option<NodeId>,
+}
+
+/// One page of an agent's transcript (`web-api.md` § Pages): whole
+/// requests, its blocks in their light form, with the failure facts of its
+/// error blocks (`backend.md` § Failure facts).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct Transcript {
+pub struct TranscriptPage {
+    /// The index of the page's first block.
+    pub start: u32,
+    /// How many blocks the transcript holds.
+    pub length: u32,
     #[serde(with = "demi_shared_types::client_blocks")]
     #[schemars(with = "Vec<Block>")]
     pub blocks: Vec<Block>,
-    /// The facts of the root's error blocks, by block id; absent when none
+    /// The facts of the page's error blocks, by block id; absent when none
     /// yields one.
     #[serde(
         default,
@@ -330,18 +364,31 @@ pub struct Transcript {
     )]
     #[schemars(with = "Failures")]
     pub failures: Option<Failures>,
-    /// Every subagent of the tree, in spawn order under each parent.
-    pub subagents: Vec<SubagentHistory>,
+    /// The entries of the agent's newest instructions block, which the
+    /// context card lists; empty before the first.
+    pub instructions: Vec<InstructionEntry>,
+    /// The summary size of each compaction marker's boundary, which its
+    /// divider tells; the boundary may be on another page.
+    pub summaries: Vec<CompactionSummary>,
 }
 
-/// One subagent's history.
+/// A compaction marker of a page and its boundary's summary size.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionSummary {
+    #[garde(skip)]
+    pub marker: BlockId,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub summary_tokens: u64,
+}
+
+/// `GET /conversations/:id/transcript/blocks/:blockId`: a block whole.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct SubagentHistory {
-    pub subagent: SubagentJob,
-    #[serde(with = "demi_shared_types::client_blocks")]
-    #[schemars(with = "Vec<Block>")]
-    pub blocks: Vec<Block>,
+pub struct WholeBlock {
+    #[serde(with = "demi_shared_types::client_block")]
+    #[schemars(with = "Block")]
+    pub block: Block,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -349,6 +396,35 @@ pub struct SubagentHistory {
     )]
     #[schemars(with = "Failures")]
     pub failures: Option<Failures>,
+}
+
+/// `GET /conversations/:id/subagents`: every subagent the conversation has
+/// had, in the order they started.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Subagents {
+    pub subagents: Vec<SubagentJob>,
+}
+
+/// `GET /conversations/:id/commands/:commandId`: an ended command, from the
+/// `shell` call that started it, for its terminal (`web-api.md`
+/// § Subagents and commands).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandRecord {
+    pub command_id: CommandId,
+    /// The subagent that ran it; null for the root.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<NodeId>")]
+    pub subagent_id: Option<NodeId>,
+    /// The call's title, its `description`.
+    pub title: String,
+    pub script: String,
+    /// When the call that started it began.
+    pub started_at: Timestamp,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<ToolView>")]
+    pub view: Option<ToolView>,
 }
 
 /// `PATCH /conversations/:id`: the fields to change, each applied on its
@@ -563,11 +639,10 @@ mod tests {
     use super::*;
 
     // The entries a provider keeps on a block never leave the backend
-    // (`claude-code.md` § The session a process resumes): a transcript
-    // whose blocks hold them has the wire shape of one whose blocks hold
-    // none, the root's and each subagent's.
+    // (`claude-code.md` § The session a process resumes): a page whose
+    // blocks hold them has the wire shape of one whose blocks hold none.
     #[test]
-    fn a_transcript_reaches_the_page_without_the_entries_its_provider_kept() {
+    fn a_page_reaches_the_page_without_the_entries_its_provider_kept() {
         let text = serde_json::json!({
             "type": "text", "id": "t1", "createdAt": "2026-09-21T14:13:20.000Z",
             "model": { "providerId": "stub", "model": { "id": "stub-model", "name": "Stub",
@@ -575,19 +650,13 @@ mod tests {
                 "thinking": null, "serviceTierId": null },
             "text": "Hello",
         });
-        let job = serde_json::json!({
-            "subagentId": "child-1", "parentSessionId": "root", "description": "Runs the tests",
-            "profile": null, "phase": "running", "startedAt": "2026-09-21T14:13:20.000Z", "endedAt": null,
-        });
         let wire = serde_json::json!({
-            "blocks": [text],
-            "subagents": [{ "subagent": job, "blocks": [text] }],
+            "start": 0, "length": 1, "blocks": [text], "instructions": [], "summaries": [],
         });
-        let mut transcript: Transcript = serde_json::from_value(wire.clone()).unwrap();
-        let kept = || vec![serde_json::json!({ "type": "assistant", "uuid": "kept" })];
-        *transcript.blocks[0].entries_mut().unwrap() = kept();
-        *transcript.subagents[0].blocks[0].entries_mut().unwrap() = kept();
-        assert_eq!(serde_json::to_value(&transcript).unwrap(), wire);
+        let mut page: TranscriptPage = serde_json::from_value(wire.clone()).unwrap();
+        *page.blocks[0].entries_mut().unwrap() =
+            vec![serde_json::json!({ "type": "assistant", "uuid": "kept" })];
+        assert_eq!(serde_json::to_value(&page).unwrap(), wire);
     }
 
     #[test]

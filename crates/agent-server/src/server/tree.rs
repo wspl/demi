@@ -21,10 +21,10 @@ use demi_agent_session::{Continuation, ModelSwitch, SessionEvent, Settle, Status
 use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{HostResolver, shell_output};
 use demi_agent_transcript::IdSource;
-use demi_conversation_socket_protocol::ServerFrame;
+use demi_conversation_socket_protocol::{ServerFrame, index_u32, reset_start};
 use demi_host_interface::RegisterError;
 use demi_shared_gates::{ActivityGate, GateState, KeyedSerialGate, Reservation};
-use demi_shared_types::{Clock, CommandId, NodeId};
+use demi_shared_types::{BlockId, Clock, CommandId, NodeId};
 use futures_util::future::join_all;
 use tokio::sync::watch;
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
@@ -493,23 +493,25 @@ impl<H: HostResolver> Tree<H> {
 
     /// Attaches a connection beside the others and sends it the open
     /// handshake in one step, so nothing happens to the tree between
-    /// `opened` and the last live command: the root's snapshot frames, then
-    /// each live child's `started` and transcript, depth first in spawn
-    /// order, then the view of each live command of the tree.
-    pub(crate) fn attach(&self, connection: u64, outbox: Rc<Outbox>) {
+    /// `opened` and the last live command: the root's snapshot frames, its
+    /// transcript from the blocks the page holds (`from`, `edge`), then each
+    /// live child's `started` and transcript, depth first in spawn order,
+    /// then the view of each live command of the tree.
+    pub(crate) fn attach(
+        &self,
+        connection: u64,
+        outbox: Rc<Outbox>,
+        from: Option<u32>,
+        edge: Option<&BlockId>,
+    ) {
         self.sink.attach(Attachment {
             connection,
             outbox: outbox.clone(),
         });
         let session = self.root.session();
-        let snapshot = session.transcript();
         let root = [
             ServerFrame::Opened,
-            ServerFrame::TranscriptReset {
-                blocks: snapshot.blocks,
-                version: snapshot.version,
-                failures: None,
-            },
+            self.root_reset(from, edge),
             ServerFrame::Phase {
                 phase: session.phase(),
             },
@@ -538,17 +540,29 @@ impl<H: HostResolver> Tree<H> {
     /// Fresh transcripts of the root and of every live child, with the view
     /// of each live command of the tree: the answer to a connection that saw
     /// a gap in the patch revisions, which goes to that connection alone.
-    pub(crate) fn fresh_transcripts(&self) -> Vec<ServerFrame> {
-        let snapshot = self.root.session().transcript();
-        let reset = ServerFrame::TranscriptReset {
-            blocks: snapshot.blocks,
-            version: snapshot.version,
-            failures: None,
-        };
-        std::iter::once(reset)
+    pub(crate) fn fresh_transcripts(
+        &self,
+        from: Option<u32>,
+        edge: Option<&BlockId>,
+    ) -> Vec<ServerFrame> {
+        std::iter::once(self.root_reset(from, edge))
             .chain(self.replay())
             .chain(self.live_commands())
             .collect()
+    }
+
+    /// The root's transcript from the blocks the page holds
+    /// (`runtime.md` § Where a reset starts).
+    fn root_reset(&self, from: Option<u32>, edge: Option<&BlockId>) -> ServerFrame {
+        let snapshot = self.root.session().transcript();
+        let start = reset_start(&snapshot.blocks, from, edge);
+        ServerFrame::TranscriptReset {
+            start: index_u32(start),
+            length: index_u32(snapshot.blocks.len()),
+            blocks: snapshot.blocks[start..].to_vec(),
+            version: snapshot.version,
+            failures: None,
+        }
     }
 
     /// The `shell_output` of each live command (`runtime.md` § Live

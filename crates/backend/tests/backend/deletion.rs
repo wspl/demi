@@ -126,7 +126,7 @@ async fn deleting_a_running_conversation_stops_its_command_and_nothing_finds_it_
     // The page's tree closes, and an open of it again finds no conversation;
     // the page's synchronization channel drops the conversation.
     socket.until(|frame| *frame == ServerFrame::Closed).await;
-    socket.send(&ClientFrame::Open {}).await;
+    socket.send(&ClientFrame::Open { from: None, edge: None }).await;
     let refused = socket
         .until(|frame| matches!(frame, ServerFrame::Error { .. }))
         .await

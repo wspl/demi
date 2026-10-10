@@ -3,6 +3,7 @@ import type { Block, EditedFile, PathChange } from '@demicodes/protocol'
 import type { ToolCallBlock } from '../../agent/block-types'
 import { createdAt, model, userBlock } from '../../agent/__tests__/agent-harness'
 import { diffLineCounts } from '../diff-counts'
+import { wholeHistory } from '../../agent/history'
 import {
   editIndex,
   offersAllChanges,
@@ -129,7 +130,7 @@ describe('a request', () => {
       shellCall('child-c', 'Restyle the form', [edited('/w/form.css', 40)]),
       text('child-reply'),
     ]
-    const transcripts = { blocks: transcript, subagents: [{ id: 'child', blocks: child }] }
+    const transcripts = { history: wholeHistory(transcript), subagents: [{ id: 'child', history: wholeHistory(child) }] }
     const parent = findRequest(transcripts, null, 'u1')!
     expect(parent.files.find((file) => file.path === '/w/form.css')!.edits.map((edit) => edit.call)).toEqual(['c1'])
     expect(findRequest(transcripts, null, 'child-u')).toBeNull()

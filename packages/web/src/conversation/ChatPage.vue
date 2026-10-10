@@ -136,6 +136,29 @@ const retitle = computed(() => {
   return !current.titleCurrent && hasProvider.value ? 'available' : null
 })
 
+/**
+ * A read of history the reader's scroll asked for: a failure shows as the
+ * window's edge staying a loading row, which the next scroll there tries
+ * again, so it is only logged.
+ */
+function readHistory(read: Promise<void>): void {
+  read.catch((error: unknown) => console.warn('A page of the transcript was not read', error))
+}
+
+// A search result opens at its message: the page reads the window around it
+// once the conversation's latest page is there (`web-application.md`
+// § Transcript windows).
+watch(
+  () => [store.reveal, conversation.value?.load] as const,
+  ([reveal, load]) => {
+    const current = conversation.value
+    if (reveal && current && reveal.conversationId === current.id && load === 'ready') {
+      readHistory(store.history.readAround(current, null, reveal.blockId))
+    }
+  },
+  { immediate: true },
+)
+
 function saveScroll(id: string, state: PersistedScrollState | null): void {
   const item = store.items.find((item) => item.id === id)
   if (item) {
@@ -230,6 +253,12 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @save-scroll="saveScroll"
     :reveal-block-id="store.reveal?.conversationId === conversation.id ? store.reveal.blockId : null"
     @revealed="store.reveal = null"
+    :read-block="(node, id) => store.history.readWhole(conversation!, node, id)"
+    :read-command="(id) => store.history.readCommand(conversation!, id)"
+    @read-before="readHistory(store.history.readBefore(conversation!, null))"
+    @read-after="readHistory(store.history.readAfter(conversation!, null))"
+    @show-latest="conversation.shownAt = null"
+    @read-subagent="(id, at) => readHistory(at === 'latest' ? store.history.readLatest(conversation!, id) : store.history.readBefore(conversation!, id))"
     @open-aside="work.setOpen(work.stateFor(conversation.id), true)"
   >
     <template #workspace

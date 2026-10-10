@@ -18,6 +18,12 @@ import * as draftStorage from './drafts'
 import * as localState from '../state/local'
 import { DRAFT_SAVE_DELAY_MS } from './draft-sync'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
+import { EMPTY_TRANSCRIPT } from '@demicodes/web-ui/transport/protocol'
+import { latestBlocks, wholeHistory } from '@demicodes/web-ui/agent/history'
+import { commandTerminal } from './terminals'
+
+/** The latest page of an empty transcript, as the backend answers it. */
+const EMPTY_PAGE = { start: 0, length: 0, blocks: [], instructions: [], summaries: [] }
 
 const realFetch = globalThis.fetch
 const FIRST = '00000000-0000-4000-8000-000000000001'
@@ -411,7 +417,7 @@ function execCall(toolUseId: string, script: string, status: 'executing' | 'comp
 // has shown.
 test('a command\'s live frames build what the page shows of it, until its end', () => {
   const conversation = useConversations().items[0]!
-  conversation.blocks = [execCall('call-1', 'npm test', 'executing', 'Run the unit tests')]
+  conversation.history = wholeHistory([execCall('call-1', 'npm test', 'executing', 'Run the unit tests')])
   conversation.terminals = []
   const frame = (status: 'running' | 'exited', tail: string, chars: number) => ({
     type: 'shell_output' as const,
@@ -425,13 +431,8 @@ test('a command\'s live frames build what the page shows of it, until its end', 
   expect(toRaw(conversation.terminals)).toMatchObject([
     { id: 'cmd', title: 'Run the unit tests', script: 'npm test', phase: 'running', output: 'one\ntwo\n', chars: 8, toolUseId: 'call-1' },
   ])
-  // After a gap, the page shows the tail anew; a transcript event keeps the live view.
+  // After a gap, the page shows the tail anew.
   applyConversationEvent(conversation, frame('running', 'ninety\n', 100))
-  conversation.blocks = [{ ...execCall('call-1', 'npm test', 'completed', 'Run the unit tests'), view: {
-    kind: 'shell', status: 'exited', exitCode: 0, commandId: 'cmd', runningMs: 10, idleMs: 0,
-    chunks: [{ stream: 'stdout', text: 'one\n' }], viewTruncated: false,
-  } }]
-  applyConversationEvent(conversation, { type: 'transcript_patch', patches: [], blocks: conversation.blocks, failures: {} })
   expect(toRaw(conversation.terminals)).toMatchObject([
     { title: 'Run the unit tests', script: 'npm test', output: 'ninety\n', chars: 100, phase: 'running' },
   ])
@@ -446,7 +447,7 @@ test('a command\'s live frames build what the page shows of it, until its end', 
   }
   applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
   applyConversationEvent(conversation, {
-    type: 'subagent_transcript_reset', subagentId: 'child', blocks: [execCall('call-1', 'cargo build', 'executing')], failures: {},
+    type: 'subagent_transcript_reset', subagentId: 'child', start: 0, length: 1, blocks: [execCall('call-1', 'cargo build', 'executing')], failures: {},
   })
   applyConversationEvent(conversation, {
     type: 'shell_output', subagentId: 'child',
@@ -458,26 +459,27 @@ test('a command\'s live frames build what the page shows of it, until its end', 
 })
 
 // A command the user or the agent stopped shows as stopped, never as done:
-// from its last live frame, and from its stored view once the page reloads.
+// from its last live frame, and from its record once the page reloads.
 test('a stopped command stays stopped, live and after a reload', () => {
   const conversation = useConversations().items[0]!
-  conversation.blocks = [execCall('call-1', 'npm run watch', 'executing')]
+  conversation.history = wholeHistory([execCall('call-1', 'npm run watch', 'executing')])
   conversation.terminals = []
   const view = { commandId: 'cmd', toolUseId: 'call-1', tail: 'watching\n', chars: 9, runningMs: 10 }
   applyConversationEvent(conversation, { type: 'shell_output', status: { status: 'running', ...view } })
   applyConversationEvent(conversation, { type: 'shell_output', status: { status: 'aborted', ...view } })
   expect(toRaw(conversation.terminals)).toMatchObject([{ id: 'cmd', phase: 'aborted' }])
 
-  conversation.terminals = []
-  conversation.blocks = [{ ...execCall('call-1', 'npm run watch', 'completed'), view: {
-    kind: 'shell', status: 'aborted', commandId: 'cmd', runningMs: 10, idleMs: 0,
-    chunks: [{ stream: 'stdout', text: 'watching\n' }], viewTruncated: false,
-  } }]
-  applyConversationEvent(conversation, { type: 'transcript_reset', blocks: conversation.blocks, failures: {} })
-  expect(toRaw(conversation.terminals)).toMatchObject([{ id: 'cmd', phase: 'aborted' }])
+  const reloaded = commandTerminal({
+    commandId: 'cmd', subagentId: null, title: 'Watch', script: 'npm run watch', startedAt: '2026-09-13T00:00:00.000Z',
+    view: {
+      kind: 'shell', status: 'aborted', commandId: 'cmd', runningMs: 10, idleMs: 0,
+      chunks: [{ stream: 'stdout', text: 'watching\n' }], viewTruncated: false,
+    },
+  })
+  expect(reloaded).toMatchObject({ id: 'cmd', phase: 'aborted', output: 'watching\n' })
 })
 
-test('a child keeps the failure facts of its transcript: a reset replaces them, a patch adds to them', () => {
+test('a child keeps the failure facts of its transcript, which resets and patches add to', () => {
   const conversation = useConversations().items[0]!
   const job = {
     subagentId: 'child',
@@ -490,12 +492,14 @@ test('a child keeps the failure facts of its transcript: a reset replaces them, 
   }
   applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
   const lifts = { retryAt: '2026-09-22T07:37:39.000Z' }
-  applyConversationEvent(conversation, { type: 'subagent_transcript_reset', subagentId: 'child', blocks: [], failures: { first: lifts } })
+  applyConversationEvent(conversation, { type: 'subagent_transcript_reset', subagentId: 'child', start: 0, length: 0, blocks: [], failures: { first: lifts } })
   applyConversationEvent(conversation, { type: 'subagent_transcript_patch', subagentId: 'child', patches: [], failures: { second: { retryAt: null } } })
   expect(conversation.subagents.find((agent) => agent.id === 'child')?.failures)
     .toEqual({ first: lifts, second: { retryAt: null } })
-  applyConversationEvent(conversation, { type: 'subagent_transcript_reset', subagentId: 'child', blocks: [], failures: {} })
-  expect(conversation.subagents.find((agent) => agent.id === 'child')?.failures).toEqual({})
+  // A reset brings the blocks from its start; the page may hold those before it, with their facts.
+  applyConversationEvent(conversation, { type: 'subagent_transcript_reset', subagentId: 'child', start: 0, length: 0, blocks: [], failures: {} })
+  expect(conversation.subagents.find((agent) => agent.id === 'child')?.failures)
+    .toEqual({ first: lifts, second: { retryAt: null } })
 })
 
 test('restored running children keep an idle parent active in the sidebar', () => {
@@ -507,7 +511,7 @@ test('restored running children keep an idle parent active in the sidebar', () =
     phase: 'running',
     startedAt: '2026-09-13T00:00:00.000Z',
     pendingCalls: [],
-    blocks: [],
+    history: EMPTY_TRANSCRIPT,
     failures: {},
   }]
   updateLiveStatus(conversation)
@@ -588,7 +592,8 @@ function answerOpening(id: string, intercept: (path: string) => void = () => {})
     intercept(path)
     if (path.startsWith('/api/models')) return Response.json(stubCatalog())
     if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    if (path.endsWith('/transcript')) return Response.json({ blocks: [], subagents: [] })
+    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
+    if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
     if (path === `/api/conversations/${id}` && init?.method === 'PATCH') {
       return Response.json({ conversation: records.find((item) => item.id === id), results: [] })
     }
@@ -700,7 +705,8 @@ test('the first send keeps the new conversation shown while its record opens', a
     const path = String(input)
     if (path.startsWith('/api/models')) return Response.json(stubCatalog())
     if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    if (path.endsWith('/transcript')) return Response.json({ blocks: [], subagents: [] })
+    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
+    if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
     if (path === `/api/conversations/${id}` && init?.method === 'PATCH') {
       return Response.json({ conversation: records.find((item) => item.id === id), results: [] })
     }
@@ -870,7 +876,8 @@ test('a message sends its text and files in the order the composer shows them', 
       return Response.json(stubCatalog())
     }
     if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    if (path.endsWith('/transcript')) return Response.json({ blocks: [], subagents: [] })
+    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
+    if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
     return originalFetch(input, init)
   }) as typeof fetch
   const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
@@ -974,23 +981,24 @@ test('a new snapshot preserves the live transcript and the unsent draft', async 
   const current = store.items[0]!
   current.draft = 'Still editing'
   current.phase = 'running'
-  current.blocks = [
+  current.history = wholeHistory([
     { type: 'text', id: 'block', createdAt: '2026-09-09T00:00:00.000Z', model, text: 'streaming' },
-  ]
+  ])
   records[0]!.title = 'Server title'
   records.reverse()
   await reconnected()
   expect(store.items[1]).toBe(current)
   expect(current.title).toBe('Server title')
   expect(current.draft).toBe('Still editing')
-  expect(current.blocks[0]?.id).toBe('block')
+  expect(latestBlocks(current.history)[0]?.id).toBe('block')
   expect(current.phase).toBe('running')
 })
 
 test('history remains readable during its own connection after navigation', async () => {
   const store = useConversations()
   const current = store.items[0]!
-  current.blocks = [{ type: 'text', id: 'cached', createdAt: '2026-09-09T00:00:00.000Z', model, text: 'cached' }]
+  const cached = [{ type: 'text' as const, id: 'cached', createdAt: '2026-09-09T00:00:00.000Z', model, text: 'cached' }]
+  current.history = wholeHistory(cached)
   current.draft = 'Keep the draft'
   useProduct().snapshot!.providers.push(stubProvider)
   const historyRequested = deferred<void>()
@@ -1008,6 +1016,7 @@ test('history remains readable during its own connection after navigation', asyn
       return Response.json(stubCatalog())
     }
     if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
+    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
     if (path.endsWith('/transcript')) {
       historyRequested.resolve()
       return history.promise
@@ -1021,7 +1030,7 @@ test('history remains readable during its own connection after navigation', asyn
     await historyRequested.promise
     expect(current).toMatchObject({ load: 'loading' })
     useProduct().activeConversationId = SECOND
-    history.resolve(Response.json({ blocks: current.blocks, subagents: [] }))
+    history.resolve(Response.json({ start: 0, length: 1, blocks: cached, instructions: [], summaries: [] }))
     await connecting.promise
     expect(current).toMatchObject({ load: 'ready' })
     expect(current.draft).toBe('Keep the draft')
@@ -1030,7 +1039,7 @@ test('history remains readable during its own connection after navigation', asyn
     expect(current).toMatchObject({ load: 'failed' })
     expect(current.lastError).toBe('Connection failed')
   } finally {
-    history.resolve(Response.json({ blocks: [], subagents: [] }))
+    history.resolve(Response.json(EMPTY_PAGE))
     connection.resolve()
     await opening
     connect.mockRestore()
@@ -1121,6 +1130,7 @@ function serveHistory(gate?: ReturnType<typeof deferred<void>>, hosts: () => Att
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
+    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
     if (path.endsWith('/hosts') || path.endsWith('/transcript')) {
       requests.push({ path, body: null })
       if (path.endsWith('/hosts')) {
@@ -1128,7 +1138,7 @@ function serveHistory(gate?: ReturnType<typeof deferred<void>>, hosts: () => Att
       }
       requested.resolve()
       await gate?.promise
-      return Response.json({ blocks: [], subagents: [] })
+      return Response.json(EMPTY_PAGE)
     }
     return originalFetch(input, init)
   }) as typeof fetch
@@ -1150,6 +1160,7 @@ function holdOpening() {
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
+    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
     const read = /\/(transcript|hosts|draft)$/.exec(path)?.[1]
     if (read && (init?.method ?? 'GET') === 'GET') {
       held.arrived.push(read)
@@ -1158,7 +1169,7 @@ function holdOpening() {
         return originalFetch(input, init)
       }
       await held[read as 'transcript' | 'hosts'].promise
-      return read === 'hosts' ? Response.json({ hosts: [] }) : Response.json({ blocks: [], subagents: [] })
+      return read === 'hosts' ? Response.json({ hosts: [] }) : Response.json(EMPTY_PAGE)
     }
     return originalFetch(input, init)
   }) as typeof fetch
@@ -1513,7 +1524,8 @@ test('slow or failed model discovery does not hold history behind the loading pa
     const path = String(input)
     if (path.startsWith('/api/models')) return modelResponse.promise
     if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    if (path.endsWith('/transcript')) return Response.json({ blocks: [block], subagents: [] })
+    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
+    if (path.endsWith('/transcript')) return Response.json({ ...EMPTY_PAGE, length: 1, blocks: [block] })
     return originalFetch(input, init)
   }) as typeof fetch
   const models = useProduct().loadModels(true).catch(error => error)
@@ -1521,12 +1533,12 @@ test('slow or failed model discovery does not hold history behind the loading pa
   await new Promise(resolve => setTimeout(resolve, 0))
   expect(current.lastError).toBeNull()
   expect(current.load).toBe('ready')
-  expect(current.blocks[0]?.id).toBe('visible-history')
+  expect(latestBlocks(current.history)[0]?.id).toBe('visible-history')
   modelResponse.reject(new Error('Catalog offline'))
   expect(await models).toBeInstanceOf(Error)
   await opening
   expect(current.load).toBe('ready')
-  expect(current.blocks[0]?.id).toBe('visible-history')
+  expect(latestBlocks(current.history)[0]?.id).toBe('visible-history')
 })
 
 test('a rename shows at once, survives a summary read before the write lands, and a refused one gives the title back', async () => {
@@ -1674,7 +1686,8 @@ test('a send empties the draft everywhere once the backend accepts it, and a cha
     const path = String(input)
     if (path.startsWith('/api/models')) return Response.json(stubCatalog())
     if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    if (path.endsWith('/transcript')) return Response.json({ blocks: [], subagents: [] })
+    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
+    if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
     return originalFetch(input, init)
   }) as typeof fetch
   const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()

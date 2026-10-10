@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { reactive } from 'vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -80,13 +81,15 @@ function move(item: SessionCase, host: HostChoice, name: string): void {
 
 function state(
   id: string,
-  partial: Partial<ChatSessionState> & { blocks?: Block[] },
+  { blocks = [], ...partial }: Partial<ChatSessionState> & { blocks?: Block[] },
 ): ChatSessionState {
   return reactive<ChatSessionState>({
     id: `error-${id}`,
     cwd: WORKSPACE_ROOT,
     title: 'Build a minesweeper game',
-    blocks: [],
+    history: wholeHistory(blocks),
+    shownAt: null,
+    summaries: {},
     queue: [],
     pendingSteers: [],
     pendingCalls: [],

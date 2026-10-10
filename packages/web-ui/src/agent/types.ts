@@ -1,4 +1,5 @@
-import type { Block, ContextUsage, PendingCall, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import type { ContextUsage, InstructionEntry, PendingCall, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import type { HeldTranscript } from '@demicodes/conversation-client'
 import type { PendingAction } from './activity-slot'
 import type { SessionLoad } from './session-status'
 import type { SubagentRecord } from './subagents'
@@ -32,7 +33,17 @@ export interface ConversationState {
   id: string
   cwd: string
   title: string
-  blocks: Block[]
+  /** The parts of the root's transcript the page holds (`web-application.md` § Transcript windows). */
+  history: HeldTranscript
+  /** The block whose window the transcript shows; null for the latest. */
+  shownAt: string | null
+  /**
+   * The entries of the root's newest instructions block as a page of the
+   * transcript named them, for when the page does not hold that block.
+   */
+  instructions: InstructionEntry[]
+  /** Each compaction marker's boundary's summary size, by the marker's id, as pages named them. */
+  summaries: Record<string, number>
   phase: SessionPhase
   queue: QueuedMessage[]
   pendingSteers: PendingSteerMessage[]
@@ -64,7 +75,9 @@ export interface ChatSessionState
     | 'id'
     | 'cwd'
     | 'title'
-    | 'blocks'
+    | 'history'
+    | 'shownAt'
+    | 'summaries'
     | 'queue'
     | 'pendingSteers'
     | 'pendingCalls'

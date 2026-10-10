@@ -368,7 +368,9 @@ fn without_attachment_flags(value: &mut serde_json::Value) -> bool {
 /// leaving the field out writes them as format 2. Commands outlive their
 /// connections: a running one is recorded, none of which 0.1.21 kept, and a
 /// lost one says why (command ending format 2), which for 0.1.21's, lost
-/// with their connections, is that.
+/// with their connections, is that. A page of history is read by the
+/// blocks' types and found by a block's id or a command's, which the new
+/// indexes serve.
 fn from_0_1_21(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     transaction.execute_batch(
         "
@@ -409,6 +411,9 @@ CREATE TABLE running_commands (
   places      TEXT NOT NULL
 ) STRICT;
 CREATE INDEX running_commands_of_node ON running_commands (node_id);
+CREATE INDEX blocks_by_type ON blocks (node_id, json_extract(block, '$.type'), idx);
+CREATE INDEX blocks_by_id ON blocks (json_extract(block, '$.id'));
+CREATE INDEX blocks_by_command ON blocks (json_extract(block, '$.view.commandId'));
 ",
     )?;
     transaction.execute(
@@ -1182,6 +1187,12 @@ CREATE TABLE blocks (
   block   TEXT NOT NULL,
   PRIMARY KEY (node_id, idx)
 ) STRICT;
+-- A page of a transcript is read by its requests, which start at its user
+-- blocks; a block is found by its id, and the call that started a command
+-- by the command its view names (web-api.md § Conversation history).
+CREATE INDEX blocks_by_type ON blocks (node_id, json_extract(block, '$.type'), idx);
+CREATE INDEX blocks_by_id ON blocks (json_extract(block, '$.id'));
+CREATE INDEX blocks_by_command ON blocks (json_extract(block, '$.view.commandId'));
 
 -- Each ended command's whole output: stored as a blob, with the bytes at
 -- its end the backend does not have and why; or not stored, and why.

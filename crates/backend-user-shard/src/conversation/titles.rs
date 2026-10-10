@@ -277,10 +277,9 @@ impl Shard {
             None => {
                 services
                     .conversations
-                    .read(&record.id, tree::history)
+                    .read(&record.id, tree::root_blocks)
                     .await?
                     .unwrap_or_default()
-                    .blocks
             }
         };
         let messages: Vec<String> = blocks.iter().filter_map(message_text).collect();

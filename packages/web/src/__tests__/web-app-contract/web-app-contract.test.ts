@@ -13,7 +13,14 @@ import {
 } from '@demicodes/web-ui/agent/message-editing'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { ConversationSocketError, connectConversationClient } from '@demicodes/web-ui/transport/conversation-socket'
-import type { ClientSessionEvent } from '@demicodes/web-ui/transport/protocol'
+import {
+  EMPTY_TRANSCRIPT,
+  applyTranscriptPatches,
+  heldBlocks,
+  resetTranscript,
+  type ClientSessionEvent,
+  type HeldTranscript,
+} from '@demicodes/web-ui/transport/protocol'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../../api/client'
 import { changeReplacedDraft, loadDraft, saveDraft } from '../../api/drafts'
 import {
@@ -23,7 +30,8 @@ import {
   devicesSchema,
   modelCatalogSchema,
   providerAnswerSchema,
-  transcriptSchema,
+  transcriptPageSchema,
+  wholeBlockSchema,
   type Claim,
   type ConversationPatch,
   type CreateConversation,
@@ -134,11 +142,29 @@ async function patchConversation(id: string, patch: ConversationPatch): Promise<
 }
 
 /** The conversation's socket, as the page connects it. */
-function connect(id: string) {
-  return connectConversationClient(webBrowser.socketUrl(`/conversations/${id}/stream`))
+/** The root's transcript each client's page holds, as the page folds it from the client's events. */
+const held = new WeakMap<Client, HeldTranscript>()
+
+async function connect(id: string) {
+  const client = await connectConversationClient(webBrowser.socketUrl(`/conversations/${id}/stream`))
+  held.set(client, EMPTY_TRANSCRIPT)
+  client.subscribe((event) => {
+    const history = held.get(client) ?? EMPTY_TRANSCRIPT
+    if (event.type === 'transcript_reset') {
+      held.set(client, resetTranscript(history, event, event.asked))
+    } else if (event.type === 'transcript_patch') {
+      held.set(client, applyTranscriptPatches(history, event.patches))
+    }
+  })
+  return client
 }
 
-type Client = Awaited<ReturnType<typeof connect>>
+type Client = Awaited<ReturnType<typeof connectConversationClient>>
+
+/** The root's blocks a client's page holds. */
+function transcriptOf(client: Client): Block[] {
+  return heldBlocks(held.get(client) ?? EMPTY_TRANSCRIPT)
+}
 
 /**
  * The conversation's socket, connected and opened, once its snapshot is in:
@@ -216,9 +242,24 @@ function pageShows(page: ReturnType<typeof openPage>, id: string, check: (summar
   )
 }
 
-/** The transcript the backend serves cold, from the conversation's database. */
+/**
+ * The transcript the backend serves cold, from the conversation's database:
+ * its pages back from the latest, each block then read whole
+ * (`web-api.md` § Conversation history).
+ */
 async function coldTranscript(id: string) {
-  return readResponse(await apiRequest(`/conversations/${id}/transcript`), transcriptSchema)
+  const path = `/conversations/${id}/transcript`
+  let page = await readResponse(await apiRequest(path), transcriptPageSchema)
+  let light = page.blocks
+  while (page.start > 0) {
+    page = await readResponse(await apiRequest(`${path}?before=${page.start}&edge=${light[0]!.id}`), transcriptPageSchema)
+    light = [...page.blocks, ...light]
+  }
+  const blocks: Block[] = []
+  for (const block of light) {
+    blocks.push((await readResponse(await apiRequest(`${path}/blocks/${block.id}`), wholeBlockSchema)).block)
+  }
+  return { blocks }
 }
 
 /** A device paired as the page pairs one: its runner prints a code, and the signed-in page claims it. */
@@ -335,7 +376,7 @@ test('a conversation created through the API runs a turn, and the client receive
     // The send resolves when the action it started ends.
     await client.send([text('Say hello')])
     expect(phases).toEqual(['idle', 'running', 'idle'])
-    const blocks = client.transcript().blocks
+    const blocks = transcriptOf(client)
     // The model learned its Host before its first request.
     expect(kinds(blocks)).toEqual(['user', 'context', 'text', 'response'])
     expect(blocks[2]).toMatchObject({ type: 'text', text: 'Hello from the script.' })
@@ -360,7 +401,7 @@ test('a scripted tool call runs on the real runner, and its result appears in th
   try {
     await client.open()
     await client.send([text('Write the probe')])
-    const blocks = client.transcript().blocks
+    const blocks = transcriptOf(client)
     // The switch to the device reaches the model as the context of its next request.
     expect(kinds(blocks)).toEqual(['user', 'context', 'tool_call', 'response', 'text', 'response'])
     const call = blocks[2]
@@ -391,7 +432,7 @@ test('after a reload, the transcript the client assembled from live patches equa
     await live.send([text('Run a command')])
     // A send resolves when the socket shows idle, once the turn's save has committed.
     await live.send([text('Answer again')])
-    assembled = live.transcript().blocks
+    assembled = transcriptOf(live)
   } finally {
     live.disconnect()
   }
@@ -425,14 +466,14 @@ test('a submitted message is acknowledged once it is in the transcript, before t
     const messageId = crypto.randomUUID()
     await client.submit([text('Acknowledge me')], messageId)
     // The page clears its composer now; the reply has not come.
-    const written = client.transcript().blocks
+    const written = transcriptOf(client)
     expect(kinds(written)).toEqual(['user'])
     expect(written[0]).toMatchObject({ type: 'user', turnId: messageId, content: [{ type: 'text', text: 'Acknowledge me' }] })
     await held.requested
     const ended = idle(client)
     held.release()
     await ended
-    expect(kinds(client.transcript().blocks)).toEqual(['user', 'context', 'text', 'response'])
+    expect(kinds(transcriptOf(client))).toEqual(['user', 'context', 'text', 'response'])
   } finally {
     client.disconnect()
   }
@@ -448,7 +489,7 @@ test('an edit of the last message replaces it and what follows, and an edit of a
   try {
     await client.send([text('First message')])
     await client.send([text('Second message')])
-    const blocks = client.transcript().blocks
+    const blocks = transcriptOf(client)
     const target = blocks.find((block) => block.id === lastEditableUserMessageId(blocks))
     const version = client.transcriptVersion()
     if (!target || !version) {
@@ -461,7 +502,7 @@ test('an edit of the last message replaces it and what follows, and an edit of a
     const ended = idle(client)
     await client.editAndSend(sentEditRequest(editing.request))
     await ended
-    const edited = client.transcript().blocks
+    const edited = transcriptOf(client)
     expect(kinds(edited)).toEqual(['user', 'context', 'text', 'response', 'user', 'text', 'response'])
     expect(edited.slice(0, 4)).toEqual(blocks.slice(0, 4))
     expect(edited[4]).toMatchObject({ type: 'user', content: [{ type: 'text', text: 'Edited second message' }] })
@@ -481,7 +522,7 @@ test('an edit of the last message replaces it and what follows, and an edit of a
     }
     const stale = beginMessageEdit(first, version)
     await expect(client.editAndSend(sentEditRequest(stale.request))).rejects.toBeInstanceOf(EditRejectedError)
-    expect(client.transcript().blocks).toEqual(edited)
+    expect(transcriptOf(client)).toEqual(edited)
   } finally {
     client.disconnect()
   }
@@ -512,7 +553,7 @@ test('messages sent while a turn runs wait in the queue, where the page removes 
     expect(await afterMove).toEqual([moved, waiting])
     await held.cancelled
     await ended
-    const turns = client.transcript().blocks.flatMap((block) => (block.type === 'user' ? [JSON.stringify(block.content)] : []))
+    const turns = transcriptOf(client).flatMap((block) => (block.type === 'user' ? [JSON.stringify(block.content)] : []))
     expect(turns.map((content) => content.match(/(\w+) message/)?.[1])).toEqual(['Running', 'Moved', 'Waiting'])
     expect(JSON.stringify(vendor.turns().slice(-3))).not.toContain('Removed message')
   } finally {
@@ -537,7 +578,7 @@ test('a steer of the running turn is listed as pending, and the model reads it a
     const ended = idle(client)
     held.release()
     await ended
-    const blocks = client.transcript().blocks
+    const blocks = transcriptOf(client)
     expect(kinds(blocks)).toEqual(['user', 'context', 'text', 'response', 'steer', 'text', 'response'])
     expect(blocks[4]).toMatchObject({ type: 'steer', id: steerId })
     expect(client.pendingSteers()).toEqual([])
@@ -580,7 +621,7 @@ test('Send now returns the running call at once and its command runs on: a steer
     client.sendQueuedMessage(queued)
     await ended
 
-    const blocks = client.transcript().blocks
+    const blocks = transcriptOf(client)
     expect(kinds(blocks)).toEqual(['user', 'context', 'tool_call', 'response', 'steer', 'tool_call', 'response', 'user', 'text', 'response'])
     for (const call of [blocks[2], blocks[5]]) {
       expect(call).toMatchObject({ type: 'tool_call', status: 'completed', view: { kind: 'shell', status: 'running' } })
@@ -623,13 +664,13 @@ test('Stop ends the running turn with its pending steer written, and Continue go
     expect(await client.abort()).toEqual({ target: 'active_provider_stream', canAbortAgain: false })
     // The answer comes once the stop is in the transcript, and the backend
     // stopped asking the model.
-    expect(kinds(client.transcript().blocks)).toEqual(['user', 'context', 'steer', 'abort'])
+    expect(kinds(transcriptOf(client))).toEqual(['user', 'context', 'steer', 'abort'])
     await held.cancelled
     // Continue is admitted once the session is idle, after the stopped
     // turn's save (`runtime.md` § Actions); the answer to Stop comes before.
     await stopped
     await client.resume()
-    const blocks = client.transcript().blocks
+    const blocks = transcriptOf(client)
     expect(blocks.find((block) => block.type === 'abort')).toMatchObject({ isResumed: true })
     expect(blocks.at(-2)).toMatchObject({ type: 'text', text: 'Continuing with the steer.' })
     expect(userTexts(vendor.turns().at(-1))).toContain('Use the other approach')
@@ -665,7 +706,7 @@ test('the page answers a running command\'s prompt, and the command\'s output re
     await client.shellWrite(commandId, 'contract\n')
     expect(await exited).toMatchObject({ status: 'exited', exitCode: 0, commandId, tail: 'name?\ngot contract\n' })
     await ended
-    const call = client.transcript().blocks.find((block) => block.type === 'tool_call')
+    const call = transcriptOf(client).find((block) => block.type === 'tool_call')
     expect(call).toMatchObject({ toolName: 'shell', status: 'completed' })
     expect(JSON.stringify(call?.output)).toContain('got contract')
     expect(JSON.stringify(vendor.turns().at(-1)?.messages)).toContain('got contract')

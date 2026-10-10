@@ -21,7 +21,9 @@ export interface PendingCallRenderBlock {
 export type MessageListBlock =
   Block | PendingSteerRenderBlock | QueueDividerBlock | QueuedRenderBlock | CompactionProgressBlock |
   PendingCallRenderBlock | WorkGroupBlock |
-  { type: 'pending_submission'; id: string; submission: PendingSubmissionState }
+  { type: 'pending_submission'; id: string; submission: PendingSubmissionState } |
+  /** The edge of a window that does not reach its transcript's start or end, which shows its next page coming. */
+  { type: 'history_edge'; id: 'history-before' | 'history-after' }
 
 export function pendingSteersToRenderBlocks(
   pendingSteers: readonly PendingSteerMessage[]

@@ -19,7 +19,7 @@ use demi_backend_providers::llm::families::{
     FamilyArgs, FamilyCredential, FamilyError, ProviderFamily,
 };
 use demi_conversation_socket_protocol::{
-    ClientFrame, EditOutcome, EditRequest, ServerFrame, TranscriptVersion,
+    ClientFrame, EditOutcome, EditRequest, Failures, ServerFrame, SubagentJob, TranscriptVersion,
 };
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_provider_common::{
@@ -32,8 +32,8 @@ use demi_shared_types::{
 };
 use demi_web_api_protocol::conversations::{
     BatchAnswer, BatchResult, ConversationStatus, ConversationSummary, CreatedConversation,
-    ConversationUpdate, Conversations, FieldResult, ModelSettings, PatchField, Transcript,
-    TurnOutcome,
+    ConversationUpdate, Conversations, FieldResult, ModelSettings, PatchField, Subagents,
+    TranscriptPage, TurnOutcome, WholeBlock,
 };
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
 use demi_web_api_protocol::providers::{CredentialKind, ProviderAnswer};
@@ -191,7 +191,7 @@ impl Socket {
     /// Opens the conversation, with the model its record holds, and reads
     /// the handshake.
     pub(crate) async fn open(&mut self) -> Vec<ServerFrame> {
-        self.send(&ClientFrame::Open {}).await;
+        self.send(&ClientFrame::Open { from: None, edge: None }).await;
         let handshake = self
             .until(|frame| matches!(frame, ServerFrame::PendingSteers { .. }))
             .await;
@@ -252,9 +252,11 @@ impl Socket {
         }
     }
 
-    /// The live transcript, as a fresh reset sends it.
+    /// The live transcript from the start of its latest page, as a fresh
+    /// reset sends it to a page that holds none of it; the whole of a
+    /// transcript short enough for one page.
     pub(crate) async fn live(&mut self) -> Vec<Block> {
-        self.send(&ClientFrame::SyncTranscript {}).await;
+        self.send(&ClientFrame::SyncTranscript { from: None, edge: None }).await;
         let frames = self
             .until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
             .await;
@@ -529,20 +531,80 @@ pub(crate) async fn summary(
         .expect("the conversation is listed")
 }
 
-pub(crate) async fn transcript(backend: &TestBackend, session: &Session, id: &str) -> Transcript {
-    let read = backend
-        .get(
-            &format!("/api/conversations/{id}/transcript"),
-            Some(session),
+/// A conversation's history as the backend serves it cold
+/// (`web-api.md` § Conversation history): the root's blocks, each page read
+/// back to the start and each block then read whole, with their failure
+/// facts, and the conversation's subagents.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Cold {
+    pub blocks: Vec<Block>,
+    pub failures: Option<Failures>,
+    pub subagents: Vec<SubagentJob>,
+}
+
+pub(crate) async fn transcript(backend: &TestBackend, session: &Session, id: &str) -> Cold {
+    let (blocks, failures) = agent_history(backend, session, id, None).await;
+    let listed = read_ok(backend, session, &format!("/api/conversations/{id}/subagents")).await;
+    let Subagents { subagents } = listed.json();
+    Cold {
+        blocks,
+        failures,
+        subagents,
+    }
+}
+
+/// One agent's transcript as the page would read it: its pages, back from
+/// the latest, then each block whole; the root's without `node`.
+pub(crate) async fn agent_history(
+    backend: &TestBackend,
+    session: &Session,
+    id: &str,
+    node: Option<&str>,
+) -> (Vec<Block>, Option<Failures>) {
+    let node_query = node.map(|node| format!("node={node}&")).unwrap_or_default();
+    let base = format!("/api/conversations/{id}/transcript");
+    let mut page: TranscriptPage = read_ok(backend, session, &format!("{base}?{node_query}"))
+        .await
+        .json();
+    let mut light = page.blocks;
+    while page.start > 0 {
+        let edge = light[0].id().clone();
+        page = read_ok(
+            backend,
+            session,
+            &format!("{base}?{node_query}before={}&edge={edge}", page.start),
         )
-        .await;
+        .await
+        .json();
+        light.splice(0..0, page.blocks);
+    }
+    let mut blocks = Vec::with_capacity(light.len());
+    let mut failures: Option<Failures> = None;
+    for block in light {
+        let whole: WholeBlock = read_ok(
+            backend,
+            session,
+            &format!("{base}/blocks/{}?{node_query}", block.id()),
+        )
+        .await
+        .json();
+        if let Some(facts) = whole.failures {
+            failures.get_or_insert_with(Failures::new).extend(facts);
+        }
+        blocks.push(whole.block);
+    }
+    (blocks, failures)
+}
+
+async fn read_ok(backend: &TestBackend, session: &Session, path: &str) -> crate::support::Answer {
+    let read = backend.get(path, Some(session)).await;
     assert_eq!(
         read.status,
         StatusCode::OK,
-        "{}",
+        "{path}: {}",
         String::from_utf8_lossy(&read.body)
     );
-    read.json()
+    read
 }
 
 pub(crate) async fn usage(backend: &TestBackend, session: &Session) -> UsageTotals {
@@ -1207,7 +1269,7 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
     };
     assert_eq!(code.as_deref(), Some("invalid_frame"));
     // A conversation without a model opens no tree.
-    socket.send(&ClientFrame::Open {}).await;
+    socket.send(&ClientFrame::Open { from: None, edge: None }).await;
     let ServerFrame::Error { code, .. } = socket.frame().await else {
         panic!("an open without a model is refused");
     };
@@ -1730,7 +1792,7 @@ impl StalledPage {
     /// length it answers: the backend is sending the reset, and the page
     /// reads no further.
     async fn open_until_the_reset_is_sent(&mut self) -> u64 {
-        let open = serde_json::to_string(&ClientFrame::Open {}).unwrap();
+        let open = serde_json::to_string(&ClientFrame::Open { from: None, edge: None }).unwrap();
         self.socket.send(Message::Text(open.into())).await.unwrap();
         // Read beneath the WebSocket, which would read the whole reset: a
         // final text frame for `opened`, then the reset's frame header with

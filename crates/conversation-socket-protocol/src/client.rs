@@ -18,8 +18,17 @@ use crate::TranscriptVersion;
 pub enum ClientFrame {
     /// Attach this connection to the conversation's tree, restoring it when
     /// it is not live with the model selection the conversation's record
-    /// holds; no frame names a model (`runtime.md` § Model switch).
-    Open {},
+    /// holds; no frame names a model (`runtime.md` § Model switch). `from`
+    /// and `edge` name the root's blocks the page holds, so the reset sends
+    /// none before them (`runtime.md` § Where a reset starts).
+    Open {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(skip)]
+        from: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(skip)]
+        edge: Option<BlockId>,
+    },
     /// Submit a message; its id becomes its turn's id and its queue entry's.
     Send {
         #[garde(skip)]
@@ -83,8 +92,16 @@ pub enum ClientFrame {
         #[garde(skip)]
         command_id: CommandId,
     },
-    /// Ask for a fresh transcript, after a gap in the patch revisions.
-    SyncTranscript {},
+    /// Ask for a fresh transcript, after a gap in the patch revisions, from
+    /// the page's blocks as `open` names them.
+    SyncTranscript {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(skip)]
+        from: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(skip)]
+        edge: Option<BlockId>,
+    },
     /// Dispose the tree.
     Close {},
 }
@@ -120,7 +137,7 @@ serde_plain::derive_fromstr_from_deserialize!(ClientFrameKind);
 impl ClientFrame {
     pub fn kind(&self) -> ClientFrameKind {
         match self {
-            Self::Open {} => ClientFrameKind::Open,
+            Self::Open { .. } => ClientFrameKind::Open,
             Self::Send { .. } => ClientFrameKind::Send,
             Self::EditAndSend { .. } => ClientFrameKind::EditAndSend,
             Self::Steer { .. } => ClientFrameKind::Steer,
@@ -137,7 +154,7 @@ impl ClientFrame {
             Self::Compact {} => ClientFrameKind::Compact,
             Self::ShellWrite { .. } => ClientFrameKind::ShellWrite,
             Self::ShellAbort { .. } => ClientFrameKind::ShellAbort,
-            Self::SyncTranscript {} => ClientFrameKind::SyncTranscript,
+            Self::SyncTranscript { .. } => ClientFrameKind::SyncTranscript,
             Self::Close {} => ClientFrameKind::Close,
         }
     }
@@ -291,3 +308,4 @@ pub enum MediaRef {
         file_name: String,
     },
 }
+

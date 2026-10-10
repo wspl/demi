@@ -2,8 +2,7 @@
 //! § Sidebar mutations, read state and page synchronization): creating a
 //! conversation under the id the web app chose, listing the caller's
 //! conversations, changing their fields one patch at a time or in a batch,
-//! forking one, reading one's history as its database holds it,
-//! acknowledging its output, deleting it, and its socket, `WS /conversations/:id/stream`,
+//! forking one, acknowledging its output, deleting it, and its socket, `WS /conversations/:id/stream`,
 //! which moves into the caller's shard once upgraded. A conversation the
 //! caller does not own answers like a missing one.
 
@@ -20,7 +19,7 @@ use demi_backend_page_sync::Part;
 use demi_web_api_protocol::conversations::{
     BatchAnswer, BatchResult, ConversationBatch, ConversationPatch, CreatedConversation,
     ConversationUpdate, Conversations, ConversationsQuery, CreateConversation, FieldResult,
-    ForkAnswer, ForkRequest, ReadRequest, SubagentHistory, Transcript,
+    ForkAnswer, ForkRequest, ReadRequest,
 };
 use demi_web_api_protocol::attachments::ConversationAttachment;
 use demi_web_api_protocol::error::ErrorCode;
@@ -33,7 +32,7 @@ use super::gate::AuthUser;
 use super::hosts;
 use super::query::QueryParams;
 use demi_backend_user_shard::conversation::titles::TitleRefusal;
-use demi_backend_user_shard::conversation::{ForkRefusal, failure_facts};
+use demi_backend_user_shard::conversation::ForkRefusal;
 use demi_backend_user_shard::services::Services;
 
 fn not_found() -> ApiError {
@@ -110,41 +109,6 @@ pub(super) async fn create(
         .call(move |shard, _| async move { shard.conversation_summary(record).await })
         .await??;
     Ok((status, Json(CreatedConversation { conversation })))
-}
-
-/// `GET /conversations/:id/transcript`: the history as the conversation's
-/// database holds it, with the failure facts of its error blocks. It reads
-/// without a live session and wakes nothing.
-pub(super) async fn transcript(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-) -> Result<Json<Transcript>, ApiError> {
-    let services = &state.services;
-    let record = owned(services, &user.id, &id).await?;
-    let history = services
-        .conversations
-        .read(&record.id, tree::history)
-        .await?
-        .unwrap_or_default();
-    let failures = failure_facts(&services.assembly, &history.blocks).await;
-    let mut subagents = Vec::with_capacity(history.subagents.len());
-    for (node, blocks) in history.subagents {
-        let Some(subagent) = node.job() else {
-            unreachable!("a subagent's record names its parent");
-        };
-        let failures = failure_facts(&services.assembly, &blocks).await;
-        subagents.push(SubagentHistory {
-            subagent,
-            blocks,
-            failures,
-        });
-    }
-    Ok(Json(Transcript {
-        blocks: history.blocks,
-        failures,
-        subagents,
-    }))
 }
 
 /// `GET /conversations/:id/attachments/:attachment`: an attachment the agent

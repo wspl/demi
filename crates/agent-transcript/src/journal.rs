@@ -124,7 +124,7 @@ impl Journal {
 }
 
 /// A block's index as a patch names it.
-fn patch_index(index: usize) -> u32 {
+pub(crate) fn patch_index(index: usize) -> u32 {
     // A transcript lives in memory, which holds far fewer than 2^32 blocks.
     u32::try_from(index).expect("a transcript holds fewer than 2^32 blocks")
 }

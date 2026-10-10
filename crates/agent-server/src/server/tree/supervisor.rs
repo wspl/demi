@@ -15,7 +15,9 @@ use demi_agent_session::{
 };
 use demi_agent_store::{ClosePhase, NodeClose, NodeRecord};
 use demi_agent_tools::HostResolver;
-use demi_conversation_socket_protocol::{JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
+use demi_conversation_socket_protocol::{
+    JobPhase, ServerFrame, SubagentEvent, TranscriptPatch, index_u32, latest_page_start,
+};
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::Purpose;
 use demi_shared_types::{
@@ -1166,11 +1168,18 @@ fn child_frames<H: HostResolver>(child: &Child<H>) -> [ServerFrame; 3] {
             event: SubagentEvent::Started,
             job: child.node.record().job().expect("a child has a job"),
         },
-        ServerFrame::SubagentTranscriptReset {
-            subagent_id: child.id().clone(),
-            blocks: transcript.blocks,
-            revision: transcript.version.revision,
-            failures: None,
+        {
+            // The page holds none of a child's blocks until it shows it
+            // (`runtime.md` § Where a reset starts).
+            let start = latest_page_start(&transcript.blocks);
+            ServerFrame::SubagentTranscriptReset {
+                subagent_id: child.id().clone(),
+                start: index_u32(start),
+                length: index_u32(transcript.blocks.len()),
+                blocks: transcript.blocks[start..].to_vec(),
+                revision: transcript.version.revision,
+                failures: None,
+            }
         },
         ServerFrame::PendingCalls {
             subagent_id: Some(child.id().clone()),

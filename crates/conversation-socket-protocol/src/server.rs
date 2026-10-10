@@ -45,8 +45,13 @@ pub enum ServerFrame {
         #[garde(skip)]
         reason: String,
     },
-    /// Every block, with the transcript's version.
+    /// The blocks from `start` to the end, whole, with the transcript's
+    /// length and version (`runtime.md` § Where a reset starts).
     TranscriptReset {
+        #[garde(skip)]
+        start: u32,
+        #[garde(skip)]
+        length: u32,
         #[serde(with = "demi_shared_types::client_blocks")]
         #[schemars(with = "Vec<Block>")]
         #[garde(dive)]
@@ -196,6 +201,12 @@ pub enum ServerFrame {
     SubagentTranscriptReset {
         #[garde(skip)]
         subagent_id: NodeId,
+        /// The index of the first block, the start of the child's latest
+        /// page, and how many blocks its transcript holds.
+        #[garde(skip)]
+        start: u32,
+        #[garde(skip)]
+        length: u32,
         #[serde(with = "demi_shared_types::client_blocks")]
         #[schemars(with = "Vec<Block>")]
         #[garde(dive)]

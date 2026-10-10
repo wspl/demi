@@ -1876,11 +1876,11 @@ gone on: block 2,999, the answer being written, has grown, and blocks 3,000
 and 3,001 are new. The reset starts at 2,999 and carries three blocks; the
 page replaces its block 2,999 and adds the rest.
 
-- `from` is the index of the last block the page holds at the end of the
-  transcript, and `edge` that block's id. A reset starts at `from`, or
-  earlier at the first block still changing: a call that is executing, or
-  the block being written. Such a block may have changed since the page read
-  it, and the reset replaces it whole.
+- `from` is the index of the first block at the end of what the page holds
+  that may have changed since the page read it: its first call that was
+  executing, or else its last block, which may be the one being written.
+  `edge` is that block's id. A reset starts at `from` and replaces the
+  blocks from there whole.
 - A block at `from` that is not `edge`, or a `from` past the transcript's
   end, means the transcript was rewritten between the page's read and the
   stream: the reset then starts at the start of the latest page, and the page

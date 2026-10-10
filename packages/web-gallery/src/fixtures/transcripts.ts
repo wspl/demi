@@ -1,5 +1,7 @@
 import { onScopeDispose, shallowReactive } from 'vue'
+import type { Block } from '@demicodes/protocol'
 import { findRequest, type ConversationTranscripts, type TranscriptRequest } from '@demicodes/web-ui/files/request-changes'
+import { wholeHistory } from '@demicodes/web-ui/agent/history'
 
 /**
  * The gallery's conversation holds every specimen's transcript: what a
@@ -10,10 +12,23 @@ import { findRequest, type ConversationTranscripts, type TranscriptRequest } fro
 const registered = shallowReactive(new Set<() => ConversationTranscripts>())
 
 /** Registers a specimen's transcripts, read when a request is looked up, until the calling scope ends. */
-export function useGalleryTranscripts(transcripts: () => ConversationTranscripts): void {
-  registered.add(transcripts)
+/** A specimen's whole transcripts, the root's and its helpers', each held as one window. */
+export interface GalleryTranscripts {
+  blocks: readonly Block[]
+  subagents: readonly { id: string; blocks: readonly Block[] }[]
+}
+
+export function useGalleryTranscripts(transcripts: () => GalleryTranscripts): void {
+  const held = (): ConversationTranscripts => {
+    const { blocks, subagents } = transcripts()
+    return {
+      history: wholeHistory([...blocks]),
+      subagents: subagents.map((agent) => ({ id: agent.id, history: wholeHistory([...agent.blocks]) })),
+    }
+  }
+  registered.add(held)
   onScopeDispose(() => {
-    registered.delete(transcripts)
+    registered.delete(held)
   })
 }
 
