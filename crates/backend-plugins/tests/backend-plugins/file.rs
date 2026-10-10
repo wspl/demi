@@ -380,3 +380,41 @@ async fn the_end_report_of_a_background_job_carries_the_media_it_viewed() {
     })
     .await;
 }
+
+/// A stdout with a stray byte that is not UTF-8 is text, which shows that
+/// byte as U+FFFD, and only a NUL in its first 8 KiB or a media type makes
+/// it binary (`runtime.md` § What `demi file view` shows). The script is
+/// the one a model ran in a small repository: `cat` prints a Latin-1 line,
+/// and `grep -I` holds back the lines of a git object and a Latin-1 line
+/// while the rest prints. Before, the one byte hid the whole output as a
+/// binary stdout. A few seconds: one shell job on a real runner.
+#[tokio::test(flavor = "local")]
+async fn a_stdout_with_a_stray_byte_shows_as_text() {
+    within(async {
+        let (fixture, results) = run(
+            &["cat data/notes.txt && echo --- && grep -rn five --include=* -I ."],
+            |workspace| {
+                std::fs::create_dir_all(format!("{workspace}/data")).unwrap();
+                std::fs::create_dir_all(format!("{workspace}/.git/objects/ab")).unwrap();
+                std::fs::write(
+                    format!("{workspace}/data/notes.txt"),
+                    b"The hang limit is five seconds.\r\nCaf\xe9 at five.\r\n",
+                )
+                .unwrap();
+                std::fs::write(format!("{workspace}/.git/objects/ab/cdef"), b"x\x01five\xbb\xed\n").unwrap();
+            },
+        )
+        .await;
+        assert_exit(&results[0], "0");
+        assert_shows(
+            &results[0],
+            &[
+                "The hang limit is five seconds.\r\nCaf\u{fffd} at five.\r\n---\n",
+                "./data/notes.txt:1:The hang limit is five seconds.\r\n",
+            ],
+        );
+        assert!(!shown_output(&results[0]).contains("binary stdout"), "{}", results[0]);
+        fixture.stop().await;
+    })
+    .await;
+}

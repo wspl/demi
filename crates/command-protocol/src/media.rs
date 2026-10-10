@@ -45,6 +45,20 @@ pub fn sniff_media_type(bytes: &[u8]) -> Option<&'static str> {
     Some(media_type)
 }
 
+/// How many of their first bytes a NUL byte makes bytes binary within, as
+/// git reads them.
+const BINARY_NUL_BYTES: usize = 8 * 1024;
+
+/// Whether `bytes` are binary (`runtime.md` § What `demi file view` shows):
+/// their first 8 KiB hold a NUL byte, as git and GNU diff decide, or they
+/// begin as a media type [`sniff_media_type`] recognizes. Any other bytes are
+/// text, and a byte that is not UTF-8 shows as U+FFFD. It is the one rule for
+/// a job's stdout, edit tracking's copies and line counts, and the first
+/// bytes of a longer file answer it as the whole file would.
+pub fn is_binary(bytes: &[u8]) -> bool {
+    bytes[..bytes.len().min(BINARY_NUL_BYTES)].contains(&0) || sniff_media_type(bytes).is_some()
+}
+
 /// What a medium record says of the medium whose bytes follow
 /// (`native-runtime.md` § Response records and completion): its media type,
 /// a document's name, and the facts its header gives, which the handler

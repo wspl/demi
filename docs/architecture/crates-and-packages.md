@@ -179,14 +179,13 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     recognition of the image, video and document types a model reads in
     bytes (`sniff_media_type`), and the facts a medium record carries
     (`MediumFacts`), which the runner, the agent and the backend share; it
-    reads no image's header;
+    reads no image's header; and the one test of whether bytes are binary
+    (`is_binary`), which a job's stdout, edit tracking and line counts read;
   - package descriptors and their identities (`PackageDescriptor`), artifact
     locations and target triples (`TargetTriple`), and the one canonical
     digest of a JSON value (`canonical_digest`: the SHA-256 of its RFC 8785
     form), which also identifies the agent's edit requests;
-  - the edit journal and its context (`EditContext`, `EditJournal`), and the
-    one test of whether bytes are text (`is_text`), which edit tracking and
-    line counts read at both ends.
+  - the edit journal and its context (`EditContext`, `EditJournal`).
 - **Public boundary:** the types and functions above;
   `command_protocol::testing` finds the programs a test starts beside it
   (`built_program`) and names the operations of the runner's native fixture
