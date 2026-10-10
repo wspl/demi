@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use demi_agent_tools::testing::{field, shown_output};
-use demi_conversation_socket_protocol::{ServerFrame, ShellStatus};
+use demi_conversation_socket_protocol::ServerFrame;
 use demi_host_interface::SpawnEnv;
 use demi_provider_common::testing::MockVendor;
 use demi_shared_types::{Block, ReportEvent, SessionPhase};
@@ -156,27 +156,22 @@ async fn wakeups(backend: &TestBackend, master: &Session) -> Vec<demi_shared_typ
         .collect()
 }
 
-/// Waits until the page is shown the command `command`'s output holding
-/// `text`, which the backend received then.
-async fn until_shown(work: &mut Driven<'_>, command: &str, text: &str) {
-    work.socket
-        .until(|frame| {
-            matches!(frame, ServerFrame::ShellOutput { status, .. }
-                if status.command().command_id.as_str() == command
-                    && status.command().tail.contains(text))
-        })
-        .await;
-}
-
-/// Waits until the page is shown that the command `command` ended.
-async fn until_ended(work: &mut Driven<'_>, command: &str) {
-    work.socket
-        .until(|frame| {
-            matches!(frame, ServerFrame::ShellOutput { status, .. }
-                if status.command().command_id.as_str() == command
-                    && !matches!(**status, ShellStatus::Running { .. }))
-        })
-        .await;
+/// How many reports of a loss wait in the root's saved checkpoint for the
+/// turn to take them.
+fn lost_reports_waiting(harness: &Harness) -> usize {
+    let file = harness.data_dir().join("conversations").join(format!("{FIRST}.sqlite"));
+    let connection = rusqlite::Connection::open(file).unwrap();
+    connection.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
+    let state: String = connection
+        .query_row("SELECT state FROM nodes WHERE parent_id IS NULL", [], |row| row.get(0))
+        .unwrap();
+    let state: serde_json::Value = serde_json::from_str(&state).unwrap();
+    state["reports"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|report| report["event"]["kind"] == "lost")
+        .count()
 }
 
 /// A conversation on a device paired through `network`, opened.
@@ -553,51 +548,70 @@ async fn an_interval_report_while_the_hosts_connection_is_away_says_so_instead_o
 /// there prints `unseen` and waits.
 const SEEN_THEN_UNSEEN: &str = "printf 'seen\\n'; while [ ! -f go ]; do sleep 0.05; done; printf 'unseen\\n'; sleep 60";
 
-// About four seconds: a real device pairs, the call that starts the command
-// waits for two quiet seconds, and the device's runner starts anew while
-// the model's next step, a look at the command, is on its way.
+// About six seconds: a real device pairs, the calls that start the two
+// commands each wait for two quiet seconds, and the device's runner starts
+// anew while the model's next step, a look at one of them, is on its way.
 #[tokio::test]
-async fn a_lost_commands_report_and_a_look_show_its_output_since_the_last_look() {
+async fn a_loss_the_next_steps_look_shows_is_not_reported_and_another_reports_its_unseen_output() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let mut alpha = backend.pair(&master, "alpha").await;
     let mut work = on_device(&backend, &master, &vendor, &alpha).await;
     let home = alpha.runner.home_dir().to_owned();
-    let command = started(&mut work, "t1", SEEN_THEN_UNSEEN).await;
+    let looked_at = started(&mut work, "t1", SEEN_THEN_UNSEEN).await;
+    let other = started(
+        &mut work,
+        "t2",
+        "printf 'seen\\n'; while [ ! -f go ]; do sleep 0.05; done; printf 'other\\n'; sleep 60",
+    )
+    .await;
     std::fs::write(home.join("go"), "").unwrap();
-    until_shown(&mut work, &command, "unseen").await;
+    let mut printing = vec![(looked_at.clone(), "unseen"), (other.clone(), "other")];
+    while !printing.is_empty() {
+        if let ServerFrame::ShellOutput { status, .. } = work.socket.frame().await {
+            let command = status.command();
+            printing.retain(|(id, text)| !(command.command_id.as_str() == id && command.tail.contains(text)));
+        }
+    }
 
-    // The step is held until the loss is known, so the loss's report joins
-    // the turn when the step's response ends, before the look runs.
+    // The step is held until the losses are known, so their reports arrive
+    // while its response streams, before its look runs.
     let (open, held) = watch::channel(false);
-    let look = format!("demi shell status {command}");
+    let look = format!("demi shell status {looked_at}");
     let before = work
-        .start(vec![shell("t2", &look, 10_000).held(held), say("looked")])
+        .start(vec![shell("t3", &look, 10_000).held(held), say("looked")])
         .await;
     vendor.received(before + 1).await;
     alpha.runner.kill().await;
     alpha.runner.start_again();
-    until_ended(&mut work, &command).await;
+    // Both reports wait in the turn before the step runs: a report that
+    // came while it ran would end its window.
+    eventually("both losses' reports wait", || {
+        let waiting = lost_reports_waiting(&harness);
+        async move { waiting == 2 }
+    })
+    .await;
     open.send_replace(true);
-    // The turn's running phase came before the end.
+    // The turn's running phase came before the ends.
     work.socket
         .until(|frame| matches!(frame, ServerFrame::Phase { phase: SessionPhase::Idle }))
         .await;
 
-    // The report shows what the model had not seen, and the reason only
-    // where it says why.
+    // The look shows the loss and the output since the model's last look,
+    // and that loss is not reported again (`runtime.md` § Command reports).
     let reason = demi_backend_remote_host::RUNNER_RESTARTED;
-    let lost = format!("Command {command} (t1) was lost: {reason}. Start it again if it is still needed.");
-    assert_ne!(requested(&vendor, &format!(r#"{lost}\noutput:\nunseen""#)), 0);
-    // The look after it says how the command ended, then the output since
-    // that report, which is none.
     let looked = &work.observe(before).received[0];
     assert_eq!(
         shown_output(looked),
-        format!("status: lost: {reason}\ncommandId: {command}\noutput: (empty)\n"),
+        format!("status: lost: {reason}\ncommandId: {looked_at}\noutput:\nunseen\n"),
         "{looked}"
     );
+    assert_eq!(requested(&vendor, &format!("Command {looked_at} (t1) was lost")), 0);
+    // The other loss reports what the model had not seen, and the reason
+    // only where it says why.
+    let lost = format!("Command {other} (t2) was lost: {reason}. Start it again if it is still needed.");
+    assert_ne!(requested(&vendor, &format!(r#"{lost}\noutput:\nother""#)), 0);
     backend.close().await;
 }
 
@@ -651,5 +665,34 @@ async fn a_report_after_a_backend_restart_counts_from_the_commands_start_and_sho
     assert_eq!(report.output, "", "the model saw the output before the restart");
     std::fs::write(home.join("finish"), "").unwrap();
     until_requested(&vendor, &format!("Command {command} (t1) ended with exit code 0.")).await;
+    backend.close().await;
+}
+
+// About four seconds: a real device pairs, the call that starts the command
+// waits for two quiet seconds, and the backend restarts.
+#[tokio::test]
+async fn a_look_after_a_backend_restart_counts_from_the_commands_start() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    let mut work = on_device(&backend, &master, &vendor, &alpha).await;
+    let home = alpha.runner.home_dir().to_owned();
+    let command = started(&mut work, "t1", "printf 'started\\n'; while [ ! -f finish ]; do sleep 0.05; done").await;
+
+    // The command has run a minute when the backend starts again.
+    let address = backend.address();
+    backend.close().await;
+    harness.clock.advance(jiff::SignedDuration::from_secs(60));
+    let backend = harness.start_at(address).await;
+    backend.until_online(&master, alpha.id(), true).await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/lifetime").await;
+    work.reconnect(&backend, &master, FIRST, &provider).await;
+    let look = format!("demi shell status {command}");
+    let looked = work.turn(vec![shell("t2", &look, 10_000), say("looked")]).await;
+    let looked = &looked.received[0];
+    let running_ms: u64 = field(shown_output(looked).as_str(), "runningMs").parse().unwrap();
+    assert!(running_ms >= 60_000, "{looked}");
+    std::fs::write(home.join("finish"), "").unwrap();
     backend.close().await;
 }
