@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { z } from 'zod'
 import { reportError } from '@demicodes/web-ui/infra/errors'
@@ -28,7 +28,36 @@ const ABNORMAL_CLOSURE = 1006
 export type PartEvent = Exclude<SyncEvent, { type: 'snapshot' | 'heartbeat' }>
 
 /** A part of the product state, which a message or a write's answer replaces whole. */
-type Part = `conversation:${string}` | `plugin:${string}` | Exclude<PartEvent['type'], 'conversation' | 'conversation_deleted' | 'plugin'>
+export type Part = `conversation:${string}` | `plugin:${string}` | Exclude<PartEvent['type'], 'conversation' | 'conversation_deleted' | 'plugin'>
+
+/**
+ * What a write's answer says of a part: the part's value, or how to make it
+ * of the state the page last read, as for an answer that carries only one
+ * item of a list.
+ */
+export type Answer = PartEvent | ((read: ProductState) => PartEvent)
+
+/**
+ * A change of this page's own that its write has not landed yet
+ * (`web-application.md` § Responding to the user): the page shows it over
+ * the state it last read from the moment the user made it.
+ */
+export interface ProductChange {
+  /** Its write goes out now; a value the channel brings of its part from here may be newer than the write's. */
+  send(): void
+  /**
+   * The write was answered: `answer`, or, when the answer carries nothing,
+   * the change itself, applies as `answered` applies it, and the change
+   * leaves. When the channel brought its part since the write went out, the
+   * change stays until that part's next value from the channel.
+   */
+  land(answer?: Answer): void
+  /**
+   * The write failed or the backend refused it: the change leaves at once,
+   * and `answer`, what the backend has, applies as `answered` applies it.
+   */
+  drop(answer?: Answer): void
+}
 
 function partOf(event: PartEvent): Part {
   switch (event.type) {
@@ -78,8 +107,41 @@ function withoutOff(
   return Object.fromEntries(Object.entries(states).filter(([id]) => !off.has(id)))
 }
 
+/** The value `state` holds of `part`, as a message that carries it says it. */
+function partEvent(state: ProductState, part: Part): PartEvent {
+  switch (part) {
+    case 'conversation_order':
+      return { type: 'conversation_order', ids: state.conversations.map((conversation) => conversation.id) }
+    case 'preferences':
+      return { type: 'preferences', preferences: state.preferences }
+    case 'user':
+      return { type: 'user', user: state.user }
+    case 'workspaces':
+      return { type: 'workspaces', workspaces: state.workspaces }
+    case 'devices':
+      return { type: 'devices', devices: state.devices }
+    case 'plugins':
+      return { type: 'plugins', plugins: state.plugins }
+    case 'providers':
+      return { type: 'providers', providers: state.providers }
+    case 'cloud':
+      return { type: 'cloud', cloud: state.cloud }
+    case 'subagents':
+      return { type: 'subagents', subagents: state.subagents }
+    case 'instructions':
+      return { type: 'instructions', instructions: state.instructions }
+  }
+  if (part.startsWith('plugin:')) {
+    const plugin = part.slice('plugin:'.length)
+    return { type: 'plugin', plugin, state: state.pluginStates[plugin] ?? null }
+  }
+  const id = part.slice('conversation:'.length)
+  const conversation = state.conversations.find((candidate) => candidate.id === id)
+  return conversation ? { type: 'conversation', conversation } : { type: 'conversation_deleted', id }
+}
+
 /** `state` with the part `event` carries replaced. */
-function withPart(state: ProductState, event: PartEvent): ProductState {
+export function withPart(state: ProductState, event: PartEvent): ProductState {
   switch (event.type) {
     case 'conversation':
       return { ...state, conversations: withSummary(state.conversations, event.conversation) }
@@ -133,16 +195,36 @@ function parse(data: unknown): unknown {
   }
 }
 
+/** A change in the list of those not landed yet. */
+interface PendingChange {
+  part: Part
+  apply: (state: ProductState) => ProductState
+  /** Where the channel stood when its write went out; null before. */
+  sentAt: number | null
+  /** Its answer came after a value of its part from the channel: it leaves with the part's next value. */
+  waits: boolean
+}
+
 /**
  * The product state this page shows around its conversations
  * (`web-application.md` § Page synchronization): the one module that follows
  * it, through the synchronization channel. The channel's snapshot is the
  * whole copy, and each later message replaces one part of it; each state of
  * the page follows the copy by its own rule. Nothing asks for this state on
- * a timer or after a write: a write's answer goes through `answered`.
+ * a timer or after a write: a write's answer goes through `answered`, or
+ * lands the change the write made (`change`).
  */
 export const useProduct = defineStore('product', () => {
-  const snapshot = ref<ProductState | null>(null)
+  /** The state as the channel and the writes' answers last left it. */
+  const read = ref<ProductState | null>(null)
+  /** This page's changes not landed yet, in the order the user made them. */
+  const changes = shallowRef<PendingChange[]>([])
+  /**
+   * What the page shows: the state it last read with its own changes not
+   * landed yet applied on top, in order (`web-application.md` § Responding
+   * to the user).
+   */
+  const snapshot = computed(() => read.value && changes.value.reduce((state, change) => change.apply(state), read.value))
   const load = ref<'loading' | 'ready' | 'failed'>('loading')
   const modelSnapshot = ref<{ key: string; providers: CatalogProvider[]; checkedAt: number } | null>(null)
   const vendors = ref<VendorCatalog | null>(null)
@@ -344,16 +426,20 @@ export const useProduct = defineStore('product', () => {
       if (returned) {
         reconnectNow()
       }
-      snapshot.value = event.state
+      read.value = event.state
+      // The snapshot is the next value of every part.
+      release(() => true)
       load.value = 'ready'
       // Model discovery never holds the page; it records its own failure.
       void loadModels().catch(() => {})
       return
     }
-    partAt.set(partOf(event), received)
-    if (snapshot.value) {
-      snapshot.value = withPart(snapshot.value, event)
+    const part = partOf(event)
+    partAt.set(part, received)
+    if (read.value) {
+      read.value = withPart(read.value, event)
     }
+    release((change) => change.part === part)
     if (event.type === 'providers') {
       providersChanged()
     }
@@ -386,12 +472,58 @@ export const useProduct = defineStore('product', () => {
    * that value may be newer, and if it is older, the value the write caused
    * is still to come on the channel. Answers whether it applied.
    */
-  function answered(at: number, event: PartEvent): boolean {
-    if (!snapshot.value || Math.max(snapshotAt, partAt.get(partOf(event)) ?? 0) > at) {
+  function answered(at: number, answer: Answer): boolean {
+    const state = read.value
+    if (!state) {
       return false
     }
-    snapshot.value = withPart(snapshot.value, event)
+    const event = typeof answer === 'function' ? answer(state) : answer
+    const part = partOf(event)
+    if (Math.max(snapshotAt, partAt.get(part) ?? 0) > at) {
+      return false
+    }
+    read.value = withPart(state, event)
+    // The answer is newer than every write of the part that landed before it.
+    release((change) => change.part === part)
     return true
+  }
+
+  /** The changes whose answer waits for a value from the channel that `brought` says came leave. */
+  function release(brought: (change: PendingChange) => boolean): void {
+    if (changes.value.some((change) => change.waits && brought(change))) {
+      changes.value = changes.value.filter((change) => !(change.waits && brought(change)))
+    }
+  }
+
+  /**
+   * Shows `apply`, a change the user made of `part`, over the state at once,
+   * until its write lands (`web-application.md` § Responding to the user).
+   * The caller sends the write, in order with its other writes, and says how
+   * it ended through the change it gets.
+   */
+  function change(part: Part, apply: (state: ProductState) => ProductState): ProductChange {
+    const entry: PendingChange = { part, apply, sentAt: null, waits: false }
+    changes.value = [...changes.value, entry]
+    const settle = (answer: Answer | undefined, stays: boolean) => {
+      // A change released since, as by a sign-out, has nothing left to say,
+      // and one that landed waits only for the channel.
+      if (!changes.value.includes(entry) || entry.waits) {
+        return
+      }
+      const applied = answer !== undefined && answered(entry.sentAt ?? received, answer)
+      if (stays && !applied) {
+        entry.waits = true
+        return
+      }
+      changes.value = changes.value.filter((candidate) => candidate !== entry)
+    }
+    return {
+      send: () => {
+        entry.sentAt = received
+      },
+      land: (answer = (state) => partEvent(apply(state), part)) => settle(answer, true),
+      drop: (answer) => settle(answer, false),
+    }
   }
 
   /**
@@ -605,7 +737,8 @@ export const useProduct = defineStore('product', () => {
     received = 0
     snapshotAt = 0
     partAt.clear()
-    snapshot.value = null
+    changes.value = []
+    read.value = null
     clearModels()
     vendors.value = null
     vendorRequest = null
@@ -616,6 +749,7 @@ export const useProduct = defineStore('product', () => {
 
   return {
     snapshot,
+    read,
     load,
     connection,
     newBuild,
@@ -626,6 +760,7 @@ export const useProduct = defineStore('product', () => {
     activeConversationId,
     sent,
     answered,
+    change,
     until,
     connecting,
     loadModels,

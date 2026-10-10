@@ -102,14 +102,13 @@ const selected = ref<string | null>('loading-provider')
         />
       </div>
     </GallerySpecimen>
-    <GallerySpecimen variant="Archive list load and row operation">
+    <GallerySpecimen variant="Archive list load">
       <SettingsArchived
         :load="state"
         :conversations="archivedRows"
-        :pending-ids="saving ? ['archived'] : []"
         :overlay-store="appOverlayStore"
         @open="productWould('Open the Conversation Read-Only')"
-        @restore="saving = true"
+        @restore="archivedRows = []; productWould('Open the Restored Conversation')"
         @delete="archivedRows = []"
         @retry="state = 'loading'"
       />

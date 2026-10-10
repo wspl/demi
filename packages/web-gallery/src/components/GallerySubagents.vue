@@ -15,8 +15,6 @@ const props = defineProps<{
   state: SubagentState
 }>()
 
-const switching = ref(false)
-const pending = ref<string[]>([])
 const timers = new Set<number>()
 
 /** Resolves after a beat, as a request to the backend would. */
@@ -35,21 +33,16 @@ onBeforeUnmount(() => {
   }
 })
 
-async function switchSubagents(enabled: boolean) {
-  switching.value = true
-  await beat()
+// A switch shows at once, as the product's does while its write is on its way.
+function switchSubagents(enabled: boolean) {
   props.state.enabled = enabled
-  switching.value = false
 }
 
-async function switchProfile(id: string, enabled: boolean) {
-  pending.value.push(id)
-  await beat()
+function switchProfile(id: string, enabled: boolean) {
   const profile = props.state.profiles.find((candidate) => candidate.id === id)
   if (profile) {
     profile.enabled = enabled
   }
-  pending.value = pending.value.filter((candidate) => candidate !== id)
 }
 
 async function saveProfile(id: string | null, draft: SettingsSubagentDraft) {
@@ -83,8 +76,6 @@ async function deleteProfile(id: string) {
     :models="subagentModels"
     catalog-ready
     :overlay-store="appOverlayStore"
-    :switching="switching"
-    :pending="pending"
     :save-profile="saveProfile"
     :delete-profile="deleteProfile"
     @switch="switchSubagents"

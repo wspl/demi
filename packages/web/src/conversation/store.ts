@@ -1,6 +1,6 @@
 import { computed, reactive, ref, toRaw, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { SerialQueue } from '@demicodes/utils'
+import { SerialQueue, deferred, moveBefore } from '@demicodes/utils'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import type { ClientContent } from '@demicodes/protocol'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
@@ -15,6 +15,7 @@ import {
   type MessageEditRequest,
 } from '@demicodes/web-ui/agent/message-editing'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { dismissToast } from '@demicodes/web-ui/infra/toast'
 import { showArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { forkConversation } from '../api/message-fork'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
@@ -52,6 +53,7 @@ import {
   type ConversationSummary,
   type CreateConversation,
   type DraftFile,
+  type ProductState,
   type ReadRequest,
   type SidebarReorder,
   type Subagents,
@@ -60,7 +62,7 @@ import {
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { createConversationUploads } from './uploads'
 import { useResources } from '../state/resources'
-import { useProduct } from '../state/product'
+import { useProduct, type ProductChange } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { useSession } from '../auth/session'
 import type { Conversation, ProductAttachment } from '../state/types'
@@ -87,6 +89,18 @@ function isEmptyDraft(conversation: Conversation): boolean {
   return conversation.persistence === 'draft' && !conversation.draft.trim() && !conversation.attachmentIds.length
 }
 
+/** `state` with the conversation `id` as `change` makes it; one that is gone stays gone. */
+function withConversation(
+  state: ProductState,
+  id: string,
+  change: (record: ConversationSummary) => ConversationSummary,
+): ProductState {
+  return {
+    ...state,
+    conversations: state.conversations.map((record) => record.id === id ? change(record) : record),
+  }
+}
+
 export const useConversations = defineStore('conversations', () => {
   const product = useProduct()
   const preferences = usePreferences()
@@ -98,7 +112,17 @@ export const useConversations = defineStore('conversations', () => {
    * this page or another; a page that shows one goes to a new conversation.
    */
   const deleted = reactive(new Set<string>())
+  /**
+   * The conversations with a change the page shows in progress until the
+   * backend answers, as a move to another Host (`web-application.md`
+   * § Responding to the user, What it does not).
+   */
   const pendingChanges = ref<string[]>([])
+  /**
+   * The archive or restore of each conversation on its way, which its
+   * opening waits for: the backend refuses an archived conversation's socket.
+   */
+  const archiving = new Map<string, Promise<void>>()
   /**
    * This web browser's own drafts, new conversations before their first
    * send, are on their way back from IndexedDB (`restoreLocalDrafts`): the
@@ -183,11 +207,6 @@ export const useConversations = defineStore('conversations', () => {
     }
     return status === 'completed' ? 'done' : 'idle'
   }
-
-  /** Titles the user has set that the backend has not confirmed yet, by conversation. */
-  const pendingTitles = new Map<string, string>()
-  /** Conversations whose title request the backend has not acknowledged yet. */
-  const pendingRetitles = new Set<string>()
 
   function metadata(
     record: Pick<
@@ -334,10 +353,6 @@ export const useConversations = defineStore('conversations', () => {
         const archiveChanged = current.archived !== record.archived
         Object.assign(current, metadata(record))
         followRecordModel(current, record)
-        // A summary read before the rename reached the backend must not show the old title again.
-        current.title = pendingTitles.get(current.id) ?? current.title
-        // Nor may one read before the title request arrived offer Detect Title again.
-        current.titleGenerating ||= pendingRetitles.has(current.id)
         const cached = cache.get(current.id)
         if (!cached?.runtime?.connected) {
           current.status = summaryStatus(record.status)
@@ -833,6 +848,13 @@ export const useConversations = defineStore('conversations', () => {
   ): Promise<void> {
     const { controller } = entry
     const { signal } = controller
+    // An archive or a restore on its way lands first, so the conversation
+    // opens as the backend then has it.
+    const landing = archiving.get(conversation.id)
+    if (landing) {
+      await landing
+      signal.throwIfAborted()
+    }
     // The socket's connection is made beside the reads, for a conversation
     // whose record names a model, which is one that can open; its `open`
     // waits for the transcript, which the socket's frames continue.
@@ -1012,9 +1034,16 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  async function patch(id: string, changes: ConversationPatch): Promise<boolean> {
+  /**
+   * Sends `changes` of the conversation `id` and applies the record it
+   * answers; with `shown`, the change the page shows meanwhile, which lands
+   * with it, or leaves when a field was refused. Reports refused fields and
+   * answers whether every field applied.
+   */
+  async function patch(id: string, changes: ConversationPatch, shown?: ProductChange): Promise<boolean> {
     const signal = lifetime.signal
     const sentAt = product.sent()
+    shown?.send()
     const response = await apiRequest(
       `/conversations/${encodeURIComponent(id)}`,
       {
@@ -1025,9 +1054,16 @@ export const useConversations = defineStore('conversations', () => {
     )
     const result = await readResponse(response, conversationUpdateSchema)
     signal.throwIfAborted()
-    // The answer is the record as the patch left it, which shows at once.
-    product.answered(sentAt, { type: 'conversation', conversation: result.conversation })
     const failed = result.results.flatMap((field) => field.status === 'failed' ? [field] : [])
+    // The answer is the record as the patch left it, which shows at once.
+    const answer = { type: 'conversation', conversation: result.conversation } as const
+    if (!shown) {
+      product.answered(sentAt, answer)
+    } else if (failed.length) {
+      shown.drop(answer)
+    } else {
+      shown.land(answer)
+    }
     if (failed.length) {
       reportError(
         'Some fields were not updated.',
@@ -1059,16 +1095,21 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  function batch(
-    ids: string[],
-    changes: Parameters<typeof applyBatch>[1],
-  ): Promise<boolean> {
-    return changeConversations(ids, () => applyBatch(ids, changes), false)
-  }
-
+  /**
+   * Changes the conversations' `changes`: a draft's at once, and a
+   * conversation's with a record by a write, one at a time after the page's
+   * earlier writes. With `shown`, the change shows at once and the write
+   * lands it (`web-application.md` § Responding to the user); without, it
+   * shows once answered, as a move to another Host does. A refused item is
+   * reported with why, under `failed`'s title for one conversation or for
+   * several, and only its own change leaves. Answers whether every one
+   * changed.
+   */
   async function applyBatch(
     ids: string[],
     changes: Pick<ConversationPatch, 'pinned' | 'archived' | 'target' | 'notifyAgent'>,
+    shown: boolean,
+    failed: { one: HeadlineText; many: HeadlineText },
   ): Promise<boolean> {
     // A draft has no agent to tell: the first send creates what the user sees.
     const { notifyAgent: _told, ...fields } = changes
@@ -1092,42 +1133,62 @@ export const useConversations = defineStore('conversations', () => {
     if (!ids.length) {
       return true
     }
+    // The titles a refusal names, as they are now.
+    const titles = new Map(ids.map((id) => [id, items.value.find((item) => item.id === id)?.title ?? id]))
+    // A conversation opened before the archive or restore lands waits for
+    // it; the entry stands before the change shows, which may open it.
+    const landed = deferred<void>()
+    if (fields.archived !== undefined) {
+      for (const id of ids) {
+        archiving.set(id, landed.promise)
+      }
+    }
+    const shownChanges = new Map(shown
+      ? ids.map((id) => [id, product.change(`conversation:${id}`, (state) =>
+          withConversation(state, id, (record) => ({ ...record, ...fields })))])
+      : [])
     const signal = lifetime.signal
     try {
       return await writes.run(async () => {
         signal.throwIfAborted()
         let success = true
         for (let offset = 0; offset < ids.length; offset += 100) {
+          const chunk = ids.slice(offset, offset + 100)
           const sentAt = product.sent()
+          for (const id of chunk) {
+            shownChanges.get(id)?.send()
+          }
           const response = await apiRequest('/conversations/batch', {
             method: 'POST',
             signal,
             ...jsonBody({
-              items: ids.slice(offset, offset + 100).map((id) => ({
-                id,
-                patch: changes,
-              })),
+              items: chunk.map((id) => ({ id, patch: changes })),
             } satisfies ConversationBatch),
           })
           const result = await readResponse(response, batchAnswerSchema)
           signal.throwIfAborted()
+          const failures: string[] = []
           for (const item of result.results) {
-            if (item.status === 'updated') {
-              product.answered(sentAt, { type: 'conversation', conversation: item.conversation })
+            const change = shownChanges.get(item.id)
+            if (item.status === 'refused') {
+              change?.drop()
+              failures.push(`${titles.get(item.id) ?? item.id}: ${item.message}`)
+              continue
             }
+            const answer = { type: 'conversation', conversation: item.conversation } as const
+            const failed = item.results.flatMap((field) => field.status === 'failed' ? [field] : [])
+            if (!change) {
+              product.answered(sentAt, answer)
+            } else if (failed.length) {
+              change.drop(answer)
+            } else {
+              change.land(answer)
+            }
+            failures.push(...failed.map((field) => `${titles.get(item.id) ?? item.id}: ${field.message}`))
           }
-          const titleOf = (id: string) =>
-            items.value.find((conversation) => conversation.id === id)?.title ?? id
-          const failures = result.results.flatMap((item) =>
-            item.status === 'refused'
-              ? [`${titleOf(item.id)}: ${item.message}`]
-              : item.results.flatMap((field) =>
-                  field.status === 'failed' ? [`${titleOf(item.id)}: ${field.message}`] : [],
-                ),
-          )
           if (failures.length) {
             success = false
-            reportError('Some conversations were not updated.', failures.join('\n'), {
+            reportError(failures.length === 1 && ids.length === 1 ? failed.one : failed.many, failures.join('\n'), {
               userVisible: true,
               expected: true,
             })
@@ -1138,35 +1199,53 @@ export const useConversations = defineStore('conversations', () => {
     } catch (error) {
       report('Could Not Update Conversations', error)
       return false
+    } finally {
+      // A change the answer did not name, or one whose write failed, leaves.
+      for (const change of shownChanges.values()) {
+        change.drop()
+      }
+      landed.resolve()
+      for (const id of ids) {
+        if (archiving.get(id) === landed.promise) {
+          archiving.delete(id)
+        }
+      }
     }
   }
 
   /**
-   * Archives the conversations and says so in a toast whose Undo restores
-   * the ones it archived (`product.md` § Conversations and projects).
-   * Answers whether every one was archived.
+   * Archives the conversations, which leave the list at once, and says so in
+   * a toast whose Undo restores them (`product.md` § Conversations and
+   * projects). Answers whether every one was archived.
    */
   async function archive(ids: string[]): Promise<boolean> {
-    const done = await batch(ids, { archived: true })
-    const archived = ids.filter((id) => items.value.find((item) => item.id === id)?.archived)
-    if (archived.length) {
-      showArchived(archived.length, () => void restore(archived))
+    const archived = ids.filter((id) => items.value.some((item) => item.id === id && !item.archived))
+    const done = applyBatch(ids, { archived: true }, true, {
+      one: 'Could Not Archive the Conversation',
+      many: 'Some conversations were not archived.',
+    })
+    if (!archived.length) {
+      return done
     }
-    return done
+    const toast = showArchived(archived.length, () => void restore(archived))
+    const success = await done
+    // An archive the backend refused for every one archived nothing: the
+    // toast that says it did goes, and the refusal's says why.
+    if (!archived.some((id) => items.value.find((item) => item.id === id)?.archived)) {
+      dismissToast(toast)
+    }
+    return success
   }
 
   /**
    * Deletes the conversations for good, once the user confirmed it
-   * (`product.md` § Conversations and projects): one the backend has no
-   * record of leaves this page, and each other one leaves the backend and
-   * every page. What this browser keeps of their drafts goes too. A refusal
-   * is a toast. Answers whether every one was deleted.
+   * (`product.md` § Conversations and projects): they leave the list at
+   * once; one the backend has no record of leaves this page, and each other
+   * one leaves the backend and every page. What this browser keeps of their
+   * drafts goes too. A refusal brings the conversation back with a toast.
+   * Answers whether every one was deleted.
    */
-  function remove(ids: string[]): Promise<boolean> {
-    return changeConversations(ids, () => applyRemove(ids), false)
-  }
-
-  async function applyRemove(ids: string[]): Promise<boolean> {
+  async function remove(ids: string[]): Promise<boolean> {
     const userId = session.user?.id ?? product.snapshot?.user.id
     const forget = (id: string) => {
       restored.delete(id)
@@ -1179,25 +1258,30 @@ export const useConversations = defineStore('conversations', () => {
     const local = ids.filter((id) => !synced.includes(id))
     items.value = items.value.filter((item) => !local.includes(item.id))
     local.forEach(forget)
+    const titles = new Map(synced.map((id) => [id, items.value.find((item) => item.id === id)?.title ?? id]))
+    const removals = new Map(synced.map((id) => [id, product.change(`conversation:${id}`, (state) => ({
+      ...state,
+      conversations: state.conversations.filter((record) => record.id !== id),
+    }))]))
     const signal = lifetime.signal
     try {
       return await writes.run(async () => {
         const failures: string[] = []
-        for (const id of synced) {
+        for (const [id, removal] of removals) {
           signal.throwIfAborted()
-          const title = items.value.find((item) => item.id === id)?.title ?? id
-          const sentAt = product.sent()
+          removal.send()
           try {
             await apiRequest(`/conversations/${encodeURIComponent(id)}`, { method: 'DELETE', signal })
           } catch (error) {
             if (signal.aborted) {
               throw error
             }
-            failures.push(`${title}: ${error instanceof Error ? error.message : String(error)}`)
+            removal.drop()
+            failures.push(`${titles.get(id)}: ${error instanceof Error ? error.message : String(error)}`)
             continue
           }
-          // The deletion shows at once; the channel brings it to every other page.
-          product.answered(sentAt, { type: 'conversation_deleted', id })
+          // The deletion lands; the channel brings it to every other page.
+          removal.land()
           forget(id)
         }
         if (failures.length) {
@@ -1212,14 +1296,20 @@ export const useConversations = defineStore('conversations', () => {
         return failures.length === 0
       })
     } catch (error) {
+      for (const removal of removals.values()) {
+        removal.drop()
+      }
       report('Could Not Delete Conversations', error)
       return false
     }
   }
 
-  /** Brings archived conversations back; answers whether every one came back. */
+  /** Brings archived conversations back at once; answers whether every one came back. */
   function restore(ids: string[]): Promise<boolean> {
-    return batch(ids, { archived: false })
+    return applyBatch(ids, { archived: false }, true, {
+      one: 'Could Not Restore the Conversation',
+      many: 'Some conversations were not restored.',
+    })
   }
 
   function create(projectId: string | null = null): string {
@@ -1326,31 +1416,19 @@ export const useConversations = defineStore('conversations', () => {
       saveDrafts()
       return
     }
-    // The new title shows at once and stays while the write is on its way;
-    // a write that fails or is refused gives the stored title back.
-    if (conversation) {
-      conversation.title = title
-    }
-    pendingTitles.set(id, title)
+    // The new title shows at once; a write that fails or is refused gives
+    // the stored title back.
+    const change = product.change(`conversation:${id}`, (state) =>
+      withConversation(state, id, (record) => ({ ...record, title })))
     const signal = lifetime.signal
     void writes
       .run(() => {
         signal.throwIfAborted()
-        return patch(id, { title })
+        return patch(id, { title }, change)
       })
       .catch((error) => {
+        change.drop()
         report('Could Not Rename the Conversation', error)
-        return false
-      })
-      .then((renamed) => {
-        if (pendingTitles.get(id) !== title) {
-          return
-        }
-        pendingTitles.delete(id)
-        const stored = product.snapshot?.conversations.find((item) => item.id === id)
-        if (!renamed && conversation && stored) {
-          conversation.title = stored.title
-        }
       })
   }
 
@@ -1359,25 +1437,30 @@ export const useConversations = defineStore('conversations', () => {
     if (conversation.titleGenerating || conversation.persistence !== 'synced') {
       return
     }
-    conversation.titleGenerating = true
-    pendingRetitles.add(conversation.id)
+    const id = conversation.id
+    // The conversation says at once that it finds its title; from the
+    // answer on, its summary says whether the request still runs.
+    const change = product.change(`conversation:${id}`, (state) =>
+      withConversation(state, id, (record) => ({ ...record, titleGenerating: true })))
+    change.send()
     try {
       // The backend asks the model the conversation's record holds.
       await apiRequest(
-        `/conversations/${encodeURIComponent(conversation.id)}/title`,
+        `/conversations/${encodeURIComponent(id)}/title`,
         { method: 'POST', signal: lifetime.signal },
       )
-      // From here the conversation's summary says whether the request is
-      // still running.
-      pendingRetitles.delete(conversation.id)
+      change.land()
     } catch (error) {
-      pendingRetitles.delete(conversation.id)
-      conversation.titleGenerating = false
+      change.drop()
       report('Could Not Update the Title', error)
     }
   }
 
-  async function reorder(id: string, beforeId: string | null): Promise<void> {
+  /**
+   * Moves the conversation before `beforeId`, or to the end of its part of
+   * the list, at once; the write follows the page's earlier ones.
+   */
+  function reorder(id: string, beforeId: string | null): Promise<void> {
     const conversation = items.value.find((item) => item.id === id)
     // A new conversation before its first send moves among the others
     // like it, which keep the front; its first send gives it its place.
@@ -1389,7 +1472,7 @@ export const useConversations = defineStore('conversations', () => {
         : reordered.filter((item) => item.persistence !== 'synced').length
       reordered.splice(index, 0, conversation)
       items.value = reordered
-      return
+      return Promise.resolve()
     }
     if (beforeId) {
       const index = items.value.findIndex((item) => item.id === beforeId)
@@ -1397,22 +1480,39 @@ export const useConversations = defineStore('conversations', () => {
         items.value.slice(index).find((item) => item.persistence === 'synced')
           ?.id ?? null
     }
-    try {
-      await apiRequest('/sidebar/reorder', {
-        method: 'POST',
-        signal: lifetime.signal,
-        ...jsonBody({
-          kind: 'conversation',
-          id,
-          beforeId,
-        } satisfies SidebarReorder),
+    const before = beforeId
+    // The end of its part of the list is the end of the list there.
+    const change = product.change('conversation_order', (state) => {
+      const moved = state.conversations.find((record) => record.id === id)
+      const next = state.conversations.find((record) => record.id === before) ?? null
+      return moved && (before === null || next)
+        ? { ...state, conversations: moveBefore(state.conversations, moved, next) }
+        : state
+    })
+    const signal = lifetime.signal
+    return writes
+      .run(async () => {
+        signal.throwIfAborted()
+        change.send()
+        await apiRequest('/sidebar/reorder', {
+          method: 'POST',
+          signal,
+          ...jsonBody({
+            kind: 'conversation',
+            id,
+            beforeId: before,
+          } satisfies SidebarReorder),
+        })
+        change.land()
       })
-    } catch (error) {
-      report('Could Not Reorder Conversations', error)
-    }
+      .catch((error) => {
+        change.drop()
+        report('Could Not Reorder Conversations', error)
+      })
   }
 
-  async function markRead(id: string): Promise<void> {
+  /** Marks what the conversation shows as read, at once; the write follows the page's earlier ones. */
+  function markRead(id: string): Promise<void> {
     const conversation = items.value.find((item) => item.id === id)
     if (
       !conversation ||
@@ -1420,25 +1520,35 @@ export const useConversations = defineStore('conversations', () => {
       !conversation.unread ||
       document.visibilityState !== 'visible'
     ) {
-      return
+      return Promise.resolve()
     }
     const revision = conversation.revision
-    try {
-      await apiRequest(`/conversations/${encodeURIComponent(id)}/read`, {
-        method: 'POST',
-        signal: lifetime.signal,
-        ...jsonBody({ revision } satisfies ReadRequest),
+    const change = product.change(`conversation:${id}`, (state) =>
+      withConversation(state, id, (record) => {
+        const readRevision = Math.max(record.readRevision, revision)
+        return { ...record, readRevision, unread: record.revision > readRevision }
+      }))
+    const signal = lifetime.signal
+    return writes
+      .run(async () => {
+        signal.throwIfAborted()
+        change.send()
+        await apiRequest(`/conversations/${encodeURIComponent(id)}/read`, {
+          method: 'POST',
+          signal,
+          ...jsonBody({ revision } satisfies ReadRequest),
+        })
+        change.land()
       })
-      conversation.readRevision = Math.max(conversation.readRevision, revision)
-      conversation.unread = conversation.revision > conversation.readRevision
-    } catch (error) {
-      // A conversation deleted meanwhile, by this page or another, has
-      // nothing left to acknowledge.
-      if (error instanceof ApiError && error.code === 'conversation_not_found') {
-        return
-      }
-      report('Could Not Update Read Status', error)
-    }
+      .catch((error) => {
+        change.drop()
+        // A conversation deleted meanwhile, by this page or another, has
+        // nothing left to acknowledge.
+        if (error instanceof ApiError && error.code === 'conversation_not_found') {
+          return
+        }
+        report('Could Not Update Read Status', error)
+      })
   }
 
   /**
@@ -1719,7 +1829,9 @@ export const useConversations = defineStore('conversations', () => {
     markRead,
     reloadList: () => product.reconnect(),
     reloadSession,
-    pin: (ids: string[], pinned: boolean) => batch(ids, { pinned }),
+    pin: (ids: string[], pinned: boolean) => applyBatch(ids, { pinned }, true, pinned
+      ? { one: 'Could Not Pin the Conversation', many: 'Some conversations were not pinned.' }
+      : { one: 'Could Not Unpin the Conversation', many: 'Some conversations were not unpinned.' }),
     archive,
     restore,
     remove,
@@ -1728,7 +1840,14 @@ export const useConversations = defineStore('conversations', () => {
      * conversation runs); with `notifyAgent`, the backend tells its agent.
      */
     switchTarget: (id: string, target: ConversationSummary['target'], notifyAgent = false) =>
-      batch([id], notifyAgent ? { target, notifyAgent } : { target }),
+      changeConversations(
+        [id],
+        () => applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, false, {
+          one: 'Could Not Move the Conversation',
+          many: 'Some conversations were not moved.',
+        }),
+        false,
+      ),
     pendingChanges,
     detachHost: (conversation: Conversation, deviceId: string) =>
       changeConversations(

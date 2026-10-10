@@ -11,7 +11,7 @@ import { useSubagentSettings } from './subagents'
 const product = useProduct()
 const resources = useResources()
 const subagents = useSubagentSettings()
-const { settings, switching, pending } = storeToRefs(subagents)
+const { settings } = storeToRefs(subagents)
 const { switchSubagents, switchProfile, saveProfile, deleteProfile } = subagents
 
 /**
@@ -33,8 +33,6 @@ const catalogModels = computed(() =>
     :models="catalogModels"
     :catalog-ready="product.catalogLoad === 'ready'"
     :overlay-store="appOverlayStore"
-    :switching="switching"
-    :pending="pending"
     :save-profile="saveProfile"
     :delete-profile="deleteProfile"
     @switch="switchSubagents"

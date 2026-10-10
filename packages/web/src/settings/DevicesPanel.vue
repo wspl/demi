@@ -18,7 +18,7 @@ const product = useProduct()
 const settings = useDeviceSettings()
 const installation = useDeviceInstallation()
 const address = useSettingsAddress()
-const { cloud, reset, revoking, renaming, changing } = storeToRefs(settings)
+const { cloud, reset, revoking } = storeToRefs(settings)
 const { revoke, rename, setRoute, resetCloud } = settings
 /** The backend's limit on a device's name, as its schema states it. */
 const nameMaxLength = changeDeviceSchema.shape.name.unwrap().unwrap().maxLength
@@ -74,8 +74,6 @@ watch(
     :runner-release="product.snapshot?.runnerRelease ?? null"
     :projects="resources.projects"
     :load="product.load"
-    :changing-ids="changing"
-    :renaming-ids="renaming"
     :revoking-ids="revoking"
     :name-max-length="nameMaxLength"
     :cloud="cloud"

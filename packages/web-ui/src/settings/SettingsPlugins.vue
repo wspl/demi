@@ -7,15 +7,13 @@ import type { SettingsPlugin } from './types'
 
 /**
  * The backend's plugins, one row each with a switch that turns it on or off
- * for the user (`plugins.md` § A user's plugins). A switch shows the choice
- * it asked for while the host saves it; the list the host passes back is the
- * one that holds. The switch alone says whether a plugin is off; its row
- * reads at full strength either way.
+ * for the user (`plugins.md` § A user's plugins). The host shows a switch's
+ * choice at once in the list it passes back, and that list is the one that
+ * holds. The switch alone says whether a plugin is off; its row reads at
+ * full strength either way.
  */
 defineProps<{
   plugins: SettingsPlugin[]
-  /** The plugins whose switch is being saved. */
-  pending?: readonly string[]
 }>()
 
 const emit = defineEmits<{
@@ -39,7 +37,6 @@ const emit = defineEmits<{
           :model-value="plugin.enabled"
           size="sm"
           class="ml-1"
-          :disabled="pending?.includes(plugin.id)"
           :aria-label="`${plugin.name} ${plugin.enabled ? 'on' : 'off'}`"
           @update:model-value="emit('switch', plugin.id, $event)"
         />
