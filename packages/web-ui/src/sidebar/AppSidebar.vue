@@ -42,7 +42,6 @@ const props = defineProps<{
   projects: SidebarProject[]
   conversations: SidebarConversation[]
   activeId: string | null
-  pendingIds?: string[]
   /** `loading` is a spinner, not a first-run empty list. */
   listStatus?: ListLoad
   /** The entries between New and Archived, each opening its settings section. */
@@ -538,7 +537,6 @@ function selectProjectConversations(project: SidebarProject): void {
             <SidebarRow
               v-else
               :conversation="byId.get(entry.id)!"
-              :pending="pendingIds?.includes(entry.id)"
               :open="entry.id === activeId"
               :selected="list.isSelected(entry.id)"
               :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
@@ -550,7 +548,7 @@ function selectProjectConversations(project: SidebarProject): void {
               @rename-start="renamingId = entry.id"
               @rename-submit="(title) => submitRename(entry.id, title)"
               @rename-cancel="cancelRename"
-              @toggle-pin="togglePin([entry.id])"
+              @unpin="emit('pin', [entry.id], false)"
             />
           </div>
         </TransitionGroup>

@@ -255,7 +255,6 @@ useAppShortcuts(
           :conversations="sidebarConversations"
           :active-id="activeId"
           :list-status="conversations.listStatus"
-          :pending-ids="conversations.pendingChanges"
           :section-entries="resources.sectionEntries"
           :new-shortcut="resources.keys.find((binding) => binding.id === 'new')?.keys"
           :search-shortcut="resources.keys.find((binding) => binding.id === 'search')?.keys"
