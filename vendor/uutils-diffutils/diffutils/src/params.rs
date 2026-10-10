@@ -30,6 +30,20 @@ pub struct Params {
     /// `-N`: a file that exists on one side only is compared with an empty
     /// file, and a directory with an empty directory.
     pub new_file: bool,
+    /// `-a`: binary files are compared as text too.
+    pub text: bool,
+    /// `-i`: upper and lower case letters are equal.
+    pub ignore_case: bool,
+    /// `-b`: a run of white space equals any other, and white space at the
+    /// end of a line is ignored.
+    pub ignore_space_change: bool,
+    /// `-w`: white space is ignored.
+    pub ignore_all_space: bool,
+    /// `-B`: a change whose lines are all empty is ignored.
+    pub ignore_blank_lines: bool,
+    /// `-x` and the lines of `-X`'s files: the names a directory comparison
+    /// leaves out.
+    pub excludes: Vec<glob::Pattern>,
     /// The options as given, which the line before each pair of files a
     /// directory comparison shows repeats, as GNU's `diff -r a/x b/x`.
     pub options: Vec<OsString>,
@@ -50,6 +64,12 @@ impl Default for Params {
             width: 130,
             recursive: false,
             new_file: false,
+            text: false,
+            ignore_case: false,
+            ignore_space_change: false,
+            ignore_all_space: false,
+            ignore_blank_lines: false,
+            excludes: Vec::new(),
             options: Vec::new(),
         }
     }
@@ -61,7 +81,7 @@ pub fn parse_params<I: Iterator<Item = OsString>>(mut opts: Peekable<I>) -> Resu
     let Some(executable) = opts.next() else {
         return Err("Usage: <exe> <from> <to>".to_string());
     };
-    let (split, options) = split_short_options(opts);
+    let (split, options) = split_options(opts, &executable)?;
     let mut opts = split.into_iter().peekable();
     let mut params = Params {
         executable,
@@ -75,7 +95,6 @@ pub fn parse_params<I: Iterator<Item = OsString>>(mut opts: Peekable<I>) -> Resu
     let tabsize_re = Regex::new(r"^--tabsize=(?<num>\d+)$").unwrap();
     let width_re = Regex::new(r"--width=(?P<long>\d+)$").unwrap();
     while let Some(param) = opts.next() {
-        let next_param = opts.peek();
         if param == "--" {
             break;
         }
@@ -115,9 +134,41 @@ pub fn parse_params<I: Iterator<Item = OsString>>(mut opts: Peekable<I>) -> Resu
             params.recursive = true;
             continue;
         }
-        // Every file is compared as text: nothing here tells binary files
-        // apart.
+        // The line diff is a longest common subsequence, minimal already.
+        if param == "-d" || param == "--minimal" {
+            continue;
+        }
         if param == "-a" || param == "--text" {
+            params.text = true;
+            continue;
+        }
+        if param == "-i" || param == "--ignore-case" {
+            params.ignore_case = true;
+            continue;
+        }
+        if param == "-b" || param == "--ignore-space-change" {
+            params.ignore_space_change = true;
+            continue;
+        }
+        if param == "-w" || param == "--ignore-all-space" {
+            params.ignore_all_space = true;
+            continue;
+        }
+        if param == "-B" || param == "--ignore-blank-lines" {
+            params.ignore_blank_lines = true;
+            continue;
+        }
+        if let Some((option, value)) = option_value(&param, &mut opts, &params.executable)? {
+            if option == 'x' {
+                params.excludes.push(exclude_pattern(&value.to_string_lossy()));
+            } else {
+                let file = uucore::context::fs::read(&value).map_err(|error| {
+                    crate::utils::format_file_error(&params.executable, &value, &error)
+                })?;
+                for line in file.split(|&byte| byte == b'\n').filter(|line| !line.is_empty()) {
+                    params.excludes.push(exclude_pattern(&String::from_utf8_lossy(line)));
+                }
+            }
             continue;
         }
         if param == "-N" || param == "--new-file" {
@@ -193,6 +244,7 @@ pub fn parse_params<I: Iterator<Item = OsString>>(mut opts: Peekable<I>) -> Resu
 
             continue;
         }
+        let next_param = opts.peek();
         match match_context_diff_params(&param, next_param, format) {
             Ok(DiffStyleMatch {
                 is_match,
@@ -232,7 +284,16 @@ pub fn parse_params<I: Iterator<Item = OsString>>(mut opts: Peekable<I>) -> Resu
             Err(error) => return Err(error),
         }
         if param.to_string_lossy().starts_with('-') {
-            return Err(format!("Unknown option: {param:?}"));
+            let executable = params.executable.to_string_lossy();
+            let text = param.to_string_lossy();
+            let complaint = if text.starts_with("--") {
+                format!("unrecognized option '{text}'")
+            } else {
+                format!("invalid option -- '{}'", &text[1..])
+            };
+            return Err(format!(
+                "{executable}: {complaint}\n{executable}: Try '{executable} --help' for more information."
+            ));
         }
         if from.is_none() {
             from = Some(param);
@@ -273,12 +334,56 @@ pub fn parse_params<I: Iterator<Item = OsString>>(mut opts: Peekable<I>) -> Resu
     Ok(params)
 }
 
+/// The value of `-x PAT`, `--exclude=PAT`, `-X FILE` or `--exclude-from=FILE`,
+/// with the option's letter; none for another argument. A value is the rest
+/// of the argument after `=`, or else the next argument.
+fn option_value(
+    param: &OsString,
+    opts: &mut impl Iterator<Item = OsString>,
+    executable: &OsString,
+) -> Result<Option<(char, OsString)>, String> {
+    let Some(text) = param.to_str() else {
+        return Ok(None);
+    };
+    let (letter, attached) = match text.split_once('=') {
+        Some(("--exclude", value)) => ('x', Some(value)),
+        Some(("--exclude-from", value)) => ('X', Some(value)),
+        _ => match text {
+            "-x" | "--exclude" => ('x', None),
+            "-X" | "--exclude-from" => ('X', None),
+            _ => return Ok(None),
+        },
+    };
+    let value = match attached {
+        Some(value) => OsString::from(value),
+        None => opts.next().ok_or_else(|| {
+            let executable = executable.to_string_lossy();
+            let complaint = match text.strip_prefix("--") {
+                Some(_) => format!("option '{text}' requires an argument"),
+                None => format!("option requires an argument -- '{letter}'"),
+            };
+            format!("{executable}: {complaint}\n{executable}: Try '{executable} --help' for more information.")
+        })?,
+    };
+    Ok(Some((letter, value)))
+}
+
+/// A name pattern as GNU's fnmatch reads it; one that is not a valid glob
+/// matches only itself.
+fn exclude_pattern(text: &str) -> glob::Pattern {
+    glob::Pattern::new(text).unwrap_or_else(|_| glob::Pattern::new(&glob::Pattern::escape(text)).unwrap())
+}
+
 /// Splits each cluster of short options, such as `-rq` or `-Naur`, into
 /// its options, as GNU's getopt reads them, and returns the arguments split
-/// with the options as given. `-C` and `-U` take the rest of their cluster
-/// as their number, or the next argument when nothing follows them, and a
+/// with the options as given. `-C`, `-U`, `-x` and `-X` take the rest of
+/// their cluster as their value, or the next argument when nothing follows
+/// them, as `--exclude` and `--exclude-from` take the next argument, and a
 /// run of digits is one `-NUM`, so `-5u` and `-u5` are `-5 -u`.
-fn split_short_options(mut args: impl Iterator<Item = OsString>) -> (Vec<OsString>, Vec<OsString>) {
+fn split_options(
+    mut args: impl Iterator<Item = OsString>,
+    executable: &OsString,
+) -> Result<(Vec<OsString>, Vec<OsString>), String> {
     let mut split = Vec::new();
     let mut given = Vec::new();
     while let Some(arg) = args.next() {
@@ -294,8 +399,12 @@ fn split_short_options(mut args: impl Iterator<Item = OsString>) -> (Vec<OsStrin
         };
         given.push(arg.clone());
         let mut takes_next = false;
-        if text.starts_with("--") || text.len() == 2 {
-            takes_next = text == "-C" || text == "-U";
+        if text.starts_with("--") {
+            let long = complete_long_option(text, executable)?;
+            takes_next = long == "--exclude" || long == "--exclude-from";
+            split.push(OsString::from(long));
+        } else if text.len() == 2 {
+            takes_next = ["-C", "-U", "-x", "-X"].contains(&text);
             split.push(arg.clone());
         } else {
             let mut letters = text.char_indices().skip(1);
@@ -309,9 +418,12 @@ fn split_short_options(mut args: impl Iterator<Item = OsString>) -> (Vec<OsStrin
                     }
                     continue;
                 }
-                if letter == 'C' || letter == 'U' {
+                if "CUxX".contains(letter) {
                     takes_next = rest.is_empty();
-                    split.push(OsString::from(format!("-{letter}{rest}")));
+                    split.push(OsString::from(format!("-{letter}")));
+                    if !rest.is_empty() {
+                        split.push(OsString::from(rest));
+                    }
                     break;
                 }
                 split.push(OsString::from(format!("-{letter}")));
@@ -324,7 +436,51 @@ fn split_short_options(mut args: impl Iterator<Item = OsString>) -> (Vec<OsStrin
             }
         }
     }
-    (split, given)
+    Ok((split, given))
+}
+
+/// GNU diff 3.12's long options, which an abbreviation is completed against.
+const LONG_OPTIONS: &[&str] = &[
+    "brief", "changed-group-format", "color", "context", "ed", "exclude", "exclude-from",
+    "expand-tabs", "from-file", "help", "horizon-lines", "ifdef", "ignore-all-space",
+    "ignore-blank-lines", "ignore-case", "ignore-file-name-case", "ignore-matching-lines",
+    "ignore-space-change", "ignore-tab-expansion", "ignore-trailing-space", "initial-tab", "label",
+    "left-column", "line-format", "minimal", "new-file", "new-group-format", "new-line-format",
+    "no-dereference", "no-ignore-file-name-case", "normal", "old-group-format", "old-line-format",
+    "paginate", "palette", "rcs", "recursive", "report-identical-files", "show-c-function",
+    "show-function-line", "side-by-side", "speed-large-files", "starting-file",
+    "strip-trailing-cr", "suppress-blank-empty", "suppress-common-lines", "tabsize", "text",
+    "to-file", "unchanged-group-format", "unchanged-line-format", "unidirectional-new-file",
+    "unified", "version", "width",
+];
+
+/// Completes a long option abbreviated as GNU's getopt_long allows, such as
+/// `--recur` for `--recursive`, keeping its `=VALUE`; an unknown one stays
+/// as it is, and an ambiguous one is an error naming the possibilities.
+fn complete_long_option(text: &str, executable: &OsString) -> Result<String, String> {
+    let (name, value) = match text[2..].split_once('=') {
+        Some((name, value)) => (name, Some(value)),
+        None => (&text[2..], None),
+    };
+    if name.is_empty() || LONG_OPTIONS.contains(&name) {
+        return Ok(text.to_string());
+    }
+    let candidates: Vec<&str> = LONG_OPTIONS.iter().copied().filter(|option| option.starts_with(name)).collect();
+    match candidates.as_slice() {
+        [option] => Ok(match value {
+            Some(value) => format!("--{option}={value}"),
+            None => format!("--{option}"),
+        }),
+        [] => Ok(text.to_string()),
+        _ => {
+            let executable = executable.to_string_lossy();
+            let possibilities: Vec<String> = candidates.iter().map(|option| format!("'--{option}'")).collect();
+            Err(format!(
+                "{executable}: option '{text}' is ambiguous; possibilities: {}\n{executable}: Try '{executable} --help' for more information.",
+                possibilities.join(" ")
+            ))
+        }
+    }
 }
 
 struct DiffStyleMatch {
