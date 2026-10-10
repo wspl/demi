@@ -180,41 +180,33 @@ fn a_reference_after_the_tab_is_the_element_and_key_takes_its_key_positionally()
 #[test]
 fn eval_takes_its_expression_as_the_last_positional_or_from_stdin() {
     let root = roots(Browser::new().manifest()).remove(0);
-    let eval = |line: &[&str], stdin: &str| {
+    let eval = |line: &[&str], stdin: Option<&str>| {
         let mut argv = vec!["browser", "eval", TAB];
         argv.extend(line);
-        parse(&root, &argv, Some(stdin)).map(|parsed| serde_json::Value::Object(parsed.values))
+        parse(&root, &argv, stdin).map(|parsed| serde_json::Value::Object(parsed.values))
     };
     let style = "getComputedStyle(document.documentElement).backgroundColor";
+    // Given as the positional, the expression comes from argv and stdin is
+    // not read: the runner passes no body.
     assert_eq!(
-        eval(&[style], "").unwrap(),
+        eval(&[style], None).unwrap(),
         serde_json::json!({"tab": TAB, "expression": style})
     );
     assert_eq!(
-        eval(&["e21"], "element.value").unwrap(),
+        eval(&["e21"], Some("element.value")).unwrap(),
         serde_json::json!({"tab": TAB, "ref": "e21", "expression": "element.value"})
     );
     assert_eq!(
-        eval(&["e21", "element.value"], "").unwrap(),
+        eval(&["e21", "element.value"], None).unwrap(),
         serde_json::json!({"tab": TAB, "ref": "e21", "expression": "element.value"})
     );
-    // Both forms at once: two lines, the error and the usage.
-    let both = eval(&["document.title"], "document.URL").unwrap_err().to_string();
-    let lines: Vec<&str> = both.lines().collect();
-    assert_eq!(
-        lines[0],
-        "error: \"expression\" is given both as an argument and on stdin; give it once"
-    );
-    assert!(lines[1].starts_with("Usage: demi browser eval <tab> [<ref>] [<expression>] "), "{both}");
-    assert!(lines[1].ends_with("; more with --help") && lines.len() == 2, "{both}");
     // A value that does not match a pattern is named with what the pattern
     // stands for, never the expression.
-    assert!(
-        eval(&["foo", "element.id"], "")
-            .unwrap_err()
-            .to_string()
-            .starts_with("error: \"foo\" is not a ref, such as e12\n"),
-    );
+    let refused = eval(&["foo", "element.id"], None).unwrap_err().to_string();
+    let lines: Vec<&str> = refused.lines().collect();
+    assert_eq!(lines[0], "error: \"foo\" is not a ref, such as e12");
+    assert!(lines[1].starts_with("Usage: demi browser eval <tab> [<ref>] [<expression>] "), "{refused}");
+    assert!(lines[1].ends_with("; more with --help") && lines.len() == 2, "{refused}");
     assert!(
         parse(&root, &["browser", "info", "tab1"], None)
             .unwrap_err()
@@ -223,5 +215,5 @@ fn eval_takes_its_expression_as_the_last_positional_or_from_stdin() {
     );
     let help = help(&root, &["browser", "eval"]);
     assert!(help.contains("  demi browser eval <tab> [<ref>] [<expression>] "), "{help}");
-    assert!(help.contains("Stdin body: expression, unless given as <expression>"), "{help}");
+    assert!(help.contains("Stdin body: expression, not read when given as <expression>"), "{help}");
 }
