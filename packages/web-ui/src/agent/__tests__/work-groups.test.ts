@@ -10,7 +10,7 @@ const thinking = (id: string, text = ''): Block => ({ type: 'thinking', id, crea
 const text = (id: string): Block => ({ type: 'text', id, createdAt, model, text: 'Done.' })
 const call = (
   id: string,
-  toolName = 'shell_exec',
+  toolName = 'shell',
   input: Record<string, unknown> = { script: 'true', description: `Run ${id}` },
   status: 'completed' | 'error' = 'completed',
 ): Block => ({
@@ -25,9 +25,9 @@ const call = (
   output: [],
   view: null,
 })
-const check = (id: string, commandId: number | string): Block => call(id, 'shell_status', { commandId })
-const wait = (id: string): Block => call(id, 'yield', { durationMs: 60_000 })
-const writing = (id: string, toolName = 'shell_exec'): MessageListBlock => ({
+const check = (id: string, ...commandIds: number[]): Block =>
+  call(id, 'shell', { script: `demi shell status ${commandIds.join(' ')}`, description: `Check ${id}` })
+const writing = (id: string, toolName = 'shell'): MessageListBlock => ({
   type: 'pending_call',
   id: `pending-call:${id}-use`,
   call: { toolUseId: `${id}-use`, toolName, description: null },
@@ -76,24 +76,24 @@ describe('what a group says it did', () => {
 
   test('an ended group names each kind of call once, in the order the run first made it', () => {
     expect(workSummary(steps(plan, check('s', 17)))).toBe('Checked 1 command')
-    expect(workSummary(steps(plan, wait('w')))).toBe('Waited')
-    // The design's example: command 17 checked twice, then a yield.
-    expect(workSummary(steps(plan, check('s1', 17), thinking('t2', 'Still building.'), check('s2', '17'), wait('w'))))
-      .toBe('Checked 1 command, waited')
+    // The design's example: command 17 checked twice.
+    expect(workSummary(steps(plan, check('s1', 17), thinking('t2', 'Still building.'), check('s2', 17))))
+      .toBe('Checked 1 command')
+    expect(workSummary(steps(check('s1', 17, 18), check('s2', 18)))).toBe('Checked 2 commands')
     expect(workSummary(steps(call('a'), check('s', 17), call('b')))).toBe('Ran 2 commands, checked 1 command')
     expect(workSummary(steps(check('s1', 17), check('s2', 18), call('a')))).toBe('Checked 2 commands, ran 1 command')
   })
 
-  test('a failed call and a tool of another kind count by their tool', () => {
-    expect(workSummary(steps(call('a', 'shell_exec', { script: 'false' }, 'error'), call('r', 'read_file', { path: 'a.ts' }))))
+  test('a failed call, a stored call of a removed tool and a tool of another kind count by what they did', () => {
+    expect(workSummary(steps(call('a', 'shell', { script: 'false' }, 'error'), call('r', 'read_file', { path: 'a.ts' }))))
       .toBe('Ran 1 command, used read_file')
+    expect(workSummary(steps(plan, call('s', 'shell_status', { commandId: 17 })))).toBe('Used shell_status')
   })
 
   test('a running group counts the calls being written, and names what it does when it runs no command', () => {
     expect(workRunning(steps(call('a'), check('s', 17), call('c'), writing('d')))).toBe('Running 3 commands')
     expect(workRunning(steps(plan, check('s', 17)))).toBe('Checking 1 command')
-    expect(workRunning(steps(plan, check('s', 17), writing('w', 'yield')))).toBe('Checking 1 command, waiting')
-    expect(workRunning(steps(plan, writing('s', 'shell_status')))).toBe('Checking 1 command')
+    expect(workRunning(steps(plan, check('s', 17), writing('r', 'read_file')))).toBe('Checking 1 command, using read_file')
     expect(workRunning(steps(plan))).toBe('Thinking')
   })
 })

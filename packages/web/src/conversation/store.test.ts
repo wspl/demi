@@ -397,11 +397,11 @@ test('sidebar stays active until the last running child closes after its parent 
   expect(conversation.status).toBe('active')
 })
 
-/** A `shell_exec` call of `script`, as a transcript holds it while it runs or once it returned. */
+/** A `shell` call of `script`, as a transcript holds it while it runs or once it returned. */
 function execCall(toolUseId: string, script: string, status: 'executing' | 'completed', description?: string) {
   return {
     type: 'tool_call' as const, id: `block-${toolUseId}`, createdAt: '2026-09-13T00:00:00.000Z', model,
-    toolUseId, toolName: 'shell_exec', input: JSON.stringify({ script, description }), status, output: [], view: null,
+    toolUseId, toolName: 'shell', input: JSON.stringify({ script, description }), status, output: [], view: null,
   }
 }
 
