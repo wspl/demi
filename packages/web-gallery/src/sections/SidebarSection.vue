@@ -353,7 +353,7 @@ onBeforeUnmount(() => listRestore.stop())
             <div>
               <Button variant="ghost" size="sm" @click="hoverConversations = hoverRows()">Reset</Button>
             </div>
-            <div class="gallery-frame flex h-[16rem] overflow-hidden">
+            <div class="gallery-frame flex h-[26rem] overflow-hidden">
               <AppSidebar
                 :new-shortcut="newShortcut"
                 :search-shortcut="searchShortcut"
