@@ -210,6 +210,7 @@ async fn start_job(host: &mut Host, job: &str, script: &str) {
     let cwd = host.home().to_string_lossy().into_owned();
     host.send(Inbound::JobStart {
         manifest_hash: None,
+        viewable: None,
         context: context(),
         job_id: job.into(),
         script: script.into(),

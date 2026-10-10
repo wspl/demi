@@ -333,7 +333,8 @@ async fn a_service_that_dies_reports_its_status_and_standard_error() {
             env: BTreeMap::new(),
             edits: None,
             json: None,
-            stdout: None,
+            live_input: None,
+            viewable: None,
         };
         // The service may die before the call is even open.
         let error = match resident.client().invoke(&invocation).await {
@@ -768,7 +769,8 @@ async fn invoke(
             env: BTreeMap::new(),
             edits: None,
             json: None,
-            stdout: None,
+            live_input: None,
+            viewable: None,
         })
         .await
         .unwrap();

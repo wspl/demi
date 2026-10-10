@@ -147,18 +147,14 @@ impl ShellEnvironment for ScriptedShell {
         Ok(self.record(command)?.borrow().quiet())
     }
 
+    fn media(&self, command: &CommandId) -> Result<Vec<demi_host_interface::CommandMedium>, ShellError> {
+        Ok(self.record(command)?.borrow().media().to_vec())
+    }
+
     fn read_output<'a>(
         &'a self,
         command: &'a CommandId,
     ) -> LocalBoxFuture<'a, Result<WholeOutput, ShellError>> {
-        Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
-    }
-
-    fn read_medium<'a>(
-        &'a self,
-        command: &'a CommandId,
-        _number: u32,
-    ) -> LocalBoxFuture<'a, Result<Bytes, ShellError>> {
         Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
     }
 

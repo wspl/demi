@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, future::Future, sync::Arc};
 
 use demi_browser::DemiBrowser;
 use demi_command_protocol::{
-    CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record, StdoutTarget,
+    CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record,
 };
 use demi_command_sdk::{Handler, Input, InvocationContext, Output, ServiceError};
 use serde_json::{Value, json};
@@ -34,9 +34,6 @@ pub struct BrowserFixture {
     /// Whether invocations ask for JSON, as `--json` does; text arrives as
     /// the answer's `diagnostic`.
     pub json: bool,
-    /// Where the invocations' stdout goes, for invocations a job's command
-    /// makes, which may return media; none for any other.
-    pub stdout: Option<StdoutTarget>,
 }
 
 /// The command line that names `operation`, such as `demi browser click`.
@@ -74,10 +71,7 @@ impl BrowserFixture {
         input: Input,
         cancel: CancellationToken,
     ) -> Invoked {
-        let (mut output, records) = Output::channel(CancellationToken::new());
-        if self.stdout.is_some() {
-            output = output.returning_media();
-        }
+        let (output, records) = Output::channel(CancellationToken::new());
         let context = InvocationContext {
             request: Invocation {
                 operation: operation.into(),
@@ -94,7 +88,8 @@ impl BrowserFixture {
                 args,
                 cwd: self.root.path().to_str().unwrap().into(),
                 env: self.env.clone(),
-                stdout: self.stdout,
+                live_input: None,
+                viewable: None,
             },
             input,
             output,
@@ -342,7 +337,6 @@ where
         },
         color_scheme: demi_command_protocol::ColorScheme::Light,
         json: true,
-        stdout: None,
     };
     // Catch both construction and polling of the exercise, including the initial
     // service assertions, before joining retirement and resuming the same panic.

@@ -318,7 +318,13 @@ pub enum ToolResultContentBlock {
         #[garde(dive)]
         source: ToolMediaSource,
     },
-    /// An image or a video the result no longer holds, in its place: what
+    /// A PDF document the model viewed (`runtime.md` § Media the model
+    /// views), named as its line names it.
+    Document {
+        #[garde(dive)]
+        source: DocumentSource,
+    },
+    /// An image, a video or a document the result no longer holds, in its place: what
     /// it was and why it is gone (`runtime.md` § Media). The model reads it
     /// as one line of text.
     Gone {
@@ -331,7 +337,7 @@ pub enum ToolResultContentBlock {
     },
 }
 
-/// Why a tool result's image or video is gone.
+/// Why a tool result's medium is gone.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(
     tag = "type",

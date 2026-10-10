@@ -530,7 +530,7 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
 #[tokio::test]
 async fn a_tool_medium_that_cannot_be_stored_is_gone_from_its_result_and_the_turn_goes_on() {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
@@ -546,12 +546,12 @@ async fn a_tool_medium_that_cannot_be_stored_is_gone_from_its_result_and_the_tur
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
-    // The shell's stdout is a picture, which the tool's result would carry
-    // to a model that reads PNG.
+    // The shell views a picture, which the tool's result would carry to a
+    // model that reads PNG.
     vendor.respond(tool_use(
         "toolu_1",
         "shell",
-        &json!({ "description": "Show it", "script": "cat shot.png", "intervalMs": 60_000 }),
+        &json!({ "description": "Show it", "script": "demi file view shot.png", "intervalMs": 60_000 }),
     ));
     vendor.respond(answer(&["No picture."], 1, 1));
     let turn = socket.chat("m1", "Show me the picture").await;
@@ -630,7 +630,7 @@ fn first_image(request: &serde_json::Value) -> String {
 async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_stays_whole_on_the_host()
 {
     let vendor = MockVendor::start().await;
-    let harness = Harness::new();
+    let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
@@ -647,7 +647,7 @@ async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_stays
     vendor.respond(tool_use(
         "toolu_1",
         "shell",
-        &json!({ "description": "Show it", "script": "cat wide.png", "intervalMs": 60_000 }),
+        &json!({ "description": "Show it", "script": "demi file view wide.png", "intervalMs": 60_000 }),
     ));
     vendor.respond(answer(&["Both are wide."], 1, 1));
     socket
@@ -655,9 +655,9 @@ async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_stays
         .await;
     socket.until_idle().await;
 
-    // The upload's file on the Host is the original, and so is the shell's
-    // output; the model reads the image fitted to 2,000 px, the same bytes
-    // in every request and from either source.
+    // The upload's file on the Host is the original, and so is the file the
+    // shell viewed; the model reads the image fitted to 2,000 px, the same
+    // bytes in every request and from either source.
     let directory = format!("{}/.demi/attachments/{FIRST}", paired.runner.home());
     assert_eq!(
         std::fs::read(format!("{directory}/wide.png")).unwrap(),
@@ -685,7 +685,7 @@ async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_stays
     );
     assert!(
         result.contains(
-            "fitted to what every model accepts; to keep the original, save it: demi shell output "
+            "[image 1: attached as image/png of 2000 × 8 px, fitted from image/png of 2400 × 10 px]"
         ),
         "{result}"
     );
