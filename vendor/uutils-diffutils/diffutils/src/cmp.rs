@@ -3,7 +3,7 @@
 // For the full copyright and license information, please view the LICENSE-*
 // files that was distributed with this source code.
 
-use crate::utils::format_failure_to_read_input_file;
+use crate::utils::format_file_error;
 use uucore::context::env;
 type ArgsOs = std::vec::IntoIter<std::ffi::OsString>;
 use std::ffi::OsString;
@@ -295,7 +295,7 @@ fn prepare_reader(
         match fs::File::open(path) {
             Ok(file) => Box::new(BufReader::new(file)),
             Err(e) => {
-                return Err(format_failure_to_read_input_file(
+                return Err(format_file_error(
                     &params.executable,
                     path,
                     &e,
@@ -306,7 +306,7 @@ fn prepare_reader(
 
     if let Some(skip) = skip {
         if let Err(e) = io::copy(&mut reader.by_ref().take(*skip as u64), &mut io::sink()) {
-            return Err(format_failure_to_read_input_file(
+            return Err(format_file_error(
                 &params.executable,
                 path,
                 &e,
@@ -355,13 +355,15 @@ pub fn cmp(params: &Params) -> Result<Cmp, String> {
     let mut at_line = 1;
     let mut start_of_line = true;
     let mut stdout = BufWriter::new(io::stdout().lock());
+    let write_error =
+        |e: io::Error| format_file_error(&params.executable, &"standard output".into(), &e);
     let mut compare = Cmp::Equal;
     loop {
         // Fill up our buffers.
         let from_buf = match from.fill_buf() {
             Ok(buf) => buf,
             Err(e) => {
-                return Err(format_failure_to_read_input_file(
+                return Err(format_file_error(
                     &params.executable,
                     &params.from,
                     &e,
@@ -372,7 +374,7 @@ pub fn cmp(params: &Params) -> Result<Cmp, String> {
         let to_buf = match to.fill_buf() {
             Ok(buf) => buf,
             Err(e) => {
-                return Err(format_failure_to_read_input_file(
+                return Err(format_file_error(
                     &params.executable,
                     &params.to,
                     &e,
@@ -392,6 +394,7 @@ pub fn cmp(params: &Params) -> Result<Cmp, String> {
                 &params.to.to_string_lossy()
             };
 
+            stdout.flush().map_err(write_error)?;
             report_eof(at_byte, at_line, start_of_line, eof_on, params);
             return Ok(Cmp::Different);
         }
@@ -434,12 +437,7 @@ pub fn cmp(params: &Params) -> Result<Cmp, String> {
                         &mut output,
                         params,
                     )?;
-                    stdout.write_all(output.as_slice()).map_err(|e| {
-                        format!(
-                            "{}: error printing output: {e}",
-                            params.executable.to_string_lossy()
-                        )
-                    })?;
+                    stdout.write_all(output.as_slice()).map_err(write_error)?;
                     output.clear();
                 } else {
                     report_difference(from_byte, to_byte, at_byte, at_line, params);
@@ -466,6 +464,8 @@ pub fn cmp(params: &Params) -> Result<Cmp, String> {
         to.consume(consumed);
     }
 
+    // The buffer's own flush when it is dropped would lose a failure.
+    stdout.flush().map_err(write_error)?;
     Ok(compare)
 }
 
