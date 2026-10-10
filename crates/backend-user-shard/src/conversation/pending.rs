@@ -283,7 +283,7 @@ async fn settle_when_idle(shard: Weak<Shard>, id: ConversationId, poke: Rc<Notif
 }
 
 /// Makes at start the pending changes a restart cut off: each owner's shard
-/// makes them at once for a closed tree, before a saved wakeup opens it.
+/// makes them at once for a closed tree, before a page opens it.
 pub async fn settle_pending(control: &ControlService, shards: &Shards) -> Result<(), StorageError> {
     for (owner, conversation) in control.conversations_pending().await? {
         let settled = shards

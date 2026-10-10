@@ -72,6 +72,21 @@ impl WholeOutput {
         parts.map(BytesMut::freeze)
     }
 
+    /// How much of each stream the output holds, as a reader that looked
+    /// at all of it has seen it: up to where the kept output left bytes
+    /// out, whose bytes after it every look shows as new.
+    pub fn seen_through(&self) -> Seen {
+        let mut seen = Seen::default();
+        for record in &self.records {
+            match record {
+                OutputRecord::Output(StreamKind::Stdout, bytes) => seen.stdout += bytes.len() as u64,
+                OutputRecord::Output(StreamKind::Stderr, bytes) => seen.stderr += bytes.len() as u64,
+                OutputRecord::LeftOut(_) => break,
+            }
+        }
+        seen
+    }
+
     /// The kept length of a stdout that is not text; none when it is text.
     pub fn binary_stdout_length(&self) -> Option<u64> {
         let [first, last] = self.stream_parts(StreamKind::Stdout);
@@ -226,6 +241,14 @@ impl Streams {
 pub struct Seen {
     pub stdout: u64,
     pub stderr: u64,
+}
+
+impl Seen {
+    /// All of an output, whatever it holds.
+    pub const ALL: Self = Self {
+        stdout: u64::MAX,
+        stderr: u64::MAX,
+    };
 }
 
 /// A whole output as lines of text (`runtime.md` § The whole output): the

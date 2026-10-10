@@ -772,6 +772,10 @@ impl ShellEnvironment for RemoteShellEnvironment {
         self.view(command)
     }
 
+    fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError> {
+        Ok(self.record(command)?.borrow().quiet())
+    }
+
     fn read_output<'a>(
         &'a self,
         command: &'a CommandId,

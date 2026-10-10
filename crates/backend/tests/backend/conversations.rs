@@ -1701,47 +1701,6 @@ async fn a_shutdown_in_the_middle_of_a_turn_saves_its_interruption_and_the_next_
     backend.close().await;
 }
 
-/// A yield wakeup outlives a restart of the backend (`runtime.md` § Yield
-/// wakeups): the model asks to check the build in ten minutes, the backend
-/// is down past that time, and once it starts again the wakeup's turn runs
-/// with no page open.
-#[tokio::test]
-async fn a_wakeup_due_while_the_backend_was_down_runs_its_turn_once_it_starts_again() {
-    let vendor = MockVendor::start().await;
-    let harness = Harness::new();
-    let (backend, master) = harness.start_set_up().await;
-    let provider = anthropic(&backend, &master, &vendor).await;
-    create(&backend, &master, FIRST).await;
-    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
-    let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open().await;
-    vendor.respond(tool_use(
-        "toolu_wait",
-        "yield",
-        &json!({ "durationMs": 600_000 }),
-    ));
-    socket.chat("m1", "start the build").await;
-    let asked = vendor.requests().len();
-    drop(socket);
-    backend.close().await;
-
-    harness.clock.advance(jiff::SignedDuration::from_mins(11));
-    vendor.respond(answer(&["the build passed"], 1, 1));
-    let backend = harness.start().await;
-    vendor.received(asked + 1).await;
-    let woken = vendor.requests()[asked].json()["messages"].to_string();
-    assert!(woken.contains("Scheduled yield wakeup fired"), "{woken}");
-    let master = backend
-        .login(MASTER_EMAIL, crate::support::MASTER_PASSWORD)
-        .await;
-    crate::support::eventually("the woken turn is saved", || async {
-        let blocks = transcript(&backend, &master, FIRST).await.blocks;
-        kinds(&blocks).ends_with(&["wakeup".into(), "text".into(), "response".into()])
-    })
-    .await;
-    backend.close().await;
-}
-
 /// A page's conversation socket that stops reading where the test says,
 /// with a receive buffer of a few kilobytes: a frame larger than the
 /// backend's send buffer then fills the socket's buffers, and the backend's
@@ -1923,7 +1882,7 @@ async fn a_deepseek_tool_continuation_sends_the_reasoning_back_to_the_compatible
     vendor.respond(stream(json!({
         "reasoning_content": "Read the current directory.",
         "tool_calls": [{ "index": 0, "id": "call-1", "function": {
-            "name": "shell_exec", "arguments": json!({ "script": "pwd", "timeoutMs": 1000 }).to_string()
+            "name": "shell", "arguments": json!({ "script": "pwd", "intervalMs": 1000 }).to_string()
         } }]
     })));
     vendor.respond(stream(json!({ "content": "done" })));

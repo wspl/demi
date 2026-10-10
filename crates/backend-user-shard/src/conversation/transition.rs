@@ -158,7 +158,7 @@ impl Shard {
 
     /// Reserves the conversation's live tree while it does nothing by itself
     /// (`runtime.md` § Actions): no action runs or waits, no child is live
-    /// and no wakeup is scheduled. A conversation without a live tree runs
+    /// and no command runs. A conversation without a live tree runs
     /// nothing; one whose tree works refuses the transition.
     fn reserve_idle_tree(&self, id: &ConversationId) -> Result<Option<Reservation>, ChangeRefusal> {
         let Some(tree) = self.agent().tree(&root_of(id)) else {

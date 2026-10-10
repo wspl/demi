@@ -2,12 +2,11 @@
 //! `demi agent` calls a node's jobs make, the frames the root's connection
 //! receives, what each model is asked, and the tree store's records.
 
-use std::{cell::RefCell, time::Duration};
+use std::cell::RefCell;
 
 use demi_agent_server::ServerConfig;
 use demi_agent_store::{
     AgentTreeStore, CheckpointState, CheckpointUpdate, ClosePhase, NodeClose, NodeRecord,
-    ScheduledWakeup,
     testing::{MemoryTreeStore, test_model, text},
 };
 use demi_conversation_socket_protocol::{
@@ -20,7 +19,7 @@ use demi_provider_common::{
 use demi_agent_tools::{Profile, ProfileModel, SubagentSettings};
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
-    QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock, WakeupId,
+    QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock,
 };
 use serde_json::{Value, json};
 use tokio::task::JoinHandle;
@@ -467,7 +466,8 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         listed.stdout,
         [
             "● 0  (root session)".to_owned(),
-            format!("├─● {}", live(2, "alpha", "idle", "idle")),
+            // Alpha's own child runs: it waits.
+            format!("├─● {}", live(2, "alpha", "waiting", "waiting")),
             format!(
                 "│ └─● {} ← you",
                 live(4, "gamma", "provider_streaming", "streaming")
@@ -691,11 +691,11 @@ pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> Check
             phase: SessionPhase::Idle,
             queue,
             agent_inputs: Vec::new(),
-            wakeups: Vec::new(),
+            reports: Vec::new(),
+            intervals: Vec::new(),
             cwd: "/workspace".into(),
             model: test_model(),
             edits: Vec::new(),
-            last_turn: demi_agent_store::TurnEnd::Answer,
         },
         block_count: blocks.len(),
         changed_blocks: blocks.into_iter().enumerate().collect(),
@@ -770,20 +770,12 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
         .create_node(lost, checkpoint(vec![brief], Vec::new()))
         .await
         .unwrap();
-    // Its final checkpoint saved, its close not yet. Its last turn ended
-    // with its answer while a wakeup an earlier `yield` scheduled was still
-    // due: it closes with the answer, and the wakeup never fires.
-    let mut quiet = checkpoint(
+    // Its final checkpoint saved, its close not yet: it closes with its
+    // answer.
+    let quiet = checkpoint(
         Vec::new(),
         vec![user("q1", "task quiet"), answer("q2", "quiet result")],
     );
-    quiet.state.wakeups = vec![ScheduledWakeup {
-        id: WakeupId::try_from("quiet-wakeup").unwrap(),
-        duration_ms: 600_000,
-        command_ids: Vec::new(),
-        ended: None,
-        due_at: Some(Timestamp::UNIX_EPOCH),
-    }];
     store
         .create_node(child_record("quiet", 2, "conversation", None), quiet)
         .await
@@ -814,7 +806,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
         ServerConfig::default(),
     );
     // The quiet child reads its own children before its supervisor first
-    // looks at it; its wakeup, due meanwhile, opens no turn.
+    // looks at it, and runs nothing meanwhile.
     let quiet = NodeId::try_from("quiet").unwrap();
     let reading = store.hold_children_of(&quiet);
     let opening = tokio::task::spawn_local({
@@ -856,7 +848,6 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
         assert!(store.record(&id).unwrap().delivered, "{id}");
     }
     assert!(model.requests_of("task quiet").is_empty());
-    assert!(store.checkpoint(&quiet).unwrap().state.wakeups.is_empty());
     let restored = &model.requests_of("task lost")[0];
     assert!(restored.system_prompt.starts_with("retired prompt\n"));
     let frames = client.received();
@@ -1301,109 +1292,6 @@ async fn a_reopened_tree_restores_a_childs_own_children_before_the_child_can_set
         .map(|message| message.sender.clone().unwrap().id)
         .collect();
     assert_eq!(senders, [outer]);
-    assert!(model.is_done());
-}
-
-// A child whose turn ended with its answer while a wakeup it scheduled
-// earlier still waits closes with that answer, and the wakeup is dropped
-// (`subagents.md` § Result): a research child yields for ten minutes for its
-// helper, the helper's report wakes it, and it answers with its own report.
-// On Tokio's paused clock: a few milliseconds.
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn a_child_that_answers_after_its_yield_closes_with_the_answer_and_drops_the_wakeup() {
-    let model = Model::default();
-    let gate = Gate::new();
-    model.root([said("noted")]);
-    model.child(
-        "task research",
-        [
-            held(
-                &gate,
-                vec![
-                    event::tool_call("wait-1", "yield", json!({ "durationMs": 600_000 })),
-                    event::response(1, 1),
-                ],
-            ),
-            said("the full report"),
-        ],
-    );
-    model.child("task helper", [said("helper findings")]);
-    let fixture = Fixture::with_model_on_tokio_time(&model, TestProduct::default());
-    let mut client = fixture.opened().await;
-    let research = spawn(&fixture, &root(), json!({ "prompt": "task research" })).await;
-    until(|| model.requests_of("task research").len() == 1).await;
-    let helper_start =
-        spawn_during_turn(&fixture, &research, json!({ "prompt": "task helper" }));
-    gate.open();
-    let helper = helper_start.await.unwrap();
-
-    let frames = client.next_until(is_closed(&research)).await;
-    client.next_until(is_idle).await;
-
-    // The helper's completion opened the turn that answered; nothing ran
-    // after it.
-    assert!(lifecycle(&frames).contains(&(SubagentEvent::Closed, helper, JobPhase::Completed)));
-    assert_eq!(model.requests_of("task research").len(), 2);
-    assert_eq!(
-        closed_phase(&fixture, &research),
-        Some(ClosePhase::Completed {
-            result: "the full report".into()
-        })
-    );
-    let receipts = root_receipts(&fixture);
-    assert_eq!(receipts.len(), 1);
-    assert_eq!(receipts[0].content, "the full report");
-    // The final checkpoint keeps no wakeup a resume would arm again.
-    let state = fixture.store.checkpoint(&research).unwrap().state;
-    assert!(state.wakeups.is_empty(), "{:?}", state.wakeups);
-    assert!(model.is_done());
-}
-
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn a_child_whose_turn_ended_with_its_yield_stays_live_while_no_action_holds_the_tree() {
-    let model = Model::default();
-    let gate = Gate::new();
-    model.root([said("noted")]);
-    model.child(
-        "task wait",
-        [
-            held(
-                &gate,
-                vec![
-                    event::tool_call("wait-1", "yield", json!({ "durationMs": 60_000 })),
-                    event::response(1, 1),
-                ],
-            ),
-            said("waited"),
-        ],
-    );
-    let fixture = Fixture::with_model_on_tokio_time(&model, TestProduct::default());
-    let mut client = fixture.opened().await;
-    let child = spawn(&fixture, &root(), json!({ "prompt": "task wait" })).await;
-    let tree = fixture.server.tree(&root()).unwrap();
-    until(|| model.requests_of("task wait").len() == 1).await;
-
-    // While the child's turn runs, the idle root cannot reserve the tree.
-    assert!(!tree.is_quiescent());
-    assert!(tree.admission().try_reserve().is_none());
-    gate.open();
-    until(|| tree.admission().state().demand == 0).await;
-    // The turn ended on the yield: no action holds the tree, yet the child
-    // stays live, and the tree with it.
-    assert!(fixture.store.record(&child).unwrap().closed.is_none());
-    assert!(!tree.is_quiescent());
-
-    tokio::time::sleep(Duration::from_secs(61)).await;
-    client.next_until(is_closed(&child)).await;
-    client.next_until(is_idle).await;
-    assert_eq!(
-        closed_phase(&fixture, &child),
-        Some(ClosePhase::Completed {
-            result: "waited".into()
-        })
-    );
-    assert!(tree.is_quiescent());
-    assert!(tree.admission().try_reserve().is_some());
     assert!(model.is_done());
 }
 

@@ -6,7 +6,7 @@
 //! the lifecycle policy.
 
 use std::{
-    rc::{Rc, Weak},
+    rc::Rc,
     sync::Arc,
 };
 
@@ -18,26 +18,23 @@ use demi_agent_session::{
 };
 use demi_agent_store::{AgentTreeStore, Checkpoint, NodeRecord, StoreError};
 use demi_agent_tools::{
-    CallError, ContextSource, ConversationCommands, Environments, HostResolver, ModelIdentity,
-    NodeContext, ShellAccess, ShellEnvironmentFactory, StoreNumbers, definitions, runs_together,
-    stored_running_commands, system_prompt,
+    CallError, ContextSource, EndOf, Environments, HostResolver, ModelIdentity, NodeContext,
+    ShellAccess, ShellEnvironmentFactory, Stopper, StoreNumbers, definitions, end_report,
+    progress_report, runs_together, stored_running_commands, system_prompt,
 };
 use demi_agent_transcript::IdSource;
 use demi_host_interface::{
-    CommandSet, Ending, JobCaller, Numbers, PageFeed, PageState, PageView, ShellEnvironment,
-    ShellError, WholeOutput,
+    CommandSet, CommandState, Ending, JobCaller, Numbers, PageFeed, PageState, PageView, Seen,
+    ShellEnvironment, ShellError, WholeOutput,
 };
 use demi_provider_common::{ProviderRuntime, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_shared_types::{
-    Clock, CommandEnd, CommandId, ModelSelection, NodeId, QueuedMessage, TurnId, WakeupCommand,
+    Clock, CommandEnd, CommandId, ModelSelection, NodeId, QueuedMessage, TurnId,
 };
-use futures_util::future::{LocalBoxFuture, select_all};
+use futures_util::{FutureExt, future::LocalBoxFuture};
 
-use crate::{
-    AgentServer,
-    server::{CommandPlace, ProviderResolver, Tree},
-};
+use crate::server::ProviderResolver;
 
 /// A node's place in its tree, which sets its lifecycle policy: a child
 /// resumes a turn the process interrupted and closes once it is quiescent;
@@ -102,6 +99,35 @@ impl<H: HostResolver> Node<H> {
     /// conversation's current Host, as a page's `shell_abort` asks.
     pub(crate) async fn shell_abort(&self, command: &CommandId) -> Result<(), CallError> {
         self.runtime.shell_access().abort(command).await
+    }
+
+    /// `stopper` stops `command`, which one of the node's environments
+    /// holds; its end's report says who (`runtime.md` § Command reports).
+    pub(crate) fn stopped_by(&self, command: &CommandId, stopper: Stopper) {
+        self.runtime.environments.stopped_by(command, stopper);
+    }
+
+    /// The node's place in the whole output of `command`, which it looks at
+    /// without holding it (`runtime.md` § The `demi shell` commands).
+    pub(crate) fn place(&self, command: &CommandId) -> Seen {
+        self.runtime.environments.place(command)
+    }
+
+    /// Moves the node's place in `command`'s whole output to `seen`.
+    pub(crate) fn set_place(&self, command: &CommandId, seen: Seen) {
+        self.runtime.environments.set_place(command, seen);
+    }
+
+    /// A look showed the node `command`'s end, and all of its output, which
+    /// one of its environments held: its handle is released, and its end
+    /// tells the node nothing more.
+    pub(crate) async fn saw_end(&self, command: &CommandId) {
+        self.runtime.environments.saw_end(command);
+        if let Some(environment) = self.runtime.environments.owning(command) {
+            // A command the environment already forgot has nothing to
+            // release.
+            environment.release_command(command).await;
+        }
     }
 
     /// Whether one of the node's environments holds `command`.
@@ -184,8 +210,8 @@ impl<H: HostResolver> Node<H> {
     /// policy (`subagents.md` § Persistence): a child resumes the turn the
     /// process interrupted, while the root records the interruption and
     /// leaves the turn to its client; the queued messages run again in
-    /// order; waiting input and due wakeups wake the root only when its last
-    /// turn was not interrupted, and a child only once its supervisor has
+    /// order; waiting input wakes the root only when its last turn was not
+    /// interrupted, and a child only once its supervisor has
     /// looked at it, which closes it instead when it is quiescent. What this
     /// changed is saved at once.
     pub(crate) async fn continue_from(&self, continuation: Continuation) -> Result<(), StoreError> {
@@ -249,8 +275,8 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     numbers: Rc<dyn Numbers>,
     /// The node's agent number.
     agent: u64,
-    /// The server, through which the node finds its tree's commands.
-    server: Weak<AgentServer<H>>,
+    /// The least interval its commands report at, in milliseconds.
+    interval_floor_ms: u32,
 }
 
 impl<H: HostResolver> NodeRuntime<H> {
@@ -262,7 +288,7 @@ impl<H: HostResolver> NodeRuntime<H> {
         }
     }
 
-    /// What the standard tools reach the node's shells through.
+    /// What the `shell` tool reaches the node's shells through.
     fn shell_access(&self) -> ShellAccess<'_, H> {
         ShellAccess {
             hosts: &self.hosts,
@@ -273,25 +299,34 @@ impl<H: HostResolver> NodeRuntime<H> {
             commands: &self.commands,
             feed: &self.feed,
             numbers: &self.numbers,
-            conversation: self,
+            interval_floor_ms: self.interval_floor_ms,
         }
     }
 
-    /// The node's tree, while it is live.
-    fn tree(&self) -> Option<Rc<Tree<H>>> {
-        self.server.upgrade()?.tree(&self.root)
-    }
-}
-
-impl<H: HostResolver> ConversationCommands for NodeRuntime<H> {
-    fn knows<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<bool, String>> {
-        Box::pin(async move {
-            let tree = self
-                .tree()
-                .ok_or_else(|| format!("the conversation {} is not open", self.root))?;
-            let place = tree.command_place(command).await?;
-            Ok(!matches!(place, CommandPlace::Unknown))
-        })
+    /// How `command`, which one of the node's environments held, ended: as
+    /// the conversation's record of it keeps it (`storage.md` § Command
+    /// outputs), which the record holds before the command reads as ended;
+    /// a command no record keeps, as in a product without a keeper, ended
+    /// as its environment says.
+    async fn end_of(&self, command: &CommandId) -> EndOf {
+        let recorded = self.store.command_end(command).await.unwrap_or_else(|error| {
+            tracing::warn!(%command, %error, "how a command ended could not be read");
+            None
+        });
+        let stopper = self.environments.stopper(command);
+        let end = recorded.or_else(|| {
+            let environment = self.environments.owning(command)?;
+            match environment.ended(command).now_or_never()?.ok()? {
+                Ending::Exited(exit_code) => Some(CommandEnd::Exited { exit_code }),
+                Ending::Aborted => Some(CommandEnd::Stopped),
+            }
+        });
+        match end {
+            Some(CommandEnd::Exited { exit_code }) => EndOf::Exited(exit_code),
+            Some(CommandEnd::Stopped) => EndOf::Stopped(stopper),
+            Some(CommandEnd::Lost) => EndOf::Lost,
+            Some(CommandEnd::Unrecorded) | None => EndOf::Unrecorded,
+        }
     }
 }
 
@@ -397,7 +432,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         })
     }
 
-    /// The standard tools, and only these.
+    /// The `shell` tool, and only it.
     fn tools(&self) -> Arc<[ToolDefinition]> {
         definitions()
     }
@@ -410,63 +445,49 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         self.shell_access().invoke_step(calls)
     }
 
-    /// Finds each command in the tree, whichever node's shells hold it, and
-    /// then holds only the environments it waits on and the store, never
-    /// the tree. How a command ended is what the conversation's record of it
-    /// keeps (`storage.md` § Command outputs), which the record holds before
-    /// the command reads as ended; a command no record keeps, as in a
-    /// product without a keeper, ended as its environment says.
-    fn command_end(&self, commands: Vec<CommandId>) -> LocalBoxFuture<'static, WakeupCommand> {
-        let tree = self.tree();
-        let store = self.store.clone();
+    /// Waits on the environment that holds `command`, and holds nothing
+    /// else; a command no environment holds has ended, with the node's
+    /// shells or before the node was restored.
+    fn command_ended(&self, command: &CommandId) -> LocalBoxFuture<'static, ()> {
+        let environment = self.environments.owning(command);
+        let command = command.clone();
         Box::pin(async move {
-            let Some(tree) = tree else {
-                // A tree that is not live runs no command; it is closing.
-                return std::future::pending().await;
-            };
-            let mut waits = Vec::new();
-            for command in commands {
-                let environment = match tree.command_place(&command).await {
-                    Ok(CommandPlace::Held(node)) => node.environment_of(&command),
-                    Ok(CommandPlace::Stored(end)) => {
-                        return WakeupCommand {
-                            command_id: command,
-                            end,
-                        };
-                    }
-                    Ok(CommandPlace::Unknown) => None,
-                    Err(error) => {
-                        // The time still wakes the node.
-                        tracing::warn!(%command, %error, "a command a yield waits for could not be found");
-                        continue;
-                    }
-                };
-                let store = store.clone();
-                waits.push(Box::pin(async move {
-                    let ended = match &environment {
-                        Some(environment) => environment.ended(&command).await.ok(),
-                        None => None,
-                    };
-                    let recorded = store.command_end(&command).await.unwrap_or_else(|error| {
-                        tracing::warn!(%command, %error, "how a command ended could not be read");
-                        None
-                    });
-                    let end = recorded.unwrap_or(match ended {
-                        Some(Ending::Exited(exit_code)) => CommandEnd::Exited { exit_code },
-                        Some(Ending::Aborted) => CommandEnd::Stopped,
-                        None => CommandEnd::Unrecorded,
-                    });
-                    WakeupCommand {
-                        command_id: command,
-                        end,
-                    }
-                }));
+            if let Some(environment) = environment {
+                // An environment that forgot the command answers an error:
+                // it has ended either way.
+                let _ = environment.ended(&command).await;
             }
-            drop(tree);
-            if waits.is_empty() {
-                return std::future::pending().await;
+        })
+    }
+
+    /// A running command's progress, which a look shows and which moves the
+    /// node's place in its output; or its end, unless a look showed it the
+    /// node already or the node stopped it itself.
+    fn report<'a>(
+        &'a self,
+        command: &'a CommandId,
+        title: &'a str,
+        interval_ms: Option<u32>,
+    ) -> LocalBoxFuture<'a, Option<String>> {
+        Box::pin(async move {
+            if self.environments.end_seen(command) {
+                return None;
             }
-            select_all(waits).await.0
+            if let Some(environment) = self.environments.owning(command)
+                && environment.ended(command).now_or_never().is_none()
+            {
+                // A resident command reports only its end.
+                let interval = interval_ms?;
+                let status = environment.status(command).ok()?;
+                // One that ended since tells its end.
+                if matches!(status.state, CommandState::Running { .. }) {
+                    return Some(progress_report(&status, title, interval));
+                }
+            }
+            if self.environments.stopper(command) == Some(Stopper::Itself) {
+                return None;
+            }
+            Some(end_report(command, title, self.end_of(command).await))
         })
     }
 
@@ -557,8 +578,8 @@ pub(crate) struct NodeSpec<H: HostResolver> {
     pub(crate) ids: Rc<dyn IdSource>,
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) config: SessionConfig,
-    /// The server, through which the node finds its tree's commands.
-    pub(crate) server: Weak<AgentServer<H>>,
+    /// The least interval its commands report at, in milliseconds.
+    pub(crate) interval_floor_ms: u32,
 }
 
 /// A node, and what it has yet to run: what its restore handed back, or a new
@@ -605,7 +626,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         ids,
         clock,
         config,
-        server,
+        interval_floor_ms,
     } = spec;
     let record = origin.record().clone();
     let session_store = store.session_store(&record.id);
@@ -631,7 +652,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         lifecycle: ActivityGate::new(),
         numbers: Rc::new(StoreNumbers(store.clone())),
         agent: record.number,
-        server,
+        interval_floor_ms,
         store: store.clone(),
         shells,
         environments: Environments::default(),

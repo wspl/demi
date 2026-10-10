@@ -34,7 +34,7 @@ use demi_plugin_file::File;
 use demi_plugin_interface::PluginFactory;
 use demi_plugin_interface::{CallKind, HostFile, HostRead, PortFailure};
 use demi_provider_common::{
-    InferenceItem, InferenceRequest, ProviderEvent, ResultPart,
+    InferenceItem, InferenceRequest, ProviderEvent, ResultPart, UserPart,
     testing::{ScriptedRuntime, TokioClock, Turn, event},
 };
 use demi_shared_types::SystemClock;
@@ -327,13 +327,51 @@ pub fn is_idle(frame: &ServerFrame) -> bool {
     matches!(frame, ServerFrame::Phase { phase } if *phase == SessionPhase::Idle)
 }
 
-/// A `shell_exec` call of `script` that watches it for up to `timeout_ms`.
-pub fn exec(id: &str, script: &str, timeout_ms: u32) -> ProviderEvent {
+/// A `shell` call of `script` that watches it for up to `interval_ms`, and
+/// then reports every `interval_ms` while it runs.
+pub fn exec(id: &str, script: &str, interval_ms: u32) -> ProviderEvent {
     event::tool_call(
         id,
-        "shell_exec",
-        json!({"description": "Run the test script", "script": script, "timeoutMs": timeout_ms}),
+        "shell",
+        json!({"description": "Run the test script", "script": script, "intervalMs": interval_ms}),
     )
+}
+
+/// A `shell` call of `script` for a command that runs until it ends or is
+/// stopped: the call returns once its output has been quiet for two
+/// seconds, and the command reports only its end.
+pub fn resident(id: &str, script: &str) -> ProviderEvent {
+    event::tool_call(
+        id,
+        "shell",
+        json!({"description": "Run the test script", "script": script, "intervalMs": null}),
+    )
+}
+
+/// A model that answers each request with the next of `steps`, but notes a
+/// request whose input is commands' reports alone, which a command left
+/// running opens when it reports (`runtime.md` § Command reports): how many
+/// such requests come depends on when the commands end.
+pub fn tolerant(steps: Vec<Vec<ProviderEvent>>) -> ScriptedRuntime {
+    let steps = Rc::new(RefCell::new(std::collections::VecDeque::from(steps)));
+    let turns = (0..200).map(move |_| {
+        let steps = steps.clone();
+        Turn::Respond(Box::new(move |request: &InferenceRequest| {
+            let reported = matches!(
+                request.items.last(),
+                Some(InferenceItem::UserMessage { content })
+                    if matches!(content.first(), Some(UserPart::Text(text)) if text.starts_with("Command "))
+            );
+            if reported {
+                return reply("noted");
+            }
+            steps
+                .borrow_mut()
+                .pop_front()
+                .expect("the scenario scripted this request")
+        }))
+    });
+    ScriptedRuntime::new(turns)
 }
 
 /// The end of a turn: a text and a response.
@@ -341,7 +379,7 @@ pub fn reply(text: &str) -> Vec<ProviderEvent> {
     vec![event::text(text), event::response(10, 5)]
 }
 
-/// A model's runs for messages that each run scripts with `shell_exec`, one
+/// A model's runs for messages that each run scripts with `shell`, one
 /// call per request in one shell, and end the message's turn after its last
 /// script; every call's result text lands in the returned list.
 pub fn scripts(messages: &[&[&str]]) -> (Vec<Turn>, Rc<RefCell<Vec<String>>>) {

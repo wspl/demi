@@ -1,7 +1,7 @@
 //! A session's state and every decision about it (`runtime.md` § Sessions
 //! and turns): one status, the actions waiting to run, the input waiting for
-//! a boundary, the scheduled wakeups, the transcript, the model selection
-//! with its provider runtime, and what the next save writes.
+//! a boundary, the commands that report to it, the transcript, the model
+//! selection with its provider runtime, and what the next save writes.
 //! Every method here is synchronous; the worker and the turn loop await
 //! between calls, never inside one.
 
@@ -14,7 +14,7 @@ use std::{
 };
 
 use demi_agent_store::{
-    CheckpointState, CheckpointUpdate, EditReceipt, PendingAgentInput, ScheduledWakeup, TurnEnd,
+    CheckpointState, CheckpointUpdate, CommandInterval, EditReceipt, PendingAgentInput,
     media::{self, HeldMedia, ModelView},
 };
 use demi_agent_transcript::{
@@ -30,8 +30,7 @@ use demi_provider_common::{
 use demi_shared_types::{
     AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, FailureSource,
     ModelSelection, NodeId, PendingCall, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
-    ToolResultContentBlock, ToolView, TurnId, UserContentBlock, WakeupCommand, WakeupId,
-    WakeupPlacement,
+    ToolResultContentBlock, ToolView, TurnId, UserContentBlock, WakeupPlacement,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -40,8 +39,9 @@ use super::{
     Execution, ModelSwitch, SessionEvent, Settle, Status, SteerError,
     cancel::{CancelReason, TurnCancel},
     editing::{EditCheck, EditError, EditInFlight, EditSubmission},
-    input::{Input, InputQueue, Take, Wakeups},
+    input::{Input, InputQueue, Take},
     persist::PersistMarks,
+    reports::Watched,
     runtime::Arrivals,
 };
 
@@ -72,21 +72,22 @@ pub(crate) struct SessionCore {
     /// What the session holds for the media its replayed blocks and its
     /// waiting input reference (`runtime.md` § Media).
     pub(super) media: HeldMedia,
+    /// The tools its requests declare, which replay reads.
+    pub(super) tools: Arc<[ToolDefinition]>,
     /// The actions waiting, in the order they run; the queue is its sends.
     pub(super) pending: VecDeque<PendingAction>,
     pub(super) inputs: InputQueue,
-    pub(super) wakeups: Wakeups,
+    /// The commands the session's calls left running, which report to it.
+    pub(super) watched: Watched,
     pub(super) edits: Vec<EditReceipt>,
-    /// How the last turn that ended, ended (`subagents.md` § Result).
-    pub(super) last_turn: TurnEnd,
     /// The edit being prepared or run, from its admission until its action
     /// ends.
     pub(super) editing: Option<EditInFlight>,
     pub(super) activity: Activity,
-    /// Waiting input and due wakeups open no continuation until the node's
-    /// next action: the session is a restored root whose last turn was
-    /// interrupted, or a closing child. A restore reads it from the
-    /// checkpoint again, so it is not saved.
+    /// Waiting input opens no continuation until the node's next action:
+    /// the session is a restored root whose last turn was interrupted, or a
+    /// closing child. A restore reads it from the checkpoint again, so it is
+    /// not saved.
     pub(super) held: bool,
     /// Dispose started: every admission is refused.
     pub(super) disposing: bool,
@@ -189,7 +190,7 @@ pub(super) enum ActionKind {
     Send {
         content: Vec<UserContentBlock>,
     },
-    /// Input that arrived while nothing ran, a fired yield wakeup or agent
+    /// Input that arrived while nothing ran, command reports or agent
     /// messages: it opens a turn of its own, never shown in the queue.
     Continue,
     Retry,
@@ -206,8 +207,7 @@ pub(super) enum AbortStep {
         target: AbortTarget,
         cancel: Rc<TurnCancel>,
     },
-    /// Something that had not run yet: a waiting action or a scheduled
-    /// wakeup.
+    /// A waiting action, which had not run yet.
     Removed(AbortTarget),
     Nothing,
 }
@@ -233,7 +233,8 @@ struct Published {
     pending_steers: Vec<PendingSteer>,
     pending_calls: Vec<PendingCall>,
     agent_inputs: Vec<BlockId>,
-    wakeups: Vec<ScheduledWakeup>,
+    reports: Vec<String>,
+    intervals: Vec<CommandInterval>,
     edits: usize,
 }
 
@@ -242,8 +243,6 @@ pub(super) struct Effects {
     pub(super) events: Vec<SessionEvent>,
     pub(super) wake_worker: bool,
     pub(super) save: bool,
-    /// The scheduled wakeups changed: the wakeup driver plans again.
-    pub(super) replan_wakeups: bool,
     pub(super) status: Status,
 }
 
@@ -287,10 +286,10 @@ pub(super) struct CoreParts {
     /// The bytes held for the transcript's media: none for a new or restored
     /// session, the window's for a session copy.
     pub(super) media: HeldMedia,
+    pub(super) tools: Arc<[ToolDefinition]>,
     pub(super) inputs: InputQueue,
-    pub(super) wakeups: Wakeups,
+    pub(super) watched: Watched,
     pub(super) edits: Vec<EditReceipt>,
-    pub(super) last_turn: TurnEnd,
     pub(super) held: bool,
     pub(super) ids: Rc<dyn IdSource>,
     pub(super) clock: Arc<dyn Clock>,
@@ -310,11 +309,11 @@ impl SessionCore {
             retired: Vec::new(),
             transcript: parts.transcript,
             media: parts.media,
+            tools: parts.tools,
             pending: VecDeque::new(),
             inputs: parts.inputs,
-            wakeups: parts.wakeups,
+            watched: parts.watched,
             edits: parts.edits,
-            last_turn: parts.last_turn,
             editing: None,
             activity: Activity::Idle,
             held: parts.held,
@@ -330,14 +329,16 @@ impl SessionCore {
                 pending_steers: Vec::new(),
                 pending_calls: Vec::new(),
                 agent_inputs: Vec::new(),
-                wakeups: Vec::new(),
+                reports: Vec::new(),
+                intervals: Vec::new(),
                 edits: 0,
             },
         };
         // What the checkpoint holds counts as published: only later changes
         // make a save due.
         core.published.agent_inputs = core.agent_input_ids();
-        core.published.wakeups = core.checkpoint_wakeups();
+        core.published.reports = core.inputs.reports();
+        core.published.intervals = core.watched.intervals();
         core.published.edits = core.edits.len();
         core
     }
@@ -403,9 +404,8 @@ impl SessionCore {
         if self.disposing {
             return Err(EditError::Closed);
         }
-        let waiting = !self.wakeups.is_empty()
-            || self.inputs.has_agent_input()
-            || self.inputs.has_fired_wakeup()
+        let waiting = self.inputs.has_agent_input()
+            || self.inputs.has_report()
             || !self.inputs.pending_steers().is_empty();
         if self.settle() != Settle::Settled || self.editing.is_some() || waiting {
             return Err(EditError::Busy);
@@ -567,31 +567,23 @@ impl SessionCore {
         self.requests.wake_worker = true;
     }
 
-    /// Whether waiting input would open a continuation of its own: a fired
-    /// wakeup or agent messages, unless the session is held.
+    /// Whether waiting input would open a continuation of its own: command
+    /// reports or agent messages, unless the session is held.
     fn wants_continuation(&self) -> bool {
-        !self.held && (self.inputs.has_fired_wakeup() || self.inputs.has_agent_input())
+        !self.held && (self.inputs.has_report() || self.inputs.has_agent_input())
     }
 
-    /// Keeps waiting input and due wakeups from opening a continuation until
-    /// the node's next action.
+    /// Keeps waiting input from opening a continuation until the node's
+    /// next action.
     pub(super) fn hold(&mut self) {
         self.held = true;
     }
 
-    /// Lets waiting input and due wakeups open a continuation again, and
-    /// opens one when nothing runs or waits.
+    /// Lets waiting input open a continuation again, and opens one when
+    /// nothing runs or waits.
     pub(super) fn release(&mut self) {
         self.held = false;
         self.wake();
-    }
-
-    /// The turn that ran ended as `end`.
-    pub(super) fn end_turn(&mut self, end: TurnEnd) {
-        if self.last_turn != end {
-            self.last_turn = end;
-            self.mark_state_changed();
-        }
     }
 
     /// Opens a continuation when waiting input wants one and nothing runs or
@@ -650,13 +642,11 @@ impl SessionCore {
     }
 
     /// The action ended; its checkpoint is saved next. The human steers
-    /// still pending are dropped, and the wakeups it scheduled start their
-    /// wait.
+    /// still pending are dropped.
     pub(super) fn end_action(&mut self) {
         self.activity = Activity::Finishing;
         self.editing = None;
         self.inputs.discard_steers();
-        self.wakeups.arm(self.clock.now());
         self.release_media();
     }
 
@@ -687,7 +677,6 @@ impl SessionCore {
                 reply: None,
             });
         }
-        self.wakeups.arm(self.clock.now());
         self.activity = Activity::Closed { interrupted: began };
         began
     }
@@ -695,8 +684,7 @@ impl SessionCore {
     // Stop and dispose.
 
     /// Finds the one thing an `abort` stops: the running action, else the
-    /// first waiting action, else the oldest scheduled wakeup. A session
-    /// being disposed stops nothing more.
+    /// first waiting action. A session being disposed stops nothing more.
     pub(super) fn abort_step(&mut self) -> AbortStep {
         if self.disposing {
             return AbortStep::Nothing;
@@ -724,33 +712,29 @@ impl SessionCore {
             };
             return AbortStep::Removed(target);
         }
-        if self.wakeups.cancel_oldest() {
-            return AbortStep::Removed(AbortTarget::PendingYieldWakeup);
-        }
         AbortStep::Nothing
     }
 
     /// Stops the running action, as the user's Stop would, and nothing
-    /// that waits: a waiting action and a scheduled wakeup stay. The answer
-    /// is the stopped action's token, which says when it recorded the stop.
+    /// that waits: a waiting action stays. The answer is the stopped
+    /// action's token, which says when it recorded the stop.
     pub(super) fn stop_running(&mut self) -> Option<Rc<TurnCancel>> {
         if self.disposing {
             return None;
         }
-        match &self.activity {
-            Activity::Running(run) if !run.cancel.is_cancelled() => {
-                run.cancel.cancel(CancelReason::Stop);
-                Some(run.cancel.clone())
-            }
-            _ => None,
-        }
+        let cancel = match &self.activity {
+            Activity::Running(run) if !run.cancel.is_cancelled() => run.cancel.clone(),
+            _ => return None,
+        };
+        cancel.cancel(CancelReason::Stop);
+        Some(cancel)
     }
 
     /// Whether another `abort` would stop something.
     pub(super) fn can_abort_again(&self) -> bool {
         let running =
             matches!(&self.activity, Activity::Running(run) if !run.cancel.is_cancelled());
-        !self.disposing && (running || !self.pending.is_empty() || !self.wakeups.is_empty())
+        !self.disposing && (running || !self.pending.is_empty())
     }
 
     /// A stopped action records the stop: for the user's Stop, it writes
@@ -1067,14 +1051,22 @@ impl SessionCore {
     }
 
     /// Writes the waiting input `take` names into the running turn, in
-    /// arrival order. Returns whether an agent message was written, which is
-    /// saved at once.
+    /// arrival order; the command reports among it are one `wakeup` block,
+    /// one paragraph each, where the first of them arrived. Returns whether
+    /// an agent message was written, which is saved at once.
     pub(super) fn write_inputs(&mut self, take: Take) -> bool {
         let inputs = self.inputs.take(take);
         if inputs.is_empty() {
             return false;
         }
         let turn = self.turn();
+        let mut reports: Vec<String> = inputs
+            .iter()
+            .filter_map(|input| match input {
+                Input::Report(report) => Some(report.clone()),
+                _ => None,
+            })
+            .collect();
         let mut agent_message = false;
         for input in inputs {
             match input {
@@ -1082,14 +1074,10 @@ impl SessionCore {
                     self.transcript
                         .push_steer(steer.id, turn.clone(), &steer.model, steer.content);
                 }
-                Input::Wakeup(wakeup) => {
-                    self.transcript.push_wakeup(
-                        wakeup_block_id(&wakeup.id),
-                        turn.clone(),
-                        &self.model,
-                        WakeupPlacement::Steer,
-                        wakeup.ended,
-                    );
+                Input::Report(_) if reports.is_empty() => {}
+                Input::Report(_) => {
+                    let text = mem::take(&mut reports).join("\n\n");
+                    self.push_reports(turn.clone(), WakeupPlacement::Steer, text);
                 }
                 Input::Agent(input) => {
                     agent_message = true;
@@ -1102,20 +1090,15 @@ impl SessionCore {
         agent_message
     }
 
-    /// Writes what a continuation opens with: the first fired wakeup as a
+    /// Writes what a continuation opens with: the command reports as one
     /// `wakeup` block that opens the turn, or else the waiting agent
     /// messages. False when nothing waits any more, and the continuation
     /// ends without a turn.
     pub(super) fn open_continuation(&mut self) -> Option<bool> {
-        if let Some(wakeup) = self.inputs.take_first_wakeup() {
+        let reports = self.inputs.take_reports();
+        if !reports.is_empty() {
             let turn = self.turn();
-            self.transcript.push_wakeup(
-                wakeup_block_id(&wakeup.id),
-                turn,
-                &self.model,
-                WakeupPlacement::NewTurn,
-                wakeup.ended,
-            );
+            self.push_reports(turn, WakeupPlacement::NewTurn, reports.join("\n\n"));
             self.commit();
             return Some(false);
         }
@@ -1125,43 +1108,37 @@ impl SessionCore {
         None
     }
 
-    // Yield wakeups.
-
-    /// Schedules a wakeup its action arms when it ends, unless one of
-    /// `commands` ends first.
-    pub(super) fn schedule_wakeup(&mut self, duration_ms: u32, commands: Vec<CommandId>) -> WakeupId {
-        let id = WakeupId::try_from(self.ids.next_id())
+    /// A `wakeup` block of command reports, `text` one paragraph each.
+    fn push_reports(&mut self, turn: TurnId, placement: WakeupPlacement, text: String) {
+        let id = BlockId::try_from(self.ids.next_id())
             .expect("an id source never gives an empty identity");
-        self.wakeups.schedule(id.clone(), duration_ms, commands);
-        id
+        self.transcript
+            .push_wakeup(id, turn, &self.model, placement, text);
     }
 
-    /// One of the commands the wakeup `id` names ended: it is due at once,
-    /// or when its action ends.
-    pub(super) fn command_ended(&mut self, id: &WakeupId, ended: WakeupCommand) {
-        self.wakeups.command_ended(id, ended, self.clock.now());
+    // Command reports.
+
+    /// Watches `command`, which a call titled `title` left running, so that
+    /// it reports every `interval_ms`, or only its end when none. A Stop of
+    /// the action leaves it running (`runtime.md` § Stop).
+    pub(super) fn watch_command(
+        &mut self,
+        command: CommandId,
+        interval_ms: Option<u32>,
+        title: String,
+    ) {
+        self.watched.add(command, interval_ms, title);
     }
 
-    /// Drops every wakeup, scheduled or fired and not yet written: a child
-    /// that closes with its answer never wakes again (`subagents.md`
-    /// § Result).
-    pub(super) fn drop_wakeups(&mut self) {
-        // Dropping a scheduled wakeup's watch stops it.
-        self.wakeups = Wakeups::default();
-        self.inputs.drop_wakeups();
-    }
-
-    /// Fires the wakeups due now: each joins the running action at its next
-    /// boundary, or opens a continuation.
-    pub(super) fn fire_due_wakeups(&mut self) {
-        for wakeup in self.wakeups.take_due(self.clock.now()) {
-            self.inputs.add(Input::Wakeup(wakeup));
+    /// Admits a command's report for the next boundary: it joins the running
+    /// turn, or opens a continuation. A session that is closing keeps no
+    /// more input.
+    pub(super) fn admit_report(&mut self, text: String) {
+        if self.disposing {
+            return;
         }
+        self.inputs.add(Input::Report(text));
         self.wake();
-    }
-
-    pub(super) fn next_wakeup(&self) -> Option<demi_shared_types::Timestamp> {
-        self.wakeups.next_due()
     }
 
     // The model selection.
@@ -1441,7 +1418,6 @@ impl SessionCore {
         &mut self,
         view: &ModelView,
         system_prompt: String,
-        tools: Arc<[ToolDefinition]>,
         request_id: String,
         cancel: CancellationToken,
     ) -> InferenceRequest {
@@ -1469,7 +1445,7 @@ impl SessionCore {
             system_prompt,
             items: replayed.items.into(),
             blocks: blocks.into(),
-            tools,
+            tools: self.tools.clone(),
             thinking: self.model.thinking.clone(),
             service_tier_id: self.model.service_tier_id.clone(),
             prompt_cache: PromptCache::Session {
@@ -1511,7 +1487,7 @@ impl SessionCore {
     /// A request of the current model over `view`, the model's view of the
     /// replayed blocks: what replay sends it and what the estimates weigh.
     pub(super) fn request_view<'a>(&'a self, view: &'a ModelView) -> RequestView<'a> {
-        RequestView::new(view, &self.model.model, self.request_limits())
+        RequestView::new(view, &self.model.model, self.request_limits(), &self.tools)
     }
 
     // Media.
@@ -1651,22 +1627,12 @@ impl SessionCore {
             phase: self.recorded_phase(),
             queue: self.queued_messages(),
             agent_inputs: self.inputs.agent_inputs(),
-            wakeups: self.checkpoint_wakeups(),
+            reports: self.inputs.reports(),
+            intervals: self.watched.intervals(),
             cwd: self.cwd.clone(),
             model: self.model.clone(),
             edits: self.edits.clone(),
-            last_turn: self.last_turn,
         }
-    }
-
-    /// Every wakeup not yet written: the scheduled ones, then those that
-    /// fired and wait for a boundary.
-    fn checkpoint_wakeups(&self) -> Vec<ScheduledWakeup> {
-        self.wakeups
-            .scheduled()
-            .chain(self.inputs.fired_wakeups())
-            .cloned()
-            .collect()
     }
 
     fn agent_input_ids(&self) -> Vec<BlockId> {
@@ -1712,8 +1678,8 @@ impl SessionCore {
                 TurnStage::Compacting => Execution::Compacting,
             },
             Activity::Finishing => Execution::Finalizing,
-            Activity::Idle | Activity::Closed { .. } if !self.wakeups.is_empty() => {
-                Execution::PendingYield
+            Activity::Idle | Activity::Closed { .. } if !self.watched.is_empty() => {
+                Execution::Waiting
             }
             Activity::Idle | Activity::Closed { .. } => Execution::Idle,
         }
@@ -1730,9 +1696,8 @@ impl SessionCore {
     pub(super) fn status(&self) -> Status {
         Status {
             settle: self.settle(),
-            wakeups: !self.wakeups.is_empty() || self.inputs.has_fired_wakeup(),
-            agent_input: self.inputs.has_agent_input(),
-            last_turn: self.last_turn,
+            input: self.inputs.has_agent_input() || self.inputs.has_report(),
+            commands: !self.watched.is_empty(),
         }
     }
 
@@ -1742,8 +1707,8 @@ impl SessionCore {
 
     /// Ends a change: the events it made, then the queue, the pending steers
     /// and the phase when they changed. A change of the queue, the waiting
-    /// agent messages, the wakeups or the edit receipts is also due for a
-    /// save.
+    /// agent messages and command reports, the commands that report or the
+    /// edit receipts is also due for a save.
     pub(super) fn take_effects(&mut self) -> Effects {
         let mut events = mem::take(&mut self.outbox);
         let queue: Vec<TurnId> = self
@@ -1764,10 +1729,14 @@ impl SessionCore {
             self.published.agent_inputs = agent_inputs;
             self.mark_state_changed();
         }
-        let wakeups = self.checkpoint_wakeups();
-        let replan_wakeups = wakeups != self.published.wakeups;
-        if replan_wakeups {
-            self.published.wakeups = wakeups;
+        let reports = self.inputs.reports();
+        if reports != self.published.reports {
+            self.published.reports = reports;
+            self.mark_state_changed();
+        }
+        let intervals = self.watched.intervals();
+        if intervals != self.published.intervals {
+            self.published.intervals = intervals;
             self.mark_state_changed();
         }
         if self.edits.len() != self.published.edits {
@@ -1794,7 +1763,6 @@ impl SessionCore {
             events,
             wake_worker: requests.wake_worker,
             save: requests.save,
-            replan_wakeups,
             status: self.status(),
         }
     }
@@ -1819,11 +1787,6 @@ fn written_description(input: &str) -> Option<String> {
         }
         _ => None,
     })
-}
-
-/// The id of the block a wakeup becomes.
-fn wakeup_block_id(id: &WakeupId) -> BlockId {
-    BlockId::try_from(id.as_str()).expect("a wakeup id is never empty")
 }
 
 /// A provider failure's diagnostics as the session records them: with the

@@ -1641,7 +1641,7 @@ runner-shell -> command-protocol, command-sdk, runner-process, runner-protocol
 runner-jobs -> command-protocol, command-sdk, command-declarations, runner-process, runner-protocol, runner-command-packages
 command-package-browser-chrome -> command-package-browser-protocol, command-protocol, command-sdk, shared-artifacts, shared-types
 backend-page-sync -> backend-database, web-api-protocol
-backend-database -> agent-store, agent-transcript, shared-types, shared-gates, backend-remote-host, machine-manager-protocol, runner-protocol, host-interface, web-api-protocol, plugin-interface
+backend-database -> agent-store, shared-types, shared-gates, backend-remote-host, machine-manager-protocol, runner-protocol, host-interface, web-api-protocol, plugin-interface
 backend-blobs -> agent-store, shared-types, web-api-protocol
 backend-accounts -> backend-database, command-protocol, shared-types, web-api-protocol
 backend-providers -> backend-database, backend-page-sync, command-package-claude-code-protocol, shared-types, provider-common, provider-anthropic-api, provider-claude-code, provider-openai-api, web-api-protocol

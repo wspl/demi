@@ -66,7 +66,7 @@ const DETACH_SUMMARY: &str = "Detach an attached host, by name or id from `demi 
 
 const LIST_SUMMARY: &str = "Hosts this conversation can reach with `demi host shell --host`: name, id, online, the directory commands start in; the primary one marked.";
 
-const CURRENT_SUMMARY: &str = "The primary host: where shell_exec runs.";
+const CURRENT_SUMMARY: &str = "The primary host: where the shell tool's commands run.";
 
 const SHELL_SUMMARY: &str = "Run a shell string in another host's bash: `demi host shell --host <name|id> <script>`. The script starts in that host's directory, which `demi host list` shows and no `cd` changes, with this command's stdin and stdout, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --host ci \"tar c -C /work .\" | tar x`, `tar c . | demi host shell --host ci \"tar x -C /work\"`). stderr and the exit code pass through.";
 

@@ -9,7 +9,7 @@ test('the transcript hides what the reader never sees: usage, resumes and the hi
     { type: 'user', id: 'user-1', turnId: 'user-1', createdAt, model, content: [{ type: 'text', text: 'go' }], preamble: null },
     tool('yield-1', 'yield'),
     { type: 'response', id: 'response-1', createdAt, model, usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } },
-    { type: 'wakeup', id: 'wakeup-1', turnId: 'wakeup-1', createdAt, model, placement: 'new_turn' },
+    { type: 'wakeup', id: 'wakeup-1', turnId: 'wakeup-1', createdAt, model, placement: 'new_turn', text: 'Command 17 (Run the tests) ended with exit code 0; look at it with demi shell status 17.' },
     { type: 'context', id: 'context-1', turnId: 'wakeup-1', createdAt, model, source: 'execution', text: 'The target changed.' },
     { type: 'resume', id: 'resume-1', turnId: 'wakeup-1', createdAt, model },
     { type: 'steer', id: 'steer-1', turnId: 'wakeup-1', createdAt, model, content: [{ type: 'text', text: 'also' }] },

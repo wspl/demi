@@ -8,7 +8,7 @@
 //!   handler of each `rpc` leaf, built with [`GroupBuilder`] and
 //!   [`LeafBuilder`]; a handler receives its call as data
 //!   ([`RpcInvocation`]) and acts through an [`RpcPort`] of messages;
-//! - the shell-environment contract behind the `shell_*` tools
+//! - the shell-environment contract behind the `shell` tool
 //!   ([`ShellEnvironment`], [`ExecRequest`], [`CommandStatus`]) and the
 //!   record every environment keeps its commands in ([`CommandRecord`]),
 //!   which keeps the model's place in each command's output apart from the
@@ -36,8 +36,8 @@ pub use builders::{Call, GroupBuilder, LeafBuilder, TypedRpc};
 pub use commands::{Checked, CommandSet, DEMI_ROOT, Declared, RegisterError};
 pub use environment::{
     BinaryOutput, CommandState, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
-    DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, ExecRequest, JobCaller, MAX_OBSERVATION, Newest,
-    Numbers, ObservationWindow, PageFeed, ShellEnvironment, ShellError, WholeView, watch,
+    DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, ExecRequest, JobCaller, Newest, Numbers, PageFeed,
+    ShellEnvironment, ShellError, WholeView,
 };
 pub use host::{
     ByteRange, ByteStream, CpOptions, Descriptor, DirEntry, FileContents, FileKind, FileStat, Host, HostError,

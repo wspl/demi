@@ -295,7 +295,6 @@ pub enum AbortTarget {
     ActiveTurn,
     QueuedAction,
     QueuedMessage,
-    PendingYieldWakeup,
 }
 
 serde_plain::derive_display_from_serialize!(AbortTarget);
@@ -410,7 +409,7 @@ impl ShellStatus {
 pub struct CommandView {
     #[garde(skip)]
     pub command_id: CommandId,
-    /// The `shell_exec` call that started it, in the subagent's transcript
+    /// The `shell` call that started it, in the subagent's transcript
     /// when the frame names one.
     #[garde(skip)]
     pub tool_use_id: String,

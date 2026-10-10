@@ -211,7 +211,7 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
     assert_eq!(marker.boundary_id, boundary.id);
     let summarized = ModelView::of(0, &blocks[..1], &HeldMedia::default()).unwrap();
     let model = small_model().model;
-    let request = RequestView::new(&summarized, &model, RequestLimits::default());
+    let request = RequestView::new(&summarized, &model, RequestLimits::default(), &[]);
     assert_eq!(marker.compacted_tokens, block_tokens(&blocks[0], &request));
     assert_eq!(
         second.items.as_ref(),
@@ -530,12 +530,12 @@ async fn a_compact_stopped_after_a_finished_answer_leaves_no_stop_to_continue() 
     );
 }
 
-// One session, four scripted requests and a minute of paused time: a few
-// milliseconds.
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn a_compact_stopped_after_a_finished_turn_holds_neither_a_later_message_nor_a_due_wakeup() {
+// One session and five scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_compact_stopped_after_a_finished_turn_holds_neither_a_later_message_nor_a_report() {
     let provider = ScriptedRuntime::new([
-        yield_call(60_000),
+        Turn::Events(background_call("17", None, "Build")),
+        answer("building"),
         Turn::pending(),
         answer("read the news"),
         answer("checked the build"),
@@ -545,9 +545,15 @@ async fn a_compact_stopped_after_a_finished_turn_holds_neither_a_later_message_n
         compaction: only_when_asked(),
         ..SessionConfig::default()
     };
+    let runtime = test_runtime(Vec::new());
+    let commands = runtime.commands.clone();
+    let runtime = TestRuntime {
+        tools: vec![background_tool(&commands)],
+        ..runtime
+    };
     let session = start_at(
         &provider,
-        test_runtime(vec![yield_tool()]),
+        runtime,
         &store,
         config,
         Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
@@ -565,13 +571,13 @@ async fn a_compact_stopped_after_a_finished_turn_holds_neither_a_later_message_n
         .await
         .unwrap();
     let compacting = session.compact().unwrap();
-    until(|| provider.requests().len() == 2).await;
+    until(|| provider.requests().len() == 3).await;
     session.abort().await;
     assert_eq!(compacting.await, Ok(ActionEnd::Aborted));
     // The stop wrote nothing: no marker.
     assert_eq!(
         kinds(&session.transcript().blocks),
-        ["user", "tool_call:completed", "response"]
+        ["user", "tool_call:completed", "response", "text", "response"]
     );
 
     // A message that comes after the stop wakes the session as usual.
@@ -581,15 +587,16 @@ async fn a_compact_stopped_after_a_finished_turn_holds_neither_a_later_message_n
         .unwrap();
     session.settled().await;
     assert_eq!(
-        kinds(&session.transcript().blocks[3..]),
+        kinds(&session.transcript().blocks[5..]),
         ["agent_message", "text", "response"]
     );
-    // So does the wakeup the turn scheduled, once it is due.
-    tokio::time::sleep(Duration::from_secs(61)).await;
-    until(|| provider.requests().len() == 4).await;
+    // So does the report of the command the turn left running, once it
+    // ends.
+    commands.end("17");
+    until(|| provider.requests().len() == 5).await;
     session.settled().await;
     assert_eq!(
-        kinds(&session.transcript().blocks[6..]),
+        kinds(&session.transcript().blocks[8..]),
         ["wakeup", "text", "response"]
     );
 }

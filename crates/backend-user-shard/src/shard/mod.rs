@@ -102,7 +102,7 @@ pub struct Shard {
     /// What keeps the user's search index in step with the conversations.
     search: SearchIndexer,
     /// What opens a conversation's tree: the conversation sockets being
-    /// served and the restores of trees whose saved wakeup is due. The close
+    /// served and the restores of trees with no page attached. The close
     /// ends them before the agent shuts down, so no tree opens and no frame
     /// reaches one after.
     tree_openers: TaskTracker,
@@ -297,7 +297,7 @@ impl Shard {
     /// the synchronization channels close; the idle watches stop, and a
     /// retirement already running finishes;
     /// title requests are aborted; the conversation sockets end, and so do
-    /// the restores of trees whose saved wakeup is due; open file transfers
+    /// the restores of trees with no page attached; open file transfers
     /// and user streams end, and stay closed; the agent turns are aborted while their runners are
     /// still connected; the Cloud is saved and stopped; the runner
     /// connections close, their work ends with them, and then the pipes

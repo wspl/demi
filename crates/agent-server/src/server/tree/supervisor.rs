@@ -13,7 +13,7 @@ use std::{
 use demi_agent_session::{
     AgentMessageError, AgentSession, Execution, SessionEvent, Settle, Subscription,
 };
-use demi_agent_store::{ClosePhase, NodeClose, NodeRecord, TurnEnd};
+use demi_agent_store::{ClosePhase, NodeClose, NodeRecord};
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
 use demi_provider_common::ProviderRuntime;
@@ -434,7 +434,7 @@ impl<H: HostResolver> Tree<H> {
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
             config: deps.config.session,
-            server: Rc::downgrade(server),
+            interval_floor_ms: deps.config.interval_floor_ms,
         })
         .await
         .map_err(|error| error.to_string())?;
@@ -652,9 +652,10 @@ impl<H: HostResolver> Tree<H> {
     /// Looks at `child` and decides, in one step with no await, whether it
     /// closes (`subagents.md` § Result): a message accepted before this step
     /// keeps it open, one sent after it is refused. A child is quiescent
-    /// once its last turn ended with its answer and nothing else is left for
-    /// it to do; it closes with that answer, and its wakeups are dropped in
-    /// the same step, so none opens a turn before the close.
+    /// once nothing is left for it to do: no action runs or waits, no agent
+    /// message or command report waits to be read, no child of its own is
+    /// live and no command it started still runs. It closes with its last
+    /// answer.
     fn decide(&self, child: &Child<H>) -> Decision {
         if child.closing.get() || self.disposing.get() {
             return Decision::Stop;
@@ -665,14 +666,13 @@ impl<H: HostResolver> Tree<H> {
             let session = child.node.session();
             let status = session.status();
             let quiescent = status.settle == Settle::Settled
-                && status.last_turn == TurnEnd::Answer
-                && !status.agent_input
+                && !status.input
+                && !status.commands
                 && self.children_of(child.id()).is_empty()
                 && !self.starting.borrow().contains_key(child.id());
             if !quiescent {
                 return Decision::Wait;
             }
-            session.drop_wakeups();
             CloseKind::Completed
         };
         child.closing.set(true);
@@ -953,7 +953,7 @@ impl<H: HostResolver> Tree<H> {
                         profile: record.profile.clone(),
                         phase: JobPhase::Running,
                         closed_ago_ms: None,
-                        line: Some(list_line(&snapshot(&child, parent, now))),
+                        line: Some(list_line(&self.snapshot(&child, parent, now))),
                         children,
                     }
                 }
@@ -983,7 +983,7 @@ impl<H: HostResolver> Tree<H> {
             let Some(parent) = self.node(child.parent()) else {
                 return Ok(None);
             };
-            let snapshot = snapshot(&child, parent.record().number, now);
+            let snapshot = self.snapshot(&child, parent.record().number, now);
             let text = show_text(&snapshot);
             return Ok(Some((ShownAgent::Live(snapshot), text)));
         }
@@ -1117,10 +1117,9 @@ async fn supervision<H: HostResolver>(tree: Weak<Tree<H>>, child: Weak<Child<H>>
             live_child.wake.clone(),
         )
     };
-    // A start holds the child's waiting input and due wakeups until this
-    // first look, which closes a child that is quiescent once its own
-    // children are back, before a wakeup could open a turn (`subagents.md`
-    // § Persistence).
+    // A start holds the child's waiting input until this first look, which
+    // closes a child that is quiescent once its own children are back,
+    // before its input could open a turn (`subagents.md` § Persistence).
     let mut held = true;
     loop {
         status.mark_unchanged();
@@ -1151,7 +1150,7 @@ async fn supervision<H: HostResolver>(tree: Weak<Tree<H>>, child: Weak<Child<H>>
 }
 
 /// Stops everything a session would still do: its running action, which
-/// records the stop, then the waiting ones and the scheduled wakeups.
+/// records the stop, then the waiting ones.
 async fn stop_all(session: &AgentSession) {
     while session.abort().await.target.is_some() {}
 }
@@ -1224,7 +1223,7 @@ fn subagent_preamble(child: u64, parent: u64, can_spawn: bool) -> String {
     };
     [
         format!("You are a subagent: agent {child} of this conversation, spawned by agent {parent}. Your transcript starts empty; the task brief in the first user message is your entire context."),
-        "A turn you end with your answer, without `yield`, returns that answer to the parent as the result and ends the session once nothing is pending: no queued or unread messages, no running children of your own. A turn you end with `yield` waits for its wakeup instead. Write the answer for the parent agent, in the shape the task brief asked for.".to_owned(),
+        "A turn you end with your answer returns that answer to the parent as the result and ends the session once nothing you started still runs: no queued or unread messages or command reports, no running children or commands of your own. To wait for your commands or children, end your turn: their end wakes you. Write the answer for the parent agent, in the shape the task brief asked for.".to_owned(),
         spawning.to_owned(),
         "`demi agent send <id|parent>` delivers useful interim information, questions, or blockers through internal steering or an idle wakeup. It reads the message only from stdin (use a quoted heredoc). Your final answer is delivered automatically; do not send a duplicate final result. `demi agent list` renders the whole agent tree with your position.".to_owned(),
         "You are not talking to the product user; do not address them.".to_owned(),
@@ -1576,12 +1575,28 @@ struct ToolSnapshot {
     ended_ago_ms: Option<u64>,
 }
 
-/// `child`'s snapshot; `parent` is its parent's number.
-fn snapshot<H: HostResolver>(child: &Child<H>, parent: u64, now: i64) -> AgentSnapshot {
+impl<H: HostResolver> Tree<H> {
+    /// `child`'s snapshot; `parent` is its parent's number. An idle child
+    /// whose own children still run waits, as one whose commands do.
+    fn snapshot(&self, child: &Child<H>, parent: u64, now: i64) -> AgentSnapshot {
+        let execution = match child.node.session().execution() {
+            Execution::Idle if !self.children_of(child.id()).is_empty() => Execution::Waiting,
+            execution => execution,
+        };
+        snapshot(child, parent, now, execution)
+    }
+}
+
+/// `child`'s snapshot in `execution`; `parent` is its parent's number.
+fn snapshot<H: HostResolver>(
+    child: &Child<H>,
+    parent: u64,
+    now: i64,
+    execution: Execution,
+) -> AgentSnapshot {
     let record = child.node.record();
     let session = child.node.session();
     let telemetry = child.telemetry.borrow();
-    let execution = session.execution();
     let in_flight = telemetry.in_flight();
     let activity = match (execution, in_flight) {
         (Execution::ToolExecuting, Some(tool)) => tool.title.clone(),

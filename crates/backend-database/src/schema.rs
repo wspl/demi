@@ -12,7 +12,7 @@ use std::path::Path;
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use sha2::{Digest, Sha256};
 
-use demi_agent_store::{CheckpointState, TurnEnd};
+use demi_agent_store::CheckpointState;
 
 use super::StorageError;
 use super::columns::{decode, json, to_json};
@@ -167,8 +167,11 @@ ALTER TABLE devices ADD COLUMN route TEXT NOT NULL DEFAULT 'automatic' CHECK (ro
 /// an index names, so the requests' table is made anew, as for 0.1.11's
 /// conversations. The web preview is gone, and the deployment's namespace
 /// at the preview domain with it. Users keep personal instructions, which
-/// no user migrated from 0.1.21 has.
+/// no user migrated from 0.1.21 has. Yield wakeups are gone, and the index
+/// of when each conversation's earliest one is due with them.
 const CONTROL_FROM_0_1_21: &str = "
+DROP INDEX conversations_wakeup;
+ALTER TABLE conversations DROP COLUMN wakeup_at;
 CREATE TABLE user_instructions (
   user_id TEXT PRIMARY KEY REFERENCES users (id),
   text    TEXT NOT NULL
@@ -297,54 +300,13 @@ DROP TABLE command_outputs;
 ALTER TABLE command_outputs_next RENAME TO command_outputs;
 ";
 
-/// From 0.1.21's conversation schema: commands no longer run in shells, and
-/// a node's checkpoint state records how its last turn ended. Block format 2
-/// also lets a block keep the entries of a vendor's own record of the
-/// session (`claude-code.md` § The session a process resumes), which no
-/// block 0.1.21 stored has, so leaving the field out writes them as format 2.
+/// From 0.1.21's conversation schema: commands no longer run in shells, the
+/// model has one tool, `shell`, and command reports replace yield wakeups
+/// (`runtime.md` § Command reports). Block format 2 also lets a block keep
+/// the entries of a vendor's own record of the session (`claude-code.md`
+/// § The session a process resumes), which no block 0.1.21 stored has, so
+/// leaving the field out writes them as format 2.
 fn from_0_1_21(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
-    conversation_without_shells(transaction)?;
-    record_last_turns(transaction)
-}
-
-/// From 0.1.21's conversation schema: a node's checkpoint state records how
-/// its last turn ended (checkpoint state format 2, `subagents.md`
-/// § Result). 0.1.21 kept a child live while it saved a wakeup, so a node
-/// that saves one ended its last turn with `yield`, and any other with its
-/// answer, which keeps what each restore decides. Each state is decoded
-/// and checked as the format it becomes before it is written back.
-fn record_last_turns(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
-    let states = transaction
-        .prepare("SELECT id, state FROM nodes")?
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut update = transaction.prepare("UPDATE nodes SET state = ?2 WHERE id = ?1")?;
-    for (id, state) in states {
-        let corrupt = |error: StorageError| {
-            rusqlite::Error::FromSqlConversionFailure(1, rusqlite::types::Type::Text, Box::new(error))
-        };
-        let mut fields: serde_json::Map<String, serde_json::Value> =
-            decode("nodes", "state", serde_json::from_str(&state)).map_err(corrupt)?;
-        let waits = fields
-            .get("wakeups")
-            .and_then(serde_json::Value::as_array)
-            .is_some_and(|wakeups| !wakeups.is_empty());
-        let last_turn = if waits { TurnEnd::Yield } else { TurnEnd::Answer };
-        fields.insert("lastTurn".to_owned(), serde_json::to_value(last_turn).expect("a turn end is JSON"));
-        let state: CheckpointState =
-            json("nodes", "state", &to_json(&fields)).map_err(corrupt)?;
-        update.execute(rusqlite::params![id, to_json(&state)])?;
-    }
-    Ok(())
-}
-
-/// From 0.1.21's conversation schema: a command no longer runs in a shell
-/// (`runtime.md` § Running shell tools), so the shell sequence goes, and
-/// with it its row, and a stored shell view no longer names a shell
-/// (transcript block format 2): each block that holds one is decoded
-/// without its `shellId` and written again through the block's own
-/// encoding.
-fn conversation_without_shells(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     transaction.execute_batch(
         "
 DELETE FROM sequences WHERE name = 'shell';
@@ -355,30 +317,62 @@ CREATE TABLE sequences_next (
 INSERT INTO sequences_next (name, next) SELECT name, next FROM sequences;
 DROP TABLE sequences;
 ALTER TABLE sequences_next RENAME TO sequences;
+ALTER TABLE nodes DROP COLUMN wakeup_at;
 ",
     )?;
-    // A stored block that does not decode stops the migration, which
-    // leaves the database as 0.1.21 left it.
-    let corrupt = |error: Box<dyn std::error::Error + Send + Sync>| {
-        rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, error)
-    };
+    blocks_of_one_tool(transaction)?;
+    states_without_wakeups(transaction)
+}
+
+/// Turns a stored error into the migration's failure, which leaves the
+/// database as 0.1.21 left it.
+fn corrupt(error: impl std::error::Error + Send + Sync + 'static) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, Box::new(error))
+}
+
+/// From 0.1.21's checkpoint states (checkpoint state format 2): the yield
+/// wakeups a node saved go, none of them to fire, and the state keeps the
+/// command reports and the commands' intervals, none for a node 0.1.21
+/// saved. Each state is decoded and checked as the format it becomes before
+/// it is written back.
+fn states_without_wakeups(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
+    let states = transaction
+        .prepare("SELECT id, state FROM nodes")?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut update = transaction.prepare("UPDATE nodes SET state = ?2 WHERE id = ?1")?;
+    for (id, state) in states {
+        let mut fields: serde_json::Map<String, serde_json::Value> =
+            decode("nodes", "state", serde_json::from_str(&state)).map_err(corrupt)?;
+        fields.remove("wakeups");
+        fields.insert("reports".to_owned(), serde_json::json!([]));
+        fields.insert("intervals".to_owned(), serde_json::json!([]));
+        let state: CheckpointState = json("nodes", "state", &to_json(&fields)).map_err(corrupt)?;
+        update.execute(rusqlite::params![id, to_json(&state)])?;
+    }
+    Ok(())
+}
+
+/// From 0.1.21's transcript blocks (transcript block format 2): a stored
+/// call of `shell_exec` is the `shell` call it became, with its input, and
+/// its repeat guard's view is `repeated_shell`; a call of `yield` keeps its
+/// name, which replays as text (`runtime.md` § Replay), and loses its
+/// `yield_wakeup` view, which no tool has any more; a stored shell view no
+/// longer names a shell; and a fired wakeup holds the text the model read
+/// of it, as command reports do. Each block changed is decoded and written
+/// again through the block's own encoding; a block that does not decode
+/// stops the migration.
+fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     let mut blocks = Vec::new();
     {
         let mut statement = transaction.prepare("SELECT node_id, idx, block FROM blocks")?;
         let mut rows = statement.query([])?;
         while let Some(row) = rows.next()? {
             let text: String = row.get(2)?;
-            let mut block: serde_json::Value =
-                serde_json::from_str(&text).map_err(|error| corrupt(Box::new(error)))?;
-            let view = block
-                .get_mut("view")
-                .and_then(serde_json::Value::as_object_mut)
-                .filter(|view| view.get("kind").and_then(serde_json::Value::as_str) == Some("shell"));
-            if let Some(view) = view
-                && view.remove("shellId").is_some()
-            {
-                let block: demi_shared_types::Block = demi_shared_types::decode_value(block)
-                    .map_err(|error| corrupt(Box::new(error)))?;
+            let mut block: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
+            if migrate_block(&mut block) {
+                let block: demi_shared_types::Block =
+                    demi_shared_types::decode_value(block).map_err(corrupt)?;
                 let node: String = row.get(0)?;
                 let index: i64 = row.get(1)?;
                 blocks.push((node, index, super::columns::to_json(&block)));
@@ -390,6 +384,70 @@ ALTER TABLE sequences_next RENAME TO sequences;
         update.execute(rusqlite::params![node, index, block])?;
     }
     Ok(())
+}
+
+/// Changes one of 0.1.21's blocks into what it became; false when it stays
+/// as it is.
+fn migrate_block(block: &mut serde_json::Value) -> bool {
+    use serde_json::Value;
+
+    let Some(fields) = block.as_object_mut() else {
+        return false;
+    };
+    let mut changed = false;
+    match fields.get("type").and_then(Value::as_str) {
+        Some("tool_call") => {
+            if fields.get("toolName").and_then(Value::as_str) == Some("shell_exec") {
+                fields.insert("toolName".to_owned(), Value::from("shell"));
+                changed = true;
+            }
+            let kind = fields
+                .get("view")
+                .and_then(|view| view.get("kind"))
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            match kind.as_deref() {
+                Some("shell") => {
+                    if let Some(view) = fields.get_mut("view").and_then(Value::as_object_mut) {
+                        changed |= view.remove("shellId").is_some();
+                    }
+                }
+                Some("repeated_shell_exec") => {
+                    fields["view"]["kind"] = Value::from("repeated_shell");
+                    changed = true;
+                }
+                Some("yield_wakeup") => {
+                    fields.insert("view".to_owned(), Value::Null);
+                    changed = true;
+                }
+                _ => {}
+            }
+        }
+        Some("wakeup") => {
+            let text = wakeup_text_of_0_1_21(fields.remove("command").as_ref());
+            fields.insert("text".to_owned(), Value::from(text));
+            changed = true;
+        }
+        _ => {}
+    }
+    changed
+}
+
+/// What the model read of a wakeup 0.1.21 fired: the text for the time
+/// that came, or the one that names the command whose end fired it.
+fn wakeup_text_of_0_1_21(command: Option<&serde_json::Value>) -> String {
+    let Some(command) = command else {
+        return "Scheduled yield wakeup fired. Continue the previous work and inspect any running command with shell_status when needed.".to_owned();
+    };
+    let id = command["commandId"].as_str().unwrap_or_default();
+    let end = &command["end"];
+    let ended = match end["kind"].as_str() {
+        Some("exited") => format!("Command {id} ended with exit code {}.", end["exitCode"]),
+        Some("stopped") => format!("Command {id} was stopped."),
+        Some("lost") => format!("Command {id} ended with its Host's connection."),
+        _ => format!("Command {id} ended."),
+    };
+    format!("{ended} Continue the previous work; read its output with demi shell output {id}.")
 }
 
 /// A kind of database, as a server's upgrade asks about it.
@@ -708,10 +766,6 @@ CREATE TABLE conversations (
   titled_messages     INTEGER NOT NULL,
   created_at          INTEGER NOT NULL,
   updated_at          INTEGER NOT NULL,
-  -- When the earliest yield wakeup its tree saved is due, which the next
-  -- start restores the tree at: 0 for one whose action had not ended, due
-  -- at start; null when it saved none.
-  wakeup_at           INTEGER CHECK (wakeup_at >= 0),
   -- The revision of its attached hosts, raised by each change of them; 0
   -- before the first.
   hosts_revision      INTEGER NOT NULL DEFAULT 0 CHECK (hosts_revision >= 0),
@@ -744,7 +798,6 @@ CREATE TABLE conversations (
 ) STRICT;
 CREATE INDEX conversations_sidebar ON conversations (user_id, archived, pinned, sort_order);
 CREATE INDEX conversations_workspace ON conversations (target_workspace_id);
-CREATE INDEX conversations_wakeup ON conversations (wakeup_at) WHERE wakeup_at IS NOT NULL;
 
 CREATE TABLE conversation_hosts (
   conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id),
@@ -940,9 +993,6 @@ CREATE TABLE nodes (
   state            TEXT NOT NULL,
   block_count      INTEGER NOT NULL CHECK (block_count >= 0),
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
-  -- When the earliest wakeup the state saves is due, as the index of
-  -- conversations holds it; null when it saves none.
-  wakeup_at        INTEGER CHECK (wakeup_at >= 0),
   CHECK ((closed_phase IS NULL) = (closed_at IS NULL)),
   CHECK (result IS NULL OR closed_phase = 'completed'),
   CHECK (failure IS NULL OR closed_phase = 'error')
@@ -1286,79 +1336,73 @@ mod tests {
         assert_eq!(removed_at, 2000);
     }
 
-    /// A node's checkpoint state as 0.1.21 saved it, before it recorded how
-    /// the last turn ended.
-    fn state_of_0_1_21(wakeups: Vec<demi_agent_store::ScheduledWakeup>) -> String {
-        let mut fields = serde_json::to_value(CheckpointState {
-            phase: demi_shared_types::SessionPhase::Idle,
-            queue: Vec::new(),
-            agent_inputs: Vec::new(),
-            wakeups,
-            cwd: "/w".into(),
-            model: demi_agent_store::testing::test_model(),
-            edits: Vec::new(),
-            last_turn: TurnEnd::Answer,
+    /// A node's checkpoint state as 0.1.21 saved it, with the yield
+    /// wakeups `wakeups`.
+    fn state_of_0_1_21(wakeups: serde_json::Value) -> String {
+        serde_json::json!({
+            "phase": "idle",
+            "queue": [],
+            "agentInputs": [],
+            "wakeups": wakeups,
+            "cwd": "/w",
+            "model": demi_agent_store::testing::test_model(),
+            "edits": []
         })
-        .unwrap();
-        fields.as_object_mut().unwrap().remove("lastTurn");
-        fields.to_string()
+        .to_string()
     }
 
-    /// 0.1.21's checkpoint states record how each node's last turn ended:
-    /// with `yield` for one that saves a wakeup, as 0.1.21 kept such a child
-    /// waiting, and with its answer otherwise; a state that is not one of
+    /// 0.1.21's checkpoint states lose their yield wakeups and hold no
+    /// command report and no command's interval; a state that is not one of
     /// 0.1.21's stops the migration.
     #[test]
-    fn a_conversation_of_0_1_21_records_how_each_nodes_last_turn_ended() {
-        use demi_agent_store::ScheduledWakeup;
-        use demi_shared_types::WakeupId;
-
+    fn a_conversation_of_0_1_21_loses_its_wakeups() {
         use crate::columns::json;
 
         let shipped = CONVERSATION.history[2].sql;
-        let state = state_of_0_1_21;
-        let wakeup = ScheduledWakeup {
-            id: WakeupId::try_from("w1").unwrap(),
-            duration_ms: 60_000,
-            command_ids: Vec::new(),
-            ended: None,
-            due_at: None,
-        };
         let insert = "INSERT INTO nodes (id, number, parent_id, description, round, started_at, can_spawn,
-                        delivered, state, block_count, output_revision)
-                      VALUES (?1, ?2, ?3, '', 1, 0, 1, 0, ?4, 0, 0)";
+                        delivered, state, block_count, output_revision, wakeup_at)
+                      VALUES (?1, ?2, ?3, '', 1, 0, 1, 0, ?4, 0, 0, ?5)";
+        let wakeup = serde_json::json!([{"id": "w1", "durationMs": 60000, "dueAt": null}]);
         let (_directory, path, mut connection) = database(shipped);
         connection
-            .execute(insert, rusqlite::params!["root", 0, None::<String>, state(Vec::new())])
+            .execute(
+                insert,
+                rusqlite::params!["root", 0, None::<String>, state_of_0_1_21(serde_json::json!([])), None::<i64>],
+            )
             .unwrap();
         connection
-            .execute(insert, rusqlite::params!["waiting", 1, "root", state(vec![wakeup])])
+            .execute(insert, rusqlite::params!["waiting", 1, "root", state_of_0_1_21(wakeup), 0])
             .unwrap();
 
         CONVERSATION.apply(&mut connection, &path).unwrap();
-        let last_turn = |id: &str| {
+        for id in ["root", "waiting"] {
             let state: String = connection
                 .query_row("SELECT state FROM nodes WHERE id = ?1", [id], |row| row.get(0))
                 .unwrap();
-            json::<CheckpointState>("nodes", "state", &state).unwrap().last_turn
-        };
-        assert_eq!(last_turn("root"), TurnEnd::Answer);
-        assert_eq!(last_turn("waiting"), TurnEnd::Yield);
+            let state = json::<CheckpointState>("nodes", "state", &state).unwrap();
+            assert!(state.reports.is_empty() && state.intervals.is_empty(), "{id}");
+        }
 
         let (_corrupt_directory, corrupt_path, mut corrupt) = database(shipped);
         corrupt
-            .execute(insert, rusqlite::params!["root", 0, None::<String>, "{\"phase\":\"idle\"}"])
+            .execute(
+                insert,
+                rusqlite::params!["root", 0, None::<String>, "{\"phase\":\"idle\"}", None::<i64>],
+            )
             .unwrap();
         let refused = CONVERSATION.apply(&mut corrupt, &corrupt_path);
         assert!(matches!(refused, Err(StorageError::Migration { .. })), "{refused:?}");
     }
 
-    /// 0.1.21's shell sequence goes with its row, and a stored shell view
-    /// that names its shell is written again without it, through the block's
-    /// own encoding; every other number keeps its next value.
+    /// 0.1.21's shell sequence goes with its row; a stored `shell_exec`
+    /// call is a `shell` call with its input, its shell view naming no
+    /// shell and its repeat guard's view `repeated_shell`; a `yield` and a
+    /// `shell_status` call keep their names, and the `yield` loses its
+    /// view; a fired wakeup holds the text the model read of it. Every other
+    /// number keeps its next value.
     #[test]
-    fn a_conversation_of_0_1_21_loses_its_shells_and_keeps_its_commands() {
-        use demi_shared_types::{Block, Sequence};
+    fn a_conversation_of_0_1_21_becomes_one_of_the_shell_tool() {
+        use demi_shared_types::{Block, Sequence, ToolView};
 
         use crate::sequences;
 
@@ -1367,47 +1411,77 @@ mod tests {
             .last()
             .expect("a schema has a history")
             .sql;
-        let block = |view: serde_json::Value| {
+        let model = serde_json::json!({
+            "providerId": "anthropic",
+            "model": {
+                "id": "claude-sonnet-4-5",
+                "name": "Claude Sonnet 4.5",
+                "contextWindow": 200000,
+                "outputLimit": 64000,
+                "thinking": [{"type": "disabled"}],
+                "acceptedExtensions": ["png"]
+            },
+            "thinking": {"type": "disabled"},
+            "serviceTierId": null
+        });
+        let call = |id: &str, tool: &str, input: &str, view: serde_json::Value| {
             serde_json::json!({
                 "type": "tool_call",
-                "id": "tc4",
+                "id": id,
                 "createdAt": "2026-09-21T14:13:20.000Z",
-                "model": {
-                    "providerId": "anthropic",
-                    "model": {
-                        "id": "claude-sonnet-4-5",
-                        "name": "Claude Sonnet 4.5",
-                        "contextWindow": 200000,
-                        "outputLimit": 64000,
-                        "thinking": [{"type": "disabled"}],
-                        "acceptedExtensions": ["png"]
-                    },
-                    "thinking": {"type": "disabled"},
-                    "serviceTierId": null
-                },
-                "toolUseId": "toolu_04",
-                "toolName": "shell_exec",
-                "input": "{}",
+                "model": model,
+                "toolUseId": format!("toolu_{id}"),
+                "toolName": tool,
+                "input": input,
                 "status": "completed",
-                "output": [{"type": "text", "text": "status: running"}],
+                "output": [{"type": "text", "text": "done"}],
                 "view": view
             })
         };
-        let view = |shell: Option<&str>| {
-            let mut view = serde_json::json!({
-                "kind": "shell",
-                "status": "running",
-                "commandId": "17",
-                "runningMs": 60000,
-                "idleMs": 2000,
-                "chunks": [],
-                "viewTruncated": false
-            });
-            if let Some(shell) = shell {
-                view["shellId"] = serde_json::json!(shell);
-            }
-            view
-        };
+        let shell_view = serde_json::json!({
+            "kind": "shell",
+            "status": "running",
+            "commandId": "17",
+            "runningMs": 60000,
+            "idleMs": 2000,
+            "chunks": [],
+            "viewTruncated": false,
+            "shellId": "3"
+        });
+        let exec_input = r#"{"script":"npm test","description":"Run the tests","timeoutMs":600000}"#;
+        let blocks = [
+            call("c1", "shell_exec", exec_input, shell_view),
+            call(
+                "c2",
+                "shell_exec",
+                exec_input,
+                serde_json::json!({"kind": "repeated_shell_exec", "script": "npm test", "count": 7}),
+            ),
+            call(
+                "c3",
+                "yield",
+                r#"{"durationMs":600000,"commandIds":[17]}"#,
+                serde_json::json!({"kind": "yield_wakeup", "wakeupId": "w1", "durationMs": 600000, "commandIds": ["17"]}),
+            ),
+            call("c4", "shell_status", r#"{"commandId":17}"#, serde_json::Value::Null),
+            serde_json::json!({
+                "type": "wakeup",
+                "id": "w1",
+                "turnId": "t1",
+                "createdAt": "2026-09-21T14:13:20.000Z",
+                "model": model,
+                "placement": "new_turn",
+                "command": {"commandId": "17", "end": {"kind": "exited", "exitCode": 1}}
+            }),
+            serde_json::json!({
+                "type": "wakeup",
+                "id": "w2",
+                "turnId": "t2",
+                "createdAt": "2026-09-21T14:13:20.000Z",
+                "model": model,
+                "placement": "steer"
+            }),
+        ];
         let (_directory, path, mut connection) = database(shipped);
         connection
             .execute_batch(
@@ -1418,23 +1492,62 @@ mod tests {
             .execute(
                 "INSERT INTO nodes
                    (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
-                 VALUES ('root', 0, '', 1, 0, 1, 0, ?1, 1, 0)",
-                [state_of_0_1_21(Vec::new())],
+                 VALUES ('root', 0, '', 1, 0, 1, 0, ?1, 6, 0)",
+                [state_of_0_1_21(serde_json::json!([]))],
             )
             .unwrap();
-        connection
-            .execute(
-                "INSERT INTO blocks (node_id, idx, block) VALUES ('root', 0, ?1)",
-                [block(view(Some("3"))).to_string()],
-            )
-            .unwrap();
+        for (index, block) in blocks.iter().enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO blocks (node_id, idx, block) VALUES ('root', ?1, ?2)",
+                    rusqlite::params![i64::try_from(index).unwrap(), block.to_string()],
+                )
+                .unwrap();
+        }
 
         CONVERSATION.apply(&mut connection, &path).unwrap();
-        let stored: String = connection
-            .query_row("SELECT block FROM blocks WHERE node_id = 'root' AND idx = 0", [], |row| row.get(0))
-            .unwrap();
-        let expected: Block = demi_shared_types::decode_value(block(view(None))).unwrap();
-        assert_eq!(demi_shared_types::decode::<Block>(&stored).unwrap(), expected);
+        let stored: Vec<Block> = connection
+            .prepare("SELECT block FROM blocks WHERE node_id = 'root' ORDER BY idx")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .map(|text| demi_shared_types::decode::<Block>(&text.unwrap()).unwrap())
+            .collect();
+        let calls: Vec<(&str, &str, Option<&ToolView>)> = stored
+            .iter()
+            .filter_map(|block| match block {
+                Block::ToolCall(call) => {
+                    Some((call.tool_name.as_str(), call.input.as_str(), call.view.as_ref()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(calls[0].0, "shell");
+        assert_eq!(calls[0].1, exec_input);
+        assert!(matches!(calls[0].2, Some(ToolView::Shell(view)) if view.command_id.as_str() == "17"));
+        assert_eq!(
+            calls[1].2,
+            Some(&ToolView::RepeatedShell {
+                script: "npm test".into(),
+                count: 7
+            })
+        );
+        assert_eq!((calls[2].0, calls[2].2), ("yield", None));
+        assert_eq!((calls[3].0, calls[3].2), ("shell_status", None));
+        let texts: Vec<&str> = stored
+            .iter()
+            .filter_map(|block| match block {
+                Block::Wakeup(wakeup) => Some(wakeup.text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            [
+                "Command 17 ended with exit code 1. Continue the previous work; read its output with demi shell output 17.",
+                "Scheduled yield wakeup fired. Continue the previous work and inspect any running command with shell_status when needed.",
+            ]
+        );
         assert_eq!(
             sequences::all(&connection).unwrap(),
             vec![(Sequence::Agent, 2), (Sequence::Command, 18)]

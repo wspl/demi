@@ -3,8 +3,8 @@
 //! over the conversation's database, the conversation socket, the provider
 //! runtimes the sessions infer with, the Claude Code CLI's work on the
 //! user's Cloud and the provider test, the conversations' summaries, and the
-//! failure facts of their history, the saved wakeups that a restart
-//! carries over, their deletion, and the search index that follows them.
+//! failure facts of their history, their deletion, and the search index
+//! that follows them.
 
 mod announcement;
 pub mod claude_cli;
@@ -25,7 +25,6 @@ mod socket;
 mod summary;
 pub mod titles;
 pub mod transition;
-mod wakeups;
 
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
@@ -55,8 +54,6 @@ use self::product::{
 };
 use self::providers::ConversationProviders;
 use self::titles::Titles;
-use self::wakeups::IndexedWakeup;
-pub use self::wakeups::rearm_wakeups;
 use crate::services::Services;
 use crate::shard::Shard;
 
@@ -83,24 +80,20 @@ pub(crate) fn conversation_parts(
     let stores: TreeStores = {
         let services = services.clone();
         let marks = marks.clone();
-        let shard = shard.clone();
         // The shard's user owns every conversation it hosts.
         let blobs: Arc<dyn BlobStore> = Arc::new(services.blobs.for_user(&user));
         Rc::new(move |root: &NodeId| {
             let conversation = conversation_of(root);
             let db = services.conversations.db(&conversation);
             // The summary reads the root's checkpoint, which each save of it
-            // changes; the index of conversations keeps the earliest wakeup
-            // the tree saved.
+            // changes.
             let saved = {
                 let marks = marks.clone();
                 let root = root.clone();
-                let indexed = IndexedWakeup::new(shard.clone(), conversation.clone());
-                Rc::new(move |node: &NodeId, wakeup| {
+                Rc::new(move |node: &NodeId| {
                     if *node == root {
                         marks.mark(Part::Conversation(conversation.clone()));
                     }
-                    indexed.committed(wakeup);
                 })
             };
             Rc::new(SqliteTreeStore::new(db, blobs.clone(), saved)) as Rc<dyn AgentTreeStore>
@@ -108,6 +101,7 @@ pub(crate) fn conversation_parts(
     };
     let config = ServerConfig {
         outbox_frames: services.conversation_tuning.outbox_frames,
+        interval_floor_ms: services.conversation_tuning.interval_floor_ms,
         ..ServerConfig::default()
     };
     let providers = Rc::new(ConversationProviders::new(

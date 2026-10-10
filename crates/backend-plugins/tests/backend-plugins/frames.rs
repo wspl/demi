@@ -5,16 +5,14 @@
 //! it; a chatty command fills no page's outbox; and the model's place in the
 //! output stays its own.
 
-use std::{cell::RefCell, rc::Rc, time::Duration, time::Instant};
+use std::time::{Duration, Instant};
 
 use demi_agent_server::{ServerConfig, testing::TestClient};
-use demi_agent_tools::testing::shown_output;
 use demi_conversation_socket_protocol::{ClientFrame, ServerFrame, ShellStatus, TranscriptPatch};
-use demi_provider_common::testing::{ScriptedRuntime, Turn, event};
+use demi_provider_common::{InferenceItem, UserPart, testing::ScriptedRuntime};
 use demi_shared_types::{Block, CommandId, ToolCallStatus};
-use serde_json::json;
 
-use crate::support::{DeviceHost, Fixture, exec, last_result, reply, turn, within};
+use crate::support::{DeviceHost, Fixture, conversation, exec, reply, resident, tolerant, turn, within};
 
 /// The command views among `frames`, in order.
 fn shell_outputs(frames: &[ServerFrame]) -> Vec<ShellStatus> {
@@ -67,27 +65,26 @@ async fn view_until(
     }
 }
 
-// Over a second: four commands run as shell jobs.
+// About seven seconds: four commands run as shell jobs, three of them
+// resident, whose calls each wait for two seconds of quiet.
 #[tokio::test(flavor = "local")]
 async fn every_page_sees_a_commands_output_as_it_comes_and_its_end() {
     within(async {
-        let script = ScriptedRuntime::new([
-            Turn::Events(vec![exec("greeter", "echo hello", 30_000)]),
-            Turn::Respond(Box::new(|_| reply("greeted"))),
-            Turn::Events(vec![exec("reader", "read name; echo \"hello $name\"", 200)]),
-            Turn::Respond(Box::new(|_| reply("waiting for a name"))),
-            Turn::Events(vec![exec(
+        let script = tolerant(vec![
+            vec![exec("greeter", "echo hello", 30_000)],
+            reply("greeted"),
+            vec![resident("reader", "read name; echo \"hello $name\"")],
+            reply("waiting for a name"),
+            vec![resident(
                 "long",
                 "echo long-ready; while [ ! -e go ]; do sleep 0.02; done; echo went; sleep 30",
-                200,
-            )]),
-            Turn::Respond(Box::new(|_| reply("waiting"))),
-            Turn::Events(vec![exec(
+            )],
+            reply("waiting"),
+            vec![resident(
                 "sleeper",
                 "sh -c 'echo $$ > ../sleeper.pid; exec sleep 30'",
-                200,
-            )]),
-            Turn::Respond(Box::new(|_| reply("sleeping"))),
+            )],
+            reply("sleeping"),
         ]);
         let fixture = Fixture::start(&script).await;
         let mut client = fixture.opened().await;
@@ -150,6 +147,9 @@ async fn every_page_sees_a_commands_output_as_it_comes_and_its_end() {
             matches!(&end, ShellStatus::Exited { exit_code: 0, command } if command.tail == "hello Alice\n"),
             "{end:?}"
         );
+        // Its end is reported, which opens a turn of its own.
+        settle_on(&fixture, &script, 5).await;
+        client.received();
 
         // A page that attaches while a command runs finds it in its
         // handshake, whatever the other page read, beside the ended reader
@@ -205,8 +205,9 @@ async fn every_page_sees_a_commands_output_as_it_comes_and_its_end() {
             .await;
         }
 
-        // A stop from one page shows its end on both; a write to the command
-        // then is refused to the page that wrote.
+        // A stop from one page shows its end on both, and its report opens a
+        // turn; a write to the command then is refused to the page that
+        // wrote.
         second
             .send(ClientFrame::ShellAbort {
                 command_id: long.clone(),
@@ -225,11 +226,16 @@ async fn every_page_sees_a_commands_output_as_it_comes_and_its_end() {
                 stdin: "late\n".into(),
             })
             .await;
-        let answer = second.received();
+        let answer = second
+            .next_until(|frame| matches!(frame, ServerFrame::Error { .. }))
+            .await;
         assert!(
-            matches!(&answer[..], [ServerFrame::Error { .. }]),
+            !answer.iter().any(|frame| matches!(frame, ServerFrame::ShellWriteResult { .. })),
             "{answer:?}"
         );
+        settle_on(&fixture, &script, 8).await;
+        client.received();
+        second.received();
 
         // Closing the conversation stops the commands its shells still run:
         // the sleeper's process ends. The turn ends when the exec's window
@@ -271,39 +277,37 @@ async fn every_page_sees_a_commands_output_as_it_comes_and_its_end() {
     .await;
 }
 
+/// Waits until the model answered `count` requests and the root settled,
+/// as after the turns its commands' reports opened.
+async fn settle_on(fixture: &Fixture, script: &ScriptedRuntime, count: usize) {
+    let root = fixture.server.node(&conversation(), &conversation()).unwrap();
+    while script.requests().len() < count {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    root.session().settled().await;
+}
+
 /// The model keeps its own place in a command's output: the page seeing a
-/// running command's new output leaves all of it to the model's next
-/// `shell_status` (`runtime.md` § Results and previews).
-// Over a second: the command runs as a shell job.
+/// running command's new output leaves all of it to the command's next
+/// report (`runtime.md` § Results and previews, § Command reports).
+// About a second: the command runs as a shell job and reports every 300 ms.
 #[tokio::test(flavor = "local")]
 async fn what_a_page_sees_of_a_running_command_is_left_to_the_model() {
     within(async {
-        let command: Rc<RefCell<Option<CommandId>>> = Rc::default();
-        let checked: Rc<RefCell<String>> = Rc::default();
-        let asked = command.clone();
-        let seen = checked.clone();
-        let script = ScriptedRuntime::new([
+        let script = tolerant(vec![
             // The output waits for the page's write, so nothing of it is in
-            // the exec's result.
-            Turn::Events(vec![exec("later", "read go; echo later; read line", 100)]),
-            Turn::Respond(Box::new(|_| reply("started"))),
-            Turn::Respond(Box::new(move |_| {
-                vec![event::tool_call(
-                    "check",
-                    "shell_status",
-                    json!({"commandId": asked.borrow().clone().expect("the command started")}),
-                )]
-            })),
-            Turn::Respond(Box::new(move |request| {
-                *seen.borrow_mut() = last_result(request);
-                reply("checked")
-            })),
+            // the call's result.
+            vec![exec("later", "read go; echo later; read line", 300)],
+            reply("started"),
         ]);
-        let fixture = Fixture::start(&script).await;
+        let config = ServerConfig {
+            interval_floor_ms: 100,
+            ..ServerConfig::default()
+        };
+        let fixture = Fixture::start_with(&script, config).await;
         let mut client = fixture.opened().await;
         turn(&mut client, "message-1", "Start it.").await;
         let started = fixture.shell_commands()[0].clone();
-        *command.borrow_mut() = Some(started.clone());
 
         // The page lets the output come and sees it as it comes.
         client
@@ -317,10 +321,17 @@ async fn what_a_page_sees_of_a_running_command_is_left_to_the_model() {
         })
         .await;
 
-        // The model's look still shows all of it.
-        turn(&mut client, "message-2", "Check it.").await;
-        let result = checked.borrow().clone();
-        assert!(shown_output(&result).contains("later"), "{result}");
+        // The command's next report still shows all of it.
+        loop {
+            let shown = script.requests().iter().any(|request| {
+                matches!(request.items.last(), Some(InferenceItem::UserMessage { content })
+                    if matches!(content.first(), Some(UserPart::Text(text)) if text.contains("\noutput:\nlater")))
+            });
+            if shown {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
 
         client
             .send(ClientFrame::ShellAbort {
@@ -337,19 +348,19 @@ async fn what_a_page_sees_of_a_running_command_is_left_to_the_model() {
 /// one frame every 250 ms, so a page that reads nothing until the end keeps
 /// its connection; and while a page is attached the runner follows the
 /// command, so its view shows output beyond the first 32 KiB of a stream
-/// while it runs (`runtime.md` § Live output). About two seconds: a login
+/// while it runs (`runtime.md` § Live output). About four seconds: a login
 /// shell, a loop of 1,000 writes, which a page's outbox of 64 frames would
-/// not hold one frame each, then 140 KB of numbers.
+/// not hold one frame each, then 140 KB of numbers, and the two seconds of
+/// quiet that end its call.
 #[tokio::test(flavor = "local")]
 async fn a_chatty_command_fills_no_outbox_and_shows_output_beyond_its_first_32_kib() {
     within(async {
-        let script = ScriptedRuntime::new([
-            Turn::Events(vec![exec(
+        let script = tolerant(vec![
+            vec![resident(
                 "chatty",
                 "i=0; while [ $i -lt 1000 ]; do echo $i; i=$((i+1)); done; seq 100000 120000; echo beyond; while [ ! -e done ]; do sleep 0.02; done",
-                200,
-            )]),
-            Turn::Respond(Box::new(|_| reply("chatting"))),
+            )],
+            reply("chatting"),
         ]);
         let config = ServerConfig {
             outbox_frames: 64,
@@ -360,13 +371,20 @@ async fn a_chatty_command_fills_no_outbox_and_shows_output_beyond_its_first_32_k
         // A page that reads nothing until the command ended.
         let mut idle = fixture.attach().await;
         let started = Instant::now();
-        turn(&mut client, "message-1", "Chat.").await;
+        let frames = turn(&mut client, "message-1", "Chat.").await;
         let chatty = fixture.shell_commands()[0].clone();
-        // `beyond` comes after 140 KB of numbers, far past the first 32 KiB.
-        view_until(&mut client, &chatty, |status| {
+        // `beyond` comes after 140 KB of numbers, far past the first 32 KiB;
+        // the call returns once the command is quiet, so it may come within
+        // the turn.
+        let beyond = |status: &ShellStatus| {
             is_running(status) && status.command().tail.contains("beyond\n")
-        })
-        .await;
+        };
+        let seen = shell_outputs(&frames)
+            .iter()
+            .any(|status| command_of(status) == &chatty && beyond(status));
+        if !seen {
+            view_until(&mut client, &chatty, beyond).await;
+        }
         std::fs::write(format!("{}/done", fixture.workspace), "").unwrap();
         view_until(&mut client, &chatty, |status| !is_running(status)).await;
         let elapsed = started.elapsed();

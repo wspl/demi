@@ -48,7 +48,7 @@ fn estimate(blocks: &[Block], window: u32) -> u64 {
     let view = ModelView::of(0, blocks, &HeldMedia::default()).expect("no media to hold");
     let mut model = test_model().model;
     model.context_window = window;
-    context_tokens(&RequestView::new(&view, &model, RequestLimits::default()))
+    context_tokens(&RequestView::new(&view, &model, RequestLimits::default(), &[]))
 }
 
 #[test]
@@ -172,7 +172,7 @@ fn a_medium_weighs_what_the_request_to_its_model_carries() {
     let reads = model_reading("stub", "reads", &[FileExtension::Png, FileExtension::Pdf]).model;
     let blind = model_reading("stub", "blind", &[]).model;
     let weigh = |model: &Model, limits| {
-        let request = RequestView::new(&view, model, limits);
+        let request = RequestView::new(&view, model, limits, &[]);
         blocks.each_ref().map(|block| block_tokens(block, &request))
     };
     let unlimited = RequestLimits::default();
