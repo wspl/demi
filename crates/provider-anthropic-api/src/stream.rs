@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use demi_provider_common::{
-    ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, encode_body,
+    EarlyEnd, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, encode_body,
     http_failure, read_http_failure, tagged_wire,
     wire::{NonEmpty, ReportedString, Tagged, decode_tagged, sse_data},
 };
@@ -92,10 +92,10 @@ pub(crate) fn run(
                 return;
             };
             match next {
-                // A stream that ends without `message_stop` still ends the
-                // run with its usage.
+                // A stream that ends without `message_stop` never said the
+                // reply is complete.
                 None => {
-                    yield ProviderEvent::Response(mapper.usage);
+                    yield ProviderEvent::Error(ProviderFailure::cut_short());
                     return;
                 }
                 Some(Err(error)) => {
@@ -124,10 +124,11 @@ enum Next {
 }
 
 /// The state of one stream: the tool-use blocks being streamed, by index,
-/// and the usage so far.
+/// the usage so far, and the stop reason the message named, with its frame.
 struct Mapper {
     tools: HashMap<u32, ToolBlock>,
     usage: TokenUsage,
+    stopped: Option<(String, String)>,
     clock: Arc<dyn Clock>,
 }
 
@@ -144,6 +145,7 @@ impl Mapper {
         Self {
             tools: HashMap::new(),
             usage: TokenUsage::default(),
+            stopped: None,
             clock,
         }
     }
@@ -168,11 +170,14 @@ impl Mapper {
                 merge(&mut self.usage, start.message.usage.as_ref());
                 Next::Nothing
             }
-            StreamEvent::MessageDelta(delta) => {
-                merge(&mut self.usage, delta.usage.as_ref());
+            StreamEvent::MessageDelta(message) => {
+                merge(&mut self.usage, message.usage.as_ref());
+                if let Some(reason) = message.delta.and_then(|delta| delta.stop_reason) {
+                    self.stopped = Some((reason, data.to_owned()));
+                }
                 Next::Nothing
             }
-            StreamEvent::MessageStop(_) => Next::Last(ProviderEvent::Response(self.usage)),
+            StreamEvent::MessageStop(_) => Next::Last(self.stop()),
             StreamEvent::BlockStart(start) => self.block_start(start),
             StreamEvent::BlockDelta(delta) => self.block_delta(delta),
             StreamEvent::BlockStop(stop) => match self.tools.remove(&stop.index) {
@@ -180,6 +185,24 @@ impl Mapper {
                 None => Next::Nothing,
             },
         }
+    }
+
+    /// The run's end at `message_stop`: the response when the model
+    /// finished, else the failure that says why the reply is cut short. A
+    /// message that named no stop reason finished, as `message_stop` says.
+    fn stop(&self) -> ProviderEvent {
+        let Some((reason, received)) = &self.stopped else {
+            return ProviderEvent::Response(self.usage);
+        };
+        let end = match reason.as_str() {
+            "end_turn" | "tool_use" | "stop_sequence" => {
+                return ProviderEvent::Response(self.usage);
+            }
+            "max_tokens" | "model_context_window_exceeded" => EarlyEnd::OutputLimit,
+            "refusal" => EarlyEnd::Filter,
+            _ => EarlyEnd::Other,
+        };
+        ProviderEvent::Error(ProviderFailure::ended_early(end, reason, received.as_str()))
     }
 
     fn block_start(&mut self, start: BlockStart) -> Next {
@@ -374,7 +397,14 @@ struct BlockStop {
 
 #[derive(Deserialize)]
 struct MessageDelta {
+    delta: Option<MessageChange>,
     usage: Option<Usage>,
+}
+
+/// What a message delta changes; Demi reads why the model stopped.
+#[derive(Deserialize)]
+struct MessageChange {
+    stop_reason: Option<String>,
 }
 
 #[derive(Deserialize)]
