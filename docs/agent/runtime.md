@@ -1072,10 +1072,11 @@ the tree: shell_output to every attached page,
   connection to attach starts from its handshake.
 - **The end.** A command's last frame shows its end: its exit, a stop (a
   page's stop, `demi shell stop`, a Stop of the action that
-  started it), or the end of its node's shells: the close of its subagent, the
-  tree's interruption for a Host transition, or the tree's disposal, which
-  ends the tree's commands before its connections receive `closed`. No frame
-  of the command follows it.
+  started it), or the end of its node's shells: the abort or close of its
+  subagent, or the tree's interruption for a Host transition. The tree's
+  disposal ends no command: its commands run on and report when the tree is
+  live again ([Dispose and restore](#dispose-and-restore)). No frame of the
+  command follows its end.
 
 What keeps the output coming, and where each part is released:
 
@@ -1144,7 +1145,9 @@ out:
 | The backend's crash, found at restore | `Tool call interrupted: the backend stopped before its result was recorded; command 254 keeps running if its Host kept it.` |
 | An action that failed before its calls ran | `Tool call aborted: <the failure>.` |
 
-A call that watched no command ends the line after the reason.
+A call that watched no command ends the line after the reason. A command an
+interrupted call leaves running, after a shutdown or a crash, reports its end
+as any command whose call returned does ([Command reports](#command-reports)).
 
 ### Lost commands
 
