@@ -80,8 +80,12 @@ async fn run_turn(
         let recover = stream(s, cancel, continues).await?;
         continues = true;
         cancel.check()?;
-        if !recover {
-            write_inputs_since(s, before).await?;
+        if !recover && s.update(|core| core.arrived_since(before)) {
+            // The command reports wait until the response's tools have run;
+            // the boundary after them writes them.
+            if s.update(|core| core.write_inputs(Take::AllButReports)) {
+                persist::flush(s).await?;
+            }
         }
         let executed = run_tools(s, cancel, recover).await?;
         if ends_for_message(s).await? {
