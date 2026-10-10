@@ -1,6 +1,6 @@
 //! Line counting shared by working-tree changes and recorded edits.
 
-use demi_command_protocol::is_text;
+use demi_command_protocol::is_binary;
 
 fn line_count(bytes: &[u8]) -> u64 {
     if bytes.is_empty() {
@@ -16,7 +16,7 @@ fn line_count(bytes: &[u8]) -> u64 {
 
 /// Lines added and removed between two sides; nothing for binary or unread content.
 pub fn line_counts(before: Option<&[u8]>, after: Option<&[u8]>) -> (u64, u64) {
-    if before.is_some_and(|bytes| !is_text(bytes)) || after.is_some_and(|bytes| !is_text(bytes)) {
+    if before.is_some_and(is_binary) || after.is_some_and(is_binary) {
         return (0, 0);
     }
     match (before, after) {

@@ -171,7 +171,7 @@ pub enum ErrorCode {
     /// A file is over the 8 MiB the product shows as text or keeps as an
     /// edit.
     FileTooLarge,
-    /// The file is not UTF-8 text, or holds a NUL byte.
+    /// The file is binary (`demi_command_protocol::is_binary`).
     NotText,
     /// A directory has too many entries to list in one runner message.
     DirectoryTooLarge,
