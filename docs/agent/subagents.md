@@ -305,7 +305,17 @@ For example, a research child starts its tests in the background and ends
 its turn, saying it waits for them. The tests' end wakes it; it writes its
 report, and its turn ends with that answer. Nothing it started runs any more,
 so the child closes with the report. Had it left a dev server running for
-its parent to use, it would stay live, and close once the server ends.
+its parent to use, it would stay live, and close once the server ends. Its
+result would wait as long, so a child that leaves a command running for its
+parent tells the parent at once with `demi agent send parent`: what runs,
+its command number and that `demi shell stop` ends it. The parent goes on
+with that message, uses the server, and stops it when done, and the child
+then closes with its result. In a product check, a child told only to
+"leave it running" and report in its final answer fought the rule instead:
+it detached the server with `nohup … & disown`, which keeps a task in its
+job ([Background tasks and timeouts](../execution/runner.md#background-tasks-and-timeouts)),
+and then with Python's `start_new_session`, which left a process no command
+stands for.
 
 A child is quiescent when it has no running or queued action, no unread
 agent message or command report, no live child of its own and no command it
@@ -624,7 +634,7 @@ summarize the parent transcript into the child.
 | Layer | Owner | Content |
 | --- | --- | --- |
 | System prompt | The runtime, the product and the plugins, or the profile | The identity (a profile's instructions replace the parent's), the harness guide, the runtime's rules for its tools, the capability index of the node's commands and the model identity ([System prompt](system-prompt.md)). |
-| Preamble | The agent server, for every child | This session is a subagent; its ID and its parent's ID; a turn that ends with its answer returns it as the result and ends the session once nothing it started still runs; to wait for its commands or children it ends its turn, and their end wakes it; `demi agent send` reaches the parent (`parent`) and any agent in `demi agent list`; spawn delegates further, or this session may not spawn; the session is not talking to the product user and does not address them. |
+| Preamble | The agent server, for every child | This session is a subagent; its ID and its parent's ID; a turn that ends with its answer returns it as the result and ends the session once nothing it started still runs; a command it leaves running for its parent, such as a server, it reports to the parent at once with `demi agent send parent`, naming the command, which the parent stops with `demi shell stop` when done; to wait for its commands or children it ends its turn, and their end wakes it; `demi agent send` reaches the parent (`parent`) and any agent in `demi agent list`; spawn delegates further, or this session may not spawn; the session is not talking to the product user and does not address them. |
 | First user message | The parent model | The spawn prompt from stdin. Demi does not inspect or pad it. |
 
 The inherit profile carries the parent's system prompt, so the child already
