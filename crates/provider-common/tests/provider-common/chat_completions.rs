@@ -186,7 +186,7 @@ async fn a_body_that_ends_before_a_finish_reason_fails_even_with_usage_and_keeps
     assert!(!events.iter().any(|event| matches!(event, ProviderEvent::ToolCall(_))), "{events:?}");
     assert_eq!(
         (failure.message.as_str(), &failure.code),
-        ("The provider's stream ended before the reply was complete", &Some(ErrorCode::Network))
+        ("The provider's stream ended before the reply was complete", &Some(ErrorCode::Overloaded))
     );
 }
 

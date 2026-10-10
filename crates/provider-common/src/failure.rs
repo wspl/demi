@@ -101,14 +101,9 @@ impl ProviderFailure {
 
     /// A stream that ended before the vendor said the reply was complete,
     /// even with a usage count seen (`providers.md` § Reading vendor input):
-    /// `network`, from the source `transport`, with no record.
+    /// no answer, as any network failure is.
     pub fn cut_short() -> Self {
-        Self {
-            message: "The provider's stream ended before the reply was complete".to_owned(),
-            code: Some(ErrorCode::Network),
-            diagnostics: Some(Box::new(diagnostics(FailureSource::Transport, None, None))),
-            retry_after: None,
-        }
+        Self::no_answer("The provider's stream ended before the reply was complete")
     }
 
     /// A reply the vendor ended before it was complete, for `end`, with the
@@ -196,9 +191,6 @@ pub enum ErrorCode {
     /// The vendor ended the reply before it was complete: for its output
     /// limit, a filter or another reason it named.
     Incomplete,
-    /// The vendor's stream ended before the vendor said the reply was
-    /// complete (`providers.md` § Reading vendor input).
-    Network,
     /// The credential expired or was refused.
     AuthExpired,
     /// The account has no credential.
@@ -221,7 +213,6 @@ impl ErrorCode {
             Self::Overloaded => "overloaded",
             Self::ContextLengthExceeded => "context_length_exceeded",
             Self::Incomplete => "incomplete",
-            Self::Network => "network",
             Self::AuthExpired => "auth_expired",
             Self::AuthMissing => "auth_missing",
             Self::AuthInvalid => "auth_invalid",
@@ -282,7 +273,6 @@ impl FromStr for ErrorCode {
             "overloaded" => Self::Overloaded,
             "context_length_exceeded" => Self::ContextLengthExceeded,
             "incomplete" => Self::Incomplete,
-            "network" => Self::Network,
             "auth_expired" => Self::AuthExpired,
             "auth_missing" => Self::AuthMissing,
             "auth_invalid" => Self::AuthInvalid,

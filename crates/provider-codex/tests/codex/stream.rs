@@ -76,7 +76,7 @@ async fn a_stream_that_ends_without_completion_fails_after_its_text() {
     };
     assert_eq!(
         (text.as_str(), &failure.code),
-        ("hi", &Some(demi_provider_common::ErrorCode::Network))
+        ("hi", &Some(demi_provider_common::ErrorCode::Overloaded))
     );
 }
 
