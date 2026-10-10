@@ -159,26 +159,27 @@ For example, a model runs `demi file edit a.ts b.ts` on a leaf that takes
 one optional path, or `demi browser read t1 --selector main`:
 
 ```text
-error: unexpected argument '--selector' found
-
-  tip: a similar argument exists: '--css'
-
-Usage: demi browser read <tab> [--css <selector>] …
-
-For more information, try '--help'.
+error: unexpected argument '--selector' found; a similar argument exists: '--css'
+Usage: demi browser read <tab> [--css <selector>] …; more with --help
 ```
 
 A usage error is clap's: one error at a time, in clap's words, with no
 colour, the leaf's usage line and the pointer to `--help`, on stderr, with
 exit status 2, as every program built with clap reports it and as models
-know. The usage line is the one help renders from the declaration, so the
+know. It takes two lines, with no blank line: the error with its tips
+joined to it, and the usage line with the pointer to `--help`, so a model
+that pipes the command into `head -3` or `tail -3`, as models do, still
+reads the error; clap's own five lines lost it to `tail -3` in a product
+check, leaving only the usage. The usage line is the one help renders from the declaration, so the
 error, `--help` and the capability index show the same usage. Demi adds its
 own hints as clap's `tip:` lines, such as `"demi file edit" reads blocks only
 from stdin; remove --content and use a quoted heredoc`, and clap suggests a
 near name for a misspelt option or operation. What clap cannot express, a
 length, a pattern, a range or an item count, the validator checks once clap
 has parsed, and reports in the same shape: `error: "path" is longer than 4096
-characters`. Arguments that arrive as JSON, such as an `rpc` call's arguments
+characters`. A field with a pattern declares what the pattern stands for,
+and the error says that, never the expression: `error: "foo" is not a ref,
+such as e12`, not `"ref" does not match "^e[1-9][0-9]{0,14}$"`. Arguments that arrive as JSON, such as an `rpc` call's arguments
 at the backend or the arguments of a one-shot user call, are validated as
 they arrive and reported the same way: `"7"` for a numeric field is a usage
 error there, not a 7.

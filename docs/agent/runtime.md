@@ -509,6 +509,17 @@ or a subagent ends, the work it waits for wakes it.
   look showed the end first moves nothing, so the look shows the last
   lines. An end report whose job viewed media is never dropped: it carries
   the media, without the output the look showed.
+- **A Host that is away.** An interval report of a command whose Host's
+  connection is away says so instead of counting the silence as the
+  command's: *Command 17 (Run the test suite) is still running, as far as
+  Demi knows: its Host has been unreachable for 40 seconds, and its runner
+  keeps the command for up to 10 minutes*, then the output that reached
+  the backend. Its end, or its loss, reports when the runner is back or the
+  10 minutes pass ([Command lifetime](../execution/runner.md#command-lifetime)).
+- **Across a restart.** A command's start time and each node's place in its
+  output are part of the record the backend keeps of a running command, so
+  a report after a backend restart counts the time from the command's
+  start and shows only output the model has not seen.
 - **What the user sees.** The transcript shows each report as a row where
   its block lies, as an agent message shows as its receipt row, so a reply
   the agent writes after it never appears without its cause, as Claude Code
@@ -660,7 +671,7 @@ the command did with the answer.
 
 | Command | What it does |
 | --- | --- |
-| `demi shell status <commandId>…` | Prints each command's status, its exit code once it has ended, how long it has run and printed nothing, and its output since the node's last look at it, as a result shows it ([Results and previews](#results-and-previews)); a command that has ended attaches its media. `--wait <duration>` waits up to that long for the commands to end first; the `shell` call that runs it watches as any call does. `--interval <duration>` or `--resident` changes how the node hears from the commands from then on ([Command reports](#command-reports)). |
+| `demi shell status <commandId>…` | Prints each command's status, its exit code once it has ended, how long it has run and printed nothing, and its output since the node's last look at it, as a result shows it ([Results and previews](#results-and-previews)), also of a command that was stopped or lost: `status: stopped` or `status: lost: <reason>`, then the output; it shows the media's lines and attaches none ([What a result attaches](#what-a-result-attaches)). A command whose Host's connection is away says so: `status: running, as far as Demi knows; its Host has been unreachable for 40 seconds, and its runner keeps it for up to 10 minutes`. `--wait <duration>` waits up to that long for the commands to end first; the `shell` call that runs it watches as any call does. `--interval <duration>` or `--resident` changes how the node hears from the commands from then on ([Command reports](#command-reports)). |
 | `demi shell input <commandId>` | Writes its stdin to the command's input, such as an answer to a prompt, and prints nothing; input for a command that is not running fails. A command that still acquires its Host, as while a Cloud wakes, takes the input once it starts. |
 | `demi shell output <commandId>` | Prints the command's whole output ([The whole output](#the-whole-output)). |
 | `demi shell stop <commandId>…` | Stops each command, below. |
@@ -668,7 +679,7 @@ the command did with the answer.
 `demi shell stop <commandId>…` stops each running command of the conversation it names,
 whichever agent ran it, and waits until it has ended: it prints
 `[command 17 stopped]`, and the command's next status shows it
-`aborted` with its last output. A command that had already ended prints
+`stopped` with its last output. A command that had already ended prints
 `[command 17 had already ended]` and also succeeds, so stopping is safe to
 repeat; a number that names no command of the conversation fails with
 `demi shell stop: 17: no such command in this conversation`, while the
@@ -1145,7 +1156,11 @@ out:
 | The backend's crash, found at restore | `Tool call interrupted: the backend stopped before its result was recorded; command 254 keeps running if its Host kept it.` |
 | An action that failed before its calls ran | `Tool call aborted: <the failure>.` |
 
-A call that watched no command ends the line after the reason. A command an
+A call that watched no command ends the line after the reason. A call that
+watched one follows the line with the command's output since the model's
+last look, as a result shows it, so the model sees how far the command got
+without looking again: after a Stop in a product check, the model's next
+step was `demi shell status` only to read `ok group 1`. A command an
 interrupted call leaves running, after a shutdown or a crash, reports its end
 as any command whose call returned does ([Command reports](#command-reports)).
 

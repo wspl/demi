@@ -1662,7 +1662,11 @@ Viewport: 1280 × 720 CSS px, device pixel ratio 1, web.
 ```
 
 Eval is read-only page inspection. Stdin holds statements, as a script or a
-console would: `const ps = [...document.querySelectorAll('p')]; ps.map(p =>
+console would, and a short expression may be given as the last positional
+instead, as models write it: `demi browser eval t1 'document.title'`. The
+positional after the tab is the element's ref when it reads as one, such as
+`e21`, and otherwise the expression; an expression in both places is a usage
+error. Statements on stdin: `const ps = [...document.querySelectorAll('p')]; ps.map(p =>
 p.textContent)` returns the value of the last expression. They run as one
 block, so declarations stay inside it. Nothing waits: `await`, and a value
 that is a Promise, fail with a line saying that eval returns values that are
