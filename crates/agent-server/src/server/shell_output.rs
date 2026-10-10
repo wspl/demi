@@ -323,7 +323,10 @@ async fn status_one<H: HostResolver>(
             let idle_ms = environment
                 .quiet(&command)
                 .map_or(0, |quiet| u64::try_from(quiet.as_millis()).unwrap_or(u64::MAX));
-            let state = CommandState::Running { hint: None };
+            let state = CommandState::Running {
+                hint: None,
+                outliving: environment.outliving(&command),
+            };
             let look = Look {
                 unreachable: environment.unreachable(&command),
                 ..look
