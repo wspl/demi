@@ -92,16 +92,23 @@ const actions = computed<BubbleAction[]>(() => {
 
 const textClass = computed(() => (props.pending ? 'text-fg-subtle' : 'text-fg-body'))
 
-/** How many lines a long message shows; the last of them fades out. */
-const VISIBLE_LINES = 5
+/**
+ * A message taller than `FOLD_ABOVE_PX` folds to show about `FOLDED_PX` of
+ * it, its last line fading out, until Show More opens it, as Claude Code's
+ * does: a message a few lines over the fold shows whole, since folding would
+ * hide less than the control takes.
+ */
+const FOLD_ABOVE_PX = 300
+const FOLDED_PX = 200
+const expanded = ref(false)
 
 const contentRef = ref<HTMLElement>()
 const bodyRef = ref<HTMLElement>()
 /**
- * Where a long message is cut, and the line box its fade spans; null while
- * it shows whole. The cut is five lines down, or lower, at the end of a line
- * of text across that mark, so it cuts no letter; anything else across it,
- * such as an image or a code block, is cut there.
+ * Where a long message folds, and the line box its fade spans; null when it
+ * is short enough to show whole. The fold is `FOLDED_PX` down, or lower, at
+ * the end of a line of text across that mark, so it cuts no letter; anything
+ * else across it, such as an image or a code block, is cut there.
  */
 const clip = ref<{ height: number; line: number } | null>(null)
 
@@ -113,9 +120,9 @@ function measure(): void {
     return
   }
   const line = Number.parseFloat(getComputedStyle(body).lineHeight) || 0
-  const limit = VISIBLE_LINES * line
+  const limit = FOLDED_PX
   const full = body.getBoundingClientRect().height
-  if (full <= limit + 1) {
+  if (full <= FOLD_ABOVE_PX) {
     clip.value = null
     return
   }
@@ -143,7 +150,6 @@ function measure(): void {
       }
     }
   }
-  // Five lines around a code block run past the mark by its margins and show whole.
   clip.value = height < full - 1 ? { height, line } : null
 }
 
@@ -187,7 +193,7 @@ useResizeObserver(bodyRef, measure)
         ref="contentRef"
         class="overflow-hidden"
         :style="
-          clip
+          clip && !expanded
             ? {
                 height: `${clip.height}px`,
                 maskImage: `linear-gradient(to bottom, black calc(100% - ${clip.line}px), transparent)`,
@@ -206,6 +212,15 @@ useResizeObserver(bodyRef, measure)
           />
         </div>
       </div>
+      <!-- Under the text, its label in line with the text's start. -->
+      <Button
+        v-if="clip"
+        size="sm"
+        variant="ghost"
+        class="-ml-2 mt-1"
+        :aria-expanded="expanded"
+        @click.stop="expanded = !expanded"
+      >{{ expanded ? 'Show Less' : 'Show More' }}</Button>
     </div>
     <!-- A pending message says what happens to it, its controls in view rather than on hover. -->
     <div
