@@ -19,7 +19,7 @@ const blocks = computed(() => busyRequestBlocks(state.value === 'working'))
 <template>
   <GallerySection
     title="A Busy Request"
-    note="Short sentences between single commands, thinking before most of them, reads, a failing test, an edit and a summary. The rows stand a step under the prose, 13px in a lighter grey beside its 15px, as ChatGPT’s Thought for 7s stands under its answer, so the model’s words read first and its steps stay findable; a row brightens under the pointer. Working shows the last command still running, its row shimmering."
+    note="Short sentences between single commands, thinking before most of them, reads, a failing test, an edit and a summary. The rows stand a step under the prose, 14px in a lighter grey beside its 15px, so the model’s words read first and its steps stay findable; a row brightens under the pointer. Working shows the last command still running, its row shimmering."
   >
     <GallerySpecimen variant="rows and prose taking turns" wide>
       <div class="flex flex-col gap-2">
