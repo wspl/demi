@@ -1511,7 +1511,7 @@ async fn a_call_stops_on_its_first_cause_releases_its_live_input_and_exits_after
                     error: Some("upload failed".into()),
                 })
                 .await;
-                "pipe failed: upload failed".into()
+                "upload failed".into()
             }
             "stdout" | "stdin" => {
                 let pipe = if event == "stdout" {
@@ -1520,7 +1520,7 @@ async fn a_call_stops_on_its_first_cause_releases_its_live_input_and_exits_after
                     &stdin.id
                 };
                 device.pipes().fail(pipe, "HTTP connection lost");
-                "pipe failed: HTTP connection lost".into()
+                "HTTP connection lost".into()
             }
             "chunk" => {
                 link.send(Outbound::RpcStdin {

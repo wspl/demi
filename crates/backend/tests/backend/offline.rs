@@ -109,10 +109,11 @@ async fn a_command_on_an_offline_attached_device_fails_at_once_with_its_offline_
             say("noted"),
         ])
         .await;
+    // The command's error line names the command and the reason, without
+    // the words of the pipe that carried it.
     assert!(
-        tried.received[0].contains(
-            "build-box is offline: its runner has been disconnected for 40s, so nothing can run there now; commands already running there are kept for up to 10m and report when it is back."
-        ),
+        tried.received[0].lines().any(|line| line
+            == "demi host shell: build-box is offline: its runner has been disconnected for 40s, so nothing can run there now; commands already running there are kept for up to 10m and report when it is back."),
         "{}",
         tried.received[0]
     );
