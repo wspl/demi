@@ -29,13 +29,12 @@ use super::{gone_text, latest_answer, replay_start};
 /// What the model receives for a `resume` block.
 pub const RESUME_TEXT: &str = "Continue from where you left off.";
 
-/// What the model reads of `resume`: [`RESUME_TEXT`], or, when Demi resumed
-/// the turn, why (`failures-and-recovery.md` § The unfinished turn).
+/// What the model reads of `resume`: [`RESUME_TEXT`], after why the turn
+/// is resumed when its block says (`failures-and-recovery.md` § The
+/// unfinished turn).
 pub fn resume_text(resume: &demi_shared_types::ResumeBlock) -> String {
     match &resume.reason {
-        Some(reason) => {
-            format!("Demi resumed this turn after {reason}; continue from where you left off.")
-        }
+        Some(reason) => format!("{reason} {RESUME_TEXT}"),
         None => RESUME_TEXT.to_owned(),
     }
 }

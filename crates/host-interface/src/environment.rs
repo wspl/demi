@@ -9,7 +9,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use demi_shared_types::{
-    BinaryStdout, CommandId, EditedFile, NodeId, OutputView, PathChange, Sequence, StreamKind,
+    BinaryStdout, CommandId, EditedFile, ErrorDevice, NodeId, OutputView, PathChange, Sequence, StreamKind,
     StreamView,
 };
 use demi_command_protocol::Viewable;
@@ -282,4 +282,8 @@ pub enum ShellError {
     EmptyStdin,
     #[error(transparent)]
     Host(#[from] HostError),
+    /// The command ran nothing: its Host, `device`, has no live runner
+    /// (`sessions-and-targets.md` § Host operations).
+    #[error("{message}")]
+    HostOffline { device: ErrorDevice, message: String },
 }
