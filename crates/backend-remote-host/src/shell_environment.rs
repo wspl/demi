@@ -380,7 +380,8 @@ impl RemoteShellEnvironment {
                         Some(caller),
                         self.0.options.commands.clone(),
                     );
-                    Ok(self.follow(&command, job, &running, &record).await)
+                    // The runner's following of the job is unknown.
+                    Ok(self.follow(&command, job, false, &running, &record).await)
                 }
             };
             match ran {
@@ -481,15 +482,19 @@ impl RemoteShellEnvironment {
             })
             .await
             .map_err(|error| error.message)?;
-        Ok(self.follow(command, job, running, record).await)
+        // A new job starts unfollowed.
+        Ok(self.follow(command, job, true, running, record).await)
     }
 
     /// Follows the job to its end and settles the command with it, unless
-    /// the environment lets go of it first.
+    /// the environment lets go of it first. `unfollowed` says the runner
+    /// does not follow the job, as for one that just started; otherwise the
+    /// runner is told first.
     async fn follow(
         &self,
         command: &CommandId,
         job: RemoteJob,
+        unfollowed: bool,
         running: &Running,
         record: &Rc<RefCell<CommandRecord>>,
     ) -> Followed {
@@ -500,7 +505,7 @@ impl RemoteShellEnvironment {
         let mut watch_open = true;
         let mut followed = false;
         // A new connection knows nothing of how the job was followed.
-        let mut told = false;
+        let mut told = unfollowed;
         let stopped = running.stop.cancelled();
         tokio::pin!(stopped);
         let mut signalled = false;
