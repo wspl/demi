@@ -10,7 +10,7 @@ use demi_host_interface::{GroupBuilder, LeafBuilder};
 /// § Capability index): when to use it, and the shape of a call, since a
 /// model takes up a tool by the example it has seen. Its example starts at
 /// the margin, as `demi file edit`'s help says why.
-const ENTRY: &str = "Use it whenever you change the task's files, so each change is exact and the user sees it, and whenever you want to see an image, a video or a PDF: `view` shows you one from a file or a pipe, as in `demi browser screenshot t1 | demi file view`. Read text with cat, sed -n or rg. One `edit` creates and changes several files, then you build:
+const ENTRY: &str = "Use it whenever you change the task's files, so each change is exact and the user sees it, and whenever you want to see an image, a video or a PDF: `view` shows you one from a file or a pipe, as in `demi browser screenshot t1 | demi file view`. Read text with cat, sed -n or rg. One `edit` creates and changes several files and keeps each file's line endings, CRLF included, then you build:
 demi file edit <<'EOF' && cargo check
 src/stream.rs
 <<<<<<< SEARCH
@@ -29,7 +29,7 @@ EOF";
 /// The help of `demi file edit`'s stdin: the blocks, with an example the
 /// model can copy. Its lines start at the margin, since a marker is a whole
 /// line and indentation copied with it would make it text.
-const EDIT_BLOCKS: &str = r"SEARCH/REPLACE blocks, each after a line naming its file, or all for the path argument. A SEARCH is text copied exactly from the file, whitespace and indentation included: whole lines, or part of one, such as withinLimit( inside a line. It must occur once in the file; its REPLACE takes its place. A REPLACE with no lines deletes the SEARCH, and a SEARCH of whole lines with its last line ending, so deleted lines leave no blank one. A SEARCH of blank lines only is refused. An empty SEARCH creates its file, which must not exist. A SEARCH line of seven dots ....... stands for the lines between the ones around it, and the block then matches whole lines: give the REPLACE as many to keep those lines, or none to replace them. Every block of every file applies, or none does. For a one-line change, pass the path, --old and --new instead. Pass blocks in a quoted heredoc, so quotes, $ and backslashes need no escaping, for example:
+const EDIT_BLOCKS: &str = r"SEARCH/REPLACE blocks, each after a line naming its file, or all for the path argument. A SEARCH is text copied exactly from the file, whitespace and indentation included: whole lines, or part of one, such as withinLimit( inside a line. It must occur once in the file; its REPLACE takes its place, with the file's own line endings, CRLF included, so blocks are written with plain newlines and nothing else needs to keep them. A REPLACE with no lines deletes the SEARCH, and a SEARCH of whole lines with its last line ending, so deleted lines leave no blank one. A SEARCH of blank lines only is refused. An empty SEARCH creates its file, which must not exist. A SEARCH line of seven dots ....... stands for the lines between the ones around it, and the block then matches whole lines: give the REPLACE as many to keep those lines, or none to replace them. Every block of every file applies, or none does. For a one-line change, pass the path, --old and --new instead. Pass blocks in a quoted heredoc, so quotes, $ and backslashes need no escaping, for example:
 demi file edit <<'EOF' && cargo check
 src/stream.rs
 <<<<<<< SEARCH

@@ -60,7 +60,7 @@ struct OutputArgs {
     /// The command's commandId, as its result names it
     id: String,
     /// The lines to print, as <from>-<to>
-    #[schemars(pattern(r"^[0-9]+-[0-9]+$"))]
+    #[schemars(pattern(r"^[0-9]+-[0-9]+$"), extend("patternDescription" = "a line range, such as 20-40"))]
     lines: Option<String>,
     /// Print the last n lines
     #[schemars(range(min = 1))]

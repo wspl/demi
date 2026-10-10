@@ -11,8 +11,9 @@ pub const MAX_SAFE_INTEGER: i64 = demi_shared_types::MAX_SAFE_INTEGER as i64;
 
 /// Keywords that describe a schema without constraining it. schemars writes
 /// `default` for a field serde fills in when it is absent, which the field's
-/// absence from `required` already says.
-const ANNOTATIONS: [&str; 8] = [
+/// absence from `required` already says; a command input's identifier says
+/// what its pattern stands for in `patternDescription`, for usage errors.
+const ANNOTATIONS: [&str; 9] = [
     "description",
     "title",
     "default",
@@ -21,6 +22,7 @@ const ANNOTATIONS: [&str; 8] = [
     "readOnly",
     "writeOnly",
     "$comment",
+    "patternDescription",
 ];
 
 /// Where a schema's definitions are, as schemars writes a reference.

@@ -1329,7 +1329,7 @@ async fn a_nested_command_prints_its_groups_help_and_only_json_output_that_match
         (exited(&usage), usage.stderr.delta.as_str()),
         (
             2,
-            "error: the following required arguments were not provided:\n  <text>\n\nUsage: probe json emit <text> [--json]\n\nFor more information, try '--help'.\n"
+            "error: the following required arguments were not provided: <text>\nUsage: probe json emit <text> [--json]; more with --help\n"
         )
     );
     fixture.stop().await;

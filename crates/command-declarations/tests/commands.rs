@@ -120,9 +120,17 @@ fn filer() -> Node {
                     "items": {"type": "string"}}}), &["files"])}},
             {"name": "click", "summary": "Click an element.", "kind": "rpc",
                 "input": object(json!({"tab": {"type": "string"},
-                    "ref": {"type": "string", "pattern": "^e[1-9][0-9]*$"},
+                    "ref": {"type": "string", "pattern": "^e[1-9][0-9]*$",
+                        "patternDescription": "a ref, such as e12"},
                     "exact": {"type": "boolean"}, "dy": {"type": "integer"}}), &["tab"]),
                 "positionals": ["tab", "ref"], "positionalOptions": ["ref"]},
+            {"name": "eval", "summary": "Evaluate an expression.", "kind": "rpc",
+                "input": object(json!({"tab": {"type": "string"},
+                    "ref": {"type": "string", "pattern": "^e[1-9][0-9]*$",
+                        "patternDescription": "a ref, such as e12"},
+                    "expression": {"type": "string"}}), &["tab", "expression"]),
+                "positionals": ["tab", "ref", "expression"], "positionalOptions": ["ref"],
+                "stdinField": "expression"},
             {"name": "key", "summary": "Press a key.", "kind": "rpc",
                 "input": object(json!({"tab": {"type": "string"}, "ref": {"type": "string"},
                     "key": {"type": "string"}}), &["tab", "key"]),
@@ -150,91 +158,97 @@ fn a_usage_error_is_clap_s_with_the_command_s_usage_and_demi_s_tips() {
         (
             &["edit", "a.txt", "b.txt", "--old", "a", "--new", "b"],
             None,
-            "error: unexpected argument 'b.txt' found\n\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]\n\nFor more information, try '--help'.",
+            "error: unexpected argument 'b.txt' found\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]; more with --help",
         ),
         // A near name for a misspelt option and a misspelt command.
         (
             &["edit", "a.txt", "--olf", "a"],
             None,
-            "error: unexpected argument '--olf' found\n\n  tip: a similar argument exists: '--old'\n\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]\n\nFor more information, try '--help'.",
+            "error: unexpected argument '--olf' found; a similar argument exists: '--old'\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]; more with --help",
         ),
         (
             &["crete", "a.txt"],
             None,
-            "error: unrecognized subcommand 'crete'\n\n  tip: a similar subcommand exists: 'create'\n\nUsage: filer <command>\n\nFor more information, try '--help'.",
+            "error: unrecognized subcommand 'crete'; a similar subcommand exists: 'create'\nUsage: filer <command>; more with --help",
         ),
         // A body read from stdin, given as an option.
         (
             &["create", "a.txt", "--content", "inline"],
             Some("body"),
-            "error: unexpected argument '--content' found\n\n  tip: \"filer create\" reads content only from stdin; remove --content and use a quoted heredoc\n\nUsage: filer create <path>\n\nFor more information, try '--help'.",
+            "error: unexpected argument '--content' found; \"filer create\" reads content only from stdin; remove --content and use a quoted heredoc\nUsage: filer create <path>; more with --help",
         ),
         // A positional, and the rest field, given as options.
         (
             &["create", "--path", "a.txt"],
             Some("body"),
-            "error: unexpected argument '--path' found\n\n  tip: \"filer create\" takes <path> as a positional argument; remove --path and give the value alone\n\nUsage: filer create <path>\n\nFor more information, try '--help'.",
+            "error: unexpected argument '--path' found; \"filer create\" takes <path> as a positional argument; remove --path and give the value alone\nUsage: filer create <path>; more with --help",
         ),
         (
             &["forward", "--args", "x"],
             None,
-            "error: unexpected argument '--args' found\n\n  tip: \"filer forward\" takes args after --; remove --args and write them after --\n\nUsage: filer forward -- <args>...\n\nFor more information, try '--help'.",
+            "error: unexpected argument '--args' found; \"filer forward\" takes args after --; remove --args and write them after --\nUsage: filer forward -- <args>...; more with --help",
         ),
         // A missing option value never swallows the next option, and the
         // usage line is there although clap leaves it out of this error.
         (
             &["edit", "a.txt", "--old", "--new", "b"],
             None,
-            "error: a value is required for '--old <old>' but none was supplied\n\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]\n\nFor more information, try '--help'.",
+            "error: a value is required for '--old <old>' but none was supplied\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]; more with --help",
         ),
         (
             &["edit", "a.txt", "--old", "a", "--old", "b", "--new", "c"],
             None,
-            "error: the argument '--old <old>' cannot be used multiple times\n\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]\n\nFor more information, try '--help'.",
+            "error: the argument '--old <old>' cannot be used multiple times\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]; more with --help",
         ),
         (
             &["measure", "--v", "twelve"],
             None,
-            "error: invalid value 'twelve' for '--v <v>': invalid float literal\n\nUsage: filer measure --v <v> [--label <label>] [--quiet]\n\nFor more information, try '--help'.",
+            "error: invalid value 'twelve' for '--v <v>': invalid float literal\nUsage: filer measure --v <v> [--label <label>] [--quiet]; more with --help",
         ),
         (
             &["status", "--status", "finished"],
             None,
-            "error: invalid value 'finished' for '--status <pending|in_progress|done>'\n  [possible values: pending, in_progress, done]\n\nUsage: filer status [--status <pending|in_progress|done>]\n\nFor more information, try '--help'.",
+            "error: invalid value 'finished' for '--status <pending|in_progress|done>' [possible values: pending, in_progress, done]\nUsage: filer status [--status <pending|in_progress|done>]; more with --help",
         ),
         (
             &["upload"],
             None,
-            "error: the following required arguments were not provided:\n  <path>...\n\nUsage: filer upload <path>...\n\nFor more information, try '--help'.",
+            "error: the following required arguments were not provided: <path>...\nUsage: filer upload <path>...; more with --help",
         ),
         (
             &["status", "--json"],
             None,
-            "error: unexpected argument '--json' found\n\nUsage: filer status [--status <pending|in_progress|done>]\n\nFor more information, try '--help'.",
+            "error: unexpected argument '--json' found\nUsage: filer status [--status <pending|in_progress|done>]; more with --help",
         ),
         // A true or false after a flag is refused rather than taken as the
         // optional positional after it.
         (
             &["click", "t1", "--exact", "false"],
             None,
-            "error: unexpected argument 'false' found\n\n  tip: --exact alone is true; write --exact=false for false\n\nUsage: filer click <tab> [<ref>] [--exact] [--dy <dy>]\n\nFor more information, try '--help'.",
+            "error: unexpected argument 'false' found; --exact alone is true; write --exact=false for false\nUsage: filer click <tab> [<ref>] [--exact] [--dy <dy>]; more with --help",
         ),
         (
             &["click", "t1", "e3", "--ref", "e4"],
             None,
-            "error: the argument '[ref]' cannot be used with '--ref <ref>'\n\nUsage: filer click <tab> [<ref>] [--exact] [--dy <dy>]\n\nFor more information, try '--help'.",
+            "error: the argument '[ref]' cannot be used with '--ref <ref>'\nUsage: filer click <tab> [<ref>] [--exact] [--dy <dy>]; more with --help",
         ),
         // What clap cannot express, the validator checks after it, in the
         // same shape and one failure at a time.
         (
             &["create", "a.txt"],
             Some("a long body"),
-            "error: \"content\" is longer than 8 characters\n\nUsage: filer create <path>\n\nFor more information, try '--help'.",
+            "error: \"content\" is longer than 8 characters\nUsage: filer create <path>; more with --help",
         ),
         (
             &["click", "t1", "x3"],
             None,
-            "error: \"ref\" does not match \"^e[1-9][0-9]*$\"\n\nUsage: filer click <tab> [<ref>] [--exact] [--dy <dy>]\n\nFor more information, try '--help'.",
+            "error: \"x3\" is not a ref, such as e12\nUsage: filer click <tab> [<ref>] [--exact] [--dy <dy>]; more with --help",
+        ),
+        // An expression given both as the positional and on stdin.
+        (
+            &["eval", "t1", "document.title"],
+            Some("document.URL"),
+            "error: \"expression\" is given both as an argument and on stdin; give it once\nUsage: filer eval <tab> [<ref>] [<expression>]; more with --help",
         ),
     ];
     for (line, stdin, expected) in cases {
@@ -257,7 +271,7 @@ fn arguments_that_arrive_as_json_are_refused_in_the_same_shape() {
         )
         .unwrap_err()
         .to_string(),
-        "error: \"occurrence\" is not of type \"integer\"\n\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]\n\nFor more information, try '--help'."
+        "error: \"occurrence\" is not of type \"integer\"\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]; more with --help"
     );
     edit.check_arguments(
         "filer edit",
@@ -302,12 +316,25 @@ fn each_field_takes_its_value_from_its_one_source() {
         values(&filer, &["key", "t1", "e1", "Enter"], None),
         json!({"tab": "t1", "ref": "e1", "key": "Enter"})
     );
+    // A stdin field may also be the last positional: the token after the
+    // tab is the ref when it reads as one and otherwise the expression, and
+    // an empty stdin, a job's </dev/null, leaves the positional alone.
+    for (line, stdin, expected) in [
+        (&["eval", "t1", "document.title"][..], Some(""), json!({"tab": "t1", "expression": "document.title"})),
+        (&["eval", "t1", "e21"], Some("element.value"), json!({"tab": "t1", "ref": "e21", "expression": "element.value"})),
+        (&["eval", "t1", "e21", "element.id"], Some(""), json!({"tab": "t1", "ref": "e21", "expression": "element.id"})),
+        (&["eval", "t1", "--ref", "e21", "element.id"], Some(""), json!({"tab": "t1", "ref": "e21", "expression": "element.id"})),
+        (&["eval", "t1"], Some("document.title"), json!({"tab": "t1", "expression": "document.title"})),
+    ] {
+        assert_eq!(values(&filer, line, stdin), expected, "{line:?}");
+    }
     // Help shows each field in its source's form, never a body as an option.
     let help = [
         help(&filer, &["create"]),
         help(&filer, &["forward"]),
         help(&filer, &["upload"]),
         help(&filer, &["key"]),
+        help(&filer, &["eval"]),
     ]
     .join("\n\n");
     for shown in [
@@ -318,6 +345,8 @@ fn each_field_takes_its_value_from_its_one_source() {
         "      <path>... (required, repeatable)",
         "  filer key <tab> [<ref>] <key>\n",
         "      <ref> (optional, or --ref <ref>)",
+        "  filer eval <tab> [<ref>] [<expression>]\n  filer eval <tab> [<ref>] <<'EOF'\n  <expression>\n  EOF\n",
+        "    Stdin body: expression, unless given as <expression>",
     ] {
         assert!(help.contains(shown), "{shown} not in {help}");
     }
@@ -487,7 +516,8 @@ fn the_input_subset_takes_scalars_enums_and_arrays_and_refuses_the_rest() {
             "path": {"type": "string", "minLength": 1, "description": "A file"},
             "count": {"type": "integer", "format": "uint32", "minimum": 0},
             "mode": {"type": "string", "enum": ["fast", "slow"]},
-            "tags": {"type": "array", "items": {"type": "string", "pattern": "^[a-z]+$"}, "maxItems": 3},
+            "tags": {"type": "array", "items": {"type": "string", "pattern": "^[a-z]+$",
+                "patternDescription": "a lowercase word, such as draft"}, "maxItems": 3},
             "force": {"type": "boolean"}}}))
     .unwrap();
 
@@ -524,6 +554,8 @@ fn the_input_subset_takes_scalars_enums_and_arrays_and_refuses_the_rest() {
             "\"uniqueItems\"",
         ),
         (json!({"type": "string", "format": "uri"}), "format"),
+        // A pattern says what it stands for, for the usage error to name.
+        (json!({"type": "string", "pattern": "^e[1-9][0-9]*$"}), "patternDescription"),
     ] {
         let error = refused(field);
         assert!(error.starts_with("input \"field\": "), "{error}");

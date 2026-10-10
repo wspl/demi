@@ -11,7 +11,7 @@ use schemars::{
 };
 use serde_json::{Map, Value};
 
-use crate::{DeclarationError, Schema, invalid};
+use crate::{DeclarationError, PATTERN_DESCRIPTION, Schema, invalid};
 
 /// What an input object may say besides its fields.
 const OBJECT_KEYWORDS: &[&str] = &[
@@ -33,6 +33,7 @@ const FIELD_KEYWORDS: &[&str] = &[
     "minLength",
     "maxLength",
     "pattern",
+    PATTERN_DESCRIPTION,
     "minimum",
     "maximum",
     "exclusiveMinimum",
@@ -127,6 +128,11 @@ fn check_field(schema: &Value) -> Result<(), String> {
         Some(Value::Array(_)) => return Err("has several types".into()),
         _ => return Err("declares no type".into()),
     };
+    if schema.contains_key("pattern") != schema.contains_key(PATTERN_DESCRIPTION) {
+        return Err(format!(
+            "has a pattern without {PATTERN_DESCRIPTION}, or {PATTERN_DESCRIPTION} without a pattern; a pattern says what it stands for, such as \"a ref, such as e12\""
+        ));
+    }
     if schema.contains_key("format") && !matches!(kind, "integer" | "number") {
         return Err("carries a format, which only a number's schema may".into());
     }
