@@ -343,7 +343,7 @@ async fn status_one<H: HostResolver>(
                         media: Vec::new(),
                     },
                     CommandEnd::Stopped => CommandState::Aborted,
-                    CommandEnd::Lost | CommandEnd::Unrecorded => {
+                    CommandEnd::Lost { .. } | CommandEnd::Unrecorded => {
                         lines.extend(ended_lines(id, end));
                         return Ok((lines.join("\n"), Vec::new()));
                     }
@@ -387,7 +387,7 @@ fn ended_lines(id: &str, end: CommandEnd) -> Vec<String> {
             vec!["status: exited".to_owned(), format!("exitCode: {exit_code}")]
         }
         CommandEnd::Stopped => vec!["status: aborted".to_owned()],
-        CommandEnd::Lost => vec!["status: lost with its Host's connection".to_owned()],
+        CommandEnd::Lost { reason } => vec![format!("status: lost: {reason}")],
         CommandEnd::Unrecorded => vec!["status: ended".to_owned()],
     };
     lines.push(format!("commandId: {id}"));
@@ -797,10 +797,10 @@ impl Page<'_> {
         };
         // How it ended, as its record keeps it; a record of a release that
         // kept no end says nothing.
-        let ended = match self.end {
+        let ended = match &self.end {
             Some(CommandEnd::Exited { exit_code }) => format!(", exit code {exit_code}"),
             Some(CommandEnd::Stopped) => ", stopped".to_owned(),
-            Some(CommandEnd::Lost) => ", ended with its Host's connection".to_owned(),
+            Some(CommandEnd::Lost { reason }) => format!(", lost: {reason}"),
             Some(CommandEnd::Unrecorded) | None => String::new(),
         };
         match shown {
