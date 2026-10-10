@@ -800,7 +800,7 @@ async fn the_provider_test_sends_one_real_request_through_the_entrys_family() {
     // entry.
     let compatible = format!(
         "{}data: [DONE]\n\n",
-        sse_body(&[json!({ "choices": [{ "delta": { "content": "ok" } }] })])
+        sse_body(&[json!({ "choices": [{ "delta": { "content": "ok" }, "finish_reason": "stop" }] })])
     );
     let completed = sse_body(&[json!({
         "type": "response.completed", "response": { "usage": { "input_tokens": 1, "output_tokens": 1 } }
@@ -820,7 +820,10 @@ async fn the_provider_test_sends_one_real_request_through_the_entrys_family() {
     );
     let responses = tested(&backend, &master, &vendor, "openai", None, completed).await;
     assert_eq!(responses.uri.path(), "/v1/responses");
-    let google = tested(&backend, &master, &vendor, "google", None, String::new()).await;
+    let finished = sse_body(&[json!({
+        "candidates": [{ "content": { "parts": [{ "text": "ok" }] }, "finishReason": "STOP" }]
+    })]);
+    let google = tested(&backend, &master, &vendor, "google", None, finished).await;
     assert_eq!(
         (google.uri.path(), google.header("x-goog-api-key")),
         ("/v1/models/m:streamGenerateContent", Some("sk-2"))
