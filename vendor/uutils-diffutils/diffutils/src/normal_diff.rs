@@ -56,7 +56,7 @@ fn make_diff(expected: &[u8], actual: &[u8], stop_early: bool, params: &Params) 
 
     for result in crate::utils::diff_lines(&expected_lines, &actual_lines, params) {
         match result {
-            diff::Result::Left(str) => {
+            crate::utils::Edit::Left(str) => {
                 if !mismatch.actual.is_empty() && !mismatch.actual_missing_nl {
                     results.push(mismatch);
                     mismatch = Mismatch::new(line_number_expected, line_number_actual);
@@ -65,12 +65,12 @@ fn make_diff(expected: &[u8], actual: &[u8], stop_early: bool, params: &Params) 
                 mismatch.expected_missing_nl = line_number_expected > expected_lines_count;
                 line_number_expected += 1;
             }
-            diff::Result::Right(str) => {
+            crate::utils::Edit::Right(str) => {
                 mismatch.actual.push(str.to_vec());
                 mismatch.actual_missing_nl = line_number_actual > actual_lines_count;
                 line_number_actual += 1;
             }
-            diff::Result::Both(str, _) => {
+            crate::utils::Edit::Both(str, _) => {
                 match (
                     line_number_expected > expected_lines_count,
                     line_number_actual > actual_lines_count,
