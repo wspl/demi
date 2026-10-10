@@ -2061,3 +2061,31 @@ async fn a_job_kept_through_a_lost_connection_gets_the_output_it_printed_meanwhi
         [(0, b"a".to_vec()), (1, b"bc".to_vec()), (3, b"d".to_vec())]
     );
 }
+
+/// A command stopped with the call that watches it, as a Stop of the action
+/// stops it, ends as stopped, not as the exit its signal makes
+/// (`runtime.md` § Live output). A few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_command_stopped_with_its_call_ends_as_stopped() {
+    let device = device();
+    let mut link = device.connect(None);
+    let shell = environment(device.host("/work", Admission::Free));
+    let call = CancellationToken::new();
+    let started = shell.exec(exec("sleep 30"), call.clone()).await.unwrap();
+    let Inbound::JobStart { job_id, .. } = link.next().await else {
+        panic!("expected a job")
+    };
+
+    call.cancel();
+
+    let Inbound::JobKill { signal, .. } = link.next().await else {
+        panic!("expected the job to be stopped")
+    };
+    assert_eq!(signal, Some(demi_runner_protocol::wire::Signal::Terminate));
+    link.send(job_exit(&job_id, None, Some("SIGTERM"))).await;
+    shell.ended(&started.command_id).await.unwrap();
+    assert!(matches!(
+        shell.status(&started.command_id).unwrap().state,
+        CommandState::Aborted
+    ));
+}
