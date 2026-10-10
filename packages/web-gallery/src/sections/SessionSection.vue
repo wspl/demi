@@ -43,7 +43,7 @@ import { galleryBrowser, type GalleryBrowser } from '../fixtures/live-browser'
 import { galleryConversationFiles } from '../fixtures/message-files'
 import GalleryAttachmentMessage from '../components/GalleryAttachmentMessage.vue'
 import { productWould } from '../product-would'
-import type { TranscriptReveal } from '@demicodes/web-ui/agent/history'
+import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../generated/pages'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
@@ -701,6 +701,11 @@ function dockOfflineHost(name: string): OfflineHost {
   }
 }
 
+// The frame's and the Session view's pills open their requests in the frame's panel.
+useGalleryTranscripts(() => ({
+  blocks: session.blocks,
+  subagents: session.subagents.map((agent) => ({ id: agent.id, blocks: latestBlocks(agent.history) })),
+}))
 const changesFlow = useTurnFlow({ id: 'gallery-changes', title: 'Cookie rename', blocks: changesDemoBlocks() })
 useGalleryTranscripts(() => ({ blocks: changesFlow.state.blocks, subagents: [] }))
 useGalleryTranscripts(() => ({ blocks: workFlow.state.blocks, subagents: [] }))
@@ -2218,7 +2223,7 @@ onBeforeUnmount(() => {
       <div v-if="editWork.open.value" class="h-[480px] overflow-hidden rounded-lg border border-line">
         <GalleryWorkPanel :work="editWork" @close="editWork.open.value = false" />
       </div>
-      <div v-else class="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2 text-sm text-fg-muted">
+      <div v-else class="flex items-center justify-between gap-3 rounded-lg border border-line py-2 pl-3 pr-2 text-sm text-fg-muted">
         <span>The work panel is closed. A pill above opens it again.</span>
         <Button size="sm" @click="editWork.open.value = true">Open Panel</Button>
       </div>

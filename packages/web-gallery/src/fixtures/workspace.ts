@@ -198,6 +198,8 @@ function tree(): MemoryDirectory {
     '.github': dir({
       workflows: dir(files('.github/workflows', ['ci.yml', 'release.yml', 'docs.yml'])),
       'CODEOWNERS': stub('.github/CODEOWNERS'),
+      // A name whose theme icon shares another glyph's file (`instructions.clone.svg`).
+      'instructions.md': stub('.github/instructions.md'),
     }),
     '.vscode': dir(files('.vscode', ['settings.json', 'extensions.json'])),
     '.gitignore': textFile('node_modules\ndist\n', at),
