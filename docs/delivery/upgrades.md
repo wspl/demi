@@ -25,15 +25,15 @@ interruption lasts as long as a restart, plus the copy. Afterwards:
   ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
 - Commands running on Hosts end: a paired device's runner replaces itself
   and a Cloud restarts, and the shell work of a command runs in its runner.
-  Each node that ran one learns at its next request that it was lost to the
+  Each node that ran one is told by its report that it was lost to the
   upgrade ([Lost commands](../agent/runtime.md#lost-commands)). A backend that
   only restarts, on the same release, ends none
   ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)).
 - Each paired device's runner reconnects, finds that the backend serves
   another runner release, replaces itself with it and connects again, without
   its user doing anything ([Runner updates](../execution/runner.md#runner-updates)).
-- Each Cloud, hibernated by the shutdown, wakes with 0.2.0's runner and
-  command programs. Its system, the packages the user installed, stays on the
+- Each Cloud, left running by the shutdown, is restarted by the new backend
+  with 0.2.0's runner and command programs. Its system, the packages the user installed, stays on the
   image it was created or last reset with, until the user resets it
   ([Demi's programs in a Cloud](../cloud/managed-hosts.md#demis-programs-in-a-cloud)).
 - The control database is migrated as the backend starts, and each
