@@ -502,8 +502,12 @@ or a subagent ends, the work it waits for wakes it.
   `Command 19 was lost: Demi was upgraded and the Host's runner replaced
   itself. Start it again if it is still needed.` A report never appears in
   the queue or among the pending steers, and a running call's window ends
-  when one arrives ([The window](#the-window)). A report moves the model's
-  place in the command's output as a look does.
+  when one arrives ([The window](#the-window)), except the end report of a
+  command that call watches or looks at, whose end the call shows itself. A
+  report moves the model's place in the command's output as a look does,
+  when it is written into the transcript; an end report dropped because a
+  look showed the end first moves nothing, so the look shows the last
+  lines.
 - **What the user sees.** The transcript shows each report as a row where
   its block lies, as an agent message shows as its receipt row, so a reply
   the agent writes after it never appears without its cause, as Claude Code
