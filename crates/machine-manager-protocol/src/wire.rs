@@ -17,7 +17,7 @@ pub const MAX_LINE_BYTES: usize = 1 << 20;
 /// The wire's version, which the manager's `hello` names. The backend and
 /// the manager of a deployment run one release, so a change to any message
 /// changes it (`managed-hosts.md` § Control and ownership).
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 /// A request: an id the client chooses, which its reply names, and the call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -64,10 +64,17 @@ impl MachineCall {
     }
 }
 
-/// Stop and save every device, recover incomplete operations, and install
-/// the network policy again.
+/// Report the devices the manager runs, which stay running, recover
+/// incomplete operations, and install the network policy again.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReconcileParams {}
+
+/// What a `reconcile` found: the devices whose sandboxes run, by id.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Reconciled {
+    pub running: Vec<String>,
+}
 
 /// Read the configured base.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -201,7 +208,7 @@ macro_rules! operations {
 }
 
 operations! {
-    ReconcileParams => Reconcile: (),
+    ReconcileParams => Reconcile: Reconciled,
     CurrentBaseVersionParams => CurrentBaseVersion: BaseVersion,
     ImageStateParams => ImageState: Option<MachineImageState>,
     RuntimeStateParams => RuntimeState: RuntimeState,
