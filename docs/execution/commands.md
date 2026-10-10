@@ -615,10 +615,13 @@ Edited crates/backend/src/conversation/socket.rs (+1 −1)
   line included, as Claude Code's Edit matches its `old_string`; its REPLACE,
   the text up to the third, takes its place, with the file's own line
   endings. So a SEARCH of whole lines replaces those lines, and a SEARCH of
-  `withinLimit(` inside a line changes only that call. A SEARCH that ends a
-  line, replaced by an empty REPLACE, takes its line ending with it, so
-  deleting lines leaves no blank one. The SEARCH matches as written:
-  whitespace, quotes and indentation included.
+  `withinLimit(` inside a line changes only that call. A SEARCH of whole
+  lines, replaced by a REPLACE with no lines at all, takes its last line
+  ending with it, so deleting lines leaves no blank one; a REPLACE of one
+  blank line leaves one, and deleting the end of a line, such as a comment,
+  never joins it to the next. A SEARCH of blank lines only matches too much
+  to name one place and is refused, asking for a line of text around it. The
+  SEARCH matches as written: whitespace, quotes and indentation included.
 - **A new file.** An empty SEARCH creates its file with the REPLACE as its
   content, and fails when the file exists, so an edit never overwrites a
   file it did not read. A file that is not to be created must exist. Writing
