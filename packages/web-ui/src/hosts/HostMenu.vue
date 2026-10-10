@@ -12,10 +12,10 @@ import { ICON_PX } from '../ui/icon-metrics'
 import { COMPACT_LABEL_CLASS, useRoomLabel } from '../ui/label-room'
 import Tooltip from '../ui/Tooltip.vue'
 import { isTextCut } from '../ui/truncation'
-import type { SentenceText } from '../ui/ui-text'
 import DeviceIcon from '../devices/DeviceIcon.vue'
 import { DEVICE_GLYPHS } from '../devices/device-glyphs'
 import HostChoices from './HostChoices.vue'
+import { MOVE_LOCKED } from './move-question'
 import type { HostChoice, HostDeviceOption, HostMenuHost } from './types'
 
 /**
@@ -57,7 +57,6 @@ function nameHidden(): boolean {
   return hostCompact.value || (hostLabel.value != null && isTextCut(hostLabel.value))
 }
 
-const LOCKED: SentenceText = 'This conversation can move once its work ends.'
 
 function choose(host: HostChoice) {
   if (props.locked)
@@ -125,7 +124,7 @@ function connect() {
             :primary-host="primaryHost"
             :devices="devices"
             :choose-directory="chooseDirectory"
-            :locked="locked ? LOCKED : undefined"
+            :locked="locked ? MOVE_LOCKED : undefined"
             @choose="choose"
           />
           <MenuItem label="Add Device…" :icon="Plus" @select="connect" />
@@ -138,7 +137,7 @@ function connect() {
             :label="host.name"
             :faded="host.kind === 'device' && host.state !== 'online'"
             :disabled="locked"
-            :disabled-reason="LOCKED"
+            :disabled-reason="MOVE_LOCKED"
             @select="chooseAttached(host)"
           >
             <template #actions>

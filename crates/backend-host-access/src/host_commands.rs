@@ -519,7 +519,13 @@ async fn run_on_host(
                 return Ok(None);
             }
             if !host.host.online() {
-                return Err(format!("host {device} is offline"));
+                // The primary Host, admitted while its runner is away,
+                // answers with its offline error as an attached one is
+                // refused with it.
+                return Err(match shard.control().device(target.device.clone()).await {
+                    Ok(Some(record)) => shard.offline(&record).message,
+                    _ => format!("{} is offline", target.name),
+                });
             }
             // Dropped once the job ended, or when the call is stopped.
             let _ended = shard

@@ -12,7 +12,7 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_agent_tools::{EnvironmentScope, HostWait, ShellEnvironmentFactory};
+use demi_agent_tools::{EnvironmentScope, ShellEnvironmentFactory};
 use demi_backend_blobs::blobs::UserBlobs;
 use demi_backend_database::command_outputs::{CommandOutput, OutputRow};
 use demi_backend_database::control::ControlService;
@@ -33,6 +33,7 @@ use demi_host_interface::{
 };
 use demi_runner_protocol::wire::JobFileChange;
 use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile, NodeId};
+use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
@@ -43,21 +44,17 @@ use crate::{HostShard, conversation_of};
 impl dyn HostShard + '_ {
     /// A node's Host: the conversation's current primary Host. The host access
     /// admits it and lets it go at once; its later operations take only a
-    /// Cloud's per-operation admission. While the Host's runner is away the
-    /// admission waits for it and `wait` hears of it; the call that asks
-    /// ends the wait by dropping it.
+    /// Cloud's per-operation admission.
     pub async fn conversation_host(
         &self,
         id: &ConversationId,
-        wait: &dyn HostWait,
     ) -> Result<Rc<RemoteHost>, HostError> {
-        let cancel = CancellationToken::new();
-        let waits = Waits {
-            away: Some(wait),
-            ..Waits::request(&cancel)
-        };
-        let admitted = self.admit_host(id, None, waits).await?;
-        Ok(Rc::new(admitted.host.host.clone()))
+        let host = self
+            .with_host(id, None, &CancellationToken::new(), async |host| {
+                host.host.clone()
+            })
+            .await?;
+        Ok(Rc::new(host))
     }
 
     /// Runs `job`, a shell job the conversation's agent started on `host`,
@@ -79,20 +76,26 @@ impl dyn HostShard + '_ {
                     "the job's Host is no conversation's",
                 )
             })?;
-        let device = &device;
-        self.with_host(id, Some(device), cancel, async move |admitted| {
-            if admitted.host.key() != *host {
-                return Err(HostError::new(
-                    HostErrorKind::Unavailable,
-                    "the conversation's Host changed; the command did not run",
-                ));
-            }
-            // Dropped once the job ends, or when it is stopped.
-            let _ended = self.begin_job(id, device, admitted).await?;
-            job.await;
-            Ok(())
-        })
-        .await?
+        let admitted = self
+            .admit_host(id, Some(&device), Waits::request(cancel))
+            .await?;
+        if admitted.host.host.key() != *host {
+            return Err(HostError::new(
+                HostErrorKind::Unavailable,
+                "the conversation's Host changed; the command did not run",
+            ));
+        }
+        let admitted_host = admitted.host.clone();
+        // The admission is the job's until it ends, unless a move away from
+        // its offline Host leaves the job to that Host's runner.
+        let _held = self
+            .conversations()
+            .slot(id)
+            .hold_job(device.clone(), admitted);
+        // Dropped once the job ends, or when it is stopped.
+        let _ended = self.begin_job(id, &device, &admitted_host).await?;
+        job.await;
+        Ok(())
     }
 
     /// Readies `host`, admitted for a job of the conversation on `device`,
@@ -211,7 +214,7 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
             options.keeper = Some(Rc::new(Keeper {
                 conversation: conversation.clone(),
                 node: scope.node.clone(),
-                device,
+                device: device.clone(),
                 host: host.clone(),
                 db: shard.conversation_db(&conversation),
                 control: shard.control().clone(),
@@ -232,6 +235,11 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
             );
             Ok(Rc::new(Registered {
                 environment,
+                host,
+                offline: Offline {
+                    shard: self.shard.clone(),
+                    device,
+                },
                 _registration: registration,
             }) as Rc<dyn ShellEnvironment>)
         })
@@ -517,16 +525,54 @@ impl CommandKeeper for Keeper {
 /// calls with the node's commands while it lives.
 struct Registered {
     environment: RemoteShellEnvironment,
+    /// The Host its commands run on.
+    host: Rc<RemoteHost>,
+    offline: Offline,
     _registration: CommandRegistration,
 }
 
+/// What a command started on a paired device without a live runner fails
+/// with.
+struct Offline {
+    shard: Weak<dyn HostShard>,
+    device: DeviceId,
+}
+
+impl Offline {
+    /// The device's offline error, as its record says it now; none for a
+    /// Cloud, which the job's admission wakes.
+    async fn error(&self) -> Option<HostError> {
+        let Some(shard) = self.shard.upgrade() else {
+            return Some(HostError::offline("the backend is shutting down"));
+        };
+        match shard.control().device(self.device.clone()).await {
+            Ok(Some(record)) if record.kind == DeviceKind::Managed => None,
+            Ok(Some(record)) => Some(shard.offline(&record)),
+            Ok(None) => Some(HostError::offline("the device was removed")),
+            Err(error) => Some(HostError::offline(format!(
+                "the device is offline, and its record could not be read: {error}"
+            ))),
+        }
+    }
+}
+
 impl ShellEnvironment for Registered {
+    /// Starts nothing on a device without a live runner: the call shows
+    /// its offline error, worded for the model (`sessions-and-targets.md`
+    /// § Host operations).
     fn start(
         &self,
         request: ExecRequest,
         cancel: CancellationToken,
     ) -> LocalBoxFuture<'_, Result<CommandId, ShellError>> {
-        self.environment.start(request, cancel)
+        Box::pin(async move {
+            if !self.host.online()
+                && let Some(error) = self.offline.error().await
+            {
+                return Err(ShellError::Host(error));
+            }
+            self.environment.start(request, cancel).await
+        })
     }
 
     fn ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<Ending, ShellError>> {
