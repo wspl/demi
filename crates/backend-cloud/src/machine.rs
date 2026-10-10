@@ -553,11 +553,15 @@ impl dyn CloudShard {
             biased;
             // The listener is closed at shutdown, so no runner can connect.
             // Let the failed-boot path save what the sandbox wrote.
-            () = self.closed() => Err(CloudError::Closed),
+            () = self.closed() => return Err(CloudError::Closed),
             connected = tokio::time::timeout(connection, self.devices().until_online(device)) => {
-                connected.map_err(|_| CloudError::Failed("Cloud boot timeout: its runner did not connect".into()))
+                connected.map_err(|_| CloudError::Failed("Cloud boot timeout: its runner did not connect".into()))?;
             }
         }
+        // The lifetime cap counts from here, also after a backend restart
+        // takes the running Cloud over.
+        self.control().record_cloud_boot(device.clone()).await?;
+        Ok(())
     }
 
     /// Ends the boot under way: a machine whose runner connected runs, one
@@ -574,7 +578,7 @@ impl dyn CloudShard {
         match booted {
             Ok(()) => {
                 machine.error.replace(None);
-                *phase = Phase::Running(self.running(machine, permit));
+                *phase = Phase::Running(self.running(machine, permit, Instant::now()));
             }
             Err(error) => {
                 machine.error.replace(Some(error.to_string()));
@@ -582,13 +586,18 @@ impl dyn CloudShard {
         }
     }
 
-    /// The running phase of a machine that just started: its idle watch and
-    /// its maintenance loop start with it.
-    pub(crate) fn running(&self, machine: &Rc<Machine>, permit: CapacityPermit) -> Running {
+    /// The running phase of a machine whose boot completed at `started_at`:
+    /// its idle watch and its maintenance loop start with it.
+    pub(crate) fn running(
+        &self,
+        machine: &Rc<Machine>,
+        permit: CapacityPermit,
+        started_at: Instant,
+    ) -> Running {
         let now = Instant::now();
         Running {
             permit,
-            started_at: now,
+            started_at,
             checkpoint_at: Cell::new(now),
             schedules: RefCell::new(self.cloud_schedules(machine)),
         }
@@ -754,6 +763,20 @@ impl dyn CloudShard {
     /// runner connects again by itself, so a same-release restart stops no
     /// Cloud and no command on one (`sessions-and-targets.md` § Recovery and
     /// persistence). One that finds no capacity is saved and stopped.
+    /// When a Cloud found running completed its boot, on Tokio's clock: its
+    /// record's time counted back from now. A Cloud without one, and one
+    /// whose boot the clock now puts in the future, count from now.
+    fn boot_instant(&self, device: &DeviceRecord) -> Instant {
+        let now = Instant::now();
+        device
+            .cloud_started_at
+            .and_then(|started| {
+                u64::try_from(self.control().now().as_millisecond() - started.as_millisecond()).ok()
+            })
+            .and_then(|elapsed| now.checked_sub(Duration::from_millis(elapsed)))
+            .unwrap_or(now)
+    }
+
     pub async fn take_over_cloud(&self, device: &DeviceRecord) -> Result<(), CloudError> {
         let machine = self.cloud_machine(device).await?;
         {
@@ -762,7 +785,8 @@ impl dyn CloudShard {
                 return Ok(());
             }
             if let Some(permit) = self.cloud_services().capacity.try_take() {
-                *phase = Phase::Running(self.running(&machine, permit));
+                let started_at = self.boot_instant(device);
+                *phase = Phase::Running(self.running(&machine, permit, started_at));
                 return Ok(());
             }
         }

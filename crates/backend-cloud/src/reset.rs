@@ -17,14 +17,14 @@ use std::rc::Rc;
 
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
+use demi_backend_database::devices::DeviceRecord;
 use demi_backend_database::managed::ManagedOperation;
 use demi_machine_manager_protocol::{CurrentBaseVersionParams, ReconcileParams, ResetParams};
 use demi_web_api_protocol::cloud::ResetPhase;
-use demi_backend_database::devices::DeviceRecord;
 use demi_web_api_protocol::ids::{DeviceId, OperationId};
+use tokio::time::Instant;
 
 use crate::machine::{CloudError, Machine, Phase};
-
 use crate::{CloudServices, CloudShard};
 
 /// What a backend that started records of a reset its disks were recovered
@@ -150,7 +150,7 @@ impl dyn CloudShard {
             match std::mem::replace(&mut *phase, Phase::Off) {
                 Phase::Resetting { permit, .. } if reset.is_ok() => {
                     machine.error.replace(None);
-                    *phase = Phase::Running(self.running(machine, permit));
+                    *phase = Phase::Running(self.running(machine, permit, Instant::now()));
                 }
                 Phase::Resetting { .. } => {}
                 other => *phase = other,

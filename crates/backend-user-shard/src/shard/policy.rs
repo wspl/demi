@@ -10,23 +10,23 @@
 
 use std::rc::{Rc, Weak};
 
+use bytes::Bytes;
 use demi_backend_database::sequences;
+use demi_backend_host_access::host_commands::{MANAGE_DEVICES, reachable};
+use demi_backend_host_access::root_of;
 use demi_backend_remote_host::{DirectAdmission, JobOrigin, LinkPolicy};
+use demi_backend_runners::host_key::conversation_of;
+use demi_command_declarations::Category;
 use demi_command_protocol::ServiceSequence;
 use demi_host_interface::{RpcError, RpcInvocation, RpcPort};
 use demi_runner_protocol::wire::VolumeName;
 use demi_shared_gates::Purpose;
-use bytes::Bytes;
 use demi_shared_types::{BlobRef, Sequence};
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 
-use demi_backend_runners::host_key::conversation_of;
-
 use super::Shard;
-use demi_backend_host_access::host_commands::{MANAGE_DEVICES, reachable};
-use demi_command_declarations::Category;
 
 /// The rules of one device's connection, in its user's shard.
 pub(crate) struct ShardPolicy {
@@ -134,10 +134,9 @@ impl LinkPolicy for ShardPolicy {
         })
     }
 
-    /// Revokes the device at its runner's request, as the user's
-    /// revocation does: only a paired device.
     /// Restores the tree of the conversation the backend recorded the job
-    /// for, as a report of the job does, so its agent takes it up.
+    /// for, as a report of the job does, and has the node that ran the job
+    /// take it up; why it could not, when it could not.
     fn take_up_job(&self, job: String) -> LocalBoxFuture<'static, Result<(), String>> {
         let shard = self.shard();
         let device = self.device.clone();
@@ -159,10 +158,13 @@ impl LinkPolicy for ShardPolicy {
             if shard.is_closing() {
                 return Err("the backend is shutting down".into());
             }
-            shard.restore_tree(&conversation).await
+            shard.restore_tree(&conversation).await?;
+            shard.agent().take_up_job(&root_of(&conversation), &job).await
         })
     }
 
+    /// Revokes the device at its runner's request, as the user's
+    /// revocation does: only a paired device.
     fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>> {
         let shard = self.shard();
         let device = self.device.clone();

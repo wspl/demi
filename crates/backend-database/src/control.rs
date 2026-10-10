@@ -44,6 +44,11 @@ impl ControlService {
         Ok(control)
     }
 
+    /// The wall-clock time the records it writes carry.
+    pub fn now(&self) -> Timestamp {
+        self.clock.now()
+    }
+
     /// Closes the database; operations after it fail with `Closed`.
     pub async fn close(&self) -> Result<(), StorageError> {
         sqlite::close(self.db.clone()).await
