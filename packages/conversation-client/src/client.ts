@@ -591,6 +591,7 @@ export class ConversationClient {
         return
       case 'edit_result':
       case 'shell_output':
+      case 'waiting_calls':
       case 'shell_write_result':
       case 'retry_scheduled':
       case 'subagent':

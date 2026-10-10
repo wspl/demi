@@ -12,7 +12,7 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_agent_tools::{EnvironmentScope, ShellEnvironmentFactory};
+use demi_agent_tools::{EnvironmentScope, HostWait, ShellEnvironmentFactory};
 use demi_backend_blobs::blobs::UserBlobs;
 use demi_backend_database::command_outputs::{CommandOutput, OutputRow};
 use demi_backend_database::control::ControlService;
@@ -37,23 +37,27 @@ use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
-use crate::access::{ConversationHost, HostAccessError, Refusal};
+use crate::access::{ConversationHost, HostAccessError, Refusal, Waits};
 use crate::{HostShard, conversation_of};
 
 impl dyn HostShard + '_ {
     /// A node's Host: the conversation's current primary Host. The host access
     /// admits it and lets it go at once; its later operations take only a
-    /// Cloud's per-operation admission.
+    /// Cloud's per-operation admission. While the Host's runner is away the
+    /// admission waits for it and `wait` hears of it; the call that asks
+    /// ends the wait by dropping it.
     pub async fn conversation_host(
         &self,
         id: &ConversationId,
+        wait: &dyn HostWait,
     ) -> Result<Rc<RemoteHost>, HostError> {
-        let host = self
-            .with_host(id, None, &CancellationToken::new(), async |host| {
-                host.host.clone()
-            })
-            .await?;
-        Ok(Rc::new(host))
+        let cancel = CancellationToken::new();
+        let waits = Waits {
+            away: Some(wait),
+            ..Waits::request(&cancel)
+        };
+        let admitted = self.admit_host(id, None, waits).await?;
+        Ok(Rc::new(admitted.host.host.clone()))
     }
 
     /// Runs `job`, a shell job the conversation's agent started on `host`,

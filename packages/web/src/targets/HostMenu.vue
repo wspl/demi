@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
-import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import type { HostChoice, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import type { Conversation } from '../state/types'
 import { useResources } from '../state/resources'
-import { executionFor } from './execution'
+import { executionFor, hostDeviceOptions, primaryHostOf } from './execution'
 import { useConversations } from '../conversation/store'
-import { directPath } from '../direct'
 
 /**
  * The header's host menu over the product's data (`product.md` § Where a
@@ -18,29 +17,13 @@ const props = defineProps<{
   locked: boolean
 }>()
 const emit = defineEmits<{
-  choose: [host: { kind: 'cloud' } | { kind: 'device'; id: string }]
+  choose: [host: HostChoice]
 }>()
 const resources = useResources()
 const store = useConversations()
 
-const primaryHost = computed<HostMenuHost>(() => {
-  const execution = executionFor(props.conversation)
-  return {
-    id: execution.deviceId ?? 'cloud',
-    name: execution.name,
-    kind: execution.kind,
-    state: execution.state,
-  }
-})
-// Each device with the path this page last reached it by; none for one it has not used this session.
-const devices = computed<HostDeviceOption[]>(() =>
-  resources.devices.map((device) => ({
-    id: device.id,
-    name: device.name,
-    state: device.state,
-    path: directPath(device.id),
-  })),
-)
+const primaryHost = computed(() => primaryHostOf(executionFor(props.conversation)))
+const devices = computed(() => hostDeviceOptions(resources.devices))
 const attachedHosts = computed<HostMenuHost[]>(() =>
   props.conversation.attachedHosts.map((host) => {
     const device = resources.deviceById(host.deviceId)
