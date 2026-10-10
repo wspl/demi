@@ -27,11 +27,9 @@ async fn job(root: &Path, script: &str) -> (u8, String, String) {
     )
     .await
     .unwrap();
-    (
-        result.code,
-        fs::read_to_string(output.path()).unwrap(),
-        fs::read_to_string(error.path()).unwrap(),
-    )
+    // Lossy, so that output that is not UTF-8 fails a comparison legibly.
+    let read = |path: &Path| String::from_utf8_lossy(&fs::read(path).unwrap()).into_owned();
+    (result.code, read(output.path()), read(error.path()))
 }
 
 /// A directory with two one-line files, `a` and `b`, a file `afile` that is
@@ -529,6 +527,42 @@ async fn diff_reports_binary_files_as_gnu_diff_does() {
         ("diff -r d1 d2", 1, "Binary files d1/z and d2/z differ\n", ""),
         ("diff b4 c", 1, "Binary files b4 and c differ\n", ""),
         ("diff b5 c | head -c 6", 0, "1c1\n< ", ""),
+        ],
+    )
+    .await;
+}
+
+/// `grep` treats a file as GNU grep 3.12 does in a UTF-8 locale: a NUL
+/// anywhere in what it has read of a file makes the file binary before any
+/// of its lines is printed, and a selected line that is not UTF-8 is held
+/// back while the others print. Without `-I` each such file that matches
+/// gets `binary file matches` on stderr; `-I` skips a file with a NUL as
+/// one without a match and drops the lines that are not UTF-8 silently.
+/// Before, a matching line before the NUL printed, and under `-I` a line
+/// that was not UTF-8 printed raw, which made a job's whole stdout binary.
+/// `five` takes the literal fast path, `f.ve` the line-at-a-time one. The
+/// expected outputs are GNU grep 3.12's. Runs in about 0.05 s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn grep_treats_binary_files_as_gnu_grep_does() {
+    let setup = "printf 'five\\n\\377 five\\nfive again\\n' > enc; printf 'five\\nsix\\n\\0\\n' > nul; \
+                 head -c 40000 /dev/zero | tr '\\0' a > latenul; printf '\\nfive\\n\\0\\n' >> latenul; \
+                 printf 'five\\n' > plain";
+    let lines = "enc:1:five\nenc:3:five again\nplain:1:five\n";
+    let notices = "grep: enc: binary file matches\ngrep: nul: binary file matches\n\
+                   grep: latenul: binary file matches\n";
+    expect_cases(
+        setup,
+        &[
+            ("grep -n five enc nul latenul plain", 0, lines, notices),
+            ("grep -n f.ve enc nul latenul plain", 0, lines, notices),
+            ("grep -n -I five enc nul latenul plain", 0, lines, ""),
+            ("grep -n --binary-files=without-match f.ve enc nul latenul plain", 0, lines, ""),
+            ("grep -I -c five enc nul latenul", 0, "enc:3\nnul:0\nlatenul:0\n", ""),
+            ("grep -I -L five nul plain", 0, "nul\n", ""),
+            ("grep -I -l five nul", 1, "", ""),
+            ("grep -o five enc", 0, "five\nfive\nfive\n", ""),
+            ("grep -c five enc nul", 0, "enc:3\nnul:1\n", ""),
+            ("grep -a -c five nul latenul", 0, "nul:1\nlatenul:1\n", ""),
         ],
     )
     .await;
