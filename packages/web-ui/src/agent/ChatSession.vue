@@ -300,7 +300,7 @@ function scrollToBottom(): void {
   }
   list.value?.scrollToBottom()
 }
-const { activeSubagentId, activeTerminalId, toggleAgents, toggleTerminals, close } =
+const { agentsOpen, activeSubagentId, activeTerminalId, toggleAgents, toggleTerminals, close } =
   useSessionPanels(
     () => props.conversation.subagents,
     () => terminals.value,
@@ -476,7 +476,7 @@ watch(
               />
               <AgentsChip
                 :agents="conversation.subagents"
-                :open="activeSubagentId !== null"
+                :open="agentsOpen"
                 @open="toggleAgents"
               />
             </template>
@@ -492,6 +492,7 @@ watch(
         </template>
         <template #overDock>
           <SubagentPanel
+            v-model:open="agentsOpen"
             v-model:active-id="activeSubagentId"
             :agents="conversation.subagents"
             :terminals="conversation.terminals"

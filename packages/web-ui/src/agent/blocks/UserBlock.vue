@@ -158,7 +158,7 @@ useResizeObserver(bodyRef, measure)
     class="group/user relative z-10 flex flex-col items-end bg-surface px-[var(--agent-pad-x,2rem)] pb-2 pt-1.5"
     :class="forceStuck ? 'user-sticky' : ''"
   >
-    <div class="relative max-w-[80%] rounded-xl bg-surface-card p-2.5">
+    <div class="relative max-w-[80%] rounded-xl bg-surface-card px-4 py-2.5">
       <div
         v-if="actions.length > 0"
         class="user-actions absolute bottom-2.5 left-0 flex -translate-x-[calc(100%+6px)] items-center transition-opacity group-hover/user:opacity-100 focus-within:opacity-100"
