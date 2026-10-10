@@ -5,6 +5,7 @@
 //! the end read it as lines of text ([`OutputText`]).
 
 use bytes::{Bytes, BytesMut};
+use demi_command_protocol::is_binary;
 use demi_shared_types::{BinaryStdout, OutputChunk, StreamKind};
 
 use crate::BinaryOutput;
@@ -87,16 +88,14 @@ impl WholeOutput {
         seen
     }
 
-    /// The kept length of a stdout that is not text; none when it is text.
+    /// The kept length of a binary stdout; none when it is text. Its first
+    /// kept part is its start, which [`is_binary`] reads.
     pub fn binary_stdout_length(&self) -> Option<u64> {
         let [first, last] = self.stream_parts(StreamKind::Stdout);
-        let gap = !last.is_empty();
-        // Where bytes were left out, a character may be cut on either side.
-        let text = is_text(&first, false, gap) && is_text(&last, gap, false);
-        (!text).then_some((first.len() + last.len()) as u64)
+        is_binary(&first).then_some((first.len() + last.len()) as u64)
     }
 
-    /// A final stdout that is not text, and its description: its bytes when
+    /// A final stdout that is binary, and its description: its bytes when
     /// the output kept all `length` of them and they are at most `limit`.
     /// None when stdout is text.
     pub fn binary_stdout(&self, length: u64, limit: usize) -> Option<BinaryOutput> {
@@ -193,24 +192,6 @@ impl WholeOutput {
             missing: self.missing.clone(),
             unseen,
         }
-    }
-}
-
-/// Whether `bytes` are UTF-8, allowing a character cut at the start or at
-/// the end where bytes were left out.
-fn is_text(bytes: &[u8], cut_start: bool, cut_end: bool) -> bool {
-    let skipped = if cut_start {
-        bytes
-            .iter()
-            .take(3)
-            .take_while(|byte| **byte & 0b1100_0000 == 0b1000_0000)
-            .count()
-    } else {
-        0
-    };
-    match std::str::from_utf8(&bytes[skipped..]) {
-        Ok(_) => true,
-        Err(error) => cut_end && error.error_len().is_none(),
     }
 }
 

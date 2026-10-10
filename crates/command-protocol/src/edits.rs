@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use super::invocation::without_nul;
+use super::media::is_binary;
 
 /// The most bytes of one file a job's edit record copies.
 pub const EDIT_FILE_BYTES: usize = 8 * 1024 * 1024;
@@ -124,41 +125,28 @@ fn absolute_path(value: &str, context: &()) -> garde::Result {
     Ok(())
 }
 
-/// Whether `bytes` are text, which edit tracking and line counts read:
-/// UTF-8 without a NUL byte. Binary and non-UTF-8 content are treated alike
-/// (`edit-tracking.md` § Scope).
-pub fn is_text(bytes: &[u8]) -> bool {
-    !bytes.contains(&0) && std::str::from_utf8(bytes).is_ok()
-}
-
-/// Whether `bytes`, the first bytes of a longer file, are text as
-/// [`is_text`] reads it, allowing a character cut where they end.
-pub fn begins_as_text(bytes: &[u8]) -> bool {
-    !bytes.contains(&0)
-        && std::str::from_utf8(bytes).map_or_else(|error| error.error_len().is_none(), |_| true)
-}
-
 /// Why a file is not shown as text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum TextRefusal {
     #[error("The file is too large to show")]
     TooLarge,
-    #[error("The file is not UTF-8 text")]
+    #[error("The file is binary")]
     NotText,
 }
 
-/// A file's bytes as the text the product shows, which edit tracking and
-/// line counts read as text: UTF-8 without a NUL byte, up to the size an
-/// edit snapshot keeps (`web-api.md` § File text and working tree changes).
-/// The backend's file route and a runner's direct `text` channel both read
-/// a file's text through it.
+/// A file's bytes as the text the product shows: bytes that are not binary
+/// ([`is_binary`], the rule edit tracking and line counts read by), with
+/// each byte that is not UTF-8 as U+FFFD, up to the size an edit snapshot
+/// keeps (`web-api.md` § File text and working tree changes). The backend's
+/// file route and a runner's direct `text` channel both read a file's text
+/// through it.
 pub fn text_of(bytes: Vec<u8>) -> Result<String, TextRefusal> {
     if bytes.len() > EDIT_FILE_BYTES {
         return Err(TextRefusal::TooLarge);
     }
-    if !is_text(&bytes) {
+    if is_binary(&bytes) {
         return Err(TextRefusal::NotText);
     }
-    // `is_text` checked the encoding.
-    Ok(String::from_utf8(bytes).expect("text is UTF-8"))
+    Ok(String::from_utf8(bytes)
+        .unwrap_or_else(|error| String::from_utf8_lossy(error.as_bytes()).into_owned()))
 }

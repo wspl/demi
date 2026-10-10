@@ -75,7 +75,7 @@ fn read_snapshot(path: &String) -> std::io::Result<Vec<u8>> {
     std::fs::File::open(path)?
         .take((EDIT_FILE_BYTES + 1) as u64)
         .read_to_end(&mut bytes)?;
-    if bytes.len() > EDIT_FILE_BYTES || !demi_command_protocol::is_text(&bytes) {
+    if bytes.len() > EDIT_FILE_BYTES || demi_command_protocol::is_binary(&bytes) {
         return Err(std::io::Error::other("invalid edit snapshot"));
     }
     Ok(bytes)
