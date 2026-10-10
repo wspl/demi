@@ -364,3 +364,55 @@ async fn uninstall_keeps_a_home_and_its_parent_and_removes_only_the_runners_file
     .await
     .unwrap();
 }
+
+/// `start` starts the installation's runner in the background, which
+/// appends to the installation's log itself: what an earlier runner wrote
+/// stays, here a pairing code that has expired since, and `start` reads
+/// the log from where it ended, so it reports what this runner says, that it
+/// cannot connect. A log that has passed 10 MiB becomes `runner.log.1`,
+/// replacing the one before, and the runner starts a new one (`runner.md`
+/// § Installation, pairing and removal).
+// Under a second: the runner starts twice, its backend's port refusing it
+// each time, and the test writes a log of 10 MiB.
+#[tokio::test]
+async fn start_appends_to_the_log_reads_it_from_where_it_ended_and_starts_it_again_past_10_mib() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let installation = tempfile::tempdir().unwrap();
+        let installation = installation.path();
+        let log = installation.join("runner.log");
+        let start = || async {
+            // A runner never paired, whose backend's port takes no
+            // connection.
+            let started = tokio::process::Command::new(runner_binary())
+                .args(["start", "--backend", "http://127.0.0.1:9/", "--home"])
+                .arg(installation)
+                .env_remove("DEMI_HOME")
+                .output()
+                .await
+                .unwrap();
+            let said = String::from_utf8_lossy(&started.stdout).into_owned();
+            assert_eq!(started.status.code(), Some(1), "{said}{started:?}");
+            assert!(said.contains("The runner cannot connect"), "{said}");
+            assert_eq!(manage("drain", installation).await, Some(0));
+        };
+
+        let earlier = "demi-runner: pairing code: EXPIRED-CODE\n";
+        std::fs::write(&log, earlier).unwrap();
+        start().await;
+        let written = std::fs::read_to_string(&log).unwrap();
+        let after = written.strip_prefix(earlier).unwrap_or_else(|| panic!("{written}"));
+        assert!(after.contains("demi-runner: connection ended: "), "{written}");
+
+        let full = format!("{}\n{earlier}", "x".repeat(10 * 1024 * 1024));
+        std::fs::write(&log, &full).unwrap();
+        std::fs::write(installation.join("runner.log.1"), "the log before\n").unwrap();
+        start().await;
+        let previous = std::fs::read_to_string(installation.join("runner.log.1")).unwrap();
+        assert!(previous == full, "runner.log.1 holds {} bytes, not the full log's", previous.len());
+        let written = std::fs::read_to_string(&log).unwrap();
+        assert!(written.starts_with("demi-runner: "), "{written}");
+        assert!(written.contains("demi-runner: connection ended: "), "{written}");
+    })
+    .await
+    .unwrap();
+}

@@ -390,7 +390,7 @@ conversation's operations need a request about a conversation: a `command`, a
 
 | Service | Operations | Requests | Meaning |
 | --- | --- | --- | --- |
-| Command | Stdout, stderr, stdin, live stdin, return a medium | `command` | The rpc port of the call: its IO, and the images and videos it returns, each a blob the plugin put ([Return media](../execution/commands.md#return-media)) |
+| Command | Stdout, stderr, stdin, live stdin | `command` | The rpc port of the call: its IO. A command that makes an image writes its bytes, which the model views with `demi file view` ([Return media](../execution/commands.md#return-media)) |
 | Storage | Values: read, list, conditional write, conditional removal | Every request | The plugin's own values for the user, each a JSON document with a revision ([Storage](../backend/storage.md#control-records)) |
 | | Blobs: put, get | Every request | Bytes in the user's blob namespace, by SHA-256 |
 | Hosts | Set directories | Every request | Replace the user's set of [Host directories](#host-directories); the reply is each directory's path on a Host |

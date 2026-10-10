@@ -3,6 +3,7 @@
 //! the command alias that forwards one command line to it.
 
 mod connection;
+mod console;
 mod direct;
 mod host_log;
 mod management;
@@ -128,7 +129,7 @@ async fn manage(
         management::Action::Status if release.is_some_and(|release| release != active.release) => {
             Ok(3)
         }
-        management::Action::Status => Ok(0),
+        management::Action::Status | management::Action::Announce => Ok(0),
     }
 }
 
@@ -187,10 +188,22 @@ enum Action {
         /// `artifacts` in the installation's directory by default.
         #[arg(long, env = "DEMI_ARTIFACTS", hide = true)]
         artifacts: Option<PathBuf>,
+        /// Writes the runner's output to its installation's log, as a
+        /// runner the installer or `start` starts in the background does.
+        #[arg(long, hide = true)]
+        log: bool,
     },
     /// Reports whether the installation's runner is active; exits with 3
     /// when it runs another release.
     Status {
+        #[command(flatten)]
+        installation: Installation,
+    },
+    /// Asks the installation's runner to write its pairing state to its log
+    /// again: its code, the device it is paired as, or why it cannot
+    /// connect. An installer that finds the runner running reads them there.
+    #[command(hide = true)]
+    Announce {
         #[command(flatten)]
         installation: Installation,
     },
@@ -231,19 +244,25 @@ struct Installation {
 }
 
 async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
-    let (installation, boot_path, name, managed, artifacts, removing) = match cli.action {
+    let (installation, boot_path, name, managed, artifacts, log, removing) = match cli.action {
         Action::Run {
             installation,
             managed_boot,
             name,
             managed,
             artifacts,
-        } => (installation, managed_boot, name, managed, artifacts, false),
+            log,
+        } => (installation, managed_boot, name, managed, artifacts, log, false),
         Action::Status { installation } => {
             let state = RunnerState::open(directory(&installation, None)?).await?;
             let release = installation.release.as_deref();
             let stdout = tokio::fs::File::from_std(standard_file(1)?);
             return manage(&state, management::Action::Status, release, stdout).await;
+        }
+        Action::Announce { installation } => {
+            let state = RunnerState::open(directory(&installation, None)?).await?;
+            // The answer is the status, which the asker does not need.
+            return manage(&state, management::Action::Announce, None, tokio::io::sink()).await;
         }
         Action::Drain { installation } => {
             let state = RunnerState::open(directory(&installation, None)?).await?;
@@ -253,8 +272,9 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         }
         Action::Start { installation } => {
             let directory = directory(&installation, None)?;
-            // The started runner serves the installation this one names.
-            let mut arguments = vec!["run".to_owned()];
+            // The started runner serves the installation this one names,
+            // and writes its log.
+            let mut arguments = vec!["run".to_owned(), "--log".to_owned()];
             if let Some(backend) = &installation.backend {
                 arguments.extend(["--backend".to_owned(), backend.to_string()]);
             }
@@ -287,7 +307,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
                 // backend, then removes the installation.
                 Some(lease) => {
                     lease.release()?;
-                    (installation, None, None, None, None, true)
+                    (installation, None, None, None, None, false, true)
                 }
             }
         }
@@ -314,6 +334,9 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         .collect();
     let home = home()?;
     let state = RunnerState::open(directory.clone()).await?;
+    if log {
+        console::to_log(&directory)?;
+    }
     let backend = match backend {
         Some(backend) => backend,
         None => {
@@ -475,15 +498,15 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             Ok(0)
         }
         Ok(Ending::Removed(projects)) => {
-            eprintln!("demi-runner: this device was revoked; removing this runner");
+            console::line("demi-runner: this device was revoked; removing this runner");
             if !projects.is_empty() {
-                eprintln!(
+                console::line(format_args!(
                     "demi-runner: its projects went with it, their files stay: {}",
                     projects.join(", ")
-                );
+                ));
             }
             let removed = removal::remove(&installation_directory)?;
-            eprintln!("demi-runner: {}", removed.told(&installation_directory));
+            console::line(format_args!("demi-runner: {}", removed.told(&installation_directory)));
             Ok(0)
         }
         Err(_) => Ok(1),
@@ -611,6 +634,9 @@ async fn signal() -> io::Result<()> {
 }
 
 fn main() {
+    // A panic leaves its report on standard error (`builds-and-releases.md`
+    // § Build profiles).
+    demi_shared_cli::install_panic_hook();
     let args: Vec<_> = std::env::args().collect();
     let name = Path::new(&args[0])
         .file_stem()
@@ -654,7 +680,7 @@ fn main() {
         // (`commands.md` § Handle an rpc call).
         Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => 141,
         Err(error) => {
-            eprintln!("demi-runner: {error}");
+            console::line(format_args!("demi-runner: {error}"));
             1
         }
     };

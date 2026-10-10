@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { Check, Copy } from '@lucide/vue'
+import CodeText from './CodeText.vue'
 import IconButton from './IconButton.vue'
 
 const props = withDefaults(
@@ -22,11 +23,10 @@ async function copyCode() {
 
 <template>
   <div class="copy-code flex min-w-0 items-start rounded-md border border-line bg-surface">
-    <!-- A command wraps at any character: breaking only at its hyphens would
-         make one path read as several words. -->
-    <code
-      class="copy-code-text min-w-0 flex-1 select-text break-all font-mono text-[12px] text-fg-body"
-    >{{ code }}</code>
+    <CodeText
+      :text="code"
+      class="copy-code-text min-w-0 flex-1 select-text font-mono text-[12px] text-fg-body"
+    />
     <span class="copy-code-action">
       <IconButton
         :icon="copied && copiedCode === code ? Check : Copy"
