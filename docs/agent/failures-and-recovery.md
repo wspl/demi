@@ -214,6 +214,16 @@ leave such a record, and a compaction leaves none:
   agent message is written, and the `abort` block after it lets Continue
   answer it. Nothing waits for the user afterwards
   ([Stop](runtime.md#stop)).
+- **A Host that was away** leaves the root's turn unfinished: when the
+  turn ends normally, but a call of it failed because its Host was offline
+  and no later call of the turn ran on that Host, the session appends an
+  `error` block of Demi's own, cause `host_offline` with the device, after
+  the agent's last words, so the turn offers Resume
+  ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
+  Resume continues it with a `resume` block whose reason says the device is
+  back: "MacBook Pro is back online. Continue from where you left off." A
+  child's turn gets none: its result, which says what it could not do,
+  reaches its parent, whose own turn decides.
 - **A compaction** is not a turn's end. Its boundary and marker are kept
   history, but they say nothing about the turn before them. For example, a
   turn fails, and the user then compacts: the divider is the last block,

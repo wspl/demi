@@ -308,14 +308,23 @@ either without the user typing anything.
   conversation writes it when it is next opened. No turn ends unfinished
   without either such a record or the user's own Stop.
 
-  A Host that goes offline does not end a turn. The operation that needed it
-  fails with the runner's offline error, worded for the agent
+  A Host that goes offline does not stop a turn while it runs. The operation
+  that needed it fails with the runner's offline error, worded for the agent
   ([Host operations](../execution/sessions-and-targets.md#host-operations)),
-  the tool call shows that error, and the agent decides: it retries later,
-  ends its turn to wait, or tells the user. Above the composer the device's
-  offline card says how to start its runner and offers **Move to Another
-  Host…**, the Run On menu's online Hosts, which moves the conversation as
-  the menu does once the tree is idle
+  the tool call shows that error, and the agent decides: it retries, or it
+  ends its turn and says what it could not do. A turn that ends with work
+  left undone because its Host was away is unfinished, as one that broke
+  is: when the root's turn ends and a call of it failed because its Host
+  was offline, with no later call of the turn run on that Host, the
+  transcript gets an error record of Demi's fact, "MacBook Pro went offline,
+  so this turn could not finish its work.", and the dock offers **Resume**,
+  which stays disabled, *MacBook Pro is still offline*, until the device is
+  back. Nothing wakes the agent by itself when the device returns, so a user
+  who was away is not surprised by it starting work again; the user
+  resumes, and the agent's next request says the device is back. Above the
+  composer the device's offline card says how to start its runner and
+  offers **Move to Another Host…**, the Run On menu's online Hosts, which
+  moves the conversation as the menu does once the tree is idle
   ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)).
 - **The user stopped it.** Stop is a decision, not a failure, and the
   transcript marks the turn as stopped.
