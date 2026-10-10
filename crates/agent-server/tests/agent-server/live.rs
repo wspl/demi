@@ -151,7 +151,7 @@ impl ShellEnvironment for ScriptedShell {
         Vec::new()
     }
 
-    fn unreachable(&self, _: &CommandId) -> Option<demi_shared_types::Unreachable> {
+    fn unreachable(&self, _: &CommandId) -> Option<demi_host_interface::Unreachable> {
         None
     }
 
