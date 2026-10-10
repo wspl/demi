@@ -1,100 +1,59 @@
-import { nonEmptyString, numberOrNull, truncate } from '@demicodes/utils'
+import { nonEmptyString, truncate } from '@demicodes/utils'
 
-export const STANDARD_TOOL_NAMES = [
-  'shell_exec',
-  'shell_status',
-  'yield'
-] as const
-
-export type StandardToolName = (typeof STANDARD_TOOL_NAMES)[number]
-export type ControlToolName = Exclude<StandardToolName, 'shell_exec'>
-export type ToolRenderKind = StandardToolName | 'generic'
-
-const STANDARD_TOOL_NAME_SET = new Set<string>(STANDARD_TOOL_NAMES)
-
-export function isStandardToolName(toolName: string): toolName is StandardToolName {
-  return STANDARD_TOOL_NAME_SET.has(toolName)
-}
-
-export function shouldParsePartialToolInput(toolName: string): boolean {
-  return isStandardToolName(toolName)
-}
+/**
+ * How a call renders (`runtime.md` § Rendering boundary): the one tool,
+ * `shell`, has its own row; a call of any other name, such as a
+ * `shell_status` or a `yield` a transcript kept from before they were
+ * removed, is a generic tool card.
+ */
+export type ToolRenderKind = 'shell' | 'generic'
 
 export function toolRenderKind(toolName: string): ToolRenderKind {
-  return isStandardToolName(toolName) ? toolName : 'generic'
+  return toolName === 'shell' ? 'shell' : 'generic'
 }
 
+/** A `shell` call's title: its description, or its script for a call that has none. */
+export function shellTitle(input: Record<string, unknown>): string {
+  return nonEmptyString(input.description) ?? nonEmptyString(input.script) ?? 'Run shell command'
+}
+
+/** The options of `demi shell status` that take a value as the next word. */
+const STATUS_VALUE_OPTIONS = new Set(['--wait', '--interval'])
+
 /**
- * A tool call's title in parts: its words, or, for a look or a wait without
- * a description, words before and after the command it names, which the
- * row shows as a reference (`runtime.md` § Rendering boundary).
+ * The commands a script looks at when all it runs is `demi shell status`,
+ * by their numbers, each once; null for a script that does anything else,
+ * which runs a command of its own (`runtime.md` § Work groups). Commands
+ * joined by a new line, `;`, `&&` or `||` are each a look; a pipe, a
+ * redirection or a substitution makes the script more than a look.
  */
-export type ToolTitle =
-  | { kind: 'text', text: string }
-  | { kind: 'reference', lead: string, commandId: string, trail: string }
-
-export function standardToolTitleParts(
-  toolName: StandardToolName,
-  input: Record<string, unknown>
-): ToolTitle {
-  const description = nonEmptyString(input.description)
-  if (description)
-    return { kind: 'text', text: description }
-
-  switch (toolName) {
-    case 'shell_exec':
-      return { kind: 'text', text: nonEmptyString(input.script) ?? 'Run shell command' }
-    case 'shell_status': {
-      const commandId = commandIdText(input.commandId)
-      const writes = nonEmptyString(input.stdin) !== undefined
-      if (commandId === undefined)
-        return { kind: 'text', text: writes ? 'Send input' : 'Check command status' }
-      return { kind: 'reference', lead: writes ? 'Send input to' : 'Check', commandId, trail: '' }
-    }
-    case 'yield': {
-      const commandIds = Array.isArray(input.commandIds)
-        ? input.commandIds.map(commandIdText).filter((id) => id !== undefined)
-        : []
-      const [first, ...others] = commandIds
-      if (first !== undefined) {
-        const trail = others.length > 0 ? `and ${others.length} more` : ''
-        return { kind: 'reference', lead: 'Wait for', commandId: first, trail }
-      }
-      const duration = numberOrNull(input.durationMs)
-      return {
-        kind: 'text',
-        text: duration === null ? 'Wait for wakeup' : `Wait ${Math.floor(duration)}ms`,
-      }
+export function shellStatusLooks(script: string): string[] | null {
+  const looked = new Set<string>()
+  const commands = script
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('#'))
+    .flatMap((line) => line.split(/&&|\|\||;/))
+    .map((command) => command.trim())
+    .filter((command) => command !== '')
+  if (commands.length === 0)
+    return null
+  for (const command of commands) {
+    if (/[|<>$`()]/.test(command))
+      return null
+    const [demi, shell, status, ...words] = command.split(/\s+/)
+    if (demi !== 'demi' || shell !== 'shell' || status !== 'status')
+      return null
+    for (let at = 0; at < words.length; at += 1) {
+      const word = words[at]!
+      if (/^\d+$/.test(word))
+        looked.add(word)
+      else if (STATUS_VALUE_OPTIONS.has(word))
+        at += 1
+      else if (!word.startsWith('--'))
+        return null
     }
   }
-}
-
-/**
- * A tool call's title as plain text: a command it names by the title of the
- * call that started it, as `commandTitle` gives it, or as "command 17" when
- * no transcript the row sees holds that call.
- */
-export function standardToolTitle(
-  toolName: StandardToolName,
-  input: Record<string, unknown>,
-  commandTitle: (commandId: string) => string | undefined = () => undefined,
-): string {
-  const title = standardToolTitleParts(toolName, input)
-  if (title.kind === 'text')
-    return title.text
-  const named = commandTitle(title.commandId) ?? unknownCommand(title.commandId)
-  return [title.lead, named, title.trail].filter(Boolean).join(' ')
-}
-
-/** How a reference names a command no transcript the row sees holds: never a bare number. */
-export function unknownCommand(commandId: string): string {
-  return `command ${commandId}`
-}
-
-/** A command's number as a call names it: the model writes it as a number or its digits. */
-export function commandIdText(value: unknown): string | undefined {
-  const number = numberOrNull(value)
-  return number === null ? nonEmptyString(value) : String(number)
+  return looked.size > 0 ? [...looked] : null
 }
 
 /**
@@ -107,12 +66,8 @@ export function pendingCallTitle(call: { toolName: string, description: string |
   if (description)
     return description
   switch (toolRenderKind(call.toolName)) {
-    case 'shell_exec':
+    case 'shell':
       return 'Preparing a command…'
-    case 'shell_status':
-      return 'Checking a command…'
-    case 'yield':
-      return 'Waiting…'
     case 'generic':
       return call.toolName
   }

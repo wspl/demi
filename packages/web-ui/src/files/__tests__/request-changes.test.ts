@@ -37,7 +37,7 @@ function shellCall(id: string, description: string, files: EditedFile[], pathCha
     createdAt,
     model,
     toolUseId: `use-${id}`,
-    toolName: 'shell_exec',
+    toolName: 'shell',
     input: JSON.stringify({ script: 'true', description }),
     status: 'completed',
     output: [],
@@ -60,8 +60,8 @@ const text = (id: string): Block => ({ type: 'text', id, createdAt, model, text:
 
 /**
  * The design's example: the user asks to fix the sign-in page; the agent
- * edits login.ts twice in one call and form.css, yields until a build
- * ends, and woken, also by a subagent's receipt, takes a steer and edits
+ * edits login.ts twice in one call and form.css, ends its turn while a build
+ * runs, and woken by its report, also by a subagent's receipt, takes a steer and edits
  * login.ts again. Then the user asks for something else.
  */
 const first = shellCall('c1', 'Fix the sign-in check', [edited('/w/login.ts', 1, 2), edited('/w/form.css', 10, 1, 'added')])
@@ -95,7 +95,7 @@ const transcript: Block[] = [
 ]
 
 describe('a request', () => {
-  test('one spanning a yield wakeup and an agent receipt is one request, with every call’s files', () => {
+  test('one spanning a command report and an agent receipt is one request, with every call’s files', () => {
     const { requests } = transcriptRequests(transcript)
     const fix = requests[0]!
     expect(fix.id).toBe('u1')

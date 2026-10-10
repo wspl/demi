@@ -14,9 +14,9 @@ export type TerminalPhase = ShellViewStatus
  */
 export interface TerminalRecord {
   id: string
-  /** Its tab's title: the `shell_exec` call's title, as its row shows it, or its command id when no call is known. */
+  /** Its tab's title: the `shell` call's title, as its row shows it, or its command id when no call is known. */
   title: string
-  /** The `shell_exec` call's script, which the terminal opens with; absent when no call is known. */
+  /** The `shell` call's script, which the terminal opens with; absent when no call is known. */
   script?: string
   phase: TerminalPhase
   startedAt: string
@@ -30,7 +30,7 @@ export interface TerminalRecord {
   chars?: number
   /** Its exit code, once it exited and a live frame or a stored view said so. */
   exitCode?: number
-  /** The `shell_exec` call that started it, known from its live frames. */
+  /** The `shell` call that started it, known from its live frames. */
   toolUseId?: string
   /** The subagent that runs it; absent for the root's commands. */
   subagentId?: string
@@ -140,7 +140,7 @@ export function followLiveOutput(
 }
 
 /**
- * The command the `shell_exec` call `toolUseId` of the subagent
+ * The command the `shell` call `toolUseId` of the subagent
  * `subagentId`, or of the root when none, started, when the page has seen
  * its live frames. A model may reuse a call's id; the latest command is
  * the one that runs.
@@ -157,7 +157,7 @@ export function callTerminal(
 
 /**
  * The commands the dock holds (`runtime.md` § Rendering boundary): all but
- * those whose `shell_exec` call still runs, whose output shows under the
+ * those whose `shell` call still runs, whose output shows under the
  * call. `blocksOf` gives the transcript of the subagent that runs a
  * command, or the root's for none.
  */
@@ -181,7 +181,7 @@ export function isTerminalRunning(phase: TerminalPhase): boolean {
 }
 
 /**
- * Whether a `shell_exec` row shimmers (`runtime.md` § Rendering boundary):
+ * Whether a `shell` row shimmers (`runtime.md` § Rendering boundary):
  * while its call runs, and after the call returned for as long as the
  * command it started runs, as the command's live frames say, until its end
  * arrives.
@@ -194,7 +194,7 @@ export function shellRowRunning(
 }
 
 /**
- * How a `shell_exec` row's command ended (`runtime.md` § Rendering
+ * How a `shell` row's command ended (`runtime.md` § Rendering
  * boundary): none while its call runs; after, the end the command's record
  * has, from its live frames or a stored view, and otherwise the view the
  * call stored, unless that view saw the command still running, which says

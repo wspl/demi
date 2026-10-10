@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
-import { agentReceiptMessages, callBeingWrittenBlocks, editedFile, lookAndWaitBlocks, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
+import { agentReceiptMessages, callBeingWrittenBlocks, commandLookBlocks, editedFile, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
 import {
   HELPER,
   helperBlocks,
@@ -15,7 +15,6 @@ import {
 } from '../fixtures/request-changes'
 import { useGalleryTranscripts } from '../fixtures/transcripts'
 import GalleryTranscript from '../components/GalleryTranscript.vue'
-import GalleryCommandReferences from '../components/GalleryCommandReferences.vue'
 import GalleryEditSelection from '../components/GalleryEditSelection.vue'
 import PermissionCard from '@demicodes/web-ui/permissions/PermissionCard.vue'
 import { afterDecision, type PermissionDecision, type PermissionRequestView } from '@demicodes/web-ui/permissions/types'
@@ -115,7 +114,8 @@ import {
   thinkingText,
   steerPrompt,
   transcriptDemoBlocks,
-  commandReferenceBlocks,
+  commandEndBlocks,
+  removedToolBlocks,
   unsizedRecordingTool,
   wideImageTool,
 } from '../fixtures/blocks'
@@ -145,9 +145,9 @@ import { useGalleryView } from '../gallery-views'
 
 const { view } = useGalleryView()
 const historyModelBlocks = transcriptDemoBlocks()
-/** The reference specimens' transcript, and a command of another agent's that one of them names. */
-const referenceBlocks = commandReferenceBlocks()
-const referenceOthers: Record<string, string> = { '40': 'Read the release notes' }
+/** The calls the Command Ends specimens show, and calls of tools the runtime no longer has. */
+const endBlocks = commandEndBlocks()
+const removedBlocks = removedToolBlocks()
 
 /**
  * The permission card's specimens, each over its own requests: a decision
@@ -659,11 +659,11 @@ const signInRunningBlocks = signInRequestBlocks('sign-in-running').slice(0, -1)
 // The calls being written: a finished sentence, then a call without its title
 // yet, one with it, and none, where Requesting follows the text.
 const writingBlocks = callBeingWrittenBlocks()
-// Runs that only look at a command or wait for it: their rows name what they did, never a count of steps.
-const lookBlocks = lookAndWaitBlocks()
+// Runs that only check a command, and ones that run one too: their rows name what they did, never a count of steps.
+const lookBlocks = commandLookBlocks()
 const writingSpecimens = [
-  { variant: 'being written, no description yet', calls: [{ toolUseId: 'writing-1', toolName: 'shell_exec', description: null }] },
-  { variant: 'being written, with its description', calls: [{ toolUseId: 'writing-1', toolName: 'shell_exec', description: 'Write the categorizer' }] },
+  { variant: 'being written, no description yet', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: null }] },
+  { variant: 'being written, with its description', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: 'Write the categorizer' }] },
   { variant: 'finished text, then Requesting', calls: [] },
 ]
 const uncopiedBlocks = uncopiedRequestBlocks()
@@ -1750,17 +1750,24 @@ onBeforeUnmount(() => {
       </GallerySection>
 
       <GallerySection
-        title="Command References"
-        note="A look or a wait without a title of its own names the command it acts on by that command's title, underlined with dots: Check, Send input to, Wait for, and and 1 more for a wait on several. A click on the title jumps to the command's call and marks it for a moment; the rest of the row behaves as usual. A command of another agent's transcript is named by its title alone. Every shell row, a run or a look, marks a command that went wrong with a tag after its title: red Failed, with its exit code in the tooltip, or grey Stopped; one that succeeded shows nothing, and one that runs shimmers. An open run that failed or was stopped says so above its output. A title too long for its row is cut at the end; the tag stays."
+        title="Command Ends"
+        note="Every shell row, a run or a look, marks a command that went wrong with a tag after its title: red Failed, with its exit code in the tooltip, or grey Stopped; one that succeeded shows nothing, and one that runs shimmers. An open row that failed or was stopped says so above its output. A look is a shell call whose script runs demi shell status; its tag is its own command’s. A call that ran nothing, refused by the repeat guard or for its input, is red Failed and shows why once opened. A title too long for its row is cut at the end; the tag stays. Calls of tools the runtime no longer has, such as shell_status and yield in a conversation from before they were removed, are generic tool cards."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
-            <GallerySpecimen variant="references" wide>
-              <GalleryCommandReferences :blocks="referenceBlocks" :others="referenceOthers" />
+            <GallerySpecimen variant="ends" wide>
+              <div class="flex flex-col">
+                <ToolCallBlock v-for="block in endBlocks" :key="block.id" :block="block" />
+              </div>
             </GallerySpecimen>
-            <GallerySpecimen variant="references · narrow" wide>
-              <div class="w-[300px]">
-                <GalleryCommandReferences :blocks="referenceBlocks" :others="referenceOthers" />
+            <GallerySpecimen variant="ends · narrow" wide>
+              <div class="flex w-[300px] flex-col">
+                <ToolCallBlock v-for="block in endBlocks" :key="block.id" :block="block" />
+              </div>
+            </GallerySpecimen>
+            <GallerySpecimen variant="calls of removed tools" wide>
+              <div class="flex flex-col">
+                <ToolCallBlock v-for="block in removedBlocks" :key="block.id" :block="block" />
               </div>
             </GallerySpecimen>
           </div>
@@ -1865,7 +1872,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'changes'">
       <GallerySection
         title="Work Groups"
-        note="Consecutive steps show as one row. While they run, each new step rolls over the one before, shimmering while it runs: Requesting, thinking, a call being written and its description, the call. Thinking without text is covered by the step after it. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did, each kind of call once, in the order the run first made it, such as Checked 1 command, waited, never a count of steps; a failure shows on its own call inside. Folded, the files the steps changed show under it, each once; open, each call shows its own."
+        note="Consecutive steps show as one row. While they run, each new step rolls over the one before, shimmering while it runs: Requesting, thinking, a call being written and its description, the call. Thinking without text is covered by the step after it. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did, each kind of call once, in the order the run first made it, such as Ran 2 commands, checked 1 command, never a count of steps; a failure shows on its own call inside. Folded, the files the steps changed show under it, each once; open, each call shows its own."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="workFlow.play('work')">Replay</Button>
@@ -1899,7 +1906,7 @@ onBeforeUnmount(() => {
             </template>
           </SessionSurface>
         </div>
-        <GallerySpecimen variant="runs that look, wait, or run and wait" wide>
+        <GallerySpecimen variant="runs that check a command, or run one and check" wide>
           <div class="gallery-frame h-[34rem] bg-surface">
             <AgentMessageList
               class="h-full"
@@ -1948,9 +1955,9 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Request’s Changes"
-        note="A request runs from the user’s message to their next one, through yields, receipts and steers. The pills under each call name its files, and a work group’s pills each file once; a pill opens the Change view below on its file at that call’s first edit. A subagent’s changes show only in its own transcript. With the changes plugin off, the pills are no controls."
+        note="A request runs from the user’s message to their next one, through command reports, receipts and steers. The pills under each call name its files, and a work group’s pills each file once; a pill opens the Change view below on its file at that call’s first edit. A subagent’s changes show only in its own transcript. With the changes plugin off, the pills are no controls."
       >
-        <GallerySpecimen variant="two files, login.ts edited three times across a yield" wide>
+        <GallerySpecimen variant="two files, login.ts edited three times across a command report" wide>
           <div class="gallery-frame h-[30rem] bg-surface">
             <AgentMessageList
               class="h-full"

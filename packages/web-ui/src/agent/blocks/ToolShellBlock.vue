@@ -8,12 +8,12 @@ import ShellEditPills from './ShellEditPills.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
 import ToolMedia from './ToolMedia.vue'
 import type { ToolCallBlock } from '../block-types'
-import { getToolErrorText, shellTerminalOutputChunks } from '../block-helpers'
+import { getToolErrorText, shellTerminalOutputChunks, storedShellView } from '../block-helpers'
 import { commandEndMark, commandEndWords } from '../command-end'
 import CommandEndTag from './CommandEndTag.vue'
 import { useLiveCalls } from '../live-calls'
 import { shellRowEnd, shellRowRunning } from '../terminals'
-import { standardToolTitle } from '../tool-rendering'
+import { shellTitle } from '../tool-rendering'
 
 const props = defineProps<{
   block: ToolCallBlock
@@ -21,8 +21,11 @@ const props = defineProps<{
 }>()
 
 const command = computed(() => (props.input['script'] as string) ?? '')
-const title = computed(() => standardToolTitle('shell_exec', props.input))
-const errorText = computed(() => getToolErrorText(props.block))
+const title = computed(() => shellTitle(props.input))
+// A call whose command ran says how it ended in its tag and above its output,
+// so only a call that ran nothing, such as one the input check or the repeat
+// guard refused, shows its result's text as the failure.
+const errorText = computed(() => (storedShellView(props.block) ? undefined : getToolErrorText(props.block)))
 const liveCalls = useLiveCalls()
 /** The command the call started, as its live frames show it. */
 const started = computed(() => liveCalls(props.block.toolUseId))

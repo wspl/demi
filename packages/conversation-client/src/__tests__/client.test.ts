@@ -186,7 +186,7 @@ test('the pending steers the client answers are its own copies', () => {
 
 test("the calls being written are the root's list until the next one, a subagent's go to its record, and an open starts over", () => {
   const h = harness()
-  const writing = { toolUseId: 'call-1', toolName: 'shell_exec', description: null }
+  const writing = { toolUseId: 'call-1', toolName: 'shell', description: null }
   h.receive({ type: 'pending_calls', pendingCalls: [writing] })
   h.receive({ type: 'pending_calls', subagentId: 'child', pendingCalls: [{ ...writing, toolUseId: 'call-9' }] })
   expect(h.client.pendingCalls()).toEqual([writing])

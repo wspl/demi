@@ -31,9 +31,6 @@ import { messageEditSuffixIds, offeredEditId } from './message-editing'
 import { useMessageForks, type MessageForkHandler } from './message-fork'
 import { useFollowSentMessages } from './useFollowSentMessages'
 import { highlightFound } from '../ui/found-highlight'
-import { provideBlockJump } from './block-jump'
-import { commandCalls, provideCommandReferences, useCommandReferences } from './command-references'
-import { toolCallTitle } from './block-helpers'
 import { provideTranscript } from './edit-selection'
 import { transcriptRequests } from '../files/request-changes'
 
@@ -274,22 +271,6 @@ watch(
   { immediate: true, flush: 'post' },
 )
 onBeforeUnmount(() => revealing?.abort())
-// A row's reference to another block of this list jumps to it, as a chat
-// app jumps to a quoted message.
-provideBlockJump((id) => {
-  revealAndMark(id)
-})
-// A look or a wait names a command of this transcript by its call, which
-// the reference jumps to, or one of another agent's by its title alone.
-const outerReferences = useCommandReferences()
-const ownCommands = computed(() => commandCalls(visibleTranscriptBlocks.value))
-provideCommandReferences((commandId) => {
-  const call = ownCommands.value.get(commandId)
-  if (call)
-    return { title: toolCallTitle(call), blockId: call.id }
-  const outer = outerReferences(commandId)
-  return outer && { title: outer.title }
-})
 
 // The part of the transcript the composer leaves visible, which caps a
 // message's image height (`file-previews.md` § Files named in messages). Until

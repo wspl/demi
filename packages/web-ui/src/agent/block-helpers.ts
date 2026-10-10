@@ -1,7 +1,7 @@
 import { Allow, parse } from 'partial-json'
 import { z } from 'zod'
 import type { ShellToolView, ToolCallBlock } from './block-types'
-import { isStandardToolName, shouldParsePartialToolInput, standardToolTitle } from './tool-rendering'
+import { shellTitle, toolRenderKind } from './tool-rendering'
 
 export type ShellTerminalOutputChunk = ShellToolView['chunks'][number]
 
@@ -30,15 +30,15 @@ export function shellTerminalOutputChunks(block: ToolCallBlock): ShellTerminalOu
 }
 
 /**
- * A tool call's input as an object while it may still be streaming: standard
- * tools parse the partial JSON so their row can name the command early; any
- * other tool waits for the complete document.
+ * A tool call's input as an object while it may still be streaming: a
+ * `shell` call parses the partial JSON so its row can name the command
+ * early; any other tool waits for the complete document.
  */
 export function parseToolCallInput(block: ToolCallBlock): Record<string, unknown> {
   if (!block.input)
     return {}
   try {
-    const result = shouldParsePartialToolInput(block.toolName)
+    const result = toolRenderKind(block.toolName) === 'shell'
       ? parse(block.input, Allow.ALL)
       : JSON.parse(block.input)
     const input = toolInputSchema.safeParse(result)
@@ -48,15 +48,10 @@ export function parseToolCallInput(block: ToolCallBlock): Record<string, unknown
   }
 }
 
-/** A tool call's title, as its row in the transcript names it. */
-/**
- * A call's row title. A call that refers to a command names it by `title`,
- * the referred command's own title, as the call's row shows it; without it,
- * by number.
- */
-export function toolCallTitle(block: ToolCallBlock, title?: (commandId: string) => string | undefined): string {
-  return isStandardToolName(block.toolName)
-    ? standardToolTitle(block.toolName, parseToolCallInput(block), title)
+/** A tool call's title, as its row in the transcript names it: a `shell` call's, or another tool's name. */
+export function toolCallTitle(block: ToolCallBlock): string {
+  return toolRenderKind(block.toolName) === 'shell'
+    ? shellTitle(parseToolCallInput(block))
     : block.toolName
 }
 
