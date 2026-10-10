@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test'
 import type { ToolMediaSource, ToolResultContentBlock } from '@demicodes/protocol'
-import { toolMedia } from '../tool-media'
+import { foldedMedia, toolMedia } from '../tool-media'
+import type { WorkStep } from '../work-groups'
+import { createdAt, model } from './agent-harness'
 
 // What a call shows under its row (`file-previews.md` § Media a tool
 // returned), read off its result as the transcript stores it: a shell
@@ -27,12 +29,12 @@ const cases: { name: string; output: ToolResultContentBlock[]; shows: ReturnType
   {
     name: 'a screenshot',
     output: [status, { type: 'image', source: shot }, note],
-    shows: [{ kind: 'image', source: shot }],
+    shows: [{ kind: 'image', source: shot, name: 'Look' }],
   },
   {
     name: 'a recording',
     output: [status, { type: 'video', source: clip }, note],
-    shows: [{ kind: 'video', source: clip }],
+    shows: [{ kind: 'video', source: clip, name: 'Look' }],
   },
   {
     name: 'a recording that was not stored, with the reason',
@@ -43,15 +45,15 @@ const cases: { name: string; output: ToolResultContentBlock[]; shows: ReturnType
     name: 'several, in the order of the result',
     output: [{ type: 'video', source: clip }, notStored, { type: 'image', source: shot }],
     shows: [
-      { kind: 'video', source: clip },
+      { kind: 'video', source: clip, name: 'Look' },
       { kind: 'gone', text: 'Video not stored: the object store refused the write' },
-      { kind: 'image', source: shot },
+      { kind: 'image', source: shot, name: 'Look' },
     ],
   },
   {
     name: 'no document, which its line in the output stands for',
     output: [status, { type: 'image', source: shot }, report],
-    shows: [{ kind: 'image', source: shot }],
+    shows: [{ kind: 'image', source: shot, name: 'Look' }],
   },
   {
     name: 'a result without media',
@@ -62,6 +64,37 @@ const cases: { name: string; output: ToolResultContentBlock[]; shows: ReturnType
 
 for (const { name, output, shows } of cases) {
   test(`under its row, a call shows ${name}`, () => {
-    expect(toolMedia(output)).toEqual(shows)
+    expect(toolMedia(output, 'Look')).toEqual(shows)
   })
 }
+
+// A call inside a folded group still shows its media, under the group's row
+// (`runtime.md` § Work groups): the loop that viewed two screenshots shows
+// both, named by its call, after the media of the call before it.
+const second: ToolMediaSource = { type: 'ref', ref: 'd'.repeat(64), mediaType: 'image/png' }
+const call = (id: string, description: string, output: ToolResultContentBlock[]): WorkStep => ({
+  type: 'tool_call',
+  id,
+  createdAt,
+  model,
+  toolUseId: `${id}-use`,
+  toolName: 'shell',
+  status: 'completed',
+  input: JSON.stringify({ script: 'demi browser screenshot t1 | demi file view', description }),
+  output,
+  view: null,
+})
+
+test('under a folded group, its calls show their media in order', () => {
+  const steps: WorkStep[] = [
+    { type: 'thinking', id: 't', createdAt, model, text: 'Look at the page twice.', signature: null },
+    call('a', 'Open the page', [status]),
+    call('b', 'Take two screenshots', [status, { type: 'image', source: shot }, { type: 'image', source: second }, note]),
+    call('c', 'Record the sign-in', [notStored]),
+  ]
+  expect(foldedMedia(steps)).toEqual([
+    { kind: 'image', source: shot, name: 'Take two screenshots' },
+    { kind: 'image', source: second, name: 'Take two screenshots' },
+    { kind: 'gone', text: 'Video not stored: the object store refused the write' },
+  ])
+})

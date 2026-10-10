@@ -7,6 +7,7 @@ import ToolMedia from './ToolMedia.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText } from '../block-helpers'
 import { trimToolSummary } from '../tool-rendering'
+import { toolMedia } from '../tool-media'
 
 const props = defineProps<{
   block: ToolCallBlock
@@ -29,6 +30,7 @@ const summary = computed(() => {
 // The result's own text; its media, and a medium that is gone, show under the row.
 const texts = computed(() => props.block.output.flatMap((part) => part.type === 'text' ? [part.text] : []))
 const errorText = computed(() => getToolErrorText(props.block))
+const media = computed(() => toolMedia(props.block.output, props.block.toolName))
 const detail = computed(() => {
   const text = errorText.value
   return text ? trimToolSummary(text, 160) : summary.value
@@ -59,5 +61,5 @@ const detail = computed(() => {
       <Zap :size="ICON_PX.in28" />
     </template>
   </FunctionalBlock>
-  <ToolMedia :output="block.output" :title="block.toolName" />
+  <ToolMedia :media="media" />
 </template>

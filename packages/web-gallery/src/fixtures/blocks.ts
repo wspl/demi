@@ -439,7 +439,7 @@ function captureText(capture: Capture): string {
  * output, in order, then the lines for those it did not attach.
  */
 function screenshotsCall(
-  partial: Pick<ToolCallBlock, 'id' | 'toolName' | 'input'>,
+  partial: Pick<ToolCallBlock, 'id' | 'toolName' | 'input'> & Partial<Pick<ToolCallBlock, 'createdAt'>>,
   commandId: string,
   captures: Capture[],
   notes: string[] = [],
@@ -1211,6 +1211,64 @@ export function commandLookBlocks(): Block[] {
     run('again-suite', 195_000, '52'),
     look('again-look', 190_000, 'Read the first run’s timing', '56', statusText('51', 'exited', '140 passed (4m 12s)\n')),
     reply('again-answer', 185_000, 'The first run took 4 minutes 12 seconds. The second one is running; I will tell you when it ends.'),
+  ]
+}
+
+/**
+ * A run that viewed two screenshots, then a report that carried two
+ * (`file-previews.md` § Media a tool returned): folded, the run's row shows
+ * its call's screenshots under it, and the report's row its own.
+ */
+export function viewedMediaBlocks(): Block[] {
+  const user = (id: string, at: number, text: string): Block => ({
+    type: 'user', id, turnId: `${id}-turn`, createdAt: iso(at), model: demoModel,
+    content: [{ type: 'text', text }], preamble: null,
+  })
+  const reply = (id: string, at: number, text: string): Block => ({
+    type: 'text', id, createdAt: iso(at), model: demoModel, text,
+  })
+  const open = toolCall({
+    id: 'viewed-open',
+    createdAt: iso(590_000),
+    toolName: 'shell',
+    status: 'completed',
+    input: JSON.stringify({ script: 'demi browser open https://example.com', description: 'Open example.com' }),
+    output: [{ type: 'text', text: 'status: exited\nexitCode: 0\ncommandId: 61\noutput:\nt1\n' }],
+    view: shellView({ commandId: '61', chunks: [{ stream: 'stdout', text: 't1\n' }] }),
+  })
+  const shots = screenshotsCall(
+    {
+      id: 'viewed-shots',
+      createdAt: iso(585_000),
+      toolName: 'shell',
+      input: JSON.stringify({
+        script: 'for i in 1 2; do demi browser screenshot t1 | demi file view; done',
+        description: 'Take two screenshots of example.com',
+      }),
+    },
+    '62',
+    [
+      { tab: 't1', width: 480, height: 300, bytes: 15_822, medium: blobImage(galleryBlobs.screenshot) },
+      { tab: 't1', width: 480, height: 300, bytes: 16_078, medium: blobImage(galleryBlobs.chart) },
+    ],
+  )
+  const report: Block = {
+    type: 'wakeup', id: 'viewed-report', turnId: 'viewed-report-turn', createdAt: iso(300_000), model: demoModel, placement: 'new_turn',
+    reports: [{
+      commandId: '63',
+      title: 'Capture the checkout screens',
+      event: { kind: 'ended', exitCode: 0 },
+      output: `${imageLine(1, 480, 300, 15_822)}\n${imageLine(2, 480, 300, 16_078)}`,
+      media: [blobImage(galleryBlobs.screenshot), blobImage(galleryBlobs.chart)],
+    }],
+  }
+  return [
+    user('viewed-ask', 600_000, 'Open example.com and take two screenshots of it.'),
+    open,
+    shots,
+    reply('viewed-answer', 580_000, 'Both screenshots show the same page: a heading and one link. I am capturing the checkout screens too and will tell you when that ends.'),
+    report,
+    reply('viewed-report-answer', 295_000, 'The checkout screens are captured: the cart and the payment step.'),
   ]
 }
 
