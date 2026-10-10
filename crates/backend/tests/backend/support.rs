@@ -18,6 +18,7 @@ use demi_backend_blobs::counting::ObjectCounts;
 use demi_backend_cloud::tuning::CloudTuning;
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_providers::vault::logins::LoginTiming;
+use demi_host_interface::SpawnEnv;
 use demi_backend_remote_host::testing::{
     NativeFixture, RunnerProcess, RunnerProcessOptions, native_fixture_binary,
 };
@@ -909,10 +910,17 @@ impl TestBackend {
     /// [`TestBackend::pair`], with a runner that reaches the backend at
     /// `url`, such as an edge in front of it.
     pub async fn pair_through(&self, session: &Session, name: &str, url: &str) -> Paired {
+        self.pair_with(session, name, url, SpawnEnv::Inherit).await
+    }
+
+    /// [`TestBackend::pair_through`], with a runner whose environment is
+    /// `env`, such as a test's shorter grace.
+    pub async fn pair_with(&self, session: &Session, name: &str, url: &str, env: SpawnEnv) -> Paired {
         let runner = RunnerProcess::start(
             url,
             RunnerProcessOptions {
                 name: name.into(),
+                env,
                 ..RunnerProcessOptions::default()
             },
         );
