@@ -8,6 +8,7 @@ import SessionNoticeBar from '@demicodes/web-ui/agent/SessionNoticeBar.vue'
 import GalleryComposer from './GalleryComposer.vue'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
+import { productWould } from '../product-would'
 
 /**
  * Each error surface once, in its fullest form. The other pages show where
@@ -109,10 +110,14 @@ const usageLimitPayload = JSON.stringify({
     >
       <div class="grid gap-6 lg:grid-cols-2">
         <GallerySpecimen wide variant="Archived">
-          <SessionNoticeBar
-            label="This conversation is archived."
-            action="Restore Conversation"
-          />
+          <!-- On the reading surface, where the dock shows it. -->
+          <div class="gallery-frame bg-surface p-3">
+            <SessionNoticeBar
+              label="This conversation is archived."
+              action="Restore Conversation"
+              @action="productWould('Restore the Conversation')"
+            />
+          </div>
         </GallerySpecimen>
         <GallerySpecimen wide variant="Model catalog failed · beside the chip">
           <GalleryComposer

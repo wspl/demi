@@ -26,12 +26,14 @@
   --color-surface-raised: var(--surface-raised);
   --color-surface-float: var(--surface-float);
   --color-surface-dialog: var(--surface-dialog);
+  --color-surface-card: var(--surface-card);
   --color-overlay: var(--overlay);
   --color-fg-emphasis: var(--fg-emphasis);
   --color-fg: var(--fg);
   --color-fg-body: var(--fg-body);
   --color-fg-muted: var(--fg-muted);
   --color-fg-subtle: var(--fg-subtle);
+  --color-fg-row: var(--fg-row);
   --color-fg-faint: var(--fg-faint);
   --color-fg-ghost: var(--fg-ghost);
   --color-line: var(--line);
@@ -55,6 +57,7 @@
   --text-conversation: var(--agent-text);
   --text-conversation--line-height: var(--agent-leading);
   --text-chrome: var(--agent-chrome);
+  --text-row: var(--agent-row);
   --spacing-hit-xs: 20px;
   --spacing-hit-sm: 24px;
   --spacing-hit: 28px;
@@ -71,6 +74,13 @@
   --surface-float: #303030;
   /* Large modal panels sit one step above the page, not on the menu layer. */
   --surface-dialog: var(--surface-raised);
+  /* What stands off the reading surface in flow, a message bubble or a
+     notice over the composer: in dark a step lighter, as raised is. */
+  --surface-card: var(--surface-raised);
+  /* How much of the text's color tints a span of inline code. */
+  --inline-code-mix: 10%;
+  /* A transcript row's text: quieter than the prose around it, still read. */
+  --fg-row: var(--fg-subtle);
   /* How much lighter each floating layer is than the one it floats over (floating layers, below). */
   --elevation-step: 8%;
   --overlay: white;
@@ -166,6 +176,12 @@
   --surface-raised: #edeef3;
   --surface-float: #ffffff;
   --surface-dialog: var(--surface-float);
+  /* In light the reading surface is the lightest there is, as ChatGPT's and
+     Notes' are, so what stands off it is a step darker, never white on
+     white. */
+  --surface-card: color-mix(in srgb, var(--surface), var(--overlay) 5%);
+  /* A lighter tint than dark's: on white, 10% read as a dark block. */
+  --inline-code-mix: 6%;
   /* Light layers are white; they part by their hairline and shadow, not by fill. */
   --elevation-step: 0%;
   --overlay: black;
@@ -235,7 +251,9 @@
 }
 
 /* Interface text keeps the platform's own smoothing, as the system's own
-   controls draw theirs; reading text (`.markdown-body`) is antialiased. */
+   controls draw theirs; reading text (`.markdown-body`) is antialiased, and
+   so is all of a transcript, whose rows sit between its paragraphs and drew
+   heavier than them with the platform's smoothing. */
 html,
 body,
 #app {
@@ -248,6 +266,9 @@ html {
   --agent-text: 15px;
   --agent-leading: 1.6;
   --agent-chrome: 14px;
+  /* A transcript's rows, a step under its 15px prose, as ChatGPT's Thought
+     for 7s stands under its answer, so the answer reads first. */
+  --agent-row: 13px;
 }
 
 button,
@@ -308,10 +329,17 @@ svg.lucide {
   --fill-color: var(--surface-base);
 }
 
-/* In light a file pill's edge is a step lighter than a button's: pills stand
-   quieter under the row they belong to. */
+/* In light a file pill is a soft chip on the white reading surface: the card
+   fill a message bubble has, without an edge. A white pill there had only its
+   hairline, and the card fill with the hairline read too grey under the row
+   it belongs to. Its hover steps from that fill, as any control's does. */
 html[data-theme="light"] {
-  --shadow-pill: 0 0 0 0.5px rgba(0, 0, 0, 0.07);
+  --shadow-pill: none;
+}
+
+html[data-theme="light"] .file-pill {
+  --rest-fill: var(--surface-card);
+  --shadow-btn-hover: none;
 }
 
 @property --rest-fill {
@@ -345,6 +373,11 @@ html[data-theme="light"] {
 @utility bg-surface-float {
   --surface-current: var(--surface-float);
   --fill-color: var(--surface-float);
+}
+
+@utility bg-surface-card {
+  --surface-current: var(--surface-card);
+  --fill-color: var(--surface-card);
 }
 
 @utility bg-surface-dialog {
@@ -883,31 +916,45 @@ html[data-theme="light"] {
   --os-handle-bg-active: color-mix(in srgb, var(--color-overlay) 25%, transparent);
 }
 
-.thinking-shimmer {
-  background: linear-gradient(
-    90deg,
-    currentColor 0%,
-    currentColor 26%,
-    color-mix(in oklch, currentColor 55%, white) 38%,
-    color-mix(in oklch, currentColor 28%, white) 44%,
-    color-mix(in oklch, currentColor 28%, white) 60%,
-    color-mix(in oklch, currentColor 55%, white) 66%,
-    currentColor 78%,
-    currentColor 100%
-  );
-  background-size: 200% 100%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: thinking-shimmer 1.4s linear infinite;
+/*
+ * The band of light over a row still working (`ui/Shimmer.vue`): a copy of
+ * the row in the strongest text color, which brightens it on a dark surface
+ * and darkens it on a light one, shown only through a band that sweeps from
+ * before the row's start to past its end.
+ */
+.shimmer-band {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: inherit;
+  justify-content: inherit;
+  gap: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(90deg, transparent, black 35%, black 65%, transparent);
+  mask-size: var(--shimmer-band) 100%;
+  mask-repeat: no-repeat;
+  animation: shimmer-sweep var(--shimmer-ms) linear infinite;
 }
 
-@keyframes thinking-shimmer {
-  0% {
-    background-position: 140% 0;
+.shimmer-band,
+.shimmer-band * {
+  color: var(--fg-emphasis) !important;
+  text-decoration-color: var(--fg-emphasis) !important;
+}
+
+@keyframes shimmer-sweep {
+  from {
+    mask-position: calc(0% - var(--shimmer-band)) 0;
   }
-  100% {
-    background-position: -30% 0;
+  to {
+    mask-position: calc(100% + var(--shimmer-band)) 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-band {
+    display: none;
   }
 }
 
@@ -1017,7 +1064,7 @@ html[data-theme="light"] {
   font-size: 0.85em;
   /* A tint of the text's own color, so a span of code stands out from the
      text around it on any surface, as GitHub's does. */
-  background: color-mix(in srgb, var(--color-overlay) 10%, transparent);
+  background: color-mix(in srgb, var(--color-overlay) var(--inline-code-mix), transparent);
   padding: 0.15em 0.35em;
   border-radius: 4px;
 }
