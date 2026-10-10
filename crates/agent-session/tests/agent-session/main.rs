@@ -2216,7 +2216,6 @@ fn running(count: u32, interval_ms: u32) -> ReportEvent {
         running_ms: u64::from(count) * 1000,
         idle_ms: 0,
         interval_ms,
-        unreachable: None,
     }
 }
 
