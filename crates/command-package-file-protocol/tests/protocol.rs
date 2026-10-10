@@ -26,7 +26,7 @@ fn file_arguments_refuse_empty_old_text_and_zero_positions() {
         );
     }
     assert!(matches!(
-        Operation::parse("file.read", json!({"path": "a", "extra": true})),
+        Operation::parse("file.view", json!({"path": ["a"], "extra": true})),
         Err(OperationError::Invalid(_))
     ));
 }
@@ -37,7 +37,7 @@ fn file_arguments_refuse_empty_old_text_and_zero_positions() {
 fn the_listed_operations_are_the_ones_the_package_decodes() {
     assert_eq!(
         OPERATIONS,
-        ["file.read", "file.edit", "file.patch"]
+        ["file.view", "file.edit", "file.patch"]
     );
     for name in OPERATIONS {
         assert!(

@@ -10,24 +10,27 @@ use std::{
     sync::Arc,
 };
 
-use bytes::Bytes;
+
 
 use demi_agent_session::{
     AgentSession, Continuation, NewContext, RestoreError, SeenContext, SessionConfig, SessionDeps,
     SessionInit, SessionRuntime, StepOutcomes, ToolInvocation,
 };
-use demi_agent_store::{AgentTreeStore, Checkpoint, NodeRecord, StoreError, StoredOutput};
+use demi_agent_store::{
+    AgentTreeStore, Checkpoint, NodeRecord, StoreError, StoredOutput, media::store_result,
+};
 use demi_agent_tools::{
     CallError, ContextSource, EndOf, Environments, HostResolver, Looking, ModelIdentity, NodeContext,
     ShellAccess, ShellEnvironmentFactory, Stopper, StoreNumbers, definitions, end_report,
-    fill_output, progress_report, runs_together, stored_running_commands, system_prompt, whole_status,
+    fill_output, progress_report, report_media, runs_together, stored_running_commands,
+    system_prompt, whole_status,
 };
 use demi_agent_transcript::IdSource;
 use demi_host_interface::{
     CommandSet, CommandState, CommandStatus, Ending, JobCaller, Numbers, PageFeed, PageState, PageView, Seen,
     ShellEnvironment, ShellError, WholeOutput,
 };
-use demi_provider_common::{ProviderRuntime, ToolDefinition};
+use demi_provider_common::{ProviderRuntime, RequestLimits, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_shared_types::{
     Clock, CommandEnd, CommandId, CommandReport, ModelSelection, ReportEvent, NodeId, QueuedMessage, TurnId,
@@ -164,21 +167,6 @@ impl<H: HostResolver> Node<H> {
             .owning(command)
             .ok_or_else(|| ShellError::UnknownCommand(command.clone()))?;
         environment.read_output(command).await
-    }
-
-    /// Medium `number` of `command`, which one of the node's environments
-    /// runs, as its Host keeps it.
-    pub(crate) async fn read_medium(
-        &self,
-        command: &CommandId,
-        number: u32,
-    ) -> Result<Bytes, ShellError> {
-        let environment = self
-            .runtime
-            .environments
-            .owning(command)
-            .ok_or_else(|| ShellError::UnknownCommand(command.clone()))?;
-        environment.read_medium(command, number).await
     }
 
     /// The pages' view of each live command of the node (`runtime.md`
@@ -547,9 +535,18 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         command: &'a CommandId,
         title: &'a str,
         interval_ms: Option<u32>,
+        model: &'a ModelSelection,
+        limits: RequestLimits,
     ) -> LocalBoxFuture<'a, Option<CommandReport>> {
         Box::pin(async move {
-            if self.environments.end_seen(command) {
+            // The media the job viewed, which only its end report attaches:
+            // a look that showed the end attached none.
+            let media = self
+                .environments
+                .owning(command)
+                .and_then(|environment| environment.media(command).ok())
+                .unwrap_or_default();
+            if self.environments.end_seen(command) && media.is_empty() {
                 return None;
             }
             if let Some(environment) = self.environments.owning(command)
@@ -575,7 +572,16 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                 Some(_) => None,
                 None => self.stored_status(command).await,
             };
-            Some(end_report(command, title, end, status.as_ref()))
+            let mut report = end_report(command, title, end, status.as_ref());
+            if !media.is_empty() {
+                let parts = report_media(&media, &model.model, limits).await;
+                let session = self.store.session_store(&self.node);
+                // The held bytes are read again before a request needs them
+                // (`runtime.md` § Media).
+                let (stored, _held) = store_result(parts, session.blobs()).await;
+                report.media = stored;
+            }
+            Some(report)
         })
     }
 

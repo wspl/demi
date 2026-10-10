@@ -2,7 +2,7 @@
 
 use crate::{
     commands::artifacts::JobArtifacts,
-    commands::command_output::{CommandOutput, Media},
+    commands::command_output::CommandOutput,
     commands::contexts::Contexts,
     commands::rpc,
 };
@@ -181,7 +181,7 @@ impl Dispatcher {
             let mut output = CommandOutput::new(
                 invocation.output,
                 leaf.json_output().filter(|_| parsed.json),
-                Media::new(leaf.media, raw.stdout, context.media.clone()),
+                leaf.media.then(|| context.media.clone()),
             );
             let _hint = rpc::running_hint(
                 &context.connection,
@@ -217,7 +217,8 @@ impl Dispatcher {
                     context: context.command.clone(),
                     json: Some(parsed.json),
                     edits: Some(context.edits.clone()),
-                    stdout: Some(raw.stdout),
+                    live_input: Some(raw.live),
+                    viewable: context.viewable.clone(),
                     operation: binding.operation.clone(),
                     invocation_id: invocation.request.invocation_id,
                     command: path.clone(),

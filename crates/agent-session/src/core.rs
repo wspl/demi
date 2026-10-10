@@ -1937,9 +1937,11 @@ fn replace_switch(
 /// result. Such an end tells nothing more (`runtime.md` § Command reports).
 /// A report never marks its own end seen, so a mark is always a look's;
 /// admission and delivery both ask here, since a look that runs while the
-/// report is made shows the end after it.
+/// report is made shows the end after it. An end whose job viewed media is
+/// never stale: the report carries them, which no look attaches, without
+/// the output the look showed.
 fn end_seen(runtime: &dyn SessionRuntime, report: &CommandReport) -> bool {
-    is_end(report) && runtime.end_seen(&report.command_id)
+    is_end(report) && report.media.is_empty() && runtime.end_seen(&report.command_id)
 }
 
 /// Whether `report` tells its command's end, not its progress.

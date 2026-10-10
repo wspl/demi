@@ -330,7 +330,8 @@ impl Opening {
                 env: Default::default(),
                 edits: None,
                 json,
-                stdout: None,
+                live_input: None,
+                viewable: None,
             };
             match resident.client().invoke(&invocation).await {
                 Ok(exchange) => Ok(exchange),
@@ -598,7 +599,7 @@ impl OutputSink for StreamSink {
     }
 
     /// A user stream's writer refuses media (`commands.md` § Return media).
-    async fn medium(&mut self, _: Bytes) -> io::Result<()> {
+    async fn medium(&mut self, _: demi_command_protocol::MediumFacts, _: Bytes) -> io::Result<()> {
         Err(io::Error::other("a user stream returned a medium"))
     }
 }

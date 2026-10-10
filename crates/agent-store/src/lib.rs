@@ -23,7 +23,7 @@ pub mod testing;
 use std::rc::Rc;
 
 use demi_conversation_socket_protocol::{JobPhase, SubagentJob};
-use demi_host_interface::{StoredMedium, WholeOutput};
+use demi_host_interface::WholeOutput;
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
     OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId,
@@ -157,11 +157,8 @@ pub struct StoredCommand {
 /// What a conversation holds of an ended command's output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoredOutput {
-    /// The output, and the media its commands returned, by number.
-    Stored {
-        output: WholeOutput,
-        media: Vec<StoredMedium>,
-    },
+    /// The output.
+    Stored { output: WholeOutput },
     /// Why the backend could not store it.
     NotStored(String),
 }

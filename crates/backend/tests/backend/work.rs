@@ -188,11 +188,14 @@ impl<'a> Driven<'a> {
                     if !self.seen.insert(id) {
                         continue;
                     }
-                    let text: Vec<&str> = block["content"]
+                    let text: Vec<String> = block["content"]
                         .as_array()
                         .unwrap()
                         .iter()
-                        .map(|part| part["text"].as_str().unwrap_or("[image]"))
+                        .map(|part| match part["text"].as_str() {
+                            Some(text) => text.to_owned(),
+                            None => format!("[{}]", part["type"].as_str().unwrap_or_default()),
+                        })
                         .collect();
                     received.push(text.join("\n"));
                 }
@@ -269,7 +272,7 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
 
     // The next command starts in the conversation's directory again, not in
     // `src`.
-    let script = "pwd && demi file read src/notes.md | grep -n a | sort -r";
+    let script = "pwd && cat src/notes.md | grep -n a | sort -r";
     let read = work
         .turn(vec![shell("t2", script, 10_000), say("read")])
         .await;
@@ -786,9 +789,8 @@ async fn far_jobs_released(device: &Paired) {
 // Several seconds: two real devices each install the builtin package, and `demi
 // host shell` runs jobs on both.
 //
-// Planted defect the image's step catches: a relayed job that names
-// `DEMI_JOB_OUTPUT`, so the far command's image becomes a medium of the far
-// job, which nothing attaches, and only its line reaches the caller.
+// Planted defect the image's step catches: a relayed stdout that reaches
+// `demi file view` cut or changed, so the far Host's image is no image.
 #[tokio::test]
 async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far_hosts_directory() {
     let vendor = MockVendor::start().await;
@@ -886,12 +888,11 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
         stranger.received[0]
     );
 
-    // A command of the far job returns its image where its stdout goes, the
-    // relayed pipe, which is no job's output: the image is no medium of
-    // either job, and the result attaches it as the calling job's stdout.
+    // The far Host's image reaches this job as the relayed stdout, which
+    // `demi file view` shows.
     let png = demi_agent_store::testing::png(4, 3, 1).into_bytes();
     std::fs::write(a.join("shot.png"), &png).unwrap();
-    let read = format!("demi host shell --host alpha 'demi file read {a_path}/shot.png'");
+    let read = format!("demi host shell --host alpha 'cat {a_path}/shot.png' | demi file view");
     let shown = work
         .turn(vec![shell("t5", &read, 30_000), say("five")])
         .await;
@@ -899,10 +900,21 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
     let size = png.len();
     assert_eq!(
         shown_output(result),
-        format!(
-            "<binary stdout: {size} bytes>\n[image]\nAttached stdout as image/png ({size} bytes).\n"
-        ),
+        format!("[image 1: image/png, 4 × 3 px, {size} bytes]\n[image]\n"),
         "{result}"
+    );
+
+    // A job on the other Host shows the model nothing: it carries no list
+    // of what the model reads.
+    let far = format!("demi host shell --host alpha 'demi file view {a_path}/shot.png'");
+    let refused = work
+        .turn(vec![shell("t6", &far, 30_000), say("six")])
+        .await;
+    assert_eq!(
+        shown_output(&refused.received[0]),
+        format!("demi file view: {a_path}/shot.png: a job on another Host shows the model nothing; pipe its bytes into demi file view in your own script\n"),
+        "{}",
+        refused.received[0]
     );
     backend.close().await;
 }
