@@ -66,6 +66,7 @@ fn error() -> Block {
         code: None,
         diagnostics: None,
         outside_turn: false,
+        device: None,
     })
 }
 

@@ -9,7 +9,9 @@
 use demi_agent_tools::testing::field;
 use demi_provider_common::testing::MockVendor;
 
-use crate::conversations::{anthropic_at, create};
+use demi_shared_types::Block;
+
+use crate::conversations::{anthropic_at, create, transcript};
 use crate::lifetime::{Network, until_requested};
 use crate::support::{Harness, Paired, Session, TestBackend};
 use crate::work::{Driven, resident, say, shell, switch};
@@ -62,9 +64,19 @@ async fn a_shell_call_on_an_offline_primary_device_says_it_is_offline_and_what_b
     let tried = work.turn(vec![shell("t1", "echo hello", 10_000), say("offline")]).await;
     assert_eq!(
         tried.received[0],
-        "alpha is offline: its runner has been disconnected for 40s, so nothing can run there now; commands already running there are kept for up to 10m and report when it is back."
+        "alpha is offline: its runner has been disconnected for 40s, so nothing can run there now; commands already running there are kept for up to 10m and report when it is back; the user can resume this turn once it is back."
     );
     assert!(errored(&vendor, "t1"), "the result is an error to the model");
+    // The turn ends unfinished, with Demi's record of why after the
+    // agent's last words, which the page offers Resume for.
+    let blocks = transcript(&backend, &master, FIRST).await.blocks;
+    let Some(Block::Error(error)) = blocks.last() else {
+        panic!("the turn ends with {:?}", blocks.last());
+    };
+    assert_eq!(
+        (error.code.as_deref(), error.message.as_str(), error.device.as_ref().map(|device| device.id.as_str())),
+        (Some("host_offline"), "alpha went offline, so this turn could not finish its work.", Some(alpha.id()))
+    );
     backend.close().await;
 }
 

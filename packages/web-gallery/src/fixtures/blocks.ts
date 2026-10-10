@@ -1041,6 +1041,23 @@ export function generationErrorBlock(): Block {
   }
 }
 
+/**
+ * The record a turn ends with when its Host went offline and no later call
+ * ran there: Demi's fact, which leaves the turn unfinished, and Resume waits
+ * for the device.
+ */
+export function hostOfflineErrorBlock(): Block {
+  return {
+    type: 'error',
+    id: 'host-offline-error',
+    createdAt: iso(30_000),
+    model: demoModel,
+    message: 'MacBook Pro went offline, so this turn could not finish its work.',
+    code: 'host_offline',
+    device: { id: 'mac', name: 'MacBook Pro' },
+  }
+}
+
 /** A steer typed while the turn runs. Renders after every transcript block, never among them. */
 export function transcriptDemoBlocks(): Block[] {
   const thinkingStartedAt = iso(18_000)
