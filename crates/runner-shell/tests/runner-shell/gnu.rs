@@ -466,3 +466,172 @@ async fn diff_compares_directories_as_gnu_diff_does() {
         "{absent}"
     );
 }
+
+/// Runs each case's script in a new directory that the shell script `setup`
+/// prepared, and fails naming every case whose status, standard output or
+/// standard error differs from the expected.
+async fn expect_cases(setup: &str, cases: &[(&str, u8, &str, &str)]) {
+    let mut failures = Vec::new();
+    for &(script, code, stdout, stderr) in cases {
+        let root = tempfile::tempdir().unwrap();
+        let (status, _, error) = job(root.path(), setup).await;
+        assert_eq!((status, error.as_str()), (0, ""), "{setup}");
+        let actual = job(root.path(), script).await;
+        if (actual.0, actual.1.as_str(), actual.2.as_str()) != (code, stdout, stderr) {
+            failures.push(format!(
+                "{script}\n  expected {code} {stdout:?} {stderr:?}\n  actual   {} {:?} {:?}",
+                actual.0, actual.1, actual.2
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
+/// A utility whose reader has closed the pipe ends with 141 and nothing on
+/// stderr, as SIGPIPE ends GNU's in a shell: `diff` panicked, `cmp` and the
+/// coreutils printed "Broken pipe" and exited 1 or 2, and `du`'s walk
+/// reported its printer's end as "sending on a closed channel". Each
+/// output is well over a 64 KiB pipe buffer, so the reader is gone before
+/// the writer ends. Runs in about 1 s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_closed_pipe_ends_utilities_quietly_as_sigpipe_does() {
+    let setup = "seq -f '%060g' 1 2000 > l1; seq -f '%060g' 2001 4000 > l2; \
+                 mkdir t; seq -f 't/%060g' 1 3000 | xargs touch";
+    let cases: Vec<(String, u8, &str, &str)> = [
+        "diff l1 l2", "diff -u l1 l2", "diff -y l1 l2", "cmp -l l1 l2", "cat l1 l1 l1", "sort l1", "du -a t",
+    ]
+    .into_iter()
+    .map(|producer| (format!("{producer} | head -n 1 >/dev/null; echo ${{PIPESTATUS[0]}}"), 0, "141\n", ""))
+    .collect();
+    let cases: Vec<(&str, u8, &str, &str)> =
+        cases.iter().map(|(script, code, out, err)| (script.as_str(), *code, *out, *err)).collect();
+    expect_cases(setup, &cases).await;
+}
+
+/// `diff` reports files with a NUL in their first 4 KiB block as GNU's does,
+/// as binary files that differ, unless `-a` compares them as text. The
+/// expected outputs are GNU diff 3.12's. Runs in about 0.05 s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn diff_reports_binary_files_as_gnu_diff_does() {
+    let setup = "printf 'a\\0b\\n' > z1; printf 'a\\0c\\n' > z2; cp z1 z3; printf 'x\\n' > tx; \
+                 mkdir d1 d2; cp z1 d1/z; cp z2 d2/z; \
+                 head -c 4000 /dev/zero | tr '\\0' a > b4; printf '\\0' >> b4; \
+                 head -c 5000 /dev/zero | tr '\\0' a > b5; printf '\\0\\n' >> b5; printf 'x\\n' > c";
+    expect_cases(
+        setup,
+        &[
+        ("diff z1 z2", 1, "Binary files z1 and z2 differ\n", ""),
+        ("diff -q z1 z2", 1, "Files z1 and z2 differ\n", ""),
+        ("diff -a z1 z2", 1, "1c1\n< a\u{0}b\n---\n> a\u{0}c\n", ""),
+        ("diff --text z1 z2 | wc -c", 0, "20\n", ""),
+        ("diff z1 z3", 0, "", ""),
+        ("diff tx z1", 1, "Binary files tx and z1 differ\n", ""),
+        ("diff -r d1 d2", 1, "Binary files d1/z and d2/z differ\n", ""),
+        ("diff b4 c", 1, "Binary files b4 and c differ\n", ""),
+        ("diff b5 c | head -c 6", 0, "1c1\n< ", ""),
+        ],
+    )
+    .await;
+}
+
+/// `-w`, `-b`, `-i` and `-B` compare lines as GNU diff's do: what they
+/// ignore makes no difference, the status included, and the printed lines
+/// are each file's own. The expected outputs are GNU diff 3.12's. Runs in
+/// about 0.05 s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn diff_ignores_case_and_white_space_as_gnu_diff_does() {
+    let setup = "printf 'a b\\nfoo  bar\\nX\\n\\nend\\n' > p; printf 'a  b\\nfoo bar \\nx\\nend\\n' > q; \
+                 printf 'a\\n\\n\\nb\\nc\\n' > r; printf 'a\\nb\\nC\\n' > s; \
+                 printf 'a\\n  \\nb\\n' > t1; printf 'a\\nb\\n' > t2; printf 'a\\n' > n1; printf 'a' > n2";
+    expect_cases(
+        setup,
+        &[
+        ("diff -w p q", 1, "3,4c3\n< X\n< \n---\n> x\n", ""),
+        ("diff -b p q", 1, "3,4c3\n< X\n< \n---\n> x\n", ""),
+        ("diff -i p q", 1, "1,2c1,2\n< a b\n< foo  bar\n---\n> a  b\n> foo bar \n4d3\n< \n", ""),
+        ("diff -B p q", 1, "1,4c1,3\n< a b\n< foo  bar\n< X\n< \n---\n> a  b\n> foo bar \n> x\n", ""),
+        ("diff -wi p q", 1, "4d3\n< \n", ""),
+        ("diff -wiB p q", 0, "", ""),
+        ("diff -s -wiB p q", 0, "Files p and q are identical\n", ""),
+        ("diff -q -w p q", 1, "Files p and q differ\n", ""),
+        ("diff -c -b p q | tail -n +3", 0, "***************\n*** 1,5 ****\n  a b\n  foo  bar\n! X\n! \n  end\n--- 1,4 ----\n  a  b\n  foo bar \n! x\n  end\n", ""),
+        ("diff -Bu r s | tail -n +3", 0, "@@ -1,5 +1,3 @@\n a\n-\n-\n b\n-c\n+C\n", ""),
+        ("diff -B t1 t2", 1, "2d1\n<   \n", ""),
+        ("diff -w n1 n2", 0, "", ""),
+        ("diff --ignore-all-space --ignore-case p q", 1, "4d3\n< \n", ""),
+        ],
+    )
+    .await;
+}
+
+/// `-x` and `-X` leave out of a directory comparison the names their
+/// patterns match, but never an operand. The expected outputs are GNU diff
+/// 3.12's. Runs in about 0.05 s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn diff_excludes_names_as_gnu_diff_does() {
+    let setup = "mkdir -p d1/node_modules/x d2 d1/sub d2/sub; echo 1 > d1/f.o; echo 2 > d2/f.o; \
+                 echo 1 > d1/k; echo 2 > d2/k; echo q > d1/node_modules/x/y; echo 1 > d1/sub/f.o; \
+                 echo 1 > d1/.hid; printf '*.o\\nnode_modules\\n\\n' > ex";
+    expect_cases(
+        setup,
+        &[
+        ("diff -rq -x '*.o' d1 d2", 1, "Only in d1: .hid\nFiles d1/k and d2/k differ\nOnly in d1: node_modules\n", ""),
+        ("diff -rq -X ex d1 d2", 1, "Only in d1: .hid\nFiles d1/k and d2/k differ\n", ""),
+        ("diff -rq --exclude=k --exclude '*.o' d1 d2", 1, "Only in d1: .hid\nOnly in d1: node_modules\n", ""),
+        ("diff -r -x k -x '*.o' d1 d2", 1, "Only in d1: .hid\nOnly in d1: node_modules\n", ""),
+        ("diff -rq -x '*' d1 d2", 0, "", ""),
+        ("diff -rq -x d1 d1 d2", 1, "Only in d1: .hid\nFiles d1/f.o and d2/f.o differ\nFiles d1/k and d2/k differ\nOnly in d1: node_modules\nOnly in d1/sub: f.o\n", ""),
+        ("diff -rqx k -x '*.o' d1 d2", 1, "Only in d1: .hid\nOnly in d1: node_modules\n", ""),
+        ("diff -rq --exclude-from=ex d1 d2", 1, "Only in d1: .hid\nFiles d1/k and d2/k differ\n", ""),
+        ("diff -rq -X nope d1 d2", 2, "", "diff: nope: No such file or directory\n"),
+        ],
+    )
+    .await;
+}
+
+/// `diff` words a usage error as GNU's getopt does, with exit status 2, and
+/// takes an unambiguous abbreviation of a long option. The expected outputs
+/// are GNU diff 3.12's. Runs in about 0.02 s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn diff_usage_errors_are_gnu_diffs() {
+    let setup = "echo a > a; echo b > b; mkdir d1 d2; echo 1 > d1/f; echo 2 > d2/f";
+    expect_cases(
+        setup,
+        &[
+        ("diff -k a b", 2, "", "diff: invalid option -- 'k'\ndiff: Try 'diff --help' for more information.\n"),
+        ("diff -rqk a b", 2, "", "diff: invalid option -- 'k'\ndiff: Try 'diff --help' for more information.\n"),
+        ("diff --foo a b", 2, "", "diff: unrecognized option '--foo'\ndiff: Try 'diff --help' for more information.\n"),
+        ("diff --no-such=3 a b", 2, "", "diff: unrecognized option '--no-such=3'\ndiff: Try 'diff --help' for more information.\n"),
+        ("diff --ign a b", 2, "", "diff: option '--ign' is ambiguous; possibilities: '--ignore-all-space' '--ignore-blank-lines' '--ignore-case' '--ignore-file-name-case' '--ignore-matching-lines' '--ignore-space-change' '--ignore-tab-expansion' '--ignore-trailing-space'\ndiff: Try 'diff --help' for more information.\n"),
+        ("diff --exclu=k a b", 2, "", "diff: option '--exclu=k' is ambiguous; possibilities: '--exclude' '--exclude-from'\ndiff: Try 'diff --help' for more information.\n"),
+        ("diff -x", 2, "", "diff: option requires an argument -- 'x'\ndiff: Try 'diff --help' for more information.\n"),
+        ("diff --exclude-f", 2, "", "diff: option '--exclude-from' requires an argument\ndiff: Try 'diff --help' for more information.\n"),
+        ("diff --recur --brie d1 d2", 1, "Files d1/f and d2/f differ\n", ""),
+        ("diff --ignore-cas a b", 1, "1c1\n< a\n---\n> b\n", ""),
+        ],
+    )
+    .await;
+}
+
+/// Hunks are GNU's: changes at most twice the context apart share a hunk, a
+/// context hunk marks a group that deletes and inserts as changes, and an
+/// ed script runs last change first. The expected outputs are GNU diff
+/// 3.12's. Runs in about 0.02 s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn diff_hunks_are_gnu_diffs() {
+    let setup = "printf '1\\n2\\n3\\n4\\n5\\n6\\n' > m1; printf '1\\nX\\n3\\n4\\n6\\n' > m2; \
+                 printf 'a\\nb\\nc\\nd\\n' > g1; printf 'a\\nB\\nd\\n' > g2; seq 1 20 > s1; \
+                 seq 1 20 | sed -e s/^5$/X/ -e s/^12$/Y/ -e s/^19$/Z/ > s2";
+    expect_cases(
+        setup,
+        &[
+        ("diff -e m1 m2", 1, "5d\n2c\nX\n.\n", ""),
+        ("diff -e g1 g2", 1, "2,3c\nB\n.\n", ""),
+        ("diff -c g1 g2 | tail -n +3", 0, "***************\n*** 1,4 ****\n  a\n! b\n! c\n  d\n--- 1,3 ----\n  a\n! B\n  d\n", ""),
+        ("diff -c m1 m2 | tail -n +3", 0, "***************\n*** 1,6 ****\n  1\n! 2\n  3\n  4\n- 5\n  6\n--- 1,5 ----\n  1\n! X\n  3\n  4\n  6\n", ""),
+        ("diff -u s1 s2 | tail -n +3", 0, "@@ -2,19 +2,19 @@\n 2\n 3\n 4\n-5\n+X\n 6\n 7\n 8\n 9\n 10\n 11\n-12\n+Y\n 13\n 14\n 15\n 16\n 17\n 18\n-19\n+Z\n 20\n", ""),
+        ("diff -U2 s1 s2 | tail -n +3", 0, "@@ -3,5 +3,5 @@\n 3\n 4\n-5\n+X\n 6\n 7\n@@ -10,5 +10,5 @@\n 10\n 11\n-12\n+Y\n 13\n 14\n@@ -17,4 +17,4 @@\n 17\n 18\n-19\n+Z\n 20\n", ""),
+        ],
+    )
+    .await;
+}

@@ -42,6 +42,9 @@ version = "0.4.38"
 [dependencies.diff]
 version = "0.1.13"
 
+[dependencies.glob]
+version = "0.3.4"
+
 [dependencies.itoa]
 version = "1.0.11"
 
@@ -90,6 +93,11 @@ patches = [
     "Short options cluster as GNU's getopt reads them (-rq, -Naur, -rC1, -u5r), with a run of digits as GNU's -NUM context length, and -r/--recursive and -N/--new-file compare directories as GNU diff 3.12 does: entries in byte order, Only in DIR: NAME, Common subdirectories: A and B without -r, File A is a directory while file B is a regular file, a diff OPTIONS A B line before each differing pair, an absent file under -N as empty with the epoch as its time, and status 1 when anything differs; upstream has none of it (uutils/diffutils#162)",
     "diff DIR FILE compares DIR/FILE, diff DIR - fails with cannot compare '-' to a directory, and the same-file check resolves against the job's working directory",
     "The normal format prints a range of one line as that line's number, as GNU's 1a2 and 2d1, where upstream printed 1a2,2 and 2,2d1",
-    "-a/--text is accepted: every file is compared as text already",
+    "Binary files: a file with a NUL in its first block (st_blksize, else 4096 bytes, GNU's first read) differs as Binary files A and B differ, or Files A and B differ with -q, unless -a/--text compares it as text",
+    "-i/--ignore-case, -b/--ignore-space-change, -w/--ignore-all-space and -B/--ignore-blank-lines compare as GNU diff 3.12 in the C locale: lines are diffed by what the options leave of them and printed as each file has them, -b and -w ignore a missing newline at the end, -B drops a hunk whose changed lines are all empty, and a pair that differs only in what is ignored is identical (status 0, -s reports it); -d/--minimal is accepted, the line diff being minimal already",
+    "-x PAT/--exclude=PAT and -X FILE/--exclude-from=FILE leave the names their glob patterns match out of a directory comparison, never an operand",
+    "Usage errors are GNU getopt's: invalid option -- 'k', unrecognized option '--foo', option requires an argument -- 'x', option '--exclude-from' requires an argument and option '--ign' is ambiguous; possibilities: ..., each followed by Try 'diff --help' for more information., status 2; long options take GNU's unambiguous abbreviations (--recur)",
+    "A failed write to standard output reports diff: standard output: REASON or cmp: standard output: REASON with status 2, as GNU's, instead of panicking; cmp flushes its buffered output before it ends so such a failure is seen; a closed pipe ends either through uucore::context's write",
+    "Hunks are GNU's: changes at most twice the context apart share a hunk (upstream split them at the context), a context hunk marks every line of a group that both deletes and inserts with ! and prints the second file's common lines on its side, and an ed script lists the changes last to first with a one-line range as one number (5d, 2c)",
     "-y exits with status 1 when the files differ: the status comes from the contents, since side_diff writes its output itself and returns nothing",
 ]
