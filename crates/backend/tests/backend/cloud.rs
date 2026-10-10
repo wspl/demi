@@ -378,11 +378,13 @@ async fn a_conversation_archived_while_its_cloud_is_stopped_does_not_wake_it() {
     );
     let device = the_cloud(&harness);
 
-    // The backend's close stops the Cloud. Archived while the Cloud is
-    // stopped, the conversation's release does not wake it: the stop ended
-    // what a release would.
+    // The backend stops, and the manager with it, whose stop stops the
+    // Cloud, as an upgrade does. Archived while the Cloud is stopped, the
+    // conversation's release does not wake it: the stop ended what a
+    // release would.
     let address = backend.address();
     backend.close().await;
+    harness.manager.stop_quietly(&device).await;
     let backend = harness.start_at(address).await;
     let archived = backend
         .patch(
@@ -1100,9 +1102,10 @@ async fn the_clouds_files_and_the_usage_ledger_survive_a_backend_restart() {
     };
     let before = requests(backend.get("/api/usage", Some(&master)).await.json());
 
-    // The backend's close saves the Cloud; the next start boots nothing
-    // until a command needs it. It starts at the address it had: the Cloud's
-    // runner keeps its state, which names that address as its backend's.
+    // The backend's close leaves the Cloud running, and the next start takes
+    // it over: it boots nothing again. It starts at the address it had: the
+    // Cloud's runner keeps its state, which names that address as its
+    // backend's.
     let address = backend.address();
     backend.close().await;
     let backend = harness.start_at(address).await;
@@ -1121,7 +1124,8 @@ async fn the_clouds_files_and_the_usage_ledger_survive_a_backend_restart() {
     let after = requests(backend.get("/api/usage", Some(&master)).await.json());
     assert_eq!(after, before + 2);
     let device = the_cloud(&harness);
-    assert_eq!(harness.manager.count(&format!("wake:{device}")), 2);
+    assert_eq!(harness.manager.count(&format!("wake:{device}")), 1);
+    assert_eq!(harness.manager.count(&format!("hibernate:{device}")), 0);
     backend.close().await;
 }
 
@@ -1158,7 +1162,7 @@ async fn shutdown_cancels_a_cloud_boot_waiting_for_its_runner_and_saves_it_once(
 }
 
 #[tokio::test]
-async fn shutdown_ends_an_open_download_saves_the_cloud_and_reports_a_save_that_failed() {
+async fn shutdown_ends_an_open_download_and_leaves_the_cloud_running() {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     create(&backend, &master, FIRST).await;
@@ -1187,25 +1191,108 @@ async fn shutdown_ends_an_open_download_saves_the_cloud_and_reports_a_save_that_
         .await;
     assert_eq!(download.status(), StatusCode::OK);
 
-    harness
-        .manager
-        .script(|script| script.fail_hibernate = Some("the disk is full".into()));
     let url = backend.url.clone();
-    let closed = backend.close_reporting().await.unwrap_err().to_string();
-    assert!(
-        closed.contains("a Cloud was not saved") && closed.contains("the disk is full"),
-        "{closed}"
-    );
-    // The download ended rather than kept the Cloud from its save.
+    backend.close_reporting().await.unwrap();
+    // The download ended rather than held the shutdown, and the Cloud runs
+    // on: the shutdown neither saves it nor asks the manager anything
+    // (`backend.md` § Startup and shutdown).
     drop(download);
+    assert!(harness.manager.running(&device));
     let calls = harness.manager.calls();
-    let saved = calls
-        .iter()
-        .position(|call| *call == format!("hibernate:{device}"));
-    let reconciled = calls.iter().rposition(|call| call == "reconcile");
-    assert!(saved.is_some() && saved < reconciled, "{calls:?}");
+    assert!(!calls.contains(&format!("hibernate:{device}")), "{calls:?}");
+    assert_eq!(calls.iter().filter(|call| *call == "reconcile").count(), 1, "{calls:?}");
     // The listener is gone.
     assert!(reqwest::get(format!("{url}/api/setup")).await.is_err());
+}
+
+/// The Cloud and a command on it survive a backend restart of one release:
+/// the manager keeps the sandbox, the next start takes the Cloud over, and
+/// the command reports its end there (`sessions-and-targets.md` § Recovery
+/// and persistence). Several seconds: the Cloud boots once, its job is a
+/// login shell, and the call waits for two quiet seconds.
+#[tokio::test]
+async fn a_backend_restart_keeps_the_cloud_and_a_command_on_it_reports_its_end() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/a").await;
+    create(&backend, &master, FIRST).await;
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
+    let script = "printf 'started\\n'; while [ ! -f finish ]; do sleep 0.05; done; exit 4";
+    let started = work
+        .turn(vec![crate::work::resident("t1", script), say("waiting")])
+        .await;
+    assert!(started.received[0].starts_with("status: running"), "{}", started.received[0]);
+    let command = demi_agent_tools::testing::field(&started.received[0], "commandId").to_owned();
+    let device = the_cloud(&harness);
+    let home = harness.manager.home(&device);
+
+    let address = backend.address();
+    backend.close().await;
+    work.script(vec![say("noted")]);
+    let backend = harness.start_at(address).await;
+    until_status(&backend, &master, "the Cloud runs", |status| {
+        status.state == CloudState::Running
+    })
+    .await;
+    std::fs::write(format!("{home}/sessions/{FIRST}/finish"), "").unwrap();
+    let report = format!("Command {command} (t1) ended with exit code 4.");
+    eventually("the command's end reaches the model", || {
+        let held = vendor
+            .requests()
+            .iter()
+            .any(|request| request.json().to_string().contains(&report));
+        async move { held }
+    })
+    .await;
+    assert_eq!(harness.manager.count(&format!("wake:{device}")), 1);
+    assert_eq!(harness.manager.count(&format!("hibernate:{device}")), 0);
+    backend.close().await;
+}
+
+/// An upgrade stops the Cloud with the manager, so the command on it ends:
+/// the next start takes its conversation up, which starts the Cloud with
+/// the new release's programs, and the command is reported lost to the
+/// upgrade (`upgrades.md`). Several seconds: the Cloud boots twice.
+#[tokio::test]
+async fn an_upgrade_restarts_the_cloud_and_its_command_is_lost_to_the_upgrade() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/a").await;
+    create(&backend, &master, FIRST).await;
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
+    let started = work
+        .turn(vec![crate::work::resident("t1", "sleep 60"), say("waiting")])
+        .await;
+    let command = demi_agent_tools::testing::field(&started.received[0], "commandId").to_owned();
+    let device = the_cloud(&harness);
+
+    // The upgrade stops the backend, then the manager, whose stop saves and
+    // stops the Cloud; the Cloud last ran another release.
+    let address = backend.address();
+    backend.close().await;
+    harness.manager.stop_quietly(&device).await;
+    harness
+        .control_database()
+        .execute("UPDATE devices SET runner_version = '0.0.1'", [])
+        .unwrap();
+    work.script(vec![say("noted")]);
+    let backend = harness.start_at(address).await;
+    let report = format!(
+        "Command {command} (t1) was lost: {}. Start it again if it is still needed.",
+        demi_backend_remote_host::UPGRADED
+    );
+    eventually("the command's loss reaches the model", || {
+        let held = vendor
+            .requests()
+            .iter()
+            .any(|request| request.json().to_string().contains(&report));
+        async move { held }
+    })
+    .await;
+    assert_eq!(harness.manager.count(&format!("wake:{device}")), 2);
+    backend.close().await;
 }
 
 #[tokio::test]
