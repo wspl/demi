@@ -98,8 +98,8 @@ async fn run_turn(
                 continue;
             }
         }
-        if s.read(|core| core.inputs.arrivals()) > before {
-            write_inputs_since(s, before).await?;
+        if s.update(|core| core.arrived_since(before)) {
+            write_inputs(s).await?;
             continue;
         }
         if !executed {
@@ -168,7 +168,7 @@ async fn sent_now(s: &SessionShared) {
 
 /// Writes the waiting input when some arrived since `arrivals` was read.
 async fn write_inputs_since(s: &SessionShared, arrivals: u64) -> Result<(), TurnError> {
-    if s.read(|core| core.inputs.arrivals()) > arrivals {
+    if s.update(|core| core.arrived_since(arrivals)) {
         write_inputs(s).await?;
     }
     Ok(())

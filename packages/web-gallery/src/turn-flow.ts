@@ -223,7 +223,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       createdAt,
       model: demoModel,
       toolUseId: `${id}-use`,
-      toolName: 'shell_exec',
+      toolName: 'shell',
       status,
       input: JSON.stringify({
         script: TOOL_SCRIPT,
@@ -394,7 +394,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       createdAt,
       model: demoModel,
       toolUseId: `${id}-use`,
-      toolName: 'shell_exec',
+      toolName: 'shell',
       status,
       input: JSON.stringify({ script: step.script, description: step.description }),
       output: status === 'completed' ? [{ type: 'text', text }] : [],
@@ -423,10 +423,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       // The model writes the call first: its row shows as it opens, takes its
       // description once written, and becomes the call's block when whole.
       at(run, t, () => {
-        state.pendingCalls = [{ toolUseId: `${id}-use`, toolName: 'shell_exec', description: null }]
+        state.pendingCalls = [{ toolUseId: `${id}-use`, toolName: 'shell', description: null }]
       })
       at(run, t + 400, () => {
-        state.pendingCalls = [{ toolUseId: `${id}-use`, toolName: 'shell_exec', description: step.description }]
+        state.pendingCalls = [{ toolUseId: `${id}-use`, toolName: 'shell', description: step.description }]
       })
       t += 900
       at(run, t, () => {
