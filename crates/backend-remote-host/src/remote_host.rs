@@ -889,6 +889,13 @@ impl RemoteJob {
         self.jobs.park(&self.id);
     }
 
+    /// How long the job, which runs, has waited for its device's runner to
+    /// connect again, as far as the backend knows; none while a connection
+    /// serves it.
+    pub fn away(&self) -> Option<std::time::Duration> {
+        self.jobs.away(&self.id)
+    }
+
     /// The next message of the job's output views; none once the job ended
     /// and every message was taken.
     pub async fn next_output(&self) -> Option<JobOutput> {

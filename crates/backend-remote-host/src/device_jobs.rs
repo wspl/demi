@@ -15,7 +15,7 @@ use std::{
 
 use demi_runner_protocol::wire::{self, JOB_VIEW_BYTES, KeptJob};
 use demi_shared_types::StreamKind;
-use tokio::sync::watch;
+use tokio::{sync::watch, time::Instant};
 use tokio_util::sync::CancellationToken;
 
 use demi_shared_gates::GateLease;
@@ -67,6 +67,10 @@ pub(crate) struct JobEntry {
     pub(crate) _lease: Option<GateLease>,
     /// The connection it runs on now; none while it waits for the next.
     attached: Option<WeakLink>,
+    /// Since when it has waited for a connection, as far as the backend
+    /// knows: since its connection ended, or since a restarted backend
+    /// took it up before its runner connected.
+    away_since: Option<Instant>,
     /// Changes each time the job goes on over a new connection.
     attachments: watch::Sender<u64>,
     /// How much of each stream's first `JOB_VIEW_BYTES` reached its
@@ -143,6 +147,7 @@ impl DeviceJobs {
                 cancel: CancellationToken::new(),
                 _lease: entry.lease,
                 attached: Some(link.downgrade()),
+                away_since: None,
                 attachments,
                 head: [0; 2],
                 seen: [0; 2],
@@ -168,6 +173,7 @@ impl DeviceJobs {
             cancel: CancellationToken::new(),
             _lease: None,
             attached: None,
+            away_since: Some(Instant::now()),
             attachments: watch::Sender::new(0),
             head: [0; 2],
             seen: [0; 2],
@@ -215,6 +221,17 @@ impl DeviceJobs {
     /// Runs `f` on the job `id` while the device knows it.
     pub(crate) fn with<T>(&self, id: &str, f: impl FnOnce(&mut JobEntry) -> T) -> Option<T> {
         self.0.borrow_mut().jobs.get_mut(id).map(f)
+    }
+
+    /// How long the job `id`, which runs, has waited for a connection; none
+    /// while a connection serves it, and for a job that ended or that the
+    /// device does not know.
+    pub(crate) fn away(&self, id: &str) -> Option<std::time::Duration> {
+        self.with(id, |job| {
+            let since = job.away_since.filter(|_| job.shared.ended().is_none())?;
+            Some(since.elapsed())
+        })
+        .flatten()
     }
 
     /// The jobs running on `link`.
@@ -266,6 +283,7 @@ impl DeviceJobs {
         for job in self.0.borrow_mut().jobs.values_mut() {
             if job.attached.as_ref().is_some_and(|attached| attached.is(link)) {
                 job.attached = None;
+                job.away_since = Some(Instant::now());
                 // A read again the ended connection cannot finish delivers
                 // what waited for it; the next connection reads again.
                 if let Some(waiting) = job.resyncing.take() {
@@ -331,6 +349,7 @@ impl DeviceJobs {
                 .entry(kept.job_id.clone())
                 .or_insert_with(JobEntry::parked);
             job.attached = Some(link.downgrade());
+            job.away_since = None;
             job.attachments.send_modify(|count| *count += 1);
             job.unreached = kept.ended.as_ref().is_some_and(|end| end.unreached);
             // A job that runs and printed what its consumer did not
@@ -413,6 +432,7 @@ impl JobEntry {
             cancel: CancellationToken::new(),
             _lease: None,
             attached: None,
+            away_since: None,
             attachments: watch::Sender::new(0),
             head: [0; 2],
             seen: [0; 2],

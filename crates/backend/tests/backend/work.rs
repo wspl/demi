@@ -544,12 +544,10 @@ async fn a_runner_that_ends_in_the_middle_of_a_command_loses_it_and_its_next_sta
     work.socket.until_idle().await;
     let lost = work.observe(before);
     assert!(
-        lost.received[0].contains("exitCode: 127"),
-        "{}",
-        lost.received[0]
-    );
-    assert!(
-        lost.received[0].contains(demi_backend_remote_host::RUNNER_RESTARTED),
+        lost.received[0].starts_with(&format!(
+            "status: lost: {}\n",
+            demi_backend_remote_host::RUNNER_RESTARTED
+        )),
         "{}",
         lost.received[0]
     );
@@ -741,7 +739,7 @@ async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes
         .await;
     assert_eq!(
         after.received[0],
-        "Tool call interrupted: the backend shut down while this call watched command 2, which keeps running; look at it with demi shell status 2."
+        "Tool call interrupted: the backend shut down while this call watched command 2, which keeps running; look at it with demi shell status 2.\noutput: (empty)"
     );
     assert!(after.received[1].contains("kept"), "{}", after.received[1]);
     assert!(
@@ -1061,7 +1059,13 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     let look = format!("demi shell status {command}; printf 'late\\n' | demi shell input {command}");
     let looked = work.turn(vec![shell("t6", &look, 30_000), say("looked")]).await;
     let looked = &looked.received[0];
-    assert!(shown_output(looked).starts_with("status: aborted"), "{looked}");
+    // A stopped command's look says so, then shows its output, with no next
+    // step to take.
+    assert!(
+        shown_output(looked).starts_with(&format!("status: stopped\ncommandId: {command}\noutput")),
+        "{looked}"
+    );
+    assert!(!looked.contains("\nnext: "), "{looked}");
     assert!(
         looked.ends_with(&format!("\ndemi shell input: command {command} is not running")),
         "{looked}"
