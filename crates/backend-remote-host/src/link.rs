@@ -572,6 +572,9 @@ impl Link {
         for job in adoption.stop {
             link.stop_unknown(job);
         }
+        for job_id in adoption.release {
+            link.post(&Inbound::JobRelease { job_id });
+        }
         for (job, lengths) in adoption.resync {
             let reading = link.clone();
             link.spawn(async move { reading.resync(&job, lengths).await });
