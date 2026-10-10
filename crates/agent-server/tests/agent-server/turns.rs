@@ -880,3 +880,72 @@ async fn messages_sent_during_a_turn_wait_in_the_queue_which_the_client_empties_
     assert_eq!(users, ["m1", "m3", "m2"]);
     assert!(tree.root().session().queued_messages().is_empty());
 }
+
+/// A report that waited in the checkpoint for a command whose shells were
+/// let go, as a backend shutdown lets them go, carries the command's stored
+/// output when it is written: its node no longer holds the command
+/// (`runtime.md` § Command reports). A few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_restored_report_of_a_command_no_shells_hold_carries_its_stored_output() {
+    use demi_agent_store::{
+        AgentTreeStore, CheckpointState, CheckpointUpdate, NodeRecord, StoredCommand, StoredOutput,
+    };
+    use demi_host_interface::{OutputRecord, WholeOutput};
+    use demi_shared_types::{CommandEnd, CommandId, CommandReport, ReportEvent, StreamKind, Timestamp};
+
+    let script = ScriptedRuntime::new([Turn::Events(vec![
+        event::text("noted"),
+        event::response(1, 1),
+    ])]);
+    let store = MemoryTreeStore::new();
+    let command = CommandId::try_from("7").unwrap();
+    store.keep_output(
+        command.clone(),
+        StoredCommand {
+            end: CommandEnd::Exited { exit_code: 0 },
+            output: StoredOutput::Stored {
+                output: WholeOutput::new(
+                    vec![OutputRecord::Output(StreamKind::Stdout, "built\n".into())],
+                    None,
+                ),
+            },
+        },
+    );
+    let pending = CommandReport {
+        command_id: command,
+        title: "Build".into(),
+        event: ReportEvent::Ended { exit_code: Some(0) },
+        output: String::new(),
+        media: Vec::new(),
+    };
+    store
+        .create_node(
+            NodeRecord::root(conversation(), Timestamp::UNIX_EPOCH),
+            CheckpointUpdate {
+                state: CheckpointState {
+                    phase: SessionPhase::Idle,
+                    queue: Vec::new(),
+                    agent_inputs: Vec::new(),
+                    reports: vec![pending],
+                    intervals: Vec::new(),
+                    cwd: "/workspace".into(),
+                    model: demi_agent_store::testing::test_model(),
+                    edits: Vec::new(),
+                },
+                changed_blocks: Vec::new(),
+                block_count: 0,
+            },
+        )
+        .await
+        .unwrap();
+    let fixture = Fixture::with(&script, store, ServerConfig::default());
+
+    let _client = fixture.opened().await;
+    until(|| !script.requests().is_empty()).await;
+
+    let request = format!("{:?}", script.requests()[0].items);
+    assert!(
+        request.contains("Command 7 (Build) ended with exit code 0.\\noutput:\\nbuilt"),
+        "{request}"
+    );
+}

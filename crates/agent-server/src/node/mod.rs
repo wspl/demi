@@ -785,8 +785,21 @@ pub(crate) async fn assemble<H: HostResolver>(
         config,
     };
     let (session, continuation) = match origin {
-        Origin::Stored { checkpoint, .. } => {
+        Origin::Stored { mut checkpoint, .. } => {
             let running = store.running_commands(&record.id).await?;
+            // A report that waited in the checkpoint for a command whose
+            // shells were let go carries what the command's stored output
+            // holds since the node's place, as a report of a command no
+            // shells hold does (`runtime.md` § Command reports).
+            for report in &mut checkpoint.state.reports {
+                let ended = !matches!(report.event, ReportEvent::Running { .. });
+                let recorded = running.iter().any(|running| running.command == report.command_id);
+                if ended && report.output.is_empty() && !recorded
+                    && let Some(status) = node_runtime.stored_status(&report.command_id).await
+                {
+                    fill_output(report, &status);
+                }
+            }
             let (session, continuation) =
                 AgentSession::restore(checkpoint, record.id.clone(), runtime, deps, &running)?;
             (session, Some(continuation))
