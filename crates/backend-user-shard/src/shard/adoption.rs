@@ -112,6 +112,7 @@ impl Shard {
             release: runner.version.clone(),
             jobs: kept.jobs,
             last_release: device.runner_version.clone(),
+            last_instance: device.runner_instance,
             managed: device.kind == DeviceKind::Managed,
             recorded: recorded.iter().map(|(job, _)| job.clone()).collect(),
         };
@@ -133,6 +134,7 @@ impl Shard {
         self: Rc<Self>,
         device: DeviceRecord,
         runner: RunnerInfo,
+        instance: u64,
         socket: WebSocket,
         bound: oneshot::Sender<DeviceDto>,
     ) {
@@ -140,10 +142,11 @@ impl Shard {
         // answer deletes the device it made. A device just paired has no
         // jobs.
         let hello = Hello {
-            instance: 0,
+            instance,
             release: runner.version.clone(),
             jobs: Vec::new(),
             last_release: None,
+            last_instance: None,
             managed: false,
             recorded: Default::default(),
         };
@@ -171,6 +174,7 @@ impl Shard {
         if self.is_closing() {
             return None;
         }
+        let hello_instance = hello.instance;
         let (link, driver) = Link::new(LinkOptions {
             device: device.to_string(),
             identity: host_identity(&runner.identity),
@@ -188,9 +192,26 @@ impl Shard {
             .devices()
             .bind(device, link, driver, seen.clone(), runner.installation);
         let device = device.clone();
-        self.tasks()
-            .spawn_local(async move { seen.hello(device, runner.os, runner.version).await });
+        let instance = hello_instance;
+        self.tasks().spawn_local(async move {
+            seen.hello(device, runner.os, runner.version, instance).await
+        });
         Some(serving)
+    }
+
+    /// Restores the trees of the conversations whose commands ran on the
+    /// user's Cloud `device`, which does not run as the backend starts: an
+    /// upgrade stopped it. Each tree's agent takes its commands up, which
+    /// starts the Cloud again, whose runner's hello then says the commands
+    /// were lost, to the upgrade when the release changed
+    /// (`sessions-and-targets.md` § Recovery and persistence).
+    pub async fn take_up_stopped_cloud(self: Rc<Self>, device: DeviceId) {
+        match self.services().control.running_jobs(device.clone()).await {
+            Ok(recorded) => self.take_up(recorded.into_iter().map(|(_, conversation)| conversation)),
+            Err(error) => {
+                tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "the stopped Cloud's running jobs could not be read");
+            }
+        }
     }
 
     /// Restores the tree of each of `conversations`, whose commands ran on a
@@ -207,6 +228,12 @@ impl Shard {
             let shard = self.clone();
             self.tasks().spawn_local(async move {
                 let _opening = opening;
+                #[cfg(feature = "testing")]
+                shard
+                    .services()
+                    .hellos
+                    .pass(crate::holds::HelloStep::TakeUp)
+                    .await;
                 if shard.is_closing() {
                     return;
                 }
@@ -332,6 +359,7 @@ impl Shard {
             release: runner.version.clone(),
             jobs: Vec::new(),
             last_release: None,
+            last_instance: None,
             managed: false,
             recorded: Default::default(),
         };

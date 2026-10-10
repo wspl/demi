@@ -220,6 +220,7 @@ impl<H: HostResolver> Node<H> {
     pub(crate) async fn continue_from(&self, continuation: Continuation) -> Result<(), StoreError> {
         // The commands the node left running go on where their Host kept
         // them (`sessions-and-targets.md` § Recovery and persistence).
+        // One its Host cannot be reached for stays recorded running.
         self.runtime.take_up(None).await;
         let session = &self.session;
         if self.role == NodeRole::Child {
@@ -288,16 +289,18 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
 impl<H: HostResolver> NodeRuntime<H> {
     /// Takes up the commands the node ran that the conversation records
     /// running and its environments do not hold: `only`, or every one
-    /// (`sessions-and-targets.md` § Recovery and persistence). A command
-    /// that cannot be taken up now stays recorded for the next try.
-    async fn take_up(&self, only: Option<&CommandId>) {
+    /// (`sessions-and-targets.md` § Recovery and persistence). Answers
+    /// whether one stays recorded running without being taken up, as when
+    /// its Host cannot be reached now; the next restore tries again.
+    async fn take_up(&self, only: Option<&CommandId>) -> bool {
         let running = match self.store.running_commands(&self.node).await {
             Ok(running) => running,
             Err(error) => {
                 tracing::warn!(node = %self.node, %error, "the node's running commands could not be read");
-                return;
+                return only.is_some();
             }
         };
+        let mut left = false;
         for command in running {
             if only.is_some_and(|only| *only != command.command)
                 || self.environments.owning(&command.command).is_some()
@@ -306,8 +309,10 @@ impl<H: HostResolver> NodeRuntime<H> {
             }
             if let Err(error) = self.shell_access().adopt(&command).await {
                 tracing::warn!(node = %self.node, command = %command.command, %error, "a running command was not taken up");
+                left = true;
             }
         }
+        left
     }
 
     fn node_context(&self) -> NodeContext<'_> {
@@ -507,8 +512,10 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     /// restored.
     fn command_ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, ()> {
         Box::pin(async move {
-            if self.environments.owning(command).is_none() {
-                self.take_up(Some(command)).await;
+            // A command its Host cannot be reached for now has not ended:
+            // it reports nothing until the node takes it up.
+            if self.environments.owning(command).is_none() && self.take_up(Some(command)).await {
+                std::future::pending::<()>().await;
             }
             if let Some(environment) = self.environments.owning(command) {
                 // An environment that forgot the command answers an error:
@@ -778,8 +785,21 @@ pub(crate) async fn assemble<H: HostResolver>(
         config,
     };
     let (session, continuation) = match origin {
-        Origin::Stored { checkpoint, .. } => {
+        Origin::Stored { mut checkpoint, .. } => {
             let running = store.running_commands(&record.id).await?;
+            // A report that waited in the checkpoint for a command whose
+            // shells were let go carries what the command's stored output
+            // holds since the node's place, as a report of a command no
+            // shells hold does (`runtime.md` § Command reports).
+            for report in &mut checkpoint.state.reports {
+                let ended = !matches!(report.event, ReportEvent::Running { .. });
+                let recorded = running.iter().any(|running| running.command == report.command_id);
+                if ended && report.output.is_empty() && !recorded
+                    && let Some(status) = node_runtime.stored_status(&report.command_id).await
+                {
+                    fill_output(report, &status);
+                }
+            }
             let (session, continuation) =
                 AgentSession::restore(checkpoint, record.id.clone(), runtime, deps, &running)?;
             (session, Some(continuation))

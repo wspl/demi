@@ -83,6 +83,9 @@ pub(crate) struct JobEntry {
     /// A restarted backend knows it only from its records: it stays, ended
     /// or not, until the agent that ran it takes it up.
     parked: bool,
+    /// Whether an agent took it up and said whose it is; true for a job
+    /// started here.
+    claimed: watch::Sender<bool>,
 }
 
 /// What a job's consumer holds of it.
@@ -98,9 +101,11 @@ pub struct Hello {
     pub instance: u64,
     pub release: String,
     pub jobs: Vec<KeptJob>,
-    /// The release the device's runner had when it last connected, from
-    /// the device's record, which outlives a restart of the backend.
+    /// The release and the instance the device's runner had when it last
+    /// connected, from the device's record, which outlives a restart of the
+    /// backend.
     pub last_release: Option<String>,
+    pub last_instance: Option<u64>,
     /// Whether the device is a Cloud.
     pub managed: bool,
     /// The jobs the backend's records name for the device, which a
@@ -113,6 +118,8 @@ pub struct Hello {
 pub(crate) struct Adoption {
     /// Running jobs the backend has no command for: they are stopped.
     pub(crate) stop: Vec<String>,
+    /// Ended jobs the backend has no command for: their directories go.
+    pub(crate) release: Vec<String>,
     /// Running jobs that go on, whose output the backend reads again.
     pub(crate) resync: Vec<(String, wire::OutputLengths)>,
 }
@@ -142,6 +149,7 @@ impl DeviceJobs {
                 resyncing: None,
                 unreached: false,
                 parked: false,
+                claimed: watch::Sender::new(true),
             },
         );
         claimed
@@ -166,9 +174,11 @@ impl DeviceJobs {
             resyncing: None,
             unreached: false,
             parked: false,
+            claimed: watch::Sender::new(false),
         });
         job.parked = false;
         job.origin = entry.origin;
+        job.claimed.send_replace(true);
         job.commands = entry.commands;
         job._lease = entry.lease;
         let claimed = Claimed {
@@ -181,6 +191,12 @@ impl DeviceJobs {
             table.jobs.remove(id);
         }
         claimed
+    }
+
+    /// Whether an agent took the job `id` up, from now on; none for a job
+    /// the device does not know.
+    pub(crate) fn claimed(&self, id: &str) -> Option<watch::Receiver<bool>> {
+        self.with(id, |job| job.claimed.subscribe())
     }
 
     /// Parks the job `id`, whose consumer let go of it while it runs: its
@@ -285,9 +301,10 @@ impl DeviceJobs {
             .as_ref()
             .map(|(_, release)| release.clone())
             .or(hello.last_release);
+        let last_instance = previous.map(|(instance, _)| instance).or(hello.last_instance);
         let lost = if last_release.is_some_and(|release| release != hello.release) {
             UPGRADED
-        } else if previous.is_some_and(|(instance, _)| instance == hello.instance) {
+        } else if last_instance == Some(hello.instance) {
             NEVER_RECEIVED
         } else if hello.managed {
             CLOUD_RESTARTED
@@ -299,10 +316,13 @@ impl DeviceJobs {
         for kept in &hello.jobs {
             let known = table.jobs.contains_key(&kept.job_id);
             if !known && !hello.recorded.contains(&kept.job_id) {
-                // A job the backend has no command for is stopped; its exit
-                // releases its directory.
+                // A job the backend has no command for is stopped, and its
+                // exit releases its directory; one that ended already is
+                // released now.
                 if kept.ended.is_none() {
                     adoption.stop.push(kept.job_id.clone());
+                } else {
+                    adoption.release.push(kept.job_id.clone());
                 }
                 continue;
             }
@@ -399,6 +419,7 @@ impl JobEntry {
             resyncing: None,
             unreached: false,
             parked: true,
+            claimed: watch::Sender::new(false),
         }
     }
 
