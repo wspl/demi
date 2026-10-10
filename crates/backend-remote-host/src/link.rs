@@ -95,6 +95,12 @@ pub trait LinkPolicy {
     /// be.
     fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>>;
 
+    /// A job the backend recorded running, which no agent has taken up yet,
+    /// makes an `rpc` call: the agent that ran it takes it up, as a report
+    /// of it does (`runtime.md` § Command reports), so the call is served.
+    /// Answers once the take-up was asked for, or why it cannot be.
+    fn take_up_job(&self, job: String) -> LocalBoxFuture<'static, Result<(), String>>;
+
     /// A native service on the device asks for `count` numbers of
     /// `conversation`'s `sequence` (`native-runtime.md` § Conversation
     /// numbers): the first of them, reserved, or why there are none.
