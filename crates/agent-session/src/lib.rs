@@ -38,7 +38,9 @@ use std::{
     time::Duration,
 };
 
-use demi_agent_store::{Checkpoint, CheckpointUpdate, SessionStore, StoreError, media::HeldMedia};
+use demi_agent_store::{
+    Checkpoint, CheckpointUpdate, RunningCommand, SessionStore, StoreError, media::HeldMedia,
+};
 use demi_agent_transcript::{IdSource, TranscriptLog, last_assistant_text};
 use demi_conversation_socket_protocol::{AbortResult, TranscriptPatch, TranscriptVersion};
 use demi_provider_common::{ProviderFailure, ProviderRuntime};
@@ -60,8 +62,8 @@ pub use editing::{
 };
 pub use retry::RetryPolicy;
 pub use runtime::{
-    InputArrival, NewContext, SeenContext, SessionRuntime, StepOutcomes, ToolEffect, ToolFailure,
-    ToolInvocation, ToolOutcome, WindowEnd,
+    CallCommand, InputArrival, NewContext, SeenContext, SessionRuntime, StartedCommand,
+    StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome, WindowEnd,
 };
 
 use self::{
@@ -516,16 +518,19 @@ impl AgentSession {
     }
 
     /// A session from its checkpoint (`runtime.md` § Restoring). A tool call
-    /// still marked executing completes as interrupted and never runs again;
-    /// the session is idle, watches the commands its calls left running
-    /// again, and hands back its queue and whether a turn was interrupted.
-    /// Waiting input of an interrupted turn waits for the node's next
-    /// action.
+    /// still marked executing completes as interrupted and never runs again,
+    /// naming the command it started when `running`, the node's commands
+    /// the conversation records running, holds one of the call's, which
+    /// then reports to the node as one a call left running does; the
+    /// session is idle, watches the commands its calls left running again,
+    /// and hands back its queue and whether a turn was interrupted. Waiting
+    /// input of an interrupted turn waits for the node's next action.
     pub fn restore(
         checkpoint: Checkpoint,
         id: NodeId,
         runtime: Box<dyn ProviderRuntime>,
         deps: SessionDeps,
+        running: &[RunningCommand],
     ) -> Result<(Self, Continuation), RestoreError> {
         let Checkpoint { state, transcript } = checkpoint;
         check_restored_input(&id, &transcript, &state.agent_inputs)?;
@@ -538,11 +543,24 @@ impl AgentSession {
             return Err(RestoreError::Edits(receipt.operation_id.to_string()));
         }
         let mut transcript = TranscriptLog::new(transcript, deps.ids.clone(), deps.clock.clone());
+        let mut watched = Watched::default();
+        for interval in &state.intervals {
+            let title = started_title(transcript.blocks(), &interval.command_id);
+            watched.add(interval.command_id.clone(), interval.interval_ms, title);
+        }
         for call in transcript.pending_tool_calls() {
-            let text = format!(
-                "Tool call interrupted: {} (the process died before a result was recorded)",
-                call.tool_name
-            );
+            let command = running
+                .iter()
+                .find(|running| running.tool_use_id == call.tool_use_id)
+                .map(|running| running.command.clone());
+            let text = core::interrupted_text(&core::CallEnd::Crashed, command.as_ref());
+            if let Some(command) = command
+                && watched.get(&command).is_none()
+            {
+                // Only its end reports: the call's interval is the tool's to
+                // read.
+                watched.add(command, None, call_title(&call.input));
+            }
             transcript.complete_tool_call(
                 &call.tool_use_id,
                 vec![ToolResultContentBlock::Text { text }],
@@ -554,11 +572,6 @@ impl AgentSession {
         // A root restored once from its interrupted turn saved its
         // interruption record, which keeps the hold across a later restore.
         let held = interrupted || transcript.ends_with_interruption();
-        let mut watched = Watched::default();
-        for interval in &state.intervals {
-            let title = started_title(transcript.blocks(), &interval.command_id);
-            watched.add(interval.command_id.clone(), interval.interval_ms, title);
-        }
         let parts = CoreParts {
             id,
             cwd: state.cwd,
@@ -583,8 +596,9 @@ impl AgentSession {
         // The rows the store holds are current; the completed calls mark
         // theirs for the next save.
         session.shared.update(SessionCore::commit);
-        for interval in &state.intervals {
-            reports::start_watch(&session.shared, &interval.command_id);
+        let commands = session.shared.read(|core| core.watched.commands());
+        for command in &commands {
+            reports::start_watch(&session.shared, command);
         }
         Ok((session, continuation))
     }
@@ -708,7 +722,19 @@ impl AgentSession {
 
     /// Unwinds the unfinished turn to its resume point and continues it.
     pub fn resume(&self) -> Result<ActionHandle, AdmissionError> {
-        self.shared.update(|core| core.admit(ActionKind::Resume))
+        self.shared
+            .update(|core| core.admit(ActionKind::Resume { reason: None }))
+    }
+
+    /// Resumes the unfinished turn as Demi does, such as a subagent's after
+    /// a backend restart: the model reads `reason`
+    /// (`failures-and-recovery.md` § The unfinished turn).
+    pub fn resume_after(&self, reason: &str) -> Result<ActionHandle, AdmissionError> {
+        self.shared.update(|core| {
+            core.admit(ActionKind::Resume {
+                reason: Some(reason.to_owned()),
+            })
+        })
     }
 
     /// The estimate of the next request with the window in use
@@ -899,8 +925,12 @@ impl AgentSession {
 
     /// Stops the running action and returns once it recorded the stop;
     /// what waits to run stays, and runs once admission lets it.
-    pub async fn stop_running(&self) {
-        if let Some(cancel) = self.shared.update(SessionCore::stop_running) {
+    /// `hold` names the hold, as the stopped calls' results say it
+    /// (`runtime.md` § Interrupted calls), such as "the Cloud is being
+    /// reset".
+    pub async fn stop_running(&self, hold: &str) {
+        let hold: Rc<str> = hold.into();
+        if let Some(cancel) = self.shared.update(|core| core.stop_running(hold)) {
             cancel.recorded().await;
         }
     }
@@ -1066,15 +1096,19 @@ fn started_title(blocks: &[Block], command: &CommandId) -> String {
         .find_map(|block| match block {
             Block::ToolCall(call) => match &call.view {
                 Some(ToolView::Shell(view)) if &view.command_id == command => {
-                    serde_json::from_str::<serde_json::Value>(&call.input)
-                        .ok()?
-                        .get("description")?
-                        .as_str()
-                        .map(str::to_owned)
+                    Some(call_title(&call.input))
                 }
                 _ => None,
             },
             _ => None,
         })
+        .unwrap_or_default()
+}
+
+/// The `description` of a call whose input is `input`; empty without one.
+fn call_title(input: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(input)
+        .ok()
+        .and_then(|input| input.get("description")?.as_str().map(str::to_owned))
         .unwrap_or_default()
 }

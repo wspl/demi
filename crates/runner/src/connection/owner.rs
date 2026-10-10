@@ -1,7 +1,9 @@
 //! The connection's owner: it reads each message and routes it, and it owns
-//! what lasts as long as the connection. Every branch of its loop returns
-//! without waiting for the work it started, apart from the wait for room in
-//! the backend's outbound queue, which the transport drains on its own.
+//! what lasts as long as the connection. The jobs outlive it: it serves what
+//! the registration keeps while it lasts ([`Kept`]). Every branch of its
+//! loop returns without waiting for the work it started, apart from the wait
+//! for room in the backend's outbound queue, which the transport drains on
+//! its own.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -20,14 +22,13 @@ use demi_runner_host::{
 };
 use demi_runner_jobs::{
     commands::{
-        contexts::{self, ContextIndex, ContextPaths, ContextTable, Installation, Installed},
+        contexts::{self, ContextIndex, ContextPaths, Installation, Installed},
         dispatch::Dispatcher,
         streams::ServiceStreams,
     },
-    connection::{ConnectionHandle, Ended, Relay, Request},
-    job_directories::JobDirectories,
+    connection::Live,
     kept_output::KeptReader,
-    tasks::{Commands, JobConfig, JobTable, TaskCommand, TaskSpec, WorkId, failure_exit},
+    tasks::{TaskCommand, TaskSpec, WorkId, failure_exit},
 };
 use demi_runner_process::{
     backend::Backend,
@@ -44,7 +45,7 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-use super::Transport;
+use super::{Transport, kept::Kept};
 use crate::{
     direct::HostOperations,
     host_log::{self, HostLogReader},
@@ -93,6 +94,8 @@ pub struct Registered {
     pub volumes: Vec<ManagedVolume>,
     /// The command that removes this runner; none for a managed guest's.
     pub removal: Option<String>,
+    /// The number this start of the runner drew, which each hello names.
+    pub instance: u64,
 }
 
 impl Registered {
@@ -124,18 +127,12 @@ enum Work {
 
 struct Owner<'r> {
     registered: &'r Registered,
-    handle: ConnectionHandle,
-    jobs: JobTable,
-    /// Where the jobs keep their output until the backend releases them.
-    directories: Arc<JobDirectories>,
-    contexts: ContextTable,
-    /// The manifest jobs see, and the leases of the one installed.
-    installation: watch::Sender<Installation>,
-    installed: Option<Installed>,
-    /// Numbers manifest installs, so only the latest one counts.
-    installs: u64,
-    relay: Relay,
-    watches: JoinSet<Ended>,
+    /// What the registration keeps, which this connection serves.
+    kept: &'r mut Kept,
+    /// This connection's messages to the backend and its end.
+    live: Live,
+    /// This connection's queue of job and process output.
+    output: mpsc::Sender<wire::Frame>,
     work: JoinSet<Work>,
     host: HostServer,
     streams: ServiceStreams,
@@ -149,19 +146,25 @@ struct Owner<'r> {
     direct: Direct,
 }
 
-/// Serves one connection until it ends, then ends everything it owns.
-pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Result<End> {
-    let (handle, mut requests) =
-        ConnectionHandle::new(transport.control.clone(), transport.cancellation());
-    let (installation, installations) = watch::channel(Installation::Absent);
-    let directories = JobDirectories::open(registered.jobs.clone()).await;
+/// Serves one connection until it ends, then ends everything it owns; the
+/// jobs `kept` holds run on.
+pub async fn serve(
+    registered: &Registered,
+    kept: &mut Kept,
+    mut transport: Transport,
+) -> io::Result<End> {
+    let live = Live {
+        control: transport.control.clone(),
+        closed: transport.cancellation(),
+    };
     let host = HostServer::new(
         transport.output.clone(),
         registered.cwd.clone(),
         registered.pipes.clone(),
     );
     let streams = ServiceStreams::new(
-        handle.clone(),
+        kept.handle.clone(),
+        transport.control.clone(),
         registered.pipes.clone(),
         registered.services.clone(),
         registered.management.draining.clone(),
@@ -172,36 +175,17 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
         watches: host.watches().clone(),
         streams: streams.opener(),
         control: tokio::runtime::Handle::current(),
-        backend: handle.control.clone(),
-        closed: handle.closed().clone(),
+        backend: transport.control.clone(),
+        closed: transport.cancellation(),
     };
     let (direct, driver) = demi_runner_direct::direct(Arc::new(operations), Addresses::Interfaces);
     // The peers' thread ends once the connection lets go of `direct`.
     driver.spawn()?;
     let mut owner = Owner {
         registered,
-        directories: directories.clone(),
-        jobs: JobTable::new(JobConfig {
-            output: transport.output.clone(),
-            directories,
-            pipes: registered.pipes.clone(),
-            shell: registered.shell.clone(),
-            commands: Some(Commands {
-                dispatcher: registered.dispatcher.clone(),
-                connection: handle.clone(),
-                installation: installations,
-                paths: registered.paths.clone(),
-                services: registered.services.clone(),
-                endpoint: registered.endpoint.clone(),
-                home: registered.state.root.to_string_lossy().into_owned(),
-            }),
-        }),
-        contexts: ContextTable::new(registered.index.clone()),
-        installation,
-        installed: None,
-        installs: 0,
-        relay: Relay::default(),
-        watches: JoinSet::new(),
+        kept,
+        live,
+        output: transport.output.clone(),
         work: JoinSet::new(),
         host,
         streams,
@@ -210,14 +194,11 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
             transport.control.clone(),
             transport.cancellation(),
         ),
-        handle,
         cached: registered.cached.clone(),
         revoke_asked: false,
         direct,
     };
-    let result = owner.run(&mut transport, &mut requests).await;
-    // Requests still queued get no answer; their askers see the end.
-    drop(requests);
+    let result = owner.run(&mut transport).await;
     owner.close().await;
     let closed = transport.close().await;
     // A connection that failed fails the owner too, whose own error, such
@@ -229,15 +210,13 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
 }
 
 impl Owner<'_> {
-    async fn run(
-        &mut self,
-        transport: &mut Transport,
-        requests: &mut mpsc::Receiver<Request>,
-    ) -> io::Result<End> {
+    async fn run(&mut self, transport: &mut Transport) -> io::Result<End> {
         let hello = wire::encode(&wire::Outbound::Hello {
             protocol: wire::VERSION,
             device_token: self.registered.token.borrow().clone(),
             runner: self.registered.runner.clone(),
+            instance: self.registered.instance,
+            jobs: self.kept.hello_jobs(),
         })
         .map_err(io::Error::other)?;
         self.send(hello).await?;
@@ -259,21 +238,20 @@ impl Owner<'_> {
                 }
                 // Draining waits for the jobs that run (`runner.md`
                 // § Connection and identity).
-                _ = management.draining.cancelled(), if self.jobs.is_empty() => {
+                _ = management.draining.cancelled(), if self.kept.jobs.is_empty() => {
                     return Ok(End::Stopped);
                 }
                 _ = volume_tick.tick(), if management.phase() == Phase::Online => {
-                    if self.jobs.job_count() == 0 {
+                    if self.kept.jobs.job_count() == 0 {
                         self.volumes.poll();
                     }
                 }
                 // Before the backend's messages: a call registers before it
                 // sends the call, so a reply queued beside its registration
                 // finds the call.
-                Some(request) = requests.recv() => self.request(request).await?,
-                Some(id) = self.jobs.finished() => self.finished(&id),
-                Some(ended) = self.watches.join_next() => {
-                    self.relay.ended(ended.expect("relay watches do not panic"));
+                event = self.kept.next() => {
+                    let control = self.live.control.clone();
+                    self.kept.handle(event, Some(&control), self.registered).await;
                 }
                 Some(work) = self.work.join_next() => {
                     self.worked(work.expect("connection work does not panic"))?;
@@ -304,45 +282,25 @@ impl Owner<'_> {
 
     /// Queues a frame for the backend, waiting for room.
     async fn send(&self, frame: wire::Frame) -> io::Result<()> {
-        self.handle
+        self.live
             .control
             .send(frame)
             .await
             .map_err(|_| io::Error::other("host connection closed"))
     }
 
-    async fn request(&mut self, request: Request) -> io::Result<()> {
-        match request {
-            Request::Call { id, events, ended } => {
-                self.relay.call(id, events, ended, &mut self.watches);
-            }
-            Request::Ask {
-                question,
-                abandoned,
-            } => {
-                let frame = self
-                    .relay
-                    .ask(question, abandoned, &mut self.watches)
-                    .map_err(io::Error::other)?;
-                self.send(frame).await?;
-            }
-            Request::Context {
-                context,
-                leases,
-                reply,
-            } => {
-                // A job that gave up no longer needs to know.
-                let _gone = reply.send(self.contexts.insert(context, leases));
-            }
+    /// The backend took this connection: the jobs' messages and their
+    /// commands' requests go to it, after the exits of the jobs that ended
+    /// and are not released, which a connection that ended may have lost.
+    async fn online(&mut self) -> io::Result<()> {
+        let exits = self.kept.connected(self.live.clone(), self.output.clone());
+        for exit in exits {
+            self.output
+                .send(exit)
+                .await
+                .map_err(|_| io::Error::other("host connection closed"))?;
         }
         Ok(())
-    }
-
-    fn finished(&mut self, id: &WorkId) {
-        if let WorkId::Job(job) = id {
-            self.contexts.remove(job);
-        }
-        self.registered.management.set_jobs(self.jobs.job_count());
     }
 
     fn worked(&mut self, work: Work) -> io::Result<()> {
@@ -351,16 +309,17 @@ impl Owner<'_> {
                 installation,
                 result,
             } => {
+                let kept = &mut *self.kept;
                 // A later manifest replaced this one before it was kept.
-                if installation != self.installs {
+                if installation != kept.installs {
                     return Ok(());
                 }
                 let installed = result?;
-                self.installation
+                kept.installation
                     .send_replace(Installation::Ready(installed.manifest.clone()));
                 // The new manifest's leases count before the old one's end, so
                 // a service both name stays resident.
-                self.installed = Some(installed);
+                kept.installed = Some(installed);
             }
             Work::Stored(result) => result?,
             Work::Paired { result, name } => {
@@ -377,7 +336,7 @@ impl Owner<'_> {
 
     /// Routes one message; `Some` ends the connection.
     async fn route(&mut self, message: Inbound) -> io::Result<Option<End>> {
-        if self.relay.route(&message) {
+        if self.kept.relay.route(&message) {
             return Ok(None);
         }
         let registered = self.registered;
@@ -397,6 +356,7 @@ impl Owner<'_> {
                 management.set_phase(Phase::Online);
                 tracing::warn!("online");
                 registered.announce_paired(&device_name);
+                self.online().await?;
                 self.report_installed().await?;
             }
             Inbound::ClaimPending { claim_token } if management.phase() != Phase::Online => {
@@ -419,6 +379,7 @@ impl Owner<'_> {
                     }
                 });
                 management.set_phase(Phase::Online);
+                self.online().await?;
                 // A Host paired again may hold artifacts from before.
                 self.report_installed().await?;
             }
@@ -449,7 +410,7 @@ impl Owner<'_> {
             }
             Inbound::Ping {} => {
                 let pong = wire::encode(&wire::Outbound::Pong {
-                    jobs: self.jobs.job_count() as u64,
+                    jobs: self.kept.jobs.job_count() as u64,
                 })
                 .map_err(io::Error::other)?;
                 self.send(pong).await?;
@@ -471,8 +432,8 @@ impl Owner<'_> {
                 conversation_id,
             } => {
                 let services = self.registered.services.clone();
-                let control = self.handle.control.clone();
-                let closed = self.handle.closed().clone();
+                let control = self.live.control.clone();
+                let closed = self.live.closed.clone();
                 self.work.spawn(async move {
                     // The services end what they hold; the runner holds no
                     // files of the conversation (`resource-lifecycle.md`
@@ -495,9 +456,9 @@ impl Owner<'_> {
                 });
             }
             Inbound::Manifest { manifest } => {
-                self.installs += 1;
-                let installation = self.installs;
-                self.installation.send_replace(Installation::Installing);
+                self.kept.installs += 1;
+                let installation = self.kept.installs;
+                self.kept.installation.send_replace(Installation::Installing);
                 let paths = self.registered.paths.clone();
                 let services = self.registered.services.clone();
                 let reserved = self.registered.reserved.clone();
@@ -510,10 +471,10 @@ impl Owner<'_> {
                 });
             }
             Inbound::JobRead { id, job_id, output } => {
-                let output_of = self.directories.output(&job_id);
+                let output_of = self.kept.directories.output(&job_id);
                 let pipes = self.registered.pipes.clone();
-                let control = self.handle.control.clone();
-                let closed = self.handle.closed().clone();
+                let control = self.live.control.clone();
+                let closed = self.live.closed.clone();
                 self.work.spawn(async move {
                     read_job(output_of, id, output, pipes, control, closed).await;
                     Work::Done
@@ -527,18 +488,18 @@ impl Owner<'_> {
             } => {
                 let paths = numbers
                     .into_iter()
-                    .map(|number| self.directories.medium(&job_id, number))
+                    .map(|number| self.kept.directories.medium(&job_id, number))
                     .collect();
                 let pipes = self.registered.pipes.clone();
-                let control = self.handle.control.clone();
-                let closed = self.handle.closed().clone();
+                let control = self.live.control.clone();
+                let closed = self.live.closed.clone();
                 self.work.spawn(async move {
                     read_media(paths, id, output, pipes, control, closed).await;
                     Work::Done
                 });
             }
             Inbound::JobRelease { job_id } => {
-                let directories = self.directories.clone();
+                let directories = self.kept.directories.clone();
                 self.work.spawn(async move {
                     directories.release(&job_id).await;
                     Work::Done
@@ -563,8 +524,8 @@ impl Owner<'_> {
                 stun,
             } => {
                 let direct = self.direct.clone();
-                let control = self.handle.control.clone();
-                let closed = self.handle.closed().clone();
+                let control = self.live.control.clone();
+                let closed = self.live.closed.clone();
                 self.work.spawn(async move {
                     // The answer goes first; the candidates the peer finds
                     // after it follow until the peer ends.
@@ -606,8 +567,8 @@ impl Owner<'_> {
             // The relay probe is answered at once, ahead of the connection's
             // bulk output, so its round trip is the path's own.
             Inbound::DirectPing { peer, id } => {
-                let control = self.handle.control.clone();
-                let closed = self.handle.closed().clone();
+                let control = self.live.control.clone();
+                let closed = self.live.closed.clone();
                 self.work.spawn(async move {
                     send_control(&control, &closed, &wire::Outbound::DirectPong { peer, id }).await;
                     Work::Done
@@ -620,8 +581,8 @@ impl Owner<'_> {
                 source,
             } => {
                 let log = self.registered.log.clone();
-                let control = self.handle.control.clone();
-                let closed = self.handle.closed().clone();
+                let control = self.live.control.clone();
+                let closed = self.live.closed.clone();
                 self.work.spawn(async move {
                     let query = host_log::Query {
                         since,
@@ -661,7 +622,7 @@ impl Owner<'_> {
     /// that cannot begin is answered with its exit.
     async fn task(&mut self, message: Inbound) -> io::Result<()> {
         let routed = self.start_or_route(&message);
-        self.registered.management.set_jobs(self.jobs.job_count());
+        self.registered.management.set_jobs(self.kept.jobs.job_count());
         let Err(error) = routed else {
             return Ok(());
         };
@@ -714,7 +675,7 @@ impl Owner<'_> {
                     }
                 }
                 values.extend([demi_home()]);
-                self.jobs.start(TaskSpec {
+                self.kept.jobs.start(TaskSpec {
                     id: spawn_id.clone(),
                     cwd: cwd
                         .as_ref()
@@ -754,7 +715,7 @@ impl Owner<'_> {
                     .entry("HOME".to_owned())
                     .or_insert_with(|| registered.runner.identity.home_dir.clone());
                 values.extend([demi_home()]);
-                self.jobs.start(TaskSpec {
+                self.kept.jobs.start(TaskSpec {
                     id: job_id.clone(),
                     cwd: PathBuf::from(cwd),
                     env: values,
@@ -767,26 +728,30 @@ impl Owner<'_> {
                 })
             }
             Inbound::SpawnStdin { spawn_id, bytes } => self
+                .kept
                 .jobs
                 .input(&WorkId::Spawn(spawn_id.clone()), bytes.0.clone().into()),
             Inbound::JobStdin { job_id, bytes } => self
+                .kept
                 .jobs
                 .input(&WorkId::Job(job_id.clone()), bytes.0.clone().into()),
             Inbound::SpawnStdinEnd { spawn_id } => {
-                self.jobs.end_input(&WorkId::Spawn(spawn_id.clone()))
+                self.kept.jobs.end_input(&WorkId::Spawn(spawn_id.clone()))
             }
-            Inbound::JobStdinEnd { job_id } => self.jobs.end_input(&WorkId::Job(job_id.clone())),
-            Inbound::SpawnKill { spawn_id, signal } => self.jobs.signal(
+            Inbound::JobStdinEnd { job_id } => {
+                self.kept.jobs.end_input(&WorkId::Job(job_id.clone()))
+            }
+            Inbound::SpawnKill { spawn_id, signal } => self.kept.jobs.signal(
                 &WorkId::Spawn(spawn_id.clone()),
                 signal.unwrap_or(wire::Signal::Terminate),
             ),
             Inbound::JobFollow { job_id, follow } => {
-                self.jobs.follow(&WorkId::Job(job_id.clone()), *follow);
+                self.kept.jobs.follow(&WorkId::Job(job_id.clone()), *follow);
                 Ok(())
             }
             Inbound::JobKill { job_id, signal } => {
-                self.contexts.cancel(job_id);
-                self.jobs.signal(
+                self.kept.contexts.cancel(job_id);
+                self.kept.jobs.signal(
                     &WorkId::Job(job_id.clone()),
                     signal.unwrap_or(wire::Signal::Terminate),
                 )
@@ -795,31 +760,27 @@ impl Owner<'_> {
         }
     }
 
-    /// Ends everything the connection owns: jobs, requests and streams stop,
-    /// and losing the backend shuts every service down (`runner.md`
+    /// Ends everything the connection owns: requests, raw processes and
+    /// streams stop; the jobs and the services run on (`runner.md`
     /// § Command lifetime).
     async fn close(&mut self) {
-        self.handle.closed().cancel();
+        self.live.closed.cancel();
+        self.kept.disconnected();
+        self.kept.jobs.end_spawns();
         // Without the backend the runner can no longer hear that a page
         // went away (`direct-channel.md` § Who may connect).
         self.direct.close_all();
-        tokio::join!(
-            self.jobs.close(),
-            self.host.close(),
-            self.streams.close(),
-            self.volumes.close()
-        );
-        // State writes finish, since a claimed token must not be lost; the
-        // other work sees the connection closed and ends at once.
-        while self.work.join_next().await.is_some() {}
-        // The connection's jobs ended, and nothing reads their directories
-        // any more.
-        self.directories.clear().await;
-        self.watches.shutdown().await;
-        self.installation.send_replace(Installation::Absent);
-        self.installed = None;
-        self.registered.management.set_jobs(0);
-        self.registered.services.stop_all().await;
+        tokio::join!(self.host.close(), self.streams.close(), self.volumes.close());
+        // State writes finish, since a claimed token must not be lost, and a
+        // manifest install is kept, since jobs wait for it; the other work
+        // sees the connection closed and ends at once.
+        while let Some(work) = self.work.join_next().await {
+            if let Ok(work @ Work::Installed { .. }) = work
+                && let Err(error) = self.worked(work)
+            {
+                tracing::warn!("the manifest was not installed: {error}");
+            }
+        }
     }
 }
 

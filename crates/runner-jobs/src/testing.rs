@@ -24,7 +24,7 @@ use crate::{
         dispatch::Dispatcher,
         local::Server,
     },
-    connection::{ConnectionHandle, Relay, Request},
+    connection::{ConnectionHandle, Live, Reach, Relay, Request},
     job_media::{JobMedia, MEDIA_DIRECTORY},
 };
 
@@ -39,6 +39,11 @@ pub struct Dispatch {
     manifest: Arc<Manifest>,
     paths: ContextPaths,
     handle: ConnectionHandle,
+    /// The connection's frames to the backend.
+    control: mpsc::Sender<wire::Frame>,
+    closed: CancellationToken,
+    /// Keeps the connection reachable while the dispatch lives.
+    _reach: watch::Sender<Reach>,
     inbound: mpsc::Sender<wire::Inbound>,
     removals: mpsc::Sender<String>,
     owner: tokio::task::JoinHandle<()>,
@@ -72,16 +77,20 @@ impl Dispatch {
             .expect("local endpoint");
         let (control, outgoing) = mpsc::channel(32);
         let closed = CancellationToken::new();
-        let (handle, requests) = ConnectionHandle::new(control.clone(), closed);
+        let reach = watch::Sender::new(Reach::Connected(Live {
+            control: control.clone(),
+            closed: closed.clone(),
+        }));
+        let (handle, requests) = ConnectionHandle::new(reach.subscribe());
         let (inbound, routed) = mpsc::channel(32);
         let (removals, removed) = mpsc::channel(16);
         let owner = tokio::spawn(serve(
-            control,
+            control.clone(),
             requests,
             routed,
             removed,
             index,
-            handle.closed().clone(),
+            closed.clone(),
         ));
         Self {
             services,
@@ -91,6 +100,9 @@ impl Dispatch {
             manifest: installed.manifest,
             paths,
             handle,
+            control,
+            closed,
+            _reach: reach,
             inbound,
             removals,
             owner,
@@ -121,7 +133,7 @@ impl Dispatch {
         let media = Arc::new(JobMedia::new(
             job_id.into(),
             self.paths.directory.join(job_id).join(MEDIA_DIRECTORY),
-            self.handle.control.clone(),
+            self.control.clone(),
         ));
         let context = Arc::new(
             ExecutionContext::create(
@@ -157,7 +169,7 @@ impl Dispatch {
 
     pub async fn close(self) {
         self.server.close().await.expect("local endpoint closes");
-        self.handle.closed().cancel();
+        self.closed.cancel();
         self.owner.await.expect("connection owner");
         self.services.close().await;
     }

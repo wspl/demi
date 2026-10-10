@@ -10,9 +10,11 @@ use axum::extract::ws::{Message, WebSocket};
 use demi_backend_database::StorageError;
 use demi_backend_database::devices::{DeviceChange, DeviceRecord, DeviceRemoval};
 use demi_backend_page_sync::Part;
-use demi_backend_remote_host::{Link, LinkOptions, host_identity};
+use demi_backend_remote_host::{Hello, Link, LinkOptions, host_identity};
 use demi_backend_runners::devices::{DeviceRecorder, Serving, Updating, send};
-use demi_runner_protocol::wire::{HelloErrorCode, Inbound, RunnerInfo};
+use demi_runner_protocol::wire::{HelloErrorCode, Inbound, KeptJob, RunnerInfo};
+use demi_web_api_protocol::devices::DeviceKind;
+use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::devices::DeviceDto;
 use demi_web_api_protocol::ids::DeviceId;
 use tokio::sync::oneshot;
@@ -25,12 +27,21 @@ use super::policy::ShardPolicy;
 /// its device arrived.
 const REPLACED: &str = "replaced by a new connection of the device's runner";
 
+/// What a runner's hello says of the jobs it keeps (`runner.md` § Command
+/// lifetime).
+pub struct KeptJobs {
+    /// The number this start of the runner drew.
+    pub instance: u64,
+    pub jobs: Vec<KeptJob>,
+}
+
 impl Shard {
     /// Takes the socket of a runner that presented `device`'s token.
     pub async fn adopt_runner(
         self: Rc<Self>,
         device: DeviceRecord,
         runner: RunnerInfo,
+        kept: KeptJobs,
         mut socket: WebSocket,
     ) {
         #[cfg(feature = "testing")]
@@ -43,6 +54,19 @@ impl Shard {
         if self.devices().hello(&device.id) {
             self.mark(Part::Devices);
         }
+        // The jobs the backend recorded on the device, which a backend that
+        // started again takes up (`sessions-and-targets.md` § Recovery and
+        // persistence).
+        let recorded = match self.services().control.running_jobs(device.id.clone()).await {
+            Ok(recorded) => recorded,
+            Err(error) => {
+                // Without them a restarted backend stops the device's jobs
+                // as ones it has no command for, and their commands stay
+                // running in their conversations' records.
+                tracing::warn!(device = %device.id, error = &error as &dyn std::error::Error, "the device's running jobs could not be read");
+                Vec::new()
+            }
+        };
         // A held connection that answers its ping keeps the device; one
         // that does not is the same runner's, lost without a close, and
         // gives way.
@@ -83,10 +107,19 @@ impl Shard {
             device_id: device.id.to_string(),
             device_name: device.name.clone(),
         };
+        let hello = Hello {
+            instance: kept.instance,
+            release: runner.version.clone(),
+            jobs: kept.jobs,
+            last_release: device.runner_version.clone(),
+            managed: device.kind == DeviceKind::Managed,
+            recorded: recorded.iter().map(|(job, _)| job.clone()).collect(),
+        };
         // A closing shard takes no runner; dropping the socket closes it.
-        let Some(serving) = self.bind(&device.id, runner) else {
+        let Some(serving) = self.bind(&device.id, runner, hello) else {
             return;
         };
+        self.take_up(recorded.into_iter().map(|(_, conversation)| conversation));
         // A runner that went away before its welcome ends its connection at
         // once, as the connection reads its socket. What the connection
         // queued meanwhile leaves after the welcome.
@@ -104,8 +137,17 @@ impl Shard {
         bound: oneshot::Sender<DeviceDto>,
     ) {
         // A closing shard takes no runner, and the claim that waits for the
-        // answer deletes the device it made.
-        let Some(serving) = self.bind(&device.id, runner) else {
+        // answer deletes the device it made. A device just paired has no
+        // jobs.
+        let hello = Hello {
+            instance: 0,
+            release: runner.version.clone(),
+            jobs: Vec::new(),
+            last_release: None,
+            managed: false,
+            recorded: Default::default(),
+        };
+        let Some(serving) = self.bind(&device.id, runner, hello) else {
             return;
         };
         // The claim that waits for this answer may have gone; the runner is
@@ -120,7 +162,12 @@ impl Shard {
     /// Publishes a new connection of the device under the shard's policy,
     /// and records what its runner's hello says. None once the shard is
     /// closing, whose close ends every connection it published before.
-    fn bind(self: &Rc<Self>, device: &DeviceId, runner: RunnerInfo) -> Option<Serving> {
+    fn bind(
+        self: &Rc<Self>,
+        device: &DeviceId,
+        runner: RunnerInfo,
+        hello: Hello,
+    ) -> Option<Serving> {
         if self.is_closing() {
             return None;
         }
@@ -130,6 +177,8 @@ impl Shard {
             pipes: self.pipes().clone(),
             policy: Rc::new(ShardPolicy::new(self, device.clone())),
             ping: self.services().runners.ping,
+            jobs: self.devices().jobs(device),
+            hello,
         });
         let seen = DeviceRecorder::new(
             self.services().control.clone(),
@@ -142,6 +191,30 @@ impl Shard {
         self.tasks()
             .spawn_local(async move { seen.hello(device, runner.os, runner.version).await });
         Some(serving)
+    }
+
+    /// Restores the tree of each of `conversations`, whose commands ran on a
+    /// device whose runner just connected, as an `open` does, so the agent
+    /// that ran each command takes it up again and hears of its end
+    /// (`runtime.md` § Command reports). A tree that is live already is
+    /// left as it is.
+    fn take_up(self: &Rc<Self>, conversations: impl Iterator<Item = ConversationId>) {
+        let conversations: std::collections::BTreeSet<ConversationId> = conversations.collect();
+        for conversation in conversations {
+            // Counted before the open, so the close waits for it before the
+            // agent shuts down.
+            let opening = self.tree_openers().token();
+            let shard = self.clone();
+            self.tasks().spawn_local(async move {
+                let _opening = opening;
+                if shard.is_closing() {
+                    return;
+                }
+                if let Err(error) = shard.restore_tree(&conversation).await {
+                    tracing::warn!(%conversation, "the tree whose commands ran on the device was not restored: {error}");
+                }
+            });
+        }
     }
 
     /// Shows `device` as updating: its runner was just sent to the
@@ -254,7 +327,15 @@ impl Shard {
             managed: None,
             installation: None,
         };
-        self.bind(device, runner)
+        let hello = Hello {
+            instance: 0,
+            release: runner.version.clone(),
+            jobs: Vec::new(),
+            last_release: None,
+            managed: false,
+            recorded: Default::default(),
+        };
+        self.bind(device, runner, hello)
             .expect("an open shard binds")
             .into_driver()
     }

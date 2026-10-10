@@ -38,6 +38,7 @@ mod hosts;
 mod install;
 mod instructions;
 mod isolation;
+mod lifetime;
 mod machines;
 mod native;
 mod organize;

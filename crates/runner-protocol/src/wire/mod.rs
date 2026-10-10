@@ -13,7 +13,7 @@ pub use kept::{
 };
 pub use messages::{
     ArtifactOwner, ChangeKind, Descriptor, DirEntry, DirectoryFile, FileHash, FileRead, FileStat, OpenedFile, file_version, GitChange, GitChanges,
-    HelloErrorCode, HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, LogLine,
+    HelloErrorCode, HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, KeptEnd, KeptJob, LogLine,
     LookPath, Looked, MAX_INSTALLED, OperatingSystem, Outbound, OutputLengths, OutputStream, PipeRef,
     RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind,
     StreamArtifactOwner, VolumeName, WriteExists,
@@ -26,7 +26,14 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names.
-pub const VERSION: u32 = 38;
+pub const VERSION: u32 = 39;
+/// How long a runner keeps its jobs and services without a connection
+/// before it stops them (`runner.md` § Command lifetime).
+pub const UNREACHED_GRACE: Duration = Duration::from_secs(10 * 60);
+/// How often a runner asks its connection whether the backend is there, and
+/// how long one unanswered counts as lost (`runner.md` § Command lifetime).
+pub const RUNNER_PING_INTERVAL: Duration = Duration::from_secs(30);
+pub const RUNNER_PING_TIMEOUT: Duration = Duration::from_secs(60);
 /// The largest frame either end sends.
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 /// How much of the start of each stream a job always sends, and how much of
@@ -75,6 +82,7 @@ pub enum WireError {
 }
 
 /// An encoded message.
+#[derive(Clone)]
 pub struct Frame(Vec<u8>);
 
 impl Frame {

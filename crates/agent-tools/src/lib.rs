@@ -26,9 +26,10 @@ use std::{
 
 use bytes::Bytes;
 use demi_agent_session::{
-    StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome, WindowEnd,
+    CallCommand, StartedCommand, StepOutcomes, ToolEffect, ToolFailure, ToolInvocation,
+    ToolOutcome, WindowEnd,
 };
-use demi_agent_store::AgentTreeStore;
+use demi_agent_store::{AgentTreeStore, RunningCommand};
 use demi_host_interface::{
     CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller, Numbers,
     PageFeed, ShellEnvironment, ShellError,
@@ -251,8 +252,16 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         // command runs on, and a Stop of the action leaves it running
         // (`runtime.md` § Stop).
         let stop = CancellationToken::new();
-        let stopping = stop.clone().drop_guard();
+        let stopping = CallStop {
+            stop: Some(stop.clone()),
+            call: call.command.clone(),
+        };
         let command = environment.start(request, stop).await?;
+        call.command.started(StartedCommand {
+            command: command.clone(),
+            interval_ms,
+            title: input.description.0.clone(),
+        });
         let (status, ended_by) = watch(
             environment.as_ref(),
             &command,
@@ -292,6 +301,22 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         environment.release_command(command).await;
     }
 
+    /// Takes up `running`, a command the node ran that the conversation
+    /// records running, in the node's environment for the conversation's
+    /// current Host (`sessions-and-targets.md` § Recovery and persistence).
+    pub async fn adopt(&self, running: &RunningCommand) -> Result<(), CallError> {
+        let (_, environment) = self.environment(Handle::None).await?;
+        environment.adopt(
+            &running.command,
+            &running.tool_use_id,
+            &running.job,
+            JobCaller {
+                node: self.context.node.clone(),
+            },
+        );
+        Ok(())
+    }
+
     /// Writes `stdin` to a running command of the current Host, as a page's
     /// input does.
     pub async fn write(&self, command: &CommandId, stdin: String) -> Result<(), CallError> {
@@ -307,6 +332,31 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         self.environments.stopped_by(command, Stopper::User);
         environment.abort(command).await?;
         Ok(())
+    }
+}
+
+/// Stops a call's command when the call is dropped while it watches it,
+/// unless the backend's shutdown ends the call, which leaves the command
+/// running (`runtime.md` § Interrupted calls).
+struct CallStop {
+    stop: Option<CancellationToken>,
+    call: CallCommand,
+}
+
+impl CallStop {
+    /// The call returned: its command runs on.
+    fn disarm(mut self) {
+        self.stop = None;
+    }
+}
+
+impl Drop for CallStop {
+    fn drop(&mut self) {
+        if let Some(stop) = self.stop.take()
+            && !self.call.keeps_running()
+        {
+            stop.cancel();
+        }
     }
 }
 

@@ -6,7 +6,7 @@
 //! between calls, never inside one.
 
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     mem,
     num::NonZeroU32,
     rc::Rc,
@@ -42,7 +42,7 @@ use super::{
     input::{Input, InputQueue, Take},
     persist::PersistMarks,
     reports::Watched,
-    runtime::{Arrivals, SessionRuntime},
+    runtime::{Arrivals, CallCommand, SessionRuntime},
 };
 
 pub(crate) struct SessionCore {
@@ -79,6 +79,10 @@ pub(crate) struct SessionCore {
     pub(super) inputs: InputQueue,
     /// The commands the session's calls left running, which report to it.
     pub(super) watched: Watched,
+    /// The command each running call started, by the call's id, which the
+    /// call's result names when something other than its tool ends it
+    /// (`runtime.md` § Interrupted calls).
+    pub(super) calls: HashMap<String, CallCommand>,
     pub(super) edits: Vec<EditReceipt>,
     /// The edit being prepared or run, from its admission until its action
     /// ends.
@@ -187,6 +191,49 @@ impl PendingAction {
     }
 }
 
+/// What ended a running call other than its tool (`runtime.md`
+/// § Interrupted calls).
+pub(crate) enum CallEnd<'a> {
+    /// The user's Stop.
+    Stopped,
+    /// A hold of the conversation, which names it.
+    Held(&'a str),
+    /// The backend's shutdown.
+    Shutdown,
+    /// The backend stopped before the call's result was recorded, which a
+    /// restore finds.
+    Crashed,
+    /// The action failed before its calls ran, for this reason.
+    Failed(&'a str),
+}
+
+/// The result of a call `end` ended, which watched `command`, when it
+/// started one (`runtime.md` § Interrupted calls).
+pub(crate) fn interrupted_text(end: &CallEnd<'_>, command: Option<&CommandId>) -> String {
+    let reason = match end {
+        CallEnd::Stopped => "Tool call aborted: the user stopped the turn".to_owned(),
+        CallEnd::Held(hold) => format!("Tool call aborted: {hold}"),
+        CallEnd::Shutdown => "Tool call interrupted: the backend shut down".to_owned(),
+        CallEnd::Crashed => {
+            "Tool call interrupted: the backend stopped before its result was recorded".to_owned()
+        }
+        CallEnd::Failed(failure) => {
+            return format!("Tool call aborted: {}.", failure.trim_end_matches('.'));
+        }
+    };
+    let Some(command) = command else {
+        return format!("{reason}.");
+    };
+    match end {
+        CallEnd::Stopped | CallEnd::Held(_) => format!("{reason}; command {command} was stopped."),
+        CallEnd::Shutdown => format!(
+            "{reason} while this call watched command {command}, which keeps running; look at it with demi shell status {command}."
+        ),
+        CallEnd::Crashed => format!("{reason}; command {command} keeps running if its Host kept it."),
+        CallEnd::Failed(_) => unreachable!("answered above"),
+    }
+}
+
 pub(super) enum ActionKind {
     /// A message: appends a `user` block and runs a turn.
     Send {
@@ -196,7 +243,11 @@ pub(super) enum ActionKind {
     /// messages: it opens a turn of its own, never shown in the queue.
     Continue,
     Retry,
-    Resume,
+    /// Resumes the unfinished turn; `reason` says what made Demi resume it,
+    /// none when the user did.
+    Resume {
+        reason: Option<String>,
+    },
     Compact,
     /// An admitted edit, whose submission waits in the session's edit state.
     Edit,
@@ -318,6 +369,7 @@ impl SessionCore {
             inputs: parts.inputs,
             runtime: parts.runtime,
             watched: parts.watched,
+            calls: HashMap::new(),
             edits: parts.edits,
             editing: None,
             activity: Activity::Idle,
@@ -723,7 +775,7 @@ impl SessionCore {
     /// Stops the running action, as the user's Stop would, and nothing
     /// that waits: a waiting action stays. The answer is the stopped
     /// action's token, which says when it recorded the stop.
-    pub(super) fn stop_running(&mut self) -> Option<Rc<TurnCancel>> {
+    pub(super) fn stop_running(&mut self, hold: Rc<str>) -> Option<Rc<TurnCancel>> {
         if self.disposing {
             return None;
         }
@@ -731,7 +783,7 @@ impl SessionCore {
             Activity::Running(run) if !run.cancel.is_cancelled() => run.cancel.clone(),
             _ => return None,
         };
-        cancel.cancel(CancelReason::Stop);
+        cancel.cancel(CancelReason::Hold(hold));
         Some(cancel)
     }
 
@@ -752,14 +804,21 @@ impl SessionCore {
     /// nothing afterwards (`runtime.md` § Stop).
     pub(super) fn record_stop(&mut self, reason: CancelReason) {
         let take = match reason {
-            CancelReason::Stop => Take::Everything,
+            CancelReason::Stop | CancelReason::Hold(_) => Take::Everything,
             CancelReason::Shutdown => Take::Steers,
         };
         self.write_inputs(take);
-        self.abort_executing_calls();
+        let end = match &reason {
+            CancelReason::Stop => CallEnd::Stopped,
+            CancelReason::Hold(hold) => CallEnd::Held(hold),
+            CancelReason::Shutdown => CallEnd::Shutdown,
+        };
+        self.abort_executing_calls(&end);
         match reason {
-            CancelReason::Stop if self.action_began() => self.transcript.push_abort(&self.model),
-            CancelReason::Stop => {}
+            CancelReason::Stop | CancelReason::Hold(_) if self.action_began() => {
+                self.transcript.push_abort(&self.model)
+            }
+            CancelReason::Stop | CancelReason::Hold(_) => {}
             CancelReason::Shutdown => self.append_interruption(),
         }
         self.commit();
@@ -769,7 +828,7 @@ impl SessionCore {
     /// did not run, then reports the failure.
     pub(super) fn fail(&mut self, report: &ErrorReport) {
         self.write_inputs(Take::Everything);
-        self.abort_executing_calls();
+        self.abort_executing_calls(&CallEnd::Failed(&report.message));
         self.commit();
         self.outbox.push(SessionEvent::Error {
             report: report.clone(),
@@ -796,9 +855,21 @@ impl SessionCore {
         );
     }
 
-    fn abort_executing_calls(&mut self) {
+    /// Completes each running call as an error that says what ended it and
+    /// what became of its command (`runtime.md` § Interrupted calls); a
+    /// command the backend's shutdown leaves running reports to the node
+    /// from its next start, as one a call left running does.
+    fn abort_executing_calls(&mut self, end: &CallEnd<'_>) {
         for call in self.transcript.pending_tool_calls() {
-            let text = format!("Tool call aborted: {}", call.tool_name);
+            let started = self
+                .calls
+                .remove(&call.tool_use_id)
+                .and_then(|handle| handle.command());
+            let text = interrupted_text(end, started.as_ref().map(|started| &started.command));
+            if let (CallEnd::Shutdown, Some(started)) = (end, started) {
+                self.watched
+                    .add(started.command, started.interval_ms, started.title);
+            }
             self.transcript.complete_tool_call(
                 &call.tool_use_id,
                 vec![ToolResultContentBlock::Text { text }],
@@ -1266,9 +1337,9 @@ impl SessionCore {
     }
 
     /// Appends a `resume` block: the turn continues after a cut.
-    pub(super) fn push_resume(&mut self) {
+    pub(super) fn push_resume(&mut self, reason: Option<String>) {
         let turn = self.turn();
-        self.transcript.push_resume(turn, &self.model);
+        self.transcript.push_resume(turn, &self.model, reason);
         self.commit();
     }
 
@@ -1440,6 +1511,7 @@ impl SessionCore {
         is_error: bool,
         view: Option<ToolView>,
     ) {
+        self.calls.remove(tool_use_id);
         self.transcript
             .complete_tool_call(tool_use_id, output, is_error, view);
         self.commit();

@@ -26,13 +26,13 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     ErrorReport, SessionEvent, SessionShared, TurnError,
-    cancel::TurnCancel,
+    cancel::{CancelReason, TurnCancel},
     compaction,
     core::{SendNow, SessionCore, TurnStage, with_request_id},
     input::Take,
     media::model_view,
     persist, reports,
-    runtime::{InputArrival, SeenContext, ToolEffect, ToolInvocation, ToolOutcome},
+    runtime::{CallCommand, InputArrival, SeenContext, ToolEffect, ToolInvocation, ToolOutcome},
 };
 
 /// How many compactions one turn runs after responses over the threshold.
@@ -67,7 +67,7 @@ async fn run_turn(
     loop {
         cancel.check()?;
         if switch_first && apply_switch(s, cancel).await? {
-            s.update(|core| core.push_resume());
+            s.update(|core| core.push_resume(None));
         }
         switch_first = true;
         // A message sent now during a compaction or a save ends the turn
@@ -94,7 +94,7 @@ async fn run_turn(
             // summaries and pile up `resume` blocks.
             if compacted && estimate(s, cancel).await? < before_compaction {
                 auto_compactions += 1;
-                s.update(|core| core.push_resume());
+                s.update(|core| core.push_resume(None));
                 continue;
             }
         }
@@ -275,7 +275,7 @@ async fn compact_before_request(
 ) -> Result<bool, TurnError> {
     let compacted = compaction::compacting(s, compaction::run_pass(s, cancel)).await?;
     if compacted && continues {
-        s.update(|core| core.push_resume());
+        s.update(|core| core.push_resume(None));
     }
     Ok(compacted)
 }
@@ -465,15 +465,23 @@ async fn run_tools(
         let ran = if tools.iter().any(|tool| tool.name == step[0].tool_name) {
             let (model, request_limits) =
                 s.read(|core| (core.model.clone(), core.request_limits()));
+            let handles: Vec<CallCommand> = step.iter().map(|_| CallCommand::default()).collect();
+            s.update(|core| {
+                for (call, handle) in step.iter().zip(&handles) {
+                    core.calls.insert(call.tool_use_id.clone(), handle.clone());
+                }
+            });
             let invocations = step
                 .iter()
-                .map(|call| ToolInvocation {
+                .zip(&handles)
+                .map(|(call, handle)| ToolInvocation {
                     tool_use_id: call.tool_use_id.clone(),
                     tool_name: call.tool_name.clone(),
                     input: tool_input(&call.input),
                     model: model.clone(),
                     request_limits,
                     arrival: InputArrival::new(s.arrivals.subscribe(), joined),
+                    command: handle.clone(),
                 })
                 .collect();
             let mut returned = s.runtime.invoke_step(invocations);
@@ -491,7 +499,17 @@ async fn run_tools(
                         record_result(s, &step[index], outcome).await;
                     }
                     Ok(None) => break Ok(()),
-                    Err(stopped) => break Err(stopped),
+                    Err(stopped) => {
+                        // The backend's shutdown leaves the calls' commands
+                        // running, which the calls see as they are dropped
+                        // (`runtime.md` § Interrupted calls).
+                        if cancel.reason() == Some(CancelReason::Shutdown) {
+                            for handle in &handles {
+                                handle.keep_running();
+                            }
+                        }
+                        break Err(stopped);
+                    }
                 }
             }
         } else {
