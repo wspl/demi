@@ -1145,6 +1145,13 @@ async fn declared_commands_call_back_with_arguments_input_and_cancellation() {
                         .input::<NoteArgs>()
                         .stdin_field("text")
                         .bind(TypedRpc::new(take)),
+                )
+                .leaf(
+                    LeafBuilder::rpc("jot", "Take a note inline or from stdin.")
+                        .input::<NoteArgs>()
+                        .positionals(["text"])
+                        .stdin_field("text")
+                        .bind(TypedRpc::new(take)),
                 ),
         )
         .unwrap();
@@ -1182,6 +1189,15 @@ async fn declared_commands_call_back_with_arguments_input_and_cancellation() {
     // A body from finite standard input.
     let noted = run(&shell, "printf 'from stdin' | note take").await;
     assert_eq!(noted.stdout.delta, "noted: from stdin");
+    // A stdin field given as its positional leaves stdin unread, so the
+    // input of a loop around it reaches the next reader whole.
+    let jotted = run(
+        &shell,
+        "printf 'first\\nsecond\\n' | { note jot inline; read line; echo \" next=$line\"; }; printf 'piped' | note jot",
+    )
+    .await;
+    assert_eq!(exited(&jotted), 0, "{}", jotted.stderr.tail);
+    assert_eq!(jotted.stdout.delta, "noted: inline next=first\nnoted: piped");
     // A reader that stops early ends the call as a closed pipe ends a
     // program: 141, and nothing on stderr, whether the job's shell runs it
     // or another program does through its alias.

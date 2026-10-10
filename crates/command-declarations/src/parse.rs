@@ -261,16 +261,6 @@ impl Parsed {
         // The dispatcher reads stdin for the field the leaf targets, and
         // only for it.
         match (leaf.stdin_target(&self.values), stdin) {
-            // A stdin field the command line gave as its positional: stdin
-            // is read all the same, and a body there as well is refused.
-            (Some(field), Some(body)) if self.values.contains_key(field) => {
-                if !body.is_empty() {
-                    return Err(leaf.refuse(
-                        &path,
-                        format!("\"{field}\" is given both as an argument and on stdin; give it once"),
-                    ));
-                }
-            }
             (Some(field), Some(body)) => {
                 self.values.insert(field.to_owned(), Value::String(body));
             }

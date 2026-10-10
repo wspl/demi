@@ -244,12 +244,6 @@ fn a_usage_error_is_clap_s_with_the_command_s_usage_and_demi_s_tips() {
             None,
             "error: \"x3\" is not a ref, such as e12\nUsage: filer click <tab> [<ref>] [--exact] [--dy <dy>]; more with --help",
         ),
-        // An expression given both as the positional and on stdin.
-        (
-            &["eval", "t1", "document.title"],
-            Some("document.URL"),
-            "error: \"expression\" is given both as an argument and on stdin; give it once\nUsage: filer eval <tab> [<ref>] [<expression>]; more with --help",
-        ),
     ];
     for (line, stdin, expected) in cases {
         assert_eq!(usage_error(line, *stdin), *expected, "{line:?}");
@@ -318,12 +312,12 @@ fn each_field_takes_its_value_from_its_one_source() {
     );
     // A stdin field may also be the last positional: the token after the
     // tab is the ref when it reads as one and otherwise the expression, and
-    // an empty stdin, a job's </dev/null, leaves the positional alone.
+    // given there, stdin is not read (the dispatcher passes no body).
     for (line, stdin, expected) in [
-        (&["eval", "t1", "document.title"][..], Some(""), json!({"tab": "t1", "expression": "document.title"})),
+        (&["eval", "t1", "document.title"][..], None, json!({"tab": "t1", "expression": "document.title"})),
         (&["eval", "t1", "e21"], Some("element.value"), json!({"tab": "t1", "ref": "e21", "expression": "element.value"})),
-        (&["eval", "t1", "e21", "element.id"], Some(""), json!({"tab": "t1", "ref": "e21", "expression": "element.id"})),
-        (&["eval", "t1", "--ref", "e21", "element.id"], Some(""), json!({"tab": "t1", "ref": "e21", "expression": "element.id"})),
+        (&["eval", "t1", "e21", "element.id"], None, json!({"tab": "t1", "ref": "e21", "expression": "element.id"})),
+        (&["eval", "t1", "--ref", "e21", "element.id"], None, json!({"tab": "t1", "ref": "e21", "expression": "element.id"})),
         (&["eval", "t1"], Some("document.title"), json!({"tab": "t1", "expression": "document.title"})),
     ] {
         assert_eq!(values(&filer, line, stdin), expected, "{line:?}");
@@ -346,7 +340,7 @@ fn each_field_takes_its_value_from_its_one_source() {
         "  filer key <tab> [<ref>] <key>\n",
         "      <ref> (optional, or --ref <ref>)",
         "  filer eval <tab> [<ref>] [<expression>]\n  filer eval <tab> [<ref>] <<'EOF'\n  <expression>\n  EOF\n",
-        "    Stdin body: expression, unless given as <expression>",
+        "    Stdin body: expression, not read when given as <expression>",
     ] {
         assert!(help.contains(shown), "{shown} not in {help}");
     }

@@ -694,11 +694,14 @@ impl<B> Leaf<B> {
     }
 
     /// The stdin field the dispatcher reads stdin into, given the values
-    /// the command line filled: the leaf's, when its `stdin_read` lets it.
+    /// the command line filled: the leaf's, when its `stdin_read` lets it
+    /// and the command line did not give it as its positional. Stdin is
+    /// then left to the calling process, as a loop's input.
     pub fn stdin_target(&self, values: &serde_json::Map<String, Value>) -> Option<&str> {
         let given = |option: &String| self.given(values, option);
         self.stdin_field
             .as_deref()
+            .filter(|field| !values.contains_key(*field))
             .filter(|_| match &self.stdin_read {
                 None => true,
                 Some(StdinRead::Unless(options)) => !options.iter().any(given),
