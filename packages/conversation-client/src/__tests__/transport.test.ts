@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { MAX_PAGE_MESSAGE_BYTES } from '@demicodes/protocol'
 import { ConversationClient, SteerRejectedError } from '../client'
+import type { ClientSessionEvent } from '../events'
 import { createWebSocketTransport, type SocketClose, type SocketMessage, type WebSocketLike } from '../transport'
 import { text, user } from './harness'
 
@@ -61,6 +62,8 @@ test('frames travel as JSON text messages both ways', async () => {
   expect(acceptsWebBrowserSockets).toBe(true)
   const socket = new FakeSocket()
   const client = new ConversationClient(createWebSocketTransport(socket))
+  const events: ClientSessionEvent[] = []
+  client.subscribe((event) => events.push(event))
   const opening = client.open()
   expect(socket.written.map((data) => JSON.parse(data))).toEqual([{ type: 'open' }])
   socket.message(JSON.stringify({ type: 'opened' }))
@@ -68,10 +71,10 @@ test('frames travel as JSON text messages both ways', async () => {
 
   const submitting = client.submit([{ type: 'text', text: 'hello' }], 'm1')
   expect(JSON.parse(socket.written.at(-1) ?? '')).toEqual({ type: 'send', messageId: 'm1', content: [{ type: 'text', text: 'hello' }] })
-  socket.message(JSON.stringify({ type: 'transcript_reset', blocks: [user('u1', 'm1', 'hello')], version: { epoch: 'e', revision: 1 } }))
+  socket.message(JSON.stringify({ type: 'transcript_reset', start: 0, length: 1, blocks: [user('u1', 'm1', 'hello')], version: { epoch: 'e', revision: 1 } }))
   await submitting
   socket.message(JSON.stringify({ type: 'transcript_patch', patches: [{ op: 'add', index: 1, value: text('t1', 'hi') }], revision: 2 }))
-  expect(client.transcript().blocks.map((block) => block.id)).toEqual(['u1', 't1'])
+  expect(events.at(-1)).toEqual({ type: 'transcript_patch', patches: [{ op: 'add', index: 1, value: text('t1', 'hi') }], failures: {} })
 })
 
 test('a message that is not JSON text closes the socket and disconnects the client', () => {

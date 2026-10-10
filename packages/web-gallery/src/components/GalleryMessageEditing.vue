@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { onBeforeUnmount, reactive, ref, shallowRef } from 'vue'
 import { deferred, type Deferred } from '@demicodes/utils'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
@@ -18,8 +19,13 @@ import { demoImageUrl, demoModel } from '../fixtures/blocks'
 import { galleryUploads } from '../fixtures/upload-sweep'
 import { WORKSPACE_ROOT } from '../fixtures/workspace'
 
-const session = reactive<ChatSessionState>({
-  id: 'editing-example', cwd: WORKSPACE_ROOT, title: 'Edit and resend', blocks: [], queue: [],
+// The specimen keeps its whole transcript as `blocks`; its history holds it as one window.
+const session = reactive<ChatSessionState & { blocks: Block[] }>({
+  id: 'editing-example', cwd: WORKSPACE_ROOT, title: 'Edit and resend', blocks: [],
+  get history() {
+    return wholeHistory(this.blocks)
+  },
+  shownAt: null, summaries: {}, queue: [],
   pendingSteers: [], pendingCalls: [], phase: 'idle', load: 'ready', lastError: null, pendingAction: null, failures: {},
   archived: false, scroll: null, subagents: [], terminals: [],
 })

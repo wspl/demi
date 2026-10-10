@@ -6,11 +6,12 @@ import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
 import { ConversationSocketError, connectConversationClient } from '../../transport/conversation-socket'
 import { pageReturned } from '../../transport/liveness'
 import { playSockets } from '../../transport/__tests__/test-socket'
+import { EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
 import { clientHarness, model, userBlock } from './agent-harness'
 
 function state(): RuntimeState {
   return {
-    blocks: [],
+    history: EMPTY_TRANSCRIPT,
     phase: 'idle',
     queue: [],
     pendingSteers: [],
@@ -38,9 +39,9 @@ test('the current edit version reacts to connection, snapshots, patches and disc
   const version = computed(() => runtime.transcriptVersion())
   expect(version.value).toBeNull()
   await runtime.connect()
-  h.receive({ type: 'transcript_reset', version: { epoch: 'epoch', revision: 1 }, blocks: [] })
+  h.receive({ type: 'transcript_reset', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [] })
   expect(version.value).toEqual({ epoch: 'epoch', revision: 1 })
-  h.receive({ type: 'transcript_patch', revision: 2, patches: [{ op: 'replace', value: [] }] })
+  h.receive({ type: 'transcript_patch', revision: 2, patches: [{ op: 'truncate', length: 0 }] })
   expect(version.value).toEqual({ epoch: 'epoch', revision: 2 })
   runtime.dispose()
   expect(version.value).toBeNull()
@@ -53,7 +54,7 @@ test('the usage the composer shows is the one the session reports, not one read 
   await runtime.connect()
   try {
     // A response before the compaction still measures the history the summary replaced.
-    h.receive({ type: 'transcript_reset', version: { epoch: 'epoch', revision: 1 }, blocks: [] })
+    h.receive({ type: 'transcript_reset', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [] })
     h.receive({ type: 'context_usage', usage: { tokens: 6_000, window: 100_000, compactFrom: 50_000 } })
     expect(current.contextUsage).toEqual({ tokens: 6_000, window: 100_000, compactFrom: 50_000 })
   } finally {
@@ -69,6 +70,8 @@ for (const failure of ['none', 'before-confirmation', 'before-reconciliation'] a
     await runtime.connect()
     h.receive({
       type: 'transcript_reset',
+      start: 0,
+      length: 1,
       version: { epoch: 'epoch', revision: 1 },
       blocks: failure === 'before-reconciliation' ? [] : [userBlock('target', 'old-turn', 'old')],
     })
@@ -136,6 +139,8 @@ test('retry reconciles an already accepted message before submitting again', asy
     await runtime.connect()
     h.receive({
       type: 'transcript_reset',
+      start: 0,
+      length: 1,
       version: { epoch: 'runtime-test', revision: 1 },
       blocks: [userBlock('user-block', 'persisted-message', 'Already accepted')],
     })
@@ -238,7 +243,7 @@ for (const held of [true, false]) {
       await turn()
       // Nothing goes before the session has shown what it holds.
       expect(next.sent).toEqual([{ type: 'open' }])
-      next.receive({ type: 'transcript_reset', version: { epoch: 'epoch', revision: 1 }, blocks: [] })
+      next.receive({ type: 'transcript_reset', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [] })
       next.receive({ type: 'phase', phase: 'running' })
       next.receive({ type: 'queue', queue: [] })
       next.receive({ type: 'pending_steers', pendingSteers: held ? [steer] : [] })
@@ -442,6 +447,8 @@ test('a message whose socket is lost before the session confirmed it waits for t
     ])
     next.receive({
       type: 'transcript_reset',
+      start: 0,
+      length: 1,
       version: { epoch: 'epoch', revision: 1 },
       blocks: [userBlock('block', 'message', 'Hello')],
     })
@@ -602,20 +609,21 @@ test('the agent\'s own retries change nothing the page shows: the row keeps sayi
   runtime.dispose()
 })
 
-test('failure facts arrive beside the transcript, accumulate across patches, and start over on a reset', async () => {
+test('failure facts arrive beside the transcript and accumulate across patches and resets', async () => {
   const h = clientHarness()
   const s = state()
   const runtime = new ConversationRuntime({ state: s, connect: async () => h.client })
   await runtime.connect()
   const lifts = { retryAt: '2026-09-22T07:37:39.000Z' }
-  h.receive({ type: 'transcript_reset', version: { epoch: 'epoch', revision: 1 }, blocks: [], failures: { first: lifts } })
+  h.receive({ type: 'transcript_reset', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [], failures: { first: lifts } })
   expect(s.failures).toEqual({ first: lifts })
   h.receive({ type: 'transcript_patch', revision: 2, patches: [], failures: { second: { retryAt: null } } })
   expect(s.failures).toEqual({ first: lifts, second: { retryAt: null } })
   h.receive({ type: 'transcript_patch', revision: 3, patches: [] })
   expect(s.failures).toEqual({ first: lifts, second: { retryAt: null } })
-  h.receive({ type: 'transcript_reset', version: { epoch: 'epoch', revision: 4 }, blocks: [] })
-  expect(s.failures).toEqual({})
+  // A reset brings the blocks from its start; the page may hold the blocks before it, with their facts.
+  h.receive({ type: 'transcript_reset', start: 0, length: 0, version: { epoch: 'epoch', revision: 4 }, blocks: [] })
+  expect(s.failures).toEqual({ first: lifts, second: { retryAt: null } })
   runtime.dispose()
 })
 

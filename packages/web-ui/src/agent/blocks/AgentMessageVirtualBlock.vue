@@ -17,6 +17,8 @@ import CompactionBlock from './CompactionBlock.vue'
 import QueueDivider from './QueueDivider.vue'
 import PendingSubmission from '../PendingSubmission.vue'
 import type { MessageForkState } from '../message-fork'
+import { provideBlockScope } from '../whole-blocks'
+import IndeterminateSpinner from '../../ui/IndeterminateSpinner.vue'
 
 defineOptions({ inheritAttrs: false })
 
@@ -49,6 +51,8 @@ const emit = defineEmits<{
 }>()
 
 const attrs = useAttrs()
+// A light block's row opens to read it whole (`web-api.md` § Light form).
+provideBlockScope(() => ('createdAt' in props.block ? props.block : undefined))
 /** Rows built on FunctionalBlock: the 28px chrome face. Text streams in on its own. */
 const entersAsChrome = computed(() =>
   props.entering
@@ -96,6 +100,16 @@ const entersAsChrome = computed(() =>
     v-bind="attrs"
     :count="block.count"
   />
+  <!-- The edge of a window that does not reach the transcript's own, while its next page comes. -->
+  <div
+    v-else-if="block.type === 'history_edge'"
+    v-bind="attrs"
+    class="flex h-9 items-center justify-center text-fg-faint"
+    role="status"
+    aria-label="Loading"
+  >
+    <IndeterminateSpinner :size="14" />
+  </div>
   <div
     v-else
     v-bind="{ ...attrs, ...chromeEntrance(entersAsChrome) }"

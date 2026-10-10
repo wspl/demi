@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { latestBlocks, wholeHistory } from '@demicodes/web-ui/agent/history'
 import { onBeforeUnmount, reactive, ref, shallowRef } from 'vue'
 import { deferred, type Deferred } from '@demicodes/utils'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
@@ -12,8 +13,8 @@ const createdAt = new Date(Date.now() - 35_000).toISOString()
 const source = reactive<ChatSessionState>({
   id: 'fork-source', cwd: WORKSPACE_ROOT, title: 'Planning', phase: 'running',
   load: 'ready', lastError: null, pendingAction: null, failures: {}, archived: false, queue: [], pendingSteers: [], pendingCalls: [],
-  scroll: null, subagents: [], terminals: [],
-  blocks: [
+  scroll: null, subagents: [], terminals: [], shownAt: null, summaries: {},
+  history: wholeHistory([
     { type: 'user', id: 'user-1', turnId: 'turn-1', model: demoModel, createdAt,
       content: [{ type: 'text', text: 'Outline the next step.' }], preamble: null },
     { type: 'text', id: 'progress-1', model: demoModel, createdAt, forkable: true,
@@ -26,7 +27,7 @@ const source = reactive<ChatSessionState>({
       content: [{ type: 'text', text: 'Now expand the outline.' }], preamble: null },
     { type: 'text', id: 'answer-2', model: demoModel, createdAt,
       text: 'I’m expanding the first step…' },
-  ],
+  ]),
 })
 const current = ref<ChatSessionState>(source)
 const outcome = ref<'success' | 'hold' | 'failure'>('success')
@@ -47,10 +48,11 @@ async function fork(request: MessageForkRequest): Promise<void> {
     failed.add(request.id)
     throw new Error('Could not confirm the new conversation. Try again.')
   }
-  const cutoff = from.blocks.findIndex((block) => block.id === request.blockId)
+  const blocks = latestBlocks(from.history)
+  const cutoff = blocks.findIndex((block) => block.id === request.blockId)
   current.value = {
     ...from, id: request.id, title: from.title + ' (Fork)', phase: 'idle',
-    blocks: from.blocks.slice(0, cutoff + 1), scroll: null,
+    history: wholeHistory(blocks.slice(0, cutoff + 1)), scroll: null,
   }
 }
 

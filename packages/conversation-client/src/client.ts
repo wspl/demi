@@ -14,9 +14,14 @@ import {
   type TranscriptVersion,
 } from '@demicodes/protocol'
 import { asError, createId } from '@demicodes/utils'
-import type { ConversationClientListener, ClientSessionEvent, Failures, ServerFrameOf } from './events'
-import { applyTranscriptPatches } from './patch'
+import type { ConversationClientListener, ClientSessionEvent, ServerFrameOf } from './events'
 import { FrameTooLargeError, type ConversationClientTransport } from './transport'
+
+/** The root's blocks the page holds, as `open` and `sync_transcript` name them (`runtime.md` § Where a reset starts). */
+export interface HeldEdge {
+  from: number
+  edge: string
+}
 
 /** A correlated refusal: the edit was not accepted. */
 export class EditRejectedError extends Error {
@@ -88,8 +93,11 @@ type Decision<T> = { resolve: T } | { reject: Error } | undefined
  * The web app's client of the conversation socket's frame protocol
  * (`runtime.md` § Frame protocol). It validates every frame it receives with
  * the generated schemas and drops the connection when one does not match,
- * applies patches with the one patch applier, and keeps the transcript, the
- * phase, the queue and the pending steers.
+ * keeps the patch revisions, the phase, the queue and the pending steers,
+ * and tells its listeners what the transcript frames bring, which the page
+ * applies to the parts of the transcript it holds with the one patch
+ * applier. Of the transcript it keeps only which messages and steers it has
+ * seen written, which its waits settle on.
  */
 export class ConversationClient {
   private readonly transport: ConversationClientTransport
@@ -100,9 +108,14 @@ export class ConversationClient {
   private readonly detachTransport: () => void
   private disconnected = false
   private transcriptState: TranscriptState = { status: 'none' }
-  private blocks: Block[] = []
-  /** The facts of the root's error blocks, beside the blocks, never inside them. */
-  private failures: Failures = {}
+  /** The turns of the `user` blocks the stream has brought since the last reset. */
+  private readonly writtenTurns = new Set<string>()
+  /** The ids of the `steer` blocks the stream has brought since the last reset. */
+  private readonly writtenSteers = new Set<string>()
+  /** The root's blocks the page holds, which `open` and `sync_transcript` name. */
+  private held: () => HeldEdge | undefined = () => undefined
+  /** The index the last `open` or `sync_transcript` named. */
+  private asked: number | undefined
   /** Each subagent transcript's revision, for the same patch rule as the root's. */
   private readonly subagentRevisions = new Map<string, number>()
   private phase: SessionPhase | null = null
@@ -123,10 +136,15 @@ export class ConversationClient {
 
   /**
    * Attaches to the conversation's tree, which runs with the model settings
-   * the conversation's record holds; resolves on `opened`.
+   * the conversation's record holds; resolves on `opened`. `held` names the
+   * root's blocks the page holds, now and at each later sync, so the stream
+   * sends none before them (`runtime.md` § Where a reset starts).
    */
-  open(): Promise<void> {
-    return this.request({ type: 'open' }, (event) => {
+  open(held: () => HeldEdge | undefined = () => undefined): Promise<void> {
+    this.held = held
+    const edge = held()
+    this.asked = edge?.from
+    return this.request({ type: 'open', ...edge }, (event) => {
       if (event.type === 'opened') {
         return { resolve: undefined }
       }
@@ -146,7 +164,7 @@ export class ConversationClient {
       { type: 'send', messageId, content },
       (event) => {
         const written = (event.type === 'transcript_reset' || event.type === 'transcript_patch')
-          && event.blocks.some((block) => block.type === 'user' && block.turnId === messageId)
+          && this.writtenTurns.has(messageId)
         const queued = event.type === 'queue' && event.queue.some((message) => message.id === messageId)
         if (written || queued) {
           return { resolve: undefined }
@@ -307,10 +325,6 @@ export class ConversationClient {
     return () => {
       this.listeners.delete(listener)
     }
-  }
-
-  transcript(): { blocks: Block[] } {
-    return { blocks: [...this.blocks] }
   }
 
   /** The version of the transcript the client holds, or null while it holds none it can vouch for. */
@@ -495,11 +509,19 @@ export class ConversationClient {
         this.emit(frame)
         return
       case 'transcript_reset':
-        this.blocks = [...frame.blocks]
-        this.failures = { ...frame.failures }
+        this.writtenTurns.clear()
+        this.writtenSteers.clear()
+        this.noteWritten(frame.blocks)
         this.transcriptState = { status: 'current', version: frame.version }
         this.removeWrittenSteers(true)
-        this.emit({ type: 'transcript_reset', blocks: this.blocks, failures: this.failures })
+        this.emit({
+          type: 'transcript_reset',
+          start: frame.start,
+          length: frame.length,
+          blocks: frame.blocks,
+          failures: frame.failures ?? {},
+          asked: this.asked,
+        })
         this.followSends()
         return
       case 'transcript_patch':
@@ -543,6 +565,8 @@ export class ConversationClient {
         this.emit({
           type: 'subagent_transcript_reset',
           subagentId: frame.subagentId,
+          start: frame.start,
+          length: frame.length,
           blocks: frame.blocks,
           failures: frame.failures ?? {},
         })
@@ -576,8 +600,8 @@ export class ConversationClient {
       }
       case 'closed':
         this.transcriptState = { status: 'none' }
-        this.blocks = []
-        this.failures = {}
+        this.writtenTurns.clear()
+        this.writtenSteers.clear()
         this.subagentRevisions.clear()
         this.phase = null
         this.queue = []
@@ -622,10 +646,9 @@ export class ConversationClient {
       return
     }
     this.transcriptState = { status: 'current', version: { epoch: state.version.epoch, revision: frame.revision } }
-    this.blocks = applyTranscriptPatches(this.blocks, frame.patches)
-    this.failures = { ...this.failures, ...frame.failures }
+    this.noteWritten(frame.patches.flatMap((patch) => (patch.op === 'add' || patch.op === 'replace_block' ? [patch.value] : [])))
     this.removeWrittenSteers(true)
-    this.emit({ type: 'transcript_patch', patches: frame.patches, blocks: this.blocks, failures: this.failures })
+    this.emit({ type: 'transcript_patch', patches: frame.patches, failures: frame.failures ?? {} })
     this.followSends()
   }
 
@@ -654,7 +677,20 @@ export class ConversationClient {
   /** A patch was missed: the client asks for the transcripts again and ignores patches until they arrive. */
   private resync(): void {
     this.transcriptState = { status: 'stale' }
-    this.sendFrame({ type: 'sync_transcript' })
+    const held = this.held()
+    this.asked = held?.from
+    this.sendFrame({ type: 'sync_transcript', ...held })
+  }
+
+  /** Notes the messages and steers `blocks` write. */
+  private noteWritten(blocks: readonly Block[]): void {
+    for (const block of blocks) {
+      if (block.type === 'user') {
+        this.writtenTurns.add(block.turnId)
+      } else if (block.type === 'steer') {
+        this.writtenSteers.add(block.id)
+      }
+    }
   }
 
   /** Drops the pending steers the transcript now holds, by id. */
@@ -662,8 +698,7 @@ export class ConversationClient {
     if (this.pending.length === 0) {
       return
     }
-    const written = new Set(this.blocks.filter((block) => block.type === 'steer').map((block) => block.id))
-    const remaining = this.pending.filter((steer) => !written.has(steer.id))
+    const remaining = this.pending.filter((steer) => !this.writtenSteers.has(steer.id))
     if (remaining.length === this.pending.length) {
       return
     }
@@ -719,7 +754,7 @@ export class ConversationClient {
    */
   private followSends(): void {
     const queued = new Set(this.queue.map((message) => message.id))
-    const written = new Set(this.blocks.flatMap((block) => (block.type === 'user' ? [block.turnId] : [])))
+    const written = this.writtenTurns
     const waiting = this.actionWaiters.filter((waiter) => waiter.command === 'send' && waiter.status !== 'running')
     for (const waiter of waiting) {
       if (waiter.messageId !== null && written.has(waiter.messageId)) {

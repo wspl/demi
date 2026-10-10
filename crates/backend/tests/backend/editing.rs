@@ -47,7 +47,7 @@ pub(crate) async fn edit_request(
     operation: &str,
     replacement: &str,
 ) -> EditRequest {
-    socket.send(&ClientFrame::SyncTranscript {}).await;
+    socket.send(&ClientFrame::SyncTranscript { from: None, edge: None }).await;
     let synced = socket
         .until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
         .await;
@@ -275,7 +275,7 @@ async fn the_page_sees_a_turn_end_once_its_save_commits_and_an_edit_sent_then_is
         .expect("the turn reaches its save");
     // Meanwhile the page has not seen the turn end: the reset that answers a
     // sync follows every frame sent before it, and none of them says idle.
-    socket.send(&ClientFrame::SyncTranscript {}).await;
+    socket.send(&ClientFrame::SyncTranscript { from: None, edge: None }).await;
     let meanwhile = socket
         .until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
         .await;

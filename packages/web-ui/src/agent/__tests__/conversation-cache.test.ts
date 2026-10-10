@@ -1,12 +1,13 @@
 import { expect, test } from 'bun:test'
 import { deferred } from '@demicodes/utils'
+import { EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
 import { ConversationCache } from '../conversation-cache'
 import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
 import { clientHarness } from './agent-harness'
 
 function fixture(id: string) {
   const state: RuntimeState = {
-    blocks: [], phase: 'idle', queue: [], pendingSteers: [], pendingCalls: [],
+    history: EMPTY_TRANSCRIPT, phase: 'idle', queue: [], pendingSteers: [], pendingCalls: [],
     lastError: null, load: 'loading', pendingAction: null,
     failures: {}, contextUsage: null,
   }

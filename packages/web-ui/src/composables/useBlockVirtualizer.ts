@@ -38,6 +38,7 @@ const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   compaction_boundary: 36,
   compaction_marker: 36,
   compaction_progress: 36,
+  history_edge: 36,
 }
 
 export interface ScrollAnchor {
@@ -45,6 +46,11 @@ export interface ScrollAnchor {
   anchorIndex: number
   offsetPx: number
   scrollTop: number
+}
+
+/** The row in view as the list follows it: where it starts in the list, which rows added or removed above it move. */
+interface ViewAnchor extends ScrollAnchor {
+  start: number
 }
 
 export interface PersistedScrollState {
@@ -311,7 +317,7 @@ export function useBlockVirtualizer(
     { immediate: true },
   )
 
-  let lastAnchor: ScrollAnchor | null = null
+  let lastAnchor: ViewAnchor | null = null
 
   function updateAnchor() {
     const el = scrollContainer.value
@@ -329,6 +335,7 @@ export function useBlockVirtualizer(
           anchorIndex: item.index,
           offsetPx: anchorEl.getBoundingClientRect().top - containerTop,
           scrollTop: st,
+          start: item.start,
         }
         return
       }
@@ -409,12 +416,47 @@ export function useBlockVirtualizer(
     { immediate: true, flush: 'post' },
   )
 
+  // Rows added above the row in view, as an earlier page arrives, or
+  // removed, as its loading row goes, move it down or up: the view moves by
+  // as much, so the reader's row stays where it is, as a chat app keeps its
+  // place when earlier messages load. A reader who follows the end follows
+  // it instead.
+  watch(
+    () => blocks.value.map((block) => block.id),
+    () => {
+      const el = scrollContainer.value
+      const anchor = lastAnchor
+      if (!el || !anchor || !isRestored.value || shouldAutoScroll.value) {
+        return
+      }
+      const index = blocks.value.findIndex((block) => block.id === anchor.blockId)
+      if (index < 0 || index === anchor.anchorIndex) {
+        return
+      }
+      const moved = virtualizer.value.measurementsCache[index]?.start
+      if (moved === undefined) {
+        return
+      }
+      // The virtualizer learns the scroller's offset from its scroll event,
+      // which comes after the new rows are measured; corrected from the old
+      // offset, they would pull the view back. So its offset moves with the
+      // scroller's, in the same step.
+      const target = (virtualizer.value.scrollOffset ?? el.scrollTop) + moved - anchor.start
+      virtualizer.value.scrollOffset = target
+      el.scrollTop = target
+      updateAnchor()
+    },
+    { flush: 'post' },
+  )
+
   function getPersistedState(): PersistedScrollState | undefined {
     if (!lastAnchor)
       return undefined
     return {
       anchor: {
-        ...lastAnchor,
+        blockId: lastAnchor.blockId,
+        anchorIndex: lastAnchor.anchorIndex,
+        offsetPx: lastAnchor.offsetPx,
         scrollTop: scrollContainer.value?.scrollTop ?? lastAnchor.scrollTop
       },
       // The virtualizer's own measurements, keyed by block id, over the

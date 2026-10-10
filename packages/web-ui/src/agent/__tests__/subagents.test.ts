@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
 import {
   agentsChip,
   firstInspectSubagentId,
@@ -16,7 +17,7 @@ function agent(
 ): SubagentRecord {
   return {
     startedAt: '2026-09-09T00:00:00.000Z',
-    blocks: [],
+    history: EMPTY_TRANSCRIPT,
     pendingCalls: [],
     failures: {},
     ...partial,

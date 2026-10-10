@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { CircleStop, X } from '@lucide/vue'
 import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
@@ -10,6 +10,7 @@ import TabItem from './TabItem.vue'
 import { provideLiveCalls } from './live-calls'
 import { subagentPanelTabs, subagentStatus, type SubagentRecord } from './subagents'
 import { callTerminal, type TerminalRecord } from './terminals'
+import { shownWindow, windowEdges } from './history'
 
 const props = withDefaults(
   defineProps<{
@@ -29,6 +30,12 @@ const emit = defineEmits<{
   abort: []
   /** Stop Agent in a live tab's menu: that child and its subtree. */
   abortAgent: [id: string]
+  /**
+   * Read a page of the child's transcript: its latest when the panel shows
+   * a child it holds none of, or the one before the window shown as the
+   * reader nears its start (`web-application.md` § Transcript windows).
+   */
+  read: [id: string, at: 'latest' | 'before']
 }>()
 const activeId = defineModel<string | null>('activeId', { required: true })
 
@@ -39,6 +46,18 @@ const active = computed(
 )
 provideLiveCalls((toolUseId) =>
   active.value ? callTerminal(props.terminals, active.value.id, toolUseId) : undefined,
+)
+// A child's transcript shows its latest window, and earlier pages as the reader scrolls up.
+const shown = computed(() => active.value ? shownWindow(active.value.history, null) : null)
+const shownEdges = computed(() => active.value && shown.value ? windowEdges(active.value.history, shown.value) : null)
+watch(
+  () => active.value,
+  (agent) => {
+    if (agent && agent.history.windows.length === 0) {
+      emit('read', agent.id, 'latest')
+    }
+  },
+  { immediate: true },
 )
 
 function activate(id: string): void {
@@ -114,7 +133,9 @@ function closeTab(id: string): void {
       v-if="active"
       :conversation-id="active.id"
       :node="active.id"
-      :blocks="active.blocks"
+      :blocks="shown?.blocks ?? []"
+      :at-start="shownEdges?.atStart ?? true"
+      :at-end="true"
       :pending-calls="active.pendingCalls"
       :failures="active.failures"
       :pending-steers="[]"
@@ -123,6 +144,7 @@ function closeTab(id: string): void {
       :bottom-offset="16"
       :persisted-scroll-state="undefined"
       read-only
+      @read-before="emit('read', active.id, 'before')"
     />
   </SessionOverlay>
 </template>

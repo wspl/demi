@@ -8,6 +8,7 @@ import { baseName } from '@demicodes/utils'
 
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { loadedInstructions } from '@demicodes/web-ui/agent/instructions'
+import { latestBlocks } from '@demicodes/web-ui/agent/history'
 import type { InstructionEntry } from '@demicodes/protocol'
 
 import {
@@ -96,7 +97,7 @@ function send(way: SendWay) {
 }
 
 /** What the model holds of the user's and the project's instructions, which the context card lists. */
-const instructions = computed(() => loadedInstructions(props.conversation.blocks))
+const instructions = computed(() => loadedInstructions(latestBlocks(props.conversation.history), props.conversation.instructions))
 
 /** The personal instructions open their settings; a file shows in the work panel. */
 function openInstruction(entry: InstructionEntry): void {
