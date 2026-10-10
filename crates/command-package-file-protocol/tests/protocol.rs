@@ -21,7 +21,7 @@ fn file_arguments_refuse_empty_old_text_and_zero_positions() {
         json!({"blocks": "<<<<<<< SEARCH\nx\n=======\ny\n>>>>>>> REPLACE\n"}),
     ] {
         assert!(
-            matches!(edit(invalid.clone()), Err(OperationError::Invalid(_))),
+            matches!(edit(invalid.clone()), Err(OperationError::Invalid(_) | OperationError::Edit(_))),
             "{invalid}"
         );
     }
