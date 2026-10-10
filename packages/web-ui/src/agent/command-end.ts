@@ -10,12 +10,14 @@ export interface CommandEnd {
 }
 
 /**
- * How a shell row's command ended (`runtime.md` § Rendering boundary): a
- * row marks only what went wrong.
+ * How a command ended, as a shell row or a report row marks it (`runtime.md`
+ * § Rendering boundary, § Command reports): a row marks only what went
+ * wrong. Only a report knows of a loss.
  */
 export type CommandEndMark =
   | { kind: 'failed', exitCode: number }
   | { kind: 'stopped' }
+  | { kind: 'lost', reason: string }
 
 /** The mark of the command `view` shows; none while it runs or once it succeeded. */
 export function commandEndMark(view: CommandEnd | null): CommandEndMark | null {

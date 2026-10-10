@@ -43,9 +43,6 @@ pub struct Look<'a> {
     /// milliseconds, or only its end when none; not known when the outer
     /// option is none, as for a look at another agent's command.
     pub interval_ms: Option<Option<u32>>,
-    /// The look is a progress report, which says its next step its own way
-    /// in place of the generic one.
-    pub report: bool,
 }
 
 /// The `shell` call's outcome for `status`: its text, the media it attaches
@@ -87,7 +84,7 @@ pub(super) async fn shell_outcome(
 }
 
 /// What a look at a command shows the model, as a result shows it: the text
-/// of `demi shell status`, and of a command's progress report.
+/// of `demi shell status`.
 pub fn look_text(status: &CommandStatus, look: Look<'_>) -> String {
     result_text(status, &unseen_output(status), look)
 }
@@ -106,6 +103,19 @@ pub fn whole_look_text(
     seen: Seen,
     look: Look<'_>,
 ) -> String {
+    look_text(&whole_status(command, state, running_ms, idle_ms, whole, seen), look)
+}
+
+/// The status of `command` as its whole output `whole` shows it from the
+/// place `seen` in it, for a look or a report that reads the whole output.
+pub fn whole_status(
+    command: &CommandId,
+    state: CommandState,
+    running_ms: u64,
+    idle_ms: u64,
+    whole: Arc<WholeOutput>,
+    seen: Seen,
+) -> CommandStatus {
     let stream = || StreamView {
         offset: 0,
         delta: String::new(),
@@ -113,7 +123,7 @@ pub fn whole_look_text(
         bytes: 0,
         truncated: false,
     };
-    let status = CommandStatus {
+    CommandStatus {
         command_id: command.clone(),
         stdout: stream(),
         stderr: stream(),
@@ -136,8 +146,7 @@ pub fn whole_look_text(
         idle_ms,
         state,
         files: None,
-    };
-    look_text(&status, look)
+    }
 }
 
 /// The output the model has not seen: once the command ended, the rest of
@@ -171,18 +180,9 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> Str
         before.push(format!("runningMs: {}", status.running_ms));
         before.push(format!("idleMs: {}", status.idle_ms));
     }
-    let newest: Vec<&Newest> = status
-        .newest
-        .iter()
-        .filter(|newest| running && !newest.text.is_empty())
-        .collect();
+    let newest = newest_of(status);
     let mut after = Vec::new();
-    if running && status.unreceived > 0 && newest.is_empty() {
-        after.push(format!(
-            "[... {} bytes not shown so far; the newest: demi shell output {command} --tail {NEWEST_LINES} ...]",
-            status.unreceived
-        ));
-    }
+    after.extend(unreceived_line(status, &newest));
     match &status.state {
         CommandState::Running { hint } => {
             if look.sent_now {
@@ -192,7 +192,6 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> Str
             }
             match hint {
                 Some(hint) => after.push(hint.clone()),
-                None if look.report => {}
                 None => after.push(running_next(command, look.interval_ms)),
             }
         }
@@ -200,43 +199,87 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> Str
         CommandState::Exited { .. } => {}
     }
     // The other lines, the output's label among them, each with its newline.
-    let markers: Vec<String> = newest.iter().map(|newest| newest_marker(newest)).collect();
+    let markers: usize = newest.iter().map(|newest| newest_marker(newest).chars().count() + 1).sum();
     let others: usize = before
         .iter()
         .chain(&after)
-        .chain(&markers)
         .map(|line| line.chars().count() + 1)
         .sum::<usize>()
+        + markers
         + "output:\n".len();
-    let budget = REPLAY_CHARS.saturating_sub(others);
+    let output = output_lines(text, command, &newest, REPLAY_CHARS.saturating_sub(others));
+    let mut lines = before;
+    if output.is_empty() {
+        lines.push("output: (empty)".to_owned());
+    } else {
+        lines.push("output:".to_owned());
+        lines.extend(output);
+    }
+    lines.extend(after);
+    lines.join("\n")
+}
+
+/// What a command's report carries of `status`'s output (`runtime.md`
+/// § Command reports): the output since the node's last look as a result
+/// shows it, within `budget` characters, the lines that name what it leaves
+/// out among them; empty when there is none.
+pub fn report_output(status: &CommandStatus, budget: usize) -> String {
+    let text = unseen_output(status);
+    let newest = newest_of(status);
+    let unreceived = unreceived_line(status, &newest);
+    let markers: usize = newest.iter().map(|newest| newest_marker(newest).chars().count() + 1).sum();
+    let reserved = markers + unreceived.iter().map(|line| line.chars().count() + 1).sum::<usize>();
+    let mut lines = output_lines(&text, &status.command_id, &newest, budget.saturating_sub(reserved));
+    lines.extend(unreceived);
+    lines.join("\n")
+}
+
+/// The streams' newest lines a running command's look shows, beyond each
+/// stream's start.
+fn newest_of(status: &CommandStatus) -> Vec<&Newest> {
+    let running = matches!(status.state, CommandState::Running { .. });
+    status
+        .newest
+        .iter()
+        .filter(|newest| running && !newest.text.is_empty())
+        .collect()
+}
+
+/// The line that says how much of a running command's output the backend
+/// has not received yet, when no newest lines stand for it.
+fn unreceived_line(status: &CommandStatus, newest: &[&Newest]) -> Option<String> {
+    let running = matches!(status.state, CommandState::Running { .. });
+    (running && status.unreceived > 0 && newest.is_empty()).then(|| {
+        format!(
+            "[... {} bytes not shown so far; the newest: demi shell output {} --tail {NEWEST_LINES} ...]",
+            status.unreceived, status.command_id
+        )
+    })
+}
+
+/// The output lines a result shows within `budget` characters: the output
+/// since the model's last look from its start, and each stream's newest
+/// lines after the line that counts what lies between, each part within
+/// half of the budget when there are newest lines.
+fn output_lines(text: &OutputText, command: &CommandId, newest: &[&Newest], budget: usize) -> Vec<String> {
     // The start takes all of the bound, or half of it beside newest lines.
     let start_budget = if newest.is_empty() {
         budget
     } else {
         budget / 2
     };
-    let shown = text
+    let mut lines = text
         .unseen_line()
         .map_or_else(Vec::new, |from| cut(text, from, command, start_budget));
-    let used: usize = shown.iter().map(|line| line.chars().count() + 1).sum();
-    let mut newest_lines = Vec::new();
+    let used: usize = lines.iter().map(|line| line.chars().count() + 1).sum();
     if !newest.is_empty() {
         let each = budget.saturating_sub(used) / newest.len();
-        for (newest, marker) in newest.iter().zip(markers) {
-            newest_lines.push(marker);
-            newest_lines.extend(newest_tail(newest, each));
+        for newest in newest {
+            lines.push(newest_marker(newest));
+            lines.extend(newest_tail(newest, each));
         }
     }
-    let mut lines = before;
-    if shown.is_empty() && newest_lines.is_empty() {
-        lines.push("output: (empty)".to_owned());
-    } else {
-        lines.push("output:".to_owned());
-        lines.extend(shown);
-        lines.extend(newest_lines);
-    }
-    lines.extend(after);
-    lines.join("\n")
+    lines
 }
 
 /// The next step for a command that runs: it reports to the node as its

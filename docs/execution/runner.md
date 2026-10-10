@@ -1138,7 +1138,8 @@ For each medium, the runner:
    dropped, and its line says it was not kept.
 3. Writes the medium's line into the job's output, after what the job's
    output holds when the medium arrives.
-4. Sends `job_medium { jobId, number, mediaType, size, sha256 }` once the
+4. Sends `job_medium { jobId, number, mediaType, size, sha256 }`, with the
+   facts the medium record gave, once the
    medium is written, so the backend knows each medium even when the
    connection is lost before the job ends. Every `job_medium` of a job
    precedes its `job_exit`.

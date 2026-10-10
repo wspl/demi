@@ -71,7 +71,7 @@ const transcript: Block[] = [
   userBlock('u1', 't1', 'Fix the sign-in page'),
   first,
   shellCall('build', 'Start the build', []),
-  { type: 'wakeup', id: 'wake', turnId: 't2', createdAt, model, placement: 'new_turn', text: 'Command 18 (Start the build) ended with exit code 0; look at it with demi shell status 18.' },
+  { type: 'wakeup', id: 'wake', turnId: 't2', createdAt, model, placement: 'new_turn', reports: [{ commandId: '18', title: 'Start the build', event: { kind: 'ended', exitCode: 0 }, output: '' }] },
   {
     type: 'agent_message',
     id: 'receipt',

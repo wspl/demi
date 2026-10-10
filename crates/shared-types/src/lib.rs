@@ -36,8 +36,8 @@ pub use agent_message::{
     PermissionOutcome, Sender,
 };
 pub use block::{
-    AbortBlock, AgentMessageBlock, Block, CommandEnd, CompactionBoundaryBlock, CompactionMarkerBlock,
-    ContextBlock, ErrorBlock, INSTRUCTIONS_SOURCE, InstructionEntry, RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock,
+    AbortBlock, AgentMessageBlock, Block, CommandEnd, CommandReport, CompactionBoundaryBlock, CompactionMarkerBlock,
+    ContextBlock, ErrorBlock, INSTRUCTIONS_SOURCE, InstructionEntry, RedactedThinkingBlock, ReportEvent, ResponseBlock, ResumeBlock, SteerBlock, StoppedBy,
     TextBlock, ThinkingBlock, ToolCallBlock, ToolCallStatus, UserBlock, WakeupBlock, client_block,
     client_blocks, WakeupPlacement,
 };

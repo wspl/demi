@@ -22,14 +22,15 @@ use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderEvent, ResultPart, UserPart,
     testing::{ScriptedRuntime, Turn},
 };
-use demi_agent_server::ServerConfig;
+use demi_agent_server::{AgentServer, ServerConfig};
 use demi_conversation_socket_protocol::SubagentEvent;
 use demi_host_interface::{RpcInvocation, testing::MemoryPort};
-use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, Sender, Timestamp};
+use demi_shared_types::{AgentMessage, AgentMessageEvent, Block, BlockId, NodeId, Sender, Timestamp, ToolView};
+use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 use serde_json::{Value, json};
 
-use crate::support::{Fixture, conversation, exec, is_idle, reply, resident, tolerant, turn, within};
+use crate::support::{DeviceHost, Fixture, conversation, exec, is_idle, reply, resident, tolerant, turn, within};
 
 /// What the model was shown of each tool call it made, by the call's id, in
 /// the order the request carries them.
@@ -370,11 +371,10 @@ async fn send_now_on_a_steer_moves_the_command_to_the_background_and_the_turn_go
             &format!("Command {command} (Run the test script) ended with exit code 0"),
         )
         .await;
+        // It carries what the command printed since the result's look.
         assert_eq!(
             report,
-            format!(
-                "Command {command} (Run the test script) ended with exit code 0; look at it with demi shell status {command}."
-            )
+            format!("Command {command} (Run the test script) ended with exit code 0.\noutput:\nwent")
         );
         let requests = script.requests();
         let results: Results = Rc::default();
@@ -433,7 +433,8 @@ async fn a_command_left_running_reports_every_interval_and_its_end_and_a_failed_
             &format!("Command {suite} (Run the test script) is still running after"),
         )
         .await;
-        assert!(progress.contains("\nstatus: running\n"), "{progress}");
+        // The result showed `started`, so the report shows nothing new.
+        assert!(progress.contains(".\noutput: (empty)\n"), "{progress}");
         assert!(
             progress.ends_with(&format!(
                 "It reports every 1s; change that with demi shell status {suite} --interval <duration>, or with --resident to hear only of its end."
@@ -441,13 +442,17 @@ async fn a_command_left_running_reports_every_interval_and_its_end_and_a_failed_
             "{progress}"
         );
         std::fs::write(format!("{}/done", fixture.workspace), "").unwrap();
-        reported(
+        // Its end carries the output since the last look, as a result
+        // shows a command's end, so the model needs no look.
+        let end = reported(
             &script,
-            &format!(
-                "Command {suite} (Run the test script) ended with exit code 3; look at it with demi shell status {suite}."
-            ),
+            &format!("Command {suite} (Run the test script) ended with exit code 3"),
         )
         .await;
+        assert_eq!(
+            end,
+            format!("Command {suite} (Run the test script) ended with exit code 3.\noutput:\nfinished")
+        );
 
         // The failed command's result is an error to the provider; the one
         // that still ran is not.
@@ -527,7 +532,11 @@ async fn a_resident_command_returns_once_quiet_reports_only_its_end_and_its_end_
         // The report ended the long call's window: its command runs on.
         let long = result(&results, "long");
         assert_eq!(field(long, "status"), "running", "{long}");
-        assert!(report.ends_with(&format!("look at it with demi shell status {serve}.")));
+        // It printed nothing after the result showed `ready`.
+        assert_eq!(
+            report,
+            format!("Command {serve} (Run the test script) ended with exit code 0.\noutput: (empty)")
+        );
         // It reported nothing while it ran.
         assert!(
             !script
@@ -539,6 +548,170 @@ async fn a_resident_command_returns_once_quiet_reports_only_its_end_and_its_end_
         fixture.stop().await;
     })
     .await;
+}
+
+// Under a second: one shell job and a look through the status command. The
+// end report is made while the model writes its next step, and the model's
+// `demi shell status --wait` shows the end before the report would join the
+// turn (`runtime.md` § Command reports).
+#[tokio::test(flavor = "local")]
+async fn an_end_a_look_showed_while_its_report_waited_is_not_reported() {
+    within(async {
+        let server: Rc<std::cell::OnceCell<Rc<AgentServer<DeviceHost>>>> = Rc::default();
+        let workspace: Rc<std::cell::OnceCell<String>> = Rc::default();
+        let looked: Rc<RefCell<String>> = Rc::default();
+        let (server_in_turn, workspace_in_turn, looked_in_turn) = (server.clone(), workspace.clone(), looked.clone());
+        let turns = [
+            Turn::Events(vec![exec(
+                "serve",
+                "echo ready; until [ -e done ]; do sleep 0.05; done; echo finished",
+                500,
+            )]),
+            // While this request streams, the command ends and its end
+            // report waits for the turn's next boundary; then the model
+            // looks at the command, which shows the end.
+            Turn::Stream(Box::new(move |_| {
+                look_once_its_report_waits(server_in_turn, workspace_in_turn, looked_in_turn).boxed_local()
+            })),
+        ]
+        .into_iter()
+        .chain(replies(3));
+        let script = ScriptedRuntime::new(turns);
+        let fixture = Fixture::start_with(&script, reporting()).await;
+        let _ = server.set(fixture.server.clone());
+        let _ = workspace.set(fixture.workspace.clone());
+        let mut client = fixture.opened().await;
+        turn(&mut client, "message-1", "Serve, then look.").await;
+        let root = fixture.server.node(&conversation(), &conversation()).unwrap();
+        root.session().settled().await;
+
+        let serve = fixture.shell_commands()[0].clone();
+        let looked = looked.borrow().clone();
+        assert!(looked.contains("status: exited\nexitCode: 0"), "{looked}");
+        // The waiting report read nothing of the output, so the look shows
+        // the command's last lines.
+        assert!(looked.contains("\noutput:\nfinished\n"), "{looked}");
+        // The end the look showed tells nothing more: no request after the
+        // look's answer, and no report in any.
+        assert_eq!(script.requests().len(), 2, "{:#?}", script.requests().iter().map(|request| request.items.last().cloned()).collect::<Vec<_>>());
+        let reported_end = script
+            .requests()
+            .iter()
+            .flat_map(inputs)
+            .any(|input| input.contains(&format!("Command {serve} (Run the test script) ended")));
+        assert!(!reported_end);
+        assert!(!fixture.kinds().contains(&"wakeup".to_owned()), "{:?}", fixture.kinds());
+        fixture.stop().await;
+    })
+    .await;
+}
+
+// About a second: three shell jobs and a look through the status command.
+// A look at two commands waits for both; the first one's end report arrives
+// meanwhile and ends no window, since the look shows that end itself
+// (`runtime.md` § Command reports).
+#[tokio::test(flavor = "local")]
+async fn the_end_report_of_a_command_a_look_waits_for_ends_no_window() {
+    within(async {
+        let turns = [
+            Turn::Events(vec![
+                exec("serve", "until [ -e done ]; do sleep 0.05; done; echo finished", 500),
+                exec("other", "until [ -e other-done ]; do sleep 0.05; done", 500),
+            ]),
+            // A call whose window far outlasts the test, which ends when the
+            // test lets it.
+            Turn::Events(vec![exec("wait", "until [ -e let-go ]; do sleep 0.05; done; echo let go", 600_000)]),
+        ]
+        .into_iter()
+        .chain(replies(3));
+        let script = ScriptedRuntime::new(turns);
+        let fixture = Fixture::start_with(&script, reporting()).await;
+        let mut client = fixture.opened().await;
+        client
+            .send(ClientFrame::Send {
+                message_id: "message-1".try_into().unwrap(),
+                content: client_text("Serve, then wait."),
+            })
+            .await;
+        client.next_until(|frame| shows_call(frame, "wait")).await;
+        let [serve, other] = &fixture.shell_commands()[..2] else {
+            panic!("the two commands")
+        };
+        let root = fixture.server.node(&conversation(), &conversation()).unwrap();
+        // The model looks at both commands and waits for their ends.
+        let look = tokio::task::spawn_local({
+            let root = root.clone();
+            let workspace = fixture.workspace.clone();
+            let ids = json!({ "id": [serve, other], "wait": "30s" });
+            async move { node_call(&root, &workspace, &["shell", "status"], ids).await }
+        });
+        while !root.looks_at(serve) {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        // The first command ends while the look waits: its end report waits
+        // for the turn's boundary.
+        std::fs::write(format!("{}/done", fixture.workspace), "").unwrap();
+        while !root.session().status().input {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        // The other command ends, and the look shows both ends; the running
+        // call was not cut short meanwhile, and ends once it is let go.
+        std::fs::write(format!("{}/other-done", fixture.workspace), "").unwrap();
+        let (code, looked, stderr) = look.await.unwrap();
+        assert_eq!(code, 0, "{stderr}");
+        assert!(looked.contains("\noutput:\nfinished\n"), "{looked}");
+        std::fs::write(format!("{}/let-go", fixture.workspace), "").unwrap();
+        client.next_until(is_idle).await;
+        let results: Results = Rc::default();
+        for request in &script.requests() {
+            record(&results, request);
+        }
+        let results = results.borrow();
+        let waited = result(&results, "wait");
+        assert_eq!(field(waited, "status"), "exited", "{waited}");
+        assert_eq!(shown_output(waited), "let go\n", "{waited}");
+        fixture.stop().await;
+    })
+    .await;
+}
+
+/// The model's look at the command the turn's first call started: it ends
+/// the command, waits until the command's end report waits for the turn's
+/// boundary, looks at the command with `demi shell status --wait`, as the
+/// model's script would, and answers.
+fn look_once_its_report_waits(
+    server: Rc<std::cell::OnceCell<Rc<AgentServer<DeviceHost>>>>,
+    workspace: Rc<std::cell::OnceCell<String>>,
+    looked: Rc<RefCell<String>>,
+) -> impl futures_util::Stream<Item = ProviderEvent> {
+    futures_util::stream::once(async move {
+        let root = conversation();
+        let node = server.get().expect("the fixture started").node(&root, &root).unwrap();
+        let workspace = workspace.get().unwrap();
+        std::fs::write(format!("{workspace}/done"), "").unwrap();
+        while !node.session().status().input {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let serve = node
+            .session()
+            .transcript()
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                Block::ToolCall(call) => match &call.view {
+                    Some(ToolView::Shell(view)) => Some(view.command_id.clone()),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .expect("the call that started the command");
+        let (code, stdout, stderr) =
+            node_call(&node, workspace, &["shell", "status"], json!({ "id": [serve], "wait": "5s" })).await;
+        assert_eq!(code, 0, "{stderr}");
+        *looked.borrow_mut() = stdout;
+        futures_util::stream::iter(reply("It ended."))
+    })
+    .flatten()
 }
 
 /// The command the call `id` started, once its result reached the model.
@@ -620,6 +793,17 @@ async fn spawn(fixture: &Fixture, prompt: &str) {
 /// its exit code, stdout and stderr.
 async fn root_call(fixture: &Fixture, path: &[&str], args: Value) -> (u8, String, String) {
     let root = fixture.server.node(&conversation(), &conversation()).unwrap();
+    node_call(&root, &fixture.workspace, path, args).await
+}
+
+/// Runs the `demi` command at `path` with `args` as the root's job in
+/// `workspace` would: its exit status, stdout and stderr.
+async fn node_call(
+    root: &demi_agent_server::Node<DeviceHost>,
+    workspace: &str,
+    path: &[&str],
+    args: Value,
+) -> (u8, String, String) {
     let path: Vec<&str> = std::iter::once("demi").chain(path.iter().copied()).collect();
     let mut invocation: RpcInvocation = serde_json::from_value(json!({
         "path": path,
@@ -627,7 +811,7 @@ async fn root_call(fixture: &Fixture, path: &[&str], args: Value) -> (u8, String
         "args": args,
         "json": false,
         "host": "device",
-        "cwd": fixture.workspace,
+        "cwd": workspace,
         "env": {},
         "context": {
             "conversation": conversation(),
@@ -734,9 +918,7 @@ async fn a_stop_ends_the_command_a_call_watches_and_leaves_one_an_earlier_call_l
         std::fs::write(format!("{}/stop", fixture.workspace), "").unwrap();
         reported(
             &script,
-            &format!(
-                "Command {serve} (Run the test script) ended with exit code 0; look at it with demi shell status {serve}."
-            ),
+            &format!("Command {serve} (Run the test script) ended with exit code 0."),
         )
         .await;
         fixture.stop().await;

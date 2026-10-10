@@ -116,6 +116,8 @@ import {
   steerPrompt,
   transcriptDemoBlocks,
   commandEndBlocks,
+  commandReportCases,
+  severalReports,
   removedToolBlocks,
   unsizedRecordingTool,
   wideImageTool,
@@ -136,6 +138,7 @@ import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow, type TurnFlowKind } from '../turn-flow'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import GalleryAgentsChip from '../components/GalleryAgentsChip.vue'
+import GalleryCommandReports from '../components/GalleryCommandReports.vue'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GalleryContextLimit from '../components/GalleryContextLimit.vue'
@@ -149,6 +152,9 @@ const historyModelBlocks = transcriptDemoBlocks()
 /** The calls the Command Ends specimens show, and calls of tools the runtime no longer has. */
 const endBlocks = commandEndBlocks()
 const removedBlocks = removedToolBlocks()
+/** One report row specimen per event, and several reports in one block. */
+const reportCases = commandReportCases()
+const reportsTogether = severalReports()
 
 /**
  * The permission card's specimens, each over its own requests: a decision
@@ -1771,6 +1777,30 @@ onBeforeUnmount(() => {
               <div class="flex flex-col">
                 <ToolCallBlock v-for="block in removedBlocks" :key="block.id" :block="block" />
               </div>
+            </GallerySpecimen>
+          </div>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Command Reports"
+        note="A command a call left running tells the agent of its progress and its end, and the transcript shows each report as a row where it arrived, so a reply the agent writes after it never appears without its cause. The row reads the call’s title and what happened, in the user’s words; a failure, a stop and a loss carry the tag a shell row carries, the exit code or the reason in its tooltip. Reports that arrived together are one row each. A click on a row opens the command’s terminal tab; a command no terminal tab shows is no control."
+      >
+        <div class="gallery-frame gallery-block-frame bg-surface">
+          <div class="specimen-stack">
+            <GallerySpecimen v-for="specimen in reportCases" :key="specimen.variant" :variant="specimen.variant" wide>
+              <GalleryCommandReports :reports="specimen.reports" />
+            </GallerySpecimen>
+            <GallerySpecimen variant="several in one block" wide>
+              <GalleryCommandReports :reports="reportsTogether" />
+            </GallerySpecimen>
+            <GallerySpecimen variant="several in one block · narrow" wide>
+              <div class="w-[300px]">
+                <GalleryCommandReports :reports="reportsTogether" />
+              </div>
+            </GallerySpecimen>
+            <GallerySpecimen variant="a command no terminal tab shows" wide>
+              <GalleryCommandReports :reports="reportsTogether" :untracked="['17', '18', '22']" />
             </GallerySpecimen>
           </div>
         </div>

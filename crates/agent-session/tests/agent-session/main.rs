@@ -25,8 +25,8 @@ use demi_provider_common::{
 };
 use demi_shared_gates::{ActivityGate, GateLease, Purpose};
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, B64Bytes, BlobRef, Block, BlockId, CommandId, DocumentSource,
-    FailureSource, FileExtension, MediaSource, ModelSelection, NodeId, OperationId, Sender,
+    AgentMessage, AgentMessageEvent, B64Bytes, BlobRef, Block, BlockId, CommandId, CommandReport, DocumentSource,
+    FailureSource, FileExtension, MediaSource, ModelSelection, NodeId, OperationId, ReportEvent, Sender,
     SessionPhase, ShellToolView, ShellViewStatus, Timestamp, ToolCallStatus, ToolResultContentBlock,
     ToolView, TurnId, UserContentBlock,
 };
@@ -39,7 +39,7 @@ use demi_agent_store::{
     media::HeldMedia,
     testing::{MemoryTreeStore, model_of, model_reading, sent_text, test_model, text},
 };
-use demi_agent_transcript::testing::SequentialIds;
+use demi_agent_transcript::{report_text, testing::SequentialIds};
 
 mod compaction;
 mod editing;
@@ -189,23 +189,23 @@ impl SessionRuntime for TestRuntime {
         })
     }
 
-    /// `<title>: still running (<n>)` for the nth progress report, and
-    /// `<title>: ended` once it ended.
+    /// The nth progress report, as having run n seconds, and the end once
+    /// it ended ([`running_report`], [`ended_report`]).
     fn report<'a>(
         &'a self,
         command: &'a CommandId,
         title: &'a str,
-        _interval_ms: Option<u32>,
-    ) -> LocalBoxFuture<'a, Option<String>> {
-        let text = if self.commands.has_ended(command) {
-            format!("{title}: ended")
+        interval_ms: Option<u32>,
+    ) -> LocalBoxFuture<'a, Option<CommandReport>> {
+        let report = if self.commands.has_ended(command) {
+            test_report(command.as_str(), title, ReportEvent::Ended { exit_code: None })
         } else {
             let mut reports = self.commands.reports.borrow_mut();
             let count = reports.entry(command.clone()).or_default();
             *count += 1;
-            format!("{title}: still running ({count})")
+            test_report(command.as_str(), title, running(*count, interval_ms.unwrap_or(0)))
         };
-        Box::pin(async move { Some(text) })
+        Box::pin(async move { Some(report) })
     }
 
     fn invoke_step(&self, calls: Vec<ToolInvocation>) -> StepOutcomes<'_> {
@@ -2111,4 +2111,34 @@ async fn events_reach_listeners_in_order_even_when_a_listener_changes_the_sessio
 
     // Every listener sees the queue grow before either sees it shrink.
     assert_eq!(*seen.borrow(), ["phase running", "queue 1", "queue 0"]);
+}
+
+/// A test command's report: its event, and no output.
+fn test_report(command: &str, title: &str, event: ReportEvent) -> CommandReport {
+    CommandReport {
+        command_id: CommandId::try_from(command).unwrap(),
+        title: title.to_owned(),
+        event,
+        output: String::new(),
+    }
+}
+
+/// A test command's nth progress report: it has run n seconds.
+fn running(count: u32, interval_ms: u32) -> ReportEvent {
+    ReportEvent::Running {
+        running_ms: u64::from(count) * 1000,
+        idle_ms: 0,
+        interval_ms,
+    }
+}
+
+/// What the model reads of the test command `command`, titled `title`,
+/// once it ended.
+pub(crate) fn ended_report(command: &str, title: &str) -> String {
+    report_text(&test_report(command, title, ReportEvent::Ended { exit_code: None }))
+}
+
+/// What the model reads of the test command's nth progress report.
+pub(crate) fn running_report(command: &str, title: &str, count: u32, interval_ms: u32) -> String {
+    report_text(&test_report(command, title, running(count, interval_ms)))
 }

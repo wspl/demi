@@ -10,7 +10,7 @@ use demi_shared_types::{
     CompactionMarkerBlock, ContextBlock, ErrorBlock, InstructionEntry, ModelSelection, ProviderErrorDiagnostics,
     RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock, TextBlock, ThinkingBlock,
     Timestamp, TokenUsage, ToolCallBlock, ToolCallStatus, ToolResultContentBlock, ToolView, TurnId,
-    UserBlock, UserContentBlock, WakeupBlock, WakeupPlacement,
+    UserBlock, UserContentBlock, WakeupBlock, WakeupPlacement, CommandReport,
 };
 use serde_json::Value;
 
@@ -137,15 +137,14 @@ impl TranscriptLog {
         }));
     }
 
-    /// Command reports that arrived together, their `text` one paragraph
-    /// each.
+    /// Command reports that arrived together, in the order they arrived.
     pub fn push_wakeup(
         &mut self,
         id: BlockId,
         turn_id: TurnId,
         model: &ModelSelection,
         placement: WakeupPlacement,
-        text: String,
+        reports: Vec<CommandReport>,
     ) {
         let created_at = self.clock.now();
         self.append(Block::Wakeup(WakeupBlock {
@@ -154,7 +153,7 @@ impl TranscriptLog {
             created_at,
             model: model.clone(),
             placement,
-            text,
+            reports,
             entries: Vec::new(),
         }));
     }
