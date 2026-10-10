@@ -38,12 +38,6 @@ const props = defineProps<{
   flow?: boolean
   /** Show the chevron of the row this face hands over to, without being a control itself (the tail row's face). */
   chevron?: boolean
-  /**
-   * What a click on a row that does not expand does, such as opening the
-   * terminal of the command a report names; the row is then a control
-   * without a chevron.
-   */
-  action?: () => void
 }>()
 
 const slots = useSlots()
@@ -61,15 +55,10 @@ const bodyScroll = computed(() => bodyArea.value?.el)
 const bodyContent = ref<HTMLElement>()
 let closeTimer: ReturnType<typeof setTimeout> | undefined
 
-/** The row is a control: it expands, or it acts. */
-const isControl = computed(() => isExpandable.value || !!props.action)
-
-function activate(): void {
+function toggle(): void {
   if (isExpandable.value) {
     isOpen.value = !isOpen.value
-    return
   }
-  props.action?.()
 }
 
 function clearCloseTimer() {
@@ -121,13 +110,13 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
   <div class="overflow-hidden">
     <div
       class="flex h-7 cursor-default select-none items-center gap-2 text-chrome transition-colors duration-200 ease-out"
-      :class="isControl ? 'group text-fg-muted hover:text-fg-body' : 'text-fg-muted'"
-      :role="isControl ? 'button' : undefined"
-      :tabindex="isControl ? 0 : undefined"
+      :class="isExpandable ? 'group text-fg-muted hover:text-fg-body' : 'text-fg-muted'"
+      :role="isExpandable ? 'button' : undefined"
+      :tabindex="isExpandable ? 0 : undefined"
       :aria-expanded="isExpandable ? isOpen : undefined"
-      @click="activate"
-      @keydown.enter.self.prevent="activate"
-      @keydown.space.self.prevent="activate"
+      @click="toggle"
+      @keydown.enter.self.prevent="toggle"
+      @keydown.space.self.prevent="toggle"
     >
       <ChromeRoll
         class="min-w-0"

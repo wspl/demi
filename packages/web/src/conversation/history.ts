@@ -6,16 +6,15 @@ import {
   withWholeBlock,
   type HeldTranscript,
 } from '@demicodes/web-ui/transport/protocol'
-import { shownWindow } from '@demicodes/web-ui/agent/history'
+import { shownWindow, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { ApiError, apiRequest, readResponse } from '../api/client'
 import {
-  commandRecordSchema,
+  commandCallSchema,
   transcriptPageSchema,
   wholeBlockSchema,
   type TranscriptPage,
 } from '../api/generated/web-api'
 import type { Conversation } from '../state/types'
-import { commandTerminal } from './terminals'
 
 /** Where a page is read from (`web-api.md` § Pages). */
 type PageAt =
@@ -141,14 +140,31 @@ export function createHistoryReads(signal: () => AbortSignal, live: (conversatio
     })
   }
 
-  /** Shows the window around the block `block`, reading it first when the page does not hold it. */
+  /**
+   * Shows the window around the block `block`, reading it first when the
+   * page does not hold it. A subagent's panel shows one window, from its
+   * latest back, so there the pages before it are read until one holds the
+   * block.
+   */
   async function readAround(conversation: Conversation, node: string | null, block: string): Promise<void> {
-    const held = historyOf(conversation, node).windows.some((window) => window.blocks.some((candidate) => candidate.id === block))
-    if (!held) {
-      await read(conversation, node, { kind: 'around', block })
-    }
+    const held = () => historyOf(conversation, node).windows.some((window) => window.blocks.some((candidate) => candidate.id === block))
     if (node === null) {
+      if (!held()) {
+        await read(conversation, node, { kind: 'around', block })
+      }
       conversation.shownAt = block
+      return
+    }
+    let start = shownWindow(historyOf(conversation, node), null).start
+    while (!held() && start > 0) {
+      await readBeside(conversation, node, 'before')
+      const reached = shownWindow(historyOf(conversation, node), null).start
+      // A read already under way for the same page took it instead, or a
+      // rewrite moved the window: either way the next scroll there reads on.
+      if (reached >= start) {
+        return
+      }
+      start = reached
     }
   }
 
@@ -176,16 +192,14 @@ export function createHistoryReads(signal: () => AbortSignal, live: (conversatio
         agent.failures = { ...agent.failures, ...failures }
       }
     },
-    /** Reads an ended command's record, so its terminal tab can open (`web-api.md` § Subagents and commands). */
-    async readCommand(conversation: Conversation, commandId: string): Promise<void> {
+    /** Where the call that started the command `commandId` lies (`web-api.md` § Subagents and commands). */
+    async findCommand(conversation: Conversation, commandId: string): Promise<TranscriptReveal> {
       const response = await apiRequest(
         `/conversations/${encodeURIComponent(conversation.id)}/commands/${encodeURIComponent(commandId)}`,
         { signal: signal() },
       )
-      const record = await readResponse(response, commandRecordSchema)
-      if (!conversation.terminals.some((terminal) => terminal.id === record.commandId)) {
-        conversation.terminals.push(commandTerminal(record))
-      }
+      const call = await readResponse(response, commandCallSchema)
+      return { node: call.subagentId, blockId: call.blockId }
     },
   }
 }

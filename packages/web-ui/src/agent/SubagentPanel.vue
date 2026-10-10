@@ -10,7 +10,7 @@ import TabItem from './TabItem.vue'
 import { provideLiveCalls } from './live-calls'
 import { subagentPanelTabs, subagentStatus, type SubagentRecord } from './subagents'
 import { callTerminal, type TerminalRecord } from './terminals'
-import { shownWindow, windowEdges } from './history'
+import { shownWindow, windowEdges, type TranscriptReveal } from './history'
 
 const props = withDefaults(
   defineProps<{
@@ -18,6 +18,8 @@ const props = withDefaults(
     /** The conversation's commands: a child's running calls show theirs. */
     terminals?: readonly TerminalRecord[]
     dismissOutside?: boolean
+    /** A block of a child's transcript to bring into view and mark for a moment, on that child's tab. */
+    reveal?: TranscriptReveal | null
   }>(),
   {
     terminals: () => [],
@@ -36,6 +38,8 @@ const emit = defineEmits<{
    * reader nears its start (`web-application.md` § Transcript windows).
    */
   read: [id: string, at: 'latest' | 'before']
+  /** The block `reveal` names is in view. */
+  revealed: []
 }>()
 const activeId = defineModel<string | null>('activeId', { required: true })
 
@@ -144,6 +148,8 @@ function closeTab(id: string): void {
       :bottom-offset="16"
       :persisted-scroll-state="undefined"
       read-only
+      :reveal-block-id="reveal?.node === active.id ? reveal.blockId : null"
+      @revealed="emit('revealed')"
       @read-before="emit('read', active.id, 'before')"
     />
   </SessionOverlay>
