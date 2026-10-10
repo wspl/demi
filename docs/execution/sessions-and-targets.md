@@ -544,8 +544,8 @@ History remains readable, and the backend does not redirect the operation.
 
 A restart is not a device going away. When the backend starts, the runners
 its shutdown disconnected, a running Cloud's among them, connect again by
-themselves within seconds; a Cloud the shutdown let hibernate first is
-stopped, and wakes as any stopped Cloud does. For the first 30 seconds after the start, a Host
+themselves within seconds: the shutdown lets no Cloud hibernate
+([Managed hosts](../cloud/managed-hosts.md)). For the first 30 seconds after the start, a Host
 operation for such a device waits for its runner, as an operation waits for
 a held conversation, instead of answering `device_offline` or
 `host_stopped`; a device still not back after that answers as usual. The
@@ -577,11 +577,11 @@ those records:
 | The runner lists the job as | The command |
 | --- | --- |
 | Running | Goes on: the backend follows it again where a page shows it, reads the output it missed from the kept output, and the command's handle works again for `demi shell status` and `demi shell stop` |
-| Ended | Ends with the status the runner kept, and its whole output is read as for any end |
-| Not listed | Is lost, with the reason the backend can tell from what it knows of the device: Demi was upgraded and the runner replaced itself, the Cloud restarted, the runner started anew after it ended, or it stopped its jobs after 10 minutes without a connection |
+| Ended | Ends with the status the runner kept, and its whole output is read as for any end; a job the runner stopped after 10 minutes without a connection is lost with that reason, its output kept |
+| Not listed | Is lost, with the reason the backend can tell from what it knows of the device: Demi was upgraded and the runner replaced itself, the Cloud restarted, the runner started anew after it ended, or the runner, still the same, never received the job |
 
 A lost command is recorded as ended for that reason, and the node that ran
-it learns it at its next request
+it is told by its report
 ([Lost commands](../agent/runtime.md#lost-commands)).
 
 Two kinds of interruption follow ([Upgrades](../delivery/upgrades.md)):
