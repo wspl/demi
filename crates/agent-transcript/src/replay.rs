@@ -88,7 +88,7 @@ pub fn replay(request: &RequestView) -> Replay {
                 }],
             }),
             Block::Wakeup(wakeup) => {
-                let content = vec![bounded(&wakeup.text)];
+                let content = vec![bounded(&crate::reports_text(&wakeup.reports))];
                 items.push(match wakeup.placement {
                     WakeupPlacement::NewTurn => InferenceItem::UserMessage { content },
                     WakeupPlacement::Steer => InferenceItem::UserSteer { content },

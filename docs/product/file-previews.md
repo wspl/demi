@@ -205,7 +205,7 @@ open, and a click opens it large:
   so a picture shows where the model saw it. A `shell` call whose command
   exits within the call's window carries the media the job viewed, several
   of them when it viewed several. When the command exits after the
-  call returned, the report or the `demi shell status` that tells the end
+  call returned, the end report
   carries them instead. The generic tool card shows its result's media the
   same way.
 - **Where.** Under the call's row, above the files the call changed, side

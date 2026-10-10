@@ -1,4 +1,4 @@
-import type { AgentMessage, Block, EditedFile, ModelSelection, ToolResultContentBlock, UserContentBlock } from '@demicodes/protocol'
+import type { AgentMessage, Block, CommandReport, EditedFile, ModelSelection, ToolResultContentBlock, UserContentBlock } from '@demicodes/protocol'
 import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { ShellToolView as ShellView, ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import { editCopies, galleryBlobSize, galleryBlobs, missingBlob } from './blobs'
@@ -932,6 +932,38 @@ export function commandEndBlocks(): ToolCallBlock[] {
   ]
 }
 
+/** A report of `commandId`, whose call is titled `title`. */
+function report(commandId: string, title: string, event: CommandReport['event'], output = ''): CommandReport {
+  return { commandId, title, event, output }
+}
+
+const suite = 'Run the test suite'
+
+/**
+ * The reports the report-row specimens show, one of each event (`runtime.md`
+ * § Command reports), by the specimen's variant.
+ */
+export function commandReportCases(): { variant: string, reports: CommandReport[] }[] {
+  return [
+    { variant: 'still running', reports: [report('17', suite, { kind: 'running', runningMs: 300_000, idleMs: 12_000, intervalMs: 300_000 }, '[412/980] packages/web')] },
+    { variant: 'ended', reports: [report('17', suite, { kind: 'ended', exitCode: 0 }, '980 passed (6m 2s)')] },
+    { variant: 'ended with a failure', reports: [report('17', suite, { kind: 'ended', exitCode: 1 }, 'FAIL auth.test.ts')] },
+    { variant: 'stopped by you', reports: [report('18', 'Start the dev server', { kind: 'stopped', by: { kind: 'user' } })] },
+    { variant: 'stopped by another agent', reports: [report('19', 'Watch the type check', { kind: 'stopped', by: { kind: 'agent', number: 2 } })] },
+    { variant: 'lost', reports: [report('20', 'Serve the docs', { kind: 'lost', reason: 'its Host’s connection ended' })] },
+    { variant: 'a call whose title is not known', reports: [report('21', '', { kind: 'ended', exitCode: 2 })] },
+  ]
+}
+
+/** Reports that arrived together, one block, one row each; the last title is too long for a narrow row. */
+export function severalReports(): CommandReport[] {
+  return [
+    report('17', suite, { kind: 'ended', exitCode: 1 }, 'FAIL auth.test.ts'),
+    report('18', 'Start the dev server', { kind: 'stopped', by: { kind: 'user' } }),
+    report('22', 'Build the documentation site with every locale and the API reference', { kind: 'running', runningMs: 600_000, idleMs: 0, intervalMs: 600_000 }),
+  ]
+}
+
 /**
  * Calls of tools the runtime no longer has, as a conversation from before
  * they were removed keeps them: a look and a wait, each a generic tool card
@@ -1125,10 +1157,11 @@ export function transcriptDemoBlocks(): Block[] {
 /**
  * Runs that only check a command, and ones that run one too (`runtime.md`
  * § Work groups): the agent starts the end-to-end suite and ends its turn;
- * asked, it checks the suite twice; the suite's report wakes it, a block
- * the transcript does not show, and it checks the end; asked again, it runs
- * the suite once more and checks the first run's log. The rows read Checked
- * 1 command, Checked 1 command, Ran 1 command, checked 1 command.
+ * asked, it checks the suite twice; the suite's end report wakes it, a row
+ * of its own, and carries the suite's last lines, so the agent answers
+ * without a look; asked again, it runs the suite once more and checks the
+ * first run's log. The groups read Checked 1 command and Ran 1 command,
+ * checked 1 command.
  */
 export function commandLookBlocks(): Block[] {
   const user = (id: string, at: number, text: string): Block => ({
@@ -1153,7 +1186,7 @@ export function commandLookBlocks(): Block[] {
     lookCall(id, description, '51', ownCommandId, seen, at)
   const report: Block = {
     type: 'wakeup', id: 'look-report', turnId: 'look-report-turn', createdAt: iso(300_000), model: demoModel, placement: 'new_turn',
-    text: 'Command 51 (Run the end-to-end suite) ended with exit code 0; look at it with demi shell status 51.',
+    reports: [{ commandId: '51', title: 'Run the end-to-end suite', event: { kind: 'ended', exitCode: 0 }, output: '140 passed (4m 12s)' }],
   }
   return [
     user('look-start', 900_000, 'Run the end-to-end suite.'),
@@ -1166,9 +1199,7 @@ export function commandLookBlocks(): Block[] {
     look('look-second', 675_000, 'Check the end-to-end suite again', '54', statusText('51', 'running', '[86/140] checkout.spec.ts\n')),
     reply('look-answer', 670_000, 'Not yet: 86 of 140 specs passed so far, and none failed. I will tell you when it ends.'),
     report,
-    think('report-think', 295_000, 'The suite ended. Read its last lines.'),
-    look('report-look', 290_000, 'Read the end of the suite', '55', statusText('51', 'exited', '140 passed (4m 12s)\n')),
-    reply('report-answer', 285_000, 'The suite ended: all 140 specs passed.'),
+    reply('report-answer', 295_000, 'The suite ended: all 140 specs passed in 4 minutes 12 seconds.'),
     user('again-ask', 200_000, 'Run it once more, and show me how long the first run took.'),
     run('again-suite', 195_000, '52'),
     look('again-look', 190_000, 'Read the first run’s timing', '56', statusText('51', 'exited', '140 passed (4m 12s)\n')),

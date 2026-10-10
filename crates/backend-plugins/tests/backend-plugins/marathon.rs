@@ -214,15 +214,15 @@ async fn a_page_feeds_and_stops_commands_left_running_and_their_ends_wake_the_mo
         }
 
         let woken = woken.borrow();
-        assert_eq!(
-            woken[1],
-            format!(
-                "Command {reader} (Run the test script) ended with exit code 0; look at it with demi shell status {reader}."
-            )
+        assert!(
+            woken[1].starts_with(&format!("Command {reader} (Run the test script) ended with exit code 0.\noutput")),
+            "{}",
+            woken[1]
         );
-        assert_eq!(
-            woken[3],
-            format!("Command {long} (Run the test script) was stopped by the user.")
+        assert!(
+            woken[3].starts_with(&format!("Command {long} (Run the test script) was stopped by the user.\noutput")),
+            "{}",
+            woken[3]
         );
         let results = results.borrow();
         assert!(results[0].starts_with("status: running\n"), "{}", results[0]);

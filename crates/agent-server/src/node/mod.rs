@@ -16,21 +16,21 @@ use demi_agent_session::{
     AgentSession, Continuation, NewContext, RestoreError, SeenContext, SessionConfig, SessionDeps,
     SessionInit, SessionRuntime, StepOutcomes, ToolInvocation,
 };
-use demi_agent_store::{AgentTreeStore, Checkpoint, NodeRecord, StoreError};
+use demi_agent_store::{AgentTreeStore, Checkpoint, NodeRecord, StoreError, StoredOutput};
 use demi_agent_tools::{
-    CallError, ContextSource, EndOf, Environments, HostResolver, ModelIdentity, NodeContext,
+    CallError, ContextSource, EndOf, Environments, HostResolver, Looking, ModelIdentity, NodeContext,
     ShellAccess, ShellEnvironmentFactory, Stopper, StoreNumbers, definitions, end_report,
-    progress_report, runs_together, stored_running_commands, system_prompt,
+    fill_output, progress_report, runs_together, stored_running_commands, system_prompt, whole_status,
 };
 use demi_agent_transcript::IdSource;
 use demi_host_interface::{
-    CommandSet, CommandState, Ending, JobCaller, Numbers, PageFeed, PageState, PageView, Seen,
+    CommandSet, CommandState, CommandStatus, Ending, JobCaller, Numbers, PageFeed, PageState, PageView, Seen,
     ShellEnvironment, ShellError, WholeOutput,
 };
 use demi_provider_common::{ProviderRuntime, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_shared_types::{
-    Clock, CommandEnd, CommandId, ModelSelection, NodeId, QueuedMessage, TurnId,
+    Clock, CommandEnd, CommandId, CommandReport, ModelSelection, ReportEvent, NodeId, QueuedMessage, TurnId,
 };
 use futures_util::{FutureExt, future::LocalBoxFuture};
 
@@ -128,6 +128,17 @@ impl<H: HostResolver> Node<H> {
             // release.
             environment.release_command(command).await;
         }
+    }
+
+    /// The node looks at `commands` until the returned look is dropped: their
+    /// end reports end no window meanwhile (`runtime.md` § Command reports).
+    pub(crate) fn look_at(&self, commands: Vec<CommandId>) -> Looking<'_> {
+        self.runtime.environments.look_at(commands)
+    }
+
+    /// Whether a look of the node at `command` runs now.
+    pub fn looks_at(&self, command: &CommandId) -> bool {
+        self.runtime.environments.looks_at(command)
     }
 
     /// Whether one of the node's environments holds `command`.
@@ -313,6 +324,30 @@ impl<H: HostResolver> NodeRuntime<H> {
             Some(CommandEnd::Unrecorded) | None => EndOf::Unrecorded,
         }
     }
+
+    /// What `command`, which ended and no environment holds any more, shows
+    /// of its output since the node's last look, from the output the
+    /// conversation stored; reading it moves no place. None when the
+    /// conversation keeps no output of it.
+    async fn stored_status(&self, command: &CommandId) -> Option<CommandStatus> {
+        let stored = self.store.command_output(command).await.unwrap_or_else(|error| {
+            tracing::warn!(%command, %error, "the output of an ended command could not be read");
+            None
+        })?;
+        let StoredOutput::Stored { output, .. } = stored.output else {
+            return None;
+        };
+        let state = match stored.end {
+            CommandEnd::Exited { exit_code } => CommandState::Exited {
+                exit_code,
+                binary_stdout: None,
+                media: Vec::new(),
+            },
+            CommandEnd::Stopped | CommandEnd::Lost | CommandEnd::Unrecorded => CommandState::Aborted,
+        };
+        let place = self.environments.place(command);
+        Some(whole_status(command, state, 0, 0, Arc::new(output), place))
+    }
 }
 
 impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
@@ -445,15 +480,17 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         })
     }
 
-    /// A running command's progress, which a look shows and which moves the
-    /// node's place in its output; or its end, unless a look showed it the
-    /// node already or the node stopped it itself.
+    /// A running command's progress, or its end, unless a look showed it
+    /// the node already or the node stopped it itself. The output of a
+    /// command an environment holds is read when the report is written
+    /// ([`SessionRuntime::write_report`]); a command none holds any more is
+    /// read from its stored output now, which moves no place.
     fn report<'a>(
         &'a self,
         command: &'a CommandId,
         title: &'a str,
         interval_ms: Option<u32>,
-    ) -> LocalBoxFuture<'a, Option<String>> {
+    ) -> LocalBoxFuture<'a, Option<CommandReport>> {
         Box::pin(async move {
             if self.environments.end_seen(command) {
                 return None;
@@ -463,17 +500,51 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
             {
                 // A resident command reports only its end.
                 let interval = interval_ms?;
-                let status = environment.status(command).ok()?;
-                // One that ended since tells its end.
-                if matches!(status.state, CommandState::Running { .. }) {
-                    return Some(progress_report(&status, title, interval));
-                }
+                let running_ms = environment
+                    .page_views()
+                    .into_iter()
+                    .find(|view| &view.command_id == command)
+                    .map_or(0, |view| view.running_ms);
+                let idle_ms = environment
+                    .quiet(command)
+                    .map_or(0, |quiet| u64::try_from(quiet.as_millis()).unwrap_or(u64::MAX));
+                return Some(progress_report(command, title, running_ms, idle_ms, interval));
             }
             if self.environments.stopper(command) == Some(Stopper::Itself) {
                 return None;
             }
-            Some(end_report(command, title, self.end_of(command).await))
+            let end = self.end_of(command).await;
+            let status = match self.environments.owning(command) {
+                Some(_) => None,
+                None => self.stored_status(command).await,
+            };
+            Some(end_report(command, title, end, status.as_ref()))
         })
+    }
+
+    fn end_seen(&self, command: &CommandId) -> bool {
+        self.environments.end_seen(command)
+    }
+
+    fn looks_at(&self, command: &CommandId) -> bool {
+        self.environments.looks_at(command)
+    }
+
+    /// Reads the output of a command an environment holds now, which moves
+    /// the node's place in it; an end report's end is the model's from then
+    /// on, as a look's is.
+    fn write_report(&self, report: &mut CommandReport) {
+        let command = report.command_id.clone();
+        if let Some(status) = self
+            .environments
+            .owning(&command)
+            .and_then(|environment| environment.status(&command).ok())
+        {
+            fill_output(report, &status);
+        }
+        if !matches!(report.event, ReportEvent::Running { .. }) {
+            self.environments.saw_end(&command);
+        }
     }
 
     /// Ends the node's shells on every Host, their running commands with

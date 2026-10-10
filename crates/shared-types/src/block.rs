@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use crate::{
-    AgentMessage, BlockId, MAX_SAFE_INTEGER, ModelSelection, Nullable, ProviderErrorDiagnostics,
+    AgentMessage, BlockId, CommandId, MAX_SAFE_INTEGER, ModelSelection, Nullable, ProviderErrorDiagnostics,
     Timestamp, TokenUsage, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
 };
 
@@ -288,7 +288,9 @@ pub enum InstructionEntry {
 
 /// Command reports that arrived together (`runtime.md` § Command reports).
 /// The model receives their text, one paragraph each, as a user message or
-/// as a steer, as the placement says.
+/// as a steer, as the placement says; the text is rendered from the reports
+/// where it is replayed, never stored beside them. The user sees each report
+/// as a row.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WakeupBlock {
@@ -302,9 +304,9 @@ pub struct WakeupBlock {
     pub model: ModelSelection,
     #[garde(skip)]
     pub placement: WakeupPlacement,
-    /// The reports' text, one paragraph each.
-    #[garde(skip)]
-    pub text: String,
+    /// The reports, in the order they arrived.
+    #[garde(dive)]
+    pub reports: Vec<CommandReport>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
     /// a process resumes); omitted when there are none. They never leave
@@ -314,6 +316,93 @@ pub struct WakeupBlock {
     #[schemars(skip)]
     #[garde(skip)]
     pub entries: Vec<serde_json::Value>,
+}
+
+/// What a command a `shell` call left running tells its node
+/// (`runtime.md` § Command reports): its progress, or its end.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CommandReport {
+    #[garde(skip)]
+    pub command_id: CommandId,
+    /// The title of the call that started the command, its `description`;
+    /// empty when that call is not known.
+    #[garde(skip)]
+    pub title: String,
+    #[garde(dive)]
+    pub event: ReportEvent,
+    /// What the command printed since the node's last look, as a `shell`
+    /// result shows it: bounded, with the lines that name what it leaves
+    /// out and how to read it; empty when it printed nothing new. The media
+    /// an end carries will sit beside it.
+    #[garde(skip)]
+    pub output: String,
+}
+
+/// What a report tells of its command.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum ReportEvent {
+    /// It still runs, and reports every `interval_ms`.
+    Running {
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        running_ms: u64,
+        /// How long it has printed nothing.
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        idle_ms: u64,
+        #[garde(skip)]
+        interval_ms: u32,
+    },
+    /// It exited, with its status when its end was recorded.
+    Ended {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(skip)]
+        exit_code: Option<i32>,
+    },
+    /// It was stopped, by whom when that is known.
+    Stopped {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(dive)]
+        by: Option<StoppedBy>,
+    },
+    /// It was lost, for `reason` (`runtime.md` § Lost commands).
+    Lost {
+        #[garde(skip)]
+        reason: String,
+    },
+}
+
+impl ReportEvent {
+    /// A command lost with its Host's connection, the one loss whose
+    /// reason the backend knows today.
+    pub fn lost_with_connection() -> Self {
+        Self::Lost {
+            reason: "its Host's connection ended".to_owned(),
+        }
+    }
+}
+
+/// Who stopped a command, when it was not the node that ran it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum StoppedBy {
+    /// The user, from a page.
+    User,
+    /// Another agent of the conversation, by its number.
+    Agent {
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        number: u64,
+    },
 }
 
 /// How a command ended, as the conversation's record of its output keeps
