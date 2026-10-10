@@ -48,7 +48,13 @@ an invalid usage of a parameter, keeps the vendor's code and is not retried.
 
 A failure Demi finds itself gets its code by an explicit rule, never by
 matching words in its message. A timeout or a network failure is
-`overloaded`. A decode or protocol failure has no code, its source is
+`overloaded`, and so is a stream that ends before the vendor said the reply
+is complete ([Reading vendor input](../providers/providers.md#reading-vendor-input)):
+retried while nothing it streamed is final, as when it broke during the
+reasoning, and otherwise ending the turn with Resume. A reply the vendor
+ended before it was complete, for its output limit, a filter or another
+reason it names, is `incomplete`, which is never retried, since sending the
+same request again ends it the same way. A decode or protocol failure has no code, its source is
 `stream`, and its record is the text Demi could not read; it is never retried
 automatically, and `resume` can continue the turn.
 
