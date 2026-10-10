@@ -212,8 +212,9 @@ impl DeviceJobs {
         });
     }
 
-    /// The job `id` ended with `end`: it leaves the table, and its consumer
-    /// learns the end. False when the device does not know it.
+    /// The job `id` ended with `end`: its consumer learns the end, and it
+    /// leaves the table, unless it is parked, when it waits there for the
+    /// agent that takes it up. False when the device does not know it.
     pub(crate) fn exited(&self, id: &str, mut end: JobEnd) -> bool {
         let mut table = self.0.borrow_mut();
         let Some(job) = table.jobs.get_mut(id) else {
