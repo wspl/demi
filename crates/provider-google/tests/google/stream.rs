@@ -122,7 +122,7 @@ async fn a_stream_that_ends_without_a_finish_reason_fails_and_keeps_the_text() {
     assert_eq!(text, "expected 200, got");
     assert_eq!(
         (failure.message.as_str(), &failure.code),
-        ("The provider's stream ended before the reply was complete", &Some(ErrorCode::Network))
+        ("The provider's stream ended before the reply was complete", &Some(ErrorCode::Overloaded))
     );
 }
 
