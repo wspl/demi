@@ -223,8 +223,7 @@ fn attached_one(result: &str) -> &str {
 // A few seconds: a real device installs the builtin package, and two turns
 // run a shell job each.
 #[tokio::test]
-async fn a_commands_record_keeps_how_it_ended_for_its_page_header_and_a_yield_that_names_it_after()
-{
+async fn a_commands_record_keeps_how_it_ended_for_its_page_header() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
@@ -253,26 +252,6 @@ async fn a_commands_record_keeps_how_it_ended_for_its_page_header_and_a_yield_th
         format!("[command {command}: lines 1-1 of 1, stdout and stderr, exit code 3]\n     1\tfailing\n")
     );
 
-    // A yield that names the ended command is due as its action ends, and
-    // its wakeup reads the end from the record.
-    let wait = serde_json::json!({ "durationMs": 600_000, "commandIds": [command] });
-    let before = work
-        .start(vec![
-            crate::conversations::tool_use("t3", "yield", &wait),
-            say("woke"),
-        ])
-        .await;
-    let woken = format!(
-        "Command {command} ended with exit code 3. Continue the previous work; read its output with demi shell output {command}."
-    );
-    eventually("the wakeup's request", || {
-        let requests = vendor.requests();
-        let found = requests[before..]
-            .iter()
-            .any(|request| request.json().to_string().contains(&woken));
-        async move { found }
-    })
-    .await;
     backend.close().await;
 }
 

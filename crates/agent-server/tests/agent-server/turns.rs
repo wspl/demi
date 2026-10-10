@@ -44,7 +44,7 @@ async fn a_message_runs_to_its_response_and_its_patches_rebuild_the_transcript()
             event::text("the files."),
             event::tool_call(
                 "call-1",
-                "shell_exec",
+                "shell",
                 json!({ "script": "ls", "description": "List the files" }),
             ),
             event::response(12, 8),
@@ -516,7 +516,7 @@ async fn a_switch_lands_at_the_next_request_inside_the_running_turn() {
     let first = held(
         &release,
         vec![
-            event::tool_call("call-1", "shell_exec", json!({})),
+            event::tool_call("call-1", "shell", json!({})),
             event::response(1, 1),
         ],
     );
@@ -713,7 +713,7 @@ async fn the_system_prompt_layers_its_parts_in_order_and_a_context_change_is_sav
     let prompt = &request.system_prompt;
     let layers = [
         "system prompt\n\nharness guide\n\n",
-        "Shell tools:",
+        "The shell tool:",
         "Capabilities:\n\nUnless a command states otherwise",
         "greet\nGreets the caller by name.\nOperations: hello\n",
         "This conversation runs on test-model (stub, test-model). If asked which model you are, answer with this.",

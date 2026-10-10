@@ -16,8 +16,7 @@ use demi_agent_transcript::{
 use demi_provider_common::{ErrorCode, RequestLimits, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_shared_types::{
-    B64Bytes, BlobRef, Block, CommandId, ContextUsage, ModelSelection, TokenUsage, TurnId,
-    UserContentBlock, WakeupCommand,
+    B64Bytes, BlobRef, Block, ContextUsage, ModelSelection, TokenUsage, TurnId, UserContentBlock,
 };
 use futures_util::future::LocalBoxFuture;
 
@@ -26,7 +25,8 @@ use super::{
     TurnError,
     cancel::TurnCancel,
     core::{CoreParts, SessionCore, TurnStage},
-    input::{InputQueue, Wakeups},
+    input::InputQueue,
+    reports::Watched,
     media::{held, model_view},
     persist,
     runtime::{NewContext, SeenContext, SessionRuntime, StepOutcomes, ToolInvocation},
@@ -135,7 +135,8 @@ async fn over_a_threshold(
 ) -> Result<bool, TurnError> {
     let window = cancel.guard(window_in_use(s, model)).await?;
     let view = model_view(s, cancel).await?;
-    let request = RequestView::new(&view, &model.model, limits);
+    let tools = s.runtime.tools();
+    let request = RequestView::new(&view, &model.model, limits, &tools);
     if over_token_threshold(s, &request, window) {
         return Ok(true);
     }
@@ -445,10 +446,10 @@ fn session_copy(s: &Rc<SessionShared>, window: Vec<Block>, media: HeldMedia) -> 
             .fresh(),
         transcript: TranscriptLog::new(window, s.ids.clone(), core.clock()),
         media,
+        tools: core.tools.clone(),
         inputs: InputQueue::default(),
-        wakeups: Wakeups::default(),
+        watched: Watched::default(),
         edits: Vec::new(),
-        last_turn: core.last_turn,
         held: false,
         ids: s.ids.clone(),
         clock: core.clock(),
@@ -521,10 +522,6 @@ impl SessionRuntime for CopyRuntime {
 
     fn invoke_step(&self, calls: Vec<ToolInvocation>) -> StepOutcomes<'_> {
         self.session.invoke_step(calls)
-    }
-
-    fn command_end(&self, commands: Vec<CommandId>) -> LocalBoxFuture<'static, WakeupCommand> {
-        self.session.command_end(commands)
     }
 }
 

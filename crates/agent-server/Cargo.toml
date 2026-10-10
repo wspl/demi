@@ -33,6 +33,7 @@ demi-shared-gates = { path = "../shared-gates" }
 demi-provider-common = { path = "../provider-common" }
 demi-host-interface = { path = "../host-interface" }
 futures-util.workspace = true
+jiff.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true

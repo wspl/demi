@@ -322,6 +322,10 @@ impl Harness {
             // request beside the first turn would take one of its answers.
             conversations: ConversationTuning {
                 titles: false,
+                // A command reports at the interval a scenario asks for,
+                // however short, so that the scenario sees it within its
+                // time.
+                interval_floor_ms: 100,
                 ..ConversationTuning::default()
             },
             pages: PageTuning::default(),
