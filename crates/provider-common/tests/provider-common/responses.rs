@@ -190,7 +190,7 @@ async fn a_stream_that_ends_without_its_completion_fails_and_keeps_the_text() {
     assert_eq!(text, "hi");
     assert_eq!(
         (failure.message.as_str(), &failure.code),
-        ("The provider's stream ended before the reply was complete", &Some(ErrorCode::Network))
+        ("The provider's stream ended before the reply was complete", &Some(ErrorCode::Overloaded))
     );
 }
 

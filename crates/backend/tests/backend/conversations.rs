@@ -1941,9 +1941,36 @@ async fn a_stream_cut_before_the_reply_completed_ends_the_turn_unfinished_with_i
     assert_eq!(text.text, "group 9 fails (`expected 200, got");
     assert_eq!(
         (error.code.as_deref(), error.message.as_str()),
-        (Some("network"), "The provider's stream ended before the reply was complete")
+        (Some("overloaded"), "The provider's stream ended before the reply was complete")
     );
     assert_eq!(chat_requests(&vendor).len(), 1, "streamed text is never asked for again");
+    backend.close().await;
+}
+
+// Up to a second: the retry waits its random backoff.
+#[tokio::test]
+async fn a_stream_cut_during_the_reasoning_is_retried_and_leaves_no_trace() {
+    let vendor = MockVendor::start().await;
+    let (_harness, backend, master, mut socket) = on_deepseek(&vendor).await;
+    vendor.respond(MockResponse::event_stream(format!(
+        "data: {}\n\n",
+        json!({ "choices": [{ "delta": { "reasoning_content": "Run the unit tests first." } }] })
+    )));
+    vendor.respond(MockResponse::event_stream(format!(
+        "data: {}\n\n",
+        json!({ "choices": [{ "delta": { "content": "Both suites ran." }, "finish_reason": "stop" }] })
+    )));
+
+    socket.chat("m1", "run the suites").await;
+
+    assert_eq!(chat_requests(&vendor).len(), 2, "the cut attempt is sent again");
+    let blocks = transcript(&backend, &master, FIRST).await.blocks;
+    assert!(
+        !blocks.iter().any(|block| matches!(block, Block::Error(_) | Block::Thinking(_))),
+        "the cut attempt's reasoning is unwound: {blocks:?}"
+    );
+    assert!(matches!(blocks.last(), Some(Block::Response(_))), "{blocks:?}");
+    assert_eq!(last_text(&blocks), "Both suites ran.");
     backend.close().await;
 }
 
