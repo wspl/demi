@@ -99,7 +99,8 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   - transcript blocks (`Block`): the explicit submission `User`, the only
     editable type; `Context`, `Wakeup`, `Steer` and `AgentMessage` inputs;
     `Resume` and `Abort`; provider output; `CompactionBoundary` and
-    `CompactionMarker`;
+    `CompactionMarker`; the command reports a `Wakeup` holds (`CommandReport`,
+    `ReportEvent`), which the page renders as rows;
   - user and tool content (`UserContentBlock`, `MediaSource`,
     `DocumentSource`, `ToolResultContentBlock`, `ToolMediaSource`), whose
     media are blob references (`BlobRef`), or a URL, and never bytes; a tool
@@ -604,8 +605,9 @@ Each crate implements the provider contract for one vendor family.
 - **Owns:** the transcript of one session: its log and the patches it sends
   (`TranscriptLog`), the identities it gives blocks and turns (`ids`), its
   estimates (`estimate`), the points it is cut at for a resume, a rewind, an
-  edit or a compaction (`cut`), and its replay into a provider request
-  (`replay`).
+  edit or a compaction (`cut`), its replay into a provider request
+  (`replay`), and the one rendering of command reports into the text the
+  model reads, with the durations they name (`reports`).
 - **Public boundary:** the items above; `agent_transcript::testing` supplies
   predictable identities (`SequentialIds`) and the texts the model receives
   for a resume and an agent message (`RESUME_TEXT`,
