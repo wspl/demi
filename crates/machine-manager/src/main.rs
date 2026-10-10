@@ -155,7 +155,7 @@ mod service {
             let data = core.config.data.clone();
             blocking::run(move |off| lock::verify_inherited(off, &data)).await?;
             preflight::release_probes(&core.config.data).await?;
-            recovery::fence_and_save(&core).await?;
+            recovery::fence_and_save(&core, &[]).await?;
             return Ok(());
         }
         let (data, runtime) = (core.config.data.clone(), core.config.runtime().to_owned());
@@ -171,7 +171,7 @@ mod service {
         }
         let (working, images) = (core.config.working(), core.config.images());
         blocking::run(move |off| preflight::require_one_filesystem(off, &working, &images)).await?;
-        recovery::fence_and_save(&core).await?;
+        recovery::fence_and_save(&core, &[]).await?;
         if core.config.mode == Mode::Recover {
             return Ok(());
         }

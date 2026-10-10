@@ -56,7 +56,7 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
             let reason = "a managed host presents its device token; it is never paired";
             refuse(socket, &runner, HelloErrorCode::UnknownDevice, reason).await;
         } else {
-            await_claim(&services, &shards, socket, runner).await;
+            await_claim(&services, &shards, socket, runner, kept.instance).await;
         }
         return;
     };
@@ -197,6 +197,7 @@ async fn await_claim(
     shards: &Shards,
     mut socket: WebSocket,
     runner: RunnerInfo,
+    instance: u64,
 ) {
     loop {
         let code = ClaimCode::generate();
@@ -234,7 +235,7 @@ async fn await_claim(
             // The code expired: it is dead, and a new one goes out.
             None => services.claims.withdraw(&code),
             Some(grant) => {
-                hand_over(shards, socket, runner, grant).await;
+                hand_over(shards, socket, runner, instance, grant).await;
                 return;
             }
         }
@@ -244,7 +245,13 @@ async fn await_claim(
 /// Gives the claimed runner its token and moves its socket into the shard
 /// of the user who claimed it. A runner lost on the way leaves the grant
 /// unanswered, and the claim then deletes the device it made.
-async fn hand_over(shards: &Shards, mut socket: WebSocket, runner: RunnerInfo, grant: ClaimGrant) {
+async fn hand_over(
+    shards: &Shards,
+    mut socket: WebSocket,
+    runner: RunnerInfo,
+    instance: u64,
+    grant: ClaimGrant,
+) {
     let ClaimGrant {
         device,
         token,
@@ -260,7 +267,9 @@ async fn hand_over(shards: &Shards, mut socket: WebSocket, runner: RunnerInfo, g
     let owner = device.user.clone();
     let adopted = shards
         .of(&owner)
-        .adopt(move |shard| async move { shard.adopt_claimed(device, runner, socket, bound).await })
+        .adopt(move |shard| async move {
+            shard.adopt_claimed(device, runner, instance, socket, bound).await
+        })
         .await;
     if adopted.is_err() {
         tracing::info!("a claimed runner arrived while the backend shuts down");

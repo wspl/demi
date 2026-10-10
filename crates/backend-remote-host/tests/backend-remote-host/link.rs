@@ -2089,3 +2089,34 @@ async fn a_command_stopped_with_its_call_ends_as_stopped() {
         CommandState::Aborted
     ));
 }
+
+/// After a backend restart, a recorded job the device's runner does not
+/// list is lost for the reason the device's record tells: the runner, still
+/// the same instance, never received it; one of another instance started
+/// anew (`sessions-and-targets.md` § Recovery and persistence). A few
+/// milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_recorded_job_not_listed_after_a_restart_is_lost_for_what_the_record_tells() {
+    for (instance, reason) in [
+        (5, demi_backend_remote_host::NEVER_RECEIVED),
+        (6, demi_backend_remote_host::RUNNER_RESTARTED),
+    ] {
+        let device = device();
+        let job = format!("job-{instance}");
+        let _link = device.connect_hello(
+            None,
+            demi_backend_remote_host::Hello {
+                instance,
+                release: "0".into(),
+                jobs: Vec::new(),
+                last_release: Some("0".into()),
+                last_instance: Some(5),
+                managed: false,
+                recorded: [job.clone()].into(),
+            },
+        );
+        let host = device.host("/work", Admission::Free);
+        let adopted = host.adopt_job(job, Some(test_command_context()), Some(caller()), None);
+        assert_eq!(adopted.end().await.status, ProcessEnd::Lost(reason.into()));
+    }
+}

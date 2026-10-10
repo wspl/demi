@@ -17,7 +17,7 @@ use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::publication::{PublicationError, publish_native, release_files};
 use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
-use demi_backend_cloud::reset::recover_resets;
+use demi_backend_cloud::reset::recover_clouds;
 use demi_backend_database::StorageError;
 use demi_backend_http::{AppState, Edge, Site, WebBuildError, runner_socket, web_build};
 use demi_backend_user_shard::conversation::search::index_at_start;
@@ -91,12 +91,10 @@ pub enum ShutdownError {
     Edge(io::Error),
     #[error(transparent)]
     Storage(#[from] CloseError),
-    /// A user's Cloud could not be saved; the manager's reconcile saves it.
-    #[error("a Cloud was not saved: {0}")]
+    /// A reset or transition of a user's Cloud under way at the close
+    /// failed.
+    #[error("a Cloud's reset or transition failed: {0}")]
     Cloud(String),
-    /// The machine manager did not reconcile at close.
-    #[error("the machine manager did not reconcile: {0}")]
-    Machines(String),
 }
 
 /// Every shutdown step that failed.
@@ -111,6 +109,48 @@ impl fmt::Display for ShutdownErrors {
 }
 
 impl std::error::Error for ShutdownErrors {}
+
+/// Hands each running Cloud to its owner's shard, which takes it over
+/// (`managed-hosts.md` § Control and ownership).
+async fn take_over_clouds(
+    running: Vec<demi_backend_database::devices::DeviceRecord>,
+    shards: &demi_backend_user_shard::shard::Shards,
+) -> Result<(), String> {
+    for device in running {
+        let owner = device.user.clone();
+        shards
+            .of(&owner)
+            .call(move |shard, _| async move { shard.cloud_shard().take_over_cloud(&device).await })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+/// Restores the trees whose commands ran on a Cloud that does not run, other
+/// than the `taken` ones, so their agents learn what became of them.
+async fn take_up_stopped_clouds(
+    taken: &[demi_web_api_protocol::ids::DeviceId],
+    control: &demi_backend_database::control::ControlService,
+    shards: &demi_backend_user_shard::shard::Shards,
+) -> Result<(), String> {
+    let stopped = control
+        .clouds_with_running_jobs()
+        .await
+        .map_err(|error| error.to_string())?;
+    for (device, owner) in stopped {
+        if taken.contains(&device) {
+            continue;
+        }
+        shards
+            .of(&owner)
+            .call(move |shard, _| async move { shard.take_up_stopped_cloud(device).await })
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
 
 /// Publishes the command packages of the server release whose root is
 /// `release`: its `commands/`, whose executables come from the files its
@@ -215,12 +255,21 @@ impl Backend {
             shards.shards(),
         )));
         // Before the backend serves, the machine manager settles what an
-        // earlier backend left, which stops every Cloud, and resets it left
-        // unfinished commit their disks.
-        if let Err(error) = recover_resets(&services.control, &services.cloud).await {
+        // earlier backend left, which keeps every running Cloud, and resets
+        // it left unfinished commit their disks; each running Cloud's shard
+        // takes it over.
+        let running = match recover_clouds(&services.control, &services.cloud).await {
+            Ok(running) => running,
+            Err(error) => {
+                shards.close().await;
+                services.close_providers().await;
+                return Err(StartError::Cloud(error.to_string()));
+            }
+        };
+        if let Err(error) = take_over_clouds(running.clone(), &shards.shards()).await {
             shards.close().await;
             services.close_providers().await;
-            return Err(StartError::Cloud(error.to_string()));
+            return Err(StartError::Cloud(error));
         }
         // Fork destinations whose root committed before their publication are
         // published before the backend serves.
@@ -309,6 +358,12 @@ impl Backend {
                 });
             }
         };
+        // A Cloud that does not run although commands ran on it, as after an
+        // upgrade, starts again once a runner can reach the backend.
+        let taken: Vec<_> = running.iter().map(|device| device.id.clone()).collect();
+        if let Err(error) = take_up_stopped_clouds(&taken, &services.control, &shards.shards()).await {
+            tracing::error!("the stopped Clouds' commands cannot be taken up: {error}");
+        }
         Ok(Self {
             local_addr: edge.local_addr(),
             storage,
@@ -446,9 +501,7 @@ impl Backend {
         drop(self.deaths);
         // A runner executable still being sourced is no longer needed.
         drop(self.runners);
-        if let Err(error) = self.services.cloud.machines.close().await {
-            failures.push(ShutdownError::Machines(error.to_string()));
-        }
+        self.services.cloud.machines.close().await;
         if let Err(error) = self.edge.close().await {
             failures.push(ShutdownError::Edge(error));
         }
