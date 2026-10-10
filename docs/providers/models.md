@@ -485,11 +485,14 @@ A model's `acceptedExtensions` has three distinct meanings:
 | `["png", "pdf"]` | The model reads the listed types. Extensions omit the dot. |
 | `null` | Which types the model reads is unknown. |
 
-The conversion to a selection derives the list from the catalog's flags:
-attachment support adds `png`, `jpg`, `jpeg`, `gif`, `webp` and `pdf`, and
-video support adds the four video types. Only a model known to read video gets
-the video types: unknown video support adds none. When attachment support is
-unknown and the model is not known to read video, the list is null. A model
+The conversion to a selection derives the list from the input modalities
+the catalog gives the model: `image` adds `png`, `jpg`, `jpeg`, `gif` and
+`webp`, `pdf` adds `pdf`, and `video` adds the four video types; a model
+whose modalities are only `text` reads none, and one the catalog gives no
+modalities for has a null list. The modalities say what the model reads,
+kind by kind; models.dev's single attachment flag does not, since most
+models it marks read images but no PDF: `deepseek-v4-flash` takes `text` and
+`image`, `claude-sonnet-4-5` `text`, `image` and `pdf`. A model
 whose catalog states its exact types, such as a model of a configured list,
 uses them instead, including an empty list or null. A provider's catalog
 lists only the types its wire carries in a message: `grok-build` and `codex`
