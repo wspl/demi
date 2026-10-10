@@ -12,7 +12,7 @@ use demi_shared_types::{
 
 use super::{
     gone_text,
-    replay::{RESUME_TEXT, RequestView},
+    replay::{RequestView, resume_text},
     replay_start,
 };
 
@@ -232,7 +232,7 @@ fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
         Block::AgentMessage(receipt) => {
             serde_json::to_string(&receipt.message).expect("an agent message serializes to JSON")
         }
-        Block::Resume(_) => RESUME_TEXT.to_owned(),
+        Block::Resume(resume) => resume_text(resume),
         Block::Thinking(thinking) => thinking.text.clone(),
         Block::RedactedThinking(redacted) => redacted.data.clone(),
         Block::Text(text) => text.text.clone(),
