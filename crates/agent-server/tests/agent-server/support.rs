@@ -26,7 +26,7 @@ use demi_host_interface::{
 };
 use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderRun, ProviderRuntime, RequestLimits, UserPart,
-    testing::{FixedClock, ScriptedRuntime, TokioClock, Turn},
+    testing::{FixedClock, ScriptedRuntime, Turn},
 };
 use demi_shared_types::{
     Block, Clock, ModelSelection, NodeId, ProviderModel, ServiceTier, Timestamp, TurnId,
@@ -529,20 +529,6 @@ impl Fixture {
             store,
             config,
             Arc::new(FixedClock(start())),
-        )
-    }
-
-    /// As [`with_model`](Self::with_model), on a wall clock that moves with
-    /// Tokio's, so that yield wakeups fall due.
-    pub fn with_model_on_tokio_time(model: &Model, product: TestProduct) -> Self {
-        let resolver = Rc::new(ScriptedProviders::default());
-        resolver.provide_runtime("stub", model.clone());
-        Self::build(
-            resolver,
-            product,
-            MemoryTreeStore::new(),
-            ServerConfig::default(),
-            Arc::new(TokioClock::new(start())),
         )
     }
 

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
 use demi_shared_gates::{GateLease, Reservation};
-use demi_shared_types::{CommandId, InstructionEntry, ModelSelection, ToolView, TurnId, WakeupCommand};
+use demi_shared_types::{CommandId, InstructionEntry, ModelSelection, ToolView, TurnId};
 use futures_util::{future::LocalBoxFuture, stream::LocalBoxStream};
 use serde_json::Value;
 use tokio::sync::watch;
@@ -67,13 +67,30 @@ pub trait SessionRuntime {
     /// returned. Dropping the stream stops the calls still running.
     fn invoke_step(&self, calls: Vec<ToolInvocation>) -> StepOutcomes<'_>;
 
-    /// Resolves once the first of `commands`, which a `yield` named, has
-    /// ended, at once when one has ended already, with how it ended
-    /// (`runtime.md` § Yield wakeups). It holds nothing of the session. A
-    /// node without shells has no commands, so by default it never resolves.
-    fn command_end(&self, commands: Vec<CommandId>) -> LocalBoxFuture<'static, WakeupCommand> {
-        let _ = commands;
+    /// Resolves once `command`, which a `shell` call of the node left
+    /// running, has ended, and at once when it has ended already or the
+    /// node's shells do not hold it (`runtime.md` § Command reports). It
+    /// holds nothing of the session. A node without shells has no commands,
+    /// so by default it never resolves.
+    fn command_ended(&self, command: &CommandId) -> LocalBoxFuture<'static, ()> {
+        let _ = command;
         Box::pin(std::future::pending())
+    }
+
+    /// What `command`, which a `shell` call titled `title` left running and
+    /// which reports every `interval_ms` while it runs, tells the node now
+    /// (`runtime.md` § Command reports): its progress while it runs, which
+    /// moves the node's place in its output as a look does, or its end. None
+    /// when it has nothing to tell: the node saw its end in a result
+    /// already, or stopped it itself.
+    fn report<'a>(
+        &'a self,
+        command: &'a CommandId,
+        title: &'a str,
+        interval_ms: Option<u32>,
+    ) -> LocalBoxFuture<'a, Option<String>> {
+        let _ = (command, title, interval_ms);
+        Box::pin(async { None })
     }
 
     /// Releases what the node's tools hold, such as its shell environments
@@ -132,8 +149,8 @@ pub struct ToolInvocation {
 /// What a session tells the windows of its running calls.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct Arrivals {
-    /// How many agent messages and fired wakeups arrived: input that joins
-    /// the turn at its next boundary and ends a window. A human steer and a
+    /// How many agent messages and command reports arrived: input that
+    /// joins the turn at its next boundary and ends a window. A human steer and a
     /// queued message are none.
     pub(crate) joining: u64,
     /// The user sent a steer or a queued message now, and the running turn
@@ -144,7 +161,7 @@ pub(crate) struct Arrivals {
 /// Why a window ended before its time passed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowEnd {
-    /// An agent message or a yield wakeup arrived.
+    /// An agent message or a command report arrived.
     Input,
     /// The user sent a message now: the command moves to the background,
     /// and the result says so.
@@ -152,7 +169,7 @@ pub enum WindowEnd {
 }
 
 /// The arrival of what ends a window (`runtime.md` § The window): an agent
-/// message or a fired wakeup, which joins the running turn at its next
+/// message or a command report, which joins the running turn at its next
 /// boundary, or the user's send now.
 #[derive(Debug, Clone)]
 pub struct InputArrival {
@@ -199,8 +216,7 @@ pub struct ToolOutcome {
     pub output: Vec<ResultPart>,
     pub is_error: bool,
     pub view: Option<ToolView>,
-    /// What the session does beyond recording the result; it writes the
-    /// result of an effect itself.
+    /// What the session does beyond recording the result.
     pub effect: Option<ToolEffect>,
 }
 
@@ -222,20 +238,18 @@ impl ToolOutcome {
     }
 }
 
-/// What a tool asks of its session (`runtime.md` § Dispatch and failures):
-/// a tool never reaches into its session.
+/// What a tool asks of its session beside its result (`runtime.md`
+/// § Dispatch and failures): a tool never reaches into its session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolEffect {
-    /// `yield`: schedule one wakeup `duration_ms` after the action ends, or
-    /// sooner when one of `commands` ends, and end the turn after this round
-    /// of tools unless input arrived during it. The call's result says
-    /// `yield scheduled` with the duration and the commands, after
-    /// `above_cap`, the line that says the duration asked for was above the
-    /// cap and `duration_ms` is the cap (`runtime.md` § Tool input).
-    ScheduleYield {
-        duration_ms: u32,
-        commands: Vec<CommandId>,
-        above_cap: Option<String>,
+    /// The call returned while its command still runs: the session watches
+    /// it, and the command reports every `interval_ms` until it ends, or
+    /// only its end when none (`runtime.md` § Command reports). Its reports
+    /// name it by `title`, the call's.
+    Background {
+        command: CommandId,
+        interval_ms: Option<u32>,
+        title: String,
     },
 }
 

@@ -218,7 +218,8 @@
       "serviceTierId": "priority"
     },
     "turnId": "turn-4",
-    "placement": "new_turn"
+    "placement": "new_turn",
+    "text": "Command 18 (Build the site) is still running after 5m; no output for 4m50s."
   },
   {
     "type": "wakeup",
@@ -279,13 +280,7 @@
     },
     "turnId": "turn-4",
     "placement": "steer",
-    "command": {
-      "commandId": "17",
-      "end": {
-        "kind": "exited",
-        "exitCode": 1
-      }
-    }
+    "text": "Command 17 (Run the tests) ended with exit code 1; look at it with demi shell status 17."
   },
   {
     "type": "steer",
@@ -975,7 +970,7 @@
       "serviceTierId": null
     },
     "toolUseId": "toolu_01",
-    "toolName": "shell_exec",
+    "toolName": "shell",
     "input": "{\"script\":\"npm test\"",
     "status": "executing",
     "output": [],
@@ -1039,7 +1034,7 @@
       "serviceTierId": null
     },
     "toolUseId": "toolu_02",
-    "toolName": "shell_exec",
+    "toolName": "shell",
     "input": "{\"script\":\"npm test\",\"description\":\"Run the tests\"}",
     "status": "completed",
     "output": [
@@ -1183,17 +1178,17 @@
       "serviceTierId": null
     },
     "toolUseId": "toolu_03",
-    "toolName": "shell_exec",
+    "toolName": "shell",
     "input": "{\"script\":\"make\"}",
     "status": "error",
     "output": [
       {
         "type": "text",
-        "text": "Repeated identical shell_exec suppressed."
+        "text": "Repeated identical shell call suppressed."
       }
     ],
     "view": {
-      "kind": "repeated_shell_exec",
+      "kind": "repeated_shell",
       "script": "make",
       "count": 7
     }
@@ -1273,82 +1268,6 @@
       "idleMs": 2000,
       "chunks": [],
       "viewTruncated": true
-    }
-  },
-  {
-    "type": "tool_call",
-    "id": "tc5",
-    "createdAt": "2026-09-21T14:13:20.000Z",
-    "model": {
-      "providerId": "anthropic",
-      "model": {
-        "id": "claude-sonnet-4-5",
-        "name": "Claude Sonnet 4.5",
-        "contextWindow": 200000,
-        "outputLimit": 64000,
-        "thinking": [
-          {
-            "type": "adaptive",
-            "efforts": [
-              "low",
-              "medium",
-              "high"
-            ]
-          },
-          {
-            "type": "budget",
-            "minBudgetTokens": 1024,
-            "maxBudgetTokens": null,
-            "defaultBudgetTokens": null
-          },
-          {
-            "type": "effort",
-            "efforts": [
-              "low",
-              "high"
-            ],
-            "summaries": [
-              "auto",
-              "detailed"
-            ],
-            "defaultSummary": "auto"
-          },
-          {
-            "type": "disabled"
-          }
-        ],
-        "acceptedExtensions": [
-          "png",
-          "jpg",
-          "jpeg",
-          "gif",
-          "webp",
-          "pdf"
-        ]
-      },
-      "thinking": {
-        "type": "adaptive",
-        "effort": "high"
-      },
-      "serviceTierId": null
-    },
-    "toolUseId": "toolu_05",
-    "toolName": "yield",
-    "input": "{\"durationMs\":120000,\"commandIds\":[17]}",
-    "status": "completed",
-    "output": [
-      {
-        "type": "text",
-        "text": "yield scheduled"
-      }
-    ],
-    "view": {
-      "kind": "yield_wakeup",
-      "wakeupId": "wk-1",
-      "durationMs": 120000,
-      "commandIds": [
-        "17"
-      ]
     }
   },
   {

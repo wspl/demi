@@ -123,8 +123,8 @@ pub(crate) fn shell(id: &str, script: &str) -> Answer {
     vec![
         event::tool_call(
             id,
-            "shell_exec",
-            json!({ "description": id, "script": script, "timeoutMs": 60_000 }),
+            "shell",
+            json!({ "description": id, "script": script, "intervalMs": 60_000 }),
         ),
         event::response(1, 1),
     ]

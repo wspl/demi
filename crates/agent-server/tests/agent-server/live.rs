@@ -143,6 +143,10 @@ impl ShellEnvironment for ScriptedShell {
         Ok(status)
     }
 
+    fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError> {
+        Ok(self.record(command)?.borrow().quiet())
+    }
+
     fn read_output<'a>(
         &'a self,
         command: &'a CommandId,
@@ -245,10 +249,12 @@ async fn serving() -> (
     let script = ScriptedRuntime::new([
         Turn::Events(vec![event::tool_call(
             "call-1",
-            "shell_exec",
-            json!({"script": "serve", "description": "Start the server", "timeoutMs": 200}),
+            "shell",
+            json!({"script": "serve", "description": "Start the server", "intervalMs": null}),
         )]),
         Turn::Events(vec![event::text("serving"), event::response(1, 1)]),
+        // The command's end, reported.
+        Turn::Events(vec![event::text("the server ended"), event::response(1, 1)]),
     ]);
     let providers = Rc::new(ScriptedProviders::default());
     providers.provide("stub", &script);
@@ -350,10 +356,10 @@ async fn a_detached_tree_stays_live_while_its_command_runs_and_goes_after_its_id
     assert!(server.tree(&conversation()).is_none());
 }
 
-/// A command that outlives its turn is the conversation's work, but its exit
-/// wakes no one (`web-api.md` § Sidebar mutations and read state): once the
-/// turn ended the tree no longer works, so its conversation is not running,
-/// while the command keeps the tree live.
+/// A command that outlives its turn is the conversation's work, but it does
+/// not make the conversation running (`web-api.md` § Sidebar mutations and
+/// read state): once the turn ended the tree no longer works, while the
+/// command keeps the tree live.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_command_that_outlives_its_turn_does_not_keep_the_tree_working() {
     let (server, _shell, _first, _script) = serving().await;

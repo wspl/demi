@@ -1,8 +1,9 @@
 //! One agent's session (`runtime.md` § Sessions and turns): a cloneable
 //! handle over the session's state, which one worker task changes by running
 //! one action at a time while commands from the connection change it between
-//! the worker's awaits. The worker, the persister, the wakeup driver and every
-//! command change the state only through [`SessionShared::update`], whose
+//! the worker's awaits. The worker, the persister, the tasks that watch the
+//! commands that report to it and every command change the state only
+//! through [`SessionShared::update`], whose
 //! synchronous closure ends before any await, and each change's events reach
 //! the listeners after the state is released.
 
@@ -14,10 +15,10 @@ mod editing;
 mod input;
 mod media;
 mod persist;
+mod reports;
 mod retry;
 mod runtime;
 mod turn;
-mod wakeups;
 mod worker;
 
 /// What a session's tests compare its requests with (feature `testing`).
@@ -37,17 +38,15 @@ use std::{
     time::Duration,
 };
 
-use demi_agent_store::{
-    Checkpoint, CheckpointUpdate, SessionStore, StoreError, TurnEnd, media::HeldMedia,
-};
+use demi_agent_store::{Checkpoint, CheckpointUpdate, SessionStore, StoreError, media::HeldMedia};
 use demi_agent_transcript::{IdSource, TranscriptLog, last_assistant_text};
 use demi_conversation_socket_protocol::{AbortResult, TranscriptPatch, TranscriptVersion};
 use demi_provider_common::{ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
 use demi_shared_types::{
-    AgentMessage, Block, BlockId, Clock, ContextUsage, ModelSelection, NodeId, PendingCall, PendingSteer,
-    ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock, TurnId,
-    UserContentBlock,
+    AgentMessage, Block, BlockId, Clock, CommandId, ContextUsage, ModelSelection, NodeId, PendingCall,
+    PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock, ToolView,
+    TurnId, UserContentBlock,
 };
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -69,7 +68,8 @@ use self::{
     bus::EventBus,
     cancel::TurnCancel,
     core::{AbortStep, ActionKind, CoreParts, ProviderSlot, SessionCore},
-    input::{InputQueue, Wakeups},
+    input::InputQueue,
+    reports::Watched,
 };
 
 /// How a session saves, retries and compacts.
@@ -367,12 +367,11 @@ pub enum Settle {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Status {
     pub settle: Settle,
-    /// A yield wakeup is scheduled, or fired and not yet written.
-    pub wakeups: bool,
-    /// An agent message waits for a boundary.
-    pub agent_input: bool,
-    /// How the last turn that ended, ended.
-    pub last_turn: TurnEnd,
+    /// An agent message or a command report waits for a boundary.
+    pub input: bool,
+    /// A command the session's calls left running still runs, and will
+    /// report to it (`runtime.md` § Command reports).
+    pub commands: bool,
 }
 
 /// What a session is doing, as a supervisor observes it (`subagents.md`
@@ -386,8 +385,8 @@ pub enum Execution {
     Compacting,
     /// The action ended and its checkpoint is being saved.
     Finalizing,
-    /// Idle with a yield wakeup scheduled.
-    PendingYield,
+    /// Idle while commands it started, or its children, still run.
+    Waiting,
 }
 
 impl Execution {
@@ -398,7 +397,7 @@ impl Execution {
             Self::ToolExecuting => "tool_executing",
             Self::Compacting => "compacting",
             Self::Finalizing => "finalizing",
-            Self::PendingYield => "pending_yield",
+            Self::Waiting => "waiting",
         }
     }
 }
@@ -424,15 +423,13 @@ pub(crate) struct SessionShared {
     /// started finishes before the next one starts.
     persist_gate: SerialGate,
     status: watch::Sender<Status>,
-    /// What ends a shell tool's window early: one more agent message or
-    /// fired wakeup, or the user's send now (`runtime.md` § The window).
+    /// What ends a shell call's window early: one more agent message or
+    /// command report, or the user's send now (`runtime.md` § The window).
     arrivals: watch::Sender<runtime::Arrivals>,
     /// Wakes the worker when an action starts.
     work: Rc<Notify>,
     /// Wakes the persister when a change makes a save due.
     persist_wake: Rc<Notify>,
-    /// Wakes the wakeup driver when the scheduled wakeups change.
-    replan: Rc<Notify>,
     /// Tells a waiting fork that the runtime is back in its slot.
     runtime_returned: Notify,
     runtime: Rc<dyn SessionRuntime>,
@@ -441,13 +438,12 @@ pub(crate) struct SessionShared {
     config: SessionConfig,
     worker: RefCell<Option<AbortOnDropHandle<()>>>,
     persister: RefCell<Option<AbortOnDropHandle<()>>>,
-    driver: RefCell<Option<AbortOnDropHandle<()>>>,
 }
 
 impl SessionShared {
     /// Changes the state in one synchronous step, then does what the change
-    /// asked for: wakes the worker, the persister or the wakeup driver,
-    /// publishes the session's status, and delivers the change's events.
+    /// asked for: wakes the worker or the persister, publishes the
+    /// session's status, and delivers the change's events.
     fn update<R>(&self, change: impl FnOnce(&mut SessionCore) -> R) -> R {
         let (result, effects, arrivals) = {
             let mut core = self.core.borrow_mut();
@@ -464,9 +460,6 @@ impl SessionShared {
         }
         if effects.save {
             self.persist_wake.notify_one();
-        }
-        if effects.replan_wakeups {
-            self.replan.notify_one();
         }
         self.status.send_if_modified(|status| {
             let changed = *status != effects.status;
@@ -510,10 +503,10 @@ impl AgentSession {
             provider: init.runtime,
             transcript,
             media: HeldMedia::default(),
+            tools: deps.runtime.tools(),
             inputs: InputQueue::default(),
-            wakeups: Wakeups::default(),
+            watched: Watched::default(),
             edits: Vec::new(),
-            last_turn: TurnEnd::Answer,
             held: false,
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
@@ -523,10 +516,10 @@ impl AgentSession {
 
     /// A session from its checkpoint (`runtime.md` § Restoring). A tool call
     /// still marked executing completes as interrupted and never runs again;
-    /// the session is idle, with its wakeups armed, and hands back its queue
-    /// and whether a turn was interrupted. Waiting input and due wakeups of an
-    /// interrupted turn, or of a session saved holding them after a Stop,
-    /// wait for the node's next action.
+    /// the session is idle, watches the commands its calls left running
+    /// again, and hands back its queue and whether a turn was interrupted.
+    /// Waiting input of an interrupted turn waits for the node's next
+    /// action.
     pub fn restore(
         checkpoint: Checkpoint,
         id: NodeId,
@@ -534,7 +527,7 @@ impl AgentSession {
         deps: SessionDeps,
     ) -> Result<(Self, Continuation), RestoreError> {
         let Checkpoint { state, transcript } = checkpoint;
-        check_restored_input(&id, &transcript, &state.agent_inputs, &state.wakeups)?;
+        check_restored_input(&id, &transcript, &state.agent_inputs)?;
         let mut operations = HashSet::new();
         if let Some(receipt) = state
             .edits
@@ -560,10 +553,11 @@ impl AgentSession {
         // A root restored once from its interrupted turn saved its
         // interruption record, which keeps the hold across a later restore.
         let held = interrupted || transcript.ends_with_interruption();
-        let now = deps.clock.now();
-        let mut wakeups = Wakeups::restored(state.wakeups, now);
-        // A wakeup whose action the process died in starts its wait now.
-        wakeups.arm(now);
+        let mut watched = Watched::default();
+        for interval in &state.intervals {
+            let title = started_title(transcript.blocks(), &interval.command_id);
+            watched.add(interval.command_id.clone(), interval.interval_ms, title);
+        }
         let parts = CoreParts {
             id,
             cwd: state.cwd,
@@ -571,10 +565,10 @@ impl AgentSession {
             provider: runtime,
             transcript,
             media: HeldMedia::default(),
-            inputs: InputQueue::restored(state.agent_inputs),
-            wakeups,
+            tools: deps.runtime.tools(),
+            inputs: InputQueue::restored(state.agent_inputs, state.reports),
+            watched,
             edits: state.edits,
-            last_turn: state.last_turn,
             held,
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
@@ -587,6 +581,9 @@ impl AgentSession {
         // The rows the store holds are current; the completed calls mark
         // theirs for the next save.
         session.shared.update(SessionCore::commit);
+        for interval in &state.intervals {
+            reports::start_watch(&session.shared, &interval.command_id);
+        }
         Ok((session, continuation))
     }
 
@@ -601,7 +598,6 @@ impl AgentSession {
             arrivals: watch::Sender::new(arrivals),
             work: Rc::new(Notify::new()),
             persist_wake: Rc::new(Notify::new()),
-            replan: Rc::new(Notify::new()),
             runtime_returned: Notify::new(),
             runtime: deps.runtime,
             store: deps.store,
@@ -609,7 +605,6 @@ impl AgentSession {
             config: deps.config,
             worker: RefCell::new(None),
             persister: RefCell::new(None),
-            driver: RefCell::new(None),
         });
         let worker =
             tokio::task::spawn_local(worker::run(Rc::downgrade(&shared), shared.work.clone()));
@@ -618,14 +613,8 @@ impl AgentSession {
             shared.persist_wake.clone(),
             deps.config.persist_interval,
         ));
-        let driver = tokio::task::spawn_local(wakeups::drive(
-            Rc::downgrade(&shared),
-            shared.replan.clone(),
-            deps.clock,
-        ));
         *shared.worker.borrow_mut() = Some(AbortOnDropHandle::new(worker));
         *shared.persister.borrow_mut() = Some(AbortOnDropHandle::new(persister));
-        *shared.driver.borrow_mut() = Some(AbortOnDropHandle::new(driver));
         Self { shared }
     }
 
@@ -856,24 +845,39 @@ impl AgentSession {
         self.shared.update(SessionCore::hold);
     }
 
-    /// Lets waiting input and due wakeups open a continuation again after
+    /// Lets waiting input open a continuation again after
     /// [`hold`](Self::hold), and opens one when nothing runs.
     pub fn release(&self) {
         self.shared.update(SessionCore::release);
     }
 
-    /// Drops every wakeup, scheduled or fired, so none opens a turn again:
-    /// the supervisor calls it in the step that closes a child with its
-    /// answer, and the final checkpoint saves none (`subagents.md`
-    /// § Result).
-    pub fn drop_wakeups(&self) {
-        self.shared.update(SessionCore::drop_wakeups);
+    /// Changes how often `command`, which one of the session's calls left
+    /// running, reports from now on: every `interval_ms`, or only its end
+    /// when none (`runtime.md` § Command reports). False when the session
+    /// does not watch it.
+    pub fn set_interval(&self, command: &CommandId, interval_ms: Option<u32>) -> bool {
+        if !self
+            .shared
+            .update(|core| core.watched.set_interval(command, interval_ms))
+        {
+            return false;
+        }
+        reports::start_watch(&self.shared, command);
+        true
+    }
+
+    /// How often `command`, which one of the session's calls left running,
+    /// reports: every so many milliseconds, or only its end when none; none
+    /// when the session does not watch it.
+    pub fn interval_of(&self, command: &CommandId) -> Option<Option<u32>> {
+        self.shared
+            .read(|core| core.watched.get(command).map(|(_, interval)| interval))
     }
 
     /// Stops one thing (`runtime.md` § Stop): the running action, which has
-    /// recorded the stop when this returns; else the first waiting action;
-    /// else the oldest scheduled wakeup. Whether another `abort` would stop
-    /// more is read when the stop is recorded.
+    /// recorded the stop when this returns; else the first waiting action.
+    /// Whether another `abort` would stop more is read when the stop is
+    /// recorded.
     pub async fn abort(&self) -> AbortResult {
         match self.shared.update(SessionCore::abort_step) {
             AbortStep::Running { target, cancel } => AbortResult {
@@ -957,9 +961,10 @@ impl AgentSession {
     }
 
     /// Disposes the session (`runtime.md` § Dispose and restore): refuses
-    /// new actions, stops a running one as a shutdown, keeps the queue and
-    /// the wakeups, saves the final checkpoint and closes the provider
-    /// runtimes. The error is a final checkpoint that could not be saved.
+    /// new actions, stops a running one as a shutdown, keeps the queue, the
+    /// waiting input and the commands that report to it, saves the final
+    /// checkpoint and closes the provider runtimes. The error is a final
+    /// checkpoint that could not be saved.
     pub async fn dispose(&self) -> Result<(), StoreError> {
         let first = self.shared.update(SessionCore::begin_dispose);
         let mut status = self.shared.status.subscribe();
@@ -976,10 +981,14 @@ impl AgentSession {
             let _turn = self.shared.persist_gate.acquire().await;
             // With the order held, the persister is between saves.
             self.shared.persister.borrow_mut().take();
-            self.shared.driver.borrow_mut().take();
             persist::write_if_dirty(&self.shared).await
         };
-        let runtimes = self.shared.update(SessionCore::take_runtimes);
+        // The commands' watches end with the session; the final checkpoint
+        // keeps the commands.
+        let runtimes = self.shared.update(|core| {
+            core.watched.stop_watching();
+            core.take_runtimes()
+        });
         for mut runtime in runtimes {
             runtime.close().await;
         }
@@ -1018,13 +1027,12 @@ impl AgentSession {
 }
 
 /// The session's own checks of a checkpoint's waiting input: each agent
-/// message is addressed to this node, its id is unique and not yet in the
-/// transcript, and each wakeup id is unique.
+/// message is addressed to this node, and its id is unique and not yet in
+/// the transcript.
 fn check_restored_input(
     node: &NodeId,
     blocks: &[Block],
     agent_inputs: &[demi_agent_store::PendingAgentInput],
-    wakeups: &[demi_agent_store::ScheduledWakeup],
 ) -> Result<(), RestoreError> {
     let mut ids = HashSet::new();
     for input in agent_inputs {
@@ -1043,15 +1051,28 @@ fn check_restored_input(
             )));
         }
     }
-    let mut wakeup_ids = HashSet::new();
-    if let Some(wakeup) = wakeups
-        .iter()
-        .find(|wakeup| !wakeup_ids.insert(wakeup.id.as_str()))
-    {
-        return Err(RestoreError::Input(format!(
-            "wakeup {} is scheduled twice",
-            wakeup.id
-        )));
-    }
     Ok(())
+}
+
+/// The title of the call that started `command`, which its reports name:
+/// the `description` of the last call whose view names it; empty when no
+/// call does, as after an edit removed it.
+fn started_title(blocks: &[Block], command: &CommandId) -> String {
+    blocks
+        .iter()
+        .rev()
+        .find_map(|block| match block {
+            Block::ToolCall(call) => match &call.view {
+                Some(ToolView::Shell(view)) if &view.command_id == command => {
+                    serde_json::from_str::<serde_json::Value>(&call.input)
+                        .ok()?
+                        .get("description")?
+                        .as_str()
+                        .map(str::to_owned)
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .unwrap_or_default()
 }

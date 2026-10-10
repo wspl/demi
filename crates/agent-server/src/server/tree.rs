@@ -61,6 +61,8 @@ pub struct Tree<H: HostResolver> {
     admission: ActivityGate,
     /// The revision of the toolset the tree opened with.
     toolset: Rc<str>,
+    /// The least interval its commands report at, in milliseconds.
+    interval_floor_ms: u32,
     store: Rc<dyn AgentTreeStore>,
     clock: Arc<dyn Clock>,
     ids: Rc<dyn IdSource>,
@@ -261,7 +263,7 @@ impl<H: HostResolver> Tree<H> {
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
             config: deps.config.session,
-            server: Rc::downgrade(server),
+            interval_floor_ms: deps.config.interval_floor_ms,
         })
         .await?;
         let session = assembled.node.session().clone();
@@ -315,6 +317,7 @@ impl<H: HostResolver> Tree<H> {
                 lifecycle: TaskTracker::new(),
                 admission,
                 toolset: toolset.revision,
+                interval_floor_ms: deps.config.interval_floor_ms,
                 store,
                 clock: deps.clock.clone(),
                 ids: deps.ids.clone(),
@@ -428,6 +431,12 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
+    /// The least interval its commands report at, in milliseconds
+    /// (`runtime.md` § Tool input).
+    pub(crate) fn interval_floor_ms(&self) -> u32 {
+        self.interval_floor_ms
+    }
+
     /// The conversation's store.
     pub(crate) fn store(&self) -> &Rc<dyn AgentTreeStore> {
         &self.store
@@ -439,9 +448,8 @@ impl<H: HostResolver> Tree<H> {
 
     /// Whether the tree will go on working without the user, which makes its
     /// conversation running (`web-api.md` § Sidebar mutations and read
-    /// state): a child is live, or the root runs, waits or has a wakeup
-    /// scheduled. A command that outlives its turn does not count: its exit
-    /// wakes no one.
+    /// state): a child is live, or the root runs or waits to run. A command
+    /// that outlives its turn does not count, as that section says.
     pub fn works(&self) -> bool {
         !self.children.borrow().is_empty()
             || !self.starting.borrow().is_empty()
@@ -679,7 +687,7 @@ impl QuiescenceWatch {
 
 /// Whether a root in this status does nothing by itself.
 fn quiescent(status: &Status) -> bool {
-    status.settle == Settle::Settled && !status.wakeups
+    status.settle == Settle::Settled
 }
 
 /// Tells the product, through `status_changed`, that the tree opened, and

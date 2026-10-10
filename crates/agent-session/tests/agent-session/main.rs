@@ -25,9 +25,10 @@ use demi_provider_common::{
 };
 use demi_shared_gates::{ActivityGate, GateLease, Purpose};
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, B64Bytes, BlobRef, Block, BlockId, DocumentSource,
+    AgentMessage, AgentMessageEvent, B64Bytes, BlobRef, Block, BlockId, CommandId, DocumentSource,
     FailureSource, FileExtension, MediaSource, ModelSelection, NodeId, OperationId, Sender,
-    SessionPhase, Timestamp, ToolCallStatus, ToolResultContentBlock, TurnId, UserContentBlock,
+    SessionPhase, ShellToolView, ShellViewStatus, Timestamp, ToolCallStatus, ToolResultContentBlock,
+    ToolView, TurnId, UserContentBlock,
 };
 use futures_util::future::LocalBoxFuture;
 use serde_json::json;
@@ -65,6 +66,40 @@ struct TestRuntime {
     window_in_use: Rc<Cell<Option<u32>>>,
     /// The tools whose consecutive calls run together as one step.
     together: Vec<&'static str>,
+    /// The commands the node's calls left running.
+    commands: Rc<TestCommands>,
+}
+
+/// The commands of a test node: each runs until the test ends it, and
+/// reports with its title what it is told to.
+#[derive(Default)]
+struct TestCommands {
+    ended: RefCell<std::collections::HashMap<CommandId, tokio::sync::watch::Sender<bool>>>,
+    /// How many progress reports each command made.
+    reports: RefCell<std::collections::HashMap<CommandId, u32>>,
+}
+
+impl TestCommands {
+    /// The command `id`, which runs from now on.
+    fn start(&self, id: &str) -> CommandId {
+        let command = CommandId::try_from(id).unwrap();
+        self.ended
+            .borrow_mut()
+            .insert(command.clone(), tokio::sync::watch::Sender::new(false));
+        command
+    }
+
+    /// Ends the command `id`.
+    fn end(&self, id: &str) {
+        self.ended.borrow()[&CommandId::try_from(id).unwrap()].send_replace(true);
+    }
+
+    fn has_ended(&self, command: &CommandId) -> bool {
+        self.ended
+            .borrow()
+            .get(command)
+            .is_none_or(|ended| *ended.borrow())
+    }
 }
 
 impl SessionRuntime for TestRuntime {
@@ -134,6 +169,40 @@ impl SessionRuntime for TestRuntime {
 
     fn runs_together(&self, tool: &str) -> bool {
         self.together.contains(&tool)
+    }
+
+    fn command_ended(&self, command: &CommandId) -> LocalBoxFuture<'static, ()> {
+        let ended = self
+            .commands
+            .ended
+            .borrow()
+            .get(command)
+            .map(tokio::sync::watch::Sender::subscribe);
+        Box::pin(async move {
+            if let Some(mut ended) = ended {
+                // The sender lives as long as the test's commands.
+                let _ = ended.wait_for(|ended| *ended).await;
+            }
+        })
+    }
+
+    /// `<title>: still running (<n>)` for the nth progress report, and
+    /// `<title>: ended` once it ended.
+    fn report<'a>(
+        &'a self,
+        command: &'a CommandId,
+        title: &'a str,
+        _interval_ms: Option<u32>,
+    ) -> LocalBoxFuture<'a, Option<String>> {
+        let text = if self.commands.has_ended(command) {
+            format!("{title}: ended")
+        } else {
+            let mut reports = self.commands.reports.borrow_mut();
+            let count = reports.entry(command.clone()).or_default();
+            *count += 1;
+            format!("{title}: still running ({count})")
+        };
+        Box::pin(async move { Some(text) })
     }
 
     fn invoke_step(&self, calls: Vec<ToolInvocation>) -> StepOutcomes<'_> {
@@ -207,37 +276,54 @@ fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>)
     (invoke, releases, started_rx)
 }
 
-/// A `yield` of `durationMs`, and of the commands `commandIds` names.
-fn yield_tool() -> (String, Invoke) {
-    tool("yield", |call| {
-        let duration_ms = call.input["durationMs"]
+/// A tool `work` that starts the command its input's `commandId` names in
+/// `commands` and leaves it running, reporting every `intervalMs`, or only
+/// its end when null, titled by its input's `description`.
+fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
+    let commands = commands.clone();
+    tool("work", move |call| {
+        let command = commands.start(call.input["commandId"].as_str().unwrap());
+        let interval_ms = call.input["intervalMs"]
             .as_u64()
-            .and_then(|duration| u32::try_from(duration).ok())
-            .expect("the test's yield names its duration");
-        let commands = call.input["commandIds"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(|id| demi_shared_types::CommandId::try_from(id.to_string()).unwrap())
-            .collect();
+            .map(|interval| u32::try_from(interval).unwrap());
+        let title = call.input["description"].as_str().unwrap().to_owned();
+        let view = ToolView::Shell(ShellToolView {
+            status: ShellViewStatus::Running,
+            command_id: command.clone(),
+            exit_code: None,
+            running_ms: 0,
+            idle_ms: 0,
+            chunks: Vec::new(),
+            view_truncated: false,
+            files: None,
+            files_truncated: None,
+            path_changes: Vec::new(),
+        });
         Box::pin(async move {
             Ok(ToolOutcome {
-                effect: Some(ToolEffect::ScheduleYield {
-                    duration_ms,
-                    commands,
-                    above_cap: None,
+                view: Some(view),
+                effect: Some(ToolEffect::Background {
+                    command,
+                    interval_ms,
+                    title,
                 }),
-                ..output("")
+                ..output("status: running")
             })
         })
     })
 }
 
-fn yield_call(duration_ms: u64) -> Turn {
-    Turn::Events(vec![
-        event::tool_call("yield-1", "yield", json!({ "durationMs": duration_ms })),
+/// A response that calls `work` for the command `command`, reporting every
+/// `interval_ms`, titled `description`.
+fn background_call(command: &str, interval_ms: Option<u64>, description: &str) -> Vec<ProviderEvent> {
+    vec![
+        event::tool_call(
+            &format!("work-{command}"),
+            "work",
+            json!({ "commandId": command, "intervalMs": interval_ms, "description": description }),
+        ),
         event::response(1, 1),
-    ])
+    ]
 }
 
 /// An edit of the `user` block of the turn `turn` in the session's
@@ -317,6 +403,7 @@ fn test_runtime(tools: Vec<(String, Invoke)>) -> TestRuntime {
         seen: Rc::default(),
         window_in_use: Rc::default(),
         together: Vec::new(),
+        commands: Rc::default(),
     }
 }
 
@@ -1415,7 +1502,9 @@ async fn the_stream_becomes_blocks_and_each_delta_one_patch() {
         Turn::Events(vec![event::text("next"), event::response(1, 1)]),
     ]);
     let store = MemoryTreeStore::new();
-    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
+    // The call's tool is declared, so it goes back as a call.
+    let (echo, _) = counted("echo", "echoed");
+    let session = start(&provider, vec![echo], &store, SessionConfig::default()).await;
     let batches = Rc::new(RefCell::new(Vec::new()));
     let _subscription = session.subscribe({
         let batches = batches.clone();
@@ -1440,7 +1529,7 @@ async fn the_stream_becomes_blocks_and_each_delta_one_patch() {
             "thinking",
             "redacted_thinking",
             "text",
-            "tool_call:error",
+            "tool_call:completed",
             "response",
             "text",
             "response"
@@ -1465,7 +1554,7 @@ async fn the_stream_becomes_blocks_and_each_delta_one_patch() {
         unreachable!()
     };
     assert_eq!(call.input, "{\"broken\":");
-    assert_eq!(tool_output(&blocks[4]).1, texts(&["Tool not found: echo"]));
+    assert_eq!(tool_output(&blocks[4]).1, texts(&["echoed"]));
     // Signed thinking and redacted data go back as they came, in order.
     let replayed = &provider.requests()[1].items;
     assert_eq!(

@@ -1,59 +1,22 @@
-//! Each tool's input, declared once (`runtime.md` § Tool input): the JSON
-//! Schema the model receives and the check a call runs come from the same
-//! type. An optional field is absent or a value, never null.
+//! The `shell` tool's input, declared once (`runtime.md` § Tool input): the
+//! JSON Schema the model receives and the check a call runs come from the
+//! same type.
 
-use demi_shared_types::CommandId;
 use schemars::{JsonSchema, generate::SchemaSettings};
-use serde::de::{self, DeserializeOwned, Unexpected, Visitor};
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
-use serde_with::rust::unwrap_or_skip;
 
-/// Reads a command's or a shell's number as the model writes it: an
-/// integer, or its digits as a string (`runtime.md` § Identifiers the model
-/// sees). serde_with's `PickFirst` does this behind features the workspace
-/// leaves off, which would rebuild every crate that uses it.
-struct NumberVisitor;
+/// The least interval a command reports at, in milliseconds
+/// (`runtime.md` § Tool input).
+pub const INTERVAL_FLOOR_MS: u32 = 15_000;
+/// The greatest interval a command reports at, and the longest a `shell`
+/// call watches its command: ten minutes.
+pub const INTERVAL_CAP_MS: u32 = 600_000;
 
-impl Visitor<'_> for NumberVisitor {
-    type Value = u64;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("a number such as 17")
-    }
-
-    fn visit_u64<E: de::Error>(self, value: u64) -> Result<u64, E> {
-        Ok(value)
-    }
-
-    fn visit_str<E: de::Error>(self, value: &str) -> Result<u64, E> {
-        value
-            .parse()
-            .map_err(|_| E::invalid_value(Unexpected::Str(value), &self))
-    }
-}
-
-/// The identity a number names.
-fn numbered<'de, D, T>(deserializer: D) -> Result<T, D::Error>
-where
-    D: Deserializer<'de>,
-    T: TryFrom<String>,
-    T::Error: std::fmt::Display,
-{
-    let number = deserializer.deserialize_any(NumberVisitor)?;
-    T::try_from(number.to_string()).map_err(de::Error::custom)
-}
-
-/// The longest window a shell tool watches, and the longest yield.
-const MAX_DELAY_MS: u32 = 600_000;
-
-/// A delay's description in the model's schema: what it is for, and the cap
-/// a larger value is taken as (`runtime.md` § Tool input).
-fn delay(purpose: &str) -> String {
-    format!(
-        "{purpose}, in whole milliseconds: at most {MAX_DELAY_MS} (ten minutes); a larger value is taken as {MAX_DELAY_MS}."
-    )
-}
+/// What `intervalMs` asks of the model; its bounds are the product's, which
+/// every request states alike (`providers.md` § Prompt cache).
+const INTERVAL: &str = "How to watch the command, required: a number of whole milliseconds from 15000 to 600000 (ten minutes) for a command that ends, such as a build or a test suite; the call watches it that long, and if it still runs then, the call returns its commandId and the command reports to you every interval until it ends. Short for a command that should end within minutes, long for one that takes long. A value outside the bounds is taken as the nearest bound. null for a command that runs until it is stopped, such as a dev server or a watcher: the call returns once its output has been quiet for 2 seconds, or after 30 seconds, and the command reports only its end.";
 
 /// What a call's `description` asks of the model: the title the user sees,
 /// which the model writes before the step runs (`runtime.md` § Tool
@@ -62,166 +25,64 @@ pub(super) const DESCRIPTION: &str = "Short title of what this step does, as a c
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ShellExecInput {
+pub(super) struct ShellInput {
     pub(super) script: String,
     #[schemars(length(min = 1), description = DESCRIPTION)]
-    #[expect(
-        dead_code,
-        reason = "the call's title, which the renderer reads from its input"
-    )]
-    description: NonEmpty,
-    #[schemars(range(min = 1), description = delay("How long to watch the command"))]
-    pub(super) timeout_ms: DelayMs,
+    pub(super) description: NonEmpty,
+    #[serde(deserialize_with = "interval")]
+    #[schemars(description = INTERVAL)]
+    pub(super) interval_ms: Interval,
 }
 
-/// What `shell_status` takes, as the model's schema declares it; a call is
-/// decoded as [`StatusInput`], which adds the rule the schema cannot state.
-#[derive(Debug, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct StatusFields {
-    #[serde(deserialize_with = "numbered")]
-    #[schemars(with = "u64")]
-    command_id: CommandId,
-    #[serde(default, deserialize_with = "unwrap_or_skip::deserialize")]
-    #[schemars(with = "String", length(min = 1), description = STDIN)]
-    stdin: Option<NonEmpty>,
-    #[serde(default, deserialize_with = "unwrap_or_skip::deserialize")]
-    #[schemars(with = "DelayMs", range(min = 1), description = delay(WATCH))]
-    timeout_ms: Option<DelayMs>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "String", description = DESCRIPTION)]
-    description: Option<String>,
-}
+// How a call asks its command to be watched: whole milliseconds, or none
+// for a resident command. Its field is required, and its schema says `null`
+// is a value: a field of an `Option` would be optional to serde and
+// schemars alike, and schemars's `required` takes the `null` out. (A doc
+// comment would become the field's description in the model's schema.)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Interval(pub(super) Option<u64>);
 
-/// What `stdin` asks of the model.
-const STDIN: &str = "Input to write to the command before looking at it, such as an answer to its prompt; end it with a newline for a line-based prompt.";
+impl JsonSchema for Interval {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Interval".into()
+    }
 
-/// What `shell_status`'s `timeoutMs` asks of the model.
-const WATCH: &str = "How long to wait for the command to end before looking (without it, look at once)";
+    fn inline_schema() -> bool {
+        true
+    }
 
-/// A `shell_status` call: a look at a command, which writes `stdin` first
-/// when it has some, and then watches the command up to `timeout_ms`. A
-/// call that writes needs a title (`runtime.md` § Tool descriptions).
-#[derive(Debug, Deserialize)]
-#[serde(try_from = "StatusFields")]
-pub(super) struct StatusInput {
-    pub(super) command_id: CommandId,
-    pub(super) stdin: Option<NonEmpty>,
-    pub(super) timeout_ms: Option<DelayMs>,
-}
-
-impl TryFrom<StatusFields> for StatusInput {
-    type Error = &'static str;
-
-    fn try_from(fields: StatusFields) -> Result<Self, &'static str> {
-        let titled = fields
-            .description
-            .as_deref()
-            .is_some_and(|description| !description.is_empty());
-        if fields.stdin.is_some() && !titled {
-            return Err("description: required when stdin is given");
-        }
-        Ok(Self {
-            command_id: fields.command_id,
-            stdin: fields.stdin,
-            timeout_ms: fields.timeout_ms,
-        })
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({ "type": ["integer", "null"] })
     }
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct YieldInput {
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "String", description = DESCRIPTION)]
-    #[expect(
-        dead_code,
-        reason = "the call's title, which the renderer reads from its input"
-    )]
-    description: Option<String>,
-    #[schemars(range(min = 1), description = delay("How long to wait before you are woken"))]
-    pub(super) duration_ms: DelayMs,
-    #[serde(default, deserialize_with = "some_numbers")]
-    #[schemars(with = "Vec<u64>", length(min = 1), description = COMMANDS)]
-    pub(super) command_ids: Option<Vec<CommandId>>,
+/// Reads an interval as the field holds it; serde reads it only when the
+/// field is there, since it deserializes the field itself.
+fn interval<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Interval, D::Error> {
+    Option::<u64>::deserialize(deserializer).map(Interval)
 }
 
-/// What `yield`'s `commandIds` asks of the model.
-const COMMANDS: &str = "Commands to wait for, by commandId: you are woken as soon as the first of them ends, or when durationMs passes.";
-
-/// A command's number as the model writes it.
-struct Number(u64);
-
-impl<'de> Deserialize<'de> for Number {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_any(NumberVisitor).map(Self)
+/// A command's interval as a node's shells take it: `asked`, within the
+/// bounds from `floor` to [`INTERVAL_CAP_MS`], and the line that says so
+/// when it was outside them (`runtime.md` § Tool input), naming it as
+/// `field` names it, such as `intervalMs 900000 is above the cap; taken as
+/// 600000`. The floor is [`INTERVAL_FLOOR_MS`] in the product; a test
+/// configures a shorter one.
+pub fn taken_interval(asked: u64, floor: u32, field: &str) -> (u32, Option<String>) {
+    if asked > u64::from(INTERVAL_CAP_MS) {
+        let note = format!("{field} {asked} is above the cap; taken as {INTERVAL_CAP_MS}");
+        return (INTERVAL_CAP_MS, Some(note));
     }
+    let asked = u32::try_from(asked).expect("within the cap");
+    if asked < floor {
+        let note = format!("{field} {asked} is below the floor; taken as {floor}");
+        return (floor, Some(note));
+    }
+    (asked, None)
 }
 
-/// The commands a non-empty list of numbers names, of an optional field
-/// that is absent or a list, never null.
-fn some_numbers<'de, D>(deserializer: D) -> Result<Option<Vec<CommandId>>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let numbers = Vec::<Number>::deserialize(deserializer)?;
-    if numbers.is_empty() {
-        return Err(de::Error::custom("must not be empty"));
-    }
-    numbers
-        .into_iter()
-        .map(|Number(number)| CommandId::try_from(number.to_string()).map_err(de::Error::custom))
-        .collect::<Result<_, _>>()
-        .map(Some)
-}
-
-// A whole number of milliseconds from 1: the window a shell tool watches,
-// or the wait of a yield. A value above the cap is taken as the cap, and the
-// result says so; a fraction is refused, not rounded. (A doc comment would
-// become the field's description in the model's schema.)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
-#[serde(try_from = "u64")]
-#[schemars(inline)]
-pub(super) struct DelayMs(u64);
-
-impl DelayMs {
-    /// The delay taken: the one asked for, or the cap when it asks for more.
-    pub(super) fn taken(self) -> u32 {
-        u32::try_from(self.0).map_or(MAX_DELAY_MS, |asked| asked.min(MAX_DELAY_MS))
-    }
-
-    /// The line a result starts with when the delay asked for is above the
-    /// cap, such as `timeoutMs 900000 is above the cap; watched for 600000`:
-    /// `field` names the input, and `taken_as` what was done with the cap.
-    pub(super) fn above_cap(self, field: &str, taken_as: &str) -> Option<String> {
-        (self.0 > u64::from(MAX_DELAY_MS))
-            .then(|| format!("{field} {} is above the cap; {taken_as} {MAX_DELAY_MS}", self.0))
-    }
-}
-
-impl TryFrom<u64> for DelayMs {
-    type Error = String;
-
-    fn try_from(milliseconds: u64) -> Result<Self, String> {
-        if milliseconds == 0 {
-            return Err("0 is not a whole number of milliseconds from 1".to_owned());
-        }
-        Ok(Self(milliseconds))
-    }
-}
-
-// Text a call must not leave empty: the title of a step that starts or
-// feeds work, and the input `shell_status` writes, since writing nothing is
-// a look without it. (A doc comment would become the field's description in
-// the model's schema.)
+// Text a call must not leave empty: the title of a step. (A doc comment
+// would become the field's description in the model's schema.)
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(try_from = "String")]
 #[schemars(inline)]
@@ -274,129 +135,88 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_schema_declares_integer_windows_with_their_cap_string_handles_and_nothing_else() {
-        let exec = schema::<ShellExecInput>();
-        assert_eq!(exec["additionalProperties"], false);
+    fn the_schema_requires_a_title_and_an_interval_that_may_be_null_and_nothing_else() {
+        let shell = schema::<ShellInput>();
+        assert_eq!(shell["additionalProperties"], false);
         assert_eq!(
-            exec["required"],
-            json!(["script", "description", "timeoutMs"])
+            shell["required"],
+            json!(["script", "description", "intervalMs"])
         );
-        let properties = &exec["properties"];
-        assert_eq!(properties["timeoutMs"]["type"], "integer");
-        assert_eq!(properties["timeoutMs"]["minimum"], 1);
-        // A larger window is taken as the cap, not refused, so the schema
-        // states the cap in words rather than as a maximum.
-        assert!(properties["timeoutMs"].get("maximum").is_none());
-        assert!(
-            properties["timeoutMs"]["description"]
-                .as_str()
-                .unwrap()
-                .contains("at most 600000 (ten minutes); a larger value is taken as 600000")
-        );
+        let properties = &shell["properties"];
+        assert_eq!(properties["intervalMs"]["type"], json!(["integer", "null"]));
+        // A value outside the bounds is taken as the nearest one, not
+        // refused, so the schema states them in words.
+        assert!(properties["intervalMs"].get("maximum").is_none());
+        assert!(properties["intervalMs"].get("minimum").is_none());
         assert_eq!(
             properties["description"],
             json!({"type": "string", "minLength": 1, "description": DESCRIPTION})
         );
-        assert!(!exec.contains_key("$schema") && !exec.contains_key("title"));
-        // A look at a command that has its title, or a wait, may leave its
-        // title out; a look that writes input needs one, which the decode
-        // checks.
-        let status = schema::<StatusFields>();
-        assert_eq!(status["required"], json!(["commandId"]));
-        assert_eq!(status["additionalProperties"], false);
-        assert_eq!(status["properties"]["stdin"]["type"], "string");
-        assert_eq!(status["properties"]["stdin"]["minLength"], 1);
-        assert_eq!(status["properties"]["timeoutMs"]["type"], "integer");
-        assert!(status["properties"]["timeoutMs"].get("maximum").is_none());
-        let wait = schema::<YieldInput>();
-        assert_eq!(wait["required"], json!(["durationMs"]));
-        assert_eq!(wait["properties"]["durationMs"]["type"], "integer");
-        assert!(wait["properties"]["durationMs"].get("maximum").is_none());
-        assert_eq!(wait["properties"]["commandIds"]["type"], "array");
-        assert_eq!(wait["properties"]["commandIds"]["minItems"], 1);
-        assert_eq!(wait["properties"]["commandIds"]["items"]["type"], "integer");
+        assert!(!shell.contains_key("$schema") && !shell.contains_key("title"));
     }
 
     #[test]
     fn a_refusal_names_the_tool_and_the_offending_field() {
-        let refusal = |input: Value| parse::<ShellExecInput>("shell_exec", input).unwrap_err();
+        let refusal = |input: Value| parse::<ShellInput>("shell", input).unwrap_err();
         for (input, field) in [
             (
-                json!({"script": "true", "timeoutMs": 1, "description": "Run", "shellId": 3}),
-                "unknown field `shellId`",
+                json!({"script": "true", "intervalMs": 20_000, "description": "Run", "timeoutMs": 3}),
+                "unknown field `timeoutMs`",
             ),
             (
-                json!({"script": "true", "timeoutMs": 1, "description": "Run", "maxOutputBytes": 10}),
-                "unknown field `maxOutputBytes`",
+                json!({"script": "true", "intervalMs": 20_000.5, "description": "Run"}),
+                "intervalMs: invalid type: floating point",
             ),
             (
-                json!({"script": "true", "timeoutMs": 1.5, "description": "Run"}),
-                "timeoutMs: invalid type: floating point",
+                json!({"script": "true", "intervalMs": -1, "description": "Run"}),
+                "intervalMs: invalid value: integer `-1`",
             ),
+            // How the command is watched is the model's to say.
             (
-                json!({"script": "true", "timeoutMs": 0, "description": "Run"}),
-                "timeoutMs: 0 is not a whole number of milliseconds from 1",
+                json!({"script": "true", "description": "Run"}),
+                "missing field `intervalMs`",
             ),
             // A step that starts work names it for the user.
             (
-                json!({"script": "true", "timeoutMs": 1}),
+                json!({"script": "true", "intervalMs": null}),
                 "missing field `description`",
             ),
             (
-                json!({"script": "true", "timeoutMs": 1, "description": ""}),
+                json!({"script": "true", "intervalMs": null, "description": ""}),
                 "description: must not be empty",
-            ),
-            (
-                json!({"script": "true", "timeoutMs": 1, "description": null}),
-                "description: invalid type: null",
             ),
             (json!("not json"), "invalid type: string"),
         ] {
             let text = refusal(input);
-            assert!(text.starts_with("shell_exec input is invalid:\n"), "{text}");
+            assert!(text.starts_with("shell input is invalid:\n"), "{text}");
             assert!(text.contains(field), "{text}");
         }
-        let status = |input: Value| parse::<StatusInput>("shell_status", input);
-        let empty = status(json!({"commandId": 7, "description": "Answer the prompt", "stdin": ""}));
-        assert!(empty.unwrap_err().contains("stdin: must not be empty"));
-        for untitled in [
-            json!({"commandId": 7, "stdin": "y\n"}),
-            json!({"commandId": 7, "stdin": "y\n", "description": ""}),
-        ] {
-            let refused = status(untitled).unwrap_err();
-            assert!(
-                refused.contains("description: required when stdin is given"),
-                "{refused}"
-            );
-        }
-        let look = status(json!({"commandId": "7", "timeoutMs": 5_000})).unwrap();
-        assert_eq!(
-            (look.command_id.as_str(), look.stdin, look.timeout_ms),
-            ("7", None, Some(DelayMs(5_000)))
-        );
-        let wait = |input: Value| parse::<YieldInput>("yield", input);
-        let named = wait(json!({"durationMs": 60_000, "commandIds": [17, "18"]})).unwrap();
-        let named: Vec<&str> = named
-            .command_ids
-            .iter()
-            .flatten()
-            .map(CommandId::as_str)
-            .collect();
-        assert_eq!(named, ["17", "18"]);
-        assert!(
-            wait(json!({"durationMs": 1, "commandIds": []}))
-                .unwrap_err()
-                .contains("commandIds: must not be empty")
-        );
-        let exec: ShellExecInput = parse(
-            "shell_exec",
-            json!({"script": "ls", "timeoutMs": 600_000, "description": "List the files"}),
+        let resident: ShellInput = parse(
+            "shell",
+            json!({"script": "npm run dev", "intervalMs": null, "description": "Start the dev server"}),
         )
         .unwrap();
+        assert_eq!(resident.interval_ms, Interval(None));
+    }
+
+    #[test]
+    fn an_interval_outside_the_bounds_is_taken_as_the_nearest_with_a_line_that_says_so() {
+        let floor = INTERVAL_FLOOR_MS;
+        assert_eq!(taken_interval(300_000, floor, "intervalMs"), (300_000, None));
         assert_eq!(
-            (exec.script.as_str(), exec.timeout_ms.taken()),
-            ("ls", 600_000)
+            taken_interval(900_000, floor, "intervalMs"),
+            (
+                600_000,
+                Some("intervalMs 900000 is above the cap; taken as 600000".to_owned())
+            )
         );
-        assert_eq!(exec.timeout_ms.above_cap("timeoutMs", "watched for"), None);
+        assert_eq!(
+            taken_interval(0, floor, "intervalMs"),
+            (
+                15_000,
+                Some("intervalMs 0 is below the floor; taken as 15000".to_owned())
+            )
+        );
+        assert_eq!(taken_interval(u64::MAX, floor, "intervalMs").0, 600_000);
     }
 }

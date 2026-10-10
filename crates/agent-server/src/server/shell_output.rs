@@ -1,25 +1,30 @@
-//! The `demi shell` command group (`runtime.md` § The whole output,
-//! § Stopping a command): `demi shell output` prints a command of the
-//! conversation's whole output, as numbered lines a page at a time, the
-//! lines a range names, the newest lines, or the bytes as they are, or
-//! returns one of the media the command's declared commands returned. It
-//! reads a running command's output and media from its Host through the
-//! command's job, and an ended command's from the conversation's store.
-//! `demi shell stop` stops a running command of the conversation through
-//! the shell environment that runs it, as a page's stop does.
+//! The `demi shell` command group (`runtime.md` § The `demi shell`
+//! commands, § The whole output): `demi shell status` looks at commands of
+//! the conversation as a result shows them, waits for their end and changes
+//! how often they report; `demi shell input` writes to a command's input;
+//! `demi shell output` prints a command of the conversation's whole output,
+//! as numbered lines a page at a time, the lines a range names, the newest
+//! lines, or the bytes as they are, or returns one of the media the
+//! command's declared commands returned. It reads a running command's
+//! output and media from its Host through the command's job, and an ended
+//! command's from the conversation's store. `demi shell stop` stops a
+//! running command of the conversation through the shell environment that
+//! runs it, as a page's stop does.
 
-use std::rc::Weak;
+use std::{rc::Weak, time::Duration};
 
 use bytes::Bytes;
 use demi_agent_store::{StoredCommand, StoredOutput};
-use demi_host_interface::{MediumKept, StoredMedium};
-use demi_agent_tools::{HostResolver, PAGE_CHARS};
-use demi_host_interface::{
-    Ending, GroupBuilder, LeafBuilder, OutputText, Piece, RpcError, RpcPort, Seen, ShellError,
-    Streams, TypedRpc, WholeOutput,
+use demi_agent_tools::{
+    HostResolver, INTERVAL_CAP_MS, Look, PAGE_CHARS, Stopper, duration, look_text, taken_interval,
 };
-use demi_shared_types::{B64Bytes, BlobRef, CommandEnd, CommandId, StreamKind};
-use futures_util::FutureExt;
+use demi_host_interface::{
+    CommandState, Ending, GroupBuilder, LeafBuilder, OutputText, Piece, RpcError, RpcPort, Seen,
+    ShellError, Streams, TypedRpc, WholeOutput,
+};
+use demi_host_interface::{MediumKept, StoredMedium};
+use demi_shared_types::{B64Bytes, BlobRef, CommandEnd, CommandId, NodeId, StreamKind};
+use futures_util::{FutureExt, future::join_all};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -35,13 +40,17 @@ const LINE_CHARS: usize = 2_000;
 /// The size of the writes `--raw` makes.
 const RAW_CHUNK_BYTES: usize = 1024 * 1024;
 
-const GROUP_SUMMARY: &str = "Shell commands: read a command's whole output, or stop a command.";
+const GROUP_SUMMARY: &str = "Shell commands: look at a command, answer its prompt, read its whole output, or stop it.";
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const GROUP_ENTRY: &str = "Prints the whole output of a command you ran earlier, by its commandId, a page at a time, and stops a running command. Use output when a result was cut short in the middle; the result says so with a line naming this command. Use stop to end a dev server, a watcher or any command you no longer need.";
+const GROUP_ENTRY: &str = "Works on the commands your shell calls ran, by their commandIds: status looks at a command again, waits for its end and changes how often it reports to you; input answers its prompt; output prints its whole output a page at a time, when a result was cut short in the middle; stop ends a dev server, a watcher or any command you no longer need.";
 
-const STOP_SUMMARY: &str = "Stop running commands of this conversation by their commandIds, in order, whichever agent ran them, and wait until each has ended. Its next shell_status shows it aborted, with its last output. Stopping a command that has ended already succeeds, so it is safe to repeat.";
+const STATUS_SUMMARY: &str = "Look at commands of this conversation by their commandIds, in order: each one's status, its exit code once it has ended, how long it has run and printed nothing, and its output since your last look, as a shell result shows them; one that has ended returns its media. --wait <duration>, such as 30s or 5m, waits up to that long for them to end first. --interval <duration> makes them report to you every so long from now on, and --resident only when they end.";
+
+const INPUT_SUMMARY: &str = "Write stdin to a running command's input by its commandId, such as an answer to its prompt, with a newline for a line-based prompt (`demi shell input 17 <<'EOF'`). Prints nothing; a command that is not running fails. Look at what the command did with it with demi shell status.";
+
+const STOP_SUMMARY: &str = "Stop running commands of this conversation by their commandIds, in order, whichever agent ran them, and wait until each has ended. Its next status shows it aborted, with its last output. Stopping a command that has ended already succeeds, so it is safe to repeat.";
 
 const OUTPUT_SUMMARY: &str = "Print a command's whole output by its commandId: numbered lines a page at a time, as `cat -n` shows them, from the first line or the lines --lines <from>-<to> names; the newest with --tail <n>. --stdout or --stderr takes one stream, with line numbers of its own. --raw prints the bytes as they are, unnumbered and unpaged, for pipes and files: `grep -n` on it gives the numbers --lines takes (`demi shell output 17 --raw | grep -n FAIL`). --medium <n> returns the command's medium n, the image or video its line `[medium n: …]` stands for, as it came: shown to you again, or its bytes into a file (`demi shell output 17 --medium 2 > shot.png`). Any command of this conversation, running or ended.";
 
@@ -68,6 +77,31 @@ struct OutputArgs {
     medium: Option<u32>,
 }
 
+/// The input of `demi shell status`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct StatusArgs {
+    /// The commands' commandIds, as their results name them
+    #[schemars(length(min = 1))]
+    id: Vec<String>,
+    /// Wait up to this long for the commands to end first, such as 30s or 5m
+    wait: Option<String>,
+    /// Report every so long from now on, such as 5m
+    interval: Option<String>,
+    /// Report only the commands' end from now on
+    resident: Option<bool>,
+}
+
+/// The input of `demi shell input`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct InputArgs {
+    /// The command's commandId, as its result names it
+    id: String,
+    /// What to write to the command's input
+    input: String,
+}
+
 /// The input of `demi shell stop`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -81,6 +115,24 @@ struct StopArgs {
 pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> GroupBuilder {
     GroupBuilder::new("shell", GROUP_SUMMARY)
         .index_entry(GROUP_ENTRY)
+        .leaf(
+            LeafBuilder::rpc("status", STATUS_SUMMARY)
+                .input::<StatusArgs>()
+                .positionals(["id"])
+                .success_output("each command's status as a shell result shows it, a blank line between two; with --interval or --resident, a line first that says how it reports from now on; an ended command's media")
+                .media()
+                .failure_output("a line per command that cannot be looked at, \"demi shell status: <id>: <reason>\", on stderr; the others are still shown, and the command exits 1")
+                .bind(TypedRpc::new(verb(server.clone(), status))),
+        )
+        .leaf(
+            LeafBuilder::rpc("input", INPUT_SUMMARY)
+                .input::<InputArgs>()
+                .positionals(["id"])
+                .stdin_field("input")
+                .success_output("nothing")
+                .failure_output("\"demi shell input: <reason>\" on stderr, exit 1")
+                .bind(TypedRpc::new(verb(server.clone(), input))),
+        )
         .leaf(
             LeafBuilder::rpc("output", OUTPUT_SUMMARY)
                 .input::<OutputArgs>()
@@ -100,13 +152,232 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
         )
 }
 
+/// How a look changes how a command reports: every so many milliseconds,
+/// or only its end when none.
+type IntervalChange = Option<u32>;
+
+/// Looks at each of the conversation's commands the call names, in order,
+/// once they ended or `--wait` passed; changes first how each reports when
+/// the call says so. A command that cannot be looked at is told on stderr,
+/// and the next is looked at all the same.
+async fn status<H: HostResolver>(
+    call: Invoked<H, StatusArgs>,
+    port: RpcPort,
+) -> Result<u8, RpcError> {
+    let args = &call.args;
+    let mut notes = Vec::new();
+    let change = match (&args.interval, args.resident == Some(true)) {
+        (Some(_), true) => return fail("--interval and --resident do not go together"),
+        (Some(text), false) => {
+            let asked = match milliseconds(text) {
+                Ok(asked) => asked,
+                Err(reason) => return fail(&format!("--interval {text}: {reason}")),
+            };
+            let floor = call.tree.interval_floor_ms();
+            let (taken, outside) = taken_interval(asked, floor, "--interval");
+            if outside.is_some() {
+                let bound = if taken == INTERVAL_CAP_MS { "above the cap" } else { "below the floor" };
+                notes.push(format!("--interval {text} is {bound}; taken as {}", duration(taken.into())));
+            }
+            Some(Some(taken))
+        }
+        (None, true) => Some(None),
+        (None, false) => None,
+    };
+    if let Some(text) = &args.wait {
+        let wait = match milliseconds(text) {
+            Ok(wait) => Duration::from_millis(wait),
+            Err(reason) => return fail(&format!("--wait {text}: {reason}")),
+        };
+        wait_for_ends(&call.tree, &args.id, wait).await;
+    }
+    let mut failed = false;
+    let mut shown = Vec::new();
+    for id in &args.id {
+        match status_one(&call.tree, &call.caller, id, change).await {
+            Ok((text, media)) => {
+                shown.push(text);
+                for blob in media {
+                    port.medium(blob).await?;
+                }
+            }
+            Err(reason) => {
+                failed = true;
+                fail_one(&port, &call.command, id, &reason).await?;
+            }
+        }
+    }
+    let printed: Vec<String> = notes.into_iter().chain([shown.join("\n\n")]).collect();
+    port.stdout(format!("{}\n", printed.join("\n")).into_bytes()).await?;
+    Ok(u8::from(failed))
+}
+
+/// A duration as `--wait` and `--interval` take it, such as `30s`, `5m`
+/// or `1h30m`, in whole milliseconds from 1.
+fn milliseconds(text: &str) -> Result<u64, String> {
+    let parsed: jiff::SignedDuration = text
+        .parse()
+        .map_err(|_| "a duration such as 30s, 5m or 1h30m".to_owned())?;
+    match u64::try_from(parsed.as_millis()) {
+        Ok(milliseconds) if milliseconds > 0 => Ok(milliseconds),
+        _ => Err("a duration longer than none".to_owned()),
+    }
+}
+
+/// Waits until each of the commands `ids` names that a node's shells run
+/// has ended, or `wait` has passed.
+async fn wait_for_ends<H: HostResolver>(tree: &Tree<H>, ids: &[String], wait: Duration) {
+    let environments: Vec<_> = ids
+        .iter()
+        .filter_map(|id| CommandId::try_from(id.as_str()).ok())
+        .filter_map(|command| {
+            let environment = tree.holder(&command)?.environment_of(&command)?;
+            Some((command, environment))
+        })
+        .collect();
+    let ends = join_all(
+        environments
+            .iter()
+            .map(|(command, environment)| environment.ended(command)),
+    );
+    // The time passing ends the wait as their ends do.
+    let _ = tokio::time::timeout(wait, ends).await;
+}
+
+/// What a look at the conversation's command `id` shows the node `caller`,
+/// with the stored media of a command whose end it shows; first, `change`
+/// changes how the command reports. A command another node runs is shown
+/// without its output, which `demi shell output` prints: the place a look
+/// moves in a command's output is the node's that runs it.
+async fn status_one<H: HostResolver>(
+    tree: &Tree<H>,
+    caller: &NodeId,
+    id: &str,
+    change: Option<IntervalChange>,
+) -> Result<(String, Vec<BlobRef>), String> {
+    let unknown = || "no such command in this conversation".to_owned();
+    let command = CommandId::try_from(id).map_err(|_| unknown())?;
+    let mut lines = Vec::new();
+    let node = match tree.command_place(&command).await? {
+        CommandPlace::Unknown => return Err(unknown()),
+        CommandPlace::Stored(end) => {
+            if change.is_some() {
+                lines.push(format!("[command {id} has ended: it reports nothing more]"));
+            }
+            lines.extend(ended_lines(id, end));
+            return Ok((lines.join("\n"), Vec::new()));
+        }
+        CommandPlace::Held(node) => node,
+    };
+    if let Some(interval) = change {
+        let said = match (node.session().set_interval(&command, interval), interval) {
+            (true, Some(interval)) => {
+                format!("[command {id} reports every {} from now on]", duration(interval.into()))
+            }
+            (true, None) => format!("[command {id} reports only its end from now on]"),
+            // Its end was reported or shown already.
+            (false, _) => format!("[command {id} reports nothing more]"),
+        };
+        lines.push(said);
+    }
+    let environment = node
+        .environment_of(&command)
+        .ok_or_else(|| format!("command {id} is no longer held"))?;
+    if node.id() != caller {
+        let view = node
+            .live_views()
+            .into_iter()
+            .find(|view| view.command_id == command);
+        let status = match view.map(|view| view.state) {
+            Some(demi_host_interface::PageState::Running) | None => "running",
+            Some(demi_host_interface::PageState::Exited { .. }) => "exited",
+            Some(demi_host_interface::PageState::Aborted) => "aborted",
+        };
+        lines.push(format!("status: {status}"));
+        lines.push(format!("commandId: {id}"));
+        lines.push(format!(
+            "[agent {} runs it; its output: demi shell output {id}]",
+            node.record().number
+        ));
+        return Ok((lines.join("\n"), Vec::new()));
+    }
+    let status = environment.status(&command).map_err(|error| error.to_string())?;
+    let look = Look {
+        interval_ms: node.session().interval_of(&command),
+        ..Look::default()
+    };
+    lines.push(look_text(&status, look));
+    let mut media = Vec::new();
+    if !matches!(status.state, CommandState::Running { .. }) {
+        node.saw_end(&command).await;
+        if let Ok(Some(StoredCommand {
+            output: StoredOutput::Stored { media: stored, .. },
+            ..
+        })) = tree.store().command_output(&command).await
+        {
+            media = stored
+                .into_iter()
+                .filter_map(|medium| match medium.kept {
+                    MediumKept::Stored { blob } => Some(blob),
+                    MediumKept::Missing { .. } => None,
+                })
+                .collect();
+        }
+    }
+    Ok((lines.join("\n"), media))
+}
+
+/// What a look shows of a command that ended and that no node's shells hold
+/// any more: how it ended, and where its output is.
+fn ended_lines(id: &str, end: CommandEnd) -> Vec<String> {
+    let mut lines = match end {
+        CommandEnd::Exited { exit_code } => {
+            vec!["status: exited".to_owned(), format!("exitCode: {exit_code}")]
+        }
+        CommandEnd::Stopped => vec!["status: aborted".to_owned()],
+        CommandEnd::Lost => vec!["status: lost with its Host's connection".to_owned()],
+        CommandEnd::Unrecorded => vec!["status: ended".to_owned()],
+    };
+    lines.push(format!("commandId: {id}"));
+    lines.push(format!("[its whole output: demi shell output {id}]"));
+    lines
+}
+
+/// Writes the call's input to the conversation's command it names, through
+/// the shell environment that runs it.
+async fn input<H: HostResolver>(call: Invoked<H, InputArgs>, _port: RpcPort) -> Result<u8, RpcError> {
+    let id = &call.args.id;
+    let unknown = || format!("no command {id} in this conversation");
+    let Ok(command) = CommandId::try_from(id.as_str()) else {
+        return fail(&unknown());
+    };
+    let place = match call.tree.command_place(&command).await {
+        Ok(place) => place,
+        Err(reason) => return fail(&reason),
+    };
+    let environment = match place {
+        CommandPlace::Unknown => return fail(&unknown()),
+        CommandPlace::Stored(_) => None,
+        CommandPlace::Held(node) => node.environment_of(&command),
+    };
+    let Some(environment) = environment else {
+        return fail(&format!("command {id} is not running"));
+    };
+    match environment.write(&command, Bytes::from(call.args.input)).await {
+        Ok(()) => Ok(0),
+        Err(ShellError::NotRunning(_)) => fail(&format!("command {id} is not running")),
+        Err(ShellError::EmptyStdin) => fail("the input is empty"),
+        Err(error) => fail(&error.to_string()),
+    }
+}
+
 /// Stops each of the conversation's commands the call names, in order. A
 /// command that cannot be stopped is told on stderr, and the next is
 /// stopped all the same.
 async fn stop<H: HostResolver>(call: Invoked<H, StopArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let mut failed = false;
     for id in &call.args.id {
-        match stop_one(&call.tree, id).await {
+        match stop_one(&call.tree, &call.caller, id).await {
             Ok(said) => port.stdout(said.into_bytes()).await?,
             Err(reason) => {
                 failed = true;
@@ -117,10 +388,12 @@ async fn stop<H: HostResolver>(call: Invoked<H, StopArgs>, port: RpcPort) -> Res
     Ok(u8::from(failed))
 }
 
-/// Stops the conversation's command `id` through the shell environment of
-/// the node that runs it, and waits until it has ended: what the command
-/// prints of it, or why it could not.
-async fn stop_one<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<String, String> {
+/// Stops the conversation's command `id` for the node `caller` through the
+/// shell environment of the node that runs it, and waits until it has
+/// ended: what the command prints of it, or why it could not. The end's
+/// report says which agent stopped it, and the node that stopped its own
+/// command, which it was told so, hears nothing more of it.
+async fn stop_one<H: HostResolver>(tree: &Tree<H>, caller: &NodeId, id: &str) -> Result<String, String> {
     let unknown = || "no such command in this conversation".to_owned();
     let command = CommandId::try_from(id).map_err(|_| unknown())?;
     Ok(match tree.command_place(&command).await? {
@@ -128,6 +401,15 @@ async fn stop_one<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<String, S
         CommandPlace::Stored(_) => format!("[command {id} had already ended]\n"),
         CommandPlace::Held(node) => match node.environment_of(&command) {
             Some(environment) if environment.ended(&command).now_or_never().is_none() => {
+                let stopper = if node.id() == caller {
+                    Some(Stopper::Itself)
+                } else {
+                    tree.node(caller)
+                        .map(|stopping| Stopper::Agent(stopping.record().number))
+                };
+                if let Some(stopper) = stopper {
+                    node.stopped_by(&command, stopper);
+                }
                 // The environment that runs it stops it, as for a page's
                 // stop; no Host is resolved, so the call never enters the
                 // conversation's file gate its own job holds a lease of.

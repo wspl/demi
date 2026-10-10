@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use crate::{
-    AgentMessage, BlockId, CommandId, MAX_SAFE_INTEGER, ModelSelection, Nullable, ProviderErrorDiagnostics,
+    AgentMessage, BlockId, MAX_SAFE_INTEGER, ModelSelection, Nullable, ProviderErrorDiagnostics,
     Timestamp, TokenUsage, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
 };
 
@@ -20,7 +20,7 @@ pub enum Block {
     /// The conversation's execution context changed since the node last saw
     /// it, such as a target switch; hidden from the user.
     Context(ContextBlock),
-    /// A yield wakeup fired; hidden from the user.
+    /// Command reports that arrived together; hidden from the user.
     Wakeup(WakeupBlock),
     /// A human steer of the running turn.
     Steer(SteerBlock),
@@ -286,10 +286,9 @@ pub enum InstructionEntry {
     },
 }
 
-/// A fired yield wakeup. The model receives the wakeup text as a user
-/// message or as a steer, as the placement says: the text for the time that
-/// came, or the one that names the command whose end fired it
-/// (`runtime.md` § Yield wakeups).
+/// Command reports that arrived together (`runtime.md` § Command reports).
+/// The model receives their text, one paragraph each, as a user message or
+/// as a steer, as the placement says.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WakeupBlock {
@@ -303,15 +302,9 @@ pub struct WakeupBlock {
     pub model: ModelSelection,
     #[garde(skip)]
     pub placement: WakeupPlacement,
-    /// The command whose end fired it; absent when its time came.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "WakeupCommand")]
+    /// The reports' text, one paragraph each.
     #[garde(skip)]
-    pub command: Option<WakeupCommand>,
+    pub text: String,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
     /// a process resumes); omitted when there are none. They never leave
@@ -323,17 +316,8 @@ pub struct WakeupBlock {
     pub entries: Vec<serde_json::Value>,
 }
 
-/// A command a `yield` named, and how it ended: what fires its wakeup
-/// before the time comes.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WakeupCommand {
-    pub command_id: CommandId,
-    pub end: CommandEnd,
-}
-
 /// How a command ended, as the conversation's record of its output keeps
-/// it (`storage.md` § Command outputs) and a wakeup tells the model.
+/// it (`storage.md` § Command outputs).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, garde::Validate,
 )]
@@ -357,7 +341,7 @@ pub enum CommandEnd {
     Unrecorded,
 }
 
-/// Where a fired wakeup entered the transcript.
+/// Where command reports entered the transcript.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WakeupPlacement {

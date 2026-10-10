@@ -159,12 +159,8 @@ crate::id!(
     NodeId
 );
 crate::id!(
-    /// A scheduled yield wakeup.
-    WakeupId
-);
-crate::id!(
-    /// A command a `shell_exec` started; its handle for `shell_status`,
-    /// `yield` and `demi shell stop`.
+    /// A command a `shell` call started; its handle for the `demi shell`
+    /// commands.
     CommandId
 );
 crate::id!(

@@ -3,26 +3,26 @@
 //! waiting can fix and compact once after a refusal as too large, apply its
 //! events to the transcript as they stream, save, run the requested tools in
 //! steps, compact when the usage reached the threshold, and ask again until a
-//! response requests no tool or a tool ends the turn, unless input arrived
-//! during the round. Every wait on the provider, a hook or a tool is raced
+//! response requests no tool, unless input arrived during the round. Every
+//! wait on the provider, a hook or a tool is raced
 //! against the action's stop and dropped when it comes; a save is never
 //! raced. A message the user sends now cuts a provider request and a step's
 //! calls short without stopping anything (`runtime.md` § Send now).
 
 use std::rc::Rc;
 
-use demi_agent_store::{TurnEnd, media};
+use demi_agent_store::media;
 use demi_agent_transcript::{
     PendingCall,
     estimate::{context_tokens, request_size},
     replay_start, resume_point, tool_input,
 };
 use demi_provider_common::{
-    ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ResultPart,
+    ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
 };
-use demi_shared_types::{Block, CommandId, ModelSelection, ToolView, WakeupId};
+use demi_shared_types::{Block, ModelSelection};
 use futures_util::StreamExt;
-use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
+use tokio_util::sync::CancellationToken;
 
 use super::{
     ErrorReport, SessionEvent, SessionShared, TurnError,
@@ -31,19 +31,13 @@ use super::{
     core::{SendNow, SessionCore, TurnStage, with_request_id},
     input::Take,
     media::model_view,
-    persist,
+    persist, reports,
     runtime::{InputArrival, SeenContext, ToolEffect, ToolInvocation, ToolOutcome},
 };
 
 /// How many compactions one turn runs after responses over the threshold.
 const MAX_AUTO_COMPACTIONS: u32 = 3;
 
-/// What one round of tools did.
-#[derive(Debug, Default)]
-struct ToolRound {
-    executed: bool,
-    stop_after_result: bool,
-}
 
 pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     run_turn(s, cancel, true).await
@@ -89,7 +83,7 @@ async fn run_turn(
         if !recover {
             write_inputs_since(s, before).await?;
         }
-        let tools = run_tools(s, cancel, recover).await?;
+        let executed = run_tools(s, cancel, recover).await?;
         if ends_for_message(s).await? {
             return Ok(());
         }
@@ -108,13 +102,7 @@ async fn run_turn(
             write_inputs_since(s, before).await?;
             continue;
         }
-        if tools.stop_after_result || !tools.executed {
-            let end = if tools.stop_after_result {
-                TurnEnd::Yield
-            } else {
-                TurnEnd::Answer
-            };
-            s.update(|core| core.end_turn(end));
+        if !executed {
             return Ok(());
         }
     }
@@ -146,8 +134,8 @@ pub(super) async fn apply_switch(
     Ok(compacted)
 }
 
-/// Writes the waiting input into the turn: human steers, fired wakeups and
-/// agent messages. An agent message written is saved at once.
+/// Writes the waiting input into the turn: human steers, command reports
+/// and agent messages. An agent message written is saved at once.
 async fn write_inputs(s: &SessionShared) -> Result<(), TurnError> {
     if s.update(|core| core.write_inputs(Take::Everything)) {
         persist::flush(s).await?;
@@ -332,14 +320,12 @@ async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequ
     }
     let model = s.read(|core| core.model.clone());
     let system_prompt = system_prompt(s, &model, cancel).await?;
-    let tools = s.runtime.tools();
     let request_id = s.ids.next_id();
     let view = model_view(s, cancel).await?;
     Ok(s.update(|core| {
         core.inference_request(
             &view,
             system_prompt,
-            tools,
             request_id,
             cancel.child_token(),
         )
@@ -442,15 +428,15 @@ fn complete_text(s: &SessionShared) {
 /// each result is recorded as its call returns, in its call's place, and a
 /// Stop keeps those of the calls that returned before it. Input that arrives
 /// meanwhile is written after each step, unless the turn is about to
-/// compact.
+/// compact. Returns whether the response requested any call.
 async fn run_tools(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
     defer_input: bool,
-) -> Result<ToolRound, TurnError> {
+) -> Result<bool, TurnError> {
     let calls = s.read(|core| core.transcript.pending_tool_calls());
     if calls.is_empty() {
-        return Ok(ToolRound::default());
+        return Ok(false);
     }
     s.update(|core| core.set_stage(TurnStage::Tools));
     // Every call is in the store as executing before a tool runs: a process
@@ -458,10 +444,6 @@ async fn run_tools(
     // interrupted without running it again.
     persist::flush(s).await?;
     let tools = s.runtime.tools();
-    let mut round = ToolRound {
-        executed: true,
-        stop_after_result: false,
-    };
     let mut calls = calls.into_iter().peekable();
     while let Some(first) = calls.next() {
         cancel.check()?;
@@ -469,7 +451,7 @@ async fn run_tools(
             // The user sent a message now: no other call starts
             // (`runtime.md` § Send now).
             for call in std::iter::once(first).chain(calls.by_ref()) {
-                record_result(s, &call, ToolOutcome::not_run(), &mut round).await;
+                record_result(s, &call, ToolOutcome::not_run()).await;
             }
             break;
         }
@@ -507,7 +489,7 @@ async fn run_tools(
                         let outcome = outcome.unwrap_or_else(|failure| {
                             ToolOutcome::error(format!("Tool failed: {}", failure.0))
                         });
-                        record_result(s, &step[index], outcome, &mut round).await;
+                        record_result(s, &step[index], outcome).await;
                     }
                     Ok(None) => break Ok(()),
                     Err(stopped) => break Err(stopped),
@@ -516,7 +498,7 @@ async fn run_tools(
         } else {
             for call in &step {
                 let outcome = ToolOutcome::error(format!("Tool not found: {}", call.tool_name));
-                record_result(s, call, outcome, &mut round).await;
+                record_result(s, call, outcome).await;
             }
             Ok(())
         };
@@ -526,81 +508,25 @@ async fn run_tools(
         }
     }
     s.update(|core| core.set_stage(TurnStage::Preparing));
-    Ok(round)
+    Ok(true)
 }
 
-/// Records the result of `call`, applying its effect first; its media are
-/// stored before it enters the transcript, and the session holds their bytes
-/// (`runtime.md` § Media).
-async fn record_result(s: &Rc<SessionShared>, call: &PendingCall, outcome: ToolOutcome, round: &mut ToolRound) {
-    let outcome = match outcome.effect {
-        Some(ToolEffect::ScheduleYield {
-            duration_ms,
-            commands,
-            above_cap,
-        }) => {
-            round.stop_after_result = true;
-            schedule_yield(s, duration_ms, commands, above_cap)
-        }
-        None => outcome,
-    };
+/// Records the result of `call`, and watches the command it left running;
+/// its media are stored before it enters the transcript, and the session
+/// holds their bytes (`runtime.md` § Media).
+async fn record_result(s: &Rc<SessionShared>, call: &PendingCall, outcome: ToolOutcome) {
     let (output, held) = media::store_result(outcome.output, s.store.blobs()).await;
     s.update(|core| {
         core.media.absorb(held);
         core.complete_tool_call(&call.tool_use_id, output, outcome.is_error, outcome.view);
     });
-}
-
-/// Schedules the wakeup a `yield` asked for and, when it names commands,
-/// the task that makes it due once the first of them ends; answers the
-/// call's result, which starts with `above_cap` when the duration asked for
-/// was above the cap.
-fn schedule_yield(
-    s: &Rc<SessionShared>,
-    duration_ms: u32,
-    commands: Vec<CommandId>,
-    above_cap: Option<String>,
-) -> ToolOutcome {
-    let id = s.update(|core| core.schedule_wakeup(duration_ms, commands.clone()));
-    let outcome = yield_result(id.clone(), duration_ms, commands.clone(), above_cap);
-    if commands.is_empty() {
-        return outcome;
-    }
-    let ended = s.runtime.command_end(commands);
-    let session = Rc::downgrade(s);
-    let wakeup = id.clone();
-    let watch = tokio::task::spawn_local(async move {
-        let ended = ended.await;
-        if let Some(s) = session.upgrade() {
-            s.update(|core| core.command_ended(&wakeup, ended));
-        }
-    });
-    s.update(|core| core.wakeups.watch(&id, AbortOnDropHandle::new(watch)));
-    outcome
-}
-
-/// The result of a `yield` call, which the session writes because the
-/// wakeup's id is its own. The text names no wakeup: no tool takes one.
-fn yield_result(
-    wakeup_id: WakeupId,
-    duration_ms: u32,
-    command_ids: Vec<CommandId>,
-    above_cap: Option<String>,
-) -> ToolOutcome {
-    let mut text = above_cap.map(|line| line + "\n").unwrap_or_default();
-    text.push_str(&format!("yield scheduled\ndurationMs: {duration_ms}"));
-    if !command_ids.is_empty() {
-        let commands: Vec<&str> = command_ids.iter().map(CommandId::as_str).collect();
-        text.push_str(&format!("\ncommandIds: {}", commands.join(", ")));
-    }
-    ToolOutcome {
-        output: vec![ResultPart::Text(text)],
-        is_error: false,
-        view: Some(ToolView::YieldWakeup {
-            wakeup_id,
-            duration_ms,
-            command_ids,
-        }),
-        effect: None,
+    if let Some(ToolEffect::Background {
+        command,
+        interval_ms,
+        title,
+    }) = outcome.effect
+    {
+        s.update(|core| core.watch_command(command.clone(), interval_ms, title));
+        reports::start_watch(s, &command);
     }
 }

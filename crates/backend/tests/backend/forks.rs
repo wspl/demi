@@ -298,8 +298,8 @@ async fn a_fork_reads_the_edits_its_history_made_from_the_same_blobs_and_writes_
     let script = "demi file edit <<'EOF'\nnotes.txt\n<<<<<<< SEARCH\n=======\nhello\n>>>>>>> REPLACE\nEOF";
     vendor.respond(tool_use(
         "toolu_1",
-        "shell_exec",
-        &json!({ "description": "Write the notes file", "script": script, "timeoutMs": 60_000 }),
+        "shell",
+        &json!({ "description": "Write the notes file", "script": script, "intervalMs": 60_000 }),
     ));
     vendor.respond(answer(&["Written."], 1, 1));
     source.chat("m1", "Write the notes").await;
@@ -368,8 +368,8 @@ async fn a_fork_reads_the_outputs_of_the_commands_its_history_names() {
     let shell = |id: &str, script: &str| {
         tool_use(
             id,
-            "shell_exec",
-            &json!({ "description": id, "script": script, "timeoutMs": 60_000 }),
+            "shell",
+            &json!({ "description": id, "script": script, "intervalMs": 60_000 }),
         )
     };
     vendor.respond(shell("toolu_before", "seq 1 3"));
@@ -435,8 +435,8 @@ async fn a_fork_keeps_the_attachments_of_its_source_and_numbers_on_from_them() {
     let shell = |id: &str, script: &str| {
         tool_use(
             id,
-            "shell_exec",
-            &json!({ "description": id, "script": script, "timeoutMs": 60_000 }),
+            "shell",
+            &json!({ "description": id, "script": script, "intervalMs": 60_000 }),
         )
     };
     vendor.respond(shell("toolu_upload", "demi attachment upload shot.png"));
