@@ -211,6 +211,10 @@ impl PipeClient {
                     return match frame {
                         None => Ok(()),
                         Some(frame) if frame.code == CloseCode::Normal => Ok(()),
+                        // Why the pipe failed, in the backend's words.
+                        Some(frame) if frame.code == CloseCode::Error => {
+                            Err(io::Error::other(frame.reason.to_string()))
+                        }
                         Some(frame) => Err(io::Error::other(format!(
                             "pipe failed ({}): {}",
                             u16::from(frame.code),
@@ -275,21 +279,29 @@ impl PipeClient {
 
 /// A stream pipe's WebSocket failure as an IO error: the system's own when
 /// there is one, so running out of open files shows as such, and a refused
-/// handshake with the backend's status and words.
+/// handshake as [`refused`] says.
 fn socket_error(error: tungstenite::Error) -> io::Error {
     match error {
         tungstenite::Error::Io(error) => error,
         tungstenite::Error::Http(response) => {
             let body = response.body().as_deref().unwrap_or_default();
-            let body = &body[..body.len().min(ANSWER_BYTES)];
-            io::Error::other(format!(
-                "pipe refused ({}): {}",
-                response.status(),
-                String::from_utf8_lossy(body)
-            ))
+            refused(response.status(), &body[..body.len().min(ANSWER_BYTES)])
         }
         error => io::Error::other(error),
     }
+}
+
+/// The backend's refusal of a pipe request, with status `status` and words
+/// `body`, as an IO error. A 409 says why the pipe cannot go on, such as
+/// `build-box is offline: …`, which the command reports as its own error, so
+/// its words stand alone (`commands.md` § Handle an rpc call); another status
+/// is a fault of the request, named with the status.
+fn refused(status: reqwest::StatusCode, body: &[u8]) -> io::Error {
+    let words = String::from_utf8_lossy(body);
+    if status == reqwest::StatusCode::CONFLICT {
+        return io::Error::other(words.into_owned());
+    }
+    io::Error::other(format!("pipe refused ({status}): {words}"))
 }
 
 async fn expect_ok(mut response: reqwest::Response) -> io::Result<reqwest::Response> {
@@ -305,10 +317,7 @@ async fn expect_ok(mut response: reqwest::Response) -> io::Result<reqwest::Respo
             break;
         }
     }
-    Err(io::Error::other(format!(
-        "pipe refused ({status}): {}",
-        String::from_utf8_lossy(&body)
-    )))
+    Err(refused(status, &body))
 }
 
 fn cancelled() -> io::Error {

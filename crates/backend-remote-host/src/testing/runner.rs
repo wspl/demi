@@ -448,7 +448,7 @@ async fn pipe_source(
     match claim_source(&edge, id).await {
         Ok(source) => match source.pump(body.into_data_stream()).await {
             Ok(()) => (StatusCode::OK, "drained").into_response(),
-            Err(failure) => (StatusCode::CONFLICT, failure.to_string()).into_response(),
+            Err(failure) => (StatusCode::CONFLICT, failure.reason().to_owned()).into_response(),
         },
         Err(refusal) => refusal,
     }
@@ -515,7 +515,7 @@ async fn pipe_sink(
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
     if let Err(failure) = sink.source_arrived().await {
-        return (StatusCode::CONFLICT, failure.to_string()).into_response();
+        return (StatusCode::CONFLICT, failure.reason().to_owned()).into_response();
     }
     Response::builder()
         .status(StatusCode::OK)

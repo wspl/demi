@@ -482,13 +482,24 @@ impl<B> Leaf<B> {
 
     /// A clap error as the caller reads it: with Demi's tip for an option
     /// that names a body read from stdin, a positional or the rest field,
-    /// and with the command's usage line, which some of clap's errors leave
-    /// out.
+    /// with the pointer to the options in place of clap's tip to pass an
+    /// unknown option as a value after `--`, which only a leaf with a rest
+    /// field takes, and with the command's usage line, which some of clap's
+    /// errors leave out.
     fn refusal(&self, path: &str, mut error: clap::Error) -> Error {
         if error.kind() == ErrorKind::UnknownArgument
             && let Some(ContextValue::String(argument)) = error.get(ContextKind::InvalidArg)
-            && let Some(name) = argument.strip_prefix("--")
-            && let Some(tip) = self.tip(path, name)
+            && argument.starts_with('-')
+            && let Some(tip) = argument
+                .strip_prefix("--")
+                .and_then(|name| self.tip(path, name))
+                .or_else(|| {
+                    // clap's only tip for an unknown option on a leaf is
+                    // the one to pass it after `--`; a near option it
+                    // names as a similar argument instead.
+                    (self.rest_field.is_none() && error.get(ContextKind::Suggested).is_some())
+                        .then(|| "see the options with --help".to_owned())
+                })
         {
             error.remove(ContextKind::SuggestedArg);
             error.insert(
