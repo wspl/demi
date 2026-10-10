@@ -119,12 +119,12 @@ fn running_jobs(harness: &Harness) -> i64 {
 /// its runner away, waits for `finish`, prints again and exits with 3.
 const WAITING: &str = "printf 'before\\n'; while [ ! -f go ]; do sleep 0.05; done; printf 'during\\n'; touch printed; while [ ! -f finish ]; do sleep 0.05; done; printf 'after\\n'; exit 3";
 
-/// Starts `script` in the conversation as a command that reports only its
-/// end, whose call returns while it runs once its output is quiet, and
-/// answers its number.
-async fn started(work: &mut Driven<'_>, script: &str) -> String {
+/// Starts `script` in the conversation with the call `call` as a command
+/// that reports only its end, whose call returns while it runs once its
+/// output is quiet, and answers its number.
+async fn started(work: &mut Driven<'_>, call: &str, script: &str) -> String {
     let started = work
-        .turn(vec![resident("t1", script), say("waiting")])
+        .turn(vec![resident(call, script), say("waiting")])
         .await;
     let result = &started.received[0];
     assert!(result.starts_with("status: running"), "{result}");
@@ -157,7 +157,7 @@ async fn a_connection_that_comes_back_within_the_grace_stops_nothing_and_the_end
     let alpha = backend.pair_through(&master, "alpha", &network.url).await;
     let mut work = on_device(&backend, &master, &vendor, &alpha).await;
     let home = alpha.runner.home_dir().to_owned();
-    let command = started(&mut work, WAITING).await;
+    let command = started(&mut work, "t1", WAITING).await;
     assert_eq!(running_jobs(&harness), 1);
 
     // The network goes away; the command prints meanwhile.
@@ -194,7 +194,7 @@ async fn a_connection_that_stays_away_past_the_grace_loses_the_command_and_says_
     let alpha = backend.pair_with(&master, "alpha", &network.url, grace).await;
     let mut work = on_device(&backend, &master, &vendor, &alpha).await;
     let home = alpha.runner.home_dir().to_owned();
-    let command = started(&mut work, "sh -c 'echo $$ > pid; exec sleep 60'").await;
+    let command = started(&mut work, "t1", "sh -c 'echo $$ > pid; exec sleep 60'").await;
     until_exists(&home.join("pid")).await;
     let pid = std::fs::read_to_string(home.join("pid")).unwrap().trim().to_owned();
     let alive = |pid: &str| {
@@ -231,10 +231,10 @@ async fn a_connection_that_stays_away_past_the_grace_loses_the_command_and_says_
     backend.close().await;
 }
 
-// Several seconds: a real device pairs, the backend restarts, and the
-// runner comes back to it.
+// Several seconds: a real device pairs, two calls each wait for two quiet
+// seconds, the backend restarts, and the runner comes back to it.
 #[tokio::test]
-async fn a_backend_restart_takes_a_running_command_up_again_and_it_reports_its_end() {
+async fn a_backend_restart_takes_running_commands_up_again_and_they_report_their_ends() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -242,21 +242,30 @@ async fn a_backend_restart_takes_a_running_command_up_again_and_it_reports_its_e
     let mut work = on_device(&backend, &master, &vendor, &alpha).await;
     let home = alpha.runner.home_dir().to_owned();
     std::fs::write(home.join("go"), "").unwrap();
-    let command = started(&mut work, WAITING).await;
+    let going_on = started(&mut work, "t1", WAITING).await;
+    let ending = started(
+        &mut work,
+        "t2",
+        "printf 'waiting\\n'; while [ ! -f stop ]; do sleep 0.05; done; touch stopped; exit 5",
+    )
+    .await;
 
-    // The backend restarts at its address, where the runner reconnects; the
-    // command keeps running on the Host meanwhile.
+    // The backend restarts at its address, where the runner reconnects; one
+    // command ends meanwhile, the other keeps running on the Host.
     let address = backend.address();
     backend.close().await;
-    assert_eq!(running_jobs(&harness), 1, "the job's record survives the restart");
-    work.script(vec![say("noted")]);
+    assert_eq!(running_jobs(&harness), 2, "the jobs' records survive the restart");
+    std::fs::write(home.join("stop"), "").unwrap();
+    until_exists(&home.join("stopped")).await;
+    work.script(vec![say("noted"), say("noted")]);
     let backend = harness.start_at(address).await;
     backend.until_online(&master, alpha.id(), true).await;
+    until_requested(&vendor, &format!("Command {ending} (t2) ended with exit code 5.")).await;
     until_exists(&home.join("printed")).await;
     std::fs::write(home.join("finish"), "").unwrap();
 
-    until_requested(&vendor, &format!("Command {command} (t1) ended with exit code 3.")).await;
-    eventually("the job's record goes with its end", || {
+    until_requested(&vendor, &format!("Command {going_on} (t1) ended with exit code 3.")).await;
+    eventually("the jobs' records go with their ends", || {
         let running = running_jobs(&harness);
         async move { running == 0 }
     })
@@ -273,7 +282,7 @@ async fn a_release_change_loses_running_commands_to_the_upgrade() {
     let (backend, master) = harness.start_set_up().await;
     let mut alpha = backend.pair(&master, "alpha").await;
     let mut work = on_device(&backend, &master, &vendor, &alpha).await;
-    let command = started(&mut work, "sleep 60").await;
+    let command = started(&mut work, "t1", "sleep 60").await;
 
     // The upgrade stops the backend, and the device's runner replaces itself
     // with the new release's: the device last ran another release.
