@@ -73,11 +73,7 @@ struct LiveHosts;
 impl HostResolver for LiveHosts {
     type Host = ScriptedHost;
 
-    async fn host(
-        &self,
-        _context: NodeContext<'_>,
-        _wait: &dyn demi_agent_tools::HostWait,
-    ) -> Result<Rc<ScriptedHost>, HostError> {
+    async fn host(&self, _context: NodeContext<'_>) -> Result<Rc<ScriptedHost>, HostError> {
         Ok(Rc::new(ScriptedHost))
     }
 }

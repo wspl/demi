@@ -10,7 +10,7 @@
 use std::rc::{Rc, Weak};
 
 use demi_agent_tools::{
-    ContextAnswer, ContextSource, HostResolver, HostWait, NodeContext, Profile, ProfileModel, SubagentSettings,
+    ContextAnswer, ContextSource, HostResolver, NodeContext, Profile, ProfileModel, SubagentSettings,
     SubagentSource, Toolset, ToolsetSource,
 };
 use demi_backend_host_access::attachment_commands::attachment_group;
@@ -122,18 +122,14 @@ pub(crate) struct ShardHosts {
 impl HostResolver for ShardHosts {
     type Host = RemoteHost;
 
-    async fn host(
-        &self,
-        context: NodeContext<'_>,
-        wait: &dyn HostWait,
-    ) -> Result<Rc<RemoteHost>, HostError> {
+    async fn host(&self, context: NodeContext<'_>) -> Result<Rc<RemoteHost>, HostError> {
         let shard = self
             .shard
             .upgrade()
             .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
         shard
             .host_shard()
-            .conversation_host(&conversation_of(context.root), wait)
+            .conversation_host(&conversation_of(context.root))
             .await
     }
 }

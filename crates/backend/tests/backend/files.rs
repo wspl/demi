@@ -155,7 +155,7 @@ fn header<'a>(answer: &'a Answer, name: &str) -> Option<&'a str> {
 // Several seconds: a listing over the runner's message limit needs about 21,000
 // files in one directory.
 #[tokio::test]
-async fn the_working_tree_lists_its_changes_and_reads_one_file_and_an_offline_device_is_waited_for() {
+async fn the_working_tree_lists_its_changes_and_reads_one_file_and_an_offline_device_says_so() {
     let mut device = OnDevice::start().await;
     let root = device.root.to_str().unwrap().to_owned();
 
@@ -299,27 +299,23 @@ async fn the_working_tree_lists_its_changes_and_reads_one_file_and_an_offline_de
         StatusCode::OK
     );
 
-    // Offline, the conversation's primary device is waited for, as a
-    // stopped Cloud's wake is (`sessions-and-targets.md` § Host operations):
-    // the request is answered once its runner is back.
+    // Offline: the routes say so at once rather than waking anything or
+    // waiting for the runner, which only an agent's operation does
+    // (`sessions-and-targets.md` § Host operations).
     device.paired.runner.stop().await;
     device
         .backend
         .until_online(&device.master, device.paired.id(), false)
         .await;
-    {
-        let path = format!("/api/conversations/{CONVERSATION}/changes");
-        let mut request = std::pin::pin!(device.backend.response(Method::GET, &path, &device.master, &[], None));
-        // A bound on a negative: without the wait, the answer comes in milliseconds.
-        assert!(
-            tokio::time::timeout(Duration::from_millis(300), &mut request)
-                .await
-                .is_err(),
-            "the route answered while the device was offline"
+    for route in ["/changes".to_owned(), format!("/fs/file?{}", query(&[("path", &a)]))] {
+        let refused = tokio::time::timeout(Duration::from_secs(10), device.get(&route))
+            .await
+            .unwrap_or_else(|_| panic!("{route} waited for the offline device"));
+        assert_eq!(
+            refused.refusal(),
+            (StatusCode::CONFLICT, ErrorCode::DeviceOffline),
+            "{route}"
         );
-        device.paired.runner.start_again();
-        let answered = answer(request.await).await;
-        assert_eq!(answered.status, StatusCode::OK, "{}", String::from_utf8_lossy(&answered.body));
     }
     device.backend.close().await;
 }
@@ -909,13 +905,13 @@ impl OnDevice {
 }
 
 /// A restart is not a device going away (`sessions-and-targets.md`
-/// § Recovery and persistence): an operation for the conversation's device,
-/// whose connection the shutdown ended, waits for its runner instead of
-/// answering that the device is offline, and is answered once the runner's
-/// hello is bound. Costs a restart, a runner start and 300 ms of a bound on
-/// what must not happen.
+/// § Recovery and persistence): for 30 seconds after the start, an operation
+/// for a device whose connection the shutdown ended waits for its runner
+/// instead of answering that the device is offline; after that it answers
+/// as for any device that is away. Costs two restarts, a runner start and
+/// 300 ms of a bound on what must not happen.
 #[tokio::test]
-async fn after_a_restart_an_operation_waits_for_the_runner_the_shutdown_disconnected()
+async fn after_a_restart_an_operation_waits_for_the_runner_the_shutdown_disconnected_until_the_grace_ends()
 {
     let device = OnDevice::start().await;
     std::fs::write(device.root.join("a.txt"), "kept").unwrap();
@@ -942,6 +938,17 @@ async fn after_a_restart_an_operation_waits_for_the_runner_the_shutdown_disconne
         let answered = answer(request.await).await;
         assert_eq!(answered.status, StatusCode::OK, "{}", String::from_utf8_lossy(&answered.body));
     }
+
+    // Once the grace is over, a device still away is offline at once.
+    let device = device.restart_without_runner().await;
+    device.harness.clock.advance(jiff::SignedDuration::from_secs(31));
+    let refused = tokio::time::timeout(Duration::from_secs(10), device.get(&read))
+        .await
+        .expect("the operation waited after the grace");
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::DeviceOffline)
+    );
     device.backend.close().await;
 }
 

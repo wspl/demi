@@ -209,15 +209,8 @@ impl Provider for TreeProvider {
 struct TreeRuntime(Arc<Scripts>);
 
 impl ProviderRuntime for TreeRuntime {
-    /// Streams the node's next answer; an empty one keeps the request open
-    /// until it is cancelled, as a model that is still thinking does.
     fn run(&mut self, request: InferenceRequest) -> ProviderRun<'_> {
         let answer = self.0.answer(&request);
-        if answer.is_empty() {
-            return stream::pending()
-                .take_until(request.cancel.cancelled_owned())
-                .boxed_local();
-        }
         stream::iter(answer)
             .take_until(request.cancel.cancelled_owned())
             .boxed_local()

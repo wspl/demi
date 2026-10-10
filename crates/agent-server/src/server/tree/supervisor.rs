@@ -14,7 +14,7 @@ use demi_agent_session::{
     AgentMessageError, AgentSession, Execution, SessionEvent, Settle, Subscription,
 };
 use demi_agent_store::{ClosePhase, NodeClose, NodeRecord};
-use demi_agent_tools::{HostResolver, HostWaits};
+use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::Purpose;
@@ -430,7 +430,6 @@ impl<H: HostResolver> Tree<H> {
             store: self.store.clone(),
             shells: deps.shells.clone(),
             feed,
-            waits: self.waits.clone(),
             admission: self.admission.clone(),
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
@@ -513,7 +512,7 @@ impl<H: HostResolver> Tree<H> {
             .borrow_mut()
             .insert(child.id().clone(), child.clone());
         self.bump();
-        for frame in child_frames(&child, &self.waits) {
+        for frame in child_frames(&child) {
             self.sink.emit(frame);
         }
         child
@@ -873,7 +872,7 @@ impl<H: HostResolver> Tree<H> {
     pub(super) fn replay(&self) -> Vec<ServerFrame> {
         self.descendants()
             .iter()
-            .flat_map(|child| child_frames(child, &self.waits))
+            .flat_map(|child| child_frames(child))
             .collect()
     }
 
@@ -1158,9 +1157,8 @@ async fn stop_all(session: &AgentSession) {
     while session.abort().await.target.is_some() {}
 }
 
-/// A child's `started` frame, its transcript, the calls it is writing and
-/// those that wait for their Host.
-fn child_frames<H: HostResolver>(child: &Child<H>, waits: &HostWaits) -> [ServerFrame; 4] {
+/// A child's `started` frame, its transcript and the calls it is writing.
+fn child_frames<H: HostResolver>(child: &Child<H>) -> [ServerFrame; 3] {
     let session = child.node.session();
     let transcript = session.transcript();
     [
@@ -1177,10 +1175,6 @@ fn child_frames<H: HostResolver>(child: &Child<H>, waits: &HostWaits) -> [Server
         ServerFrame::PendingCalls {
             subagent_id: Some(child.id().clone()),
             pending_calls: session.pending_calls(),
-        },
-        ServerFrame::WaitingCalls {
-            subagent_id: Some(child.id().clone()),
-            waiting_calls: waits.waiting(child.id()),
         },
     ]
 }

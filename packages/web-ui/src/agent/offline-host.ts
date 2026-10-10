@@ -15,6 +15,6 @@ export interface OfflineHost {
   devices: HostDeviceOption[]
   /** In a project: choosing a device opens its directory picker. */
   chooseDirectory?: boolean
-  /** A move was asked for and has not ended yet. */
-  moving?: boolean
+  /** The conversation cannot move now, as while its work runs. */
+  locked?: boolean
 }

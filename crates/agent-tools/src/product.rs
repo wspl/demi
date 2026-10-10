@@ -8,8 +8,6 @@ use std::rc::Rc;
 
 use demi_host_interface::{CommandSet, Host, HostError, HostErrorKind};
 use demi_shared_types::{InstructionEntry, NodeId, TurnId};
-
-use crate::waits::HostWait;
 use futures_util::future::LocalBoxFuture;
 
 /// The commands every node of a tree starts from, which a tree takes when
@@ -145,14 +143,9 @@ pub trait HostResolver: 'static {
     /// The Host a node's shell tools reach now: the conversation's current
     /// execution target (`sessions-and-targets.md` § Host operations). Two
     /// answers for the same target have equal keys, so a node keeps one
-    /// shell environment per target it used. While the Host's runner is
-    /// away, a primary Host is waited for, and `wait` hears of it. By
-    /// default there is none, and a shell tool's call fails.
-    async fn host(
-        &self,
-        _context: NodeContext<'_>,
-        _wait: &dyn HostWait,
-    ) -> Result<Rc<Self::Host>, HostError> {
+    /// shell environment per target it used. By default there is none, and a
+    /// shell tool's call fails.
+    async fn host(&self, _context: NodeContext<'_>) -> Result<Rc<Self::Host>, HostError> {
         Err(HostError::new(
             HostErrorKind::Unavailable,
             "this agent runs no shell tools",

@@ -243,7 +243,7 @@ mod shells {
             .of(&owner)
             .call(move |shard, _| async move {
                 let _connection = shard.connect_for_tests(&laptop, "/home/ana");
-                let host = shard.host_shard().conversation_host(&id, &()).await.unwrap();
+                let host = shard.host_shard().conversation_host(&id).await.unwrap();
                 assert_eq!(host.default_cwd(), "/work");
                 let ran = Cell::new(0);
                 let job = || {

@@ -1,4 +1,8 @@
 import { ref } from 'vue'
+import type { SentenceText } from '../ui/ui-text'
+
+/** Why a conversation cannot move while its work runs, as its move controls say. */
+export const MOVE_LOCKED: SentenceText = 'This conversation can move once its work ends.'
 
 /** A move the dialog asks about: where the conversation goes, and where it leaves. */
 export interface MoveQuestion {

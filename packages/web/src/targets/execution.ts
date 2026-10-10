@@ -36,6 +36,18 @@ export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>)
   }
 }
 
+/**
+ * Whether the conversation cannot move now (`product.md` § Where a
+ * conversation runs): its work runs, it is archived, or a change of it is
+ * under way.
+ */
+export function moveLocked(
+  conversation: Pick<Conversation, 'id' | 'phase' | 'archived'>,
+  pendingChanges: readonly string[],
+): boolean {
+  return conversation.phase !== 'idle' || conversation.archived || pendingChanges.includes(conversation.id)
+}
+
 /** The Host a conversation runs on, as Run On checks it. */
 export function primaryHostOf(execution: ReturnType<typeof executionFor>): HostMenuHost {
   return {

@@ -87,11 +87,6 @@ export function applyConversationEvent(
     if (child) {
       child.pendingCalls = event.pendingCalls
     }
-  } else if (event.type === 'waiting_calls' && event.subagentId !== undefined) {
-    const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
-    if (child) {
-      child.waitingCalls = event.waitingCalls
-    }
   } else if (event.type === 'shell_output') {
     // A command's live view, the same for every page (`runtime.md` § Live
     // output): what it adds to the output shown, under its call while the

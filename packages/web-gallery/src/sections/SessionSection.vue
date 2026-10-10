@@ -84,7 +84,7 @@ import GalleryFindBar from '../components/GalleryFindBar.vue'
 import GalleryUserMessageLengths from '../components/GalleryUserMessageLengths.vue'
 import { regenerateMessage, submitMessageEdit, type MessageEditHost, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { callTerminal, firstRunningTerminalId, type TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-import { provideCallWaits, provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
+import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
 import type { HostDeviceOption } from '@demicodes/web-ui/hosts/types'
 import type { AgentMessage, UserContentBlock } from '@demicodes/protocol'
 import { applyModelChange, type ModelSettings, type ModelSettingsChange } from '@demicodes/web-ui/agent/model-selection'
@@ -107,7 +107,6 @@ import {
   notStoredVideoTool,
   recordingTool,
   runningShellTool,
-  waitingShellTool,
   screenshotTool,
   screenshotsTool,
   shellTool,
@@ -665,11 +664,7 @@ const offlineMenuDevices: HostDeviceOption[] = [
   { id: 'old', name: 'Old Laptop', state: 'offline' },
   { id: 'build', name: 'build-box', state: 'offline' },
 ]
-// The waiting call's Host, until the specimen's runner comes back.
-const hostAway = ref(true)
-provideCallWaits((toolUseId) =>
-  hostAway.value && toolUseId === waitingShellTool.toolUseId ? 'Old Laptop' : undefined,
-)
+
 const changesFlow = useTurnFlow({ id: 'gallery-changes', title: 'Cookie rename', blocks: changesDemoBlocks() })
 useGalleryTranscripts(() => ({ blocks: changesFlow.state.blocks, subagents: [] }))
 useGalleryTranscripts(() => ({ blocks: workFlow.state.blocks, subagents: [] }))
@@ -1052,6 +1047,21 @@ onBeforeUnmount(() => {
                 start: demoDeviceStart('macos'),
                 primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline' },
                 devices: offlineMenuDevices,
+              }"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="primary Host offline while its work runs · the move waits for the work to end"
+            wide
+          >
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              :offline-host="{
+                name: 'Old Laptop',
+                start: demoDeviceStart('macos'),
+                primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline' },
+                devices: offlineMenuDevices,
+                locked: true,
               }"
             />
           </GallerySpecimen>
@@ -1725,18 +1735,6 @@ onBeforeUnmount(() => {
                 :block="runningShellTool"
                 :input="parseToolInput(runningShellTool.input)"
               />
-            </GallerySpecimen>
-            <GallerySpecimen
-              variant="shell · waiting for its offline Host"
-              wide
-            >
-              <ToolShellBlock
-                :block="waitingShellTool"
-                :input="parseToolInput(waitingShellTool.input)"
-              />
-              <Button size="sm" variant="ghost" class="mt-1" @click="hostAway = !hostAway">
-                {{ hostAway ? 'Connect Runner' : 'Disconnect Runner' }}
-              </Button>
             </GallerySpecimen>
             <GallerySpecimen
               variant="shell · returned, its command still runs · stopped"

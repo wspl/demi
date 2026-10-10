@@ -16,7 +16,7 @@ import {
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
 import type { SendWay } from '@demicodes/web-ui/agent/send-way'
-import { executionFor, hostDeviceOptions, primaryHostOf } from '../targets/execution'
+import { executionFor, hostDeviceOptions, moveLocked, primaryHostOf } from '../targets/execution'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
 import type { HostChoice } from '@demicodes/web-ui/hosts/types'
 import { composerModel } from '@demicodes/web-ui/agent/model-selection'
@@ -122,8 +122,9 @@ const hold = computed(() =>
 )
 /**
  * The primary Host when it is a paired device whose runner is not
- * connected, with what its card's Move to Another Host… lists; a Host
- * chosen there is the header's to move the conversation to.
+ * connected, with what its card's Move to Another Host… lists once the
+ * conversation's work is idle; a Host chosen there is the header's to move
+ * the conversation to.
  */
 const offlineHost = computed<OfflineHost | null>(() => {
   const primary = execution.value
@@ -138,7 +139,7 @@ const offlineHost = computed<OfflineHost | null>(() => {
         primaryHost: primaryHostOf(primary),
         devices: hostDeviceOptions(resources.devices),
         chooseDirectory: props.conversation.target.kind === 'workspace',
-        moving: store.pendingChanges.includes(props.conversation.id),
+        locked: moveLocked(props.conversation, store.pendingChanges),
       }
     : null
 })

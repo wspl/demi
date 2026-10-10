@@ -7,15 +7,17 @@ import { appOverlayStore } from '../overlay/appOverlay'
 import DeviceStartHint from '../devices/DeviceStartHint.vue'
 import type { DeviceStart } from '../devices/installation'
 import HostChoices from '../hosts/HostChoices.vue'
+import { MOVE_LOCKED } from '../hosts/move-question'
 import type { HostChoice, HostDeviceOption, HostMenuHost } from '../hosts/types'
 
 /**
  * The conversation's primary Host is a paired device whose runner is not
  * connected (`product.md` § Recovering an unfinished turn): offered above
  * the composer with how to start the runner again, and Move to Another
- * Host…, which lists Run On's online Hosts; choosing one is the host's to
- * carry out, as the header's host menu's choice is. Gone once the device
- * is online. The row owns the button's inset from its edges.
+ * Host…, which lists Run On's online Hosts once the conversation's work
+ * is idle; choosing one is the host's to carry out, as the header's host
+ * menu's choice is. Gone once the device is online. The row owns the
+ * button's inset from its edges.
  */
 defineProps<{
   /** The device's name. */
@@ -27,8 +29,8 @@ defineProps<{
   devices: HostDeviceOption[]
   /** In a project: choosing a device opens its directory picker. */
   chooseDirectory?: boolean
-  /** A move was asked for and has not ended yet. */
-  moving?: boolean
+  /** The conversation cannot move now, as while its work runs or a change of it is under way. */
+  locked?: boolean
 }>()
 const emit = defineEmits<{
   move: [host: HostChoice]
@@ -53,10 +55,11 @@ function choose(host: HostChoice): void {
         <Dropdown
           v-model:open="open"
           :overlay-store="appOverlayStore"
-          :disabled="moving"
+          :disabled="locked"
+          :disabled-reason="MOVE_LOCKED"
         >
           <template #trigger>
-            <Button size="sm" :loading="moving">Move to Another Host…</Button>
+            <Button size="sm" :disabled="locked">Move to Another Host…</Button>
           </template>
           <template #content>
             <Menu class="max-w-80">

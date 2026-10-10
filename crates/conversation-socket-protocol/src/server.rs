@@ -113,23 +113,6 @@ pub enum ServerFrame {
         #[garde(dive)]
         pending_calls: Vec<PendingCall>,
     },
-    /// The complete list of a node's calls that wait for their Host's
-    /// runner (`sessions-and-targets.md` § Host operations): each one's row
-    /// reads *Waiting for* the Host until its runner is back or a move ends
-    /// the call.
-    WaitingCalls {
-        /// The subagent whose calls they are; absent for the root's.
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            with = "unwrap_or_skip"
-        )]
-        #[schemars(with = "NodeId")]
-        #[garde(skip)]
-        subagent_id: Option<NodeId>,
-        #[garde(dive)]
-        waiting_calls: Vec<WaitingCall>,
-    },
     /// Answers `steer`.
     SteerResult {
         #[garde(skip)]
@@ -417,17 +400,6 @@ impl ShellStatus {
             | Self::Aborted { command } => command,
         }
     }
-}
-
-/// A call that waits for its Host's runner, and the Host by name, as its
-/// row says it: *Waiting for Old Laptop*.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct WaitingCall {
-    #[garde(length(min = 1))]
-    pub tool_use_id: String,
-    #[garde(length(min = 1))]
-    pub host: String,
 }
 
 /// A command as the pages see it, whatever its status (`runtime.md`
