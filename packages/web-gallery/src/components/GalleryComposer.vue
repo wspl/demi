@@ -7,7 +7,8 @@ import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/messag
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
-import type { DeviceStart } from '@demicodes/web-ui/devices/installation'
+import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
+import type { HostChoice } from '@demicodes/web-ui/hosts/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import {
   applyAttachmentUpdate,
@@ -73,8 +74,12 @@ const props = withDefaults(
     replaced?: string
     /** Plugins changed since the conversation opened: the composer offers a reload. */
     pluginsChanged?: boolean
-    /** The conversation's primary Host is an offline paired device: the composer says how to start its runner. */
-    offlineHost?: { name: string; start: DeviceStart } | null
+    /**
+     * The conversation's primary Host is an offline paired device: the
+     * composer says how to start its runner, and Move to Another Host…
+     * moves the specimen's conversation, whose card then goes.
+     */
+    offlineHost?: OfflineHost | null
     /** Compacts the specimen's conversation; without it, a toast says what the product would do. */
     onCompact?: () => void
     /** Steers the specimen's running turn; without it, a toast says what the product would do. */
@@ -124,6 +129,16 @@ function reloadPlugins() {
     pluginsChanged.value = false
   }, 600)
 }
+/** The offline primary Host's card, until a move takes the conversation to another Host. */
+const offlineHost = ref(props.offlineHost ?? null)
+/** The card goes with the move, as the product's does, and a toast says where the product would run it. */
+function moveHost(host: HostChoice) {
+  const to = host.kind === 'cloud'
+    ? 'Cloud'
+    : offlineHost.value?.devices.find((device) => device.id === host.id)?.name
+  offlineHost.value = null
+  productWould(`Move the Conversation to ${to}`)
+}
 /** Counts the drafts shown from outside, here the restored ones. */
 const shown = ref(0)
 /** Compact from the meter's card: the specimen's own conversation, or a toast when it has none. */
@@ -167,6 +182,7 @@ const composerProps = computed(() => {
     onSteer: _steer,
     onQueue: _queue,
     sendWhileRunning: _sendWhileRunning,
+    offlineHost: _offlineHost,
     ...rest
   } = props
   return rest
@@ -377,6 +393,8 @@ onBeforeUnmount(() => {
     :draft-shown="shown"
     :plugins-changed="pluginsChanged"
     :reloading="reloading"
+    :offline-host="offlineHost"
+    @move-host="moveHost"
     remote-files
     @reload-plugins="reloadPlugins"
     @restore-replaced="restoreReplaced"

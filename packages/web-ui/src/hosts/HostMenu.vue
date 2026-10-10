@@ -12,12 +12,11 @@ import { ICON_PX } from '../ui/icon-metrics'
 import { COMPACT_LABEL_CLASS, useRoomLabel } from '../ui/label-room'
 import Tooltip from '../ui/Tooltip.vue'
 import { isTextCut } from '../ui/truncation'
-import type { SentenceText } from '../ui/ui-text'
 import DeviceIcon from '../devices/DeviceIcon.vue'
 import { DEVICE_GLYPHS } from '../devices/device-glyphs'
-import { DEVICE_STATE_LABEL } from '../devices/state'
-import { DEVICE_PATH_LABEL } from '../devices/direct'
-import type { HostDeviceOption, HostMenuHost } from './types'
+import HostChoices from './HostChoices.vue'
+import { MOVE_LOCKED } from './move-question'
+import type { HostChoice, HostDeviceOption, HostMenuHost } from './types'
 
 /**
  * Where a conversation runs, as the header shows it and its one-level menu
@@ -43,8 +42,7 @@ const props = defineProps<{
   pending?: boolean
 }>()
 const emit = defineEmits<{
-  /** A Host chosen to run on: the Cloud, or a device by its id. */
-  choose: [host: { kind: 'cloud' } | { kind: 'device'; id: string }]
+  choose: [host: HostChoice]
   detach: [id: string]
   connect: []
 }>()
@@ -59,26 +57,8 @@ function nameHidden(): boolean {
   return hostCompact.value || (hostLabel.value != null && isTextCut(hostLabel.value))
 }
 
-const LOCKED: SentenceText = 'This conversation can move once its work ends.'
 
-/** A device's name in Run On: with an ellipsis where choosing it opens a picker first. */
-function choiceLabel(device: HostDeviceOption): string {
-  const opensPicker = props.chooseDirectory && device.state === 'online' && !deviceChecked(device.id)
-  return opensPicker ? `${device.name}…` : device.name
-}
-
-/** The end of a device's row: the path this page reaches it by while it is online, otherwise its state. */
-function deviceNote(device: HostDeviceOption): string | undefined {
-  if (device.state !== 'online')
-    return DEVICE_STATE_LABEL[device.state]
-  return device.path ? DEVICE_PATH_LABEL[device.path] : undefined
-}
-
-function deviceChecked(id: string): boolean {
-  return props.primaryHost.kind === 'device' && props.primaryHost.id === id
-}
-
-function choose(host: { kind: 'cloud' } | { kind: 'device'; id: string }) {
+function choose(host: HostChoice) {
   if (props.locked)
     return
   open.value = false
@@ -140,26 +120,12 @@ function connect() {
     <template #content>
       <Menu class="max-w-80">
         <MenuGroup label="Run On">
-          <MenuItem
-            :icon="Cloud"
-            label="Cloud"
-            choice
-            :is-selected="primaryHost.kind === 'cloud'"
-            :disabled="locked"
-            :disabled-reason="LOCKED"
-            @select="choose({ kind: 'cloud' })"
-          />
-          <MenuItem
-            v-for="device in devices"
-            :key="device.id"
-            :icon="DEVICE_GLYPHS[device.state]"
-            :label="choiceLabel(device)"
-            :value="deviceNote(device)"
-            choice
-            :is-selected="deviceChecked(device.id)"
-            :disabled="locked || device.state !== 'online'"
-            :disabled-reason="locked ? LOCKED : 'This device is offline.'"
-            @select="choose({ kind: 'device', id: device.id })"
+          <HostChoices
+            :primary-host="primaryHost"
+            :devices="devices"
+            :choose-directory="chooseDirectory"
+            :locked="locked ? MOVE_LOCKED : undefined"
+            @choose="choose"
           />
           <MenuItem label="Add Device…" :icon="Plus" @select="connect" />
         </MenuGroup>
@@ -171,7 +137,7 @@ function connect() {
             :label="host.name"
             :faded="host.kind === 'device' && host.state !== 'online'"
             :disabled="locked"
-            :disabled-reason="LOCKED"
+            :disabled-reason="MOVE_LOCKED"
             @select="chooseAttached(host)"
           >
             <template #actions>
