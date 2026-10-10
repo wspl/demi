@@ -292,7 +292,11 @@ runner's are on the system image, in directories the image makes for the
 - `/var/lib/demi/tmp/`, the temporary directory: the runner's environment
   names it as `TMPDIR`, so jobs and every program they start put their
   temporary files there ([Shell jobs](../execution/runner.md#shell-jobs)).
-  The runner empties it when it starts, which in a Cloud is once per boot.
+  The runner makes it when it is missing and empties it when it starts,
+  which in a Cloud is once per boot; the image makes only `/var/lib/demi`,
+  since a Cloud pinned to an older base keeps that base's `/var` while
+  `/opt/demi` brings the new runner, and a runner that needed `tmp` from the
+  image could not start on hel1's Cloud pinned to 0.1.11's base.
 - `/var/log/demi/`, the [Host log](../execution/runner.md#host-log), which
   outlives a stop.
 
