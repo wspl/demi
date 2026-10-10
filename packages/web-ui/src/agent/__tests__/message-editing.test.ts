@@ -24,7 +24,7 @@ test('the UI selects only the last user block, whatever follows it', () => {
   const blocks: Block[] = [userBlock('A', 'A', 'A'), userBlock('B', 'B', 'B'), userBlock('C', 'C', 'C')]
   expect(lastEditableUserMessageId(blocks)).toBe('C')
   blocks.push(
-    { type: 'wakeup', id: 'wakeup', turnId: 'wakeup', createdAt, model, placement: 'new_turn' },
+    { type: 'wakeup', id: 'wakeup', turnId: 'wakeup', createdAt, model, placement: 'new_turn', text: 'Command 17 (Run the tests) ended with exit code 0; look at it with demi shell status 17.' },
     { type: 'steer', id: 'steer', turnId: 'wakeup', createdAt, model, content: [] },
     { type: 'text', id: 'reply', createdAt, model, text: 'answer C' },
   )

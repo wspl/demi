@@ -7,7 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
-use crate::{BlobRef, CommandId, MAX_SAFE_INTEGER, WakeupId};
+use crate::{BlobRef, CommandId, MAX_SAFE_INTEGER};
 
 /// A tool call's view.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -20,26 +20,13 @@ use crate::{BlobRef, CommandId, MAX_SAFE_INTEGER, WakeupId};
 pub enum ToolView {
     /// A shell tool's command.
     Shell(#[garde(dive)] ShellToolView),
-    /// A `shell_exec` the repeat guard suppressed: the script and how many
+    /// A `shell` call the repeat guard suppressed: the script and how many
     /// times in a row it was asked for.
-    RepeatedShellExec {
+    RepeatedShell {
         #[garde(skip)]
         script: String,
         #[garde(skip)]
         count: u32,
-    },
-    /// The wakeup a `yield` scheduled, and the commands whose end fires it
-    /// sooner.
-    YieldWakeup {
-        #[garde(skip)]
-        wakeup_id: WakeupId,
-        #[garde(skip)]
-        duration_ms: u32,
-        // A `yield` that names no command, as every one saved before
-        // commands could be named, has none.
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        #[garde(skip)]
-        command_ids: Vec<CommandId>,
     },
 }
 

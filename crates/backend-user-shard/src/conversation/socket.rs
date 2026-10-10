@@ -201,7 +201,7 @@ impl Shard {
     }
 
     /// Restores the conversation's tree with no page attached, as an `open`
-    /// does (`runtime.md` § Yield wakeups): under the conversation's file
+    /// does: under the conversation's file
     /// gate and its settings order, with the model its record holds, and
     /// only when the backend would deliver an `open`. A tree that is live
     /// already is left as it is.

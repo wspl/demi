@@ -24,7 +24,7 @@ use super::{
 /// The one description of a spawn's brief (`subagents.md` § Command help).
 const SPAWN_PROMPT: &str = "The child's first user message and only task brief. The child starts with an empty transcript and cannot see this conversation: do not refer to prior turns, and do not paste this conversation or the product user's message unchanged. Include the goal for this child, applicable decisions and constraints, whether to edit or only report, how to verify, and every concrete identifier it needs (paths, ids, error text, commands already tried and their key results). State the exact shape of the last assistant text it should return.";
 
-const SPAWN_SUMMARY: &str = "Start a child agent session and return its id immediately after creation. The child runs independently of this command. Completion arrives as a message to the parent, waking it when idle. When you have no independent work left, end your turn and let the completion message wake you. Do not poll agent list/show or schedule timed yield calls to wait for children. Use agent send to communicate and agent abort to stop it. Children can spawn children of their own.";
+const SPAWN_SUMMARY: &str = "Start a child agent session and return its id immediately after creation. The child runs independently of this command. Completion arrives as a message to the parent, waking it when idle. When you have no independent work left, end your turn and let the completion message wake you. Do not poll agent list/show to wait for children. Use agent send to communicate and agent abort to stop it. Children can spawn children of their own.";
 
 const SEND_SUMMARY: &str = "Deliver information to any live agent in the tree, or parent. A busy recipient incorporates it through internal steering; an idle recipient wakes. Returns after durable acceptance, without waiting for an answer. Use for interim information, questions, or blockers; your final answer is delivered automatically. Archived recipients must be reopened by their parent with resume.";
 
@@ -239,7 +239,8 @@ fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -
 /// on behalf of the job's node.
 pub(super) struct Invoked<H: HostResolver, A> {
     pub(super) tree: Rc<Tree<H>>,
-    caller: NodeId,
+    /// The node whose job runs the command.
+    pub(super) caller: NodeId,
     /// The command's path, which a failure of one of several values
     /// begins with (`commands.md` § Handle an rpc call).
     pub(super) command: String,

@@ -232,11 +232,11 @@ impl Conversation {
                 phase: SessionPhase::Idle,
                 queue: Vec::new(),
                 agent_inputs: Vec::new(),
-                wakeups: Vec::new(),
+                reports: Vec::new(),
+                intervals: Vec::new(),
                 cwd: fixture.cwd.clone(),
                 model: model.clone(),
                 edits: Vec::new(),
-                last_turn: demi_agent_store::TurnEnd::Answer,
             },
             changed_blocks: fixture.blocks.into_iter().enumerate().collect(),
             block_count,
@@ -321,7 +321,7 @@ impl Conversation {
         let view = ModelView::of(start, &blocks[start..], &HeldMedia::default())
             .expect("the fixture's history holds no media");
         let model = flash(window).model;
-        context_tokens(&RequestView::new(&view, &model, RequestLimits::default()))
+        context_tokens(&RequestView::new(&view, &model, RequestLimits::default(), &[]))
     }
 
     /// Runs `frame` to the end of the action it starts; a wait longer than

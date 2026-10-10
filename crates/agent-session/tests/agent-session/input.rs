@@ -1,15 +1,14 @@
 //! Input that waits for a boundary (`runtime.md` § Input, § Send now,
-//! § Yield wakeups, `subagents.md` § Communication): human steers, also
-//! sent now, agent messages and yield wakeups.
+//! § Command reports, `subagents.md` § Communication): human steers, also
+//! sent now, agent messages and command reports.
 
-use demi_agent_store::ScheduledWakeup;
-use demi_agent_transcript::testing::{WAKEUP_TEXT, agent_message_envelope};
+use demi_agent_store::CommandInterval;
+use demi_agent_transcript::testing::agent_message_envelope;
 use demi_provider_common::testing::TokioClock;
 use demi_agent_session::WindowEnd;
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, BlockId, CompletionOutcome, PendingSteer, WakeupPlacement,
 };
-use tokio_util::sync::CancellationToken;
 
 use super::*;
 
@@ -205,9 +204,8 @@ async fn a_stop_writes_the_pending_steers_before_its_marker_and_a_steer_needs_a_
     );
 }
 
-/// How a watching tool's window ended, and the token that would stop its
-/// command.
-type Watched = Rc<RefCell<Option<(WindowEnd, CancellationToken)>>>;
+/// How a watching tool's window ended.
+type Watched = Rc<RefCell<Option<WindowEnd>>>;
 
 /// A tool that watches its command as a shell tool does, until input or a
 /// send now ends its window, and answers what ended it.
@@ -223,7 +221,7 @@ fn watching_tool() -> ((String, Invoke), Watched, oneshot::Receiver<()>) {
         let ended = ended.clone();
         Box::pin(async move {
             let end = call.arrival.arrived().await;
-            *ended.borrow_mut() = Some((end, call.cancel));
+            *ended.borrow_mut() = Some(end);
             Ok(output(match end {
                 WindowEnd::SentNow => "moved to the background",
                 WindowEnd::Input => "input arrived",
@@ -269,10 +267,10 @@ async fn steer_now_returns_the_running_call_at_once_and_the_turn_goes_on_with_th
     session.steer_now(&steer_id("s1"));
 
     assert_eq!(running.await, Ok(ActionEnd::Completed));
-    // The call returned for the send now, and nothing stops its command.
-    let (end, command) = watched.borrow_mut().take().unwrap();
+    // The call returned for the send now: it was not dropped, so nothing
+    // stops its command.
+    let end = watched.borrow_mut().take().unwrap();
     assert_eq!(end, WindowEnd::SentNow);
-    assert!(!command.is_cancelled());
     // The call after it never ran.
     assert_eq!(later_runs.get(), 0);
     let blocks = session.transcript().blocks;
@@ -367,9 +365,8 @@ async fn a_queued_message_sent_now_ends_the_turn_without_a_marker_and_runs_next(
     assert_eq!(running.await, Ok(ActionEnd::Completed));
     assert_eq!(third.await, Ok(ActionEnd::Completed));
     assert_eq!(second.await, Ok(ActionEnd::Completed));
-    let (end, command) = watched.borrow_mut().take().unwrap();
+    let end = watched.borrow_mut().take().unwrap();
     assert_eq!(end, WindowEnd::SentNow);
-    assert!(!command.is_cancelled());
     // The turn ended at the boundary with the pending steer written, and no
     // stopped marker; the message sent now ran before the one it passed.
     assert_eq!(
@@ -566,15 +563,22 @@ async fn retry_after_a_failed_continuation_reruns_it_from_its_message_and_keeps_
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_stop_writes_the_waiting_message_before_its_marker_and_holds_nothing_afterwards() {
     let provider = ScriptedRuntime::new([
-        yield_call(60_000),
+        Turn::Events(background_call("7", None, "Build")),
+        Turn::Events(vec![event::text("building"), event::response(1, 1)]),
         Turn::pending(),
         Turn::Events(vec![event::text("read it"), event::response(1, 1)]),
         Turn::Events(vec![event::text("checked"), event::response(1, 1)]),
     ]);
     let store = MemoryTreeStore::new();
+    let runtime = test_runtime(Vec::new());
+    let commands = runtime.commands.clone();
+    let runtime = TestRuntime {
+        tools: vec![background_tool(&commands)],
+        ..runtime
+    };
     let session = start_at(
         &provider,
-        test_runtime(vec![yield_tool()]),
+        runtime,
         &store,
         SessionConfig::default(),
         Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
@@ -586,7 +590,7 @@ async fn a_stop_writes_the_waiting_message_before_its_marker_and_holds_nothing_a
         .await
         .unwrap();
     let running = session.send(text("anything else?"), turn("t2")).unwrap();
-    until(|| provider.requests().len() == 2).await;
+    until(|| provider.requests().len() == 3).await;
     session
         .accept_agent_message(agent_message("unread"))
         .await
@@ -598,7 +602,7 @@ async fn a_stop_writes_the_waiting_message_before_its_marker_and_holds_nothing_a
     // The message waiting for the stopped turn's boundary is written into
     // it, before the marker, as a pending steer is.
     assert_eq!(
-        kinds(&session.transcript().blocks[3..]),
+        kinds(&session.transcript().blocks[5..]),
         ["user", "agent_message", "abort"]
     );
     // A message that comes later wakes the session as usual.
@@ -608,23 +612,24 @@ async fn a_stop_writes_the_waiting_message_before_its_marker_and_holds_nothing_a
         .unwrap();
     session.settled().await;
     let requests = provider.requests();
-    assert_eq!(requests.len(), 3);
+    assert_eq!(requests.len(), 4);
     // The stopped turn's message is history by now.
     assert_eq!(
-        steers(&requests[2].items),
+        steers(&requests[3].items),
         [
             agent_message_envelope(&agent_message("unread")),
             agent_message_envelope(&agent_message("late"))
         ]
     );
-    // So does the wakeup the first turn scheduled, once it is due.
-    tokio::time::sleep(Duration::from_secs(61)).await;
-    until(|| provider.requests().len() == 4).await;
+    // So does the report of the command the first turn left running, once
+    // it ends.
+    commands.end("7");
+    until(|| provider.requests().len() == 5).await;
     session.settled().await;
     assert_eq!(
-        provider.requests()[3].items.last(),
+        provider.requests()[4].items.last(),
         Some(&InferenceItem::UserMessage {
-            content: sent_text(WAKEUP_TEXT),
+            content: sent_text("Build: ended"),
         })
     );
 }
@@ -822,338 +827,242 @@ async fn a_restored_message_wakes_the_session_once_and_a_written_one_is_never_de
     assert!(again.is_settled());
 }
 
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn yield_ends_the_turn_and_its_wakeup_opens_a_continuation_once_the_action_ended() {
-    let provider = ScriptedRuntime::new([
-        yield_call(120_000),
-        Turn::Events(vec![
-            event::text("checked the build"),
-            event::response(1, 1),
-        ]),
-    ]);
-    let store = MemoryTreeStore::new();
-    let clock = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
+/// A session whose `work` tool leaves its commands running, and the
+/// commands, which the test ends.
+async fn reporting_session(
+    provider: &ScriptedRuntime,
+    store: &Rc<MemoryTreeStore>,
+) -> (AgentSession, Rc<TestCommands>) {
+    let runtime = test_runtime(Vec::new());
+    let commands = runtime.commands.clone();
+    let runtime = TestRuntime {
+        tools: vec![background_tool(&commands)],
+        ..runtime
+    };
     let session = start_at(
-        &provider,
-        test_runtime(vec![yield_tool()]),
-        &store,
-        SessionConfig::default(),
-        clock,
-    )
-    .await;
-
-    session
-        .send(text("build it"), turn("t1"))
-        .unwrap()
-        .await
-        .unwrap();
-
-    // The turn ends after the round: one request.
-    assert_eq!(provider.requests().len(), 1);
-    let blocks = session.transcript().blocks;
-    let Block::ToolCall(call) = &blocks[1] else {
-        panic!("{blocks:?}");
-    };
-    let Some(demi_shared_types::ToolView::YieldWakeup {
-        wakeup_id,
-        duration_ms: 120_000,
-        command_ids,
-    }) = &call.view
-    else {
-        panic!("{call:?}");
-    };
-    // The result names no wakeup: no tool takes one.
-    assert!(command_ids.is_empty());
-    assert_eq!(call.output, texts(&["yield scheduled\ndurationMs: 120000"]));
-    // The wait started when the action ended, and the checkpoint keeps it.
-    let scheduled = store.checkpoint(&root()).unwrap().state.wakeups;
-    let [
-        ScheduledWakeup {
-            id,
-            duration_ms: 120_000,
-            ended: None,
-            due_at: Some(_),
-            ..
-        },
-    ] = scheduled.as_slice()
-    else {
-        panic!("one wakeup is scheduled: {scheduled:?}");
-    };
-    assert_eq!(id, wakeup_id);
-    tokio::time::sleep(Duration::from_secs(119)).await;
-    assert_eq!(provider.requests().len(), 1);
-    tokio::time::sleep(Duration::from_secs(2)).await;
-    until(|| provider.requests().len() == 2).await;
-    session.settled().await;
-
-    let blocks = session.transcript().blocks;
-    assert_eq!(kinds(&blocks[3..]), ["wakeup", "text", "response"]);
-    assert!(
-        matches!(&blocks[3], Block::Wakeup(wakeup) if wakeup.placement == WakeupPlacement::NewTurn)
-    );
-    let request = &provider.requests()[1];
-    assert_eq!(
-        request.items.last(),
-        Some(&InferenceItem::UserMessage {
-            content: sent_text(WAKEUP_TEXT),
-        })
-    );
-    assert!(store.checkpoint(&root()).unwrap().state.wakeups.is_empty());
-}
-
-// A fixed bug: an agent that yielded again each time a subagent's message
-// woke it left every earlier wakeup scheduled, and each later woke it to
-// say it had nothing to do.
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn a_new_yield_replaces_the_wakeup_scheduled_before_it() {
-    let provider = ScriptedRuntime::new([
-        yield_call(600_000),
-        yield_call(60_000),
-        Turn::Events(vec![event::text("checked"), event::response(1, 1)]),
-    ]);
-    let store = MemoryTreeStore::new();
-    let session = start_at(
-        &provider,
-        test_runtime(vec![yield_tool()]),
-        &store,
+        provider,
+        runtime,
+        store,
         SessionConfig::default(),
         Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
     )
     .await;
-    session.send(text("wait for it"), turn("t1")).unwrap().await.unwrap();
-    session.send(text("any news?"), turn("t2")).unwrap().await.unwrap();
+    (session, commands)
+}
 
-    let scheduled = store.checkpoint(&root()).unwrap().state.wakeups;
-    assert!(
-        matches!(scheduled.as_slice(), [ScheduledWakeup { duration_ms: 60_000, .. }]),
-        "only the newest yield's wakeup is scheduled: {scheduled:?}"
+fn answer(text: &str) -> Turn {
+    Turn::Events(vec![event::text(text), event::response(1, 1)])
+}
+
+// One session, five scripted requests and seventeen minutes of paused
+// time: a few milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_command_left_running_reports_every_interval_until_its_end_and_as_its_interval_changes() {
+    let provider = ScriptedRuntime::new([
+        Turn::Events(background_call("17", Some(300_000), "Run the suite")),
+        answer("the suite runs"),
+        answer("still waiting"),
+        answer("still waiting"),
+        answer("the suite is done"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let (session, commands) = reporting_session(&provider, &store).await;
+
+    session
+        .send(text("run the suite"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    // The turn ended with its answer; the command runs on, and the
+    // checkpoint keeps how often it reports.
+    assert_eq!(provider.requests().len(), 2);
+    let command = CommandId::try_from("17").unwrap();
+    assert_eq!(
+        store.checkpoint(&root()).unwrap().state.intervals,
+        [CommandInterval {
+            command_id: command.clone(),
+            interval_ms: Some(300_000),
+        }]
     );
-    tokio::time::sleep(Duration::from_secs(61)).await;
+    assert!(session.status().commands);
+    tokio::time::sleep(Duration::from_secs(299)).await;
+    assert_eq!(provider.requests().len(), 2);
+    tokio::time::sleep(Duration::from_secs(2)).await;
     until(|| provider.requests().len() == 3).await;
     session.settled().await;
-    // The replaced wakeup's time passes and nothing wakes: a request past
-    // the script would panic.
-    tokio::time::sleep(Duration::from_secs(600)).await;
-    assert_eq!(provider.requests().len(), 3);
-}
-
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn stop_cancels_the_oldest_scheduled_wakeup_once_nothing_runs() {
-    let provider = ScriptedRuntime::new([yield_call(60_000)]);
-    let store = MemoryTreeStore::new();
-    let session = start_at(
-        &provider,
-        test_runtime(vec![yield_tool()]),
-        &store,
-        SessionConfig::default(),
-        Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
-    )
-    .await;
-    session
-        .send(text("wait a minute"), turn("t1"))
-        .unwrap()
-        .await
-        .unwrap();
-
-    let stopped = session.abort().await;
-
     assert_eq!(
-        stopped,
-        AbortResult {
-            target: Some(AbortTarget::PendingYieldWakeup),
-            can_abort_again: false,
-        }
+        provider.requests()[2].items.last(),
+        Some(&InferenceItem::UserMessage {
+            content: sent_text("Run the suite: still running (1)"),
+        })
     );
+    let blocks = session.transcript().blocks;
+    assert!(matches!(
+        &blocks[blocks.len() - 3],
+        Block::Wakeup(wakeup) if wakeup.placement == WakeupPlacement::NewTurn
+    ));
+    tokio::time::sleep(Duration::from_secs(300)).await;
+    until(|| provider.requests().len() == 4).await;
+    session.settled().await;
+
+    // A resident command reports only its end.
+    assert!(session.set_interval(&command, None));
+    tokio::time::sleep(Duration::from_secs(600)).await;
+    assert_eq!(provider.requests().len(), 4);
+    commands.end("17");
+    until(|| provider.requests().len() == 5).await;
+    session.settled().await;
+    assert_eq!(
+        provider.requests()[4].items.last(),
+        Some(&InferenceItem::UserMessage {
+            content: sent_text("Run the suite: ended"),
+        })
+    );
+    assert!(!session.status().commands);
     session.flush().await.unwrap();
-    assert!(store.checkpoint(&root()).unwrap().state.wakeups.is_empty());
-    tokio::time::sleep(Duration::from_secs(120)).await;
-    // A run past the script would panic.
-    assert_eq!(provider.requests().len(), 1);
+    assert!(store.checkpoint(&root()).unwrap().state.intervals.is_empty());
+    assert!(!session.set_interval(&command, Some(60_000)));
 }
 
 #[tokio::test(flavor = "local", start_paused = true)]
-async fn a_wakeup_that_fires_during_a_turn_joins_it_as_a_steer() {
-    let (answer, release) = gated_turn(vec![event::text("still building"), event::response(1, 1)]);
+async fn reports_that_arrive_during_a_turn_join_it_as_one_steer() {
+    let (answer_gated, release) = gated_turn(vec![event::text("still building"), event::response(1, 1)]);
     let provider = ScriptedRuntime::new([
-        yield_call(1_000),
-        answer,
-        Turn::Events(vec![event::text("checked"), event::response(1, 1)]),
+        Turn::Events(
+            [
+                background_call("17", None, "Build").remove(0),
+                background_call("18", None, "Lint").remove(0),
+                event::response(1, 1),
+            ]
+            .to_vec(),
+        ),
+        answer("both run"),
+        answer_gated,
+        answer("checked"),
     ]);
     let store = MemoryTreeStore::new();
-    let session = start_at(
-        &provider,
-        test_runtime(vec![yield_tool()]),
-        &store,
-        SessionConfig::default(),
-        Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
-    )
-    .await;
+    let (session, commands) = reporting_session(&provider, &store).await;
     session
-        .send(text("start the build"), turn("t1"))
+        .send(text("build and lint"), turn("t1"))
         .unwrap()
         .await
         .unwrap();
     let running = session.send(text("anything else?"), turn("t2")).unwrap();
-    until(|| provider.requests().len() == 2).await;
+    until(|| provider.requests().len() == 3).await;
 
-    tokio::time::sleep(Duration::from_secs(2)).await;
-    // The fired wakeup waits for the boundary, never among the pending
-    // steers.
+    commands.end("17");
+    commands.end("18");
+    until(|| session.status().input).await;
+    // A report waits for the boundary, never among the pending steers.
     assert!(session.pending_steers().is_empty());
     let _ = release.send(());
     running.await.unwrap();
 
     let blocks = session.transcript().blocks;
-    assert_eq!(
-        kinds(&blocks[3..]),
-        ["user", "text", "response", "wakeup", "text", "response"]
-    );
-    assert!(
-        matches!(&blocks[6], Block::Wakeup(wakeup) if wakeup.placement == WakeupPlacement::Steer)
-    );
-    assert_eq!(steers(&provider.requests()[2].items), [WAKEUP_TEXT]);
+    let wakeups: Vec<&Block> = blocks
+        .iter()
+        .filter(|block| matches!(block, Block::Wakeup(_)))
+        .collect();
+    assert!(matches!(
+        wakeups.as_slice(),
+        [Block::Wakeup(wakeup)] if wakeup.placement == WakeupPlacement::Steer
+    ));
+    assert_eq!(steers(&provider.requests()[3].items), ["Build: ended\n\nLint: ended"]);
 }
 
+// A report that arrived before dispose, and a command that still runs, are
+// kept: the restored session tells the first and watches the second.
 #[tokio::test(flavor = "local", start_paused = true)]
-async fn a_wakeup_survives_dispose_and_one_due_meanwhile_fires_once_the_session_is_restored() {
-    let provider = ScriptedRuntime::new([yield_call(60_000)]);
-    let store = MemoryTreeStore::new();
-    let clock: Arc<dyn demi_shared_types::Clock> = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
-    let session = start_at(
-        &provider,
-        test_runtime(vec![yield_tool()]),
-        &store,
-        SessionConfig::default(),
-        clock.clone(),
-    )
-    .await;
-    session
-        .send(text("wait"), turn("t1"))
-        .unwrap()
-        .await
-        .unwrap();
-    session.dispose().await.unwrap();
-    drop(session);
-    tokio::time::sleep(Duration::from_secs(90)).await;
-
-    let later = ScriptedRuntime::new([Turn::Events(vec![
-        event::text("woke up"),
-        event::response(1, 1),
-    ])]);
-    let (restored, _) = restore_session(
-        store.checkpoint(&root()).unwrap(),
-        &store,
-        &later,
-        test_runtime(Vec::new()),
-        clock,
-    );
-    until(|| later.requests().len() == 1).await;
-    restored.settled().await;
-
-    assert_eq!(
-        kinds(&restored.transcript().blocks[3..]),
-        ["wakeup", "text", "response"]
-    );
-}
-
-// A command a yield waits for ends with the shells of the session that is
-// disposed; the restored session does not wait out the yield's time.
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn a_restored_wakeup_whose_command_ended_with_the_shells_is_due_at_once() {
-    let provider = ScriptedRuntime::new([Turn::Events(vec![
-        event::tool_call(
-            "yield-1",
-            "yield",
-            json!({ "durationMs": 600_000, "commandIds": [17] }),
+async fn waiting_reports_and_running_commands_survive_dispose() {
+    let provider = ScriptedRuntime::new([
+        Turn::Events(
+            [
+                background_call("17", None, "Build").remove(0),
+                background_call("18", None, "Serve").remove(0),
+                event::response(1, 1),
+            ]
+            .to_vec(),
         ),
-        event::response(1, 1),
-    ])]);
+        Turn::pending(),
+    ]);
     let store = MemoryTreeStore::new();
-    let clock: Arc<dyn demi_shared_types::Clock> = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
-    let session = start_at(
-        &provider,
-        test_runtime(vec![yield_tool()]),
-        &store,
-        SessionConfig::default(),
-        clock.clone(),
-    )
-    .await;
-    session
-        .send(text("wait for the build"), turn("t1"))
-        .unwrap()
-        .await
-        .unwrap();
-    let blocks = session.transcript().blocks;
-    let Block::ToolCall(call) = &blocks[1] else {
-        panic!("{blocks:?}");
-    };
-    assert_eq!(
-        call.output,
-        texts(&["yield scheduled\ndurationMs: 600000\ncommandIds: 17"])
-    );
+    let (session, commands) = reporting_session(&provider, &store).await;
+    let running = session.send(text("build and serve"), turn("t1")).unwrap();
+    until(|| provider.requests().len() == 2).await;
+    commands.end("17");
+    until(|| session.status().input).await;
     session.dispose().await.unwrap();
+    drop(running);
     drop(session);
+    let state = store.checkpoint(&root()).unwrap().state;
+    assert_eq!(state.reports, ["Build: ended"]);
+    assert_eq!(
+        state.intervals,
+        [CommandInterval {
+            command_id: CommandId::try_from("18").unwrap(),
+            interval_ms: None,
+        }]
+    );
 
-    let started = tokio::time::Instant::now();
-    let later = ScriptedRuntime::new([Turn::Events(vec![
-        event::text("the build is gone"),
-        event::response(1, 1),
-    ])]);
-    let (restored, _) = restore_session(
+    let later = ScriptedRuntime::new([answer("resumed"), answer("served")]);
+    let runtime = TestRuntime {
+        commands: commands.clone(),
+        ..test_runtime(Vec::new())
+    };
+    let (restored, continuation) = restore_session(
         store.checkpoint(&root()).unwrap(),
         &store,
         &later,
-        test_runtime(Vec::new()),
-        clock,
+        runtime,
+        Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
     );
-    until(|| later.requests().len() == 1).await;
+    assert!(continuation.interrupted);
+    restored.resume().unwrap().await.unwrap();
+    assert_eq!(steers(&later.requests()[0].items), ["Build: ended"]);
+    commands.end("18");
+    until(|| later.requests().len() == 2).await;
     restored.settled().await;
-
-    assert!(started.elapsed() < Duration::from_secs(600));
+    // The report names the command by the title of the call that started
+    // it, as the restored transcript holds it.
     assert_eq!(
-        later.requests()[0].items.last(),
+        later.requests()[1].items.last(),
         Some(&InferenceItem::UserMessage {
-            content: sent_text(
-                "Command 17 was stopped. Continue the previous work; read its output with demi shell output 17."
-            ),
+            content: sent_text("Serve: ended"),
         })
     );
 }
 
 #[tokio::test(flavor = "local", start_paused = true)]
-async fn a_session_restored_after_an_interrupted_turn_holds_its_wakeups_and_messages_for_the_user()
+async fn a_session_restored_after_an_interrupted_turn_holds_its_reports_and_messages_for_the_user()
 {
-    let provider = ScriptedRuntime::new([yield_call(1_000), Turn::pending()]);
+    let provider = ScriptedRuntime::new([
+        Turn::Events(background_call("17", None, "Build")),
+        answer("building"),
+        Turn::pending(),
+    ]);
     let store = MemoryTreeStore::new();
-    let clock: Arc<dyn demi_shared_types::Clock> = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
-    let session = start_at(
-        &provider,
-        test_runtime(vec![yield_tool()]),
-        &store,
-        SessionConfig::default(),
-        clock.clone(),
-    )
-    .await;
+    let (session, commands) = reporting_session(&provider, &store).await;
     session
-        .send(text("wait"), turn("t1"))
+        .send(text("build"), turn("t1"))
         .unwrap()
         .await
         .unwrap();
     let _running = session.send(text("keep going"), turn("t2")).unwrap();
-    until(|| provider.requests().len() == 2).await;
+    until(|| provider.requests().len() == 3).await;
     session
         .accept_agent_message(agent_message("news"))
         .await
         .unwrap();
+    commands.end("17");
+    until(|| session.status().input && !session.status().commands).await;
+    session.flush().await.unwrap();
     // The process dies in the second turn.
     let crashed = store.copy();
     drop(session);
-    tokio::time::sleep(Duration::from_secs(5)).await;
 
-    let later = ScriptedRuntime::new([Turn::Events(vec![
-        event::text("caught up"),
-        event::response(1, 1),
-    ])]);
+    let later = ScriptedRuntime::new([answer("caught up")]);
+    let clock: Arc<dyn demi_shared_types::Clock> = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
     let (restored, continuation) = restore_session(
         crashed.checkpoint(&root()).unwrap(),
         &crashed,
@@ -1192,7 +1101,96 @@ async fn a_session_restored_after_an_interrupted_turn_holds_its_wakeups_and_mess
         steers(&request.items),
         [
             agent_message_envelope(&agent_message("news")),
-            WAKEUP_TEXT.to_owned()
+            "Build: ended".to_owned()
         ]
     );
+}
+
+/// A turn whose first call leaves command 17 running and whose next call
+/// watches command 18 until the test stops the turn.
+async fn stopped_while_a_call_watches(
+    end_on_stop: bool,
+) -> (AgentSession, Rc<TestCommands>, ScriptedRuntime, Rc<MemoryTreeStore>) {
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![
+            event::tool_call(
+                "work-17",
+                "work",
+                json!({ "commandId": "17", "intervalMs": null, "description": "Serve" }),
+            ),
+            event::tool_call("watch-18", "watch", json!({ "commandId": "18" })),
+            event::response(1, 1),
+        ]),
+        answer("noted"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let runtime = test_runtime(Vec::new());
+    let commands = runtime.commands.clone();
+    commands.end_on_stop.set(end_on_stop);
+    let runtime = TestRuntime {
+        tools: vec![background_tool(&commands), command_watching_tool(&commands)],
+        ..runtime
+    };
+    let session = start_at(
+        &provider,
+        runtime,
+        &store,
+        SessionConfig::default(),
+        Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
+    )
+    .await;
+    let running = session.send(text("serve"), turn("t1")).unwrap();
+    until(|| session.status().commands && provider.requests().len() == 1).await;
+    tokio::task::yield_now().await;
+    session.abort().await;
+    running.await.unwrap();
+    (session, commands, provider, store)
+}
+
+/// What the requests after the first carried of commands' reports.
+fn reports_sent(provider: &ScriptedRuntime) -> Vec<String> {
+    provider.requests()[1..]
+        .iter()
+        .flat_map(|request| request.items.iter())
+        .filter_map(|item| match item {
+            InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
+                Some(content)
+            }
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|part| match part {
+            UserPart::Text(text) if text.contains(": ended") => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+// A Stop stops only what the node is doing: the call that watched command
+// 18 stops it and says so in its result, so its end, before or after the
+// stop is recorded, reports nothing; command 17, which an earlier call left
+// running, runs on and still reports its end, which opens a turn of its
+// own (`runtime.md` § Stop). Paused clock: a few milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_stop_ends_the_watched_calls_command_and_leaves_an_earlier_calls_reporting() {
+    for end_on_stop in [true, false] {
+        let (session, commands, provider, _store) = stopped_while_a_call_watches(end_on_stop).await;
+        if !end_on_stop {
+            commands.end("18");
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        session.settled().await;
+        assert_eq!(provider.requests().len(), 1, "{end_on_stop}");
+        assert!(session.status().commands);
+        // The earlier call's command still reports its end after the Stop.
+        commands.end("17");
+        until(|| provider.requests().len() == 2).await;
+        session.settled().await;
+        let blocks = session.transcript().blocks;
+        let kinds = kinds(&blocks);
+        let stopped = kinds.iter().position(|kind| kind == "abort").expect("the stop marker");
+        assert_eq!(kinds[stopped + 1..], ["wakeup", "text", "response"], "{end_on_stop}");
+        assert_eq!(reports_sent(&provider), ["Serve: ended"], "{end_on_stop}");
+        assert!(!session.status().commands);
+    }
 }
