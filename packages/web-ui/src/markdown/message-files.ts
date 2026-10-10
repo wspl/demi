@@ -45,5 +45,5 @@ export function openMessageLink(
   if (!link || !files?.open)
     return
   event.preventDefault()
-  files.open(link.getAttribute('href') ?? '')
+  files.open(link.getAttribute('href') ?? '', event.detail)
 }

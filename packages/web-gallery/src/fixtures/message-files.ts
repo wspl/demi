@@ -8,7 +8,7 @@ import { galleryAttachment } from './attachments'
  * attachments from the gallery's blobs, and a file a click opens goes to
  * `open`.
  */
-export function galleryConversationFiles(source: MemoryFileSource, open: (path: string) => void): ConversationFiles {
+export function galleryConversationFiles(source: MemoryFileSource, open: NonNullable<ConversationFiles['open']>): ConversationFiles {
   return {
     imageUrl: (path) => source.contents.url(path),
     attachment: galleryAttachment,

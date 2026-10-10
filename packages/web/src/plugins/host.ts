@@ -83,7 +83,7 @@ export function productPageHost(): PageHost {
     },
     files: conversationFiles,
     intents: {
-      open: (conversation, request) => work.openIn(conversation, request),
+      open: (conversation, request, clicks) => work.openIn(conversation, request, clicks),
       canOpen: (intent) => work.canOpen(intent),
     },
     panel: {

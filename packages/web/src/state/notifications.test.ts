@@ -83,6 +83,8 @@ test('a finished turn says the start of its answer as plain text, cut to 120 cha
   expect(start.startsWith('Fixed. The login test waited for the cookie; it now waits for the redirect.')).toBe(true)
   expect(start).toHaveLength(120)
   expect(start.endsWith('…')).toBe(true)
+  // Emphasis beside CJK punctuation is emphasis too, never stars in the text.
+  expect(answerStart(ended('r2', 'finished', '**建议：**一组'))).toBe('建议：一组')
   // A turn that ended without text says nothing of an answer.
   expect(answerStart(ended('r2', 'finished'))).toBe('')
 })
