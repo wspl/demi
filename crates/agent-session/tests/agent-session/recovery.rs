@@ -425,3 +425,111 @@ async fn a_stop_while_resume_saves_its_unwind_leaves_the_unwind_and_one_marker()
     );
     assert_eq!(provider.requests().len(), 1);
 }
+
+/// A `run` tool whose calls answer, in order, as `outcomes` say: `offline`
+/// as a call on a Host without a live runner does, `ran` as one that ran a
+/// command there.
+fn host_tool(outcomes: &[&'static str]) -> (String, Invoke) {
+    let outcomes = Rc::new(RefCell::new(outcomes.to_vec().into_iter()));
+    tool("run", move |_| {
+        let next = outcomes.borrow_mut().next().expect("a call the test scripted");
+        Box::pin(async move {
+            Ok(match next {
+                "offline" => ToolOutcome {
+                    effect: Some(ToolEffect::HostOffline(demi_shared_types::ErrorDevice {
+                        id: "d1".into(),
+                        name: "MacBook Pro".into(),
+                    })),
+                    ..ToolOutcome {
+                        is_error: true,
+                        ..output("MacBook Pro is offline")
+                    }
+                },
+                _ => ToolOutcome {
+                    view: Some(ToolView::Shell(ShellToolView {
+                        status: ShellViewStatus::Exited,
+                        command_id: CommandId::try_from("1").unwrap(),
+                        exit_code: Some(0),
+                        running_ms: 0,
+                        idle_ms: 0,
+                        chunks: Vec::new(),
+                        view_truncated: false,
+                        files: None,
+                        files_truncated: None,
+                        path_changes: Vec::new(),
+                    })),
+                    ..output("ran")
+                },
+            })
+        })
+    })
+}
+
+/// A turn whose model calls `run` once per answer before closing words.
+fn calls_then_words(calls: usize) -> Vec<Turn> {
+    let mut turns: Vec<Turn> = (0..calls)
+        .map(|index| {
+            Turn::Events(vec![
+                event::tool_call(&format!("call-{index}"), "run", json!({})),
+                event::response(1, 1),
+            ])
+        })
+        .collect();
+    turns.push(Turn::Events(vec![event::text("could not finish"), event::response(1, 1)]));
+    turns
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_turn_left_undone_by_an_offline_host_ends_with_its_error_record_and_resumes_saying_it_is_back() {
+    let mut turns = calls_then_words(1);
+    turns.push(Turn::Events(vec![event::text("done"), event::response(1, 1)]));
+    let provider = ScriptedRuntime::new(turns);
+    let store = MemoryTreeStore::new();
+    let session = start(&provider, vec![host_tool(&["offline"])], &store, SessionConfig::default()).await;
+
+    assert_eq!(session.send(text("go"), turn("t1")).unwrap().await, Ok(ActionEnd::Completed));
+    let blocks = session.transcript().blocks;
+    let Some(Block::Error(error)) = blocks.last() else {
+        panic!("{:?}", kinds(&blocks));
+    };
+    assert_eq!(error.code.as_deref(), Some("host_offline"));
+    assert_eq!(error.message, "MacBook Pro went offline, so this turn could not finish its work.");
+    assert_eq!(error.device.as_ref().map(|device| device.id.as_str()), Some("d1"));
+    assert!(matches!(&blocks[blocks.len() - 2], Block::Response(_)), "{:?}", kinds(&blocks));
+
+    // Resume tells the model the device is back.
+    session.resume().unwrap().await.unwrap();
+    let resumed = provider.requests()[2].items.clone();
+    assert_eq!(
+        resumed.last(),
+        Some(&InferenceItem::UserMessage {
+            content: sent_text("MacBook Pro is back online. Continue from where you left off."),
+        })
+    );
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_turn_whose_later_call_ran_on_the_host_finishes() {
+    let provider = ScriptedRuntime::new(calls_then_words(2));
+    let store = MemoryTreeStore::new();
+    let session = start(&provider, vec![host_tool(&["offline", "ran"])], &store, SessionConfig::default()).await;
+
+    session.send(text("go"), turn("t1")).unwrap().await.unwrap();
+    let blocks = session.transcript().blocks;
+    assert!(matches!(blocks.last(), Some(Block::Response(_))), "{:?}", kinds(&blocks));
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_childs_turn_left_undone_by_an_offline_host_gets_no_error_record() {
+    let provider = ScriptedRuntime::new(calls_then_words(1));
+    let store = MemoryTreeStore::new();
+    let runtime = TestRuntime {
+        child: true,
+        ..test_runtime(vec![host_tool(&["offline"])])
+    };
+    let session = start_on(&provider, runtime, &store, SessionConfig::default()).await;
+
+    session.send(text("go"), turn("t1")).unwrap().await.unwrap();
+    let blocks = session.transcript().blocks;
+    assert!(matches!(blocks.last(), Some(Block::Response(_))), "{:?}", kinds(&blocks));
+}

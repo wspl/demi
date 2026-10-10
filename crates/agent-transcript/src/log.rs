@@ -7,7 +7,7 @@ use demi_conversation_socket_protocol::{TranscriptPatch, TranscriptVersion};
 use demi_provider_common::ToolCall;
 use demi_shared_types::{
     AbortBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
-    CompactionMarkerBlock, ContextBlock, ErrorBlock, InstructionEntry, ModelSelection, ProviderErrorDiagnostics,
+    CompactionMarkerBlock, ContextBlock, ErrorBlock, ErrorDevice, HOST_OFFLINE, InstructionEntry, ModelSelection, ProviderErrorDiagnostics,
     RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock, TextBlock, ThinkingBlock,
     Timestamp, TokenUsage, ToolCallBlock, ToolCallStatus, ToolResultContentBlock, ToolView, TurnId,
     UserBlock, UserContentBlock, WakeupBlock, WakeupPlacement, CommandReport,
@@ -292,6 +292,25 @@ impl TranscriptLog {
             code,
             diagnostics,
             outside_turn,
+            device: None,
+        }));
+    }
+
+    /// Ends the turn as unfinished because a call of it failed while its
+    /// Host, `device`, was offline and no later call ran there
+    /// (`failures-and-recovery.md` § The unfinished turn): an error of
+    /// Demi's own, after the agent's last words.
+    pub fn push_host_offline(&mut self, model: &ModelSelection, device: ErrorDevice) {
+        let (id, created_at) = self.stamp();
+        self.append(Block::Error(ErrorBlock {
+            id,
+            created_at,
+            model: model.clone(),
+            message: format!("{} went offline, so this turn could not finish its work.", device.name),
+            code: Some(HOST_OFFLINE.to_owned()),
+            diagnostics: None,
+            outside_turn: false,
+            device: Some(device),
         }));
     }
 

@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import {
   conversationPageKind,
   sessionFailureNotice,
+  resumeWaitsFor,
   turnRecovery,
   sessionPaneStatus,
   sessionStatusCopy,
@@ -82,4 +83,22 @@ test('a compaction keeps the recovery of the turn before it and offers none of i
   expect(turnRecovery('idle', [{ type: 'user' }, { type: 'error' }, ...compacted])).toBe('resume')
   expect(turnRecovery('idle', [{ type: 'user' }, { type: 'abort' }, ...compacted])).toBe('continue')
   expect(turnRecovery('idle', [{ type: 'user' }, { type: 'text' }, ...compacted])).toBeNull()
+})
+
+// A turn left undone because its Host went offline: Resume waits for the
+// device, and goes once its state says it is back.
+test('Resume after a turn its offline Host left unfinished waits for the device to be back', () => {
+  const offline = {
+    type: 'error',
+    code: 'host_offline',
+    device: { id: 'mac', name: 'MacBook Pro' },
+  }
+  const blocks = [{ type: 'user' }, { type: 'text' }, offline]
+  expect(turnRecovery('idle', blocks)).toBe('resume')
+  expect(resumeWaitsFor(blocks, () => false)).toBe('MacBook Pro')
+  expect(resumeWaitsFor(blocks, (id) => id === 'mac')).toBeNull()
+  // Another failure's Resume waits for nothing.
+  expect(resumeWaitsFor([{ type: 'user' }, { type: 'error', code: 'overloaded' }], () => false)).toBeNull()
+  // Behind a compaction the record still holds Resume back.
+  expect(resumeWaitsFor([...blocks, { type: 'compaction_boundary' }], () => false)).toBe('MacBook Pro')
 })
