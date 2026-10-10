@@ -84,7 +84,12 @@ export interface ConversationFileService {
 
 /** Opening intents (`plugin-pages.md` § Intents). */
 export interface IntentService {
-  open(conversation: string, request: IntentRequest): void
+  /**
+   * Opens `request` in the conversation's panel. `clicks`, the `detail` of
+   * the click of a control that opens it, lets the click close the panel
+   * instead when it already shows that (`openIntent`).
+   */
+  open(conversation: string, request: IntentRequest, clicks?: number): void
   /** Whether any page the user has on opens `intent`; a control that would open it shows only then. */
   canOpen(intent: IntentName): boolean
 }
