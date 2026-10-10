@@ -59,6 +59,15 @@ test('without a Host, paths stay text and Host images show their alt text', () =
   expect(html).toContain('<p>plot chart <a href="https://example.com/l.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/l.png" alt="logo" /></a></p>')
 })
 
+test('emphasis beside CJK text formats as a CJK writer means it', () => {
+  // Plain CommonMark reads these stars and tildes, beside CJK punctuation, as text (`product.md` § Writing a message).
+  expect(renderMarkdown('**建议：**一组')).toBe('<p><strong>建议：</strong>一组</p>\n')
+  expect(renderMarkdown('这是**“扫光”**效果')).toBe('<p>这是<strong>“扫光”</strong>效果</p>\n')
+  expect(renderMarkdown('**注意：**これは')).toBe('<p><strong>注意：</strong>これは</p>\n')
+  expect(renderMarkdown('**스크립트(script)**는')).toBe('<p><strong>스크립트(script)</strong>는</p>\n')
+  expect(renderMarkdown('*强调：*文字 ~~删除：~~文字')).toBe('<p><em>强调：</em>文字 <del>删除：</del>文字</p>\n')
+})
+
 test('a path in code or plain text is not a link', () => {
   expect(renderMarkdown('See `src/a.ts` and src/b.ts.', { files })).not.toContain('data-file-link')
 })
