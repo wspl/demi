@@ -110,9 +110,9 @@ impl dyn CloudShard {
     /// Stops a machine that ran for its lifetime cap (`managed-hosts.md`
     /// § Lifecycle and capacity). A turn in flight postpones it, and so does
     /// a file transfer or a stream the user has open. Otherwise new
-    /// operations are held back, the jobs nothing attends end with the
-    /// runner's connection, and once their leases are released the machine
-    /// is saved and stopped as an idle stop would stop it.
+    /// operations are held back, the jobs nothing attends end as lost for
+    /// that reason, and once their leases are released the machine is saved
+    /// and stopped as an idle stop would stop it.
     async fn stop_at_lifetime_cap(&self, machine: &Rc<Machine>) {
         let uses = match self.cloud_uses().await {
             Ok(uses) => uses,
@@ -135,8 +135,9 @@ impl dyn CloudShard {
         let reserved = match futures_util::future::poll_immediate(reserving.as_mut()).await {
             Some(reserved) => reserved,
             None => {
-                self.devices()
-                    .disconnect(&device, "Cloud reached its lifetime cap");
+                // The jobs end with the machine; their commands learn why.
+                self.devices().jobs(&device).lose_all(LIFETIME_CAP);
+                self.devices().disconnect(&device, LIFETIME_CAP);
                 match tokio::time::timeout(hold, reserving).await {
                     Ok(reserved) => reserved,
                     Err(_) => {
@@ -161,6 +162,10 @@ impl dyn CloudShard {
         });
     }
 }
+
+/// Why a Cloud's connection, and the jobs nothing attends, end at its
+/// lifetime cap.
+const LIFETIME_CAP: &str = "the Cloud reached its lifetime cap";
 
 /// The idle rule for the Cloud (`resource-lifecycle.md` § Idle window): no
 /// conversation using it, in any role, active within the window, no job

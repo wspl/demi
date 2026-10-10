@@ -83,6 +83,17 @@ pub trait ShellEnvironment {
     /// Forgets a command, stopping it first when it runs; false when unknown.
     fn release_command<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, bool>;
 
+    /// Takes up `command`, which the call `tool_use_id` started as the job
+    /// `job` on this environment's Host and which still ran when the
+    /// backend last knew it, for the node `caller` (`sessions-and-targets.md`
+    /// § Recovery and persistence).
+    fn adopt(&self, command: &CommandId, tool_use_id: &str, job: &str, caller: JobCaller);
+
+    /// Lets go of every command, which runs on, as a disposed node does
+    /// (`runtime.md` § Dispose and restore); waits until the environment
+    /// follows none.
+    fn detach_all(&self) -> LocalBoxFuture<'_, ()>;
+
     /// Stops every command that runs, and waits until each has ended.
     fn dispose_all(&self) -> LocalBoxFuture<'_, ()>;
 

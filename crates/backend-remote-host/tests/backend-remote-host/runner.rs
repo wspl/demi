@@ -343,6 +343,7 @@ async fn a_process_gets_what_was_sent_at_its_start_and_unread_input_blocks_nothi
     // and a kill still ends them.
     let job = host
         .start_job(JobStart {
+        id: RemoteHost::job_id(),
             script: "printf ready; sleep 30".into(),
             cwd: fixture.home().into(),
             env: BTreeMap::new(),
@@ -508,11 +509,12 @@ async fn a_job_whose_directory_does_not_exist_fails_before_its_script_runs() {
 }
 
 /// A message the runner cannot decode ends the connection: the runner's
-/// close frame names its type and the decoding error, and the command lost
-/// with the connection says it (`runner.md` § Connection and identity).
-/// About 0.5 s: one job, a login shell.
+/// close frame names its type and the decoding error, and a process lost
+/// with the connection says it, while the job, which outlives connections,
+/// goes on over the next (`runner.md` § Connection and identity, § Command
+/// lifetime). About 0.5 s: one job, a login shell.
 #[tokio::test(flavor = "local")]
-async fn a_message_the_runner_cannot_decode_ends_the_connection_and_the_lost_command_says_which() {
+async fn a_message_the_runner_cannot_decode_ends_the_connection_and_the_lost_process_says_which() {
     let fixture = RunnerFixture::start(FixtureOptions::default()).await;
     let shell = shell_on(fixture.host(), &[], None);
     let running = shell
@@ -520,6 +522,12 @@ async fn a_message_the_runner_cannot_decode_ends_the_connection_and_the_lost_com
         .await
         .unwrap();
     assert!(matches!(running.state, CommandState::Running { .. }));
+    let process = fixture
+        .host()
+        .process()
+        .spawn(spawn("/bin/sleep", &["30"]))
+        .await
+        .unwrap();
     // A newer backend's ping, with a field this runner does not know: the
     // MessagePack map of one field gains a second, `shell: 1`.
     let mut newer = wire::encode(&wire::Inbound::Ping {})
@@ -529,17 +537,19 @@ async fn a_message_the_runner_cannot_decode_ends_the_connection_and_the_lost_com
     newer[0] = 0x82;
     newer.extend(b"\xa5shell\x01");
     fixture.link().await.send_raw(newer).await.unwrap();
-    let lost = settled(&shell, &running).await;
-    assert_eq!(exited(&lost), 127);
-    let whole = lost.whole.expect("the whole output");
-    let stderr = whole
-        .output
-        .text(Streams::Only(StreamKind::Stderr), None, Seen::default());
-    let stderr = String::from_utf8_lossy(stderr.bytes()).into_owned();
+    let ProcessEnd::Lost(reason) = process.exit.await else {
+        panic!("the process was not lost with the connection");
+    };
     assert!(
-        stderr.starts_with("runner disconnected: the runner cannot decode ping: unknown field `shell`"),
-        "{stderr}"
+        reason.starts_with("runner disconnected: the runner cannot decode ping: unknown field `shell`"),
+        "{reason}"
     );
+    fixture.link().await;
+    assert!(matches!(
+        shell.status(&running.command_id).unwrap().state,
+        CommandState::Running { .. }
+    ));
+    shell.abort(&running.command_id).await.unwrap();
     fixture.stop().await;
 }
 
@@ -670,47 +680,38 @@ async fn a_command_beyond_its_views_ends_with_its_whole_output_and_leaves_nothin
     fixture.stop().await;
 }
 
-/// About 1.3 s here: the runner connects twice, and its jobs are login shells
-/// that read the machine's profile (about 0.4 s each in the Linux container).
+/// A connection loss stops nothing: the runner keeps the job, the output it
+/// printed while away reaches the command, and the command ends as the job
+/// does (`runner.md` § Command lifetime). About a second: the runner
+/// connects twice, and the job is a login shell.
 #[tokio::test(flavor = "local")]
-async fn a_lost_connection_ends_the_job_on_both_sides_and_the_next_connection_serves() {
+async fn a_lost_connection_keeps_the_job_and_its_output_and_the_command_ends_as_it_does() {
     let fixture = RunnerFixture::start(FixtureOptions::default()).await;
     let shell = shell_on(fixture.host(), &[], None);
+    let script = "printf 'before\\n'; while [ ! -f go ]; do sleep 0.05; done; printf 'during\\n'; touch printed; while [ ! -f finish ]; do sleep 0.05; done; printf 'after\\n'; exit 3";
     let running = shell
-        .exec(
-            exec("sh -c 'echo $$ > sleeper.pid; exec sleep 30'", 200),
-            CancellationToken::new(),
-        )
+        .exec(exec(script, 200), CancellationToken::new())
         .await
         .unwrap();
     assert!(matches!(running.state, CommandState::Running { .. }));
-    let pid_file = format!("{}/sleeper.pid", fixture.home());
-    let pid = until("the sleeper's pid", || {
-        std::fs::read_to_string(&pid_file)
-            .ok()
-            .filter(|pid| pid.ends_with('\n'))
-    })
-    .await;
+    let home = std::path::PathBuf::from(fixture.home());
     fixture.link().await.disconnect("the connection was lost");
-    let lost = settled(&shell, &running).await;
-    assert_eq!(exited(&lost), 127);
-    let whole = lost.whole.expect("the whole output");
-    let stderr = whole
-        .output
-        .text(Streams::Only(StreamKind::Stderr), None, Seen::default());
-    let stderr = String::from_utf8_lossy(stderr.bytes()).into_owned();
-    assert!(stderr.contains("the connection was lost"), "{stderr}");
-    // The runner stopped the job's process and came back: the same shell
-    // serves again.
+    fixture.offline().await;
+    // The job prints while its runner is away.
+    std::fs::write(home.join("go"), "").unwrap();
+    until("the job printed while away", || home.join("printed").exists().then_some(())).await;
+    // The runner is back, and the command goes on there.
     fixture.link().await;
-    let check = format!(
-        "for i in $(seq 100); do kill -0 {} 2>/dev/null || exit 0; sleep 0.05; done; exit 1",
-        pid.trim()
-    );
+    std::fs::write(home.join("finish"), "").unwrap();
+    let ended = settled(&shell, &running).await;
+    assert_eq!(exited(&ended), 3);
+    let whole = ended.whole.expect("the whole output");
+    let stdout = whole
+        .output
+        .text(Streams::Only(StreamKind::Stdout), None, Seen::default());
     assert_eq!(
-        exited(&run(&shell, &check).await),
-        0,
-        "the job's process outlived its connection"
+        String::from_utf8_lossy(stdout.bytes()),
+        "before\nduring\nafter\n"
     );
     fixture.stop().await;
 }
@@ -932,6 +933,7 @@ async fn a_jobs_pipes_carry_its_stdin_and_stdout_and_a_refused_end_stops_nothing
     .await;
     let host = fixture.host();
     let job = |script: &str, stdin: Option<PipeRef>, stdout: Option<PipeRef>| JobStart {
+        id: RemoteHost::job_id(),
         script: script.into(),
         cwd: fixture.home().into(),
         env: BTreeMap::from([("PATH".to_owned(), "/usr/bin:/bin".to_owned())]),

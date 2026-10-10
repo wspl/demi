@@ -781,6 +781,8 @@ async fn ask_socket(
             managed: None,
             installation: None,
         },
+        instance: 1,
+        jobs: Vec::new(),
     };
     let frame = wire::encode(&hello).unwrap().into_bytes();
     socket.send(Message::Binary(frame.into())).await.unwrap();

@@ -21,7 +21,8 @@ use demi_backend_database::control::ControlService;
 use demi_backend_database::devices::DeviceRecord;
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_backend_remote_host::{
-    Admission, DeviceLink, Link, LinkDriver, LinkEnd, RemoteHost, close_frame, socket_frame,
+    Admission, DeviceJobs, DeviceLink, Link, LinkDriver, LinkEnd, RemoteHost, close_frame,
+    socket_frame,
 };
 use demi_host_interface::{HostIdentity, HostKey};
 use demi_runner_protocol::wire::{self, HostArtifact, Inbound, OperatingSystem};
@@ -40,6 +41,9 @@ use crate::install::start_command;
 
 /// Why a revoked device's connection ended.
 const REVOKED: &str = "device revoked";
+
+/// Why a revoked device's commands are lost.
+const REVOKED_LOST: &str = "its device was revoked";
 
 /// Why the backend's shutdown ended a connection.
 const SHUTTING_DOWN: &str = "backend shutting down";
@@ -93,9 +97,11 @@ pub struct Devices {
     returning: Arc<Returning>,
 }
 
-/// One device's connection, which its Hosts watch.
+/// One device's connection, which its Hosts watch, and its jobs, which
+/// outlive each connection (`runner.md` § Command lifetime).
 struct DeviceSlot {
     link: watch::Sender<DeviceLink>,
+    jobs: DeviceJobs,
     /// Set once the device is revoked: the projects that went with it,
     /// which its runner hears of as its connection ends.
     revoked: RefCell<Option<Vec<String>>>,
@@ -130,6 +136,7 @@ impl DeviceSlot {
     fn new() -> Rc<Self> {
         Rc::new(Self {
             link: watch::Sender::new(DeviceLink::Offline { last: None }),
+            jobs: DeviceJobs::default(),
             revoked: RefCell::new(None),
             updating: RefCell::new(None),
             installation: RefCell::new(None),
@@ -194,6 +201,11 @@ impl Devices {
             .entry(device.clone())
             .or_insert_with(DeviceSlot::new)
             .clone()
+    }
+
+    /// The device's jobs, which each connection of its runner takes up.
+    pub fn jobs(&self, device: &DeviceId) -> DeviceJobs {
+        self.slot(device).jobs.clone()
     }
 
     /// The device's connection, while its runner is connected.
@@ -304,7 +316,8 @@ impl Devices {
         cwd: String,
         admission: Admission,
     ) -> RemoteHost {
-        RemoteHost::new(key, cwd, self.slot(device).link.subscribe(), admission)
+        let slot = self.slot(device);
+        RemoteHost::new(key, cwd, slot.link.subscribe(), slot.jobs.clone(), admission)
     }
 
     /// The conversation's Host on the device, starting work in `cwd`, for
@@ -433,8 +446,11 @@ impl Devices {
     /// was revoked, with the names of the `projects` that went with it, and
     /// removes itself.
     pub fn revoke(&self, device: &DeviceId, projects: Vec<String>) {
-        self.slot(device).revoked.replace(Some(projects));
+        let slot = self.slot(device);
+        slot.revoked.replace(Some(projects));
         self.disconnect(device, REVOKED);
+        // The device's commands go with it.
+        slot.jobs.lose_all(REVOKED_LOST);
     }
 
     /// Ends every connection as the backend shuts down, and records the

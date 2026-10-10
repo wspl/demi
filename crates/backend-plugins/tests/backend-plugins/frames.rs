@@ -237,11 +237,13 @@ async fn every_page_sees_a_commands_output_as_it_comes_and_its_end() {
         client.received();
         second.received();
 
-        // Closing the conversation stops the commands its shells still run:
-        // the sleeper's process ends. The turn ends when the exec's window
-        // does, which can come before the sleeper wrote its process id: its
-        // job first reads the machine's system profile (`runner.md` § Shell
-        // jobs). Nothing of an ended command follows its end.
+        // Closing the conversation lets go of the commands its shells still
+        // run, which run on (`runtime.md` § Dispose and restore): the
+        // sleeper's process outlives the close, and ends with its runner.
+        // The turn ends when the exec's window does, which can come before
+        // the sleeper wrote its process id: its job first reads the
+        // machine's system profile (`runner.md` § Shell jobs). Nothing of an
+        // ended command follows its end.
         let frames = turn(&mut second, "message-4", "Start the sleeper.").await;
         let written = format!("{}/sleeper.pid", fixture.runner.home());
         let sleeper = loop {
@@ -265,14 +267,18 @@ async fn every_page_sees_a_commands_output_as_it_comes_and_its_end() {
             "{later:?}"
         );
         assert_eq!(client.received().last(), Some(&ServerFrame::Closed));
+        assert!(
+            rustix::process::test_kill_process(sleeper).is_ok(),
+            "the sleeper ended with the close"
+        );
+        fixture.stop().await;
         let ended = tokio::time::timeout(Duration::from_secs(10), async {
             while rustix::process::test_kill_process(sleeper).is_ok() {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
         })
         .await;
-        assert!(ended.is_ok(), "the sleeper still runs after the close");
-        fixture.stop().await;
+        assert!(ended.is_ok(), "the sleeper outlived its runner");
     })
     .await;
 }

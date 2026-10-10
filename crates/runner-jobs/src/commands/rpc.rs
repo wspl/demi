@@ -4,8 +4,9 @@
 //! to it; the call itself sends its requests.
 
 use crate::{
-    commands::command_output::CommandOutput, commands::contexts::ExecutionContext,
-    connection::ConnectionHandle,
+    commands::command_output::CommandOutput,
+    commands::contexts::ExecutionContext,
+    connection::{ConnectionHandle, Live, UNREACHABLE},
 };
 use bytes::Bytes;
 use demi_command_declarations::Parsed;
@@ -56,7 +57,7 @@ struct CallTransport<'a> {
 /// Ends a call that did not complete: the backend is told to cancel it.
 struct Pending<'a> {
     id: String,
-    connection: &'a ConnectionHandle,
+    connection: &'a Live,
     ended: CancellationToken,
     completed: bool,
 }
@@ -72,12 +73,12 @@ impl Drop for Pending<'_> {
         }) {
             Ok(message) => {
                 if self.connection.control.try_send(message).is_err() {
-                    self.connection.closed().cancel();
+                    self.connection.closed.cancel();
                 }
             }
             // A dropped cancellation message could leave callback work live.
             // Closing the transport makes backend teardown authoritative.
-            _ => self.connection.closed().cancel(),
+            _ => self.connection.closed.cancel(),
         }
     }
 }
@@ -85,7 +86,7 @@ impl Drop for Pending<'_> {
 /// A hint belongs to one invocation and is cleared even if its future is dropped.
 pub struct RunningHint {
     clear: Option<wire::Frame>,
-    connection: ConnectionHandle,
+    connection: Live,
 }
 
 impl Drop for RunningHint {
@@ -94,18 +95,19 @@ impl Drop for RunningHint {
             && self.connection.control.try_send(message).is_err()
         {
             // Backend disconnection clears job hints if a clear cannot be queued.
-            self.connection.closed().cancel();
+            self.connection.closed.cancel();
         }
     }
 }
 
-/// Shows `hint` on the job while the returned guard lives.
+/// Shows `hint` on the job while the returned guard lives, on the
+/// connection that serves now; with none, the backend shows no hint.
 pub async fn running_hint(
     connection: &ConnectionHandle,
     job_id: &str,
     hint: Option<&str>,
 ) -> Result<Option<RunningHint>, ServiceError> {
-    let Some(hint) = hint else {
+    let (Some(hint), Some(connection)) = (hint, connection.current()) else {
         return Ok(None);
     };
     let id = uuid::Uuid::new_v4().simple().to_string();
@@ -133,7 +135,9 @@ pub async fn running_hint(
     Ok(Some(guard))
 }
 
-/// Runs one call on the context's connection and returns its exit code.
+/// Runs one call on the connection that serves and returns its exit code;
+/// while the runner is away, the call waits for its next connection, and
+/// fails once the runner stopped waiting (`runner.md` § Command lifetime).
 pub async fn invoke(
     pipes: &PipeClient,
     request: Request,
@@ -141,12 +145,19 @@ pub async fn invoke(
     output: &mut CommandOutput<'_>,
     cancel: CancellationToken,
 ) -> Result<u8, ServiceError> {
-    let connection = request.context.connection.clone();
+    let handle = request.context.connection.clone();
+    let connection = tokio::select! {
+        biased;
+        _ = request.context.cancel.cancelled() => return Err(ServiceError::Cancelled),
+        _ = cancel.cancelled() => return Err(ServiceError::Cancelled),
+        connected = handle.connected() => connected
+            .map_err(|_| ServiceError::failed(io::Error::other(UNREACHABLE)))?,
+    };
     let id = uuid::Uuid::new_v4().simple().to_string();
     let stop = cancel.child_token();
     let _stop_guard = stop.clone().drop_guard();
     let (events, receiver) = mpsc::channel(EVENTS);
-    if !connection
+    if !handle
         .register_call(id.clone(), events, stop.clone())
         .await
     {
@@ -195,6 +206,8 @@ pub async fn invoke(
         biased;
         _ = request.context.cancel.cancelled() => Err(ServiceError::Cancelled),
         _ = stop.cancelled() => Err(ServiceError::Cancelled),
+        // The call ends with the connection it runs on.
+        _ = connection.closed.cancelled() => Err(ServiceError::Cancelled),
         result = result => result,
     };
     pending.completed = result.is_ok();

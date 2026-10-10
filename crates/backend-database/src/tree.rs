@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_agent_store::{AgentTreeStore, SessionStore, StoredCommand, StoredOutput};
+use demi_agent_store::{AgentTreeStore, RunningCommand, SessionStore, StoredCommand, StoredOutput};
 use demi_agent_store::{
     Checkpoint, CheckpointState, CheckpointUpdate, ClosePhase, NodeClose, NodeRecord, StoreError,
     media::BlobStore,
@@ -36,7 +36,7 @@ use super::StorageError;
 use super::columns::{count, decode, instant, json, to_json};
 use super::command_outputs::{self, OutputRow};
 use super::conversations::ConversationDb;
-use super::sequences;
+use super::{running, sequences};
 
 /// What a tree store tells after each commit that writes a node's
 /// checkpoint, closes, reopens or deletes a node, with that node: a
@@ -300,6 +300,29 @@ impl AgentTreeStore for SqliteTreeStore {
                 .map_err(store_error)?
                 .flatten();
             Ok(row.map(|row| row.end))
+        })
+    }
+
+    fn running_commands<'a>(
+        &'a self,
+        node: &'a NodeId,
+    ) -> LocalBoxFuture<'a, Result<Vec<RunningCommand>, StoreError>> {
+        Box::pin(async move {
+            let wanted = node.clone();
+            let rows = self
+                .db
+                .read(move |connection| running::of_node(connection, &wanted))
+                .await
+                .map_err(store_error)?
+                .unwrap_or_default();
+            Ok(rows
+                .into_iter()
+                .map(|row| RunningCommand {
+                    command: row.command,
+                    job: row.job,
+                    tool_use_id: row.tool_use_id,
+                })
+                .collect())
         })
     }
 

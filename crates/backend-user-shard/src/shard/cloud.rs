@@ -131,7 +131,11 @@ impl CloudShard for Shard {
     ) -> LocalBoxFuture<'a, Option<Box<dyn ConversationHold>>> {
         Box::pin(async move {
             let tree = match self.agent.tree(&root_of(conversation)) {
-                Some(tree) => Some(tokio::time::timeout(hold, tree.interrupt()).await.ok()?),
+                Some(tree) => Some(
+                    tokio::time::timeout(hold, tree.interrupt("the Cloud is being reset"))
+                        .await
+                        .ok()?,
+                ),
                 None => None,
             };
             let slot = self.conversations.slot(conversation);

@@ -1,9 +1,12 @@
-//! Jobs and raw processes (`runner.md` § Command lifetime): the connection
-//! owns its job table and routes each job's input, signals, following and end
-//! to it. Every job keeps its output within `JOB_KEPT_BYTES` and sends
-//! bounded views of it (`runner.md` § Pipes and output).
+//! Jobs and raw processes (`runner.md` § Command lifetime): the
+//! registration owns its job table, which outlives each connection, and
+//! routes each job's input, signals, following and end to it; a raw process
+//! ends with the connection that started it. Every job keeps its output
+//! within `JOB_KEPT_BYTES` and sends bounded views of it (`runner.md` § Pipes
+//! and output), and keeps its exit with its directory, which the next
+//! connection reports again.
 
-use crate::job_directories::{JobDirectories, JobDirectory};
+use crate::job_directories::{JobDirectories, JobDirectory, StreamLengths};
 use crate::job_media::{Arrival, JobMedia, MEDIA_DIRECTORY};
 use crate::kept_output::KeptOutput;
 use crate::{
@@ -27,7 +30,10 @@ use std::{
     collections::{BTreeMap, HashMap},
     io,
     path::PathBuf,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tokio::{
     sync::{mpsc, oneshot, watch},
@@ -51,7 +57,7 @@ const SIGNAL_QUEUE: usize = 16;
 /// How long a task's pipe transfers may run on after its process ended.
 const PIPE_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// A connection's jobs and raw processes. The connection owns the table,
+/// The runner's jobs and raw processes. The registration owns the table,
 /// registers each task before its setup runs so that its input and signals
 /// find it, and learns of each end through `finished`.
 pub struct JobTable {
@@ -61,8 +67,10 @@ pub struct JobTable {
     closed: CancellationToken,
 }
 
-/// What every task of one connection shares.
+/// What every task shares.
 pub struct JobConfig {
+    /// Where the tasks' messages go: to the connection that serves, and
+    /// nowhere while none does.
     pub output: mpsc::Sender<wire::Frame>,
     /// Where each job gets its own directory.
     pub directories: Arc<JobDirectories>,
@@ -77,6 +85,7 @@ pub struct JobConfig {
 /// What a job needs to make its execution context and run declared commands.
 pub struct Commands {
     pub dispatcher: Arc<Dispatcher>,
+    /// How its commands reach the backend, whichever connection serves.
     pub connection: ConnectionHandle,
     pub installation: watch::Receiver<Installation>,
     pub paths: ContextPaths,
@@ -94,6 +103,9 @@ struct Entry {
     /// first `JOB_VIEW_BYTES`.
     follow: watch::Sender<bool>,
     cancel: CancellationToken,
+    /// Set when the runner stops the job because its connection stayed away
+    /// (`runner.md` § Command lifetime).
+    unreached: Arc<AtomicBool>,
 }
 
 enum TaskInput {
@@ -179,6 +191,7 @@ impl JobTable {
         let (signals, signal_receiver) = mpsc::channel(SIGNAL_QUEUE);
         let (follow, following) = watch::channel(false);
         let cancel = CancellationToken::new();
+        let unreached = Arc::new(AtomicBool::new(false));
         self.entries.insert(
             key.clone(),
             Entry {
@@ -186,6 +199,7 @@ impl JobTable {
                 signals,
                 follow,
                 cancel: cancel.clone(),
+                unreached: unreached.clone(),
             },
         );
         let config = self.config.clone();
@@ -200,15 +214,31 @@ impl JobTable {
             let outcome = std::panic::AssertUnwindSafe(run).catch_unwind().await;
             let terminal = match outcome {
                 Ok(Ok(terminal)) => Ok(terminal),
-                Ok(Err(error)) => failure_exit(&key, error.to_string()),
-                Err(_) => failure_exit(&key, "task owner panicked".into()),
+                Ok(Err(error)) => failure_terminal(&key, error.to_string()),
+                Err(_) => failure_terminal(&key, "task owner panicked".into()),
             };
             match terminal {
-                Ok(message) => {
-                    // A disconnected backend no longer receives task results.
+                Ok(terminal) => {
+                    // A job's exit stays with its directory until the
+                    // backend releases it, so a connection that lost it
+                    // hears it again from the next (`runner.md` § Command
+                    // lifetime).
+                    if let WorkId::Job(job) = &key {
+                        config.directories.ended(
+                            job,
+                            terminal.frame.clone(),
+                            wire::KeptEnd {
+                                exit_code: terminal.exit_code,
+                                signal: terminal.signal,
+                                unreached: unreached.load(Ordering::Relaxed),
+                            },
+                        );
+                    }
+                    // Without a connection the exit waits with the job's
+                    // directory.
                     tokio::select! {
                         _ = closed.cancelled() => {},
-                        _ = config.output.send(message) => {},
+                        _ = config.output.send(terminal.frame) => {},
                     }
                 }
                 Err(error) => tracing::warn!("task terminal encoding failed: {error}"),
@@ -286,6 +316,54 @@ impl JobTable {
         }
         while self.finished().await.is_some() {}
     }
+
+    /// Ends every raw process, which lasts as long as the connection that
+    /// started it; the jobs run on.
+    pub fn end_spawns(&self) {
+        for (id, entry) in &self.entries {
+            if matches!(id, WorkId::Spawn(_)) {
+                entry.cancel.cancel();
+            }
+        }
+    }
+
+    /// Stops every job as a stop does, first with `TERM`
+    /// (`runner.md` § Cancellation and completion); `unreached` marks it
+    /// stopped because the connection stayed away. [`kill_jobs`] ends what
+    /// remains.
+    ///
+    /// [`kill_jobs`]: Self::kill_jobs
+    pub fn stop_jobs(&self, unreached: bool) {
+        for (id, entry) in &self.entries {
+            if let WorkId::Job(_) = id {
+                entry.unreached.fetch_or(unreached, Ordering::Relaxed);
+                if entry.signals.try_send(Signal::Terminate).is_err() {
+                    // A job whose signals back up is ended at once.
+                    entry.cancel.cancel();
+                }
+            }
+        }
+    }
+
+    /// Kills every job that still runs.
+    pub fn kill_jobs(&self) {
+        for (id, entry) in &self.entries {
+            if let WorkId::Job(_) = id {
+                entry.cancel.cancel();
+            }
+        }
+    }
+
+    /// The jobs that run now.
+    pub fn running_jobs(&self) -> Vec<String> {
+        self.entries
+            .keys()
+            .filter_map(|id| match id {
+                WorkId::Job(job) => Some(job.clone()),
+                WorkId::Spawn(_) => None,
+            })
+            .collect()
+    }
 }
 
 impl Drop for JobTable {
@@ -360,7 +438,7 @@ impl JobConfig {
         controls: Controls,
         cancel: CancellationToken,
         closed: CancellationToken,
-    ) -> io::Result<wire::Frame> {
+    ) -> io::Result<Terminal> {
         let Controls {
             mut input,
             mut signals,
@@ -393,7 +471,7 @@ impl JobConfig {
                 let child = match child {
                     Ok(child) => child,
                     Err(error) => {
-                        return wire::encode(&wire::Outbound::SpawnExit {
+                        return Terminal::of(wire::encode(&wire::Outbound::SpawnExit {
                             spawn_id: id,
                             exit_code: None,
                             signal: None,
@@ -401,8 +479,7 @@ impl JobConfig {
                                 kind: error.kind,
                                 detail: Some(error.message),
                             }),
-                        })
-                        .map_err(io::Error::other);
+                        }), None, None);
                     }
                 };
                 (Execution::process(child), None, None)
@@ -416,6 +493,7 @@ impl JobConfig {
                 let JobDirectory {
                     path,
                     output,
+                    lengths,
                     running,
                 } = self.directories.create(&id, &cancel).await?;
                 env.insert("DEMI_JOB_ID".into(), id.clone());
@@ -441,7 +519,7 @@ impl JobConfig {
                         None
                     }
                 };
-                job = Some((Logs::new(output), recorder.clone(), running));
+                job = Some((Logs::new(output, lengths), recorder.clone(), running));
                 let commands = match commands {
                     Some((manifest_hash, command, viewable)) => {
                         let (sender, receiver) = mpsc::unbounded_channel();
@@ -705,6 +783,7 @@ impl JobConfig {
             }
             None => None,
         };
+        let (code, signal) = (exit.code, exit.signal.clone());
         match job {
             // The job's directory stays running until its exit is built, and
             // then lasts until the backend releases it.
@@ -715,25 +794,31 @@ impl JobConfig {
                 })
                 .await
                 .map_err(io::Error::other)?;
-                wire::encode(&wire::Outbound::JobExit {
-                    job_id: id,
+                Terminal::of(
+                    wire::encode(&wire::Outbound::JobExit {
+                        job_id: id,
+                        exit_code: exit.code,
+                        signal: exit.signal,
+                        spawn_error,
+                        output: Some(output),
+                        files: edits.files,
+                        path_changes: edits.path_changes,
+                        files_truncated: edits.truncated,
+                    }),
+                    code,
+                    signal,
+                )
+            }
+            None => Terminal::of(
+                wire::encode(&wire::Outbound::SpawnExit {
+                    spawn_id: id,
                     exit_code: exit.code,
                     signal: exit.signal,
                     spawn_error,
-                    output: Some(output),
-                    files: edits.files,
-                    path_changes: edits.path_changes,
-                    files_truncated: edits.truncated,
-                })
-                .map_err(io::Error::other)
-            }
-            None => wire::encode(&wire::Outbound::SpawnExit {
-                spawn_id: id,
-                exit_code: exit.code,
-                signal: exit.signal,
-                spawn_error,
-            })
-            .map_err(io::Error::other),
+                }),
+                code,
+                signal,
+            ),
         }
     }
 }
@@ -867,6 +952,36 @@ async fn next_arrival(arrivals: &mut Option<mpsc::UnboundedReceiver<Arrival>>) -
     }
     *arrivals = None;
     std::future::pending().await
+}
+
+/// A task's last message, its exit, with the status it carries.
+struct Terminal {
+    frame: wire::Frame,
+    exit_code: Option<i32>,
+    signal: Option<String>,
+}
+
+impl Terminal {
+    fn of(
+        frame: Result<wire::Frame, wire::WireError>,
+        exit_code: Option<i32>,
+        signal: Option<String>,
+    ) -> io::Result<Self> {
+        Ok(Self {
+            frame: frame.map_err(io::Error::other)?,
+            exit_code,
+            signal,
+        })
+    }
+}
+
+/// The exit of a task that failed before its end was known.
+fn failure_terminal(work: &WorkId, reason: String) -> Result<Terminal, wire::WireError> {
+    Ok(Terminal {
+        frame: failure_exit(work, reason)?,
+        exit_code: None,
+        signal: None,
+    })
 }
 
 /// The exit of work the runner could not run, or failed before its end was
@@ -1052,14 +1167,18 @@ impl Log {
 /// A job's output: what it keeps, and each stream's views.
 struct Logs {
     kept: KeptOutput,
+    /// Each stream's length, as its directory reports it to the next
+    /// connection.
+    lengths: Arc<StreamLengths>,
     stdout: Log,
     stderr: Log,
 }
 
 impl Logs {
-    fn new(kept: KeptOutput) -> Self {
+    fn new(kept: KeptOutput, lengths: Arc<StreamLengths>) -> Self {
         Self {
             kept,
+            lengths,
             stdout: Log::new(OutputStream::Stdout),
             stderr: Log::new(OutputStream::Stderr),
         }
@@ -1098,10 +1217,12 @@ impl Logs {
     /// part within the stream's first `JOB_VIEW_BYTES`.
     async fn write(&mut self, stream: OutputStream, bytes: &Bytes) -> io::Result<(u64, Bytes)> {
         self.kept.write(stream, bytes).await?;
-        Ok(match stream {
+        let written = match stream {
             OutputStream::Stdout => self.stdout.write(bytes),
             OutputStream::Stderr => self.stderr.write(bytes),
-        })
+        };
+        self.lengths.set(self.lengths());
+        Ok(written)
     }
 
     /// When the next message beyond a stream's first `JOB_VIEW_BYTES` is

@@ -52,6 +52,7 @@ fn caller() -> JobCaller {
 
 fn job_start(script: &str) -> JobStart {
     JobStart {
+        id: RemoteHost::job_id(),
         script: script.into(),
         cwd: "/work".into(),
         env: BTreeMap::new(),
@@ -225,7 +226,16 @@ async fn admission_holds_calls_and_process_lifetimes_and_a_refusal_sends_nothing
         LinkEnd::Closed("runner disconnected".into())
     );
     assert!(matches!(process.exit.await, ProcessEnd::Lost(_)));
-    assert!(matches!(job.end().await.status, ProcessEnd::Lost(_)));
+    // The job waits for the runner's next connection, holding the Host's
+    // admission, until that runner's hello settles it: the same runner,
+    // which lists nothing, never received it.
+    assert!(job.ended().is_none());
+    assert_eq!(gate.state().demand, 1);
+    let _next = device.connect(None);
+    assert_eq!(
+        job.end().await.status,
+        ProcessEnd::Lost(demi_backend_remote_host::NEVER_RECEIVED.into())
+    );
     assert_eq!(gate.state().demand, 0);
 }
 
@@ -370,10 +380,8 @@ async fn a_lost_connection_fails_what_it_carried_and_the_next_one_serves_the_sam
         process.exit.await,
         ProcessEnd::Lost("runner disconnected".into())
     );
-    assert_eq!(
-        job.end().await.status,
-        ProcessEnd::Lost("runner disconnected".into())
-    );
+    // The job outlives the connection (`runner.md` § Command lifetime).
+    assert!(job.ended().is_none());
     assert_eq!(demi_host_interface::Host::identity(&host), identity);
     // Offline, a process and a job end at once, and a call fails.
     assert!(matches!(
@@ -397,8 +405,20 @@ async fn a_lost_connection_fails_what_it_carried_and_the_next_one_serves_the_sam
             .kind,
         HostErrorKind::Offline
     );
-    // The same Host serves the next connection.
-    let mut link = device.connect(None);
+    // The same Host serves the next connection, over which the job its
+    // runner kept goes on and ends.
+    let kept = demi_runner_protocol::wire::KeptJob {
+        job_id: job.id().to_owned(),
+        ended: None,
+        output: OutputLengths {
+            stdout_bytes: 0,
+            stderr_bytes: 0,
+        },
+        media: 0,
+    };
+    let mut link = device.connect_with(None, 1, vec![kept]);
+    link.send(job_exit(job.id(), Some(0), None)).await;
+    assert_eq!(job.end().await.status, ProcessEnd::Exited(0));
     let exists = {
         let host = host.clone();
         tokio::task::spawn_local(async move {
@@ -873,13 +893,14 @@ async fn a_status_shows_the_latest_first_registered_hint_and_none_once_the_job_e
         CommandState::Aborted
     ));
 
-    // A lost connection ends a job and its hint with it.
+    // A job its runner lost ends, and its hint with it.
     let job = host.start_job(job_start("attend")).await.unwrap();
     drain(&mut link).await;
     link.send(hint("i1", Some("attending"), job.id())).await;
     drain(&mut link).await;
     assert_eq!(job.running_hint().as_deref(), Some("attending"));
     link.close().await;
+    let _next = device.connect_with(None, 2, Vec::new());
     assert!(matches!(job.end().await.status, ProcessEnd::Lost(_)));
     assert_eq!(job.running_hint(), None);
 }
@@ -1259,6 +1280,10 @@ struct Publisher {
 }
 
 impl CommandKeeper for Publisher {
+    fn started<'a>(&'a self, _: &'a CommandId, _: &'a str, _: &'a str) -> LocalBoxFuture<'a, ()> {
+        Box::pin(async {})
+    }
+
     fn retain<'a>(
         &'a self,
         _: &'a CommandId,
@@ -1784,7 +1809,7 @@ async fn a_message_the_backend_cannot_decode_ends_the_connection_naming_it() {
     let device = device();
     let mut link = device.connect(None);
     let host = device.host("/work", Admission::Free);
-    let job = host.start_job(job_start("sleep 10")).await.unwrap();
+    let process = host.spawn(spawn("sleep", false)).await.unwrap();
     drain(&mut link).await;
     // A newer runner's pong, with a field this backend does not know: the
     // MessagePack map of two fields gains a third, `load: 1`.
@@ -1803,7 +1828,7 @@ async fn a_message_the_backend_cannot_decode_ends_the_connection_naming_it() {
         "{refusal}"
     );
     assert_eq!(
-        job.end().await.status,
+        process.exit.await,
         ProcessEnd::Lost(format!("runner disconnected: the backend {refusal}"))
     );
     // Bytes that are no message at all are named as a message.
@@ -1988,4 +2013,79 @@ async fn pages_that_watch_one_path_share_the_runners_watch_which_the_last_one_en
     assert!(matches!(link.next().await, Inbound::FsWatch { recursive: false, .. }));
     link.close().await;
     assert_eq!(last.next().await, WatchUpdate::Ended);
+}
+
+/// A job that goes on over a new connection gets the output its runner
+/// printed while no connection served: the backend reads the kept output
+/// again and delivers what its consumer did not receive, before what the
+/// job prints from then on (`runner.md` § Command lifetime). A few
+/// milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_job_kept_through_a_lost_connection_gets_the_output_it_printed_meanwhile() {
+    let device = device();
+    let mut link = device.connect(None);
+    let host = device.host("/work", Admission::Free);
+    let job = host.start_job(job_start("print")).await.unwrap();
+    drain(&mut link).await;
+    let output = |offset: u64, bytes: &[u8]| Outbound::JobOutput {
+        job_id: job.id().to_owned(),
+        stream: OutputStream::Stdout,
+        offset,
+        bytes: WireBytes(bytes.to_vec()),
+    };
+    link.send(output(0, b"a")).await;
+    link.close().await;
+
+    let kept = demi_runner_protocol::wire::KeptJob {
+        job_id: job.id().to_owned(),
+        ended: None,
+        output: OutputLengths {
+            stdout_bytes: 3,
+            stderr_bytes: 0,
+        },
+        media: 0,
+    };
+    let mut link = device.connect_with(None, 1, vec![kept]);
+    // Output that arrives during the read waits for it.
+    link.send(output(3, b"d")).await;
+    let record = KeptRecord::Output(OutputStream::Stdout, WireBytes(b"abc".to_vec()));
+    answer_read(&device, &mut link, job.id(), encode_record(&record).unwrap()).await;
+    link.send(job_exit(job.id(), Some(0), None)).await;
+
+    let mut received = Vec::new();
+    while let Some(chunk) = job.next_output().await {
+        received.push((chunk.offset, chunk.bytes.to_vec()));
+    }
+    assert_eq!(
+        received,
+        [(0, b"a".to_vec()), (1, b"bc".to_vec()), (3, b"d".to_vec())]
+    );
+}
+
+/// A command stopped with the call that watches it, as a Stop of the action
+/// stops it, ends as stopped, not as the exit its signal makes
+/// (`runtime.md` § Live output). A few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_command_stopped_with_its_call_ends_as_stopped() {
+    let device = device();
+    let mut link = device.connect(None);
+    let shell = environment(device.host("/work", Admission::Free));
+    let call = CancellationToken::new();
+    let started = shell.exec(exec("sleep 30"), call.clone()).await.unwrap();
+    let Inbound::JobStart { job_id, .. } = link.next().await else {
+        panic!("expected a job")
+    };
+
+    call.cancel();
+
+    let Inbound::JobKill { signal, .. } = link.next().await else {
+        panic!("expected the job to be stopped")
+    };
+    assert_eq!(signal, Some(demi_runner_protocol::wire::Signal::Terminate));
+    link.send(job_exit(&job_id, None, Some("SIGTERM"))).await;
+    shell.ended(&started.command_id).await.unwrap();
+    assert!(matches!(
+        shell.status(&started.command_id).unwrap().state,
+        CommandState::Aborted
+    ));
 }
