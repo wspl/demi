@@ -38,10 +38,6 @@ const props = defineProps<{
    */
   catalogReady: boolean
   overlayStore: OverlayStore
-  /** Whether the Subagent switch is being saved. */
-  switching?: boolean
-  /** The profiles whose switch is being saved. */
-  pending?: readonly string[]
   /** Creates a profile when `id` is null, else changes that one. */
   saveProfile: (id: string | null, draft: SettingsSubagentDraft) => Promise<void>
   deleteProfile: (id: string) => Promise<void>
@@ -158,7 +154,6 @@ const empty = computed(() => props.profiles.length === 0)
           :model-value="enabled"
           size="sm"
           class="ml-1"
-          :disabled="switching"
           :aria-label="`Subagents ${enabled ? 'on' : 'off'}`"
           @update:model-value="emit('switch', $event)"
         />
@@ -198,7 +193,6 @@ const empty = computed(() => props.profiles.length === 0)
           :model-value="profile.enabled"
           size="sm"
           class="ml-1"
-          :disabled="pending?.includes(profile.id)"
           :aria-label="`${profile.name} ${profile.enabled ? 'on' : 'off'}`"
           @update:model-value="emit('switchProfile', profile.id, $event)"
         />

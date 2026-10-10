@@ -21,9 +21,6 @@ const props = defineProps<{
   /** The row's menu is showing, so it stays lit and its actions stay out. */
   menuOpen: boolean
   renaming: boolean
-  pending?: boolean
-  /** Inside a project: the row starts at the header's icon column, so its dot sits under the
-      folder icon and its title aligns with the project name. */
 }>()
 
 const emit = defineEmits<{
@@ -34,7 +31,7 @@ const emit = defineEmits<{
   renameStart: []
   renameSubmit: [title: string]
   renameCancel: []
-  togglePin: []
+  unpin: []
 }>()
 
 // One quiet mark: yellow while a permission request waits for the user, over every other mark and
@@ -78,17 +75,22 @@ const deviceLabel = computed(() => {
 // The marks the row's end shows at rest, each in a 24px box: the device's, then the pin.
 const restMarks = computed(() => (props.conversation.device ? 1 : 0) + (props.conversation.pinned ? 1 : 0))
 
-// The title's end clears what the row's end shows: the marks at rest, Archive and Pin (50px) on
-// hover. Two marks (52px and a 6px gap) are wider than the actions, so the title keeps that
-// margin on hover rather than growing under the pointer.
+// The title's end clears what the row's end shows: the marks at rest, each 24px with an 8px gap
+// before them, and the actions on hover, Archive alone (24px) or Unpin and Archive on a pinned
+// row (50px). Where the marks are wider than the actions, the title keeps their margin on hover
+// rather than growing under the pointer.
 const titleMargin = computed(() => {
-  if (props.menuOpen || props.pending) {
-    return 'mr-[50px]'
+  const pinned = props.conversation.pinned
+  if (props.menuOpen) {
+    return pinned ? 'mr-[50px]' : 'mr-6'
   }
   if (restMarks.value === 2) {
     return 'mr-[58px]'
   }
-  return restMarks.value === 1 ? 'mr-8 group-hover/row:mr-[50px]' : 'group-hover/row:mr-[50px]'
+  if (restMarks.value === 1) {
+    return pinned ? 'mr-8 group-hover/row:mr-[50px]' : 'mr-8'
+  }
+  return 'group-hover/row:mr-6'
 })
 
 // Selected rows are lit; the open one is also emphasized, so it stays visible inside a wider selection.
@@ -145,44 +147,35 @@ const rowClass = computed(() => [
     <span
       v-if="!renaming"
       class="on-fill absolute inset-y-0 right-0.5 flex items-center gap-0.5 transition-opacity"
-      :class="
-        menuOpen || pending
-          ? 'opacity-100'
-          : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100'
-      "
+      :class="menuOpen ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100'"
     >
-      <!-- Archive first, Pin at the end: the pin lands where the pinned glyph already sits, and the
-           destructive action is not the one nearest the pointer's resting place. -->
+      <!-- A pinned row offers Unpin before Archive; Pin is in the row's menu
+           (`product.md` § Conversations and projects). -->
+      <Tooltip v-if="conversation.pinned" content="Unpin" class="flex items-center">
+        <IconButton
+          :icon="PinOff"
+          :icon-size="ICON_PX.in20"
+          size="sm"
+          variant="ghost"
+          aria-label="Unpin"
+          @click.stop="emit('unpin')"
+        />
+      </Tooltip>
       <Tooltip content="Archive" class="flex items-center">
         <IconButton
           :icon="Archive"
           size="sm"
           variant="ghost"
           aria-label="Archive"
-          :disabled="pending || conversation.status === 'active'"
+          :disabled="conversation.status === 'active'"
           @click.stop="emit('archive')"
         />
       </Tooltip>
-      <Tooltip
-        :content="conversation.pinned ? 'Unpin' : 'Pin'"
-        class="flex items-center"
-      >
-        <IconButton
-          :icon="conversation.pinned ? PinOff : Pin"
-          :icon-size="ICON_PX.in20"
-          size="sm"
-          variant="ghost"
-          :aria-pressed="conversation.pinned"
-          :disabled="pending"
-          :aria-label="conversation.pinned ? 'Unpin' : 'Pin'"
-          @click.stop="emit('togglePin')"
-        />
-      </Tooltip>
     </span>
-    <!-- The marks sit in the same 24px boxes as the actions, the pin in Pin's, so nothing moves
-         on hover: the device's mark, then the pinned glyph at the end. -->
+    <!-- The marks sit in the same 24px boxes as the actions: the device's mark, then the pinned
+         glyph at the end, which Unpin takes one place left of on hover. -->
     <span
-      v-if="restMarks && !menuOpen && !pending && !renaming"
+      v-if="restMarks && !menuOpen && !renaming"
       class="pointer-events-none absolute inset-y-0 right-0.5 flex items-center gap-0.5 text-fg-faint transition-opacity group-hover/row:opacity-0"
     >
       <span v-if="deviceLabel" class="flex size-6 items-center justify-center">
