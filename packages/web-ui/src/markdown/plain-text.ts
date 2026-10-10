@@ -1,4 +1,7 @@
-import { Lexer, type Token } from 'marked'
+import type { Token } from 'marked'
+import { markdownReader } from './reader'
+
+const reader = markdownReader()
 
 /** Tokens that stand on lines of their own, which a line of plain text sets apart with a space. */
 const BLOCKS = new Set(['paragraph', 'heading', 'code', 'blockquote', 'list', 'list_item', 'table', 'hr', 'space', 'html'])
@@ -10,7 +13,7 @@ const BLOCKS = new Set(['paragraph', 'heading', 'code', 'blockquote', 'list', 'l
  * does not render it.
  */
 export function markdownPlainText(markdown: string): string {
-  return wordsOf(Lexer.lex(markdown, { gfm: true })).replace(/\s+/g, ' ').trim()
+  return wordsOf(reader.lexer(markdown)).replace(/\s+/g, ' ').trim()
 }
 
 function wordsOf(tokens: readonly Token[]): string {

@@ -2,7 +2,7 @@
 import { computed, shallowRef, watch } from 'vue'
 import { File, Folder } from '@lucide/vue'
 import { ensureFileIconTheme, fileIconTheme, fileIconUrl } from './file-icon-theme'
-import { fileIconName } from './file-icons'
+import { fileIconGlyph, fileIconName } from './file-icons'
 
 /**
  * A file or folder glyph from the Material Icon Theme, chosen by name: `src`
@@ -22,23 +22,23 @@ const props = withDefaults(
 
 ensureFileIconTheme()
 
-const icon = computed(
-  () =>
-    props.icon ??
-    (fileIconTheme.value
-    ? fileIconName(fileIconTheme.value, props.name, props.isDirectory)
-    : null)
-)
+/** Where the glyph is in the theme's package, once the theme has loaded. */
+const glyph = computed(() => {
+  const theme = fileIconTheme.value
+  return theme
+    ? fileIconGlyph(theme, props.icon ?? fileIconName(theme, props.name, props.isDirectory))
+    : null
+})
 const src = shallowRef<string | null>(null)
 
 watch(
-  icon,
-  (id) => {
+  glyph,
+  (path) => {
     src.value = null
-    if (!id)
+    if (!path)
       return
-    fileIconUrl(id).then((url) => {
-      if (icon.value === id)
+    fileIconUrl(path).then((url) => {
+      if (glyph.value === path)
         src.value = url
     })
   },

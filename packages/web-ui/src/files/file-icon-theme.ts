@@ -4,8 +4,9 @@
  * reaches the main bundle until a file browser opens.
  */
 import { shallowRef } from 'vue'
-import type { FileIconTheme } from './file-icons'
+import { fileIconThemeSchema, type FileIconTheme } from './file-icons'
 
+const PACKAGE = '../../node_modules/material-icon-theme/'
 const glyphs = import.meta.glob<string>('../../node_modules/material-icon-theme/icons/*.svg', {
   query: '?url',
   import: 'default',
@@ -19,19 +20,22 @@ export function ensureFileIconTheme(): void {
   loading ??= import('material-icon-theme/dist/material-icons.json').then((
     module
   ) => {
-    fileIconTheme.value = module.default as FileIconTheme
+    fileIconTheme.value = fileIconThemeSchema.parse(module.default)
   })
 }
 
 const urls = new Map<string, Promise<string | null>>()
 
-/** The asset URL for an icon id, or `null` when the theme has no such glyph. */
-export function fileIconUrl(icon: string): Promise<string | null> {
-  let url = urls.get(icon)
+/**
+ * The asset URL for a glyph at `glyph` in the theme's package
+ * (`fileIconGlyph`), or `null` when the package has no such file.
+ */
+export function fileIconUrl(glyph: string): Promise<string | null> {
+  let url = urls.get(glyph)
   if (!url) {
-    const load = glyphs[`../../node_modules/material-icon-theme/icons/${icon}.svg`]
+    const load = glyphs[`${PACKAGE}${glyph}`]
     url = load ? load() : Promise.resolve(null)
-    urls.set(icon, url)
+    urls.set(glyph, url)
   }
   return url
 }

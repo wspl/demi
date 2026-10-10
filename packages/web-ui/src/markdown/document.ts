@@ -5,7 +5,7 @@
 // allowlist removes.
 import DOMPurify, { type DOMPurify as Purifier } from 'dompurify'
 import katex from 'katex'
-import { Marked, type MarkedExtension, type Tokens } from 'marked'
+import type { MarkedExtension, Tokens } from 'marked'
 import { gfmHeadingId } from 'marked-gfm-heading-id'
 import { utf8Bytes } from '@demicodes/utils'
 import { joinPath, parentPath } from '../files/paths'
@@ -13,6 +13,7 @@ import { decodedTarget } from './filePath'
 import { codeBlockHtml } from './highlight'
 import { escapeHtml } from './html'
 import { mathExtensions } from './math'
+import { markdownReader } from './reader'
 import { scrollingTable } from './table'
 
 /** Where a document sits, and how an image it names on the Host loads. */
@@ -77,7 +78,7 @@ const mathPlaceholders: MarkedExtension = {
   })),
 }
 
-const documentMarked = new Marked({ gfm: true, breaks: false }, gfmHeadingId(), mathPlaceholders, scrollingTable)
+const documentMarked = markdownReader({ breaks: false }, gfmHeadingId(), mathPlaceholders, scrollingTable)
 
 // Hooks belong to a DOMPurify instance, and sanitizing is synchronous, so the
 // hooks read the place of the render in progress.
