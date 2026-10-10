@@ -34,9 +34,9 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
+    device_jobs::{DeviceJobs, Hello},
     file_watch::LinkWatches,
-    manifest::CommandSelection,
-    output_records::stream_kind,
+    output_records::{decode_output, stream_kind},
     pipes::Pipes,
     relay::{CallEntry, Stop},
 };
@@ -53,6 +53,10 @@ const ARTIFACT_REQUESTS: usize = 32;
 const NO_LIVE_WORK: &str = "No matching live job or stream";
 /// The numbers requests a connection answers at a time.
 const NUMBERS_REQUESTS: usize = 32;
+
+/// How long a job the backend has no command for has after `TERM` before
+/// it is killed (`runner.md` § Cancellation and completion).
+const UNKNOWN_KILL_AFTER: Duration = Duration::from_secs(5);
 
 /// How long a conversation release may take on the runner.
 const RELEASE_TIMEOUT: Duration = Duration::from_secs(360);
@@ -145,6 +149,11 @@ pub struct LinkOptions {
     pub policy: Rc<dyn LinkPolicy>,
     /// How often to ping; none turns liveness off.
     pub ping: Option<Duration>,
+    /// The device's jobs, which outlive the connection.
+    pub jobs: DeviceJobs,
+    /// What the runner's hello says of its jobs, which the connection takes
+    /// up (`runner.md` § Command lifetime).
+    pub hello: Hello,
 }
 
 /// Why a connection ended.
@@ -216,6 +225,8 @@ impl WeakLink {
 pub(crate) struct Inner {
     device: String,
     identity: HostIdentity,
+    /// The device's jobs, which outlive the connection.
+    device_jobs: DeviceJobs,
     outbound: mpsc::Sender<Vec<u8>>,
     pipes: Pipes,
     policy: Rc<dyn LinkPolicy>,
@@ -243,7 +254,6 @@ pub(crate) struct Inner {
 struct State {
     /// What waits for a reply, by request or stream id.
     waiting: HashMap<String, Waiting>,
-    jobs: HashMap<String, JobEntry>,
     spawns: HashMap<String, SpawnEntry>,
     services: HashMap<String, ServiceEntry>,
     calls: HashMap<String, Rc<CallEntry>>,
@@ -384,7 +394,7 @@ impl<E: Clone, C> Shared<E, C> {
             .send_modify(|count| *count = count.wrapping_add(1));
     }
 
-    fn push(&self, chunk: C) {
+    pub(crate) fn push(&self, chunk: C) {
         let mut state = self.state.borrow_mut();
         if state.end.is_some() {
             return;
@@ -473,6 +483,10 @@ pub struct JobEnd {
     pub files: Vec<wire::JobFileChange>,
     pub path_changes: Vec<demi_command_protocol::PathChange>,
     pub files_truncated: bool,
+    /// Why the job counts as lost although its runner kept its output: it
+    /// stopped the job once its connection stayed away (`runner.md`
+    /// § Command lifetime).
+    pub lost: Option<String>,
 }
 
 impl JobEnd {
@@ -483,6 +497,7 @@ impl JobEnd {
             files: Vec::new(),
             path_changes: Vec::new(),
             files_truncated: false,
+            lost: None,
         }
     }
 }
@@ -496,18 +511,6 @@ pub struct JobMedium {
     pub size: u64,
     /// The SHA-256 of its bytes, which names its blob.
     pub sha256: BlobRef,
-}
-
-pub(crate) struct JobEntry {
-    pub(crate) shared: Rc<Shared<JobEnd, JobOutput>>,
-    /// The media the runner announced, in order; they outlive the entry.
-    pub(crate) media: Rc<RefCell<Vec<JobMedium>>>,
-    pub(crate) origin: Rc<JobOrigin>,
-    pub(crate) commands: Option<CommandSelection>,
-    /// Cancelled when the job ends: its artifact resolutions stop.
-    pub(crate) cancel: CancellationToken,
-    /// Holds the Host's admission while the job runs.
-    pub(crate) _lease: Option<GateLease>,
 }
 
 pub(crate) struct SpawnEntry {
@@ -530,12 +533,16 @@ impl Link {
         WeakLink(Rc::downgrade(&self.0))
     }
 
-    /// A connection, and the driver its owner serves the socket with.
+    /// A connection, and the driver its owner serves the socket with. The
+    /// jobs its runner's hello lists go on over it, are stopped when the
+    /// backend has no command for them, or are lost (`runner.md` § Command
+    /// lifetime).
     pub fn new(options: LinkOptions) -> (Link, LinkDriver) {
         let (outbound, frames) = mpsc::channel(OUTBOUND_FRAMES);
         let link = Link(Rc::new(Inner {
             device: options.device,
             identity: options.identity,
+            device_jobs: options.jobs.clone(),
             outbound,
             pipes: options.pipes,
             policy: options.policy,
@@ -549,6 +556,14 @@ impl Link {
             installed: watch::Sender::new(None),
             pongs: watch::Sender::new(()),
         }));
+        let adoption = options.jobs.adopt(&link, options.hello);
+        for job in adoption.stop {
+            link.stop_unknown(job);
+        }
+        for (job, lengths) in adoption.resync {
+            let reading = link.clone();
+            link.spawn(async move { reading.resync(&job, lengths).await });
+        }
         let driver = LinkDriver {
             link: link.clone(),
             frames,
@@ -556,6 +571,49 @@ impl Link {
             tap: None,
         };
         (link, driver)
+    }
+
+    /// Stops a job the backend has no command for, as a stop does: `TERM`,
+    /// then `KILL` after five seconds; its exit releases its directory.
+    fn stop_unknown(&self, job: String) {
+        self.post(&Inbound::JobKill {
+            job_id: job.clone(),
+            signal: Some(wire::Signal::Terminate),
+        });
+        let link = self.clone();
+        self.spawn(async move {
+            tokio::select! {
+                () = link.ended() => {}
+                () = tokio::time::sleep(UNKNOWN_KILL_AFTER) => link.post(&Inbound::JobKill {
+                    job_id: job,
+                    signal: Some(wire::Signal::Kill),
+                }),
+            }
+        });
+    }
+
+    /// Reads the kept output of `job`, which goes on over this connection,
+    /// and delivers what its consumer did not receive: the output the
+    /// runner printed while no connection served (`runner.md` § Command
+    /// lifetime). A read that fails delivers only what arrives from now on.
+    async fn resync(&self, job: &str, lengths: wire::OutputLengths) {
+        let read = async {
+            let reader = crate::remote_host::filled_job_read(self, job).await?;
+            let bytes = crate::remote_host::collect_pipe(reader, wire::JOB_KEPT_READ_BYTES).await?;
+            decode_output(&bytes, None).map_err(|error| {
+                HostError::new(
+                    HostErrorKind::Protocol,
+                    format!("the job's kept output does not decode: {error}"),
+                )
+            })
+        };
+        match read.await {
+            Ok(output) => self.0.device_jobs.resynced(job, Some(&output), lengths),
+            Err(error) => {
+                tracing::info!(device = %self.0.device, %job, "the job's kept output was not read again: {error}");
+                self.0.device_jobs.resynced(job, None, lengths);
+            }
+        }
     }
 
     pub fn device(&self) -> &str {
@@ -635,8 +693,9 @@ impl Link {
     /// The jobs running on the device: the runner's own count, or the work
     /// the backend dispatched, whichever is larger.
     pub fn running_jobs(&self) -> u64 {
+        let jobs = self.0.device_jobs.running_on(self);
         let state = self.0.state.borrow();
-        let dispatched = state.jobs.len()
+        let dispatched = jobs
             + state
                 .spawns
                 .values()
@@ -763,6 +822,11 @@ impl Link {
 
     pub(crate) fn job_turn(&self) -> &SerialGate {
         &self.0.jobs
+    }
+
+    /// The device's jobs, which outlive the connection.
+    pub(crate) fn device_jobs(&self) -> &DeviceJobs {
+        &self.0.device_jobs
     }
 
     /// Why the connection ended, for what it fails.
@@ -904,14 +968,14 @@ impl Link {
                     self.disconnect("a job medium's digest is no SHA-256");
                     return;
                 };
-                if let Some(job) = self.0.state.borrow().jobs.get(&job_id) {
+                self.0.device_jobs.with(&job_id, |job| {
                     job.media.borrow_mut().push(JobMedium {
                         number,
                         media_type,
                         size,
                         sha256,
                     });
-                }
+                });
             }
             Outbound::SyncDone { id, error } => match error {
                 None => self.answer(&id, Expected::Sync, Answer::Done),
@@ -1022,22 +1086,23 @@ impl Link {
                 offset,
                 bytes,
             } => {
-                if let Some(job) = self.0.state.borrow().jobs.get(&job_id) {
-                    job.shared.push(JobOutput {
+                self.0.device_jobs.output(
+                    &job_id,
+                    JobOutput {
                         stream: stream_kind(stream),
                         offset,
                         bytes: bytes.0.into(),
-                    });
-                }
+                    },
+                );
             }
             Outbound::JobRunningHint {
                 job_id,
                 invocation_id,
                 hint,
             } => {
-                if let Some(job) = self.0.state.borrow().jobs.get(&job_id) {
+                self.0.device_jobs.with(&job_id, |job| {
                     job.shared.hint(invocation_id, hint);
-                }
+                });
             }
             Outbound::JobExit {
                 job_id,
@@ -1063,16 +1128,19 @@ impl Link {
                         "calling job {job_id} exited before its RPC completed"
                     )));
                 }
-                let job = self.0.state.borrow_mut().jobs.remove(&job_id);
-                if let Some(job) = job {
-                    job.cancel.cancel();
-                    job.shared.finish(JobEnd {
-                        status: process_end(exit_code, signal, spawn_error),
-                        output,
-                        files,
-                        path_changes,
-                        files_truncated,
-                    });
+                let end = JobEnd {
+                    status: process_end(exit_code, signal, spawn_error),
+                    output,
+                    files,
+                    path_changes,
+                    files_truncated,
+                    lost: None,
+                };
+                // The exit of a job the backend has no command for, or one
+                // it heard already over a connection that ended, releases
+                // the job's directory.
+                if !self.0.device_jobs.exited(&job_id, end) {
+                    self.post(&Inbound::JobRelease { job_id });
                 }
             }
             Outbound::RpcCall {
@@ -1423,18 +1491,21 @@ impl Link {
     fn grant(&self, owner: &ArtifactOwner) -> Option<Granted> {
         let state = self.0.state.borrow();
         match owner {
-            ArtifactOwner::Job(owner) => {
-                let job = state.jobs.get(&owner.job_id)?;
-                let commands = job.commands.as_ref()?;
-                (commands.hash() == owner.manifest_hash).then(|| {
-                    Granted::Now(Grant {
-                        packages: commands.packages(),
-                        resolver: commands.resolver(),
-                        attached: Vec::new(),
-                        cancel: job.cancel.clone(),
+            ArtifactOwner::Job(owner) => self
+                .0
+                .device_jobs
+                .with(&owner.job_id, |job| {
+                    let commands = job.commands.as_ref()?;
+                    (commands.hash() == owner.manifest_hash).then(|| {
+                        Granted::Now(Grant {
+                            packages: commands.packages(),
+                            resolver: commands.resolver(),
+                            attached: Vec::new(),
+                            cancel: job.cancel.clone(),
+                        })
                     })
                 })
-            }
+                .flatten(),
             ArtifactOwner::Stream(owner) => {
                 if let Some(direct) = state.direct_streams.get(&owner.stream_id) {
                     return Some(Granted::Admitting(direct.admitted.subscribe()));
@@ -1451,8 +1522,9 @@ impl Link {
     }
 
     /// Ends everything in flight on the connection: replies fail as offline,
-    /// jobs and processes end as lost, calls stop, and the device's pipes
-    /// fail. Idempotent.
+    /// processes end as lost, calls stop, and the device's pipes fail; its
+    /// jobs wait for the device's next connection (`runner.md` § Command
+    /// lifetime). Idempotent.
     pub(crate) fn teardown(&self, reason: &str) {
         if self.0.end.borrow().is_some() {
             return;
@@ -1465,10 +1537,7 @@ impl Link {
             // A requester that gave up waits for nothing.
             let _ = waiting.answer.send(Err(HostError::offline(reason)));
         }
-        for (_, job) in state.jobs {
-            job.cancel.cancel();
-            job.shared.finish(JobEnd::lost(reason));
-        }
+        self.0.device_jobs.detach(self);
         for (_, spawn) in state.spawns {
             spawn.shared.finish(ProcessEnd::Lost(reason.into()));
         }
@@ -1491,17 +1560,6 @@ impl Link {
 pub(crate) struct StateView<'a>(&'a mut State);
 
 impl StateView<'_> {
-    pub(crate) fn add_job(&mut self, id: String, entry: JobEntry) {
-        self.0.jobs.insert(id, entry);
-    }
-
-    pub(crate) fn remove_job(&mut self, id: &str) -> Option<JobEntry> {
-        self.0.jobs.remove(id)
-    }
-
-    pub(crate) fn job_origin(&self, id: &str) -> Option<Rc<JobOrigin>> {
-        self.0.jobs.get(id).map(|job| job.origin.clone())
-    }
 
     pub(crate) fn add_spawn(&mut self, id: String, entry: SpawnEntry) {
         self.0.spawns.insert(id, entry);

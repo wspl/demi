@@ -27,7 +27,8 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use super::process::{RunnerProcess, RunnerProcessOptions};
 use super::{CommandPolicy, TEST_DEVICE};
 use crate::{
-    Admission, DeviceLink, DeviceSink, DeviceSource, Link, LinkOptions, PipeRefusal, Pipes,
+    Admission, DeviceJobs, DeviceLink, DeviceSink, DeviceSource, Hello, Link, LinkOptions,
+    PipeRefusal, Pipes,
     RemoteHost, accept_stream_pipe, host_identity,
 };
 
@@ -52,6 +53,8 @@ pub struct FixtureOptions {
 pub struct RunnerFixture {
     process: RunnerProcess,
     device: Rc<watch::Sender<DeviceLink>>,
+    /// The device's jobs, which outlive each connection.
+    jobs: DeviceJobs,
     pipes: Pipes,
     policy: Rc<CommandPolicy>,
     stop: CancellationToken,
@@ -85,6 +88,7 @@ impl RunnerFixture {
         let pipes = Pipes::new(crate::ARRIVAL);
         let policy = CommandPolicy::new(options.commands);
         let device = Rc::new(watch::Sender::new(DeviceLink::Offline { last: None }));
+        let jobs = DeviceJobs::default();
         let stop = CancellationToken::new();
         let tasks = TaskTracker::new();
         let (requests, incoming) = mpsc::channel(16);
@@ -118,6 +122,7 @@ impl RunnerFixture {
         tasks.spawn_local(serve_device(
             incoming,
             device.clone(),
+            jobs.clone(),
             pipes.clone(),
             policy.clone(),
             options.tap,
@@ -141,6 +146,7 @@ impl RunnerFixture {
         let fixture = Self {
             process,
             device,
+            jobs,
             pipes,
             policy,
             stop,
@@ -191,6 +197,7 @@ impl RunnerFixture {
             HostKey::new(format!("{TEST_DEVICE}:{cwd}")),
             cwd.into(),
             self.device.subscribe(),
+            self.jobs.clone(),
             Admission::Free,
         )
     }
@@ -264,6 +271,7 @@ impl Drop for RunnerFixture {
 async fn serve_device(
     mut requests: mpsc::Receiver<Request>,
     device: Rc<watch::Sender<DeviceLink>>,
+    jobs: DeviceJobs,
     pipes: Pipes,
     policy: Rc<CommandPolicy>,
     tap: Option<mpsc::Sender<Outbound>>,
@@ -275,6 +283,7 @@ async fn serve_device(
                 tasks.spawn_local(adopt(
                     *socket,
                     device.clone(),
+                    jobs.clone(),
                     pipes.clone(),
                     policy.clone(),
                     tap.clone(),
@@ -296,6 +305,7 @@ async fn serve_device(
 async fn adopt(
     socket: WebSocket,
     device: Rc<watch::Sender<DeviceLink>>,
+    jobs: DeviceJobs,
     pipes: Pipes,
     policy: Rc<CommandPolicy>,
     tap: Option<mpsc::Sender<Outbound>>,
@@ -323,7 +333,8 @@ async fn adopt(
             protocol,
             device_token,
             runner,
-            ..
+            instance,
+            jobs: kept,
         }) => {
             if *protocol != wire::VERSION {
                 Err(refusal(
@@ -338,13 +349,23 @@ async fn adopt(
                     "already connected",
                 ))
             } else {
-                Ok(host_identity(&runner.identity))
+                Ok((
+                    host_identity(&runner.identity),
+                    Hello {
+                        instance: *instance,
+                        release: runner.version.clone(),
+                        jobs: kept.clone(),
+                        last_release: None,
+                        managed: false,
+                        recorded: Default::default(),
+                    },
+                ))
             }
         }
         _ => return,
     };
-    let identity = match answer {
-        Ok(identity) => identity,
+    let (identity, said) = match answer {
+        Ok(answer) => answer,
         Err(refusal) => {
             let frame = wire::encode(&refusal)
                 .expect("a valid refusal")
@@ -370,6 +391,8 @@ async fn adopt(
         pipes,
         policy,
         ping: None,
+        jobs,
+        hello: said,
     });
     device.send_replace(DeviceLink::Online(link.clone()));
     let incoming = incoming.filter_map(|message| ready(crate::socket_frame(message)));

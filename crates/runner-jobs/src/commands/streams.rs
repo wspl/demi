@@ -33,6 +33,8 @@ const OUTPUT_QUEUE: usize = 4;
 
 pub struct ServiceStreams {
     connection: ConnectionHandle,
+    /// The connection's messages to the backend, which answer its streams.
+    control: mpsc::Sender<wire::Frame>,
     pipes: PipeClient,
     services: ServiceHandle,
     bindings: Bindings,
@@ -46,6 +48,7 @@ pub struct ServiceStreams {
 impl ServiceStreams {
     pub fn new(
         connection: ConnectionHandle,
+        control: mpsc::Sender<wire::Frame>,
         pipes: PipeClient,
         services: ServiceHandle,
         draining: CancellationToken,
@@ -53,6 +56,7 @@ impl ServiceStreams {
     ) -> Self {
         Self {
             connection,
+            control,
             pipes,
             services,
             bindings: Bindings::default(),
@@ -95,7 +99,7 @@ impl ServiceStreams {
             return Err(io::Error::other("host connection closed"));
         }
         let pipes = self.pipes.clone();
-        let reply = self.connection.control.clone();
+        let reply = self.control.clone();
         let reporting = self.cancel.clone();
         let stream = self.cancel.child_token();
         let start = StreamStart {

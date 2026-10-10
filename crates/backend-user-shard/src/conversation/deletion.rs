@@ -66,7 +66,7 @@ impl Shard {
         // Stop stops it, its children are aborted and its commands end, so
         // the file gate their jobs hold comes free.
         let mut stopped = match self.agent().tree(&root) {
-            Some(tree) => Some(tree.interrupt().await),
+            Some(tree) => Some(tree.interrupt("the conversation is being deleted").await),
             None => None,
         };
         let _transfers = slot.transfers.close().await;
@@ -77,7 +77,7 @@ impl Shard {
         if stopped.is_none()
             && let Some(tree) = self.agent().tree(&root)
         {
-            stopped = Some(tree.interrupt().await);
+            stopped = Some(tree.interrupt("the conversation is being deleted").await);
         }
         let host = self.host_shard();
         let devices = host.release_devices(&record).await?;
