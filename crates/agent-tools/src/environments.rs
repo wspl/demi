@@ -8,13 +8,13 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     rc::Rc,
     time::Duration,
 };
 
 use demi_agent_session::ToolOutcome;
-use demi_host_interface::{HostError, HostKey, PageView, ShellEnvironment};
+use demi_host_interface::{HostError, HostKey, PageView, Seen, ShellEnvironment};
 use demi_provider_common::ResultPart;
 use demi_shared_types::{CommandId, ToolView};
 use futures_util::future::join_all;
@@ -31,9 +31,11 @@ const REPEAT_WINDOW: Duration = Duration::from_secs(60);
 pub struct Environments {
     slots: RefCell<Vec<Rc<Slot>>>,
     disposed: Cell<bool>,
-    /// The commands whose end a look showed the node: their end tells it
-    /// nothing more.
-    seen_ends: RefCell<HashSet<CommandId>>,
+    /// The node's place in the output of each command it looked at through
+    /// its whole output, the commands of other nodes among them; all of it
+    /// for a command whose end a look showed the node, whose end tells it
+    /// nothing more (`runtime.md` § The `demi shell` commands).
+    places: RefCell<HashMap<CommandId, Seen>>,
     /// Who stopped each command that was stopped, which its end's report
     /// names.
     stops: RefCell<HashMap<CommandId, Stopper>>,
@@ -178,14 +180,25 @@ impl Environments {
         .await;
     }
 
-    /// A look showed the node `command`'s end.
+    /// A look showed the node `command`'s end, and all of its output.
     pub fn saw_end(&self, command: &CommandId) {
-        self.seen_ends.borrow_mut().insert(command.clone());
+        self.set_place(command, Seen::ALL);
     }
 
     /// Whether a look showed the node `command`'s end.
     pub fn end_seen(&self, command: &CommandId) -> bool {
-        self.seen_ends.borrow().contains(command)
+        self.place(command) == Seen::ALL
+    }
+
+    /// The node's place in `command`'s whole output: none of it before its
+    /// first look.
+    pub fn place(&self, command: &CommandId) -> Seen {
+        self.places.borrow().get(command).copied().unwrap_or_default()
+    }
+
+    /// Moves the node's place in `command`'s whole output to `seen`.
+    pub fn set_place(&self, command: &CommandId, seen: Seen) {
+        self.places.borrow_mut().insert(command.clone(), seen);
     }
 
     /// `stopper` stops `command`, which the node's environments hold.

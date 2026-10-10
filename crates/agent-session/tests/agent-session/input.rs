@@ -1108,3 +1108,74 @@ async fn a_session_restored_after_an_interrupted_turn_holds_its_reports_and_mess
         ]
     );
 }
+
+/// A turn that leaves command 17 running and then runs a tool that waits for
+/// the test, which stops it.
+async fn stopped_while_its_command_runs(
+    end_on_stop: bool,
+) -> (AgentSession, Rc<TestCommands>, ScriptedRuntime, Rc<MemoryTreeStore>) {
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![
+            event::tool_call(
+                "work-17",
+                "work",
+                json!({ "commandId": "17", "intervalMs": null, "description": "Serve" }),
+            ),
+            event::tool_call("slow-1", "slow", json!({})),
+            event::response(1, 1),
+        ]),
+        // A report would open a turn of its own.
+        answer("noted"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let runtime = test_runtime(Vec::new());
+    let commands = runtime.commands.clone();
+    commands.end_on_stop.set(end_on_stop);
+    let (slow, _releases, started) = gated_tool("slow");
+    let runtime = TestRuntime {
+        tools: vec![background_tool(&commands), slow],
+        ..runtime
+    };
+    let session = start_at(
+        &provider,
+        runtime,
+        &store,
+        SessionConfig::default(),
+        Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
+    )
+    .await;
+    let running = session.send(text("serve"), turn("t1")).unwrap();
+    started.await.unwrap();
+    assert!(session.status().commands);
+    session.abort().await;
+    running.await.unwrap();
+    (session, commands, provider, store)
+}
+
+/// The Stop's end of a command the stopped action left running is the
+/// Stop's, which the node knows: no report of it.
+async fn assert_unreported(session: &AgentSession, provider: &ScriptedRuntime, store: &MemoryTreeStore) {
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    session.settled().await;
+    let kinds = kinds(&session.transcript().blocks);
+    assert!(!kinds.contains(&"wakeup".to_owned()), "{kinds:?}");
+    assert_eq!(provider.requests().len(), 1);
+    assert!(!session.status().commands && !session.status().input);
+    session.flush().await.unwrap();
+    let state = store.checkpoint(&root()).unwrap().state;
+    assert!(state.reports.is_empty() && state.intervals.is_empty(), "{state:?}");
+}
+
+// A fixed race: the end of a command the user's Stop ended was reported,
+// written into the stopped turn or opening a turn after it, as it came
+// before or after the stop was recorded. A few milliseconds of paused time.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_command_the_users_stop_ends_reports_nothing_whenever_it_ends() {
+    // It ends as the stop goes out, as a real command does.
+    let (session, _, provider, store) = stopped_while_its_command_runs(true).await;
+    assert_unreported(&session, &provider, &store).await;
+    // It ends only after the stop was recorded.
+    let (session, commands, provider, store) = stopped_while_its_command_runs(false).await;
+    commands.end("17");
+    assert_unreported(&session, &provider, &store).await;
+}

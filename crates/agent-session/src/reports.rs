@@ -32,21 +32,47 @@ struct WatchedCommand {
     interval_ms: Option<u32>,
     /// The title of the call that started it, which its reports name.
     title: String,
+    /// It was left running by the action that runs now, whose Stop stops
+    /// it too.
+    of_action: bool,
     /// The task that watches it, which goes with the entry.
     task: Option<AbortOnDropHandle<()>>,
 }
 
 impl Watched {
     /// Watches `command` from now on, every `interval_ms`, in place of a
-    /// watch of it before.
-    pub(super) fn add(&mut self, command: CommandId, interval_ms: Option<u32>, title: String) {
+    /// watch of it before; `of_action` when the running action left it
+    /// running.
+    pub(super) fn add(
+        &mut self,
+        command: CommandId,
+        interval_ms: Option<u32>,
+        title: String,
+        of_action: bool,
+    ) {
         self.remove(&command);
         self.commands.push(WatchedCommand {
             command,
             interval_ms,
             title,
+            of_action,
             task: None,
         });
+    }
+
+    /// The user's Stop of the running action stops the commands it left
+    /// running, as it stops its running calls: their end is the Stop's,
+    /// which the node knows, so they report nothing more, whenever their end
+    /// comes (`runtime.md` § Stop, § Command reports).
+    pub(super) fn stop_action(&mut self) {
+        self.commands.retain(|watched| !watched.of_action);
+    }
+
+    /// The running action ended: a later Stop stops none of its commands.
+    pub(super) fn end_action(&mut self) {
+        for watched in &mut self.commands {
+            watched.of_action = false;
+        }
     }
 
     /// Keeps the task that watches `command`; a command no longer watched

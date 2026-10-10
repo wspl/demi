@@ -1761,7 +1761,6 @@ name = "demi-backend-database"
 version = "0.1.21"
 dependencies = [
  "demi-agent-store",
- "demi-agent-transcript",
  "demi-backend-remote-host",
  "demi-host-interface",
  "demi-machine-manager-protocol",

@@ -77,6 +77,9 @@ struct TestCommands {
     ended: RefCell<std::collections::HashMap<CommandId, tokio::sync::watch::Sender<bool>>>,
     /// How many progress reports each command made.
     reports: RefCell<std::collections::HashMap<CommandId, u32>>,
+    /// Whether a command ends when the action that started it is stopped,
+    /// as a real command does.
+    end_on_stop: Cell<bool>,
 }
 
 impl TestCommands {
@@ -282,7 +285,16 @@ fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>)
 fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
     let commands = commands.clone();
     tool("work", move |call| {
-        let command = commands.start(call.input["commandId"].as_str().unwrap());
+        let id = call.input["commandId"].as_str().unwrap().to_owned();
+        let command = commands.start(&id);
+        if commands.end_on_stop.get() {
+            let cancel = call.cancel.clone();
+            let commands = commands.clone();
+            tokio::task::spawn_local(async move {
+                cancel.cancelled().await;
+                commands.end(&id);
+            });
+        }
         let interval_ms = call.input["intervalMs"]
             .as_u64()
             .map(|interval| u32::try_from(interval).unwrap());

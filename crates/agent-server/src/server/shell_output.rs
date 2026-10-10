@@ -11,12 +11,13 @@
 //! running command of the conversation through the shell environment that
 //! runs it, as a page's stop does.
 
-use std::{rc::Weak, time::Duration};
+use std::{rc::Weak, sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use demi_agent_store::{StoredCommand, StoredOutput};
 use demi_agent_tools::{
     HostResolver, INTERVAL_CAP_MS, Look, PAGE_CHARS, Stopper, duration, look_text, taken_interval,
+    whole_look_text,
 };
 use demi_host_interface::{
     CommandState, Ending, GroupBuilder, LeafBuilder, OutputText, Piece, RpcError, RpcPort, Seen,
@@ -246,9 +247,12 @@ async fn wait_for_ends<H: HostResolver>(tree: &Tree<H>, ids: &[String], wait: Du
 
 /// What a look at the conversation's command `id` shows the node `caller`,
 /// with the stored media of a command whose end it shows; first, `change`
-/// changes how the command reports. A command another node runs is shown
-/// without its output, which `demi shell output` prints: the place a look
-/// moves in a command's output is the node's that runs it.
+/// changes how the command reports. The node that runs the command looks
+/// from its place in the command's record; any other node, and a node
+/// whose command no shells hold any more, from its own place in the
+/// command's whole output: each look shows the output since the node's own
+/// last look and moves only its place (`runtime.md` § The `demi shell`
+/// commands).
 async fn status_one<H: HostResolver>(
     tree: &Tree<H>,
     caller: &NodeId,
@@ -257,20 +261,20 @@ async fn status_one<H: HostResolver>(
 ) -> Result<(String, Vec<BlobRef>), String> {
     let unknown = || "no such command in this conversation".to_owned();
     let command = CommandId::try_from(id).map_err(|_| unknown())?;
+    let looking = tree
+        .node(caller)
+        .ok_or_else(|| "the calling agent is not live".to_owned())?;
     let mut lines = Vec::new();
-    let node = match tree.command_place(&command).await? {
+    let held = match tree.command_place(&command).await? {
         CommandPlace::Unknown => return Err(unknown()),
-        CommandPlace::Stored(end) => {
-            if change.is_some() {
-                lines.push(format!("[command {id} has ended: it reports nothing more]"));
-            }
-            lines.extend(ended_lines(id, end));
-            return Ok((lines.join("\n"), Vec::new()));
-        }
-        CommandPlace::Held(node) => node,
+        CommandPlace::Stored => None,
+        CommandPlace::Held(node) => Some(node),
     };
     if let Some(interval) = change {
-        let said = match (node.session().set_interval(&command, interval), interval) {
+        let changed = held
+            .as_ref()
+            .is_some_and(|node| node.session().set_interval(&command, interval));
+        let said = match (changed, interval) {
             (true, Some(interval)) => {
                 format!("[command {id} reports every {} from now on]", duration(interval.into()))
             }
@@ -280,55 +284,103 @@ async fn status_one<H: HostResolver>(
         };
         lines.push(said);
     }
-    let environment = node
-        .environment_of(&command)
-        .ok_or_else(|| format!("command {id} is no longer held"))?;
-    if node.id() != caller {
-        let view = node
-            .live_views()
-            .into_iter()
-            .find(|view| view.command_id == command);
-        let status = match view.map(|view| view.state) {
-            Some(demi_host_interface::PageState::Running) | None => "running",
-            Some(demi_host_interface::PageState::Exited { .. }) => "exited",
-            Some(demi_host_interface::PageState::Aborted) => "aborted",
-        };
-        lines.push(format!("status: {status}"));
-        lines.push(format!("commandId: {id}"));
-        lines.push(format!(
-            "[agent {} runs it; its output: demi shell output {id}]",
-            node.record().number
-        ));
-        return Ok((lines.join("\n"), Vec::new()));
-    }
-    let status = environment.status(&command).map_err(|error| error.to_string())?;
+    let interval_ms = held
+        .as_ref()
+        .and_then(|node| node.session().interval_of(&command));
     let look = Look {
-        interval_ms: node.session().interval_of(&command),
+        interval_ms,
         ..Look::default()
     };
-    lines.push(look_text(&status, look));
-    let mut media = Vec::new();
-    if !matches!(status.state, CommandState::Running { .. }) {
-        node.saw_end(&command).await;
-        if let Ok(Some(StoredCommand {
-            output: StoredOutput::Stored { media: stored, .. },
-            ..
-        })) = tree.store().command_output(&command).await
-        {
-            media = stored
-                .into_iter()
-                .filter_map(|medium| match medium.kept {
-                    MediumKept::Stored { blob } => Some(blob),
-                    MediumKept::Missing { .. } => None,
-                })
-                .collect();
+    if let Some(node) = held.as_ref().filter(|node| node.id() == caller) {
+        let environment = node
+            .environment_of(&command)
+            .ok_or_else(|| format!("command {id} is no longer held"))?;
+        let status = environment.status(&command).map_err(|error| error.to_string())?;
+        lines.push(look_text(&status, look));
+        let mut media = Vec::new();
+        if !matches!(status.state, CommandState::Running { .. }) {
+            node.saw_end(&command).await;
+            media = stored_media(tree, &command).await;
         }
+        return Ok((lines.join("\n"), media));
     }
-    Ok((lines.join("\n"), media))
+    let running = held.as_ref().and_then(|node| {
+        let environment = node.environment_of(&command)?;
+        environment
+            .ended(&command)
+            .now_or_never()
+            .is_none()
+            .then_some((node, environment))
+    });
+    let place = looking.place(&command);
+    let shown = match running {
+        Some((node, environment)) => {
+            let whole = environment
+                .read_output(&command)
+                .await
+                .map_err(|error| format!("the output of {id} could not be read: {error}"))?;
+            let running_ms = node
+                .live_views()
+                .into_iter()
+                .find(|view| view.command_id == command)
+                .map_or(0, |view| view.running_ms);
+            let idle_ms = environment
+                .quiet(&command)
+                .map_or(0, |quiet| u64::try_from(quiet.as_millis()).unwrap_or(u64::MAX));
+            let state = CommandState::Running { hint: None };
+            looking.set_place(&command, whole.seen_through());
+            whole_look_text(&command, state, running_ms, idle_ms, Arc::new(whole), place, look)
+        }
+        None => match tree.store().command_output(&command).await {
+            Ok(Some(StoredCommand {
+                end,
+                output: StoredOutput::Stored { output, .. },
+            })) => {
+                let state = match end {
+                    CommandEnd::Exited { exit_code } => CommandState::Exited {
+                        exit_code,
+                        binary_stdout: None,
+                        media: Vec::new(),
+                    },
+                    CommandEnd::Stopped => CommandState::Aborted,
+                    CommandEnd::Lost | CommandEnd::Unrecorded => {
+                        lines.extend(ended_lines(id, end));
+                        return Ok((lines.join("\n"), Vec::new()));
+                    }
+                };
+                looking.set_place(&command, Seen::ALL);
+                whole_look_text(&command, state, 0, 0, Arc::new(output), place, look)
+            }
+            Ok(Some(StoredCommand { end, .. })) => ended_lines(id, end).join("\n"),
+            Ok(None) => ended_lines(id, CommandEnd::Unrecorded).join("\n"),
+            Err(error) => return Err(format!("the output of {id} could not be read: {error}")),
+        },
+    };
+    lines.push(shown);
+    Ok((lines.join("\n"), Vec::new()))
 }
 
-/// What a look shows of a command that ended and that no node's shells hold
-/// any more: how it ended, and where its output is.
+/// The media the conversation stored of `command`, which ended, by number.
+async fn stored_media<H: HostResolver>(tree: &Tree<H>, command: &CommandId) -> Vec<BlobRef> {
+    let Ok(Some(StoredCommand {
+        output: StoredOutput::Stored { media, .. },
+        ..
+    })) = tree.store().command_output(command).await
+    else {
+        return Vec::new();
+    };
+    media
+        .into_iter()
+        .filter_map(|medium| match medium.kept {
+            MediumKept::Stored { blob } => Some(blob),
+            MediumKept::Missing { .. } => None,
+        })
+        .collect()
+}
+
+/// What a look shows of a command whose output the conversation does not
+/// hold, or whose end keeps no status: how it ended, and where its output
+/// would be.
 fn ended_lines(id: &str, end: CommandEnd) -> Vec<String> {
     let mut lines = match end {
         CommandEnd::Exited { exit_code } => {
@@ -357,7 +409,7 @@ async fn input<H: HostResolver>(call: Invoked<H, InputArgs>, _port: RpcPort) -> 
     };
     let environment = match place {
         CommandPlace::Unknown => return fail(&unknown()),
-        CommandPlace::Stored(_) => None,
+        CommandPlace::Stored => None,
         CommandPlace::Held(node) => node.environment_of(&command),
     };
     let Some(environment) = environment else {
@@ -398,7 +450,7 @@ async fn stop_one<H: HostResolver>(tree: &Tree<H>, caller: &NodeId, id: &str) ->
     let command = CommandId::try_from(id).map_err(|_| unknown())?;
     Ok(match tree.command_place(&command).await? {
         CommandPlace::Unknown => return Err(unknown()),
-        CommandPlace::Stored(_) => format!("[command {id} had already ended]\n"),
+        CommandPlace::Stored => format!("[command {id} had already ended]\n"),
         CommandPlace::Held(node) => match node.environment_of(&command) {
             Some(environment) if environment.ended(&command).now_or_never().is_none() => {
                 let stopper = if node.id() == caller {
