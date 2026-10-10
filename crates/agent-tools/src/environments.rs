@@ -361,6 +361,10 @@ mod tests {
             Err(ShellError::UnknownCommand(command.clone()))
         }
 
+        fn outliving(&self, command: &CommandId) -> Result<Vec<String>, ShellError> {
+            Err(ShellError::UnknownCommand(command.clone()))
+        }
+
         fn media(
             &self,
             command: &CommandId,

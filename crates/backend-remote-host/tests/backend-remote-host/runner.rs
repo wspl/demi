@@ -145,7 +145,7 @@ pub(crate) fn exited(status: &CommandStatus) -> i32 {
 /// The hint of a running command.
 fn hint(status: &CommandStatus) -> Option<String> {
     match &status.state {
-        CommandState::Running { hint } => hint.clone(),
+        CommandState::Running { hint, .. } => hint.clone(),
         other => panic!("expected a running command, got {other:?}"),
     }
 }
