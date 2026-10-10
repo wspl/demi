@@ -356,6 +356,7 @@ async fn adopt(
                         release: runner.version.clone(),
                         jobs: kept.clone(),
                         last_release: None,
+                        last_instance: None,
                         managed: false,
                         recorded: Default::default(),
                     },

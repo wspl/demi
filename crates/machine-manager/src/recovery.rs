@@ -33,10 +33,11 @@ pub enum RecoveryError {
     Save(#[from] SaveError),
 }
 
-/// Fences each recorded sandbox and saves each working pair. Every device
-/// operation has finished and none can start: the caller holds the whole
-/// admission gate, or no manager serves.
-pub async fn fence_and_save(core: &Core) -> Result<(), RecoveryError> {
+/// Fences each recorded sandbox and saves each working pair, but those of
+/// the devices in `running`, whose sandboxes this manager runs and keeps.
+/// Every device operation has finished and none can start: the caller holds
+/// the whole admission gate, or no manager serves.
+pub async fn fence_and_save(core: &Core, running: &[DeviceId]) -> Result<(), RecoveryError> {
     let working = core.config.working();
     let runsc = core.runsc.root().to_owned();
     let entries = blocking::run({
@@ -61,6 +62,9 @@ pub async fn fence_and_save(core: &Core) -> Result<(), RecoveryError> {
     .await?;
     for name in entries {
         let device = DeviceId::parse(name)?;
+        if running.contains(&device) {
+            continue;
+        }
         let pair = WorkingPair::new(&working, &device);
         let record_path = pair.sandbox_record();
         let record = blocking::run(move |_| -> Result<Option<SandboxRecord>, RecoveryError> {

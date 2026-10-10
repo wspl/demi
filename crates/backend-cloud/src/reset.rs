@@ -20,7 +20,8 @@ use demi_backend_database::control::ControlService;
 use demi_backend_database::managed::ManagedOperation;
 use demi_machine_manager_protocol::{CurrentBaseVersionParams, ReconcileParams, ResetParams};
 use demi_web_api_protocol::cloud::ResetPhase;
-use demi_web_api_protocol::ids::OperationId;
+use demi_backend_database::devices::DeviceRecord;
+use demi_web_api_protocol::ids::{DeviceId, OperationId};
 
 use crate::machine::{CloudError, Machine, Phase};
 
@@ -238,15 +239,17 @@ fn reset_params(machine: &Machine, operation: &ManagedOperation) -> ResetParams 
 }
 
 /// Recovers before the backend serves (`backend.md` § Startup and shutdown):
-/// the manager stops and saves every machine and recovers its incomplete
+/// the manager keeps the machines it runs and recovers its incomplete
 /// operations, and each reset this backend left unfinished finishes its disk
 /// step, which is idempotent by its id, is announced, and is recorded as
-/// failed so that a retry boots the Cloud. Nothing boots here.
-pub async fn recover_resets(
+/// failed so that a retry boots the Cloud. Nothing boots here. Answers the
+/// devices whose machines run, which their shards take over.
+pub async fn recover_clouds(
     control: &ControlService,
     cloud: &CloudServices,
-) -> Result<(), RecoveryError> {
-    cloud.machines.call(ReconcileParams {}).await?;
+) -> Result<Vec<DeviceRecord>, RecoveryError> {
+    let reconciled = cloud.machines.call(ReconcileParams {}).await?;
+    let mut reset = Vec::new();
     for (device, operation) in control.unfinished_managed_operations().await? {
         let record = control
             .device(device.clone())
@@ -257,6 +260,7 @@ pub async fn recover_resets(
             operation_id: operation.id.to_string(),
             base_version: operation.base_version.to_string(),
         };
+        // The reset stops a sandbox that still runs before its disk step.
         cloud.machines.call(params).await?;
         control
             .announce_cloud_reset(record.user, operation.id.clone())
@@ -266,9 +270,26 @@ pub async fn recover_resets(
             error: Some(RECOVERED.to_owned()),
             ..operation
         };
-        control.put_managed_operation(device, failed).await?;
+        control.put_managed_operation(device.clone(), failed).await?;
+        reset.push(device);
     }
-    Ok(())
+    let mut running = Vec::new();
+    for device in reconciled.running {
+        let Ok(id) = DeviceId::try_from(device.as_str()) else {
+            tracing::warn!(device, "the machine manager runs a sandbox no device id names");
+            continue;
+        };
+        if reset.contains(&id) {
+            continue;
+        }
+        match control.device(id.clone()).await? {
+            Some(record) => running.push(record),
+            // A device the backend no longer has is no one's Cloud; the
+            // manager's own stop saves it.
+            None => tracing::warn!(device = %id, "the machine manager runs a sandbox of a device that is gone"),
+        }
+    }
+    Ok(running)
 }
 
 /// Why the backend could not recover its Clouds before serving.

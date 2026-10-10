@@ -481,6 +481,78 @@ async fn an_installed_runner_follows_its_backend_to_another_release() {
     backend.close().await;
 }
 
+/// A runner that replaces itself with its backend's release stops its jobs
+/// first, with `TERM` as a stop does, since the new runner cannot take them
+/// over; its hello tells the backend they were lost to the update
+/// (`runner.md` § Runner updates).
+// Several seconds: the installer downloads this build's runner (170 MB) and
+// starts it, the call that starts the command waits for two quiet seconds,
+// and the runner downloads the backend's new release.
+#[tokio::test]
+async fn a_runner_stops_its_jobs_before_it_replaces_itself_and_they_are_lost_to_the_update() {
+    use crate::work::{Driven, resident, say};
+    let releases = Releases::new(runner_binary());
+    releases.publish("initial");
+    let harness = Harness::new().with_runner_releases(releases.path());
+    let (backend, master) = harness.start_set_up().await;
+    let address = backend.address();
+    let installations = Installations::new();
+    let state = installations.state(&format!("{}/", backend.url));
+    installations.install(&backend, &master).await;
+    let devices = backend.devices(&master).await;
+    let [device] = devices.as_slice() else {
+        panic!("one paired device: {devices:?}");
+    };
+    backend
+        .until_online(&master, device.id.as_str(), true)
+        .await;
+
+    let vendor = MockVendor::start().await;
+    let provider = crate::conversations::anthropic_at(&backend, &master, &vendor, "/update").await;
+    create(&backend, &master, FIRST).await;
+    let home = installations.home.path();
+    let target =
+        json!({ "target": { "kind": "device", "deviceId": device.id.as_str(), "path": home } });
+    let moved = backend
+        .patch(&format!("/api/conversations/{FIRST}"), &master, target)
+        .await;
+    assert_eq!(moved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&moved.body));
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/update").await;
+    // The job's program traps TERM, as a dev server that closes its
+    // connections does.
+    let script = "printf 'started\\n'; sh -c \"trap 'touch terminated; exit 0' TERM; while :; do sleep 0.05; done\"";
+    let started = work.turn(vec![resident("t1", script), say("waiting")]).await;
+    let result = &started.received[0];
+    assert!(result.starts_with("status: running"), "{result}");
+    let command = demi_agent_tools::testing::field(result, "commandId").to_owned();
+
+    // The backend comes back with another release, which the runner
+    // follows once its job has heard TERM.
+    backend.close().await;
+    let upgraded = releases.publish("upgraded");
+    work.script(vec![say("noted")]);
+    let backend = harness.start_at(address).await;
+    eventually("the runner of the backend's release is active", || async {
+        active_release(&state) == Some(json!(upgraded))
+    })
+    .await;
+    assert!(home.join("terminated").exists(), "the job heard TERM before its runner went");
+    let lost = format!(
+        "Command {command} (t1) was lost: {}. Start it again if it is still needed.",
+        demi_backend_remote_host::UPGRADED
+    );
+    eventually("the model hears the command was lost to the update", || {
+        let heard = vendor
+            .requests()
+            .iter()
+            .any(|request| request.json().to_string().contains(&lost));
+        async move { heard }
+    })
+    .await;
+    drop(installations);
+    backend.close().await;
+}
+
 /// A file's permission bits.
 fn mode(path: &Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777

@@ -117,6 +117,10 @@ impl LinkPolicy for CommandPolicy {
         Box::pin(async { Err("revocation is not available".into()) })
     }
 
+    fn take_up_job(&self, _: String) -> LocalBoxFuture<'static, Result<(), String>> {
+        Box::pin(async { Err("no agent takes jobs up here".into()) })
+    }
+
     /// Counts each conversation's sequence from 1, as the backend's
     /// sequences do for a new conversation.
     fn reserve_numbers(
@@ -194,6 +198,23 @@ impl TestDevice {
         instance: u64,
         jobs: Vec<wire::KeptJob>,
     ) -> TestLink {
+        self.connect_hello(
+            ping,
+            Hello {
+                instance,
+                release: "0".into(),
+                jobs,
+                last_release: None,
+                last_instance: None,
+                managed: false,
+                recorded: Default::default(),
+            },
+        )
+    }
+
+    /// Connects the device's runner, whose hello and what the backend
+    /// knows of the device are `hello`; `ping` turns liveness on.
+    pub fn connect_hello(&self, ping: Option<Duration>, hello: Hello) -> TestLink {
         let (link, driver) = Link::new(LinkOptions {
             device: TEST_DEVICE.into(),
             identity: self.identity.clone(),
@@ -201,14 +222,7 @@ impl TestDevice {
             policy: self.policy.clone(),
             ping,
             jobs: self.jobs.clone(),
-            hello: Hello {
-                instance,
-                release: "0".into(),
-                jobs,
-                last_release: None,
-                managed: false,
-                recorded: Default::default(),
-            },
+            hello,
         });
         let (runner, incoming) = mpsc::channel::<Result<Vec<u8>, crate::SocketEnd>>(8);
         let (outgoing, sent) = mpsc::channel::<Vec<u8>>(crate::OUTBOUND_FRAMES);

@@ -53,6 +53,10 @@ pub struct DeviceRecord {
     /// The runner release its runner last reported, such as `0.1.16`; none
     /// before its runner first connected.
     pub runner_version: Option<String>,
+    /// The instance its runner last named in its hello: a number each start
+    /// of the runner draws (`runner.md` § Command lifetime); none before its
+    /// runner first connected.
+    pub runner_instance: Option<u64>,
     /// How pages reach it (`direct-channel.md` § Choosing the path).
     pub route: DeviceRoute,
 }
@@ -65,7 +69,7 @@ pub struct DeviceChange {
 }
 
 const DEVICE_COLUMNS: &str =
-    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version, route";
+    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version, runner_instance, route";
 
 /// The name and platform of the one device a user's Cloud is.
 pub const CLOUD_NAME: &str = "Cloud";
@@ -107,6 +111,7 @@ impl ControlService {
                 installed: Vec::new(),
                 os: None,
                 runner_version: None,
+                runner_instance: None,
                 route: DeviceRoute::Automatic,
             })
         })
@@ -296,18 +301,24 @@ impl ControlService {
         .await
     }
 
-    /// Records the operating system and the runner release `device`'s
-    /// runner reported in its hello.
+    /// Records the operating system, the runner release and the instance
+    /// `device`'s runner reported in its hello.
     pub async fn set_device_runner(
         &self,
         device: DeviceId,
         os: OperatingSystem,
         runner_version: String,
+        runner_instance: u64,
     ) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             connection.execute(
-                "UPDATE devices SET os = ?1, runner_version = ?2 WHERE id = ?3",
-                params![to_json(&os), runner_version, device.as_str()],
+                "UPDATE devices SET os = ?1, runner_version = ?2, runner_instance = ?3 WHERE id = ?4",
+                params![
+                    to_json(&os),
+                    runner_version,
+                    runner_instance.cast_signed(),
+                    device.as_str()
+                ],
             )?;
             Ok(())
         })
@@ -442,6 +453,9 @@ fn device_row(row: &Row<'_>) -> Result<DeviceRecord, StorageError> {
             None => None,
         },
         runner_version: row.get("runner_version")?,
+        runner_instance: row
+            .get::<_, Option<i64>>("runner_instance")?
+            .map(i64::cast_unsigned),
         route: decode(
             "devices",
             "route",

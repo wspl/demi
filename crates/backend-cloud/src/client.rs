@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use demi_machine_manager_protocol::{
     DeviceId, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, Operation,
-    ReconcileParams, WIRE_VERSION, decode_response, encode_line,
+    WIRE_VERSION, decode_response, encode_line,
 };
 use futures_util::StreamExt as _;
 use tokio::io::AsyncWriteExt as _;
@@ -75,8 +75,6 @@ pub struct MachinesClient {
 enum Command {
     Call {
         call: MachineCall,
-        /// Only over the connection that is open now; none is opened for it.
-        live_only: bool,
         answer: oneshot::Sender<Result<serde_json::Value, MachinesError>>,
     },
     Disconnect {
@@ -110,17 +108,28 @@ impl MachinesClient {
 
     /// Runs `params` on the manager and answers its result.
     pub async fn call<O: Operation>(&self, params: O) -> Result<O::Output, MachinesError> {
-        self.send(params, false).await
+        let call: MachineCall = params.into();
+        let operation = call.name();
+        let (answer, answered) = oneshot::channel();
+        let unavailable = || MachinesError::Unavailable {
+            operation,
+            reason: "the machine manager's client is closed".into(),
+        };
+        self.commands
+            .send(Command::Call { call, answer })
+            .await
+            .map_err(|_| unavailable())?;
+        let result = answered.await.map_err(|_| unavailable())??;
+        serde_json::from_value(result).map_err(|error| MachinesError::Result {
+            operation,
+            reason: error.to_string(),
+        })
     }
 
-    /// Reconciles the manager over the connection that is open, logging a
-    /// failure, and disconnects; a client that never connected has nothing
-    /// to do. The manager keeps running, and a later call connects again.
-    pub async fn close(&self) -> Result<(), MachinesError> {
-        let reconciled = match self.send(ReconcileParams {}, true).await {
-            Err(MachinesError::Unavailable { reason, .. }) if reason == NOT_CONNECTED => Ok(()),
-            reconciled => reconciled,
-        };
+    /// Disconnects, leaving the manager and its sandboxes running
+    /// (`managed-hosts.md` § Control and ownership); a later call connects
+    /// again.
+    pub async fn close(&self) {
         let (done, disconnected) = oneshot::channel();
         if self
             .commands
@@ -132,39 +141,8 @@ impl MachinesClient {
             // ended, so did the connection.
             let _ = disconnected.await;
         }
-        reconciled
-    }
-
-    async fn send<O: Operation>(
-        &self,
-        params: O,
-        live_only: bool,
-    ) -> Result<O::Output, MachinesError> {
-        let call: MachineCall = params.into();
-        let operation = call.name();
-        let (answer, answered) = oneshot::channel();
-        let unavailable = || MachinesError::Unavailable {
-            operation,
-            reason: "the machine manager's client is closed".into(),
-        };
-        self.commands
-            .send(Command::Call {
-                call,
-                live_only,
-                answer,
-            })
-            .await
-            .map_err(|_| unavailable())?;
-        let result = answered.await.map_err(|_| unavailable())??;
-        serde_json::from_value(result).map_err(|error| MachinesError::Result {
-            operation,
-            reason: error.to_string(),
-        })
     }
 }
-
-/// Why a call over the live connection found none.
-const NOT_CONNECTED: &str = "no connection is open";
 
 /// The connection and the calls in flight on it.
 struct Supervisor {
@@ -201,7 +179,7 @@ impl Supervisor {
                 command = commands.recv() => match command {
                     // The client is gone, and the connection goes with it.
                     None => return,
-                    Some(Command::Call { call, live_only, answer }) => self.call(call, live_only, answer).await,
+                    Some(Command::Call { call, answer }) => self.call(call, answer).await,
                     Some(Command::Disconnect { done }) => {
                         self.dropped("the backend disconnected");
                         // A closer that went away needs no answer.
@@ -216,24 +194,18 @@ impl Supervisor {
         }
     }
 
-    /// Sends `call`, connecting first unless `live_only`.
+    /// Sends `call`, connecting first.
     async fn call(
         &mut self,
         call: MachineCall,
-        live_only: bool,
         answer: oneshot::Sender<Result<serde_json::Value, MachinesError>>,
     ) {
         let operation = call.name();
         if self.connection.is_none() {
-            if live_only {
-                let reason = NOT_CONNECTED.to_owned();
-                // A caller that went away needs no answer.
-                let _ = answer.send(Err(MachinesError::Unavailable { operation, reason }));
-                return;
-            }
             match connect(&self.socket).await {
                 Ok(connection) => self.connection = Some(connection),
                 Err(reason) => {
+                    // A caller that went away needs no answer.
                     let _ = answer.send(Err(MachinesError::Unavailable { operation, reason }));
                     return;
                 }

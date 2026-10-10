@@ -95,6 +95,12 @@ pub trait LinkPolicy {
     /// be.
     fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>>;
 
+    /// A job the backend recorded running, which no agent has taken up yet,
+    /// makes an `rpc` call: the agent that ran it takes it up, as a report
+    /// of it does (`runtime.md` § Command reports), so the call is served.
+    /// Answers once the take-up was asked for, or why it cannot be.
+    fn take_up_job(&self, job: String) -> LocalBoxFuture<'static, Result<(), String>>;
+
     /// A native service on the device asks for `count` numbers of
     /// `conversation`'s `sequence` (`native-runtime.md` § Conversation
     /// numbers): the first of them, reserved, or why there are none.
@@ -566,6 +572,9 @@ impl Link {
         for job in adoption.stop {
             link.stop_unknown(job);
         }
+        for job_id in adoption.release {
+            link.post(&Inbound::JobRelease { job_id });
+        }
         for (job, lengths) in adoption.resync {
             let reading = link.clone();
             link.spawn(async move { reading.resync(&job, lengths).await });
@@ -978,8 +987,14 @@ impl Link {
                     self.disconnect("a job medium's digest is no SHA-256");
                     return;
                 };
+                // A runner announces a job's media again on each new
+                // connection; the backend keeps each number once.
                 self.0.device_jobs.with(&job_id, |job| {
-                    job.media.borrow_mut().push(JobMedium {
+                    let mut media = job.media.borrow_mut();
+                    if media.iter().any(|medium| medium.number == number) {
+                        return;
+                    }
+                    media.push(JobMedium {
                         number,
                         media_type,
                         size,

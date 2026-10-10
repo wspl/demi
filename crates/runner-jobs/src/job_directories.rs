@@ -33,6 +33,8 @@ struct Held {
     output: KeptReader,
     lengths: Arc<StreamLengths>,
     running: bool,
+    /// The `job_medium` of each medium the job keeps, in order.
+    media: Arc<Mutex<Vec<wire::Frame>>>,
     /// The job's exit and how it ended, once it ended.
     exit: Option<(wire::Frame, wire::KeptEnd)>,
 }
@@ -44,6 +46,9 @@ pub struct JobDirectory {
     pub output: KeptOutput,
     /// Each stream's length, which the job sets as it writes.
     pub lengths: Arc<StreamLengths>,
+    /// The `job_medium` of each medium the job keeps, which it adds as it
+    /// announces them.
+    pub media: Arc<Mutex<Vec<wire::Frame>>>,
     pub running: Running,
 }
 
@@ -131,6 +136,7 @@ impl JobDirectories {
         .map_err(io::Error::other)??;
         let output = KeptOutput::create(path.join("output"), cancel).await?;
         let lengths = Arc::new(StreamLengths::default());
+        let media = Arc::new(Mutex::new(Vec::new()));
         self.lock().insert(
             job.to_owned(),
             Held {
@@ -138,6 +144,7 @@ impl JobDirectories {
                 output: output.reader(),
                 lengths: lengths.clone(),
                 running: true,
+                media: media.clone(),
                 exit: None,
             },
         );
@@ -149,6 +156,7 @@ impl JobDirectories {
             path,
             output,
             lengths,
+            media,
         })
     }
 
@@ -192,13 +200,23 @@ impl JobDirectories {
         kept
     }
 
-    /// The exits of the jobs that ended and are not released yet, which a
-    /// new connection sends again.
-    pub fn exits(&self) -> Vec<wire::Frame> {
-        self.lock()
-            .values()
-            .filter_map(|held| held.exit.as_ref().map(|(frame, _)| frame.clone()))
-            .collect()
+    /// What a new connection hears again of the jobs not released yet, so
+    /// that it misses nothing a lost connection carried: each job's
+    /// `job_medium`s, then its exit once it ended (`runner.md` § Command
+    /// lifetime).
+    pub fn announcements(&self) -> Vec<wire::Frame> {
+        let mut frames = Vec::new();
+        for held in self.lock().values() {
+            frames.extend(
+                held.media
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .iter()
+                    .cloned(),
+            );
+            frames.extend(held.exit.as_ref().map(|(frame, _)| frame.clone()));
+        }
+        frames
     }
 
     /// The kept output of `job`, while its directory lasts.

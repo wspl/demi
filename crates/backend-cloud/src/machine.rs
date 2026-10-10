@@ -730,29 +730,48 @@ impl dyn CloudShard {
     }
 
     /// Closes the Cloud with its shard (`backend.md` § Startup and shutdown):
-    /// no admission after this, its schedules end, a reset or a transition
-    /// under way finishes, and a running machine is saved and stopped. A
-    /// machine something still holds is left to the manager's reconcile,
-    /// which saves every machine when the backend's client closes.
-    pub async fn close_cloud(&self) -> Result<(), CloudError> {
+    /// no admission after this, its schedules end, and a reset or a
+    /// transition under way finishes. A running machine keeps running, and
+    /// the next backend takes it over (`managed-hosts.md` § Control and
+    /// ownership).
+    pub async fn close_cloud(&self) {
         self.cloud().stop();
         let Some(machine) = self.cloud().machine() else {
-            return Ok(());
+            return;
         };
+        // A failed reset is recorded with its operation, and a boot the
+        // close cut short saved what its sandbox wrote.
         if let Some(reset) = machine.reset_task() {
-            // Its failure is recorded with the operation.
             let _ = reset.await;
         }
         if let Some(transition) = machine.transition() {
             let _ = transition.await;
         }
-        let Some(reservation) = machine.gate.try_reserve() else {
-            tracing::warn!(device = %machine.device.id, "the Cloud is in use at shutdown; the machine manager saves it");
-            return Ok(());
+    }
+
+    /// Takes over the user's Cloud `device`, whose sandbox the machine
+    /// manager reported running as the backend started: it runs, and its
+    /// runner connects again by itself, so a same-release restart stops no
+    /// Cloud and no command on one (`sessions-and-targets.md` § Recovery and
+    /// persistence). One that finds no capacity is saved and stopped.
+    pub async fn take_over_cloud(&self, device: &DeviceRecord) -> Result<(), CloudError> {
+        let machine = self.cloud_machine(device).await?;
+        {
+            let mut phase = machine.phase();
+            if !matches!(&*phase, Phase::Off) {
+                return Ok(());
+            }
+            if let Some(permit) = self.cloud_services().capacity.try_take() {
+                *phase = Phase::Running(self.running(&machine, permit));
+                return Ok(());
+            }
+        }
+        tracing::warn!(device = %device.id, "a running Cloud found no capacity at the start; it is saved and stopped");
+        let hibernate = HibernateParams {
+            device_id: device.id.to_string(),
         };
-        let saved = self.hibernate_reserved(&machine).await;
-        drop(reservation);
-        saved
+        self.cloud_services().machines.call(hibernate).await?;
+        Ok(())
     }
 }
 

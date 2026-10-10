@@ -345,3 +345,115 @@ async fn a_command_that_ends_while_its_conversation_is_closed_reports_its_end_wh
     .await;
     backend.close().await;
 }
+
+// Several seconds: a real device pairs, the call waits for two quiet
+// seconds, and the backend restarts while the runner is paused.
+#[tokio::test]
+async fn an_rpc_call_of_a_job_no_agent_took_up_yet_takes_it_up_and_is_served() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    let mut work = on_device(&backend, &master, &vendor, &alpha).await;
+    let home = alpha.runner.home_dir().to_owned();
+    // Once let go, the job asks the backend about itself with an rpc call.
+    let script = "printf 'started\\n'; while [ ! -f go ]; do sleep 0.05; done; demi shell status 1 > status.txt 2>&1; touch asked; while [ ! -f finish ]; do sleep 0.05; done";
+    let command = started(&mut work, "t1", script).await;
+    assert_eq!(command, "1");
+
+    // The backend restarts, and holds the take-up its runner's hello asks
+    // for: the job is known only from its records when it calls.
+    let address = backend.address();
+    backend.close().await;
+    let backend = harness.start_at(address).await;
+    let takes_up = backend.hold_hellos(demi_backend_user_shard::holds::HelloStep::TakeUp);
+    backend.until_online(&master, alpha.id(), true).await;
+    std::fs::write(home.join("go"), "").unwrap();
+    until_exists(&home.join("asked")).await;
+    let status = std::fs::read_to_string(home.join("status.txt")).unwrap();
+    assert!(status.starts_with("status: running"), "{status}");
+
+    takes_up.release();
+    std::fs::write(home.join("finish"), "").unwrap();
+    backend.close().await;
+}
+
+// Several seconds: a real device pairs and installs the builtin package,
+// the call waits for two quiet seconds, and the network goes away and
+// comes back.
+#[tokio::test]
+async fn a_medium_a_job_returns_while_its_connection_is_away_reaches_its_end_result() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_file_package();
+    let (backend, master) = harness.start_set_up().await;
+    let network = Network::start(backend.address()).await;
+    let alpha = backend.pair_through(&master, "alpha", &network.url).await;
+    let mut work = on_device(&backend, &master, &vendor, &alpha).await;
+    let home = alpha.runner.home_dir().to_owned();
+    let png = demi_agent_store::testing::png(4, 3, 1).into_bytes();
+    std::fs::write(home.join("shot.png"), &png).unwrap();
+    // The package is installed while the runner is connected.
+    work.turn(vec![shell("t0", "demi file view shot.png > /dev/null", 30_000), say("viewed")])
+        .await;
+    let script = "printf 'waiting\\n'; while [ ! -f go ]; do sleep 0.05; done; demi file view shot.png > /dev/null 2> view.err; touch viewed";
+    let command = started(&mut work, "t1", script).await;
+
+    // The job returns its medium while its runner is away, and ends.
+    network.cut();
+    backend.until_online(&master, alpha.id(), false).await;
+    std::fs::write(home.join("go"), "").unwrap();
+    until_exists(&home.join("viewed")).await;
+    work.script(vec![say("noted")]);
+    network.open();
+    until_requested(&vendor, &format!("Command {command} (t1) ended with exit code 0.")).await;
+    work.socket.until_idle().await;
+
+    // Its end report carries the medium, which the next connection
+    // announced again (`runtime.md` § What a result attaches).
+    let report = format!("Command {command} (t1) ended with exit code 0.");
+    let message = vendor
+        .requests()
+        .iter()
+        .filter_map(|request| {
+            request.json()["messages"]
+                .as_array()?
+                .iter()
+                .find(|message| message.to_string().contains(&report))
+                .cloned()
+        })
+        .next()
+        .expect("a request carries the report");
+    let carried = message.to_string();
+    assert!(carried.contains("\"type\":\"image\""), "{carried}");
+    backend.close().await;
+}
+
+// Several seconds: a real device pairs, the call waits for two quiet
+// seconds, and the network goes away and comes back.
+#[tokio::test]
+async fn an_rpc_call_made_while_the_connection_is_away_waits_for_it_and_is_served() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let network = Network::start(backend.address()).await;
+    let alpha = backend.pair_through(&master, "alpha", &network.url).await;
+    let mut work = on_device(&backend, &master, &vendor, &alpha).await;
+    let home = alpha.runner.home_dir().to_owned();
+    let script = "printf 'started\\n'; while [ ! -f go ]; do sleep 0.05; done; touch calling; demi shell status 1 > status.txt 2>&1; touch asked; while [ ! -f finish ]; do sleep 0.05; done";
+    let command = started(&mut work, "t1", script).await;
+    assert_eq!(command, "1");
+
+    // The job asks the backend about itself while its runner is away: the
+    // call waits, and the connection that comes back serves it
+    // (`runner.md` § Command lifetime).
+    network.cut();
+    backend.until_online(&master, alpha.id(), false).await;
+    std::fs::write(home.join("go"), "").unwrap();
+    until_exists(&home.join("calling")).await;
+    network.open();
+    until_exists(&home.join("asked")).await;
+    let status = std::fs::read_to_string(home.join("status.txt")).unwrap();
+    assert!(status.starts_with("status: running"), "{status}");
+    std::fs::write(home.join("finish"), "").unwrap();
+    backend.close().await;
+}

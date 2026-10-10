@@ -691,6 +691,10 @@ impl LinkPolicy for AdmitsDirectStreams {
         Box::pin(async { Err("no".into()) })
     }
 
+    fn take_up_job(&self, _: String) -> LocalBoxFuture<'static, Result<(), String>> {
+        Box::pin(async { Err("no agent takes jobs up here".into()) })
+    }
+
     fn reserve_numbers(
         &self,
         _: String,
@@ -1696,6 +1700,10 @@ impl LinkPolicy for Refusing {
         Box::pin(async { Err("no".into()) })
     }
 
+    fn take_up_job(&self, _: String) -> LocalBoxFuture<'static, Result<(), String>> {
+        Box::pin(async { Err("no agent takes jobs up here".into()) })
+    }
+
     fn reserve_numbers(
         &self,
         _: String,
@@ -2088,4 +2096,97 @@ async fn a_command_stopped_with_its_call_ends_as_stopped() {
         shell.status(&started.command_id).unwrap().state,
         CommandState::Aborted
     ));
+}
+
+/// After a backend restart, a recorded job the device's runner does not
+/// list is lost for the reason the device's record tells: the runner, still
+/// the same instance, never received it; one of another instance started
+/// anew (`sessions-and-targets.md` § Recovery and persistence). A few
+/// milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_recorded_job_not_listed_after_a_restart_is_lost_for_what_the_record_tells() {
+    for (instance, reason) in [
+        (5, demi_backend_remote_host::NEVER_RECEIVED),
+        (6, demi_backend_remote_host::RUNNER_RESTARTED),
+    ] {
+        let device = device();
+        let job = format!("job-{instance}");
+        let _link = device.connect_hello(
+            None,
+            demi_backend_remote_host::Hello {
+                instance,
+                release: "0".into(),
+                jobs: Vec::new(),
+                last_release: Some("0".into()),
+                last_instance: Some(5),
+                managed: false,
+                recorded: [job.clone()].into(),
+            },
+        );
+        let host = device.host("/work", Admission::Free);
+        let adopted = host.adopt_job(job, Some(test_command_context()), Some(caller()), None);
+        assert_eq!(adopted.end().await.status, ProcessEnd::Lost(reason.into()));
+    }
+}
+
+/// A job the runner lists that the backend has no command for is stopped
+/// with `TERM`, and its exit releases its directory; one that ended
+/// already is released at once (`runner.md` § Command lifetime). A few
+/// milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_job_the_backend_has_no_command_for_is_stopped_and_released() {
+    let device = device();
+    let kept = |job_id: &str, ended: Option<demi_runner_protocol::wire::KeptEnd>| {
+        demi_runner_protocol::wire::KeptJob {
+            job_id: job_id.into(),
+            ended,
+            output: OutputLengths {
+                stdout_bytes: 0,
+                stderr_bytes: 0,
+            },
+            media: 0,
+        }
+    };
+    let ended = demi_runner_protocol::wire::KeptEnd {
+        exit_code: Some(0),
+        signal: None,
+        unreached: false,
+    };
+    let mut link = device.connect_hello(
+        None,
+        demi_backend_remote_host::Hello {
+            instance: 1,
+            release: "0".into(),
+            jobs: vec![kept("stray-running", None), kept("stray-ended", Some(ended))],
+            last_release: Some("0".into()),
+            last_instance: Some(1),
+            managed: false,
+            recorded: Default::default(),
+        },
+    );
+    let sent = drain(&mut link).await;
+    assert!(
+        sent.iter().any(|message| matches!(message,
+            Inbound::JobKill { job_id, signal: Some(demi_runner_protocol::wire::Signal::Terminate) }
+                if job_id == "stray-running")),
+        "{sent:?}"
+    );
+    assert!(
+        sent.iter().any(|message| matches!(message,
+            Inbound::JobRelease { job_id } if job_id == "stray-ended")),
+        "{sent:?}"
+    );
+    assert!(
+        !sent.iter().any(|message| matches!(message,
+            Inbound::JobRelease { job_id } if job_id == "stray-running")),
+        "{sent:?}"
+    );
+
+    link.send(job_exit("stray-running", None, Some("TERM"))).await;
+    let sent = drain(&mut link).await;
+    assert!(
+        sent.iter().any(|message| matches!(message,
+            Inbound::JobRelease { job_id } if job_id == "stray-running")),
+        "{sent:?}"
+    );
 }

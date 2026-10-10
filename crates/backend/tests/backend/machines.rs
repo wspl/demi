@@ -5,7 +5,8 @@
 //! device run one at a time, in arrival order; a device's first wake makes
 //! its storage. It records every call, and a test can hold a reset, fail
 //! one, keep a wake from starting its runner, or kill a runner as a crash
-//! would, which the manager reports as a death to every connection. It
+//! would, which the manager reports as a death to every connection; its
+//! `reconcile` keeps the sandboxes that run, as the real manager's does. It
 //! mounts no image and isolates nothing: a stop clears the runner's state
 //! but its log and its job directories, as a Cloud's `/run/demi` goes with
 //! it while its system image, which holds those two, stays; a reset clears
@@ -344,15 +345,26 @@ async fn connection(stream: UnixStream, shared: Arc<Shared>) {
 async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::Value, String> {
     let json = |value: serde_json::Value| Ok(value);
     match call {
+        // The sandboxes that run stay running, and the manager reports them
+        // (`managed-hosts.md` § Control and ownership).
         MachineCall::Reconcile(_) => {
             shared.record("reconcile".into());
             let devices: Vec<String> = shared.lock().guests.keys().cloned().collect();
+            let mut running = Vec::new();
             for device in devices {
                 let worker = shared.worker(&device);
                 let _turn = worker.acquire().await.unwrap();
-                stop_runner(shared, &device).await;
+                let runs = shared
+                    .lock()
+                    .guests
+                    .get_mut(&device)
+                    .and_then(|guest| guest.runner.as_mut())
+                    .is_some_and(RunnerProcess::running);
+                if runs {
+                    running.push(device);
+                }
             }
-            json(serde_json::Value::Null)
+            json(serde_json::to_value(demi_machine_manager_protocol::Reconciled { running }).unwrap())
         }
         MachineCall::CurrentBaseVersion(_) => json(serde_json::json!(configured_base(shared))),
         MachineCall::ImageState(params) => {
