@@ -1,8 +1,9 @@
 import type { Block } from '@demicodes/protocol'
 
 /**
- * The blocks the transcript shows. The hidden inputs, `context` and `wakeup`,
- * reach the model but never the reader (`runtime.md` § Block types).
+ * The blocks the transcript shows. The hidden input, `context`, reaches the
+ * model but never the reader; a `wakeup` shows as its reports' rows
+ * (`runtime.md` § Block types).
  *
  * A compaction shows where it was triggered: at its marker, appended at the
  * end when the pass finished. Its boundary, which the pass inserted earlier,
@@ -17,7 +18,6 @@ export function getVisibleBlocks(blocks: readonly Block[]): Block[] {
       || block.type === 'response'
       || block.type === 'resume'
       || block.type === 'context'
-      || block.type === 'wakeup'
     ) {
       continue
     }
