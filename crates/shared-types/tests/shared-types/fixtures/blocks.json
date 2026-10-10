@@ -219,7 +219,19 @@
     },
     "turnId": "turn-4",
     "placement": "new_turn",
-    "text": "Command 18 (Build the site) is still running after 5m; no output for 4m50s."
+    "reports": [
+      {
+        "commandId": "18",
+        "title": "Build the site",
+        "event": {
+          "kind": "running",
+          "runningMs": 300000,
+          "idleMs": 290000,
+          "intervalMs": 300000
+        },
+        "output": ""
+      }
+    ]
   },
   {
     "type": "wakeup",
@@ -280,7 +292,38 @@
     },
     "turnId": "turn-4",
     "placement": "steer",
-    "text": "Command 17 (Run the tests) ended with exit code 1; look at it with demi shell status 17."
+    "reports": [
+      {
+        "commandId": "17",
+        "title": "Run the tests",
+        "event": {
+          "kind": "ended",
+          "exitCode": 1
+        },
+        "output": "FAIL auth.test.ts"
+      },
+      {
+        "commandId": "19",
+        "title": "Start the dev server",
+        "event": {
+          "kind": "stopped",
+          "by": {
+            "kind": "agent",
+            "number": 2
+          }
+        },
+        "output": ""
+      },
+      {
+        "commandId": "20",
+        "title": "",
+        "event": {
+          "kind": "lost",
+          "reason": "its Host's connection ended"
+        },
+        "output": ""
+      }
+    ]
   },
   {
     "type": "steer",
