@@ -496,6 +496,21 @@ or a subagent ends, the work it waits for wakes it.
   the queue or among the pending steers, and a running call's window ends
   when one arrives ([The window](#the-window)). A report moves the model's
   place in the command's output as a look does.
+- **What the user sees.** The transcript shows each report as a row where
+  its block lies, as an agent message shows as its receipt row, so a reply
+  the agent writes after it never appears without its cause, as Claude Code
+  shows a line when a background task ends. The row names the call's title
+  and what happened, in the user's words: *Run the test suite ended with exit
+  code 1*, *Start the dev server was stopped by you*, *Run the test suite is
+  still running*; a failure, a stop and a loss carry the same tag a shell row
+  carries ([Rendering boundary](#rendering-boundary)), and a click opens the
+  command's terminal tab. So the block holds each report as data, its
+  `commandId`, the call's `title` and its `event` (`running`, `ended` with
+  its exit code, `stopped` with who stopped it, or `lost` with its reason),
+  and the text the model reads is rendered from them in one place, never
+  stored beside them. A report that carries media shows them under its row,
+  as a call's result does
+  ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
 - **Waiting is ending the turn.** A model that has nothing left to do but
   wait for a command or a subagent ends its turn, with a reply that says
   what it waits for, since the user reads only what the model wrote. The
@@ -1172,7 +1187,7 @@ Words used for session data:
 | --- | --- | --- | --- |
 | `user` | A send or an edit: the submitted content and, for a subagent, its identity (`preamble`, [Child context](subagents.md#child-context)) | A user message: the preamble, then the content | Yes; the only editable block ([Message editing](message-editing.md)) |
 | `context` | The session before a provider request, with the text one context source answered ([Context](#context)), the source's name (`source`), and for the instructions source the list of what the text holds (`instructions`, [What the card lists](instructions.md#what-the-card-lists)) | A user message with its text | No |
-| `wakeup` | Command reports that arrived together, with the placement `new_turn` or `steer` | The reports' text, as a user message or as a steer | No |
+| `wakeup` | Command reports that arrived together, with the placement `new_turn` or `steer`: each report's command, its call's title and what it reports | The reports' text, as a user message or as a steer | As a report row ([Command reports](#command-reports)) |
 | `steer` | A human steer, at a continuation boundary | A steer in the current turn | Yes |
 | `agent_message` | Another agent of the tree ([Communication](subagents.md#communication)) | A steer holding the message's source envelope | As a receipt row |
 | `resume` | A turn continuing after a cut: `resume`, compaction inside a turn, or a model switch that landed inside a turn and compacted | A user message: "Continue from where you left off." | No |
@@ -1507,6 +1522,9 @@ Renderers read them directly; there is no separate render model.
    `shell_exec` call became a `shell` call when its conversation's database
    was migrated, since `shell` is what it became
    ([Schemas and migrations](../backend/storage.md#schemas-and-migrations)).
+   A stored wakeup of a yield became what it stood for: one a command's end
+   fired, that command's report, titled by its call's `description`; one its
+   time fired, a `resume` block, since all it told the model was to go on.
 4. The generic tool card is only for a tool name the runtime does not have. A
    model can request one; its call then ends with `Tool not found`.
 5. The renderers live in `web-ui`. `web` and `web-gallery` feed them the same
@@ -1548,16 +1566,13 @@ Live frames add to the transcript; they do not replace it:
   replace the `tool_call` rendering.
 
 A patch replaces a block at its index, and renderers key blocks by their id,
-so an update never shows a second record. Renderers tell shell execution,
-a look at a command, with or without input, and waiting apart by tool
-name and input. A look or a wait without a `description` takes the title of
-the command it names, never a bare number: *Check* or *Wait for* and then
-the command's title with a dotted underline, as a reference, *Check
-Run the test suite*. Clicking the underlined title scrolls the transcript to
-that command's call and highlights it for a moment, as a chat app jumps to a
-quoted message; a command of another agent's transcript is named the same
-way, without the underline or the jump. A title too long for its row is cut
-at the end with an ellipsis. Every shell row, a run or a look,
+so an update never shows a second record. Renderers title a `shell` call by its
+`description`, which the tool requires; a title too long for its row is cut
+at the end with an ellipsis. A call whose script only looks at commands with
+`demi shell status` counts in its work group as a check
+([Work groups](#work-groups)). A call of a tool the request no longer
+declares, such as a stored `yield` or `shell_status`, shows as the generic
+tool card. Every shell row, a run or a look,
 marks how its command ended the same way, and only when something went
 wrong: a small tag after its title, the gallery's `Tag`, red *Failed* for an
 exit code other than 0, grey *Stopped* for a stopped command, with the exit
@@ -1754,7 +1769,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | `steer_result` | The steer id and an `outcome`: `{ status: "accepted" }` or `{ status: "rejected", reason }` |
 | `edit_result` | The operation id and an `outcome`: `{ status: "accepted", turnId }` or `{ status: "rejected", reason }` |
 | `abort_result` | What was stopped, and whether another `abort` would stop more |
-| `shell_output` | A command's live view ([Live output](#live-output)): `subagentId` when the command is a subagent's, and its `status`: `running`, `exited` with the `exitCode`, or `aborted`, each with the `commandId`, the `toolUseId` of the `shell_exec` call that started it, the `tail` and `chars` of the pages' view, and `runningMs` |
+| `shell_output` | A command's live view ([Live output](#live-output)): `subagentId` when the command is a subagent's, and its `status`: `running`, `exited` with the `exitCode`, or `aborted`, each with the `commandId`, the `toolUseId` of the `shell` call that started it, the `tail` and `chars` of the pages' view, and `runningMs` |
 | `shell_write_result` | The command id |
 | `pending_calls` | The calls the model is writing, each `{ toolUseId, toolName, description }`, `description` null until written, and `subagentId` when they are a subagent's ([Calls being written](#calls-being-written)) |
 | `retry_scheduled` | The attempt, the delay in milliseconds, the code and the diagnostics of a failure being retried ([Retries](failures-and-recovery.md#retries)) |
