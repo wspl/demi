@@ -32,7 +32,7 @@ use demi_agent_session::{
 use demi_agent_store::{AgentTreeStore, RunningCommand};
 use demi_host_interface::{
     CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller, Numbers,
-    PageFeed, ShellEnvironment, ShellError,
+    PageFeed, ShellEnvironment, ShellError, TakenUp,
 };
 use demi_command_protocol::Viewable;
 use demi_provider_common::ToolDefinition;
@@ -47,7 +47,7 @@ pub use input::{INTERVAL_CAP_MS, INTERVAL_FLOOR_MS, taken_interval};
 use input::{ShellInput, parse};
 pub use reports::{EndOf, end_report, fill_output, progress_report};
 pub use demi_agent_transcript::duration;
-pub use result::{Look, look_text, report_media, whole_look_text, whole_status};
+pub use result::{Look, look_text, report_media, report_output, whole_look_text, whole_status};
 pub use product::{
     ContextAnswer, ContextSource, HostResolver, NodeContext, Profile, ProfileModel, SubagentSettings,
     SubagentSource, Toolset, ToolsetSource, Unavailable,
@@ -283,6 +283,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
                 note: note.as_deref(),
                 sent_now: ended_by == Some(WindowEnd::SentNow),
                 interval_ms: Some(interval_ms),
+                unreachable: environment.unreachable(&command),
             },
         )
         .await;
@@ -307,18 +308,21 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     }
 
     /// Takes up `running`, a command the node ran that the conversation
-    /// records running, in the node's environment for the conversation's
-    /// current Host (`sessions-and-targets.md` § Recovery and persistence).
-    pub async fn adopt(&self, running: &RunningCommand) -> Result<(), CallError> {
+    /// records running and that started `ran` ago, in the node's
+    /// environment for the conversation's current Host
+    /// (`sessions-and-targets.md` § Recovery and persistence).
+    pub async fn adopt(&self, running: &RunningCommand, ran: Duration) -> Result<(), CallError> {
         let (_, environment) = self.environment(Handle::None).await?;
-        environment.adopt(
-            &running.command,
-            &running.tool_use_id,
-            &running.job,
-            JobCaller {
+        environment.adopt(TakenUp {
+            command: running.command.clone(),
+            tool_use_id: running.tool_use_id.clone(),
+            job: running.job.clone(),
+            caller: JobCaller {
                 node: self.context.node.clone(),
             },
-        );
+            running: ran,
+            seen: running.place,
+        });
         Ok(())
     }
 

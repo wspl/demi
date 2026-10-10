@@ -110,6 +110,16 @@ pub trait SessionRuntime {
         false
     }
 
+    /// The output of `command` since the node's last look, as a result shows
+    /// it within `budget` characters, which moves the node's place in it:
+    /// what the result of a call that something other than its tool ended
+    /// shows of the command it watched (`runtime.md` § Interrupted calls).
+    /// None when the node's shells do not hold the command, and by default.
+    fn unseen_output(&self, command: &CommandId, budget: usize) -> Option<String> {
+        let _ = (command, budget);
+        None
+    }
+
     /// Whether a look of the node at `command` runs now, such as a `demi
     /// shell status --wait` that waits for its end: the command's end report
     /// then ends no window, since the look shows the end itself

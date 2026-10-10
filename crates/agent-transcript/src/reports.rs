@@ -42,8 +42,17 @@ pub fn report_text(report: &CommandReport) -> String {
     let command = &report.command_id;
     let headline = match &report.event {
         ReportEvent::Running {
+            unreachable: Some(unreachable),
+            ..
+        } => format!(
+            "{named} is still running, as far as Demi knows: its Host has been unreachable for {}, and its runner keeps the command for up to {}.",
+            duration(unreachable.away_ms),
+            duration(unreachable.grace_ms),
+        ),
+        ReportEvent::Running {
             running_ms,
             idle_ms,
+            unreachable: None,
             ..
         } => format!(
             "{named} is still running after {}; no output for {}.",
@@ -65,12 +74,7 @@ pub fn report_text(report: &CommandReport) -> String {
             format!("{named} was lost: {reason}. Start it again if it is still needed.")
         }
     };
-    let output = if report.output.is_empty() {
-        "output: (empty)".to_owned()
-    } else {
-        format!("output:\n{}", report.output)
-    };
-    let mut lines = vec![headline, output];
+    let mut lines = vec![headline, labelled_output(&report.output)];
     if let ReportEvent::Running { interval_ms, .. } = report.event {
         lines.push(format!(
             "It reports every {}; change that with demi shell status {command} --interval <duration>, or with --resident to hear only of its end.",
@@ -78,6 +82,16 @@ pub fn report_text(report: &CommandReport) -> String {
         ));
     }
     lines.join("\n")
+}
+
+/// A command's output after the lines that say what became of it, as a
+/// report or a result shows it: labelled, or said to be empty.
+pub fn labelled_output(output: &str) -> String {
+    if output.is_empty() {
+        "output: (empty)".to_owned()
+    } else {
+        format!("output:\n{output}")
+    }
 }
 
 /// The command as a report names it: `Command 17 (Run the test suite)`, or

@@ -221,6 +221,11 @@ impl Environments {
         self.places.borrow().get(command).copied().unwrap_or_default()
     }
 
+    /// The node's place in `command`'s whole output, when it has one.
+    pub fn known_place(&self, command: &CommandId) -> Option<Seen> {
+        self.places.borrow().get(command).copied()
+    }
+
     /// Moves the node's place in `command`'s whole output to `seen`.
     pub fn set_place(&self, command: &CommandId, seen: Seen) {
         self.places.borrow_mut().insert(command.clone(), seen);
@@ -361,8 +366,12 @@ mod tests {
             Err(ShellError::UnknownCommand(command.clone()))
         }
 
-        fn outliving(&self, command: &CommandId) -> Result<Vec<String>, ShellError> {
-            Err(ShellError::UnknownCommand(command.clone()))
+        fn outliving(&self, _: &CommandId) -> Vec<String> {
+            Vec::new()
+        }
+
+        fn unreachable(&self, _: &CommandId) -> Option<demi_shared_types::Unreachable> {
+            None
         }
 
         fn media(
@@ -402,7 +411,7 @@ mod tests {
             Box::pin(async { false })
         }
 
-        fn adopt(&self, _: &CommandId, _: &str, _: &str, _: demi_host_interface::JobCaller) {
+        fn adopt(&self, _: demi_host_interface::TakenUp) {
             unreachable!("the environments take up no command")
         }
 
