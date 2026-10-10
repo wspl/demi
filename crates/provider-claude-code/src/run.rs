@@ -199,10 +199,12 @@ fn run(
                         live.close().await;
                         return;
                     }
+                    // The output ended before the `result` line that says the
+                    // reply is complete: the process's own failure, else a
+                    // reply cut short.
                     Next::End => {
-                        if let Some(failure) = live.end().await {
-                            yield ProviderEvent::Error(failure);
-                        }
+                        let failure = live.end().await.unwrap_or_else(ProviderFailure::cut_short);
+                        yield ProviderEvent::Error(failure);
                         return;
                     }
                     // A call that opens before the model's message streamed is
