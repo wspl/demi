@@ -28,6 +28,17 @@ use super::{gone_text, latest_answer, replay_start};
 /// What the model receives for a `resume` block.
 pub const RESUME_TEXT: &str = "Continue from where you left off.";
 
+/// What the model reads of `resume`: [`RESUME_TEXT`], or, when Demi resumed
+/// the turn, why (`failures-and-recovery.md` § The unfinished turn).
+pub fn resume_text(resume: &demi_shared_types::ResumeBlock) -> String {
+    match &resume.reason {
+        Some(reason) => {
+            format!("Demi resumed this turn after {reason}; continue from where you left off.")
+        }
+        None => RESUME_TEXT.to_owned(),
+    }
+}
+
 /// The scalar values a replayed text keeps from its start, and from its end,
 /// when it is longer than both together.
 const HEAD_CHARS: usize = 8_000;
@@ -103,8 +114,8 @@ pub fn replay(request: &RequestView) -> Replay {
             Block::AgentMessage(receipt) => items.push(InferenceItem::UserSteer {
                 content: vec![UserPart::Text(agent_message_envelope(&receipt.message))],
             }),
-            Block::Resume(_) => items.push(InferenceItem::UserMessage {
-                content: vec![UserPart::Text(RESUME_TEXT.to_owned())],
+            Block::Resume(resume) => items.push(InferenceItem::UserMessage {
+                content: vec![UserPart::Text(resume_text(resume))],
             }),
             Block::Thinking(thinking) => {
                 // The vendor verifies signed reasoning as it was sent.

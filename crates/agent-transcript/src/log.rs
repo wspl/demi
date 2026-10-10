@@ -177,14 +177,16 @@ impl TranscriptLog {
         }));
     }
 
-    /// The turn continues after a cut.
-    pub fn push_resume(&mut self, turn_id: TurnId, model: &ModelSelection) {
+    /// The turn continues after a cut; `reason` says what made Demi resume
+    /// it, none when the user did.
+    pub fn push_resume(&mut self, turn_id: TurnId, model: &ModelSelection, reason: Option<String>) {
         let (id, created_at) = self.stamp();
         self.append(Block::Resume(ResumeBlock {
             id,
             turn_id,
             created_at,
             model: model.clone(),
+            reason,
             entries: Vec::new(),
         }));
     }
