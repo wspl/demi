@@ -150,18 +150,24 @@ fn message(completion: &Completion) -> &str {
     &completion.error.as_ref().unwrap().message
 }
 
-/// SEARCH/REPLACE blocks replace whole lines found exactly once, all
-/// together or none, in the file's own line endings.
+/// A block's SEARCH is text found exactly once anywhere in the file, part
+/// of a line included; every block applies together or none does, in the
+/// file's own line endings, and an error names the file by its full path.
 #[tokio::test]
-async fn search_replace_blocks_replace_lines_found_once_all_together() {
+async fn search_replace_blocks_replace_text_found_once_all_together() {
     tokio::time::timeout(Duration::from_secs(15), async {
         let (root, service) = service_with(&[
             ("twice.txt", "start\nrepeat\nmiddle\nrepeat\nend\n"),
             ("two.txt", "alpha\nbeta\ngamma\ndelta\n"),
             ("crlf.txt", "one\r\ntwo\r\nthree\r\n"),
+            ("call.ts", "const limit = withinLimit(5000);\nexport { withinLimit };\n"),
+            ("runs.txt", "x\nx\nx\n"),
         ])
         .await;
         let cwd = root.path().to_str().unwrap();
+        // The parent directory as the system resolves it: on macOS a
+        // temporary directory under /var is /private/var.
+        let full = |name: &str| std::fs::canonicalize(root.path()).unwrap().join(name).display().to_string();
         let read = |name: &str| std::fs::read_to_string(root.path().join(name)).unwrap();
         let edit = |path: &str, blocks: &str| {
             call(
@@ -172,35 +178,117 @@ async fn search_replace_blocks_replace_lines_found_once_all_together() {
             )
         };
 
-        // A SEARCH that matches two places names both, and changes nothing.
+        // A SEARCH that occurs twice names the line of each, and changes
+        // nothing.
         let (result, _, _) = edit("twice.txt", "<<<<<<< SEARCH\nrepeat\n=======\nonce\n>>>>>>> REPLACE\n").await;
         assert_eq!(result.exit_code, 1);
-        assert!(message(&result).contains("twice.txt, block 1: its SEARCH matches at line 2 and line 4"), "{}", message(&result));
+        assert_eq!(
+            message(&result),
+            format!("{}: block 1: its SEARCH occurs 2 times, at lines 2 and 4; include more of the text around it so it occurs once, and nothing was written", full("twice.txt"))
+        );
         assert_eq!(read("twice.txt"), "start\nrepeat\nmiddle\nrepeat\nend\n");
 
-        // A second block that matches nowhere names itself and the closest
-        // lines, and the first block's change is not made either.
+        // A second block that is not in the file names itself and the
+        // closest lines, and the first block's change is not made either.
         let failing = "<<<<<<< SEARCH\nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n\n<<<<<<< SEARCH\ngamma\ndelto\n=======\n>>>>>>> REPLACE\n";
         let (result, _, _) = edit("two.txt", failing).await;
         assert_eq!(result.exit_code, 1);
-        assert!(message(&result).contains("two.txt, block 2: its SEARCH matches no lines"), "{}", message(&result));
-        assert!(message(&result).contains("lines 3-4:\n3: gamma\n4: delta"), "{}", message(&result));
+        assert_eq!(
+            message(&result),
+            format!("{}: block 2: its SEARCH is not in the file; a SEARCH must match the file's text exactly, whitespace included, and nothing was written. The closest lines are 3-4:\n3: gamma\n4: delta", full("two.txt"))
+        );
         assert_eq!(read("two.txt"), "alpha\nbeta\ngamma\ndelta\n");
 
         // Two blocks apply together, each against the file as it was; an
-        // empty REPLACE deletes its lines, and a marker may carry trailing
-        // spaces.
+        // empty REPLACE deletes its lines with their line endings, and a
+        // marker may carry trailing spaces.
         let both = "<<<<<<< SEARCH  \nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n<<<<<<< SEARCH\ngamma\ndelta\n======= \n>>>>>>> REPLACE \n";
         let (result, output, _) = edit("two.txt", both).await;
         assert_eq!(result.exit_code, 0, "{result:?}");
         assert_eq!(String::from_utf8(output).unwrap(), "Edited two.txt (+1 \u{2212}3)\n   1  ALPHA\n   2  beta\n");
         assert_eq!(read("two.txt"), "ALPHA\nbeta\n");
 
-        // A file with CRLF line endings keeps them, though the blocks come
-        // with LF.
-        let (result, _, _) = edit("crlf.txt", "<<<<<<< SEARCH\ntwo\n=======\n2a\n2b\n>>>>>>> REPLACE\n").await;
+        // Part of a line changes only that part.
+        let (result, _, _) = edit("call.ts", "<<<<<<< SEARCH\nwithinLimit(\n=======\nboundedWait(\n>>>>>>> REPLACE\n").await;
         assert_eq!(result.exit_code, 0, "{result:?}");
-        assert_eq!(read("crlf.txt"), "one\r\n2a\r\n2b\r\nthree\r\n");
+        assert_eq!(read("call.ts"), "const limit = boundedWait(5000);\nexport { withinLimit };\n");
+
+        // Overlapping occurrences count as one: the first is replaced.
+        let (result, _, _) = edit("runs.txt", "<<<<<<< SEARCH\nx\nx\n=======\ny\n>>>>>>> REPLACE\n").await;
+        assert_eq!(result.exit_code, 0, "{result:?}");
+        assert_eq!(read("runs.txt"), "y\nx\n");
+
+        // A file with CRLF line endings matches a SEARCH across its lines
+        // and keeps its endings, though the blocks come with LF.
+        let (result, _, _) = edit("crlf.txt", "<<<<<<< SEARCH\ntwo\nthree\n=======\n2a\n2b\n>>>>>>> REPLACE\n").await;
+        assert_eq!(result.exit_code, 0, "{result:?}");
+        assert_eq!(read("crlf.txt"), "one\r\n2a\r\n2b\r\n");
+
+        // A file that does not exist is named by its full path, as the
+        // system words it: its parent resolved when it exists, `..`
+        // included, or else the path as joined to the working directory.
+        std::fs::create_dir(root.path().join("sub")).unwrap();
+        let (result, _, _) = edit("sub/../absent.txt", "<<<<<<< SEARCH\nx\n=======\ny\n>>>>>>> REPLACE\n").await;
+        assert_eq!(result.exit_code, 1);
+        assert_eq!(message(&result), format!("{}: No such file or directory", full("absent.txt")));
+        let (result, _, _) = edit("nodir/absent.txt", "<<<<<<< SEARCH\nx\n=======\ny\n>>>>>>> REPLACE\n").await;
+        assert_eq!(
+            message(&result),
+            format!("{}: No such file or directory", root.path().join("nodir/absent.txt").display())
+        );
+        assert!(service.shutdown().await.unwrap().success());
+    })
+    .await
+    .unwrap();
+}
+
+/// What deletes a line ending and what does not: only a SEARCH of whole
+/// lines with no REPLACE lines at all takes its last one; a REPLACE of one
+/// blank line leaves one, a SEARCH of blank lines alone is refused, and
+/// `--old` fails as a block does.
+#[tokio::test]
+async fn deletions_keep_lines_apart_and_old_fails_as_blocks_do() {
+    tokio::time::timeout(Duration::from_secs(15), async {
+        let (root, service) = service_with(&[
+            ("note.js", "x(); // note\nnext\n"),
+            ("blank.txt", "a\nb\nc\n"),
+            ("gaps.txt", "a\n\n\nb\n\n\nc\n"),
+            ("old.txt", "alpha\nbeta\nbeta\n"),
+        ])
+        .await;
+        let cwd = root.path().to_str().unwrap();
+        let full = |name: &str| std::fs::canonicalize(root.path()).unwrap().join(name).display().to_string();
+        let read = |name: &str| std::fs::read_to_string(root.path().join(name)).unwrap();
+        let edit = |args: serde_json::Value| call(service.client(), cwd, "file.edit", args);
+
+        // The end of a line, deleted, leaves the line and the next apart.
+        let (result, _, _) = edit(serde_json::json!({"path": "note.js", "blocks": "<<<<<<< SEARCH\n // note\n=======\n>>>>>>> REPLACE\n"})).await;
+        assert_eq!(result.exit_code, 0, "{result:?}");
+        assert_eq!(read("note.js"), "x();\nnext\n");
+
+        // A REPLACE of one blank line leaves a blank line.
+        let (result, _, _) = edit(serde_json::json!({"path": "blank.txt", "blocks": "<<<<<<< SEARCH\nb\n=======\n\n>>>>>>> REPLACE\n"})).await;
+        assert_eq!(result.exit_code, 0, "{result:?}");
+        assert_eq!(read("blank.txt"), "a\n\nc\n");
+
+        // Blank lines alone name no one place.
+        let (result, _, _) = edit(serde_json::json!({"path": "gaps.txt", "blocks": "<<<<<<< SEARCH\n\n\n=======\n>>>>>>> REPLACE\n"})).await;
+        assert_eq!(
+            message(&result),
+            format!("{}: block 1: its SEARCH holds only blank lines, which match too many places; include a line of text around it, and nothing was written", full("gaps.txt"))
+        );
+
+        let (result, _, _) = edit(serde_json::json!({"path": "old.txt", "old": "betta", "new": "x"})).await;
+        assert_eq!(
+            message(&result),
+            format!("{}: --old is not in the file; it must match the file's text exactly, whitespace included, and nothing was written. The closest line is 2:\n2: beta", full("old.txt"))
+        );
+        let (result, _, _) = edit(serde_json::json!({"path": "old.txt", "old": "beta", "new": "x"})).await;
+        assert_eq!(
+            message(&result),
+            format!("{}: --old occurs 2 times, at lines 2 and 3; choose one with --occurrence or --context, or include more of the text, and nothing was written", full("old.txt"))
+        );
+        assert_eq!(read("old.txt"), "alpha\nbeta\nbeta\n");
         assert!(service.shutdown().await.unwrap().success());
     })
     .await
@@ -237,7 +325,7 @@ async fn one_edit_changes_several_files_together_or_none() {
         // message names the file and its block.
         let (result, _, _) = edit(three("absent();")).await;
         assert_eq!(result.exit_code, 1);
-        assert!(message(&result).starts_with("c.rs, block 1: its SEARCH matches no lines."), "{}", message(&result));
+        assert!(message(&result).starts_with(&format!("{}: block 1: its SEARCH is not in the file;", std::fs::canonicalize(root.path()).unwrap().join("c.rs").display())), "{}", message(&result));
         assert_eq!(read("a.txt"), None);
         assert_eq!(read("b.txt").unwrap(), "one\n");
 
@@ -260,7 +348,7 @@ async fn one_edit_changes_several_files_together_or_none() {
         // An empty SEARCH never overwrites a file that exists.
         let (result, _, _) = edit("b.txt\n<<<<<<< SEARCH\n=======\nreplaced\n>>>>>>> REPLACE\n".into()).await;
         assert_eq!(result.exit_code, 1);
-        assert!(message(&result).starts_with("b.txt, block 1: the file exists"), "{}", message(&result));
+        assert!(message(&result).starts_with(&format!("{}: block 1: the file exists", std::fs::canonicalize(root.path()).unwrap().join("b.txt").display())), "{}", message(&result));
         assert_eq!(read("b.txt").unwrap(), "one\ntwo\n");
         assert!(service.shutdown().await.unwrap().success());
     })
@@ -283,11 +371,14 @@ async fn a_section_keeps_its_lines_and_matches_one_place() {
         assert_eq!(result.exit_code, 1);
         assert_eq!(
             message(&result),
-            "twice.rs, block 1: its REPLACE has 2 ....... line(s); it needs none, to replace the whole match, or 1, one for each in its SEARCH"
+            format!(
+                "{}: block 1: its REPLACE has 2 ....... line(s); it needs none, to replace the whole match, or 1, one for each in its SEARCH",
+                std::fs::canonicalize(root.path()).unwrap().join("twice.rs").display()
+            )
         );
         let (result, _, _) = edit("<<<<<<< SEARCH\nfn a() {\n.......\n}\n=======\nfn b() {\n.......\n}\n>>>>>>> REPLACE\n").await;
         assert_eq!(result.exit_code, 1);
-        assert!(message(&result).contains("matches at lines 1-3 and lines 4-6"), "{}", message(&result));
+        assert!(message(&result).contains("block 1: its SEARCH occurs 2 times, at lines 1 and 4;"), "{}", message(&result));
         assert_eq!(std::fs::read_to_string(root.path().join("twice.rs")).unwrap(), twice);
         assert!(service.shutdown().await.unwrap().success());
     })
