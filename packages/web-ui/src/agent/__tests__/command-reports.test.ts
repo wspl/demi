@@ -1,23 +1,26 @@
 import { expect, test } from 'bun:test'
 import type { CommandReport } from '@demicodes/protocol'
-import { reportMark, reportSentence } from '../command-reports'
+import { reportMark, reportOutcome, reportTitle } from '../command-reports'
 
 // Cost: pure, a few milliseconds for the file.
 
 const report = (event: CommandReport['event'], title = 'Run the test suite'): CommandReport =>
   ({ commandId: '17', title, event, output: '' })
 
-test('a report row reads the call title and what happened, in the user words', () => {
-  expect(reportSentence(report({ kind: 'running', runningMs: 300_000, idleMs: 0, intervalMs: 300_000 })))
-    .toBe('Run the test suite is still running')
-  expect(reportSentence(report({ kind: 'ended', exitCode: 1 }))).toBe('Run the test suite ended with exit code 1')
-  expect(reportSentence(report({ kind: 'ended', exitCode: 0 }))).toBe('Run the test suite ended')
-  expect(reportSentence(report({ kind: 'stopped', by: { kind: 'user' } }, 'Start the dev server')))
-    .toBe('Start the dev server was stopped by you')
-  expect(reportSentence(report({ kind: 'stopped', by: { kind: 'agent', number: 2 } }))).toBe('Run the test suite was stopped by another agent')
-  expect(reportSentence(report({ kind: 'lost', reason: 'its Host’s connection ended' }))).toBe('Run the test suite was lost')
+test('a report row names the call and, set apart from it, what happened, in the user words', () => {
+  // A title is an imperative: joined into one sentence it read wrongly,
+  // "Restart the end-to-end suite is still running".
+  const row = (r: CommandReport) => [reportTitle(r), reportOutcome(r)]
+  expect(row(report({ kind: 'running', runningMs: 300_000, idleMs: 0, intervalMs: 300_000 }, 'Restart the end-to-end suite')))
+    .toEqual(['Restart the end-to-end suite', 'still running'])
+  expect(row(report({ kind: 'ended', exitCode: 1 }))).toEqual(['Run the test suite', 'ended with exit code 1'])
+  expect(row(report({ kind: 'ended', exitCode: 0 }))).toEqual(['Run the test suite', 'ended'])
+  expect(row(report({ kind: 'stopped', by: { kind: 'user' } }, 'Start the dev server')))
+    .toEqual(['Start the dev server', 'stopped by you'])
+  expect(reportOutcome(report({ kind: 'stopped', by: { kind: 'agent', number: 2 } }))).toBe('stopped by another agent')
+  expect(reportOutcome(report({ kind: 'lost', reason: 'its Host’s connection ended' }))).toBe('lost')
   // A call whose title is not known: the command by its number.
-  expect(reportSentence(report({ kind: 'ended', exitCode: 1 }, ''))).toBe('Command 17 ended with exit code 1')
+  expect(reportTitle(report({ kind: 'ended', exitCode: 1 }, ''))).toBe('Command 17')
 })
 
 test('a failure, a stop and a loss carry the tag a shell row carries; progress and success carry none', () => {
