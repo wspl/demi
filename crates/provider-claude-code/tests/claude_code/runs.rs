@@ -395,7 +395,7 @@ async fn a_process_that_ends_is_reported_by_its_status_and_the_next_request_star
     );
     assert_eq!(
         (failure(&events[0]).message.as_str(), &failure(&events[0]).code),
-        ("The provider's stream ended before the reply was complete", &Some(demi_provider_common::ErrorCode::Network))
+        ("The provider's stream ended before the reply was complete", &Some(demi_provider_common::ErrorCode::Overloaded))
     );
 
     // A nonzero exit is the tail of standard error, else its code.
