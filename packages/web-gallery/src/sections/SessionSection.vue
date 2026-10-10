@@ -497,9 +497,9 @@ function agentOpens(show: boolean) {
   void panelWork.agentOpens(show ? 'https://example.test/orders' : 'https://example.test/docs', show)
 }
 /** The session's messages reach the gallery workspace: images from its fixtures, files opened in the frame's panel. */
-const sessionFiles = galleryConversationFiles(workspace.source, (path) => {
-  panelWork.openIn({ intent: 'file', payload: { path } })
-  panelAsideOpen.value = true
+const sessionFiles = galleryConversationFiles(workspace.source, (path, clicks) => {
+  // From the session page, which shows no panel, a click only opens the frame's.
+  panelWork.openIn({ intent: 'file', payload: { path } }, view.value === 'panel' ? clicks : undefined)
   view.value = 'panel'
 })
 // The tabs specimen starts on an empty strip, with the globe-plus add control.
@@ -2214,8 +2214,13 @@ onBeforeUnmount(() => {
           </GalleryEditSelection>
         </GallerySpecimen>
       </GallerySection>
-      <div class="h-[480px] overflow-hidden rounded-lg border border-line">
-        <GalleryWorkPanel :work="editWork" />
+      <!-- The panel the pills above open; a click on what it already shows closes it, as in the product. -->
+      <div v-if="editWork.open.value" class="h-[480px] overflow-hidden rounded-lg border border-line">
+        <GalleryWorkPanel :work="editWork" @close="editWork.open.value = false" />
+      </div>
+      <div v-else class="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2 text-sm text-fg-muted">
+        <span>The work panel is closed. A pill above opens it again.</span>
+        <Button size="sm" @click="editWork.open.value = true">Open Panel</Button>
       </div>
       <GallerySection
         title="Changed Files"
@@ -2715,7 +2720,7 @@ onBeforeUnmount(() => {
                 :reveal="frameReveal"
                 @revealed="frameReveal = null"
                 :aside-open="panelAsideOpen"
-                :select-edit="(selection) => { panelWork.selectEdit(selection); panelAsideOpen = true }"
+                :select-edit="panelWork.selectEdit"
                 :files="sessionFiles"
                 @open-aside="panelAsideOpen = true"
                 :pending-submission="sessionFlow.pendingSubmission.value"
@@ -2998,7 +3003,7 @@ onBeforeUnmount(() => {
       <ChatSession
         :conversation="session"
         has-provider
-        :select-edit="(selection) => { panelWork.selectEdit(selection); panelAsideOpen = true; view = 'panel' }"
+        :select-edit="(selection) => { panelWork.selectEdit(selection); view = 'panel' }"
         :files="sessionFiles"
         :edit-version="editVersion"
         :permission-requests="sessionRequests"

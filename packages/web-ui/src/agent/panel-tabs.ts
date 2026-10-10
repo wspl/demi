@@ -1,4 +1,5 @@
 import { activeTab, closeTabs } from './tab-close'
+import { dataChanges } from './panel-changes'
 import type { PanelTabKind } from './panel-kinds/kind'
 import { intentKind, type AnyPluginPage, type PanelKind, type PanelSession } from '../plugins/page'
 import type { IntentRequest } from '../plugins/intents'
@@ -33,7 +34,7 @@ export interface PanelState {
 export type PinnedTabs = Readonly<Record<string, unknown>>
 
 /** The data the pinned tab of `kind` shows. */
-export function pinnedData(pinned: PinnedTabs, kind: PanelTabKind): unknown {
+export function pinnedData(pinned: PinnedTabs, kind: Pick<PanelTabKind, 'kind' | 'pinned'>): unknown {
   return Object.hasOwn(pinned, kind.kind) ? pinned[kind.kind] : kind.pinned?.data()
 }
 
@@ -42,37 +43,92 @@ export function pinnedData(pinned: PinnedTabs, kind: PanelTabKind): unknown {
  * tab the page shows, so a closed tab gives way to the one selected before
  * it, else its first pinned tab, else its first tab, else nothing.
  */
-export function shownSelection(state: PanelState, kinds: readonly PanelTabKind[]): string | null {
+export function shownSelection(state: PanelState, kinds: readonly Pick<PanelTabKind, 'kind' | 'pinned'>[]): string | null {
   const pinned = kinds.filter((kind) => kind.pinned).map((kind) => kind.kind)
   return activeTab([...pinned, ...state.tabs.map((tab) => tab.id)], state.history)
 }
 
+/** A conversation's work panel as a page shows it: whether it is open, its tabs and selection, and its pinned tabs' data. */
+export interface ShownPanel {
+  open: boolean
+  panel: PanelState
+  pinned: PinnedTabs
+}
+
 /**
- * What opening `intent` does (`plugin-pages.md` § Intents): the first kind of
- * a page the user has on that opens it shows the data it returns, in its
- * pinned tab, whose data `pinned` then holds, or in a tab it creates; either
- * takes the selection. Null when no such kind opens the intent.
+ * What opening an intent does: close the panel, or open it on the kind's
+ * tab, which takes the selection, its data `pinned` then holds for a
+ * pinned kind, or a tab `created` for it.
+ */
+export type IntentOutcome =
+  | { action: 'close' }
+  | { action: 'open'; selection: string; pinned: PinnedTabs; created: PanelTab | null }
+
+/**
+ * What opening `request` does (`plugin-pages.md` § Intents), from a
+ * control's click when `clicks`, the click's `detail`, is given. The first
+ * kind of a page the user has on that opens it shows the data it returns,
+ * in its pinned tab or in a tab it creates. But when the panel is open and
+ * its selected tab is that kind's, showing what the kind would show for the
+ * request already, the click closes the panel instead
+ * (`web-application.md` § Work panel), unless it is the second click of a
+ * double-click. An open no click asks for never closes. Null when no kind
+ * opens the intent.
  */
 export function openIntent(
-  pinned: PinnedTabs,
+  shown: ShownPanel,
   pages: readonly AnyPluginPage[],
   enabled: (plugin: string) => boolean,
   request: IntentRequest,
-): { selection: string; pinned: PinnedTabs; created: PanelTab | null } | null {
+  clicks?: number,
+): IntentOutcome | null {
   const kind = intentKind(pages, enabled, request.intent)
   if (!kind) {
     return null
   }
+  if (clicks !== undefined && clicks < 2 && alreadyShows(shown, pages, enabled, kind, request)) {
+    return { action: 'close' }
+  }
+  const { pinned } = shown
   if (!kind.pinned) {
     const created = { id: crypto.randomUUID(), kind: kind.kind, data: opened(kind, request, null) }
-    return { selection: created.id, pinned, created }
+    return { action: 'open', selection: created.id, pinned, created }
   }
   const current = Object.hasOwn(pinned, kind.kind) ? kind.schema.safeParse(pinned[kind.kind]) : null
   return {
+    action: 'open',
     selection: kind.kind,
     pinned: { ...pinned, [kind.kind]: opened(kind, request, current?.success ? current.data : null) },
     created: null,
   }
+}
+
+/**
+ * Whether the open panel's selected tab is `kind`'s and already shows what
+ * `request` names: the kind, which alone knows what its data means, would
+ * show the same data for it.
+ */
+function alreadyShows(
+  shown: ShownPanel,
+  pages: readonly AnyPluginPage[],
+  enabled: (plugin: string) => boolean,
+  kind: PanelKind<unknown, PanelSession | undefined>,
+  request: IntentRequest,
+): boolean {
+  if (!shown.open) {
+    return false
+  }
+  const kinds = pages.filter((page) => enabled(page.plugin)).flatMap((page) => page.kinds ?? [])
+  const selection = shownSelection(shown.panel, kinds)
+  const data = kind.pinned
+    ? (selection === kind.kind ? pinnedData(shown.pinned, kind) : undefined)
+    : shown.panel.tabs.find((tab) => tab.id === selection && tab.kind === kind.kind)?.data
+  const current = data === undefined ? null : kind.schema.safeParse(data)
+  if (!current?.success) {
+    return false
+  }
+  const next = opened(kind, request, current.data)
+  return next !== null && typeof next === 'object' && Object.keys(dataChanges(current.data, { ...next })).length === 0
 }
 
 /** The data `kind`'s tab shows for `request`, from what it shows now. */

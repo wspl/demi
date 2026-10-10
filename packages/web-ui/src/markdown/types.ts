@@ -40,8 +40,11 @@ export interface ConversationFiles {
    * Shows the file at a Host path, through the `file` intent; absent while no
    * plugin the user has on opens it, so a link to a file shows as text and a
    * Host image only shows (`file-previews.md` § Files named in messages).
+   * `clicks`, the `detail` of the click of a control in the transcript that
+   * opens it: a click on what the panel already shows closes it
+   * (`openIntent`).
    */
-  open?(path: string): void
+  open?(path: string, clicks?: number): void
   /**
    * The conversation's attachment `id`, such as `a3`. A render reads it as it
    * is now and renders again when the answer arrives; absent, an attachment

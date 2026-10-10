@@ -407,7 +407,8 @@ function click(event: MouseEvent): void {
   const current = files()
   const path = kind === 'file' && current ? messageHostPath(target, current.cwd) : null
   if (current?.open && path !== null) {
-    current.open(path)
+    // Only the transcript's message closes the panel on what it already shows, not the composer.
+    current.open(path, editable.value ? undefined : event.detail)
   }
 }
 

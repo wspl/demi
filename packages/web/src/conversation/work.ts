@@ -196,12 +196,18 @@ export const useWorkPanel = defineStore('work-panel', () => {
   /**
    * Opens an intent in the conversation's panel (`plugin-pages.md`
    * § Intents): the kind that opens it shows it, in its pinned tab or a new
-   * one, which takes the selection, with the panel opened for it.
+   * one, which takes the selection, with the panel opened for it. A click,
+   * whose `detail` is `clicks`, on what the open panel already shows closes
+   * the panel instead, keeping its tabs and selection (`openIntent`).
    */
-  function openIn(conversationId: string, request: IntentRequest): void {
+  function openIn(conversationId: string, request: IntentRequest, clicks?: number): void {
     const state = stateFor(conversationId)
-    const opened = openIntent(state.pinned, PLUGIN_PAGES, enabled, request)
+    const opened = openIntent(state, PLUGIN_PAGES, enabled, request, clicks)
     if (!opened) {
+      return
+    }
+    if (opened.action === 'close') {
+      state.open = false
       return
     }
     state.pinned = opened.pinned
