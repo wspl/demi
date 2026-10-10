@@ -302,12 +302,19 @@ async fn status_one<H: HostResolver>(
             .environment_of(&command)
             .ok_or_else(|| format!("command {id} is no longer held"))?;
         let status = environment.status(&command).map_err(|error| error.to_string())?;
-        lines.push(look_text(&status, look));
-        let mut media = Vec::new();
-        if !matches!(status.state, CommandState::Running { .. }) {
-            node.saw_end(&command).await;
-            media = stored_media(tree, &command).await;
+        if matches!(status.state, CommandState::Running { .. }) {
+            lines.push(look_text(&status, look));
+            return Ok((lines.join("\n"), Vec::new()));
         }
+        // A command its Host lost says why, as its record keeps it
+        // (`runtime.md` § Lost commands).
+        let end = tree.store().command_end(&command).await.ok().flatten();
+        match end {
+            Some(end @ CommandEnd::Lost { .. }) => lines.extend(ended_lines(id, end)),
+            _ => lines.push(look_text(&status, look)),
+        }
+        node.saw_end(&command).await;
+        let media = stored_media(tree, &command).await;
         return Ok((lines.join("\n"), media));
     }
     let running = held.as_ref().and_then(|node| {
