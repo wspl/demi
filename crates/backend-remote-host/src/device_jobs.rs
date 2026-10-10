@@ -118,6 +118,8 @@ pub struct Hello {
 pub(crate) struct Adoption {
     /// Running jobs the backend has no command for: they are stopped.
     pub(crate) stop: Vec<String>,
+    /// Ended jobs the backend has no command for: their directories go.
+    pub(crate) release: Vec<String>,
     /// Running jobs that go on, whose output the backend reads again.
     pub(crate) resync: Vec<(String, wire::OutputLengths)>,
 }
@@ -314,10 +316,13 @@ impl DeviceJobs {
         for kept in &hello.jobs {
             let known = table.jobs.contains_key(&kept.job_id);
             if !known && !hello.recorded.contains(&kept.job_id) {
-                // A job the backend has no command for is stopped; its exit
-                // releases its directory.
+                // A job the backend has no command for is stopped, and its
+                // exit releases its directory; one that ended already is
+                // released now.
                 if kept.ended.is_none() {
                     adoption.stop.push(kept.job_id.clone());
+                } else {
+                    adoption.release.push(kept.job_id.clone());
                 }
                 continue;
             }
