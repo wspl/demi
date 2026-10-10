@@ -283,7 +283,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
                 note: note.as_deref(),
                 sent_now: ended_by == Some(WindowEnd::SentNow),
                 interval_ms: Some(interval_ms),
-                unreachable: environment.unreachable(&command),
+                unreachable: None,
             },
         )
         .await;
