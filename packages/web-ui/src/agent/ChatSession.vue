@@ -26,6 +26,7 @@ import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { useSessionPanels } from './useSessionPanels'
 import { provideLiveCalls } from './live-calls'
 import { callTerminal, dockTerminals } from './terminals'
+import { provideCommandOpener } from './command-reports'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import type { ChatSessionState, PendingSubmissionState } from './types'
 import type { MessageForkHandler } from './message-fork'
@@ -113,6 +114,10 @@ provideEditReads(() => props.readEdit)
 // returned, a command that still runs is the dock's (`runtime.md`
 // § Rendering boundary).
 provideLiveCalls((toolUseId) => callTerminal(props.conversation.terminals, undefined, toolUseId))
+// A report row opens its command's terminal tab, which the panel shows.
+provideCommandOpener((commandId) => terminals.value.some((terminal) => terminal.id === commandId)
+  ? () => { activeTerminalId.value = commandId }
+  : undefined)
 const terminals = computed(() =>
   dockTerminals(props.conversation.terminals, (subagentId) =>
     subagentId === undefined
