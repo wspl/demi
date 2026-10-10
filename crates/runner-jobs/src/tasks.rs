@@ -567,6 +567,9 @@ impl JobConfig {
                     })
                     .await?;
                 outliving = Some(child.outliving());
+                if let Some((_, _, running)) = &job {
+                    running.outlived_by(child.outliving());
+                }
                 (Execution::shell(child), stdin, stdout)
             }
         };
@@ -964,15 +967,21 @@ async fn take_chunk(
     Ok(false)
 }
 
-/// The `job_outliving` that names `tasks`, each command line cut to the
-/// wire's bound; none while the script runs, when there are none.
-fn outliving_message(id: &str, tasks: &[String]) -> Option<Result<wire::Frame, wire::WireError>> {
-    let tasks: Vec<String> = tasks
+/// The tasks that outlive a job's script as the wire carries them: at most
+/// its number of them, each command line cut to its bound.
+pub(crate) fn wire_tasks(tasks: &[String]) -> Vec<String> {
+    tasks
         .iter()
         .filter(|line| !line.is_empty())
         .take(wire::JOB_OUTLIVING_TASKS)
         .map(|line| line[..line.floor_char_boundary(wire::JOB_TASK_LINE_BYTES)].to_owned())
-        .collect();
+        .collect()
+}
+
+/// The `job_outliving` that names `tasks`; none while the script runs, when
+/// there are none.
+fn outliving_message(id: &str, tasks: &[String]) -> Option<Result<wire::Frame, wire::WireError>> {
+    let tasks = wire_tasks(tasks);
     (!tasks.is_empty()).then(|| {
         wire::encode(&wire::Outbound::JobOutliving {
             job_id: id.to_owned(),
