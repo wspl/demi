@@ -74,7 +74,7 @@ test('the changes of a request open in the Change view with the panel, only whil
   signIn('one')
   const product = useProduct()
   const changes = { id: 'changes', name: 'Changes', description: 'Shows changes.', enabled: false, packages: [] }
-  product.snapshot = productState({ plugins: [changes] })
+  product.read = productState({ plugins: [changes] })
   const work = useWorkPanel()
   const state = work.stateFor('a')
   const edit = { node: null, request: 'user', file: 'index.ts', edit: { call: 'call', path: 'index.ts', segment: 0 } }
@@ -83,7 +83,7 @@ test('the changes of a request open in the Change view with the panel, only whil
   work.openIn('a', { intent: 'edit', payload: edit })
   expect(state.open).toBe(false)
 
-  product.snapshot = productState({ plugins: [{ ...changes, enabled: true }] })
+  product.read = productState({ plugins: [{ ...changes, enabled: true }] })
   expect(work.canOpen('edit')).toBe(true)
   work.openIn('a', { intent: 'edit', payload: edit })
   await nextTick()
@@ -168,7 +168,7 @@ test('the selection is this page\'s own, and a higher revision in the summary re
   conversations.items.find((item) => item.id === id)!.persistence = 'synced'
   const product = useProduct()
   const summary = (panelRevision: number) => productState({ conversations: [conversationSummary(id, '', { panelRevision })] })
-  product.snapshot = summary(1)
+  product.read = summary(1)
   const work = useWorkPanel()
   work.load(id)
   await settled()
@@ -179,7 +179,7 @@ test('the selection is this page\'s own, and a higher revision in the summary re
 
   // Another page added a tab: its summary's revision rose.
   route.stored = { revision: 2, tabs: [...route.stored.tabs, { id: 'p2', kind: 'page', data: { url: 'https://b.test/' } }] }
-  product.snapshot = summary(2)
+  product.read = summary(2)
   await settled()
   expect(work.stateFor(id).panel).toEqual({
     history: ['p1'],
@@ -211,7 +211,7 @@ test('a tab its kind asks to show opens the closed panel and is selected once, a
     conversations: [conversationSummary(id, '', { panelRevision })],
     plugins: [{ id: 'browser', name: 'Browser', description: 'A browser.', enabled: true, packages: [] }],
   })
-  product.snapshot = summary(1)
+  product.read = summary(1)
   const work = useWorkPanel()
   work.load(id)
   await settled()
@@ -220,13 +220,13 @@ test('a tab its kind asks to show opens the closed panel and is selected once, a
 
   // The agent shows t1 while the panel is closed: the plugin raises the tab's count.
   route.stored = { revision: 2, tabs: tabs(1) }
-  product.snapshot = summary(2)
+  product.read = summary(2)
   await settled()
   expect([work.stateFor(id).open, work.stateFor(id).history.at(-1)]).toEqual([true, 'b1'])
   // The user's own selection after it stands, however often the panel is read again.
   work.select(id, 'b2')
   route.stored = { revision: 3, tabs: tabs(1) }
-  product.snapshot = summary(3)
+  product.read = summary(3)
   await settled()
   expect(work.stateFor(id).history.at(-1)).toBe('b2')
   expect(readLocalState('one').workPanelShown).toEqual({ [id]: { b1: 1 } })
@@ -238,7 +238,7 @@ test('a tab its kind asks to show opens the closed panel and is selected once, a
   signIn('one')
   const reloadedRoute = stubPanelRoutes({ revision: 3, tabs: tabs(1) })
   useConversations().items.push(...conversations.items)
-  useProduct().snapshot = summary(3)
+  useProduct().read = summary(3)
   const reloaded = useWorkPanel()
   reloaded.setOpen(reloaded.stateFor(id), false)
   reloaded.load(id)
@@ -246,7 +246,7 @@ test('a tab its kind asks to show opens the closed panel and is selected once, a
   expect([reloaded.stateFor(id).open, reloaded.stateFor(id).history.at(-1)]).toEqual([false, 'b2'])
   // A new showing shows it again.
   reloadedRoute.stored = { revision: 4, tabs: tabs(2) }
-  useProduct().snapshot = summary(4)
+  useProduct().read = summary(4)
   await settled()
   expect([reloaded.stateFor(id).open, reloaded.stateFor(id).history.at(-1)]).toEqual([true, 'b1'])
 })

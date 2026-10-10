@@ -20,7 +20,6 @@ import type { SettingsArchivedConversation } from './types'
  */
 const props = defineProps<{
   load?: 'loading' | 'ready' | 'failed'
-  pendingIds?: string[]
   conversations: SettingsArchivedConversation[]
   overlayStore: OverlayStore
 }>()
@@ -91,19 +90,8 @@ const shown = computed(() => {
           @click="emit('open', conversation.id)"
         >
           <Button size="sm" variant="ghost" @click="emit('open', conversation.id)">Open</Button>
-          <Button
-            size="sm"
-            :loading="pendingIds?.includes(conversation.id)"
-            @click="emit('restore', conversation.id)"
-            >Restore</Button
-          >
-          <Button
-            size="sm"
-            variant="danger"
-            :disabled="pendingIds?.includes(conversation.id)"
-            @click="askDelete(conversation)"
-            >Delete…</Button
-          >
+          <Button size="sm" @click="emit('restore', conversation.id)">Restore</Button>
+          <Button size="sm" variant="danger" @click="askDelete(conversation)">Delete…</Button>
         </SettingsRow>
         <div
           v-if="!shown.length"

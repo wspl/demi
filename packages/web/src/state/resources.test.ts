@@ -22,10 +22,10 @@ test("a plugin page's sidebar entry shows while its plugin is on and names its s
   const resources = useResources()
   const skills = { id: 'skills', name: 'Skills', description: 'Skills.', enabled: false, packages: [] }
 
-  product.snapshot = productState({ plugins: [skills] })
+  product.read = productState({ plugins: [skills] })
   expect(resources.sectionEntries).toEqual([])
 
-  product.snapshot = productState({ plugins: [{ ...skills, enabled: true }] })
+  product.read = productState({ plugins: [{ ...skills, enabled: true }] })
   expect(resources.sectionEntries.map((entry) => [entry.label, entry.section])).toEqual([['Skills', 'skills']])
 })
 
@@ -57,21 +57,21 @@ test("a device project's row follows its device online, updating, offline and go
   })
   const workspaces = [workspace('ledger', 'laptop'), workspace('notes', 'cloud')]
 
-  product.snapshot = productState({ devices: [device, cloud], workspaces })
+  product.read = productState({ devices: [device, cloud], workspaces })
   expect(resources.projects).toEqual([
     { id: 'ledger', name: 'ledger', path: '/ledger', deviceId: 'laptop', host: 'ZandeMacBook-Pro.local', hostKind: 'device', state: 'online' },
     { id: 'notes', name: 'notes', path: '/notes', deviceId: 'cloud', host: 'Cloud', hostKind: 'cloud' },
   ])
 
-  product.snapshot = productState({ devices: [{ ...device, state: 'updating' }, cloud], workspaces })
+  product.read = productState({ devices: [{ ...device, state: 'updating' }, cloud], workspaces })
   expect(resources.projects[0]).toMatchObject({ hostKind: 'device', state: 'updating' })
 
-  product.snapshot = productState({ devices: [{ ...device, state: 'offline' }, cloud], workspaces })
+  product.read = productState({ devices: [{ ...device, state: 'offline' }, cloud], workspaces })
   expect(resources.projects[0]).toMatchObject({ hostKind: 'device', state: 'offline' })
 
   // A device the list no longer holds, as for a moment around its
   // revocation, shows as unavailable and offline.
-  product.snapshot = productState({ devices: [cloud], workspaces })
+  product.read = productState({ devices: [cloud], workspaces })
   expect(resources.projects[0]).toMatchObject({ host: 'Unavailable device', hostKind: 'device', state: 'offline' })
 })
 
@@ -95,11 +95,11 @@ test("a conversation outside a project shows its paired device with its state, o
   }
   const onLaptop = { kind: 'device' as const, deviceId: 'laptop', path: '/Users/zan' }
 
-  product.snapshot = productState({ devices: [device] })
+  product.read = productState({ devices: [device] })
   expect(resources.conversationDevice(onLaptop)).toEqual({ kind: 'paired', name: 'MacBook Pro', state: 'offline' })
   expect(resources.conversationDevice({ kind: 'cloud' })).toBeUndefined()
   expect(resources.conversationDevice({ kind: 'workspace', workspaceId: 'ledger' })).toBeUndefined()
 
-  product.snapshot = productState({ devices: [] })
+  product.read = productState({ devices: [] })
   expect(resources.conversationDevice(onLaptop)).toEqual({ kind: 'removed' })
 })

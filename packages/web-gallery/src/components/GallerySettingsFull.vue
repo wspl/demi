@@ -202,26 +202,13 @@ function submitPassword(current: string) {
   }, 600)
 }
 
-// A switch waits a beat while it is saved, as the product's does.
-const pluginsPending = ref<string[]>([])
-const pluginTimers = new Set<number>()
+// A switch shows at once, as the product's does while its write is on its way.
 function switchPlugin(id: string, enabled: boolean) {
-  pluginsPending.value.push(id)
-  const timer = window.setTimeout(() => {
-    pluginTimers.delete(timer)
-    pluginsPending.value = pluginsPending.value.filter((pending) => pending !== id)
-    const plugin = s.value.plugins.find((item) => item.id === id)
-    if (plugin) {
-      plugin.enabled = enabled
-    }
-  }, 400)
-  pluginTimers.add(timer)
-}
-onBeforeUnmount(() => {
-  for (const timer of pluginTimers) {
-    window.clearTimeout(timer)
+  const plugin = s.value.plugins.find((item) => item.id === id)
+  if (plugin) {
+    plugin.enabled = enabled
   }
-})
+}
 
 /** A restored or deleted conversation leaves the archived list, as the product's does. */
 function restoreArchived(id: string) {
@@ -300,7 +287,6 @@ function resetShortcuts() {
   <SettingsPlugins
     v-else-if="tab === 'plugins'"
     :plugins="s.plugins"
-    :pending="pluginsPending"
     @switch="switchPlugin"
   />
 
