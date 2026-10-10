@@ -271,9 +271,13 @@ each round trip. So one thing the user does costs as few round trips as the
 work allows, and never one per item:
 
 - **Requests that do not depend on each other go out together.** Opening a
-  conversation sends the transcript, its attached hosts, its draft, its
-  permission requests and its panel at once, and opens its socket beside
-  them; the transcript does not wait for the hosts. The first load starts the
+  conversation reads the latest page of its transcript, its subagents, its
+  attached hosts, its draft, its permission requests and its panel at once,
+  and connects its socket beside them; the transcript does not wait for the
+  hosts. The socket's `open` names the blocks the page read
+  ([Where a reset starts](../agent/runtime.md#where-a-reset-starts)), so it
+  goes once both the page and the connection are there; the socket connects
+  meanwhile. The first load starts the
   synchronization channel beside the session check, and opens the
   conversation its URL names by its id, without waiting for the channel's
   first state, unless the URL is a new conversation the browser made and has
@@ -490,6 +494,79 @@ so no control and no region shows a failure about the connection. A control that
   there show their disagreement as any page shows a state or an answer it
   cannot read ([Calls and states](../architecture/plugin-pages.md#calls-and-states)).
   The connection banner shows there too, when the development backend stops.
+
+## Transcript windows
+
+A page holds the parts of a transcript the reader has been to, not the whole
+of it. For example, the user opens a conversation of 3,000 blocks: the page
+reads the latest page, blocks 2,940 to 2,999, and shows it at its end
+([Pages](web-api.md#pages)). The user scrolls up; near the top the page reads
+the page before, and its rows appear above without moving the rows the user
+reads. Later the user opens a search result in block 812: the page reads the
+page around it, blocks 790 to 860, and shows it with the block in the middle,
+marked for a moment. It now holds two windows:
+
+```text
+held:   [790 ──── 860]                    [2,880 ─────── 2,999]
+         shown: around the search result    latest: at the end, live
+```
+
+- **Windows.** For each agent the page holds windows: runs of consecutive
+  blocks, each knowing whether it reaches the transcript's start and its
+  end. Windows that meet join into one, as blocks' indices say exactly where
+  each ends. The latest window, the one that reaches the end, is always held:
+  the stream's reset and patches apply to it as they come, and to any other
+  window that holds the block they name
+  ([Where a reset starts](../agent/runtime.md#where-a-reset-starts)). A
+  window stays held while the conversation stays in the page's cache, and
+  switching back to the conversation shows it as the reader left it.
+- **One window shown.** The transcript shows the window the reader is in:
+  the latest at its end on a first opening, the window and the place the
+  reader left on a return, the window around a block a search result opens.
+- **Reading on.** When the reader comes within a screen of an edge of the
+  shown window that is not the transcript's start or end, the page reads the
+  next page there, and the edge shows a loading row until it arrives. Rows
+  added above keep the rows in view where they are, as a chat app keeps its
+  place when earlier messages load. A page that reaches another window joins
+  it, and the reader scrolls on into it.
+- **The latest.** While the shown window is not the latest, the
+  scroll-to-bottom button shows, as it does whenever the end is out of view:
+  it shows the latest window at its end. Meanwhile new activity goes into the
+  latest window and the shown one stays still; sending a message shows the
+  latest, as it always scrolls to the message sent.
+- **Opening a row.** A folded row whose block the page read in its light
+  form ([Light form](web-api.md#light-form)) reads the block whole when the
+  user opens it and shows it in place, with the row's loading state until it
+  arrives; the page keeps it whole after.
+
+What the page derives from the transcript stays within a request, which a
+page never cuts: work groups, a request's changed files and its line under
+the request, how long a thinking took, the message the page offers to edit
+and the answer that offers Regenerate. A Change tab that names a request
+the page does not hold reads the page around its `user` block. What a request
+does not hold, the page reads with the windows: the context card's
+instructions, from the latest window's newest instructions block or else
+the page's `instructions`; a compaction divider's size, from its marker; an
+ended command's terminal, from the command's record; the subagents, from
+their list and the `subagent` frames, each subagent's transcript in windows
+of its own when the panel shows it
+([Conversation history](web-api.md#conversation-history)).
+
+### Rewrites
+
+A retry, an accepted edit or a compaction rewrites the transcript, and
+indices then name other blocks. The stream tells the page as patches: a
+`truncate` drops every held block from its index on, in every window, and an
+`add` before a window's end moves the indices after it
+([Patches and versions](../agent/runtime.md#patches-and-versions)). A rewrite
+can also land between a read and the stream, or between two reads. A page
+read whose `edge` no longer matches answers `transcript_changed`, and a reset
+whose `from` no longer matches starts at the latest page
+([Where a reset starts](../agent/runtime.md#where-a-reset-starts)). Either
+way the page drops the windows it can no longer join, keeps the latest the
+stream gave it, and reads the page around the block in view again, so the
+reader stays where they were; when the rewrite removed that block, the page
+shows the latest at its end, as after an edit it shows the new answer.
 
 ## Authentication
 

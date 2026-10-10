@@ -118,10 +118,12 @@ first request, and when the newest block says there is nothing, the card has
 no Instructions part at all: it is as it was before instructions existed,
 rather than a line about what is missing.
 
-The card reads the transcript the page already holds: the instructions block
+The card reads what the page already holds: the instructions block
 carries, beside its text, the list of its entries (`instructions`, each
 `{ kind: "personal" }` or `{ kind: "file", path }`), so the page never parses the model's text and
-never asks the backend for anything more. The block itself stays hidden from
+never asks the backend for anything more. The page holds the newest block
+when its latest window does; otherwise a page of the transcript names the
+newest block's entries ([Pages](../product/web-api.md#pages)). The block itself stays hidden from
 the transcript, as every context block is.
 
 ## Rationale

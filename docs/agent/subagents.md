@@ -842,7 +842,7 @@ session's inference transcript is only its own transcript frames.
 | Server frame | Fields | Sent |
 | --- | --- | --- |
 | `subagent` | `event` (`started` or `closed`), `job` | When a child starts (spawn, resume, or restore) and when it closes |
-| `subagent_transcript_reset` | `subagentId`, `blocks`, `revision`, optional `failures` | After `started`, and for every live child when a page opens the conversation or syncs its transcript |
+| `subagent_transcript_reset` | `subagentId`, `start`, `blocks` from that index on, `length`, `revision`, optional `failures` | After `started`, and for every live child when a page opens the conversation or syncs its transcript; it starts at the child's latest page ([Where a reset starts](runtime.md#where-a-reset-starts)) |
 | `subagent_transcript_patch` | `subagentId`, `patches`, `revision`, optional `failures` | When a child's transcript changes |
 
 A job describes one child:
@@ -883,7 +883,10 @@ subagent event.
 
 When a page opens the conversation, Demi sends the root's transcript and
 state frames and then, for each live agent of the tree in depth-first spawn
-order, `subagent` with `started` and `subagent_transcript_reset`. A transcript
+order, `subagent` with `started` and `subagent_transcript_reset`. A page
+learns of the subagents that no longer run from the conversation's list of
+subagents, and reads a subagent's transcript, live or not, by its pages when
+it shows it ([Conversation history](../product/web-api.md#conversation-history)). A transcript
 sync replays the live children the same way. The web app's two frames for
 stopping children are described in [Abort](#abort).
 

@@ -87,7 +87,7 @@ fails. A disconnect does not cancel an accepted edit.
 Files, completed child records, and the external effects of tools that already
 ran stay as they are: the edit rewrites the transcript only.
 
-The `edit_result` of an accepted edit follows the rewrite's `replace` patch
+The `edit_result` of an accepted edit follows the rewrite's patches
 and comes before any frame of the replacement's turn. Both follow the commit:
 before it, the backend has sent a client nothing of the edit but the session's
 phase, and the replacement's inference has not started.
