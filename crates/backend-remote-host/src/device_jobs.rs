@@ -183,6 +183,14 @@ impl DeviceJobs {
         claimed
     }
 
+    /// Parks the job `id`, whose consumer let go of it while it runs: its
+    /// end waits for the next consumer that takes it up.
+    pub(crate) fn park(&self, id: &str) {
+        if let Some(job) = self.0.borrow_mut().jobs.get_mut(id) {
+            job.parked = true;
+        }
+    }
+
     /// Forgets the job `id`, whose start failed.
     pub(crate) fn forget(&self, id: &str) {
         self.0.borrow_mut().jobs.remove(id);
