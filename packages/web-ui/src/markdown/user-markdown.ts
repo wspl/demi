@@ -1,6 +1,6 @@
 import type { JSONContent } from '@tiptap/core'
-import { Lexer, Marked, type Token } from 'marked'
-import markedCjkFriendly from 'marked-cjk-friendly'
+import { Lexer, type Token } from 'marked'
+import { markdownReader } from './reader'
 
 // A user message's Markdown and the editor document that shows it, both ways
 // (`product.md` § Writing a message). The message is lines: every line break
@@ -14,11 +14,7 @@ import markedCjkFriendly from 'marked-cjk-friendly'
  */
 export const ATTACHMENT_MARK = '\uFFFC'
 
-const dialect = new Marked({ gfm: true })
-// `**注意：**这是` is bold, as a CJK writer means it; plain CommonMark reads the
-// delimiters beside CJK punctuation as text.
-dialect.use(markedCjkFriendly())
-dialect.use({
+const dialect = markdownReader({
   tokenizer: {
     // `_` and `__` stay as typed: `snake_case`, `__init__`.
     emStrong(src) {
