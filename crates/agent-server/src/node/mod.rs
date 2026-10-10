@@ -267,7 +267,7 @@ impl<H: HostResolver> Node<H> {
                 NodeRole::Root => session.record_interruption(),
                 // The action reports its course as events, and a refusal
                 // means the session is closing.
-                NodeRole::Child => drop(session.resume_after(RESTARTED)),
+                NodeRole::Child => drop(session.resume(Some(RESTARTED))),
             }
         }
         for message in continuation.queued {
