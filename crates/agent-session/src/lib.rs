@@ -512,6 +512,7 @@ impl AgentSession {
             held: false,
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
+            runtime: deps.runtime.clone(),
         };
         Self::start(SessionCore::new(parts), deps)
     }
@@ -585,6 +586,7 @@ impl AgentSession {
             held,
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
+            runtime: deps.runtime.clone(),
         };
         let continuation = Continuation {
             interrupted,
