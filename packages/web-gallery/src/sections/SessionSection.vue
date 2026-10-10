@@ -99,6 +99,7 @@ import {
   editingShellTool,
   fileChangeCases,
   fullPageTool,
+  longLineShellTool,
   longScriptShellTool,
   missingImageTool,
   notStoredVideoTool,
@@ -822,6 +823,7 @@ const functionalTool = ref(false)
 const functionalShellExpanded = ref(true)
 const functionalShellLive = ref(true)
 const functionalShellScript = ref(true)
+const functionalShellLongLine = ref(true)
 /** Calls whose results carry media, as the transcript shows them. */
 const toolMediaSpecimens = [
   { variant: 'shell · image', block: screenshotTool },
@@ -1598,7 +1600,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="FunctionalBlock"
-        note="Thinking, shell (collapsed and expanded), loading, and error. A shell call shows its command and output in one box: the command stays at the top and only the output under it scrolls once it fills the box. Command and output wrap as a terminal wraps: each line fills to the box’s edge and breaks at any character, never earlier at a hyphen, as the live output’s flags show. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. A shell row shimmers while its command runs, also after its call returned with the command running on as one of the conversation’s running commands, until the command’s end arrives, and then marks how it ended as any shell row does: Stopped, or Failed for an exit code other than 0 (End Command). While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
+        note="Thinking, shell (collapsed and expanded), loading, and error. A shell call shows its command and output in one box: the command stays at the top and only the output under it scrolls once it fills the box. The command wraps at its spaces, as an editor’s word wrap does: a word moves to the next line whole, never split at a hyphen or inside, and only a word longer than the line breaks, at any character, as the long line’s signed address shows. The output wraps as a terminal wraps: each line fills to the box’s edge and breaks at any character. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. A shell row shimmers while its command runs, also after its call returned with the command running on as one of the conversation’s running commands, until the command’s end arrives, and then marks how it ended as any shell row does: Stopped, or Failed for an exit code other than 0 (End Command). While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -1709,6 +1711,16 @@ onBeforeUnmount(() => {
                 v-model:open="functionalShellScript"
                 :block="longScriptShellTool"
                 :input="parseToolInput(longScriptShellTool.input)"
+              />
+            </GallerySpecimen>
+            <GallerySpecimen
+              variant="shell · long line"
+              wide
+            >
+              <ToolShellBlock
+                v-model:open="functionalShellLongLine"
+                :block="longLineShellTool"
+                :input="parseToolInput(longLineShellTool.input)"
               />
             </GallerySpecimen>
             <GallerySpecimen

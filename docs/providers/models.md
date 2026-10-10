@@ -491,15 +491,21 @@ video support adds the four video types. Only a model known to read video gets
 the video types: unknown video support adds none. When attachment support is
 unknown and the model is not known to read video, the list is null. A model
 whose catalog states its exact types, such as a model of a configured list,
-uses them instead, including an empty list or null.
+uses them instead, including an empty list or null. A provider's catalog
+lists only the types its wire carries in a message: `grok-build` and `codex`
+list no `pdf`, since the Grok CLI's proxy drops a document and the Codex
+backend documents none, so a model's list never promises what its provider
+would drop. What a provider carries in a tool result is narrower still
+([Media in tool results](providers.md#media-in-tool-results)).
 
 Asking whether a model accepts a type answers yes, no or unknown; `jpg` and
 `jpeg` are the same format. Where Demi decides whether to give a file to the
 model natively, only a yes counts, so a file of unknown support is not sent
 natively. Unknown and unsupported stay distinct, so a surface can say which one
-applies when it explains why a file was not sent. For example, a shell command
-whose output is a PNG image returns the image to the model only when the model
-accepts `png` ([Tools](../agent/runtime.md#tools)). Native media beside a
+applies when it explains why a file was not sent. For example,
+`demi file view shot.png` shows the image to the model only when the model
+accepts `png` and its provider carries an image in a tool result
+([Media the model views](../agent/runtime.md#what-demi-file-view-shows)). Native media beside a
 message's attachment follows [Attachments](../product/product.md#attachments).
 After a model switch, the history can hold media the new model does not
 accept; each request replays those as text
