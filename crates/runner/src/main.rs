@@ -242,7 +242,11 @@ struct Installation {
 }
 
 async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
+    // Only a test's runner may shorten it.
+    #[cfg(feature = "test-fixtures")]
     let mut unreached_grace = wire::UNREACHED_GRACE;
+    #[cfg(not(feature = "test-fixtures"))]
+    let unreached_grace = wire::UNREACHED_GRACE;
     let (installation, boot_path, name, managed, artifacts, log, removing) = match cli.action {
         Action::Run {
             installation,
