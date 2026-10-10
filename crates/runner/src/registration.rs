@@ -65,6 +65,9 @@ pub struct Options {
     /// Whether this registration runs only to ask the backend to revoke the
     /// device, for an `uninstall` that found no active runner.
     pub removing: bool,
+    /// How long the runner keeps its jobs without a connection
+    /// (`runner.md` § Command lifetime).
+    pub unreached_grace: Duration,
 }
 
 /// How a registration ended.
@@ -181,7 +184,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         removal: options.removal,
         instance: uuid::Uuid::new_v4().as_u64_pair().0,
     };
-    let mut kept = Kept::open(&registered).await;
+    let mut kept = Kept::open(&registered, options.unreached_grace).await;
     let outcome = tokio::select! {
         outcome = reconnect(&registered, &mut kept, installed.as_ref()) => outcome,
         never = revocation_window(&registered) => match never {},
