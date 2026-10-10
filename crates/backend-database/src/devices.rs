@@ -57,6 +57,10 @@ pub struct DeviceRecord {
     /// of the runner draws (`runner.md` § Command lifetime); none before its
     /// runner first connected.
     pub runner_instance: Option<u64>,
+    /// When a Cloud's latest boot completed, as its runner connected: its
+    /// lifetime cap counts from it (`managed-hosts.md` § Lifecycle and
+    /// capacity). None for a paired device and a Cloud that never booted.
+    pub cloud_started_at: Option<Timestamp>,
     /// How pages reach it (`direct-channel.md` § Choosing the path).
     pub route: DeviceRoute,
 }
@@ -69,7 +73,7 @@ pub struct DeviceChange {
 }
 
 const DEVICE_COLUMNS: &str =
-    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version, runner_instance, route";
+    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version, runner_instance, cloud_started_at, route";
 
 /// The name and platform of the one device a user's Cloud is.
 pub const CLOUD_NAME: &str = "Cloud";
@@ -112,6 +116,7 @@ impl ControlService {
                 os: None,
                 runner_version: None,
                 runner_instance: None,
+                cloud_started_at: None,
                 route: DeviceRoute::Automatic,
             })
         })
@@ -325,6 +330,18 @@ impl ControlService {
         .await
     }
 
+    /// Records that `device`, a Cloud, completed a boot now; answers when.
+    pub async fn record_cloud_boot(&self, device: DeviceId) -> Result<Timestamp, StorageError> {
+        self.call(move |connection, now| {
+            connection.execute(
+                "UPDATE devices SET cloud_started_at = ?1 WHERE id = ?2",
+                params![now.as_millisecond(), device.as_str()],
+            )?;
+            Ok(now)
+        })
+        .await
+    }
+
     /// Sets what `change` names of `device`, in one statement; none when
     /// there is no such device.
     pub async fn change_device(
@@ -456,6 +473,14 @@ fn device_row(row: &Row<'_>) -> Result<DeviceRecord, StorageError> {
         runner_instance: row
             .get::<_, Option<i64>>("runner_instance")?
             .map(i64::cast_unsigned),
+        cloud_started_at: match row.get::<_, Option<i64>>("cloud_started_at")? {
+            Some(millisecond) => Some(decode(
+                "devices",
+                "cloud_started_at",
+                Timestamp::from_millisecond(millisecond),
+            )?),
+            None => None,
+        },
         route: decode(
             "devices",
             "route",

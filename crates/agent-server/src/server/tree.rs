@@ -350,14 +350,20 @@ impl<H: HostResolver> Tree<H> {
             .map(|child| child.node().clone())
     }
 
+    /// The tree's live nodes, the root first.
+    pub fn nodes(&self) -> Vec<Rc<Node<H>>> {
+        let children = self.children.borrow();
+        std::iter::once(self.root.clone())
+            .chain(children.values().map(|child| child.node().clone()))
+            .collect()
+    }
+
     /// The provider entries the tree's live nodes infer with, the root's
     /// first: a child's profile may name another entry than its parent's
     /// (`subagents.md` § Runtime).
     pub fn providers(&self) -> Vec<String> {
-        let children = self.children.borrow();
-        let nodes = std::iter::once(&self.root).chain(children.values().map(|child| child.node()));
         let mut providers: Vec<String> = Vec::new();
-        for node in nodes {
+        for node in self.nodes() {
             let provider = node.session().model().provider_id;
             if !providers.contains(&provider) {
                 providers.push(provider);
