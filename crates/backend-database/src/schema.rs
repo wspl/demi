@@ -226,6 +226,7 @@ CREATE TABLE running_jobs (
 ) STRICT;
 CREATE INDEX running_jobs_of_device ON running_jobs (device_id);
 ALTER TABLE devices ADD COLUMN runner_instance INTEGER;
+ALTER TABLE devices ADD COLUMN cloud_started_at INTEGER;
 ";
 
 /// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
@@ -837,7 +838,11 @@ CREATE TABLE devices (
   route        TEXT NOT NULL DEFAULT 'automatic' CHECK (route IN ('automatic', 'direct', 'server')),
   -- The instance its runner last named, a number each start of the runner
   -- draws; none before its runner first connected.
-  runner_instance INTEGER
+  runner_instance INTEGER,
+  -- When a Cloud's latest boot completed, as its runner connected; the
+  -- lifetime cap counts from it. None for a paired device and a Cloud that
+  -- never booted.
+  cloud_started_at INTEGER
 ) STRICT;
 CREATE UNIQUE INDEX devices_one_managed ON devices (user_id) WHERE kind = 'managed';
 

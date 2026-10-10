@@ -17,7 +17,8 @@ use demi_agent_session::{
     SessionInit, SessionRuntime, StepOutcomes, ToolInvocation,
 };
 use demi_agent_store::{
-    AgentTreeStore, Checkpoint, NodeRecord, StoreError, StoredOutput, media::store_result,
+    AgentTreeStore, Checkpoint, NodeRecord, RunningCommand, StoreError, StoredOutput,
+    media::store_result,
 };
 use demi_agent_tools::{
     CallError, ContextSource, EndOf, Environments, HostResolver, Looking, ModelIdentity, NodeContext,
@@ -185,6 +186,18 @@ impl<H: HostResolver> Node<H> {
         views
     }
 
+    /// Takes up the node's command whose job is `job`, as its job's `rpc`
+    /// call asks (`runtime.md` § Command reports): none when the node ran
+    /// no command the conversation records running with that job, else
+    /// why it could not be taken up.
+    pub(crate) async fn take_up_job(&self, job: &str) -> Option<Result<(), String>> {
+        match self.runtime.take_up(|running| running.job == job).await {
+            Ok(false) => None,
+            Ok(true) => Some(Ok(())),
+            Err(error) => Some(Err(error)),
+        }
+    }
+
     /// Ends the node's shells on every Host, their running commands with
     /// them; a later tool call makes fresh ones.
     pub(crate) async fn end_shells(&self) {
@@ -220,8 +233,9 @@ impl<H: HostResolver> Node<H> {
     pub(crate) async fn continue_from(&self, continuation: Continuation) -> Result<(), StoreError> {
         // The commands the node left running go on where their Host kept
         // them (`sessions-and-targets.md` § Recovery and persistence).
-        // One its Host cannot be reached for stays recorded running.
-        self.runtime.take_up(None).await;
+        // One its Host cannot be reached for stays recorded running; the
+        // failure is logged, and a report or an rpc call of it tries again.
+        let _ = self.runtime.take_up(|_| true).await;
         let session = &self.session;
         if self.role == NodeRole::Child {
             // Its supervision releases the hold at its first look; an action
@@ -288,31 +302,29 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
 
 impl<H: HostResolver> NodeRuntime<H> {
     /// Takes up the commands the node ran that the conversation records
-    /// running and its environments do not hold: `only`, or every one
+    /// running, that `which` picks and its environments do not hold
     /// (`sessions-and-targets.md` § Recovery and persistence). Answers
-    /// whether one stays recorded running without being taken up, as when
-    /// its Host cannot be reached now; the next restore tries again.
-    async fn take_up(&self, only: Option<&CommandId>) -> bool {
-        let running = match self.store.running_commands(&self.node).await {
-            Ok(running) => running,
-            Err(error) => {
-                tracing::warn!(node = %self.node, %error, "the node's running commands could not be read");
-                return only.is_some();
-            }
-        };
-        let mut left = false;
-        for command in running {
-            if only.is_some_and(|only| *only != command.command)
-                || self.environments.owning(&command.command).is_some()
-            {
+    /// whether `which` picked one, or why one stays recorded running without
+    /// being taken up, as when its Host cannot be reached now; the next
+    /// restore tries again.
+    async fn take_up(&self, which: impl Fn(&RunningCommand) -> bool) -> Result<bool, String> {
+        let running = self.store.running_commands(&self.node).await.map_err(|error| {
+            tracing::warn!(node = %self.node, %error, "the node's running commands could not be read");
+            error.to_string()
+        })?;
+        let mut picked = false;
+        let mut left = None;
+        for command in running.iter().filter(|command| which(command)) {
+            picked = true;
+            if self.environments.owning(&command.command).is_some() {
                 continue;
             }
-            if let Err(error) = self.shell_access().adopt(&command).await {
+            if let Err(error) = self.shell_access().adopt(command).await {
                 tracing::warn!(node = %self.node, command = %command.command, %error, "a running command was not taken up");
-                left = true;
+                left = Some(error.to_string());
             }
         }
-        left
+        left.map_or(Ok(picked), Err)
     }
 
     fn node_context(&self) -> NodeContext<'_> {
@@ -514,7 +526,9 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         Box::pin(async move {
             // A command its Host cannot be reached for now has not ended:
             // it reports nothing until the node takes it up.
-            if self.environments.owning(command).is_none() && self.take_up(Some(command)).await {
+            if self.environments.owning(command).is_none()
+                && self.take_up(|running| running.command == *command).await.is_err()
+            {
                 std::future::pending::<()>().await;
             }
             if let Some(environment) = self.environments.owning(command) {
