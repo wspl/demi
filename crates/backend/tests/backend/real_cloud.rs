@@ -1246,3 +1246,56 @@ async fn a_cloud_whose_sandbox_is_killed_reports_a_death_and_boots_again_with_it
     drop(working);
     backend.close().await;
 }
+
+// Tens of seconds: the Cloud boots, stops when idle and boots again.
+#[tokio::test]
+#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
+async fn a_cloud_whose_system_lacks_the_temporary_directory_boots_and_makes_it() {
+    const TEST: &str = "no temporary directory";
+    let _one = one_at_a_time().await;
+    let environment = Environment::read();
+    let vendor = MockVendor::start().await;
+    let mut harness = environment.harness();
+    // A runner that cannot start never connects: the boot fails after this.
+    harness.cloud.runner_connection = Duration::from_secs(30);
+    let backend = harness.start_at(environment.address()).await;
+    let master = backend.setup().await;
+    let mut first = on_cloud(&backend, &master, &master, &vendor, FIRST, "/a").await;
+    let working = backend
+        .file_gate(&master, FIRST)
+        .await
+        .enter(Purpose::Demand)
+        .await;
+    // A Cloud pinned to a base from before the image made the runner's
+    // temporary directory has only its parent; the removal, saved on the
+    // system layer, stands in for such a base.
+    let removed = run(
+        &mut first,
+        "remove-temporary",
+        "sudo -n rm -rf /var/lib/demi/tmp; echo removed",
+    )
+    .await;
+    assert!(removed.contains("removed"), "{removed}");
+    drop(working);
+    until_cloud(&backend, &master, "the idle Cloud stops", |status| {
+        status.state == CloudState::Off
+    })
+    .await;
+
+    let started = Instant::now();
+    let working = backend
+        .file_gate(&master, FIRST)
+        .await
+        .enter(Purpose::Demand)
+        .await;
+    let back = run(
+        &mut first,
+        "back",
+        "echo \"$TMPDIR\"; stat -c %U /var/lib/demi/tmp",
+    )
+    .await;
+    measured(TEST, "boot and command", started.elapsed());
+    assert!(back.contains("/var/lib/demi/tmp\ndemi"), "{back}");
+    drop(working);
+    backend.close().await;
+}
