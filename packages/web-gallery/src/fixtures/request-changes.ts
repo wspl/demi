@@ -69,7 +69,7 @@ function shell(
     createdAt: ago(offsetMs),
     model: demoModel,
     toolUseId: `${id}-use`,
-    toolName: 'shell_exec',
+    toolName: 'shell',
     input: JSON.stringify({ script, description }),
     status: 'completed',
     output: [],
@@ -85,8 +85,8 @@ function shell(
 /**
  * The design's example: the user asks to fix the sign-in page. The agent
  * edits login.ts twice and creates form.css in one call, starts the build
- * and yields until it ends; woken, it edits login.ts a third time and
- * replies. One request, two files, login.ts edited three times.
+ * and ends its turn while it runs; woken by the build's report, it edits
+ * login.ts a third time and replies. One request, two files, login.ts edited three times.
  */
 export function signInRequestBlocks(prefix: string): Block[] {
   return [
@@ -95,19 +95,8 @@ export function signInRequestBlocks(prefix: string): Block[] {
       file('src/auth/login.ts', 'modified', LOGIN.slice(0, 3), { added: 2, removed: 2 }),
       file('src/auth/form.css', 'added', ['', FORM], { added: 8, removed: 0 }),
     ]),
-    shell(`${prefix}-build`, 580_000, 'bun run build &', 'Start the build'),
-    {
-      type: 'tool_call',
-      id: `${prefix}-yield`,
-      createdAt: ago(570_000),
-      model: demoModel,
-      toolUseId: `${prefix}-yield-use`,
-      toolName: 'yield',
-      input: JSON.stringify({ durationMs: 60_000, description: 'Wait for the build' }),
-      status: 'completed',
-      output: [],
-      view: null,
-    },
+    shell(`${prefix}-build`, 580_000, 'bun run build', 'Start the build'),
+    text(`${prefix}-waiting`, 570_000, 'The build is running. I will go on once it ends.'),
     { type: 'wakeup', id: `${prefix}-wakeup`, turnId: `${prefix}-wakeup-turn`, createdAt: ago(510_000), model: demoModel, placement: 'new_turn', text: 'Command 18 (Start the build) ended with exit code 0; look at it with demi shell status 18.' },
     shell(`${prefix}-error`, 500_000, 'demi file edit src/auth/login.ts', 'Throw the old error text', [
       file('src/auth/login.ts', 'modified', LOGIN.slice(2), { added: 1, removed: 1 }),
