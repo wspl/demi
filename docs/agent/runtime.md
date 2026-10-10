@@ -524,9 +524,11 @@ or a subagent ends, the work it waits for wakes it.
   its block lies, as an agent message shows as its receipt row, so a reply
   the agent writes after it never appears without its cause, as Claude Code
   shows a line when a background task ends. The row names the call's title
-  and what happened, in the user's words: *Run the test suite ended with exit
-  code 1*, *Start the dev server was stopped by you*, *Run the test suite is
-  still running*; a failure, a stop and a loss carry the same tag a shell row
+  and, set apart from it, what happened, in the user's words: *Run the test
+  suite* · *ended with exit code 1*, *Start the dev server* · *stopped by
+  you*, *Run the test suite* · *still running*. A title is an imperative,
+  so joined into one sentence it read wrongly in the product: *Restart the
+  end-to-end suite is still running*; a failure, a stop and a loss carry the same tag a shell row
   carries ([Rendering boundary](#rendering-boundary)), and a click opens the
   command's terminal tab. So the block holds each report as data, its
   `commandId`, the call's `title`, its `event` (`running`, `ended` with
