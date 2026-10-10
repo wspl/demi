@@ -583,9 +583,14 @@ impl DeviceRecorder {
     }
 
     /// Records what `device`'s runner said in its hello: its operating
-    /// system and its release, and that it was connected just now.
-    pub async fn hello(&self, device: DeviceId, os: OperatingSystem, version: String) {
-        if let Err(error) = self.control.set_device_runner(device.clone(), os, version).await {
+    /// system, its release and its instance, and that it was connected just
+    /// now.
+    pub async fn hello(&self, device: DeviceId, os: OperatingSystem, version: String, instance: u64) {
+        if let Err(error) = self
+            .control
+            .set_device_runner(device.clone(), os, version, instance)
+            .await
+        {
             // The agent's context block names the Host without its system,
             // and Settings shows the device without them, until the next
             // hello records them.

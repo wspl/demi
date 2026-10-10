@@ -22,8 +22,8 @@ mod linux {
 
     use demi_machine_manager_protocol::{
         BaseVersion, CheckpointParams, CurrentBaseVersionParams, DeviceId, GrowVolumeParams,
-        HibernateParams, ImageStateParams, MachineCall, Operation, ReconcileParams, ResetParams,
-        RuntimeState, RuntimeStateParams, WakeParams,
+        HibernateParams, ImageStateParams, MachineCall, Operation, ReconcileParams, Reconciled,
+        ResetParams, RuntimeState, RuntimeStateParams, WakeParams,
     };
     use tokio::{
         sync::{mpsc, oneshot},
@@ -137,14 +137,42 @@ mod linux {
             answer.await.map_err(|_| OpError::WorkerStopped)
         }
 
-        /// Stops and saves every device, recovers what an interrupted
-        /// operation left, and installs the network policy again.
-        pub async fn reconcile(&self) -> Result<(), OpError> {
+        /// Reports the devices whose sandboxes run, which stay running,
+        /// recovers what an interrupted operation left of the others, and
+        /// installs the network policy again (`managed-hosts.md` § Control
+        /// and ownership): a backend's restart stops no Cloud.
+        pub async fn reconcile(&self) -> Result<Reconciled, OpError> {
             let _whole = self.admission.exclusive().await?;
-            self.drain().await?;
-            recovery::fence_and_save(&self.core).await?;
+            let running = self.running_devices().await;
+            recovery::fence_and_save(&self.core, &running).await?;
             self.core.network.prepare().await?;
-            Ok(())
+            Ok(Reconciled {
+                running: running.iter().map(|device| device.as_str().to_owned()).collect(),
+            })
+        }
+
+        /// The devices whose workers run a sandbox; the caller holds the
+        /// whole gate, so no worker is running an operation.
+        async fn running_devices(&self) -> Vec<DeviceId> {
+            let workers: Vec<_> = self
+                .devices
+                .borrow()
+                .iter()
+                .map(|(device, worker)| (device.clone(), worker.clone()))
+                .collect();
+            let mut running = Vec::new();
+            for (device, worker) in workers {
+                let (reply, answer) = oneshot::channel();
+                // A worker that stopped runs no sandbox.
+                if worker.send(DeviceCommand::RuntimeState { reply }).await.is_err() {
+                    continue;
+                }
+                if answer.await == Ok(RuntimeState::Running) {
+                    running.push(device);
+                }
+            }
+            running.sort();
+            running
         }
 
         /// Shutdown: waits for the operations in flight, stops and saves
@@ -190,10 +218,7 @@ mod linux {
 
         async fn handle(&self, call: MachineCall) -> Result<serde_json::Value, OpError> {
             match call {
-                MachineCall::Reconcile(_) => {
-                    self.reconcile().await?;
-                    Ok(reply::<ReconcileParams>(()))
-                }
+                MachineCall::Reconcile(_) => Ok(reply::<ReconcileParams>(self.reconcile().await?)),
                 MachineCall::CurrentBaseVersion(_) => {
                     Ok(reply::<CurrentBaseVersionParams>(self.base.clone()))
                 }

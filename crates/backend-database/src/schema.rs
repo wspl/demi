@@ -171,7 +171,8 @@ ALTER TABLE devices ADD COLUMN route TEXT NOT NULL DEFAULT 'automatic' CHECK (ro
 /// no user migrated from 0.1.21 has. Yield wakeups are gone, and the index
 /// of when each conversation's earliest one is due with them. Running jobs
 /// are recorded by device, none of which 0.1.21 kept, since its jobs ended
-/// with their connections.
+/// with their connections, and a device keeps its runner's instance, which
+/// no runner of 0.1.21 named.
 const CONTROL_FROM_0_1_21: &str = "
 DROP INDEX conversations_wakeup;
 ALTER TABLE conversations DROP COLUMN wakeup_at;
@@ -224,6 +225,7 @@ CREATE TABLE running_jobs (
   conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE
 ) STRICT;
 CREATE INDEX running_jobs_of_device ON running_jobs (device_id);
+ALTER TABLE devices ADD COLUMN runner_instance INTEGER;
 ";
 
 /// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
@@ -766,7 +768,10 @@ CREATE TABLE devices (
   ended_by_shutdown INTEGER NOT NULL DEFAULT 0 CHECK (ended_by_shutdown IN (0, 1)),
   -- How pages reach it: Automatic, Prefer Direct or Server Only, which the
   -- user picks on the device's page.
-  route        TEXT NOT NULL DEFAULT 'automatic' CHECK (route IN ('automatic', 'direct', 'server'))
+  route        TEXT NOT NULL DEFAULT 'automatic' CHECK (route IN ('automatic', 'direct', 'server')),
+  -- The instance its runner last named, a number each start of the runner
+  -- draws; none before its runner first connected.
+  runner_instance INTEGER
 ) STRICT;
 CREATE UNIQUE INDEX devices_one_managed ON devices (user_id) WHERE kind = 'managed';
 
