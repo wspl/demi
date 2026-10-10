@@ -489,8 +489,7 @@ runs on a Host: commands and Clouds go on, and the next start takes them up
 5. Model catalog refreshes and quota snapshot writes drain. The conversation
    databases close, then the control database.
 
-Transfers end before the Cloud hibernates because an open download holds the
-Cloud's gate, and a Cloud whose gate is busy would skip its save. Every step
+Every step
 runs even when an earlier one fails; the failures are reported together, and
 the process exits with a failure status.
 
@@ -708,7 +707,7 @@ DEMI_BACKEND_URL=http://127.0.0.1:3271 bun run web:dev
 The backend, the manager and the runners run in process groups of their
 own, so the terminal's interrupt reaches only `xtask`, which stops them in
 order on every exit, the failure of a start included: the backend first,
-since it hibernates the Cloud through the manager as it shuts down, then the
+since it closes its connection to the manager as it shuts down, then the
 manager, whose input it closes and which ends its runners with it; then it
 removes the data directory. A process that does not stop in time, 10 seconds
 for the backend and 5 for the manager, is killed. Only a kill of `xtask`
