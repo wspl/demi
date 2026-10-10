@@ -28,10 +28,10 @@ function selectable(path: string): boolean {
   return select() !== undefined && selection(path) !== null
 }
 
-function pick(path: string): void {
+function pick(path: string, clicks: number): void {
   const picked = selection(path)
   if (picked) {
-    select()?.(picked)
+    select()?.(picked, clicks)
   }
 }
 </script>

@@ -27,7 +27,8 @@ const props = withDefaults(
   { maxRows: 3, selectable: true },
 )
 
-const emit = defineEmits<{ select: [path: string] }>()
+/** `clicks` is the click's `detail`: 2 for the second click of a double-click. */
+const emit = defineEmits<{ select: [path: string, clicks: number] }>()
 
 function opens(path: string): boolean {
   return typeof props.selectable === 'function' ? props.selectable(path) : props.selectable
@@ -104,7 +105,7 @@ watch([() => props.files, expanded], () => { void measure() })
       ref="pillEls"
       class="file-pill group/pill inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full pl-1.5 pr-2 text-xs leading-4 text-fg-muted transition-colors duration-200 ease-out"
       :class="opens(file.path) ? 'btn [--shadow-btn:var(--shadow-pill)] hover:text-fg-body' : 'bg-btn shadow-[var(--shadow-pill)]'"
-      @click="opens(file.path) && emit('select', file.path)"
+      @click="opens(file.path) && emit('select', file.path, $event.detail)"
       :title="file.from ? `${file.from} → ${file.path}` : file.path"
     >
       <!-- The pills stand under the row they belong to, quieter than it: the

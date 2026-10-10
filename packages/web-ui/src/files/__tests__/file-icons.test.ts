@@ -1,8 +1,10 @@
 import { expect, test } from 'bun:test'
+import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import manifest from 'material-icon-theme/dist/material-icons.json'
-import { fileIconName, landmarkIcon, type FileIconTheme } from '../file-icons'
+import { fileIconGlyph, fileIconName, fileIconThemeSchema, landmarkIcon } from '../file-icons'
 
-const theme = manifest as FileIconTheme
+const theme = fileIconThemeSchema.parse(manifest)
 
 test('folders resolve by name and fall back to the plain folder', () => {
   expect(fileIconName(theme, 'src', true)).toBe('folder-src')
@@ -21,6 +23,18 @@ test('files match the whole name before the longest suffix, case-insensitively',
   expect(fileIconName(theme, 'App.vue', false)).toBe('vue')
   expect(fileIconName(theme, 'LICENSE', false)).toBe('license')
   expect(fileIconName(theme, 'notes', false)).toBe('file')
+})
+
+test('a name resolves to a glyph the package has, under the file name its manifest gives', () => {
+  const root = dirname(require.resolve('material-icon-theme/package.json'))
+  const glyph = (name: string) => fileIconGlyph(theme, fileIconName(theme, name, false))
+  // These ids share another glyph's file (`instructions.clone.svg`); `<id>.svg` does not exist.
+  for (const name of ['instructions.md', 'app.component.ts', 'paper.tex', 'index.ts']) {
+    const path = glyph(name)
+    expect(path, name).not.toBeNull()
+    expect(existsSync(join(root, path!)), `${name} → ${path}`).toBe(true)
+  }
+  expect(glyph('instructions.md')).toBe('icons/instructions.clone.svg')
 })
 
 test('the root and the home are known by their place, not their name', () => {

@@ -1,4 +1,5 @@
-import { Marked, type RendererObject, type Token, type Tokens } from 'marked'
+import type { RendererObject, Token, Tokens } from 'marked'
+import { markdownReader } from './reader'
 import type { MarkdownRenderOptions, MessageAttachment } from './types'
 import { codeBlockHtml } from './highlight'
 import { attachmentId, isHttpUrl, messageHostPath, messageImage } from './filePath'
@@ -262,7 +263,7 @@ function groupMediaRuns(blocks: Token[]): void {
   }
 }
 
-const agentMarked = new Marked({ gfm: true, breaks: true, renderer: messageRenderer }, scrollingTable)
+const agentMarked = markdownReader({ breaks: true, renderer: messageRenderer }, scrollingTable)
 // LaTeX math, rendered to self-contained HTML (KaTeX CSS is loaded by web-ui's base
 // stylesheet); `throwOnError` keeps malformed math from blowing up the whole message.
 agentMarked.use({ extensions: mathExtensions({ throwOnError: false, output: 'html' }) })
