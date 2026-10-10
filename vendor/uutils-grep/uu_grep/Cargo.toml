@@ -103,5 +103,6 @@ maintainer = "demi-runner"
 patches = [
     "Standard input is the shell job's, the walk starts from the root resolved against the job's directory and shows paths as named, and temporary file names use the context's process id",
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+    "Binary files are GNU grep 3.12's: a NUL anywhere in what has been read of a file makes it binary before any line in that is printed, so -I skips it as a file without a match; a line or -o part that is not UTF-8 is held back while the others print, followed by the binary file matches notice without -I",
     "The release's tests, benchmarks, examples and CI files are left out",
 ]
