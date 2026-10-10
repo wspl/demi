@@ -31,7 +31,7 @@ test('the retained files come from the view, with their edits', () => {
   expect(storedShellView(block)?.files).toEqual(files)
   expect(storedShellView(tool({ view: shellView() }))?.files).toBeUndefined()
   expect(storedShellView(tool({}))).toBeNull()
-  expect(storedShellView(tool({ view: { kind: 'yield_wakeup', wakeupId: 'w', durationMs: 1 } }))).toBeNull()
+  expect(storedShellView(tool({ view: { kind: 'repeated_shell', script: 'ls', count: 7 } }))).toBeNull()
 })
 
 function shellView(overrides: Partial<ShellToolView> = {}): ShellToolView {
