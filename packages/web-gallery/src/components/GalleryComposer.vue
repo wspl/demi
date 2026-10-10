@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PlaceholderText } from '@demicodes/web-ui/ui/ui-text'
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { previewMediaType, type ContextUsage, type UserContentBlock } from '@demicodes/protocol'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
@@ -129,8 +129,15 @@ function reloadPlugins() {
     pluginsChanged.value = false
   }, 600)
 }
-/** The offline primary Host's card, until a move takes the conversation to another Host. */
+/**
+ * The offline primary Host's card, until a move takes the conversation to
+ * another Host or the specimen brings the device back.
+ */
 const offlineHost = ref(props.offlineHost ?? null)
+// Only a device that comes or goes resets the card: a specimen's inline value is new on every render.
+watch(() => !!props.offlineHost, () => {
+  offlineHost.value = props.offlineHost ?? null
+})
 /** The card goes with the move, as the product's does, and a toast says where the product would run it. */
 function moveHost(host: HostChoice) {
   const to = host.kind === 'cloud'

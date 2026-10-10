@@ -353,15 +353,15 @@ A run ends with a response only when the vendor said the reply is complete:
 a Responses stream's completion event, a Chat Completions choice's
 `finish_reason` (`stop` or `tool_calls`; the closing `data: [DONE]` is not
 required, since gateways leave it out), an Anthropic `message_stop`. A body
-that ends before that is a failure of the run, code `network`, "the
-provider's stream ended before the reply was complete", even when a usage
-count came with it: a gateway that sends running totals in every chunk made
+that ends before that is a failure of the run, code `overloaded` as any
+network failure is, "the provider's stream ended before the reply was
+complete", even when a usage count came with it: a gateway that sends running totals in every chunk made
 a reply cut after "expected 200, got" look complete in a product check, and
 the agent answered the next request from half a sentence. A reply the
 vendor ended for its output limit (`length`, `max_tokens`, an incomplete
 Responses status) or a filter (`content_filter`, `refusal` where it ends the
-reply) is a failure too, with the vendor's reason in its text: "the reply
-reached the model's output limit". Text already streamed stays, and the
+reply) is a failure too, code `incomplete`, with the vendor's reason in its text:
+"the reply reached the model's output limit". Text already streamed stays, and the
 turn ends unfinished with the failure's `error` block, which Resume
 continues ([Retries](../agent/failures-and-recovery.md#retries)).
 
