@@ -46,7 +46,7 @@ to `old/x.ts` followed by `mv old moved` shows as `moved/x.ts`.
 
 | Limit | Value | Beyond it |
 | --- | --- | --- |
-| File size, before or after | 8 MiB | The file remains in the list, with no diff or line counts for that edit. Binary and non-UTF-8 content are treated the same. |
+| File size, before or after | 8 MiB | The file remains in the list, with no diff or line counts for that edit. Binary content, by the one rule ([What `demi file view` shows](../agent/runtime.md#what-demi-file-view-shows)), is treated the same; other bytes are text. |
 | Snapshot bytes written per job | 64 MiB | Further edits have no contents. This includes replacement snapshots when successive writes are combined. |
 | Recorded paths per job | 500 | Later paths go unrecorded; `filesTruncated` is true. |
 | Renames and removals per job | 500 | Later ones go unlisted; `filesTruncated` is true. |

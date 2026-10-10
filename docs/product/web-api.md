@@ -1350,7 +1350,8 @@ A file over 8 MiB answers 413 `file_too_large`, the same limit a retained edit
 snapshot has ([Edit tracking](../execution/edit-tracking.md#scope)), and the
 page then reads its first 8 MiB from the raw route with a byte range
 ([File previews](file-previews.md#getting-the-bytes)); one that
-is not UTF-8 text, or contains a NUL byte, answers 415 `not_text`.
+is binary, by the one rule ([What `demi file view` shows](../agent/runtime.md#what-demi-file-view-shows)), answers 415 `not_text`,
+and any other file is text, a byte that is no UTF-8 shown as U+FFFD.
 
 `GET /api/conversations/:id/fs/raw?path=...` streams a file's bytes for
 [file previews](file-previews.md) and downloads, through the same Host access
