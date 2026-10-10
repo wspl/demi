@@ -3,17 +3,20 @@
 //! binary stdout (`runtime.md` § What a result attaches), and the bounded
 //! view the user sees, all from one command status.
 
+use std::sync::Arc;
+
 use demi_agent_session::ToolOutcome;
 use demi_agent_store::images;
 use demi_agent_transcript::REPLAY_CHARS;
 use demi_command_protocol::sniff_media_type;
 use demi_host_interface::{
-    BinaryOutput, CommandMedium, CommandState, CommandStatus, Newest, OutputText, Piece, Streams,
+    BinaryOutput, CommandMedium, CommandState, CommandStatus, Newest, OutputText, Piece, Seen,
+    Streams, WholeOutput, WholeView,
 };
 use demi_provider_common::{MediaBytes, RequestLimits, ResultPart};
 use demi_shared_types::{
-    B64Bytes, CommandId, Model, ModelMediaKind, OutputChunk, ShellToolView, ShellViewStatus,
-    ToolView, model_accepts_media_type, model_media_type_for,
+    B64Bytes, CommandId, Model, ModelMediaKind, OutputChunk, OutputView, ShellToolView,
+    ShellViewStatus, StreamView, ToolView, model_accepts_media_type, model_media_type_for,
 };
 
 use super::PAGE_CHARS;
@@ -94,6 +97,54 @@ pub(super) async fn shell_outcome(
 /// of `demi shell status`, and of a command's progress report.
 pub fn look_text(status: &CommandStatus, look: Look<'_>) -> String {
     result_text(status, &unseen_output(status), look)
+}
+
+/// What a look at `command` shows the model from its whole output `whole`,
+/// from the node's own place `seen` in it: the look of a node that does not
+/// hold the command, such as at another agent's command, or at one whose
+/// shells ended (`runtime.md` § The `demi shell` commands). The command is
+/// in `state`, has run `running_ms` and printed nothing for `idle_ms`.
+pub fn whole_look_text(
+    command: &CommandId,
+    state: CommandState,
+    running_ms: u64,
+    idle_ms: u64,
+    whole: Arc<WholeOutput>,
+    seen: Seen,
+    look: Look<'_>,
+) -> String {
+    let stream = || StreamView {
+        offset: 0,
+        delta: String::new(),
+        tail: String::new(),
+        bytes: 0,
+        truncated: false,
+    };
+    let status = CommandStatus {
+        command_id: command.clone(),
+        stdout: stream(),
+        stderr: stream(),
+        output: OutputView {
+            offset: 0,
+            line: 1,
+            text: String::new(),
+            tail: String::new(),
+            chunks: Vec::new(),
+            bytes: 0,
+            truncated: false,
+        },
+        unreceived: 0,
+        newest: Vec::new(),
+        whole: Some(WholeView {
+            output: whole,
+            seen,
+        }),
+        running_ms,
+        idle_ms,
+        state,
+        files: None,
+    };
+    look_text(&status, look)
 }
 
 /// The output the model has not seen: once the command ended, the rest of

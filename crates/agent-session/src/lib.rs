@@ -556,7 +556,7 @@ impl AgentSession {
         let mut watched = Watched::default();
         for interval in &state.intervals {
             let title = started_title(transcript.blocks(), &interval.command_id);
-            watched.add(interval.command_id.clone(), interval.interval_ms, title);
+            watched.add(interval.command_id.clone(), interval.interval_ms, title, false);
         }
         let parts = CoreParts {
             id,
