@@ -1147,12 +1147,16 @@ test('a refused archive brings the row back where it was and says why', async ()
   // The stub's backend refuses to archive the second conversation, as one that runs.
   const archived = store.archive([SECOND])
   expect(archivedOf(SECOND)).toBe(true)
+  const said = toasts.at(-1)!
+  expect(said.title).toBe('Conversation Archived')
   await backend.arrived(1)
   backend.release()
   expect(await archived).toBe(false)
   expect(archivedOf(SECOND)).toBe(false)
   expect(order()).toEqual(before)
-  expect(toasts.some((toast) => toast.message?.includes('second: Turn is running'))).toBe(true)
+  // The toast that said it was archived goes; the refusal's says why.
+  expect(toasts.some((toast) => toast.id === said.id)).toBe(false)
+  expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Archive the Conversation', message: 'second: Turn is running' })
 })
 
 test('a summary the channel brings before the archive is answered does not bring the row back', async () => {
