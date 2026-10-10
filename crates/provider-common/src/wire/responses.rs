@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    ErrorCode, ProviderEvent, ProviderFailure, ToolCall, tagged_wire,
+    EarlyEnd, ErrorCode, ProviderEvent, ProviderFailure, ToolCall, tagged_wire,
     wire::{
         ReportedString, Tagged, Vendor, WireError, decode_tagged, sse_data, tool_input,
         undecodable, usage_with_cached_input,
@@ -361,13 +361,13 @@ where
         })
 }
 
-/// Maps a Responses stream onto a run's events (`providers.md` § A run). The
-/// run ends after the completion event, a failure or the stream's last
-/// item; a stream that ends without its completion event still ends it with
-/// a response, with zero usage. `events` ends when `cancel` fires, and then
-/// the run ends without a further event. `signature_tag` is the prefix the
-/// provider puts on the reasoning items it receives, so that it replays only
-/// its own vendor's.
+/// Maps a Responses stream onto a run's events (`providers.md` § A run,
+/// § Reading vendor input). The run ends with a response after the
+/// completion event, and with a failure after a failed or incomplete
+/// response, an error, or a stream that ends without its completion event.
+/// `events` ends when `cancel` fires, and then the run ends without a
+/// further event. `signature_tag` is the prefix the provider puts on the
+/// reasoning items it receives, so that it replays only its own vendor's.
 pub fn map_events<'a, S>(
     events: S,
     vendor: Vendor,
@@ -398,7 +398,7 @@ where
             }
         }
         if !cancel.is_cancelled() {
-            yield ProviderEvent::Response(TokenUsage::default());
+            yield ProviderEvent::Error(ProviderFailure::cut_short());
         }
     }
 }
@@ -528,27 +528,16 @@ impl Mapper {
                     .and_then(|response| response.incomplete_details)
                     .and_then(|details| details.reason.into_inner())
                     .unwrap_or_else(|| "unknown".to_owned());
-                let code = if reason == "max_output_tokens" {
-                    ErrorCode::ContextLengthExceeded
-                } else {
-                    ErrorCode::Incomplete
+                let end = match reason.as_str() {
+                    "max_output_tokens" => EarlyEnd::OutputLimit,
+                    "content_filter" => EarlyEnd::Filter,
+                    _ => EarlyEnd::Other,
                 };
-                let message = format!(
-                    "Incomplete {} response returned, reason: {reason}",
-                    self.vendor.label
-                );
-                let failure = ProviderFailure {
-                    message,
-                    code: Some(code),
-                    diagnostics: Some(Box::new(stream_diagnostics(
-                        None,
-                        None,
-                        None,
-                        &received.text,
-                    ))),
-                    retry_after: None,
-                };
-                out.push(ProviderEvent::Error(failure));
+                out.push(ProviderEvent::Error(ProviderFailure::ended_early(
+                    end,
+                    &reason,
+                    received.text,
+                )));
                 true
             }
             ResponsesEvent::Error(event) => {

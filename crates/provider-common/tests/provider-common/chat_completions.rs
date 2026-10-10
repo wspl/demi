@@ -119,8 +119,7 @@ async fn reasoning_content_is_thinking_that_starts_once() {
         json!({ "choices": [{ "delta": { "role": "assistant", "content": null, "reasoning_content": "" } }] }),
         json!({ "choices": [{ "delta": { "content": null, "reasoning_content": "think " } }] }),
         json!({ "choices": [{ "delta": { "content": null, "reasoning_content": "more" } }] }),
-        json!({ "choices": [{ "delta": { "content": "answer" } }] }),
-        json!("[DONE]"),
+        json!({ "choices": [{ "delta": { "content": "answer" }, "finish_reason": "stop" }] }),
     ])
     .await;
     assert_eq!(
@@ -136,13 +135,15 @@ async fn reasoning_content_is_thinking_that_starts_once() {
 }
 
 #[tokio::test]
-async fn tool_calls_assemble_by_index_and_flush_at_the_end_of_the_stream() {
+async fn tool_calls_assemble_by_index_and_flush_when_the_reply_is_complete() {
     let assembled = whole(events(&[
         // Arguments that are not JSON stay the string the vendor sent.
         json!({ "choices": [{ "delta": { "tool_calls": [{ "index": 1, "id": "call-2", "function": { "name": "bad", "arguments": "{" } }] } }] }),
         json!({ "choices": [{ "delta": { "tool_calls": [{ "index": 0, "function": { "name": "no_id" } }] } }] }),
         // A call that never names its tool is dropped.
         json!({ "choices": [{ "delta": { "tool_calls": [{ "index": 2, "id": "call-3", "function": { "arguments": "{}" } }] } }] }),
+        // Gateways leave out the closing `[DONE]`.
+        json!({ "choices": [{ "delta": {}, "finish_reason": "tool_calls" }] }),
     ])
     .await);
     assert_eq!(
@@ -157,6 +158,7 @@ async fn tool_calls_assemble_by_index_and_flush_at_the_end_of_the_stream() {
     let sequential = whole(events(&[
         json!({ "choices": [{ "delta": { "tool_calls": [{ "id": "a", "function": { "name": "first", "arguments": "{}" } }] } }] }),
         json!({ "choices": [{ "delta": { "tool_calls": [{ "id": "b", "function": { "name": "second", "arguments": "{}" } }] } }] }),
+        json!({ "choices": [{ "delta": {}, "finish_reason": "stop" }] }),
         json!("[DONE]"),
     ])
     .await);
@@ -167,6 +169,53 @@ async fn tool_calls_assemble_by_index_and_flush_at_the_end_of_the_stream() {
             call("b", "second", json!({}))
         ]
     );
+}
+
+#[tokio::test]
+async fn a_body_that_ends_before_a_finish_reason_fails_even_with_usage_and_keeps_the_text() {
+    // A gateway that sends running totals in every chunk, cut mid-sentence.
+    let events = events(&[
+        json!({ "choices": [{ "delta": { "content": "expected 200, got" } }], "usage": { "prompt_tokens": 9, "completion_tokens": 232 } }),
+        json!({ "choices": [{ "delta": { "tool_calls": [{ "index": 0, "id": "call-1", "function": { "name": "read_file", "arguments": "{}" } }] } }] }),
+    ])
+    .await;
+    let [ProviderEvent::TextDelta(text), .., ProviderEvent::Error(failure)] = &events[..] else {
+        panic!("{events:?}");
+    };
+    assert_eq!(text, "expected 200, got");
+    assert!(!events.iter().any(|event| matches!(event, ProviderEvent::ToolCall(_))), "{events:?}");
+    assert_eq!(
+        (failure.message.as_str(), &failure.code),
+        ("The provider's stream ended before the reply was complete", &Some(ErrorCode::Overloaded))
+    );
+}
+
+#[tokio::test]
+async fn a_reply_ended_for_the_output_limit_or_a_filter_fails_with_the_vendors_reason() {
+    for (reason, message) in [
+        ("length", "The reply reached the model's output limit (length)"),
+        ("content_filter", "The provider's filter stopped the reply (content_filter)"),
+        ("insufficient_system_resource", "The provider ended the reply before it was complete (insufficient_system_resource)"),
+    ] {
+        let finish = json!({ "choices": [{ "delta": {}, "finish_reason": reason }] });
+        let events = events(&[
+            json!({ "choices": [{ "delta": { "content": "half" } }] }),
+            finish.clone(),
+            json!({ "choices": [], "usage": { "prompt_tokens": 9, "completion_tokens": 4 } }),
+            json!("[DONE]"),
+        ])
+        .await;
+        let [ProviderEvent::TextDelta(text), ProviderEvent::Error(failure)] = &events[..] else {
+            panic!("{events:?}");
+        };
+        assert_eq!(text, "half");
+        assert_eq!((failure.message.as_str(), &failure.code), (message, &Some(ErrorCode::Incomplete)));
+        let diagnostics = failure.diagnostics.as_ref().unwrap();
+        assert_eq!(
+            (diagnostics.source, diagnostics.provider_code.as_deref(), diagnostics.upstream.clone()),
+            (FailureSource::Stream, Some(reason), Some(finish.to_string()))
+        );
+    }
 }
 
 #[tokio::test]

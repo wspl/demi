@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use demi_provider_common::{
-    ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, encode_body,
+    EarlyEnd, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, encode_body,
     http_failure, read_http_failure,
     wire::{NonEmpty, ReportedString, decode_untagged, sse_data, undecodable},
 };
@@ -97,17 +97,25 @@ pub(crate) fn run(
             }
         }
         if !cancel.is_cancelled() {
-            yield ProviderEvent::Response(mapper.usage);
+            yield mapper.end();
         }
     }
 }
 
-/// The state of one stream: whether a thinking block is open, and the usage
-/// so far.
+/// The state of one stream: whether a thinking block is open, the usage so
+/// far, and why the vendor ended the reply, with the chunk that said so.
 struct Mapper {
     shared: Arc<Shared>,
     thinking_open: bool,
     usage: TokenUsage,
+    ended: Option<(Ending, String)>,
+}
+
+/// Why Gemini ended a reply: a candidate's finish reason, or the reason it
+/// blocked the prompt.
+enum Ending {
+    Finished(String),
+    Blocked(String),
 }
 
 impl Mapper {
@@ -116,6 +124,7 @@ impl Mapper {
             shared,
             thinking_open: false,
             usage: TokenUsage::default(),
+            ended: None,
         }
     }
 
@@ -136,16 +145,40 @@ impl Mapper {
         if let Some(usage) = chunk.usage_metadata {
             self.usage = usage.token_usage();
         }
-        let parts = chunk
-            .candidates
-            .into_iter()
-            .flatten()
-            .filter_map(|candidate| candidate.content)
-            .flat_map(|content| content.parts.into_iter().flatten());
-        for part in parts {
-            self.part(part, out);
+        if let Some(reason) = chunk.prompt_feedback.and_then(|feedback| feedback.block_reason) {
+            self.ended = Some((Ending::Blocked(reason), data.to_owned()));
+        }
+        for candidate in chunk.candidates.into_iter().flatten() {
+            if let Some(reason) = candidate.finish_reason {
+                self.ended = Some((Ending::Finished(reason), data.to_owned()));
+            }
+            for part in candidate.content.into_iter().flat_map(|content| content.parts.into_iter().flatten()) {
+                self.part(part, out);
+            }
         }
         false
+    }
+
+    /// The run's end with the stream's: the response when a candidate
+    /// finished with `STOP`, else the failure that says why the reply is not
+    /// complete.
+    fn end(&self) -> ProviderEvent {
+        let Some((ending, received)) = &self.ended else {
+            return ProviderEvent::Error(ProviderFailure::cut_short());
+        };
+        let (end, reason) = match ending {
+            Ending::Finished(reason) if reason == "STOP" => {
+                return ProviderEvent::Response(self.usage);
+            }
+            Ending::Finished(reason) => match reason.as_str() {
+                "MAX_TOKENS" => (EarlyEnd::OutputLimit, reason),
+                "SAFETY" | "RECITATION" | "BLOCKLIST" | "PROHIBITED_CONTENT" | "SPII"
+                | "IMAGE_SAFETY" => (EarlyEnd::Filter, reason),
+                _ => (EarlyEnd::Other, reason),
+            },
+            Ending::Blocked(reason) => (EarlyEnd::Filter, reason),
+        };
+        ProviderEvent::Error(ProviderFailure::ended_early(end, reason, received.as_str()))
     }
 
     fn part(&mut self, part: ResponsePart, out: &mut Vec<ProviderEvent>) {
@@ -233,13 +266,26 @@ struct Chunk {
     #[serde(default)]
     usage_metadata: Option<UsageMetadata>,
     #[serde(default)]
+    prompt_feedback: Option<PromptFeedback>,
+    #[serde(default)]
     error: Option<ChunkError>,
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Candidate {
     #[serde(default)]
     content: Option<CandidateContent>,
+    #[serde(default)]
+    finish_reason: Option<String>,
+}
+
+/// Why Gemini refused the prompt, when it did.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PromptFeedback {
+    #[serde(default)]
+    block_reason: Option<String>,
 }
 
 #[derive(Deserialize)]

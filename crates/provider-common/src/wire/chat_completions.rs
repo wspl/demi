@@ -13,7 +13,7 @@ use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    ErrorCode, ProviderEvent, ProviderFailure, ToolCall,
+    EarlyEnd, ErrorCode, ProviderEvent, ProviderFailure, ToolCall,
     wire::{
         ReportedString, Vendor, WireError, decode_untagged, sse_data, tool_input, undecodable,
         usage_with_cached_input,
@@ -119,11 +119,13 @@ pub fn decode_chunk(data: &str) -> Result<Chunk, WireError> {
 }
 
 /// Maps a Chat Completions body sent as server-sent events onto a run's
-/// events (`providers.md` § A run), until the body ends or `cancel` fires.
-/// The run ends with one response, whether the vendor closed the stream with
-/// its `[DONE]` sentinel or just ended the body, after the tool calls
-/// collected so far; a vendor error or an undecodable chunk ends it as a
-/// failure instead. A cancelled run ends without a further event.
+/// events (`providers.md` § A run, § Reading vendor input), until the body
+/// ends or `cancel` fires. When the stream ends, with its `[DONE]` sentinel
+/// or with the body, the run ends with the tool calls collected and one
+/// response if a choice finished with `stop` or `tool_calls`, and otherwise
+/// with a failure: the vendor's other finish reason, or none at all. A
+/// vendor error or an undecodable chunk ends it as a failure at once. A
+/// cancelled run ends without a further event.
 pub fn map_sse<'a, S>(
     body: S,
     vendor: Vendor,
@@ -179,6 +181,8 @@ struct Mapper {
     calls: BTreeMap<u32, Collected>,
     thinking_started: bool,
     usage: TokenUsage,
+    /// The finish reason a choice named, with the chunk that named it.
+    finished: Option<(String, String)>,
 }
 
 impl Mapper {
@@ -223,8 +227,8 @@ impl Mapper {
                     self.collect(call, out);
                 }
             }
-            if choice.finish_reason.as_deref() == Some("tool_calls") {
-                self.flush(out);
+            if let Some(reason) = choice.finish_reason {
+                self.finished = Some((reason, data.to_owned()));
             }
         }
         false
@@ -304,10 +308,24 @@ impl Mapper {
         }
     }
 
-    /// The end of the stream: the calls collected so far, then the response.
+    /// The end of the stream: the calls collected and the response when the
+    /// reply is complete, else the failure that says why it is not.
     fn finish(&mut self, out: &mut Vec<ProviderEvent>) {
-        self.flush(out);
-        out.push(ProviderEvent::Response(self.usage));
+        let Some((reason, received)) = &self.finished else {
+            out.push(ProviderEvent::Error(ProviderFailure::cut_short()));
+            return;
+        };
+        let end = match reason.as_str() {
+            "stop" | "tool_calls" => {
+                self.flush(out);
+                out.push(ProviderEvent::Response(self.usage));
+                return;
+            }
+            "length" => EarlyEnd::OutputLimit,
+            "content_filter" => EarlyEnd::Filter,
+            _ => EarlyEnd::Other,
+        };
+        out.push(ProviderEvent::Error(ProviderFailure::ended_early(end, reason, received.as_str())));
     }
 }
 
