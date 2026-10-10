@@ -11,7 +11,6 @@ use demi_shared_types::{CommandId, InstructionEntry, ModelSelection, ToolView, T
 use futures_util::{future::LocalBoxFuture, stream::LocalBoxStream};
 use serde_json::Value;
 use tokio::sync::watch;
-use tokio_util::sync::CancellationToken;
 
 pub trait SessionRuntime {
     /// Waits for the tree's admission and holds it while one action runs.
@@ -137,10 +136,6 @@ pub struct ToolInvocation {
     /// What that model's vendor takes in one request, which bounds the video
     /// a result may attach.
     pub request_limits: RequestLimits,
-    /// Cancelled when the action stops: a command the call started stops
-    /// with it, even after the call returned. Sending now never cancels it
-    /// (`runtime.md` § Send now).
-    pub cancel: CancellationToken,
     /// What ends the window a shell tool watches its command in before its
     /// time passes (`runtime.md` § The window).
     pub arrival: InputArrival,
