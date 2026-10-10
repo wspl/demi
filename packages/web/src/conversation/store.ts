@@ -15,6 +15,7 @@ import {
   type MessageEditRequest,
 } from '@demicodes/web-ui/agent/message-editing'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { dismissToast } from '@demicodes/web-ui/infra/toast'
 import { showArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { forkConversation } from '../api/message-fork'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
@@ -1100,13 +1101,15 @@ export const useConversations = defineStore('conversations', () => {
    * earlier writes. With `shown`, the change shows at once and the write
    * lands it (`web-application.md` § Responding to the user); without, it
    * shows once answered, as a move to another Host does. A refused item is
-   * reported with why, and only its own change leaves. Answers whether
-   * every one changed.
+   * reported with why, under `failed`'s title for one conversation or for
+   * several, and only its own change leaves. Answers whether every one
+   * changed.
    */
   async function applyBatch(
     ids: string[],
     changes: Pick<ConversationPatch, 'pinned' | 'archived' | 'target' | 'notifyAgent'>,
     shown: boolean,
+    failed: { one: HeadlineText; many: HeadlineText },
   ): Promise<boolean> {
     // A draft has no agent to tell: the first send creates what the user sees.
     const { notifyAgent: _told, ...fields } = changes
@@ -1185,7 +1188,7 @@ export const useConversations = defineStore('conversations', () => {
           }
           if (failures.length) {
             success = false
-            reportError('Some conversations were not updated.', failures.join('\n'), {
+            reportError(failures.length === 1 && ids.length === 1 ? failed.one : failed.many, failures.join('\n'), {
               userVisible: true,
               expected: true,
             })
@@ -1215,13 +1218,23 @@ export const useConversations = defineStore('conversations', () => {
    * a toast whose Undo restores them (`product.md` § Conversations and
    * projects). Answers whether every one was archived.
    */
-  function archive(ids: string[]): Promise<boolean> {
+  async function archive(ids: string[]): Promise<boolean> {
     const archived = ids.filter((id) => items.value.some((item) => item.id === id && !item.archived))
-    const done = applyBatch(ids, { archived: true }, true)
-    if (archived.length) {
-      showArchived(archived.length, () => void restore(archived))
+    const done = applyBatch(ids, { archived: true }, true, {
+      one: 'Could Not Archive the Conversation',
+      many: 'Some conversations were not archived.',
+    })
+    if (!archived.length) {
+      return done
     }
-    return done
+    const toast = showArchived(archived.length, () => void restore(archived))
+    const success = await done
+    // An archive the backend refused for every one archived nothing: the
+    // toast that says it did goes, and the refusal's says why.
+    if (!archived.some((id) => items.value.find((item) => item.id === id)?.archived)) {
+      dismissToast(toast)
+    }
+    return success
   }
 
   /**
@@ -1293,7 +1306,10 @@ export const useConversations = defineStore('conversations', () => {
 
   /** Brings archived conversations back at once; answers whether every one came back. */
   function restore(ids: string[]): Promise<boolean> {
-    return applyBatch(ids, { archived: false }, true)
+    return applyBatch(ids, { archived: false }, true, {
+      one: 'Could Not Restore the Conversation',
+      many: 'Some conversations were not restored.',
+    })
   }
 
   function create(projectId: string | null = null): string {
@@ -1813,7 +1829,9 @@ export const useConversations = defineStore('conversations', () => {
     markRead,
     reloadList: () => product.reconnect(),
     reloadSession,
-    pin: (ids: string[], pinned: boolean) => applyBatch(ids, { pinned }, true),
+    pin: (ids: string[], pinned: boolean) => applyBatch(ids, { pinned }, true, pinned
+      ? { one: 'Could Not Pin the Conversation', many: 'Some conversations were not pinned.' }
+      : { one: 'Could Not Unpin the Conversation', many: 'Some conversations were not unpinned.' }),
     archive,
     restore,
     remove,
@@ -1824,7 +1842,10 @@ export const useConversations = defineStore('conversations', () => {
     switchTarget: (id: string, target: ConversationSummary['target'], notifyAgent = false) =>
       changeConversations(
         [id],
-        () => applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, false),
+        () => applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, false, {
+          one: 'Could Not Move the Conversation',
+          many: 'Some conversations were not moved.',
+        }),
         false,
       ),
     pendingChanges,
