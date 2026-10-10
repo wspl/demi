@@ -37,6 +37,10 @@ async fn relay(socket: WebSocket, source: DeviceSource) {
                 Some(Ok(Message::Close(Some(frame)))) if frame.code == close_code::NORMAL => {
                     return None;
                 }
+                // The runner's own failure, in its words.
+                Some(Ok(Message::Close(Some(frame)))) if frame.code == close_code::ERROR => {
+                    frame.reason.to_string()
+                }
                 Some(Ok(Message::Close(Some(frame)))) => {
                     format!("the runner closed the stream pipe ({}): {}", frame.code, frame.reason)
                 }
@@ -54,7 +58,7 @@ async fn relay(socket: WebSocket, source: DeviceSource) {
         },
         Err(failure) => CloseFrame {
             code: close_code::ERROR,
-            reason: close_reason(&failure.to_string()).into(),
+            reason: close_reason(failure.reason()).into(),
         },
     };
     // A runner that went meanwhile hears nothing, and its pipe has ended

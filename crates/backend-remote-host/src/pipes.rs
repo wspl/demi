@@ -85,10 +85,19 @@ enum Outcome {
     Failed(Arc<str>),
 }
 
-/// Why a pipe failed; the text begins `pipe failed: `.
+/// Why a pipe failed; it shows as `pipe failed: ` and the reason.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("{0}")]
+#[error("pipe failed: {0}")]
 pub struct PipeFailure(Arc<str>);
+
+impl PipeFailure {
+    /// Why the pipe failed, without the words that say a pipe failed: what a
+    /// runner's end is answered, which its command reports as its own error
+    /// (`commands.md` § Handle an rpc call).
+    pub fn reason(&self) -> &str {
+        &self.0
+    }
+}
 
 /// A failed pipe, to a reader or writer of bytes that fails with an IO
 /// error.
@@ -133,7 +142,7 @@ impl Core {
             if *state != Outcome::Open {
                 return false;
             }
-            *state = Outcome::Failed(format!("pipe failed: {reason}").into());
+            *state = Outcome::Failed(reason.into());
             true
         })
     }
@@ -162,7 +171,7 @@ impl Core {
     /// Why a writer cannot go on: the pipe failed, or its sink is gone.
     fn stopped(&self) -> PipeFailure {
         self.failure()
-            .unwrap_or_else(|| PipeFailure("pipe failed: the sink stopped reading".into()))
+            .unwrap_or_else(|| PipeFailure("the sink stopped reading".into()))
     }
 
     /// Resolves once the pipe is over: drained, or failed with why.
