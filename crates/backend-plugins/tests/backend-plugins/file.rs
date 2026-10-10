@@ -208,7 +208,7 @@ async fn demi_file_edit_and_patch_change_what_they_name_whole_or_not_at_all() {
             "target\nmiddle\ntarget\nEdited context.txt (+1 \u{2212}1)\n   2  middle\n   3  changed\ntarget\nmiddle\nchanged\n"
         );
         assert_exit(&results[4], "2");
-        assert_shows(&results[4], &["error: \"old\" is shorter than 1 character\n\nUsage: demi file edit [<path>]"]);
+        assert_shows(&results[4], &["error: \"old\" is shorter than 1 character\nUsage: demi file edit [<path>]"]);
         assert_eq!(read("empty-old.txt"), "content\n");
         assert_eq!(shown_output(&results[5]), QUOTED_SHOWN);
         assert_eq!(read("quoted.js"), QUOTED_AFTER);

@@ -167,7 +167,7 @@ mod host_commands {
             answers[3],
             (
                 Err(RpcError::Usage(
-                    "error: \"script\" is shorter than 1 character\n\nUsage: demi host shell <script> --host <host>\n\nFor more information, try '--help'.".into()
+                    "error: \"script\" is shorter than 1 character\nUsage: demi host shell <script> --host <host>; more with --help".into()
                 )),
                 String::new(),
                 String::new()
