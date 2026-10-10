@@ -177,6 +177,18 @@ impl InputQueue {
         taken
     }
 
+    /// Withdraws the waiting command reports `keep` does not keep, as a
+    /// withdrawn steer is: they cause no request.
+    pub(super) fn retain_reports(&mut self, mut keep: impl FnMut(&CommandReport) -> bool) {
+        let before = self.entries.len();
+        self.entries.retain(|input| match input {
+            Input::Report(report) => keep(report),
+            _ => true,
+        });
+        let withdrawn = u64::try_from(before - self.entries.len()).unwrap_or(u64::MAX);
+        self.arrivals = self.arrivals.saturating_sub(withdrawn);
+    }
+
     /// Takes the command reports: the input a continuation opens with.
     pub(super) fn take_reports(&mut self) -> Vec<CommandReport> {
         self.entries

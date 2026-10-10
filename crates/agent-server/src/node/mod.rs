@@ -521,10 +521,15 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                 return None;
             }
             let end = self.end_of(command).await;
+            // The report reads the end's output but marks nothing seen: a
+            // mark is a look's, which drops the report if it comes first.
             let status = self.ended_status(command).await;
-            self.environments.saw_end(command);
             Some(end_report(command, title, end, status.as_ref()))
         })
+    }
+
+    fn end_seen(&self, command: &CommandId) -> bool {
+        self.environments.end_seen(command)
     }
 
     /// Ends the node's shells on every Host, their running commands with

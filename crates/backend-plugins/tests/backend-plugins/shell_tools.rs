@@ -22,14 +22,15 @@ use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderEvent, ResultPart, UserPart,
     testing::{ScriptedRuntime, Turn},
 };
-use demi_agent_server::ServerConfig;
+use demi_agent_server::{AgentServer, ServerConfig};
 use demi_conversation_socket_protocol::SubagentEvent;
 use demi_host_interface::{RpcInvocation, testing::MemoryPort};
-use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, Sender, Timestamp};
+use demi_shared_types::{AgentMessage, AgentMessageEvent, Block, BlockId, NodeId, Sender, Timestamp, ToolView};
+use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 use serde_json::{Value, json};
 
-use crate::support::{Fixture, conversation, exec, is_idle, reply, resident, tolerant, turn, within};
+use crate::support::{DeviceHost, Fixture, conversation, exec, is_idle, reply, resident, tolerant, turn, within};
 
 /// What the model was shown of each tool call it made, by the call's id, in
 /// the order the request carries them.
@@ -549,6 +550,98 @@ async fn a_resident_command_returns_once_quiet_reports_only_its_end_and_its_end_
     .await;
 }
 
+// Under a second: one shell job and a look through the status command. The
+// end report is made while the model writes its next step, and the model's
+// `demi shell status --wait` shows the end before the report would join the
+// turn (`runtime.md` § Command reports).
+#[tokio::test(flavor = "local")]
+async fn an_end_a_look_showed_while_its_report_waited_is_not_reported() {
+    within(async {
+        let server: Rc<std::cell::OnceCell<Rc<AgentServer<DeviceHost>>>> = Rc::default();
+        let workspace: Rc<std::cell::OnceCell<String>> = Rc::default();
+        let looked: Rc<RefCell<String>> = Rc::default();
+        let (server_in_turn, workspace_in_turn, looked_in_turn) = (server.clone(), workspace.clone(), looked.clone());
+        let turns = [
+            Turn::Events(vec![exec(
+                "serve",
+                "echo ready; until [ -e done ]; do sleep 0.05; done; echo finished",
+                500,
+            )]),
+            // While this request streams, the command ends and its end
+            // report waits for the turn's next boundary; then the model
+            // looks at the command, which shows the end.
+            Turn::Stream(Box::new(move |_| {
+                look_once_its_report_waits(server_in_turn, workspace_in_turn, looked_in_turn).boxed_local()
+            })),
+        ]
+        .into_iter()
+        .chain(replies(3));
+        let script = ScriptedRuntime::new(turns);
+        let fixture = Fixture::start_with(&script, reporting()).await;
+        let _ = server.set(fixture.server.clone());
+        let _ = workspace.set(fixture.workspace.clone());
+        let mut client = fixture.opened().await;
+        turn(&mut client, "message-1", "Serve, then look.").await;
+        let root = fixture.server.node(&conversation(), &conversation()).unwrap();
+        root.session().settled().await;
+
+        let serve = fixture.shell_commands()[0].clone();
+        let looked = looked.borrow().clone();
+        assert!(looked.contains("status: exited\nexitCode: 0"), "{looked}");
+        // The end the look showed tells nothing more: no request after the
+        // look's answer, and no report in any.
+        assert_eq!(script.requests().len(), 2, "{:#?}", script.requests().iter().map(|request| request.items.last().cloned()).collect::<Vec<_>>());
+        let reported_end = script
+            .requests()
+            .iter()
+            .flat_map(inputs)
+            .any(|input| input.contains(&format!("Command {serve} (Run the test script) ended")));
+        assert!(!reported_end);
+        assert!(!fixture.kinds().contains(&"wakeup".to_owned()), "{:?}", fixture.kinds());
+        fixture.stop().await;
+    })
+    .await;
+}
+
+/// The model's look at the command the turn's first call started: it ends
+/// the command, waits until the command's end report waits for the turn's
+/// boundary, looks at the command with `demi shell status --wait`, as the
+/// model's script would, and answers.
+fn look_once_its_report_waits(
+    server: Rc<std::cell::OnceCell<Rc<AgentServer<DeviceHost>>>>,
+    workspace: Rc<std::cell::OnceCell<String>>,
+    looked: Rc<RefCell<String>>,
+) -> impl futures_util::Stream<Item = ProviderEvent> {
+    futures_util::stream::once(async move {
+        let root = conversation();
+        let node = server.get().expect("the fixture started").node(&root, &root).unwrap();
+        let workspace = workspace.get().unwrap();
+        std::fs::write(format!("{workspace}/done"), "").unwrap();
+        while !node.session().status().input {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let serve = node
+            .session()
+            .transcript()
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                Block::ToolCall(call) => match &call.view {
+                    Some(ToolView::Shell(view)) => Some(view.command_id.clone()),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .expect("the call that started the command");
+        let (code, stdout, stderr) =
+            node_call(&node, workspace, &["shell", "status"], json!({ "id": [serve], "wait": "5s" })).await;
+        assert_eq!(code, 0, "{stderr}");
+        *looked.borrow_mut() = stdout;
+        futures_util::stream::iter(reply("It ended."))
+    })
+    .flatten()
+}
+
 /// The command the call `id` started, once its result reached the model.
 async fn fixture_command(script: &ScriptedRuntime, id: &str) -> String {
     loop {
@@ -628,6 +721,17 @@ async fn spawn(fixture: &Fixture, prompt: &str) {
 /// its exit code, stdout and stderr.
 async fn root_call(fixture: &Fixture, path: &[&str], args: Value) -> (u8, String, String) {
     let root = fixture.server.node(&conversation(), &conversation()).unwrap();
+    node_call(&root, &fixture.workspace, path, args).await
+}
+
+/// Runs the `demi` command at `path` with `args` as the root's job in
+/// `workspace` would: its exit status, stdout and stderr.
+async fn node_call(
+    root: &demi_agent_server::Node<DeviceHost>,
+    workspace: &str,
+    path: &[&str],
+    args: Value,
+) -> (u8, String, String) {
     let path: Vec<&str> = std::iter::once("demi").chain(path.iter().copied()).collect();
     let mut invocation: RpcInvocation = serde_json::from_value(json!({
         "path": path,
@@ -635,7 +739,7 @@ async fn root_call(fixture: &Fixture, path: &[&str], args: Value) -> (u8, String
         "args": args,
         "json": false,
         "host": "device",
-        "cwd": fixture.workspace,
+        "cwd": workspace,
         "env": {},
         "context": {
             "conversation": conversation(),

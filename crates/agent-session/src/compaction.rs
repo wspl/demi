@@ -453,6 +453,7 @@ fn session_copy(s: &Rc<SessionShared>, window: Vec<Block>, media: HeldMedia) -> 
         held: false,
         ids: s.ids.clone(),
         clock: core.clock(),
+        runtime: s.runtime.clone(),
     });
     let deps = SessionDeps {
         runtime: Rc::new(CopyRuntime {
