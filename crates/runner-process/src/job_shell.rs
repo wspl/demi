@@ -37,12 +37,9 @@ pub struct JobStart {
     /// before its script runs (`runner.md` § Shell jobs).
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,
-    /// Whether the job's input is its live terminal rather than a finite body.
+    /// Whether the job's input is its own input rather than a stdin the
+    /// backend relays (`runner.md` § A job's own input).
     pub live: bool,
-    /// Whether the job's stdout is the job's output, which the runner reads,
-    /// rather than relayed elsewhere (`runner.md` § Where a command's stdout
-    /// goes).
-    pub output: bool,
     /// Ends the job and everything it runs when cancelled.
     pub cancellation: CancellationToken,
     pub commands: Option<JobCommands>,

@@ -85,6 +85,12 @@ async fn the_catalog_lists_the_pickers_models_by_priority_with_their_efforts_and
         ),
         (Some(true), Some(true), Some(true))
     );
+    // The backend documents no file part: a model reads images, and no PDF
+    // (`models.md` § Accepted attachment types).
+    assert_eq!(
+        gpt.accepted_extensions.as_deref(),
+        Some(&demi_shared_types::IMAGE_FILE_EXTENSIONS[..])
+    );
     assert_eq!(
         gpt.supported_thinking_efforts.as_deref(),
         Some(&["low", "medium", "high", "xhigh", "ultra"].map(String::from)[..])
@@ -106,6 +112,7 @@ async fn the_catalog_lists_the_pickers_models_by_priority_with_their_efforts_and
         ),
         (None, Some(false), Some(false))
     );
+    assert_eq!(mini.accepted_extensions.as_deref(), Some(&[][..]));
     // A tool field present even as null names a tool.
     assert_eq!(
         (

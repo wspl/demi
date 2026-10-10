@@ -60,6 +60,10 @@ async fn the_catalog_reads_the_proxys_models_each_time_from_an_envelope_or_a_bar
     assert!(list.models.iter().all(
         |model| model.supports_attachments == Some(true) && model.supports_tools == Some(true)
     ));
+    // The proxy drops a document: a model reads images, and no PDF
+    // (`models.md` § Accepted attachment types).
+    assert!(list.models.iter().all(|model| model.accepted_extensions.as_deref()
+        == Some(&demi_shared_types::IMAGE_FILE_EXTENSIONS[..])));
     let sent = &vendor.requests()[0];
     assert_eq!(
         (sent.header("authorization"), sent.header("accept")),

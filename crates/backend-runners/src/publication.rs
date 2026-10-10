@@ -459,7 +459,7 @@ mod tests {
         assert_eq!(claim["operations"], serde_json::json!(["fixture"]));
     }
 
-    /// The first `demi file read` on a laptop of a target: the runner asks
+    /// The first `demi file edit` on a laptop of a target: the runner asks
     /// where the executable downloads from, and the backend takes it from
     /// the release's files, checks it, stores it and answers.
     #[tokio::test]

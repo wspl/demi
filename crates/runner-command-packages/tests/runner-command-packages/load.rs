@@ -54,7 +54,8 @@ fn invocation(operation: &str, conversation: &str) -> Invocation {
         env: BTreeMap::new(),
         edits: None,
         json: None,
-        stdout: None,
+        live_input: None,
+        viewable: None,
     }
 }
 

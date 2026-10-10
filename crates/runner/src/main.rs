@@ -51,14 +51,7 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
         .ok_or_else(|| io::Error::other("missing command context"))?
         .clone();
     let stdin = standard_file(0)?;
-    let stdout = standard_file(1)?;
-    let request = RawCommand::new(
-        context,
-        root,
-        argv,
-        stdio::is_live(&stdin, &env)?,
-        stdio::stdout_target(&stdout, &env)?,
-    )?;
+    let request = RawCommand::new(context, root, argv, stdio::is_live(&stdin, &env)?)?;
     let invocation = LocalInvocation {
         operation: RAW.into(),
         invocation_id: uuid::Uuid::new_v4().simple().to_string(),
@@ -70,7 +63,7 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
     tokio::select! {
         result = command_client::forward(&endpoint, &invocation, Stdio {
             stdin: tokio::fs::File::from_std(stdin),
-            stdout: tokio::fs::File::from_std(stdout),
+            stdout: tokio::fs::File::from_std(standard_file(1)?),
             stderr: tokio::fs::File::from_std(standard_file(2)?),
         }, stop.clone()) => result.map(|result| result.exit_code),
         result = signal() => {

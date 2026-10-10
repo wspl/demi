@@ -440,9 +440,9 @@ fn screenshot(result: &ScreenshotResult) -> String {
     )
 }
 
-/// The text of a screenshot of `tab` returned as a medium (`browser.md`
-/// § Images and large outputs): what it captured, as a saved screenshot's
-/// text says it; the medium's line follows it.
+/// What a screenshot of `tab` without `--output` captured, which it writes
+/// to stderr beside its PNG's bytes (`browser.md` § Images and large
+/// outputs), as a saved screenshot's text says it.
 pub fn captured(tab: &str, width: u32, height: u32, shown: &BrowserViewport) -> String {
     format!("Screenshot of {}\n{}", plain(tab), image(width, height, shown))
 }

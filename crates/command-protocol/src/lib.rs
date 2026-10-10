@@ -28,9 +28,10 @@ pub use edits::{
 };
 pub use invocation::{
     COMMAND_LOCALE_LANGUAGES, CONVERSATION_NAME_CHARS, CommandCaller, CommandContext, CommandError,
-    ColorScheme, CommandLocale, Completion, Invocation, LocalInvocation, conversation_name, without_nul,
+    ColorScheme, CommandLocale, Completion, Invocation, LocalInvocation, Viewable, conversation_name,
+    without_nul,
 };
-pub use media::{MAX_MEDIUM_BYTES, StdoutTarget, sniff_media_type};
+pub use media::{MAX_MEDIUM_BYTES, MediumFacts, medium_facts, sniff_media_type};
 pub use numbers::{MAX_NUMBERS, NumbersAnswer, NumbersRequest, ServiceSequence, StreamOpen};
 pub use package::{
     ArtifactLocation, ArtifactPath, ArtifactUrl, PackageArtifact, PackageDescriptor,
@@ -57,8 +58,8 @@ pub trait Metadata: serde::Serialize + serde::de::DeserializeOwned + Send + 'sta
     fn operation(&self) -> &str;
 
     /// Whether the invocation may return media (`commands.md` § Return
-    /// media): only one a job's command makes, which says where its stdout
-    /// goes.
+    /// media): only one a job's command makes, which carries the media
+    /// types the job may show the model.
     fn returns_media(&self) -> bool;
 
     fn encode(&self) -> Result<Bytes, ProtocolError> {
@@ -77,7 +78,7 @@ impl Metadata for Invocation {
     }
 
     fn returns_media(&self) -> bool {
-        self.stdout.is_some()
+        self.viewable.is_some()
     }
 }
 
@@ -90,8 +91,8 @@ impl Metadata for LocalInvocation {
         &self.operation
     }
 
-    /// The runner routes the media of the commands it dispatches; a local
-    /// caller receives only their output.
+    /// The runner hands the media of the commands it dispatches to their
+    /// job; a local caller receives only their output.
     fn returns_media(&self) -> bool {
         false
     }

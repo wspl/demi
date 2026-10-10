@@ -580,6 +580,10 @@ async fn media_travels_inline_and_what_the_api_cannot_read_becomes_text() {
                 output: vec![
                     ResultPart::Image(png),
                     ResultPart::Video(bytes(b"\x1a\x45\xdf\xa3", "video/webm")),
+                    ResultPart::Document {
+                        bytes: bytes(b"%PDF", "application/pdf"),
+                        file_name: "document-3.pdf".into(),
+                    },
                 ],
                 is_error: false,
             },
@@ -602,6 +606,7 @@ async fn media_travels_inline_and_what_the_api_cannot_read_becomes_text() {
         json!([
             { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "iVBORw==" } },
             { "type": "text", "text": "[video:video/webm]" },
+            { "type": "document", "source": { "type": "base64", "media_type": "application/pdf", "data": "JVBERg==" }, "title": "document-3.pdf" },
         ])
     );
 }

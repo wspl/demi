@@ -18,7 +18,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_protocol::{CommandContext, EditKind as JobEditKind};
+use demi_command_protocol::{CommandContext, EditKind as JobEditKind, Viewable};
 use demi_host_interface::{
     BinaryOutput, CommandMedium, CommandRecord, CommandSet, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, Ending, ExecRequest, Host, HostError, HostKey,
@@ -61,8 +61,8 @@ pub trait HostAccess {
 
 /// Keeps what a command leaves when it ends, before its command reads as
 /// ended: the copies of its edits (`edit-tracking.md` § Edit copies), and
-/// its whole output with its media (`runtime.md` § The whole output, § Where
-/// media are kept). A failure to keep them is the keeper's to record.
+/// its whole output (`runtime.md` § The whole output). A failure to keep
+/// them is the keeper's to record.
 pub trait CommandKeeper {
     /// The list the command's view shows of `files`: every file, each
     /// segment with its copies when they were stored.
@@ -76,13 +76,12 @@ pub trait CommandKeeper {
     /// namespace holds it, so a medium it holds is not read from the Host.
     fn stored_blob<'a>(&'a self, blob: &'a BlobRef) -> LocalBoxFuture<'a, Option<Bytes>>;
 
-    /// Records the command's end, `end`, with its whole output and media.
+    /// Records the command's end, `end`, with its whole output.
     fn keep_output<'a>(
         &'a self,
         command: &'a CommandId,
         end: CommandEnd,
         output: &'a WholeOutput,
-        media: &'a [CommandMedium],
     ) -> LocalBoxFuture<'a, ()>;
 }
 
@@ -274,7 +273,14 @@ impl RemoteShellEnvironment {
         let task_command = command.clone();
         self.0.tasks.spawn_local(async move {
             environment
-                .run(task_command, request.script, request.caller, running, record)
+                .run(
+                    task_command,
+                    request.script,
+                    request.caller,
+                    request.viewable,
+                    running,
+                    record,
+                )
                 .await;
         });
         Ok(command)
@@ -292,13 +298,14 @@ impl RemoteShellEnvironment {
         command: CommandId,
         script: String,
         caller: JobCaller,
+        viewable: Viewable,
         running: Rc<Running>,
         record: Rc<RefCell<CommandRecord>>,
     ) {
         let failure: RefCell<Option<String>> = RefCell::new(None);
         let job = async {
             if let Err(error) = self
-                .execute(&command, script, caller, &running, &record)
+                .execute(&command, script, caller, viewable, &running, &record)
                 .await
             {
                 *failure.borrow_mut() = Some(error);
@@ -348,6 +355,7 @@ impl RemoteShellEnvironment {
         command: &CommandId,
         script: String,
         caller: JobCaller,
+        viewable: Viewable,
         running: &Running,
         record: &Rc<RefCell<CommandRecord>>,
     ) -> Result<(), String> {
@@ -371,6 +379,7 @@ impl RemoteShellEnvironment {
                 cwd,
                 env,
                 context,
+                viewable: Some(viewable),
                 caller: Some(caller),
                 commands: self.0.options.commands.clone(),
                 stdin: None,
@@ -663,7 +672,7 @@ impl RemoteShellEnvironment {
             page,
         } = settlement;
         if let Some(keeper) = &self.0.options.keeper {
-            keeper.keep_output(command, end, &output, &media).await;
+            keeper.keep_output(command, end, &output).await;
         }
         if let Some(job) = job {
             job.release().await;
@@ -791,34 +800,6 @@ impl ShellEnvironment for RemoteShellEnvironment {
                 .await
                 .ok_or_else(|| ShellError::NotRunning(command.clone()))?;
             Ok(job.read_output().await?)
-        })
-    }
-
-    fn read_medium<'a>(
-        &'a self,
-        command: &'a CommandId,
-        number: u32,
-    ) -> LocalBoxFuture<'a, Result<Bytes, ShellError>> {
-        Box::pin(async move {
-            let record = self.record(command)?;
-            let running = self.0.state.borrow().running.get(command).cloned();
-            let Some(running) = running.filter(|_| record.borrow().is_running()) else {
-                return Err(ShellError::NotRunning(command.clone()));
-            };
-            let job = running
-                .started()
-                .await
-                .ok_or_else(|| ShellError::NotRunning(command.clone()))?;
-            let returned = job.media();
-            if !returned.iter().any(|medium| medium.number == number) {
-                return Err(ShellError::NoMedium {
-                    command: command.clone(),
-                    number,
-                    returned: returned.len(),
-                });
-            }
-            let mut read = job.read_media(&[number]).await?;
-            Ok(read.pop().expect("one answer per medium read")?)
         })
     }
 
