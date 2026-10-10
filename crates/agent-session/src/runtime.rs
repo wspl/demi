@@ -3,7 +3,11 @@
 //! assembly implements it, so a session never reaches its node otherwise, and
 //! a tool never reaches into its session: it returns its outcome.
 
-use std::sync::Arc;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    sync::Arc,
+};
 
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
 use demi_shared_gates::{GateLease, Reservation};
@@ -68,10 +72,12 @@ pub trait SessionRuntime {
 
     /// Resolves once `command`, which a `shell` call of the node left
     /// running, has ended, and at once when it has ended already or the
-    /// node's shells do not hold it (`runtime.md` § Command reports). It
-    /// holds nothing of the session. A node without shells has no commands,
-    /// so by default it never resolves.
-    fn command_ended(&self, command: &CommandId) -> LocalBoxFuture<'static, ()> {
+    /// node's shells do not hold it and the conversation does not record it
+    /// running; one it records running is taken up first
+    /// (`runtime.md` § Command reports). It holds nothing of the session. A
+    /// node without shells has no commands, so by default it never
+    /// resolves.
+    fn command_ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, ()> {
         let _ = command;
         Box::pin(std::future::pending())
     }
@@ -168,6 +174,54 @@ pub struct ToolInvocation {
     /// What ends the window a shell tool watches its command in before its
     /// time passes (`runtime.md` § The window).
     pub arrival: InputArrival,
+    /// Where the call tells its session the command it started, and learns
+    /// whether something other than its tool that ends it leaves the
+    /// command running (`runtime.md` § Interrupted calls).
+    pub command: CallCommand,
+}
+
+/// The command a running call started, as its session knows it: what the
+/// session names when something other than the tool ends the call, and
+/// whether that end leaves the command running, as the backend's shutdown
+/// does (`runtime.md` § Interrupted calls).
+#[derive(Debug, Clone, Default)]
+pub struct CallCommand(Rc<CallCommandState>);
+
+#[derive(Debug, Default)]
+struct CallCommandState {
+    started: RefCell<Option<StartedCommand>>,
+    keep: Cell<bool>,
+}
+
+/// A command a call started: its number, its interval and its call's
+/// title, which its reports name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartedCommand {
+    pub command: CommandId,
+    pub interval_ms: Option<u32>,
+    pub title: String,
+}
+
+impl CallCommand {
+    /// The call started `started`.
+    pub fn started(&self, started: StartedCommand) {
+        self.0.started.replace(Some(started));
+    }
+
+    /// The command the call started, once it did.
+    pub fn command(&self) -> Option<StartedCommand> {
+        self.0.started.borrow().clone()
+    }
+
+    /// Whether the call ends with the backend's shutdown, which leaves its
+    /// command running.
+    pub fn keeps_running(&self) -> bool {
+        self.0.keep.get()
+    }
+
+    pub(crate) fn keep_running(&self) {
+        self.0.keep.set(true);
+    }
 }
 
 /// What a session tells the windows of its running calls.

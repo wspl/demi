@@ -239,6 +239,8 @@ pub(crate) fn hello(protocol: u32, token: Option<&str>, managed: Option<bool>) -
             managed,
             installation: None,
         },
+        instance: 1,
+        jobs: Vec::new(),
     }
 }
 

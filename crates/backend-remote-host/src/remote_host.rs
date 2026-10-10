@@ -29,8 +29,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     ArtifactResolver, HostWatch, Link,
+    device_jobs::{Claimed, DeviceJobs, NewJob},
     link::{
-        Answer, Expected, JobEnd, JobEntry, JobMedium, JobOrigin, JobOutput, ServiceEntry, Shared,
+        Answer, Expected, JobEnd, JobMedium, JobOrigin, JobOutput, ServiceEntry, Shared,
         SpawnEntry,
     },
     manifest::CommandSelection,
@@ -88,6 +89,8 @@ struct Inner {
     key: HostKey,
     default_cwd: String,
     link: watch::Receiver<DeviceLink>,
+    /// The device's jobs, which outlive each connection.
+    jobs: DeviceJobs,
     admission: Admission,
 }
 
@@ -96,12 +99,14 @@ impl RemoteHost {
         key: HostKey,
         default_cwd: String,
         link: watch::Receiver<DeviceLink>,
+        jobs: DeviceJobs,
         admission: Admission,
     ) -> Self {
         Self(Rc::new(Inner {
             key,
             default_cwd,
             link,
+            jobs,
             admission,
         }))
     }
@@ -130,40 +135,38 @@ impl RemoteHost {
         Some(self.0.default_cwd.clone())
     }
 
+    /// A new job's id, which a job's records name before it starts.
+    pub fn job_id() -> String {
+        uuid::Uuid::new_v4().simple().to_string()
+    }
+
     /// Runs `script` as one shell job. Offline, the job has ended already;
     /// a Host that admits no work refuses it.
     pub async fn start_job(&self, job: JobStart) -> Result<RemoteJob, HostError> {
         let lease = self.admit()?;
-        let id = uuid::Uuid::new_v4().simple().to_string();
-        let shared = Shared::new();
-        let media = Rc::default();
-        let Ok(link) = self.link() else {
-            shared.finish(JobEnd::lost("runner disconnected"));
-            return Ok(RemoteJob {
-                id,
-                shared,
-                media,
-                link: None,
-            });
-        };
+        let id = job.id.clone();
         let origin = Rc::new(JobOrigin {
             host: self.0.key.clone(),
             context: job.context.clone(),
             caller: job.caller.clone(),
         });
-        link.with_state(|state| {
-            state.add_job(
-                id.clone(),
-                JobEntry {
-                    shared: shared.clone(),
-                    media: media.clone(),
-                    origin,
-                    commands: job.commands.clone(),
-                    cancel: CancellationToken::new(),
-                    _lease: lease,
-                },
-            );
-        });
+        let entry = NewJob {
+            shared: Shared::new(),
+            media: Rc::default(),
+            origin: Some(origin),
+            commands: job.commands.clone(),
+            lease,
+        };
+        let Ok(link) = self.link() else {
+            entry.shared.finish(JobEnd::lost("runner disconnected"));
+            let claimed = Claimed {
+                shared: entry.shared,
+                media: entry.media,
+                attachments: watch::channel(0).1,
+            };
+            return Ok(self.job(id, claimed));
+        };
+        let claimed = self.0.jobs.start(id.clone(), entry, &link);
         // A job's manifest and its start travel together: the runner holds
         // one manifest at a time.
         let _turn = link.job_turn().acquire().await;
@@ -197,16 +200,58 @@ impl RemoteHost {
             // What the runner received is uncertain: the next job sends its
             // manifest again.
             link.set_sent_manifest(None);
-            link.with_state(|state| state.remove_job(&id));
-            shared.finish(JobEnd::lost(&error.message));
+            self.0.jobs.forget(&id);
+            claimed.shared.finish(JobEnd::lost(&error.message));
             return Err(error);
         }
-        Ok(RemoteJob {
+        Ok(self.job(id, claimed))
+    }
+
+    /// Takes up the job `id`, which the backend recorded running on this
+    /// Host before it restarted (`sessions-and-targets.md` § Recovery and
+    /// persistence): its runner's hello says whether it goes on, ended or
+    /// was lost, now or when the runner connects.
+    /// Its rpc calls act for `caller` with `context`; without a context
+    /// they are refused.
+    pub fn adopt_job(
+        &self,
+        id: String,
+        context: Option<CommandContext>,
+        caller: Option<JobCaller>,
+        commands: Option<CommandSelection>,
+    ) -> RemoteJob {
+        let origin = context.map(|context| {
+            Rc::new(JobOrigin {
+                host: self.0.key.clone(),
+                context,
+                caller,
+            })
+        });
+        // A Host that admits no work holds nothing for a job that runs
+        // already.
+        let lease = self.admit().ok().flatten();
+        let claimed = self.0.jobs.claim(
+            &id,
+            NewJob {
+                shared: Shared::new(),
+                media: Rc::default(),
+                origin,
+                commands,
+                lease,
+            },
+        );
+        self.job(id, claimed)
+    }
+
+    fn job(&self, id: String, claimed: Claimed) -> RemoteJob {
+        RemoteJob {
             id,
-            shared,
-            media,
-            link: Some(link),
-        })
+            shared: claimed.shared,
+            media: claimed.media,
+            attachments: claimed.attachments,
+            device: self.0.link.clone(),
+            jobs: self.0.jobs.clone(),
+        }
     }
 
     /// A pipe the device's runner fills with `range` of the file, once the
@@ -781,6 +826,8 @@ pub enum Look {
 
 /// A job to start.
 pub struct JobStart {
+    /// Its id, from [`RemoteHost::job_id`].
+    pub id: String,
     pub script: String,
     /// Where the job starts; one that does not exist fails it before its
     /// script runs (`runner.md` § Shell jobs).
@@ -801,20 +848,45 @@ pub struct JobStart {
     pub stdout: Option<PipeRef>,
 }
 
-/// One shell job on the runner.
+/// One shell job on the runner, over whichever connection of its device
+/// serves it (`runner.md` § Command lifetime).
 #[derive(Clone)]
 pub struct RemoteJob {
     id: String,
     shared: Rc<Shared<JobEnd, JobOutput>>,
     /// The media its commands returned, as the runner announced them.
     media: Rc<RefCell<Vec<JobMedium>>>,
-    /// The connection it runs on; none when it ended before it started.
-    link: Option<Link>,
+    /// Changes each time the job goes on over a new connection.
+    attachments: watch::Receiver<u64>,
+    /// The device's connection.
+    device: watch::Receiver<DeviceLink>,
+    /// The device's jobs, which keep it.
+    jobs: DeviceJobs,
 }
 
 impl RemoteJob {
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    /// The connection that serves the job's device now.
+    fn link(&self) -> Option<Link> {
+        match &*self.device.borrow() {
+            DeviceLink::Online(link) if !link.is_closed() => Some(link.clone()),
+            _ => None,
+        }
+    }
+
+    /// The connection that serves the job while it runs.
+    fn live(&self) -> Option<Link> {
+        self.link().filter(|_| self.shared.ended().is_none())
+    }
+
+    /// Lets go of the job, which runs on: the device keeps its end for the
+    /// next [`RemoteHost::adopt_job`] of it (`runtime.md` § Dispose and
+    /// restore).
+    pub fn let_go(&self) {
+        self.jobs.park(&self.id);
     }
 
     /// The next message of the job's output views; none once the job ended
@@ -823,11 +895,20 @@ impl RemoteJob {
         self.shared.next_output().await
     }
 
+    /// Resolves once the job goes on over a new connection of its device,
+    /// which knows nothing of how the backend followed it.
+    pub async fn reattached(&mut self) {
+        if self.attachments.changed().await.is_err() {
+            // A job the device forgot goes on over no other connection.
+            std::future::pending::<()>().await;
+        }
+    }
+
     /// Starts or stops the runner's sending of the job's output beyond each
     /// stream's first `JOB_VIEW_BYTES` (`runner.md` § Pipes and output);
-    /// nothing once the job ended.
+    /// nothing once the job ended or while no connection serves it.
     pub async fn follow(&self, follow: bool) -> Result<(), HostError> {
-        match live(&self.link, &self.shared) {
+        match self.live() {
             Some(link) => {
                 link.send(&Inbound::JobFollow {
                     job_id: self.id.clone(),
@@ -854,22 +935,22 @@ impl RemoteJob {
     }
 
     /// Writes to the job's standard input in frames of at most
-    /// [`STDIN_CHUNK_BYTES`], in order; nothing once the job ended.
+    /// [`STDIN_CHUNK_BYTES`], in order; nothing once the job ended, and an
+    /// error while no connection serves it.
     pub async fn write_stdin(&self, bytes: Bytes) -> Result<(), HostError> {
-        match live(&self.link, &self.shared) {
-            Some(link) => {
-                send_stdin(link, &bytes, |bytes| Inbound::JobStdin {
-                    job_id: self.id.clone(),
-                    bytes,
-                })
-                .await
-            }
-            None => Ok(()),
+        if self.shared.ended().is_some() {
+            return Ok(());
         }
+        let link = self.connected()?;
+        send_stdin(&link, &bytes, |bytes| Inbound::JobStdin {
+            job_id: self.id.clone(),
+            bytes,
+        })
+        .await
     }
 
     pub async fn close_stdin(&self) -> Result<(), HostError> {
-        match live(&self.link, &self.shared) {
+        match self.live() {
             Some(link) => {
                 link.send(&Inbound::JobStdinEnd {
                     job_id: self.id.clone(),
@@ -880,19 +961,17 @@ impl RemoteJob {
         }
     }
 
+    /// The connection that serves the job's device, or why there is none.
+    fn connected(&self) -> Result<Link, HostError> {
+        self.link()
+            .ok_or_else(|| HostError::offline("the job's runner is not connected"))
+    }
+
     /// The job's kept output as it stands (`runner.md` § Pipes and output):
     /// while the job runs, and after it ended until its release.
     pub async fn read_output(&self) -> Result<WholeOutput, HostError> {
-        let link = self
-            .link
-            .as_ref()
-            .ok_or_else(|| HostError::offline("the job's runner is not connected"))?;
-        let reader = filled(link, Expected::JobRead, |id, output| Inbound::JobRead {
-            id,
-            job_id: self.id.clone(),
-            output,
-        })
-        .await?;
+        let link = self.connected()?;
+        let reader = filled_job_read(&link, &self.id).await?;
         let bytes = collect_pipe(reader, wire::JOB_KEPT_READ_BYTES).await?;
         decode_output(&bytes, None)
             .map_err(|error| protocol(&format!("the job's kept output does not decode: {error}")))
@@ -912,11 +991,8 @@ impl RemoteJob {
         &self,
         numbers: &[u32],
     ) -> Result<Vec<Result<Bytes, HostError>>, HostError> {
-        let link = self
-            .link
-            .as_ref()
-            .ok_or_else(|| HostError::offline("the job's runner is not connected"))?;
-        let (answer, reader) = answered(link, Expected::JobMediaRead, |id, output| {
+        let link = self.connected()?;
+        let (answer, reader) = answered(&link, Expected::JobMediaRead, |id, output| {
             Inbound::JobMediaRead {
                 id,
                 job_id: self.id.clone(),
@@ -932,9 +1008,10 @@ impl RemoteJob {
     }
 
     /// Tells the runner that the backend has what it needs of the ended job,
-    /// so its directory goes. A runner that is gone removed it already.
+    /// so its directory goes. Without a connection, the runner's next hello
+    /// lists the job again, and its exit releases it then.
     pub async fn release(&self) {
-        let Some(link) = &self.link else {
+        let Some(link) = self.link() else {
             return;
         };
         if let Err(error) = link
@@ -948,7 +1025,7 @@ impl RemoteJob {
     }
 
     pub async fn kill(&self, signal: wire::Signal) -> Result<(), HostError> {
-        match live(&self.link, &self.shared) {
+        match self.live() {
             Some(link) => {
                 link.send(&Inbound::JobKill {
                     job_id: self.id.clone(),
@@ -961,9 +1038,20 @@ impl RemoteJob {
     }
 }
 
-/// The connection work runs on, while it runs.
+/// The connection a raw process runs on, while it runs.
 fn live<'a, E: Clone, C>(link: &'a Option<Link>, shared: &Shared<E, C>) -> Option<&'a Link> {
     link.as_ref().filter(|_| shared.ended().is_none())
+}
+
+/// Asks the runner to fill a pipe with `job`'s kept output, and returns the
+/// pipe's reader once the runner accepted.
+pub(crate) async fn filled_job_read(link: &Link, job: &str) -> Result<PipeReader, HostError> {
+    filled(link, Expected::JobRead, |id, output| Inbound::JobRead {
+        id,
+        job_id: job.to_owned(),
+        output,
+    })
+    .await
 }
 
 /// Sends `bytes` as ordered frames of at most [`STDIN_CHUNK_BYTES`], each in

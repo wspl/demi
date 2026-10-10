@@ -172,7 +172,7 @@ async fn execute(
             turn::run(s, cancel).await
         }
         ActionKind::Retry => retry(s, cancel).await,
-        ActionKind::Resume => resume(s, cancel).await,
+        ActionKind::Resume { reason } => resume(s, cancel, reason.clone()).await,
         ActionKind::Edit => editing::run(s, cancel).await,
         ActionKind::Compact => {
             compaction::compacting(s, compaction::run_pass(s, cancel)).await?;
@@ -215,7 +215,11 @@ async fn rerun(s: &Rc<SessionShared>, cancel: &TurnCancel, turn: TurnId) -> Resu
 /// compactions after it, marks the stop it continues as resumed, appends a
 /// `resume` block and infers again. A turn that left nothing but leftovers
 /// runs again from its input, as a retry does.
-async fn resume(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
+async fn resume(
+    s: &Rc<SessionShared>,
+    cancel: &TurnCancel,
+    reason: Option<String>,
+) -> Result<(), TurnError> {
     let point = s.read(|core| resume_point(core.transcript.blocks()));
     // The unwind comes before a pending switch lands: a switch that compacts
     // would move the cut.
@@ -229,7 +233,7 @@ async fn resume(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnEr
     cancel.check()?;
     s.update(|core| core.mark_abort_resumed());
     turn::apply_switch(s, cancel).await?;
-    s.update(|core| core.push_resume());
+    s.update(|core| core.push_resume(reason));
     compaction::preflight(s, cancel).await?;
     turn::run(s, cancel).await
 }

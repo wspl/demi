@@ -16,6 +16,7 @@ mod host_tests;
 pub mod page_socket;
 mod permissions;
 
+pub use self::adoption::KeptJobs;
 pub use self::permissions::deliver_decisions;
 mod plugins;
 

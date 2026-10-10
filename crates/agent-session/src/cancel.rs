@@ -3,7 +3,7 @@
 //! the action recorded the stop, which `abort()` waits for and which says
 //! whether another `abort` would then have stopped more.
 
-use std::{cell::Cell, future::Future, rc::Rc};
+use std::{cell::RefCell, future::Future, rc::Rc};
 
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
@@ -11,10 +11,14 @@ use tokio_util::sync::CancellationToken;
 use super::TurnError;
 
 /// Why an action was stopped.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CancelReason {
     /// The user's Stop: the action leaves the stopped marker.
     Stop,
+    /// A hold of the conversation, such as a Cloud reset or a deletion,
+    /// stops it as the user's Stop does; the reason says which, as its
+    /// interrupted calls name it (`runtime.md` § Interrupted calls).
+    Hold(Rc<str>),
     /// The session is being disposed: the action leaves the interruption
     /// record.
     Shutdown,
@@ -23,7 +27,7 @@ pub(crate) enum CancelReason {
 pub(crate) struct TurnCancel {
     token: CancellationToken,
     /// The first reason wins.
-    reason: Cell<Option<CancelReason>>,
+    reason: RefCell<Option<CancelReason>>,
     /// Set once the action recorded how it ended: whether another `abort`
     /// would stop something then.
     recorded: watch::Sender<Option<bool>>,
@@ -33,15 +37,13 @@ impl TurnCancel {
     pub(crate) fn new() -> Rc<Self> {
         Rc::new(Self {
             token: CancellationToken::new(),
-            reason: Cell::new(None),
+            reason: RefCell::new(None),
             recorded: watch::Sender::new(None),
         })
     }
 
     pub(crate) fn cancel(&self, reason: CancelReason) {
-        if self.reason.get().is_none() {
-            self.reason.set(Some(reason));
-        }
+        self.reason.borrow_mut().get_or_insert(reason);
         self.token.cancel();
     }
 
@@ -50,7 +52,7 @@ impl TurnCancel {
     }
 
     pub(crate) fn reason(&self) -> Option<CancelReason> {
-        self.reason.get()
+        self.reason.borrow().clone()
     }
 
     /// Fails with [`TurnError::Cancelled`] once the action is stopped; every

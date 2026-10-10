@@ -89,6 +89,14 @@ impl Watched {
         }
     }
 
+    /// The commands watched, in the order they were left running.
+    pub(super) fn commands(&self) -> Vec<CommandId> {
+        self.commands
+            .iter()
+            .map(|watched| watched.command.clone())
+            .collect()
+    }
+
     pub(super) fn is_empty(&self) -> bool {
         self.commands.is_empty()
     }
@@ -128,8 +136,9 @@ async fn watch(session: Weak<SessionShared>, command: CommandId, interval_ms: Op
     let Some(s) = session.upgrade() else {
         return;
     };
-    let ended = s.runtime.command_ended(&command);
+    let runtime = s.runtime.clone();
     drop(s);
+    let ended = runtime.command_ended(&command);
     tokio::pin!(ended);
     loop {
         let progress = async {
