@@ -7,12 +7,16 @@
 //! their runners connect (`sessions-and-targets.md` § Recovery and
 //! persistence).
 
+use std::collections::BTreeMap;
+
+use demi_host_interface::Seen;
 use demi_shared_types::{CommandId, NodeId, Timestamp};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
+use serde::{Deserialize, Serialize};
 
 use super::StorageError;
-use super::columns::{decode, instant};
+use super::columns::{decode, instant, json, to_json};
 use super::command_outputs::{self, CommandOutput};
 use super::control::ControlService;
 
@@ -28,15 +32,62 @@ pub struct RunningCommand {
     /// The `shell` call that started it.
     pub tool_use_id: String,
     pub started: Timestamp,
+    /// How far each node that looked at it has seen its output, which a
+    /// look or a report moves.
+    pub places: BTreeMap<NodeId, Seen>,
 }
 
-const COLUMNS: &str = "command_id, node_id, device_id, job_id, tool_use_id, started_at";
+const COLUMNS: &str = "command_id, node_id, device_id, job_id, tool_use_id, started_at, places";
+
+/// How far one node has seen a running command's output, as the `places`
+/// column stores it (command places format 1): any count of bytes is one.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredPlace {
+    stdout: u64,
+    stderr: u64,
+}
+
+/// The `places` column: each node's place, by the node.
+#[derive(Serialize, Deserialize, garde::Validate)]
+#[serde(transparent)]
+struct StoredPlaces(#[garde(skip)] BTreeMap<NodeId, StoredPlace>);
+
+impl StoredPlaces {
+    fn of(places: &BTreeMap<NodeId, Seen>) -> Self {
+        Self(
+            places
+                .iter()
+                .map(|(node, seen)| {
+                    let place = StoredPlace {
+                        stdout: seen.stdout,
+                        stderr: seen.stderr,
+                    };
+                    (node.clone(), place)
+                })
+                .collect(),
+        )
+    }
+
+    fn places(self) -> BTreeMap<NodeId, Seen> {
+        self.0
+            .into_iter()
+            .map(|(node, place)| {
+                let seen = Seen {
+                    stdout: place.stdout,
+                    stderr: place.stderr,
+                };
+                (node, seen)
+            })
+            .collect()
+    }
+}
 
 /// Records `running`; a command recorded already keeps its row.
 pub fn insert(connection: &Connection, running: &RunningCommand) -> Result<(), StorageError> {
     connection
         .prepare_cached(&format!(
-            "INSERT INTO running_commands ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "INSERT INTO running_commands ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
              ON CONFLICT (command_id) DO NOTHING"
         ))?
         .execute(params![
@@ -46,8 +97,49 @@ pub fn insert(connection: &Connection, running: &RunningCommand) -> Result<(), S
             running.job,
             running.tool_use_id,
             running.started.as_millisecond(),
+            to_json(&StoredPlaces::of(&running.places)),
         ])?;
     Ok(())
+}
+
+/// Records that `node` has seen `command`'s output as far as `seen`, in
+/// one transaction; nothing for a command that does not run.
+pub fn set_place(
+    connection: &mut Connection,
+    command: &CommandId,
+    node: &NodeId,
+    seen: Seen,
+) -> Result<(), StorageError> {
+    let transaction = connection.transaction()?;
+    let stored: Option<String> = transaction
+        .prepare_cached("SELECT places FROM running_commands WHERE command_id = ?1")?
+        .query_row([command.as_str()], |row| row.get(0))
+        .optional()?;
+    let Some(stored) = stored else {
+        return Ok(());
+    };
+    let mut places = json::<StoredPlaces>("running_commands", "places", &stored)?.places();
+    places.insert(node.clone(), seen);
+    transaction
+        .prepare_cached("UPDATE running_commands SET places = ?2 WHERE command_id = ?1")?
+        .execute(params![command.as_str(), to_json(&StoredPlaces::of(&places))])?;
+    transaction.commit()?;
+    Ok(())
+}
+
+/// How far `node` has seen `command`'s output, as its record keeps it;
+/// none when the node has not looked, or the command does not run.
+pub fn place(connection: &Connection, command: &CommandId, node: &NodeId) -> Result<Option<Seen>, StorageError> {
+    let stored: Option<String> = connection
+        .prepare_cached("SELECT places FROM running_commands WHERE command_id = ?1")?
+        .query_row([command.as_str()], |row| row.get(0))
+        .optional()?;
+    let Some(stored) = stored else {
+        return Ok(None);
+    };
+    Ok(json::<StoredPlaces>("running_commands", "places", &stored)?
+        .places()
+        .remove(node))
 }
 
 /// Records the command's end, `output`, in place of its record as running,
@@ -86,6 +178,7 @@ fn decode_row(row: &Row<'_>) -> Result<RunningCommand, StorageError> {
         job: row.get(3)?,
         tool_use_id: row.get(4)?,
         started: instant(row, table, "started_at")?,
+        places: json::<StoredPlaces>(table, "places", &row.get::<_, String>(6)?)?.places(),
     })
 }
 

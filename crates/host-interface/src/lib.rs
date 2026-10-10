@@ -37,7 +37,7 @@ pub use commands::{Checked, CommandSet, DEMI_ROOT, Declared, RegisterError};
 pub use environment::{
     BinaryOutput, CommandState, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, ExecRequest, JobCaller, Newest, Numbers, PageFeed,
-    ShellEnvironment, ShellError, WholeView,
+    ShellEnvironment, ShellError, TakenUp, WholeView,
 };
 pub use host::{
     ByteRange, ByteStream, CpOptions, Descriptor, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
@@ -50,7 +50,7 @@ pub use output::{
     Backward, Forward, Missing, OutputRecord, OutputText, Piece, Seen, Streams, WholeOutput,
     binary_line,
 };
-pub use record::{CommandRecord, Ending, PageState, PageView, TAIL_CHARS};
+pub use record::{CommandRecord, Ending, LOST_EXIT_CODE, PageState, PageView, TAIL_CHARS};
 pub use reserved::{RESERVED_NAMES, is_reserved};
 pub use rpc::{
     PortError, PortRequest, PortResponse, PortTransport, RelayedPipes, RpcError, RpcHandler,

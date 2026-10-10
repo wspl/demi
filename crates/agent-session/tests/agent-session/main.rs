@@ -1247,6 +1247,8 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
         command: CommandId::try_from("254").unwrap(),
         job: "job-254".into(),
         tool_use_id: "call-1".into(),
+        started: Timestamp::UNIX_EPOCH,
+        place: Default::default(),
     }];
     let (restored, continuation) =
         AgentSession::restore(checkpoint, root(), Box::new(later.clone()), deps, &running)
@@ -2214,6 +2216,7 @@ fn running(count: u32, interval_ms: u32) -> ReportEvent {
         running_ms: u64::from(count) * 1000,
         idle_ms: 0,
         interval_ms,
+        unreachable: None,
     }
 }
 
