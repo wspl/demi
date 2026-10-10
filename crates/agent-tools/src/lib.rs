@@ -31,7 +31,7 @@ use demi_agent_session::{
 };
 use demi_agent_store::{AgentTreeStore, RunningCommand};
 use demi_host_interface::{
-    CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller, Numbers,
+    CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, HostErrorKind, JobCaller, Numbers,
     PageFeed, ShellEnvironment, ShellError, TakenUp,
 };
 use demi_command_protocol::Viewable;
@@ -261,7 +261,16 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             stop: Some(stop.clone()),
             call: call.command.clone(),
         };
-        let command = environment.start(request, stop).await?;
+        let command = match environment.start(request, stop).await {
+            Ok(command) => command,
+            // A Host whose runner is away runs nothing now: the call's
+            // result is its offline error as it is, worded for the model
+            // (`sessions-and-targets.md` § Host operations).
+            Err(ShellError::Host(error)) if error.kind == HostErrorKind::Offline => {
+                return Ok(ToolOutcome::error(error.message));
+            }
+            Err(error) => return Err(error.into()),
+        };
         call.command.started(StartedCommand {
             command: command.clone(),
             interval_ms,

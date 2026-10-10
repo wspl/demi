@@ -16,7 +16,9 @@ import {
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
 import type { SendWay } from '@demicodes/web-ui/agent/send-way'
-import { executionFor } from '../targets/execution'
+import { executionFor, hostDeviceOptions, moveLocked, primaryHostOf } from '../targets/execution'
+import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
+import type { HostChoice } from '@demicodes/web-ui/hosts/types'
 import { composerModel } from '@demicodes/web-ui/agent/model-selection'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
@@ -33,6 +35,10 @@ const props = defineProps<{
   conversation: Conversation
   /** Shows a Host file in the work panel; absent while no plugin shows files. */
   openFile?: (path: string) => void
+}>()
+const emit = defineEmits<{
+  /** A Host the offline primary Host's card chose to move the conversation to. */
+  moveHost: [host: HostChoice]
 }>()
 const store = useConversations()
 const resources = useResources()
@@ -114,14 +120,28 @@ const hold = computed(() =>
     ? 'Cloud is resetting.'
     : null,
 )
-/** The primary Host when it is a paired device whose runner is not connected. */
-const offlineHost = computed(() => {
+/**
+ * The primary Host when it is a paired device whose runner is not
+ * connected, with what its card's Move to Another Host… lists once the
+ * conversation's work is idle; a Host chosen there is the header's to move
+ * the conversation to.
+ */
+const offlineHost = computed<OfflineHost | null>(() => {
   const primary = execution.value
   if (primary.kind !== 'device' || primary.state !== 'offline') {
     return null
   }
   const start = resources.deviceById(primary.deviceId)?.start
-  return start ? { name: primary.name, start } : null
+  return start
+    ? {
+        name: primary.name,
+        start,
+        primaryHost: primaryHostOf(primary),
+        devices: hostDeviceOptions(resources.devices),
+        chooseDirectory: props.conversation.target.kind === 'workspace',
+        locked: moveLocked(props.conversation, store.pendingChanges),
+      }
+    : null
 })
 const remoteHosts = computed(() => {
   const primary = execution.value
@@ -213,6 +233,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :archived="conversation.archived"
       :hold="hold"
       :offline-host="offlineHost"
+      @move-host="emit('moveHost', $event)"
       :replaced="replaced"
       :draft-shown="conversation.draftShown"
       :plugins-changed="conversation.pluginsChanged"

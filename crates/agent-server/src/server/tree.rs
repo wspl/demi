@@ -465,6 +465,11 @@ impl<H: HostResolver> Tree<H> {
             || !quiescent(&self.root.session().status())
     }
 
+    /// Whether a command of the tree runs.
+    pub fn runs_commands(&self) -> bool {
+        self.live.runs_commands()
+    }
+
     /// Whether the tree does nothing by itself: it does not work, and no
     /// command of it runs, which is the conversation's work as well
     /// (`resource-lifecycle.md` § Runtime).

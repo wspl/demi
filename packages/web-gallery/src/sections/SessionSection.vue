@@ -85,6 +85,7 @@ import GalleryUserMessageLengths from '../components/GalleryUserMessageLengths.v
 import { regenerateMessage, submitMessageEdit, type MessageEditHost, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { callTerminal, firstRunningTerminalId, type TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
+import type { HostDeviceOption } from '@demicodes/web-ui/hosts/types'
 import type { AgentMessage, UserContentBlock } from '@demicodes/protocol'
 import { applyModelChange, type ModelSettings, type ModelSettingsChange } from '@demicodes/web-ui/agent/model-selection'
 import { composerAttachment, encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
@@ -656,6 +657,14 @@ workFlow.settleWork()
 provideLiveCalls((toolUseId) =>
   callTerminal([...terminals, ...turnFlow.state.terminals, ...workFlow.state.terminals, returnedFailingCommand], undefined, toolUseId),
 )
+/** The devices an offline primary Host's card offers, as Run On lists them: it shows the online ones. */
+const offlineMenuDevices: HostDeviceOption[] = [
+  { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer' },
+  { id: 'studio', name: 'Studio PC', state: 'online', path: 'localNetwork' },
+  { id: 'old', name: 'Old Laptop', state: 'offline' },
+  { id: 'build', name: 'build-box', state: 'offline' },
+]
+
 const changesFlow = useTurnFlow({ id: 'gallery-changes', title: 'Cookie rename', blocks: changesDemoBlocks() })
 useGalleryTranscripts(() => ({ blocks: changesFlow.state.blocks, subagents: [] }))
 useGalleryTranscripts(() => ({ blocks: workFlow.state.blocks, subagents: [] }))
@@ -1028,12 +1037,47 @@ onBeforeUnmount(() => {
             />
           </GallerySpecimen>
           <GallerySpecimen
-            variant="primary Host offline · how to start its runner again, with Copy"
+            variant="primary Host offline · how to start its runner again, with Copy · Move to Another Host… lists Run On’s online Hosts and moves it"
             wide
           >
             <GalleryComposer
               placeholder="Ask Demi…"
-              :offline-host="{ name: 'zan-mbp', start: demoDeviceStart('macos') }"
+              :offline-host="{
+                name: 'Old Laptop',
+                start: demoDeviceStart('macos'),
+                primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline' },
+                devices: offlineMenuDevices,
+              }"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="primary Host offline while its work runs · the move waits for the work to end"
+            wide
+          >
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              :offline-host="{
+                name: 'Old Laptop',
+                start: demoDeviceStart('macos'),
+                primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline' },
+                devices: offlineMenuDevices,
+                locked: true,
+              }"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="primary Host offline, in a project · a device opens its directory picker first"
+            wide
+          >
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              :offline-host="{
+                name: 'Old Laptop',
+                start: demoDeviceStart('windows'),
+                primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline' },
+                devices: offlineMenuDevices,
+                chooseDirectory: true,
+              }"
             />
           </GallerySpecimen>
           <GallerySpecimen

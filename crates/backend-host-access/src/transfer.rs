@@ -92,10 +92,7 @@ impl dyn HostShard + '_ {
         // From the check to the registration nothing awaits, so a transition
         // that closes the conversation's transfers never misses this one.
         let open = slot.transfers.open().map_err(|_| Refusal::Busy)?;
-        let waits = Waits {
-            cancel,
-            ended: Some(&open.ended),
-        };
+        let waits = Waits::until_ended(cancel, &open.ended);
         let admitted = self.admit_host(&record.id, None, waits).await?;
         let host = &admitted.host.host;
         // The read answers the file's metadata with its first bytes, so it
@@ -177,10 +174,7 @@ impl dyn HostShard + '_ {
         // As for a download: no await between the check and the
         // registration.
         let open = slot.transfers.open().map_err(|_| Refusal::Busy)?;
-        let waits = Waits {
-            cancel,
-            ended: Some(&open.ended),
-        };
+        let waits = Waits::until_ended(cancel, &open.ended);
         let admitted = self.admit_host(&record.id, None, waits).await?;
         let host = admitted.host.host.clone();
         let pipe = host.write_pipe()?;

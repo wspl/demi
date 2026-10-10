@@ -299,17 +299,24 @@ async fn the_working_tree_lists_its_changes_and_reads_one_file_and_an_offline_de
         StatusCode::OK
     );
 
-    // Offline: the routes say so rather than waking anything.
+    // Offline: the routes say so at once rather than waking anything or
+    // waiting for the runner, which only an agent's operation does
+    // (`sessions-and-targets.md` § Host operations).
     device.paired.runner.stop().await;
     device
         .backend
         .until_online(&device.master, device.paired.id(), false)
         .await;
-    let refused = device.get("/changes").await;
-    assert_eq!(
-        refused.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::DeviceOffline)
-    );
+    for route in ["/changes".to_owned(), format!("/fs/file?{}", query(&[("path", &a)]))] {
+        let refused = tokio::time::timeout(Duration::from_secs(10), device.get(&route))
+            .await
+            .unwrap_or_else(|_| panic!("{route} waited for the offline device"));
+        assert_eq!(
+            refused.refusal(),
+            (StatusCode::CONFLICT, ErrorCode::DeviceOffline),
+            "{route}"
+        );
+    }
     device.backend.close().await;
 }
 

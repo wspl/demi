@@ -519,7 +519,13 @@ async fn run_on_host(
                 return Ok(None);
             }
             if !host.host.online() {
-                return Err(format!("host {device} is offline"));
+                // The primary Host, admitted while its runner is away,
+                // answers with its offline error as an attached one is
+                // refused with it.
+                return Err(match shard.control().device(target.device.clone()).await {
+                    Ok(Some(record)) => shard.offline(&record).message,
+                    _ => format!("{} is offline", target.name),
+                });
             }
             // Dropped once the job ended, or when the call is stopped.
             let _ended = shard
@@ -585,7 +591,17 @@ async fn run_on_host(
             Ok(Some(end))
         })
         .await
-        .map_err(|error| error.to_string())??;
+        .map_err(|error| error.to_string())
+        .and_then(|ran| ran);
+    // A far job that never started never takes its pipes: they end with
+    // why, or the calling command would read them until their arrival
+    // deadline.
+    let ran = ran.inspect_err(|reason| {
+        stdout.fail(reason);
+        if let Some(stdin) = &stdin {
+            stdin.fail(reason);
+        }
+    })?;
     // Stopped before it started.
     let Some(ran) = ran else {
         return Ok(130);
