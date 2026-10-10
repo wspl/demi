@@ -1557,11 +1557,15 @@ naming the index of the block it touches:
 | `add` | `index`, `value` | Insert a block at the index |
 | `replace_block` | `index`, `value` | Replace the block at the index |
 | `append_text` | `index`, `delta` | Append text to the block at the index |
-| `replace` | `value` | Replace every block |
+| `truncate` | `length` | Remove every block from the index `length` on |
 
 Consecutive appends to one block merge into one `append_text`. A rewrite of
-history, such as a retry, a resume's unwind or an accepted edit, is one
-`replace`. Each batch of patches advances the transcript's revision by one.
+history, such as a retry, a resume's unwind or an accepted edit, is one batch:
+a `truncate` at the first block it changes, then an `add` for each block
+from there. It never sends the blocks before the cut, which may be most of
+a long transcript, and which a page may not hold
+([Transcript windows](../product/web-application.md#transcript-windows)).
+Each batch of patches advances the transcript's revision by one.
 
 A transcript version is `{ epoch, revision }`. The epoch is new each time the
 session's transcript is built, at creation and at every restore, so a version
@@ -1595,6 +1599,13 @@ A renderer uses the `tool_call` fields as [Transcript](#transcript) defines
 them: `toolName` selects the rendering, `input` is JSON text the renderer
 parses, `status` and `output` give the result, and `view` enriches the display
 with the command's own output and status.
+
+A block the page read from a page of the transcript is in its light form,
+without what only its open row shows ([Light form](../product/web-api.md#light-form)).
+Its folded row renders from what it carries, the same as the block whole;
+opening the row reads the block whole and shows it in place, with the
+row's loading state until it arrives
+([Transcript windows](../product/web-application.md#transcript-windows)).
 
 The media a result carries are parts of its `output`, held by
 reference ([Media](#media)); the view never holds them. Each tool's rendering
@@ -1760,13 +1771,16 @@ generated from them ([Generated TypeScript](../architecture/contracts.md#generat
 `ConversationClient`, in `@demicodes/conversation-client`, is the web app's client of this
 protocol.
 
-For example, a page opens a conversation whose root is running:
+For example, a page opens a conversation whose root is running. It has read
+the latest page of the transcript, blocks 2,940 to 2,999
+([Pages](../product/web-api.md#pages)), and asks the stream for the blocks
+from its last one on:
 
 ```text
 client                               server
-open ------------------------------> attach to the live tree
+open { from: 2999, edge: b_2999 } -> attach to the live tree
                 <------------------- opened
-                <------------------- transcript_reset { blocks, version: { epoch, revision: r } }
+                <------------------- transcript_reset { start: 2999, blocks, version: { epoch, revision: r } }
                 <------------------- phase, queue, pending_steers, pending_calls
                 <------------------- subagent started + subagent_transcript_reset,
                                      for each live subagent, depth first
@@ -1778,7 +1792,7 @@ open ------------------------------> attach to the live tree
 
 | Frame | Meaning | Answer |
 | --- | --- | --- |
-| `open` | Attach this connection to the conversation's tree, restoring the tree when it is not live, with the model selection the conversation's record holds | `opened`, then the snapshot frames |
+| `open { from, edge }` | Attach this connection to the conversation's tree, restoring the tree when it is not live, with the model selection the conversation's record holds; `from` and `edge` name the root's blocks the page holds ([Where a reset starts](#where-a-reset-starts)) | `opened`, then the snapshot frames |
 | `send { messageId, content }` | Submit a message ([Input](#input)) | Transcript, phase and queue frames |
 | `edit_and_send { request }` | Replace a user message and its suffix ([Message editing](message-editing.md)) | `edit_result` at durable acceptance |
 | `steer { steerId, content }` | Add input to the running turn | `steer_result` |
@@ -1792,7 +1806,7 @@ open ------------------------------> attach to the live tree
 | `retry`, `resume`, `compact` | Run the action | `rejected` when the session is busy |
 | `shell_write { commandId, stdin }` | Write stdin to a running command | `shell_write_result` |
 | `shell_abort { commandId }` | Stop a running command | None; the command's `shell_output` shows its end |
-| `sync_transcript` | Ask for a fresh transcript | `transcript_reset`, the subagent replay, `shell_output` for each live command, to this connection alone |
+| `sync_transcript { from, edge }` | Ask for a fresh transcript, from the page's blocks as `open` names them | `transcript_reset`, the subagent replay, `shell_output` for each live command, to this connection alone |
 | `close` | Dispose the tree | `closed`, to every attached connection |
 
 Content in `send`, `steer` and `edit_and_send` is typed. It is text, a
@@ -1821,7 +1835,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | Frame | Carries |
 | --- | --- |
 | `opened` | The connection is attached |
-| `transcript_reset` | Every block, the version `{ epoch, revision }`, and `failures` |
+| `transcript_reset` | `start`, the blocks from that index to the end, whole, the transcript's `length`, the version `{ epoch, revision }`, and `failures` ([Where a reset starts](#where-a-reset-starts)) |
 | `transcript_patch` | Patches, the new revision, and `failures` |
 | `phase` | `idle`, `running` or `compacting` |
 | `context_usage` | The estimate of the root's next request in `tokens`, the `window` in use and `compactFrom`, the estimate from which `compact` is taken; both null for a model without a window. Right after the open handshake when the session can tell it without reading a blob ([Context estimate](compaction.md#context-estimate)) |
@@ -1852,6 +1866,37 @@ one, and no read moves the model's place. Besides their commands' output,
 child sessions send only their transcript frames. After a transcript reset,
 a live command's `shell_output` carries its current status, so a command that
 ended while no page watched shows as ended.
+
+### Where a reset starts
+
+A reset sends the blocks the page needs from the live tree and none it
+already holds. For example, a page holds blocks 2,940 to 2,999, which it read
+from the database, and opens the stream with `from: 2999`. The live tree has
+gone on: block 2,999, the answer being written, has grown, and blocks 3,000
+and 3,001 are new. The reset starts at 2,999 and carries three blocks; the
+page replaces its block 2,999 and adds the rest.
+
+- `from` is the index of the last block the page holds at the end of the
+  transcript, and `edge` that block's id. A reset starts at `from`, or
+  earlier at the first block still changing: a call that is executing, or
+  the block being written. Such a block may have changed since the page read
+  it, and the reset replaces it whole.
+- A block at `from` that is not `edge`, or a `from` past the transcript's
+  end, means the transcript was rewritten between the page's read and the
+  stream: the reset then starts at the start of the latest page, and the page
+  drops what it held and takes the reset as its latest page
+  ([Rewrites](../product/web-application.md#rewrites)).
+- Without `from`, as when the page has read nothing, the reset starts at the
+  start of the latest page.
+- A subagent's reset (`subagent_transcript_reset`) starts at the start of its
+  latest page, as the page holds none of a subagent's blocks until it shows
+  it ([Protocol](subagents.md#protocol)).
+
+The page applies a patch to the blocks it holds. A patch to a block the page
+does not hold, between two parts of the transcript it read, changes nothing
+the page shows; the page reads that block as it is when it reads its page,
+and an `add` or a `truncate` moves the indices of the blocks after it
+whether the page holds them or not.
 
 ### Order and delivery
 
@@ -1897,8 +1942,8 @@ with nothing. A second `open` on one connection is rejected.
 
 `ConversationClient` validates every frame it receives with the generated schemas and
 drops the connection when one does not match, applies patches with the one
-patch applier, and keeps the transcript, the phase, the queue and the pending
-steers.
+patch applier to the parts of the transcript the page holds, and keeps them,
+the phase, the queue and the pending steers.
 
 ### Connections and the live tree
 
@@ -2017,8 +2062,8 @@ atomic commits of the same store ([Persistence](subagents.md#persistence)).
   saved with the next change. When the save at the end of an action fails, the
   action fails.
 - A history rewrite is saved before it is published: the store commits the
-  retained rows, then the session adopts them and publishes one `replace`
-  patch.
+  retained rows, then the session adopts them and publishes the rewrite's
+  batch of patches ([Patches and versions](#patches-and-versions)).
 - A save writes its rows as they are. Their media are references whose blobs
   were stored when the media entered, and a block or a queued message has no
   place for bytes ([Media](#media)), so a save stores no blob.
