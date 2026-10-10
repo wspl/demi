@@ -6,18 +6,17 @@ import type { FileContents } from './types'
 /**
  * The text of a file's first bytes (`file-previews.md` § Getting the bytes):
  * a character the cut splits is left out, as an editor that opens part of a
- * large file shows whole characters. Null when the bytes are not UTF-8 text
- * or hold a NUL byte, as the text route refuses such a file.
+ * large file shows whole characters, and any other byte that is not UTF-8
+ * shows as U+FFFD. Null when the bytes are binary by the rule the text route
+ * refuses a file by (`runtime.md` § What `demi file view` shows): a NUL byte
+ * in their first 8 KiB. The media types that rule also names have their own
+ * viewers, chosen by the file's name before its text is read.
  */
 export function decodeTextStart(bytes: Uint8Array): string | null {
-  if (bytes.includes(0))
+  if (bytes.subarray(0, 8 * 1024).includes(0))
     return null
-  try {
-    // Streaming keeps a sequence the cut splits for a next chunk that never comes.
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes, { stream: true })
-  } catch {
-    return null
-  }
+  // Streaming keeps a sequence the cut splits for a next chunk that never comes.
+  return new TextDecoder('utf-8').decode(bytes, { stream: true })
 }
 
 /** What a view shows of a text file too large to read whole: its first bytes as text, and how much it shows of how much. */
