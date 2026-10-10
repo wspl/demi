@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use demi_command_declarations::Schema;
-use demi_command_protocol::{MAX_MEDIUM_BYTES, sniff_media_type};
+use demi_command_protocol::{MAX_MEDIUM_BYTES, MediumFacts, sniff_media_type};
 use demi_command_sdk::{Output, OutputSink, ServiceError};
 
 use crate::job_media::JobMedia;
@@ -72,21 +72,20 @@ impl<'a> CommandOutput<'a> {
         self.output.clone()
     }
 
-    /// A medium the command returned: checked, then handed to the job.
-    pub async fn medium(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
+    /// A medium the command returned, which `facts` describe: checked, then
+    /// handed to the job.
+    pub async fn medium(&mut self, facts: MediumFacts, bytes: Bytes) -> Result<(), ServiceError> {
         let Some(job) = &self.media else {
             return Err(ServiceError::failed(MediaFailure::Undeclared));
         };
         if bytes.len() as u64 > MAX_MEDIUM_BYTES {
             return Err(ServiceError::failed(MediaFailure::TooLarge(bytes.len())));
         }
-        let Some(media_type) = sniff_media_type(&bytes) else {
-            return Err(ServiceError::failed(MediaFailure::NotMedia));
-        };
+        if sniff_media_type(&bytes) != Some(facts.media_type.as_str()) {
+            return Err(ServiceError::failed(MediaFailure::NotMedia(facts.media_type)));
+        }
         self.returned = true;
-        job.keep(media_type, bytes)
-            .await
-            .map_err(ServiceError::failed)
+        job.keep(facts, bytes).await.map_err(ServiceError::failed)
     }
 
     /// Releases captured output once the command has succeeded; a command
@@ -120,8 +119,8 @@ impl OutputSink for CommandOutput<'_> {
         CommandOutput::stderr(self, bytes).await
     }
 
-    async fn medium(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
-        CommandOutput::medium(self, bytes).await
+    async fn medium(&mut self, facts: MediumFacts, bytes: Bytes) -> Result<(), ServiceError> {
+        CommandOutput::medium(self, facts, bytes).await
     }
 }
 
@@ -143,6 +142,6 @@ enum MediaFailure {
     Undeclared,
     #[error("returned a medium of {0} bytes; a medium is at most 16 MiB")]
     TooLarge(usize),
-    #[error("returned a medium that is no image, video or PDF a model reads")]
-    NotMedia,
+    #[error("returned a medium whose bytes are no {0}")]
+    NotMedia(String),
 }

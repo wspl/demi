@@ -147,6 +147,10 @@ impl ShellEnvironment for ScriptedShell {
         Ok(self.record(command)?.borrow().quiet())
     }
 
+    fn media(&self, command: &CommandId) -> Result<Vec<demi_host_interface::CommandMedium>, ShellError> {
+        Ok(self.record(command)?.borrow().media().to_vec())
+    }
+
     fn read_output<'a>(
         &'a self,
         command: &'a CommandId,

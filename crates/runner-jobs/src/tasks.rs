@@ -30,7 +30,7 @@ use std::{
     sync::Arc,
 };
 use tokio::{
-    sync::{mpsc, watch},
+    sync::{mpsc, oneshot, watch},
     task::JoinSet,
     time::Instant,
 };
@@ -547,6 +547,10 @@ impl JobConfig {
         // Whether the job's stdout ends a line, so that a medium's line
         // stands on a line of its own.
         let mut stdout_line_start = true;
+        // The media that wait for the drain of the job's stdout pipe, and
+        // the drain's answer.
+        let mut waiting: Vec<Arrival> = Vec::new();
+        let mut drained: Option<oneshot::Receiver<()>> = None;
         let streamed = async {
         loop {
             let due = job.as_ref().and_then(|(logs, ..)| logs.due(followed));
@@ -599,15 +603,32 @@ impl JobConfig {
                         follow_open = false;
                     }
                 },
-                // Before the output: a medium's line follows the output the
-                // job held when the medium arrived, and precedes what its
-                // commands print after it.
+                // A medium waits for what the job's stdout pipe holds when
+                // it arrives, so its line follows output written before it
+                // and precedes what the job prints after it.
                 arrival = next_arrival(&mut arrivals) => {
+                    waiting.push(arrival);
+                    if drained.is_none() {
+                        drained = Some(child.drain_stdout());
+                    }
+                }
+                // The pipe's bytes are in the output channel now: they go
+                // first, then the lines of the media that waited.
+                _ = async { drained.as_mut().expect("a drain is asked for").await }, if drained.is_some() => {
+                    drained = None;
+                    while let Ok(chunk) = child.output.try_recv() {
+                        let logs = job.as_mut().map(|(logs, ..)| logs);
+                        if take_chunk(chunk, logs, &id, &self.output, stdout_pipe.as_ref(), &cancel, &mut stdout_line_start).await? {
+                            child.cancel();
+                        }
+                    }
                     if let Some((logs, ..)) = job.as_mut() {
-                        for message in logs.arrive(&id, arrival, &mut stdout_line_start).await? {
-                            tokio::select! {
-                                _ = cancel.cancelled() => child.cancel(),
-                                _ = self.output.send(message) => {},
+                        for arrival in waiting.drain(..) {
+                            for message in logs.arrive(&id, arrival, &mut stdout_line_start).await? {
+                                tokio::select! {
+                                    _ = cancel.cancelled() => child.cancel(),
+                                    _ = self.output.send(message) => {},
+                                }
                             }
                         }
                     }
@@ -616,38 +637,9 @@ impl JobConfig {
                     let Some(chunk) = chunk else {
                         break;
                     };
-                    if chunk.stream == OutputStream::Stdout && let Some(last) = chunk.bytes.last() {
-                        stdout_line_start = *last == b'\n';
-                    }
-                    let message = match job.as_mut() {
-                        Some((logs, ..)) => {
-                            let (offset, head) = logs.write(chunk.stream, &chunk.bytes).await?;
-                            (!head.is_empty()).then(|| wire::encode(&wire::Outbound::JobOutput {
-                                job_id: id.clone(),
-                                stream: chunk.stream,
-                                offset,
-                                bytes: wire::WireBytes(head.to_vec()),
-                            }))
-                        }
-                        None => Some(wire::encode(&wire::Outbound::SpawnOutput {
-                            spawn_id: id.clone(),
-                            stream: chunk.stream,
-                            bytes: wire::WireBytes(chunk.bytes.to_vec()),
-                        })),
-                    };
-                    if let Some(message) = message {
-                        let message = message.map_err(io::Error::other)?;
-                        tokio::select! {
-                            _ = cancel.cancelled() => child.cancel(),
-                            _ = self.output.send(message) => {},
-                        }
-                    }
-                    if let (OutputStream::Stdout, Some(pipe)) = (chunk.stream, stdout_pipe.as_ref()) {
-                        tokio::select! {
-                            _ = cancel.cancelled() => child.cancel(),
-                            // The upload task reports a closed consumer separately.
-                            _ = pipe.send(chunk.bytes) => {},
-                        }
+                    let logs = job.as_mut().map(|(logs, ..)| logs);
+                    if take_chunk(chunk, logs, &id, &self.output, stdout_pipe.as_ref(), &cancel, &mut stdout_line_start).await? {
+                        child.cancel();
                     }
                 }
             }
@@ -659,9 +651,12 @@ impl JobConfig {
             child.cancel();
         }
         // The media that arrived as the job ended keep their place before
-        // its exit, as everything it printed does.
+        // its exit, after everything it printed.
         if let (Some((logs, ..)), Some(receiver)) = (job.as_mut(), arrivals.as_mut()) {
             while let Ok(arrival) = receiver.try_recv() {
+                waiting.push(arrival);
+            }
+            for arrival in waiting.drain(..) {
                 for message in logs.arrive(&id, arrival, &mut stdout_line_start).await? {
                     tokio::select! {
                         _ = closed.cancelled() => {}
@@ -795,6 +790,71 @@ impl Execution {
             ExecutionOwner::Shell(child) => child.wait().await,
         }
     }
+    /// Reads what the stdout pipe holds now into the output channel; a raw
+    /// process views no media, so it answers at once.
+    fn drain_stdout(&self) -> oneshot::Receiver<()> {
+        match &self.owner {
+            ExecutionOwner::Shell(child) => child.drain_stdout(),
+            ExecutionOwner::Process(_) => {
+                let (answer, answered) = oneshot::channel();
+                let _ = answer.send(());
+                answered
+            }
+        }
+    }
+}
+
+/// Records one chunk of output: a job's into its logs, with the part the
+/// backend's view takes, and its stdout into the relayed pipe; a raw
+/// process's as it is. True when the work was cancelled while a frame
+/// waited to go.
+async fn take_chunk(
+    chunk: OutputChunk,
+    logs: Option<&mut Logs>,
+    id: &str,
+    output: &mpsc::Sender<wire::Frame>,
+    pipe: Option<&mpsc::Sender<Bytes>>,
+    cancel: &CancellationToken,
+    stdout_line_start: &mut bool,
+) -> io::Result<bool> {
+    if chunk.stream == OutputStream::Stdout
+        && let Some(last) = chunk.bytes.last()
+    {
+        *stdout_line_start = *last == b'\n';
+    }
+    let message = match logs {
+        Some(logs) => {
+            let (offset, head) = logs.write(chunk.stream, &chunk.bytes).await?;
+            (!head.is_empty()).then(|| {
+                wire::encode(&wire::Outbound::JobOutput {
+                    job_id: id.to_owned(),
+                    stream: chunk.stream,
+                    offset,
+                    bytes: wire::WireBytes(head.to_vec()),
+                })
+            })
+        }
+        None => Some(wire::encode(&wire::Outbound::SpawnOutput {
+            spawn_id: id.to_owned(),
+            stream: chunk.stream,
+            bytes: wire::WireBytes(chunk.bytes.to_vec()),
+        })),
+    };
+    if let Some(message) = message {
+        let message = message.map_err(io::Error::other)?;
+        tokio::select! {
+            _ = cancel.cancelled() => return Ok(true),
+            _ = output.send(message) => {},
+        }
+    }
+    if let (OutputStream::Stdout, Some(pipe)) = (chunk.stream, pipe) {
+        tokio::select! {
+            _ = cancel.cancelled() => return Ok(true),
+            // The upload task reports a closed consumer separately.
+            _ = pipe.send(chunk.bytes) => {},
+        }
+    }
+    Ok(false)
 }
 
 /// The next medium a job's commands hand to it; never, for a job without

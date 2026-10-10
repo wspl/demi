@@ -35,9 +35,9 @@ fn model(id: &str, name: &str) -> ProviderModel {
         context_window: Some(1_048_576),
         output_limit: Some(65_536),
         supports_tools: Some(true),
-        supports_attachments: Some(true),
-        supports_video: Some(true),
-        accepted_extensions: None,
+        accepted_extensions: Some(demi_shared_types::modality_extensions([
+            "text", "image", "pdf", "video",
+        ])),
         supports_reasoning: Some(true),
         supported_thinking_efforts: Some(efforts.iter().map(|effort| (*effort).into()).collect()),
         can_disable_thinking: None,

@@ -6,6 +6,7 @@
 
 mod changes;
 mod edit;
+mod facts;
 mod files;
 mod patch;
 

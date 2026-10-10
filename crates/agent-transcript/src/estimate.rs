@@ -229,7 +229,16 @@ fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
             }
             return (lines.join("\n"), media);
         }
-        Block::Wakeup(wakeup) => crate::reports_text(&wakeup.reports),
+        Block::Wakeup(wakeup) => {
+            let mut lines = vec![crate::reports_text(&wakeup.reports)];
+            let mut media = 0;
+            for part in wakeup.reports.iter().flat_map(|report| &report.media) {
+                let (line, weight) = result_estimate(part, request);
+                lines.push(line.into_owned());
+                media += weight;
+            }
+            return (lines.join("\n"), media);
+        }
         Block::Context(context) => context.text.clone(),
         Block::AgentMessage(receipt) => {
             serde_json::to_string(&receipt.message).expect("an agent message serializes to JSON")

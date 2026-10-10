@@ -188,13 +188,19 @@ impl ToolResultKinds {
     }
 
     /// The media types `model` reads in a tool result, as a job carries
-    /// them (`runtime.md` § What `demi file view` shows).
-    pub fn viewable(self, model: &Model) -> Vec<String> {
-        MODEL_MEDIA_TYPES
-            .iter()
-            .filter(|entry| self.reads(model, entry.media_type))
-            .map(|entry| entry.media_type.to_owned())
-            .collect()
+    /// them (`runtime.md` § What `demi file view` shows); none when which
+    /// types the model reads is unknown and the wire carries some.
+    pub fn viewable(self, model: &Model) -> Option<Vec<String>> {
+        if model.accepted_extensions.is_none() && self != Self::NONE {
+            return None;
+        }
+        Some(
+            MODEL_MEDIA_TYPES
+                .iter()
+                .filter(|entry| self.reads(model, entry.media_type))
+                .map(|entry| entry.media_type.to_owned())
+                .collect(),
+        )
     }
 }
 

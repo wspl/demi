@@ -351,6 +351,7 @@ fn reports_that_arrived_together_reach_the_model_as_their_text_one_paragraph_eac
         title: title.into(),
         event,
         output: output.into(),
+        media: Vec::new(),
     };
     let wakeup = Block::Wakeup(WakeupBlock {
         id: BlockId::try_from("w1").unwrap(),

@@ -31,7 +31,7 @@ pub use invocation::{
     ColorScheme, CommandLocale, Completion, Invocation, LocalInvocation, Viewable, conversation_name,
     without_nul,
 };
-pub use media::{MAX_MEDIUM_BYTES, MediumFacts, medium_facts, sniff_media_type};
+pub use media::{MAX_MEDIUM_BYTES, MediumFacts, sniff_media_type};
 pub use numbers::{MAX_NUMBERS, NumbersAnswer, NumbersRequest, ServiceSequence, StreamOpen};
 pub use package::{
     ArtifactLocation, ArtifactPath, ArtifactUrl, PackageArtifact, PackageDescriptor,
@@ -145,19 +145,29 @@ pub enum Record {
     Completion(Completion),
     /// Permission for exactly one bounded stdin chunk, or stdin EOF.
     InputPull,
-    /// A returned medium of `size` bytes begins; its bytes follow in
-    /// [`Record::MediumBytes`], with no other record between them
-    /// (`native-runtime.md` § Response records and completion).
-    Medium { size: u64 },
+    /// A returned medium of `size` bytes, which `facts` describe, begins;
+    /// its bytes follow in [`Record::MediumBytes`], with no other record
+    /// between them (`native-runtime.md` § Response records and
+    /// completion).
+    Medium { size: u64, facts: MediumFacts },
     /// Bytes of the medium that began last.
     MediumBytes(Bytes),
 }
 
-/// The payload of a medium record.
+/// The payload of a medium record: its size, then its facts.
 #[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct MediumHeader {
     size: u64,
+    media_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    height: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    duration_ms: Option<u64>,
 }
 
 impl Record {
@@ -167,11 +177,19 @@ impl Record {
             Self::Stderr(bytes) => (2, bytes.clone()),
             Self::Completion(value) => (3, Bytes::from(serde_json::to_vec(value)?)),
             Self::InputPull => (4, Bytes::new()),
-            Self::Medium { size } => {
+            Self::Medium { size, facts } => {
                 if *size > MAX_MEDIUM_BYTES {
                     return Err(ProtocolError::TooLarge);
                 }
-                (5, Bytes::from(serde_json::to_vec(&MediumHeader { size: *size })?))
+                let header = MediumHeader {
+                    size: *size,
+                    media_type: facts.media_type.clone(),
+                    name: facts.name.clone(),
+                    width: facts.width,
+                    height: facts.height,
+                    duration_ms: facts.duration_ms,
+                };
+                (5, Bytes::from(serde_json::to_vec(&header)?))
             }
             Self::MediumBytes(bytes) => (6, bytes.clone()),
         };
@@ -276,7 +294,16 @@ impl RecordDecoder {
                 if header.size > MAX_MEDIUM_BYTES {
                     return Err(ProtocolError::TooLarge);
                 }
-                Record::Medium { size: header.size }
+                Record::Medium {
+                    size: header.size,
+                    facts: MediumFacts {
+                        media_type: header.media_type,
+                        name: header.name,
+                        width: header.width,
+                        height: header.height,
+                        duration_ms: header.duration_ms,
+                    },
+                }
             }
             6 => Record::MediumBytes(payload),
             _ => unreachable!(),
