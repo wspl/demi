@@ -1,9 +1,12 @@
-//! How work running under a connection reaches the backend and the
-//! connection's owner (`runner.md` § Connection and identity): a callback
-//! call registers where its events go, an artifact download asks where its
-//! artifact is, a service asks for its conversation numbers, and a job makes
-//! its execution context live. The composition's connection owner serves
-//! the requests and routes the backend's answers through a [`Relay`].
+//! How work running under the runner reaches the backend and the
+//! registration's owner (`runner.md` § Connection and identity, § Command
+//! lifetime): a callback call registers where its events go, an artifact
+//! download asks where its artifact is, a service asks for its conversation
+//! numbers, and a job makes its execution context live. The handle outlives
+//! each connection, since a job does: work that needs the backend waits for
+//! the next connection while the runner is away, and fails once the runner
+//! stopped waiting. The registration's owner serves the requests and routes
+//! the backend's answers through a [`Relay`].
 
 use std::{collections::HashMap, io, sync::Arc, time::Duration};
 
@@ -12,7 +15,7 @@ use demi_runner_command_packages::{NumberSource, RuntimeError, ServiceLease};
 use demi_runner_protocol::wire::{self, Inbound};
 use futures_util::future::BoxFuture;
 use tokio::{
-    sync::{mpsc, oneshot},
+    sync::{mpsc, oneshot, watch},
     task::JoinSet,
 };
 use tokio_util::sync::CancellationToken;
@@ -22,23 +25,47 @@ use crate::commands::{
     rpc::{CallEvent, RpcMedium},
 };
 
-/// Requests waiting for a connection's owner; a sender waits for room.
+/// Requests waiting for the registration's owner; a sender waits for room.
 const REQUESTS: usize = 64;
 /// How long the backend has to answer a question: where an artifact is, or
 /// which numbers a service may use.
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// How work running under a connection reaches the backend and the
-/// connection's owner.
+/// Why work that needs the backend did not reach it: the runner stopped
+/// waiting for a connection (`runner.md` § Command lifetime).
+pub const UNREACHABLE: &str = "the backend is unreachable";
+
+/// Whether the runner reaches its backend now.
 #[derive(Clone)]
-pub struct ConnectionHandle {
-    /// Replies and requests to the backend.
-    pub control: mpsc::Sender<wire::Frame>,
-    requests: mpsc::Sender<Request>,
-    closed: CancellationToken,
+pub enum Reach {
+    /// A connection serves, until `closed`.
+    Connected(Live),
+    /// The connection was lost; the runner waits for the next.
+    Away,
+    /// The runner stopped waiting: its jobs were stopped, or it stops.
+    Unreached,
 }
 
-/// What work asks of a connection's owner.
+/// The connection that serves now: its messages to the backend, and its
+/// end.
+#[derive(Clone)]
+pub struct Live {
+    /// Replies and requests to the backend.
+    pub control: mpsc::Sender<wire::Frame>,
+    /// Cancelled when the connection ends; cancelling it ends the
+    /// connection.
+    pub closed: CancellationToken,
+}
+
+/// How work running under the runner reaches the backend and the
+/// registration's owner.
+#[derive(Clone)]
+pub struct ConnectionHandle {
+    requests: mpsc::Sender<Request>,
+    reach: watch::Receiver<Reach>,
+}
+
+/// What work asks of the registration's owner.
 pub enum Request {
     /// Where a callback call's events go, until `ended` is cancelled.
     Call {
@@ -61,37 +88,48 @@ pub enum Request {
 }
 
 impl ConnectionHandle {
-    /// A handle whose requests arrive at the returned receiver; `closed`
-    /// ends with the connection.
-    pub fn new(
-        control: mpsc::Sender<wire::Frame>,
-        closed: CancellationToken,
-    ) -> (Self, mpsc::Receiver<Request>) {
+    /// A handle whose requests arrive at the returned receiver and that
+    /// reaches the backend as `reach` says.
+    pub fn new(reach: watch::Receiver<Reach>) -> (Self, mpsc::Receiver<Request>) {
         let (requests, received) = mpsc::channel(REQUESTS);
-        (
-            Self {
-                control,
-                requests,
-                closed,
-            },
-            received,
-        )
+        (Self { requests, reach }, received)
     }
 
-    /// Cancelled when the connection ends.
-    pub fn closed(&self) -> &CancellationToken {
-        &self.closed
-    }
-
-    async fn request(&self, request: Request) -> Result<(), RuntimeError> {
-        tokio::select! {
-            _ = self.closed.cancelled() => Err(RuntimeError::Cancelled),
-            sent = self.requests.send(request) => sent.map_err(|_| RuntimeError::Cancelled),
+    /// The connection that serves now, if one does.
+    pub fn current(&self) -> Option<Live> {
+        match &*self.reach.borrow() {
+            Reach::Connected(live) if !live.closed.is_cancelled() => Some(live.clone()),
+            _ => None,
         }
     }
 
+    /// The connection that serves, waiting for the next while the runner
+    /// is away; an error once it stopped waiting.
+    pub async fn connected(&self) -> Result<Live, Unreachable> {
+        let mut reach = self.reach.clone();
+        loop {
+            match &*reach.borrow_and_update() {
+                Reach::Connected(live) if !live.closed.is_cancelled() => return Ok(live.clone()),
+                Reach::Unreached => return Err(Unreachable),
+                Reach::Connected(_) | Reach::Away => {}
+            }
+            // A registration that ended reaches nothing more.
+            if reach.changed().await.is_err() {
+                return Err(Unreachable);
+            }
+        }
+    }
+
+    async fn request(&self, request: Request) -> Result<(), RuntimeError> {
+        self.requests
+            .send(request)
+            .await
+            .map_err(|_| RuntimeError::Cancelled)
+    }
+
     /// Sends the call's inbound events to `events` until `ended` is
-    /// cancelled; false when the connection has ended.
+    /// cancelled, or until the connection that serves now ends; false when
+    /// the registration ended.
     pub async fn register_call(
         &self,
         id: String,
@@ -124,12 +162,17 @@ impl ConnectionHandle {
     }
 
     /// Asks the backend a question and waits for its answer, for at most
-    /// `ANSWER_TIMEOUT` and while the connection lasts.
+    /// `ANSWER_TIMEOUT` and while the connection it was asked on lasts; a
+    /// question waits for a connection first.
     async fn ask<T>(
         &self,
         question: impl FnOnce(oneshot::Sender<Result<T, String>>) -> Question,
         what: &'static str,
     ) -> Result<Result<T, String>, RuntimeError> {
+        let live = self
+            .connected()
+            .await
+            .map_err(|_| RuntimeError::Location(UNREACHABLE.into()))?;
         let (reply, answer) = oneshot::channel();
         let abandoned = CancellationToken::new();
         let _abandon = abandoned.clone().drop_guard();
@@ -139,35 +182,37 @@ impl ConnectionHandle {
         })
         .await?;
         tokio::select! {
-            _ = self.closed.cancelled() => Err(RuntimeError::Cancelled),
+            _ = live.closed.cancelled() => Err(RuntimeError::Cancelled),
             answer = tokio::time::timeout(ANSWER_TIMEOUT, answer) => answer
                 .map_err(|_| RuntimeError::Deadline(what))?
                 .map_err(|_| RuntimeError::Cancelled),
         }
     }
 
-    /// Makes `context` live on the connection, with the leases that keep its
-    /// services resident.
+    /// Makes `context` live, with the leases that keep its services
+    /// resident.
     pub async fn register_context(
         &self,
         context: Arc<ExecutionContext>,
         leases: Vec<ServiceLease>,
     ) -> io::Result<()> {
         let (reply, answer) = oneshot::channel();
-        let closed = || io::Error::other("host connection closed");
+        let ended = || io::Error::other("the runner is stopping");
         self.request(Request::Context {
             context,
             leases,
             reply,
         })
         .await
-        .map_err(|_| closed())?;
-        tokio::select! {
-            _ = self.closed.cancelled() => Err(closed()),
-            answer = answer => answer.map_err(|_| closed())?,
-        }
+        .map_err(|_| ended())?;
+        answer.await.map_err(|_| ended())?
     }
 }
+
+/// The runner stopped waiting for a connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("the backend is unreachable")]
+pub struct Unreachable;
 
 /// A service's conversation numbers come from the connection it started
 /// under (`native-runtime.md` § Conversation numbers).

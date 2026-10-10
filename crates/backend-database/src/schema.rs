@@ -169,7 +169,9 @@ ALTER TABLE devices ADD COLUMN route TEXT NOT NULL DEFAULT 'automatic' CHECK (ro
 /// conversations. The web preview is gone, and the deployment's namespace
 /// at the preview domain with it. Users keep personal instructions, which
 /// no user migrated from 0.1.21 has. Yield wakeups are gone, and the index
-/// of when each conversation's earliest one is due with them.
+/// of when each conversation's earliest one is due with them. Running jobs
+/// are recorded by device, none of which 0.1.21 kept, since its jobs ended
+/// with their connections.
 const CONTROL_FROM_0_1_21: &str = "
 DROP INDEX conversations_wakeup;
 ALTER TABLE conversations DROP COLUMN wakeup_at;
@@ -216,6 +218,12 @@ DROP TABLE permission_requests;
 ALTER TABLE permission_requests_next RENAME TO permission_requests;
 CREATE INDEX permission_requests_of_conversation ON permission_requests (conversation_id, created_at);
 DROP TABLE preview_namespace;
+CREATE TABLE running_jobs (
+  job_id          TEXT PRIMARY KEY,
+  device_id       TEXT NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE
+) STRICT;
+CREATE INDEX running_jobs_of_device ON running_jobs (device_id);
 ";
 
 /// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
@@ -306,7 +314,10 @@ ALTER TABLE command_outputs_next RENAME TO command_outputs;
 /// (`runtime.md` § Command reports). Block format 2 also lets a block keep
 /// the entries of a vendor's own record of the session (`claude-code.md`
 /// § The session a process resumes), which no block 0.1.21 stored has, so
-/// leaving the field out writes them as format 2.
+/// leaving the field out writes them as format 2. Commands outlive their
+/// connections: a running one is recorded, none of which 0.1.21 kept, and a
+/// lost one says why (command ending format 2), which for 0.1.21's, lost
+/// with their connections, is that.
 fn from_0_1_21(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     transaction.execute_batch(
         "
@@ -319,7 +330,21 @@ INSERT INTO sequences_next (name, next) SELECT name, next FROM sequences;
 DROP TABLE sequences;
 ALTER TABLE sequences_next RENAME TO sequences;
 ALTER TABLE nodes DROP COLUMN wakeup_at;
+CREATE TABLE running_commands (
+  command_id  TEXT PRIMARY KEY,
+  node_id     TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
+  device_id   TEXT NOT NULL,
+  job_id      TEXT NOT NULL,
+  tool_use_id TEXT NOT NULL,
+  started_at  INTEGER NOT NULL
+) STRICT;
+CREATE INDEX running_commands_of_node ON running_commands (node_id);
 ",
+    )?;
+    transaction.execute(
+        "UPDATE command_outputs SET ending = json_set(ending, '$.reason', ?1)
+         WHERE json_extract(ending, '$.kind') = 'lost'",
+        [LOST_IN_0_1_21],
     )?;
     blocks_of_one_tool(transaction)?;
     states_without_wakeups(transaction)
@@ -474,6 +499,9 @@ fn migrate_block(block: &mut serde_json::Value, titles: &HashMap<String, String>
     changed
 }
 
+/// Why every command 0.1.21 recorded lost was lost.
+const LOST_IN_0_1_21: &str = "the connection to its Host was lost";
+
 /// The report a wakeup 0.1.21 fired for `command`'s end stood for: the
 /// command, its call's title, and how it ended. It carries no output: the
 /// model read none with it then.
@@ -485,7 +513,10 @@ fn report_of_0_1_21(command: &serde_json::Value, titles: &HashMap<String, String
             exit_code: end["exitCode"].as_i64().and_then(|code| i32::try_from(code).ok()),
         },
         Some("stopped") => ReportEvent::Stopped { by: None },
-        Some("lost") => ReportEvent::lost_with_connection(),
+        // 0.1.21 lost a command only with its Host's connection.
+        Some("lost") => ReportEvent::Lost {
+            reason: LOST_IN_0_1_21.to_owned(),
+        },
         _ => ReportEvent::Ended { exit_code: None },
     };
     serde_json::json!({
@@ -845,6 +876,17 @@ CREATE TABLE conversations (
 CREATE INDEX conversations_sidebar ON conversations (user_id, archived, pinned, sort_order);
 CREATE INDEX conversations_workspace ON conversations (target_workspace_id);
 
+-- Each job of a command that runs, with its device, whose runner's hello
+-- names the job, and its conversation, whose tree takes the command up
+-- again (`storage.md` § Command outputs). Written before the job starts and
+-- deleted with the command's end.
+CREATE TABLE running_jobs (
+  job_id          TEXT PRIMARY KEY,
+  device_id       TEXT NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE
+) STRICT;
+CREATE INDEX running_jobs_of_device ON running_jobs (device_id);
+
 CREATE TABLE conversation_hosts (
   conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id),
   device_id       TEXT NOT NULL REFERENCES devices (id),
@@ -1071,7 +1113,7 @@ CREATE TABLE command_outputs (
   ended_at       INTEGER NOT NULL,
   -- How it ended, a JSON object: its exit code, stopped, or with its Host's
   -- connection; null for a row a release before 0.1.21 wrote.
-  -- command_outputs.ending: command ending format 1
+  -- command_outputs.ending: command ending format 2
   ending         TEXT,
   blob           TEXT,
   missing_bytes  INTEGER CHECK (missing_bytes >= 0),
@@ -1085,6 +1127,19 @@ CREATE TABLE command_outputs (
   CHECK (missing_bytes IS NULL OR blob IS NOT NULL),
   CHECK ((media IS NULL) = (blob IS NULL))
 ) STRICT;
+
+-- Each command that runs, until its end writes its command_outputs row in
+-- the same transaction: the node that ran it, its device, its job's id on
+-- that device, the call that started it, and when it started.
+CREATE TABLE running_commands (
+  command_id  TEXT PRIMARY KEY,
+  node_id     TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
+  device_id   TEXT NOT NULL,
+  job_id      TEXT NOT NULL,
+  tool_use_id TEXT NOT NULL,
+  started_at  INTEGER NOT NULL
+) STRICT;
+CREATE INDEX running_commands_of_node ON running_commands (node_id);
 
 -- Each attachment the agent uploaded, by its number in the conversation's
 -- attachment sequence: the file's name, the media type read from its bytes,
