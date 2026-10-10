@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 use uucore::context::io::Write;
 
 use crate::params::Params;
-use crate::utils::do_write_line;
+use crate::utils::{do_write_line, is_blank_change};
 use crate::utils::get_modification_time;
 
 #[derive(Debug, PartialEq)]
@@ -41,11 +41,14 @@ fn make_diff(
     actual: &[u8],
     context_size: usize,
     stop_early: bool,
+    params: &Params,
 ) -> Vec<Mismatch> {
     let mut line_number_expected = 1;
     let mut line_number_actual = 1;
     let mut context_queue: VecDeque<&[u8]> = VecDeque::with_capacity(context_size);
-    let mut lines_since_mismatch = context_size + 1;
+    // GNU joins two changes into one hunk when at most twice the context
+    // lies between them.
+    let mut lines_since_mismatch = 2 * context_size + 1;
     let mut results = Vec::new();
     let mut mismatch = Mismatch::new(0, 0);
 
@@ -65,10 +68,10 @@ fn make_diff(
         actual_lines.pop();
     }
 
-    for result in diff::slice(&expected_lines, &actual_lines) {
+    for result in crate::utils::diff_lines(&expected_lines, &actual_lines, params) {
         match result {
             diff::Result::Left(str) => {
-                if lines_since_mismatch >= context_size && lines_since_mismatch > 0 {
+                if lines_since_mismatch > 2 * context_size {
                     results.push(mismatch);
                     mismatch = Mismatch::new(
                         line_number_expected - context_queue.len() as u32,
@@ -105,7 +108,7 @@ fn make_diff(
                 lines_since_mismatch = 0;
             }
             diff::Result::Right(str) => {
-                if lines_since_mismatch >= context_size && lines_since_mismatch > 0 {
+                if lines_since_mismatch > 2 * context_size {
                     results.push(mismatch);
                     mismatch = Mismatch::new(
                         line_number_expected - context_queue.len() as u32,
@@ -142,7 +145,7 @@ fn make_diff(
                     }
                     lines_since_mismatch = 0;
                 } else if line_number_actual > actual_lines_count {
-                    if lines_since_mismatch >= context_size && lines_since_mismatch > 0 {
+                    if lines_since_mismatch > 2 * context_size {
                         results.push(mismatch);
                         mismatch = Mismatch::new(
                             line_number_expected - context_queue.len() as u32,
@@ -158,7 +161,7 @@ fn make_diff(
                     mismatch.lines.push(DiffLine::MissingNL);
                     lines_since_mismatch = 0;
                 } else if line_number_expected > expected_lines_count {
-                    if lines_since_mismatch >= context_size && lines_since_mismatch > 0 {
+                    if lines_since_mismatch > 2 * context_size {
                         results.push(mismatch);
                         mismatch = Mismatch::new(
                             line_number_expected - context_queue.len() as u32,
@@ -249,7 +252,21 @@ pub fn diff(expected: &[u8], actual: &[u8], params: &Params) -> Vec<u8> {
         to_modified_time
     )
     .into_bytes();
-    let diff_results = make_diff(expected, actual, params.context_count, params.brief);
+    let mut diff_results = make_diff(
+        expected,
+        actual,
+        params.context_count,
+        params.brief && !params.ignore_blank_lines,
+        params,
+    );
+    if params.ignore_blank_lines {
+        diff_results.retain(|result| {
+            !is_blank_change(result.lines.iter().filter_map(|line| match line {
+                DiffLine::Expected(line) | DiffLine::Actual(line) => Some(line.as_slice()),
+                DiffLine::Context(_) | DiffLine::MissingNL => None,
+            }))
+        });
+    }
     if diff_results.is_empty() {
         return Vec::new();
     }
