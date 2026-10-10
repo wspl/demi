@@ -103,7 +103,7 @@ impl CallEntry {
             .borrow()
             .iter()
             .find_map(Pipe::failure)
-            .map(|failure| Stop::Ended(failure.to_string()));
+            .map(|failure| Stop::Ended(failure.reason().to_owned()));
         let cause = failed.unwrap_or(cause);
         let reason = cause.text().to_owned();
         *self.cause.borrow_mut() = Some(cause);
@@ -347,7 +347,7 @@ async fn run(
             result = &mut handler => break result,
             failure = &mut broken, if watching => {
                 watching = false;
-                entry.stop(Stop::Ended(failure.to_string()));
+                entry.stop(Stop::Ended(failure.reason().to_owned()));
             }
         }
     };
@@ -362,7 +362,7 @@ async fn run(
     let drained = tokio::select! {
         biased;
         () = entry.stopped.cancelled() => Err(entry.cause().map_or_else(String::new, |cause| cause.text().into())),
-        drained = stdout.done() => drained.map_err(|failure| failure.to_string()),
+        drained = stdout.done() => drained.map_err(|failure| failure.reason().to_owned()),
     };
     let code = result.map_err(|error| match error {
         RpcError::Usage(text) => Ended::Usage(text),
