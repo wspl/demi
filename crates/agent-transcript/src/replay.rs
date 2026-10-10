@@ -9,14 +9,14 @@ use std::ops::Range;
 
 use demi_agent_store::media::{Held, ModelView, missing_text};
 use demi_provider_common::{
-    InferenceItem, MediaBytes, Medium, RequestLimits, ResultPart, UserPart,
+    InferenceItem, MediaBytes, Medium, RequestLimits, ResultPart, ToolDefinition, UserPart,
 };
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, B64Bytes, INSTRUCTIONS_SOURCE, BlobRef, Block, BlockId, CommandEnd, CompletionOutcome,
+    AgentMessage, AgentMessageEvent, B64Bytes, INSTRUCTIONS_SOURCE, BlobRef, Block, BlockId, CompletionOutcome,
     DocumentSource,
     PermissionOutcome,
     FileExtension, MediaSource, Model, ModelMediaKind, Timestamp, ToolCallStatus, ToolMediaSource,
-    ToolResultContentBlock, UserContentBlock, WakeupBlock, WakeupCommand, WakeupPlacement,
+    ToolCallBlock, ToolResultContentBlock, UserContentBlock, WakeupPlacement,
     attachment_tag, char_offset,
     file_extension_support, model_accepts_media_type,
 };
@@ -27,29 +27,6 @@ use super::{gone_text, latest_answer, replay_start};
 
 /// What the model receives for a `resume` block.
 pub const RESUME_TEXT: &str = "Continue from where you left off.";
-
-/// What the model receives for a yield wakeup whose time came.
-pub const WAKEUP_TEXT: &str = "Scheduled yield wakeup fired. Continue the previous work and inspect any running command with shell_status when needed.";
-
-/// What the model receives for a fired yield wakeup (`runtime.md` § Yield
-/// wakeups): the text for the time that came, or the one that names the
-/// command whose end fired it.
-pub fn wakeup_text(wakeup: &WakeupBlock) -> Cow<'static, str> {
-    let Some(WakeupCommand { command_id, end }) = &wakeup.command else {
-        return Cow::Borrowed(WAKEUP_TEXT);
-    };
-    let ended = match end {
-        CommandEnd::Exited { exit_code } => {
-            format!("Command {command_id} ended with exit code {exit_code}.")
-        }
-        CommandEnd::Stopped => format!("Command {command_id} was stopped."),
-        CommandEnd::Lost => format!("Command {command_id} ended with its Host's connection."),
-        CommandEnd::Unrecorded => format!("Command {command_id} ended."),
-    };
-    Cow::Owned(format!(
-        "{ended} Continue the previous work; read its output with demi shell output {command_id}."
-    ))
-}
 
 /// The scalar values a replayed text keeps from its start, and from its end,
 /// when it is longer than both together.
@@ -110,7 +87,7 @@ pub fn replay(request: &RequestView) -> Replay {
                 }],
             }),
             Block::Wakeup(wakeup) => {
-                let content = vec![UserPart::Text(wakeup_text(wakeup).into_owned())];
+                let content = vec![bounded(&wakeup.text)];
                 items.push(match wakeup.placement {
                     WakeupPlacement::NewTurn => InferenceItem::UserMessage { content },
                     WakeupPlacement::Steer => InferenceItem::UserSteer { content },
@@ -153,6 +130,13 @@ pub fn replay(request: &RequestView) -> Replay {
                 model_id: answer.model.model.id.clone(),
                 text: bound_text(&answer.text).into_owned(),
             }),
+            // A vendor may refuse a call of a tool it was not given.
+            Block::ToolCall(call) if !request.declares(&call.tool_name) => {
+                items.push(InferenceItem::AssistantText {
+                    model_id: call.model.model.id.clone(),
+                    text: bound_text(&request.undeclared_call(call)).into_owned(),
+                });
+            }
             Block::ToolCall(call) => {
                 items.push(InferenceItem::ToolUse {
                     model_id: call.model.model.id.clone(),
@@ -221,6 +205,8 @@ fn kept_past_summary(blocks: &[Block], start: usize) -> std::ops::Range<usize> {
 pub struct RequestView<'a> {
     view: &'a ModelView,
     model: &'a Model,
+    /// The tools the request declares.
+    tools: &'a [ToolDefinition],
     /// Half of the body limit, the most base64 one medium may take; none
     /// when the vendor documents no limit.
     half_body: Option<u64>,
@@ -228,13 +214,51 @@ pub struct RequestView<'a> {
 
 impl<'a> RequestView<'a> {
     /// A request of `model`, whose vendor takes requests within `limits`,
-    /// over `view`.
-    pub fn new(view: &'a ModelView, model: &'a Model, limits: RequestLimits) -> Self {
+    /// over `view`, declaring `tools`.
+    pub fn new(
+        view: &'a ModelView,
+        model: &'a Model,
+        limits: RequestLimits,
+        tools: &'a [ToolDefinition],
+    ) -> Self {
         Self {
             view,
             model,
+            tools,
             half_body: limits.body_bytes.map(|bytes| bytes / 2),
         }
+    }
+
+    /// Whether the request declares the tool `name`.
+    fn declares(&self, name: &str) -> bool {
+        self.tools.iter().any(|tool| tool.name == name)
+    }
+
+    /// A call of a tool the request does not declare, such as one removed
+    /// since, with its result, as the model's text (`runtime.md` § Replay):
+    /// `[called yield {"durationMs":600000}: yield scheduled]`.
+    fn undeclared_call(&self, call: &ToolCallBlock) -> String {
+        let input = tool_input(&call.input);
+        let input = match &input {
+            Value::String(text) => text.clone(),
+            value => value.to_string(),
+        };
+        if call.status == ToolCallStatus::Executing {
+            return format!("[called {} {input}]", call.tool_name);
+        }
+        let result: Vec<String> = call
+            .output
+            .iter()
+            .map(|part| match part {
+                ToolResultContentBlock::Text { text } => text.clone(),
+                ToolResultContentBlock::Image { source } | ToolResultContentBlock::Video { source } => {
+                    let ToolMediaSource::Ref { media_type, .. } = source;
+                    format!("[{media_type}]")
+                }
+                ToolResultContentBlock::Gone { kind, cause, .. } => gone_text(*kind, cause),
+            })
+            .collect();
+        format!("[called {} {input}: {}]", call.tool_name, result.join("\n"))
     }
 
     /// The replayed blocks the request carries.

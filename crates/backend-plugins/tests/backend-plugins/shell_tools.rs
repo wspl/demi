@@ -1,11 +1,13 @@
-//! The shell tools' timing on a real runner (`runtime.md` § Dispatch and
-//! failures, § The window, § Stopping a command): the `shell_exec` calls of
-//! one response start together and a call of another tool splits them,
-//! every one starts in the working directory whatever the one before did,
-//! an agent message ends a window and a human steer does not, Send Now ends
-//! one without stopping its command, and `shell_status` watches a command
-//! up to its end. `demi shell stop` runs in the backend, which these
-//! scenarios lack: the backend's own scenarios cover it.
+//! The `shell` tool's timing on a real runner (`runtime.md` § Dispatch and
+//! failures, § The window, § Command reports): the calls of one response
+//! start together, every one starts in the working directory whatever the
+//! one before did, an agent message or a command report ends a window and a
+//! human steer does not, Send Now ends one without stopping its command, a
+//! command left running reports every interval and its end, a resident one
+//! returns once its start-up output is quiet and reports only its end, and
+//! a subagent stays live while a command it started runs. The `demi shell`
+//! commands run in the backend, which these scenarios lack: the backend's
+//! own scenarios cover them.
 //!
 //! A command that cannot end until another runs, one that waits for the
 //! file the other makes, shows what runs together without measuring time:
@@ -15,15 +17,19 @@ use std::{cell::RefCell, rc::Rc};
 
 use demi_agent_server::testing::client_text;
 use demi_agent_tools::testing::{field, shown_output};
-use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
+use demi_conversation_socket_protocol::{ClientFrame, ServerFrame, ShellStatus};
 use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderEvent, ResultPart, UserPart,
-    testing::{ScriptedRuntime, Turn, event},
+    testing::{ScriptedRuntime, Turn},
 };
+use demi_agent_server::ServerConfig;
+use demi_conversation_socket_protocol::SubagentEvent;
+use demi_host_interface::{RpcInvocation, testing::MemoryPort};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, Sender, Timestamp};
+use tokio_util::sync::CancellationToken;
 use serde_json::{Value, json};
 
-use crate::support::{Fixture, conversation, exec, is_idle, reply, turn, within};
+use crate::support::{Fixture, conversation, exec, is_idle, reply, resident, tolerant, turn, within};
 
 /// What the model was shown of each tool call it made, by the call's id, in
 /// the order the request carries them.
@@ -86,9 +92,6 @@ fn result<'a>(results: &'a [(String, String)], id: &str) -> &'a str {
         .unwrap_or_else(|| panic!("no result of {id}: {results:#?}"))
 }
 
-fn call(id: &str, tool: &str, input: Value) -> ProviderEvent {
-    event::tool_call(id, tool, input)
-}
 
 /// A script that waits until the file `flag` exists, then prints
 /// `through`.
@@ -121,55 +124,6 @@ async fn a_responses_commands_run_together_and_their_results_keep_the_calls_orde
         assert_eq!(field(reader, "status"), "exited", "{reader}");
         assert_eq!(shown_output(reader), "through\n");
         assert_eq!(field(result(&results, "writer"), "status"), "exited");
-        fixture.stop().await;
-    })
-    .await;
-}
-
-// About three seconds: four scripts, each a shell job.
-#[tokio::test(flavor = "local")]
-async fn a_call_between_two_execs_splits_them() {
-    within(async {
-        let (turns, results) = model(vec![
-            Box::new(|_| vec![exec("held", "read line", 200)]),
-            // The look at the held command is a step of its own, so the
-            // reader runs alone, and its window passes.
-            Box::new(|results| {
-                let held = field(result(results, "held"), "commandId").to_owned();
-                vec![
-                    exec("reader", AWAIT_FLAG, 500),
-                    call("look", "shell_status", json!({"commandId": held})),
-                    exec("writer", RAISE_FLAG, 20_000),
-                ]
-            }),
-            Box::new(|results| {
-                let reader = field(result(results, "reader"), "commandId").to_owned();
-                // A window above the cap is taken as the cap.
-                vec![call(
-                    "wait",
-                    "shell_status",
-                    json!({"commandId": reader, "timeoutMs": 900_000}),
-                )]
-            }),
-        ]);
-        let script = ScriptedRuntime::new(turns);
-        let fixture = Fixture::start(&script).await;
-        let mut client = fixture.opened().await;
-        turn(&mut client, "message-1", "Pass the flag.").await;
-
-        let results = results.borrow();
-        for running in ["reader", "look"] {
-            let text = result(&results, running);
-            assert_eq!(field(text, "status"), "running", "{text}");
-        }
-        assert_eq!(field(result(&results, "writer"), "status"), "exited");
-        // The reader ended once the writer ran.
-        let waited = result(&results, "wait");
-        assert!(
-            waited.starts_with("timeoutMs 900000 is above the cap; watched for 600000\nstatus: exited\n"),
-            "{waited}"
-        );
-        assert_eq!(shown_output(waited), "through\n");
         fixture.stop().await;
     })
     .await;
@@ -305,50 +259,98 @@ async fn a_human_steer_waits_for_the_window_and_an_agent_message_ends_it() {
     .await;
 }
 
+/// Replies that end a turn, as many as the reports of a scenario's commands
+/// take: how many continuations a command's reports open depends on when
+/// they arrive.
+fn replies(count: usize) -> impl Iterator<Item = Turn> {
+    (0..count).map(|_| Turn::Events(reply("noted")))
+}
+
+/// The texts of the user messages and steers `request` carries.
+fn inputs(request: &InferenceRequest) -> Vec<String> {
+    request
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
+                Some(content)
+            }
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|part| match part {
+            UserPart::Text(text) => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Waits until a request of `script` carries an input that holds `text`,
+/// and answers that input.
+async fn reported(script: &ScriptedRuntime, text: &str) -> String {
+    loop {
+        let found = script
+            .requests()
+            .iter()
+            .flat_map(inputs)
+            .find(|input| input.contains(text));
+        if let Some(found) = found {
+            return found;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+/// The tool results of every request of `script`, by call id, with whether
+/// each is an error to the provider.
+fn errors(script: &ScriptedRuntime) -> Vec<(String, bool)> {
+    let mut seen: Vec<(String, bool)> = Vec::new();
+    for request in script.requests() {
+        for item in request.items.iter() {
+            if let InferenceItem::ToolResult {
+                tool_use_id,
+                is_error,
+                ..
+            } = item
+                && !seen.iter().any(|(id, _)| id == tool_use_id)
+            {
+                seen.push((tool_use_id.clone(), *is_error));
+            }
+        }
+    }
+    seen
+}
+
 // About a second: two scripts, each a shell job.
 #[tokio::test(flavor = "local")]
 async fn send_now_on_a_steer_moves_the_command_to_the_background_and_the_turn_goes_on() {
     within(async {
-        let steered: Rc<RefCell<Option<String>>> = Rc::default();
-        let seen = steered.clone();
-        let results: Results = Rc::default();
-        let recorded = results.clone();
-        let turns = vec![
+        let turns = [
             // A window far longer than the test.
-            Turn::Events(vec![exec("read", "read line; echo \"got $line\"", 600_000)]),
-            Turn::Respond(Box::new(move |request| {
-                record(&recorded, request);
-                *seen.borrow_mut() = steer_text(request);
-                let command = field(result(&recorded.borrow(), "read"), "commandId").to_owned();
-                vec![call(
-                    "answer",
-                    "shell_status",
-                    json!({"commandId": command, "stdin": "go\n", "description": "Answer the prompt", "timeoutMs": 600_000}),
-                )]
-            })),
-            Turn::Respond(Box::new({
-                let recorded = results.clone();
-                move |request| {
-                    record(&recorded, request);
-                    reply("done")
-                }
-            })),
-        ];
+            Turn::Events(vec![exec(
+                "wait",
+                "until [ -e go ]; do sleep 0.05; done; echo went",
+                600_000,
+            )]),
+            Turn::Events(vec![exec("go", "touch go", 20_000)]),
+        ]
+        .into_iter()
+        .chain(replies(3));
         let script = ScriptedRuntime::new(turns);
         let fixture = Fixture::start(&script).await;
         let mut client = fixture.opened().await;
         client
             .send(ClientFrame::Send {
                 message_id: "message-1".try_into().unwrap(),
-                content: client_text("Read a line."),
+                content: client_text("Wait for go."),
             })
             .await;
         // The command runs: the user steers and sends the steer now.
-        client.next_until(|frame| shows_call(frame, "read")).await;
+        client.next_until(|frame| shows_call(frame, "wait")).await;
         client
             .send(ClientFrame::Steer {
                 steer_id: "steer-1".try_into().unwrap(),
-                content: client_text("Answer go."),
+                content: client_text("Say go."),
             })
             .await;
         client
@@ -359,24 +361,384 @@ async fn send_now_on_a_steer_moves_the_command_to_the_background_and_the_turn_go
                 steer_id: "steer-1".try_into().unwrap(),
             })
             .await;
-        client.next_until(is_idle).await;
 
+        // The command ran on: it ended once the next call let it, and its end
+        // was reported.
+        let command = fixture_command(&script, "wait").await;
+        let report = reported(
+            &script,
+            &format!("Command {command} (Run the test script) ended with exit code 0"),
+        )
+        .await;
+        assert_eq!(
+            report,
+            format!(
+                "Command {command} (Run the test script) ended with exit code 0; look at it with demi shell status {command}."
+            )
+        );
+        let requests = script.requests();
+        let results: Results = Rc::default();
+        for request in &requests {
+            record(&results, request);
+        }
         let results = results.borrow();
-        let read = result(&results, "read");
-        assert_eq!(field(read, "status"), "running", "{read}");
-        let command = field(read, "commandId");
-        let lines: Vec<&str> = read.lines().collect();
+        let waited = result(&results, "wait");
+        assert_eq!(field(waited, "status"), "running", "{waited}");
+        let lines: Vec<&str> = waited.lines().collect();
         let line = format!(
             "[The user sent a message, so command {command} moved to the background. It keeps running.]"
         );
-        let at = lines.iter().position(|shown| *shown == line).expect(read);
-        assert!(lines[at + 1].starts_with("next:"), "{read}");
-        assert_eq!(steered.borrow().as_deref(), Some("Answer go."));
-        // The command ran on: it read the answer and ended.
-        let answered = result(&results, "answer");
-        assert_eq!(field(answered, "status"), "exited", "{answered}");
-        assert_eq!(shown_output(answered), "got go\n");
+        let at = lines.iter().position(|shown| *shown == line).expect(waited);
+        assert!(lines[at + 1].starts_with("next:"), "{waited}");
+        assert_eq!(steer_text(&requests[1]).as_deref(), Some("Say go."));
         assert!(!fixture.kinds().contains(&"abort".to_owned()));
+        fixture.stop().await;
+    })
+    .await;
+}
+
+/// A server whose commands report at intervals from a tenth of a second,
+/// so that a scenario sees them within its time.
+fn reporting() -> ServerConfig {
+    ServerConfig {
+        interval_floor_ms: 100,
+        ..ServerConfig::default()
+    }
+}
+
+// About two seconds: two scripts, each a shell job, and the reports of one
+// of them every half second.
+#[tokio::test(flavor = "local")]
+async fn a_command_left_running_reports_every_interval_and_its_end_and_a_failed_one_is_an_error() {
+    within(async {
+        let turns = [Turn::Events(vec![
+            exec("fail", "echo broken >&2; exit 2", 20_000),
+            exec(
+                "suite",
+                "echo started; until [ -e done ]; do sleep 0.05; done; echo finished; exit 3",
+                500,
+            ),
+        ])]
+        .into_iter()
+        .chain(replies(40));
+        let script = ScriptedRuntime::new(turns);
+        let fixture = Fixture::start_with(&script, reporting()).await;
+        let mut client = fixture.opened().await;
+        turn(&mut client, "message-1", "Run the suite.").await;
+
+        let suite = fixture.shell_commands()[1].clone();
+        // The command still runs: it reports what a look shows of it.
+        let progress = reported(
+            &script,
+            &format!("Command {suite} (Run the test script) is still running after"),
+        )
+        .await;
+        assert!(progress.contains("\nstatus: running\n"), "{progress}");
+        assert!(
+            progress.ends_with(&format!(
+                "It reports every 1s; change that with demi shell status {suite} --interval <duration>, or with --resident to hear only of its end."
+            )),
+            "{progress}"
+        );
+        std::fs::write(format!("{}/done", fixture.workspace), "").unwrap();
+        reported(
+            &script,
+            &format!(
+                "Command {suite} (Run the test script) ended with exit code 3; look at it with demi shell status {suite}."
+            ),
+        )
+        .await;
+
+        // The failed command's result is an error to the provider; the one
+        // that still ran is not.
+        let errors = errors(&script);
+        assert!(errors.contains(&("fail".to_owned(), true)), "{errors:?}");
+        assert!(errors.contains(&("suite".to_owned(), false)), "{errors:?}");
+        // A look moves the model's place: the output the first report showed
+        // is not shown again.
+        let started = script
+            .requests()
+            .iter()
+            .flat_map(inputs)
+            .filter(|input| input.contains("\nstarted\n") || input.ends_with("\nstarted"))
+            .count();
+        assert!(started <= 1, "{started}");
+        fixture.stop().await;
+    })
+    .await;
+}
+
+
+// About three seconds: two scripts, each a shell job, and the two seconds of
+// quiet that end a resident command's call.
+#[tokio::test(flavor = "local")]
+async fn a_resident_command_returns_once_quiet_reports_only_its_end_and_its_end_ends_a_window() {
+    within(async {
+        let turns = [
+            Turn::Events(vec![resident(
+                "serve",
+                "echo ready; until [ -e stop ]; do sleep 0.05; done",
+            )]),
+            // A window far longer than the test, which the server's end
+            // ends.
+            Turn::Events(vec![exec(
+                "long",
+                "touch stop; until [ -e never ]; do sleep 0.05; done",
+                600_000,
+            )]),
+        ]
+        .into_iter()
+        .chain(replies(3));
+        let script = ScriptedRuntime::new(turns);
+        let fixture = Fixture::start_with(&script, reporting()).await;
+        let mut client = fixture.opened().await;
+        let started = tokio::time::Instant::now();
+        client
+            .send(ClientFrame::Send {
+                message_id: "message-1".try_into().unwrap(),
+                content: client_text("Serve, then stop."),
+            })
+            .await;
+        let serve = fixture_command(&script, "serve").await;
+        let served = started.elapsed();
+
+        let report = reported(
+            &script,
+            &format!("Command {serve} (Run the test script) ended with exit code 0"),
+        )
+        .await;
+        client.next_until(is_idle).await;
+
+        // The call returned once the start-up output had been quiet for two
+        // seconds, long before its thirty.
+        assert!(
+            served >= std::time::Duration::from_secs(2) && served < std::time::Duration::from_secs(30),
+            "{served:?}"
+        );
+        let results: Results = Rc::default();
+        for request in &script.requests() {
+            record(&results, request);
+        }
+        let results = results.borrow();
+        let first = result(&results, "serve");
+        assert_eq!(field(first, "status"), "running", "{first}");
+        assert_eq!(shown_output(first), "ready\n");
+        assert!(first.contains("reports to you when it ends"), "{first}");
+        // The report ended the long call's window: its command runs on.
+        let long = result(&results, "long");
+        assert_eq!(field(long, "status"), "running", "{long}");
+        assert!(report.ends_with(&format!("look at it with demi shell status {serve}.")));
+        // It reported nothing while it ran.
+        assert!(
+            !script
+                .requests()
+                .iter()
+                .flat_map(inputs)
+                .any(|input| input.contains("is still running")),
+        );
+        fixture.stop().await;
+    })
+    .await;
+}
+
+/// The command the call `id` started, once its result reached the model.
+async fn fixture_command(script: &ScriptedRuntime, id: &str) -> String {
+    loop {
+        let results: Results = Rc::default();
+        for request in &script.requests() {
+            record(&results, request);
+        }
+        if let Some((_, text)) = results.borrow().iter().find(|(call, _)| call == id) {
+            return field(text, "commandId").to_owned();
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+// About three seconds: a script a subagent runs as a shell job, and the two
+// seconds of quiet that end its call.
+#[tokio::test(flavor = "local")]
+async fn a_subagent_whose_command_runs_stays_live_and_closes_once_it_ended_and_the_child_answered() {
+    within(async {
+        let script = ScriptedRuntime::new([
+            // The child's runs.
+            Turn::Events(vec![resident(
+                "serve",
+                "echo ready; until [ -e stop ]; do sleep 0.05; done",
+            )]),
+            Turn::Events(reply("The server runs.")),
+            Turn::Events(reply("The server stopped.")),
+            // The root's, which its child's completion opens.
+            Turn::Events(reply("noted")),
+        ]);
+        let fixture = Fixture::start(&script).await;
+        let mut client = fixture.opened().await;
+        spawn(&fixture, "Serve until stopped.").await;
+        let started = client
+            .next_until(|frame| {
+                matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Started, .. })
+            })
+            .await;
+        let Some(ServerFrame::Subagent { job, .. }) = started.last() else {
+            unreachable!()
+        };
+        let child = job.subagent_id.clone();
+        let tree = fixture.server.tree(&conversation()).unwrap();
+
+        // The child answered and its command runs: it stays live.
+        while script.requests().len() < 2 {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let node = fixture.server.node(&conversation(), &child).unwrap();
+        node.session().settled().await;
+        assert!(node.session().status().commands);
+        assert!(fixture.server.node(&conversation(), &child).is_some());
+        assert!(!tree.is_quiescent());
+
+        std::fs::write(format!("{}/stop", fixture.workspace), "").unwrap();
+        client
+            .next_until(|frame| {
+                matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Closed, job }
+                    if job.subagent_id == child && job.result.as_deref() == Some("The server stopped."))
+            })
+            .await;
+        client.next_until(is_idle).await;
+        assert_eq!(script.remaining(), 0);
+        fixture.stop().await;
+    })
+    .await;
+}
+
+/// Spawns a child of the root with `prompt` as the root's job would, through
+/// the root's `demi agent spawn`.
+async fn spawn(fixture: &Fixture, prompt: &str) {
+    let (code, _, stderr) = root_call(fixture, &["agent", "spawn"], json!({ "prompt": prompt })).await;
+    assert_eq!(code, 0, "{stderr}");
+}
+
+/// Runs `demi <path>` with `args` as a job of the root would, and answers
+/// its exit code, stdout and stderr.
+async fn root_call(fixture: &Fixture, path: &[&str], args: Value) -> (u8, String, String) {
+    let root = fixture.server.node(&conversation(), &conversation()).unwrap();
+    let path: Vec<&str> = std::iter::once("demi").chain(path.iter().copied()).collect();
+    let mut invocation: RpcInvocation = serde_json::from_value(json!({
+        "path": path,
+        "argv": [],
+        "args": args,
+        "json": false,
+        "host": "device",
+        "cwd": fixture.workspace,
+        "env": {},
+        "context": {
+            "conversation": conversation(),
+            "caller": { "kind": "agent", "number": 0 },
+            "locale": { "timeZone": "UTC", "languages": ["en"] },
+            "colorScheme": "light",
+        },
+        "stdin": false,
+    }))
+    .expect("the invocation is well formed");
+    invocation.caller = Some(root.job_caller());
+    let port = MemoryPort::new();
+    let code = root
+        .commands()
+        .dispatch(invocation, port.port(CancellationToken::new()))
+        .await
+        .expect("the call is dispatched");
+    let text = |bytes: Vec<u8>| String::from_utf8(bytes).expect("the output is text");
+    (code, text(port.stdout()), text(port.stderr()))
+}
+
+// About five seconds: a subagent's command runs as a shell job and reports
+// to it three seconds after its call returned, after the parent looked.
+#[tokio::test(flavor = "local")]
+async fn a_look_at_another_agents_command_shows_the_output_since_the_lookers_own_last_look() {
+    within(async {
+        let script = tolerant(vec![
+            // The child's runs.
+            vec![exec(
+                "serve",
+                "echo one; until [ -e next ]; do sleep 0.05; done; echo two; until [ -e stop ]; do sleep 0.05; done",
+                3_000,
+            )],
+            reply("The server runs."),
+        ]);
+        let fixture = Fixture::start_with(&script, reporting()).await;
+        let _client = fixture.opened().await;
+        spawn(&fixture, "Serve.").await;
+        let serve = fixture_command(&script, "serve").await;
+        let look = || async {
+            let (code, stdout, stderr) =
+                root_call(&fixture, &["shell", "status"], json!({ "id": [serve.clone()] })).await;
+            assert_eq!(code, 0, "{stderr}");
+            stdout
+        };
+
+        // The parent's first look shows all the output so far, though the
+        // child saw it in its call's result.
+        let first = look().await;
+        assert!(first.contains("\noutput:\none\n"), "{first}");
+        std::fs::write(format!("{}/next", fixture.workspace), "").unwrap();
+        // Its next looks show only what came since: never `one` again.
+        let mut later = look().await;
+        while !later.contains("\ntwo\n") {
+            assert!(!later.contains("one"), "{later}");
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            later = look().await;
+        }
+        assert!(later.contains("\noutput:\ntwo\n") && !later.contains("one"), "{later}");
+        // The parent's looks moved only its own place: the child's report
+        // still shows it `two`.
+        let report = reported(&script, &format!("Command {serve} (Run the test script) is still running")).await;
+        assert!(report.contains("\noutput:\ntwo"), "{report}");
+        fixture.stop().await;
+    })
+    .await;
+}
+
+// About three seconds: two scripts, each a shell job, and the two seconds
+// of quiet that end the first call.
+#[tokio::test(flavor = "local")]
+async fn a_stop_ends_the_command_a_call_watches_and_leaves_one_an_earlier_call_left_running() {
+    within(async {
+        let script = tolerant(vec![
+            vec![resident("serve", "echo ready; until [ -e stop ]; do sleep 0.05; done")],
+            // A window far longer than the test, which the Stop ends.
+            vec![exec("slow", "until [ -e never ]; do sleep 0.05; done", 600_000)],
+        ]);
+        let fixture = Fixture::start(&script).await;
+        let mut client = fixture.opened().await;
+        client
+            .send(ClientFrame::Send {
+                message_id: "message-1".try_into().unwrap(),
+                content: client_text("Serve, then wait."),
+            })
+            .await;
+        client.next_until(|frame| shows_call(frame, "slow")).await;
+        client.send(ClientFrame::Abort {}).await;
+        client
+            .next_until(|frame| matches!(frame, ServerFrame::AbortResult { .. }))
+            .await;
+        // The watched command ended with its call.
+        client
+            .next_until(|frame| {
+                matches!(frame, ServerFrame::ShellOutput { status, .. }
+                    if status.command().tool_use_id == "slow"
+                        && !matches!(**status, ShellStatus::Running { .. }))
+            })
+            .await;
+
+        // The server an earlier call left running runs on, and its end
+        // wakes the stopped node.
+        let serve = fixture_command(&script, "serve").await;
+        std::fs::write(format!("{}/stop", fixture.workspace), "").unwrap();
+        reported(
+            &script,
+            &format!(
+                "Command {serve} (Run the test script) ended with exit code 0; look at it with demi shell status {serve}."
+            ),
+        )
+        .await;
         fixture.stop().await;
     })
     .await;

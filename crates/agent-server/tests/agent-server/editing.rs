@@ -307,7 +307,7 @@ async fn a_switch_while_an_edit_is_prepared_lands_after_the_replacements_first_r
     let script = ScriptedRuntime::new([
         said("answer A"),
         Turn::Events(vec![
-            event::tool_call("call-1", "shell_exec", json!({})),
+            event::tool_call("call-1", "shell", json!({})),
             event::response(1, 1),
         ]),
         said("answer A2"),

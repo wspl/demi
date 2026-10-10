@@ -5,11 +5,11 @@ use demi_agent_store::{
     testing::test_model,
 };
 use demi_agent_transcript::{RequestView, replay};
-use demi_provider_common::{InferenceItem, RequestLimits, UserPart};
+use demi_provider_common::{InferenceItem, RequestLimits, ToolDefinition, UserPart};
 use demi_shared_types::{
     Attachment, BlobRef, Block, BlockId, CompactionBoundaryBlock, CompactionMarkerBlock,
-    RedactedThinkingBlock, ThinkingBlock, Timestamp, TurnId, UserBlock, UserContentBlock,
-    attachment_tag,
+    RedactedThinkingBlock, ThinkingBlock, Timestamp, ToolCallBlock, ToolCallStatus,
+    ToolResultContentBlock, TurnId, UserBlock, UserContentBlock, attachment_tag,
 };
 
 /// What the model receives of a message of one text.
@@ -29,6 +29,7 @@ fn replayed_text(text: &str) -> String {
         &view,
         &model.model,
         RequestLimits::default(),
+        &[],
     ))
     .items;
     let [InferenceItem::UserMessage { content }] = items.as_slice() else {
@@ -82,6 +83,7 @@ fn reasoning_between_the_last_boundary_and_its_marker_is_marked_as_kept_past_a_s
             &view,
             &model.model,
             RequestLimits::default(),
+            &[],
         ))
         .items
         .into_iter()
@@ -153,7 +155,8 @@ fn a_messages_reference_and_attachment_record_reach_the_model_as_their_text() {
         replay(&RequestView::new(
             &view,
             &model.model,
-            RequestLimits::default()
+            RequestLimits::default(),
+            &[],
         ))
         .items,
         [InferenceItem::UserMessage {
@@ -182,4 +185,59 @@ fn a_long_text_keeps_its_ends_and_counts_what_it_left_out_in_scalar_values() {
     assert_eq!(tail, format!("🙂{}", "z".repeat(7_999)));
     assert_eq!(count, "4000");
     assert_eq!(replayed_text(&"x".repeat(16_000)), "x".repeat(16_000));
+}
+
+// A conversation from before `yield` was removed goes on: a vendor may
+// refuse a call of a tool its request does not declare.
+#[test]
+fn a_call_of_a_tool_the_request_no_longer_declares_is_replayed_with_its_result_as_text() {
+    let model = test_model();
+    let call = |id: &str, tool: &str, input: &str, result: &str| {
+        Block::ToolCall(ToolCallBlock {
+            entries: Vec::new(),
+            id: BlockId::try_from(id).unwrap(),
+            created_at: Timestamp::UNIX_EPOCH,
+            model: model.clone(),
+            tool_use_id: id.into(),
+            tool_name: tool.into(),
+            input: input.into(),
+            status: ToolCallStatus::Completed,
+            output: vec![ToolResultContentBlock::Text {
+                text: result.into(),
+            }],
+            view: None,
+        })
+    };
+    let blocks = [
+        call("c1", "shell", r#"{"script":"ls"}"#, "status: exited"),
+        call(
+            "c2",
+            "yield",
+            r#"{ "durationMs": 600000 }"#,
+            "yield scheduled",
+        ),
+    ];
+    let shell = ToolDefinition {
+        name: "shell".into(),
+        description: String::new(),
+        input_schema: serde_json::Map::new(),
+    };
+    let view = ModelView::of(0, &blocks, &HeldMedia::default()).expect("no media to hold");
+    let items = replay(&RequestView::new(
+        &view,
+        &model.model,
+        RequestLimits::default(),
+        std::slice::from_ref(&shell),
+    ))
+    .items;
+    let [
+        InferenceItem::ToolUse { tool_name, .. },
+        InferenceItem::ToolResult { .. },
+        InferenceItem::AssistantText { text, .. },
+    ] = items.as_slice()
+    else {
+        panic!("the declared call and the text of the other: {items:?}");
+    };
+    assert_eq!(tool_name, "shell");
+    assert_eq!(text, r#"[called yield {"durationMs":600000}: yield scheduled]"#);
 }

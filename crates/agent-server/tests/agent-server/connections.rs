@@ -128,7 +128,7 @@ async fn a_call_being_written_reaches_the_pages_as_a_list_and_an_opening_page_in
         &gate,
         vec![
             event::text("Let me write a categorizer."),
-            event::tool_call_start("call-1", "shell_exec"),
+            event::tool_call_start("call-1", "shell"),
             event::tool_call_input(
                 "call-1",
                 "{\"description\": \"Write the categorizer\", \"script\": \"cat",
@@ -152,7 +152,7 @@ async fn a_call_being_written_reaches_the_pages_as_a_list_and_an_opening_page_in
     };
     assert_eq!(
         calls(listed.last().unwrap()),
-        [("call-1".to_owned(), "shell_exec".to_owned(), Some("Write the categorizer".to_owned()))]
+        [("call-1".to_owned(), "shell".to_owned(), Some("Write the categorizer".to_owned()))]
     );
 
     let mut second = fixture.client();

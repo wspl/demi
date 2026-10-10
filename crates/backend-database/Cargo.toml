@@ -20,7 +20,6 @@ testing = []
 
 [dependencies]
 demi-agent-store = { path = "../agent-store" }
-demi-agent-transcript = { path = "../agent-transcript" }
 demi-shared-types = { path = "../shared-types" }
 demi-shared-gates = { path = "../shared-gates" }
 demi-backend-remote-host = { path = "../backend-remote-host" }

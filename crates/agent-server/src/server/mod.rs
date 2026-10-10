@@ -24,8 +24,8 @@ use demi_agent_session::{
 };
 use demi_agent_store::{AgentTreeStore, Checkpoint, CheckpointUpdate, NodeRecord, StoreError};
 use demi_agent_tools::{
-    ContextSource, HostResolver, ProfileModel, ShellEnvironmentFactory, SubagentSource, ToolsetSource,
-    Unavailable,
+    ContextSource, HostResolver, INTERVAL_FLOOR_MS, ProfileModel, ShellEnvironmentFactory,
+    SubagentSource, ToolsetSource, Unavailable,
 };
 use demi_agent_transcript::IdSource;
 
@@ -38,7 +38,6 @@ use tokio_util::task::TaskTracker;
 pub use connection::{Connection, FrameRx, Outgoing};
 pub use content::{ContentError, ContentResolver, FileReference, ResolvedFiles};
 pub use tree::{QuiescenceWatch, Tree};
-pub(crate) use tree::CommandPlace;
 
 use tree::OpenError;
 
@@ -126,6 +125,10 @@ pub struct ServerConfig {
     pub outbox_frames: usize,
     /// How long a tree stays live once it is detached and quiescent.
     pub idle_tree: Duration,
+    /// The least interval a command reports at, in milliseconds
+    /// (`runtime.md` § Tool input): [`INTERVAL_FLOOR_MS`] in the product,
+    /// which a test shortens to see reports within its time.
+    pub interval_floor_ms: u32,
 }
 
 impl Default for ServerConfig {
@@ -134,6 +137,7 @@ impl Default for ServerConfig {
             session: SessionConfig::default(),
             outbox_frames: 4_096,
             idle_tree: Duration::from_secs(600),
+            interval_floor_ms: INTERVAL_FLOOR_MS,
         }
     }
 }
@@ -222,10 +226,9 @@ impl<H: HostResolver> AgentServer<H> {
     }
 
     /// Restores the conversation `root`'s tree, working in `cwd`, with no
-    /// connection attached (`runtime.md` § Yield wakeups): it continues as a
-    /// restored tree does, so its saved wakeups are armed again, and once it
-    /// is quiescent the idle rule evicts it. A tree that is live already is
-    /// left as it is.
+    /// connection attached, as an `open` does: it continues as a restored
+    /// tree does, and once it is quiescent the idle rule evicts it. A tree
+    /// that is live already is left as it is.
     pub async fn restore(self: &Rc<Self>, root: &NodeId, cwd: &str) -> Result<(), RestoreError> {
         let _turn = self.opening.acquire(root.clone()).await;
         let (tree, continuation) = self
@@ -377,7 +380,8 @@ impl<H: HostResolver> AgentServer<H> {
         let fresh = state.phase == SessionPhase::Idle
             && state.queue.is_empty()
             && state.agent_inputs.is_empty()
-            && state.wakeups.is_empty()
+            && state.reports.is_empty()
+            && state.intervals.is_empty()
             && state.edits.is_empty();
         if !fresh {
             return Err(ForkError::InvalidSeed);

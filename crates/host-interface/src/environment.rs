@@ -1,4 +1,4 @@
-//! The shell-environment contract behind the shell tools: a node's commands
+//! The shell-environment contract behind the `shell` tool: a node's commands
 //! on one Host, each a job of its own that starts in the conversation's
 //! working directory there (`runtime.md` § Running shell tools), the
 //! model's status view of each (`runtime.md` § Tools), and the pages' view
@@ -17,10 +17,6 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use crate::{CommandMedium, CommandRecord, Ending, HostError, PageView, Seen, WholeOutput};
-
-/// The longest a call watches its command before it returns the running
-/// command's handle.
-pub const MAX_OBSERVATION: Duration = Duration::from_millis(600_000);
 
 /// The default budget of one status view's new output, per stream.
 pub const DEFAULT_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
@@ -52,6 +48,10 @@ pub trait ShellEnvironment {
 
     /// The command's status, with its output since the model last looked.
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError>;
+
+    /// How long the command has printed nothing, which moves no place in
+    /// its output.
+    fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError>;
 
     /// The kept output of a command that runs, as its Host holds it now
     /// (`runtime.md` § The whole output).
@@ -114,57 +114,16 @@ pub trait PageFeed {
     fn watching(&self) -> watch::Receiver<bool>;
 }
 
-/// Watches `command` until the first of: it ends, `window` passes, or
-/// `until` resolves; then returns its status, with what `until` gave when
-/// it ended the watch (`runtime.md` § The window). Without a window it
-/// looks at once. Ending the watch never stops the command.
-pub async fn watch<T>(
-    environment: &dyn ShellEnvironment,
-    command: &CommandId,
-    window: Option<ObservationWindow>,
-    until: impl Future<Output = T>,
-) -> Result<(CommandStatus, Option<T>), ShellError> {
-    let mut ended_by = None;
-    if let Some(window) = window {
-        tokio::select! {
-            ended = environment.ended(command) => {
-                ended?;
-            }
-            () = tokio::time::sleep(window.duration()) => {}
-            reason = until => ended_by = Some(reason),
-        }
-    }
-    Ok((environment.status(command)?, ended_by))
-}
-
 /// One exec, with every rule an environment enforces in its type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecRequest {
     pub script: String,
     /// The agent node the job's `rpc` calls act for.
     pub caller: JobCaller,
-    /// The `shell_exec` call that runs the script, which the pages' view of
-    /// the command names.
+    /// The `shell` call that runs the script, which the pages' view of the
+    /// command names.
     pub tool_use_id: String,
 }
-
-/// How long a call watches its command: from a millisecond to
-/// [`MAX_OBSERVATION`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ObservationWindow(Duration);
-
-impl ObservationWindow {
-    /// The window of `milliseconds`, or none outside the bounds.
-    pub fn from_millis(milliseconds: u64) -> Option<Self> {
-        let window = Duration::from_millis(milliseconds);
-        (milliseconds > 0 && window <= MAX_OBSERVATION).then_some(Self(window))
-    }
-
-    pub fn duration(self) -> Duration {
-        self.0
-    }
-}
-
 
 /// The agent node a job runs for, whose commands its `rpc` calls reach
 /// (`sessions-and-targets.md` § Bind jobs to their caller).

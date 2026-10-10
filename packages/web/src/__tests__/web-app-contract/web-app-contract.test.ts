@@ -352,8 +352,8 @@ test('a scripted tool call runs on the real runner, and its result appears in th
   const { id, work } = await conversationOnDevice(model)
   vendor.reply({
     type: 'tool_use',
-    name: 'shell_exec',
-    input: { script: 'printf contract > probe.txt && cat probe.txt', description: 'Write the probe file', timeoutMs: 30_000 },
+    name: 'shell',
+    input: { script: 'printf contract > probe.txt && cat probe.txt', description: 'Write the probe file', intervalMs: 30_000 },
   })
   vendor.reply({ type: 'text', text: 'The probe says contract.' })
   const client = await connect(id)
@@ -367,7 +367,7 @@ test('a scripted tool call runs on the real runner, and its result appears in th
     if (call?.type !== 'tool_call') {
       throw new Error(`No tool call: ${JSON.stringify(blocks)}`)
     }
-    expect(call).toMatchObject({ toolName: 'shell_exec', status: 'completed', view: { kind: 'shell', status: 'exited', exitCode: 0 } })
+    expect(call).toMatchObject({ toolName: 'shell', status: 'completed', view: { kind: 'shell', status: 'exited', exitCode: 0 } })
     expect(JSON.stringify(call.output)).toContain('contract')
     // The command ran on the device, in the conversation's directory.
     expect(await readFile(join(work, 'probe.txt'), 'utf8')).toBe('contract')
@@ -381,7 +381,7 @@ test('a scripted tool call runs on the real runner, and its result appears in th
 test('after a reload, the transcript the client assembled from live patches equals the cold transcript', async () => {
   const model = await scriptedModel()
   const { id } = await conversationOnDevice(model)
-  vendor.reply({ type: 'tool_use', name: 'shell_exec', input: { script: 'echo first', timeoutMs: 30_000 } })
+  vendor.reply({ type: 'tool_use', name: 'shell', input: { script: 'echo first', description: 'Print first', intervalMs: 30_000 } })
   vendor.reply({ type: 'text', text: 'The first turn ran a command.' })
   vendor.reply({ type: 'text', text: 'And the second turn answered at once.' })
   const live = await connect(id)
@@ -553,8 +553,8 @@ test('Send now returns the running call at once and its command runs on: a steer
   const { id } = await conversationOnDevice(model)
   vendor.reply({
     type: 'tool_use',
-    name: 'shell_exec',
-    input: { script: 'read line; echo "got $line"', description: 'Wait for a line', timeoutMs: 600_000 },
+    name: 'shell',
+    input: { script: 'read line; echo "got $line"', description: 'Wait for a line', intervalMs: 600_000 },
   })
   const client = await openConversation(id)
   try {
@@ -562,13 +562,16 @@ test('Send now returns the running call at once and its command runs on: a steer
     const started = nextEvent(client, (event) => view(event)?.commandId)
     await client.submit([text('Read a line')])
     const commandId = await started
-    // The model then watches the command again.
-    vendor.reply({ type: 'tool_use', name: 'shell_status', input: { commandId, timeoutMs: 600_000 } })
+    // The model then watches another command.
+    vendor.reply({ type: 'tool_use', name: 'shell', input: { script: 'sleep 600', description: 'Wait ten minutes', intervalMs: 600_000 } })
     vendor.reply({ type: 'text', text: 'Answering the queued message.' })
     const steerId = crypto.randomUUID()
     await client.steer([text('Answer with go')], steerId)
-    // The model's second call watches the command once its block is executing.
-    const watching = nextEvent(client, () => (client.transcript().blocks.filter((block) => block.type === 'tool_call').at(1)?.status === 'executing') || undefined)
+    // The model's second call watches its command once the command started.
+    const watching = nextEvent(client, (event) => {
+      const started = view(event)?.commandId
+      return started !== undefined && started !== commandId ? started : undefined
+    })
     client.steerNow(steerId)
     await watching
     const queued = crypto.randomUUID()
@@ -579,22 +582,27 @@ test('Send now returns the running call at once and its command runs on: a steer
 
     const blocks = client.transcript().blocks
     expect(kinds(blocks)).toEqual(['user', 'context', 'tool_call', 'response', 'steer', 'tool_call', 'response', 'user', 'text', 'response'])
-    const background = `[The user sent a message, so command ${commandId} moved to the background. It keeps running.]`
     for (const call of [blocks[2], blocks[5]]) {
       expect(call).toMatchObject({ type: 'tool_call', status: 'completed', view: { kind: 'shell', status: 'running' } })
-      expect(JSON.stringify(call)).toContain(background)
+      const command = call?.type === 'tool_call' && call.view?.kind === 'shell' ? call.view.commandId : undefined
+      expect(JSON.stringify(call)).toContain(`[The user sent a message, so command ${command} moved to the background. It keeps running.]`)
     }
     expect(blocks[4]).toMatchObject({ type: 'steer', id: steerId })
     // The model's second request carried the steer; its third, the queued message.
     expect(userTexts(vendor.turns().at(-2))).toContain('Answer with go')
     expect(userTexts(vendor.turns().at(-1))).toContain('Stop waiting')
-    // The command ran on through both: it still reads its line.
+    // The command ran on through both: it still reads its line, and its end
+    // is reported to the model.
     const exited = nextEvent(client, (event) => {
       const status = view(event)
-      return status && status.status !== 'running' ? status : undefined
+      return status && status.commandId === commandId && status.status !== 'running' ? status : undefined
     })
+    vendor.reply({ type: 'text', text: 'The line was read.' })
+    const reported = idle(client)
     await client.shellWrite(commandId, 'go\n')
     expect(await exited).toMatchObject({ status: 'exited', exitCode: 0, commandId, tail: 'got go\n' })
+    await reported
+    expect(userTexts(vendor.turns().at(-1))).toContain(`Command ${commandId} (Wait for a line) ended with exit code 0`)
   } finally {
     client.disconnect()
   }
@@ -635,8 +643,8 @@ test('the page answers a running command\'s prompt, and the command\'s output re
   const { id } = await conversationOnDevice(model)
   vendor.reply({
     type: 'tool_use',
-    name: 'shell_exec',
-    input: { script: 'echo "name?"; read line; echo "got $line"', description: 'Ask for a name', timeoutMs: 30_000 },
+    name: 'shell',
+    input: { script: 'echo "name?"; read line; echo "got $line"', description: 'Ask for a name', intervalMs: 30_000 },
   })
   vendor.reply({ type: 'text', text: 'The command read the line.' })
   const client = await openConversation(id)
@@ -658,7 +666,7 @@ test('the page answers a running command\'s prompt, and the command\'s output re
     expect(await exited).toMatchObject({ status: 'exited', exitCode: 0, commandId, tail: 'name?\ngot contract\n' })
     await ended
     const call = client.transcript().blocks.find((block) => block.type === 'tool_call')
-    expect(call).toMatchObject({ toolName: 'shell_exec', status: 'completed' })
+    expect(call).toMatchObject({ toolName: 'shell', status: 'completed' })
     expect(JSON.stringify(call?.output)).toContain('got contract')
     expect(JSON.stringify(vendor.turns().at(-1)?.messages)).toContain('got contract')
   } finally {
