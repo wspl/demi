@@ -27,7 +27,7 @@ use demi_host_interface::{
     BinaryOutput, CommandMedium, CommandRecord, CommandSet, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, Ending, ExecRequest, Host, HostError, HostKey,
     JobCaller, Missing, Numbers, OutputRecord, PageFeed, PageView, ProcessEnd, Seen,
-    ShellEnvironment, ShellError, SpawnErrorKind, Streams, WholeOutput, binary_line,
+    ShellEnvironment, ShellError, SpawnErrorKind, Streams, TakenUp, WholeOutput, binary_line,
 };
 use demi_runner_protocol::{
     manifest::ManifestError,
@@ -35,7 +35,7 @@ use demi_runner_protocol::{
 };
 use demi_shared_types::{
     BlobRef, CommandEnd, CommandId, EditCopies, EditKind, EditSegment, EditedFile, PathChange,
-    Sequence, StreamKind,
+    Sequence, StreamKind, Unreachable,
 };
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
@@ -91,6 +91,12 @@ pub trait CommandKeeper {
     /// The bytes of the blob `blob` when the conversation owner's
     /// namespace holds it, so a medium it holds is not read from the Host.
     fn stored_blob<'a>(&'a self, blob: &'a BlobRef) -> LocalBoxFuture<'a, Option<Bytes>>;
+
+    /// Records that the model has seen `command`'s output as far as `seen`,
+    /// in its record as running, so that a backend that starts again shows
+    /// only what it has not seen (`storage.md` § Command outputs). A failure
+    /// to record it is the keeper's to log.
+    fn looked<'a>(&'a self, command: &'a CommandId, seen: Seen) -> LocalBoxFuture<'a, ()>;
 
     /// Records the command's end, `end`, with its whole output, in place of
     /// its record as running.
@@ -289,7 +295,8 @@ impl RemoteShellEnvironment {
     ) -> Result<CommandId, ShellError> {
         let command = numbered(self.0.options.numbers.next(Sequence::Command).await?);
         let tool_use_id = request.tool_use_id.clone();
-        let (running, record) = self.hold(&command, tool_use_id, cancel.child_token());
+        let record = CommandRecord::new(command.clone(), tool_use_id);
+        let (running, record) = self.hold(&command, record, cancel.child_token());
         let environment = self.clone();
         let task_command = command.clone();
         self.0.tasks.spawn_local(async move {
@@ -300,25 +307,31 @@ impl RemoteShellEnvironment {
         Ok(command)
     }
 
-    /// Takes up `command`, which the call `tool_use_id` started as the job
-    /// `job` on this environment's Host before the backend restarted or
-    /// the environment that ran it let go of it (`sessions-and-targets.md`
-    /// § Recovery and persistence): it is followed to its end as if nothing
-    /// had happened, and its runner's next hello says whether it went on,
-    /// ended or was lost. A command the environment holds already stays as
-    /// it is.
-    pub fn adopt(&self, command: &CommandId, tool_use_id: &str, job: &str, caller: JobCaller) {
-        if self.0.state.borrow().records.contains_key(command) {
+    /// Takes up `taken`, which its call started on this environment's Host
+    /// before the backend restarted or the environment that ran it let go
+    /// of it (`sessions-and-targets.md` § Recovery and persistence): it is
+    /// followed to its end as if nothing had happened, counting its time
+    /// from its start and showing the model only output it has not seen,
+    /// and its runner's next hello says whether it went on, ended or was
+    /// lost. A command the environment holds already stays as it is.
+    pub fn adopt(&self, taken: TakenUp) {
+        let TakenUp {
+            command,
+            tool_use_id,
+            job,
+            caller,
+            running,
+            seen,
+        } = taken;
+        if self.0.state.borrow().records.contains_key(&command) {
             return;
         }
-        let (running, record) =
-            self.hold(command, tool_use_id.to_owned(), CancellationToken::new());
+        let record = CommandRecord::taken_up(command.clone(), tool_use_id, running, seen);
+        let (running, record) = self.hold(&command, record, CancellationToken::new());
         let environment = self.clone();
-        let task_command = command.clone();
-        let job = job.to_owned();
         self.0.tasks.spawn_local(async move {
             environment
-                .run(task_command, Begin::Adopt { job, caller }, running, record)
+                .run(command, Begin::Adopt { job, caller }, running, record)
                 .await;
         });
     }
@@ -327,10 +340,10 @@ impl RemoteShellEnvironment {
     fn hold(
         &self,
         command: &CommandId,
-        tool_use_id: String,
+        record: CommandRecord,
         stop: CancellationToken,
     ) -> (Rc<Running>, Rc<RefCell<CommandRecord>>) {
-        let record = Rc::new(RefCell::new(CommandRecord::new(command.clone(), tool_use_id)));
+        let record = Rc::new(RefCell::new(record));
         let running = Rc::new(Running {
             stop,
             job: watch::Sender::new(None),
@@ -619,17 +632,17 @@ impl RemoteShellEnvironment {
             }
             ProcessEnd::Lost(reason) => {
                 // What the Host held beyond what the backend received went
-                // with the connection.
+                // with the connection. The output keeps only what the
+                // command printed: the end says why it was lost
+                // (`runtime.md` § The whole output).
                 let missing = Some(Missing {
                     bytes: streams.iter().map(Received::unreceived).sum(),
                     reason: LOST.into(),
                 })
                 .filter(|missing| missing.bytes > 0);
-                let mut page = push_reason(&mut received, reason);
-                if let Some(missing) = &missing {
-                    page.push_str(&missing.line());
-                    page.push('\n');
-                }
+                let page = missing
+                    .as_ref()
+                    .map_or_else(String::new, |missing| format!("{}\n", missing.line()));
                 set_files(retained.await);
                 // The media went with the connection too.
                 let media = job
@@ -849,7 +862,21 @@ impl RemoteShellEnvironment {
             });
         let mut record = record.borrow_mut();
         let hint = if record.is_running() { hint } else { None };
-        Ok(record.status(self.0.options.output_limit, hint))
+        let before = record.seen();
+        let status = record.status(self.0.options.output_limit, hint);
+        let seen = record.seen();
+        // The record of a command that runs keeps the model's place; one
+        // that ended has no record as running any more.
+        if seen != before
+            && record.is_running()
+            && let Some(keeper) = self.0.options.keeper.clone()
+        {
+            let command = command.clone();
+            self.0.tasks.spawn_local(async move {
+                keeper.looked(&command, seen).await;
+            });
+        }
+        Ok(status)
     }
 
     /// Stops a running command: asks it to end, and ends it when it does not.
@@ -911,6 +938,16 @@ impl ShellEnvironment for RemoteShellEnvironment {
 
     fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError> {
         Ok(self.record(command)?.borrow().quiet())
+    }
+
+    fn unreachable(&self, command: &CommandId) -> Option<Unreachable> {
+        let running = self.0.state.borrow().running.get(command).cloned()?;
+        let away = running.job.borrow().as_ref()?.away()?;
+        let millis = |duration: Duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
+        Some(Unreachable {
+            away_ms: millis(away),
+            grace_ms: millis(wire::UNREACHED_GRACE),
+        })
     }
 
     fn media(&self, command: &CommandId) -> Result<Vec<CommandMedium>, ShellError> {
@@ -989,8 +1026,8 @@ impl ShellEnvironment for RemoteShellEnvironment {
         })
     }
 
-    fn adopt(&self, command: &CommandId, tool_use_id: &str, job: &str, caller: JobCaller) {
-        RemoteShellEnvironment::adopt(self, command, tool_use_id, job, caller);
+    fn adopt(&self, taken: TakenUp) {
+        RemoteShellEnvironment::adopt(self, taken);
     }
 
     fn detach_all(&self) -> LocalBoxFuture<'_, ()> {
@@ -1033,13 +1070,15 @@ fn stream_index(stream: StreamKind) -> usize {
     }
 }
 
-/// How the command record shows `end`: one that ended with its Host's
-/// connection reads as exit code 127, as one that never ran does.
+/// How the command record shows `end`. An environment always knows how
+/// its commands ended; a command whose end it did not know would read as
+/// one that never ran, with exit code 127.
 fn ending_of(end: CommandEnd) -> Ending {
     match end {
         CommandEnd::Exited { exit_code } => Ending::Exited(exit_code),
         CommandEnd::Stopped => Ending::Aborted,
-        CommandEnd::Lost { .. } | CommandEnd::Unrecorded => Ending::Exited(127),
+        CommandEnd::Lost { reason } => Ending::Lost(reason),
+        CommandEnd::Unrecorded => Ending::Exited(127),
     }
 }
 

@@ -26,7 +26,7 @@ use futures_util::{
     stream::{self, BoxStream, LocalBoxStream},
 };
 use http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri};
-use tokio::sync::Notify;
+use tokio::sync::{Notify, watch};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use crate::{
@@ -431,6 +431,8 @@ pub struct MockResponse {
     headers: Vec<(HeaderName, HeaderValue)>,
     chunks: Vec<Bytes>,
     ending: Ending,
+    /// Holds the answer until it reads true.
+    gate: Option<watch::Receiver<bool>>,
 }
 
 /// What a response does after its chunks.
@@ -454,6 +456,7 @@ impl MockResponse {
             headers: Vec::new(),
             chunks: Vec::new(),
             ending: Ending::Complete,
+            gate: None,
         }
     }
 
@@ -489,6 +492,13 @@ impl MockResponse {
     /// Breaks the connection after the chunks, before the body is complete.
     pub fn break_off(mut self) -> Self {
         self.ending = Ending::Broken;
+        self
+    }
+
+    /// Holds the answer, status and all, until `open` reads true: for a
+    /// test that makes something happen while the client waits for it.
+    pub fn held(mut self, open: watch::Receiver<bool>) -> Self {
+        self.gate = Some(open);
         self
     }
 
@@ -688,6 +698,12 @@ async fn answer(State(state): State<Arc<VendorState>>, request: Request) -> Resp
         *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
         return response;
     };
+    if let Some(mut gate) = scripted.gate.clone() {
+        // A gate whose sender is gone stays shut, as the test left it.
+        if gate.wait_for(|open| *open).await.is_err() {
+            return std::future::pending().await;
+        }
+    }
     if let Ending::Silent = scripted.ending {
         // The handler never returns, so the server sends nothing; the
         // connection closes when the client leaves or the vendor stops.
