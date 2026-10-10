@@ -18,7 +18,8 @@ use demi_agent_store::{
     media::{self, HeldMedia, ModelView},
 };
 use demi_agent_transcript::{
-    DirtyRows, INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, IdSource, RequestView, TranscriptLog,
+    DirtyRows, INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, IdSource, REPLAY_CHARS, RequestView,
+    TranscriptLog, labelled_output,
     estimate::{blocks_tokens, context_anchor},
     replay, replay_start,
 };
@@ -865,7 +866,19 @@ impl SessionCore {
                 .calls
                 .remove(&call.tool_use_id)
                 .and_then(|handle| handle.command());
-            let text = interrupted_text(end, started.as_ref().map(|started| &started.command));
+            let mut text = interrupted_text(end, started.as_ref().map(|started| &started.command));
+            // The call shows how far its command got, as a result does; a
+            // crash found at restore has no command's output at hand.
+            if let (CallEnd::Stopped | CallEnd::Held(_) | CallEnd::Shutdown, Some(started)) =
+                (end, &started)
+            {
+                let others = text.chars().count() + "\noutput:\n".len();
+                let budget = REPLAY_CHARS.saturating_sub(others);
+                if let Some(output) = self.runtime.unseen_output(&started.command, budget) {
+                    text.push('\n');
+                    text.push_str(&labelled_output(&output));
+                }
+            }
             if let (CallEnd::Shutdown, Some(started)) = (end, started) {
                 self.watched
                     .add(started.command, started.interval_ms, started.title);

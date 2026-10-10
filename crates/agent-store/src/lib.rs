@@ -23,7 +23,7 @@ pub mod testing;
 use std::rc::Rc;
 
 use demi_conversation_socket_protocol::{JobPhase, SubagentJob};
-use demi_host_interface::WholeOutput;
+use demi_host_interface::{Seen, WholeOutput};
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
     OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId,
@@ -136,15 +136,37 @@ pub trait AgentTreeStore {
         &'a self,
         node: &'a NodeId,
     ) -> LocalBoxFuture<'a, Result<Vec<RunningCommand>, StoreError>>;
+
+    /// Records that `node` has looked to `seen` in the output of the
+    /// conversation's command `command`, which runs (`storage.md` § Command
+    /// outputs); nothing for a command that does not run.
+    fn record_place<'a>(
+        &'a self,
+        command: &'a CommandId,
+        node: &'a NodeId,
+        seen: Seen,
+    ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
+
+    /// How far `node` has looked in the output of the conversation's
+    /// command `command`, which runs, as the record keeps it; none when it
+    /// has not looked, or the command does not run.
+    fn place<'a>(
+        &'a self,
+        command: &'a CommandId,
+        node: &'a NodeId,
+    ) -> LocalBoxFuture<'a, Result<Option<Seen>, StoreError>>;
 }
 
-/// A command the conversation records running: its job on its Host, and
-/// the `shell` call that started it.
+/// A command the conversation records running: its job on its Host, the
+/// `shell` call that started it, when it started, and how far the node
+/// that ran it has looked in its output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunningCommand {
     pub command: CommandId,
     pub job: String,
     pub tool_use_id: String,
+    pub started: Timestamp,
+    pub place: Seen,
 }
 
 /// What a conversation holds of an ended command.
