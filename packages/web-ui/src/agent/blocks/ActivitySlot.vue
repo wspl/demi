@@ -77,7 +77,7 @@ const iconKey = computed(() => (props.incoming ? `block:${props.incoming.id}` : 
           :size="ICON_PX.in28"
         />
       </template>
-      <span class="min-w-0 truncate thinking-shimmer">{{ face.label }}</span>
+      <span class="min-w-0 truncate">{{ face.label }}</span>
     </FunctionalBlock>
   </div>
 </template>

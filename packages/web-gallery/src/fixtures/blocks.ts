@@ -1319,3 +1319,88 @@ export function callBeingWrittenBlocks(): Block[] {
     },
   ]
 }
+
+/**
+ * One request of real work, as a model does it: short sentences between
+ * single commands, thinking before most of them, a run of reads, a failing
+ * test, an edit and a summary, so the transcript's rows and its prose take
+ * turns all the way down. `working` stops it at the last command, still
+ * running, as the page shows a request in progress.
+ */
+export function busyRequestBlocks(working = false): Block[] {
+  let at = 600_000
+  const next = () => (at -= 9_000)
+  const think = (id: string, text: string): Block => ({
+    type: 'thinking', id: `busy-${id}`, createdAt: iso(next()), model: demoModel, text, signature: null,
+  })
+  const say = (id: string, text: string): Block => ({
+    type: 'text', id: `busy-${id}`, createdAt: iso(next()), model: demoModel, text,
+  })
+  const run = (
+    id: string,
+    description: string,
+    script: string,
+    output: string,
+    extra: Partial<ShellView> = {},
+  ): ToolCallBlock => toolCall({
+    id: `busy-${id}`,
+    createdAt: iso(next()),
+    toolName: 'shell',
+    status: 'completed',
+    input: JSON.stringify({ script, description, intervalMs: 60_000 }),
+    output: [{ type: 'text', text: output }],
+    view: shellView({ commandId: `busy-${id}`, chunks: [{ stream: 'stdout', text: output }], ...extra }),
+  })
+  const blocks: Block[] = [
+    {
+      type: 'user', id: 'busy-user', turnId: 'busy-turn', createdAt: iso(at), model: demoModel,
+      content: [{ type: 'text', text: 'The checkout page times out on slow networks. Find out why and fix it.' }],
+      preamble: null,
+    },
+    think('think-1', 'Start where the checkout request sets its timeout, then see what retries it.'),
+    say('say-1', 'I will start with where the checkout request sets its timeout.'),
+    run('find', 'Find the checkout timeout', 'rg -n "timeout" packages/web/src/checkout', 'packages/web/src/checkout/api.ts:14:  timeout: 5_000,\n'),
+    say('say-2', 'The request gives up after 5 seconds, in `checkout/api.ts`. Next, how the retries interact with it.'),
+    think('think-2', 'If the retry helper retries a timed-out request with the same budget, a slow network never gets past the first attempt.'),
+    run('read-retry', 'Read the retry helper', 'sed -n 1,60p packages/web/src/net/retry.ts', 'export async function withRetry(request, { attempts = 3 }) {\n'),
+    run('read-client', 'Read the checkout client', 'sed -n 1,80p packages/web/src/checkout/api.ts', 'export const checkout = (cart) => withRetry(() => post("/checkout", cart, { timeout: 5_000 }))\n'),
+    say('say-3', `Found it. Each retry starts a fresh 5-second timeout, but the server answers a slow checkout with **504** after 8 seconds, and \`withRetry\` does not retry a 504, only a timeout.
+
+So on a slow network every attempt times out before the server can answer, and the page shows the timeout error after three tries.`),
+    think('think-3', 'Confirm with the tests before changing anything.'),
+    run('test', 'Run the checkout tests', 'bun test packages/web/src/checkout', ' 11 pass\n 1 fail\n✗ checkout > survives a slow network\n', { exitCode: 1 }),
+    say('say-4', 'One test already covers this, and it fails the same way. I will raise the timeout above the server\'s 8 seconds and retry a 504.'),
+    toolCall({
+      id: 'busy-edit',
+      createdAt: iso(next()),
+      toolName: 'shell',
+      status: 'completed',
+      input: JSON.stringify({ script: 'apply_patch <<\'EOF\'\n…\nEOF', description: 'Raise the timeout and retry a 504', intervalMs: 60_000 }),
+      view: shellView({
+        commandId: 'busy-edit',
+        chunks: [{ stream: 'stdout', text: 'Updated 2 files\n' }],
+        files: [
+          editedFile({ path: 'packages/web/src/checkout/api.ts', kind: 'modified', added: 2, removed: 1 }),
+          editedFile({ path: 'packages/web/src/net/retry.ts', kind: 'modified', added: 4, removed: 1 }),
+        ],
+      }),
+    }),
+  ]
+  const finalTests = run('test-again', 'Run the checkout tests again', 'bun test packages/web/src/checkout', ' 12 pass\n 0 fail\n')
+  if (working) {
+    return [
+      ...blocks,
+      { ...finalTests, status: 'executing', output: [], view: shellView({ commandId: 'busy-test-again', status: 'running', chunks: [{ stream: 'stdout', text: ' 7 pass\n' }] }) },
+    ]
+  }
+  return [
+    ...blocks,
+    finalTests,
+    say('say-5', `Fixed. The checkout page now waits through a slow network:
+
+- The request's timeout is 10 seconds, above the 8 seconds after which the server answers a slow checkout.
+- \`withRetry\` retries a **504** as it retries a timeout.
+
+All 12 checkout tests pass, including the slow-network one that failed before.`),
+  ]
+}

@@ -102,7 +102,7 @@ watch([() => props.files, expanded], () => { void measure() })
       v-show="index < visibleCount"
       :key="file.path"
       ref="pillEls"
-      class="group/pill inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full pl-1.5 pr-2 text-xs leading-4 text-fg-muted transition-colors duration-200 ease-out"
+      class="file-pill group/pill inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full pl-1.5 pr-2 text-xs leading-4 text-fg-muted transition-colors duration-200 ease-out"
       :class="opens(file.path) ? 'btn [--shadow-btn:var(--shadow-pill)] hover:text-fg-body' : 'bg-btn shadow-[var(--shadow-pill)]'"
       @click="opens(file.path) && emit('select', file.path)"
       :title="file.from ? `${file.from} → ${file.path}` : file.path"
@@ -126,7 +126,7 @@ watch([() => props.files, expanded], () => { void measure() })
       v-if="hidden > 0 || expanded"
       ref="moreEl"
       type="button"
-      class="btn inline-flex h-[22px] cursor-default select-none items-center rounded-full px-2 text-xs leading-4 text-fg-muted transition-colors duration-200 ease-out hover:text-fg-body"
+      class="file-pill btn inline-flex h-[22px] cursor-default select-none items-center rounded-full px-2 text-xs leading-4 text-fg-muted transition-colors duration-200 ease-out hover:text-fg-body"
       @click="expanded = !expanded"
     >{{ expanded ? 'Show Less' : `+${hidden} Files` }}</button>
   </div>

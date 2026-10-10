@@ -6,6 +6,7 @@ const swatches = [
   { name: 'surface', bg: 'var(--surface)', fg: 'var(--fg)' },
   { name: 'editor', bg: 'var(--surface-editor)', fg: 'var(--fg)' },
   { name: 'raised', bg: 'var(--surface-raised)', fg: 'var(--fg)' },
+  { name: 'card', bg: 'var(--surface-card)', fg: 'var(--fg)' },
   { name: 'float', bg: 'var(--surface-float)', fg: 'var(--fg)' },
 ]
 
@@ -14,6 +15,7 @@ const fillSurfaces = [
   { name: 'surface', class: 'bg-surface' },
   { name: 'editor', class: 'bg-surface-editor' },
   { name: 'raised', class: 'bg-surface-raised' },
+  { name: 'card', class: 'bg-surface-card' },
   { name: 'float', class: 'bg-surface-float' },
 ]
 
@@ -35,7 +37,7 @@ const controlStates = [
 const borderedControls = [
   { name: 'Button', class: 'btn h-7 rounded-md text-chrome font-medium text-fg-body', edged: true },
   { name: 'Chip', class: 'btn-solid h-7 rounded-full text-chrome text-fg-body', edged: true },
-  { name: 'Pill', class: 'btn h-[22px] self-center rounded-full text-xs text-fg-muted [--shadow-btn:var(--shadow-pill)]', edged: true },
+  { name: 'Pill', class: 'file-pill btn h-[22px] self-center rounded-full text-xs text-fg-muted [--shadow-btn:var(--shadow-pill)]', edged: true },
   // A choice card rests on the float surface wherever it sits, and steps from it.
   { name: 'Card', class: 'h-9 rounded-lg border text-chrome text-fg-emphasis [--rest-fill:var(--surface-float)]', edged: false },
 ]
@@ -77,7 +79,7 @@ const lines = [
   <div class="space-y-8">
     <GallerySection
       title="Surfaces"
-      note="Five fills; float is for menus, tooltips, and dialogs."
+      note="Six fills. Float is for menus, tooltips and dialogs. Card is what stands off the reading surface in flow, a message bubble or a notice over the composer: a step lighter in dark, as raised is, and a step darker in light, where the reading surface is white."
     >
       <div class="grid gap-3 md:grid-cols-5">
         <div

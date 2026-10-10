@@ -79,8 +79,10 @@ html[data-theme="dark"][data-tone="ink"] {
 }
 
 html[data-theme="light"][data-tone="ink"] {
-  --surface-base: #ececec;
-  --surface: #f7f7f7;
+  /* Lighter than subtle: on white, subtle stood too near the prose. */
+  --fg-row: #8f8f8f;
+  --surface-base: #f4f4f4;
+  --surface: #ffffff;
   --surface-editor: #ffffff;
   --surface-raised: #ffffff;
   --surface-float: #ffffff;
@@ -132,9 +134,10 @@ html[data-theme="dark"][data-tone="warm"] {
 }
 
 html[data-theme="light"][data-tone="warm"] {
-  --surface-base: #f4f1ea;
-  --surface: #fbf8f2;
-  --surface-editor: #fbf8f2;
+  --fg-row: oklch(63% 0.004 107);
+  --surface-base: #f8f5ef;
+  --surface: #fffdf9;
+  --surface-editor: #fffdf9;
   --surface-raised: #ffffff;
   --surface-float: #ffffff;
   --overlay: black;

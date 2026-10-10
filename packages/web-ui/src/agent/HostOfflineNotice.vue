@@ -46,7 +46,7 @@ function choose(host: HostChoice): void {
 
 <template>
   <div
-    class="host-offline-notice flex w-full flex-col rounded-lg bg-surface-raised text-chrome text-fg-muted"
+    class="host-offline-notice flex w-full flex-col rounded-lg bg-surface-card text-chrome text-fg-muted"
     role="status"
   >
     <div class="host-offline-notice-row flex items-center gap-2 pl-3">

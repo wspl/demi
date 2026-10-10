@@ -367,7 +367,8 @@ defineExpose({
 </script>
 
 <template>
-  <div class="relative h-full">
+  <!-- The transcript is read as one text: its rows are antialiased as its prose is, so they never draw heavier beside it. -->
+  <div class="relative h-full antialiased">
     <ScrollArea
       ref="scrollArea"
       class="h-full"

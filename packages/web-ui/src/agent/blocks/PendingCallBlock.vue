@@ -22,6 +22,6 @@ const title = computed(() => pendingCallTitle(props.call))
     <template #icon>
       <component :is="icon" :size="ICON_PX.in28" />
     </template>
-    <span class="min-w-0 truncate thinking-shimmer">{{ title }}</span>
+    <span class="min-w-0 truncate">{{ title }}</span>
   </FunctionalBlock>
 </template>

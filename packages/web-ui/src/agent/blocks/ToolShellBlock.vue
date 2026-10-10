@@ -96,8 +96,8 @@ function toggleCommand(): void {
       <SquareTerminal :size="ICON_PX.in28" />
     </template>
 
-    <template #default="{ loading }">
-      <span class="min-w-0 truncate" :class="loading ? 'thinking-shimmer' : ''">{{ title }}</span>
+    <template #default>
+      <span class="min-w-0 truncate">{{ title }}</span>
       <CommandEndTag v-if="endMark" :mark="endMark" />
     </template>
 

@@ -79,6 +79,7 @@ import GalleryCachedSessions from '../components/GalleryCachedSessions.vue'
 import GalleryTranscriptEntrance from '../components/GalleryTranscriptEntrance.vue'
 import GalleryHistoryWindow from '../components/GalleryHistoryWindow.vue'
 import GalleryCommandWakeup from '../components/GalleryCommandWakeup.vue'
+import GalleryBusyRequest from '../components/GalleryBusyRequest.vue'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
 import GalleryMessageEditing from '../components/GalleryMessageEditing.vue'
 import GalleryAssistantMessages from '../components/GalleryAssistantMessages.vue'
@@ -2239,6 +2240,7 @@ onBeforeUnmount(() => {
     </template>
 
     <template v-if="view === 'turns'">
+      <GalleryBusyRequest />
       <GalleryCommandWakeup />
       <GallerySection
         title="Turn"

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Brain } from '@lucide/vue'
+import { Brain, FileText, SquareTerminal } from '@lucide/vue'
 import ActivityMark from '@demicodes/web-ui/ui/ActivityMark.vue'
 import ExploratoryMark, { type ExploratoryMarkKind } from '../components/ExploratoryMark.vue'
 import ChromeRoll from '@demicodes/web-ui/ui/ChromeRoll.vue'
@@ -11,6 +11,7 @@ import ProgressLine from '@demicodes/web-ui/ui/ProgressLine.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import AgentMessageVirtualBlock from '@demicodes/web-ui/agent/blocks/AgentMessageVirtualBlock.vue'
+import FunctionalBlock from '@demicodes/web-ui/agent/blocks/FunctionalBlock.vue'
 import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
 import { chromeEntrance } from '@demicodes/web-ui/ui/chrome-enter'
 import type { Block } from '@demicodes/protocol'
@@ -27,6 +28,8 @@ const faceFaces = [
 const foldOpen = ref(false)
 const progressLoading = ref(true)
 // Each replay remounts the rows, so they arrive again.
+/** Whether the shimmer specimens are working, or at rest as the rows read once done. */
+const shimmering = ref(true)
 const entranceKey = ref(0)
 // The wait the entrance's tail row shows starts with each replay.
 const entranceSince = ref(Date.now())
@@ -122,6 +125,30 @@ const exploratoryMarks: {
     </GallerySection>
 
     <GallerySection
+      title="Shimmer"
+      note="A row still working: one band of light sweeps across the whole row, toward the strongest text color, brighter on a dark surface and darker on a light one. A row of two parts, a label and its detail or a word and a title, sweeps as one, each part keeping its color outside the band. The band moves at one speed, so a short label does not crawl and a long row does not race. Reduced motion shows the row still."
+    >
+      <div class="flex max-w-xl flex-col gap-1">
+        <FunctionalBlock :loading="shimmering" label="Thinking">
+          <template #icon><Brain :size="ICON_PX.in28" /></template>
+        </FunctionalBlock>
+        <FunctionalBlock :loading="shimmering">
+          <template #icon><SquareTerminal :size="ICON_PX.in28" /></template>
+          <span class="min-w-0 truncate">Run the checkout tests again with the slow network profile</span>
+        </FunctionalBlock>
+        <FunctionalBlock :loading="shimmering" label="Read" detail="packages/web/src/checkout/api.ts">
+          <template #icon><FileText :size="ICON_PX.in28" /></template>
+        </FunctionalBlock>
+        <FunctionalBlock :loading="shimmering">
+          <template #icon><SquareTerminal :size="ICON_PX.in28" /></template>
+          <span class="shrink-0">Waiting for</span>
+          <span class="min-w-0 truncate text-fg-muted underline decoration-dotted decoration-fg-faint underline-offset-3">Run the end-to-end suite</span>
+        </FunctionalBlock>
+      </div>
+      <Button size="sm" @click="shimmering = !shimmering">{{ shimmering ? 'Finish' : 'Work Again' }}</Button>
+    </GallerySection>
+
+    <GallerySection
       title="ProgressLine"
       note="A thin line along the top of what loads, over what it still shows, such as a browser tab’s page while the next one loads. It appears in the frame the user acts in and leaves at once when the load ends. Reduced motion shows it still."
     >
@@ -143,7 +170,7 @@ const exploratoryMarks: {
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="label">
           <div class="flex flex-col gap-3">
-            <div class="h-7 w-56 text-chrome text-fg-muted">
+            <div class="h-7 w-56 text-chrome text-fg-subtle">
               <ChromeRoll :face-key="labelFace" icon-key="sweep">
                 <template #icon>
                   <ActivityMark />
@@ -160,7 +187,7 @@ const exploratoryMarks: {
         </GallerySpecimen>
         <GallerySpecimen variant="face">
           <div class="flex flex-col gap-3">
-            <div class="h-7 w-56 text-chrome text-fg-muted">
+            <div class="h-7 w-56 text-chrome text-fg-subtle">
               <ChromeRoll :face-key="iconFace.key" :icon-key="iconFace.icon">
                 <template #icon>
                   <ActivityMark v-if="iconFace.icon === 'sweep'" />
