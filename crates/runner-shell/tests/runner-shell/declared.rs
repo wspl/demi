@@ -71,7 +71,6 @@ async fn a_declared_command_reaches_the_jobs_handler() {
                 cwd: root.path().into(),
                 env: crate::home(root.path()),
                 live: false,
-                output: true,
                 cancellation: CancellationToken::new(),
                 commands: Some(JobCommands {
                     context: context.into(),

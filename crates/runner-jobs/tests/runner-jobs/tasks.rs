@@ -145,6 +145,13 @@ impl ShellJob for Played {
         &mut self.output
     }
 
+    /// A played job's output is in its channel already.
+    fn drain_stdout(&self) -> tokio::sync::oneshot::Receiver<()> {
+        let (answer, answered) = tokio::sync::oneshot::channel();
+        let _ = answer.send(());
+        answered
+    }
+
     fn signal(&self, _: Signal) -> io::Result<()> {
         self.cancellation.cancel();
         Ok(())

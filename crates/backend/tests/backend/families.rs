@@ -43,8 +43,6 @@ pub fn catalog(names: &[&str]) -> ProviderModelList {
                 context_window: Some(100_000),
                 output_limit: Some(8_000),
                 supports_tools: Some(true),
-                supports_attachments: Some(true),
-                supports_video: None,
                 accepted_extensions: None,
                 supports_reasoning: Some(true),
                 supported_thinking_efforts: Some(vec!["low".into(), "high".into()]),

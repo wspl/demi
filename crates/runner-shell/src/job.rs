@@ -9,7 +9,7 @@ use bytes::Bytes;
 use demi_runner_process::{
     job_shell::ShellJob,
     process::{OutputChunk, ProcessExit, ProcessInput},
-    stdio::{JOB_OUTPUT_ENV, LIVE_INPUT_ENV, reference},
+    stdio::{LIVE_INPUT_ENV, reference},
 };
 use demi_runner_protocol::wire::{OutputStream, Signal};
 use futures_util::future::BoxFuture;
@@ -20,7 +20,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 pub struct Job {
@@ -35,6 +35,9 @@ pub struct Job {
     /// The last signal other than `KILL` sent to stop the job, which its
     /// exit reports unless `KILL` ended it.
     stop_signal: Arc<Mutex<Option<Signal>>>,
+    /// Asks the stdout pump to read what the pipe holds now, and answers
+    /// once it is in [`Job::output`].
+    drains: mpsc::UnboundedSender<oneshot::Sender<()>>,
 }
 
 /// The most one read of a job's output takes.
@@ -48,11 +51,10 @@ struct Pipes {
     stdout: File,
     error_reader: File,
     stderr: File,
-    /// Kept open until every interpreter task finishes.
+    /// A copy of the job's stdin pipe, which `DEMI_LIVE_INPUT` names
+    /// (`runner.md` § A job's own input); kept open until every
+    /// interpreter task finishes.
     input_reference: File,
-    /// A copy of the job's stdout pipe, which `DEMI_JOB_OUTPUT` names
-    /// (`runner.md` § Where a command's stdout goes); kept open as long.
-    output_reference: File,
 }
 
 impl Pipes {
@@ -66,7 +68,6 @@ impl Pipes {
                 let (output_reader, stdout) = scope.descriptors(pipe)?;
                 let (error_reader, stderr) = scope.descriptors(pipe)?;
                 let input_reference = scope.duplicate(&stdin)?;
-                let output_reference = scope.duplicate(&stdout)?;
                 Ok(Self {
                     stdin,
                     input_writer,
@@ -75,7 +76,6 @@ impl Pipes {
                     error_reader,
                     stderr,
                     input_reference,
-                    output_reference,
                 })
             })
             .await
@@ -84,15 +84,13 @@ impl Pipes {
 }
 
 impl Job {
-    /// Starts `script`. `live` says whether the job's stdin is its live
-    /// terminal, and `output` whether its stdout is the job's output, which
-    /// it is unless the backend relays it elsewhere.
+    /// Starts `script`. `live` says whether the job's stdin is its own
+    /// input, which it is unless the backend relays it from another command.
     pub async fn start(
         script: String,
         cwd: PathBuf,
         mut env: BTreeMap<String, String>,
         live: bool,
-        output: bool,
         scope: Scope,
         shell: &ShellRuntime,
     ) -> io::Result<Self> {
@@ -104,15 +102,10 @@ impl Job {
             error_reader,
             stderr,
             input_reference,
-            output_reference,
         } = Pipes::open(shell, &scope).await?;
         env.remove(LIVE_INPUT_ENV);
         if live {
             env.insert(LIVE_INPUT_ENV.into(), reference(&input_reference)?);
-        }
-        env.remove(JOB_OUTPUT_ENV);
-        if output {
-            env.insert(JOB_OUTPUT_ENV.into(), reference(&output_reference)?);
         }
         let (input, receiver) = mpsc::channel(4);
         let (sender, output) = mpsc::channel(4);
@@ -124,6 +117,7 @@ impl Job {
         let owner_scope = scope.clone();
         let input_cancel = cancel.child_token();
         let writer = feed(shell, input_writer, receiver, input_cancel.clone());
+        let (drains, drained) = mpsc::unbounded_channel();
         let readers = [
             pump(
                 shell,
@@ -131,6 +125,7 @@ impl Job {
                 OutputStream::Stdout,
                 sender.clone(),
                 cancel.clone(),
+                Some(drained),
             ),
             pump(
                 shell,
@@ -138,11 +133,11 @@ impl Job {
                 OutputStream::Stderr,
                 sender,
                 cancel.clone(),
+                None,
             ),
         ];
         let worker = shell.spawn_blocking(move || {
             let _input_reference = input_reference;
-            let _output_reference = output_reference;
             let runtime = tokio::runtime::Handle::current();
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 runtime.block_on(execute(
@@ -243,6 +238,7 @@ impl Job {
             cancel,
             scope: job_scope,
             stop_signal,
+            drains,
         })
     }
 }
@@ -254,6 +250,14 @@ impl ShellJob for Job {
 
     fn output(&mut self) -> &mut mpsc::Receiver<OutputChunk> {
         &mut self.output
+    }
+
+    fn drain_stdout(&self) -> oneshot::Receiver<()> {
+        let (answer, answered) = oneshot::channel();
+        // A pump that has ended has nothing left to read: the dropped
+        // answer tells the caller so at once.
+        let _ = self.drains.send(answer);
+        answered
     }
 
     fn cancel(&self) {
@@ -380,14 +384,17 @@ fn feed(
 }
 
 /// Reads one of the job's output pipes into chunks for the task. On Unix the
-/// runner's end is asynchronous and takes no thread; on Windows it takes one
-/// of the shell pool's.
+/// runner's end is asynchronous and takes no thread, and a request on
+/// `drains` reads what the pipe holds then, without waiting for more, before
+/// it is answered; on Windows a read takes one of the shell pool's threads,
+/// and a request is answered at once.
 fn pump(
     shell: &ShellRuntime,
     file: File,
     stream: OutputStream,
     sender: mpsc::Sender<OutputChunk>,
     cancel: CancellationToken,
+    mut drains: Option<mpsc::UnboundedReceiver<oneshot::Sender<()>>>,
 ) -> tokio::task::JoinHandle<io::Result<()>> {
     let cancelled = || io::Error::new(io::ErrorKind::Interrupted, "job output cancelled");
     let closed = || io::Error::new(io::ErrorKind::BrokenPipe, "job output consumer closed");
@@ -398,27 +405,64 @@ fn pump(
         tokio::spawn(async move {
             let mut pipe = tokio::net::unix::pipe::Receiver::from_file(file)?;
             let mut buffer = vec![0; OUTPUT_CHUNK_BYTES];
-            loop {
-                let count = tokio::select! {
-                    _ = cancel.cancelled() => return Err(cancelled()),
-                    count = pipe.read(&mut buffer) => count?,
-                };
-                if count == 0 {
-                    return Ok(());
-                }
+            let send = async |count: usize, buffer: &[u8]| {
                 let chunk = OutputChunk {
                     stream,
                     bytes: Bytes::copy_from_slice(&buffer[..count]),
                 };
                 tokio::select! {
-                    _ = cancel.cancelled() => return Err(cancelled()),
-                    sent = sender.send(chunk) => sent.map_err(|_| closed())?,
+                    _ = cancel.cancelled() => Err(cancelled()),
+                    sent = sender.send(chunk) => sent.map_err(|_| closed()),
                 }
+            };
+            loop {
+                let drain = async {
+                    match drains.as_mut() {
+                        Some(drains) => drains.recv().await,
+                        None => std::future::pending().await,
+                    }
+                };
+                let count = tokio::select! {
+                    _ = cancel.cancelled() => return Err(cancelled()),
+                    count = pipe.read(&mut buffer) => count?,
+                    request = drain => {
+                        let Some(answer) = request else {
+                            drains = None;
+                            continue;
+                        };
+                        // What the pipe holds now; the writer's later
+                        // bytes come after the answer.
+                        loop {
+                            match pipe.try_read(&mut buffer) {
+                                Ok(0) => break,
+                                Ok(count) => send(count, &buffer).await?,
+                                Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+                                Err(error) => return Err(error),
+                            }
+                        }
+                        // A caller that stopped waiting needs no answer.
+                        let _ = answer.send(());
+                        continue;
+                    }
+                };
+                if count == 0 {
+                    return Ok(());
+                }
+                send(count, &buffer).await?;
             }
         })
     }
     #[cfg(windows)]
     {
+        // A blocking read cannot be asked to stop short: each request is
+        // answered at once.
+        if let Some(mut drains) = drains {
+            tokio::spawn(async move {
+                while let Some(answer) = drains.recv().await {
+                    let _ = answer.send(());
+                }
+            });
+        }
         shell.spawn_blocking(move || {
             let scope = Scope::new(cancel.clone(), None);
             let runtime = tokio::runtime::Handle::current();

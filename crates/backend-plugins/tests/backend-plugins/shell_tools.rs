@@ -25,7 +25,10 @@ use demi_provider_common::{
 use demi_agent_server::{AgentServer, ServerConfig};
 use demi_conversation_socket_protocol::SubagentEvent;
 use demi_host_interface::{RpcInvocation, testing::MemoryPort};
-use demi_shared_types::{AgentMessage, AgentMessageEvent, Block, BlockId, NodeId, Sender, Timestamp, ToolView};
+use demi_agent_store::testing::model_reading;
+use demi_shared_types::{
+    AgentMessage, AgentMessageEvent, Block, BlockId, FileExtension, NodeId, Sender, Timestamp, ToolView,
+};
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 use serde_json::{Value, json};
@@ -601,6 +604,63 @@ async fn an_end_a_look_showed_while_its_report_waited_is_not_reported() {
             .any(|input| input.contains(&format!("Command {serve} (Run the test script) ended")));
         assert!(!reported_end);
         assert!(!fixture.kinds().contains(&"wakeup".to_owned()), "{:?}", fixture.kinds());
+        fixture.stop().await;
+    })
+    .await;
+}
+
+// Under a second: one shell job that views an image as it ends, and a look
+// through the status command that shows the end before the report would
+// join the turn (`runtime.md` § What a result attaches).
+//
+// Planted defects this catches: an end report dropped because a look showed
+// the end first, which loses the media no look attaches; and one that
+// carries the output the look showed again.
+#[tokio::test(flavor = "local")]
+async fn a_look_that_shows_the_end_leaves_the_end_report_its_media_alone() {
+    within(async {
+        let server: Rc<std::cell::OnceCell<Rc<AgentServer<DeviceHost>>>> = Rc::default();
+        let workspace: Rc<std::cell::OnceCell<String>> = Rc::default();
+        let looked: Rc<RefCell<String>> = Rc::default();
+        let (server_in_turn, workspace_in_turn, looked_in_turn) = (server.clone(), workspace.clone(), looked.clone());
+        let turns = [
+            Turn::Events(vec![exec(
+                "view",
+                "until [ -e done ]; do sleep 0.05; done; demi file view shot.png",
+                500,
+            )]),
+            Turn::Stream(Box::new(move |_| {
+                look_once_its_report_waits(server_in_turn, workspace_in_turn, looked_in_turn).boxed_local()
+            })),
+        ]
+        .into_iter()
+        .chain(replies(3));
+        let script = ScriptedRuntime::new(turns);
+        let fixture = Fixture::start_with(&script, reporting()).await;
+        fixture.providers.select(model_reading("stub", "test-model", &[FileExtension::Png]));
+        let shot = demi_agent_store::testing::png(4, 3, 1).into_bytes();
+        std::fs::write(format!("{}/shot.png", fixture.workspace), &shot).unwrap();
+        let _ = server.set(fixture.server.clone());
+        let _ = workspace.set(fixture.workspace.clone());
+        let mut client = fixture.opened().await;
+        turn(&mut client, "message-1", "View, then look.").await;
+        let root = fixture.server.node(&conversation(), &conversation()).unwrap();
+        root.session().settled().await;
+
+        let view = fixture.shell_commands()[0].clone();
+        let line = format!("[image 1: image/png, 4 × 3 px, {} bytes]", shot.len());
+        // The look showed the end and the medium's line.
+        let looked = looked.borrow().clone();
+        assert!(looked.contains(&format!("\noutput:\n{line}\n")), "{looked}");
+        // The end report still came, with the image and no output.
+        let reported = script.requests().iter().find_map(crate::file::user_parts);
+        assert_eq!(
+            reported,
+            Some(vec![
+                format!("Command {view} (Run the test script) ended with exit code 0.\noutput: (empty)"),
+                "<image image/png>".to_owned(),
+            ])
+        );
         fixture.stop().await;
     })
     .await;

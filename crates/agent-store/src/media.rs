@@ -143,7 +143,7 @@ pub fn missing_text(kind: &str) -> String {
 enum Source<'a> {
     /// A message's image or video.
     Media(&'a MediaSource),
-    /// A message's document.
+    /// A message's document, or a tool result's.
     Document(&'a DocumentSource),
     /// A tool result's image or video.
     Tool(&'a ToolMediaSource),
@@ -172,21 +172,32 @@ fn content_sources(content: &[UserContentBlock]) -> impl Iterator<Item = Source<
     })
 }
 
-/// The media of a block: a message's or a steer's, or a tool result's.
+/// The media of a block: a message's or a steer's, a tool result's, or
+/// those command reports carry.
 fn sources(block: &Block) -> Vec<Source<'_>> {
     match block {
         Block::User(user) => content_sources(&user.content).collect(),
         Block::Steer(steer) => content_sources(&steer.content).collect(),
-        Block::ToolCall(call) => call
-            .output
+        Block::ToolCall(call) => call.output.iter().filter_map(result_source).collect(),
+        Block::Wakeup(wakeup) => wakeup
+            .reports
             .iter()
-            .filter_map(|part| match part {
-                ToolResultContentBlock::Image { source }
-                | ToolResultContentBlock::Video { source } => Some(Source::Tool(source)),
-                ToolResultContentBlock::Text { .. } | ToolResultContentBlock::Gone { .. } => None,
-            })
+            .flat_map(|report| &report.media)
+            .filter_map(result_source)
             .collect(),
         _ => Vec::new(),
+    }
+}
+
+/// The medium a tool result's part holds; none for its text or a medium
+/// that is gone.
+fn result_source(part: &ToolResultContentBlock) -> Option<Source<'_>> {
+    match part {
+        ToolResultContentBlock::Image { source } | ToolResultContentBlock::Video { source } => {
+            Some(Source::Tool(source))
+        }
+        ToolResultContentBlock::Document { source } => Some(Source::Document(source)),
+        ToolResultContentBlock::Text { .. } | ToolResultContentBlock::Gone { .. } => None,
     }
 }
 
@@ -233,27 +244,42 @@ pub async fn store_result(
     let mut held = HeldMedia::default();
     let mut stored = Vec::with_capacity(output.len());
     for part in output {
-        let (kind, MediaBytes { data, media_type }) = match part {
+        let (kind, MediaBytes { data, media_type }, file_name) = match part {
             ResultPart::Text(text) => {
                 stored.push(ToolResultContentBlock::Text { text });
                 continue;
             }
-            ResultPart::Image(bytes) => (ModelMediaKind::Image, bytes),
-            ResultPart::Video(bytes) => (ModelMediaKind::Video, bytes),
+            ResultPart::Image(bytes) => (ModelMediaKind::Image, bytes, None),
+            ResultPart::Video(bytes) => (ModelMediaKind::Video, bytes, None),
+            ResultPart::Document { bytes, file_name } => {
+                (ModelMediaKind::Document, bytes, Some(file_name))
+            }
         };
         let part = match blobs.put(data.clone()).await {
             Ok(blob) => {
                 let size = pixel_size(data.clone().into_bytes(), &media_type);
                 held.hold(blob.clone(), data);
-                let source = ToolMediaSource::Ref {
-                    r#ref: blob,
-                    media_type,
-                    width: size.map(|size| size.width),
-                    height: size.map(|size| size.height),
-                };
-                match kind {
-                    ModelMediaKind::Image => ToolResultContentBlock::Image { source },
-                    ModelMediaKind::Video => ToolResultContentBlock::Video { source },
+                match file_name {
+                    Some(file_name) => ToolResultContentBlock::Document {
+                        source: DocumentSource::Ref {
+                            r#ref: blob,
+                            media_type,
+                            file_name,
+                        },
+                    },
+                    None => {
+                        let source = ToolMediaSource::Ref {
+                            r#ref: blob,
+                            media_type,
+                            width: size.map(|size| size.width),
+                            height: size.map(|size| size.height),
+                        };
+                        if kind == ModelMediaKind::Video {
+                            ToolResultContentBlock::Video { source }
+                        } else {
+                            ToolResultContentBlock::Image { source }
+                        }
+                    }
                 }
             }
             Err(error) => ToolResultContentBlock::Gone {
