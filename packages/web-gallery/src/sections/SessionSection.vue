@@ -69,6 +69,7 @@ import {
 } from '@demicodes/web-ui/agent/session-status'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
+import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
 import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
@@ -86,6 +87,7 @@ import { regenerateMessage, submitMessageEdit, type MessageEditHost, type Messag
 import { callTerminal, firstRunningTerminalId, type TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
 import type { HostDeviceOption } from '@demicodes/web-ui/hosts/types'
+import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
 import type { AgentMessage, UserContentBlock } from '@demicodes/protocol'
 import { applyModelChange, type ModelSettings, type ModelSettingsChange } from '@demicodes/web-ui/agent/model-selection'
 import { composerAttachment, encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
@@ -203,9 +205,25 @@ function receiptVariant(message: AgentMessage): string {
  * product would open.
  */
 const dockSpecimens = reactive([
-  { variant: 'card, no chips', asks: true, requests: [rootRequest()], chips: false },
-  { variant: 'card over chips', asks: true, requests: [rootRequest()], chips: true },
-  { variant: 'chips alone', asks: false, requests: [] as PermissionRequestView[], chips: true },
+  { variant: 'card, no chips', asks: true, requests: [rootRequest()], chips: false, offline: false, device: false },
+  { variant: 'card over chips', asks: true, requests: [rootRequest()], chips: true, offline: false, device: false },
+  {
+    variant: 'offline card over chips · Resume waits for the device',
+    asks: false,
+    requests: [] as PermissionRequestView[],
+    chips: true,
+    offline: true,
+    device: true,
+  },
+  {
+    variant: 'permission card and offline card over chips',
+    asks: true,
+    requests: [rootRequest()],
+    chips: true,
+    offline: true,
+    device: true,
+  },
+  { variant: 'chips alone', asks: false, requests: [] as PermissionRequestView[], chips: true, offline: false, device: false },
 ])
 // The product session opens with the root's request waiting, above its chips.
 const sessionRequests = ref<PermissionRequestView[]>([rootRequest()])
@@ -664,6 +682,13 @@ const offlineMenuDevices: HostDeviceOption[] = [
   { id: 'old', name: 'Old Laptop', state: 'offline' },
   { id: 'build', name: 'build-box', state: 'offline' },
 ]
+/** The dock specimens' offline primary Host, one value so its card keeps its state while it shows. */
+const oldLaptopOffline: OfflineHost = {
+  name: 'Old Laptop',
+  start: demoDeviceStart('macos'),
+  primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline' },
+  devices: offlineMenuDevices,
+}
 
 const changesFlow = useTurnFlow({ id: 'gallery-changes', title: 'Cookie rename', blocks: changesDemoBlocks() })
 useGalleryTranscripts(() => ({ blocks: changesFlow.state.blocks, subagents: [] }))
@@ -1401,7 +1426,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="SessionDock"
-        note="What waits over the composer stacks one 8px step apart: the permission card, then the chips, then the composer. A part that is not there takes no room, so without chips the card sits one step above the composer, as the chips do without a card. The card stands over the dock’s top rather than in it: the transcript keeps clear of it, and a panel the dock opened keeps its place under it (Panel Under a Permission Card). The scroll-to-bottom control floats over the transcript at the dock’s top right and takes no room either."
+        note="What waits over the composer stacks one 8px step apart: the cards, then the chips, then the composer. The chips sit directly on the composer and nothing comes between them: a permission card, the offline Host’s card or a notice stands above the chips. A part that is not there takes no room, so without chips a card sits one step above the composer, as the chips do without a card. The permission card stands over the dock’s top rather than in it: the transcript keeps clear of it, and a panel the dock opened keeps its place under it (Panel Under a Permission Card). The scroll-to-bottom control floats over the transcript at the dock’s top right and takes no room either."
       >
         <div class="specimen-stack">
           <GallerySpecimen
@@ -1418,8 +1443,18 @@ onBeforeUnmount(() => {
                 Every request is decided.
                 <Button size="sm" @click="specimen.requests = [rootRequest()]">Show Again</Button>
               </div>
-              <!-- The card stands over the dock's top and takes no room in it: the frame leaves it room above. -->
-              <div class="flex flex-col justify-end rounded-lg bg-surface p-3" :class="specimen.asks ? 'min-h-[24rem]' : ''">
+              <!-- The device comes back: its card goes and Resume may go, as in the product. -->
+              <div v-if="specimen.device">
+                <Button size="sm" variant="ghost" @click="specimen.offline = !specimen.offline">
+                  {{ specimen.offline ? 'Connect Runner' : 'Disconnect Runner' }}
+                </Button>
+              </div>
+              <!-- The permission card stands over the dock's top and takes no room in it: the frame leaves
+                   it room above, over the offline card too where one shows. -->
+              <div
+                class="flex flex-col justify-end rounded-lg bg-surface p-3"
+                :class="specimen.asks ? specimen.offline ? 'min-h-[30rem]' : 'min-h-[24rem]' : ''"
+              >
                 <SessionDock>
                   <template v-if="specimen.requests.length" #above>
                     <PermissionCard
@@ -1429,14 +1464,24 @@ onBeforeUnmount(() => {
                   </template>
                   <template #chips>
                     <template v-if="specimen.chips">
-                      <SessionDockChip @click="productWould('Resume the Turn')">
-                        <Play :size="ICON_PX.in28" />
-                        Resume
-                      </SessionDockChip>
+                      <Tooltip
+                        :content="specimen.offline ? 'Old Laptop is still offline' : undefined"
+                        :disabled="!specimen.offline"
+                        class="inline-flex"
+                      >
+                        <SessionDockChip :disabled="specimen.offline" @click="productWould('Resume the Turn')">
+                          <Play :size="ICON_PX.in28" />
+                          Resume
+                        </SessionDockChip>
+                      </Tooltip>
                       <AgentsChip :agents="agents" @open="productWould('Open the Agents Window')" />
                     </template>
                   </template>
-                  <GalleryComposer placeholder="Ask Demi…" />
+                  <!-- The composer's cards, such as the offline Host's, stand above the chips. -->
+                  <GalleryComposer
+                    placeholder="Ask Demi…"
+                    :offline-host="specimen.offline ? oldLaptopOffline : null"
+                  />
                 </SessionDock>
               </div>
             </div>

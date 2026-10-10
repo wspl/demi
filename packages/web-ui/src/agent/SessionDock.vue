@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { ChevronDown } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import { sessionCoverKey } from './session-cover'
+import { dockCardsKey } from './dock-cards'
 
 withDefaults(defineProps<{
   showScrollToBottom?: boolean
@@ -31,6 +32,10 @@ onBeforeUnmount(() => {
   }
 })
 
+// The composer's cards stand here, above the chips, so the chips sit directly on the input.
+const cardsRef = ref<HTMLElement>()
+provide(dockCardsKey, cardsRef)
+
 // The scroll control belongs to the row of chips, at its other end: with chips it stands level
 // with them; without, it floats where that row would be, above what waits over the composer.
 const chipsRef = ref<HTMLElement>()
@@ -47,8 +52,10 @@ const scrollBottom = computed(() =>
 </script>
 
 <template>
-  <!-- What stands over the composer stacks at one 8px step: the card, the chips, the composer.
-       A part that is not there takes no room, so the next one moves up by the same step. -->
+  <!-- What stands over the composer stacks at one 8px step: the cards, the chips, the composer.
+       The chips sit directly on the composer and nothing comes between them; a card stands
+       above the chips. A part that is not there takes no room, so the next one moves up by the
+       same step. -->
   <div class="relative">
     <!-- The scroll control is the chips row's control at its right end, so it takes no room in
          the dock; it shows only away from the scroll bottom, where it covers nothing the user
@@ -82,6 +89,9 @@ const scrollBottom = computed(() =>
     <div v-if="$slots.above" ref="coverRef" class="absolute inset-x-0 bottom-full pb-2">
       <slot name="above" />
     </div>
+    <!-- The composer's cards, such as the offline primary Host's: each brings its own step under
+         it. -->
+    <div ref="cardsRef" class="flex flex-col" />
     <!-- Chips read from the left. A chip renders nothing while it has nothing to say, so the row
          shows only while it holds an element. -->
     <div ref="chipsRef" class="hidden items-center gap-1.5 pb-2 has-[>*]:flex">
