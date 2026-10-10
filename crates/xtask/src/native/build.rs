@@ -13,7 +13,7 @@ use std::process::Command;
 
 use serde::Deserialize;
 
-use super::{Error, Executable, apple, windows};
+use super::{Error, Executable, apple, linux, windows};
 
 /// The Apple SDK the Apple targets are built against: the one the Command
 /// Line Tools and Xcode 26.6 install, on a developer's Mac and on the
@@ -37,6 +37,14 @@ const CONTAINER_SDK: &str = "/sdk";
 /// The variable that names the workspace version a build carries in place
 /// of `Cargo.toml`'s, which `demi_shared_artifacts::WORKSPACE_VERSION` reads.
 const WORKSPACE_VERSION: &str = "DEMI_WORKSPACE_VERSION";
+/// The release profile of a Linux executable's build: unstripped and with
+/// its line tables in the executable, since stripping leaves a packed debug
+/// file unusable there; [`split`] moves them into a debug file instead
+/// (`builds-and-releases.md` § Build profiles).
+const LINUX_PROFILE: [(&str, &str); 2] = [
+    ("CARGO_PROFILE_RELEASE_STRIP", "false"),
+    ("CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO", "off"),
+];
 
 #[derive(clap::Args)]
 pub struct Options {
@@ -118,8 +126,59 @@ pub fn run(options: Options) -> Result<(), Error> {
         if !status.success() {
             return Err(Error::Build { target, status });
         }
+        if linux(target) {
+            for executable in &built {
+                split(&super::built(&artifacts, *executable, target))?;
+            }
+        }
     }
     println!("Native artifacts: {}", artifacts.display());
+    Ok(())
+}
+
+/// Moves the line tables and symbols of the Linux executable at `executable`
+/// into `<executable>.debug` beside it, which the executable then names, so that
+/// a crash's addresses can be read without shipping them. Cargo copies the
+/// unstripped executable there again at each build, so the split starts
+/// from it every time; the stripped one replaces it by a rename, which
+/// leaves Cargo's own copy, the file it links there, unstripped.
+fn split(executable: &Path) -> Result<(), Error> {
+    // The C toolchain's own on Linux; on a Mac, LLVM's, which the cross
+    // builds need anyway (`builds-and-releases.md` § Toolchain).
+    let tool = if Platform::HOST == Platform::Linux {
+        "objcopy"
+    } else {
+        "llvm-objcopy"
+    };
+    let suffixed = |suffix: &str| {
+        let mut path = executable.as_os_str().to_owned();
+        path.push(suffix);
+        PathBuf::from(path)
+    };
+    let debug = suffixed(".debug");
+    let stripped = suffixed(".stripped");
+    let mut link = OsString::from("--add-gnu-debuglink=");
+    link.push(&debug);
+    let steps: [&[&std::ffi::OsStr]; 2] = [
+        &["--only-keep-debug".as_ref(), executable.as_ref(), debug.as_ref()],
+        // All symbols, not only the debug sections: the symbol table and its
+        // names, which the debug file keeps, made the x86_64 runner 54.6 MB
+        // rather than 35.5 MB (12.3 MB rather than 10.5 MB compressed).
+        &["--strip-all".as_ref(), &link, executable.as_ref(), stripped.as_ref()],
+    ];
+    for arguments in steps {
+        let status = Command::new(tool)
+            .args(arguments)
+            .status()
+            .map_err(|source| Error::Objcopy { tool, source })?;
+        if !status.success() {
+            return Err(Error::Split {
+                path: executable.to_owned(),
+                status,
+            });
+        }
+    }
+    std::fs::rename(&stripped, executable)?;
     Ok(())
 }
 
@@ -359,6 +418,15 @@ impl Build<'_> {
         Some(flags)
     }
 
+    /// The settings of `target`'s build of `packages` that change Cargo's
+    /// release profile: [`LINUX_PROFILE`] for a Linux executable's.
+    fn profile(target: &str, packages: Packages<'_>) -> &'static [(&'static str, &'static str)] {
+        match packages {
+            Packages::Executables(_) if linux(target) => &LINUX_PROFILE,
+            Packages::Executables(_) | Packages::Xtask => &[],
+        }
+    }
+
     /// The build with this machine's cross tools.
     fn here(&self, target: &str, packages: Packages<'_>) -> Command {
         // `cargo run` names the toolchain's cargo; `bun xtask` takes the one
@@ -369,6 +437,7 @@ impl Build<'_> {
             .args(self.arguments(target, packages))
             .current_dir(self.repository)
             .envs(self.pins(target))
+            .envs(Self::profile(target, packages).iter().copied())
             .env("CARGO_TARGET_DIR", self.artifacts)
             .env("XWIN_CACHE_DIR", Self::xwin_cache(self.repository));
         match self.rustflags(target, self.sdk) {
@@ -403,6 +472,7 @@ impl Build<'_> {
         let mut environment: Vec<(&str, OsString)> = self
             .pins(target)
             .into_iter()
+            .chain(Self::profile(target, packages).iter().copied())
             .map(|(name, value)| (name, value.into()))
             .collect();
         environment.push(("CARGO_TARGET_DIR", CONTAINER_ARTIFACTS.into()));

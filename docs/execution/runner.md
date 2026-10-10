@@ -70,7 +70,9 @@ name, and the command lost with the connection says it, rather than only
 Integer fields travel as MessagePack integers, and byte fields as MessagePack
 binary.
 
-The authenticated local management endpoint exposes status and drain. Draining
+The authenticated local management endpoint exposes status, drain, and a
+request to write the runner's current pairing state to its log again, which
+the installers use on a runner they find running ([Installation, pairing and removal](#installation-pairing-and-removal)). Draining
 stops admission, waits for active work, and releases the installation lock so
 the next runner, such as a newer release, can start. A runner that drains or
 stops ends its backend connection in order: it sends the messages it has
@@ -218,7 +220,13 @@ So what a runner printed before it crashed is still there after `run start`
 starts it again. The installer and `run start` read the pairing codes and
 the connection's outcome from where the log ended when they began waiting,
 whether they started the runner or found it running, and follow the log
-across a rotation.
+across a rotation. A runner they find running wrote its state before they
+began, so they first ask it, through its management endpoint, to write its
+current state to its log again: its current pairing code while it waits to
+be paired, the device's name and the removal command once it is paired, or
+why it cannot connect. The lines come from the runner alone, so the
+installers and `run start` never compose them, and a pairing code still
+reaches no channel but the log.
 
 `run start` starts the installation's runner in the background again, as the
 installer does, and returns once it is connected or has said why it cannot
@@ -765,9 +773,9 @@ receives the foreground exit status.
 A job's environment is the device environment
 ([Host operations](#host-operations)) with the job's own variables added:
 the command endpoint and context handle, `DEMI_HOME`, the alias directory on
-`PATH`, `DEMI_JOB_ID`, `DEMI_JOB_OUTPUT` and `DEMI_LIVE_INPUT`
+`PATH`, `DEMI_JOB_ID` and `DEMI_LIVE_INPUT`
 ([Command context](native-runtime.md#command-context),
-[Where a command's stdout goes](#where-a-commands-stdout-goes)). The runner
+[A job's own input](#a-jobs-own-input)). The runner
 sets no temporary directory for a job: `TMPDIR` is the device environment's,
 or unset, so a job's temporary files go where any program of the device's
 user puts them, `/var/folders/…/T/` on macOS and `/tmp` on a Linux device
@@ -942,55 +950,41 @@ on the shell alone already: `cd` and the directory stack, `trap`, which
 installs no signal handler in the runner, `set` and `shopt`, `exit`, `wait`,
 `jobs` and `bg`. `times` shows the runner's processor time, not the job's.
 
-### Where a command's stdout goes
+### A job's own input
 
-A declared command must know whether its stdout is the job's output, the pipe
-whose other end the runner reads as the job's stdout, or goes elsewhere:
-[Media a command returns](../agent/runtime.md#where-a-medium-goes) sends a
-medium to the job in the first case and writes its bytes as stdout in the
-second. For example, in `demi browser screenshot t1 | convert - png:-` the
-screenshot's stdout is a pipe brush made for the pipeline; in
-`for t in t1 t2; do demi browser screenshot "$t"; done` each screenshot's
-stdout is the job's pipe, which the loop's body inherits.
+A command reading its stdin must know whether that stdin is the job's own
+input, which `demi shell input` feeds and which ends only with the job, or a
+finite one: a pipe, a file, a heredoc. For example, `demi file view` with no
+path reads a medium from a pipe in `convert … png:- | demi file view`, but
+run alone it would wait for the job to end, so there it refuses
+([Media the model views](../agent/runtime.md#what-demi-file-view-shows)).
 
 Brush gives a builtin its descriptors as the shell has set them up for that
 call, after redirections, pipelines, command and process substitutions,
-`exec` redirections and subshells: `ExecutionContext::try_fd(1)` is the file
-the command writes to. Its kind does not answer the question: under the
-runner's execution host every descriptor, the job's own pipes, a pipeline's
-pipe and a redirected file alike, is an `OpenFile::Controlled` that wraps its
-system file. The system file does answer it, so brush needs no change:
+`exec` redirections and subshells: `ExecutionContext::try_fd(0)` is the file
+the command reads. Its kind does not answer the question: under the
+runner's execution host every descriptor is an `OpenFile::Controlled` that
+wraps its system file. The system file does answer it, so brush needs no
+change:
 
-- **The reference.** The runner keeps a copy of the writing end of the job's
-  stdout pipe open for the job's life and names it in the job's environment
-  as `DEMI_JOB_OUTPUT`: on Unix the pipe's device and inode, which every copy
+- **The reference.** The runner keeps a copy of the reading end of the job's
+  stdin pipe open for the job's life and names it in the job's environment
+  as `DEMI_LIVE_INPUT`: on Unix the pipe's device and inode, which every copy
   of either end shares and no other open file has while the copy is open; on
   Windows the runner's process id and the copy's handle, which a command
-  compares with its own handle through `CompareObjectHandles`. The runner
-  names the job's stdin as `DEMI_LIVE_INPUT` in the same way, so that a
-  command tells the job's live input from a finite one.
-- **The comparison.** A declared command compares its fd 1 with the
+  compares with its own handle through `CompareObjectHandles`.
+- **The comparison.** A declared command compares its fd 0 with the
   reference: a builtin in the runner before it dispatches, an alias in its own
   process before it forwards
   ([External command clients](commands.md#external-command-clients)). One
-  function makes both comparisons, and the invocation carries the answer,
-  `job` or `elsewhere`, to the dispatcher and to the handler
-  ([Return media](commands.md#return-media)). A builtin's fd 1 that is the
-  job's stdout pipe in any copy, through `exec 3>&1` and `>&3` for example,
-  is the job's output.
-- **What no shell tells.** Where a pipe's other end leads is unknown to the
-  writer, and the rule needs no answer: a medium written into a pipe is
-  bytes, and what the reader makes of them reaches the job's output as the
-  reader's own stdout.
-- **A relayed stdout.** A job whose stdout the backend relays elsewhere,
-  as `demi host shell` starts one, gets no `DEMI_JOB_OUTPUT`: its stdout is
-  the invoking command's, so every command of it writes elsewhere.
+  function makes both comparisons, and the invocation carries the answer.
+- **A relayed stdin.** A job whose stdin the backend relays from another
+  command, as `demi host shell` starts one, gets no `DEMI_LIVE_INPUT`: its
+  stdin is the invoking command's.
 - **The environment is the script's.** A script that changes
-  `DEMI_JOB_OUTPUT` makes only its own commands take the other case: their
-  media then go to the job with their lines into the file, or as bytes into
-  the job's stdout. Neither reaches anything but that job's result, so the
-  variable needs no protection; the command context, which does, never
-  travels in the environment
+  `DEMI_LIVE_INPUT` makes only its own commands misjudge their stdin, which
+  reaches nothing but that job, so the variable needs no protection; the
+  command context, which does, never travels in the environment
   ([Command context](native-runtime.md#command-context)).
 
 ### Cancellation and completion
@@ -1129,33 +1123,29 @@ The backend reads it when the job ends and a stream went beyond its first
 8 KiB, and while the job runs, for `demi shell output`
 ([The whole output](../agent/runtime.md#the-whole-output)).
 
-A job's **media** ([Media a command returns](../agent/runtime.md#media-a-command-returns))
-are kept beside its output. A `native` command's arrive as its invocation's
-medium records
+A job's **media** ([Media the model views](../agent/runtime.md#media-the-model-views))
+are kept beside its output. They arrive as the medium records of the
+invocations of `demi file view`
 ([Response records and completion](native-runtime.md#response-records-and-completion)),
-an `rpc` command's as `rpc_medium`, whose bytes come through a pipe from the
-backend ([Return media](commands.md#return-media)). For each medium a
-command whose stdout is the job's output returns, the runner:
+whatever those invocations' stdout is ([Return media](commands.md#return-media)).
+For each medium, the runner:
 
-1. Checks it: bytes of an image or video type of the model-media table, at
-   most 16 MiB. A medium that fails the check fails its command.
+1. Checks it: at most 16 MiB, from a leaf that declares `media`. A medium
+   that fails the check fails its command.
 2. Keeps it within the job's bounds, 32 media and 64 MiB, numbering the job's
    media from 1 in the order they arrive, and writes it to `media/<n>` in the
    job's directory. A medium beyond the bounds is read to its end and
-   dropped, and the line in its place says it was not kept.
-3. Writes the medium's line into the command's stdout at its place.
+   dropped, and its line says it was not kept.
+3. Writes the medium's line into the job's output, after what the job's
+   output holds when the medium arrives.
 4. Sends `job_medium { jobId, number, mediaType, size, sha256 }` once the
    medium is written, so the backend knows each medium even when the
    connection is lost before the job ends. Every `job_medium` of a job
    precedes its `job_exit`.
 
 `job_media_read { jobId, number, output }` streams one kept medium through a
-pipe. The backend reads, when the job ends, each medium whose blob its
-owner's namespace does not hold yet, and, while the job runs, a medium
-`demi shell output --medium` asks for
-([The whole output](../agent/runtime.md#the-whole-output)). A medium the
-dispatcher holds for a command whose stdout goes elsewhere lies in the job's
-directory too, until the command ends.
+pipe. The backend reads, when the job ends, each medium the result attaches
+whose blob its owner's namespace does not hold yet.
 
 The runner makes the job's directory when the job starts, private to its
 user:

@@ -39,6 +39,10 @@ impl Handler for DemiFile {
             Err(OperationError::Invalid(error)) => {
                 Box::pin(async move { Ok(files::failure(&error.into())) })
             }
+            Err(OperationError::Edit(error)) => {
+                let error = files::edit_args(&context.request.cwd, error);
+                Box::pin(async move { Ok(files::failure(&error)) })
+            }
             Err(OperationError::Unknown(operation)) => {
                 Box::pin(async move { Err(ServiceError::UnknownOperation(operation)) })
             }
