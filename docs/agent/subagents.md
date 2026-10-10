@@ -941,9 +941,15 @@ The dock's agents chip counts live children only: *2 Agents* while two run,
 beside the terminal chip's *N Running*. Once none runs, a conversation that
 has had children keeps the chip, which then reads *Agents* with no count, so
 the children's history stays one click away; a conversation that never had
-one shows no chip. With no live child, the chip opens the panel on the child
-that finished last, and its Completed menu lists the others. Completed, aborted,
-and failed children remain available as history but never count. A creation command exits independently and adds nothing to the
+one shows no chip. The panel's tabs are the live children: the chip opens it
+on the first of them, and with none live it opens empty, saying no agent is
+running, as an editor with no file open shows an empty area, never a child the
+user did not pick. Its Completed menu lists the finished children; the one
+picked there shows as a tab after the live ones, and picking another replaces
+it in place, without the motion of a tab opening and another closing, since
+nothing opened or closed. Closing that tab, or the last one, leaves the panel
+empty. Completed, aborted, and failed children remain available as history but
+never count. A creation command exits independently and adds nothing to the
 Running terminal count for its child's lifetime. The Running count and its
 panel hold every command of the tree that still runs after its call
 returned, a child's as well as the root's

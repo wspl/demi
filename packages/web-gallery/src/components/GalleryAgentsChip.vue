@@ -23,7 +23,7 @@ const emit = defineEmits<{
   abortAgent: [id: string]
 }>()
 
-const { activeSubagentId, toggleAgents } = useSessionPanels(
+const { agentsOpen, activeSubagentId, toggleAgents } = useSessionPanels(
   () => props.agents,
   () => props.terminals,
 )
@@ -37,7 +37,7 @@ const { activeSubagentId, toggleAgents } = useSessionPanels(
           <template #chips>
             <AgentsChip
               :agents="agents"
-              :open="activeSubagentId !== null"
+              :open="agentsOpen"
               @open="toggleAgents"
             />
           </template>
@@ -46,6 +46,7 @@ const { activeSubagentId, toggleAgents } = useSessionPanels(
       </template>
       <template #overDock>
         <SubagentPanel
+          v-model:open="agentsOpen"
           v-model:active-id="activeSubagentId"
           :agents="agents"
           :terminals="terminals"
