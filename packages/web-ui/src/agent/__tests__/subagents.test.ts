@@ -2,7 +2,6 @@ import { expect, test } from 'bun:test'
 import { EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
 import {
   agentsChip,
-  firstInspectSubagentId,
   formatDuration,
   formatSubagentDuration,
   finishedSubagents,
@@ -11,6 +10,7 @@ import {
   subagentStatus,
   type SubagentRecord,
 } from '../subagents'
+import { useSessionPanels } from '../useSessionPanels'
 
 function agent(
   partial: Pick<SubagentRecord, 'id' | 'name' | 'phase'> & Partial<SubagentRecord>,
@@ -117,8 +117,9 @@ test('a running inspect lists every running child; a finished inspect sits besid
       endedAt: '2026-09-09T00:04:00.000Z',
     }),
   ]
-  expect(subagentPanelTabs(agents, null)).toEqual([])
-  expect(subagentPanelTabs(agents, 'missing')).toEqual([])
+  // None picked: the running children alone.
+  expect(subagentPanelTabs(agents, null).map((item) => item.id)).toEqual(['run-old', 'run-new'])
+  expect(subagentPanelTabs(agents, 'missing').map((item) => item.id)).toEqual(['run-old', 'run-new'])
   expect(subagentPanelTabs(agents, 'run-new').map((item) => item.id)).toEqual([
     'run-old',
     'run-new',
@@ -138,32 +139,22 @@ test('a running inspect lists every running child; a finished inspect sits besid
   ])
 })
 
-test('inspect opens the oldest running child, or the newest finished child', () => {
-  const agents = [
-    agent({
-      id: 'run-new',
-      name: 'New',
-      phase: 'running',
-      startedAt: '2026-09-09T00:02:00.000Z',
-    }),
-    agent({
-      id: 'run-old',
-      name: 'Old',
-      phase: 'running',
-      startedAt: '2026-09-09T00:01:00.000Z',
-    }),
-    agent({
-      id: 'done',
-      name: 'Done',
-      phase: 'completed',
-      endedAt: '2026-09-09T00:03:00.000Z',
-    }),
+test('the Agents panel opens on the oldest running child, or empty when none runs', () => {
+  const running = [
+    agent({ id: 'run-new', name: 'New', phase: 'running', startedAt: '2026-09-09T00:02:00.000Z' }),
+    agent({ id: 'run-old', name: 'Old', phase: 'running', startedAt: '2026-09-09T00:01:00.000Z' }),
   ]
-  expect(firstInspectSubagentId(agents)).toBe('run-old')
-  expect(
-    firstInspectSubagentId(agents.filter((item) => item.phase !== 'running')),
-  ).toBe('done')
-  expect(firstInspectSubagentId([])).toBeNull()
+  const done = agent({ id: 'done', name: 'Done', phase: 'completed', endedAt: '2026-09-09T00:03:00.000Z' })
+  let agents: SubagentRecord[] = [...running, done]
+  const panels = useSessionPanels(() => agents, () => [])
+  panels.toggleAgents()
+  expect([panels.agentsOpen.value, panels.activeSubagentId.value]).toEqual([true, 'run-old'])
+  panels.toggleAgents()
+  expect(panels.agentsOpen.value).toBe(false)
+  // Only finished children: it opens on none of them, never one the user did not pick.
+  agents = [done]
+  panels.toggleAgents()
+  expect([panels.agentsOpen.value, panels.activeSubagentId.value]).toEqual([true, null])
 })
 
 test('the dock chip counts live children, reads Agents once none runs, and hides without children', () => {

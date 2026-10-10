@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
-import { CircleStop, X } from '@lucide/vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { Bot, CircleStop, X } from '@lucide/vue'
 import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
+import RegionStatus from '../ui/RegionStatus.vue'
 import AgentMessageList from './AgentMessageList.vue'
 import SessionOverlay from './SessionOverlay.vue'
 import SubagentHistoryMenu from './SubagentHistoryMenu.vue'
@@ -41,13 +42,15 @@ const emit = defineEmits<{
   /** The block `reveal` names is in view. */
   revealed: []
 }>()
+/**
+ * Whether the panel is open, and the child it shows: none leaves it open,
+ * empty, as it opens when no child runs (`subagents.md` § Product rendering).
+ */
+const open = defineModel<boolean>('open', { required: true })
 const activeId = defineModel<string | null>('activeId', { required: true })
 
 const tabs = computed(() => subagentPanelTabs(props.agents, activeId.value))
-const active = computed(
-  () =>
-    tabs.value.find((agent) => agent.id === activeId.value) ?? tabs.value[0] ?? null,
-)
+const active = computed(() => tabs.value.find((agent) => agent.id === activeId.value) ?? null)
 provideLiveCalls((toolUseId) =>
   active.value ? callTerminal(props.terminals, active.value.id, toolUseId) : undefined,
 )
@@ -68,8 +71,19 @@ function activate(id: string): void {
   activeId.value = id
 }
 
+// A child picked from Completed replaces the finished tab in place: nothing
+// opened or closed, so the strip shows the change at once.
+const replacing = ref(false)
+function pick(id: string): void {
+  replacing.value = true
+  activate(id)
+  void nextTick(() => {
+    replacing.value = false
+  })
+}
+
 function closePanel(): void {
-  activeId.value = null
+  open.value = false
 }
 
 const anyRunning = computed(() => props.agents.some((agent) => agent.phase === 'running'))
@@ -86,8 +100,9 @@ function closeTab(id: string): void {
 
 <template>
   <SessionOverlay
-    :open="tabs.length > 0"
+    :open="open"
     :dismiss-outside="dismissOutside"
+    :still-tabs="replacing"
     @close="closePanel"
   >
     <template #tabs="{ openTabMenu }">
@@ -130,7 +145,7 @@ function closeTab(id: string): void {
       <SubagentHistoryMenu
         :agents="agents"
         :active-id="activeId"
-        @select="activate"
+        @select="pick"
       />
     </template>
     <AgentMessageList
@@ -152,5 +167,6 @@ function closeTab(id: string): void {
       @revealed="emit('revealed')"
       @read-before="emit('read', active.id, 'before')"
     />
+    <RegionStatus v-else status="note" :icon="Bot" label="No agents are running." />
   </SessionOverlay>
 </template>

@@ -67,6 +67,11 @@ const props = withDefaults(defineProps<{
   surface?: 'base' | 'raised'
   /** A tab dragged from `from` to `to`, its index among the others; without it tabs do not drag. */
   onReorder?: (from: number, to: number) => void
+  /**
+   * Tabs come and go at once, with no motion, while this holds: as when a
+   * menu replaces the tab shown with another, so nothing opened or closed.
+   */
+  still?: boolean
 }>(), {
   surface: 'base',
 })
@@ -462,6 +467,7 @@ defineExpose({ el })
     <TransitionGroup
       :ref="bindEl"
       :name="TAB_TRANSITION"
+      :css="!still"
       tag="div"
       class="flex items-center gap-0.5 overflow-x-auto [scrollbar-width:none]"
       @scroll.passive="updateEdges"

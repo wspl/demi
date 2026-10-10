@@ -47,18 +47,6 @@ export function firstRunningSubagentId(
   return runningSubagents(agents)[0]?.id ?? null
 }
 
-export function firstFinishedSubagentId(
-  agents: readonly SubagentRecord[],
-): string | null {
-  return finishedSubagents(agents)[0]?.id ?? null
-}
-
-/** Open running children first; if none are live, open the newest finished child. */
-export function firstInspectSubagentId(
-  agents: readonly SubagentRecord[],
-): string | null {
-  return firstRunningSubagentId(agents) ?? firstFinishedSubagentId(agents)
-}
 
 export function subagentStatus(phase: SubagentPhase): ConversationStatus {
   if (phase === 'running') {
@@ -125,21 +113,15 @@ export function agentsChip(agents: readonly SubagentRecord[]): AgentsChipState |
   return { label: running === 1 ? '1 Agent' : `${running} Agents`, running: true }
 }
 
-/** Running tabs stay up; a finished inspect adds that child beside them. */
+/**
+ * The panel's tabs (`subagents.md` § Product rendering): the running
+ * children, and after them the finished one picked from Completed.
+ */
 export function subagentPanelTabs(
   agents: readonly SubagentRecord[],
   activeId: string | null,
 ): SubagentRecord[] {
-  if (!activeId) {
-    return []
-  }
-  const active = agents.find((agent) => agent.id === activeId)
-  if (!active) {
-    return []
-  }
   const running = runningSubagents(agents)
-  if (isSubagentRunning(active.phase)) {
-    return running
-  }
-  return [...running, active]
+  const active = agents.find((agent) => agent.id === activeId)
+  return active && !isSubagentRunning(active.phase) ? [...running, active] : running
 }

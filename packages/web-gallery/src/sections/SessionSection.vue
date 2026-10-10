@@ -74,7 +74,7 @@ import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
 import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
 import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
-import { firstInspectSubagentId, firstRunningSubagentId } from '@demicodes/web-ui/agent/subagents'
+import { firstRunningSubagentId } from '@demicodes/web-ui/agent/subagents'
 import GalleryCachedSessions from '../components/GalleryCachedSessions.vue'
 import GalleryTranscriptEntrance from '../components/GalleryTranscriptEntrance.vue'
 import GalleryHistoryWindow from '../components/GalleryHistoryWindow.vue'
@@ -262,9 +262,8 @@ const terminals = reactive(galleryTerminals())
 // under the call, and the Terminals window in its tab.
 useLiveGalleryCommand(terminals)
 const finishedOnly = agents.filter((agent) => agent.phase !== 'running')
-const exhibitAgentId = ref<string | null>(
-  firstInspectSubagentId(agents),
-)
+const exhibitOpen = ref(true)
+const exhibitAgentId = ref<string | null>(firstRunningSubagentId(agents))
 const exhibitTerminalId = ref<string | null>(firstRunningTerminalId(terminals))
 /** Run Them Again: the windows' agents and jobs run again as the fixtures start them, each window open on its first. */
 function resetWindows(): void {
@@ -284,11 +283,13 @@ function resetWindows(): void {
       terminal.endedAt = fresh.endedAt
     }
   }
-  exhibitAgentId.value = firstInspectSubagentId(agents)
+  exhibitOpen.value = true
+  exhibitAgentId.value = firstRunningSubagentId(agents)
   exhibitTerminalId.value = firstRunningTerminalId(terminals)
 }
 // The Agents panel open while a request waits: the card stands over the panel's lower part.
 const coverRequests = ref<PermissionRequestView[]>([rootRequest()])
+const coverOpen = ref(true)
 const coverAgentId = ref<string | null>(firstRunningSubagentId(agents))
 const coverBlocks = transcriptDemoBlocks()
 const coverSurface = ref<{ dockHeight: number }>()
@@ -327,7 +328,8 @@ watch(
     if (next !== 'windows') {
       return
     }
-    exhibitAgentId.value = firstInspectSubagentId(agents)
+    exhibitOpen.value = true
+    exhibitAgentId.value = firstRunningSubagentId(agents)
     exhibitTerminalId.value = firstRunningTerminalId(terminals)
   },
   { immediate: true },
@@ -2380,13 +2382,14 @@ onBeforeUnmount(() => {
     <template v-if="view === 'windows'">
       <GallerySection
         title="Agents"
-        note="Half-session inspect. Tabs are running children; a click only selects one, and nothing on a tab stops it. A right-click on a tab, or the Menu key or Shift+F10 on a focused one, opens its menu: Stop Agent for a running child, Close Tab for a finished one, the other disabled. The More button at the strip’s end, and a right-click on the strip’s empty area, open the strip’s menu: Stop All, disabled once nothing runs. Completed opens the searchable finished list. Close (×) closes the window."
+        note="Half-session inspect. Tabs are running children; a click only selects one, and nothing on a tab stops it. A right-click on a tab, or the Menu key or Shift+F10 on a focused one, opens its menu: Stop Agent for a running child, Close Tab for a finished one, the other disabled. The More button at the strip’s end, and a right-click on the strip’s empty area, open the strip’s menu: Stop All, disabled once nothing runs. Completed opens the searchable finished list; the child picked there shows as a tab after the running ones, and picking another replaces it in place, without motion. With no child running the window opens empty, never on a child the user did not pick; closing the last finished tab leaves it empty. Close (×) closes the window, and Run Them Again opens it again."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
         </div>
         <div class="relative h-[24rem] min-h-0">
           <SubagentPanel
+            v-model:open="exhibitOpen"
             v-model:active-id="exhibitAgentId"
             :agents="agents"
             @abort="sessionFlow.abortSubagents"
@@ -2397,7 +2400,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Agents Chip"
-        note="The dock's Agents chip opens this window and a second click closes it. While children run it counts them and the window opens on the oldest running one. Once none runs the chip reads Agents with no count and the window opens on the newest finished child, beside Completed with the rest. A conversation that never had a child has no chip."
+        note="The dock's Agents chip opens this window and a second click closes it. While children run it counts them and the window opens on the oldest running one. Once none runs the chip reads Agents with no count and the window opens empty, its finished children under Completed. A conversation that never had a child has no chip."
       >
         <div class="grid grid-cols-1 gap-3 xl:grid-cols-3">
           <GallerySpecimen variant="children running" wide>
@@ -2475,8 +2478,8 @@ onBeforeUnmount(() => {
                 <template #chips>
                   <AgentsChip
                     :agents="agents"
-                    :open="coverAgentId !== null"
-                    @open="coverAgentId = coverAgentId === null ? firstInspectSubagentId(agents) : null"
+                    :open="coverOpen"
+                    @open="coverOpen = !coverOpen; coverAgentId = firstRunningSubagentId(agents)"
                   />
                 </template>
                 <GalleryComposer placeholder="Ask Demi…" />
@@ -2484,6 +2487,7 @@ onBeforeUnmount(() => {
             </template>
             <template #overDock>
               <SubagentPanel
+                v-model:open="coverOpen"
                 v-model:active-id="coverAgentId"
                 :agents="agents"
                 :terminals="terminals"
