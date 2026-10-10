@@ -16,6 +16,8 @@ import {
 } from '../fixtures/compaction'
 import { productWould } from '../product-would'
 import { WORKSPACE_ROOT } from '../fixtures/workspace'
+import { demoDeviceStart } from '../fixtures/device-installation'
+import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
 import GalleryComposer from './GalleryComposer.vue'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
@@ -44,6 +46,17 @@ interface SessionCase {
   /** The device the failure names, whose runner the specimen connects and disconnects. */
   device?: { name: string; online: boolean }
   composer: 'default' | 'none' | 'noModels' | 'archived'
+}
+
+/** The offline device's card above the dock's chips, while its runner is away. */
+const macBookOffline: OfflineHost = {
+  name: 'MacBook Pro',
+  start: demoDeviceStart('macos'),
+  primaryHost: { id: 'mac', name: 'MacBook Pro', kind: 'device', state: 'offline' },
+  devices: [
+    { id: 'mac', name: 'MacBook Pro', state: 'offline' },
+    { id: 'studio', name: 'Studio PC', state: 'online', path: 'localNetwork' },
+  ],
 }
 
 function state(
@@ -123,7 +136,7 @@ const cases: SessionCase[] = [
   },
   {
     variant: 'Host went offline · Resume waits for the device',
-    note: 'A call failed because the conversation’s device was offline, and the agent ended its turn with work left undone. Demi’s record says so and leaves the turn unfinished; Resume stays disabled, saying the device is still offline, until its runner is back, and the agent’s next request then says it is back.',
+    note: 'A call failed because the conversation’s device was offline, and the agent ended its turn with work left undone. Demi’s record says so and leaves the turn unfinished; Resume stays disabled, saying the device is still offline, until its runner is back, and the agent’s next request then says it is back. The device’s offline card stands above the chips, which sit directly on the input.',
     session: state('host-offline', {
       blocks: [...shortTranscriptBlocks(), hostOfflineErrorBlock()],
     }),
@@ -224,6 +237,7 @@ const cases: SessionCase[] = [
                     :providers="item.composer === 'noModels' ? [] : undefined"
                     :models="item.composer === 'noModels' ? {} : undefined"
                     :archived="item.composer === 'archived'"
+                    :offline-host="item.device && !item.device.online ? macBookOffline : null"
                   />
                 </template>
               </ChatSession>
