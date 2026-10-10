@@ -361,18 +361,17 @@ mod tests {
             Err(ShellError::UnknownCommand(command.clone()))
         }
 
+        fn media(
+            &self,
+            command: &CommandId,
+        ) -> Result<Vec<demi_host_interface::CommandMedium>, ShellError> {
+            Err(ShellError::UnknownCommand(command.clone()))
+        }
+
         fn read_output<'a>(
             &'a self,
             command: &'a CommandId,
         ) -> LocalBoxFuture<'a, Result<WholeOutput, ShellError>> {
-            Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
-        }
-
-        fn read_medium<'a>(
-            &'a self,
-            command: &'a CommandId,
-            _: u32,
-        ) -> LocalBoxFuture<'a, Result<Bytes, ShellError>> {
             Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
         }
 

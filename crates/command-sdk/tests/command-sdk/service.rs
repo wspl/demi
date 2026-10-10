@@ -69,7 +69,8 @@ fn invocation(operation: &str) -> Bytes {
         args: serde_json::json!({}),
         cwd: "/tmp".into(),
         env: BTreeMap::new(),
-        stdout: None,
+        live_input: None,
+        viewable: None,
     }
     .encode()
     .unwrap()
@@ -270,7 +271,8 @@ async fn what_a_caller_sends_after_an_early_answer_is_not_a_failure() {
                 args: serde_json::json!({}),
                 cwd: "/tmp".into(),
                 env: BTreeMap::new(),
-                stdout: None,
+                live_input: None,
+                viewable: None,
             })
             .await
             .unwrap();

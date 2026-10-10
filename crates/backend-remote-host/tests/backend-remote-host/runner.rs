@@ -55,6 +55,19 @@ pub(crate) struct Exec {
     pub(crate) window: u64,
 }
 
+/// What a job may show a model that reads images, video and PDFs in a tool
+/// result.
+pub(crate) fn viewable() -> demi_command_protocol::Viewable {
+    demi_command_protocol::Viewable {
+        model: "test-model".into(),
+        media_types: Some(
+            ["image/png", "image/jpeg", "video/mp4", "application/pdf"]
+                .map(str::to_owned)
+                .to_vec(),
+        ),
+    }
+}
+
 /// An exec of `script`, watched for up to `window` milliseconds.
 pub(crate) fn exec(script: &str, window: u64) -> Exec {
     Exec {
@@ -62,6 +75,7 @@ pub(crate) fn exec(script: &str, window: u64) -> Exec {
             script: script.into(),
             caller: caller(),
             tool_use_id: "call".into(),
+            viewable: viewable(),
         },
         window,
     }
@@ -334,6 +348,7 @@ async fn a_process_gets_what_was_sent_at_its_start_and_unread_input_blocks_nothi
             cwd: fixture.home().into(),
             env: BTreeMap::new(),
             context: test_command_context(),
+            viewable: None,
             caller: None,
             commands: None,
             stdin: None,
@@ -923,6 +938,7 @@ async fn a_jobs_pipes_carry_its_stdin_and_stdout_and_a_refused_end_stops_nothing
         cwd: fixture.home().into(),
         env: BTreeMap::from([("PATH".to_owned(), "/usr/bin:/bin".to_owned())]),
         context: test_command_context(),
+        viewable: None,
         caller: None,
         commands: None,
         stdin,

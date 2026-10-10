@@ -34,6 +34,7 @@ use demi_host_interface::{
     CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller, Numbers,
     PageFeed, ShellEnvironment, ShellError,
 };
+use demi_command_protocol::Viewable;
 use demi_provider_common::ToolDefinition;
 use demi_shared_types::{CommandId, NodeId, Sequence};
 use futures_util::{future::LocalBoxFuture, stream::FuturesUnordered};
@@ -46,7 +47,7 @@ pub use input::{INTERVAL_CAP_MS, INTERVAL_FLOOR_MS, taken_interval};
 use input::{ShellInput, parse};
 pub use reports::{EndOf, end_report, fill_output, progress_report};
 pub use demi_agent_transcript::duration;
-pub use result::{Look, look_text, whole_look_text, whole_status};
+pub use result::{Look, look_text, report_media, whole_look_text, whole_status};
 pub use product::{
     ContextAnswer, ContextSource, HostResolver, NodeContext, Profile, ProfileModel, SubagentSettings,
     SubagentSource, Toolset, ToolsetSource, Unavailable,
@@ -245,6 +246,10 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
                 node: self.context.node.clone(),
             },
             tool_use_id: call.tool_use_id,
+            viewable: Viewable {
+                model: call.model.model.id.clone(),
+                media_types: call.request_limits.tool_results.viewable(&call.model.model),
+            },
         };
         // The command stops with the call while the call watches it: a Stop
         // of the action drops the call with its step, and the call's result

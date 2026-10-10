@@ -12,7 +12,7 @@
 use std::future::Future;
 
 use bytes::{Bytes, BytesMut};
-use demi_command_protocol::{Completion, ProtocolError, Record};
+use demi_command_protocol::{Completion, MediumFacts, ProtocolError, Record};
 use tokio::sync::mpsc;
 
 use crate::{CommandInput, CommandOutput, ServiceError};
@@ -33,8 +33,13 @@ pub trait OutputSink {
 
     fn stderr(&mut self, bytes: Bytes) -> impl Future<Output = Result<(), Self::Error>>;
 
-    /// A medium the service returned (`commands.md` § Return media), whole.
-    fn medium(&mut self, bytes: Bytes) -> impl Future<Output = Result<(), Self::Error>>;
+    /// A medium the service returned (`commands.md` § Return media), whole,
+    /// with the facts its record gave.
+    fn medium(
+        &mut self,
+        facts: MediumFacts,
+        bytes: Bytes,
+    ) -> impl Future<Output = Result<(), Self::Error>>;
 }
 
 /// Which side of an exchange failed.
@@ -85,18 +90,19 @@ impl Exchange {
         };
         let receive = async {
             let mut completion = None;
-            // The medium whose bytes are arriving: its size, and its bytes so far.
-            let mut medium: Option<(u64, BytesMut)> = None;
+            // The medium whose bytes are arriving: its size, its facts, and
+            // its bytes so far.
+            let mut medium: Option<(u64, MediumFacts, BytesMut)> = None;
             while let Some(record) = output.next().await.map_err(ExchangeError::Service)? {
                 if medium.is_some() && !matches!(record, Record::MediumBytes(_)) {
                     return Err(broken("a medium's bytes are interleaved with another record"));
                 }
                 match record {
-                    Record::Medium { size } => {
-                        medium = Some((size, BytesMut::new()));
+                    Record::Medium { size, facts } => {
+                        medium = Some((size, facts, BytesMut::new()));
                     }
                     Record::MediumBytes(bytes) => {
-                        let Some((size, received)) = medium.as_mut() else {
+                        let Some((size, _, received)) = medium.as_mut() else {
                             return Err(broken("medium bytes without a medium"));
                         };
                         if received.len() as u64 + bytes.len() as u64 > *size {
@@ -117,12 +123,13 @@ impl Exchange {
                     })?,
                     Record::Completion(value) => completion = Some(value),
                 }
-                if let Some((size, received)) = &mut medium
+                if let Some((size, _, received)) = &medium
                     && received.len() as u64 == *size
+                    && let Some((_, facts, received)) = medium.take()
                 {
-                    let bytes = std::mem::take(received).freeze();
-                    medium = None;
-                    sink.medium(bytes).await.map_err(ExchangeError::Output)?;
+                    sink.medium(facts, received.freeze())
+                        .await
+                        .map_err(ExchangeError::Output)?;
                 }
             }
             completion.ok_or(ExchangeError::Service(ProtocolError::Incomplete.into()))

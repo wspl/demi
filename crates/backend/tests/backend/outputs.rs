@@ -156,16 +156,15 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
     backend.close().await;
 }
 
-// Several seconds: a real device installs the builtin package, and two turns
-// run a shell job each.
+// A few seconds: a real device installs the builtin package, and one turn
+// runs a shell job.
 //
-// Planted defects this catches: a stored output whose row does not name its
-// media (`--medium` finds none); a runner that opens a call's stdout before
-// it reads the medium the handler returned first, which waits for it (the
-// second turn hangs); and a file read that writes an image's bytes as its
-// output.
+// Planted defects this catches: a viewed medium that does not reach the
+// result over a real runner; a PDF that the Anthropic API's request leaves
+// out of the tool result or carries as anything but a `document` block; and
+// a PDF from stdin without the name its number gives it.
 #[tokio::test]
-async fn a_returned_medium_is_attached_stored_and_returned_again_by_demi_shell_output() {
+async fn viewed_media_are_attached_to_the_result_and_a_pdf_rides_as_a_document_block() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
@@ -175,49 +174,42 @@ async fn a_returned_medium_is_attached_stored_and_returned_again_by_demi_shell_o
     let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
     let png = demi_agent_store::testing::png(4, 3, 1).into_bytes();
     std::fs::write(format!("{root}/shot.png"), &png).unwrap();
-    let line = format!("[medium 1: image/png, {} bytes]", png.len());
+    let pdf = b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n";
+    std::fs::write(format!("{root}/report.pdf"), pdf).unwrap();
 
-    // Read to the job's output, the image is attached after the output; into
-    // a file, it is copied.
-    let read = work
+    let viewed = work
         .turn(vec![
-            shell("t1", "demi file read shot.png; demi file read shot.png > copy.png", 30_000),
-            say("read"),
+            shell("t1", "demi file view shot.png > /dev/null && cat report.pdf | demi file view", 30_000),
+            say("viewed"),
         ])
         .await;
-    let result = &read.received[0];
-    let text = attached_one(result);
-    assert_eq!(shown_output(text), format!("{line}\n"), "{result}");
-    assert_eq!(std::fs::read(format!("{root}/copy.png")).unwrap(), png);
-    let command = field(result, "commandId").to_owned();
-
-    // The ended command's medium, stored with its output: into a file as
-    // its bytes, to the job's output as a medium attached again.
-    let script = format!(
-        "demi shell output {command} --medium 1 > again.png; demi shell output {command} --medium 1; demi shell output {command} --medium 2"
-    );
-    let again = work
-        .turn(vec![shell("t2", &script, 30_000), say("again")])
-        .await;
-    let result = &again.received[0];
+    let result = &viewed.received[0];
     assert_eq!(
-        shown_output(attached_one(result)),
+        shown_output(result),
         format!(
-            "{line}\ndemi shell output: command {command} has no medium 2: it returned 1\n"
+            "[image 1: image/png, 4 × 3 px, {} bytes]\n[document 2: document-2.pdf, application/pdf, {} bytes]\n[image]\n[document]\n",
+            png.len(),
+            pdf.len()
         ),
         "{result}"
     );
-    assert_eq!(std::fs::read(format!("{root}/again.png")).unwrap(), png);
+    let document = viewed
+        .requests
+        .last()
+        .and_then(|request| {
+            request["messages"]
+                .as_array()?
+                .iter()
+                .flat_map(|message| message["content"].as_array().into_iter().flatten())
+                .filter(|block| block["type"] == "tool_result")
+                .flat_map(|block| block["content"].as_array().into_iter().flatten())
+                .find(|part| part["type"] == "document")
+                .cloned()
+        })
+        .expect("the tool result carries a document");
+    assert_eq!(document["source"]["media_type"], "application/pdf");
+    assert_eq!(document["title"], "document-2.pdf");
     backend.close().await;
-}
-
-/// The text of a result that attaches one image after it.
-fn attached_one(result: &str) -> &str {
-    let text = result
-        .strip_suffix("\n[image]")
-        .unwrap_or_else(|| panic!("an image after the output: {result}"));
-    assert!(!text.contains("[image]"), "one image: {result}");
-    text
 }
 
 // A few seconds: a real device installs the builtin package, and two turns
