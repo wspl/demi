@@ -7,6 +7,7 @@ import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { ChatSessionState, ConversationState, PendingSubmissionState } from '@demicodes/web-ui/agent/types'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
 import { demoModel, editedFile, shellView, type ShellView } from './fixtures/blocks'
+import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { usageAt } from './fixtures/catalog'
 import { printLive } from './live-command'
 
@@ -27,7 +28,8 @@ export type TurnFlowKind = 'turn' | 'undelivered' | 'offline' | 'resume' | 'retr
 export type SentMessage = Pick<PendingSubmissionState, 'text' | 'attachments'>
 
 /** The state `ChatSession` reads, over the full live conversation state the runtime keeps. */
-export type TurnFlowState = ConversationState & ChatSessionState
+/** The gallery's conversation: its whole transcript as `blocks`, which its history holds as one window. */
+export type TurnFlowState = ConversationState & ChatSessionState & { blocks: Block[] }
 
 const THINK_1 = 'The cookie name changed from sid to session. The helper already writes the new header. The test is the one still looking for sid.'
 const THINK_2 = 'The helper is fine. Update the assertion in auth.test.ts and leave cookie.ts alone.'
@@ -110,6 +112,12 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     cwd: options.cwd ?? '/',
     title: options.title ?? 'Login test',
     blocks: options.blocks ?? [],
+    get history() {
+      return wholeHistory(this.blocks)
+    },
+    shownAt: null,
+    instructions: [],
+    summaries: {},
     phase: 'idle',
     queue: [],
     pendingSteers: [],

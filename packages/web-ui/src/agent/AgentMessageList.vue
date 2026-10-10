@@ -30,11 +30,12 @@ import MessageEditRegion from './MessageEditRegion.vue'
 import { messageEditSuffixIds, offeredEditId } from './message-editing'
 import { useMessageForks, type MessageForkHandler } from './message-fork'
 import { useFollowSentMessages } from './useFollowSentMessages'
+import { distanceFromBottom } from '../composables/scroll-bottom'
 import { highlightFound } from '../ui/found-highlight'
 import { provideTranscript } from './edit-selection'
 import { transcriptRequests } from '../files/request-changes'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   conversationId: string
   /** The agent whose transcript this is: null for the conversation's own, a subagent's id otherwise. */
   node?: string | null
@@ -64,7 +65,24 @@ const props = defineProps<{
   pendingSubmission?: PendingSubmissionState | null
   /** A block to bring into view and mark for a moment, as a search result opened at it asks; once shown, `revealed` says so. */
   revealBlockId?: string | null
-}>()
+  /**
+   * Where `blocks`, the window the list shows, stands in its transcript
+   * (`web-application.md` § Transcript windows): whether it reaches the
+   * start and the end, and whether it is the latest, the only one that
+   * shows the turn's tail rows and offers to edit. A whole transcript, as
+   * the gallery gives, reaches both and is the latest.
+   */
+  atStart?: boolean
+  atEnd?: boolean
+  latest?: boolean
+  /** Each compaction marker's boundary's summary size, by the marker's id, for a boundary the window does not hold. */
+  summaries?: Record<string, number>
+}>(), {
+  // Vue reads an absent boolean prop as false; a list given no window is a whole transcript.
+  atStart: true,
+  atEnd: true,
+  latest: true,
+})
 
 const emit = defineEmits<{
   saveScrollState: [
@@ -81,6 +99,10 @@ const emit = defineEmits<{
   retryLoad: []
   retrySubmission: []
   revealed: []
+  /** The reader nears the start of the window, which does not reach the transcript's. */
+  readBefore: []
+  /** The reader nears the end of the window, which does not reach the transcript's. */
+  readAfter: []
 }>()
 
 const { states: forkStates, run: forkMessage } = useMessageForks(() => props.fork, () => props.conversationId)
@@ -98,7 +120,7 @@ const transcriptBlocks = computed(() => {
   }
   return visible
 })
-const editableUserId = computed(() => props.readOnly ? null : offeredEditId(props))
+const editableUserId = computed(() => props.readOnly || !props.latest ? null : offeredEditId(props))
 /**
  * The answer whose footer offers Regenerate: the last one after the message
  * the page offers to edit, since regenerating is that edit
@@ -119,7 +141,7 @@ function regenerate(): void {
     emit('regenerate', editableUserId.value)
   }
 }
-const tailBlocks = computed(() => listTailBlocks({
+const tailBlocks = computed(() => !props.latest ? [] : listTailBlocks({
   phase: props.phase,
   blocks: props.blocks,
   pendingCalls: props.pendingCalls ?? [],
@@ -133,7 +155,10 @@ const pendingCallRows = computed(() => tailBlocks.value.filter((block) => block.
 const otherTailBlocks = computed(() => tailBlocks.value.filter((block) => block.type !== 'pending_call'))
 const workBlocks = computed<MessageListBlock[]>(() => [...transcriptBlocks.value, ...pendingCallRows.value])
 // The summary size each compaction divider tells, by the id of the block that shows it.
-const summaryTokens = computed(() => compactionSummaryTokens(props.blocks))
+const summaryTokens = computed(() => new Map([
+  ...Object.entries(props.summaries ?? {}),
+  ...compactionSummaryTokens(props.blocks),
+]))
 const slotInput = computed(() => ({
   load: props.load ?? 'ready',
   backendAway: props.backendAway,
@@ -162,8 +187,10 @@ const visibleWorkBlocks = computed(() => {
     : blocks
 })
 const renderBlocks = computed<MessageListBlock[]>(() => [
+  ...(props.atStart ? [] : [{ type: 'history_edge', id: 'history-before' } as const]),
   ...groupWork(visibleWorkBlocks.value, props.phase === 'running'),
   ...otherTailBlocks.value,
+  ...(props.atEnd ? [] : [{ type: 'history_edge', id: 'history-after' } as const]),
 ])
 const { isEntering } = useChromeEntrance(
   () => visibleTranscriptBlocks.value,
@@ -281,6 +308,28 @@ const visibleHeightStyle = computed(() => viewportHeight.value > 0
   : {})
 
 useFollowSentMessages(() => renderBlocks.value, scrollToBottom)
+
+// Within a screen of an edge that is not the transcript's, the next page is
+// read there (`web-application.md` § Transcript windows); the host reads
+// each page once.
+watch(
+  [scrollOffset, () => props.blocks, viewportHeight, () => props.atStart, () => props.atEnd, () => props.revealBlockId],
+  () => {
+    const el = scrollContainer.value
+    // A block being brought into view places the list first; until then
+    // its scroll position belongs to the window shown before.
+    if (!el || paneStatus.value || props.revealBlockId) {
+      return
+    }
+    if (!props.atStart && el.scrollTop < el.clientHeight) {
+      emit('readBefore')
+    }
+    if (!props.atEnd && distanceFromBottom(el) < el.clientHeight) {
+      emit('readAfter')
+    }
+  },
+  { flush: 'post' },
+)
 
 // Composer or task-control growth covers the tail; a reader at the bottom stays there.
 // bottomOffset includes the permanent control row, even when its scroll button is hidden.

@@ -3,7 +3,7 @@ import { provideEditReads, provideEditSelection, type EditSelectionHandler } fro
 import type { ReadCallChange } from '../files/changes'
 import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import { PanelRight, Play, Radar, TextCursorInput } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/protocol'
@@ -42,6 +42,9 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
 import { resumeWaitsFor, sessionFailureNotice, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
+import { EMPTY_TRANSCRIPT, latestWindow } from '@demicodes/conversation-client'
+import { latestBlocks, shownWindow, windowEdges } from './history'
+import { provideBlockReader, type BlockReader } from './whole-blocks'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
 import PermissionCard from '../permissions/PermissionCard.vue'
 import type { PermissionDecision, PermissionRequestView } from '../permissions/types'
@@ -80,6 +83,14 @@ const props = withDefaults(defineProps<{
   /** A message to bring into view and mark for a moment, as a search result opened at it asks. */
   revealBlockId?: string | null
   /**
+   * Reads the record of an ended command a report names, so its terminal tab
+   * can open (`web-api.md` § Subagents and commands); absent, such a report
+   * opens nothing.
+   */
+  readCommand?: (commandId: string) => Promise<void>
+  /** Reads a block whole for a row the page holds light (`web-api.md` § Light form); absent, no row is light. */
+  readBlock?: BlockReader
+  /**
    * The host's connection banner says the backend is away
    * (`web-application.md` § A page of another build): the transcript adds no
    * Connecting row of its own while the conversation's socket waits for it.
@@ -114,24 +125,47 @@ const emit = defineEmits<{
   decidePermission: [id: string, decision: PermissionDecision]
   /** The message `revealBlockId` names is in view. */
   revealed: []
+  /** The reader nears the start of the window shown, which does not reach the transcript's (`web-application.md` § Transcript windows). */
+  readBefore: []
+  /** The reader nears the end of the window shown, which does not reach the transcript's. */
+  readAfter: []
+  /** Show the latest window, as the scroll-to-bottom button asks while another is shown. */
+  showLatest: []
+  /** Read a page of a subagent's transcript, for its panel. */
+  readSubagent: [id: string, at: 'latest' | 'before']
 }>()
 provideEditSelection(() => props.selectEdit)
+provideBlockReader(() => props.readBlock)
 provideEditReads(() => props.readEdit)
 // A running call shows its command's output under it; once the call
 // returned, a command that still runs is the dock's (`runtime.md`
 // § Rendering boundary).
 provideLiveCalls((toolUseId) => callTerminal(props.conversation.terminals, undefined, toolUseId))
 // A report row opens its command's terminal tab, which the panel shows.
-provideCommandOpener((commandId) => terminals.value.some((terminal) => terminal.id === commandId)
-  ? () => { activeTerminalId.value = commandId }
-  : undefined)
+// A report row opens its command's terminal tab, which the panel shows,
+// reading the record of a command that ended before the page saw it.
+provideCommandOpener((commandId) => {
+  if (terminals.value.some((terminal) => terminal.id === commandId)) {
+    return () => { activeTerminalId.value = commandId }
+  }
+  const read = props.readCommand
+  return read && (() => {
+    void read(commandId).then(() => { activeTerminalId.value = commandId }, () => {})
+  })
+})
 const terminals = computed(() =>
   dockTerminals(props.conversation.terminals, (subagentId) =>
-    subagentId === undefined
-      ? props.conversation.blocks
-      : props.conversation.subagents.find((agent) => agent.id === subagentId)?.blocks ?? [],
+    latestBlocks(subagentId === undefined
+      ? props.conversation.history
+      : props.conversation.subagents.find((agent) => agent.id === subagentId)?.history ?? EMPTY_TRANSCRIPT),
   ),
 )
+/** The window of the transcript the list shows, and where it stands. */
+const shown = computed(() => shownWindow(props.conversation.history, props.conversation.shownAt))
+const shownEdges = computed(() => windowEdges(props.conversation.history, shown.value))
+const shownLatest = computed(() => shown.value === latestWindow(props.conversation.history) || shownEdges.value.atEnd)
+/** The blocks at the transcript's end, which a turn, its recovery and the message offered to edit read. */
+const latest = computed(() => latestBlocks(props.conversation.history))
 // Relative paths resolve against the directory the conversation works in.
 provideMessageFiles(() => props.files && { ...props.files, cwd: props.conversation.cwd })
 const surface = ref<{ dockHeight: number }>()
@@ -192,7 +226,7 @@ const canRecover = computed(
 // the status pane that already replaced the transcript, never under an error
 // record that already says it.
 const failureNotice = computed(() => {
-  const visible = getVisibleBlocks(props.conversation.blocks)
+  const visible = getVisibleBlocks(latest.value)
   return sessionFailureNotice(
     props.conversation.load,
     props.conversation.lastError,
@@ -203,13 +237,13 @@ const failureNotice = computed(() => {
 // One control in the dock: Resume after an error, Continue after the user's Stop.
 const recovery = computed(() =>
   canRecover.value
-    ? turnRecovery(props.conversation.phase, getVisibleBlocks(props.conversation.blocks))
+    ? turnRecovery(props.conversation.phase, getVisibleBlocks(latest.value))
     : null,
 )
 /** The primary Host Resume waits for while it is offline, which the disabled chip names. */
 const resumeWait = computed(() =>
   recovery.value === 'resume'
-    ? resumeWaitsFor(getVisibleBlocks(props.conversation.blocks), props.primaryHost ?? null)
+    ? resumeWaitsFor(getVisibleBlocks(latest.value), props.primaryHost ?? null)
     : null,
 )
 function recover(): void {
@@ -223,11 +257,13 @@ const canEdit = computed(() => !!props.editVersion && !props.messageEdit
   && !props.conversation.subagents.some((agent) => agent.phase === 'running'))
 
 /** The message the page offers to edit, and to regenerate the answer of; null for none. */
-const offeredId = computed(() => canEdit.value ? offeredEditId(props.conversation) : null)
+const offeredId = computed(() => canEdit.value
+  ? offeredEditId({ ...props.conversation, blocks: latest.value })
+  : null)
 
 /** The offered message's block, with the version an edit of it is taken at. */
 function offered(id: string) {
-  const block = props.conversation.blocks.find((item) => item.id === id)
+  const block = latest.value.find((item) => item.id === id)
   return block && props.editVersion && id === offeredId.value
     ? { block, version: props.editVersion }
     : null
@@ -256,6 +292,15 @@ const list = ref<{
   isAtBottom: boolean
   scrollToBottom: () => void
 }>()
+/** The button's way to the end: to the latest window when another is shown, then to its end. */
+function scrollToBottom(): void {
+  if (!shownLatest.value) {
+    emit('showLatest')
+    void nextTick(() => list.value?.scrollToBottom())
+    return
+  }
+  list.value?.scrollToBottom()
+}
 const { activeSubagentId, activeTerminalId, toggleAgents, toggleTerminals, close } =
   useSessionPanels(
     () => props.conversation.subagents,
@@ -355,7 +400,11 @@ watch(() => props.conversation.id, close)
             class="min-h-0 flex-1"
             :key="conversation.id"
             :conversation-id="conversation.id"
-            :blocks="conversation.blocks"
+            :blocks="shown.blocks"
+            :at-start="shownEdges.atStart"
+            :at-end="shownEdges.atEnd"
+            :latest="shownLatest"
+            :summaries="conversation.summaries"
             :pending-calls="conversation.pendingCalls"
             :queue="conversation.queue"
             :pending-steers="conversation.pendingSteers"
@@ -383,12 +432,14 @@ watch(() => props.conversation.id, close)
             @edit-user="editUser"
             @regenerate="regenerate"
             @retry-load="emit('retryLoad')"
+            @read-before="emit('readBefore')"
+            @read-after="emit('readAfter')"
           />
         </div>
         <template #dock>
           <SessionDock
-            :show-scroll-to-bottom="!!list && !list.isAtBottom"
-            @scroll-to-bottom="list?.scrollToBottom()"
+            :show-scroll-to-bottom="!shownLatest || (!!list && !list.isAtBottom)"
+            @scroll-to-bottom="scrollToBottom"
           >
             <template v-if="permissionRequests?.length" #above>
               <PermissionCard
@@ -438,6 +489,7 @@ watch(() => props.conversation.id, close)
             :terminals="conversation.terminals"
             @abort="emit('abortSubagents')"
             @abort-agent="(id) => emit('abortSubagent', id)"
+            @read="(id, at) => emit('readSubagent', id, at)"
           />
           <TerminalPanel
             v-model:active-id="activeTerminalId"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { computed, ref } from 'vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
@@ -42,12 +43,12 @@ const createdAt = new Date(Date.now() - 120_000).toISOString()
 const conversation = computed<ChatSessionState>(() => ({
   id: `long-text-${language.value}`, cwd: WORKSPACE_ROOT, title: 'Sync Stall', phase: 'idle',
   load: 'ready', lastError: null, pendingAction: null, failures: {}, archived: false, queue: [], pendingSteers: [], pendingCalls: [],
-  scroll: null, subagents: [], terminals: [],
-  blocks: [
+  scroll: null, subagents: [], terminals: [], shownAt: null, summaries: {},
+  history: wholeHistory([
     { type: 'user', id: 'user-1', turnId: 'turn-1', model: demoModel, createdAt,
       content: [{ type: 'text', text: 'Why does the sync stall after my laptop wakes up?' }], preamble: null },
     { type: 'text', id: 'answer-1', model: demoModel, createdAt, forkable: true, text: text.value },
-  ],
+  ]),
 }))
 
 const place = {

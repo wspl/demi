@@ -15,8 +15,9 @@ export type Failures = Record<string, ProviderFailureFacts>
 
 /**
  * What an `ConversationClient` tells its listeners. Most events are the server frame
- * as it arrived; transcript events carry the transcript as the client holds
- * it after the frame, and none carries a revision, which the client keeps.
+ * as it arrived; the transcript events carry what the frame brought, which
+ * the page applies to the parts of the transcript it holds, and none
+ * carries a revision, which the client keeps.
  */
 export type ClientSessionEvent =
   | ServerFrameOf<'opened'>
@@ -34,17 +35,20 @@ export type ClientSessionEvent =
   | ServerFrameOf<'error'>
   | ServerFrameOf<'subagent'>
   | {
+      /** The blocks from `start` on (`runtime.md` § Where a reset starts). */
       type: 'transcript_reset'
+      start: number
+      length: number
       blocks: Block[]
       /** The facts of the error blocks in `blocks`. */
       failures: Failures
+      /** The index the client named in its `open` or `sync_transcript`; a reset elsewhere means a rewrite. */
+      asked: number | undefined
     }
   | {
       type: 'transcript_patch'
       patches: TranscriptPatch[]
-      /** The transcript with the patches applied. */
-      blocks: Block[]
-      /** The facts of every error block since the last reset. */
+      /** The facts of the error blocks the patches bring. */
       failures: Failures
     }
   | {
@@ -62,6 +66,8 @@ export type ClientSessionEvent =
   | {
       type: 'subagent_transcript_reset'
       subagentId: string
+      start: number
+      length: number
       blocks: Block[]
       failures: Failures
     }

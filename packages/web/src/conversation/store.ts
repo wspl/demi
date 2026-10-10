@@ -41,7 +41,8 @@ import {
   batchAnswerSchema,
   createdConversationSchema,
   conversationUpdateSchema,
-  transcriptSchema,
+  subagentsSchema,
+  transcriptPageSchema,
   type AttachedHosts,
   type ConversationBatch,
   type ConversationDraft,
@@ -52,7 +53,8 @@ import {
   type DraftFile,
   type ReadRequest,
   type SidebarReorder,
-  type Transcript,
+  type Subagents,
+  type TranscriptPage,
 } from '../api/generated/web-api'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { createConversationUploads } from './uploads'
@@ -63,7 +65,8 @@ import { useSession } from '../auth/session'
 import type { Conversation, ProductAttachment } from '../state/types'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 import { createDraftSync, hasUnsavedDraft } from './draft-sync'
-import { transcriptTerminals } from './terminals'
+import { createHistoryReads } from './history'
+import { EMPTY_TRANSCRIPT, addPage } from '@demicodes/web-ui/transport/protocol'
 import {
   deleteDraft,
   readDraft,
@@ -124,6 +127,11 @@ export const useConversations = defineStore('conversations', () => {
   })
   let lifetime = new AbortController()
   const cache = new ConversationCache()
+  /** The history a conversation's page reads beyond its opening (`web-application.md` § Transcript windows). */
+  const history = createHistoryReads(
+    () => lifetime.signal,
+    (conversation) => cache.get(conversation.id)?.runtime != null,
+  )
   /**
    * Counts the times New gave the user the draft already shown, whose
    * composer then takes the focus again.
@@ -258,7 +266,10 @@ export const useConversations = defineStore('conversations', () => {
       ...metadata({ ...record, cwd: record.cwd ?? '' }),
       persistence: 'synced',
       status: summaryStatus(record.status),
-      blocks: [],
+      history: EMPTY_TRANSCRIPT,
+      shownAt: null,
+      instructions: [],
+      summaries: {},
       phase: 'idle',
       queue: [],
       pendingSteers: [],
@@ -776,12 +787,13 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * The reads an opening needs that name only the conversation: its
-   * transcript, its attached hosts and its draft, sent together
-   * (`web-application.md` § Requests for one action).
+   * The reads an opening needs that name only the conversation: the latest
+   * page of its transcript, its subagents, its attached hosts and its
+   * draft, sent together (`web-application.md` § Requests for one action).
    */
   interface OpeningReads {
-    transcript: Promise<Transcript>
+    transcript: Promise<TranscriptPage>
+    subagents: Promise<Subagents>
     hosts: Promise<AttachedHosts>
     draft: Promise<ConversationDraft>
   }
@@ -794,7 +806,8 @@ export const useConversations = defineStore('conversations', () => {
   function openingReads(id: string, signal: AbortSignal): OpeningReads {
     const path = `/conversations/${encodeURIComponent(id)}`
     const reads = {
-      transcript: apiRequest(`${path}/transcript`, { signal }).then((response) => readResponse(response, transcriptSchema)),
+      transcript: apiRequest(`${path}/transcript`, { signal }).then((response) => readResponse(response, transcriptPageSchema)),
+      subagents: apiRequest(`${path}/subagents`, { signal }).then((response) => readResponse(response, subagentsSchema)),
       hosts: apiRequest(`${path}/hosts`, { signal }).then((response) => readResponse(response, attachedHostsSchema)),
       draft: loadDraft(id, signal),
     }
@@ -909,21 +922,25 @@ export const useConversations = defineStore('conversations', () => {
       }
     })
     hostsRead.catch(() => {})
-    const [transcript] = await Promise.all([reads.transcript, draftRead])
+    const [page, listed] = await Promise.all([reads.transcript, reads.subagents, draftRead])
     signal.throwIfAborted()
-    conversation.blocks = transcript.blocks
-    conversation.failures = transcript.failures ?? {}
+    // The latest page is the transcript's end until the stream says more.
+    conversation.history = addPage(EMPTY_TRANSCRIPT, page, false)
+    conversation.shownAt = null
+    conversation.failures = page.failures ?? {}
+    conversation.instructions = page.instructions
+    conversation.summaries = Object.fromEntries(page.summaries.map((summary) => [summary.marker, summary.summaryTokens]))
     reconcileSubmission(conversation)
-    conversation.terminals = transcriptTerminals(transcript.blocks)
-    conversation.subagents = transcript.subagents.map(({ subagent, blocks, failures }) => ({
+    conversation.terminals = []
+    conversation.subagents = listed.subagents.map((subagent) => ({
       pendingCalls: [],
       id: subagent.subagentId,
       name: subagent.description,
       phase: subagent.phase,
       startedAt: subagent.startedAt,
       endedAt: subagent.endedAt ?? undefined,
-      blocks,
-      failures: failures ?? {},
+      history: EMPTY_TRANSCRIPT,
+      failures: {},
     }))
     updateLiveStatus(conversation)
     conversation.load = 'ready'
@@ -1690,6 +1707,7 @@ export const useConversations = defineStore('conversations', () => {
     listStatus,
     composerFocusRequests,
     reveal,
+    history,
     activate,
     create,
     fork,

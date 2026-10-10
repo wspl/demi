@@ -33,6 +33,7 @@ mod editing;
 mod families;
 mod files;
 mod forks;
+mod history;
 mod holding_edge;
 mod hosts;
 mod install;

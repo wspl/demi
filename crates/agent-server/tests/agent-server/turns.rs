@@ -141,6 +141,25 @@ async fn a_message_runs_to_its_response_and_its_patches_rebuild_the_transcript()
     };
     assert_eq!(*blocks, live.blocks);
     assert_ne!(version.epoch, live.version.epoch);
+
+    // A page that holds the blocks up to the last one opens from there: the
+    // reset sends that block and none before it. One whose block there is
+    // no longer what it holds gets the latest page, which here is all.
+    let last = live.blocks.len() - 1;
+    for (edge, start) in [(live.blocks[last].id().clone(), last), (live.blocks[0].id().clone(), 0)] {
+        let mut page = fixture.client();
+        page.send(ClientFrame::Open {
+            from: Some(u32::try_from(last).unwrap()),
+            edge: Some(edge),
+        })
+        .await;
+        let handshake = page.next_until(is_pending_steers).await;
+        let ServerFrame::TranscriptReset { start: sent, length, blocks, .. } = &handshake[1] else {
+            panic!("{handshake:?}");
+        };
+        assert_eq!((*sent as usize, *length as usize), (start, live.blocks.len()));
+        assert_eq!(blocks[..], live.blocks[start..]);
+    }
 }
 
 /// A failed run ends its turn with an `error` frame, which the page shows

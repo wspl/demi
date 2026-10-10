@@ -238,7 +238,10 @@ async fn two_connections_of_one_tree_receive_its_events_and_each_its_own_replies
         })
         .await;
     second.send(ClientFrame::Abort {}).await;
-    second.send(ClientFrame::SyncTranscript {}).await;
+    second.send(ClientFrame::SyncTranscript {
+            from: None,
+            edge: None,
+        }).await;
     second
         .send(ClientFrame::ShellWrite {
             command_id: CommandId::try_from("no-such-command").unwrap(),
@@ -425,7 +428,10 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
     for frame in [
         send("m1", "hi"),
         ClientFrame::Abort {},
-        ClientFrame::SyncTranscript {},
+        ClientFrame::SyncTranscript {
+            from: None,
+            edge: None,
+        },
         ClientFrame::DequeueMessage {
             message_id: turn("m1"),
         },

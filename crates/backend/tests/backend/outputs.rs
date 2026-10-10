@@ -8,6 +8,10 @@
 
 use demi_agent_tools::testing::{field, shown_output};
 use demi_provider_common::testing::MockVendor;
+use demi_shared_types::ToolView;
+use demi_web_api_protocol::conversations::CommandRecord;
+use demi_web_api_protocol::error::ErrorCode;
+use reqwest::StatusCode;
 
 use crate::conversations::{anthropic_at, create, on_device};
 use crate::support::{Harness, eventually};
@@ -276,6 +280,24 @@ async fn a_commands_record_keeps_how_it_ended_for_its_page_header() {
         .await;
     let command = field(&failed.received[0], "commandId").to_owned();
     assert_eq!(field(&failed.received[0], "exitCode"), "3");
+
+    // Its terminal, opened after it ended, reads its record from the call
+    // that started it (`web-api.md` § Subagents and commands).
+    let record = backend
+        .get(&format!("/api/conversations/{ENDED}/commands/{command}"), Some(&master))
+        .await;
+    assert_eq!(record.status, StatusCode::OK, "{}", String::from_utf8_lossy(&record.body));
+    let record: CommandRecord = record.json();
+    assert_eq!((record.script.as_str(), record.subagent_id), ("echo failing; exit 3", None));
+    let Some(ToolView::Shell(view)) = record.view else {
+        panic!("a shell call's view")
+    };
+    assert_eq!(view.exit_code, Some(3));
+    assert_eq!(view.chunks.iter().map(|chunk| chunk.text.as_str()).collect::<String>(), "failing\n");
+    let unknown = backend
+        .get(&format!("/api/conversations/{ENDED}/commands/999"), Some(&master))
+        .await;
+    assert_eq!(unknown.refusal(), (StatusCode::NOT_FOUND, ErrorCode::NotFound));
 
     // `demi shell output`'s header names the end its record keeps.
     let read = work

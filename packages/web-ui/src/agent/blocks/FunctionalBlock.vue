@@ -8,6 +8,7 @@ import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useFollowEnd } from '../../composables/useFollowEnd'
+import { useWholeBlock } from '../whole-blocks'
 
 const ACTIVE_OUTPUT_CLOSE_DELAY_MS = 1000
 
@@ -51,7 +52,10 @@ const hasBodySlot = () => !!slots['body']
 const hasPinnedSlot = () => !!slots['pinned']
 // Read at render time: a conditional icon slot changes between renders, and slots are not reactive.
 const showIcon = () => !!slots['icon'] || props.tone === 'danger'
-const isExpandable = computed(() => props.expandable || hasPinnedSlot() || hasBodySlot() || !!props.errorText)
+// A row whose block the page holds light opens to read it whole, before its body is there.
+const whole = useWholeBlock()
+const isExpandable = computed(() => props.expandable || whole.light.value || hasPinnedSlot() || hasBodySlot() || !!props.errorText)
+const isLoading = computed(() => props.loading || whole.loading.value)
 const bodyArea = ref<InstanceType<typeof ScrollArea>>()
 const bodyScroll = computed(() => bodyArea.value?.el)
 const bodyContent = ref<HTMLElement>()
@@ -103,6 +107,13 @@ watch(
 
 onBeforeUnmount(clearCloseTimer)
 
+// However the row opens, by its face or by its owner, a light block is read whole.
+watch(isOpen, (open) => {
+  if (open) {
+    whole.open()
+  }
+})
+
 useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
 </script>
 
@@ -138,13 +149,13 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
           <span
             v-if="label"
             class="shrink-0"
-            :class="loading ? 'thinking-shimmer' : ''"
+            :class="isLoading ? 'thinking-shimmer' : ''"
           >{{ label }}</span>
-          <slot v-if="slots['default']" :loading="loading" />
+          <slot v-if="slots['default']" :loading="isLoading" />
           <span
             v-else-if="detail"
             class="min-w-0 truncate font-mono text-fg-body group-hover:text-fg-emphasis"
-            :class="loading ? 'thinking-shimmer' : ''"
+            :class="isLoading ? 'thinking-shimmer' : ''"
           >{{ detail }}</span>
           <!-- A failed call reads as its row does, marked after its title, as a failed command is. -->
           <Tag v-if="tone === 'danger'" tone="danger" class="shrink-0">Failed</Tag>

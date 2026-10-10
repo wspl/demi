@@ -17,7 +17,10 @@ pub use server::{
     AbortResult, AbortTarget, CommandView, EditOutcome, Failures, JobPhase, ServerFrame,
     ShellStatus, SteerOutcome, SubagentEvent, SubagentJob,
 };
-pub use transcript::{TranscriptPatch, TranscriptVersion};
+pub use transcript::{
+    LIGHT_INPUT_BYTES, PAGE_BYTES, PageAt, TranscriptPatch, TranscriptVersion, index_u32, latest_page_start, light,
+    light_bytes, page, requests, reset_start,
+};
 
 use demi_shared_types::DecodeError;
 

@@ -16,7 +16,7 @@ use serde_json::Value;
 
 use super::{
     PatchBatch, is_interruption,
-    journal::{DirtyRows, Journal},
+    journal::{DirtyRows, Journal, patch_index},
 };
 use crate::IdSource;
 
@@ -206,15 +206,30 @@ impl TranscriptLog {
     }
 
     /// Replaces every block with `blocks`, as a history rewrite publishes
-    /// its retained history, and answers the batch that publishes it: one
-    /// `replace` patch. The changes recorded before it are superseded, and
+    /// its retained history, and answers the batch that publishes it: a
+    /// `truncate` at the first block that differs and an `add` for each
+    /// block from there, never the blocks before it (`runtime.md` § Patches
+    /// and versions). The changes recorded before it are superseded, and
     /// the rewrite's own save wrote its rows, so the batch marks none.
     pub fn replace_all(&mut self, blocks: Vec<Block>) -> PatchBatch {
         self.journal = Journal::default();
         self.revision += 1;
-        let patches = vec![TranscriptPatch::Replace {
-            value: blocks.clone(),
-        }];
+        let kept = self
+            .blocks
+            .iter()
+            .zip(&blocks)
+            .take_while(|(old, new)| old == new)
+            .count();
+        let patches = std::iter::once(TranscriptPatch::Truncate {
+            length: patch_index(kept),
+        })
+        .chain(blocks[kept..].iter().enumerate().map(|(offset, block)| {
+            TranscriptPatch::Add {
+                index: patch_index(kept + offset),
+                value: block.clone(),
+            }
+        }))
+        .collect();
         self.blocks = blocks;
         PatchBatch {
             revision: self.revision,
