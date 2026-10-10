@@ -110,7 +110,7 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
 <template>
   <div class="overflow-hidden">
     <div
-      class="flex h-7 cursor-default select-none items-center gap-2 text-chrome transition-colors duration-200 ease-out"
+      class="flex h-7 cursor-default select-none items-center gap-2 text-row transition-colors duration-200 ease-out"
       :class="isExpandable ? 'group text-fg-row hover:text-fg-muted' : 'text-fg-row'"
       :role="isExpandable ? 'button' : undefined"
       :tabindex="isExpandable ? 0 : undefined"
