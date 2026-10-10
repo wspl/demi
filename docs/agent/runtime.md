@@ -1674,15 +1674,19 @@ commands*, and a click opens it to every step.
   running turn, as what the agent does now; once anything follows it or the
   turn ends, it has nothing to show and goes, from the transcript and from
   the steps of an opened row.
-- The run at the end of a running turn is always one row. Folded, the row is
-  its newest step, shimmering while it runs: a step that arrives rolls over
-  the one before, a call being written rolls over to its description once
-  written, and the call's block, which then takes its place, keeps that face.
-  Opened, the row stands still as a stack and what runs, *Running 4
-  commands*, with the steps under it; opening and folding change the row at
-  once rather than rolling it. The run's first step rolls into the tail row
-  first, as any block does, and a running row is the turn's activity, so no
-  Requesting row shows under it.
+- The run at the end of a running turn is one row. While it holds a lone
+  call, that row is the call's own, as an ended lone call is, and opening it
+  shows the call, not a stack of one step. From its second step on, the row
+  is the run's: folded, it is its newest step, shimmering while it runs, a
+  step that arrives replacing the one before, a call being written rolling
+  over to its description once written, and the call's block, which then
+  takes its place, keeping that face. Opened, the row stands still as a
+  stack and what runs, *Running 4 commands*, with the steps under it;
+  opening and folding change the row at once rather than rolling it. The
+  run's first step rolls into the tail row first, as any block does, and a
+  run's row is the turn's activity, so no Requesting row shows under it; a
+  lone call that ended is not, and the turn's Requesting shows under it
+  until the next step comes.
 - An ended run stays one row when it holds a call and another step, and a
   lone thinking stays its own row; a lone call is its own row. The row reads
   what the run did, each kind of call once, in the order the run first did

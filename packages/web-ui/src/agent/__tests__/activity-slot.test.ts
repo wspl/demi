@@ -43,10 +43,13 @@ test('a running turn requests after a completed tool while waiting for the model
 })
 
 test('a running group is its own activity: the next steps roll over its face, not into the tail row', () => {
-  const transcript = [userBlock(), toolCallBlock('completed')]
+  const transcript = [userBlock(), thinkingBlock(), toolCallBlock('completed')]
   expect(kind('running', transcript, groupWork(transcript, true))).toBeNull()
   // Without the grouping the same tail waits for the model.
   expect(kind('running', transcript)).toBe('requesting')
+  // A lone call is its own row: once it ended, the turn waits for the model under it.
+  const lone = [userBlock(), toolCallBlock('completed')]
+  expect(kind('running', lone, groupWork(lone, true))).toBe('requesting')
 })
 
 test('the slot stays hidden while the tool row itself is executing', () => {
