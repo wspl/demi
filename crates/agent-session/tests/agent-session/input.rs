@@ -1021,7 +1021,7 @@ async fn waiting_reports_and_running_commands_survive_dispose() {
         Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
     );
     assert!(continuation.interrupted);
-    restored.resume().unwrap().await.unwrap();
+    restored.resume(None).unwrap().await.unwrap();
     assert_eq!(steers(&later.requests()[0].items), [ended_report("17", "Build")]);
     commands.end("18");
     until(|| later.requests().len() == 2).await;
