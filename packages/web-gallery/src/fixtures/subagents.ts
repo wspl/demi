@@ -54,7 +54,7 @@ function shell(
     createdAt,
     model: demoModel,
     toolUseId: `${id}-use`,
-    toolName: 'shell_exec',
+    toolName: 'shell',
     input: JSON.stringify({
       script: `echo ${description}`,
       description,

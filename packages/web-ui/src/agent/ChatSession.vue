@@ -25,7 +25,6 @@ import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
 import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { useSessionPanels } from './useSessionPanels'
 import { provideLiveCalls } from './live-calls'
-import { commandTitles, provideCommandReferences } from './command-references'
 import { callTerminal, dockTerminals } from './terminals'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import type { ChatSessionState, PendingSubmissionState } from './types'
@@ -114,15 +113,6 @@ provideEditReads(() => props.readEdit)
 // returned, a command that still runs is the dock's (`runtime.md`
 // § Rendering boundary).
 provideLiveCalls((toolUseId) => callTerminal(props.conversation.terminals, undefined, toolUseId))
-// A look or a wait may name any agent's command; a list names its own
-// transcript's with a jump, and these by their titles alone.
-const conversationCommands = computed(() =>
-  commandTitles([
-    ...props.conversation.blocks,
-    ...props.conversation.subagents.flatMap((agent) => agent.blocks),
-  ]),
-)
-provideCommandReferences((commandId) => conversationCommands.value(commandId))
 const terminals = computed(() =>
   dockTerminals(props.conversation.terminals, (subagentId) =>
     subagentId === undefined
