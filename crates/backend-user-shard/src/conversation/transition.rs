@@ -18,6 +18,7 @@
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::{ConversationChange, RecordChange, SettingsChange};
 use demi_backend_host_access::root_of;
+use demi_agent_tools::HeldWaits;
 use demi_backend_host_access::transition::{ChangeRefusal, Switched};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId};
 use demi_backend_page_sync::Part;
@@ -54,7 +55,7 @@ impl Shard {
         &self,
         id: &ConversationId,
         change: ConversationChange,
-    ) -> Result<Option<Switched>, ChangeRefusal> {
+    ) -> Result<Option<Moved>, ChangeRefusal> {
         let reorders = matches!(
             change,
             ConversationChange::Record(RecordChange::Pinned(_) | RecordChange::Archived(_))
@@ -71,7 +72,7 @@ impl Shard {
         &self,
         id: &ConversationId,
         change: ConversationChange,
-    ) -> Result<Option<Switched>, ChangeRefusal> {
+    ) -> Result<Option<Moved>, ChangeRefusal> {
         let host = self.host_shard();
         let record = self.services().control.conversation(id.clone()).await?;
         let Some(record) = record.filter(|record| record.owner == *self.user()) else {
@@ -122,7 +123,17 @@ impl Shard {
             }
             change => change,
         };
-        let tree = self.reserve_idle_tree(&record.id)?;
+        // A tree whose only work is calls that wait for its offline primary
+        // Host moves all the same: the calls are held, so none goes on
+        // before the move ends them (`sessions-and-targets.md` § Switch the
+        // primary target).
+        let (tree, waiting) = match self.reserve_idle_tree(&record.id) {
+            Ok(tree) => (tree, None),
+            Err(refusal) => match (&change, self.hold_waiting_calls(&record.id)) {
+                (ConversationChange::Target(_), Some(held)) => (None, Some(held)),
+                _ => return Err(refusal),
+            },
+        };
         let hold = host.hold_for_transition(&record.id, tree).await?;
         let committed = match change {
             ConversationChange::Target(to) => {
@@ -153,7 +164,36 @@ impl Shard {
             }
         };
         drop(hold);
-        committed
+        // A move that failed drops the waiting calls' hold: they wait on.
+        // One that was made ends them, once the file gate is free again.
+        Ok(match (committed?, waiting) {
+            (Some(switched), Some(waiting)) => {
+                self.end_waiting_calls(&record.id, &switched, waiting).await;
+                Some(Moved { switched, told: true })
+            }
+            (switched, _) => switched.map(|switched| Moved { switched, told: false }),
+        })
+    }
+
+    /// Holds the calls of the conversation's live tree that wait for its
+    /// offline primary Host, when they are all the tree does.
+    fn hold_waiting_calls(&self, id: &ConversationId) -> Option<HeldWaits> {
+        self.agent().tree(&root_of(id))?.hold_waiting_calls()
+    }
+
+    /// The end of a move made while the tree's calls waited for the offline
+    /// primary Host (`sessions-and-targets.md` § Switch the primary target):
+    /// the agent is told of the move, always, and only then does each held
+    /// call end as not run, so the turn takes the message at its next
+    /// boundary and its next request carries the new execution context.
+    async fn end_waiting_calls(&self, id: &ConversationId, switched: &Switched, waiting: HeldWaits) {
+        self.tell_of_move(id, switched).await;
+        let to = self.target_host(&switched.switch.to).await;
+        waiting.end(|from| {
+            format!(
+                "Tool call not run: the user moved this conversation from {from} to {to} while this call waited for {from}, which was offline. Run it again there if it is still needed."
+            )
+        });
     }
 
     /// Reserves the conversation's live tree while it does nothing by itself
@@ -237,11 +277,13 @@ impl Shard {
         for (fields, change) in changes {
             let outcome = self.transition_switching(id, change).await;
             // The switch is made; the user's message about it wakes the
-            // root, which reads it with the new context block.
+            // root, which reads it with the new context block. A move from
+            // a waiting turn told it already.
             if patch.notify_agent
-                && let Ok(Some(switched)) = &outcome
+                && let Ok(Some(moved)) = &outcome
+                && !moved.told
             {
-                self.tell_of_move(id, switched).await;
+                self.tell_of_move(id, &moved.switched).await;
             }
             for field in fields {
                 let result = match &outcome {
@@ -297,6 +339,12 @@ impl Shard {
             tracing::warn!(conversation = %id, "the agent was not told of the move; it reads it from its next context block: {error}");
         }
     }
+}
+
+/// A target switch made, and whether the agent was told of it already.
+struct Moved {
+    switched: Switched,
+    told: bool,
 }
 
 fn failed(field: PatchField, refusal: &ChangeRefusal) -> FieldResult {

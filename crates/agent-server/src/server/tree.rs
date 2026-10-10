@@ -17,9 +17,11 @@ use std::{
     time::Duration,
 };
 
-use demi_agent_session::{Continuation, ModelSwitch, SessionEvent, Settle, Status, Subscription};
+use demi_agent_session::{
+    Continuation, Execution, ModelSwitch, SessionEvent, Settle, Status, Subscription,
+};
 use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
-use demi_agent_tools::{HostResolver, shell_output};
+use demi_agent_tools::{HeldWaits, HostResolver, HostWaits, shell_output};
 use demi_agent_transcript::IdSource;
 use demi_conversation_socket_protocol::ServerFrame;
 use demi_host_interface::RegisterError;
@@ -70,6 +72,9 @@ pub struct Tree<H: HostResolver> {
     sink: Rc<FrameSink>,
     /// The commands whose new output waits for the pages.
     live: Rc<LiveOutput>,
+    /// The calls in flight in every node, and which of them wait for their
+    /// Host.
+    waits: Rc<HostWaits>,
     /// The root session's events as frames, until the tree is dropped.
     _frames: Subscription,
     /// Disposes the tree once it has stayed detached and quiescent.
@@ -243,6 +248,20 @@ impl<H: HostResolver> Tree<H> {
         let runtime = deps.providers.runtime(root, &model).await?;
         let sink = Rc::new(FrameSink::new());
         let live = LiveOutput::new(sink.clone());
+        // Each change of a node's waiting calls goes to the pages as the
+        // node's whole list.
+        let waits = HostWaits::new({
+            let sink = Rc::downgrade(&sink);
+            let root = root.clone();
+            move |waits: &HostWaits, node: &NodeId| {
+                if let Some(sink) = sink.upgrade() {
+                    sink.emit(ServerFrame::WaitingCalls {
+                        subagent_id: (*node != root).then(|| node.clone()),
+                        waiting_calls: waits.waiting(node),
+                    });
+                }
+            }
+        });
         let assembled = node::assemble(NodeSpec {
             origin,
             role: NodeRole::Root,
@@ -259,6 +278,7 @@ impl<H: HostResolver> Tree<H> {
             store: store.clone(),
             shells: deps.shells.clone(),
             feed: live.feed(None),
+            waits: waits.clone(),
             admission: admission.clone(),
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
@@ -324,6 +344,7 @@ impl<H: HostResolver> Tree<H> {
                 disposing: Cell::new(false),
                 sink,
                 live,
+                waits,
                 _frames: frames,
                 _eviction: AbortOnDropHandle::new(eviction),
                 _working: AbortOnDropHandle::new(working),
@@ -472,6 +493,29 @@ impl<H: HostResolver> Tree<H> {
         !self.works() && !self.live.runs_commands()
     }
 
+    /// Holds the calls that wait for the conversation's offline primary
+    /// Host, for a move of the conversation (`sessions-and-targets.md`
+    /// § Switch the primary target), when that waiting is all the tree
+    /// does: each node is idle or runs calls that all wait. None when the
+    /// tree works otherwise, or no call waits. A running command keeps the
+    /// move refused too: its job holds the conversation's file gate until
+    /// it ends, which a switch reserves.
+    pub fn hold_waiting_calls(&self) -> Option<HeldWaits> {
+        if !self.starting.borrow().is_empty() || self.live.runs_commands() {
+            return None;
+        }
+        let only_waits = self.nodes().iter().all(|node| {
+            let session = node.session();
+            quiescent(&session.status())
+                || (session.execution() == Execution::ToolExecuting
+                    && self.waits.only_waits(node.id()))
+        });
+        if !only_waits {
+            return None;
+        }
+        self.waits.hold()
+    }
+
     /// A watch that wakes at each change that may make the tree quiescent or
     /// not, or its admission free to reserve: its root's status, a child's
     /// start or close, a command's start or end, a lease or a reservation of
@@ -513,6 +557,10 @@ impl<H: HostResolver> Tree<H> {
             },
             ServerFrame::PendingSteers {
                 pending_steers: session.pending_steers(),
+            },
+            ServerFrame::WaitingCalls {
+                subagent_id: None,
+                waiting_calls: self.waits.waiting(self.root.id()),
             },
             ServerFrame::PendingCalls {
                 subagent_id: None,

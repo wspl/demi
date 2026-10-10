@@ -29,6 +29,7 @@ export type ClientSessionEvent =
   | ServerFrameOf<'steer_result'>
   | ServerFrameOf<'abort_result'>
   | ServerFrameOf<'shell_output'>
+  | ServerFrameOf<'waiting_calls'>
   | ServerFrameOf<'shell_write_result'>
   | ServerFrameOf<'retry_scheduled'>
   | ServerFrameOf<'error'>

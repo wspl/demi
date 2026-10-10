@@ -23,6 +23,7 @@ export type RuntimeState = Pick<
   | 'queue'
   | 'pendingSteers'
   | 'pendingCalls'
+  | 'waitingCalls'
   | 'lastError'
   | 'load'
   | 'pendingAction'
@@ -454,6 +455,11 @@ export class ConversationRuntime {
         // A subagent's calls belong to its record, which the host keeps.
         if (event.subagentId === undefined) {
           state.pendingCalls = event.pendingCalls
+        }
+        break
+      case 'waiting_calls':
+        if (event.subagentId === undefined) {
+          state.waitingCalls = event.waitingCalls
         }
         break
       case 'error':

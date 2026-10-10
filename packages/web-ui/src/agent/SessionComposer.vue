@@ -28,7 +28,8 @@ import SessionNoticeBar from './SessionNoticeBar.vue'
 import ReplacedDraftNotice from './ReplacedDraftNotice.vue'
 import PluginsChangedNotice from './PluginsChangedNotice.vue'
 import HostOfflineNotice from './HostOfflineNotice.vue'
-import type { DeviceStart } from '../devices/installation'
+import type { OfflineHost } from './offline-host'
+import type { HostChoice } from '../hosts/types'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
@@ -98,8 +99,12 @@ const props = withDefaults(
      * offers to restore: its Markdown and the names of its files.
      */
     replaced?: { markdown: string; fileNames: readonly string[] } | null
-    /** The conversation's primary Host is a paired device that is offline: says how to start its runner again. */
-    offlineHost?: { name: string; start: DeviceStart } | null
+    /**
+     * The conversation's primary Host is a paired device that is offline:
+     * says how to start its runner again, and offers a move to Run On's
+     * online Hosts.
+     */
+    offlineHost?: OfflineHost | null
     /** The conversation runs with commands of plugins since turned on or off: offers a reload. */
     pluginsChanged?: boolean
     /** The reload the composer offered is under way. */
@@ -147,6 +152,8 @@ const emit = defineEmits<{
   dismissReplaced: []
   /** Open the conversation again with the plugins the user has on. */
   reloadPlugins: []
+  /** A Host the offline primary Host's card chose to move the conversation to. */
+  moveHost: [host: HostChoice]
 }>()
 /**
  * The edit the composer shows: none while Regenerate sends one, which never
@@ -421,8 +428,8 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
       <HostOfflineNotice
         v-if="offlineHost"
         class="mb-2"
-        :name="offlineHost.name"
-        :start="offlineHost.start"
+        v-bind="offlineHost"
+        @move="emit('moveHost', $event)"
       />
       <PluginsChangedNotice
         v-if="pluginsChanged"
