@@ -1846,10 +1846,9 @@ async fn the_page_receives_what_the_provider_reads_from_an_error_blocks_record()
     backend.close().await;
 }
 
-// About a second: the tool call boots the Cloud to run its shell job.
-#[tokio::test]
-async fn a_deepseek_tool_continuation_sends_the_reasoning_back_to_the_compatible_endpoint() {
-    let vendor = MockVendor::start().await;
+/// A backend whose conversation `FIRST` infers with a DeepSeek model at
+/// `vendor`'s Chat Completions endpoint, opened on a socket.
+async fn on_deepseek(vendor: &MockVendor) -> (Harness, TestBackend, Session, Socket) {
     let catalog = json!({
         "deepseek": {
             "id": "deepseek", "name": "DeepSeek", "npm": "@ai-sdk/openai-compatible",
@@ -1873,28 +1872,44 @@ async fn a_deepseek_tool_continuation_sends_the_reasoning_back_to_the_compatible
     choose(&backend, &master, FIRST, &provider, "m").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
-    let stream = |delta: Value| {
-        MockResponse::event_stream(format!(
-            "data: {}\n\ndata: [DONE]\n\n",
-            json!({ "choices": [{ "delta": delta }] })
-        ))
-    };
-    vendor.respond(stream(json!({
-        "reasoning_content": "Read the current directory.",
-        "tool_calls": [{ "index": 0, "id": "call-1", "function": {
-            "name": "shell", "arguments": json!({ "script": "pwd", "intervalMs": 1000 }).to_string()
-        } }]
-    })));
-    vendor.respond(stream(json!({ "content": "done" })));
+    (harness, backend, master, socket)
+}
 
-    socket.chat("m1", "read the current directory").await;
-
-    let requests: Vec<Value> = vendor
+/// The Chat Completions requests `vendor` received.
+fn chat_requests(vendor: &MockVendor) -> Vec<Value> {
+    vendor
         .requests()
         .iter()
         .filter(|request| request.uri.path() == "/v1/chat/completions")
         .map(|request| request.json())
-        .collect();
+        .collect()
+}
+
+// About a second: the tool call boots the Cloud to run its shell job.
+#[tokio::test]
+async fn a_deepseek_tool_continuation_sends_the_reasoning_back_to_the_compatible_endpoint() {
+    let vendor = MockVendor::start().await;
+    let (_harness, backend, _master, mut socket) = on_deepseek(&vendor).await;
+    let stream = |delta: Value, finish: &str| {
+        MockResponse::event_stream(format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            json!({ "choices": [{ "delta": delta, "finish_reason": finish }] })
+        ))
+    };
+    vendor.respond(stream(
+        json!({
+            "reasoning_content": "Read the current directory.",
+            "tool_calls": [{ "index": 0, "id": "call-1", "function": {
+                "name": "shell", "arguments": json!({ "script": "pwd", "intervalMs": 1000 }).to_string()
+            } }]
+        }),
+        "tool_calls",
+    ));
+    vendor.respond(stream(json!({ "content": "done" }), "stop"));
+
+    socket.chat("m1", "read the current directory").await;
+
+    let requests = chat_requests(&vendor);
     assert_eq!(requests.len(), 2, "the tool's result was sent back");
     let messages = requests[1]["messages"].as_array().unwrap();
     let asked = messages
@@ -1903,6 +1918,59 @@ async fn a_deepseek_tool_continuation_sends_the_reasoning_back_to_the_compatible
         .unwrap_or_else(|| panic!("the continuation replays the tool call: {messages:?}"));
     assert_eq!(asked["reasoning_content"], "Read the current directory.");
     assert_eq!(last_text(&socket.live().await), "done");
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn a_stream_cut_before_the_reply_completed_ends_the_turn_unfinished_with_its_text() {
+    let vendor = MockVendor::start().await;
+    let (_harness, backend, master, mut socket) = on_deepseek(&vendor).await;
+    // A gateway that sends running totals in every chunk stops mid-sentence.
+    vendor.respond(MockResponse::event_stream(format!(
+        "data: {}\n\n",
+        json!({ "choices": [{ "delta": { "content": "group 9 fails (`expected 200, got" } }],
+            "usage": { "prompt_tokens": 9, "completion_tokens": 232 } })
+    )));
+
+    socket.chat("m1", "run the suites").await;
+
+    let blocks = transcript(&backend, &master, FIRST).await.blocks;
+    let [.., Block::Text(text), Block::Error(error)] = &blocks[..] else {
+        panic!("the turn ends with the text and its failure: {blocks:?}");
+    };
+    assert_eq!(text.text, "group 9 fails (`expected 200, got");
+    assert_eq!(
+        (error.code.as_deref(), error.message.as_str()),
+        (Some("overloaded"), "The provider's stream ended before the reply was complete")
+    );
+    assert_eq!(chat_requests(&vendor).len(), 1, "streamed text is never asked for again");
+    backend.close().await;
+}
+
+// Up to a second: the retry waits its random backoff.
+#[tokio::test]
+async fn a_stream_cut_during_the_reasoning_is_retried_and_leaves_no_trace() {
+    let vendor = MockVendor::start().await;
+    let (_harness, backend, master, mut socket) = on_deepseek(&vendor).await;
+    vendor.respond(MockResponse::event_stream(format!(
+        "data: {}\n\n",
+        json!({ "choices": [{ "delta": { "reasoning_content": "Run the unit tests first." } }] })
+    )));
+    vendor.respond(MockResponse::event_stream(format!(
+        "data: {}\n\n",
+        json!({ "choices": [{ "delta": { "content": "Both suites ran." }, "finish_reason": "stop" }] })
+    )));
+
+    socket.chat("m1", "run the suites").await;
+
+    assert_eq!(chat_requests(&vendor).len(), 2, "the cut attempt is sent again");
+    let blocks = transcript(&backend, &master, FIRST).await.blocks;
+    assert!(
+        !blocks.iter().any(|block| matches!(block, Block::Error(_) | Block::Thinking(_))),
+        "the cut attempt's reasoning is unwound: {blocks:?}"
+    );
+    assert!(matches!(blocks.last(), Some(Block::Response(_))), "{blocks:?}");
+    assert_eq!(last_text(&blocks), "Both suites ran.");
     backend.close().await;
 }
 

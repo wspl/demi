@@ -95,12 +95,14 @@ pub(crate) fn runtime_of(provider: &GrokProvider) -> Box<dyn ProviderRuntime> {
         .unwrap()
 }
 
-/// A chat stream of `chunks`, closed by `[DONE]`.
+/// A chat stream of `chunks`, closed by a chunk whose choice finished and
+/// by `[DONE]`.
 pub(crate) fn chat(chunks: &[Value]) -> MockResponse {
     let mut body: String = chunks
         .iter()
         .map(|chunk| format!("data: {chunk}\n\n"))
         .collect();
+    body.push_str("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n");
     body.push_str("data: [DONE]\n\n");
     MockResponse::event_stream(body)
 }

@@ -99,6 +99,34 @@ impl ProviderFailure {
         }
     }
 
+    /// A stream that ended before the vendor said the reply was complete,
+    /// even with a usage count seen (`providers.md` § Reading vendor input):
+    /// no answer, as any network failure is.
+    pub fn cut_short() -> Self {
+        Self::no_answer("The provider's stream ended before the reply was complete")
+    }
+
+    /// A reply the vendor ended before it was complete, for `end`, with the
+    /// vendor's own `reason` in the message and as the provider code, and
+    /// the frame that said so, `received`, as the record: `incomplete`.
+    pub fn ended_early(end: EarlyEnd, reason: &str, received: impl Into<String>) -> Self {
+        let message = match end {
+            EarlyEnd::OutputLimit => format!("The reply reached the model's output limit ({reason})"),
+            EarlyEnd::Filter => format!("The provider's filter stopped the reply ({reason})"),
+            EarlyEnd::Other => {
+                format!("The provider ended the reply before it was complete ({reason})")
+            }
+        };
+        let mut diagnostics = diagnostics(FailureSource::Stream, None, Some(received.into()));
+        diagnostics.provider_code = Some(reason.to_owned());
+        Self {
+            message,
+            code: Some(ErrorCode::Incomplete),
+            diagnostics: Some(Box::new(diagnostics)),
+            retry_after: None,
+        }
+    }
+
     /// Sets the wait the provider's `reader` finds in this failure's record,
     /// received at `now`. A failure without a record, or one whose reader names
     /// no time, keeps no wait; a time already past is no wait at all.
@@ -115,6 +143,18 @@ impl ProviderFailure {
         self.retry_after = Some(Duration::from_millis(wait.max(0).unsigned_abs()));
         self
     }
+}
+
+/// Why a vendor ended a reply before it was complete; each provider reads
+/// its vendor's reason into one of these.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EarlyEnd {
+    /// The reply reached the model's output limit.
+    OutputLimit,
+    /// A filter of the vendor's stopped the reply, or the model refused.
+    Filter,
+    /// Any other reason the vendor named.
+    Other,
 }
 
 /// Diagnostics with a source and a record and nothing else.
@@ -148,7 +188,8 @@ pub enum ErrorCode {
     Overloaded,
     /// The request is larger than the model or the vendor accepts.
     ContextLengthExceeded,
-    /// The vendor ended the response before it was complete.
+    /// The vendor ended the reply before it was complete: for its output
+    /// limit, a filter or another reason it named.
     Incomplete,
     /// The credential expired or was refused.
     AuthExpired,
