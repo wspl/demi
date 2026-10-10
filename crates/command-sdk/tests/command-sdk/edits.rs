@@ -99,15 +99,33 @@ fn a_failed_write_below_a_file_is_not_an_edit() {
     assert!(recorder.report().unwrap().files.is_empty());
 }
 
+/// Binary is what git calls binary (`runtime.md` § What `demi file view`
+/// shows): a NUL in the first 8 KiB leaves an edit without contents, while a
+/// Latin-1 file is text whose copy is kept as written, for the change view to
+/// show its odd bytes as U+FFFD.
 #[test]
-fn binary_edits_have_no_contents() {
+fn only_binary_edits_have_no_contents() {
     let root = tempfile::tempdir().unwrap();
     let recorder = recorder(root.path(), "job");
-    let path = root.path().join("binary");
+    let binary = root.path().join("binary");
     recorder
-        .record(&path, || fs::write(&path, [0, 1, 2]))
+        .record(&binary, || fs::write(&binary, [b'a', 0, 1, 2]))
+        .unwrap();
+    let latin1 = root.path().join("latin1.txt");
+    recorder
+        .record(&latin1, || fs::write(&latin1, b"caf\xe9\n"))
         .unwrap();
     let report = recorder.report().unwrap();
-    assert_eq!(report.files[0].kind, EditKind::Added);
-    assert!(report.files[0].edits[0].modified.is_none());
+    let edit = |path: &Path| {
+        let file = report
+            .files
+            .iter()
+            .find(|file| Path::new(&file.path).file_name() == path.file_name())
+            .unwrap();
+        assert_eq!(file.kind, EditKind::Added);
+        file.edits[0].modified.clone()
+    };
+    assert!(edit(&binary).is_none());
+    let copy = edit(&latin1).expect("a text file's copy");
+    assert_eq!(fs::read(copy).unwrap(), b"caf\xe9\n");
 }

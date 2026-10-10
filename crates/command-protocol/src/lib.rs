@@ -22,16 +22,14 @@ pub use artifacts::{
 pub use conversation::{ConversationRequest, ConversationStatus};
 pub use edits::{
     EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_PATH_CHANGES, EDIT_JOB_SEGMENTS,
-    EditContext, EditCopies, EditFile, EditJournal, EditKind, PathChange, TextRefusal, begins_as_text,
-    is_text,
-    text_of,
+    EditContext, EditCopies, EditFile, EditJournal, EditKind, PathChange, TextRefusal, text_of,
 };
 pub use invocation::{
     COMMAND_LOCALE_LANGUAGES, CONVERSATION_NAME_CHARS, CommandCaller, CommandContext, CommandError,
     ColorScheme, CommandLocale, Completion, Invocation, LocalInvocation, Viewable, conversation_name,
     without_nul,
 };
-pub use media::{MAX_MEDIUM_BYTES, MediumFacts, sniff_media_type};
+pub use media::{MAX_MEDIUM_BYTES, MediumFacts, is_binary, sniff_media_type};
 pub use numbers::{MAX_NUMBERS, NumbersAnswer, NumbersRequest, ServiceSequence, StreamOpen};
 pub use package::{
     ArtifactLocation, ArtifactPath, ArtifactUrl, PackageArtifact, PackageDescriptor,
