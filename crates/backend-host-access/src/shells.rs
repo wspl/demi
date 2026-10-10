@@ -29,10 +29,10 @@ use demi_backend_runners::router::CommandRegistration;
 use demi_command_protocol::{CommandCaller, EDIT_FILE_BYTES};
 use demi_host_interface::{
     CommandMedium, CommandStatus, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
-    JobCaller, PageView, ShellEnvironment, ShellError, WholeOutput,
+    PageView, Seen, ShellEnvironment, ShellError, TakenUp, WholeOutput,
 };
 use demi_runner_protocol::wire::JobFileChange;
-use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile, NodeId};
+use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile, NodeId, Unreachable};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
@@ -366,6 +366,7 @@ impl CommandKeeper for Keeper {
                 job: job.to_owned(),
                 tool_use_id: tool_use_id.to_owned(),
                 started: self.clock.now(),
+                places: Default::default(),
             };
             let recorded = self
                 .db
@@ -446,6 +447,21 @@ impl CommandKeeper for Keeper {
         })
     }
 
+    fn looked<'a>(&'a self, command: &'a CommandId, seen: Seen) -> LocalBoxFuture<'a, ()> {
+        Box::pin(async move {
+            let (wanted, node) = (command.clone(), self.node.clone());
+            let recorded = self
+                .db
+                .call(move |connection| running::set_place(connection, &wanted, &node, seen))
+                .await;
+            if let Err(error) = recorded {
+                // The model keeps its place; a backend that starts again
+                // shows it the output from its last recorded place.
+                tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a place in a command's output was not recorded");
+            }
+        })
+    }
+
     fn keep_output<'a>(
         &'a self,
         command: &'a CommandId,
@@ -521,6 +537,10 @@ impl ShellEnvironment for Registered {
         self.environment.quiet(command)
     }
 
+    fn unreachable(&self, command: &CommandId) -> Option<Unreachable> {
+        self.environment.unreachable(command)
+    }
+
     fn media(&self, command: &CommandId) -> Result<Vec<CommandMedium>, ShellError> {
         self.environment.media(command)
     }
@@ -552,8 +572,8 @@ impl ShellEnvironment for Registered {
         self.environment.release_command(command)
     }
 
-    fn adopt(&self, command: &CommandId, tool_use_id: &str, job: &str, caller: JobCaller) {
-        self.environment.adopt(command, tool_use_id, job, caller);
+    fn adopt(&self, taken: TakenUp) {
+        self.environment.adopt(taken);
     }
 
     fn detach_all(&self) -> LocalBoxFuture<'_, ()> {

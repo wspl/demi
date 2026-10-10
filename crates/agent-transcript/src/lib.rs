@@ -21,7 +21,7 @@ pub use ids::{IdSource, RandomIds};
 pub use journal::{DirtyRows, PatchBatch};
 pub use log::{PendingCall, TranscriptLog};
 pub use replay::{REPLAY_CHARS, Replay, ReplayedBlock, RequestView, replay, tool_input};
-pub use reports::{duration, report_text, reports_text};
+pub use reports::{duration, labelled_output, report_text, reports_text};
 
 use demi_shared_types::{Block, GoneCause, ModelMediaKind, WakeupPlacement};
 

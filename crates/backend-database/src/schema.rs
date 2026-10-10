@@ -405,7 +405,8 @@ CREATE TABLE running_commands (
   device_id   TEXT NOT NULL,
   job_id      TEXT NOT NULL,
   tool_use_id TEXT NOT NULL,
-  started_at  INTEGER NOT NULL
+  started_at  INTEGER NOT NULL,
+  places      TEXT NOT NULL
 ) STRICT;
 CREATE INDEX running_commands_of_node ON running_commands (node_id);
 ",
@@ -1202,14 +1203,18 @@ CREATE TABLE command_outputs (
 
 -- Each command that runs, until its end writes its command_outputs row in
 -- the same transaction: the node that ran it, its device, its job's id on
--- that device, the call that started it, and when it started.
+-- that device, the call that started it, when it started, and how far each
+-- node that looked at it has seen its output, a JSON object of each node's
+-- bytes of stdout and stderr by the node's id.
 CREATE TABLE running_commands (
   command_id  TEXT PRIMARY KEY,
   node_id     TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   device_id   TEXT NOT NULL,
   job_id      TEXT NOT NULL,
   tool_use_id TEXT NOT NULL,
-  started_at  INTEGER NOT NULL
+  started_at  INTEGER NOT NULL,
+  -- running_commands.places: command places format 1
+  places      TEXT NOT NULL
 ) STRICT;
 CREATE INDEX running_commands_of_node ON running_commands (node_id);
 

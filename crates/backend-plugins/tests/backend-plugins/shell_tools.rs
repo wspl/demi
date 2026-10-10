@@ -943,12 +943,12 @@ async fn a_look_at_another_agents_command_shows_the_output_since_the_lookers_own
 // About three seconds: two scripts, each a shell job, and the two seconds
 // of quiet that end the first call.
 #[tokio::test(flavor = "local")]
-async fn a_stop_ends_the_command_a_call_watches_and_leaves_one_an_earlier_call_left_running() {
+async fn a_stop_ends_the_command_a_call_watches_with_its_output_and_leaves_one_an_earlier_call_left_running() {
     within(async {
         let script = tolerant(vec![
             vec![resident("serve", "echo ready; until [ -e stop ]; do sleep 0.05; done")],
             // A window far longer than the test, which the Stop ends.
-            vec![exec("slow", "until [ -e never ]; do sleep 0.05; done", 600_000)],
+            vec![exec("slow", "echo started; until [ -e never ]; do sleep 0.05; done", 600_000)],
         ]);
         let fixture = Fixture::start(&script).await;
         let mut client = fixture.opened().await;
@@ -958,7 +958,16 @@ async fn a_stop_ends_the_command_a_call_watches_and_leaves_one_an_earlier_call_l
                 content: client_text("Serve, then wait."),
             })
             .await;
-        client.next_until(|frame| shows_call(frame, "slow")).await;
+        let shown = client
+            .next_until(|frame| {
+                matches!(frame, ServerFrame::ShellOutput { status, .. }
+                    if status.command().tool_use_id == "slow" && status.command().tail.contains("started"))
+            })
+            .await;
+        let Some(ServerFrame::ShellOutput { status, .. }) = shown.last() else {
+            unreachable!("waited for the slow call's output");
+        };
+        let slow = status.command().command_id.to_string();
         client.send(ClientFrame::Abort {}).await;
         client
             .next_until(|frame| matches!(frame, ServerFrame::AbortResult { .. }))
@@ -981,6 +990,16 @@ async fn a_stop_ends_the_command_a_call_watches_and_leaves_one_an_earlier_call_l
             &format!("Command {serve} (Run the test script) ended with exit code 0."),
         )
         .await;
+        // The stopped call's result shows how far its command got
+        // (`runtime.md` § Interrupted calls).
+        let results: Results = Rc::default();
+        for request in &script.requests() {
+            record(&results, request);
+        }
+        assert_eq!(
+            result(&results.borrow(), "slow"),
+            format!("Tool call aborted: the user stopped the turn; command {slow} was stopped.\noutput:\nstarted")
+        );
         fixture.stop().await;
     })
     .await;

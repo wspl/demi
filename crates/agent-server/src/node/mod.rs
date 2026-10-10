@@ -23,7 +23,7 @@ use demi_agent_store::{
 use demi_agent_tools::{
     CallError, ContextSource, EndOf, Environments, HostResolver, Looking, ModelIdentity, NodeContext,
     ShellAccess, ShellEnvironmentFactory, Stopper, StoreNumbers, definitions, end_report,
-    fill_output, progress_report, report_media, runs_together, stored_running_commands,
+    fill_output, progress_report, report_media, report_output, runs_together, stored_running_commands,
     system_prompt, whole_status,
 };
 use demi_agent_transcript::IdSource;
@@ -116,14 +116,34 @@ impl<H: HostResolver> Node<H> {
     }
 
     /// The node's place in the whole output of `command`, which it looks at
-    /// without holding it (`runtime.md` § The `demi shell` commands).
-    pub(crate) fn place(&self, command: &CommandId) -> Seen {
-        self.runtime.environments.place(command)
+    /// without holding it (`runtime.md` § The `demi shell` commands): as
+    /// the node keeps it, or, for a running command it has not looked at
+    /// since the backend started, as the command's record keeps it.
+    pub(crate) async fn place(&self, command: &CommandId) -> Seen {
+        if let Some(seen) = self.runtime.environments.known_place(command) {
+            return seen;
+        }
+        self.runtime
+            .store
+            .place(command, &self.record.id)
+            .await
+            .unwrap_or_else(|error| {
+                // The look shows the output from its start.
+                tracing::warn!(node = %self.record.id, %command, %error, "a place in a command's output could not be read");
+                None
+            })
+            .unwrap_or_default()
     }
 
-    /// Moves the node's place in `command`'s whole output to `seen`.
-    pub(crate) fn set_place(&self, command: &CommandId, seen: Seen) {
+    /// Moves the node's place in `command`'s whole output to `seen`, in the
+    /// command's record too while it runs (`storage.md` § Command outputs).
+    pub(crate) async fn set_place(&self, command: &CommandId, seen: Seen) {
         self.runtime.environments.set_place(command, seen);
+        if let Err(error) = self.runtime.store.record_place(command, &self.record.id, seen).await {
+            // The node keeps its place; a backend that starts again shows
+            // it the output from its last recorded place.
+            tracing::warn!(node = %self.record.id, %command, %error, "a place in a command's output was not recorded");
+        }
     }
 
     /// A look showed the node `command`'s end, and all of its output, which
@@ -298,6 +318,8 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     agent: u64,
     /// The least interval its commands report at, in milliseconds.
     interval_floor_ms: u32,
+    /// Where the time a command taken up again has run comes from.
+    clock: Arc<dyn Clock>,
 }
 
 impl<H: HostResolver> NodeRuntime<H> {
@@ -314,12 +336,16 @@ impl<H: HostResolver> NodeRuntime<H> {
         })?;
         let mut picked = false;
         let mut left = None;
+        let now = self.clock.now().as_millisecond();
         for command in running.iter().filter(|command| which(command)) {
             picked = true;
             if self.environments.owning(&command.command).is_some() {
                 continue;
             }
-            if let Err(error) = self.shell_access().adopt(command).await {
+            // A clock that went back counts no time.
+            let ran = u64::try_from(now - command.started.as_millisecond()).unwrap_or(0);
+            let ran = std::time::Duration::from_millis(ran);
+            if let Err(error) = self.shell_access().adopt(command, ran).await {
                 tracing::warn!(node = %self.node, command = %command.command, %error, "a running command was not taken up");
                 left = Some(error.to_string());
             }
@@ -366,6 +392,7 @@ impl<H: HostResolver> NodeRuntime<H> {
             match environment.ended(command).now_or_never()?.ok()? {
                 Ending::Exited(exit_code) => Some(CommandEnd::Exited { exit_code }),
                 Ending::Aborted => Some(CommandEnd::Stopped),
+                Ending::Lost(reason) => Some(CommandEnd::Lost { reason }),
             }
         });
         match end {
@@ -394,9 +421,13 @@ impl<H: HostResolver> NodeRuntime<H> {
                 binary_stdout: None,
                 media: Vec::new(),
             },
-            CommandEnd::Stopped | CommandEnd::Lost { .. } | CommandEnd::Unrecorded => {
-                CommandState::Aborted
-            }
+            CommandEnd::Lost { reason } => CommandState::Lost {
+                reason,
+                media: Vec::new(),
+            },
+            // A record without its end shows its output as a stopped
+            // command's.
+            CommandEnd::Stopped | CommandEnd::Unrecorded => CommandState::Aborted,
         };
         let place = self.environments.place(command);
         Some(whole_status(command, state, 0, 0, Arc::new(output), place))
@@ -576,7 +607,8 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                 let idle_ms = environment
                     .quiet(command)
                     .map_or(0, |quiet| u64::try_from(quiet.as_millis()).unwrap_or(u64::MAX));
-                return Some(progress_report(command, title, running_ms, idle_ms, interval));
+                let unreachable = environment.unreachable(command);
+                return Some(progress_report(command, title, running_ms, idle_ms, interval, unreachable));
             }
             if self.environments.stopper(command) == Some(Stopper::Itself) {
                 return None;
@@ -601,6 +633,13 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
 
     fn end_seen(&self, command: &CommandId) -> bool {
         self.environments.end_seen(command)
+    }
+
+    /// Reads the output of a command an environment holds as a result
+    /// shows it, which moves the node's place in it.
+    fn unseen_output(&self, command: &CommandId, budget: usize) -> Option<String> {
+        let status = self.environments.owning(command)?.status(command).ok()?;
+        Some(report_output(&status, budget))
     }
 
     fn looks_at(&self, command: &CommandId) -> bool {
@@ -790,6 +829,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         shells,
         environments: Environments::default(),
         feed,
+        clock: clock.clone(),
     });
     let deps = SessionDeps {
         runtime: node_runtime.clone(),
