@@ -148,7 +148,7 @@ struct CodexTier {
 impl CodexModel {
     fn into_model(self) -> ProviderModel {
         let supports_tools = self.supports_tools();
-        let supports_attachments = self
+        let images = self
             .input_modalities
             .as_ref()
             .map(|modalities| modalities.iter().any(|modality| modality == "image"));
@@ -164,11 +164,9 @@ impl CodexModel {
             context_window: self.context_window.map(NonZeroU32::get),
             output_limit: None,
             supports_tools,
-            supports_attachments,
-            supports_video: None,
             // The backend documents no file part, so the list names the
             // images alone (`models.md` § Accepted attachment types).
-            accepted_extensions: supports_attachments.map(|images| {
+            accepted_extensions: images.map(|images| {
                 if images {
                     demi_shared_types::IMAGE_FILE_EXTENSIONS.to_vec()
                 } else {

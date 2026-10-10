@@ -15,11 +15,22 @@ use std::{
 use bytes::Bytes;
 use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, Completion, Invocation, MAX_MEDIUM_BYTES,
-    ProtocolError, Record, RecordDecoder, Viewable, sniff_media_type,
+    MediumFacts, ProtocolError, Record, RecordDecoder, Viewable, sniff_media_type,
 };
 use demi_command_sdk::{
     Client, Exchange, Handler, InputSource, InvocationContext, OutputSink, ServiceError, serve,
 };
+
+/// The facts the medium's record carries to the caller, whole.
+fn facts() -> MediumFacts {
+    MediumFacts {
+        media_type: "image/png".into(),
+        name: None,
+        width: Some(640),
+        height: Some(480),
+        duration_ms: None,
+    }
+}
 
 /// A medium of three records' worth of bytes, which begins as a PNG.
 fn medium() -> Bytes {
@@ -45,7 +56,7 @@ impl Handler for Returning {
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
         Box::pin(async move {
             context.output.stdout(Bytes::from_static(b"before\n")).await?;
-            if let Err(refused) = context.output.medium(medium()).await {
+            if let Err(refused) = context.output.medium(facts(), medium()).await {
                 context
                     .output
                     .stderr(Bytes::from(refused.to_string()))
@@ -65,7 +76,7 @@ impl Handler for Returning {
 enum Received {
     Stdout(Bytes),
     Stderr(String),
-    Medium(Bytes),
+    Medium(MediumFacts, Bytes),
 }
 
 #[derive(Default)]
@@ -85,8 +96,8 @@ impl OutputSink for Recorded {
         Ok(())
     }
 
-    async fn medium(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
-        self.0.push(Received::Medium(bytes));
+    async fn medium(&mut self, facts: MediumFacts, bytes: Bytes) -> Result<(), ServiceError> {
+        self.0.push(Received::Medium(facts, bytes));
         Ok(())
     }
 }
@@ -151,7 +162,7 @@ async fn shot(viewable: Option<Viewable>) -> Vec<Received> {
 async fn a_returned_medium_reaches_the_caller_whole_in_its_place() {
     let received = tokio::time::timeout(Duration::from_secs(5), shot(Some(Viewable {
         model: "test-model".into(),
-        media_types: vec!["image/png".into()],
+        media_types: Some(vec!["image/png".into()]),
     })))
         .await
         .unwrap();
@@ -159,7 +170,7 @@ async fn a_returned_medium_reaches_the_caller_whole_in_its_place() {
         received,
         [
             Received::Stdout(Bytes::from_static(b"before\n")),
-            Received::Medium(medium()),
+            Received::Medium(facts(), medium()),
             Received::Stdout(Bytes::from_static(b"after\n")),
         ]
     );
@@ -184,7 +195,10 @@ async fn the_writer_of_an_invocation_that_is_no_jobs_command_refuses_media() {
 
 #[test]
 fn a_medium_over_16_mib_breaks_the_protocol() {
-    let payload = format!("{{\"size\":{}}}", MAX_MEDIUM_BYTES + 1);
+    let payload = format!(
+        "{{\"size\":{},\"mediaType\":\"image/png\"}}",
+        MAX_MEDIUM_BYTES + 1
+    );
     let mut record = vec![5];
     record.extend_from_slice(&(payload.len() as u32).to_be_bytes());
     record.extend_from_slice(payload.as_bytes());
@@ -194,6 +208,7 @@ fn a_medium_over_16_mib_breaks_the_protocol() {
     ));
     let largest = Record::Medium {
         size: MAX_MEDIUM_BYTES,
+        facts: facts(),
     };
     let mut encoded = largest.encode().unwrap();
     assert_eq!(

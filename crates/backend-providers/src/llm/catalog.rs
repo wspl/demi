@@ -32,11 +32,6 @@ pub fn configured_model(model: &ConfiguredModel) -> ProviderModel {
         context_window: Some(model.context_window),
         output_limit: model.output_limit,
         supports_tools: Some(true),
-        supports_attachments: model
-            .accepted_extensions
-            .as_ref()
-            .map(|accepted| !accepted.is_empty()),
-        supports_video: None,
         accepted_extensions: model.accepted_extensions.clone(),
         supports_reasoning: Some(!efforts.is_empty()),
         supported_thinking_efforts: Some(efforts.clone()),

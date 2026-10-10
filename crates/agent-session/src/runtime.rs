@@ -79,16 +79,20 @@ pub trait SessionRuntime {
     /// What `command`, which a `shell` call titled `title` left running and
     /// which reports every `interval_ms` while it runs, tells the node now
     /// (`runtime.md` § Command reports): its progress while it runs, which
-    /// moves the node's place in its output as a look does, or its end. None
-    /// when it has nothing to tell: the node saw its end in a result
-    /// already, or stopped it itself.
+    /// moves the node's place in its output as a look does, or its end,
+    /// with the media its job viewed as a result for `model`, whose vendor
+    /// takes requests within `limits`, attaches them. None when it has
+    /// nothing to tell: the node saw its end in a result already and its
+    /// job viewed no media, or the node stopped it itself.
     fn report<'a>(
         &'a self,
         command: &'a CommandId,
         title: &'a str,
         interval_ms: Option<u32>,
+        model: &'a ModelSelection,
+        limits: RequestLimits,
     ) -> LocalBoxFuture<'a, Option<CommandReport>> {
-        let _ = (command, title, interval_ms);
+        let _ = (command, title, interval_ms, model, limits);
         Box::pin(async { None })
     }
 

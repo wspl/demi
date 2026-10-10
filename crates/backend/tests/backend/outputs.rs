@@ -160,9 +160,9 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
 // runs a shell job.
 //
 // Planted defects this catches: a viewed medium that does not reach the
-// result over a real runner, and a PDF that the Anthropic API's request
-// leaves out of the tool result or carries as anything but a `document`
-// block.
+// result over a real runner; a PDF that the Anthropic API's request leaves
+// out of the tool result or carries as anything but a `document` block; and
+// a PDF from stdin without the name its number gives it.
 #[tokio::test]
 async fn viewed_media_are_attached_to_the_result_and_a_pdf_rides_as_a_document_block() {
     let vendor = MockVendor::start().await;
@@ -187,7 +187,7 @@ async fn viewed_media_are_attached_to_the_result_and_a_pdf_rides_as_a_document_b
     assert_eq!(
         shown_output(result),
         format!(
-            "[image 1: image/png, 4 × 3 px, {} bytes]\n[document 2: application/pdf, {} bytes]\n[image]\n[document]\n",
+            "[image 1: image/png, 4 × 3 px, {} bytes]\n[document 2: document-2.pdf, application/pdf, {} bytes]\n[image]\n[document]\n",
             png.len(),
             pdf.len()
         ),

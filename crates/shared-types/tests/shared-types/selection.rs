@@ -5,6 +5,7 @@
 use demi_shared_types::{
     ATTACHMENT_FILE_EXTENSIONS, FileExtension, Model, ModelSelection, ProviderModel,
     ThinkingCapability, ThinkingConfig, ThinkingSummary, VIDEO_FILE_EXTENSIONS,
+    modality_extensions,
 };
 
 /// A model whose catalog states nothing but its name and limits.
@@ -16,8 +17,6 @@ fn model() -> ProviderModel {
         context_window: Some(200_000),
         output_limit: None,
         supports_tools: None,
-        supports_attachments: None,
-        supports_video: None,
         accepted_extensions: None,
         supports_reasoning: None,
         supported_thinking_efforts: None,
@@ -32,7 +31,7 @@ fn model() -> ProviderModel {
 fn a_catalog_model_becomes_a_selection_with_its_facts_and_the_choices_made() {
     let catalog = ProviderModel {
         output_limit: Some(8_000),
-        supports_attachments: Some(true),
+        accepted_extensions: Some(ATTACHMENT_FILE_EXTENSIONS.to_vec()),
         ..model()
     };
     let thinking = ThinkingConfig::Effort {
@@ -71,12 +70,13 @@ fn a_catalog_model_becomes_a_selection_with_its_facts_and_the_choices_made() {
     );
 }
 
+/// Planted defect this catches: a selection that reads its types from
+/// anything but the catalog's list, which unknown support would turn into
+/// none.
 #[test]
-fn accepted_types_come_from_the_catalog_or_from_its_flags() {
-    let with = |attachments, video, exact: Option<Vec<FileExtension>>| {
+fn accepted_types_are_the_catalogs_list_unknown_staying_unknown() {
+    let with = |exact: Option<Vec<FileExtension>>| {
         ProviderModel {
-            supports_attachments: attachments,
-            supports_video: video,
             accepted_extensions: exact,
             ..model()
         }
@@ -84,36 +84,32 @@ fn accepted_types_come_from_the_catalog_or_from_its_flags() {
         .model
         .accepted_extensions
     };
-    let attachments = ATTACHMENT_FILE_EXTENSIONS.to_vec();
-    let both: Vec<FileExtension> = ATTACHMENT_FILE_EXTENSIONS
-        .into_iter()
-        .chain(VIDEO_FILE_EXTENSIONS)
-        .collect();
-    // Unknown support stays unknown; known support adds its types.
-    assert_eq!(with(None, None, None), None);
-    assert_eq!(with(None, Some(false), None), None);
-    assert_eq!(with(Some(false), None, None), Some(Vec::new()));
-    assert_eq!(with(Some(true), None, None), Some(attachments.clone()));
-    assert_eq!(with(Some(true), Some(false), None), Some(attachments));
-    // Only a model known to read video gets the video types.
-    assert_eq!(with(Some(true), Some(true), None), Some(both));
+    assert_eq!(with(None), None);
+    assert_eq!(with(Some(Vec::new())), Some(Vec::new()));
     assert_eq!(
-        with(Some(false), Some(true), None),
-        Some(VIDEO_FILE_EXTENSIONS.to_vec())
-    );
-    assert_eq!(
-        with(None, Some(true), None),
-        Some(VIDEO_FILE_EXTENSIONS.to_vec())
-    );
-    // The exact list a catalog states wins over its flags, an empty one too.
-    assert_eq!(
-        with(Some(true), None, Some(vec![FileExtension::Png])),
+        with(Some(vec![FileExtension::Png])),
         Some(vec![FileExtension::Png])
     );
-    assert_eq!(
-        with(Some(true), Some(true), Some(Vec::new())),
-        Some(Vec::new())
-    );
+}
+
+/// Planted defects this catches: a PDF given to every model that reads
+/// images, as models.dev's attachment flag did, and video given without its
+/// modality.
+#[test]
+fn input_modalities_give_the_types_kind_by_kind() {
+    let images = vec![
+        FileExtension::Png,
+        FileExtension::Jpg,
+        FileExtension::Jpeg,
+        FileExtension::Gif,
+        FileExtension::Webp,
+    ];
+    assert_eq!(modality_extensions(["text"]), Vec::new());
+    assert_eq!(modality_extensions(["text", "image"]), images);
+    let mut with_pdf = images.clone();
+    with_pdf.push(FileExtension::Pdf);
+    assert_eq!(modality_extensions(["text", "image", "pdf"]), with_pdf);
+    assert_eq!(modality_extensions(["video"]), VIDEO_FILE_EXTENSIONS.to_vec());
 }
 
 #[test]

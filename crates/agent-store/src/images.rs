@@ -6,9 +6,10 @@
 
 use std::io::Cursor;
 
-use demi_shared_types::B64Bytes;
+use demi_shared_types::{B64Bytes, PixelSize};
 use image::{
     DynamicImage, ImageDecoder, ImageError, ImageFormat, ImageReader, Limits,
+    metadata::Orientation,
     codecs::{jpeg::JpegEncoder, png::PngEncoder},
     imageops::FilterType,
 };
@@ -136,6 +137,29 @@ fn decoder<'a>(
     limits.max_alloc = Some(MAX_DECODE_BYTES);
     reader.limits(limits);
     Ok((format, reader.into_decoder()?))
+}
+
+/// The size `data`, an image of `media_type`, shows at, as a web browser
+/// shows it: its pixels turned upright as its orientation says. Only its
+/// header is read; none when that does not decode.
+pub(crate) fn shown_size(data: &[u8], media_type: &str) -> Option<PixelSize> {
+    let (_, mut decoder) = decoder(data, media_type).ok()?;
+    let (width, height) = decoder.dimensions();
+    let turned = matches!(
+        decoder.orientation().ok()?,
+        Orientation::Rotate90
+            | Orientation::Rotate270
+            | Orientation::Rotate90FlipH
+            | Orientation::Rotate270FlipH
+    );
+    Some(if turned {
+        PixelSize {
+            width: height,
+            height: width,
+        }
+    } else {
+        PixelSize { width, height }
+    })
 }
 
 /// `image` as a JPEG of `quality`, without an alpha channel, which JPEG has

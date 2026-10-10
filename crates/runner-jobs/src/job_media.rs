@@ -13,7 +13,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_protocol::medium_facts;
+use demi_command_protocol::MediumFacts;
 use demi_runner_protocol::wire;
 use sha2::{Digest, Sha256};
 use tokio::sync::mpsc;
@@ -68,10 +68,11 @@ impl JobMedia {
         }
     }
 
-    /// Takes `bytes`, a checked medium of `media_type`, as the job's next
-    /// medium: within the job's bounds it writes it to its file, and its
-    /// line, and the announcement of one it keeps, go to the job's output.
-    pub async fn keep(&self, media_type: &str, bytes: Bytes) -> io::Result<()> {
+    /// Takes `bytes`, a checked medium that `facts` describe, as the job's
+    /// next medium: within the job's bounds it writes it to its file, and
+    /// its line, from the facts, and the announcement of one it keeps, which
+    /// carries them on, go to the job's output.
+    pub async fn keep(&self, facts: MediumFacts, bytes: Bytes) -> io::Result<()> {
         let size = bytes.len() as u64;
         let (number, kept) = {
             // No section panics while it holds the lock.
@@ -84,7 +85,7 @@ impl JobMedia {
             }
             (counts.arrived, kept)
         };
-        let kind = kind(media_type);
+        let kind = kind(&facts.media_type);
         if !kept {
             return self.arrive(Arrival {
                 line: format!(
@@ -94,33 +95,28 @@ impl JobMedia {
             });
         }
         let directory = self.directory.clone();
-        let owned_type = media_type.to_owned();
-        let (sha256, header) = tokio::task::spawn_blocking(move || {
+        let sha256 = tokio::task::spawn_blocking(move || {
             std::fs::create_dir_all(&directory)?;
             std::fs::write(directory.join(number.to_string()), &bytes)?;
-            let header = medium_facts(&bytes, &owned_type);
-            Ok::<_, io::Error>((format!("{:x}", Sha256::digest(&bytes)), header))
+            Ok::<_, io::Error>(format!("{:x}", Sha256::digest(&bytes)))
         })
         .await
         .map_err(io::Error::other)??;
-        let mut facts = vec![media_type.to_owned()];
-        if let Some(duration) = header.duration_ms {
-            facts.push(format!("{:.1} s", duration as f64 / 1000.0));
-        }
-        if let Some((width, height)) = header.size {
-            facts.push(format!("{width} × {height} px"));
-        }
-        facts.push(format!("{size} bytes"));
+        let line = format!("[{kind} {number}: {}]", line_facts(number, &facts, size));
         let medium = wire::encode(&wire::Outbound::JobMedium {
             job_id: self.job_id.clone(),
             number,
-            media_type: media_type.to_owned(),
+            media_type: facts.media_type,
             size,
             sha256,
+            name: facts.name,
+            width: facts.width,
+            height: facts.height,
+            duration_ms: facts.duration_ms,
         })
         .map_err(io::Error::other)?;
         self.arrive(Arrival {
-            line: format!("[{kind} {number}: {}]", facts.join(", ")),
+            line,
             medium: Some(medium),
         })
     }
@@ -130,6 +126,30 @@ impl JobMedia {
             .send(arrival)
             .map_err(|_| io::Error::other("the job has ended"))
     }
+}
+
+/// What a medium's line says after its kind and number: a document's name,
+/// `document-<n>.pdf` for one with none, the media type, a video's length,
+/// the size in pixels, and the bytes.
+fn line_facts(number: u32, facts: &MediumFacts, size: u64) -> String {
+    let mut parts = Vec::new();
+    if kind(&facts.media_type) == "document" {
+        parts.push(
+            facts
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("document-{number}.pdf")),
+        );
+    }
+    parts.push(facts.media_type.clone());
+    if let Some(duration) = facts.duration_ms {
+        parts.push(format!("{:.1} s", duration as f64 / 1000.0));
+    }
+    if let (Some(width), Some(height)) = (facts.width, facts.height) {
+        parts.push(format!("{width} × {height} px"));
+    }
+    parts.push(format!("{size} bytes"));
+    parts.join(", ")
 }
 
 /// The word a medium's line names its kind by.

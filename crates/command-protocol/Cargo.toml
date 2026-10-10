@@ -19,12 +19,6 @@ testing = []
 [dependencies]
 bytes.workspace = true
 garde.workspace = true
-# Reads a medium's size from its header (`runtime.md` § Media the model
-# views): only the codecs of the types a model reads.
-image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
-# Reads a video's size and length from its container's header: MP4 and
-# QuickTime, and WebM, in one parser.
-nom-exif = "3.8"
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true

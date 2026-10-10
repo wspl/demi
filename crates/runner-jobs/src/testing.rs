@@ -138,7 +138,7 @@ impl Dispatch {
         // A model that reads every medium in a tool result.
         let viewable = Viewable {
             model: "test-model".into(),
-            media_types: [
+            media_types: Some([
                 "image/png",
                 "image/jpeg",
                 "image/gif",
@@ -150,7 +150,7 @@ impl Dispatch {
                 "application/pdf",
             ]
             .map(str::to_owned)
-            .to_vec(),
+            .to_vec()),
         };
         let context = Arc::new(
             ExecutionContext::create(

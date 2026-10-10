@@ -91,5 +91,6 @@ fn report(command: &CommandId, title: &str, event: ReportEvent) -> CommandReport
         title: title.to_owned(),
         event,
         output: String::new(),
+        media: Vec::new(),
     }
 }

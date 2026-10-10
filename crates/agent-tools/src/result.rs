@@ -534,6 +534,23 @@ impl Budget {
     }
 }
 
+/// What the end report of a command whose job viewed `media` attaches, as
+/// the `shell` result would have: the media, by number, while `model`
+/// reads them and they fit the bounds of requests within `limits`, then the
+/// text of the lines about them; nothing when it viewed none (`runtime.md`
+/// § What a result attaches).
+pub async fn report_media(
+    media: &[CommandMedium],
+    model: &Model,
+    limits: RequestLimits,
+) -> Vec<ResultPart> {
+    let (mut parts, lines) = attached_media(media, None, model, limits).await;
+    if !lines.is_empty() {
+        parts.push(ResultPart::Text(lines.join("\n")));
+    }
+    parts
+}
+
 /// What a result that reports a command's end attaches (`runtime.md`
 /// § What a result attaches): the media its job viewed, by number, each
 /// while the model reads it in a tool result and it fits the result's
@@ -610,7 +627,7 @@ async fn viewed_medium(
             } else {
                 ResultPart::Document {
                     bytes: whole(data),
-                    file_name: document_name(number),
+                    file_name: medium.name.clone().unwrap_or_else(|| document_name(number)),
                 }
             };
             (Some(part), None)
@@ -642,7 +659,7 @@ async fn viewed_medium(
     }
 }
 
-/// The name a viewed document goes by in a request: its kind and number, as
+/// The name a document viewed from stdin goes by: its kind and number, as
 /// its line names it.
 fn document_name(number: u32) -> String {
     format!("document-{number}.pdf")
@@ -1036,6 +1053,10 @@ mod tests {
             number,
             media_type: media_type.to_owned(),
             size: bytes.len() as u64,
+            name: None,
+            width: None,
+            height: None,
+            duration_ms: None,
             bytes: Ok(bytes.clone()),
         }
     }
@@ -1130,6 +1151,10 @@ mod tests {
             number: 3,
             media_type: "image/png".into(),
             size: 412_000,
+            name: None,
+            width: None,
+            height: None,
+            duration_ms: None,
             bytes: Err("lost with the Host's connection".into()),
         };
         let media = vec![

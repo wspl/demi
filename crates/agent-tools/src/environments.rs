@@ -358,6 +358,13 @@ mod tests {
             Err(ShellError::UnknownCommand(command.clone()))
         }
 
+        fn media(
+            &self,
+            command: &CommandId,
+        ) -> Result<Vec<demi_host_interface::CommandMedium>, ShellError> {
+            Err(ShellError::UnknownCommand(command.clone()))
+        }
+
         fn read_output<'a>(
             &'a self,
             command: &'a CommandId,

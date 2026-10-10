@@ -136,7 +136,15 @@ impl Handler for Fixture {
                             b"\x89PNG\r\n\x1a\n".to_vec()
                         };
                         medium.resize(size.max(medium.len()), index as u8);
-                        context.output.medium(Bytes::from(medium)).await?;
+                        // The facts a handler reads from the header: a
+                        // PNG of 4 × 3 px.
+                        let facts = demi_command_protocol::MediumFacts {
+                            media_type: "image/png".into(),
+                            width: Some(4),
+                            height: Some(3),
+                            ..Default::default()
+                        };
+                        context.output.medium(facts, Bytes::from(medium)).await?;
                     }
                     if let Some(after) = text("after") {
                         context.output.stdout(Bytes::from(after.to_owned())).await?;

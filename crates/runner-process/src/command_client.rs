@@ -201,7 +201,7 @@ impl<O: AsyncWrite + Unpin, E: AsyncWrite + Unpin> OutputSink for Terminal<O, E>
 
     /// The runner hands the media of the commands it runs to their job; it
     /// sends a local caller only their output.
-    async fn medium(&mut self, _: Bytes) -> io::Result<()> {
+    async fn medium(&mut self, _: demi_command_protocol::MediumFacts, _: Bytes) -> io::Result<()> {
         Err(io::Error::other("a local command returned a medium"))
     }
 }

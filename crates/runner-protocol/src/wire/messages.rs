@@ -922,6 +922,33 @@ pub enum Outbound {
         size: u64,
         #[garde(custom(digest))]
         sha256: String,
+        /// A document's name, as its medium record gave it.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        name: Option<String>,
+        /// An image's or a video's size in pixels, and a video's length,
+        /// as its medium record gave them.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        width: Option<u32>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        height: Option<u32>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        duration_ms: Option<u64>,
     },
     /// The answer to `job_media_read`: the media read flow through the
     /// pipe; each that is not says why.

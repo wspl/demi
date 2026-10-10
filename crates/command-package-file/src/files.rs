@@ -23,7 +23,7 @@ use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    edit,
+    edit, facts,
     patch::{self, PatchError},
 };
 
@@ -52,7 +52,11 @@ pub enum FileError {
     TooLarge(u64),
     #[error("this conversation's model, {model}, does not read {media_type} in a tool result")]
     NotViewable { model: String, media_type: String },
-    #[error("a job demi host shell runs shows no model its media; pipe the bytes into demi file view in your own script instead")]
+    #[error(
+        "it is not known which files this conversation's model, {0}, reads; its provider entry can name them"
+    )]
+    UnknownTypes(String),
+    #[error("a job on another Host shows the model nothing; pipe its bytes into demi file view in your own script")]
     NoModel,
     #[error("File has no parent directory")]
     NoParent,
@@ -255,7 +259,10 @@ async fn view_file(context: &InvocationContext, path: &str) -> Result<(), FileEr
         _ = context.cancellation.cancelled() => return Err(FileError::Cancelled),
         result = file.read_to_end(&mut bytes) => result?,
     };
-    show(context, path, Bytes::from(bytes)).await
+    let name = Path::new(path)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned());
+    show(context, path, name, Bytes::from(bytes)).await
 }
 
 /// Shows the model what stdin holds. Stdin over the medium bound is read to
@@ -284,7 +291,7 @@ async fn view_stdin(context: &mut InvocationContext) -> Result<(), FileError> {
     if size > MAX_MEDIUM_BYTES {
         return Err(oversized(STDIN, &bytes, size));
     }
-    show(context, STDIN, Bytes::from(bytes)).await
+    show(context, STDIN, None, Bytes::from(bytes)).await
 }
 
 /// Why `named`, `size` bytes beginning with `opening`, more than a medium
@@ -299,9 +306,15 @@ fn oversized(named: &str, opening: &[u8], size: u64) -> FileError {
     }
 }
 
-/// Returns `bytes`, named `named`, as a medium of the job when they are a
-/// medium the job's model reads in a tool result.
-async fn show(context: &InvocationContext, named: &str, bytes: Bytes) -> Result<(), FileError> {
+/// Returns `bytes`, named `named` in a line and `name` to the model when it
+/// is a document's file name, as a medium of the job when they are a medium
+/// the job's model reads in a tool result, with the facts its header gives.
+async fn show(
+    context: &InvocationContext,
+    named: &str,
+    name: Option<String>,
+    bytes: Bytes,
+) -> Result<(), FileError> {
     let Some(media_type) = sniff_media_type(&bytes) else {
         return Err(if !bytes.is_empty() && is_text(&bytes) {
             FileError::Text(quoted(named))
@@ -312,13 +325,17 @@ async fn show(context: &InvocationContext, named: &str, bytes: Bytes) -> Result<
     let Some(viewable) = &context.request.viewable else {
         return Err(FileError::NoModel);
     };
-    if !viewable.media_types.iter().any(|viewed| viewed == media_type) {
+    let Some(media_types) = &viewable.media_types else {
+        return Err(FileError::UnknownTypes(viewable.model.clone()));
+    };
+    if !media_types.iter().any(|viewed| viewed == media_type) {
         return Err(FileError::NotViewable {
             model: viewable.model.clone(),
             media_type: media_type.to_owned(),
         });
     }
-    context.output.medium(bytes).await?;
+    let facts = facts::facts(&bytes, media_type, name);
+    context.output.medium(facts, bytes).await?;
     Ok(())
 }
 

@@ -172,22 +172,32 @@ fn content_sources(content: &[UserContentBlock]) -> impl Iterator<Item = Source<
     })
 }
 
-/// The media of a block: a message's or a steer's, or a tool result's.
+/// The media of a block: a message's or a steer's, a tool result's, or
+/// those command reports carry.
 fn sources(block: &Block) -> Vec<Source<'_>> {
     match block {
         Block::User(user) => content_sources(&user.content).collect(),
         Block::Steer(steer) => content_sources(&steer.content).collect(),
-        Block::ToolCall(call) => call
-            .output
+        Block::ToolCall(call) => call.output.iter().filter_map(result_source).collect(),
+        Block::Wakeup(wakeup) => wakeup
+            .reports
             .iter()
-            .filter_map(|part| match part {
-                ToolResultContentBlock::Image { source }
-                | ToolResultContentBlock::Video { source } => Some(Source::Tool(source)),
-                ToolResultContentBlock::Document { source } => Some(Source::Document(source)),
-                ToolResultContentBlock::Text { .. } | ToolResultContentBlock::Gone { .. } => None,
-            })
+            .flat_map(|report| &report.media)
+            .filter_map(result_source)
             .collect(),
         _ => Vec::new(),
+    }
+}
+
+/// The medium a tool result's part holds; none for its text or a medium
+/// that is gone.
+fn result_source(part: &ToolResultContentBlock) -> Option<Source<'_>> {
+    match part {
+        ToolResultContentBlock::Image { source } | ToolResultContentBlock::Video { source } => {
+            Some(Source::Tool(source))
+        }
+        ToolResultContentBlock::Document { source } => Some(Source::Document(source)),
+        ToolResultContentBlock::Text { .. } | ToolResultContentBlock::Gone { .. } => None,
     }
 }
 

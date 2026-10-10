@@ -952,6 +952,13 @@ export function commandReportCases(): { variant: string, reports: CommandReport[
     { variant: 'stopped by another agent', reports: [report('19', 'Watch the type check', { kind: 'stopped', by: { kind: 'agent', number: 2 } })] },
     { variant: 'lost', reports: [report('20', 'Serve the docs', { kind: 'lost', reason: 'its Host’s connection ended' })] },
     { variant: 'a call whose title is not known', reports: [report('21', '', { kind: 'ended', exitCode: 2 })] },
+    {
+      variant: 'ended, with the media its job viewed',
+      reports: [{
+        ...report('22', 'Capture the checkout screens', { kind: 'ended', exitCode: 0 }, `${imageLine(1, 480, 300, 15_822)}\n${imageLine(2, 480, 300, 16_078)}`),
+        media: [blobImage(galleryBlobs.screenshot), blobImage(galleryBlobs.chart)],
+      }],
+    },
   ]
 }
 

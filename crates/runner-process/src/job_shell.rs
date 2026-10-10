@@ -13,7 +13,7 @@ use demi_command_protocol::LocalInvocation;
 use demi_command_sdk::{Handler, edits::Recorder};
 use demi_runner_protocol::wire::Signal;
 use futures_util::future::BoxFuture;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 use crate::process::{OutputChunk, ProcessExit, ProcessInput};
@@ -64,6 +64,12 @@ pub trait ShellJob: Send + Sync {
     /// The job's output, chunk by chunk, until everything it ran has
     /// finished.
     fn output(&mut self) -> &mut mpsc::Receiver<OutputChunk>;
+
+    /// Reads what the job's stdout pipe holds now, without waiting for
+    /// more, into [`ShellJob::output`]; the answer comes once those chunks
+    /// are there, so what follows them follows everything written before
+    /// (`runtime.md` § What `demi file view` shows).
+    fn drain_stdout(&self) -> oneshot::Receiver<()>;
 
     /// Stops the job for a signal that ends it, which its exit reports:
     /// `KILL` at once, the others by ending its shell work and signalling

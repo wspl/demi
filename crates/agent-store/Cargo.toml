@@ -28,6 +28,9 @@ garde.workspace = true
 # Fits an image as it enters a transcript (`runtime.md` § Images in the
 # transcript): only the codecs of the types a model reads, and no threads.
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+# Reads a video's size in pixels from its container's header (`runtime.md`
+# § Media): MP4 and QuickTime, and WebM, in one parser.
+nom-exif = "3.8"
 serde.workspace = true
 sha2 = { version = "0.10", optional = true }
 thiserror.workspace = true

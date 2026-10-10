@@ -7,8 +7,8 @@ use std::{collections::BTreeMap, path::Path, time::Duration};
 
 use bytes::Bytes;
 use demi_command_protocol::{
-    CommandCaller, CommandContext, CommandLocale, Completion, EditContext, Invocation, Record,
-    Viewable,
+    CommandCaller, CommandContext, CommandLocale, Completion, EditContext, Invocation,
+    MediumFacts, Record, Viewable,
 };
 use demi_command_sdk::{
     Client, Exchange, InputSource, OutputSink, ServiceError, testing::ServiceProcess,
@@ -646,7 +646,7 @@ impl Drop for Locked {
 struct Viewed {
     stdout: Vec<u8>,
     stderr: String,
-    media: Vec<Bytes>,
+    media: Vec<(MediumFacts, Bytes)>,
 }
 
 impl OutputSink for Viewed {
@@ -662,8 +662,8 @@ impl OutputSink for Viewed {
         Ok(())
     }
 
-    async fn medium(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
-        self.media.push(bytes);
+    async fn medium(&mut self, facts: MediumFacts, bytes: Bytes) -> Result<(), ServiceError> {
+        self.media.push((facts, bytes));
         Ok(())
     }
 }
@@ -685,13 +685,14 @@ impl InputSource for Stdin {
 }
 
 /// Runs `demi file view` with `paths` in `cwd` as a job's command whose
-/// model, `model`, reads `viewable` in a tool result, with `stdin`.
+/// model, `model`, reads `viewable` in a tool result, or types nobody knows
+/// when none, with `stdin`.
 async fn view(
     client: &Client,
     cwd: &str,
     paths: &[&str],
     model: &str,
-    viewable: &[&str],
+    viewable: Option<&[&str]>,
     stdin: Stdin,
 ) -> (u8, Viewed) {
     let request = Invocation {
@@ -715,7 +716,8 @@ async fn view(
         live_input: Some(stdin.live),
         viewable: Some(Viewable {
             model: model.into(),
-            media_types: viewable.iter().map(|&media_type| media_type.to_owned()).collect(),
+            media_types: viewable
+                .map(|types| types.iter().map(|&media_type| media_type.to_owned()).collect()),
         }),
     };
     let (input, output) = client.invoke(&request).await.unwrap();
@@ -729,12 +731,24 @@ async fn view(
     (completion.exit_code, viewed)
 }
 
-/// A PNG's signature and bytes after it, as much as `demi file view` reads
-/// to tell what it is.
+/// A 4 × 3 PNG.
 fn png() -> Vec<u8> {
-    let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
-    bytes.resize(64, 1);
-    bytes
+    let pixels = image::RgbaImage::from_pixel(4, 3, image::Rgba([1, 2, 3, 255]));
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    pixels.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
+    bytes.into_inner()
+}
+
+/// The facts of a medium of `media_type`, `name`d when it is a document,
+/// `size` pixels when an image.
+fn facts(media_type: &str, name: Option<&str>, size: Option<(u32, u32)>) -> MediumFacts {
+    MediumFacts {
+        media_type: media_type.into(),
+        name: name.map(str::to_owned),
+        width: size.map(|(width, _)| width),
+        height: size.map(|(_, height)| height),
+        duration_ms: None,
+    }
 }
 
 const PDF: &[u8] = b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n";
@@ -754,20 +768,28 @@ async fn demi_file_view_hands_each_medium_to_the_job_and_names_what_it_cannot_sh
         std::fs::write(root.path().join("a.png"), png()).unwrap();
         std::fs::write(root.path().join("report.pdf"), PDF).unwrap();
         std::fs::write(root.path().join("data.bin"), [0u8, 255, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]).unwrap();
-        let mut big = png();
+        let mut big = b"\x89PNG\r\n\x1a\n".to_vec();
         big.resize(17 * 1024 * 1024, 1);
         std::fs::write(root.path().join("capture.png"), big).unwrap();
         let client = service.client();
-        let both = ["image/png", "application/pdf"];
+        let both = Some(&["image/png", "application/pdf"][..]);
         let none = || Stdin { chunks: Vec::new(), live: false };
 
         // Paths in order: the media go to the job, nothing to stdout, a
         // line for each that cannot be shown, and the others still shown.
         let paths = ["a.png", "notes.txt", "data.bin", "missing.png", "report.pdf", "capture.png"];
-        let (code, viewed) = view(client, cwd, &paths, "test-model", &both, none()).await;
+        let (code, viewed) = view(client, cwd, &paths, "test-model", both, none()).await;
         assert_eq!(code, 1);
         assert_eq!(viewed.stdout, b"");
-        assert_eq!(viewed.media, [Bytes::from(png()), Bytes::from_static(PDF)]);
+        // Each with the facts its header gives: the image's size, the
+        // document's file name.
+        assert_eq!(
+            viewed.media,
+            [
+                (facts("image/png", None, Some((4, 3))), Bytes::from(png())),
+                (facts("application/pdf", Some("report.pdf"), None), Bytes::from_static(PDF)),
+            ]
+        );
         assert_eq!(
             viewed.stderr,
             "demi file view: notes.txt: a text file; read it with cat notes.txt\n\
@@ -776,27 +798,37 @@ async fn demi_file_view_hands_each_medium_to_the_job_and_names_what_it_cannot_sh
              demi file view: capture.png: 17.0 MiB; a medium is at most 16 MiB\n"
         );
 
-        // A type the model does not read in a tool result names the model.
-        let (code, viewed) = view(client, cwd, &["report.pdf"], "deepseek-v4.1-flash", &["image/png"], none()).await;
+        // A type the model does not read in a tool result names the model,
+        // and so does a model whose types are not known, which is no no.
+        let (code, viewed) = view(client, cwd, &["report.pdf"], "deepseek-v4.1-flash", Some(&["image/png"]), none()).await;
         assert_eq!((code, viewed.media.len()), (1, 0));
         assert_eq!(
             viewed.stderr,
             "demi file view: report.pdf: this conversation's model, deepseek-v4.1-flash, does not read application/pdf in a tool result\n"
         );
+        let (code, viewed) = view(client, cwd, &["a.png"], "deepseek-v4.1-flash", None, none()).await;
+        assert_eq!((code, viewed.media.len()), (1, 0));
+        assert_eq!(
+            viewed.stderr,
+            "demi file view: a.png: it is not known which files this conversation's model, deepseek-v4.1-flash, reads; its provider entry can name them\n"
+        );
 
         // A pipe: stdin when no path is named or the path is -.
         for paths in [&[][..], &["-"][..]] {
             let piped = Stdin { chunks: vec![Bytes::from(png()[..20].to_vec()), Bytes::from(png()[20..].to_vec())], live: false };
-            let (code, viewed) = view(client, cwd, paths, "test-model", &both, piped).await;
-            assert_eq!((code, viewed.media.clone(), viewed.stderr.as_str()), (0, vec![Bytes::from(png())], ""));
+            let (code, viewed) = view(client, cwd, paths, "test-model", both, piped).await;
+            assert_eq!(
+                (code, viewed.media, viewed.stderr.as_str()),
+                (0, vec![(facts("image/png", None, Some((4, 3))), Bytes::from(png()))], "")
+            );
         }
         let text = Stdin { chunks: vec![Bytes::from_static(b"plain words\n")], live: false };
-        let (code, viewed) = view(client, cwd, &[], "test-model", &both, text).await;
+        let (code, viewed) = view(client, cwd, &[], "test-model", both, text).await;
         assert_eq!((code, viewed.stderr.as_str()), (1, "demi file view: stdin: a text file; read it with cat stdin\n"));
 
         // The job's own input is never read: nothing waits for input.
         let live = Stdin { chunks: Vec::new(), live: true };
-        let (code, viewed) = view(client, cwd, &[], "test-model", &both, live).await;
+        let (code, viewed) = view(client, cwd, &[], "test-model", both, live).await;
         assert_eq!(code, 1);
         assert_eq!(
             viewed.stderr,

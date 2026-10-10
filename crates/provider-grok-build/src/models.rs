@@ -139,8 +139,6 @@ impl GrokModel {
             // The proxy states no modalities; Grok Build's own harness sends
             // images natively. Its proxy drops a document, so the list names
             // the images alone (`models.md` § Accepted attachment types).
-            supports_attachments: Some(true),
-            supports_video: None,
             accepted_extensions: Some(demi_shared_types::IMAGE_FILE_EXTENSIONS.to_vec()),
             supports_reasoning: reasoning.then_some(true),
             supported_thinking_efforts: (!efforts.is_empty()).then_some(efforts),
