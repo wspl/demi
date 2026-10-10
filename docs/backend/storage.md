@@ -155,7 +155,12 @@ input, which the multi-worker control service also relies on
 - **Devices and workspaces:** `devices` stores ownership, kind, name,
   platform, the operating system and architecture and the runner release its runner last reported, how pages reach it (`route`: `automatic`, the default, `direct` or `server`), the hash of the device's current token, claim and last-seen
   times, and the JSON list of artifacts its runner last reported its cache
-  holds ([Installed artifacts](../execution/native-runtime.md#installed-artifacts)).
+  holds ([Installed artifacts](../execution/native-runtime.md#installed-artifacts)),
+  the instance its runner last said hello with, so a restarted backend tells
+  a runner that kept its jobs from one that started anew
+  ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)),
+  and for a Cloud the time its current boot completed, which a backend that
+  takes a running Cloud over counts its lifetime cap from.
   The token hash is unique, so a runner's token finds its device
   through one index lookup; it is absent until the backend issues a token. A
   partial unique index permits one managed device per user. A user's paired
