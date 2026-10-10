@@ -197,6 +197,8 @@ impl SessionRuntime for TestRuntime {
         command: &'a CommandId,
         title: &'a str,
         interval_ms: Option<u32>,
+        _: &'a demi_shared_types::ModelSelection,
+        _: RequestLimits,
     ) -> LocalBoxFuture<'a, Option<CommandReport>> {
         let report = if self.commands.has_ended(command) {
             test_report(command.as_str(), title, ReportEvent::Ended { exit_code: None })
@@ -1415,6 +1417,7 @@ fn media_parts(request: &demi_provider_common::InferenceRequest) -> Vec<String> 
         ResultPart::Text(text) => text.clone(),
         ResultPart::Image(_) => "<image>".to_owned(),
         ResultPart::Video(_) => "<video>".to_owned(),
+        ResultPart::Document { .. } => "<document>".to_owned(),
     });
     user.chain(result).collect()
 }
@@ -1453,6 +1456,7 @@ async fn a_medium_the_requests_model_cannot_take_reaches_it_as_the_same_text_in_
     let small = ScriptedRuntime::new([answer("small")]).with_limits(RequestLimits {
         body_bytes: Some(6_000),
         images: None,
+        tool_results: demi_provider_common::ToolResultKinds::ALL,
     });
     let record = tool("record", move |_| {
         let video = ResultPart::Video(MediaBytes {
@@ -2200,6 +2204,7 @@ fn test_report(command: &str, title: &str, event: ReportEvent) -> CommandReport 
         title: title.to_owned(),
         event,
         output: String::new(),
+        media: Vec::new(),
     }
 }
 

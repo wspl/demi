@@ -25,7 +25,7 @@ use std::{
 
 use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RequestLimits, RuntimeEnv, RuntimeError,
+    RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError,
     credentials::{Accounts, CredentialPool, SubscriptionAccounts},
     quota::{ProviderQuota, QuotaSnapshotStore},
 };
@@ -285,6 +285,11 @@ impl ProviderRuntime for CodexRuntime {
     }
 
     fn request_limits(&self, _model: &Model) -> RequestLimits {
-        RequestLimits::OPENAI
+        // Images inside `function_call_output.output`; the backend documents
+        // no file part (`providers.md` § Media in tool results).
+        RequestLimits {
+            tool_results: ToolResultKinds::IMAGES,
+            ..RequestLimits::OPENAI
+        }
     }
 }

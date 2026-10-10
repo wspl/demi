@@ -148,7 +148,6 @@ async fn ready_job(cwd: &Path, script: &str) -> Job {
         cwd.to_owned(),
         BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
         false,
-        true,
         scope.clone(),
         &ShellRuntime::current(),
     )
@@ -440,7 +439,6 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
                 cwd.clone(),
                 BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
                 false,
-                true,
                 Scope::new(CancellationToken::new(), None),
                 &ShellRuntime::current(),
             )
@@ -592,7 +590,6 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
             root: "fixture".into(),
             argv: vec![],
             live: true,
-            stdout: demi_command_protocol::StdoutTarget::Job,
         })
         .unwrap(),
         cwd: root_path.to_string_lossy().into_owned(),
@@ -654,7 +651,6 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
         cwd.clone(),
         BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
         false,
-        true,
         Scope::new(CancellationToken::new(), None),
         &ShellRuntime::current(),
     )

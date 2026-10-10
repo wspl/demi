@@ -7,8 +7,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ATTACHMENT_FILE_EXTENSIONS, FileExtension, Model, ModelSelection, Nullable, THINKING_OFF,
-    ThinkingCapability, ThinkingConfig, ThinkingSummary, Timestamp, VIDEO_FILE_EXTENSIONS,
+    FileExtension, Model, ModelSelection, Nullable, THINKING_OFF, ThinkingCapability,
+    ThinkingConfig, ThinkingSummary, Timestamp,
 };
 
 /// An entry's catalog as one read of its source returned it. The backend
@@ -65,19 +65,10 @@ pub struct ProviderModel {
     #[schemars(with = "Nullable<bool>")]
     #[garde(skip)]
     pub supports_tools: Option<bool>,
-    /// Whether the model reads images and documents natively.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<bool>")]
-    #[garde(skip)]
-    pub supports_attachments: Option<bool>,
-    /// Whether the model reads video natively.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<bool>")]
-    #[garde(skip)]
-    pub supports_video: Option<bool>,
-    /// The exact types the model reads natively, when the source states
-    /// them: `[]` for none, null when the source does not say
-    /// (`models.md` § Accepted attachment types).
+    /// The types the model reads natively, from the input modalities the
+    /// source gives it, or as the source states them: `[]` for none, null
+    /// when the source does not say (`models.md` § Accepted attachment
+    /// types).
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Vec<FileExtension>>")]
     #[garde(skip)]
@@ -130,7 +121,7 @@ impl ProviderModel {
                 context_window: self.context_window.unwrap_or(0),
                 output_limit: self.output_limit,
                 thinking: self.thinking_capabilities(),
-                accepted_extensions: self.accepted_file_extensions(),
+                accepted_extensions: self.accepted_extensions.clone(),
             },
             thinking,
             service_tier_id,
@@ -203,30 +194,6 @@ impl ProviderModel {
             return Err(UnavailableSetting::Tier(tier.to_owned()));
         }
         Ok(Some(tier.to_owned()))
-    }
-
-    /// The types the model reads natively (`models.md` § Accepted
-    /// attachment types): the exact list when the catalog states one;
-    /// otherwise the attachment types when it is known to read attachments
-    /// and the video types when it is known to read video; null while
-    /// attachment support is unknown and video is not known.
-    pub fn accepted_file_extensions(&self) -> Option<Vec<FileExtension>> {
-        if let Some(exact) = &self.accepted_extensions {
-            return Some(exact.clone());
-        }
-        let attachments = self.supports_attachments;
-        let video = self.supports_video == Some(true);
-        if attachments.is_none() && !video {
-            return None;
-        }
-        let mut extensions = Vec::new();
-        if attachments == Some(true) {
-            extensions.extend(ATTACHMENT_FILE_EXTENSIONS);
-        }
-        if video {
-            extensions.extend(VIDEO_FILE_EXTENSIONS);
-        }
-        Some(extensions)
     }
 
     /// The thinking settings the product can offer for the model: none to

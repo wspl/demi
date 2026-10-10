@@ -2303,6 +2303,8 @@ dependencies = [
  "demi-shared-cli",
  "demi-shared-gates",
  "demi-shared-types",
+ "image",
+ "nom-exif",
  "regex",
  "serde_json",
  "shlex",

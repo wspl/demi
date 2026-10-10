@@ -1,18 +1,34 @@
 //! `demi file` as the model runs it (`commands.md` § File commands): each
-//! script is one `shell_exec` in the conversation's shell on a real runner,
+//! script is one `shell` call on a real runner,
 //! whose `file` commands run in the `demi.file` package the workspace
 //! built.
 
-use demi_agent_tools::testing::{field, shown_output};
-use demi_provider_common::testing::ScriptedRuntime;
+use std::{cell::RefCell, rc::Rc};
 
-use crate::support::{Fixture, scripts, turn, within};
+use demi_agent_store::testing::model_reading;
+use demi_agent_tools::testing::{field, shown_output};
+use demi_conversation_socket_protocol::ClientFrame;
+use demi_provider_common::{
+    InferenceItem, InferenceRequest, Medium, ProviderEvent, UserPart,
+    testing::{ScriptedRuntime, Turn},
+};
+use demi_shared_types::FileExtension;
+
+use crate::support::{
+    Fixture, is_idle, reply, resident, scripts, turn, within,
+};
 
 /// The results of running `scripts` in one message, with `prepare` run on
 /// the workspace first; the fixture stays for the test's own checks.
 async fn run(scripts_to_run: &[&str], prepare: impl FnOnce(&str)) -> (Fixture, Vec<String>) {
     let (turns, recorded) = scripts(&[scripts_to_run]);
     let fixture = Fixture::start(&ScriptedRuntime::new(turns)).await;
+    // A model that reads PNG images and PDFs, and no WebP.
+    fixture.providers.select(model_reading(
+        "stub",
+        "test-model",
+        &[FileExtension::Png, FileExtension::Pdf],
+    ));
     prepare(&fixture.workspace);
     let mut client = fixture.opened().await;
     turn(&mut client, "message-1", "Work on the files.").await;
@@ -35,92 +51,88 @@ fn assert_shows(result: &str, texts: &[&str]) {
     }
 }
 
-/// The size of a binary file larger than a medium may be.
-const BIG: usize = 17 * 1024 * 1024;
+/// A PDF as `demi file view` recognizes it, by its first bytes.
+const PDF: &[u8] = b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n";
 
-/// A PNG signature and three more bytes: not text, and not a whole image.
-const PNG: [u8; 11] = [
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe,
-];
-
-// Several seconds: thirteen scripts run a shell job each, and the first
+// Several seconds: twelve scripts run a shell job each, and the first
 // `demi file` starts the `demi.file` service.
 #[tokio::test(flavor = "local")]
-async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
+async fn demi_file_views_media_and_creates_files_in_and_beyond_the_workspace() {
     within(async {
+        let shot = demi_agent_store::testing::png(4, 3, 1).into_bytes();
+        let size = shot.len();
         let (fixture, results) = run(
             &[
                 "demi file edit <<'EOF'\nnote.txt\n<<<<<<< SEARCH\n=======\nhello world\n>>>>>>> REPLACE\nEOF",
-                "demi file read note.txt",
+                "demi file view shot.png",
                 "demi file edit <<'EOF'\nnote.txt\n<<<<<<< SEARCH\n=======\nagain\n>>>>>>> REPLACE\nEOF",
                 "demi file edit <<'EOF'\nsrc/foo.txt\n<<<<<<< SEARCH\n=======\nhello\n>>>>>>> REPLACE\nEOF\ncat src/foo.txt",
                 // An unquoted heredoc expands the path line.
                 "demi file edit <<EOF\n$(cd .. && pwd)/absolute.txt\n<<<<<<< SEARCH\n=======\nnope\n>>>>>>> REPLACE\nEOF",
                 "demi file edit <<'EOF'\n../relative.txt\n<<<<<<< SEARCH\n=======\nnope\n>>>>>>> REPLACE\nEOF",
-                "demi file read shot.png",
-                "demi file read shot.png | wc -c",
+                // Several paths: each in order, one line for each that
+                // cannot be shown.
+                "demi file view note.txt shot.png",
+                // A command substitution takes no bytes: the image is the
+                // job's all the same.
+                "x=$(demi file view shot.png); echo \"[$x]\"",
                 "demi file --help && demi file edit --help",
-                // Several files: each in order, one line for each that
-                // fails, as `cat a missing b` does.
-                "demi file read note.txt missing.txt note.txt",
-                "demi file read --bogus note.txt",
-                "demi file read",
-                // Past the 16 MiB a medium may have, its first bytes decide.
-                "demi file read big.bin",
+                // An image printed is a binary stdout, never shown.
+                "cat shot.png",
+                "demi file view --bogus note.txt",
+                // A type the model does not read, and a PDF it reads.
+                "demi file view clip.webp; demi file view report.pdf",
             ],
             |workspace| {
-                std::fs::write(format!("{workspace}/shot.png"), PNG).unwrap();
-                std::fs::write(format!("{workspace}/big.bin"), vec![0u8; BIG]).unwrap();
+                std::fs::write(format!("{workspace}/shot.png"), &shot).unwrap();
+                std::fs::write(format!("{workspace}/report.pdf"), PDF).unwrap();
+                std::fs::write(format!("{workspace}/clip.webp"), b"RIFF\x10\0\0\0WEBPVP8 \0\0\0\0").unwrap();
             },
         )
         .await;
         assert_exit(&results[0], "0");
         assert_eq!(shown_output(&results[0]), "Created note.txt (1 line)\n");
-        assert_eq!(shown_output(&results[1]), "hello world\n");
+        let image = format!("[image 1: image/png, 4 × 3 px, {size} bytes]");
+        assert_exit(&results[1], "0");
+        assert_eq!(shown_output(&results[1]), format!("{image}\n<image image/png>\n"));
         // An existing file stays as it is.
         assert_exit(&results[2], "1");
         assert_eq!(shown_output(&results[3]), "Created src/foo.txt (1 line)\nhello\n");
         for result in &results[4..6] {
             assert_exit(result, "0");
         }
-        // A binary file that is no medium fails, saying how to copy it,
-        // and pipes as bytes.
         assert_exit(&results[6], "1");
         assert_eq!(
             shown_output(&results[6]),
-            "demi file read: shot.png: a binary file (11 bytes) that is not an image or video; redirect it to copy it: demi file read shot.png > copy.png\n"
+            format!("demi file view: note.txt: a text file; read it with cat note.txt\n{image}\n<image image/png>\n")
         );
-        assert_eq!(shown_output(&results[7]).trim(), "11");
+        assert_eq!(shown_output(&results[7]), format!("{image}\n[]\n<image image/png>\n"));
         assert_shows(
             &results[8],
             &[
                 "demi file edit",
                 "Created <path> (<n> lines)",
-                "shown to you as viewable media",
+                "demi browser screenshot t1 | demi file view",
             ],
         );
-
-        assert_exit(&results[9], "1");
+        assert_exit(&results[9], "0");
         assert_eq!(
             shown_output(&results[9]),
-            "hello world\ndemi file read: missing.txt: No such file or directory\nhello world\n"
+            format!("<binary stdout: {size} bytes>\n[binary stdout, {size} bytes: not shown; to look at an image, a video or a PDF, pipe it into demi file view; to keep it, redirect it to a file]\n")
         );
         // A usage error is clap's, with the command's usage, and exits 2.
         assert_exit(&results[10], "2");
-        assert_eq!(
-            shown_output(&results[10]),
-            "error: unexpected argument '--bogus' found\n\n  tip: to pass '--bogus' as a value, use '-- --bogus'\n\nUsage: demi file read <path>...\n\nFor more information, try '--help'.\n"
-        );
-        assert_exit(&results[11], "2");
         assert_shows(
-            &results[11],
-            &["error: the following required arguments were not provided:\n  <path>...\n\nUsage: demi file read <path>...\n"],
+            &results[10],
+            &["error: unexpected argument '--bogus' found", "Usage: demi file view [<path>...]"],
         );
-
-        assert_exit(&results[12], "1");
+        assert_exit(&results[11], "0");
         assert_eq!(
-            shown_output(&results[12]),
-            format!("demi file read: big.bin: a binary file ({BIG} bytes) that is not an image or video; redirect it to copy it: demi file read big.bin > copy.bin\n")
+            shown_output(&results[11]),
+            format!(
+                "demi file view: clip.webp: this conversation's model, test-model, does not read image/webp in a tool result\n[document 1: report.pdf, application/pdf, {} bytes]\n<document report.pdf>\n",
+                PDF.len()
+            )
         );
 
         let home = fixture.runner.home().to_owned();
@@ -276,3 +288,95 @@ const QUOTED_SHOWN: &str = concat!(
     "Created notes/new.md (1 line)\n",
     "It's $HOME's \\\"note\\\"\n",
 );
+
+/// The parts of the newest message a request carries that holds an image,
+/// such as an end report's: its text, or a medium as `<image image/png>`.
+pub(crate) fn user_parts(request: &InferenceRequest) -> Option<Vec<String>> {
+    request.items.iter().rev().find_map(|item| match item {
+        InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content }
+            if content.iter().any(|part| matches!(part, UserPart::Image(_))) =>
+        {
+            Some(
+                content
+                    .iter()
+                    .map(|part| match part {
+                        UserPart::Text(text) => text.clone(),
+                        UserPart::Image(Medium::Bytes(bytes)) => format!("<image {}>", bytes.media_type),
+                        other => format!("{other:?}"),
+                    })
+                    .collect(),
+            )
+        }
+        _ => None,
+    })
+}
+
+/// A fixture whose model reads PNG, whose workspace holds a 4 × 3 PNG, and
+/// whose model plays `turns`, recording each request it receives.
+async fn viewing(turns: Vec<Vec<ProviderEvent>>) -> (Fixture, Rc<RefCell<Vec<InferenceRequest>>>, usize) {
+    let requests: Rc<RefCell<Vec<InferenceRequest>>> = Rc::default();
+    let mut script = Vec::new();
+    for (index, events) in turns.into_iter().enumerate() {
+        if index == 0 {
+            script.push(Turn::Events(events));
+            continue;
+        }
+        let requests = requests.clone();
+        script.push(Turn::Respond(Box::new(move |request: &InferenceRequest| {
+            requests.borrow_mut().push(request.clone());
+            events
+        })));
+    }
+    let fixture = Fixture::start(&ScriptedRuntime::new(script)).await;
+    fixture.providers.select(model_reading("stub", "test-model", &[FileExtension::Png]));
+    let shot = demi_agent_store::testing::png(4, 3, 1).into_bytes();
+    std::fs::write(format!("{}/shot.png", fixture.workspace), &shot).unwrap();
+    (fixture, requests, shot.len())
+}
+
+/// Waits until a request carries an end report with an image, and answers
+/// its parts.
+async fn report_with_image(
+    client: &mut demi_agent_server::testing::TestClient<crate::support::DeviceHost>,
+    requests: &Rc<RefCell<Vec<InferenceRequest>>>,
+) -> Vec<String> {
+    loop {
+        if let Some(parts) = requests.borrow().iter().find_map(user_parts) {
+            return parts;
+        }
+        client.next_until(is_idle).await;
+    }
+}
+
+// A few seconds: a resident job waits for its input, then views an image
+// and ends, and its end report wakes the model.
+//
+// Planted defect this catches: an end report that carries only its text,
+// so the media a background job viewed never reach the model.
+#[tokio::test(flavor = "local")]
+async fn the_end_report_of_a_background_job_carries_the_media_it_viewed() {
+    within(async {
+        let (fixture, requests, size) = viewing(vec![
+            vec![resident("viewer", "read go; demi file view shot.png")],
+            reply("It waits."),
+            reply("Seen."),
+        ])
+        .await;
+        let mut client = fixture.opened().await;
+        turn(&mut client, "message-1", "View it when I say.").await;
+        let viewer = fixture.shell_commands()[0].clone();
+        client
+            .send(ClientFrame::ShellWrite { command_id: viewer.clone(), stdin: "go\n".into() })
+            .await;
+        let parts = report_with_image(&mut client, &requests).await;
+        assert_eq!(
+            parts,
+            [
+                format!("Command {viewer} (Run the test script) ended with exit code 0.\noutput:\n[image 1: image/png, 4 × 3 px, {size} bytes]"),
+                "<image image/png>".to_owned(),
+            ]
+        );
+        fixture.stop().await;
+    })
+    .await;
+}

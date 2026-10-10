@@ -1,16 +1,11 @@
-//! Standard handles, and the identities of a job's inherited live input and
-//! of its output (`runner.md` § Where a command's stdout goes).
+//! Standard handles, and the identity of a job's own input (`runner.md`
+//! § A job's own input).
 
 use std::{collections::BTreeMap, fs::File, io};
 
-use demi_command_protocol::StdoutTarget;
-
-/// Names the job's stdin pipe, when it is the job's live terminal.
+/// Names the job's stdin pipe, when it is the job's own input; absent for a
+/// job whose stdin the backend relays from another command.
 pub const LIVE_INPUT_ENV: &str = "DEMI_LIVE_INPUT";
-
-/// Names the job's stdout pipe, which the runner reads as the job's output;
-/// absent for a job whose stdout the backend relays elsewhere.
-pub const JOB_OUTPUT_ENV: &str = "DEMI_JOB_OUTPUT";
 
 pub fn standard_file(descriptor: u32) -> io::Result<File> {
     #[cfg(unix)]
@@ -55,23 +50,9 @@ pub fn reference(file: &File) -> io::Result<String> {
     }
 }
 
-/// Whether `file`, a process's stdin, is the job's live terminal.
+/// Whether `file`, a process's stdin, is the job's own input in any copy.
 pub fn is_live(file: &File, env: &BTreeMap<String, String>) -> io::Result<bool> {
-    is_named(file, env, LIVE_INPUT_ENV)
-}
-
-/// Where `file`, a process's stdout, goes: the job's output when it is the
-/// job's stdout pipe in any copy, and elsewhere otherwise.
-pub fn stdout_target(file: &File, env: &BTreeMap<String, String>) -> io::Result<StdoutTarget> {
-    Ok(if is_named(file, env, JOB_OUTPUT_ENV)? {
-        StdoutTarget::Job
-    } else {
-        StdoutTarget::Elsewhere
-    })
-}
-
-/// Whether `file` is the open file the variable `name` of `env` names.
-fn is_named(file: &File, env: &BTreeMap<String, String>, name: &str) -> io::Result<bool> {
+    let name = LIVE_INPUT_ENV;
     let Some(reference) = env.get(name) else {
         return Ok(false);
     };

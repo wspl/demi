@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
 };
 
-use demi_command_protocol::{CommandContext, EditContext};
+use demi_command_protocol::{CommandContext, EditContext, Viewable};
 use demi_runner_command_packages::ServiceRegistry;
 use demi_runner_process::pipes::PipeClient;
 use demi_runner_protocol::{manifest::Manifest, wire};
@@ -25,7 +25,7 @@ use crate::{
         local::Server,
     },
     connection::{ConnectionHandle, Live, Reach, Relay, Request},
-    job_media::{JobMedia, MEDIA_DIRECTORY},
+    job_media::{Arrival, JobMedia, MEDIA_DIRECTORY},
 };
 
 /// A dispatcher, its local endpoint and a connection owner for callbacks,
@@ -129,12 +129,41 @@ impl Dispatch {
                 .to_string_lossy()
                 .into_owned(),
         };
-        // The job's media go out where its connection's frames do.
+        // The job's media are announced where its connection's frames go;
+        // their lines have no job output to go to here.
+        let (arrivals, mut arrived) = mpsc::unbounded_channel::<Arrival>();
+        let control = self.control.clone();
+        tokio::spawn(async move {
+            while let Some(arrival) = arrived.recv().await {
+                if let Some(medium) = arrival.medium
+                    && control.send(medium).await.is_err()
+                {
+                    return;
+                }
+            }
+        });
         let media = Arc::new(JobMedia::new(
             job_id.into(),
             self.paths.directory.join(job_id).join(MEDIA_DIRECTORY),
-            self.control.clone(),
+            arrivals,
         ));
+        // A model that reads every medium in a tool result.
+        let viewable = Viewable {
+            model: "test-model".into(),
+            media_types: Some([
+                "image/png",
+                "image/jpeg",
+                "image/gif",
+                "image/webp",
+                "video/mp4",
+                "video/x-m4v",
+                "video/quicktime",
+                "video/webm",
+                "application/pdf",
+            ]
+            .map(str::to_owned)
+            .to_vec()),
+        };
         let context = Arc::new(
             ExecutionContext::create(
                 job_id.into(),
@@ -142,6 +171,7 @@ impl Dispatch {
                 self.manifest.clone(),
                 edits,
                 media,
+                Some(viewable),
                 self.handle.clone(),
                 &self.paths,
             )

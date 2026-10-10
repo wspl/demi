@@ -3,7 +3,7 @@ use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 use bytes::Bytes;
 use demi_command_protocol::{
     ARTIFACTS_PATH, CONVERSATION_PATH, CommandError, Completion, ConversationRequest, INFO_PATH,
-    INVOKE_PATH, Invocation, MAX_MEDIUM_BYTES, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Metadata,
+    INVOKE_PATH, Invocation, MAX_MEDIUM_BYTES, MAX_METADATA_BYTES, MAX_RECORD_BYTES, MediumFacts, Metadata,
     NUMBERS_PATH,
     ProtocolError, Record, SHUTDOWN_PATH, ServiceInfo, StreamOpen, VERSION,
 };
@@ -171,11 +171,11 @@ impl Output {
         self.write(bytes, Record::Stderr).await
     }
 
-    /// Returns `bytes` as a medium (`commands.md` § Return media): the
-    /// runner sends it where the calling process's stdout goes. A writer of
-    /// an invocation that is no job command's refuses it, as it refuses a
-    /// medium over [`MAX_MEDIUM_BYTES`].
-    pub async fn medium(&self, mut bytes: Bytes) -> Result<(), ServiceError> {
+    /// Returns `bytes`, which `facts` describe, as a medium (`commands.md`
+    /// § Return media): the runner hands it to the invocation's job. A
+    /// writer of an invocation that is no job command's refuses it, as it
+    /// refuses a medium over [`MAX_MEDIUM_BYTES`].
+    pub async fn medium(&self, facts: MediumFacts, mut bytes: Bytes) -> Result<(), ServiceError> {
         if !self.media {
             return Err(ServiceError::failed(MediumRefused::NotAJobCommand));
         }
@@ -185,6 +185,7 @@ impl Output {
         let _turn = self.turn.lock().await;
         self.send(Record::Medium {
             size: bytes.len() as u64,
+            facts,
         })
         .await?;
         while !bytes.is_empty() {

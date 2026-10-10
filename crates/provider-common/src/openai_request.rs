@@ -160,14 +160,15 @@ pub enum ReasoningReplay {
     Whole,
 }
 
-/// Where the images and videos a tool returned go.
+/// Where the images, videos and documents a tool returned go.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolMedia {
-    /// The tool's output is text, with a placeholder for each image or
-    /// video, and a user message after it carries the media: gateways drop
-    /// or refuse media inside a tool's output.
+    /// The tool's output is text, with a placeholder for each medium, and
+    /// a user message after it carries the media: gateways drop or refuse
+    /// media inside a tool's output.
     FollowUp,
-    /// Images ride inside the tool's output; videos are left out.
+    /// Images ride inside the tool's output; videos and documents are left
+    /// out.
     Inline,
 }
 
@@ -345,10 +346,18 @@ fn push_tool_result<'a>(
             }));
             let mut parts: Vec<InputPart<'_>> = output
                 .iter()
-                .filter_map(result_media)
-                .map(|bytes| InputPart::InputImage {
-                    image_url: Cow::Owned(data_url(bytes)),
-                    detail: "auto",
+                .filter_map(|part| match part {
+                    ResultPart::Image(bytes) | ResultPart::Video(bytes) => {
+                        Some(InputPart::InputImage {
+                            image_url: Cow::Owned(data_url(bytes)),
+                            detail: "auto",
+                        })
+                    }
+                    ResultPart::Document { bytes, file_name } => Some(InputPart::InputFile {
+                        filename: file_name,
+                        file_data: data_url(bytes),
+                    }),
+                    ResultPart::Text(_) => None,
                 })
                 .collect();
             if !parts.is_empty() {
@@ -370,7 +379,9 @@ fn push_tool_result<'a>(
                 .iter()
                 .filter_map(|part| match part {
                     ResultPart::Text(text) => Some(text.as_str()),
-                    ResultPart::Image(_) | ResultPart::Video(_) => None,
+                    ResultPart::Image(_) | ResultPart::Video(_) | ResultPart::Document { .. } => {
+                        None
+                    }
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -381,7 +392,9 @@ fn push_tool_result<'a>(
                         image_url: Cow::Owned(data_url(bytes)),
                         detail: "auto",
                     }),
-                    ResultPart::Text(_) | ResultPart::Video(_) => None,
+                    ResultPart::Text(_) | ResultPart::Video(_) | ResultPart::Document { .. } => {
+                        None
+                    }
                 })
                 .collect();
             let output = if images.is_empty() {
@@ -720,8 +733,8 @@ fn chat_user_content(content: &[UserPart], media: ChatMedia) -> ChatContent<'_> 
     }
 }
 
-/// The images and videos a tool returned, in a user message after the tool's
-/// output: a tool message is text only.
+/// The images, videos and documents a tool returned, in a user message
+/// after the tool's output: a tool message is text only.
 fn push_tool_media<'a>(
     messages: &mut Vec<ChatMessage<'a>>,
     tool_use_id: &str,
@@ -729,12 +742,20 @@ fn push_tool_media<'a>(
 ) {
     let mut parts: Vec<ChatPart<'_>> = output
         .iter()
-        .filter_map(result_media)
-        .map(|bytes| ChatPart::ImageUrl {
-            image_url: ImageUrl {
-                url: Cow::Owned(data_url(bytes)),
-                detail: "auto",
-            },
+        .filter_map(|part| match part {
+            ResultPart::Image(bytes) | ResultPart::Video(bytes) => Some(ChatPart::ImageUrl {
+                image_url: ImageUrl {
+                    url: Cow::Owned(data_url(bytes)),
+                    detail: "auto",
+                },
+            }),
+            ResultPart::Document { bytes, file_name } => Some(ChatPart::File {
+                file: FileData {
+                    filename: file_name,
+                    file_data: data_url(bytes),
+                },
+            }),
+            ResultPart::Text(_) => None,
         })
         .collect();
     if !parts.is_empty() {
@@ -752,8 +773,8 @@ fn push_tool_media<'a>(
 }
 
 /// A tool's output as text, for formats without media in a tool's output:
-/// each image or video becomes a placeholder that names its type, such as
-/// `[image:image/png]`.
+/// each image, video or document becomes a placeholder that names its type,
+/// such as `[image:image/png]`.
 pub fn tool_output_text(output: &[ResultPart]) -> String {
     output
         .iter()
@@ -761,6 +782,7 @@ pub fn tool_output_text(output: &[ResultPart]) -> String {
             ResultPart::Text(text) => text.clone(),
             ResultPart::Image(bytes) => format!("[image:{}]", bytes.media_type),
             ResultPart::Video(bytes) => format!("[video:{}]", bytes.media_type),
+            ResultPart::Document { bytes, .. } => format!("[document:{}]", bytes.media_type),
         })
         .collect::<Vec<_>>()
         .join("\n")
@@ -773,14 +795,6 @@ pub fn tool_arguments(input: &serde_json::Value) -> String {
         serde_json::Value::String(text) => text.clone(),
         serde_json::Value::Null => "{}".to_owned(),
         value => value.to_string(),
-    }
-}
-
-/// The bytes of a tool's image or video; none for its text.
-fn result_media(part: &ResultPart) -> Option<&MediaBytes> {
-    match part {
-        ResultPart::Image(bytes) | ResultPart::Video(bytes) => Some(bytes),
-        ResultPart::Text(_) => None,
     }
 }
 

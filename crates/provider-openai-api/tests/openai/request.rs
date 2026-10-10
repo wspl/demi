@@ -414,6 +414,13 @@ async fn media_a_tool_returned_follows_its_output_in_a_user_message() {
             data: B64Bytes::from(&b"MP4"[..]),
             media_type: "video/mp4".into(),
         }),
+        ResultPart::Document {
+            bytes: MediaBytes {
+                data: B64Bytes::from(&b"%PDF"[..]),
+                media_type: "application/pdf".into(),
+            },
+            file_name: "document-3.pdf".into(),
+        },
     ];
     let responses = body_of(
         WireApi::Responses,
@@ -427,11 +434,12 @@ async fn media_a_tool_returned_follows_its_output_in_a_user_message() {
     assert_eq!(
         responses["input"].as_array().unwrap()[1..],
         [
-            json!({ "type": "function_call_output", "call_id": "call-1", "output": "<binary stdout: 75 bytes>\n[image:image/png]\n[video:video/mp4]" }),
+            json!({ "type": "function_call_output", "call_id": "call-1", "output": "<binary stdout: 75 bytes>\n[image:image/png]\n[video:video/mp4]\n[document:application/pdf]" }),
             json!({ "role": "user", "content": [
                 { "type": "input_text", "text": "[media returned by tool call call-1]" },
                 { "type": "input_image", "image_url": "data:image/png;base64,QUFBQQ==", "detail": "auto" },
                 { "type": "input_image", "image_url": "data:video/mp4;base64,TVA0", "detail": "auto" },
+                { "type": "input_file", "filename": "document-3.pdf", "file_data": "data:application/pdf;base64,JVBERg==" },
             ] }),
         ]
     );
@@ -447,7 +455,7 @@ async fn media_a_tool_returned_follows_its_output_in_a_user_message() {
     .await;
     assert_eq!(
         chat["messages"][1],
-        json!({ "role": "tool", "tool_call_id": "call-1", "content": "<binary stdout: 75 bytes>\n[image:image/png]\n[video:video/mp4]" })
+        json!({ "role": "tool", "tool_call_id": "call-1", "content": "<binary stdout: 75 bytes>\n[image:image/png]\n[video:video/mp4]\n[document:application/pdf]" })
     );
     assert_eq!(
         chat["messages"][2],
@@ -455,6 +463,7 @@ async fn media_a_tool_returned_follows_its_output_in_a_user_message() {
             { "type": "text", "text": "[media returned by tool call call-1]" },
             { "type": "image_url", "image_url": { "url": "data:image/png;base64,QUFBQQ==", "detail": "auto" } },
             { "type": "image_url", "image_url": { "url": "data:video/mp4;base64,TVA0", "detail": "auto" } },
+            { "type": "file", "file": { "filename": "document-3.pdf", "file_data": "data:application/pdf;base64,JVBERg==" } },
         ] })
     );
 }

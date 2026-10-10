@@ -9,7 +9,7 @@ export type ToolMedium =
   | { kind: 'image' | 'video'; source: ToolMediaSource }
   | { kind: 'gone'; text: string }
 
-/** A part of a result that says its image or video is gone. */
+/** A part of a result that says its medium is gone. */
 type GoneMedium = Extract<ToolResultContentBlock, { type: 'gone' }>
 
 /**
@@ -18,15 +18,19 @@ type GoneMedium = Extract<ToolResultContentBlock, { type: 'gone' }>
  * `Video not stored: the object store refused the write`.
  */
 export function goneLine(part: GoneMedium): string {
-  const kind = part.kind === 'image' ? 'Image' : 'Video'
+  const kind = { image: 'Image', video: 'Video', document: 'Document' }[part.kind]
   return `${kind} not stored: ${part.cause.error}`
 }
 
-/** What a call shows under its row, in the order of its result; its text is the call's own. */
+/**
+ * What a call shows under its row, in the order of its result; its text is
+ * the call's own, and a document shows only as its line in the output.
+ */
 export function toolMedia(output: readonly ToolResultContentBlock[]): ToolMedium[] {
   return output.flatMap((part): ToolMedium[] => {
     switch (part.type) {
       case 'text':
+      case 'document':
         return []
       case 'gone':
         return [{ kind: 'gone', text: goneLine(part) }]

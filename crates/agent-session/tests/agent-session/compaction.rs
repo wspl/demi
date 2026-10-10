@@ -2245,6 +2245,7 @@ async fn screenshots_toward_the_vendors_image_limit_compact_before_a_request_wou
     .with_limits(RequestLimits {
         body_bytes: None,
         images: Some(5),
+        tool_results: demi_provider_common::ToolResultKinds::ALL,
     });
     let png = B64Bytes::from(b"\x89PNG\r\n\x1a\n\0\0\0\x01".to_vec());
     let shoot = tool("shoot", move |_| {
@@ -2403,6 +2404,7 @@ async fn a_switch_to_a_vendor_that_takes_fewer_images_compacts_with_the_model_be
     let second = ScriptedRuntime::new([answer("after the switch")]).with_limits(RequestLimits {
         body_bytes: None,
         images: Some(4),
+        tool_results: demi_provider_common::ToolResultKinds::ALL,
     });
     let png = B64Bytes::from(b"\x89PNG\r\n\x1a\n\0\0\0\x01".to_vec());
     let shoot = tool("shoot", move |_| {

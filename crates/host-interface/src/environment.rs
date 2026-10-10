@@ -12,6 +12,7 @@ use demi_shared_types::{
     BinaryStdout, CommandId, EditedFile, NodeId, OutputView, PathChange, Sequence, StreamKind,
     StreamView,
 };
+use demi_command_protocol::Viewable;
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
@@ -49,6 +50,10 @@ pub trait ShellEnvironment {
     /// The command's status, with its output since the model last looked.
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError>;
 
+    /// The media the command's job viewed, once it exited, which moves no
+    /// place in its output (`runtime.md` § What a result attaches).
+    fn media(&self, command: &CommandId) -> Result<Vec<CommandMedium>, ShellError>;
+
     /// How long the command has printed nothing, which moves no place in
     /// its output.
     fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError>;
@@ -59,14 +64,6 @@ pub trait ShellEnvironment {
         &'a self,
         command: &'a CommandId,
     ) -> LocalBoxFuture<'a, Result<WholeOutput, ShellError>>;
-
-    /// Medium `number` of a command that runs, as its Host keeps it
-    /// (`runtime.md` § The whole output).
-    fn read_medium<'a>(
-        &'a self,
-        command: &'a CommandId,
-        number: u32,
-    ) -> LocalBoxFuture<'a, Result<Bytes, ShellError>>;
 
     /// Writes to a running command's standard input.
     fn write<'a>(
@@ -134,6 +131,9 @@ pub struct ExecRequest {
     /// The `shell` call that runs the script, which the pages' view of the
     /// command names.
     pub tool_use_id: String,
+    /// The media types the call's model reads in a tool result, which the
+    /// job may show it (`runtime.md` § What `demi file view` shows).
+    pub viewable: Viewable,
 }
 
 /// The agent node a job runs for, whose commands its `rpc` calls reach
@@ -231,12 +231,6 @@ pub enum ShellError {
     UnknownCommand(CommandId),
     #[error("Command \"{0}\" is not running")]
     NotRunning(CommandId),
-    #[error("command {command} has no medium {number}: it returned {returned}")]
-    NoMedium {
-        command: CommandId,
-        number: u32,
-        returned: usize,
-    },
     #[error("stdin must not be empty")]
     EmptyStdin,
     #[error(transparent)]

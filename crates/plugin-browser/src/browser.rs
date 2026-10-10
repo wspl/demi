@@ -48,7 +48,7 @@ operations! {
     "inspect" => InspectInput, InspectResult, format!("Read accessibility names, roles, values, states and references; at most {MAX_NODES} nodes.");
     "find" => FindInput, FindResult, format!("Find nodes by reference, role/name, associated label, visible text, test ID or CSS; at most {MAX_NODES} nodes.");
     "read" => ReadInput, ReadResult, "Read a matched element’s text, HTML, value, attribute or visible/enabled/checked state.";
-    "screenshot" => ScreenshotInput, ScreenshotResult, "Capture a tab: shown to you as an image, or its PNG bytes when stdout is a file or a pipe; save a new PNG file with --output. Several tabs: a loop in one shell call.";
+    "screenshot" => ScreenshotInput, ScreenshotResult, "Capture a tab: its PNG's bytes on stdout, so demi browser screenshot t1 | demi file view shows it to you and > shot.png saves it; or save a new PNG file with --output. Several tabs: a loop in one shell call.";
     "probe" => ProbeInput, ProbeResult, "Find elements at viewport coordinates and optionally save an annotated screenshot.";
     "click" => ClickInput, ActionResult, "Click one actionable element or an explicit viewport coordinate.";
     "move" => MoveInput, ActionResult, "Move the pointer to an element or viewport coordinate.";
@@ -145,7 +145,7 @@ fn leaf<I: BrowserInput + schemars::JsonSchema, R: schemars::JsonSchema>(
         .json_output::<R>()
         .success_output(match name {
             "screenshot" => {
-                "what it captured and the image as a medium, or the PNG bytes alone when stdout is not the job's output; file metadata with --output; --json requires --output"
+                "the PNG's bytes on stdout and what it captured on stderr, so pipe it into demi file view to see it or redirect it to save it; with --output, the file saved and what it captured on stdout; --json requires --output"
             }
             _ => SUCCESS,
         })
@@ -157,9 +157,6 @@ fn leaf<I: BrowserInput + schemars::JsonSchema, R: schemars::JsonSchema>(
         // A find by target flags leaves stdin to the calling process, as a
         // job's `</dev/null` or a loop's input.
         leaf = leaf.stdin_with(["query"]);
-    }
-    if name == "screenshot" {
-        leaf = leaf.media();
     }
     if targeted::<I>() {
         leaf = leaf.positional_options(["ref"]);

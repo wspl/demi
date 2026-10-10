@@ -146,7 +146,7 @@ fn usage_error(line: &[&str], stdin: Option<&str>) -> String {
 #[test]
 fn a_usage_error_is_clap_s_with_the_command_s_usage_and_demi_s_tips() {
     let cases: &[(&[&str], Option<&str>, &str)] = &[
-        // One value too many, as `demi file read a.png b.png` was.
+        // One value too many, as in `demi file edit a.ts b.ts`.
         (
             &["edit", "a.txt", "b.txt", "--old", "a", "--new", "b"],
             None,

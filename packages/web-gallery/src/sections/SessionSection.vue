@@ -97,6 +97,7 @@ import {
   changesDemoBlocks,
   editingShellTool,
   fileChangeCases,
+  binaryStdoutTool,
   fullPageTool,
   longLineShellTool,
   longScriptShellTool,
@@ -842,6 +843,7 @@ const toolMediaSpecimens = [
   { variant: 'status · image', block: statusImageTool },
   { variant: 'shell · video not stored', block: notStoredVideoTool },
   { variant: 'shell · image cannot load', block: missingImageTool },
+  { variant: 'shell · binary stdout, not shown', block: binaryStdoutTool },
 ]
 const functionalShellFiles = ref(false)
 const changeCaseOpen = reactive<Record<string, boolean>>({})

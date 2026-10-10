@@ -4,7 +4,7 @@
 //! looks them up in the snapshot it publishes.
 
 use crate::{connection::ConnectionHandle, job_media::JobMedia};
-use demi_command_protocol::{CommandContext, EditContext, host_target};
+use demi_command_protocol::{CommandContext, EditContext, Viewable, host_target};
 use demi_runner_command_packages::{ServiceHandle, ServiceLease};
 use demi_runner_process::{
     command_client::{CONTEXT_ENV, ENDPOINT_ENV},
@@ -35,6 +35,9 @@ pub struct ExecutionContext {
     pub connection: ConnectionHandle,
     /// Where the media the job's commands return go.
     pub media: Arc<JobMedia>,
+    /// The media types the job may show the model, as the backend gave
+    /// them; none for a job whose media reach no model.
+    pub viewable: Option<Viewable>,
     aliases: tempfile::TempDir,
 }
 
@@ -48,6 +51,7 @@ impl ExecutionContext {
         manifest: Arc<Manifest>,
         edits: EditContext,
         media: Arc<JobMedia>,
+        viewable: Option<Viewable>,
         connection: ConnectionHandle,
         paths: &ContextPaths,
     ) -> io::Result<Self> {
@@ -66,6 +70,7 @@ impl ExecutionContext {
             edits,
             connection,
             media,
+            viewable,
             aliases,
         })
     }

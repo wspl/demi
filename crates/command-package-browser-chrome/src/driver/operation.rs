@@ -8,7 +8,6 @@ use tokio_util::sync::CancellationToken;
 use demi_command_package_browser_protocol::browser::{
     ActionProgress, AssetsExportResult, BrowserErrorCode, ErrorDetails,
 };
-use demi_command_protocol::MAX_MEDIUM_BYTES;
 
 pub const CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -62,12 +61,6 @@ pub enum BrowserError {
     OutputExists(String),
     #[error("result exceeds the browser output limit")]
     ResultTooLarge,
-    /// A screenshot of more bytes than a medium can be, which the command
-    /// would return as one (`browser.md` § Images and large outputs).
-    #[error(
-        "the screenshot is {0} bytes, more than the {MAX_MEDIUM_BYTES} a command returns as an image; save it to a file with --output <file>"
-    )]
-    ScreenshotTooLarge(usize),
     /// A CDP response over the connection's limit, which failed only the
     /// request it answers (`browser.md` § Native driver).
     #[error("Chrome's answer is too large: {0}")]
@@ -323,7 +316,6 @@ impl BrowserError {
             Self::NavigationFailed(_) => BrowserErrorCode::NavigationFailed,
             Self::OutputExists(_) => BrowserErrorCode::OutputExists,
             Self::ResultTooLarge
-            | Self::ScreenshotTooLarge(_)
             | Self::MessageTooLarge(_)
             | Self::CaptureTooLarge(_) => BrowserErrorCode::ResultTooLarge,
             Self::UnsupportedCapability(_) => BrowserErrorCode::UnsupportedCapability,

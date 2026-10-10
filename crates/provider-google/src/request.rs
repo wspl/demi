@@ -341,8 +341,8 @@ fn inline<'a>(bytes: &MediaBytes) -> Part<'a> {
 }
 
 /// A tool's result: its text in the function response, which holds JSON
-/// only, and the images and videos it returned as inline parts beside it,
-/// so the model sees what a command showed.
+/// only, and the images, videos and documents it returned as inline parts
+/// beside it, so the model sees what a command showed.
 fn function_response<'a>(
     tool_use_id: &'a str,
     name: &'a str,
@@ -352,7 +352,7 @@ fn function_response<'a>(
         .iter()
         .filter_map(|part| match part {
             ResultPart::Text(text) => Some(text.as_str()),
-            ResultPart::Image(_) | ResultPart::Video(_) => None,
+            ResultPart::Image(_) | ResultPart::Video(_) | ResultPart::Document { .. } => None,
         })
         .collect::<Vec<_>>()
         .join("\n");
@@ -365,23 +365,25 @@ fn function_response<'a>(
     }];
     for part in output {
         match part {
-            ResultPart::Image(bytes) | ResultPart::Video(bytes) => parts.push(inline(bytes)),
+            ResultPart::Image(bytes)
+            | ResultPart::Video(bytes)
+            | ResultPart::Document { bytes, .. } => parts.push(inline(bytes)),
             ResultPart::Text(_) => {}
         }
     }
     parts
 }
 
-/// A tool's result as text for a call replayed as text: each image or video
-/// named by its media type.
+/// A tool's result as text for a call replayed as text: each image, video or
+/// document named by its media type.
 fn output_text(output: &[ResultPart]) -> String {
     output
         .iter()
         .map(|part| match part {
             ResultPart::Text(text) => text.clone(),
-            ResultPart::Image(bytes) | ResultPart::Video(bytes) => {
-                format!("[{}]", bytes.media_type)
-            }
+            ResultPart::Image(bytes)
+            | ResultPart::Video(bytes)
+            | ResultPart::Document { bytes, .. } => format!("[{}]", bytes.media_type),
         })
         .collect::<Vec<_>>()
         .join("\n")

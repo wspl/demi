@@ -280,6 +280,13 @@ async fn video_rides_inline_and_tool_media_follows_the_function_response() {
                     data: B64Bytes::from(&b"PNG"[..]),
                     media_type: "image/png".into(),
                 }),
+                ResultPart::Document {
+                    bytes: MediaBytes {
+                        data: B64Bytes::from(&b"%PDF"[..]),
+                        media_type: "application/pdf".into(),
+                    },
+                    file_name: "document-3.pdf".into(),
+                },
             ],
         ),
     ]))
@@ -302,6 +309,7 @@ async fn video_rides_inline_and_tool_media_follows_the_function_response() {
         json!([
             { "functionResponse": { "name": "look", "id": "call-2", "response": { "output": "rendered" } } },
             { "inlineData": { "mimeType": "image/png", "data": "UE5H" } },
+            { "inlineData": { "mimeType": "application/pdf", "data": "JVBERg==" } },
         ])
     );
 }

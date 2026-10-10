@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use async_stream::stream;
 use demi_provider_common::{
-    InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits,
+    InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits, ToolResultKinds,
     Secret,
 };
 use demi_shared_types::Model;
@@ -87,7 +87,13 @@ impl ProviderRuntime for ClaudeCodeRuntime {
 
     /// The Anthropic API's, which the CLI sends its history to.
     fn request_limits(&self, model: &Model) -> RequestLimits {
-        RequestLimits::anthropic_messages(model)
+        // Images as MCP image content; the CLI saves an MCP PDF resource to
+        // a file of its own instead of giving it to the model (`providers.md`
+        // § Media in tool results).
+        RequestLimits {
+            tool_results: ToolResultKinds::IMAGES,
+            ..RequestLimits::anthropic_messages(model)
+        }
     }
 }
 
