@@ -1789,7 +1789,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Command Reports"
-        note="A command a call left running tells the agent of its progress and its end, and the transcript shows each report as a row where it arrived, so a reply the agent writes after it never appears without its cause. The row reads the call’s title and what happened, in the user’s words; a failure, a stop and a loss carry the tag a shell row carries, the exit code or the reason in its tooltip. Reports that arrived together are one row each. A click on a row opens the command’s terminal tab; a command no terminal tab shows is no control."
+        note="A command a call left running tells the agent of its progress and its end, and the transcript shows each report as a row where it arrived, so a reply the agent writes after it never appears without its cause. The row reads the call’s title and, set apart from it after a dot, what happened, in the user’s words, since a title is an imperative and the two never read as one sentence; a failure, a stop and a loss carry the tag a shell row carries, the exit code or the reason in its tooltip. Reports that arrived together are one row each. A click on a row opens the command’s terminal tab; a command no terminal tab shows is no control."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack">
