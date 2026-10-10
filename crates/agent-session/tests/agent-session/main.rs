@@ -529,7 +529,7 @@ fn restore_configured(
         clock,
         config,
     };
-    AgentSession::restore(checkpoint, root(), Box::new(provider.clone()), deps).unwrap()
+    AgentSession::restore(checkpoint, root(), Box::new(provider.clone()), deps, &[]).unwrap()
 }
 
 /// Which runtime of a [`NumberedRuntime`]'s family served each request, and
@@ -1168,7 +1168,7 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
         config: SessionConfig::default(),
     };
     let (restored, continuation) =
-        AgentSession::restore(checkpoint, root(), Box::new(later.clone()), deps).unwrap();
+        AgentSession::restore(checkpoint, root(), Box::new(later.clone()), deps, &[]).unwrap();
 
     assert!(continuation.interrupted);
     assert_eq!(restored.phase(), SessionPhase::Idle);

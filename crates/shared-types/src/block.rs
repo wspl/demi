@@ -418,7 +418,8 @@ fn is_message_id(message_id: &BlockId) -> impl FnOnce(&BlockId, &()) -> garde::R
 }
 
 /// The turn continues after a cut; the model receives "Continue from where
-/// you left off."
+/// you left off.", or, when the system resumed it, why
+/// (`failures-and-recovery.md` § The unfinished turn).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResumeBlock {
@@ -430,6 +431,11 @@ pub struct ResumeBlock {
     pub created_at: Timestamp,
     #[garde(dive)]
     pub model: ModelSelection,
+    /// What made Demi resume the turn, such as "the backend restarted";
+    /// omitted when the user did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub reason: Option<String>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
     /// a process resumes); omitted when there are none. They never leave

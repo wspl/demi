@@ -211,8 +211,10 @@ impl Environments {
         self.stops.borrow().get(command).copied()
     }
 
-    /// Stops every command of every environment, and of every environment
-    /// made from now on.
+    /// Lets go of every command of every environment, which runs on and
+    /// which the node takes up again when it is restored (`runtime.md`
+    /// § Dispose and restore); an environment made from now on stops its
+    /// commands.
     pub async fn dispose(&self) {
         self.disposed.set(true);
         let environments: Vec<Rc<dyn ShellEnvironment>> = self
@@ -224,7 +226,7 @@ impl Environments {
         join_all(
             environments
                 .iter()
-                .map(|environment| environment.dispose_all()),
+                .map(|environment| environment.detach_all()),
         )
         .await;
     }
@@ -285,7 +287,8 @@ mod tests {
     use super::*;
 
     /// An environment that owns the commands it is given and counts its
-    /// disposals; the tools' other operations are not what these tests call.
+    /// disposals, the ones that let go of its commands among them; the
+    /// tools' other operations are not what these tests call.
     #[derive(Default)]
     struct Owner {
         commands: Vec<CommandId>,
@@ -359,7 +362,8 @@ mod tests {
         }
 
         fn detach_all(&self) -> LocalBoxFuture<'_, ()> {
-            unreachable!("the environments let go of no command")
+            self.disposed.set(self.disposed.get() + 1);
+            Box::pin(async {})
         }
 
         fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {
