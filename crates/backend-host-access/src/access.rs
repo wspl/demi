@@ -520,16 +520,22 @@ impl dyn HostShard + '_ {
     /// since its record last saw it, and what becomes of the commands
     /// running there.
     pub fn offline(&self, device: &DeviceRecord) -> HostError {
+        HostError::offline(format!("{}.", self.offline_reason(device)))
+    }
+
+    /// The offline error's text without its full stop, which a `shell`
+    /// call's result continues with what the user can do.
+    pub fn offline_reason(&self, device: &DeviceRecord) -> String {
         // A device never seen has been away as long as it has been known.
         let since = device.last_seen_at.unwrap_or(device.claimed_at).as_millisecond();
         let away = u64::try_from(self.clock().now().as_millisecond() - since).unwrap_or(0);
         let grace = u64::try_from(UNREACHED_GRACE.as_millis()).unwrap_or(u64::MAX);
-        HostError::offline(format!(
-            "{} is offline: its runner has been disconnected for {}, so nothing can run there now; commands already running there are kept for up to {} and report when it is back.",
+        format!(
+            "{} is offline: its runner has been disconnected for {}, so nothing can run there now; commands already running there are kept for up to {} and report when it is back",
             device.name,
             duration(away),
             duration(grace),
-        ))
+        )
     }
 
     /// How long an operation on `device` waits for its runner first: the

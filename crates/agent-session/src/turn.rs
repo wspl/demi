@@ -20,7 +20,7 @@ use demi_agent_transcript::{
 use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
 };
-use demi_shared_types::{Block, ModelSelection};
+use demi_shared_types::{Block, ModelSelection, ToolView};
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
@@ -64,6 +64,7 @@ async fn run_turn(
     // The turn's first request follows its new input; each later one
     // continues the running turn.
     let mut continues = false;
+    s.update(|core| core.offline_host = None);
     loop {
         cancel.check()?;
         if switch_first && apply_switch(s, cancel).await? {
@@ -107,9 +108,30 @@ async fn run_turn(
             continue;
         }
         if !executed {
+            end_offline_turn(s).await?;
             return Ok(());
         }
     }
+}
+
+/// Leaves a root's turn that ends after a call found its Host offline, with
+/// no later call run there, unfinished: an error of Demi's own after the
+/// agent's last words offers Resume (`failures-and-recovery.md` § The
+/// unfinished turn).
+async fn end_offline_turn(s: &SessionShared) -> Result<(), TurnError> {
+    if !s.runtime.ends_offline_turns_unfinished() {
+        return Ok(());
+    }
+    let ended = s.update(|core| {
+        let device = core.offline_host.take()?;
+        let model = core.model.clone();
+        core.transcript.push_host_offline(&model, device);
+        Some(())
+    });
+    if ended.is_some() {
+        persist::flush(s).await?;
+    }
+    Ok(())
 }
 
 /// The estimate of the next request of the current model over the replayed
@@ -537,17 +559,28 @@ async fn run_tools(
 /// holds their bytes (`runtime.md` § Media).
 async fn record_result(s: &Rc<SessionShared>, call: &PendingCall, outcome: ToolOutcome) {
     let (output, held) = media::store_result(outcome.output, s.store.blobs()).await;
+    // A call that ran a command ran on the turn's Host: the Host an earlier
+    // call found offline is back.
+    let ran = matches!(outcome.view, Some(ToolView::Shell(_)));
     s.update(|core| {
         core.media.absorb(held);
         core.complete_tool_call(&call.tool_use_id, output, outcome.is_error, outcome.view);
+        if ran {
+            core.offline_host = None;
+        }
     });
-    if let Some(ToolEffect::Background {
-        command,
-        interval_ms,
-        title,
-    }) = outcome.effect
-    {
-        s.update(|core| core.watch_command(command.clone(), interval_ms, title));
-        reports::start_watch(s, &command);
+    match outcome.effect {
+        Some(ToolEffect::Background {
+            command,
+            interval_ms,
+            title,
+        }) => {
+            s.update(|core| core.watch_command(command.clone(), interval_ms, title));
+            reports::start_watch(s, &command);
+        }
+        Some(ToolEffect::HostOffline(device)) => {
+            s.update(|core| core.offline_host = Some(device));
+        }
+        None => {}
     }
 }

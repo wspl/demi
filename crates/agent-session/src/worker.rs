@@ -7,7 +7,7 @@
 use std::rc::{Rc, Weak};
 
 use demi_agent_transcript::{resume_point, rewind, unwind};
-use demi_shared_types::TurnId;
+use demi_shared_types::{Block, HOST_OFFLINE, TurnId};
 use tokio::sync::Notify;
 
 use super::{
@@ -220,6 +220,10 @@ async fn resume(
     cancel: &TurnCancel,
     reason: Option<String>,
 ) -> Result<(), TurnError> {
+    // A turn its Host's absence left unfinished resumes saying the device
+    // is back, as the dock's Resume waits for it to be
+    // (`failures-and-recovery.md` § The unfinished turn).
+    let reason = reason.or_else(|| s.read(|core| back_online(core.transcript.blocks())));
     let point = s.read(|core| resume_point(core.transcript.blocks()));
     // The unwind comes before a pending switch lands: a switch that compacts
     // would move the cut.
@@ -236,6 +240,23 @@ async fn resume(
     s.update(|core| core.push_resume(reason));
     compaction::preflight(s, cancel).await?;
     turn::run(s, cancel).await
+}
+
+/// "MacBook Pro is back online.", when the turn ended unfinished because
+/// that device was offline: its record, the last block before any
+/// compaction after it, is a `host_offline` error.
+fn back_online(blocks: &[Block]) -> Option<String> {
+    let record = blocks
+        .iter()
+        .rev()
+        .find(|block| !matches!(block, Block::CompactionBoundary(_) | Block::CompactionMarker(_)))?;
+    match record {
+        Block::Error(error) if error.code.as_deref() == Some(HOST_OFFLINE) => {
+            let device = error.device.as_ref()?;
+            Some(format!("{} is back online.", device.name))
+        }
+        _ => None,
+    }
 }
 
 /// Records how the body ended, unless dispose stopped it: a stop leaves its

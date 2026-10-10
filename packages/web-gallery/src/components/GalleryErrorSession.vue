@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { reactive } from 'vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
+import Button from '@demicodes/web-ui/ui/Button.vue'
 import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import type { ConnectionProblem } from '@demicodes/web-ui/transport/connection'
 import type { Block } from '@demicodes/protocol'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
-import { generationErrorBlock, shortTranscriptBlocks } from '../fixtures/blocks'
+import { generationErrorBlock, hostOfflineErrorBlock, shortTranscriptBlocks } from '../fixtures/blocks'
 import {
   compactedAfterFailedTurnTranscript,
   failedCompactionTranscript,
@@ -22,7 +23,8 @@ import GallerySpecimen from './GallerySpecimen.vue'
 /**
  * Every session-level failure, pinned. Each specimen is the product's
  * ChatSession over a fixed state, so what the reader sees here is what the
- * product shows for that state; nothing here toggles.
+ * product shows for that state; only a device a failure names toggles, as
+ * its runner comes and goes.
  *
  * The rule the specimens demonstrate: a failure is named once, in flow.
  * - No history to keep: the status pane replaces the transcript (Retry lives there).
@@ -39,6 +41,8 @@ interface SessionCase {
   session: ChatSessionState
   /** The app's connection banner shows above the session: the backend is away. */
   banner?: ConnectionProblem
+  /** The device the failure names, whose runner the specimen connects and disconnects. */
+  device?: { name: string; online: boolean }
   composer: 'default' | 'none' | 'noModels' | 'archived'
 }
 
@@ -118,6 +122,15 @@ const cases: SessionCase[] = [
     composer: 'default',
   },
   {
+    variant: 'Host went offline · Resume waits for the device',
+    note: 'A call failed because the conversation’s device was offline, and the agent ended its turn with work left undone. Demi’s record says so and leaves the turn unfinished; Resume stays disabled, saying the device is still offline, until its runner is back, and the agent’s next request then says it is back.',
+    session: state('host-offline', {
+      blocks: [...shortTranscriptBlocks(), hostOfflineErrorBlock()],
+    }),
+    device: reactive({ name: 'MacBook Pro', online: false }),
+    composer: 'default',
+  },
+  {
     variant: 'Compaction failed inside a turn · Resume',
     note: 'The turn compacted after its answer, and the summary request failed. The record ends the turn, so Resume sits in the dock.',
     session: state('compaction-turn', { blocks: failedCompactionTranscript(false) }),
@@ -192,6 +205,7 @@ const cases: SessionCase[] = [
                 has-provider
                 :backend-away="item.banner !== undefined"
                 :fork="forkFromAnswer"
+                :device-online="() => item.device?.online ?? true"
                 @retry="productWould('Resume the Turn')"
                 @retry-load="productWould('Load the Conversation Again')"
                 @rename="item.session.title = $event"
@@ -214,6 +228,14 @@ const cases: SessionCase[] = [
                 </template>
               </ChatSession>
             </div>
+            <Button
+              v-if="item.device"
+              size="sm"
+              variant="ghost"
+              @click="item.device.online = !item.device.online"
+            >
+              {{ item.device.online ? 'Disconnect Runner' : 'Connect Runner' }}
+            </Button>
           </div>
         </GallerySpecimen>
       </div>

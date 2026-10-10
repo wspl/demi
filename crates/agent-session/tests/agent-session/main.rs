@@ -69,6 +69,9 @@ struct TestRuntime {
     together: Vec<&'static str>,
     /// The commands the node's calls left running.
     commands: Rc<TestCommands>,
+    /// Whether the node is a child, whose turn a Host's absence does not
+    /// leave unfinished.
+    child: bool,
 }
 
 /// The commands of a test node: each runs until the test ends it, and
@@ -169,6 +172,10 @@ impl SessionRuntime for TestRuntime {
                 input_schema: serde_json::Map::new(),
             })
             .collect()
+    }
+
+    fn ends_offline_turns_unfinished(&self) -> bool {
+        !self.child
     }
 
     fn runs_together(&self, tool: &str) -> bool {
@@ -445,6 +452,7 @@ fn test_runtime(tools: Vec<(String, Invoke)>) -> TestRuntime {
         window_in_use: Rc::default(),
         together: Vec::new(),
         commands: Rc::default(),
+        child: false,
     }
 }
 
