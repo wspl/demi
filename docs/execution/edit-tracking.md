@@ -259,7 +259,9 @@ parent's own commands changed.
   two calls changed counts once. They are read when the pills come into view, and
   only a file whose ends a later call changed is counted again; until counted,
   or when its ends were not kept, a pill names its file alone. A pill opens
-  its file at the first of the group's calls that changed it.
+  its file at the first of the group's calls that changed it. A pill whose
+  edit the panel already shows closes the panel instead
+  ([Work panel](../product/web-application.md#work-panel)).
 - **The Change view.** A pill opens the `edit` intent, which the work panel's
   Change view opens in Conversation mode on the request
   ([Intents](../architecture/plugin-pages.md#intents)); with the `changes`
