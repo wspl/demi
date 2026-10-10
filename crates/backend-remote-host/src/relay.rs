@@ -179,21 +179,25 @@ impl CallEntry {
 /// and ends the connection.
 pub(crate) fn start(link: &Link, call: RpcCall) {
     let entry = CallEntry::new(call.job_id.clone());
-    let added = link.with_state(|state| state.add_call(call.call_id.clone(), entry.clone()));
-    let origin = added.then(|| {
-        link.device_jobs()
-            .with(&call.job_id, |job| job.origin.clone())
-            .flatten()
-    });
-    let Some(origin) = origin else {
+    if !link.with_state(|state| state.add_call(call.call_id.clone(), entry.clone())) {
         link.disconnect(&format!("duplicate rpc call {}", call.call_id));
         return;
-    };
+    }
     let relaying = link.clone();
     link.spawn(async move {
         let call_id = call.call_id.clone();
         let command = call.path.join(" ");
-        let exit_code = match run(&relaying, call, origin, &entry).await {
+        let origin = tokio::select! {
+            origin = origin_of(&relaying, &call.job_id) => origin,
+            () = entry.stopped.cancelled() => Err(entry
+                .cause()
+                .map_or_else(|| "rpc call ended".to_owned(), |cause| cause.text().to_owned())),
+        };
+        let ran = match origin {
+            Ok(origin) => run(&relaying, call, origin, &entry).await,
+            Err(error) => Err(Ended::Failed(error)),
+        };
+        let exit_code = match ran {
             Ok(code) => code,
             Err(ended) => {
                 // A usage error is clap's text whole; a runtime error is
@@ -251,14 +255,28 @@ impl From<&str> for Ended {
     }
 }
 
+/// Whose job `job` is: a job no agent took up yet, as a restarted backend
+/// parks one, is taken up first (`runtime.md` § Command reports).
+async fn origin_of(link: &Link, job: &str) -> Result<Rc<JobOrigin>, String> {
+    let unknown = || "rpc requires a live job dispatched to this device".to_owned();
+    let mut claimed = link.device_jobs().claimed(job).ok_or_else(unknown)?;
+    if !*claimed.borrow_and_update() {
+        link.policy().take_up_job(job.to_owned()).await?;
+        claimed.wait_for(|claimed| *claimed).await.map_err(|_| unknown())?;
+    }
+    link.device_jobs()
+        .with(job, |job| job.origin.clone())
+        .flatten()
+        .ok_or_else(unknown)
+}
+
 /// Runs the call to its exit code, or what stopped it.
 async fn run(
     link: &Link,
     call: RpcCall,
-    origin: Option<Rc<JobOrigin>>,
+    origin: Rc<JobOrigin>,
     entry: &Rc<CallEntry>,
 ) -> Result<u8, Ended> {
-    let origin = origin.ok_or("rpc requires a live job dispatched to this device")?;
     link.policy().admit_call(&origin)?;
     let stdout = link.pipes().to_device(link.device());
     stdout.hold_source().map_err(|error| error.to_string())?;
