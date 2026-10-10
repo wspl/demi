@@ -16,21 +16,21 @@ use demi_agent_session::{
     AgentSession, Continuation, NewContext, RestoreError, SeenContext, SessionConfig, SessionDeps,
     SessionInit, SessionRuntime, StepOutcomes, ToolInvocation,
 };
-use demi_agent_store::{AgentTreeStore, Checkpoint, NodeRecord, StoreError};
+use demi_agent_store::{AgentTreeStore, Checkpoint, NodeRecord, StoreError, StoredOutput};
 use demi_agent_tools::{
     CallError, ContextSource, EndOf, Environments, HostResolver, ModelIdentity, NodeContext,
     ShellAccess, ShellEnvironmentFactory, Stopper, StoreNumbers, definitions, end_report,
-    progress_report, runs_together, stored_running_commands, system_prompt,
+    progress_report, runs_together, stored_running_commands, system_prompt, whole_status,
 };
 use demi_agent_transcript::IdSource;
 use demi_host_interface::{
-    CommandSet, CommandState, Ending, JobCaller, Numbers, PageFeed, PageState, PageView, Seen,
+    CommandSet, CommandState, CommandStatus, Ending, JobCaller, Numbers, PageFeed, PageState, PageView, Seen,
     ShellEnvironment, ShellError, WholeOutput,
 };
 use demi_provider_common::{ProviderRuntime, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_shared_types::{
-    Clock, CommandEnd, CommandId, ModelSelection, NodeId, QueuedMessage, TurnId,
+    Clock, CommandEnd, CommandId, CommandReport, ModelSelection, NodeId, QueuedMessage, TurnId,
 };
 use futures_util::{FutureExt, future::LocalBoxFuture};
 
@@ -328,6 +328,38 @@ impl<H: HostResolver> NodeRuntime<H> {
             Some(CommandEnd::Unrecorded) | None => EndOf::Unrecorded,
         }
     }
+
+    /// What `command`, which ended, shows of its output since the node's
+    /// last look, which moves the node's place to its end as a look does:
+    /// from the environment that ran it while it holds it, otherwise from the
+    /// output the conversation stored; none when neither keeps it.
+    async fn ended_status(&self, command: &CommandId) -> Option<CommandStatus> {
+        if let Some(status) = self
+            .environments
+            .owning(command)
+            .and_then(|environment| environment.status(command).ok())
+            .filter(|status| !matches!(status.state, CommandState::Running { .. }))
+        {
+            return Some(status);
+        }
+        let stored = self.store.command_output(command).await.unwrap_or_else(|error| {
+            tracing::warn!(%command, %error, "the output of an ended command could not be read");
+            None
+        })?;
+        let StoredOutput::Stored { output, .. } = stored.output else {
+            return None;
+        };
+        let state = match stored.end {
+            CommandEnd::Exited { exit_code } => CommandState::Exited {
+                exit_code,
+                binary_stdout: None,
+                media: Vec::new(),
+            },
+            CommandEnd::Stopped | CommandEnd::Lost | CommandEnd::Unrecorded => CommandState::Aborted,
+        };
+        let place = self.environments.place(command);
+        Some(whole_status(command, state, 0, 0, Arc::new(output), place))
+    }
 }
 
 impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
@@ -461,14 +493,15 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     }
 
     /// A running command's progress, which a look shows and which moves the
-    /// node's place in its output; or its end, unless a look showed it the
-    /// node already or the node stopped it itself.
+    /// node's place in its output; or its end, with the output since the
+    /// node's last look, unless a look showed it the node already or the node
+    /// stopped it itself.
     fn report<'a>(
         &'a self,
         command: &'a CommandId,
         title: &'a str,
         interval_ms: Option<u32>,
-    ) -> LocalBoxFuture<'a, Option<String>> {
+    ) -> LocalBoxFuture<'a, Option<CommandReport>> {
         Box::pin(async move {
             if self.environments.end_seen(command) {
                 return None;
@@ -487,7 +520,10 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
             if self.environments.stopper(command) == Some(Stopper::Itself) {
                 return None;
             }
-            Some(end_report(command, title, self.end_of(command).await))
+            let end = self.end_of(command).await;
+            let status = self.ended_status(command).await;
+            self.environments.saw_end(command);
+            Some(end_report(command, title, end, status.as_ref()))
         })
     }
 
