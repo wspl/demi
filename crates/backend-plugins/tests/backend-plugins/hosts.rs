@@ -7,20 +7,22 @@ use demi_agent_tools::testing::shown_output;
 use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_provider_common::testing::{ScriptedRuntime, Turn};
 
-use crate::support::{Fixture, exec, reply, scripts, turn, within};
+use crate::support::{Fixture, reply, resident, scripts, turn, within};
 
-// About two seconds: four messages run a shell job each, on two Hosts.
+// About four seconds: four messages run a shell job each, on two Hosts, and
+// the reader's call waits for two seconds of quiet.
 #[tokio::test(flavor = "local")]
 async fn each_command_starts_in_its_hosts_directory_and_a_handle_answers_only_on_its_host() {
     within(async {
         let (mut turns, recorded) =
             scripts(&[&["mkdir nested && cd nested && pwd"], &["pwd"], &["pwd"]]);
-        turns.push(Turn::Events(vec![exec(
+        turns.push(Turn::Events(vec![resident(
             "reader",
             "read name; echo \"hello $name\"",
-            200,
         )]));
         turns.push(Turn::Respond(Box::new(|_| reply("waiting for a name"))));
+        // The reader's end, reported.
+        turns.push(Turn::Events(reply("noted")));
         let fixture = Fixture::start(&ScriptedRuntime::new(turns)).await;
         let mut client = fixture.opened().await;
 

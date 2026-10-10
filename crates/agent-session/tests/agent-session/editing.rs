@@ -5,7 +5,6 @@
 //! replacement's turn fails.
 
 use demi_agent_transcript::testing::RESUME_TEXT;
-use demi_provider_common::testing::TokioClock;
 use demi_shared_types::BlockId;
 
 use super::*;
@@ -276,42 +275,6 @@ async fn dispose_during_an_edits_save_waits_for_it_and_keeps_the_accepted_replac
     assert!(matches!(&stored.transcript[0], Block::User(user) if user.turn_id == receipt.turn_id));
     assert_eq!(stored.state.edits, [receipt]);
     assert_eq!(stored.state.phase, SessionPhase::Running);
-}
-
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn a_scheduled_wakeup_refuses_an_edit_and_still_fires() {
-    let provider = ScriptedRuntime::new([yield_call(60_000), said("checked the build")]);
-    let store = MemoryTreeStore::new();
-    let clock = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
-    let session = start_at(
-        &provider,
-        test_runtime(vec![yield_tool()]),
-        &store,
-        SessionConfig::default(),
-        clock,
-    )
-    .await;
-    session
-        .send(text("build it"), turn("A"))
-        .unwrap()
-        .await
-        .unwrap();
-    let before = session.transcript();
-
-    let refused = session
-        .edit_and_send(edit_of(&session, "A", "op1", "build it again"))
-        .await;
-
-    assert_eq!(refused, Err(EditError::Busy));
-    assert_eq!(session.transcript(), before);
-    assert!(session.status().wakeups);
-    tokio::time::sleep(Duration::from_secs(61)).await;
-    until(|| provider.requests().len() == 2).await;
-    session.settled().await;
-    assert_eq!(
-        kinds(&session.transcript().blocks[3..]),
-        ["wakeup", "text", "response"]
-    );
 }
 
 #[tokio::test(flavor = "local", start_paused = true)]

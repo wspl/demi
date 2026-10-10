@@ -238,8 +238,8 @@ fn wait_for_go() -> demi_provider_common::testing::MockResponse {
     let script = "until [ -f go ]; do sleep 0.05; done";
     tool_use(
         "toolu_wait",
-        "shell_exec",
-        &json!({ "description": "Wait", "script": script, "timeoutMs": 60_000 }),
+        "shell",
+        &json!({ "description": "Wait", "script": script, "intervalMs": 60_000 }),
     )
 }
 
@@ -550,8 +550,8 @@ async fn a_tool_medium_that_cannot_be_stored_is_gone_from_its_result_and_the_tur
     // to a model that reads PNG.
     vendor.respond(tool_use(
         "toolu_1",
-        "shell_exec",
-        &json!({ "description": "Show it", "script": "cat shot.png", "timeoutMs": 60_000 }),
+        "shell",
+        &json!({ "description": "Show it", "script": "cat shot.png", "intervalMs": 60_000 }),
     ));
     vendor.respond(answer(&["No picture."], 1, 1));
     let turn = socket.chat("m1", "Show me the picture").await;
@@ -646,8 +646,8 @@ async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_stays
 
     vendor.respond(tool_use(
         "toolu_1",
-        "shell_exec",
-        &json!({ "description": "Show it", "script": "cat wide.png", "timeoutMs": 60_000 }),
+        "shell",
+        &json!({ "description": "Show it", "script": "cat wide.png", "intervalMs": 60_000 }),
     ));
     vendor.respond(answer(&["Both are wide."], 1, 1));
     socket

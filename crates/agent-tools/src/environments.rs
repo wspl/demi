@@ -1,11 +1,14 @@
 //! A node's shell environments (`runtime.md` § Running shell tools): one per
 //! Host the node used, keyed by the Host's key. Concurrent calls for one Host
 //! make one environment; a handle belongs to the environment that made it;
-//! and the repeat guard of identical `shell_exec` scripts lives beside each
-//! environment.
+//! and the repeat guard of identical `shell` scripts lives beside each
+//! environment. Beside them, what the node's command reports need to know
+//! of its commands' ends (`runtime.md` § Command reports): whose end a look
+//! showed the node, and who stopped one.
 
 use std::{
     cell::{Cell, RefCell},
+    collections::{HashMap, HashSet},
     rc::Rc,
     time::Duration,
 };
@@ -17,9 +20,9 @@ use demi_shared_types::{CommandId, ToolView};
 use futures_util::future::join_all;
 use tokio::{sync::OnceCell, time::Instant};
 
-/// How many identical `shell_exec` calls in a row run.
-const MAX_IDENTICAL_EXECS: u32 = 6;
-/// How long after the previous exec an identical one still counts as a
+/// How many identical `shell` calls in a row run.
+const MAX_IDENTICAL_CALLS: u32 = 6;
+/// How long after the previous call an identical one still counts as a
 /// repeat.
 const REPEAT_WINDOW: Duration = Duration::from_secs(60);
 
@@ -28,6 +31,23 @@ const REPEAT_WINDOW: Duration = Duration::from_secs(60);
 pub struct Environments {
     slots: RefCell<Vec<Rc<Slot>>>,
     disposed: Cell<bool>,
+    /// The commands whose end a look showed the node: their end tells it
+    /// nothing more.
+    seen_ends: RefCell<HashSet<CommandId>>,
+    /// Who stopped each command that was stopped, which its end's report
+    /// names.
+    stops: RefCell<HashMap<CommandId, Stopper>>,
+}
+
+/// Who stopped a command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stopper {
+    /// The node that ran it, which saw the stop: its end tells nothing more.
+    Itself,
+    /// The user, from a page.
+    User,
+    /// Another agent of the conversation, by its number.
+    Agent(u64),
 }
 
 /// One Host's environment, once made, and its repeat guard.
@@ -37,7 +57,7 @@ pub(super) struct Slot {
     repeat: RefCell<Option<Repeat>>,
 }
 
-/// The last `shell_exec` script and how many times in a row it ran.
+/// The last `shell` script and how many times in a row it ran.
 struct Repeat {
     script: String,
     count: u32,
@@ -158,6 +178,26 @@ impl Environments {
         .await;
     }
 
+    /// A look showed the node `command`'s end.
+    pub fn saw_end(&self, command: &CommandId) {
+        self.seen_ends.borrow_mut().insert(command.clone());
+    }
+
+    /// Whether a look showed the node `command`'s end.
+    pub fn end_seen(&self, command: &CommandId) -> bool {
+        self.seen_ends.borrow().contains(command)
+    }
+
+    /// `stopper` stops `command`, which the node's environments hold.
+    pub fn stopped_by(&self, command: &CommandId, stopper: Stopper) {
+        self.stops.borrow_mut().insert(command.clone(), stopper);
+    }
+
+    /// Who stopped `command`, when it was stopped by a page or an agent.
+    pub fn stopper(&self, command: &CommandId) -> Option<Stopper> {
+        self.stops.borrow().get(command).copied()
+    }
+
     /// Stops every command of every environment, and of every environment
     /// made from now on.
     pub async fn dispose(&self) {
@@ -182,7 +222,7 @@ const DISPOSED: &str = "The node's shells are closed";
 
 impl Slot {
     /// Counts `script` against the repeat guard: within the window of the
-    /// previous exec, the same script runs six times in a row, and the
+    /// previous call, the same script runs six times in a row, and the
     /// seventh and later are suppressed; another script starts the count
     /// again.
     pub(super) fn repeated(&self, script: &str) -> Option<ToolOutcome> {
@@ -199,11 +239,11 @@ impl Slot {
             count,
             at: now,
         });
-        if count <= MAX_IDENTICAL_EXECS {
+        if count <= MAX_IDENTICAL_CALLS {
             return None;
         }
         let text = [
-            "Repeated identical shell_exec suppressed.".to_owned(),
+            "Repeated identical shell call suppressed.".to_owned(),
             format!("The same script has been run {count} consecutive times in this agent session."),
             "Inspect the previous output, use a different command, or provide the final answer instead of repeating it.".to_owned(),
         ]
@@ -211,7 +251,7 @@ impl Slot {
         Some(ToolOutcome {
             output: vec![ResultPart::Text(text)],
             is_error: true,
-            view: Some(ToolView::RepeatedShellExec {
+            view: Some(ToolView::RepeatedShell {
                 script: script.to_owned(),
                 count,
             }),
@@ -256,6 +296,10 @@ mod tests {
         }
 
         fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
+            Err(ShellError::UnknownCommand(command.clone()))
+        }
+
+        fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError> {
             Err(ShellError::UnknownCommand(command.clone()))
         }
 
@@ -421,7 +465,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "local", start_paused = true)]
-    async fn the_seventh_identical_exec_in_a_row_is_suppressed_until_the_script_or_the_minute_changes()
+    async fn the_seventh_identical_call_in_a_row_is_suppressed_until_the_script_or_the_minute_changes()
      {
         let environments = Environments::default();
         let (slot, _) = environments
@@ -437,14 +481,14 @@ mod tests {
         assert!(suppressed.is_error);
         assert_eq!(
             suppressed.view,
-            Some(ToolView::RepeatedShellExec {
+            Some(ToolView::RepeatedShell {
                 script: "make".into(),
                 count: 7
             })
         );
         assert!(matches!(
             slot.repeated("make").and_then(|outcome| outcome.view),
-            Some(ToolView::RepeatedShellExec { count: 8, .. })
+            Some(ToolView::RepeatedShell { count: 8, .. })
         ));
         assert!(slot.repeated("make test").is_none());
         for _ in 0..5 {

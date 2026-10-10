@@ -39,8 +39,7 @@ pub use block::{
     AbortBlock, AgentMessageBlock, Block, CommandEnd, CompactionBoundaryBlock, CompactionMarkerBlock,
     ContextBlock, ErrorBlock, INSTRUCTIONS_SOURCE, InstructionEntry, RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock,
     TextBlock, ThinkingBlock, ToolCallBlock, ToolCallStatus, UserBlock, WakeupBlock, client_block,
-    client_blocks,
-    WakeupCommand, WakeupPlacement,
+    client_blocks, WakeupPlacement,
 };
 pub use bytes::B64Bytes;
 pub use catalog::{ModelCost, ProviderModel, ProviderModelList, ServiceTier, UnavailableSetting};
@@ -60,7 +59,7 @@ pub use file_types::{
 #[doc(hidden)]
 pub use ids::__private;
 pub use ids::{
-    BlockId, CommandId, EmptyId, NodeId, OperationId, Sequence, TurnId, WakeupId,
+    BlockId, CommandId, EmptyId, NodeId, OperationId, Sequence, TurnId,
 };
 pub use media::{
     MODEL_MEDIA_TYPES, ModelMediaKind, ModelMediaType, model_accepts_media_type,

@@ -27,24 +27,37 @@ const VIDEO_CAP_BYTES: u64 = 16 * 1024 * 1024;
 /// How many of a running command's newest lines its result points to.
 const NEWEST_LINES: u64 = 50;
 
-const RUNNING_NEXT: &str = "next: command is still running; look again with shell_status, call yield with its commandId to end this turn and be woken when it ends, or stop it with demi shell stop <commandId>.";
+/// What a look at a command says beside its status and output.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Look<'a> {
+    /// The line it starts with, such as the one that says the interval
+    /// asked for was outside the bounds (`runtime.md` § Tool input).
+    pub note: Option<&'a str>,
+    /// The user's send now ended the call's window (`runtime.md` § Send
+    /// now).
+    pub sent_now: bool,
+    /// How the command reports to its node while it runs: every so many
+    /// milliseconds, or only its end when none; not known when the outer
+    /// option is none, as for a look at another agent's command.
+    pub interval_ms: Option<Option<u32>>,
+    /// The look is a progress report, which says its next step its own way
+    /// in place of the generic one.
+    pub report: bool,
+}
 
-/// A shell tool's outcome for `status`: its text, the media it attaches and
-/// the lines about them, and its view. `model` is the call's, and its
-/// vendor takes requests within `limits`; `sent_now` says that the user's
-/// send now ended the call's window, and `above_cap` is the line that says
-/// the window asked for was above the cap.
+/// The `shell` call's outcome for `status`: its text, the media it attaches
+/// and the lines about them, and its view. `model` is the call's, and its
+/// vendor takes requests within `limits`. A command that exited with a
+/// status other than 0, or was stopped, is an error to the provider
+/// (`runtime.md` § Results and previews).
 pub(super) async fn shell_outcome(
     status: &CommandStatus,
     model: &Model,
     limits: RequestLimits,
-    sent_now: bool,
-    above_cap: Option<&str>,
+    look: Look<'_>,
 ) -> ToolOutcome {
     let text = unseen_output(status);
-    let mut output = vec![ResultPart::Text(result_text(
-        status, &text, sent_now, above_cap,
-    ))];
+    let mut output = vec![ResultPart::Text(result_text(status, &text, look))];
     if let CommandState::Exited {
         binary_stdout,
         media,
@@ -64,12 +77,23 @@ pub(super) async fn shell_outcome(
             output.push(ResultPart::Text(lines.join("\n")));
         }
     }
+    let is_error = match status.state {
+        CommandState::Running { .. } => false,
+        CommandState::Exited { exit_code, .. } => exit_code != 0,
+        CommandState::Aborted => true,
+    };
     ToolOutcome {
         output,
-        is_error: false,
+        is_error,
         view: Some(ToolView::Shell(shell_view(status, &text))),
         effect: None,
     }
+}
+
+/// What a look at a command shows the model, as a result shows it: the text
+/// of `demi shell status`, and of a command's progress report.
+pub fn look_text(status: &CommandStatus, look: Look<'_>) -> String {
+    result_text(status, &unseen_output(status), look)
 }
 
 /// The output the model has not seen: once the command ended, the rest of
@@ -84,23 +108,16 @@ fn unseen_output(status: &CommandStatus) -> OutputText {
     }
 }
 
-/// The lines the model reads: first the line that says the window asked for
-/// was above the cap, if it was (`runtime.md` § Tool input), then the
-/// status, the handles and timings that
-/// matter, the output since the model's last look within the replay bound,
-/// while the command runs each stream's newest lines beyond its start, and
-/// the next step, after the line that says the command moved to the
-/// background when the user's send now ended the window
-/// (`runtime.md` § Send now).
-fn result_text(
-    status: &CommandStatus,
-    text: &OutputText,
-    sent_now: bool,
-    above_cap: Option<&str>,
-) -> String {
+/// The lines the model reads: first the look's note, then the status, the
+/// handles and timings that matter, the output since the model's last look
+/// within the replay bound, while the command runs each stream's newest
+/// lines beyond its start, and the next step, after the line that says the
+/// command moved to the background when the user's send now ended the
+/// window (`runtime.md` § Send now).
+fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> String {
     let command = &status.command_id;
     let running = matches!(status.state, CommandState::Running { .. });
-    let mut before: Vec<String> = above_cap.into_iter().map(str::to_owned).collect();
+    let mut before: Vec<String> = look.note.into_iter().map(str::to_owned).collect();
     before.push(format!("status: {}", view_status(&status.state)));
     if let CommandState::Exited { exit_code, .. } = status.state {
         before.push(format!("exitCode: {exit_code}"));
@@ -124,12 +141,16 @@ fn result_text(
     }
     match &status.state {
         CommandState::Running { hint } => {
-            if sent_now {
+            if look.sent_now {
                 after.push(format!(
                     "[The user sent a message, so command {command} moved to the background. It keeps running.]"
                 ));
             }
-            after.push(hint.clone().unwrap_or_else(|| RUNNING_NEXT.to_owned()));
+            match hint {
+                Some(hint) => after.push(hint.clone()),
+                None if look.report => {}
+                None => after.push(running_next(command, look.interval_ms)),
+            }
         }
         CommandState::Aborted => after.push("next: command was intentionally stopped.".to_owned()),
         CommandState::Exited { .. } => {}
@@ -172,6 +193,23 @@ fn result_text(
     }
     lines.extend(after);
     lines.join("\n")
+}
+
+/// The next step for a command that runs: it reports to the node as its
+/// interval says, and the `demi shell` commands look at it, answer it and
+/// stop it (`runtime.md` § Results and previews).
+fn running_next(command: &CommandId, interval_ms: Option<Option<u32>>) -> String {
+    let reports = match interval_ms {
+        Some(Some(interval)) => format!(
+            " and reports to you every {} until it ends",
+            super::duration(interval.into())
+        ),
+        Some(None) => " and reports to you when it ends".to_owned(),
+        None => String::new(),
+    };
+    format!(
+        "next: command {command} keeps running{reports}; look at it with demi shell status {command}, answer a prompt with demi shell input {command}, stop it with demi shell stop {command}."
+    )
 }
 
 /// The line before a stream's newest lines, which counts the bytes left out
@@ -765,8 +803,16 @@ mod tests {
             .collect()
     }
 
+    /// The next step of a running command 17 that reports every five
+    /// minutes.
+    const NEXT: &str = "next: command 17 keeps running and reports to you every 5m until it ends; look at it with demi shell status 17, answer a prompt with demi shell input 17, stop it with demi shell stop 17.";
+
     async fn result(status: &CommandStatus) -> String {
-        let outcome = shell_outcome(status, &test_model().model, RequestLimits::default(), false, None).await;
+        let look = Look {
+            interval_ms: Some(Some(300_000)),
+            ..Look::default()
+        };
+        let outcome = shell_outcome(status, &test_model().model, RequestLimits::default(), look).await;
         text_of(&outcome)[0].to_owned()
     }
 
@@ -791,7 +837,7 @@ mod tests {
         for expected in ["done\nrea", "rea"] {
             let shown = result(&record.status(0, None)).await;
             assert!(
-                shown.ends_with(&format!("\noutput:\n{expected}\n{RUNNING_NEXT}")),
+                shown.ends_with(&format!("\noutput:\n{expected}\n{NEXT}")),
                 "{shown}"
             );
         }
@@ -799,7 +845,7 @@ mod tests {
         for expected in ["ready\nprompt", "prompt"] {
             let shown = result(&record.status(0, None)).await;
             assert!(
-                shown.ends_with(&format!("\noutput:\n{expected}\n{RUNNING_NEXT}")),
+                shown.ends_with(&format!("\noutput:\n{expected}\n{NEXT}")),
                 "{shown}"
             );
         }
@@ -895,7 +941,7 @@ mod tests {
                 "[... 1040384 bytes of stdout not shown; its newest lines follow ...]",
                 "line 999",
                 "line 1000",
-                RUNNING_NEXT,
+                NEXT,
             ]
             .join("\n")
         );
@@ -932,17 +978,17 @@ mod tests {
                 "output:",
                 "building",
                 "[... 1048576 bytes not shown so far; the newest: demi shell output 17 --tail 50 ...]",
-                RUNNING_NEXT,
+                NEXT,
             ]
             .join("\n")
         );
         running.state = CommandState::Running {
-            hint: Some("waiting for input: answer with shell_status and stdin".into()),
+            hint: Some("waiting for input: answer with demi shell input".into()),
         };
         assert!(
             result(&running)
                 .await
-                .ends_with("\nwaiting for input: answer with shell_status and stdin")
+                .ends_with("\nwaiting for input: answer with demi shell input")
         );
         let mut aborted = exited("");
         aborted.state = CommandState::Aborted;
@@ -974,7 +1020,7 @@ mod tests {
             }),
             media: Vec::new(),
         };
-        let outcome = shell_outcome(&status, model, limits, false, None).await;
+        let outcome = shell_outcome(&status, model, limits, Look::default()).await;
         text_of(&outcome)[1..].join(" | ")
     }
 
@@ -1097,7 +1143,7 @@ mod tests {
             }),
             media,
         };
-        let outcome = shell_outcome(&status, model, limits, false, None).await;
+        let outcome = shell_outcome(&status, model, limits, Look::default()).await;
         text_of(&outcome)[1..]
             .iter()
             .flat_map(|part| part.lines())

@@ -291,8 +291,8 @@ fn extends(family: Family, earlier: &Value, later: &Value, what: &str) {
 
 /// The scripted conversation, with `family`'s signatures: a message with an
 /// image, signed reasoning, two parallel calls of which one returns an image,
-/// a steer and a subagent's result during them, a yield after reasoning, a
-/// summary, and a message after it. Returns the bodies the vendor received,
+/// a steer and a subagent's result during them, a command left running
+/// after reasoning and its report, a summary, and a message after it. Returns the bodies the vendor received,
 /// as sent.
 async fn conversation(family: Family) -> Vec<String> {
     let vendor = MockVendor::start().await;
@@ -330,18 +330,17 @@ async fn conversation(family: Family) -> Vec<String> {
             .concat(),
         ),
         answer("Both seen."),
+        Turn::Events(background_call("17", None, "Build")),
         Turn::Events(
             [
                 thinking("second"),
-                vec![
-                    event::tool_call("call-yield", "yield", json!({ "durationMs": 600_000 })),
-                    event::response(1, 1),
-                ],
+                vec![event::text("The build runs."), event::response(1, 1)],
             ]
             .concat(),
         ),
         answer("The user showed a screenshot and asked twice."),
         answer("After the summary."),
+        answer("The build ended."),
         answer("Thought harder."),
     ]);
     let (look, releases, started) = gated_tool("look");
@@ -365,7 +364,12 @@ async fn conversation(family: Family) -> Vec<String> {
         }
     });
     let (note, _) = counted("note", "noted");
-    let runtime = test_runtime(vec![look, note, yield_tool()]);
+    let runtime = test_runtime(Vec::new());
+    let commands = runtime.commands.clone();
+    let runtime = TestRuntime {
+        tools: vec![look, note, background_tool(&commands)],
+        ..runtime
+    };
     let tee = Tee {
         script: script.clone(),
         real: family.runtime(&vendor, &socket).await,
@@ -425,6 +429,9 @@ async fn conversation(family: Family) -> Vec<String> {
         .unwrap()
         .await
         .unwrap();
+    commands.end("17");
+    until(|| script.remaining() == 1).await;
+    session.settled().await;
     // The user changes the thinking setting of the same model.
     let mut deeper = model_reading("stub", "model-a", &[FileExtension::Png]);
     deeper.thinking = Some(demi_shared_types::ThinkingConfig::Adaptive {
@@ -455,7 +462,7 @@ async fn conversation(family: Family) -> Vec<String> {
             .map(|request| String::from_utf8(request.body.to_vec()).expect("a JSON body is UTF-8"))
             .collect(),
     };
-    assert_eq!(bodies.len(), 6, "{family:?}");
+    assert_eq!(bodies.len(), 8, "{family:?}");
     bodies
 }
 
@@ -492,7 +499,8 @@ async fn each_providers_requests_begin_with_the_one_before_and_a_summary_or_a_th
             .iter()
             .map(|body| serde_json::from_str(body).expect("the body is JSON"))
             .collect();
-        let [first, second, third, summary, after, deeper] = bodies.as_slice() else {
+        let [first, second, third, fourth, summary, after, reported, deeper] = bodies.as_slice()
+        else {
             unreachable!()
         };
         extends(
@@ -502,13 +510,14 @@ async fn each_providers_requests_begin_with_the_one_before_and_a_summary_or_a_th
             "the tool results, the steer and the agent message",
         );
         extends(family, second, third, "the next message");
-        // The summary request is the latest answered request, the third,
+        extends(family, third, fourth, "the result of a command left running");
+        // The summary request is the latest answered request, the fourth,
         // with the instruction alone after it.
-        extends(family, third, summary, "the summary request");
+        extends(family, fourth, summary, "the summary request");
         let summary_parts = cached(family, summary).1;
         assert_eq!(
             summary_parts.len(),
-            cached(family, third).1.len() + 1,
+            cached(family, fourth).1.len() + 1,
             "{family:?}"
         );
         let instruction = summary_parts.last().unwrap().to_string();
@@ -519,14 +528,14 @@ async fn each_providers_requests_begin_with_the_one_before_and_a_summary_or_a_th
         // After the summary the messages start again at it, after the system
         // prompt where it is a message; nothing else changes.
         let (after_fixed, after_parts) = cached(family, after);
-        assert_eq!(after_fixed, cached(family, third).0, "{family:?}");
+        assert_eq!(after_fixed, cached(family, fourth).0, "{family:?}");
         let system_messages = usize::from(matches!(
             family,
             Family::ChatCompletions | Family::GrokBuild
         ));
         assert_eq!(
             after_parts[..system_messages],
-            cached(family, third).1[..system_messages]
+            cached(family, fourth).1[..system_messages]
         );
         assert!(
             after_parts[system_messages]
@@ -542,8 +551,9 @@ async fn each_providers_requests_begin_with_the_one_before_and_a_summary_or_a_th
             Family::Responses | Family::Codex | Family::CodexWebSocket => {
                 assert!(kept.contains("rs_second"), "{kept}")
             }
-            Family::Google => assert!(kept.contains("\"thoughtSignature\":\"second\""), "{kept}"),
-            Family::ChatCompletions | Family::GrokBuild => {}
+            // Google replays reasoning only with a call, and the kept
+            // answer holds none.
+            Family::Google | Family::ChatCompletions | Family::GrokBuild => {}
         }
         // A change of the thinking setting changes its fields alone.
         let without_thinking = |body: &Value| {
@@ -553,14 +563,15 @@ async fn each_providers_requests_begin_with_the_one_before_and_a_summary_or_a_th
             }
             body
         };
+        extends(family, after, reported, "the command's report");
         assert_ne!(
             cached(family, deeper).0,
-            cached(family, after).0,
+            cached(family, reported).0,
             "{family:?}"
         );
         extends(
             family,
-            &without_thinking(after),
+            &without_thinking(reported),
             &without_thinking(deeper),
             "a changed thinking setting",
         );

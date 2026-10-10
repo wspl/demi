@@ -24,7 +24,7 @@ use demi_command_declarations::NativeOperation;
 use demi_command_protocol::{CommandCaller, CommandContext};
 use demi_host_interface::{
     ByteRange, Call, CommandSet, CommandState, CommandStatus, ExecRequest, FileContents, FileKind,
-    GroupBuilder, Host, HostError, HostErrorKind, JobCaller, LeafBuilder, ObservationWindow,
+    GroupBuilder, Host, HostError, HostErrorKind, JobCaller, LeafBuilder,
     Process, ProcessEnd, ProcessOutput, RpcError, RpcPort, Seen, ShellEnvironment, ShellError,
     Signal, SpawnEnv, SpawnRequest, Streams, TypedRpc, WriteOptions,
     testing::{CountingNumbers, TestPages, host_conformance_cases, test_command_context},
@@ -67,7 +67,8 @@ pub(crate) fn exec(script: &str, window: u64) -> Exec {
     }
 }
 
-/// Starts an exec and watches it, as a `shell_exec` call does.
+/// Starts an exec and watches it for up to its window, as a `shell` call
+/// does, or looks at once without one.
 pub(crate) trait Watched {
     async fn exec(&self, exec: Exec, cancel: CancellationToken) -> Result<CommandStatus, ShellError>;
 }
@@ -75,11 +76,14 @@ pub(crate) trait Watched {
 impl<E: ShellEnvironment> Watched for E {
     async fn exec(&self, exec: Exec, cancel: CancellationToken) -> Result<CommandStatus, ShellError> {
         let command = self.start(exec.request, cancel).await?;
-        let window = ObservationWindow::from_millis(exec.window);
-        let (status, _) =
-            demi_host_interface::watch(self, &command, window, std::future::pending::<()>())
-                .await?;
-        Ok(status)
+        if exec.window > 0 {
+            let window = std::time::Duration::from_millis(exec.window);
+            // A command that outlasts the window is looked at as it runs.
+            if let Ok(ended) = tokio::time::timeout(window, self.ended(&command)).await {
+                ended?;
+            }
+        }
+        self.status(&command)
     }
 }
 
