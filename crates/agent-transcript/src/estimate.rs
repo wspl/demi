@@ -227,7 +227,7 @@ fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
             }
             return (lines.join("\n"), media);
         }
-        Block::Wakeup(wakeup) => wakeup.text.clone(),
+        Block::Wakeup(wakeup) => crate::reports_text(&wakeup.reports),
         Block::Context(context) => context.text.clone(),
         Block::AgentMessage(receipt) => {
             serde_json::to_string(&receipt.message).expect("an agent message serializes to JSON")

@@ -7,12 +7,13 @@
 //! JSON columns are text their reader decodes and validates; sealed values
 //! are BLOBs.
 
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use sha2::{Digest, Sha256};
 
 use demi_agent_store::CheckpointState;
+use demi_shared_types::ReportEvent;
 
 use super::StorageError;
 use super::columns::{decode, json, to_json};
@@ -358,11 +359,14 @@ fn states_without_wakeups(transaction: &Transaction<'_>) -> rusqlite::Result<()>
 /// its repeat guard's view is `repeated_shell`; a call of `yield` keeps its
 /// name, which replays as text (`runtime.md` § Replay), and loses its
 /// `yield_wakeup` view, which no tool has any more; a stored shell view no
-/// longer names a shell; and a fired wakeup holds the text the model read
-/// of it, as command reports do. Each block changed is decoded and written
-/// again through the block's own encoding; a block that does not decode
-/// stops the migration.
+/// longer names a shell; and a fired wakeup becomes what it stood for
+/// (`runtime.md` § Rendering boundary): one a command's end fired, that
+/// command's report, titled by the `description` of the call that started
+/// the command; one its time fired, a `resume` block. Each block changed is
+/// decoded and written again through the block's own encoding; a block that
+/// does not decode stops the migration.
 fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
+    let titles = command_titles_of_0_1_21(transaction)?;
     let mut blocks = Vec::new();
     {
         let mut statement = transaction.prepare("SELECT node_id, idx, block FROM blocks")?;
@@ -370,7 +374,7 @@ fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
         while let Some(row) = rows.next()? {
             let text: String = row.get(2)?;
             let mut block: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
-            if migrate_block(&mut block) {
+            if migrate_block(&mut block, &titles) {
                 let block: demi_shared_types::Block =
                     demi_shared_types::decode_value(block).map_err(corrupt)?;
                 let node: String = row.get(0)?;
@@ -386,9 +390,38 @@ fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// The title of each command a call of 0.1.21's started, by its number: the
+/// call's `description`, as the stored view of a `shell_exec` call names its
+/// command. A `shell_status` look's view names the command it looked at,
+/// which it did not start.
+fn command_titles_of_0_1_21(transaction: &Transaction<'_>) -> rusqlite::Result<HashMap<String, String>> {
+    use serde_json::Value;
+
+    let mut titles = HashMap::new();
+    let mut statement = transaction.prepare("SELECT block FROM blocks ORDER BY node_id, idx")?;
+    let mut rows = statement.query([])?;
+    while let Some(row) = rows.next()? {
+        let text: String = row.get(0)?;
+        let block: Value = serde_json::from_str(&text).map_err(corrupt)?;
+        if block["type"] != "tool_call" || block["toolName"] != "shell_exec" {
+            continue;
+        }
+        let Some(command) = block["view"]["commandId"].as_str() else {
+            continue;
+        };
+        let input: Value = block["input"]
+            .as_str()
+            .and_then(|input| serde_json::from_str(input).ok())
+            .unwrap_or(Value::Null);
+        let title = input["description"].as_str().unwrap_or_default();
+        titles.entry(command.to_owned()).or_insert_with(|| title.to_owned());
+    }
+    Ok(titles)
+}
+
 /// Changes one of 0.1.21's blocks into what it became; false when it stays
-/// as it is.
-fn migrate_block(block: &mut serde_json::Value) -> bool {
+/// as it is. `titles` names the commands 0.1.21's calls started.
+fn migrate_block(block: &mut serde_json::Value, titles: &HashMap<String, String>) -> bool {
     use serde_json::Value;
 
     let Some(fields) = block.as_object_mut() else {
@@ -424,8 +457,16 @@ fn migrate_block(block: &mut serde_json::Value) -> bool {
             }
         }
         Some("wakeup") => {
-            let text = wakeup_text_of_0_1_21(fields.remove("command").as_ref());
-            fields.insert("text".to_owned(), Value::from(text));
+            match fields.remove("command") {
+                Some(command) => {
+                    let report = report_of_0_1_21(&command, titles);
+                    fields.insert("reports".to_owned(), Value::Array(vec![report]));
+                }
+                None => {
+                    fields.insert("type".to_owned(), Value::from("resume"));
+                    fields.remove("placement");
+                }
+            }
             changed = true;
         }
         _ => {}
@@ -433,21 +474,26 @@ fn migrate_block(block: &mut serde_json::Value) -> bool {
     changed
 }
 
-/// What the model read of a wakeup 0.1.21 fired: the text for the time
-/// that came, or the one that names the command whose end fired it.
-fn wakeup_text_of_0_1_21(command: Option<&serde_json::Value>) -> String {
-    let Some(command) = command else {
-        return "Scheduled yield wakeup fired. Continue the previous work and inspect any running command with shell_status when needed.".to_owned();
-    };
+/// The report a wakeup 0.1.21 fired for `command`'s end stood for: the
+/// command, its call's title, and how it ended. It carries no output: the
+/// model read none with it then.
+fn report_of_0_1_21(command: &serde_json::Value, titles: &HashMap<String, String>) -> serde_json::Value {
     let id = command["commandId"].as_str().unwrap_or_default();
     let end = &command["end"];
-    let ended = match end["kind"].as_str() {
-        Some("exited") => format!("Command {id} ended with exit code {}.", end["exitCode"]),
-        Some("stopped") => format!("Command {id} was stopped."),
-        Some("lost") => format!("Command {id} ended with its Host's connection."),
-        _ => format!("Command {id} ended."),
+    let event = match end["kind"].as_str() {
+        Some("exited") => ReportEvent::Ended {
+            exit_code: end["exitCode"].as_i64().and_then(|code| i32::try_from(code).ok()),
+        },
+        Some("stopped") => ReportEvent::Stopped { by: None },
+        Some("lost") => ReportEvent::lost_with_connection(),
+        _ => ReportEvent::Ended { exit_code: None },
     };
-    format!("{ended} Continue the previous work; read its output with demi shell output {id}.")
+    serde_json::json!({
+        "commandId": id,
+        "title": titles.get(id).cloned().unwrap_or_default(),
+        "event": event,
+        "output": "",
+    })
 }
 
 /// A kind of database, as a server's upgrade asks about it.
@@ -1398,11 +1444,12 @@ mod tests {
     /// call is a `shell` call with its input, its shell view naming no
     /// shell and its repeat guard's view `repeated_shell`; a `yield` and a
     /// `shell_status` call keep their names, and the `yield` loses its
-    /// view; a fired wakeup holds the text the model read of it. Every other
-    /// number keeps its next value.
+    /// view; a wakeup a command's end fired is that command's report, titled
+    /// by the call that started it, and one its time fired a resume. Every
+    /// other number keeps its next value.
     #[test]
     fn a_conversation_of_0_1_21_becomes_one_of_the_shell_tool() {
-        use demi_shared_types::{Block, Sequence, ToolView};
+        use demi_shared_types::{Block, CommandId, CommandReport, ReportEvent, Sequence, ToolView};
 
         use crate::sequences;
 
@@ -1534,20 +1581,21 @@ mod tests {
         );
         assert_eq!((calls[2].0, calls[2].2), ("yield", None));
         assert_eq!((calls[3].0, calls[3].2), ("shell_status", None));
-        let texts: Vec<&str> = stored
-            .iter()
-            .filter_map(|block| match block {
-                Block::Wakeup(wakeup) => Some(wakeup.text.as_str()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(
-            texts,
-            [
-                "Command 17 ended with exit code 1. Continue the previous work; read its output with demi shell output 17.",
-                "Scheduled yield wakeup fired. Continue the previous work and inspect any running command with shell_status when needed.",
-            ]
-        );
+        // The wakeup command 17's end fired is its report, titled by the
+        // call that started it; the one its time fired is a resume.
+        match &stored[4] {
+            Block::Wakeup(wakeup) => assert_eq!(
+                wakeup.reports,
+                [CommandReport {
+                    command_id: CommandId::try_from("17").unwrap(),
+                    title: "Run the tests".to_owned(),
+                    event: ReportEvent::Ended { exit_code: Some(1) },
+                    output: String::new(),
+                }]
+            ),
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(&stored[5], Block::Resume(resume) if resume.turn_id.as_str() == "t2"));
         assert_eq!(
             sequences::all(&connection).unwrap(),
             vec![(Sequence::Agent, 2), (Sequence::Command, 18)]

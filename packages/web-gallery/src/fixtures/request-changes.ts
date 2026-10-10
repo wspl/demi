@@ -97,7 +97,7 @@ export function signInRequestBlocks(prefix: string): Block[] {
     ]),
     shell(`${prefix}-build`, 580_000, 'bun run build', 'Start the build'),
     text(`${prefix}-waiting`, 570_000, 'The build is running. I will go on once it ends.'),
-    { type: 'wakeup', id: `${prefix}-wakeup`, turnId: `${prefix}-wakeup-turn`, createdAt: ago(510_000), model: demoModel, placement: 'new_turn', text: 'Command 18 (Start the build) ended with exit code 0; look at it with demi shell status 18.' },
+    { type: 'wakeup', id: `${prefix}-wakeup`, turnId: `${prefix}-wakeup-turn`, createdAt: ago(510_000), model: demoModel, placement: 'new_turn', reports: [{ commandId: `cmd-${prefix}-build`, title: 'Start the build', event: { kind: 'ended', exitCode: 0 }, output: 'built in 4.2s' }] },
     shell(`${prefix}-error`, 500_000, 'demi file edit src/auth/login.ts', 'Throw the old error text', [
       file('src/auth/login.ts', 'modified', LOGIN.slice(2), { added: 1, removed: 1 }),
     ]),

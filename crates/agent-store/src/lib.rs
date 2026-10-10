@@ -25,7 +25,7 @@ use std::rc::Rc;
 use demi_conversation_socket_protocol::{JobPhase, SubagentJob};
 use demi_host_interface::{StoredMedium, WholeOutput};
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, Block, CommandEnd, CommandId, CompletionId, ModelSelection, NodeId,
+    AgentMessage, AgentMessageEvent, Block, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
     OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId,
 };
 use futures_util::future::LocalBoxFuture;
@@ -284,10 +284,9 @@ pub struct CheckpointState {
     #[garde(dive)]
     pub agent_inputs: Vec<PendingAgentInput>,
     /// The command reports that arrived and are not yet written into the
-    /// transcript, in arrival order, each its paragraph of text
-    /// (`runtime.md` § Command reports).
-    #[garde(skip)]
-    pub reports: Vec<String>,
+    /// transcript, in arrival order (`runtime.md` § Command reports).
+    #[garde(dive)]
+    pub reports: Vec<CommandReport>,
     /// The commands the session's `shell` calls left running, each with
     /// how often it reports (`runtime.md` § Command reports).
     #[garde(dive)]

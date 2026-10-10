@@ -28,7 +28,7 @@ use demi_provider_common::{
     RequestBlock, RequestLimits, ToolDefinition,
 };
 use demi_shared_types::{
-    AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, FailureSource,
+    AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, CommandReport, FailureSource, ReportEvent,
     ModelSelection, NodeId, PendingCall, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
     ToolResultContentBlock, ToolView, TurnId, UserContentBlock, WakeupPlacement,
 };
@@ -42,7 +42,7 @@ use super::{
     input::{Input, InputQueue, Take},
     persist::PersistMarks,
     reports::Watched,
-    runtime::Arrivals,
+    runtime::{Arrivals, SessionRuntime},
 };
 
 pub(crate) struct SessionCore {
@@ -96,6 +96,8 @@ pub(crate) struct SessionCore {
     pub(super) outbox: Vec<SessionEvent>,
     ids: Rc<dyn IdSource>,
     clock: Arc<dyn Clock>,
+    /// The node's runtime, which knows which commands' ends a look showed it.
+    runtime: Rc<dyn SessionRuntime>,
     requests: Requests,
     published: Published,
 }
@@ -233,7 +235,7 @@ struct Published {
     pending_steers: Vec<PendingSteer>,
     pending_calls: Vec<PendingCall>,
     agent_inputs: Vec<BlockId>,
-    reports: Vec<String>,
+    reports: Vec<CommandReport>,
     intervals: Vec<CommandInterval>,
     edits: usize,
 }
@@ -293,6 +295,8 @@ pub(super) struct CoreParts {
     pub(super) held: bool,
     pub(super) ids: Rc<dyn IdSource>,
     pub(super) clock: Arc<dyn Clock>,
+    /// The node's runtime, which knows which commands' ends a look showed it.
+    pub(super) runtime: Rc<dyn SessionRuntime>,
 }
 
 impl SessionCore {
@@ -312,6 +316,7 @@ impl SessionCore {
             tools: parts.tools,
             pending: VecDeque::new(),
             inputs: parts.inputs,
+            runtime: parts.runtime,
             watched: parts.watched,
             edits: parts.edits,
             editing: None,
@@ -1055,12 +1060,13 @@ impl SessionCore {
     /// one paragraph each, where the first of them arrived. Returns whether
     /// an agent message was written, which is saved at once.
     pub(super) fn write_inputs(&mut self, take: Take) -> bool {
+        self.drop_seen_ends();
         let inputs = self.inputs.take(take);
         if inputs.is_empty() {
             return false;
         }
         let turn = self.turn();
-        let mut reports: Vec<String> = inputs
+        let mut reports: Vec<CommandReport> = inputs
             .iter()
             .filter_map(|input| match input {
                 Input::Report(report) => Some(report.clone()),
@@ -1076,8 +1082,8 @@ impl SessionCore {
                 }
                 Input::Report(_) if reports.is_empty() => {}
                 Input::Report(_) => {
-                    let text = mem::take(&mut reports).join("\n\n");
-                    self.push_reports(turn.clone(), WakeupPlacement::Steer, text);
+                    let reports = mem::take(&mut reports);
+                    self.push_reports(turn.clone(), WakeupPlacement::Steer, reports);
                 }
                 Input::Agent(input) => {
                     agent_message = true;
@@ -1095,10 +1101,11 @@ impl SessionCore {
     /// messages. False when nothing waits any more, and the continuation
     /// ends without a turn.
     pub(super) fn open_continuation(&mut self) -> Option<bool> {
+        self.drop_seen_ends();
         let reports = self.inputs.take_reports();
         if !reports.is_empty() {
             let turn = self.turn();
-            self.push_reports(turn, WakeupPlacement::NewTurn, reports.join("\n\n"));
+            self.push_reports(turn, WakeupPlacement::NewTurn, reports);
             self.commit();
             return Some(false);
         }
@@ -1108,12 +1115,17 @@ impl SessionCore {
         None
     }
 
-    /// A `wakeup` block of command reports, `text` one paragraph each.
-    fn push_reports(&mut self, turn: TurnId, placement: WakeupPlacement, text: String) {
+    /// A `wakeup` block of command reports, in the order they arrived, each
+    /// readied as it is written: only now does it move the node's place in
+    /// its command's output.
+    fn push_reports(&mut self, turn: TurnId, placement: WakeupPlacement, mut reports: Vec<CommandReport>) {
+        for report in &mut reports {
+            self.runtime.write_report(report);
+        }
         let id = BlockId::try_from(self.ids.next_id())
             .expect("an id source never gives an empty identity");
         self.transcript
-            .push_wakeup(id, turn, &self.model, placement, text);
+            .push_wakeup(id, turn, &self.model, placement, reports);
     }
 
     // Command reports.
@@ -1133,12 +1145,33 @@ impl SessionCore {
     /// Admits a command's report for the next boundary: it joins the running
     /// turn, or opens a continuation. A session that is closing keeps no
     /// more input.
-    pub(super) fn admit_report(&mut self, text: String) {
-        if self.disposing {
+    pub(super) fn admit_report(&mut self, report: CommandReport) {
+        if self.disposing || end_seen(self.runtime.as_ref(), &report) {
             return;
         }
-        self.inputs.add(Input::Report(text));
+        // The end report of a command a running call looks at ends no
+        // window: the call shows the end itself (`runtime.md` § Command
+        // reports).
+        if is_end(&report) && self.runtime.looks_at(&report.command_id) {
+            self.inputs.add_quiet(report);
+        } else {
+            self.inputs.add(Input::Report(report));
+        }
         self.wake();
+    }
+
+    /// Whether input arrived since `before` that is still to be written:
+    /// an end report whose end a look showed meanwhile is withdrawn first.
+    pub(super) fn arrived_since(&mut self, before: u64) -> bool {
+        self.drop_seen_ends();
+        self.inputs.arrivals() > before
+    }
+
+    /// Drops the waiting end reports whose ends a look showed the node
+    /// since they were made.
+    fn drop_seen_ends(&mut self) {
+        let runtime = self.runtime.clone();
+        self.inputs.retain_reports(|report| !end_seen(runtime.as_ref(), report));
     }
 
     // The model selection.
@@ -1825,4 +1858,19 @@ fn replace_switch(
         }
     }
     *slot = Some(switch);
+}
+
+/// Whether `report` tells an end a look showed the node since the report was
+/// made: a `demi shell status`, with or without `--wait`, or a `shell`
+/// result. Such an end tells nothing more (`runtime.md` § Command reports).
+/// A report never marks its own end seen, so a mark is always a look's;
+/// admission and delivery both ask here, since a look that runs while the
+/// report is made shows the end after it.
+fn end_seen(runtime: &dyn SessionRuntime, report: &CommandReport) -> bool {
+    is_end(report) && runtime.end_seen(&report.command_id)
+}
+
+/// Whether `report` tells its command's end, not its progress.
+fn is_end(report: &CommandReport) -> bool {
+    !matches!(report.event, ReportEvent::Running { .. })
 }

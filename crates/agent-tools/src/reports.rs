@@ -1,13 +1,16 @@
 //! What a command's report tells its node (`runtime.md` § Command reports):
-//! its progress while it runs, as a look shows it, with how to change how
-//! often it reports; or its end. Each names the command by its number and
-//! the title of the call that started it, since a node may have several
-//! running.
+//! its progress while it runs, or its end, each with the output since the
+//! node's last look as a `shell` result shows it. A report is data; the text
+//! the model reads is rendered from it where it is replayed
+//! ([`demi_agent_transcript::report_text`]). Its output moves the node's
+//! place only when the report is written into the transcript, so a report
+//! dropped because a look showed the end first moves nothing.
 
+use demi_agent_transcript::{REPLAY_CHARS, report_text};
 use demi_host_interface::CommandStatus;
-use demi_shared_types::CommandId;
+use demi_shared_types::{CommandId, CommandReport, ReportEvent, StoppedBy};
 
-use crate::{Look, Stopper, duration, look_text};
+use crate::{Stopper, result::report_output};
 
 /// How a command ended, as its end's report tells it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,62 +24,72 @@ pub enum EndOf {
     Unrecorded,
 }
 
-/// The command as a report names it: `Command 17 (Run the test suite)`, or
-/// `Command 17` when its call's title is not known.
-fn named(command: &CommandId, title: &str) -> String {
-    if title.is_empty() {
-        format!("Command {command}")
-    } else {
-        format!("Command {command} ({title})")
-    }
-}
-
-/// The report of `status`, a command that still runs and reports every
-/// `interval_ms`: how long it has run and printed nothing, what a look
-/// shows of it, and how to change how often it reports.
-pub fn progress_report(status: &CommandStatus, title: &str, interval_ms: u32) -> String {
-    let command = &status.command_id;
-    let look = look_text(
-        status,
-        Look {
-            interval_ms: Some(Some(interval_ms)),
-            report: true,
-            ..Look::default()
+/// The report of `command`, which still runs and reports every
+/// `interval_ms`: how long it has run and printed nothing. Its output is
+/// read when the report is written ([`fill_output`]), which moves the
+/// node's place then.
+pub fn progress_report(
+    command: &CommandId,
+    title: &str,
+    running_ms: u64,
+    idle_ms: u64,
+    interval_ms: u32,
+) -> CommandReport {
+    report(
+        command,
+        title,
+        ReportEvent::Running {
+            running_ms,
+            idle_ms,
+            interval_ms,
         },
-    );
-    [
-        format!(
-            "{} is still running after {}; no output for {}.",
-            named(command, title),
-            duration(status.running_ms),
-            duration(status.idle_ms),
-        ),
-        look,
-        format!(
-            "It reports every {}; change that with demi shell status {command} --interval <duration>, or with --resident to hear only of its end.",
-            duration(interval_ms.into())
-        ),
-    ]
-    .join("\n")
+    )
 }
 
-/// The report of `command`'s end, `end`.
-pub fn end_report(command: &CommandId, title: &str, end: EndOf) -> String {
-    let named = named(command, title);
-    match end {
-        EndOf::Exited(code) => format!(
-            "{named} ended with exit code {code}; look at it with demi shell status {command}."
-        ),
-        EndOf::Stopped(Some(Stopper::User)) => format!("{named} was stopped by the user."),
-        EndOf::Stopped(Some(Stopper::Agent(agent))) => {
-            format!("{named} was stopped by agent {agent}.")
-        }
-        EndOf::Stopped(Some(Stopper::Itself) | None) => format!("{named} was stopped."),
-        EndOf::Lost => format!(
-            "{named} was lost with its Host's connection. Start it again if it is still needed."
-        ),
-        EndOf::Unrecorded => {
-            format!("{named} ended; look at it with demi shell status {command}.")
-        }
+/// The report of `command`'s end, `end`; its output is read from
+/// `status` once it ended, or when the report is written ([`fill_output`]).
+pub fn end_report(
+    command: &CommandId,
+    title: &str,
+    end: EndOf,
+    status: Option<&CommandStatus>,
+) -> CommandReport {
+    let event = match end {
+        EndOf::Exited(code) => ReportEvent::Ended {
+            exit_code: Some(code),
+        },
+        EndOf::Stopped(Some(Stopper::User)) => ReportEvent::Stopped {
+            by: Some(StoppedBy::User),
+        },
+        EndOf::Stopped(Some(Stopper::Agent(number))) => ReportEvent::Stopped {
+            by: Some(StoppedBy::Agent { number }),
+        },
+        EndOf::Stopped(Some(Stopper::Itself) | None) => ReportEvent::Stopped { by: None },
+        EndOf::Lost => ReportEvent::lost_with_connection(),
+        EndOf::Unrecorded => ReportEvent::Ended { exit_code: None },
+    };
+    let mut report = report(command, title, event);
+    if let Some(status) = status {
+        fill_output(&mut report, status);
+    }
+    report
+}
+
+/// Gives `report` the output `status` shows since the node's last look,
+/// within what the replay bound leaves after the report's other lines, so
+/// that replay sends it unchanged (`runtime.md` § Results and previews).
+pub fn fill_output(report: &mut CommandReport, status: &CommandStatus) {
+    report.output.clear();
+    let others = report_text(report).chars().count();
+    report.output = report_output(status, REPLAY_CHARS.saturating_sub(others));
+}
+
+/// A report of `event`, without output yet.
+fn report(command: &CommandId, title: &str, event: ReportEvent) -> CommandReport {
+    CommandReport {
+        command_id: command.clone(),
+        title: title.to_owned(),
+        event,
+        output: String::new(),
     }
 }
