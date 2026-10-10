@@ -154,8 +154,9 @@ backend routes each death event to the shard of the device's owner
 A successful `wake` means the runtime started. Backend readiness additionally
 requires the authenticated runner and command transport; starting `runsc` alone
 must not mark Cloud ready. Closing the backend ends each Cloud's open file
-transfers and user streams, then saves the machine and disconnects, without
-terminating the manager service
+transfers and user streams and disconnects, leaving each running Cloud
+running and the manager service with it, so the next backend of the same
+release takes the Clouds over with their commands
 ([Startup and shutdown](../backend/backend.md#startup-and-shutdown)).
 
 The manager is a trusted, privileged Linux service because it prepares mounts,
