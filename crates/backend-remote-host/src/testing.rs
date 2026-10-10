@@ -117,6 +117,10 @@ impl LinkPolicy for CommandPolicy {
         Box::pin(async { Err("revocation is not available".into()) })
     }
 
+    fn take_up_job(&self, _: String) -> LocalBoxFuture<'static, Result<(), String>> {
+        Box::pin(async { Err("no agent takes jobs up here".into()) })
+    }
+
     /// Counts each conversation's sequence from 1, as the backend's
     /// sequences do for a new conversation.
     fn reserve_numbers(

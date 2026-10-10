@@ -83,6 +83,9 @@ pub(crate) struct JobEntry {
     /// A restarted backend knows it only from its records: it stays, ended
     /// or not, until the agent that ran it takes it up.
     parked: bool,
+    /// Whether an agent took it up and said whose it is; true for a job
+    /// started here.
+    claimed: watch::Sender<bool>,
 }
 
 /// What a job's consumer holds of it.
@@ -144,6 +147,7 @@ impl DeviceJobs {
                 resyncing: None,
                 unreached: false,
                 parked: false,
+                claimed: watch::Sender::new(true),
             },
         );
         claimed
@@ -168,9 +172,11 @@ impl DeviceJobs {
             resyncing: None,
             unreached: false,
             parked: false,
+            claimed: watch::Sender::new(false),
         });
         job.parked = false;
         job.origin = entry.origin;
+        job.claimed.send_replace(true);
         job.commands = entry.commands;
         job._lease = entry.lease;
         let claimed = Claimed {
@@ -183,6 +189,12 @@ impl DeviceJobs {
             table.jobs.remove(id);
         }
         claimed
+    }
+
+    /// Whether an agent took the job `id` up, from now on; none for a job
+    /// the device does not know.
+    pub(crate) fn claimed(&self, id: &str) -> Option<watch::Receiver<bool>> {
+        self.with(id, |job| job.claimed.subscribe())
     }
 
     /// Parks the job `id`, whose consumer let go of it while it runs: its
@@ -402,6 +414,7 @@ impl JobEntry {
             resyncing: None,
             unreached: false,
             parked: true,
+            claimed: watch::Sender::new(false),
         }
     }
 

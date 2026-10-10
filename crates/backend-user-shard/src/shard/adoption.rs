@@ -228,6 +228,12 @@ impl Shard {
             let shard = self.clone();
             self.tasks().spawn_local(async move {
                 let _opening = opening;
+                #[cfg(feature = "testing")]
+                shard
+                    .services()
+                    .hellos
+                    .pass(crate::holds::HelloStep::TakeUp)
+                    .await;
                 if shard.is_closing() {
                     return;
                 }

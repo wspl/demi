@@ -690,6 +690,10 @@ impl LinkPolicy for AdmitsDirectStreams {
         Box::pin(async { Err("no".into()) })
     }
 
+    fn take_up_job(&self, _: String) -> LocalBoxFuture<'static, Result<(), String>> {
+        Box::pin(async { Err("no agent takes jobs up here".into()) })
+    }
+
     fn reserve_numbers(
         &self,
         _: String,
@@ -1694,6 +1698,10 @@ impl LinkPolicy for Refusing {
 
     fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>> {
         Box::pin(async { Err("no".into()) })
+    }
+
+    fn take_up_job(&self, _: String) -> LocalBoxFuture<'static, Result<(), String>> {
+        Box::pin(async { Err("no agent takes jobs up here".into()) })
     }
 
     fn reserve_numbers(
