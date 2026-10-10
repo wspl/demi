@@ -369,42 +369,39 @@ export const editingShellTool = toolCall({
   }),
 })
 
-/** The line a command's output shows for its binary stdout (`runtime.md` § What a result attaches). */
+/** The line a command's output shows for its binary stdout (`runtime.md` § What `demi file view` shows). */
 function binaryLine(bytes: number): string {
   return `<binary stdout: ${bytes} bytes>\n`
 }
 
 /**
- * A shell call whose stdout is an image or a video (`runtime.md` § What a
- * result attaches): the result the model reads, with the medium, or the
- * part that took its place, between its status and its note, and the view
- * whose output names the binary stdout.
+ * A shell call that viewed one image or video with `demi file view`
+ * (`runtime.md` § Media the model views): its output holds the medium's line,
+ * which the runner wrote, and the result attaches the medium, or the part
+ * that took its place, after it.
  */
-function binaryStdoutCall(
+function viewedCall(
   partial: Pick<ToolCallBlock, 'id' | 'toolName' | 'input'>,
   commandId: string,
-  bytes: number,
-  mediaType: string,
+  line: string,
   medium: ToolResultContentBlock,
   files?: ShellView['files'],
 ): ToolCallBlock {
   return toolCall({
     ...partial,
     status: 'completed',
-    output: [
-      {
-        type: 'text',
-        text: `status: exited\nexitCode: 0\ncommandId: ${commandId}\noutput:\n${binaryLine(bytes)}`,
-      },
-      medium,
-      { type: 'text', text: `Attached stdout as ${mediaType} (${bytes} bytes).` },
-    ],
+    output: [{ type: 'text', text: `status: exited\nexitCode: 0\ncommandId: ${commandId}\noutput:\n${line}\n` }, medium],
     view: shellView({
       commandId,
-      chunks: [{ stream: 'stdout', text: binaryLine(bytes) }],
+      chunks: [{ stream: 'stdout', text: `${line}\n` }],
       ...(files ? { files } : {}),
     }),
   })
+}
+
+/** An image's line in a job's output, as the runner writes it. */
+function imageLine(number: number, width: number, height: number, bytes: number, mediaType = 'image/png'): string {
+  return `[image ${number}: ${mediaType}, ${width} × ${height} px, ${bytes} bytes]`
 }
 
 function blobImage(ref: string): ToolResultContentBlock {
@@ -412,14 +409,14 @@ function blobImage(ref: string): ToolResultContentBlock {
 }
 
 const screenshotInput = JSON.stringify({
-  script: 'demi browser screenshot t1',
+  script: 'demi browser screenshot t1 | demi file view',
   description: 'Take a screenshot of the login page',
 })
 
 /**
- * One screenshot a command returned as a medium: what it captured, its
- * bytes, and the part the result holds for it, its image or the part that
- * says it is gone.
+ * One screenshot piped into `demi file view`: what it captured, which the
+ * screenshot writes to stderr, its bytes, and the part the result holds for
+ * it, its image or the part that says it is gone.
  */
 interface Capture {
   tab: string
@@ -429,26 +426,33 @@ interface Capture {
   medium: ToolResultContentBlock
 }
 
-/** The text a screenshot prints before its medium's line, as `demi browser screenshot` prints it. */
+/** What a screenshot writes to stderr, as `demi browser screenshot` writes it. */
 function captureText(capture: Capture): string {
   return `Screenshot of ${capture.tab}\nImage: ${capture.width} × ${capture.height} px, one pixel per CSS pixel\nViewport: ${capture.width} × ${capture.height} CSS px, device pixel ratio 2, web\n`
 }
 
 /**
- * A shell call whose declared commands returned images (`runtime.md`
- * § Media a command returns): the output holds each command's text and its
- * line `[medium n: …]`, and the result attaches the media after it, in
- * order, then the lines for those it did not attach.
+ * A shell call whose screenshots it viewed (`runtime.md` § Media the model
+ * views): the output holds each screenshot's description, from its stderr,
+ * and the line `[image n: …]` the runner wrote, then the lines of the media
+ * it viewed after them, `after`; the result attaches the media after the
+ * output, in order, then the lines for those it did not attach.
  */
-function returnedMediaCall(
+function screenshotsCall(
   partial: Pick<ToolCallBlock, 'id' | 'toolName' | 'input'>,
   commandId: string,
   captures: Capture[],
   notes: string[] = [],
+  after: string[] = [],
 ): ToolCallBlock {
-  const output = captures
-    .map((capture, index) => `${captureText(capture)}[medium ${index + 1}: image/png, ${capture.bytes} bytes]\n`)
-    .join('')
+  const chunks = [
+    ...captures.flatMap((capture, index) => [
+      { stream: 'stderr' as const, text: captureText(capture) },
+      { stream: 'stdout' as const, text: `${imageLine(index + 1, capture.width, capture.height, capture.bytes)}\n` },
+    ]),
+    ...after.map((line) => ({ stream: 'stdout' as const, text: `${line}\n` })),
+  ]
+  const output = chunks.map((chunk) => chunk.text).join('')
   return toolCall({
     ...partial,
     status: 'completed',
@@ -457,28 +461,29 @@ function returnedMediaCall(
       ...captures.map((capture) => capture.medium),
       ...(notes.length > 0 ? [{ type: 'text' as const, text: notes.join('\n') }] : []),
     ],
-    view: shellView({ commandId, chunks: [{ stream: 'stdout', text: output }] }),
+    view: shellView({ commandId, chunks }),
   })
 }
 
-/** A screenshot the agent took, under its call (`file-previews.md` § Media a tool returned). */
-export const screenshotTool = returnedMediaCall(
+/** A screenshot the agent viewed, under its call (`file-previews.md` § Media a tool returned). */
+export const screenshotTool = screenshotsCall(
   { id: 'tool-screenshot', toolName: 'shell', input: screenshotInput },
   '17',
   [{ tab: 't1', width: 480, height: 300, bytes: 15_822, medium: blobImage(galleryBlobs.screenshot) }],
 )
 
 /**
- * Three tabs in one call: a loop of screenshots, each image attached in the
- * loop's order; a fourth, the model could not read, is told of after them.
+ * Three tabs in one call: a loop of screenshots viewed, each image attached
+ * in the loop's order; a fourth, which the model does not read, is told of
+ * after them.
  */
-export const screenshotsTool = returnedMediaCall(
+export const screenshotsTool = screenshotsCall(
   {
     id: 'tool-screenshots',
     toolName: 'shell',
     input: JSON.stringify({
-      script: 'for t in t1 t2 t3; do demi browser screenshot "$t"; done',
-      description: 'Compare the login page in three tabs',
+      script: 'for t in t1 t2 t3; do demi browser screenshot "$t" | demi file view; done; demi file view mock.webp',
+      description: 'Compare the login page in three tabs and the mock',
     }),
   },
   '18',
@@ -487,73 +492,70 @@ export const screenshotsTool = returnedMediaCall(
     { tab: 't2', width: 480, height: 300, bytes: 16_078, medium: blobImage(galleryBlobs.chart) },
     { tab: 't3', width: 360, height: 2400, bytes: 8_035, medium: blobImage(galleryBlobs.fullPage) },
   ],
-  ['[medium 4: not attached: the model does not accept image/webp; save it: demi shell output 18 --medium 4 > <file>]'],
+  ['[image 4: not attached: the model does not read image/webp]'],
+  [imageLine(4, 480, 300, 9_120, 'image/webp')],
 )
 
 /** A capture of a whole page: taller than a thumbnail's proportions, so the thumbnail keeps its top. */
-export const fullPageTool = binaryStdoutCall(
+export const fullPageTool = viewedCall(
   {
     id: 'tool-full-page',
     toolName: 'shell',
     input: JSON.stringify({
-      script: 'demi browser screenshot t1 --full-page | convert - -strip png:-',
+      script: 'demi browser screenshot t1 --full-page 2>/dev/null | convert - -strip png:- | demi file view',
       description: 'Capture the whole login page',
     }),
   },
   'cmd-full-page',
-  8_035,
-  'image/png',
+  imageLine(1, 360, 2400, 8_035),
   blobImage(galleryBlobs.fullPage),
 )
 
 /** A timeline wider than a thumbnail's proportions: the thumbnail keeps its middle. */
-export const wideImageTool = binaryStdoutCall(
+export const wideImageTool = viewedCall(
   {
     id: 'tool-wide-image',
     toolName: 'shell',
     input: JSON.stringify({
-      script: 'cat out/timeline.png',
+      script: 'demi file view out/timeline.png',
       description: 'Show the timeline of the run',
     }),
   },
   'cmd-timeline',
-  5_883,
-  'image/png',
+  imageLine(1, 1600, 300, 5_883),
   blobImage(galleryBlobs.timeline),
 )
 
 /** An icon smaller than a thumbnail: it keeps its own size, never enlarged. */
-export const smallImageTool = binaryStdoutCall(
+export const smallImageTool = viewedCall(
   {
     id: 'tool-small-image',
     toolName: 'shell',
     input: JSON.stringify({
-      script: 'cat public/favicon.png',
+      script: 'demi file view public/favicon.png',
       description: 'Show the favicon',
     }),
   },
   'cmd-favicon',
-  972,
-  'image/png',
+  imageLine(1, 48, 48, 972),
   blobImage(galleryBlobs.icon),
 )
 
 /**
- * A recording the agent printed: its first frame with a play mark, which a
+ * A recording the agent viewed: its first frame with a play mark, which a
  * click plays in the viewer.
  */
-export const recordingTool = binaryStdoutCall(
+export const recordingTool = viewedCall(
   {
     id: 'tool-recording',
     toolName: 'shell',
     input: JSON.stringify({
-      script: 'cat out/checkout.webm',
+      script: 'demi file view out/checkout.webm',
       description: 'Show the recording of the checkout flow',
     }),
   },
   'cmd-record',
-  23_336,
-  'video/webm',
+  '[video 1: video/webm, 3.0 s, 320 × 180 px, 23336 bytes]',
   {
     type: 'video',
     source: { type: 'ref', ref: galleryBlobs.recording, mediaType: 'video/webm', ...galleryBlobSize(galleryBlobs.recording) },
@@ -561,18 +563,17 @@ export const recordingTool = binaryStdoutCall(
 )
 
 /** A recording whose reference carries no size: its thumbnail is 16:9 until its first frame arrives. */
-export const unsizedRecordingTool = binaryStdoutCall(
+export const unsizedRecordingTool = viewedCall(
   {
     id: 'tool-recording-unsized',
     toolName: 'shell',
     input: JSON.stringify({
-      script: 'cat out/demo.mp4',
+      script: 'demi file view out/demo.mp4',
       description: 'Show the demo of the checkout',
     }),
   },
   'cmd-demo',
-  31_822,
-  'video/mp4',
+  '[video 1: video/mp4, 31822 bytes]',
   { type: 'video', source: { type: 'ref', ref: galleryBlobs.unsizedRecording, mediaType: 'video/mp4' } },
 )
 
@@ -586,28 +587,27 @@ export const statusImageTool = toolCall({
   status: 'completed',
   input: JSON.stringify({ script: 'demi shell status 24', description: 'Check the latency chart', intervalMs: 15_000 }),
   output: [
-    { type: 'text', text: 'status: exited\nexitCode: 0\ncommandId: 25\noutput:\nstatus: exited\nexitCode: 0\ncommandId: 24\noutput:\n[image 1: image/png, 16078 bytes]\n' },
+    { type: 'text', text: `status: exited\nexitCode: 0\ncommandId: 25\noutput:\nstatus: exited\nexitCode: 0\ncommandId: 24\noutput:\n${imageLine(1, 480, 300, 16_078)}\n` },
     blobImage(galleryBlobs.chart),
   ],
   view: shellView({
     commandId: '25',
-    chunks: [{ stream: 'stdout', text: 'status: exited\nexitCode: 0\ncommandId: 24\noutput:\n[image 1: image/png, 16078 bytes]\n' }],
+    chunks: [{ stream: 'stdout', text: `status: exited\nexitCode: 0\ncommandId: 24\noutput:\n${imageLine(1, 480, 300, 16_078)}\n` }],
   }),
 })
 
 /** A recording whose bytes could not be stored: in its place, the part that says so and why. */
-export const notStoredVideoTool = binaryStdoutCall(
+export const notStoredVideoTool = viewedCall(
   {
     id: 'tool-recording-not-stored',
     toolName: 'shell',
     input: JSON.stringify({
-      script: 'cat out/checkout.webm',
+      script: 'demi file view out/checkout.webm',
       description: 'Show the recording of the checkout flow',
     }),
   },
   'cmd-record-lost',
-  23_336,
-  'video/webm',
+  '[video 1: video/webm, 3.0 s, 320 × 180 px, 23336 bytes]',
   {
     type: 'gone',
     kind: 'video',
@@ -617,11 +617,31 @@ export const notStoredVideoTool = binaryStdoutCall(
 )
 
 /** A screenshot whose blob the page cannot load. */
-export const missingImageTool = returnedMediaCall(
+export const missingImageTool = screenshotsCall(
   { id: 'tool-screenshot-missing', toolName: 'shell', input: screenshotInput },
   '11',
   [{ tab: 't1', width: 480, height: 300, bytes: 15_822, medium: blobImage(missingBlob) }],
 )
+
+/**
+ * An image printed rather than viewed: its stdout is binary, which the
+ * output shows as one line and the result never attaches, saying instead
+ * how to look at it.
+ */
+export const binaryStdoutTool = toolCall({
+  id: 'tool-binary-stdout',
+  toolName: 'shell',
+  status: 'completed',
+  input: JSON.stringify({ script: 'cat out/timeline.png', description: 'Print the timeline of the run' }),
+  output: [
+    { type: 'text', text: `status: exited\nexitCode: 0\ncommandId: cmd-printed\noutput:\n${binaryLine(5_883)}` },
+    {
+      type: 'text',
+      text: '[binary stdout, 5883 bytes: not shown; to look at an image, a video or a PDF, pipe it into demi file view; to keep it, redirect it to a file]',
+    },
+  ],
+  view: shellView({ commandId: 'cmd-printed', chunks: [{ stream: 'stdout', text: binaryLine(5_883) }] }),
+})
 
 function fileChangeCase(
   id: string,
@@ -758,18 +778,17 @@ export function changesDemoBlocks(): Block[] {
     caseBlock('long names'),
     caseBlock('append only, not new'),
     text('changes-text-2', 60_000, 'Every widget compiles and the snapshots match. Applying the same codemod to the docs examples.'),
-    binaryStdoutCall(
+    viewedCall(
       {
         id: 'changes-snapshot-diff',
         toolName: 'shell',
         input: JSON.stringify({
-          script: 'bun scripts/snapshot-diff.ts login && cat out/login-diff.png',
+          script: 'bun scripts/snapshot-diff.ts login && demi file view out/login-diff.png',
           description: 'Compare the login snapshot before and after',
         }),
       },
       'cmd-snapshot-diff',
-      16_078,
-      'image/png',
+      imageLine(1, 480, 300, 16_078),
       blobImage(galleryBlobs.chart),
       [
         uncopiedFile({ path: 'out/login-diff.png', kind: 'added', added: 0, removed: 0 }),
