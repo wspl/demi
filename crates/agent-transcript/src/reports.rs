@@ -42,17 +42,8 @@ pub fn report_text(report: &CommandReport) -> String {
     let command = &report.command_id;
     let headline = match &report.event {
         ReportEvent::Running {
-            unreachable: Some(unreachable),
-            ..
-        } => format!(
-            "{named} is still running, as far as Demi knows: its Host has been unreachable for {}, and its runner keeps the command for up to {}.",
-            duration(unreachable.away_ms),
-            duration(unreachable.grace_ms),
-        ),
-        ReportEvent::Running {
             running_ms,
             idle_ms,
-            unreachable: None,
             ..
         } => format!(
             "{named} is still running after {}; no output for {}.",
