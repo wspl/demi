@@ -1,5 +1,5 @@
 import { computed, nextTick, onScopeDispose, ref, type Ref, watch } from 'vue'
-import { useVirtualizer } from '@tanstack/vue-virtual'
+import { measureElement as measureRow, useVirtualizer } from '@tanstack/vue-virtual'
 import { BOTTOM_THRESHOLD_PX, distanceFromBottom } from './scroll-bottom'
 import { FOLD_MS } from '../ui/fold'
 
@@ -57,6 +57,7 @@ export function useBlockVirtualizer(
   blocks: Ref<VirtualizedBlock[]>,
   persistedState: PersistedScrollState | undefined,
 ) {
+  /** The heights the list measured when it was last shown, until it measures them again. */
   const heightCache = new Map<string, number>(persistedState?.heightCache ?? [])
 
   const scrollOffset = ref(0)
@@ -67,13 +68,22 @@ export function useBlockVirtualizer(
   const virtualizer = useVirtualizer<HTMLElement, HTMLElement>(
     computed(() => ({
       count: blocks.value.length,
+      // An empty list has no place yet: once it has rows, it starts at
+      // `placement()`, so its first render is of the rows it will show.
+      enabled: blocks.value.length > 0,
+      initialOffset: placement,
+      // Until the scroller is measured, as tall as the window, which it never
+      // exceeds: the first render covers the view, at worst a little more.
+      initialRect: { width: 0, height: window.innerHeight },
       getScrollElement: () => scrollContainer.value ?? null,
-      estimateSize: (index: number) => {
-        const block = blocks.value[index]
-        if (!block)
-          return 40
-        return heightCache.get(block.id) ?? (BLOCK_HEIGHT_ESTIMATES[block.type] ?? 40)
-      },
+      estimateSize,
+      // Vue calls a row's ref as it mounts the row, and a list that mounts
+      // anew does so before it is in the document, where every row is 0 px
+      // tall. Such a row keeps the height it is known by; the virtualizer
+      // measures it once it watches the rows, when the scroller attaches.
+      measureElement: (element, entry, instance) => element.isConnected
+        ? measureRow(element, entry, instance)
+        : estimateSize(instance.indexFromElement(element)),
       overscan: OVERSCAN,
       gap: BLOCK_GAP,
       getItemKey: (index: number) => {
@@ -83,18 +93,34 @@ export function useBlockVirtualizer(
     })),
   )
 
+  /** A row's height until it is measured: as last measured, or by its kind. */
+  function estimateSize(index: number): number {
+    const block = blocks.value[index]
+    if (!block)
+      return 40
+    return heightCache.get(block.id) ?? (BLOCK_HEIGHT_ESTIMATES[block.type] ?? 40)
+  }
+
+  /**
+   * Where the list starts when it first has rows, before any is measured:
+   * where the reader left it, or its end. `restoreScroll` then puts the
+   * scroller there and corrects for the rows' real heights; a list that
+   * rendered at its top first would mount a screen of rows only to replace
+   * them, which costs as much as the rows the reader sees.
+   */
+  function placement(): number {
+    const anchor = persistedState?.anchor
+    if (anchor && blocks.value.some((block) => block.id === anchor.blockId))
+      return anchor.scrollTop
+    return Math.max(0, virtualizer.value.getTotalSize() - window.innerHeight)
+  }
+
   const virtualItems = computed(() => virtualizer.value.getVirtualItems())
   const totalSize = computed(() => virtualizer.value.getTotalSize())
 
   function measureElement(el: Element | null) {
-    if (!el)
-      return
-    const index = Number((el as HTMLElement).dataset['index'])
-    const block = blocks.value[index]
-    virtualizer.value.measureElement(el as HTMLElement)
-    const nextMeasurement = virtualizer.value.measurementsCache[index]
-    if (block && nextMeasurement)
-      heightCache.set(block.id, nextMeasurement.size)
+    if (el instanceof HTMLElement)
+      virtualizer.value.measureElement(el)
   }
 
   const shouldAutoScroll = ref(true)
@@ -372,6 +398,10 @@ export function useBlockVirtualizer(
   watch(
     () => [blocks.value.length, scrollContainer.value] as const,
     ([len, el]) => {
+      // A list that empties loses its place, and places itself again when
+      // rows come, as the virtualizer then starts it at `placement()` again.
+      if (len === 0)
+        isRestored.value = false
       if (!isRestored.value && len > 0 && el) {
         nextTick(() => restoreScroll())
       }
@@ -387,7 +417,12 @@ export function useBlockVirtualizer(
         ...lastAnchor,
         scrollTop: scrollContainer.value?.scrollTop ?? lastAnchor.scrollTop
       },
-      heightCache: new Map(heightCache),
+      // The virtualizer's own measurements, keyed by block id, over the
+      // heights it was given and has not measured again.
+      heightCache: new Map([
+        ...heightCache,
+        ...[...virtualizer.value.itemSizeCache].filter((entry): entry is [string, number] => typeof entry[0] === 'string'),
+      ]),
     }
   }
 

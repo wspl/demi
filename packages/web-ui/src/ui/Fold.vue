@@ -1,13 +1,21 @@
 <script setup lang="ts">
+import { ref, watch } from 'vue'
 import { FOLD_MS } from './fold'
 
 /**
- * A panel that opens and closes by height. Keep the content mounted so the
- * close can animate; `open` is the only state.
+ * A panel that opens and closes by height. The content mounts when the panel
+ * first opens, as a closed `<details>` costs nothing, and then stays mounted
+ * so the close can animate; `open` is the only state.
  */
-defineProps<{
+const props = defineProps<{
   open: boolean
 }>()
+
+const opened = ref(props.open)
+watch(() => props.open, (open) => {
+  if (open)
+    opened.value = true
+})
 </script>
 
 <template>
@@ -17,7 +25,7 @@ defineProps<{
     :style="{ '--fold-ms': `${FOLD_MS}ms` }"
   >
     <div class="fold-clip" :inert="!open">
-      <slot />
+      <slot v-if="opened" />
     </div>
   </div>
 </template>
