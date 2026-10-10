@@ -76,6 +76,11 @@ tooltip; its accessible label names the device and its state, *MacBook Pro ·
 Online*, or says *Removed device*. A row in a project
 shows no mark: its project's row already shows where it runs.
 
+On hover a row shows Archive at its end, and a pinned row shows Unpin
+before it. Pin is in the row's context menu, beside the other changes of a
+conversation; a row that is not pinned offers no Pin button on hover, as
+Mail and Linear keep the actions they offer on hover few.
+
 ```text
 User
 +-- Cloud device
@@ -510,6 +515,40 @@ moment to arrive, shown in place. Switching to another conversation and back
 returns to the same place. How the page reads and joins the parts belongs to
 [Transcript windows](web-application.md#transcript-windows).
 
+### Following the agent's work
+
+The user sends "run the tests" while reading the end of a conversation. The
+message appears at the bottom of the view in the frame it is drawn, and so
+does each row after it: the Requesting row, the agent's first step, its
+answer, the answer's Copy and Fork. Nothing appears below the view first and
+then jumps into it, and nothing scrolls to it a frame later; a delay of a
+few milliseconds reads as the list twitching.
+
+- **At the end.** The reader is at the end while the end of the list is in
+  view or less than 16 px below it. While at the end, whatever grows the
+  list at its end, a row, a row's growth, a footer, the Requesting row or a
+  failure notice, shows at the bottom of the view in the frame that draws
+  it. A reader who scrolled up stays where they are, and the
+  scroll-to-bottom button offers the way back.
+- **The list only grows.** A row that changes form keeps its place and
+  changes in the same frame: the message being sent becomes the message the
+  server confirmed, a step rolls over the one before, a call being written
+  becomes its call, the Requesting row becomes the step it waited for. The
+  list never draws a frame in which it is shorter, only to grow back. Only
+  what the user does shrinks it: folding a row, editing a message, which
+  replaces what follows it, or deleting.
+- **The message being sent** is drawn as the message it will become, at its
+  height: whether it is still on its way shows in the Requesting row, and a
+  lost connection in the Connecting row or the connection banner, never as
+  a line under the bubble that later goes.
+- **Copy and Fork** close the text that ends the agent's reply to a message:
+  the text after which the user's next message, the user's Stop, or nothing
+  while the conversation is idle comes. Text after which the agent went on
+  working, with a step or another agent's message, is not the end of its
+  reply, and keeps no footer even when the user writes next. A message being
+  sent counts as the user's next message from the moment it is sent, so the
+  footer of the answer before it stays while the message is delivered.
+
 ### Notifications
 
 A user sends a long task and switches to another app. When the turn ends,
@@ -620,7 +659,12 @@ The literal ones are what a conversation about code types as text:
 stays on its line and on its side of a capsule: `**a` and `b**` on two lines
 are the characters as typed. Emphasis beside CJK text follows the
 [CJK-friendly amendment](https://github.com/tats-u/markdown-cjk-friendly/blob/main/specification.md)
-to CommonMark, so `**注意：**这是` is bold as its writer means it.
+to CommonMark, so `**注意：**这是` is bold as its writer means it. The same
+holds wherever Demi reads Markdown: an agent's answer, a Markdown file's
+preview, a notification's text and a conversation's title. Plain CommonMark
+would show `**建议：**一组` with its stars, since its closing `**` follows a
+full-width colon and comes right before a letter, which Chinese, Japanese
+and Korean write without a space.
 
 The model receives the message's Markdown. Where the user typed literally a
 character the dialect would read as formatting, it carries a backslash

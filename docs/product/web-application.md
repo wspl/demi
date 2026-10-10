@@ -100,6 +100,40 @@ it loads, and the tab opens on the address the user last asked for.
   the user did, the page says so where it happened and offers to try again,
   and shows what is really there again.
 
+This holds for every action whose result the page can tell, with one
+mechanism. For example, the user archives "Fix the login test": the row
+leaves the sidebar and the toast with Undo shows in the same frame, and the
+request goes out behind them. Undo pressed before the backend answered
+brings the row back at once and sends the restore after the archive. Had the
+backend refused the archive, because the conversation had started running
+in another tab, the row would come back where it was and a toast would say
+why.
+
+- **The page's state is what it last read, with its own changes on top.**
+  The page keeps each change it sent and has not seen land, and shows the
+  product state it last read with those changes applied, as it shows the
+  work panel's tabs ([Work panel](#work-panel)). A change leaves the list
+  when its answer is applied, or, when the synchronization channel brought
+  a newer value of what it changed before the answer came, with that part's
+  next value from the channel. A refused change leaves the list, the page
+  shows what the backend has, and the refusal is reported as any failed
+  write is. One mechanism serves every such action; no action keeps its own
+  copy of a value it is waiting for.
+- **Changes to one thing go in order.** Changes are sent one at a time, in
+  the order the user made them, so a later one never overtakes an earlier
+  one, and a control is never disabled while an earlier change of the same
+  thing is on its way.
+- **What it covers.** Archive and restore, pin and unpin, deletion once the
+  user confirmed it, renaming, reordering, marking read, and the switches and
+  fields of the settings: plugins, subagents, a device's settings,
+  preferences.
+- **What it does not.** An action whose result only the backend or another
+  machine can tell shows that it is in progress: signing in and changing the
+  email or password, which the backend checks; creating a project, whose
+  directory the Host must confirm; pairing a device; moving a conversation
+  to another Host. Sending a message has its own states
+  ([Recovering an unfinished turn](product.md#recovering-an-unfinished-turn)).
+
 ## Work panel
 
 The work panel shows one tab at a time. Its frame belongs to the shell; every
@@ -153,6 +187,19 @@ history     the tabs' and pinned kinds' ids this page selected, newest last
   content is told it is not shown and stops what costs while nobody sees it,
   as the browser's live view does
   ([Live browser view](../browser/live-view.md#ending-a-view)).
+- **Opening what is shown closes the panel.** A control in the transcript
+  that opens something in the panel, such as a changed file's pill or a link
+  to a file, closes the panel when the panel is open and its selected tab
+  already shows exactly that: the Change view at the same request, file and
+  edit, or the File view at the same file. Anywhere else it opens what it
+  names. For example, the user clicks the `login.ts` pill: the Change view
+  shows its first edit; a second click closes the panel. Had the user
+  stepped to Edit 2 of 3 in between, the click would show Edit 1 again
+  instead. Closing only hides the panel, as the panel's own control does:
+  its tabs, their selection and Back and Forward stay, and the next click
+  shows it as it was. The second click of a double-click does not close it.
+  The control shows no pressed state. Claude's artifact cards and Quick Look
+  in Finder close the same way.
 - **Before the first send.** A new conversation has no backend record yet,
   and so no working directory on a Host
   ([Persistence and adapters](#persistence-and-adapters)). Its panel binds no

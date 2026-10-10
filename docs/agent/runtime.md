@@ -1685,19 +1685,24 @@ commands*, and a click opens it to every step.
   running turn, as what the agent does now; once anything follows it or the
   turn ends, it has nothing to show and goes, from the transcript and from
   the steps of an opened row.
-- The run at the end of a running turn is one row. While it holds a lone
-  call, that row is the call's own, as an ended lone call is, and opening it
-  shows the call, not a stack of one step. From its second step on, the row
-  is the run's: folded, it is its newest step, shimmering while it runs, a
-  step that arrives replacing the one before, a call being written rolling
-  over to its description once written, and the call's block, which then
-  takes its place, keeping that face. Opened, the row stands still as a
+- The run at the end of a running turn is one row, from its first step until
+  the turn ends or another block follows the run: the same row throughout,
+  so a step that joins never adds a row that then merges into it. Folded, it
+  is its newest step, a step that arrives replacing the one before, a call
+  being written rolling over to its description once written, and the call's
+  block, which then takes its place, keeping that face. While it holds a lone
+  call, opening it shows the call, not a stack of one step, as an ended lone
+  call does. From its second step on, opened, the row stands still as a
   stack and what runs, *Running 4 commands*, with the steps under it;
   opening and folding change the row at once rather than rolling it. The
-  run's first step rolls into the tail row first, as any block does, and a
-  run's row is the turn's activity, so no Requesting row shows under it; a
-  lone call that ended is not, and the turn's Requesting shows under it
-  until the next step comes.
+  run's first step rolls into the tail row first, as any block does.
+- The run's row is the turn's activity, so no Requesting row shows under it,
+  and it shimmers for as long as the turn has not moved past it: while its
+  newest step runs, and after that step ended, while the request that
+  carries its result waits for the model's next output. For example, a
+  command ends after 2 seconds and the model's next words come 3 seconds
+  later: the row shimmers for all 5. A row that stops shimmering finishes
+  the sweep under way rather than cutting it.
 - An ended run stays one row when it holds a call and another step, and a
   lone thinking stays its own row; a lone call is its own row. The row reads
   what the run did, each kind of call once, in the order the run first did
