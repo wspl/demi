@@ -1,5 +1,6 @@
 import { computed, ref, shallowRef, watch } from 'vue'
 import { defineStore } from 'pinia'
+import { SerialQueue, moveBefore } from '@demicodes/utils'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   workspaceAnswerSchema,
@@ -49,6 +50,8 @@ function productDevice(device: DeviceDto): Device {
 export const useResources = defineStore('resources', () => {
   const session = useSession()
   const product = useProduct()
+  /** The project moves on their way, which go one at a time in order. */
+  const moves = new SerialQueue()
   const preferences = usePreferences()
   const local = ref(emptyLocalState())
   let controller = new AbortController()
@@ -235,16 +238,37 @@ export const useResources = defineStore('resources', () => {
       : [...new Set([...hidden, modelId])]
   }
 
-  async function reorderProject(id: string, beforeId: string | null): Promise<void> {
-    await apiRequest('/sidebar/reorder', {
-      method: 'POST',
-      signal: controller.signal,
-      ...jsonBody({
-        kind: 'workspace',
-        id,
-        beforeId,
-      } satisfies SidebarReorder),
+  /**
+   * Moves the project before `beforeId`, or to the end, at once; the write
+   * follows the earlier moves, and a failure, thrown, puts it back.
+   */
+  function reorderProject(id: string, beforeId: string | null): Promise<void> {
+    const change = product.change('workspaces', (state) => {
+      const moved = state.workspaces.find((workspace) => workspace.id === id)
+      const before = state.workspaces.find((workspace) => workspace.id === beforeId) ?? null
+      return moved && (beforeId === null || before)
+        ? { ...state, workspaces: moveBefore(state.workspaces, moved, before) }
+        : state
     })
+    const { signal } = controller
+    return moves
+      .run(async () => {
+        change.send()
+        await apiRequest('/sidebar/reorder', {
+          method: 'POST',
+          signal,
+          ...jsonBody({
+            kind: 'workspace',
+            id,
+            beforeId,
+          } satisfies SidebarReorder),
+        })
+        change.land()
+      })
+      .catch((error) => {
+        change.drop()
+        throw error
+      })
   }
 
   async function createProject(draft: CreateWorkspace): Promise<string> {

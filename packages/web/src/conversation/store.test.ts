@@ -1058,6 +1058,153 @@ test('archiving says so in a toast whose Undo brings the conversation back', asy
   ])
 })
 
+/**
+ * Holds the backend's answers to the requests `matches` picks until each is
+ * released, as a slow connection does: `arrived` resolves as the next one
+ * reaches the backend, and `release` lets the oldest held one through.
+ */
+function holdAnswers(matches: (path: string, method: string) => boolean) {
+  const answering = globalThis.fetch
+  const held: (() => void)[] = []
+  let arrival = deferred<void>()
+  globalThis.fetch = (async (input, init) => {
+    if (!matches(String(input), init?.method ?? 'GET')) {
+      return answering(input, init)
+    }
+    const gate = deferred<void>()
+    held.push(gate.resolve)
+    arrival.resolve()
+    arrival = deferred<void>()
+    await gate.promise
+    return answering(input, init)
+  }) as typeof fetch
+  return {
+    /** Resolves once `count` requests are held. */
+    arrived: async (count: number) => {
+      while (held.length < count) {
+        await arrival.promise
+      }
+    },
+    release: () => held.shift()!(),
+  }
+}
+
+const archivedOf = (id: string) => useConversations().items.find((item) => item.id === id)?.archived
+const batchBodies = () => requests.filter((request) => request.path === '/api/conversations/batch').map((request) => request.body)
+
+test('archive and pin show at once, and a pin while the archive is on its way is not refused', async () => {
+  const store = useConversations()
+  const backend = holdAnswers((path) => path === '/api/conversations/batch')
+  const pinnedOf = () => store.items.find((item) => item.id === FIRST)?.pinned
+  const archived = store.archive([FIRST])
+  // The row leaves and the toast says so in the same turn, before any answer.
+  expect(archivedOf(FIRST)).toBe(true)
+  expect(toasts.at(-1)?.title).toBe('Conversation Archived')
+  const pinned = store.pin([FIRST], true)
+  expect(pinnedOf()).toBe(true)
+  await backend.arrived(1)
+  backend.release()
+  expect(await archived).toBe(true)
+  await backend.arrived(1)
+  backend.release()
+  expect(await pinned).toBe(true)
+  expect(batchBodies()).toEqual([
+    { items: [{ id: FIRST, patch: { archived: true } }] },
+    { items: [{ id: FIRST, patch: { pinned: true } }] },
+  ])
+  expect(archivedOf(FIRST)).toBe(true)
+  expect(pinnedOf()).toBe(true)
+})
+
+test('Undo before the archive is answered brings the row back at once and sends the restore after the archive', async () => {
+  const store = useConversations()
+  const backend = holdAnswers((path) => path === '/api/conversations/batch')
+  const archived = store.archive([FIRST])
+  const undo = toasts.findLast((toast) => toast.title === 'Conversation Archived')!.action!
+  await backend.arrived(1)
+  undo.run()
+  expect(archivedOf(FIRST)).toBe(false)
+  backend.release()
+  await archived
+  // The archive's answer lands under the restore, which still shows.
+  expect(archivedOf(FIRST)).toBe(false)
+  await backend.arrived(1)
+  backend.release()
+  await waitFor(() => batchBodies().length === 2, () => 'the restore was not sent')
+  expect(batchBodies()).toEqual([
+    { items: [{ id: FIRST, patch: { archived: true } }] },
+    { items: [{ id: FIRST, patch: { archived: false } }] },
+  ])
+  await waitFor(() => records.find((item) => item.id === FIRST)?.archived === false)
+  expect(archivedOf(FIRST)).toBe(false)
+})
+
+test('a refused archive brings the row back where it was and says why', async () => {
+  const store = useConversations()
+  const backend = holdAnswers((path) => path === '/api/conversations/batch')
+  const order = () => store.items.filter((item) => !item.archived).map((item) => item.id)
+  const before = order()
+  // The stub's backend refuses to archive the second conversation, as one that runs.
+  const archived = store.archive([SECOND])
+  expect(archivedOf(SECOND)).toBe(true)
+  const said = toasts.at(-1)!
+  expect(said.title).toBe('Conversation Archived')
+  await backend.arrived(1)
+  backend.release()
+  expect(await archived).toBe(false)
+  expect(archivedOf(SECOND)).toBe(false)
+  expect(order()).toEqual(before)
+  // The toast that said it was archived goes; the refusal's says why.
+  expect(toasts.some((toast) => toast.id === said.id)).toBe(false)
+  expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Archive the Conversation', message: 'second: Turn is running' })
+})
+
+test('a summary the channel brings before the archive is answered does not bring the row back', async () => {
+  const store = useConversations()
+  const backend = holdAnswers((path) => path === '/api/conversations/batch')
+  const archived = store.archive([FIRST])
+  await backend.arrived(1)
+  // The channel brings a summary read before the archive reached the backend.
+  await changed(FIRST)
+  expect(archivedOf(FIRST)).toBe(true)
+  backend.release()
+  await archived
+  expect(archivedOf(FIRST)).toBe(true)
+  // The channel brings the summary the archive committed, and then another
+  // page's restore, which shows: nothing of this page's holds it.
+  await changed(FIRST)
+  expect(archivedOf(FIRST)).toBe(true)
+  records.find((item) => item.id === FIRST)!.archived = false
+  await changed(FIRST)
+  expect(archivedOf(FIRST)).toBe(false)
+})
+
+test('deleted rows leave at once, and a deletion that fails brings its row back and says why', async () => {
+  const store = useConversations()
+  const fetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    if (init?.method === 'DELETE') {
+      return String(input) === `/api/conversations/${SECOND}`
+        ? Response.json({ code: 'internal_error', message: 'Storage unavailable' }, { status: 500 })
+        : new Response(null, { status: 204 })
+    }
+    return fetch(input, init)
+  }) as typeof fetch
+  const backend = holdAnswers((_, method) => method === 'DELETE')
+  const listed = () => store.items.map((item) => item.id)
+  const removed = store.remove([FIRST, SECOND])
+  expect(listed()).not.toContain(FIRST)
+  expect(listed()).not.toContain(SECOND)
+  await backend.arrived(1)
+  backend.release()
+  await backend.arrived(1)
+  backend.release()
+  expect(await removed).toBe(false)
+  expect(listed()).not.toContain(FIRST)
+  expect(listed()).toContain(SECOND)
+  expect(toasts.some((toast) => toast.message?.includes('second: Storage unavailable'))).toBe(true)
+})
+
 test('read acknowledgements use the observed revision and wait for history', async () => {
   const original = globalThis.document
   Object.defineProperty(globalThis, 'document', {
