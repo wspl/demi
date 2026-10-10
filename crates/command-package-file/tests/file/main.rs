@@ -165,7 +165,9 @@ async fn search_replace_blocks_replace_text_found_once_all_together() {
         ])
         .await;
         let cwd = root.path().to_str().unwrap();
-        let full = |name: &str| root.path().join(name).display().to_string();
+        // The parent directory as the system resolves it: on macOS a
+        // temporary directory under /var is /private/var.
+        let full = |name: &str| std::fs::canonicalize(root.path()).unwrap().join(name).display().to_string();
         let read = |name: &str| std::fs::read_to_string(root.path().join(name)).unwrap();
         let edit = |path: &str, blocks: &str| {
             call(
@@ -223,10 +225,70 @@ async fn search_replace_blocks_replace_text_found_once_all_together() {
         assert_eq!(read("crlf.txt"), "one\r\n2a\r\n2b\r\n");
 
         // A file that does not exist is named by its full path, as the
-        // system words it.
-        let (result, _, _) = edit("absent.txt", "<<<<<<< SEARCH\nx\n=======\ny\n>>>>>>> REPLACE\n").await;
+        // system words it: its parent resolved when it exists, `..`
+        // included, or else the path as joined to the working directory.
+        std::fs::create_dir(root.path().join("sub")).unwrap();
+        let (result, _, _) = edit("sub/../absent.txt", "<<<<<<< SEARCH\nx\n=======\ny\n>>>>>>> REPLACE\n").await;
         assert_eq!(result.exit_code, 1);
         assert_eq!(message(&result), format!("{}: No such file or directory", full("absent.txt")));
+        let (result, _, _) = edit("nodir/absent.txt", "<<<<<<< SEARCH\nx\n=======\ny\n>>>>>>> REPLACE\n").await;
+        assert_eq!(
+            message(&result),
+            format!("{}: No such file or directory", root.path().join("nodir/absent.txt").display())
+        );
+        assert!(service.shutdown().await.unwrap().success());
+    })
+    .await
+    .unwrap();
+}
+
+/// What deletes a line ending and what does not: only a SEARCH of whole
+/// lines with no REPLACE lines at all takes its last one; a REPLACE of one
+/// blank line leaves one, a SEARCH of blank lines alone is refused, and
+/// `--old` fails as a block does.
+#[tokio::test]
+async fn deletions_keep_lines_apart_and_old_fails_as_blocks_do() {
+    tokio::time::timeout(Duration::from_secs(15), async {
+        let (root, service) = service_with(&[
+            ("note.js", "x(); // note\nnext\n"),
+            ("blank.txt", "a\nb\nc\n"),
+            ("gaps.txt", "a\n\n\nb\n\n\nc\n"),
+            ("old.txt", "alpha\nbeta\nbeta\n"),
+        ])
+        .await;
+        let cwd = root.path().to_str().unwrap();
+        let full = |name: &str| std::fs::canonicalize(root.path()).unwrap().join(name).display().to_string();
+        let read = |name: &str| std::fs::read_to_string(root.path().join(name)).unwrap();
+        let edit = |args: serde_json::Value| call(service.client(), cwd, "file.edit", args);
+
+        // The end of a line, deleted, leaves the line and the next apart.
+        let (result, _, _) = edit(serde_json::json!({"path": "note.js", "blocks": "<<<<<<< SEARCH\n // note\n=======\n>>>>>>> REPLACE\n"})).await;
+        assert_eq!(result.exit_code, 0, "{result:?}");
+        assert_eq!(read("note.js"), "x();\nnext\n");
+
+        // A REPLACE of one blank line leaves a blank line.
+        let (result, _, _) = edit(serde_json::json!({"path": "blank.txt", "blocks": "<<<<<<< SEARCH\nb\n=======\n\n>>>>>>> REPLACE\n"})).await;
+        assert_eq!(result.exit_code, 0, "{result:?}");
+        assert_eq!(read("blank.txt"), "a\n\nc\n");
+
+        // Blank lines alone name no one place.
+        let (result, _, _) = edit(serde_json::json!({"path": "gaps.txt", "blocks": "<<<<<<< SEARCH\n\n\n=======\n>>>>>>> REPLACE\n"})).await;
+        assert_eq!(
+            message(&result),
+            format!("{}: block 1: its SEARCH holds only blank lines, which match too many places; include a line of text around it, and nothing was written", full("gaps.txt"))
+        );
+
+        let (result, _, _) = edit(serde_json::json!({"path": "old.txt", "old": "betta", "new": "x"})).await;
+        assert_eq!(
+            message(&result),
+            format!("{}: --old is not in the file; it must match the file's text exactly, whitespace included, and nothing was written. The closest line is 2:\n2: beta", full("old.txt"))
+        );
+        let (result, _, _) = edit(serde_json::json!({"path": "old.txt", "old": "beta", "new": "x"})).await;
+        assert_eq!(
+            message(&result),
+            format!("{}: --old occurs 2 times, at lines 2 and 3; choose one with --occurrence or --context, or include more of the text, and nothing was written", full("old.txt"))
+        );
+        assert_eq!(read("old.txt"), "alpha\nbeta\nbeta\n");
         assert!(service.shutdown().await.unwrap().success());
     })
     .await
@@ -263,7 +325,7 @@ async fn one_edit_changes_several_files_together_or_none() {
         // message names the file and its block.
         let (result, _, _) = edit(three("absent();")).await;
         assert_eq!(result.exit_code, 1);
-        assert!(message(&result).starts_with(&format!("{}: block 1: its SEARCH is not in the file;", root.path().join("c.rs").display())), "{}", message(&result));
+        assert!(message(&result).starts_with(&format!("{}: block 1: its SEARCH is not in the file;", std::fs::canonicalize(root.path()).unwrap().join("c.rs").display())), "{}", message(&result));
         assert_eq!(read("a.txt"), None);
         assert_eq!(read("b.txt").unwrap(), "one\n");
 
@@ -286,7 +348,7 @@ async fn one_edit_changes_several_files_together_or_none() {
         // An empty SEARCH never overwrites a file that exists.
         let (result, _, _) = edit("b.txt\n<<<<<<< SEARCH\n=======\nreplaced\n>>>>>>> REPLACE\n".into()).await;
         assert_eq!(result.exit_code, 1);
-        assert!(message(&result).starts_with(&format!("{}: block 1: the file exists", root.path().join("b.txt").display())), "{}", message(&result));
+        assert!(message(&result).starts_with(&format!("{}: block 1: the file exists", std::fs::canonicalize(root.path()).unwrap().join("b.txt").display())), "{}", message(&result));
         assert_eq!(read("b.txt").unwrap(), "one\ntwo\n");
         assert!(service.shutdown().await.unwrap().success());
     })
@@ -309,7 +371,10 @@ async fn a_section_keeps_its_lines_and_matches_one_place() {
         assert_eq!(result.exit_code, 1);
         assert_eq!(
             message(&result),
-            "twice.rs, block 1: its REPLACE has 2 ....... line(s); it needs none, to replace the whole match, or 1, one for each in its SEARCH"
+            format!(
+                "{}: block 1: its REPLACE has 2 ....... line(s); it needs none, to replace the whole match, or 1, one for each in its SEARCH",
+                std::fs::canonicalize(root.path()).unwrap().join("twice.rs").display()
+            )
         );
         let (result, _, _) = edit("<<<<<<< SEARCH\nfn a() {\n.......\n}\n=======\nfn b() {\n.......\n}\n>>>>>>> REPLACE\n").await;
         assert_eq!(result.exit_code, 1);

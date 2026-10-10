@@ -7,7 +7,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_package_file_protocol::{Operation, PatchArgs, ReadArgs};
+use demi_command_package_file_protocol::{EditArgsError, Operation, PatchArgs, ReadArgs};
 use demi_command_protocol::{
     CommandError, Completion, MAX_MEDIUM_BYTES, StdoutTarget, begins_as_text, is_text,
     sniff_media_type,
@@ -54,17 +54,27 @@ pub enum FileError {
     NoMatchNearContext,
     #[error("Context line {context} is ambiguous: {candidates}")]
     AmbiguousContext { context: usize, candidates: String },
-    #[error("No match found in {0}")]
-    NoMatch(String),
-    #[error("Multiple matches in {0}; specify --occurrence or --context")]
-    MultipleMatches(String),
+    #[error(
+        "{}: --old is not in the file; it must match the file's text exactly, whitespace included, and nothing was written. {closest}",
+        shown(.path).display()
+    )]
+    OldNoMatch { path: PathBuf, closest: String },
+    #[error(
+        "{}: --old occurs {count} times, at {places}; choose one with --occurrence or --context, or include more of the text, and nothing was written",
+        shown(.path).display()
+    )]
+    OldMatchesSeveral {
+        path: PathBuf,
+        count: usize,
+        places: String,
+    },
     /// A file an edit reads, named by its full path, as the system words
     /// why it cannot be read.
-    #[error("{}: {}", .path.display(), reason(.error))]
+    #[error("{}: {}", shown(.path).display(), reason(.error))]
     Unreadable { path: PathBuf, error: std::io::Error },
     #[error(
         "{}: block {block}: its SEARCH is not in the file; a SEARCH must match the file's text exactly, whitespace included, and nothing was written. {closest}",
-        .path.display()
+        shown(.path).display()
     )]
     BlockNoMatch {
         block: usize,
@@ -72,8 +82,13 @@ pub enum FileError {
         closest: String,
     },
     #[error(
+        "{}: block {block}: its SEARCH holds only blank lines, which match too many places; include a line of text around it, and nothing was written",
+        shown(.path).display()
+    )]
+    BlankSearch { block: usize, path: PathBuf },
+    #[error(
         "{}: block {block}: its SEARCH occurs {count} times, at {places}; include more of the text around it so it occurs once, and nothing was written",
-        .path.display()
+        shown(.path).display()
     )]
     BlockMatchesSeveral {
         block: usize,
@@ -83,7 +98,7 @@ pub enum FileError {
     },
     #[error(
         "{}: blocks {first} and {second} overlap; make them one block, and nothing was written",
-        .path.display()
+        shown(.path).display()
     )]
     BlocksOverlap {
         first: usize,
@@ -92,14 +107,18 @@ pub enum FileError {
     },
     #[error(
         "{}: block {block}: the file exists; a block with an empty SEARCH creates a new file, and nothing was written",
-        .path.display()
+        shown(.path).display()
     )]
     FileExists { path: PathBuf, block: usize },
     #[error(
         "{}: block {block}: a block with an empty SEARCH creates the file, so it is the file's only block, and nothing was written",
-        .path.display()
+        shown(.path).display()
     )]
     CreateWithOthers { path: PathBuf, block: usize },
+    /// `file.edit`'s arguments are refused, a path they name shown as
+    /// [`edit_args`] resolves it.
+    #[error(transparent)]
+    EditArgs(EditArgsError),
     #[error(transparent)]
     Patch(#[from] PatchError),
     /// The result could not be sent back.
@@ -323,6 +342,38 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8], create: bool) -> Result<()
 
 pub(crate) fn resolve(cwd: &str, path: &str) -> Result<PathBuf, FileError> {
     Ok(demi_command_sdk::paths::resolve(cwd, path)?)
+}
+
+/// The full path an error names for the resolved `path`: its parent
+/// directory as the system resolves it, `..` and links included, with the
+/// file's name, when that directory exists; otherwise `path` itself.
+pub(crate) fn shown(path: &Path) -> PathBuf {
+    let canonical = path
+        .parent()
+        .zip(path.file_name())
+        .and_then(|(parent, name)| Some(fs::canonicalize(parent).ok()?.join(name)));
+    canonical.unwrap_or_else(|| path.to_owned())
+}
+
+/// The failure of `file.edit`'s refused arguments, a path they name
+/// resolved against `cwd` and shown in full.
+pub(crate) fn edit_args(cwd: &str, error: EditArgsError) -> FileError {
+    FileError::EditArgs(match error {
+        EditArgsError::Sections {
+            path,
+            block,
+            search,
+            replace,
+        } => EditArgsError::Sections {
+            // A path that does not resolve is named as given.
+            path: resolve(cwd, &path)
+                .map_or(path, |resolved| shown(&resolved).display().to_string()),
+            block,
+            search,
+            replace,
+        },
+        other => other,
+    })
 }
 
 /// Why [`nearest`] chose no candidate.

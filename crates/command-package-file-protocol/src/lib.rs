@@ -22,6 +22,10 @@ pub enum OperationError {
     /// The operation's arguments are refused.
     #[error(transparent)]
     Invalid(#[from] DecodeError),
+    /// `file.edit`'s arguments are refused; the handler reports a path the
+    /// error names as it resolves it.
+    #[error(transparent)]
+    Edit(#[from] EditArgsError),
 }
 
 /// `file.read`: writes each file's bytes to stdout, in order.
@@ -97,22 +101,18 @@ pub struct EditArgs {
     pub context: Option<usize>,
 }
 
-/// `file.edit`, decoded (`commands.md` § Editing files).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, garde::Validate)]
-#[serde(try_from = "EditArgs")]
+/// `file.edit`, decoded (`commands.md` § Editing files) from checked
+/// [`EditArgs`].
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Edit {
     /// SEARCH/REPLACE blocks, each with the file it changes, in the order
     /// of stdin; the same file may come more than once.
-    Blocks(#[garde(skip)] Vec<FileBlocks>),
+    Blocks(Vec<FileBlocks>),
     /// Exact text anywhere in the file, at the match `choice` names.
     Text {
-        #[garde(skip)]
         path: String,
-        #[garde(skip)]
         old: String,
-        #[garde(skip)]
         new: String,
-        #[garde(skip)]
         choice: Choice,
     },
 }
@@ -178,8 +178,6 @@ pub const SECTION_MARKER: &str = ".......";
 /// Why an edit's arguments are refused; its message is what the agent reads.
 #[derive(Debug, thiserror::Error)]
 pub enum EditArgsError {
-    #[error(transparent)]
-    Invalid(#[from] garde::Report),
     #[error(
         "Give the edit either as SEARCH/REPLACE blocks on stdin or as --old and --new, not both"
     )]
@@ -215,7 +213,7 @@ pub enum EditArgsError {
     #[error("Block {block} ends before its {REPLACE_MARKER} line")]
     Unclosed { block: usize },
     #[error(
-        "{path}, block {block}: its REPLACE has {replace} {SECTION_MARKER} line(s); it needs none, to replace the whole match, or {search}, one for each in its SEARCH"
+        "{path}: block {block}: its REPLACE has {replace} {SECTION_MARKER} line(s); it needs none, to replace the whole match, or {search}, one for each in its SEARCH"
     )]
     Sections {
         path: String,
@@ -228,8 +226,8 @@ pub enum EditArgsError {
 impl TryFrom<EditArgs> for Edit {
     type Error = EditArgsError;
 
+    /// The edit `args` give; [`Operation::parse`] has checked their fields.
     fn try_from(args: EditArgs) -> Result<Self, EditArgsError> {
-        garde::Validate::validate(&args)?;
         let choice = match (args.occurrence, args.context) {
             (Some(_), Some(_)) => return Err(EditArgsError::OccurrenceAndContext),
             (Some(occurrence), None) => Some(Choice::Occurrence(occurrence)),
@@ -386,10 +384,24 @@ pub struct PatchArgs {
     pub patch: String,
 }
 
-/// Declares the operations: the enum of decoded arguments and the operation
-/// list.
+/// Decodes and checks an operation's arguments.
+fn decode<T>(args: serde_json::Value) -> Result<T, OperationError>
+where
+    T: serde::de::DeserializeOwned + garde::Validate<Context = ()>,
+{
+    Ok(demi_shared_types::decode_value(args)?)
+}
+
+/// Decodes `file.edit`'s arguments: checked [`EditArgs`], then the edit
+/// they give.
+fn decode_edit(args: serde_json::Value) -> Result<Edit, OperationError> {
+    Ok(Edit::try_from(decode::<EditArgs>(args)?)?)
+}
+
+/// Declares the operations: the enum of decoded arguments, each decoded by
+/// its function, and the operation list.
 macro_rules! operations {
-    ($($name:literal => $variant:ident($args:ty),)*) => {
+    ($($name:literal => $variant:ident($args:ty) by $decode:ident,)*) => {
         /// A decoded invocation: the operation and its checked arguments.
         #[derive(Debug, Clone, PartialEq, Eq)]
         pub enum Operation {
@@ -400,7 +412,7 @@ macro_rules! operations {
             /// Decodes the arguments of the operation named `operation`.
             pub fn parse(operation: &str, args: serde_json::Value) -> Result<Self, OperationError> {
                 match operation {
-                    $($name => Ok(demi_shared_types::decode_value(args).map(Self::$variant)?),)*
+                    $($name => $decode(args).map(Self::$variant),)*
                     _ => Err(OperationError::Unknown(operation.to_owned())),
                 }
             }
@@ -412,7 +424,7 @@ macro_rules! operations {
 }
 
 operations! {
-    "file.read" => Read(ReadArgs),
-    "file.edit" => Edit(Edit),
-    "file.patch" => Patch(PatchArgs),
+    "file.read" => Read(ReadArgs) by decode,
+    "file.edit" => Edit(Edit) by decode_edit,
+    "file.patch" => Patch(PatchArgs) by decode,
 }
