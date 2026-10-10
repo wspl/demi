@@ -2,8 +2,12 @@ import { inject, provide, type InjectionKey } from 'vue'
 import type { ReadCallChange } from '../files/changes'
 import type { RequestEditSelection, TranscriptRequests } from '../files/request-changes'
 
-/** Opens a request's changes, through the `edit` intent (`plugin-pages.md` § Intents). */
-export type EditSelectionHandler = (selection: RequestEditSelection) => void
+/**
+ * Opens a request's changes, through the `edit` intent (`plugin-pages.md`
+ * § Intents), on a pill's click, whose `detail` is `clicks`: a click on what
+ * the panel already shows closes it (`openIntent`).
+ */
+export type EditSelectionHandler = (selection: RequestEditSelection, clicks: number) => void
 const editSelectionKey: InjectionKey<() => EditSelectionHandler | undefined> = Symbol('edit-selection')
 
 /**

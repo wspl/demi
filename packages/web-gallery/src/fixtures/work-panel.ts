@@ -144,9 +144,20 @@ export function useGalleryWork(
     }
     closePanelTabs(selection, tabs, ids)
   }
-  function openIn(request: IntentRequest) {
-    const opened = openIntent(pinned.value, shown, enabled, request)
+  /** Opens an intent as the product's work store does: a click on what the open panel already shows closes it. */
+  function openIn(request: IntentRequest, clicks?: number) {
+    const opened = openIntent(
+      { open: open.value, panel: panel.value, pinned: pinned.value },
+      shown,
+      enabled,
+      request,
+      clicks,
+    )
     if (!opened) {
+      return
+    }
+    if (opened.action === 'close') {
+      open.value = false
       return
     }
     pinned.value = opened.pinned
@@ -154,13 +165,14 @@ export function useGalleryWork(
       tabs.change({ type: 'create', tab: opened.created })
     }
     select(opened.selection)
+    open.value = true
   }
 
   const host = galleryPageHost({ browser: browserPlugin(browser, plugin) }, {
     files,
     hostStarting: () => browser.hostStarting.value,
     intents: {
-      open: (_conversation, request) => openIn(request),
+      open: (_conversation, request, clicks) => openIn(request, clicks),
       canOpen: (intent) => intentKind(shown, enabled, intent) !== null,
     },
     panel: {
@@ -180,9 +192,9 @@ export function useGalleryWork(
   /** What the panel shows, as its strip marks it. */
   const selected = computed(() => shownSelection(panel.value, kinds))
 
-  /** A file pill, through the `edit` intent. */
-  function selectEdit(edit: RequestEditSelection) {
-    openIn({ intent: 'edit', payload: edit })
+  /** A file pill, through the `edit` intent; without `clicks`, from another page, it never closes the panel. */
+  function selectEdit(edit: RequestEditSelection, clicks?: number) {
+    openIn({ intent: 'edit', payload: edit }, clicks)
   }
   /** The panel as it started: every tab closed, the first selection again. */
   function reset() {
