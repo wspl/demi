@@ -102,7 +102,8 @@ fn ok_replies_carry_their_operations_results() {
         "ok.current_base_version",
     );
     assert_eq!(version.as_str(), "b".repeat(64));
-    result::<demi_machine_manager_protocol::ReconcileParams>("ok.reconcile");
+    let (reconciled, _) = result::<demi_machine_manager_protocol::ReconcileParams>("ok.reconcile");
+    assert_eq!(reconciled.running, ["dev-1"]);
 }
 
 #[test]

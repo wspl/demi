@@ -178,12 +178,12 @@ async fn a_failure_reply_fails_its_call_and_the_connection_stays_usable() {
 }
 
 #[tokio::test]
-async fn a_death_reaches_the_router_and_close_reconciles_then_disconnects_until_the_next_call() {
+async fn a_death_reaches_the_router_and_close_disconnects_without_a_word_until_the_next_call() {
     let (_directory, path, listener) = socket();
     let (client, mut deaths) = MachinesClient::new(path);
     let client = std::sync::Arc::new(client);
     // A client that never connected closes without a word.
-    client.close().await.unwrap();
+    client.close().await;
     let first = {
         let client = client.clone();
         tokio::spawn(async move { client.call(CurrentBaseVersionParams {}).await })
@@ -198,18 +198,10 @@ async fn a_death_reaches_the_router_and_close_reconciles_then_disconnects_until_
     first.await.unwrap().unwrap();
     assert_eq!(deaths.recv().await.unwrap().as_str(), "dev-1");
 
-    let closing = {
-        let client = client.clone();
-        tokio::spawn(async move { client.close().await })
-    };
-    let reconcile = peer.request().await;
-    assert!(
-        matches!(reconcile.call, MachineCall::Reconcile(_)),
-        "{reconcile:?}"
-    );
-    peer.ok(&reconcile.id, serde_json::Value::Null).await;
-    closing.await.unwrap().unwrap();
-    assert!(peer.closed().await);
+    // The close leaves the manager's sandboxes running: it asks nothing,
+    // and disconnects (`managed-hosts.md` § Control and ownership).
+    client.close().await;
+    assert!(peer.closed().await, "the close sent a request");
 
     let again = {
         let client = client.clone();

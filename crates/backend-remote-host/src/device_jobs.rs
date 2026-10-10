@@ -98,9 +98,11 @@ pub struct Hello {
     pub instance: u64,
     pub release: String,
     pub jobs: Vec<KeptJob>,
-    /// The release the device's runner had when it last connected, from
-    /// the device's record, which outlives a restart of the backend.
+    /// The release and the instance the device's runner had when it last
+    /// connected, from the device's record, which outlives a restart of the
+    /// backend.
     pub last_release: Option<String>,
+    pub last_instance: Option<u64>,
     /// Whether the device is a Cloud.
     pub managed: bool,
     /// The jobs the backend's records name for the device, which a
@@ -285,9 +287,10 @@ impl DeviceJobs {
             .as_ref()
             .map(|(_, release)| release.clone())
             .or(hello.last_release);
+        let last_instance = previous.map(|(instance, _)| instance).or(hello.last_instance);
         let lost = if last_release.is_some_and(|release| release != hello.release) {
             UPGRADED
-        } else if previous.is_some_and(|(instance, _)| instance == hello.instance) {
+        } else if last_instance == Some(hello.instance) {
             NEVER_RECEIVED
         } else if hello.managed {
             CLOUD_RESTARTED
