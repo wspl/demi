@@ -391,9 +391,6 @@ impl PortTransport for NodePort {
                 PortRequest::ReadStdin {} | PortRequest::ReadLiveStdin {} => {
                     Ok(PortResponse::Input { bytes: None })
                 }
-                PortRequest::Medium { .. } => Err(PortError::Ended(
-                    "an agent command returns no media".into(),
-                )),
             }
         })
     }
@@ -702,8 +699,6 @@ pub fn listed_model(id: &str, efforts: &[&str], tiers: &[&str]) -> ProviderModel
         context_window: Some(200_000),
         output_limit: None,
         supports_tools: Some(true),
-        supports_attachments: None,
-        supports_video: None,
         accepted_extensions: None,
         supports_reasoning: None,
         supported_thinking_efforts: (!efforts.is_empty())

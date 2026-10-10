@@ -91,6 +91,7 @@ async fn job_environment_combines_device_request_and_owned_values() {
         let cwd = host.home().to_string_lossy().into_owned();
         host.send(Inbound::JobStart {
             manifest_hash: None,
+            viewable: None,
             context: context(),
             job_id: "env".into(),
             script: "printf '%s:%s:%s:%s:%s' \"$DEVICE\" \"$OVERRIDE\" \"$DEMI_HOME\" \"$HOME\" \"$profile_home\""

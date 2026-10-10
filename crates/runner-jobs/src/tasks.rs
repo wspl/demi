@@ -7,7 +7,7 @@
 //! connection reports again.
 
 use crate::job_directories::{JobDirectories, JobDirectory, StreamLengths};
-use crate::job_media::{JobMedia, MEDIA_DIRECTORY};
+use crate::job_media::{Arrival, JobMedia, MEDIA_DIRECTORY};
 use crate::kept_output::KeptOutput;
 use crate::{
     commands::{
@@ -17,7 +17,7 @@ use crate::{
     connection::ConnectionHandle,
 };
 use bytes::Bytes;
-use demi_command_protocol::CommandContext;
+use demi_command_protocol::{CommandContext, Viewable};
 use demi_runner_command_packages::ServiceHandle;
 use demi_runner_process::{
     job_shell::{JobCommands, JobShell, JobStart, ShellJob},
@@ -36,7 +36,7 @@ use std::{
     },
 };
 use tokio::{
-    sync::{mpsc, watch},
+    sync::{mpsc, oneshot, watch},
     task::JoinSet,
     time::Instant,
 };
@@ -125,8 +125,9 @@ pub enum TaskCommand {
         script: String,
         stdin: Option<wire::PipeRef>,
         stdout: Option<wire::PipeRef>,
-        /// The manifest and command context of a job with declared commands.
-        commands: Option<(String, CommandContext)>,
+        /// The manifest, command context and viewable media types of a job
+        /// with declared commands.
+        commands: Option<(String, CommandContext, Option<Viewable>)>,
     },
     Process {
         command: String,
@@ -386,6 +387,7 @@ impl JobConfig {
         command: CommandContext,
         edits: demi_command_protocol::EditContext,
         media: Arc<JobMedia>,
+        viewable: Option<Viewable>,
         env: &mut BTreeMap<String, String>,
     ) -> io::Result<(Arc<ExecutionContext>, JobCommands)> {
         let commands = self
@@ -409,6 +411,7 @@ impl JobConfig {
                 manifest,
                 edits,
                 media,
+                viewable,
                 commands.connection.clone(),
                 &commands.paths,
             )
@@ -446,6 +449,9 @@ impl JobConfig {
         let mut job = None;
         // A job's execution context, held until the job has ended.
         let mut execution = None;
+        // The media its commands hand to it, as they arrive
+        // (`runtime.md` § What `demi file view` shows).
+        let mut arrivals: Option<mpsc::UnboundedReceiver<Arrival>> = None;
         let (mut child, stdin, stdout) = match spec.command {
             TaskCommand::Process {
                 command,
@@ -515,11 +521,13 @@ impl JobConfig {
                 };
                 job = Some((Logs::new(output, lengths), recorder.clone(), running));
                 let commands = match commands {
-                    Some((manifest_hash, command)) => {
+                    Some((manifest_hash, command, viewable)) => {
+                        let (sender, receiver) = mpsc::unbounded_channel();
+                        arrivals = Some(receiver);
                         let media = Arc::new(JobMedia::new(
                             id.clone(),
                             path.join(MEDIA_DIRECTORY),
-                            self.output.clone(),
+                            sender,
                         ));
                         let setup = self.context(
                             &id,
@@ -527,6 +535,7 @@ impl JobConfig {
                             command,
                             edit_context,
                             media,
+                            viewable,
                             &mut env,
                         );
                         // A job killed while it waits for its manifest never starts.
@@ -548,7 +557,6 @@ impl JobConfig {
                         cwd: spec.cwd,
                         env,
                         live: stdin.is_none(),
-                        output: stdout.is_none(),
                         cancellation: cancel.child_token(),
                         commands,
                         edits: recorder,
@@ -614,6 +622,13 @@ impl JobConfig {
         // to follow.
         let mut followed = false;
         let mut follow_open = job.is_some();
+        // Whether the job's stdout ends a line, so that a medium's line
+        // stands on a line of its own.
+        let mut stdout_line_start = true;
+        // The media that wait for the drain of the job's stdout pipe, and
+        // the drain's answer.
+        let mut waiting: Vec<Arrival> = Vec::new();
+        let mut drained: Option<oneshot::Receiver<()>> = None;
         let streamed = async {
         loop {
             let due = job.as_ref().and_then(|(logs, ..)| logs.due(followed));
@@ -666,39 +681,43 @@ impl JobConfig {
                         follow_open = false;
                     }
                 },
+                // A medium waits for what the job's stdout pipe holds when
+                // it arrives, so its line follows output written before it
+                // and precedes what the job prints after it.
+                arrival = next_arrival(&mut arrivals) => {
+                    waiting.push(arrival);
+                    if drained.is_none() {
+                        drained = Some(child.drain_stdout());
+                    }
+                }
+                // The pipe's bytes are in the output channel now: they go
+                // first, then the lines of the media that waited.
+                _ = async { drained.as_mut().expect("a drain is asked for").await }, if drained.is_some() => {
+                    drained = None;
+                    while let Ok(chunk) = child.output.try_recv() {
+                        let logs = job.as_mut().map(|(logs, ..)| logs);
+                        if take_chunk(chunk, logs, &id, &self.output, stdout_pipe.as_ref(), &cancel, &mut stdout_line_start).await? {
+                            child.cancel();
+                        }
+                    }
+                    if let Some((logs, ..)) = job.as_mut() {
+                        for arrival in waiting.drain(..) {
+                            for message in logs.arrive(&id, arrival, &mut stdout_line_start).await? {
+                                tokio::select! {
+                                    _ = cancel.cancelled() => child.cancel(),
+                                    _ = self.output.send(message) => {},
+                                }
+                            }
+                        }
+                    }
+                }
                 chunk = child.output.recv() => {
                     let Some(chunk) = chunk else {
                         break;
                     };
-                    let message = match job.as_mut() {
-                        Some((logs, ..)) => {
-                            let (offset, head) = logs.write(chunk.stream, &chunk.bytes).await?;
-                            (!head.is_empty()).then(|| wire::encode(&wire::Outbound::JobOutput {
-                                job_id: id.clone(),
-                                stream: chunk.stream,
-                                offset,
-                                bytes: wire::WireBytes(head.to_vec()),
-                            }))
-                        }
-                        None => Some(wire::encode(&wire::Outbound::SpawnOutput {
-                            spawn_id: id.clone(),
-                            stream: chunk.stream,
-                            bytes: wire::WireBytes(chunk.bytes.to_vec()),
-                        })),
-                    };
-                    if let Some(message) = message {
-                        let message = message.map_err(io::Error::other)?;
-                        tokio::select! {
-                            _ = cancel.cancelled() => child.cancel(),
-                            _ = self.output.send(message) => {},
-                        }
-                    }
-                    if let (OutputStream::Stdout, Some(pipe)) = (chunk.stream, stdout_pipe.as_ref()) {
-                        tokio::select! {
-                            _ = cancel.cancelled() => child.cancel(),
-                            // The upload task reports a closed consumer separately.
-                            _ = pipe.send(chunk.bytes) => {},
-                        }
+                    let logs = job.as_mut().map(|(logs, ..)| logs);
+                    if take_chunk(chunk, logs, &id, &self.output, stdout_pipe.as_ref(), &cancel, &mut stdout_line_start).await? {
+                        child.cancel();
                     }
                 }
             }
@@ -708,6 +727,21 @@ impl JobConfig {
         if let Err(error) = streamed {
             failure = Some(error.to_string());
             child.cancel();
+        }
+        // The media that arrived as the job ended keep their place before
+        // its exit, after everything it printed.
+        if let (Some((logs, ..)), Some(receiver)) = (job.as_mut(), arrivals.as_mut()) {
+            while let Ok(arrival) = receiver.try_recv() {
+                waiting.push(arrival);
+            }
+            for arrival in waiting.drain(..) {
+                for message in logs.arrive(&id, arrival, &mut stdout_line_start).await? {
+                    tokio::select! {
+                        _ = closed.cancelled() => {}
+                        _ = self.output.send(message) => {}
+                    }
+                }
+            }
         }
         // A job's last output leaves before its exit: while followed, what
         // the backend does not hold; otherwise each stream's newest bytes.
@@ -841,6 +875,83 @@ impl Execution {
             ExecutionOwner::Shell(child) => child.wait().await,
         }
     }
+    /// Reads what the stdout pipe holds now into the output channel; a raw
+    /// process views no media, so it answers at once.
+    fn drain_stdout(&self) -> oneshot::Receiver<()> {
+        match &self.owner {
+            ExecutionOwner::Shell(child) => child.drain_stdout(),
+            ExecutionOwner::Process(_) => {
+                let (answer, answered) = oneshot::channel();
+                let _ = answer.send(());
+                answered
+            }
+        }
+    }
+}
+
+/// Records one chunk of output: a job's into its logs, with the part the
+/// backend's view takes, and its stdout into the relayed pipe; a raw
+/// process's as it is. True when the work was cancelled while a frame
+/// waited to go.
+async fn take_chunk(
+    chunk: OutputChunk,
+    logs: Option<&mut Logs>,
+    id: &str,
+    output: &mpsc::Sender<wire::Frame>,
+    pipe: Option<&mpsc::Sender<Bytes>>,
+    cancel: &CancellationToken,
+    stdout_line_start: &mut bool,
+) -> io::Result<bool> {
+    if chunk.stream == OutputStream::Stdout
+        && let Some(last) = chunk.bytes.last()
+    {
+        *stdout_line_start = *last == b'\n';
+    }
+    let message = match logs {
+        Some(logs) => {
+            let (offset, head) = logs.write(chunk.stream, &chunk.bytes).await?;
+            (!head.is_empty()).then(|| {
+                wire::encode(&wire::Outbound::JobOutput {
+                    job_id: id.to_owned(),
+                    stream: chunk.stream,
+                    offset,
+                    bytes: wire::WireBytes(head.to_vec()),
+                })
+            })
+        }
+        None => Some(wire::encode(&wire::Outbound::SpawnOutput {
+            spawn_id: id.to_owned(),
+            stream: chunk.stream,
+            bytes: wire::WireBytes(chunk.bytes.to_vec()),
+        })),
+    };
+    if let Some(message) = message {
+        let message = message.map_err(io::Error::other)?;
+        tokio::select! {
+            _ = cancel.cancelled() => return Ok(true),
+            _ = output.send(message) => {},
+        }
+    }
+    if let (OutputStream::Stdout, Some(pipe)) = (chunk.stream, pipe) {
+        tokio::select! {
+            _ = cancel.cancelled() => return Ok(true),
+            // The upload task reports a closed consumer separately.
+            _ = pipe.send(chunk.bytes) => {},
+        }
+    }
+    Ok(false)
+}
+
+/// The next medium a job's commands hand to it; never, for a job without
+/// declared commands or once none can arrive any more.
+async fn next_arrival(arrivals: &mut Option<mpsc::UnboundedReceiver<Arrival>>) -> Arrival {
+    if let Some(receiver) = arrivals.as_mut()
+        && let Some(arrival) = receiver.recv().await
+    {
+        return arrival;
+    }
+    *arrivals = None;
+    std::future::pending().await
 }
 
 /// A task's last message, its exit, with the status it carries.
@@ -1071,6 +1182,35 @@ impl Logs {
             stdout: Log::new(OutputStream::Stdout),
             stderr: Log::new(OutputStream::Stderr),
         }
+    }
+
+    /// Writes a medium's line into the job's stdout, on a line of its own,
+    /// and returns the frames that tell the backend: the line's part within
+    /// the stream's first `JOB_VIEW_BYTES`, then the medium's `job_medium`.
+    async fn arrive(
+        &mut self,
+        job: &str,
+        arrival: Arrival,
+        line_start: &mut bool,
+    ) -> io::Result<Vec<wire::Frame>> {
+        let separator = if *line_start { "" } else { "\n" };
+        let line = Bytes::from(format!("{separator}{}\n", arrival.line));
+        *line_start = true;
+        let (offset, head) = self.write(OutputStream::Stdout, &line).await?;
+        let mut frames = Vec::new();
+        if !head.is_empty() {
+            frames.push(
+                wire::encode(&wire::Outbound::JobOutput {
+                    job_id: job.to_owned(),
+                    stream: OutputStream::Stdout,
+                    offset,
+                    bytes: wire::WireBytes(head.to_vec()),
+                })
+                .map_err(io::Error::other)?,
+            );
+        }
+        frames.extend(arrival.medium);
+        Ok(frames)
     }
 
     /// Keeps one read, and returns where it starts in its stream and its

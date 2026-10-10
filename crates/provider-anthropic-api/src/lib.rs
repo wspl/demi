@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RequestLimits, RuntimeEnv, RuntimeError, Secret, VendorPolicy, endpoint_url, read_http_failure,
+    RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, VendorPolicy, endpoint_url, read_http_failure,
 };
 use demi_shared_types::{
     AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
@@ -132,6 +132,11 @@ impl ProviderRuntime for AnthropicRuntime {
     }
 
     fn request_limits(&self, model: &Model) -> RequestLimits {
-        RequestLimits::anthropic_messages(model)
+        // Images and documents inside `tool_result.content` (`providers.md`
+        // § Media in tool results).
+        RequestLimits {
+            tool_results: ToolResultKinds::IMAGES_AND_DOCUMENTS,
+            ..RequestLimits::anthropic_messages(model)
+        }
     }
 }
