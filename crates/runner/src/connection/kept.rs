@@ -13,7 +13,7 @@ use demi_runner_jobs::{
     job_directories::JobDirectories,
     tasks::{Commands, JobConfig, JobTable, WorkId},
 };
-use demi_runner_protocol::wire::{self, UNREACHED_GRACE};
+use demi_runner_protocol::wire;
 use tokio::{
     sync::{mpsc, watch},
     task::JoinSet,
@@ -54,6 +54,8 @@ pub struct Kept {
     lost: Option<Instant>,
     /// When the jobs stopped after the grace are killed, if they still run.
     kill_at: Option<Instant>,
+    /// How long the runner keeps its jobs without a connection.
+    grace: Duration,
 }
 
 /// What happened to what the registration keeps.
@@ -70,7 +72,8 @@ pub enum Event {
 impl Kept {
     /// The registration's jobs, none yet, under its job root, whose
     /// directories a runner that ended left are removed.
-    pub async fn open(registered: &Registered) -> Self {
+    /// They are kept `grace` without a connection.
+    pub async fn open(registered: &Registered, grace: Duration) -> Self {
         let directories = JobDirectories::open(registered.jobs.clone()).await;
         let (reach, reaching) = watch::channel(Reach::Away);
         let (handle, requests) = ConnectionHandle::new(reaching);
@@ -109,6 +112,7 @@ impl Kept {
             _forwarder: AbortOnDropHandle::new(forwarder),
             lost: None,
             kill_at: None,
+            grace,
         }
     }
 
@@ -148,7 +152,7 @@ impl Kept {
 
     /// The next thing that happened; cancel-safe.
     pub async fn next(&mut self) -> Event {
-        let unreached = self.lost.map(|lost| lost + UNREACHED_GRACE);
+        let unreached = self.lost.map(|lost| lost + self.grace);
         let kill_at = self.kill_at;
         tokio::select! {
             biased;
@@ -208,8 +212,8 @@ impl Kept {
             Event::Watch(ended) => self.relay.ended(ended),
             Event::Unreached => {
                 tracing::warn!(
-                    "the backend stayed away for {} minutes; stopping the jobs and services",
-                    UNREACHED_GRACE.as_secs() / 60
+                    "the backend stayed away for {} seconds; stopping the jobs and services",
+                    self.grace.as_secs()
                 );
                 self.lost = None;
                 self.reach.send_replace(Reach::Unreached);
