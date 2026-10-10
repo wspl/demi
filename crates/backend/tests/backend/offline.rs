@@ -7,6 +7,7 @@
 //! Anthropic endpoint the test scripts; the devices are real runners.
 
 use demi_agent_tools::testing::field;
+use demi_conversation_socket_protocol::ClientFrame;
 use demi_provider_common::testing::MockVendor;
 
 use demi_shared_types::Block;
@@ -50,6 +51,17 @@ fn errored(vendor: &MockVendor, call: &str) -> bool {
             })
         })
     })
+}
+
+/// Resumes the unfinished turn, as the page's Resume does, and answers the
+/// last message of the model's first request after it: the resume.
+async fn resume(work: &mut Driven<'_>, vendor: &MockVendor) -> String {
+    work.script(vec![say("done")]);
+    let before = vendor.requests().len();
+    work.socket.send(&ClientFrame::Resume {}).await;
+    work.socket.until_idle().await;
+    let resumed = work.observe(before);
+    resumed.requests[0]["messages"].as_array().unwrap().last().unwrap().to_string()
 }
 
 #[tokio::test]
@@ -142,5 +154,52 @@ async fn a_move_away_from_an_offline_device_leaves_its_running_command_there_whi
     std::fs::write(home.join("finish"), "").unwrap();
     network.open();
     until_requested(&vendor, &format!("Command {command} (t1) ended with exit code 3.")).await;
+    backend.close().await;
+}
+
+// About two seconds: a real device pairs through a network the test cuts
+// and opens again.
+#[tokio::test]
+async fn a_resume_on_the_device_that_was_away_says_it_is_back_online() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let network = Network::start(backend.address()).await;
+    let alpha = backend.pair_through(&master, "alpha", &network.url).await;
+    let mut work = on(&backend, &master, &vendor, &alpha).await;
+    network.cut();
+    backend.until_online(&master, alpha.id(), false).await;
+    work.turn(vec![shell("t1", "echo hello", 10_000), say("offline")]).await;
+
+    network.open();
+    backend.until_online(&master, alpha.id(), true).await;
+    let resumed = resume(&mut work, &vendor).await;
+    assert!(
+        resumed.contains("alpha is back online. Continue from where you left off."),
+        "{resumed}"
+    );
+    backend.close().await;
+}
+
+// About two seconds: two real devices pair.
+#[tokio::test]
+async fn a_resume_after_a_move_says_where_the_conversation_now_runs() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let mut alpha = backend.pair(&master, "alpha").await;
+    let beta = backend.pair(&master, "beta").await;
+    let mut work = on(&backend, &master, &vendor, &alpha).await;
+    offline_for_40s(&harness, &backend, &master, &mut alpha).await;
+    work.turn(vec![shell("t1", "echo hello", 10_000), say("offline")]).await;
+
+    // The user moves the conversation while the device is still away.
+    let beta_home = beta.runner.home_dir().to_owned();
+    switch(&backend, &master, FIRST, &beta, &beta_home).await;
+    let resumed = resume(&mut work, &vendor).await;
+    assert!(
+        resumed.contains("This conversation now runs on beta. Continue from where you left off."),
+        "{resumed}"
+    );
     backend.close().await;
 }

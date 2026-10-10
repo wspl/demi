@@ -18,6 +18,7 @@ import { productWould } from '../product-would'
 import { WORKSPACE_ROOT } from '../fixtures/workspace'
 import { demoDeviceStart } from '../fixtures/device-installation'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
+import type { HostChoice, HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import GalleryComposer from './GalleryComposer.vue'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
@@ -43,20 +44,38 @@ interface SessionCase {
   session: ChatSessionState
   /** The app's connection banner shows above the session: the backend is away. */
   banner?: ConnectionProblem
-  /** The device the failure names, whose runner the specimen connects and disconnects. */
-  device?: { name: string; online: boolean }
+  /**
+   * Where the conversation runs now, whose runner the specimen connects and
+   * disconnects; the offline card's move changes it.
+   */
+  primary?: HostMenuHost
   composer: 'default' | 'none' | 'noModels' | 'archived'
 }
 
-/** The offline device's card above the dock's chips, while its runner is away. */
-const macBookOffline: OfflineHost = {
-  name: 'MacBook Pro',
-  start: demoDeviceStart('macos'),
-  primaryHost: { id: 'mac', name: 'MacBook Pro', kind: 'device', state: 'offline' },
-  devices: [
-    { id: 'mac', name: 'MacBook Pro', state: 'offline' },
-    { id: 'studio', name: 'Studio PC', state: 'online', path: 'localNetwork' },
-  ],
+/** The user's devices, as the offline card's move lists them. */
+const errorDevices: HostDeviceOption[] = [
+  { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer' },
+  { id: 'studio', name: 'Studio PC', state: 'online', path: 'localNetwork' },
+]
+
+/** The primary Host's card above the dock's chips, while it is an offline device. */
+function offlineCard(primary: HostMenuHost | undefined): OfflineHost | null {
+  if (primary?.kind !== 'device' || primary.state === 'online') {
+    return null
+  }
+  return {
+    name: primary.name,
+    start: demoDeviceStart('macos'),
+    primaryHost: primary,
+    devices: errorDevices.map((device) => device.id === primary.id ? { ...device, state: 'offline' } : device),
+  }
+}
+
+/** The offline card moved the conversation: it runs on the chosen Host now, online. */
+function move(item: SessionCase, host: HostChoice, name: string): void {
+  if (item.primary) {
+    Object.assign(item.primary, { id: host.kind === 'cloud' ? 'cloud' : host.id, kind: host.kind, name, state: 'online' })
+  }
 }
 
 function state(
@@ -136,11 +155,11 @@ const cases: SessionCase[] = [
   },
   {
     variant: 'Host went offline · Resume waits for the device',
-    note: 'A call failed because the conversation’s device was offline, and the agent ended its turn with work left undone. Demi’s record says so and leaves the turn unfinished; Resume stays disabled, saying the device is still offline, until its runner is back, and the agent’s next request then says it is back. The device’s offline card stands above the chips, which sit directly on the input.',
+    note: 'A call failed because the conversation’s device was offline, and the agent ended its turn with work left undone. Demi’s record says so and leaves the turn unfinished; Resume continues the turn where the conversation runs now: it stays disabled, saying the device is still offline, until its runner is back or Move to Another Host… takes the conversation elsewhere. The device’s offline card stands above the chips, which sit directly on the input.',
     session: state('host-offline', {
       blocks: [...shortTranscriptBlocks(), hostOfflineErrorBlock()],
     }),
-    device: reactive({ name: 'MacBook Pro', online: false }),
+    primary: reactive<HostMenuHost>({ id: 'mac', name: 'MacBook Pro', kind: 'device', state: 'offline' }),
     composer: 'default',
   },
   {
@@ -218,7 +237,7 @@ const cases: SessionCase[] = [
                 has-provider
                 :backend-away="item.banner !== undefined"
                 :fork="forkFromAnswer"
-                :device-online="() => item.device?.online ?? true"
+                :primary-host="item.primary"
                 @retry="productWould('Resume the Turn')"
                 @retry-load="productWould('Load the Conversation Again')"
                 @rename="item.session.title = $event"
@@ -237,18 +256,19 @@ const cases: SessionCase[] = [
                     :providers="item.composer === 'noModels' ? [] : undefined"
                     :models="item.composer === 'noModels' ? {} : undefined"
                     :archived="item.composer === 'archived'"
-                    :offline-host="item.device && !item.device.online ? macBookOffline : null"
+                    :offline-host="offlineCard(item.primary)"
+                    @moved="(host, name) => move(item, host, name)"
                   />
                 </template>
               </ChatSession>
             </div>
             <Button
-              v-if="item.device"
+              v-if="item.primary"
               size="sm"
               variant="ghost"
-              @click="item.device.online = !item.device.online"
+              @click="item.primary.state = item.primary.state === 'online' ? 'offline' : 'online'"
             >
-              {{ item.device.online ? 'Disconnect Runner' : 'Connect Runner' }}
+              {{ item.primary.state === 'online' ? 'Disconnect Runner' : 'Connect Runner' }}
             </Button>
           </div>
         </GallerySpecimen>

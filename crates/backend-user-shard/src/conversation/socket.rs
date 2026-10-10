@@ -229,6 +229,7 @@ impl Shard {
             .await
         {
             Ok(Prepared::Deliver) => {}
+            Ok(Prepared::Resume(_)) => unreachable!("an open is prepared as an open"),
             Ok(Prepared::Refused(code, message)) => return Err(format!("{code}: {message}")),
             Err(error) => return Err(error.to_string()),
         }
@@ -309,6 +310,10 @@ impl Shard {
             _ => None,
         };
         let handled = match self.prepare_frame(conversation, &frame).await {
+            Ok(Prepared::Resume(reason)) => {
+                connection.resume(reason).await;
+                Handled::Replies(Vec::new())
+            }
             Ok(Prepared::Deliver) => {
                 connection.handle(frame).await;
                 Handled::Replies(Vec::new())
@@ -333,7 +338,8 @@ impl Shard {
     /// § Sidebar mutations, read state and page synchronization): the
     /// conversation must not be archived, except to close it; an `open` needs
     /// the model the conversation's record holds, of a provider of the user's
-    /// scope; a `send` is activity in the conversation.
+    /// scope; a `send` is activity in the conversation; a `resume` carries
+    /// the reason the model reads.
     async fn prepare_frame(
         &self,
         conversation: &ConversationId,
@@ -396,6 +402,12 @@ impl Shard {
                     .count_user_message(record.id.clone())
                     .await?;
                 self.mark(Part::Conversation(record.id));
+            }
+            // The user's Resume carries where the turn now runs, which only
+            // the backend knows (`failures-and-recovery.md` § The unfinished
+            // turn).
+            ClientFrame::Resume {} => {
+                return Ok(Prepared::Resume(self.resume_reason(&record).await?));
             }
             _ => {}
         }
@@ -476,6 +488,8 @@ impl Shard {
 /// What the backend decided about a frame before the agent sees it.
 enum Prepared {
     Deliver,
+    /// Deliver the user's Resume with the reason the backend composed.
+    Resume(Option<String>),
     Refused(ErrorCode, String),
 }
 
