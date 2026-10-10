@@ -710,9 +710,12 @@ impl RemoteShellEnvironment {
         } else if let Some(length) = binary_length {
             page.insert_str(0, &format!("{}\n", binary_line(length)));
         }
+        // A stop of the command, or of the call that watches it, is a stop
+        // (`runtime.md` § Live output), whatever signal ended the job.
+        let stopped = running.aborted.get() || running.stop.is_cancelled();
         let end = match lost {
             Some(reason) => CommandEnd::Lost { reason },
-            None if running.aborted.get() => CommandEnd::Stopped,
+            None if stopped => CommandEnd::Stopped,
             None => CommandEnd::Exited { exit_code },
         };
         {
