@@ -642,11 +642,13 @@ impl SessionCore {
     }
 
     /// The action ended; its checkpoint is saved next. The human steers
-    /// still pending are dropped.
+    /// still pending are dropped, and a later Stop stops none of the
+    /// commands it left running.
     pub(super) fn end_action(&mut self) {
         self.activity = Activity::Finishing;
         self.editing = None;
         self.inputs.discard_steers();
+        self.watched.end_action();
         self.release_media();
     }
 
@@ -699,10 +701,9 @@ impl SessionCore {
                 TurnStage::Compacting => AbortTarget::ActiveCompaction,
             };
             run.cancel.cancel(CancelReason::Stop);
-            return AbortStep::Running {
-                target,
-                cancel: run.cancel.clone(),
-            };
+            let cancel = run.cancel.clone();
+            self.watched.stop_action();
+            return AbortStep::Running { target, cancel };
         }
         if let Some(mut action) = self.pending.pop_front() {
             action.end(ActionEnd::Dropped);
@@ -722,13 +723,13 @@ impl SessionCore {
         if self.disposing {
             return None;
         }
-        match &self.activity {
-            Activity::Running(run) if !run.cancel.is_cancelled() => {
-                run.cancel.cancel(CancelReason::Stop);
-                Some(run.cancel.clone())
-            }
-            _ => None,
-        }
+        let cancel = match &self.activity {
+            Activity::Running(run) if !run.cancel.is_cancelled() => run.cancel.clone(),
+            _ => return None,
+        };
+        cancel.cancel(CancelReason::Stop);
+        self.watched.stop_action();
+        Some(cancel)
     }
 
     /// Whether another `abort` would stop something.
@@ -1119,15 +1120,16 @@ impl SessionCore {
 
     // Command reports.
 
-    /// Watches `command`, which a call titled `title` left running, so that
-    /// it reports every `interval_ms`, or only its end when none.
+    /// Watches `command`, which a call of the running action titled `title`
+    /// left running, so that it reports every `interval_ms`, or only its end
+    /// when none.
     pub(super) fn watch_command(
         &mut self,
         command: CommandId,
         interval_ms: Option<u32>,
         title: String,
     ) {
-        self.watched.add(command, interval_ms, title);
+        self.watched.add(command, interval_ms, title, true);
     }
 
     /// Admits a command's report for the next boundary: it joins the running

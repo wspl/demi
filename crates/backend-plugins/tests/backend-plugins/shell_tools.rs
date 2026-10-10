@@ -27,9 +27,9 @@ use demi_conversation_socket_protocol::SubagentEvent;
 use demi_host_interface::{RpcInvocation, testing::MemoryPort};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, Sender, Timestamp};
 use tokio_util::sync::CancellationToken;
-use serde_json::json;
+use serde_json::{Value, json};
 
-use crate::support::{Fixture, conversation, exec, is_idle, reply, resident, turn, within};
+use crate::support::{Fixture, conversation, exec, is_idle, reply, resident, tolerant, turn, within};
 
 /// What the model was shown of each tool call it made, by the call's id, in
 /// the order the request carries them.
@@ -612,12 +612,20 @@ async fn a_subagent_whose_command_runs_stays_live_and_closes_once_it_ended_and_t
 /// Spawns a child of the root with `prompt` as the root's job would, through
 /// the root's `demi agent spawn`.
 async fn spawn(fixture: &Fixture, prompt: &str) {
+    let (code, _, stderr) = root_call(fixture, &["agent", "spawn"], json!({ "prompt": prompt })).await;
+    assert_eq!(code, 0, "{stderr}");
+}
+
+/// Runs `demi <path>` with `args` as a job of the root would, and answers
+/// its exit code, stdout and stderr.
+async fn root_call(fixture: &Fixture, path: &[&str], args: Value) -> (u8, String, String) {
     let root = fixture.server.node(&conversation(), &conversation()).unwrap();
+    let path: Vec<&str> = std::iter::once("demi").chain(path.iter().copied()).collect();
     let mut invocation: RpcInvocation = serde_json::from_value(json!({
-        "path": ["demi", "agent", "spawn"],
+        "path": path,
         "argv": [],
-        "args": { "prompt": prompt },
-        "json": true,
+        "args": args,
+        "json": false,
         "host": "device",
         "cwd": fixture.workspace,
         "env": {},
@@ -636,6 +644,54 @@ async fn spawn(fixture: &Fixture, prompt: &str) {
         .commands()
         .dispatch(invocation, port.port(CancellationToken::new()))
         .await
-        .expect("the spawn is dispatched");
-    assert_eq!(code, 0, "{}", String::from_utf8_lossy(&port.stderr()));
+        .expect("the call is dispatched");
+    let text = |bytes: Vec<u8>| String::from_utf8(bytes).expect("the output is text");
+    (code, text(port.stdout()), text(port.stderr()))
+}
+
+// About five seconds: a subagent's command runs as a shell job and reports
+// to it three seconds after its call returned, after the parent looked.
+#[tokio::test(flavor = "local")]
+async fn a_look_at_another_agents_command_shows_the_output_since_the_lookers_own_last_look() {
+    within(async {
+        let script = tolerant(vec![
+            // The child's runs.
+            vec![exec(
+                "serve",
+                "echo one; until [ -e next ]; do sleep 0.05; done; echo two; until [ -e stop ]; do sleep 0.05; done",
+                3_000,
+            )],
+            reply("The server runs."),
+        ]);
+        let fixture = Fixture::start_with(&script, reporting()).await;
+        let _client = fixture.opened().await;
+        spawn(&fixture, "Serve.").await;
+        let serve = fixture_command(&script, "serve").await;
+        let look = || async {
+            let (code, stdout, stderr) =
+                root_call(&fixture, &["shell", "status"], json!({ "id": [serve.clone()] })).await;
+            assert_eq!(code, 0, "{stderr}");
+            stdout
+        };
+
+        // The parent's first look shows all the output so far, though the
+        // child saw it in its call's result.
+        let first = look().await;
+        assert!(first.contains("\noutput:\none\n"), "{first}");
+        std::fs::write(format!("{}/next", fixture.workspace), "").unwrap();
+        // Its next looks show only what came since: never `one` again.
+        let mut later = look().await;
+        while !later.contains("\ntwo\n") {
+            assert!(!later.contains("one"), "{later}");
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            later = look().await;
+        }
+        assert!(later.contains("\noutput:\ntwo\n") && !later.contains("one"), "{later}");
+        // The parent's looks moved only its own place: the child's report
+        // still shows it `two`.
+        let report = reported(&script, &format!("Command {serve} (Run the test script) is still running")).await;
+        assert!(report.contains("\noutput:\ntwo"), "{report}");
+        fixture.stop().await;
+    })
+    .await;
 }
