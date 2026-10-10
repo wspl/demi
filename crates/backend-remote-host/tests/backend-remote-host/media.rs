@@ -82,8 +82,9 @@ fn png_medium(number: u32) -> (u32, String, Vec<u8>) {
     (number, "image/png".to_owned(), png(1))
 }
 
+/// The line of medium `number`, with the facts the fixture's record gives.
 fn line(number: u32) -> String {
-    format!("[image {number}: image/png, 16 bytes]\n")
+    format!("[image {number}: image/png, 4 × 3 px, 16 bytes]\n")
 }
 
 /// About 1.5 s here: two jobs, each a login shell.
@@ -159,7 +160,7 @@ async fn media_keep_their_bounds_and_their_checks() {
     // the command goes on.
     let large = run(&shell, "demi medium --count 5 --size 16777216; echo done").await;
     assert_eq!(exited(&large), 0, "{}", large.stderr.tail);
-    let big = |number| format!("[image {number}: image/png, 16777216 bytes]\n");
+    let big = |number| format!("[image {number}: image/png, 4 × 3 px, 16777216 bytes]\n");
     assert_eq!(
         large.stdout.delta,
         format!(
@@ -186,10 +187,11 @@ async fn media_keep_their_bounds_and_their_checks() {
     assert_eq!(refused.stdout.delta, "undeclared 1\ntext 1\n");
     assert!(
         refused.stderr.delta.contains("demi undeclared: returned a medium, but its declaration does not say it returns media")
-            && refused.stderr.delta.contains("demi medium: returned a medium that is no image, video or PDF a model reads"),
+            && refused.stderr.delta.contains("demi medium: returned a medium whose bytes are no image/png"),
         "{}",
         refused.stderr.delta
     );
     assert_eq!(media(&refused), []);
     fixture.stop().await;
 }
+

@@ -147,15 +147,15 @@ pub struct Invocation {
 
 /// The media types a job may show the model (`runtime.md` § What `demi file
 /// view` shows): those the node's model reads in a tool result, as the
-/// backend gave them when the job started, with the model's id, which a
-/// refusal names.
+/// backend gave them when the job started, or null when which types the
+/// model reads is unknown; with the model's id, which a refusal names.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Viewable {
     #[garde(length(min = 1))]
     pub model: String,
     #[garde(skip)]
-    pub media_types: Vec<String>,
+    pub media_types: Option<Vec<String>>,
 }
 
 /// Raw CLI metadata from the local command client (`commands.md` § External

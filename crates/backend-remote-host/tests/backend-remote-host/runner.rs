@@ -60,9 +60,11 @@ pub(crate) struct Exec {
 pub(crate) fn viewable() -> demi_command_protocol::Viewable {
     demi_command_protocol::Viewable {
         model: "test-model".into(),
-        media_types: ["image/png", "image/jpeg", "video/mp4", "application/pdf"]
-            .map(str::to_owned)
-            .to_vec(),
+        media_types: Some(
+            ["image/png", "image/jpeg", "video/mp4", "application/pdf"]
+                .map(str::to_owned)
+                .to_vec(),
+        ),
     }
 }
 

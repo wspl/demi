@@ -8,7 +8,7 @@
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use demi_shared_types::{Clock, ModelCost, ProviderModel, ProviderModelList, Timestamp};
+use demi_shared_types::{Clock, ModelCost, ProviderModel, ProviderModelList, Timestamp, modality_extensions};
 use futures_util::FutureExt;
 use futures_util::future::{BoxFuture, Shared, WeakShared};
 use http::header::{ACCEPT, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};
@@ -314,7 +314,7 @@ struct ModelsDevModel {
     #[serde(default)]
     description: Option<String>,
     #[serde(default)]
-    attachment: Option<bool>,
+    modalities: Option<Modalities>,
     #[serde(default)]
     reasoning: Option<bool>,
     #[serde(default)]
@@ -325,6 +325,13 @@ struct ModelsDevModel {
     limit: Option<Limit>,
     #[serde(default)]
     cost: Option<Cost>,
+}
+
+/// What a model takes in and gives out, kind by kind.
+#[derive(Debug, Deserialize)]
+struct Modalities {
+    #[serde(default)]
+    input: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -358,7 +365,8 @@ struct Cost {
 impl ModelsDevModel {
     /// The model as a catalog model (`models.md` § The models.dev
     /// document): `limit.context` and `limit.output` are its token limits,
-    /// `attachment` its attachment support, `reasoning` its thinking
+    /// the types its input modalities give its accepted types (`models.md`
+    /// § Accepted attachment types), `reasoning` its thinking
     /// support, the values of its `effort` reasoning option its efforts,
     /// `tool_call` its tool support and `cost` its prices. What the document
     /// does not state is unknown.
@@ -371,9 +379,11 @@ impl ModelsDevModel {
             context_window: limit.and_then(|limit| tokens(limit.context)),
             output_limit: limit.and_then(|limit| tokens(limit.output)),
             supports_tools: self.tool_call,
-            supports_attachments: self.attachment,
-            supports_video: None,
-            accepted_extensions: None,
+            accepted_extensions: self
+                .modalities
+                .as_ref()
+                .and_then(|modalities| modalities.input.as_ref())
+                .map(|input| modality_extensions(input.iter().map(String::as_str))),
             supports_reasoning: self.reasoning,
             supported_thinking_efforts: self.efforts(),
             can_disable_thinking: None,

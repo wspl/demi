@@ -196,6 +196,8 @@ impl SessionRuntime for TestRuntime {
         command: &'a CommandId,
         title: &'a str,
         interval_ms: Option<u32>,
+        _: &'a demi_shared_types::ModelSelection,
+        _: RequestLimits,
     ) -> LocalBoxFuture<'a, Option<CommandReport>> {
         let report = if self.commands.has_ended(command) {
             test_report(command.as_str(), title, ReportEvent::Ended { exit_code: None })
@@ -2120,6 +2122,7 @@ fn test_report(command: &str, title: &str, event: ReportEvent) -> CommandReport 
         title: title.to_owned(),
         event,
         output: String::new(),
+        media: Vec::new(),
     }
 }
 

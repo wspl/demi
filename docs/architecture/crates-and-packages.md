@@ -175,10 +175,11 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     messages (`NumbersRequest`, `NumbersAnswer`);
   - record framing (`Record`, `RecordDecoder`), with the medium records a
     handler returns media in;
-  - the media a command returns: their bound (`MAX_MEDIUM_BYTES`), and the
+  - the media a command returns: their bound (`MAX_MEDIUM_BYTES`), the
     recognition of the image, video and document types a model reads in
-    bytes (`sniff_media_type`),
-    which the runner, the agent and the backend share;
+    bytes (`sniff_media_type`), and the facts a medium record carries
+    (`MediumFacts`), which the runner, the agent and the backend share; it
+    reads no image's header;
   - package descriptors and their identities (`PackageDescriptor`), artifact
     locations and target triples (`TargetTriple`), and the one canonical
     digest of a JSON value (`canonical_digest`: the SHA-256 of its RFC 8785
@@ -1340,7 +1341,8 @@ demi-backend (executable: configuration, composition)
 #### `command-package-file` (`demi-file`)
 
 - **Owns:** the independently released `demi.file` resident program: file
-  read, edit and patch, with the file mutations serialized by one
+  view, which reads a viewed medium's header facts once, edit and patch,
+  with the file mutations serialized by one
   gate and recorded through the edit recorder
   ([Edit tracking](../execution/edit-tracking.md)). It holds no conversation
   state, so it answers every conversation status as empty and ends with its

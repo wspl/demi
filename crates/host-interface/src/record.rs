@@ -164,6 +164,14 @@ impl CommandRecord {
         Instant::now() - self.last_output
     }
 
+    /// The media the command's job viewed, once it exited; no look moves.
+    pub fn media(&self) -> &[CommandMedium] {
+        match &self.phase {
+            Phase::Exited { media, .. } => media,
+            Phase::Running | Phase::Aborted => &[],
+        }
+    }
+
     /// How the command ended; none while it runs.
     pub fn ending(&self) -> Option<Ending> {
         match &self.phase {

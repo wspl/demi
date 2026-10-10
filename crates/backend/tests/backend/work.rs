@@ -894,6 +894,19 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
         format!("[image 1: image/png, 4 × 3 px, {size} bytes]\n[image]\n"),
         "{result}"
     );
+
+    // A job on the other Host shows the model nothing: it carries no list
+    // of what the model reads.
+    let far = format!("demi host shell --host alpha 'demi file view {a_path}/shot.png'");
+    let refused = work
+        .turn(vec![shell("t6", &far, 30_000), say("six")])
+        .await;
+    assert_eq!(
+        shown_output(&refused.received[0]),
+        format!("demi file view: {a_path}/shot.png: a job on another Host shows the model nothing; pipe its bytes into demi file view in your own script\n"),
+        "{}",
+        refused.received[0]
+    );
     backend.close().await;
 }
 

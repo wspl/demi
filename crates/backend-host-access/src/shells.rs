@@ -26,7 +26,7 @@ use demi_backend_runners::host_key::device_of;
 use demi_backend_runners::router::CommandRegistration;
 use demi_command_protocol::{CommandCaller, EDIT_FILE_BYTES};
 use demi_host_interface::{
-    CommandStatus, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
+    CommandMedium, CommandStatus, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
     PageView, ShellEnvironment, ShellError, WholeOutput,
 };
 use demi_runner_protocol::wire::JobFileChange;
@@ -456,6 +456,10 @@ impl ShellEnvironment for Registered {
 
     fn quiet(&self, command: &CommandId) -> Result<std::time::Duration, ShellError> {
         self.environment.quiet(command)
+    }
+
+    fn media(&self, command: &CommandId) -> Result<Vec<CommandMedium>, ShellError> {
+        self.environment.media(command)
     }
 
     fn read_output<'a>(

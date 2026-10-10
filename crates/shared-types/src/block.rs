@@ -333,10 +333,16 @@ pub struct CommandReport {
     pub event: ReportEvent,
     /// What the command printed since the node's last look, as a `shell`
     /// result shows it: bounded, with the lines that name what it leaves
-    /// out and how to read it; empty when it printed nothing new. The media
-    /// an end carries will sit beside it.
+    /// out and how to read it; empty when it printed nothing new.
     #[garde(skip)]
     pub output: String,
+    /// The media the job viewed, which an end carries as the `shell` result
+    /// would have (`runtime.md` § What a result attaches): each medium by
+    /// reference, or the part that took its place, then the text of the
+    /// lines about them; none for a report of progress.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(dive)]
+    pub media: Vec<ToolResultContentBlock>,
 }
 
 /// What a report tells of its command.

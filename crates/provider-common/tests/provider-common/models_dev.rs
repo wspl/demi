@@ -39,13 +39,23 @@ fn document() -> Value {
                         { "type": "effort", "values": [null, "low", "", "high"] }
                     ],
                     "tool_call": true,
-                    "attachment": false,
+                    // The flag says it reads files; the modalities say
+                    // which: images, and no PDF.
+                    "attachment": true,
+                    "modalities": { "input": ["text", "image"], "output": ["text"] },
                     "release_date": "2026-06-01",
                     "limit": { "context": 128_000, "output": 32_000 },
                     "cost": { "input": 0.3, "output": 1.2, "cache_read": 0.03 }
                 },
                 "deepseek-v4-flash": {
                     "limit": { "context": 128_000.5, "output": 0 }
+                },
+                "deepseek-v4-docs": {
+                    "attachment": true,
+                    "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
+                },
+                "deepseek-v4-text": {
+                    "modalities": { "input": ["text"], "output": ["text"] }
                 }
             }
         },
@@ -101,7 +111,7 @@ async fn a_catalog_read_revalidates_the_copy_and_a_304_keeps_its_content_date() 
         (confirmed.fetched_at, confirmed.stale),
         (first.fetched_at, false)
     );
-    assert_eq!(confirmed.vendor_models("deepseek").unwrap().models.len(), 2);
+    assert_eq!(confirmed.vendor_models("deepseek").unwrap().models.len(), 4);
 
     // A day after the confirmation, the vendor list asks again too.
     tokio::time::pause();
@@ -192,9 +202,7 @@ async fn a_vendors_models_become_catalog_models_with_what_the_document_states() 
             context_window: Some(128_000),
             output_limit: Some(32_000),
             supports_tools: Some(true),
-            supports_attachments: Some(false),
-            supports_video: None,
-            accepted_extensions: None,
+            accepted_extensions: Some(demi_shared_types::IMAGE_FILE_EXTENSIONS.to_vec()),
             supports_reasoning: Some(true),
             supported_thinking_efforts: Some(vec!["low".into(), "high".into()]),
             can_disable_thinking: None,
@@ -222,5 +230,21 @@ async fn a_vendors_models_become_catalog_models_with_what_the_document_states() 
             bare.cost
         ),
         (None, None, None)
+    );
+    // Types come from the input modalities alone: none stated is unknown,
+    // `text` alone is none, `image` and `pdf` both.
+    let types = |id: &str| {
+        list.models
+            .iter()
+            .find(|model| model.id == id)
+            .unwrap()
+            .accepted_extensions
+            .clone()
+    };
+    assert_eq!(types("deepseek-v4-flash"), None);
+    assert_eq!(types("deepseek-v4-text"), Some(Vec::new()));
+    assert_eq!(
+        types("deepseek-v4-docs"),
+        Some(demi_shared_types::ATTACHMENT_FILE_EXTENSIONS.to_vec())
     );
 }
