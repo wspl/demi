@@ -205,15 +205,16 @@ function receiptVariant(message: AgentMessage): string {
  * product would open.
  */
 const dockSpecimens = reactive([
-  { variant: 'card, no chips', asks: true, requests: [rootRequest()], chips: false, offline: false, device: false },
-  { variant: 'card over chips', asks: true, requests: [rootRequest()], chips: true, offline: false, device: false },
+  { variant: 'card, no chips', asks: true, requests: [rootRequest()], chips: false, offline: false, device: false, host: 'Old Laptop' },
+  { variant: 'card over chips', asks: true, requests: [rootRequest()], chips: true, offline: false, device: false, host: 'Old Laptop' },
   {
-    variant: 'offline card over chips · Resume waits for the device',
+    variant: 'offline card over chips · Resume waits for the primary Host, and goes after a move',
     asks: false,
     requests: [] as PermissionRequestView[],
     chips: true,
     offline: true,
     device: true,
+    host: 'Old Laptop',
   },
   {
     variant: 'permission card and offline card over chips',
@@ -222,8 +223,9 @@ const dockSpecimens = reactive([
     chips: true,
     offline: true,
     device: true,
+    host: 'Old Laptop',
   },
-  { variant: 'chips alone', asks: false, requests: [] as PermissionRequestView[], chips: true, offline: false, device: false },
+  { variant: 'chips alone', asks: false, requests: [] as PermissionRequestView[], chips: true, offline: false, device: false, host: 'Old Laptop' },
 ])
 // The product session opens with the root's request waiting, above its chips.
 const sessionRequests = ref<PermissionRequestView[]>([rootRequest()])
@@ -682,12 +684,15 @@ const offlineMenuDevices: HostDeviceOption[] = [
   { id: 'old', name: 'Old Laptop', state: 'offline' },
   { id: 'build', name: 'build-box', state: 'offline' },
 ]
-/** The dock specimens' offline primary Host, one value so its card keeps its state while it shows. */
-const oldLaptopOffline: OfflineHost = {
-  name: 'Old Laptop',
-  start: demoDeviceStart('macos'),
-  primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline' },
-  devices: offlineMenuDevices,
+/** A dock specimen's primary Host while it is offline: the card names it, and offers the others. */
+function dockOfflineHost(name: string): OfflineHost {
+  const id = offlineMenuDevices.find((device) => device.name === name)?.id ?? 'old'
+  return {
+    name,
+    start: demoDeviceStart('macos'),
+    primaryHost: { id, name, kind: 'device', state: 'offline' },
+    devices: offlineMenuDevices.map((device) => device.id === id ? { ...device, state: 'offline' } : device),
+  }
 }
 
 const changesFlow = useTurnFlow({ id: 'gallery-changes', title: 'Cookie rename', blocks: changesDemoBlocks() })
@@ -1443,7 +1448,7 @@ onBeforeUnmount(() => {
                 Every request is decided.
                 <Button size="sm" @click="specimen.requests = [rootRequest()]">Show Again</Button>
               </div>
-              <!-- The device comes back: its card goes and Resume may go, as in the product. -->
+              <!-- The primary Host comes back: its card goes and Resume may go, as in the product. -->
               <div v-if="specimen.device">
                 <Button size="sm" variant="ghost" @click="specimen.offline = !specimen.offline">
                   {{ specimen.offline ? 'Connect Runner' : 'Disconnect Runner' }}
@@ -1465,7 +1470,7 @@ onBeforeUnmount(() => {
                   <template #chips>
                     <template v-if="specimen.chips">
                       <Tooltip
-                        :content="specimen.offline ? 'Old Laptop is still offline' : undefined"
+                        :content="specimen.offline ? `${specimen.host} is still offline` : undefined"
                         :disabled="!specimen.offline"
                         class="inline-flex"
                       >
@@ -1480,7 +1485,8 @@ onBeforeUnmount(() => {
                   <!-- The composer's cards, such as the offline Host's, stand above the chips. -->
                   <GalleryComposer
                     placeholder="Ask Demi…"
-                    :offline-host="specimen.offline ? oldLaptopOffline : null"
+                    :offline-host="specimen.offline ? dockOfflineHost(specimen.host) : null"
+                    @moved="(_host, name) => { specimen.host = name; specimen.offline = false }"
                   />
                 </SessionDock>
               </div>

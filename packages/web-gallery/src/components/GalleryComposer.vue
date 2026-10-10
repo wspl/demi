@@ -103,6 +103,8 @@ const emit = defineEmits<{
   retryModels: []
   'update:messageEdit': [state: MessageEditState | null]
   submitEdit: []
+  /** The offline primary Host's card moved the conversation to `host`, named `name`. */
+  moved: [host: HostChoice, name: string]
 }>()
 const draft = ref(props.draft)
 const attached = ref(props.attachments.map((item) => composerAttachment(item)))
@@ -144,6 +146,7 @@ function moveHost(host: HostChoice) {
     ? 'Cloud'
     : offlineHost.value?.devices.find((device) => device.id === host.id)?.name
   offlineHost.value = null
+  emit('moved', host, to ?? host.kind)
   productWould(`Move the Conversation to ${to}`)
 }
 /** Counts the drafts shown from outside, here the restored ones. */
