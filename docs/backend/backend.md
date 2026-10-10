@@ -406,12 +406,12 @@ result as `failures`, keyed by block id, beside the blocks:
 - The conversation socket attaches it to root and subagent
   `transcript_reset` and `transcript_patch` frames, for the blocks each frame
   carries.
-- `GET /api/conversations/:id/transcript` attaches it to the root blocks and to
-  each subagent history.
+- The history routes attach it to the blocks of a page and to a block read
+  whole ([Conversation history](../product/web-api.md#conversation-history)).
 
 One backend function reads the failures of a list of blocks, and both paths
-call it. The facts are never stored, and the blocks themselves are sent
-unchanged. A frame or history without an error block that yields a fact
+call it. The facts are never stored, and an error block is sent whole, as it
+is stored. A frame or history without an error block that yields a fact
 carries no `failures`.
 
 ## Startup and shutdown

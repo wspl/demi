@@ -494,6 +494,22 @@ too, marked Archived, and open read-only as from the Archived list. The
 backend answers from an index of each user's conversations
 ([Search](web-api.md#search), [Search index](../backend/storage.md#search-index)).
 
+### Reading a long conversation
+
+A conversation of a week's work holds thousands of steps, and opening it
+takes as long as a short one. For example, the user opens a conversation
+whose commands printed megabytes of output: it shows its last answers at
+once, as a chat app shows the latest messages first. Scrolling up, earlier
+requests appear above as the user nears the top, with a loading row while
+they come, and what the user reads never moves. A search result opens the
+conversation at its message with the messages around it, and the
+scroll-to-bottom button returns to the latest, which kept receiving the
+agent's work meanwhile. A folded step shows its title, its outcome and the
+files it changed; the first time it is opened, its script and output take a
+moment to arrive, shown in place. Switching to another conversation and back
+returns to the same place. How the page reads and joins the parts belongs to
+[Transcript windows](web-application.md#transcript-windows).
+
 ### Notifications
 
 A user sends a long task and switches to another app. When the turn ends,
