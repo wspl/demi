@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
-import { agentReceiptMessages, callBeingWrittenBlocks, commandLookBlocks, editedFile, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
+import { agentReceiptMessages, callBeingWrittenBlocks, commandLookBlocks, editedFile, viewedMediaBlocks, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
 import {
   HELPER,
   helperBlocks,
@@ -43,6 +43,7 @@ import { galleryBrowser, type GalleryBrowser } from '../fixtures/live-browser'
 import { galleryConversationFiles } from '../fixtures/message-files'
 import GalleryAttachmentMessage from '../components/GalleryAttachmentMessage.vue'
 import { productWould } from '../product-would'
+import { provideCommandOpener } from '@demicodes/web-ui/agent/command-reports'
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../generated/pages'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
@@ -668,6 +669,10 @@ const signInRunningBlocks = signInRequestBlocks('sign-in-running').slice(0, -1)
 const writingBlocks = callBeingWrittenBlocks()
 // Runs that only check a command, and ones that run one too: their rows name what they did, never a count of steps.
 const lookBlocks = commandLookBlocks()
+// A run that viewed screenshots, folded with them under its row, and a report that carried some.
+const viewedBlocks = viewedMediaBlocks()
+// A report row in a transcript opens its command's terminal tab; the gallery has no terminal panel beside it, so it says so.
+provideCommandOpener((commandId) => () => productWould(`The Terminal Panel Opens on Command ${commandId}`))
 const writingSpecimens = [
   { variant: 'being written, no description yet', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: null }] },
   { variant: 'being written, with its description', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: 'Write the categorizer' }] },
@@ -1904,7 +1909,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'changes'">
       <GallerySection
         title="Work Groups"
-        note="Consecutive steps show as one row. While they run, each new step rolls over the one before, shimmering while it runs: Requesting, thinking, a call being written and its description, the call. Thinking without text is covered by the step after it. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did, each kind of call once, in the order the run first made it, such as Ran 2 commands, checked 1 command, never a count of steps; a failure shows on its own call inside. Folded, the files the steps changed show under it, each once; open, each call shows its own."
+        note="Consecutive steps show as one row. While they run, each new step rolls over the one before, shimmering while it runs: Requesting, thinking, a call being written and its description, the call. Thinking without text is covered by the step after it. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did, each kind of call once, in the order the run first made it, such as Ran 2 commands, checked 1 command, never a count of steps; a failure shows on its own call inside. Folded, the media the calls returned show under it, in order, and the files the steps changed, each once; open, each call shows its own."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="workFlow.play('work')">Replay</Button>
@@ -1944,6 +1949,21 @@ onBeforeUnmount(() => {
               class="h-full"
               conversation-id="gallery-work-looks"
               :blocks="lookBlocks"
+              :pending-steers="[]"
+              :queue="[]"
+              phase="idle"
+              :bottom-offset="0"
+              :persisted-scroll-state="undefined"
+              read-only
+            />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="a run that viewed images, then a report with media" wide>
+          <div class="gallery-frame h-[30rem] bg-surface">
+            <AgentMessageList
+              class="h-full"
+              conversation-id="gallery-work-media"
+              :blocks="viewedBlocks"
               :pending-steers="[]"
               :queue="[]"
               phase="idle"
