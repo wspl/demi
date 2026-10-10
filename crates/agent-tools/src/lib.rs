@@ -38,12 +38,12 @@ use demi_shared_types::{CommandId, NodeId, Sequence};
 use futures_util::{future::LocalBoxFuture, stream::FuturesUnordered};
 use tokio_util::sync::CancellationToken;
 
-pub use environments::{Environments, Stopper};
+pub use environments::{Environments, Looking, Stopper};
 use environments::Handle;
 pub use frames::{shell_output, stored_running_commands};
 pub use input::{INTERVAL_CAP_MS, INTERVAL_FLOOR_MS, taken_interval};
 use input::{ShellInput, parse};
-pub use reports::{EndOf, end_report, progress_report};
+pub use reports::{EndOf, end_report, fill_output, progress_report};
 pub use demi_agent_transcript::duration;
 pub use result::{Look, look_text, whole_look_text, whole_status};
 pub use product::{
