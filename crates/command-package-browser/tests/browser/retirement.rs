@@ -318,7 +318,8 @@ async fn agent_call(
         args,
         cwd: cwd.to_str().unwrap().into(),
         env: std::collections::BTreeMap::new(),
-        stdout: None,
+        live_input: None,
+        viewable: None,
     };
     let (completion, stdout, stderr) =
         crate::commands::exchange(service.client(), &invocation, false).await;
@@ -347,7 +348,8 @@ async fn release_and_shut_down(
         args: json!({}),
         cwd: cwd.to_str().unwrap().into(),
         env: std::collections::BTreeMap::new(),
-        stdout: None,
+        live_input: None,
+        viewable: None,
     };
     let (completion, _, _) = crate::commands::exchange(service.client(), &release, true).await;
     assert_eq!(completion.exit_code, 0);

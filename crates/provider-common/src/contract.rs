@@ -5,8 +5,9 @@
 use std::{num::NonZeroU32, sync::Arc};
 
 use demi_shared_types::{
-    AuthState, B64Bytes, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
-    RuntimeState, ThinkingConfig, Timestamp, TokenUsage,
+    AuthState, B64Bytes, MODEL_MEDIA_TYPES, Model, ModelMediaKind, ProviderErrorDiagnostics,
+    ProviderFailureFacts, ProviderModelList, RuntimeState, ThinkingConfig, Timestamp, TokenUsage,
+    model_accepts_media_type, model_media_type_for,
 };
 use futures_util::{
     future::{BoxFuture, LocalBoxFuture},
@@ -130,6 +131,77 @@ pub struct RequestLimits {
     pub body_bytes: Option<u64>,
     /// The most images one request carries.
     pub images: Option<u32>,
+    /// The kinds of media the vendor's wire carries in a tool result.
+    pub tool_results: ToolResultKinds,
+}
+
+/// The kinds of media a provider's wire carries in a tool result
+/// (`providers.md` § Media in tool results). A provider names only what it
+/// carries, so it never drops a medium silently.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ToolResultKinds {
+    pub image: bool,
+    pub video: bool,
+    pub document: bool,
+}
+
+impl ToolResultKinds {
+    /// No media at all.
+    pub const NONE: Self = Self {
+        image: false,
+        video: false,
+        document: false,
+    };
+    /// Images only.
+    pub const IMAGES: Self = Self {
+        image: true,
+        video: false,
+        document: false,
+    };
+    /// Images and documents.
+    pub const IMAGES_AND_DOCUMENTS: Self = Self {
+        image: true,
+        video: false,
+        document: true,
+    };
+    /// Every kind.
+    pub const ALL: Self = Self {
+        image: true,
+        video: true,
+        document: true,
+    };
+
+    pub fn carries(self, kind: ModelMediaKind) -> bool {
+        match kind {
+            ModelMediaKind::Image => self.image,
+            ModelMediaKind::Video => self.video,
+            ModelMediaKind::Document => self.document,
+        }
+    }
+
+    /// Whether `model` reads `media_type` in a tool result: it accepts the
+    /// type, and the wire carries its kind.
+    pub fn reads(self, model: &Model, media_type: &str) -> bool {
+        model_media_type_for(media_type)
+            .is_some_and(|entry| self.carries(entry.kind))
+            && model_accepts_media_type(model, media_type)
+    }
+
+    /// The media types `model` reads in a tool result, as a job carries
+    /// them (`runtime.md` § What `demi file view` shows); none when which
+    /// types the model reads is unknown and the wire carries some.
+    pub fn viewable(self, model: &Model) -> Option<Vec<String>> {
+        if model.accepted_extensions.is_none() && self != Self::NONE {
+            return None;
+        }
+        Some(
+            MODEL_MEDIA_TYPES
+                .iter()
+                .filter(|entry| self.reads(model, entry.media_type))
+                .map(|entry| entry.media_type.to_owned())
+                .collect(),
+        )
+    }
 }
 
 impl RequestLimits {
@@ -137,6 +209,7 @@ impl RequestLimits {
     pub const OPENAI: Self = Self {
         body_bytes: Some(512_000_000),
         images: Some(1_500),
+        tool_results: ToolResultKinds::NONE,
     };
 
     /// The Anthropic Messages API's for `model`, which Claude Code's CLI
@@ -151,6 +224,7 @@ impl RequestLimits {
         Self {
             body_bytes: Some(32_000_000),
             images: Some(images),
+            tool_results: ToolResultKinds::NONE,
         }
     }
 }
@@ -314,12 +388,16 @@ pub struct MediaBytes {
 }
 
 /// One part of a tool's result as the tool returns it and as a request
-/// carries it: text, or an image or a video with its bytes.
+/// carries it: text, or an image, a video or a document with its bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResultPart {
     Text(String),
     Image(MediaBytes),
     Video(MediaBytes),
+    Document {
+        bytes: MediaBytes,
+        file_name: String,
+    },
 }
 
 /// A tool the model may call.

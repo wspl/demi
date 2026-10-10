@@ -73,6 +73,7 @@ async fn backend_job_invokes_a_declared_builtin_and_drain_releases_installation(
         let cwd = host.home().to_string_lossy().into_owned();
         host.send(Inbound::JobStart {
             manifest_hash: Some(hash),
+            viewable: None,
             context: context(),
             job_id: "job".into(),
             script: "fixture --help && printf done".into(),

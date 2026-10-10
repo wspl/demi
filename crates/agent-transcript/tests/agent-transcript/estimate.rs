@@ -48,7 +48,11 @@ fn estimate(blocks: &[Block], window: u32) -> u64 {
     let view = ModelView::of(0, blocks, &HeldMedia::default()).expect("no media to hold");
     let mut model = test_model().model;
     model.context_window = window;
-    context_tokens(&RequestView::new(&view, &model, RequestLimits::default(), &[]))
+    let limits = RequestLimits {
+        tool_results: demi_provider_common::ToolResultKinds::ALL,
+        ..RequestLimits::default()
+    };
+    context_tokens(&RequestView::new(&view, &model, limits, &[]))
 }
 
 #[test]
@@ -175,7 +179,10 @@ fn a_medium_weighs_what_the_request_to_its_model_carries() {
         let request = RequestView::new(&view, model, limits, &[]);
         blocks.each_ref().map(|block| block_tokens(block, &request))
     };
-    let unlimited = RequestLimits::default();
+    let unlimited = RequestLimits {
+        tool_results: demi_provider_common::ToolResultKinds::ALL,
+        ..RequestLimits::default()
+    };
     let unread =
         |kind: &str, name: &str| format!("[{kind}:{name}, not sent: the model does not accept it]");
 
@@ -208,6 +215,7 @@ fn a_medium_weighs_what_the_request_to_its_model_carries() {
     let small = RequestLimits {
         body_bytes: Some(5_000_000),
         images: None,
+        tool_results: demi_provider_common::ToolResultKinds::ALL,
     };
     let too_large = "[image:image/png, not sent: too large for the model's requests]";
     assert_eq!(
