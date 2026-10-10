@@ -3,12 +3,20 @@
 //! whose `file` commands run in the `demi.file` package the workspace
 //! built.
 
+use std::{cell::RefCell, rc::Rc};
+
 use demi_agent_store::testing::model_reading;
 use demi_agent_tools::testing::{field, shown_output};
+use demi_conversation_socket_protocol::ClientFrame;
+use demi_provider_common::{
+    InferenceItem, InferenceRequest, Medium, ProviderEvent, UserPart,
+    testing::{ScriptedRuntime, Turn},
+};
 use demi_shared_types::FileExtension;
-use demi_provider_common::testing::ScriptedRuntime;
 
-use crate::support::{Fixture, scripts, turn, within};
+use crate::support::{
+    Fixture, is_idle, reply, resident, scripts, turn, within,
+};
 
 /// The results of running `scripts` in one message, with `prepare` run on
 /// the workspace first; the fixture stays for the test's own checks.
@@ -122,7 +130,7 @@ async fn demi_file_views_media_and_creates_files_in_and_beyond_the_workspace() {
         assert_eq!(
             shown_output(&results[11]),
             format!(
-                "demi file view: clip.webp: this conversation's model, test-model, does not read image/webp in a tool result\n[document 1: application/pdf, {} bytes]\n<document document-1.pdf>\n",
+                "demi file view: clip.webp: this conversation's model, test-model, does not read image/webp in a tool result\n[document 1: report.pdf, application/pdf, {} bytes]\n<document report.pdf>\n",
                 PDF.len()
             )
         );
@@ -280,3 +288,95 @@ const QUOTED_SHOWN: &str = concat!(
     "Created notes/new.md (1 line)\n",
     "It's $HOME's \\\"note\\\"\n",
 );
+
+/// The parts of the newest message a request carries that holds an image,
+/// such as an end report's: its text, or a medium as `<image image/png>`.
+pub(crate) fn user_parts(request: &InferenceRequest) -> Option<Vec<String>> {
+    request.items.iter().rev().find_map(|item| match item {
+        InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content }
+            if content.iter().any(|part| matches!(part, UserPart::Image(_))) =>
+        {
+            Some(
+                content
+                    .iter()
+                    .map(|part| match part {
+                        UserPart::Text(text) => text.clone(),
+                        UserPart::Image(Medium::Bytes(bytes)) => format!("<image {}>", bytes.media_type),
+                        other => format!("{other:?}"),
+                    })
+                    .collect(),
+            )
+        }
+        _ => None,
+    })
+}
+
+/// A fixture whose model reads PNG, whose workspace holds a 4 × 3 PNG, and
+/// whose model plays `turns`, recording each request it receives.
+async fn viewing(turns: Vec<Vec<ProviderEvent>>) -> (Fixture, Rc<RefCell<Vec<InferenceRequest>>>, usize) {
+    let requests: Rc<RefCell<Vec<InferenceRequest>>> = Rc::default();
+    let mut script = Vec::new();
+    for (index, events) in turns.into_iter().enumerate() {
+        if index == 0 {
+            script.push(Turn::Events(events));
+            continue;
+        }
+        let requests = requests.clone();
+        script.push(Turn::Respond(Box::new(move |request: &InferenceRequest| {
+            requests.borrow_mut().push(request.clone());
+            events
+        })));
+    }
+    let fixture = Fixture::start(&ScriptedRuntime::new(script)).await;
+    fixture.providers.select(model_reading("stub", "test-model", &[FileExtension::Png]));
+    let shot = demi_agent_store::testing::png(4, 3, 1).into_bytes();
+    std::fs::write(format!("{}/shot.png", fixture.workspace), &shot).unwrap();
+    (fixture, requests, shot.len())
+}
+
+/// Waits until a request carries an end report with an image, and answers
+/// its parts.
+async fn report_with_image(
+    client: &mut demi_agent_server::testing::TestClient<crate::support::DeviceHost>,
+    requests: &Rc<RefCell<Vec<InferenceRequest>>>,
+) -> Vec<String> {
+    loop {
+        if let Some(parts) = requests.borrow().iter().find_map(user_parts) {
+            return parts;
+        }
+        client.next_until(is_idle).await;
+    }
+}
+
+// A few seconds: a resident job waits for its input, then views an image
+// and ends, and its end report wakes the model.
+//
+// Planted defect this catches: an end report that carries only its text,
+// so the media a background job viewed never reach the model.
+#[tokio::test(flavor = "local")]
+async fn the_end_report_of_a_background_job_carries_the_media_it_viewed() {
+    within(async {
+        let (fixture, requests, size) = viewing(vec![
+            vec![resident("viewer", "read go; demi file view shot.png")],
+            reply("It waits."),
+            reply("Seen."),
+        ])
+        .await;
+        let mut client = fixture.opened().await;
+        turn(&mut client, "message-1", "View it when I say.").await;
+        let viewer = fixture.shell_commands()[0].clone();
+        client
+            .send(ClientFrame::ShellWrite { command_id: viewer.clone(), stdin: "go\n".into() })
+            .await;
+        let parts = report_with_image(&mut client, &requests).await;
+        assert_eq!(
+            parts,
+            [
+                format!("Command {viewer} (Run the test script) ended with exit code 0.\noutput:\n[image 1: image/png, 4 × 3 px, {size} bytes]"),
+                "<image image/png>".to_owned(),
+            ]
+        );
+        fixture.stop().await;
+    })
+    .await;
+}

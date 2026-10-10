@@ -13,7 +13,7 @@ use demi_provider_common::{
     UserPart,
 };
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, B64Bytes, INSTRUCTIONS_SOURCE, BlobRef, Block, BlockId, CompletionOutcome,
+    AgentMessage, AgentMessageEvent, B64Bytes, INSTRUCTIONS_SOURCE, BlobRef, Block, BlockId, CommandReport, CompletionOutcome,
     DocumentSource,
     PermissionOutcome,
     FileExtension, MediaSource, Model, ModelMediaKind, Timestamp, ToolCallStatus, ToolMediaSource,
@@ -88,7 +88,7 @@ pub fn replay(request: &RequestView) -> Replay {
                 }],
             }),
             Block::Wakeup(wakeup) => {
-                let content = vec![bounded(&crate::reports_text(&wakeup.reports))];
+                let content = request.reports(&wakeup.reports);
                 items.push(match wakeup.placement {
                     WakeupPlacement::NewTurn => InferenceItem::UserMessage { content },
                     WakeupPlacement::Steer => InferenceItem::UserSteer { content },
@@ -340,6 +340,37 @@ impl<'a> RequestView<'a> {
         } = source;
         let accepted = accepts_document(self.model, media_type);
         self.bytes("document", r#ref, media_type, file_name, accepted)
+    }
+
+    /// Reports that arrived together as the model receives them: their text,
+    /// one paragraph each, and after a report whose job viewed media, those
+    /// media, each as a tool result's medium is replayed, with the lines
+    /// about them (`runtime.md` § What a result attaches).
+    fn reports(&self, reports: &[CommandReport]) -> Vec<UserPart> {
+        let mut parts = Vec::new();
+        let mut text: Vec<String> = Vec::new();
+        for report in reports {
+            text.push(crate::report_text(report));
+            if report.media.is_empty() {
+                continue;
+            }
+            parts.push(bounded(&text.join("\n\n")));
+            text.clear();
+            for part in &report.media {
+                parts.push(match self.result(part) {
+                    ResultPart::Text(text) => UserPart::Text(text),
+                    ResultPart::Image(bytes) => UserPart::Image(Medium::Bytes(bytes)),
+                    ResultPart::Video(bytes) => UserPart::Video(Medium::Bytes(bytes)),
+                    ResultPart::Document { bytes, file_name } => {
+                        UserPart::Document { bytes, file_name }
+                    }
+                });
+            }
+        }
+        if !text.is_empty() {
+            parts.push(bounded(&text.join("\n\n")));
+        }
+        parts
     }
 
     /// A tool result's part as the model receives it: a text bounded, a

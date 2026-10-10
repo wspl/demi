@@ -377,8 +377,6 @@ mod tests {
                 context_window: Some(1000),
                 output_limit: None,
                 supports_tools: Some(true),
-                supports_attachments: Some(false),
-                supports_video: None,
                 accepted_extensions: None,
                 supports_reasoning: Some(false),
                 supported_thinking_efforts: None,

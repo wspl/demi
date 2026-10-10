@@ -785,6 +785,10 @@ impl ShellEnvironment for RemoteShellEnvironment {
         Ok(self.record(command)?.borrow().quiet())
     }
 
+    fn media(&self, command: &CommandId) -> Result<Vec<CommandMedium>, ShellError> {
+        Ok(self.record(command)?.borrow().media().to_vec())
+    }
+
     fn read_output<'a>(
         &'a self,
         command: &'a CommandId,
@@ -909,6 +913,10 @@ fn command_medium(medium: JobMedium, bytes: Result<Bytes, String>) -> CommandMed
         number: medium.number,
         media_type: medium.media_type,
         size: medium.size,
+        name: medium.name,
+        width: medium.width,
+        height: medium.height,
+        duration_ms: medium.duration_ms,
         bytes,
     }
 }

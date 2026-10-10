@@ -50,6 +50,10 @@ pub trait ShellEnvironment {
     /// The command's status, with its output since the model last looked.
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError>;
 
+    /// The media the command's job viewed, once it exited, which moves no
+    /// place in its output (`runtime.md` § What a result attaches).
+    fn media(&self, command: &CommandId) -> Result<Vec<CommandMedium>, ShellError>;
+
     /// How long the command has printed nothing, which moves no place in
     /// its output.
     fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError>;

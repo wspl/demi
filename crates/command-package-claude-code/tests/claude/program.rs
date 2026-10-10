@@ -41,7 +41,11 @@ impl OutputSink for Written {
         Ok(())
     }
 
-    async fn medium(&mut self, _: Bytes) -> Result<(), Self::Error> {
+    async fn medium(
+        &mut self,
+        _: demi_command_protocol::MediumFacts,
+        _: Bytes,
+    ) -> Result<(), Self::Error> {
         unreachable!("a package call's writer refuses media")
     }
 }

@@ -75,7 +75,7 @@ pub(crate) const CONTROL: Schema = Schema {
         },
         Shipped {
             sql: include_str!("schema/control-0.1.21.sql"),
-            migration: Migration::Sql(CONTROL_FROM_0_1_21),
+            migration: Migration::Code(control_from_0_1_21),
         },
     ],
 };
@@ -300,6 +300,51 @@ INSERT INTO command_outputs_next
 DROP TABLE command_outputs;
 ALTER TABLE command_outputs_next RENAME TO command_outputs;
 ";
+
+/// From 0.1.21's control schema ([`CONTROL_FROM_0_1_21`]); and a stored
+/// catalog's models no longer say whether they read attachments or video:
+/// their accepted types come from the source's input modalities alone
+/// (`models.md` § Accepted attachment types), so the two flags go and each
+/// model keeps the list it held, null where the source stated none. Each
+/// record changed is decoded and checked as the format it becomes before
+/// it is written back.
+fn control_from_0_1_21(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
+    transaction.execute_batch(CONTROL_FROM_0_1_21)?;
+    let records = transaction
+        .prepare("SELECT provider_id, record FROM model_catalogs")?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut update = transaction.prepare("UPDATE model_catalogs SET record = ?2 WHERE provider_id = ?1")?;
+    for (provider, record) in records {
+        let mut value: serde_json::Value = serde_json::from_str(&record).map_err(corrupt)?;
+        if !without_attachment_flags(&mut value) {
+            continue;
+        }
+        let record: crate::providers::CatalogRecord =
+            json("model_catalogs", "record", &to_json(&value)).map_err(corrupt)?;
+        update.execute(rusqlite::params![provider, to_json(&record)])?;
+    }
+    Ok(())
+}
+
+/// Removes every catalog model's `supportsAttachments` and `supportsVideo`
+/// from `value`; true when it held some.
+fn without_attachment_flags(value: &mut serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Object(fields) => {
+            let mut changed = fields.remove("supportsAttachments").is_some();
+            changed |= fields.remove("supportsVideo").is_some();
+            for field in fields.values_mut() {
+                changed |= without_attachment_flags(field);
+            }
+            changed
+        }
+        serde_json::Value::Array(items) => items
+            .iter_mut()
+            .fold(false, |changed, item| without_attachment_flags(item) | changed),
+        _ => false,
+    }
+}
 
 /// From 0.1.21's conversation schema: commands no longer run in shells, the
 /// model has one tool, `shell`, and command reports replace yield wakeups
@@ -1405,6 +1450,45 @@ mod tests {
     /// 0.1.21's checkpoint states lose their yield wakeups and hold no
     /// command report and no command's interval; a state that is not one of
     /// 0.1.21's stops the migration.
+    /// Planted defect this catches: a stored catalog left with its models'
+    /// attachment flags, which no longer decodes, so the entry would read
+    /// as corrupt until its source answers again.
+    #[test]
+    fn a_catalog_of_0_1_21_keeps_its_models_without_their_attachment_flags() {
+        let shipped = CONTROL.history.last().unwrap().sql;
+        let (_directory, path, mut connection) = database(shipped);
+        connection.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
+        let model = serde_json::json!({
+            "id": "m", "displayName": "M", "description": null, "contextWindow": 1000,
+            "outputLimit": null, "supportsTools": true, "supportsAttachments": true,
+            "supportsVideo": null, "acceptedExtensions": ["png"], "supportsReasoning": null,
+            "supportedThinkingEfforts": null, "canDisableThinking": null, "serviceTiers": [],
+            "defaultServiceTierId": null, "cost": null
+        });
+        let record = serde_json::json!({
+            "key": "k", "checkedAt": "2026-09-23T10:04:12.000Z",
+            "catalog": {
+                "models": [model], "defaultModelId": null, "warnings": [],
+                "sourceFetchedAt": "2026-09-23T10:04:12.000Z", "stale": false
+            }
+        });
+        connection
+            .execute(
+                "INSERT INTO model_catalogs (provider_id, record) VALUES ('p1', ?1)",
+                [record.to_string()],
+            )
+            .unwrap();
+        CONTROL.apply(&mut connection, &path).unwrap();
+        let text: String = connection
+            .query_row("SELECT record FROM model_catalogs WHERE provider_id = 'p1'", [], |row| row.get(0))
+            .unwrap();
+        let record: crate::providers::CatalogRecord = json("model_catalogs", "record", &text).unwrap();
+        assert_eq!(
+            record.catalog.models[0].accepted_extensions,
+            Some(vec![demi_shared_types::FileExtension::Png])
+        );
+    }
+
     #[test]
     fn a_conversation_of_0_1_21_loses_its_wakeups() {
         use crate::columns::json;
@@ -1596,6 +1680,7 @@ mod tests {
                     title: "Run the tests".to_owned(),
                     event: ReportEvent::Ended { exit_code: Some(1) },
                     output: String::new(),
+                    media: Vec::new(),
                 }]
             ),
             other => panic!("{other:?}"),
