@@ -36,6 +36,11 @@ pub(super) enum Take {
     Everything,
     /// A shutdown writes the human steers; the rest stays in the checkpoint.
     Steers,
+    /// The boundary after a response's stream writes all but the command
+    /// reports, which wait until the response's tools have run, so a look
+    /// among them that shows a command's end takes its report
+    /// (`runtime.md` § Command reports).
+    AllButReports,
 }
 
 impl Take {
@@ -43,6 +48,7 @@ impl Take {
         match self {
             Self::Everything => true,
             Self::Steers => matches!(input, Input::Steer(_)),
+            Self::AllButReports => !matches!(input, Input::Report(_)),
         }
     }
 }
