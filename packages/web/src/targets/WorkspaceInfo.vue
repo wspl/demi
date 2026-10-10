@@ -10,14 +10,17 @@ import type { Conversation, Project } from '../state/types'
 import { useResources } from '../state/resources'
 import { browserHosts, fileSourceFor, placesFor } from '../devices/files'
 import { useConversations } from '../conversation/store'
-import { executionFor } from './execution'
+import { executionFor, moveLocked } from './execution'
 import HostMenu from './HostMenu.vue'
+import type { HostChoice } from '@demicodes/web-ui/hosts/types'
 
 /**
  * The header's place: the Host the conversation runs on and its directory
  * (`product.md` § Where a conversation runs). Every move the two menus
  * start, to another Host or another directory, comes through `move`, which
- * asks first when the conversation has messages.
+ * asks first when the conversation has messages; so does one the offline
+ * primary Host's card above the composer starts, through `choose`, once
+ * the conversation's work is idle.
  */
 const props = defineProps<{
   project?: Project
@@ -27,12 +30,7 @@ const resources = useResources()
 const conversations = useConversations()
 const directory = ref<InstanceType<typeof WorkspaceDirectoryMenu>>()
 const execution = computed(() => executionFor(props.conversation))
-const locked = computed(
-  () =>
-    props.conversation.phase !== 'idle' ||
-    props.conversation.archived ||
-    conversations.pendingChanges.includes(props.conversation.id),
-)
+const locked = computed(() => moveLocked(props.conversation, conversations.pendingChanges))
 const recentDirectories = computed(() =>
   resources.recentProjectIds
     .flatMap(
@@ -114,7 +112,7 @@ function move(target: ConversationTarget): Promise<boolean> {
  * lists no directories to a page, so choosing it moves the conversation to
  * that directory of its own in either case.
  */
-function choose(host: { kind: 'cloud' } | { kind: 'device'; id: string }) {
+function choose(host: HostChoice) {
   const here = execution.value
   if (host.kind === 'cloud') {
     if (here.kind !== 'cloud') {
@@ -154,6 +152,8 @@ async function selectFolder(deviceId: string, path: string): Promise<boolean> {
   }
   return moved
 }
+
+defineExpose({ choose })
 </script>
 <template>
   <WorkspaceDirectoryMenu
