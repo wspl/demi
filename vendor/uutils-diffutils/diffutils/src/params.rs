@@ -1,7 +1,5 @@
-use uucore::context::FileKindExt as _;
 use std::ffi::OsString;
 use std::iter::Peekable;
-use std::path::PathBuf;
 
 use regex::Regex;
 
@@ -27,6 +25,14 @@ pub struct Params {
     pub expand_tabs: bool,
     pub tabsize: usize,
     pub width: usize,
+    /// `-r`: compares the subdirectories of two directories too.
+    pub recursive: bool,
+    /// `-N`: a file that exists on one side only is compared with an empty
+    /// file, and a directory with an empty directory.
+    pub new_file: bool,
+    /// The options as given, which the line before each pair of files a
+    /// directory comparison shows repeats, as GNU's `diff -r a/x b/x`.
+    pub options: Vec<OsString>,
 }
 
 impl Default for Params {
@@ -42,6 +48,9 @@ impl Default for Params {
             expand_tabs: false,
             tabsize: 8,
             width: 130,
+            recursive: false,
+            new_file: false,
+            options: Vec::new(),
         }
     }
 }
@@ -52,8 +61,11 @@ pub fn parse_params<I: Iterator<Item = OsString>>(mut opts: Peekable<I>) -> Resu
     let Some(executable) = opts.next() else {
         return Err("Usage: <exe> <from> <to>".to_string());
     };
+    let (split, options) = split_short_options(opts);
+    let mut opts = split.into_iter().peekable();
     let mut params = Params {
         executable,
+        options,
         ..Default::default()
     };
     let mut from = None;
@@ -86,6 +98,30 @@ pub fn parse_params<I: Iterator<Item = OsString>>(mut opts: Peekable<I>) -> Resu
         }
         if param == "-q" || param == "--brief" {
             params.brief = true;
+            continue;
+        }
+        // `-NUM`, GNU's obsolete spelling of the context's length.
+        if let Some(number) = param.to_str().and_then(|text| text.strip_prefix('-')) {
+            if !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit()) {
+                context = Some(
+                    number
+                        .parse::<usize>()
+                        .map_err(|_| format!("invalid context length '{number}'"))?,
+                );
+                continue;
+            }
+        }
+        if param == "-r" || param == "--recursive" {
+            params.recursive = true;
+            continue;
+        }
+        // Every file is compared as text: nothing here tells binary files
+        // apart.
+        if param == "-a" || param == "--text" {
+            continue;
+        }
+        if param == "-N" || param == "--new-file" {
+            params.new_file = true;
             continue;
         }
         if param == "-t" || param == "--expand-tabs" {
@@ -230,24 +266,65 @@ pub fn parse_params<I: Iterator<Item = OsString>>(mut opts: Peekable<I>) -> Resu
         ));
     };
 
-    // diff DIRECTORY FILE => diff DIRECTORY/FILE FILE
-    // diff FILE DIRECTORY => diff FILE DIRECTORY/FILE
-    let mut from_path: PathBuf = PathBuf::from(&params.from);
-    let mut to_path: PathBuf = PathBuf::from(&params.to);
-
-    if from_path.context_is_dir() && to_path.context_is_file() {
-        from_path.push(to_path.file_name().unwrap());
-        params.from = from_path.into_os_string();
-    } else if from_path.context_is_file() && to_path.context_is_dir() {
-        to_path.push(from_path.file_name().unwrap());
-        params.to = to_path.into_os_string();
-    }
-
     params.format = format.unwrap_or(Format::default());
     if let Some(context_count) = context {
         params.context_count = context_count;
     }
     Ok(params)
+}
+
+/// Splits each cluster of short options, such as `-rq` or `-Naur`, into
+/// its options, as GNU's getopt reads them, and returns the arguments split
+/// with the options as given. `-C` and `-U` take the rest of their cluster
+/// as their number, or the next argument when nothing follows them, and a
+/// run of digits is one `-NUM`, so `-5u` and `-u5` are `-5 -u`.
+fn split_short_options(mut args: impl Iterator<Item = OsString>) -> (Vec<OsString>, Vec<OsString>) {
+    let mut split = Vec::new();
+    let mut given = Vec::new();
+    while let Some(arg) = args.next() {
+        if arg == "--" {
+            given.push(arg.clone());
+            split.push(arg);
+            split.extend(args);
+            break;
+        }
+        let Some(text) = arg.to_str().filter(|text| text.starts_with('-') && *text != "-") else {
+            split.push(arg);
+            continue;
+        };
+        given.push(arg.clone());
+        let mut takes_next = false;
+        if text.starts_with("--") || text.len() == 2 {
+            takes_next = text == "-C" || text == "-U";
+            split.push(arg.clone());
+        } else {
+            let mut letters = text.char_indices().skip(1);
+            while let Some((index, letter)) = letters.next() {
+                let rest = &text[index + letter.len_utf8()..];
+                if letter.is_ascii_digit() {
+                    let digits = rest.len() - rest.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+                    split.push(OsString::from(format!("-{}", &text[index..index + 1 + digits])));
+                    for _ in 0..digits {
+                        letters.next();
+                    }
+                    continue;
+                }
+                if letter == 'C' || letter == 'U' {
+                    takes_next = rest.is_empty();
+                    split.push(OsString::from(format!("-{letter}{rest}")));
+                    break;
+                }
+                split.push(OsString::from(format!("-{letter}")));
+            }
+        }
+        if takes_next {
+            if let Some(next) = args.next() {
+                given.push(next.clone());
+                split.push(next);
+            }
+        }
+    }
+    (split, given)
 }
 
 struct DiffStyleMatch {
@@ -261,7 +338,7 @@ fn match_context_diff_params(
     next_param: Option<&OsString>,
     format: Option<Format>,
 ) -> Result<DiffStyleMatch, String> {
-    const CONTEXT_RE: &str = r"^(-[cC](?<num1>\d*)|--context(=(?<num2>\d*))?|-(?<num3>\d+)c)$";
+    const CONTEXT_RE: &str = r"^(-c|-C(?<num1>\d*)|--context(=(?<num2>\d*))?)$";
     let regex = Regex::new(CONTEXT_RE).unwrap();
     let is_match = regex.is_match(param.to_string_lossy().as_ref());
     let mut context_count = None;
@@ -273,8 +350,7 @@ fn match_context_diff_params(
         let captures = regex.captures(param.to_str().unwrap()).unwrap();
         let num = captures
             .name("num1")
-            .or(captures.name("num2"))
-            .or(captures.name("num3"));
+            .or(captures.name("num2"));
         if let Some(numvalue) = num {
             if !numvalue.as_str().is_empty() {
                 context_count = Some(numvalue.as_str().parse::<usize>().unwrap());
@@ -305,7 +381,7 @@ fn match_unified_diff_params(
     next_param: Option<&OsString>,
     format: Option<Format>,
 ) -> Result<DiffStyleMatch, String> {
-    const UNIFIED_RE: &str = r"^(-[uU](?<num1>\d*)|--unified(=(?<num2>\d*))?|-(?<num3>\d+)u)$";
+    const UNIFIED_RE: &str = r"^(-u|-U(?<num1>\d*)|--unified(=(?<num2>\d*))?)$";
     let regex = Regex::new(UNIFIED_RE).unwrap();
     let is_match = regex.is_match(param.to_string_lossy().as_ref());
     let mut context_count = None;
@@ -317,8 +393,7 @@ fn match_unified_diff_params(
         let captures = regex.captures(param.to_str().unwrap()).unwrap();
         let num = captures
             .name("num1")
-            .or(captures.name("num2"))
-            .or(captures.name("num3"));
+            .or(captures.name("num2"));
         if let Some(numvalue) = num {
             if !numvalue.as_str().is_empty() {
                 context_count = Some(numvalue.as_str().parse::<usize>().unwrap());
