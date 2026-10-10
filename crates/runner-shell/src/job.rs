@@ -9,7 +9,7 @@ use bytes::Bytes;
 use demi_runner_process::{
     job_shell::ShellJob,
     process::{OutputChunk, ProcessExit, ProcessInput},
-    stdio::{JOB_OUTPUT_ENV, LIVE_INPUT_ENV, reference},
+    stdio::{LIVE_INPUT_ENV, reference},
 };
 use demi_runner_protocol::wire::{OutputStream, Signal};
 use futures_util::future::BoxFuture;
@@ -48,11 +48,10 @@ struct Pipes {
     stdout: File,
     error_reader: File,
     stderr: File,
-    /// Kept open until every interpreter task finishes.
+    /// A copy of the job's stdin pipe, which `DEMI_LIVE_INPUT` names
+    /// (`runner.md` § A job's own input); kept open until every
+    /// interpreter task finishes.
     input_reference: File,
-    /// A copy of the job's stdout pipe, which `DEMI_JOB_OUTPUT` names
-    /// (`runner.md` § Where a command's stdout goes); kept open as long.
-    output_reference: File,
 }
 
 impl Pipes {
@@ -66,7 +65,6 @@ impl Pipes {
                 let (output_reader, stdout) = scope.descriptors(pipe)?;
                 let (error_reader, stderr) = scope.descriptors(pipe)?;
                 let input_reference = scope.duplicate(&stdin)?;
-                let output_reference = scope.duplicate(&stdout)?;
                 Ok(Self {
                     stdin,
                     input_writer,
@@ -75,7 +73,6 @@ impl Pipes {
                     error_reader,
                     stderr,
                     input_reference,
-                    output_reference,
                 })
             })
             .await
@@ -84,15 +81,13 @@ impl Pipes {
 }
 
 impl Job {
-    /// Starts `script`. `live` says whether the job's stdin is its live
-    /// terminal, and `output` whether its stdout is the job's output, which
-    /// it is unless the backend relays it elsewhere.
+    /// Starts `script`. `live` says whether the job's stdin is its own
+    /// input, which it is unless the backend relays it from another command.
     pub async fn start(
         script: String,
         cwd: PathBuf,
         mut env: BTreeMap<String, String>,
         live: bool,
-        output: bool,
         scope: Scope,
         shell: &ShellRuntime,
     ) -> io::Result<Self> {
@@ -104,15 +99,10 @@ impl Job {
             error_reader,
             stderr,
             input_reference,
-            output_reference,
         } = Pipes::open(shell, &scope).await?;
         env.remove(LIVE_INPUT_ENV);
         if live {
             env.insert(LIVE_INPUT_ENV.into(), reference(&input_reference)?);
-        }
-        env.remove(JOB_OUTPUT_ENV);
-        if output {
-            env.insert(JOB_OUTPUT_ENV.into(), reference(&output_reference)?);
         }
         let (input, receiver) = mpsc::channel(4);
         let (sender, output) = mpsc::channel(4);
@@ -142,7 +132,6 @@ impl Job {
         ];
         let worker = shell.spawn_blocking(move || {
             let _input_reference = input_reference;
-            let _output_reference = output_reference;
             let runtime = tokio::runtime::Handle::current();
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 runtime.block_on(execute(

@@ -4,10 +4,9 @@
 //! how often they report; `demi shell input` writes to a command's input;
 //! `demi shell output` prints a command of the conversation's whole output,
 //! as numbered lines a page at a time, the lines a range names, the newest
-//! lines, or the bytes as they are, or returns one of the media the
-//! command's declared commands returned. It reads a running command's
-//! output and media from its Host through the command's job, and an ended
-//! command's from the conversation's store. `demi shell stop` stops a
+//! lines, or the bytes as they are. It reads a running command's output
+//! from its Host through the command's job, and an ended command's from the
+//! conversation's store. `demi shell stop` stops a
 //! running command of the conversation through the shell environment that
 //! runs it, as a page's stop does.
 
@@ -23,8 +22,7 @@ use demi_host_interface::{
     CommandState, Ending, GroupBuilder, LeafBuilder, OutputText, Piece, RpcError, RpcPort, Seen,
     ShellError, Streams, TypedRpc, WholeOutput,
 };
-use demi_host_interface::{MediumKept, StoredMedium};
-use demi_shared_types::{B64Bytes, BlobRef, CommandEnd, CommandId, NodeId, StreamKind};
+use demi_shared_types::{CommandEnd, CommandId, NodeId, StreamKind};
 use futures_util::{FutureExt, future::join_all};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -47,13 +45,13 @@ const GROUP_SUMMARY: &str = "Shell commands: look at a command, answer its promp
 /// § Capability index).
 const GROUP_ENTRY: &str = "Works on the commands your shell calls ran, by their commandIds: status looks at a command again, waits for its end and changes how often it reports to you; input answers its prompt; output prints its whole output a page at a time, when a result was cut short in the middle; stop ends a dev server, a watcher or any command you no longer need.";
 
-const STATUS_SUMMARY: &str = "Look at commands of this conversation by their commandIds, in order: each one's status, its exit code once it has ended, how long it has run and printed nothing, and its output since your last look, as a shell result shows them; one that has ended returns its media. --wait <duration>, such as 30s or 5m, waits up to that long for them to end first. --interval <duration> makes them report to you every so long from now on, and --resident only when they end.";
+const STATUS_SUMMARY: &str = "Look at commands of this conversation by their commandIds, in order: each one's status, its exit code once it has ended, how long it has run and printed nothing, and its output since your last look, as a shell result shows them. --wait <duration>, such as 30s or 5m, waits up to that long for them to end first. --interval <duration> makes them report to you every so long from now on, and --resident only when they end.";
 
 const INPUT_SUMMARY: &str = "Write stdin to a running command's input by its commandId, such as an answer to its prompt, with a newline for a line-based prompt (`demi shell input 17 <<'EOF'`). Prints nothing; a command that is not running fails. Look at what the command did with it with demi shell status.";
 
 const STOP_SUMMARY: &str = "Stop running commands of this conversation by their commandIds, in order, whichever agent ran them, and wait until each has ended. Its next status shows it aborted, with its last output. Stopping a command that has ended already succeeds, so it is safe to repeat.";
 
-const OUTPUT_SUMMARY: &str = "Print a command's whole output by its commandId: numbered lines a page at a time, as `cat -n` shows them, from the first line or the lines --lines <from>-<to> names; the newest with --tail <n>. --stdout or --stderr takes one stream, with line numbers of its own. --raw prints the bytes as they are, unnumbered and unpaged, for pipes and files: `grep -n` on it gives the numbers --lines takes (`demi shell output 17 --raw | grep -n FAIL`). --medium <n> returns the command's medium n, the image or video its line `[medium n: …]` stands for, as it came: shown to you again, or its bytes into a file (`demi shell output 17 --medium 2 > shot.png`). Any command of this conversation, running or ended.";
+const OUTPUT_SUMMARY: &str = "Print a command's whole output by its commandId: numbered lines a page at a time, as `cat -n` shows them, from the first line or the lines --lines <from>-<to> names; the newest with --tail <n>. --stdout or --stderr takes one stream, with line numbers of its own. --raw prints the bytes as they are, unnumbered and unpaged, for pipes and files: `grep -n` on it gives the numbers --lines takes (`demi shell output 17 --raw | grep -n FAIL`). Any command of this conversation, running or ended.";
 
 /// The input of `demi shell output`.
 #[derive(Deserialize, JsonSchema)]
@@ -73,9 +71,6 @@ struct OutputArgs {
     stderr: Option<bool>,
     /// The bytes as they are: unnumbered and unpaged
     raw: Option<bool>,
-    /// The command's medium n, as it came
-    #[schemars(range(min = 1))]
-    medium: Option<u32>,
 }
 
 /// The input of `demi shell status`.
@@ -120,8 +115,7 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
             LeafBuilder::rpc("status", STATUS_SUMMARY)
                 .input::<StatusArgs>()
                 .positionals(["id"])
-                .success_output("each command's status as a shell result shows it, a blank line between two; with --interval or --resident, a line first that says how it reports from now on; an ended command's media")
-                .media()
+                .success_output("each command's status as a shell result shows it, a blank line between two; with --interval or --resident, a line first that says how it reports from now on")
                 .failure_output("a line per command that cannot be looked at, \"demi shell status: <id>: <reason>\", on stderr; the others are still shown, and the command exits 1")
                 .bind(TypedRpc::new(verb(server.clone(), status))),
         )
@@ -138,8 +132,7 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
             LeafBuilder::rpc("output", OUTPUT_SUMMARY)
                 .input::<OutputArgs>()
                 .positionals(["id"])
-                .success_output("the page, the lines, or with --raw the bytes on stdout; with --raw, a line on stderr where bytes were left out; with --medium, the medium")
-                .media()
+                .success_output("the page, the lines, or with --raw the bytes on stdout; with --raw, a line on stderr where bytes were left out")
                 .failure_output("\"demi shell output: <reason>\" on stderr, exit 1")
                 .bind(TypedRpc::new(verb(server.clone(), output))),
         )
@@ -196,12 +189,7 @@ async fn status<H: HostResolver>(
     let mut shown = Vec::new();
     for id in &args.id {
         match status_one(&call.tree, &call.caller, id, change).await {
-            Ok((text, media)) => {
-                shown.push(text);
-                for blob in media {
-                    port.medium(blob).await?;
-                }
-            }
+            Ok(text) => shown.push(text),
             Err(reason) => {
                 failed = true;
                 fail_one(&port, &call.command, id, &reason).await?;
@@ -245,8 +233,8 @@ async fn wait_for_ends<H: HostResolver>(tree: &Tree<H>, ids: &[String], wait: Du
     let _ = tokio::time::timeout(wait, ends).await;
 }
 
-/// What a look at the conversation's command `id` shows the node `caller`,
-/// with the stored media of a command whose end it shows; first, `change`
+/// What a look at the conversation's command `id` shows the node `caller`;
+/// first, `change`
 /// changes how the command reports. The node that runs the command looks
 /// from its place in the command's record; any other node, and a node
 /// whose command no shells hold any more, from its own place in the
@@ -258,7 +246,7 @@ async fn status_one<H: HostResolver>(
     caller: &NodeId,
     id: &str,
     change: Option<IntervalChange>,
-) -> Result<(String, Vec<BlobRef>), String> {
+) -> Result<String, String> {
     let unknown = || "no such command in this conversation".to_owned();
     let command = CommandId::try_from(id).map_err(|_| unknown())?;
     let looking = tree
@@ -297,12 +285,10 @@ async fn status_one<H: HostResolver>(
             .ok_or_else(|| format!("command {id} is no longer held"))?;
         let status = environment.status(&command).map_err(|error| error.to_string())?;
         lines.push(look_text(&status, look));
-        let mut media = Vec::new();
         if !matches!(status.state, CommandState::Running { .. }) {
             node.saw_end(&command).await;
-            media = stored_media(tree, &command).await;
         }
-        return Ok((lines.join("\n"), media));
+        return Ok(lines.join("\n"));
     }
     let running = held.as_ref().and_then(|node| {
         let environment = node.environment_of(&command)?;
@@ -345,7 +331,7 @@ async fn status_one<H: HostResolver>(
                     CommandEnd::Stopped => CommandState::Aborted,
                     CommandEnd::Lost | CommandEnd::Unrecorded => {
                         lines.extend(ended_lines(id, end));
-                        return Ok((lines.join("\n"), Vec::new()));
+                        return Ok(lines.join("\n"));
                     }
                 };
                 looking.set_place(&command, Seen::ALL);
@@ -357,25 +343,7 @@ async fn status_one<H: HostResolver>(
         },
     };
     lines.push(shown);
-    Ok((lines.join("\n"), Vec::new()))
-}
-
-/// The media the conversation stored of `command`, which ended, by number.
-async fn stored_media<H: HostResolver>(tree: &Tree<H>, command: &CommandId) -> Vec<BlobRef> {
-    let Ok(Some(StoredCommand {
-        output: StoredOutput::Stored { media, .. },
-        ..
-    })) = tree.store().command_output(command).await
-    else {
-        return Vec::new();
-    };
-    media
-        .into_iter()
-        .filter_map(|medium| match medium.kept {
-            MediumKept::Stored { blob } => Some(blob),
-            MediumKept::Missing { .. } => None,
-        })
-        .collect()
+    Ok(lines.join("\n"))
 }
 
 /// What a look shows of a command whose output the conversation does not
@@ -503,23 +471,6 @@ async fn output<H: HostResolver>(
 ) -> Result<u8, RpcError> {
     let args = call.args;
     let id = args.id.as_str();
-    if let Some(number) = args.medium {
-        let alone = args.lines.is_none()
-            && args.tail.is_none()
-            && args.stdout.is_none()
-            && args.stderr.is_none()
-            && args.raw.is_none();
-        if !alone {
-            return fail("--medium returns one medium and goes with no other option");
-        }
-        return match find_medium(&call.tree, id, number).await {
-            Ok(blob) => {
-                port.medium(blob).await?;
-                Ok(0)
-            }
-            Err(reason) => fail(&reason),
-        };
-    }
     let streams = match (args.stdout == Some(true), args.stderr == Some(true)) {
         (true, true) => return fail("--stdout and --stderr do not go together"),
         (true, false) => Streams::Only(StreamKind::Stdout),
@@ -621,67 +572,6 @@ async fn find<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<Found, String
         }
         Ok(None) => Err(unknown()),
         Err(error) => Err(format!("the output of {id} could not be read: {error}")),
-    }
-}
-
-/// The blob of medium `number` of the conversation's command `id`: read
-/// from its Host and put while the command runs, stored once it ended.
-async fn find_medium<H: HostResolver>(
-    tree: &Tree<H>,
-    id: &str,
-    number: u32,
-) -> Result<BlobRef, String> {
-    let unknown = || format!("no command {id} in this conversation");
-    let command = CommandId::try_from(id).map_err(|_| unknown())?;
-    let unread = |error: &dyn std::fmt::Display| {
-        format!("medium {number} of {id} could not be read: {error}")
-    };
-    if let Some(node) = tree.holder(&command) {
-        match node.read_medium(&command, number).await {
-            Ok(bytes) => {
-                let blobs = tree.store().session_store(node.id());
-                return blobs
-                    .blobs()
-                    .put(B64Bytes::new(bytes))
-                    .await
-                    .map_err(|error| unread(&error));
-            }
-            // It ended, and its media are stored with its output.
-            Err(ShellError::NotRunning(_)) => {}
-            Err(error @ ShellError::NoMedium { .. }) => return Err(error.to_string()),
-            Err(error) => return Err(unread(&error)),
-        }
-    }
-    let media = match tree.store().command_output(&command).await {
-        Ok(Some(StoredCommand {
-            output: StoredOutput::Stored { media, .. },
-            ..
-        })) => media,
-        Ok(Some(StoredCommand {
-            output: StoredOutput::NotStored(reason),
-            ..
-        })) => {
-            return Err(format!("the output of {id} was not stored: {reason}"));
-        }
-        Ok(None) => return Err(unknown()),
-        Err(error) => return Err(format!("the output of {id} could not be read: {error}")),
-    };
-    let returned = media.len();
-    match media.into_iter().find(|medium| medium.number == number) {
-        Some(StoredMedium {
-            kept: MediumKept::Stored { blob },
-            ..
-        }) => Ok(blob),
-        Some(StoredMedium {
-            kept: MediumKept::Missing { reason },
-            ..
-        }) => Err(format!("medium {number} of {id} is not kept: {reason}")),
-        None => Err(ShellError::NoMedium {
-            command,
-            number,
-            returned,
-        }
-        .to_string()),
     }
 }
 

@@ -326,7 +326,8 @@ impl Opening {
                 env: Default::default(),
                 edits: None,
                 json,
-                stdout: None,
+                live_input: None,
+                viewable: None,
             };
             match resident.client().invoke(&invocation).await {
                 Ok(exchange) => Ok(exchange),

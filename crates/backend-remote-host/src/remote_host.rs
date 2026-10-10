@@ -9,7 +9,7 @@ use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use bytes::{Bytes, BytesMut};
 use demi_command_protocol::{
-    ArtifactLocation, CommandContext, MAX_MEDIUM_BYTES, PackageArtifact, PackageDescriptor,
+    ArtifactLocation, CommandContext, MAX_MEDIUM_BYTES, Viewable, PackageArtifact, PackageDescriptor,
 };
 use demi_host_interface::{
     ByteRange, ByteStream, CpOptions, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
@@ -184,6 +184,7 @@ impl RemoteHost {
                     .as_ref()
                     .map(|commands| commands.hash().to_owned()),
                 context: job.context,
+                viewable: job.viewable,
                 script: job.script,
                 cwd: job.cwd,
                 env: job.env,
@@ -787,6 +788,9 @@ pub struct JobStart {
     /// Exactly the variables the job's shell starts with, above the device's.
     pub env: BTreeMap<String, String>,
     pub context: CommandContext,
+    /// The media types the job may show the model; none for a job whose
+    /// media reach no model, as one `demi host shell` runs.
+    pub viewable: Option<Viewable>,
     pub caller: Option<JobCaller>,
     /// The commands the job may run; none for a job without declared
     /// commands.

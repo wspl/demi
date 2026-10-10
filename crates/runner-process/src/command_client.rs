@@ -3,7 +3,7 @@
 //! streams its standard input and output through it.
 
 use bytes::Bytes;
-use demi_command_protocol::{Completion, LocalInvocation, MAX_RECORD_BYTES, StdoutTarget};
+use demi_command_protocol::{Completion, LocalInvocation, MAX_RECORD_BYTES};
 use demi_command_sdk::{
     Client, CommandInput, CommandOutput, Exchange, ExchangeError, InputSource, OutputSink,
 };
@@ -21,8 +21,8 @@ pub const RAW: &str = "raw";
 
 /// A command line a client forwards to the runner (`commands.md` § External
 /// command clients): the execution context it runs in, its root command and
-/// arguments, whether its input is the job's live terminal, and where its
-/// stdout goes. A request that breaks these rules is refused as it is read.
+/// arguments, and whether its input is the job's own input. A request that
+/// breaks these rules is refused as it is read.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields, try_from = "Request")]
 pub struct RawCommand {
@@ -30,7 +30,6 @@ pub struct RawCommand {
     pub root: String,
     pub argv: Vec<String>,
     pub live: bool,
-    pub stdout: StdoutTarget,
 }
 
 /// A request as it arrives, before its check.
@@ -41,7 +40,6 @@ struct Request {
     root: String,
     argv: Vec<String>,
     live: bool,
-    stdout: StdoutTarget,
 }
 
 impl TryFrom<Request> for RawCommand {
@@ -53,7 +51,6 @@ impl TryFrom<Request> for RawCommand {
             request.root,
             request.argv,
             request.live,
-            request.stdout,
         )
     }
 }
@@ -66,7 +63,6 @@ impl RawCommand {
         root: String,
         argv: Vec<String>,
         live: bool,
-        stdout: StdoutTarget,
     ) -> io::Result<Self> {
         if context.len() != 32
             || !context.bytes().all(|byte| byte.is_ascii_hexdigit())
@@ -84,7 +80,6 @@ impl RawCommand {
             root,
             argv,
             live,
-            stdout,
         })
     }
 }
@@ -204,8 +199,8 @@ impl<O: AsyncWrite + Unpin, E: AsyncWrite + Unpin> OutputSink for Terminal<O, E>
         self.stderr.write_all(&bytes).await
     }
 
-    /// The runner routes the media of the commands it runs; it sends a
-    /// local caller only their output.
+    /// The runner hands the media of the commands it runs to their job; it
+    /// sends a local caller only their output.
     async fn medium(&mut self, _: Bytes) -> io::Result<()> {
         Err(io::Error::other("a local command returned a medium"))
     }
