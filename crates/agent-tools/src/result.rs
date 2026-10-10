@@ -184,12 +184,13 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> Str
     let mut after = Vec::new();
     after.extend(unreceived_line(status, &newest));
     match &status.state {
-        CommandState::Running { hint } => {
+        CommandState::Running { hint, outliving } => {
             if look.sent_now {
                 after.push(format!(
                     "[The user sent a message, so command {command} moved to the background. It keeps running.]"
                 ));
             }
+            after.extend(outliving_line(outliving));
             match hint {
                 Some(hint) => after.push(hint.clone()),
                 None => after.push(running_next(command, look.interval_ms)),
@@ -297,6 +298,23 @@ fn running_next(command: &CommandId, interval_ms: Option<Option<u32>>) -> String
     format!(
         "next: command {command} keeps running{reports}; look at it with demi shell status {command}, answer a prompt with demi shell input {command}, stop it with demi shell stop {command}."
     )
+}
+
+/// The line that names the background tasks that keep a command running
+/// once its script has ended, and says its stop stops them (`runtime.md`
+/// § Results and previews); none while the script runs.
+fn outliving_line(tasks: &[String]) -> Option<String> {
+    let quoted: Vec<String> = tasks.iter().map(|task| format!("\"{task}\"")).collect();
+    let (last, rest) = quoted.split_last()?;
+    if rest.is_empty() {
+        return Some(format!(
+            "the script has ended; its background task {last} keeps the command running, and stopping the command stops it"
+        ));
+    }
+    Some(format!(
+        "the script has ended; its background tasks {} and {last} keep the command running, and stopping the command stops them",
+        rest.join(", ")
+    ))
 }
 
 /// The line before a stream's newest lines, which counts the bytes left out
@@ -852,7 +870,7 @@ mod tests {
         record.append_output(StreamKind::Stdout, "done\nre");
         record.append_output(StreamKind::Stderr, "a");
         for expected in ["done\nrea", "rea"] {
-            let shown = result(&record.status(0, None)).await;
+            let shown = result(&record.status(0, None, Vec::new())).await;
             assert!(
                 shown.ends_with(&format!("\noutput:\n{expected}\n{NEXT}")),
                 "{shown}"
@@ -860,7 +878,7 @@ mod tests {
         }
         record.append_output(StreamKind::Stdout, "dy\nprompt");
         for expected in ["ready\nprompt", "prompt"] {
-            let shown = result(&record.status(0, None)).await;
+            let shown = result(&record.status(0, None, Vec::new())).await;
             assert!(
                 shown.ends_with(&format!("\noutput:\n{expected}\n{NEXT}")),
                 "{shown}"
@@ -875,9 +893,9 @@ mod tests {
             None,
         );
         record.settle(Ending::Exited(0), Arc::new(whole), None, Vec::new(), "");
-        let final_look = result(&record.status(0, None)).await;
+        let final_look = result(&record.status(0, None, Vec::new())).await;
         assert!(final_look.ends_with("\noutput:\nprompt"), "{final_look}");
-        let read_again = result(&record.status(0, None)).await;
+        let read_again = result(&record.status(0, None, Vec::new())).await;
         assert!(read_again.ends_with("\noutput: (empty)"), "{read_again}");
     }
 
@@ -937,7 +955,10 @@ mod tests {
     async fn a_running_command_shows_its_first_and_its_newest_lines_within_the_bound() {
         let mut running = exited("");
         running.whole = None;
-        running.state = CommandState::Running { hint: None };
+        running.state = CommandState::Running {
+            hint: None,
+            outliving: Vec::new(),
+        };
         running.output.text = "building\n".into();
         running.unreceived = 1_048_576;
         running.newest = vec![Newest {
@@ -982,7 +1003,10 @@ mod tests {
     async fn a_running_command_names_its_handles_and_the_newest_output_it_has_not_received() {
         let mut running = exited("");
         running.whole = None;
-        running.state = CommandState::Running { hint: None };
+        running.state = CommandState::Running {
+            hint: None,
+            outliving: Vec::new(),
+        };
         running.output.text = "building\n".into();
         running.unreceived = 1_048_576;
         assert_eq!(
@@ -1001,6 +1025,7 @@ mod tests {
         );
         running.state = CommandState::Running {
             hint: Some("waiting for input: answer with demi shell input".into()),
+            outliving: Vec::new(),
         };
         assert!(
             result(&running)
