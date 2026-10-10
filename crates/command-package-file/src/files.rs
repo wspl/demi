@@ -9,7 +9,7 @@ use std::{
 use bytes::Bytes;
 use demi_command_package_file_protocol::{EditArgsError, Operation, PatchArgs, ViewArgs};
 use demi_command_protocol::{
-    CommandError, Completion, MAX_MEDIUM_BYTES, begins_as_text, is_text, sniff_media_type,
+    CommandError, Completion, MAX_MEDIUM_BYTES, is_binary, sniff_media_type,
 };
 use demi_command_sdk::{
     InvocationContext, ServiceError,
@@ -297,7 +297,7 @@ async fn view_stdin(context: &mut InvocationContext) -> Result<(), FileError> {
 /// Why `named`, `size` bytes beginning with `opening`, more than a medium
 /// may be, is not shown: a text file names `cat`, and anything else its size.
 fn oversized(named: &str, opening: &[u8], size: u64) -> FileError {
-    if begins_as_text(opening) {
+    if !is_binary(opening) {
         FileError::Text(quoted(named))
     } else if sniff_media_type(opening).is_some() {
         FileError::TooLarge(size)
@@ -316,7 +316,7 @@ async fn show(
     bytes: Bytes,
 ) -> Result<(), FileError> {
     let Some(media_type) = sniff_media_type(&bytes) else {
-        return Err(if !bytes.is_empty() && is_text(&bytes) {
+        return Err(if !bytes.is_empty() && !is_binary(&bytes) {
             FileError::Text(quoted(named))
         } else {
             FileError::NotMedia(bytes.len() as u64)

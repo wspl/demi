@@ -48,6 +48,32 @@ fn a_gap_inside_a_line_keeps_the_numbering_of_the_raw_bytes() {
     assert_eq!(lines(text.backward()), backward);
 }
 
+/// A stdout is binary when its first 8 KiB hold a NUL byte or it begins as
+/// a media type, as git and GNU diff decide (`runtime.md` § What `demi file
+/// view` shows). Any other stdout is text, and a byte that is not UTF-8 costs
+/// one U+FFFD, where before it hid the whole output.
+#[test]
+fn a_stdout_is_binary_only_with_an_early_nul_or_as_a_media_type() {
+    let stdout = |bytes: &[u8]| {
+        WholeOutput::new(
+            vec![OutputRecord::Output(StreamKind::Stdout, Bytes::copy_from_slice(bytes))],
+            None,
+        )
+    };
+    let stray = stdout(b"ok 1\n\xbb raw\nok 3\n");
+    assert_eq!(stray.binary_stdout_length(), None);
+    let text = stray.text(Streams::Both, None, Seen::default());
+    assert_eq!(lines(text.forward(1)), ["1:ok 1", "2:\u{fffd} raw", "3:ok 3"]);
+    assert_eq!(stdout(b"a\0b").binary_stdout_length(), Some(3));
+    let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01\x08\x06\0\0\0";
+    assert_eq!(stdout(png).binary_stdout_length(), Some(png.len() as u64));
+    // A PDF need hold no NUL to be one.
+    assert!(stdout(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n").binary_stdout_length().is_some());
+    let mut late = vec![b'a'; 8 * 1024];
+    late.extend_from_slice(b"\0\n");
+    assert_eq!(stdout(&late).binary_stdout_length(), None);
+}
+
 #[test]
 fn a_text_stdout_cut_by_the_gap_is_not_binary() {
     // The gap cut a character on each side.
