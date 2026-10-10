@@ -14,6 +14,7 @@ import CommandEndTag from './CommandEndTag.vue'
 import { useLiveCalls } from '../live-calls'
 import { shellRowEnd, shellRowRunning } from '../terminals'
 import { shellTitle } from '../tool-rendering'
+import { toolMedia } from '../tool-media'
 
 const props = defineProps<{
   block: ToolCallBlock
@@ -22,6 +23,7 @@ const props = defineProps<{
 
 const command = computed(() => (props.input['script'] as string) ?? '')
 const title = computed(() => shellTitle(props.input))
+const media = computed(() => toolMedia(props.block.output, title.value))
 // A call whose command ran says how it ended in its tag and above its output,
 // so only a call that ran nothing, such as one the input check or the repeat
 // guard refused, shows its result's text as the failure.
@@ -129,6 +131,6 @@ function toggleCommand(): void {
       <AnsiText v-if="terminalOutputText" class="px-3" :content="terminalOutputText" />
     </template>
   </FunctionalBlock>
-  <ToolMedia :output="block.output" :title="title" />
+  <ToolMedia :media="media" />
   <ShellEditPills :block="block" />
 </template>
