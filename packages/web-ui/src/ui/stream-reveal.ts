@@ -1,18 +1,27 @@
 import { sliceHead } from '@demicodes/utils'
 
-/** View catch-up for live markdown. The source string is the target; the view stays close. */
-export const STREAM_REVEAL = {
-  /** Comfortable writing pace. Bursts catch up instead of waiting out this rate. */
-  charsPerSec: 36,
-  /**
-   * Never linger more than this far behind a dumped chunk: text shows as
-   * fast as it arrives, smoothed over a few frames, never held back to a
-   * writing pace the model outruns.
-   */
-  maxLagMs: 120,
-  /** Finish the last units quickly when the block is no longer live. */
-  flushLagMs: 80,
+/**
+ * How a streaming reply's text reaches the reader (the gallery's Streaming
+ * Text): a step of about `stepChars` characters at a time, cut on
+ * a word, each fading in over `fadeMs`; the steps come faster as text waits,
+ * so the view stays about `targetLagMs` behind what has arrived, never more
+ * often than every `minStepMs` nor less than every `maxStepMs`. Many steps
+ * fading at once read as the text settling a few lines at a time, as
+ * Claude's own reply does, rather than as characters typed.
+ */
+export const STREAM_PACE = {
+  stepChars: 22,
+  targetLagMs: 550,
+  minStepMs: 25,
+  maxStepMs: 150,
+  fadeMs: 400,
 } as const
+
+/** How long to wait before the next step, with `backlog` characters waiting. */
+export function stepInterval(backlog: number): number {
+  const ms = (STREAM_PACE.targetLagMs * STREAM_PACE.stepChars) / Math.max(1, backlog)
+  return Math.min(STREAM_PACE.maxStepMs, Math.max(STREAM_PACE.minStepMs, ms))
+}
 
 const TRAILING_OPENERS = /(?:^|[\s(])(?:\*{1,3}|_{1,3}|~{1,2}|`{1,3}|\\)$/
 const INCOMPLETE_LINK = /\[[^\]]*$|\[[^\]]*\]\([^)]*$/
@@ -43,6 +52,58 @@ export function segmentStreamUnits(text: string): string[] {
   return Array.from(segmentWords(text), (part) => part.segment)
 }
 
+/**
+ * Where the step from `from` ends in `text`: about `stepChars` characters on,
+ * at a word's end (a CJK word's too, as `Intl.Segmenter` finds it), never past
+ * `ceiling`, the part of `text` safe to show. A cut that would leave markdown
+ * half open, which `safe` shortens, backs off to where the construct starts,
+ * or takes the whole construct when it starts the step.
+ */
+export function nextStepEnd(text: string, from: number, ceiling: number, safe: (text: string) => string): number {
+  let end = from
+  for (const { segment } of segmentWords(text.slice(from, ceiling))) {
+    if (end > from && end - from + segment.length > STREAM_PACE.stepChars)
+      break
+    end += segment.length
+  }
+  const cut = safe(text.slice(0, end)).length
+  if (cut > from)
+    return cut
+  // The construct starts the step: take it whole, a word at a time, once it closes.
+  for (const { segment } of segmentWords(text.slice(end, ceiling))) {
+    end += segment.length
+    if (safe(text.slice(0, end)).length === end)
+      return end
+  }
+  return ceiling
+}
+
+const MARKDOWN_SYNTAX = /^ {0,3}(?:`{3,}|~{3,}).*$|\]\([^)]*\)|^ {0,3}(?:#{1,6} |> ?|[-*+] |\d+[.)] )|[*_~`[\]\n]/gm
+
+/**
+ * About how many characters `source`, a slice of markdown, renders as, line
+ * breaks left out: its text without the marks around it and without a code
+ * fence's lines. A step's fade covers this many rendered characters, so an
+ * estimate a mark off fades a neighbouring character a moment early or late
+ * and nothing more.
+ */
+export function renderedLength(source: string): number {
+  return source.replace(MARKDOWN_SYNTAX, '').length
+}
+
+/**
+ * Where, in `text`, the last `count` of its characters other than line breaks
+ * start: a step's rendered length, counted as `renderedLength` counts it.
+ */
+export function startOfLast(text: string, count: number): number {
+  let index = text.length
+  for (let left = count; index > 0 && left > 0; index -= 1) {
+    if (text[index - 1] !== '\n')
+      left -= 1
+  }
+  return index
+}
+
 /** Longest prefix of `shown` that still matches `target`. */
 export function alignShown(shown: string, target: string): string {
   if (target.startsWith(shown))
@@ -58,37 +119,6 @@ export function alignShown(shown: string, target: string): string {
       index -= 1
   }
   return target.slice(0, index)
-}
-
-// Iterates lazily: the remainder can be a whole dumped chunk while the budget is a few characters.
-function takeUnits(remaining: string, budget: number): string {
-  let take = ''
-  for (const { segment: unit } of segmentWords(remaining)) {
-    if (take.length >= budget && take.length > 0)
-      break
-    if (unit.length > budget && take.length === 0) {
-      return sliceHead(unit, Math.max(budget, 1))
-    }
-    take += unit
-  }
-  return take
-}
-
-/** Next display string: word-aware. `timeLeftMs` is the deadline to finish the current gap. */
-export function nextShownText(
-  shown: string,
-  target: string,
-  dtMs: number,
-  timeLeftMs: number
-): string {
-  const aligned = alignShown(shown, target)
-  if (aligned === target)
-    return target
-  const remaining = target.slice(aligned.length)
-  const dt = Math.max(1, dtMs)
-  const paceBudget = Math.max(1, Math.round((STREAM_REVEAL.charsPerSec * dt) / 1000))
-  const catchupBudget = Math.ceil((remaining.length * dt) / Math.max(dt, timeLeftMs))
-  return aligned + takeUnits(remaining, Math.max(paceBudget, catchupBudget))
 }
 
 /** Keep unmatched emphasis / link markers out of the markdown parse until they close. */
@@ -149,16 +179,4 @@ export function closeOpenInlineMarkdown(text: string): string {
     else open.push(run)
   }
   return open.reverse().join('')
-}
-
-/** How much of `frontier` is actually at the end of the rendered visible string. */
-export function visibleFrontierLength(visible: string, frontier: string): number {
-  if (!frontier || !visible)
-    return 0
-  const max = Math.min(frontier.length, visible.length)
-  for (let count = max; count > 0; count -= 1) {
-    if (visible.endsWith(frontier.slice(frontier.length - count)))
-      return count
-  }
-  return 0
 }

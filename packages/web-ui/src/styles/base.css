@@ -954,13 +954,17 @@ html[data-theme="light"] .file-pill {
   }
 }
 
+/* A streamed step fading in (`ui/StreamedMarkdown.vue`): its duration and how
+   far in it starts come from the step, so a re-render carries the fade on. */
 .stream-ink {
-  animation: stream-ink 180ms ease-out;
+  animation-name: stream-ink;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
 }
 
 @keyframes stream-ink {
   from {
-    opacity: 0.22;
+    opacity: 0;
   }
   to {
     opacity: 1;

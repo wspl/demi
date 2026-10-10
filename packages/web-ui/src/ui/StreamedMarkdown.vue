@@ -8,11 +8,13 @@ import CodeBlockCopy from '@demicodes/web-ui/markdown/CodeBlockCopy.vue'
 import { openMessageLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import { useContentScrollers } from '@demicodes/web-ui/composables/useContentScrollers'
-import { useStreamReveal } from '@demicodes/web-ui/composables/useStreamReveal'
+import { useStreamReveal, type RevealStep } from '@demicodes/web-ui/composables/useStreamReveal'
 import {
   closeOpenInlineMarkdown,
   holdIncompleteMarkdown,
-  visibleFrontierLength
+  renderedLength,
+  startOfLast,
+  STREAM_PACE,
 } from '@demicodes/web-ui/ui/stream-reveal'
 
 // The root is the rendered message; each code block's Copy is teleported into it.
@@ -27,15 +29,15 @@ const props = withDefaults(defineProps<{
 
 const root = ref<HTMLElement>()
 useContentScrollers(root)
-const { shown, frontier } = useStreamReveal(() => props.content, () => props.streaming)
+/** The part of a text that renders as it will stay: no markdown left half open, no medium still undecided. */
+function settled(text: string): string {
+  return holdUndecidedMedium(holdIncompleteMarkdown(text).visible)
+}
+const { shown, steps } = useStreamReveal(() => props.content, () => props.streaming, settled)
 
-// The text is still arriving while the view catches up with it, which goes on
-// for a moment after the stream ends; what it cannot show yet waits until then.
-const visible = computed(() => {
-  if (!props.streaming && shown.value === props.content)
-    return shown.value
-  return holdUndecidedMedium(holdIncompleteMarkdown(shown.value).visible)
-})
+// While the text arrives the steps show only what has settled; the stream's
+// end shows the rest as it is.
+const visible = computed(() => (props.streaming ? settled(shown.value) : shown.value))
 
 const renderVersion = useMarkdownRenderVersion()
 const files = useMessageFiles()
@@ -48,48 +50,64 @@ const renderedMarkdown = computed(() => {
   return md.render(visible.value + closeOpenInlineMarkdown(visible.value), { files: files() })
 })
 
-/** The frontier spans of the current render, so clearing them is not a subtree search. */
-let inkSpans: HTMLSpanElement[] = []
-
-// Only the last few characters are the frontier: walk text nodes backwards from the end and
-// stop as soon as the budget is spent instead of collecting every text node of the block.
-function wrapFrontier(el: HTMLElement, charCount: number): void {
-  inkSpans = []
-  if (charCount <= 0)
+/**
+ * Gives the text of each step still fading in a span that fades it, from the
+ * render's end backwards. A render replaces the spans, so each starts its
+ * fade as far in as the step's own has run, and the fade goes on unbroken.
+ * A step's extent is its rendered length, counted from the end; code keeps
+ * its place in the count but no span, as a code block's text shows at once.
+ */
+function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly RevealStep[]): void {
+  const now = performance.now()
+  const marks = shownSteps
+    .filter((step) => now - step.at < STREAM_PACE.fadeMs && step.start < text.length)
+    .toSorted((a, b) => b.start - a.start)
+    .map((step) => ({ fromEnd: renderedLength(text.slice(step.start)), delay: step.at - now }))
+  if (marks.length === 0)
     return
-  const last = el.lastElementChild
-  if (last?.matches('.code-block, .table-scroll'))
-    return
-
-  let remaining = charCount
+  let counted = 0
+  let mark = 0
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
   for (
     let node = walker.lastChild() as Text | null;
-    node && remaining > 0;
+    node && mark < marks.length;
     node = walker.previousNode() as Text | null
   ) {
-    const text = node.textContent ?? ''
+    const content = node.textContent ?? ''
     // Whitespace between blocks (the newline marked emits after each paragraph) carries no
-    // ink; wrapping it makes an extra line that vanishes when the marks clear.
-    if (!text.trim() || node.parentElement?.closest('pre'))
+    // ink, and the count leaves out the newlines between blocks.
+    if (!content.trim())
       continue
-    const take = Math.min(remaining, text.length)
-    const rest = node.splitText(text.length - take)
-    const span = document.createElement('span')
-    span.className = 'stream-ink'
-    rest.parentNode?.insertBefore(span, rest)
-    span.appendChild(rest)
-    inkSpans.push(span)
-    remaining -= take
+    const code = node.parentElement?.closest('pre') !== null
+    // `end` and `left` walk the node's text from its end; line breaks take no part in the count.
+    let end = content.length
+    let left = content.length - (content.match(/\n/g)?.length ?? 0)
+    while (left > 0 && mark < marks.length) {
+      const { fromEnd, delay } = marks[mark]!
+      const take = Math.min(fromEnd - counted, left)
+      const start = startOfLast(content.slice(0, end), take)
+      if (take > 0 && !code) {
+        // A span of inline code shown whole in one step fades with its fill, never as an empty box first.
+        const parent = node.parentElement
+        const inked = start === 0 && end === content.length && parent?.tagName === 'CODE' && parent.childNodes.length === 1
+          ? parent
+          : document.createElement('span')
+        if (inked !== parent) {
+          const piece = node.splitText(start)
+          piece.replaceWith(inked)
+          inked.append(piece)
+        }
+        inked.classList.add('stream-ink')
+        inked.style.animationDuration = `${STREAM_PACE.fadeMs}ms`
+        inked.style.animationDelay = `${delay}ms`
+      }
+      end = start
+      left -= take
+      counted += take
+      if (counted >= fromEnd)
+        mark += 1
+    }
   }
-}
-
-function clearStreamMarks(): void {
-  for (const span of inkSpans) {
-    if (span.isConnected)
-      span.replaceWith(...span.childNodes)
-  }
-  inkSpans = []
 }
 
 /**
@@ -126,11 +144,7 @@ watch(
       return
     fitMessageMedia(el)
     findCodeBlocks(el)
-    if (!props.streaming) {
-      clearStreamMarks()
-      return
-    }
-    wrapFrontier(el, visibleFrontierLength(visible.value, frontier.value))
+    wrapSteps(el, visible.value, steps.value)
   },
   { flush: 'post' },
 )
