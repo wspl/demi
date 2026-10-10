@@ -57,7 +57,6 @@
   --text-conversation: var(--agent-text);
   --text-conversation--line-height: var(--agent-leading);
   --text-chrome: var(--agent-chrome);
-  --text-row: var(--agent-row);
   --spacing-hit-xs: 20px;
   --spacing-hit-sm: 24px;
   --spacing-hit: 28px;
@@ -266,9 +265,6 @@ html {
   --agent-text: 15px;
   --agent-leading: 1.6;
   --agent-chrome: 14px;
-  /* A transcript's rows, a step under its 15px prose, as ChatGPT's Thought
-     for 7s stands under its answer, so the answer reads first. */
-  --agent-row: 13px;
 }
 
 button,
