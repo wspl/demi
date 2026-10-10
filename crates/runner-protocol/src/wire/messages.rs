@@ -1647,7 +1647,7 @@ pub struct OutputLengths {
 
 /// A job a runner keeps through a connection loss, as its hello lists it
 /// (`runner.md` § Command lifetime): its end once it ended, each stream's
-/// length, and how many media it keeps. The exit of a job that ended follows
+/// length, how many media it keeps, and the tasks that outlive its script. The exit of a job that ended follows
 /// the hello's answer, as when the job ended.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1664,6 +1664,14 @@ pub struct KeptJob {
     pub ended: Option<KeptEnd>,
     pub output: OutputLengths,
     pub media: u32,
+    /// While it runs, the background tasks that keep it running once its
+    /// script has ended, as its last `job_outliving` named them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(
+        length(max = JOB_OUTLIVING_TASKS),
+        inner(length(min = 1, max = JOB_TASK_LINE_BYTES))
+    )]
+    pub outliving: Vec<String>,
 }
 
 /// How a kept job ended.
