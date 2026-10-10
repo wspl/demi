@@ -4,19 +4,17 @@ import { Brain } from '@lucide/vue'
 import ActivityMark from '@demicodes/web-ui/ui/ActivityMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { ActivityKind, HandoffBlock } from '../activity-slot'
-import { parseToolCallInput } from '../block-helpers'
+import { toolCallTitle } from '../block-helpers'
 import { useElapsedTime } from '../../composables/useElapsedTime'
 import { providerWaitLabel, thinkingFaceLabel } from '../thinking-label'
-import { useCommandReferences } from '../command-references'
-import { pendingCallTitle, standardToolTitle, toolRenderKind } from '../tool-rendering'
+import { pendingCallTitle } from '../tool-rendering'
 import FunctionalBlock from './FunctionalBlock.vue'
 import { toolRowIcon } from './tool-row-icon'
 
 /**
  * The transcript's tail row while it waits: a FunctionalBlock face with the
  * wait mark and why. A block handed to it rolls in with the icon and label its
- * own row (ThinkingBlock, ToolShellBlock, ToolShellControlBlock or
- * ToolGenericBlock) will have, so that row takes over without a change.
+ * own row (ThinkingBlock, ToolShellBlock or ToolGenericBlock) will have, so that row takes over without a change.
  */
 const props = defineProps<{
   kind: ActivityKind
@@ -25,7 +23,6 @@ const props = defineProps<{
   since: number
 }>()
 
-const references = useCommandReferences()
 const requestingElapsed = useElapsedTime(
   () => props.since,
   () => props.kind === 'requesting' && !props.incoming,
@@ -57,13 +54,7 @@ const face = computed<Face>(() => {
   if (block.type === 'pending_call') {
     return { icon: toolRowIcon(block.call.toolName), label: pendingCallTitle(block.call) }
   }
-  const kind = toolRenderKind(block.toolName)
-  const icon = toolRowIcon(block.toolName)
-  if (kind === 'generic') {
-    return { icon, label: block.toolName }
-  }
-  const label = standardToolTitle(kind, parseToolCallInput(block), (commandId) => references(commandId)?.title)
-  return { icon, label }
+  return { icon: toolRowIcon(block.toolName), label: toolCallTitle(block) }
 })
 
 const rollKey = computed(() => props.incoming?.id ?? props.kind)
