@@ -146,13 +146,23 @@ pub fn read(file: &File, bytes: &mut [u8]) -> std::io::Result<usize> {
     }
 }
 
+/// Writes `bytes`. A write to a pipe whose reader has gone ends the
+/// invocation with 141 and nothing on stderr, as SIGPIPE ends a program in a
+/// shell, except while it unwinds already, when the error is returned.
 pub fn write(file: &File, bytes: &[u8]) -> std::io::Result<usize> {
     use std::io::Write;
     check_io()?;
-    match control() {
+    let result = match control() {
         Some(control) => control.write(file, bytes),
         None => (&*file).write(bytes),
+    };
+    if let Err(error) = &result
+        && error.kind() == std::io::ErrorKind::BrokenPipe
+        && !std::thread::panicking()
+    {
+        exit(141);
     }
+    result
 }
 
 pub fn edit(path: &Path) -> Option<Box<dyn Send>> {
@@ -477,6 +487,7 @@ pub fn exit(code: i32) -> ! {
 
 /// Prints `arguments`; a failure ends the invocation, except while it
 /// unwinds already, when ending it again would abort the embedding process.
+/// A closed pipe has ended it already, in `write`.
 pub fn print(arguments: std::fmt::Arguments<'_>, stderr: bool) {
     use std::io::Write;
     let result = if stderr {
@@ -484,14 +495,8 @@ pub fn print(arguments: std::fmt::Arguments<'_>, stderr: bool) {
     } else {
         io::stdout().write_fmt(arguments)
     };
-    if let Err(error) = result
-        && !std::thread::panicking()
-    {
-        exit(if error.kind() == std::io::ErrorKind::BrokenPipe {
-            141
-        } else {
-            1
-        });
+    if result.is_err() && !std::thread::panicking() {
+        exit(1);
     }
 }
 

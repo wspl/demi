@@ -4,7 +4,7 @@
 // files that was distributed with this source code.
 
 use crate::params::{parse_params, Format, Params};
-use crate::utils::report_failure_to_read_input_file;
+use crate::utils::report_file_error;
 use crate::{context_diff, ed_diff, normal_diff, side_diff, unified_diff};
 type ArgsOs = std::vec::IntoIter<std::ffi::OsString>;
 use std::collections::BTreeMap;
@@ -13,7 +13,7 @@ use std::fs::Metadata;
 use std::iter::Peekable;
 use std::path::{Path, PathBuf};
 use uucore::context::fs;
-use uucore::context::io::{self, stdout, ErrorKind, Read, Write};
+use uucore::context::io::{self, ErrorKind, Read, Write};
 use uucore::context::process::exit;
 
 // Exit codes are documented at
@@ -88,7 +88,7 @@ fn compare(params: &Params, from: &Path, to: &Path, depth: usize) -> i32 {
         (from_side, to_side) => {
             for (path, side) in [(from, from_side), (to, to_side)] {
                 if let Err(error) = side {
-                    report_failure_to_read_input_file(&params.executable, &path.into(), &error);
+                    report_file_error(&params.executable, &path.into(), &error);
                 }
             }
             return 2;
@@ -168,7 +168,8 @@ fn is_same_file(from: &Path, to: &Path) -> bool {
 /// Compares the entries of two directories in the byte order of their
 /// names, as GNU's `diff_dirs` does in the C locale: an entry on one side
 /// only is reported as `Only in DIR: NAME`, unless `-N` compares it with an
-/// absent one, and the entries on both sides are compared one level deeper.
+/// absent one, the entries on both sides are compared one level deeper, and
+/// a name `-x` or `-X` matches is left out.
 fn compare_directories(params: &Params, from: &Path, to: &Path, depth: usize) -> i32 {
     // Each name with whether `from` and `to` have it.
     let mut entries: BTreeMap<OsString, (bool, bool)> = BTreeMap::new();
@@ -179,7 +180,7 @@ fn compare_directories(params: &Params, from: &Path, to: &Path, depth: usize) ->
             // An absent side, which only `-N` makes, has no entries.
             Err(error) if params.new_file && error.kind() == ErrorKind::NotFound => continue,
             Err(error) => {
-                report_failure_to_read_input_file(&params.executable, &dir.into(), &error);
+                report_file_error(&params.executable, &dir.into(), &error);
                 status = 2;
                 continue;
             }
@@ -187,7 +188,12 @@ fn compare_directories(params: &Params, from: &Path, to: &Path, depth: usize) ->
         for name in names {
             match name {
                 Ok(entry) => {
-                    let sides = entries.entry(entry.file_name()).or_default();
+                    let name = entry.file_name();
+                    let name_text = name.to_string_lossy();
+                    if params.excludes.iter().any(|pattern| pattern.matches(&name_text)) {
+                        continue;
+                    }
+                    let sides = entries.entry(name).or_default();
                     if in_from {
                         sides.0 = true;
                     } else {
@@ -195,7 +201,7 @@ fn compare_directories(params: &Params, from: &Path, to: &Path, depth: usize) ->
                     }
                 }
                 Err(error) => {
-                    report_failure_to_read_input_file(&params.executable, &dir.into(), &error);
+                    report_file_error(&params.executable, &dir.into(), &error);
                     status = 2;
                 }
             }
@@ -258,18 +264,18 @@ fn compare_files(
         }
     }
     let mut io_error = false;
-    let from_content = match read_file_contents(from_side, &params.from) {
+    let mut from_content = match read_file_contents(from_side, &params.from) {
         Ok(from_content) => from_content,
         Err(e) => {
-            report_failure_to_read_input_file(&params.executable, &params.from, &e);
+            report_file_error(&params.executable, &params.from, &e);
             io_error = true;
             vec![]
         }
     };
-    let to_content = match read_file_contents(to_side, &params.to) {
+    let mut to_content = match read_file_contents(to_side, &params.to) {
         Ok(to_content) => to_content,
         Err(e) => {
-            report_failure_to_read_input_file(&params.executable, &params.to, &e);
+            report_file_error(&params.executable, &params.to, &e);
             io_error = true;
             vec![]
         }
@@ -280,6 +286,32 @@ fn compare_files(
     if from_content == to_content {
         maybe_report_identical_files();
         return 0;
+    }
+    let buffer = [from_side, to_side].into_iter().filter_map(block_size).max().unwrap_or(4096);
+    let is_binary = |content: &[u8]| content[..content.len().min(buffer)].contains(&0);
+    if !params.text && (is_binary(&from_content) || is_binary(&to_content)) {
+        uucore::context_println!(
+            "{} {} and {} differ",
+            if params.brief { "Files" } else { "Binary files" },
+            params.from.to_string_lossy(),
+            params.to.to_string_lossy()
+        );
+        return 1;
+    }
+    let ignores_space = params.ignore_space_change || params.ignore_all_space;
+    if ignores_space || params.ignore_case || params.ignore_blank_lines {
+        // -b and -w ignore a missing newline at the end, as GNU's do.
+        for content in [&mut from_content, &mut to_content] {
+            if ignores_space && content.last().is_some_and(|&byte| byte != b'\n') {
+                content.push(b'\n');
+            }
+        }
+        // The files differ only in what the options ignore.
+        let brief = Params { brief: true, ..params.clone() };
+        if normal_diff::diff(&from_content, &to_content, &brief).is_empty() {
+            maybe_report_identical_files();
+            return 0;
+        }
     }
     if params.brief {
         uucore::context_println!(
@@ -312,10 +344,26 @@ fn compare_files(
             exit(2);
         }),
         Format::SideBySide => {
-            let mut output = stdout().lock();
-            side_diff::diff(&from_content, &to_content, &mut output, &params)
+            let mut output = Vec::new();
+            side_diff::diff(&from_content, &to_content, &mut output, &params);
+            output
         }
     };
-    io::stdout().write_all(&result).unwrap();
+    // A closed pipe has ended the run already, in the write.
+    if let Err(error) = io::stdout().write_all(&result) {
+        report_file_error(&params.executable, &"standard output".into(), &error);
+        return 2;
+    }
     1
+}
+
+/// The block size GNU diff sizes its first read by, for its binary test.
+fn block_size(side: &Side) -> Option<usize> {
+    #[cfg(unix)]
+    if let Side::Existing(metadata) = side {
+        use std::os::unix::fs::MetadataExt;
+        return Some(metadata.blksize() as usize);
+    }
+    let _ = side;
+    None
 }

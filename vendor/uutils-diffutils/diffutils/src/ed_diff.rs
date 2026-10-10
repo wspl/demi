@@ -6,7 +6,7 @@
 use uucore::context::io::Write;
 
 use crate::params::Params;
-use crate::utils::do_write_line;
+use crate::utils::{do_write_line, is_blank_change};
 
 #[derive(Debug, PartialEq)]
 struct Mismatch {
@@ -45,7 +45,12 @@ impl Mismatch {
 }
 
 // Produces a diff between the expected output and actual output.
-fn make_diff(expected: &[u8], actual: &[u8], stop_early: bool) -> Result<Vec<Mismatch>, DiffError> {
+fn make_diff(
+    expected: &[u8],
+    actual: &[u8],
+    stop_early: bool,
+    params: &Params,
+) -> Result<Vec<Mismatch>, DiffError> {
     let mut line_number_expected = 1;
     let mut line_number_actual = 1;
     let mut results = Vec::new();
@@ -71,7 +76,7 @@ fn make_diff(expected: &[u8], actual: &[u8], stop_early: bool) -> Result<Vec<Mis
         return Err(DiffError::MissingNL);
     }
 
-    for result in diff::slice(&expected_lines, &actual_lines) {
+    for result in crate::utils::diff_lines(&expected_lines, &actual_lines, params) {
         match result {
             diff::Result::Left(str) => {
                 if !mismatch.actual.is_empty() {
@@ -112,37 +117,34 @@ fn make_diff(expected: &[u8], actual: &[u8], stop_early: bool) -> Result<Vec<Mis
 
 pub fn diff(expected: &[u8], actual: &[u8], params: &Params) -> Result<Vec<u8>, DiffError> {
     let mut output = Vec::new();
-    let diff_results = make_diff(expected, actual, params.brief)?;
+    let mut diff_results =
+        make_diff(expected, actual, params.brief && !params.ignore_blank_lines, params)?;
+    if params.ignore_blank_lines {
+        diff_results.retain(|result| {
+            !is_blank_change(result.expected.iter().chain(&result.actual).map(Vec::as_slice))
+        });
+    }
     if params.brief && !diff_results.is_empty() {
         write!(&mut output, "\0").unwrap();
         return Ok(output);
     }
-    let mut lines_offset = 0;
-    for result in diff_results {
-        let line_number_expected: isize = result.line_number_expected as isize + lines_offset;
-        let _line_number_actual: isize = result.line_number_actual as isize + lines_offset;
-        let expected_count: isize = result.expected.len() as isize;
-        let actual_count: isize = result.actual.len() as isize;
+    // GNU writes the changes last to first, so each one's line numbers are
+    // still the original file's when ed applies it, and a range of one line
+    // as that line's number.
+    for result in diff_results.iter().rev() {
+        let line_number_expected = result.line_number_expected;
+        let expected_count = result.expected.len();
+        let actual_count = result.actual.len();
+        let range = match expected_count {
+            1 => line_number_expected.to_string(),
+            _ => format!("{},{}", line_number_expected, line_number_expected + expected_count - 1),
+        };
         match (expected_count, actual_count) {
             (0, 0) => unreachable!(),
             (0, _) => writeln!(&mut output, "{}a", line_number_expected - 1).unwrap(),
-            (_, 0) => writeln!(
-                &mut output,
-                "{},{}d",
-                line_number_expected,
-                expected_count + line_number_expected - 1
-            )
-            .unwrap(),
-            (1, _) => writeln!(&mut output, "{line_number_expected}c").unwrap(),
-            _ => writeln!(
-                &mut output,
-                "{},{}c",
-                line_number_expected,
-                expected_count + line_number_expected - 1
-            )
-            .unwrap(),
+            (_, 0) => writeln!(&mut output, "{range}d").unwrap(),
+            _ => writeln!(&mut output, "{range}c").unwrap(),
         }
-        lines_offset += actual_count - expected_count;
         if actual_count != 0 {
             for actual in &result.actual {
                 if actual == b"." {

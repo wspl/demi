@@ -171,4 +171,5 @@ check-cfg = [
 maintainer = "demi-runner"
 patches = [
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+    "The walk joins the printing thread before it reports a failed send, and an exit the printer requested, as a closed pipe makes, ends the run with its status; before, the walk reported sending on a closed channel with status 1",
 ]
