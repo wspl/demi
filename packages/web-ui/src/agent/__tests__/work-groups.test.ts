@@ -97,3 +97,14 @@ describe('what a group says it did', () => {
     expect(workRunning(steps(plan))).toBe('Thinking')
   })
 })
+
+// A running turn's lone call is its own row, which opens to the call; the
+// second step makes the run a group, whose row then shows its newest step.
+test('a running lone call is its own row until a second step joins it', () => {
+  expect(rows(groupWork([text('t'), call('c1')], true))).toEqual(['t', 'c1'])
+  expect(rows(groupWork([text('t'), writing('c1')], true))).toEqual(['t', 'pending-call:c1-use'])
+  expect(rows(groupWork([text('t'), call('c1'), thinking('k', 'Next')], true))).toEqual(['t', ['c1', 'k']])
+  expect(rows(groupWork([text('t'), call('c1'), writing('c2')], true))).toEqual(['t', ['c1', 'pending-call:c2-use']])
+  // A lone thinking stays a group, so the first call rolls over it in place.
+  expect(rows(groupWork([text('t'), thinking('k', 'Plan')], true))).toEqual(['t', ['k']])
+})

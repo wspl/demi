@@ -42,14 +42,15 @@ function isEmptyThinking(block: MessageListBlock): boolean {
 }
 
 /**
- * The list's rows with the work grouped. A thinking block without text
- * shows only while it is the newest block of a running turn, as what the
- * agent is doing; once anything follows it or the turn ends, it has nothing
- * to show and goes. The steps at the end of a running turn are
- * always one group, so each new step rolls over the one before in one row.
- * Once they ended, they stay one group when they hold a call and another
- * step, and a lone thinking stays the group it was; a lone call is its own
- * row.
+ * The list's rows with the work grouped (`runtime.md` § Work groups). A
+ * thinking block without text shows only while it is the newest block of a
+ * running turn, as what the agent is doing; once anything follows it or the
+ * turn ends, it has nothing to show and goes. A lone call is its own row,
+ * running or ended, so opening it shows the call; a lone thinking is a
+ * group, so the first call rolls over it in place. From two steps on, the
+ * steps at the end of a running turn are one group, each new step showing
+ * over the one before in one row; once they ended, they stay one group when
+ * they hold a call.
  */
 export function groupWork(blocks: readonly MessageListBlock[], running: boolean): MessageListBlock[] {
   const rows: MessageListBlock[] = []
@@ -69,9 +70,9 @@ export function groupWork(blocks: readonly MessageListBlock[], running: boolean)
     const steps = blocks.slice(index, end).filter((step, at, run): step is WorkStep =>
       isStep(step) && !(isEmptyThinking(step) && !(live && at === run.length - 1)))
     const calls = steps.filter((step) => step.type !== 'thinking').length
-    const grouped = live
-      ? steps.length > 0
-      : (calls >= 1 && steps.length >= 2) || (steps.length === 1 && steps[0]!.type === 'thinking')
+    const grouped = steps.length === 1
+      ? steps[0]!.type === 'thinking'
+      : steps.length >= 2 && (live || calls >= 1)
     if (grouped) {
       rows.push({
         type: 'work_group',
