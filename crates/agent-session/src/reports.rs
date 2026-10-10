@@ -172,9 +172,13 @@ async fn report(session: &Weak<SessionShared>, command: &CommandId) {
     let Some((title, interval_ms)) = s.read(|core| core.watched.get(command)) else {
         return;
     };
+    let (model, limits) = s.read(|core| (core.model.clone(), core.request_limits()));
     let runtime = s.runtime.clone();
     drop(s);
-    let Some(report) = runtime.report(command, &title, interval_ms).await else {
+    let Some(report) = runtime
+        .report(command, &title, interval_ms, &model, limits)
+        .await
+    else {
         return;
     };
     if let Some(s) = session.upgrade() {

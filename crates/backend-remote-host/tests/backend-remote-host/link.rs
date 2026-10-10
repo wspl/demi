@@ -19,7 +19,7 @@ use demi_command_protocol::{
     PackageDescriptor, ServiceSequence, host_target,
 };
 use demi_host_interface::{
-    Call, CommandMedium, CommandSet, CommandState, GroupBuilder, HostError, HostErrorKind,
+    Call, CommandSet, CommandState, GroupBuilder, HostError, HostErrorKind,
     HostProcess, JobCaller, LeafBuilder, OutputRecord, PageState, Process,
     ProcessEnd, RpcError, RpcInvocation, RpcPort, Seen, ShellEnvironment, SpawnEnv,
     SpawnRequest, Streams, TypedRpc, WholeOutput,
@@ -57,6 +57,7 @@ fn job_start(script: &str) -> JobStart {
         cwd: "/work".into(),
         env: BTreeMap::new(),
         context: test_command_context(),
+        viewable: None,
         caller: Some(caller()),
         commands: None,
         stdin: None,
@@ -1306,7 +1307,6 @@ impl CommandKeeper for Publisher {
         _: &'a CommandId,
         _: demi_shared_types::CommandEnd,
         _: &'a WholeOutput,
-        _: &'a [CommandMedium],
     ) -> LocalBoxFuture<'a, ()> {
         Box::pin(async {})
     }

@@ -25,6 +25,12 @@ demi-shared-types = { path = "../shared-types" }
 demi-command-package-file-protocol = { path = "../command-package-file-protocol" }
 demi-shared-gates = { path = "../shared-gates" }
 demi-shared-cli = { path = "../shared-cli" }
+# Reads a viewed medium's size from its header (`runtime.md` § What `demi
+# file view` shows): only the codecs of the types a model reads.
+image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+# Reads a video's size and length from its container's header: MP4 and
+# QuickTime, and WebM, in one parser.
+nom-exif = "3.8"
 regex = "1"
 shlex = "2"
 similar = "2"

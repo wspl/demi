@@ -4,7 +4,7 @@
 //! the plugins' values and Host directories; in each of the user's
 //! conversation databases, its blocks with their media and edit copies, the
 //! messages its checkpoints keep queued, the attachments the agent uploaded
-//! and the records of its commands' outputs with their media. An upload
+//! and the records of its commands' outputs. An upload
 //! record names its blob too, but only a recent one keeps it: an upload
 //! goes with its blob.
 
@@ -12,7 +12,6 @@ use std::collections::BTreeSet;
 
 use demi_agent_store::CheckpointState;
 use demi_agent_store::media::{block_blobs, content_references};
-use demi_host_interface::MediumKept;
 use demi_shared_types::{BlobRef, Block, Timestamp};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use rusqlite::{Connection, params};
@@ -111,7 +110,7 @@ impl ControlService {
 /// Every blob a conversation's database names, read on `connection` in the
 /// read transaction it is given: each block's media and edit copies, every
 /// row included, the media of the messages its checkpoints keep queued, the
-/// agent's uploads, and each stored command output with its media.
+/// agent's uploads, and each stored command output.
 pub fn conversation_blobs(connection: &Connection) -> Result<BTreeSet<BlobRef>, StorageError> {
     let mut blobs = BTreeSet::new();
     let mut blocks = connection.prepare("SELECT block FROM blocks")?;
@@ -134,12 +133,8 @@ pub fn conversation_blobs(connection: &Connection) -> Result<BTreeSet<BlobRef>, 
             .map(|attachment| attachment.blob),
     );
     for output in command_outputs::all(connection)? {
-        if let OutputRow::Stored { blob, media, .. } = output.output {
+        if let OutputRow::Stored { blob, .. } = output.output {
             blobs.insert(blob);
-            blobs.extend(media.into_iter().filter_map(|medium| match medium.kept {
-                MediumKept::Stored { blob } => Some(blob),
-                MediumKept::Missing { .. } => None,
-            }));
         }
     }
     Ok(blobs)

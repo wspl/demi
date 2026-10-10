@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use super::edits::EditContext;
-use super::media::StdoutTarget;
 
 /// The most language tags a [`CommandLocale`] carries.
 pub const COMMAND_LOCALE_LANGUAGES: usize = 16;
@@ -96,7 +95,7 @@ pub struct Invocation {
     pub operation: String,
     #[garde(length(min = 1))]
     pub invocation_id: String,
-    /// The command's path, such as `demi file read`, which a handler that
+    /// The command's path, such as `demi file edit`, which a handler that
     /// takes several values puts before each failure it reports
     /// (`commands.md` § Handle an rpc call).
     #[garde(length(min = 1))]
@@ -124,16 +123,39 @@ pub struct Invocation {
     )]
     #[garde(skip)]
     pub json: Option<bool>,
-    /// Where the calling process's stdout goes, for an invocation a job's
-    /// command makes; none for a user stream or a package call, which
-    /// cannot return media (`commands.md` § Return media).
+    /// Whether the calling process's stdin is the job's own input, which
+    /// `demi shell input` feeds and which ends only with the job, for an
+    /// invocation a job's command makes (`runner.md` § A job's own input).
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
     #[garde(skip)]
-    pub stdout: Option<StdoutTarget>,
+    pub live_input: Option<bool>,
+    /// The media types the job may show the model, for an invocation a
+    /// job's command makes; none for a user stream or a package call, which
+    /// cannot return media (`commands.md` § Return media).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[garde(dive)]
+    pub viewable: Option<Viewable>,
+}
+
+/// The media types a job may show the model (`runtime.md` § What `demi file
+/// view` shows): those the node's model reads in a tool result, as the
+/// backend gave them when the job started, or null when which types the
+/// model reads is unknown; with the model's id, which a refusal names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Viewable {
+    #[garde(length(min = 1))]
+    pub model: String,
+    #[garde(skip)]
+    pub media_types: Option<Vec<String>>,
 }
 
 /// Raw CLI metadata from the local command client (`commands.md` § External

@@ -3,14 +3,14 @@
 //! `command-package-file-protocol` types (`commands.md` § File commands).
 
 use demi_command_declarations::NativeOperation;
-use demi_command_package_file_protocol::{EditArgs, PACKAGE, PatchArgs, ReadArgs};
+use demi_command_package_file_protocol::{EditArgs, PACKAGE, PatchArgs, ViewArgs};
 use demi_host_interface::{GroupBuilder, LeafBuilder};
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index): when to use it, and the shape of a call, since a
 /// model takes up a tool by the example it has seen. Its example starts at
 /// the margin, as `demi file edit`'s help says why.
-const ENTRY: &str = "Use it whenever you change the task's files, so each change is exact and the user sees it; `read` shows you an image or video. One `edit` creates and changes several files, then you build:
+const ENTRY: &str = "Use it whenever you change the task's files, so each change is exact and the user sees it, and whenever you want to see an image, a video or a PDF: `view` shows you one from a file or a pipe, as in `demi browser screenshot t1 | demi file view`. Read text with cat, sed -n or rg. One `edit` creates and changes several files, then you build:
 demi file edit <<'EOF' && cargo check
 src/stream.rs
 <<<<<<< SEARCH
@@ -62,22 +62,22 @@ EOF";
 pub(crate) fn file_group() -> GroupBuilder {
     GroupBuilder::new(
         "file",
-        "Read, edit, and patch workspace files (text, images, and video).",
+        "Edit and patch workspace files, and view images, videos and PDFs.",
     )
     .index_entry(ENTRY)
     .leaf(
         leaf(
-            "read",
-            "Read files, in order. Text files print as text; an image or video file is shown to you as viewable media, so demi file read a.png b.png shows both. Into a file or a pipe it writes the raw file bytes, so it also pipes cleanly into other commands (e.g. ffmpeg).",
+            "view",
+            "Show yourself images, videos and PDFs, in order: each path, or stdin for - or no path, so demi file view a.png b.png shows both and demi browser screenshot t1 | demi file view shows the screenshot. Each one is attached to the result that reports the command's end, whatever its stdout is. Text is read with cat, sed -n or rg, not with this.",
         )
-        .input::<ReadArgs>()
+        .input::<ViewArgs>()
         .positionals(["path"])
         .success_output(
-            "writes the raw file bytes to stdout; an image or video file of at most 16 MiB is returned as a medium",
+            "nothing on stdout; a line for each medium in the command's output, such as [image 1: image/png, 1280 × 720 px, 412000 bytes], and the medium attached to the result",
         )
         .media()
         .failure_output(
-            "a line per file that cannot be read, `demi file read: <path>: <reason>`, on stderr; the other files are still read, and the command exits 1. A binary file that is no image or video, read into your output, fails with how to copy it",
+            "a line per path that cannot be shown, `demi file view: <path>: <reason>`, on stderr, such as a text file, bytes that are no image, video or PDF, a type this conversation's model does not read, or more than 16 MiB; the other paths are still shown, and the command exits 1",
         ),
     )
     .leaf(

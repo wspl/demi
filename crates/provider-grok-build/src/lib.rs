@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RequestLimits, RuntimeEnv, RuntimeError,
+    RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError,
     credentials::{Accounts, CredentialPool, SubscriptionAccounts},
     endpoint_url,
     quota::{ProviderQuota, QuotaSnapshotStore},
@@ -201,7 +201,13 @@ impl ProviderRuntime for GrokRuntime {
     }
 
     /// The Grok Build proxy documents none.
+    /// The proxy takes no media in a tool message and documents no
+    /// follow-up, so a tool result carries none (`providers.md` § Media in
+    /// tool results).
     fn request_limits(&self, _model: &Model) -> RequestLimits {
-        RequestLimits::default()
+        RequestLimits {
+            tool_results: ToolResultKinds::NONE,
+            ..RequestLimits::default()
+        }
     }
 }

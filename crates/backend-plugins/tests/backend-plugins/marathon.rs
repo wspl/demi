@@ -108,7 +108,7 @@ async fn a_coding_workflow_edits_files_and_every_command_starts_in_the_workspace
             "demi agent\nRuns helper agents",
             "Operations: spawn, send, abort, resume, list, show, profiles\n",
             "demi file\nUse it whenever you change the task's files",
-            "Operations: read, edit, patch\n",
+            "Operations: view, edit, patch\n",
             "Details: demi file --help; one operation: demi file <operation> --help",
         ] {
             assert!(prompt.contains(taught), "{taught}");

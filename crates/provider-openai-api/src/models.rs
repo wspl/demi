@@ -56,9 +56,15 @@ fn model(
         context_window: Some(context_window),
         output_limit: None,
         supports_tools: Some(true),
-        supports_attachments: Some(attachments),
-        supports_video: None,
-        accepted_extensions: None,
+        accepted_extensions: Some(demi_shared_types::modality_extensions(
+            if attachments {
+                &["text", "image", "pdf"][..]
+            } else {
+                &["text"][..]
+            }
+            .iter()
+            .copied(),
+        )),
         supports_reasoning: Some(true),
         supported_thinking_efforts: Some(efforts.iter().map(|effort| (*effort).into()).collect()),
         can_disable_thinking: None,

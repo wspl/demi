@@ -5,13 +5,16 @@ import { SquareTerminal } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import FunctionalBlock from './FunctionalBlock.vue'
 import CommandEndTag from './CommandEndTag.vue'
+import ToolMedia from './ToolMedia.vue'
 import { reportMark, reportSentence, useCommandOpener } from '../command-reports'
 
 /**
  * The reports of a `wakeup` block, one row each where the block lies, as an
  * agent message shows as its receipt row (`runtime.md` § Command reports): a
  * reply the agent writes after a report never appears without its cause. A
- * click on a row opens its command's terminal tab.
+ * click on a row opens its command's terminal tab. The media an end report
+ * carries show under its row, as a call's do (`file-previews.md` § Media a
+ * tool returned).
  */
 const props = defineProps<{ reports: readonly CommandReport[] }>()
 
@@ -21,21 +24,25 @@ const rows = computed(() => props.reports.map((report, index) => ({
   sentence: reportSentence(report),
   mark: reportMark(report),
   action: open(report.commandId),
+  media: report.media ?? [],
+  title: report.title,
 })))
 </script>
 
 <template>
   <div class="px-[var(--agent-pad-x,2rem)]">
-    <FunctionalBlock
+    <template
       v-for="row in rows"
       :key="row.key"
-      :action="row.action"
     >
-      <template #icon>
-        <SquareTerminal :size="ICON_PX.in28" />
-      </template>
-      <span class="min-w-0 truncate">{{ row.sentence }}</span>
-      <CommandEndTag v-if="row.mark" :mark="row.mark" />
-    </FunctionalBlock>
+      <FunctionalBlock :action="row.action">
+        <template #icon>
+          <SquareTerminal :size="ICON_PX.in28" />
+        </template>
+        <span class="min-w-0 truncate">{{ row.sentence }}</span>
+        <CommandEndTag v-if="row.mark" :mark="row.mark" />
+      </FunctionalBlock>
+      <ToolMedia :output="row.media" :title="row.title" />
+    </template>
   </div>
 </template>

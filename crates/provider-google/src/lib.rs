@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RequestLimits, RuntimeEnv, RuntimeError, Secret, read_http_failure,
+    RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, read_http_failure,
 };
 use demi_shared_types::{
     AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
@@ -155,6 +155,9 @@ impl ProviderRuntime for GoogleRuntime {
         RequestLimits {
             body_bytes: Some(20_000_000),
             images: Some(3_600),
+            // `inlineData` parts beside the `functionResponse` (`providers.md`
+            // § Media in tool results).
+            tool_results: ToolResultKinds::ALL,
         }
     }
 }

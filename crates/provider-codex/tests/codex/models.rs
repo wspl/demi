@@ -78,12 +78,14 @@ async fn the_catalog_lists_the_pickers_models_by_priority_with_their_efforts_and
         ("GPT-5.5", Some(272_000), None)
     );
     assert_eq!(
-        (
-            gpt.supports_tools,
-            gpt.supports_attachments,
-            gpt.supports_reasoning
-        ),
-        (Some(true), Some(true), Some(true))
+        (gpt.supports_tools, gpt.supports_reasoning),
+        (Some(true), Some(true))
+    );
+    // The backend documents no file part: a model reads images, and no PDF
+    // (`models.md` § Accepted attachment types).
+    assert_eq!(
+        gpt.accepted_extensions.as_deref(),
+        Some(&demi_shared_types::IMAGE_FILE_EXTENSIONS[..])
     );
     assert_eq!(
         gpt.supported_thinking_efforts.as_deref(),
@@ -99,13 +101,10 @@ async fn the_catalog_lists_the_pickers_models_by_priority_with_their_efforts_and
     assert_eq!(gpt.service_tiers, [fast]);
     let mini = &list.models[2];
     assert_eq!(
-        (
-            mini.supports_tools,
-            mini.supports_attachments,
-            mini.supports_reasoning
-        ),
-        (None, Some(false), Some(false))
+        (mini.supports_tools, mini.supports_reasoning),
+        (None, Some(false))
     );
+    assert_eq!(mini.accepted_extensions.as_deref(), Some(&[][..]));
     // A tool field present even as null names a tool.
     assert_eq!(
         (

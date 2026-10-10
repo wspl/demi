@@ -31,7 +31,7 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use crate::{
     InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, ProviderFailure,
-    ProviderRun, ProviderRuntime, RequestLimits, ToolCall, UserPart,
+    ProviderRun, ProviderRuntime, RequestLimits, ToolCall, ToolResultKinds, UserPart,
 };
 
 /// Builders of the events a scripted run yields.
@@ -168,13 +168,17 @@ impl ScriptedRuntime {
                 turns: turns.into_iter().collect(),
                 requests: Vec::new(),
                 closes: 0,
-                limits: RequestLimits::default(),
+                limits: RequestLimits {
+                    tool_results: ToolResultKinds::ALL,
+                    ..RequestLimits::default()
+                },
             })),
         }
     }
 
     /// The runtime of a vendor that takes requests within `limits`, for
-    /// every model; by default it refuses nothing for its size.
+    /// every model; by default it refuses nothing for its size and carries
+    /// every kind of medium in a tool result.
     #[must_use]
     pub fn with_limits(self, limits: RequestLimits) -> Self {
         self.script.borrow_mut().limits = limits;

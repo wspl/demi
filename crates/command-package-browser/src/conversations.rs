@@ -31,8 +31,6 @@ use demi_command_package_browser_chrome::tabs::{
 use demi_command_package_browser_protocol::OperationError;
 use demi_command_protocol::{
     ColorScheme, CommandError, CommandLocale, Completion, ConversationRequest, ConversationStatus,
-    MAX_MEDIUM_BYTES,
-    StdoutTarget,
 };
 use demi_command_sdk::{ConversationContext, InvocationContext, Numbers, ServiceError};
 
@@ -50,10 +48,10 @@ const PROGRESS_LINES: usize = 16;
 
 enum CommandOutput {
     Json(serde_json::Value),
-    /// A screenshot returned as a medium (`browser.md` § Images and large
-    /// outputs), with the text that tells what it captured when the
-    /// command's stdout is the job's output.
-    Medium { text: Option<String>, png: Vec<u8> },
+    /// A screenshot without `--output` (`browser.md` § Images and large
+    /// outputs): its PNG's bytes for stdout, and what it captured for
+    /// stderr.
+    Image { captured: String, png: Vec<u8> },
 }
 
 type Readiness = Option<std::result::Result<Started, EnvironmentFailure>>;
@@ -835,9 +833,6 @@ impl Conversations {
         operation: std::result::Result<BrowserOperation, OperationError>,
     ) -> std::result::Result<Completion, ServiceError> {
         let json = context.request.json == Some(true);
-        // Only a job's command returns media; another call's PNG is its
-        // stdout.
-        let returns_media = context.request.stdout.is_some();
         let result = async {
             let command =
                 operation.map_err(|error| BrowserError::Configuration(error.to_string()))?;
@@ -870,31 +865,16 @@ impl Conversations {
             }?;
             match produced {
                 CommandOutput::Json(value) => Ok((output::render(&command, value, json)?, None)),
-                // A medium is at most 16 MiB (`runtime.md` § Bounds and cut
-                // output); a file has no such bound.
-                CommandOutput::Medium { png, .. }
-                    if returns_media && png.len() as u64 > MAX_MEDIUM_BYTES =>
-                {
-                    Err(BrowserError::ScreenshotTooLarge(png.len()))
-                }
-                CommandOutput::Medium { text, png } => {
-                    Ok((text.unwrap_or_default().into_bytes(), Some(png)))
-                }
+                CommandOutput::Image { captured, png } => Ok((png, Some(captured))),
             }
         }
         .await;
         match result {
-            Ok((text, medium)) => {
-                context.output.stdout(Bytes::from(text)).await?;
-                match medium {
-                    Some(png) if returns_media => {
-                        context.output.medium(Bytes::from(png)).await?;
-                    }
-                    // A call that is no job's command returns no media: the
-                    // PNG is its stdout.
-                    Some(png) => context.output.stdout(Bytes::from(png)).await?,
-                    None => {}
+            Ok((stdout, captured)) => {
+                if let Some(captured) = captured {
+                    context.output.stderr(Bytes::from(captured)).await?;
                 }
+                context.output.stdout(Bytes::from(stdout)).await?;
                 Ok(Completion {
                     exit_code: 0,
                     error: None,
@@ -1260,15 +1240,6 @@ impl Conversations {
                 command.timeout(),
             )
             .await?;
-            // Only a screenshot that goes to the job's output, or to a file,
-            // tells what it captured.
-            let told = input.output.is_some() || context.request.stdout == Some(StdoutTarget::Job);
-            if !told {
-                return Ok(CommandOutput::Medium {
-                    text: None,
-                    png: bytes,
-                });
-            }
             let decoded = png::Decoder::new(std::io::Cursor::new(&bytes))
                 .read_info()
                 .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
@@ -1282,14 +1253,14 @@ impl Conversations {
             )
             .await?;
             let Some(output) = &input.output else {
-                let text = demi_command_package_browser_chrome::driver::text::captured(
+                let captured = demi_command_package_browser_chrome::driver::text::captured(
                     tab.id().as_str(),
                     width,
                     height,
                     &metadata.viewport,
                 );
-                return Ok(CommandOutput::Medium {
-                    text: Some(text),
+                return Ok(CommandOutput::Image {
+                    captured,
                     png: bytes,
                 });
             };

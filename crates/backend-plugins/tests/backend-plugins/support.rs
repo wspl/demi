@@ -97,6 +97,9 @@ pub struct Fixture {
     pub workspace: String,
     /// The Host the conversation's nodes reach now.
     host: Rc<RefCell<Rc<RemoteHost>>>,
+    /// The model's provider, whose selection a test may choose before the
+    /// conversation opens.
+    pub providers: Rc<ScriptedProviders>,
     /// Holds the plugins' control database.
     _data: TempDir,
 }
@@ -142,7 +145,7 @@ impl Fixture {
             guide: Rc::from("How Demi works."),
             hosts: Rc::new(DeviceHost(host.clone())),
             context: Rc::new([]),
-            providers,
+            providers: providers.clone(),
             shells: Rc::new(RunnerShells(RemoteShellEnvironmentFactory::new(catalog))),
             stores: Rc::new(move |_: &NodeId| store.clone() as Rc<dyn AgentTreeStore>),
             clock: Arc::new(TokioClock::new("2026-09-24T12:00:00Z".parse().unwrap())),
@@ -156,6 +159,7 @@ impl Fixture {
             server,
             workspace,
             host,
+            providers,
             _data: data,
         }
     }
@@ -412,7 +416,8 @@ pub fn scripts(messages: &[&[&str]]) -> (Vec<Turn>, Rc<RefCell<Vec<String>>>) {
     (turns, results)
 }
 
-/// The text of the newest tool result a request carries.
+/// The text of the newest tool result a request carries, each medium as a
+/// line that names it: `<image image/png>`, `<document document-1.pdf>`.
 pub fn last_result(request: &InferenceRequest) -> String {
     let output = request
         .items
@@ -425,9 +430,11 @@ pub fn last_result(request: &InferenceRequest) -> String {
         .expect("the request carries a tool result");
     output
         .iter()
-        .filter_map(|part| match part {
-            ResultPart::Text(text) => Some(text.as_str()),
-            ResultPart::Image(_) | ResultPart::Video(_) => None,
+        .map(|part| match part {
+            ResultPart::Text(text) => text.clone(),
+            ResultPart::Image(bytes) => format!("<image {}>", bytes.media_type),
+            ResultPart::Video(bytes) => format!("<video {}>", bytes.media_type),
+            ResultPart::Document { file_name, .. } => format!("<document {file_name}>"),
         })
         .collect::<Vec<_>>()
         .join("\n")

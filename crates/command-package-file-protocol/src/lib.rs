@@ -28,14 +28,20 @@ pub enum OperationError {
     Edit(#[from] EditArgsError),
 }
 
-/// `file.read`: writes each file's bytes to stdout, in order.
+/// `file.view`: shows the model each file, or stdin, as a medium, in order
+/// (`runtime.md` § What `demi file view` shows).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
-pub struct ReadArgs {
-    /// Files to read, in order
-    #[schemars(length(min = 1))]
-    #[garde(length(min = 1))]
-    pub path: Vec<String>,
+pub struct ViewArgs {
+    /// Images, videos or PDFs to show, in order; - or none reads stdin
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "Vec<String>")]
+    #[garde(skip)]
+    pub path: Option<Vec<String>>,
 }
 
 /// `file.edit` as the command line gives it: SEARCH/REPLACE blocks on
@@ -424,7 +430,7 @@ macro_rules! operations {
 }
 
 operations! {
-    "file.read" => Read(ReadArgs) by decode,
+    "file.view" => View(ViewArgs) by decode,
     "file.edit" => Edit(Edit) by decode_edit,
     "file.patch" => Patch(PatchArgs) by decode,
 }

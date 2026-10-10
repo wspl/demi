@@ -102,7 +102,8 @@ async fn conversation_browser_commands_share_state_and_retire() {
                     languages: vec!["en-US".into()],
                 },
             },
-            stdout: None,
+            live_input: None,
+            viewable: None,
         };
         let (completion, stdout, stderr) =
             exchange(&client, &request("browser.tabs", json!({})), false).await;
@@ -410,7 +411,8 @@ fn invocation(
                 languages: vec!["en-US".into()],
             },
         },
-        stdout: None,
+        live_input: None,
+        viewable: None,
     }
 }
 

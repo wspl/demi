@@ -61,7 +61,12 @@ fn each_model_medium_names_its_kind_and_the_extension_a_catalog_accepts_it_by() 
         (png.kind, png.extension),
         (ModelMediaKind::Image, FileExtension::Png)
     );
-    assert!(model_media_type_for("application/pdf").is_none());
+    let pdf = model_media_type_for("application/pdf").unwrap();
+    assert_eq!(
+        (pdf.kind, pdf.extension),
+        (ModelMediaKind::Document, FileExtension::Pdf)
+    );
+    assert!(model_media_type_for("text/plain").is_none());
 }
 
 fn model(accepted: Option<&[FileExtension]>) -> Model {
