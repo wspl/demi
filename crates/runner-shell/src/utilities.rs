@@ -61,7 +61,7 @@ pub const UTILITIES: &[(&str, Entry)] = &[
         )
     }),
     ("diff", |args| {
-        usage("diff", &args, "Compare files or directories. -u unified, -c context, -y side by side, -q brief, -s identical, -e ed script, -r recursive, -N absent files as empty.")
+        usage("diff", &args, "Compare files or directories. -u unified, -c context, -y side by side, -q brief, -s identical, -e ed script, -r recursive, -N absent files as empty, -x PAT exclude, -i -b -w -B ignore case, space changes, all space, blank lines, -a binary as text.")
             .unwrap_or_else(|| diffutilslib::diff::main(args.into_iter().peekable()))
     }),
     ("cmp", |args| {
