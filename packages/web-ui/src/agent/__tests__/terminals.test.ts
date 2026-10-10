@@ -125,7 +125,7 @@ function call(toolUseId: string, status: 'executing' | 'completed'): Block {
     createdAt,
     model,
     toolUseId,
-    toolName: 'shell_exec',
+    toolName: 'shell',
     input: '{}',
     status,
     output: [],
@@ -200,7 +200,7 @@ test('a shell row runs while its call runs, and after it returned until its comm
 // ended, also a command that ran on after its call returned.
 test('a returned call marks its command\'s end once the end arrives, and not from its own running view', () => {
   const returned: ToolCallBlock = {
-    type: 'tool_call', id: 'call', createdAt, model, toolUseId: 'call-1', toolName: 'shell_exec',
+    type: 'tool_call', id: 'call', createdAt, model, toolUseId: 'call-1', toolName: 'shell',
     input: '{"script":"make watch"}', status: 'completed', output: [],
     view: {
       kind: 'shell', status: 'running', commandId: 'cmd', runningMs: 10, idleMs: 0,

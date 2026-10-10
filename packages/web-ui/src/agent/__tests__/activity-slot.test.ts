@@ -70,7 +70,7 @@ test('finished text with nothing after it is followed by Requesting, and a call 
   const writing: MessageListBlock = {
     type: 'pending_call',
     id: 'pending-call:call-1',
-    call: { toolUseId: 'call-1', toolName: 'shell_exec', description: null },
+    call: { toolUseId: 'call-1', toolName: 'shell', description: null },
   }
   expect(kind('running', [finished], [finished, writing])).toBeNull()
   expect(kind('idle', [finished])).toBeNull()
@@ -285,7 +285,7 @@ function toolCallBlock(status: ToolCallStatus): MessageListBlock {
     createdAt,
     model,
     toolUseId: `tool-use-${status}`,
-    toolName: 'shell_exec',
+    toolName: 'shell',
     input: '{"script":"ls"}',
     status,
     output: [],

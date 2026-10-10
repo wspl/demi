@@ -31,14 +31,14 @@ test('the divider in progress goes once the pass ends, so the finished one takes
 
 test("the calls being written follow the transcript, before the steers, and leave once the transcript holds their block", () => {
   const writing = [
-    { toolUseId: 'call-1', toolName: 'shell_exec', description: 'Write the categorizer' },
-    { toolUseId: 'call-2', toolName: 'shell_exec', description: null },
+    { toolUseId: 'call-1', toolName: 'shell', description: 'Write the categorizer' },
+    { toolUseId: 'call-2', toolName: 'shell', description: null },
   ]
   const tail = listTailBlocks({ phase: 'running', blocks: [], pendingCalls: writing, pendingSteers: [steer], queue: [] })
   expect(tail.map((block) => block.id)).toEqual(['pending-call:call-1', 'pending-call:call-2', 'pending-steer:steer-1'])
   // The block arrived before the list without it: the call shows once.
   const held: Block = {
-    type: 'tool_call', id: 'b1', toolUseId: 'call-1', toolName: 'shell_exec', input: '{}', status: 'executing',
+    type: 'tool_call', id: 'b1', toolUseId: 'call-1', toolName: 'shell', input: '{}', status: 'executing',
     output: [], view: null, createdAt, model,
   }
   const after = listTailBlocks({ phase: 'running', blocks: [held], pendingCalls: writing, pendingSteers: [], queue: [] })

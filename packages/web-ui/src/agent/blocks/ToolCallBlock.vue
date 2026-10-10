@@ -3,8 +3,6 @@ import { computed } from 'vue'
 import type { ToolCallBlock } from '../block-types'
 import { parseToolCallInput } from '../block-helpers'
 import ToolShellBlock from './ToolShellBlock.vue'
-import ToolShellStatusBlock from './ToolShellStatusBlock.vue'
-import ToolYieldBlock from './ToolYieldBlock.vue'
 import ToolGenericBlock from './ToolGenericBlock.vue'
 import { toolRenderKind } from '../tool-rendering'
 
@@ -18,17 +16,7 @@ const renderKind = computed(() => toolRenderKind(props.block.toolName))
 
 <template>
   <ToolShellBlock
-    v-if="renderKind === 'shell_exec'"
-    :block="block"
-    :input="parsedInput"
-  />
-  <ToolShellStatusBlock
-    v-else-if="renderKind === 'shell_status'"
-    :block="block"
-    :input="parsedInput"
-  />
-  <ToolYieldBlock
-    v-else-if="renderKind === 'yield'"
+    v-if="renderKind === 'shell'"
     :block="block"
     :input="parsedInput"
   />
