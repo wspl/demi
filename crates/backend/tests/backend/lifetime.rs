@@ -653,3 +653,40 @@ async fn a_report_after_a_backend_restart_counts_from_the_commands_start_and_sho
     until_requested(&vendor, &format!("Command {command} (t1) ended with exit code 0.")).await;
     backend.close().await;
 }
+
+// Several seconds: a real device pairs, the call waits for two quiet
+// seconds, and the backend restarts.
+//
+// A command whose script ended before a backend restart, while its
+// background task runs on, still names the task once the restarted backend
+// takes it up: the runner's hello lists each job's outliving tasks. Before,
+// the restarted backend had no list, and a look said only that the command
+// keeps running.
+#[tokio::test]
+async fn a_backend_restart_keeps_the_background_tasks_that_outlive_a_commands_script() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    let mut work = on_device(&backend, &master, &vendor, &alpha).await;
+    let home = alpha.runner.home_dir().to_owned();
+    // The task looks at its own command once the backend is back.
+    let script = "(while [ ! -f go ]; do sleep 0.05; done; demi shell status 1 > status.txt 2>&1; touch asked) & echo started";
+    let command = started(&mut work, "t1", script).await;
+    assert_eq!(command, "1");
+
+    let address = backend.address();
+    backend.close().await;
+    let backend = harness.start_at(address).await;
+    backend.until_online(&master, alpha.id(), true).await;
+    std::fs::write(home.join("go"), "").unwrap();
+    until_exists(&home.join("asked")).await;
+    let status = std::fs::read_to_string(home.join("status.txt")).unwrap();
+    assert!(status.starts_with("status: running"), "{status}");
+    assert!(
+        status.contains("\nthe script has ended; its background task \"( while") 
+            && status.contains("keeps the command running, and stopping the command stops it\n"),
+        "{status}"
+    );
+    backend.close().await;
+}
