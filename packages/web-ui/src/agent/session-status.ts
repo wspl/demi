@@ -1,5 +1,6 @@
 import type { SentenceText } from '../ui/ui-text'
 import { isCompactionDivider } from './visible-blocks'
+import type { HostMenuHost } from '../hosts/types'
 
 /** Sidebar conversation list, or a session that is not reconnecting. */
 export type ListLoad = 'ready' | 'loading' | 'failed'
@@ -142,7 +143,6 @@ interface RecordCandidate {
   type: string
   outsideTurn?: boolean
   code?: string | null
-  device?: { id: string; name: string }
 }
 
 /** The record that ended the last turn among `blocks`, or the block that ended it otherwise. */
@@ -153,18 +153,20 @@ function turnRecord<T extends RecordCandidate>(blocks: readonly T[]): T | undefi
 }
 
 /**
- * The device whose return the dock's Resume waits for (`product.md`
- * § Recovering an unfinished turn): the turn ended unfinished because that
- * device was offline, and `online` says it still is not. Null when Resume
- * may go.
+ * The Host the dock's Resume waits for (`product.md` § Recovering an
+ * unfinished turn): the turn ended unfinished because a device was offline,
+ * and the conversation's current primary Host, where the resume runs, is a
+ * device that is not online; that is the device the record names unless the
+ * conversation moved since. A stopped Cloud wakes for the resume, so it holds
+ * nothing back. Null when Resume may go.
  */
 export function resumeWaitsFor(
   blocks: readonly RecordCandidate[],
-  online: (deviceId: string) => boolean,
+  primary: HostMenuHost | null,
 ): string | null {
   const end = turnRecord(blocks)
-  if (end?.type !== 'error' || end.code !== 'host_offline' || !end.device) {
+  if (end?.type !== 'error' || end.code !== 'host_offline' || !primary) {
     return null
   }
-  return online(end.device.id) ? null : end.device.name
+  return primary.kind === 'device' && primary.state !== 'online' ? primary.name : null
 }

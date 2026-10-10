@@ -85,20 +85,27 @@ test('a compaction keeps the recovery of the turn before it and offers none of i
   expect(turnRecovery('idle', [{ type: 'user' }, { type: 'text' }, ...compacted])).toBeNull()
 })
 
-// A turn left undone because its Host went offline: Resume waits for the
-// device, and goes once its state says it is back.
-test('Resume after a turn its offline Host left unfinished waits for the device to be back', () => {
+// A turn left undone because its Host went offline: Resume continues it
+// wherever the conversation runs now, so it waits only for that Host.
+test('Resume after a turn its offline Host left unfinished waits for the current primary Host', () => {
   const offline = {
     type: 'error',
     code: 'host_offline',
     device: { id: 'mac', name: 'MacBook Pro' },
   }
+  const mac = { id: 'mac', name: 'MacBook Pro', kind: 'device' as const }
   const blocks = [{ type: 'user' }, { type: 'text' }, offline]
   expect(turnRecovery('idle', blocks)).toBe('resume')
-  expect(resumeWaitsFor(blocks, () => false)).toBe('MacBook Pro')
-  expect(resumeWaitsFor(blocks, (id) => id === 'mac')).toBeNull()
+  expect(resumeWaitsFor(blocks, { ...mac, state: 'offline' })).toBe('MacBook Pro')
+  expect(resumeWaitsFor(blocks, { ...mac, state: 'online' })).toBeNull()
+  // Moved to another Host while the device is still away: Resume goes there.
+  expect(resumeWaitsFor(blocks, { id: 'studio', name: 'Studio PC', kind: 'device', state: 'online' })).toBeNull()
+  // Moved to a device that has since gone offline: Resume waits for it and names it.
+  expect(resumeWaitsFor(blocks, { id: 'studio', name: 'Studio PC', kind: 'device', state: 'offline' })).toBe('Studio PC')
+  // A stopped Cloud wakes for the resume.
+  expect(resumeWaitsFor(blocks, { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'offline' })).toBeNull()
   // Another failure's Resume waits for nothing.
-  expect(resumeWaitsFor([{ type: 'user' }, { type: 'error', code: 'overloaded' }], () => false)).toBeNull()
+  expect(resumeWaitsFor([{ type: 'user' }, { type: 'error', code: 'overloaded' }], { ...mac, state: 'offline' })).toBeNull()
   // Behind a compaction the record still holds Resume back.
-  expect(resumeWaitsFor([...blocks, { type: 'compaction_boundary' }], () => false)).toBe('MacBook Pro')
+  expect(resumeWaitsFor([...blocks, { type: 'compaction_boundary' }], { ...mac, state: 'offline' })).toBe('MacBook Pro')
 })

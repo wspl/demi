@@ -246,7 +246,7 @@ async fn resume_after_a_failure_that_followed_a_tool_continues_after_its_result(
         ]
     );
 
-    session.resume().unwrap().await.unwrap();
+    session.resume(None).unwrap().await.unwrap();
 
     assert_eq!(runs.get(), 1);
     assert_eq!(
@@ -283,7 +283,7 @@ async fn resume_of_a_turn_that_produced_nothing_reruns_it_without_a_resume_block
     let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
     assert!(session.send(text("go"), turn("t1")).unwrap().await.is_err());
 
-    session.resume().unwrap().await.unwrap();
+    session.resume(None).unwrap().await.unwrap();
 
     let blocks = session.transcript().blocks;
     assert_eq!(kinds(&blocks), ["user", "text", "response"]);
@@ -364,7 +364,7 @@ async fn resume_after_a_stop_marks_the_stop_resumed_and_continues_the_turn() {
     session.abort().await;
     running.await.unwrap();
 
-    session.resume().unwrap().await.unwrap();
+    session.resume(None).unwrap().await.unwrap();
 
     let blocks = session.transcript().blocks;
     assert_eq!(
@@ -408,7 +408,7 @@ async fn a_stop_while_resume_saves_its_unwind_leaves_the_unwind_and_one_marker()
     session.flush().await.unwrap();
     let gate = store.hold_saves();
 
-    let resuming = session.resume().unwrap();
+    let resuming = session.resume(None).unwrap();
     until(|| gate.waiting() == 1).await;
     let stopping = session.abort();
     tokio::pin!(stopping);
@@ -480,7 +480,7 @@ fn calls_then_words(calls: usize) -> Vec<Turn> {
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_turn_left_undone_by_an_offline_host_ends_with_its_error_record_and_resumes_saying_it_is_back() {
+async fn a_turn_left_undone_by_an_offline_host_ends_with_its_error_record_and_resumes_with_the_reason_it_is_given() {
     let mut turns = calls_then_words(1);
     turns.push(Turn::Events(vec![event::text("done"), event::response(1, 1)]));
     let provider = ScriptedRuntime::new(turns);
@@ -497,13 +497,38 @@ async fn a_turn_left_undone_by_an_offline_host_ends_with_its_error_record_and_re
     assert_eq!(error.device.as_ref().map(|device| device.id.as_str()), Some("d1"));
     assert!(matches!(&blocks[blocks.len() - 2], Block::Response(_)), "{:?}", kinds(&blocks));
 
-    // Resume tells the model the device is back.
-    session.resume().unwrap().await.unwrap();
+    // The backend says where the turn now runs, and the model reads it.
+    session
+        .resume(Some("This conversation now runs on Cloud."))
+        .unwrap()
+        .await
+        .unwrap();
     let resumed = provider.requests()[2].items.clone();
     assert_eq!(
         resumed.last(),
         Some(&InferenceItem::UserMessage {
-            content: sent_text("MacBook Pro is back online. Continue from where you left off."),
+            content: sent_text("This conversation now runs on Cloud. Continue from where you left off."),
+        })
+    );
+}
+
+// The reason is the caller's alone: only the backend knows where the
+// conversation runs now.
+#[tokio::test(flavor = "local")]
+async fn a_resume_without_a_reason_adds_none_of_its_own() {
+    let mut turns = calls_then_words(1);
+    turns.push(Turn::Events(vec![event::text("done"), event::response(1, 1)]));
+    let provider = ScriptedRuntime::new(turns);
+    let store = MemoryTreeStore::new();
+    let session = start(&provider, vec![host_tool(&["offline"])], &store, SessionConfig::default()).await;
+    session.send(text("go"), turn("t1")).unwrap().await.unwrap();
+
+    session.resume(None).unwrap().await.unwrap();
+    let resumed = provider.requests()[2].items.clone();
+    assert_eq!(
+        resumed.last(),
+        Some(&InferenceItem::UserMessage {
+            content: sent_text("Continue from where you left off."),
         })
     );
 }

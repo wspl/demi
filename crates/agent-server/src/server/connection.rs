@@ -168,6 +168,20 @@ impl<H: HostResolver> Connection<H> {
         }
     }
 
+    /// Handles the user's Resume as [`handle`](Self::handle) does a
+    /// `resume` frame, with the reason the backend composed for it: where
+    /// a turn its offline Host left unfinished now runs
+    /// (`failures-and-recovery.md` § The unfinished turn).
+    pub async fn resume(&self, reason: Option<String>) {
+        match self.attached() {
+            Some(tree) => {
+                self.recover(tree.root().session(), ClientFrameKind::Resume, reason.as_deref())
+                    .await;
+            }
+            None => self.refuse(ClientFrame::Resume {}),
+        }
+    }
+
     /// Detaches the connection from its tree, when the socket is gone.
     pub fn detach(&self) {
         if let Some(tree) = self.server.tree(&self.root) {
@@ -348,32 +362,7 @@ impl<H: HostResolver> Connection<H> {
                 }
             }
             ClientFrame::Retry {} | ClientFrame::Resume {} | ClientFrame::Compact {} => {
-                if let Some(reason) = busy(session) {
-                    self.reject(kind, reason);
-                    return;
-                }
-                // The user compacts only a context that is full enough
-                // (`compaction.md` § When compaction runs). The estimate may
-                // read media, during which an action can start, so the phase
-                // is checked again with nothing awaited before the admission.
-                if kind == ClientFrameKind::Compact {
-                    let refusal = match session.context_usage().await {
-                        Ok(usage) => compaction_refusal(&usage).or_else(|| busy(session)),
-                        Err(report) => Some(report.message),
-                    };
-                    if let Some(reason) = refusal {
-                        self.reject(kind, reason);
-                        return;
-                    }
-                }
-                let admitted = match kind {
-                    ClientFrameKind::Retry => session.retry(),
-                    ClientFrameKind::Resume => session.resume(),
-                    _ => session.compact(),
-                };
-                if let Err(error) = admitted {
-                    self.reject(kind, error.to_string());
-                }
+                self.recover(session, kind, None).await;
             }
             ClientFrame::EditAndSend { request } => {
                 let operation_id = request.operation_id.clone();
@@ -412,6 +401,37 @@ impl<H: HostResolver> Connection<H> {
 }
 
 impl<H: HostResolver> Connection<H> {
+    /// Retries, resumes or compacts the root's session, refusing while it
+    /// is busy; a resume carries `reason` to the model.
+    async fn recover(&self, session: &AgentSession, kind: ClientFrameKind, reason: Option<&str>) {
+        if let Some(refusal) = busy(session) {
+            self.reject(kind, refusal);
+            return;
+        }
+        // The user compacts only a context that is full enough
+        // (`compaction.md` § When compaction runs). The estimate may
+        // read media, during which an action can start, so the phase
+        // is checked again with nothing awaited before the admission.
+        if kind == ClientFrameKind::Compact {
+            let refusal = match session.context_usage().await {
+                Ok(usage) => compaction_refusal(&usage).or_else(|| busy(session)),
+                Err(report) => Some(report.message),
+            };
+            if let Some(refusal) = refusal {
+                self.reject(kind, refusal);
+                return;
+            }
+        }
+        let admitted = match kind {
+            ClientFrameKind::Retry => session.retry(),
+            ClientFrameKind::Resume => session.resume(reason),
+            _ => session.compact(),
+        };
+        if let Err(error) = admitted {
+            self.reject(kind, error.to_string());
+        }
+    }
+
     /// An edit's acceptance (`message-editing.md` § Commit and idempotency):
     /// a repeated request is answered from its receipt, or shares the
     /// acceptance in flight, before any of its files is resolved; a new one

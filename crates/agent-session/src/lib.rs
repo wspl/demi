@@ -61,6 +61,7 @@ pub use editing::{
     EditCheck, EditContent, EditError, EditSubmission, accepted, edit_digest, fork_seed,
 };
 pub use retry::RetryPolicy;
+pub use worker::left_by_offline_host;
 pub use runtime::{
     CallCommand, InputArrival, NewContext, SeenContext, SessionRuntime, StartedCommand,
     StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome, WindowEnd,
@@ -721,18 +722,15 @@ impl AgentSession {
     }
 
     /// Unwinds the unfinished turn to its resume point and continues it.
-    pub fn resume(&self) -> Result<ActionHandle, AdmissionError> {
-        self.shared
-            .update(|core| core.admit(ActionKind::Resume { reason: None }))
-    }
-
-    /// Resumes the unfinished turn as Demi does, such as a subagent's after
-    /// a backend restart: the model reads `reason`
+    /// `reason`, when given, is what the model reads before it goes on: the
+    /// backend's for the user's Resume of a turn its offline Host left
+    /// unfinished, such as "MacBook Pro is back online.", or Demi's own for
+    /// a resume of its own, such as a subagent's after a backend restart
     /// (`failures-and-recovery.md` § The unfinished turn).
-    pub fn resume_after(&self, reason: &str) -> Result<ActionHandle, AdmissionError> {
+    pub fn resume(&self, reason: Option<&str>) -> Result<ActionHandle, AdmissionError> {
         self.shared.update(|core| {
             core.admit(ActionKind::Resume {
-                reason: Some(reason.to_owned()),
+                reason: reason.map(str::to_owned),
             })
         })
     }
