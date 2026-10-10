@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
 use demi_shared_gates::{GateLease, Reservation};
-use demi_shared_types::{CommandId, InstructionEntry, ModelSelection, ToolView, TurnId};
+use demi_shared_types::{CommandId, CommandReport, InstructionEntry, ModelSelection, ToolView, TurnId};
 use futures_util::{future::LocalBoxFuture, stream::LocalBoxStream};
 use serde_json::Value;
 use tokio::sync::watch;
@@ -87,7 +87,7 @@ pub trait SessionRuntime {
         command: &'a CommandId,
         title: &'a str,
         interval_ms: Option<u32>,
-    ) -> LocalBoxFuture<'a, Option<String>> {
+    ) -> LocalBoxFuture<'a, Option<CommandReport>> {
         let _ = (command, title, interval_ms);
         Box::pin(async { None })
     }

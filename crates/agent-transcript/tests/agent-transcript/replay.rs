@@ -7,9 +7,10 @@ use demi_agent_store::{
 use demi_agent_transcript::{RequestView, replay};
 use demi_provider_common::{InferenceItem, RequestLimits, ToolDefinition, UserPart};
 use demi_shared_types::{
-    Attachment, BlobRef, Block, BlockId, CompactionBoundaryBlock, CompactionMarkerBlock,
-    RedactedThinkingBlock, ThinkingBlock, Timestamp, ToolCallBlock, ToolCallStatus,
-    ToolResultContentBlock, TurnId, UserBlock, UserContentBlock, attachment_tag,
+    Attachment, BlobRef, Block, BlockId, CommandId, CommandReport, CompactionBoundaryBlock,
+    CompactionMarkerBlock, RedactedThinkingBlock, ReportEvent, StoppedBy, ThinkingBlock, Timestamp,
+    ToolCallBlock, ToolCallStatus, ToolResultContentBlock, TurnId, UserBlock, UserContentBlock,
+    WakeupBlock, WakeupPlacement, attachment_tag,
 };
 
 /// What the model receives of a message of one text.
@@ -240,4 +241,73 @@ fn a_call_of_a_tool_the_request_no_longer_declares_is_replayed_with_its_result_a
     };
     assert_eq!(tool_name, "shell");
     assert_eq!(text, r#"[called yield {"durationMs":600000}: yield scheduled]"#);
+}
+
+// Pure: a few milliseconds.
+#[test]
+fn reports_that_arrived_together_reach_the_model_as_their_text_one_paragraph_each() {
+    let model = test_model();
+    let report = |command: &str, title: &str, event: ReportEvent, output: &str| CommandReport {
+        command_id: CommandId::try_from(command).unwrap(),
+        title: title.into(),
+        event,
+        output: output.into(),
+    };
+    let wakeup = Block::Wakeup(WakeupBlock {
+        id: BlockId::try_from("w1").unwrap(),
+        turn_id: TurnId::try_from("t1").unwrap(),
+        created_at: Timestamp::UNIX_EPOCH,
+        model: model.clone(),
+        placement: WakeupPlacement::NewTurn,
+        reports: vec![
+            report(
+                "17",
+                "Run the test suite",
+                ReportEvent::Running {
+                    running_ms: 300_000,
+                    idle_ms: 290_000,
+                    interval_ms: 300_000,
+                },
+                "",
+            ),
+            report(
+                "17",
+                "Run the test suite",
+                ReportEvent::Ended { exit_code: Some(1) },
+                "FAIL auth.test.ts\n1 failed",
+            ),
+            report("18", "Start the dev server", ReportEvent::Stopped { by: Some(StoppedBy::User) }, ""),
+            report("19", "", ReportEvent::Stopped { by: Some(StoppedBy::Agent { number: 2 }) }, ""),
+            report("20", "Watch the files", ReportEvent::lost_with_connection(), ""),
+        ],
+        entries: Vec::new(),
+    });
+    let view = ModelView::of(0, &[wakeup], &HeldMedia::default()).expect("no media to hold");
+    let items = replay(&RequestView::new(&view, &model.model, RequestLimits::default(), &[])).items;
+    let [InferenceItem::UserMessage { content }] = items.as_slice() else {
+        panic!("one message: {items:?}");
+    };
+    let [UserPart::Text(text)] = content.as_slice() else {
+        panic!("one text: {content:?}");
+    };
+    assert_eq!(
+        text,
+        "Command 17 (Run the test suite) is still running after 5m; no output for 4m50s.\n\
+         output: (empty)\n\
+         It reports every 5m; change that with demi shell status 17 --interval <duration>, or with --resident to hear only of its end.\n\
+         \n\
+         Command 17 (Run the test suite) ended with exit code 1.\n\
+         output:\n\
+         FAIL auth.test.ts\n\
+         1 failed\n\
+         \n\
+         Command 18 (Start the dev server) was stopped by the user.\n\
+         output: (empty)\n\
+         \n\
+         Command 19 was stopped by agent 2.\n\
+         output: (empty)\n\
+         \n\
+         Command 20 (Watch the files) was lost: its Host's connection ended. Start it again if it is still needed.\n\
+         output: (empty)"
+    );
 }

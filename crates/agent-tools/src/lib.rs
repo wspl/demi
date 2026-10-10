@@ -44,7 +44,8 @@ pub use frames::{shell_output, stored_running_commands};
 pub use input::{INTERVAL_CAP_MS, INTERVAL_FLOOR_MS, taken_interval};
 use input::{ShellInput, parse};
 pub use reports::{EndOf, end_report, progress_report};
-pub use result::{Look, look_text, whole_look_text};
+pub use demi_agent_transcript::duration;
+pub use result::{Look, look_text, whole_look_text, whole_status};
 pub use product::{
     ContextAnswer, ContextSource, HostResolver, NodeContext, Profile, ProfileModel, SubagentSettings,
     SubagentSource, Toolset, ToolsetSource, Unavailable,
@@ -268,7 +269,6 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
                 note: note.as_deref(),
                 sent_now: ended_by == Some(WindowEnd::SentNow),
                 interval_ms: Some(interval_ms),
-                report: false,
             },
         )
         .await;
@@ -361,26 +361,6 @@ async fn quiet(environment: &dyn ShellEnvironment, command: &CommandId) -> Resul
 /// A call's outcome: a failure completes it as `Tool failed: <message>`.
 fn outcome(ran: Result<ToolOutcome, CallError>) -> Result<ToolOutcome, ToolFailure> {
     ran.map_err(|CallError::Failed(message)| ToolFailure(message))
-}
-
-/// A duration as the model reads it: `45s`, `4m`, `1m5s`, `2h` or `1h3m`,
-/// rounded to the nearest second.
-pub fn duration(ms: u64) -> String {
-    let seconds = (ms + 500) / 1000;
-    if seconds < 60 {
-        return format!("{seconds}s");
-    }
-    let minutes = seconds / 60;
-    if minutes < 60 {
-        return match seconds % 60 {
-            0 => format!("{minutes}m"),
-            rest => format!("{minutes}m{rest}s"),
-        };
-    }
-    match minutes % 60 {
-        0 => format!("{}h", minutes / 60),
-        rest => format!("{}h{rest}m", minutes / 60),
-    }
 }
 
 /// Why a call did not produce a result of its tool.

@@ -370,11 +370,10 @@ async fn send_now_on_a_steer_moves_the_command_to_the_background_and_the_turn_go
             &format!("Command {command} (Run the test script) ended with exit code 0"),
         )
         .await;
+        // It carries what the command printed since the result's look.
         assert_eq!(
             report,
-            format!(
-                "Command {command} (Run the test script) ended with exit code 0; look at it with demi shell status {command}."
-            )
+            format!("Command {command} (Run the test script) ended with exit code 0.\noutput:\nwent")
         );
         let requests = script.requests();
         let results: Results = Rc::default();
@@ -433,7 +432,8 @@ async fn a_command_left_running_reports_every_interval_and_its_end_and_a_failed_
             &format!("Command {suite} (Run the test script) is still running after"),
         )
         .await;
-        assert!(progress.contains("\nstatus: running\n"), "{progress}");
+        // The result showed `started`, so the report shows nothing new.
+        assert!(progress.contains(".\noutput: (empty)\n"), "{progress}");
         assert!(
             progress.ends_with(&format!(
                 "It reports every 1s; change that with demi shell status {suite} --interval <duration>, or with --resident to hear only of its end."
@@ -441,13 +441,17 @@ async fn a_command_left_running_reports_every_interval_and_its_end_and_a_failed_
             "{progress}"
         );
         std::fs::write(format!("{}/done", fixture.workspace), "").unwrap();
-        reported(
+        // Its end carries the output since the last look, as a result
+        // shows a command's end, so the model needs no look.
+        let end = reported(
             &script,
-            &format!(
-                "Command {suite} (Run the test script) ended with exit code 3; look at it with demi shell status {suite}."
-            ),
+            &format!("Command {suite} (Run the test script) ended with exit code 3"),
         )
         .await;
+        assert_eq!(
+            end,
+            format!("Command {suite} (Run the test script) ended with exit code 3.\noutput:\nfinished")
+        );
 
         // The failed command's result is an error to the provider; the one
         // that still ran is not.
@@ -527,7 +531,11 @@ async fn a_resident_command_returns_once_quiet_reports_only_its_end_and_its_end_
         // The report ended the long call's window: its command runs on.
         let long = result(&results, "long");
         assert_eq!(field(long, "status"), "running", "{long}");
-        assert!(report.ends_with(&format!("look at it with demi shell status {serve}.")));
+        // It printed nothing after the result showed `ready`.
+        assert_eq!(
+            report,
+            format!("Command {serve} (Run the test script) ended with exit code 0.\noutput: (empty)")
+        );
         // It reported nothing while it ran.
         assert!(
             !script
@@ -734,9 +742,7 @@ async fn a_stop_ends_the_command_a_call_watches_and_leaves_one_an_earlier_call_l
         std::fs::write(format!("{}/stop", fixture.workspace), "").unwrap();
         reported(
             &script,
-            &format!(
-                "Command {serve} (Run the test script) ended with exit code 0; look at it with demi shell status {serve}."
-            ),
+            &format!("Command {serve} (Run the test script) ended with exit code 0."),
         )
         .await;
         fixture.stop().await;

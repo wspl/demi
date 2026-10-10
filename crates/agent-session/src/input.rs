@@ -3,7 +3,7 @@
 //! reports that arrived, each waiting for a continuation boundary. Pure
 //! state: the session decides when a boundary takes them.
 
-use demi_shared_types::{AgentMessage, BlockId, PendingSteer};
+use demi_shared_types::{AgentMessage, BlockId, CommandReport, PendingSteer};
 
 use demi_agent_store::PendingAgentInput;
 
@@ -12,8 +12,8 @@ use demi_agent_store::PendingAgentInput;
 pub(super) enum Input {
     /// A human steer, which the pending steers list shows.
     Steer(PendingSteer),
-    /// A command report, its paragraph of text, kept in the checkpoint.
-    Report(String),
+    /// A command report, kept in the checkpoint.
+    Report(CommandReport),
     /// A message from another agent of the tree, kept in the checkpoint.
     Agent(PendingAgentInput),
 }
@@ -62,7 +62,7 @@ pub(super) struct InputQueue {
 
 impl InputQueue {
     /// A queue that starts with what a checkpoint kept.
-    pub(super) fn restored(agent_inputs: Vec<PendingAgentInput>, reports: Vec<String>) -> Self {
+    pub(super) fn restored(agent_inputs: Vec<PendingAgentInput>, reports: Vec<CommandReport>) -> Self {
         let mut queue = Self::default();
         for input in agent_inputs {
             queue.add(Input::Agent(input));
@@ -133,7 +133,7 @@ impl InputQueue {
     }
 
     /// The command reports waiting, as the checkpoint keeps them.
-    pub(super) fn reports(&self) -> Vec<String> {
+    pub(super) fn reports(&self) -> Vec<CommandReport> {
         self.entries
             .iter()
             .filter_map(|input| match input {
@@ -178,7 +178,7 @@ impl InputQueue {
     }
 
     /// Takes the command reports: the input a continuation opens with.
-    pub(super) fn take_reports(&mut self) -> Vec<String> {
+    pub(super) fn take_reports(&mut self) -> Vec<CommandReport> {
         self.entries
             .extract_if(.., |input| matches!(input, Input::Report(_)))
             .filter_map(|input| match input {

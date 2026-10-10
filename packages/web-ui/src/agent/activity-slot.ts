@@ -30,6 +30,7 @@ const WAITING_TAIL_TYPES: ReadonlySet<MessageListBlock['type']> = new Set([
   'user',
   'steer',
   'agent_message',
+  'wakeup',
   'pending_steer',
   'compaction_marker',
   'abort',

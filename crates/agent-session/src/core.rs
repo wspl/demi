@@ -28,7 +28,7 @@ use demi_provider_common::{
     RequestBlock, RequestLimits, ToolDefinition,
 };
 use demi_shared_types::{
-    AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, FailureSource,
+    AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, CommandReport, FailureSource,
     ModelSelection, NodeId, PendingCall, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
     ToolResultContentBlock, ToolView, TurnId, UserContentBlock, WakeupPlacement,
 };
@@ -233,7 +233,7 @@ struct Published {
     pending_steers: Vec<PendingSteer>,
     pending_calls: Vec<PendingCall>,
     agent_inputs: Vec<BlockId>,
-    reports: Vec<String>,
+    reports: Vec<CommandReport>,
     intervals: Vec<CommandInterval>,
     edits: usize,
 }
@@ -1060,7 +1060,7 @@ impl SessionCore {
             return false;
         }
         let turn = self.turn();
-        let mut reports: Vec<String> = inputs
+        let mut reports: Vec<CommandReport> = inputs
             .iter()
             .filter_map(|input| match input {
                 Input::Report(report) => Some(report.clone()),
@@ -1076,8 +1076,8 @@ impl SessionCore {
                 }
                 Input::Report(_) if reports.is_empty() => {}
                 Input::Report(_) => {
-                    let text = mem::take(&mut reports).join("\n\n");
-                    self.push_reports(turn.clone(), WakeupPlacement::Steer, text);
+                    let reports = mem::take(&mut reports);
+                    self.push_reports(turn.clone(), WakeupPlacement::Steer, reports);
                 }
                 Input::Agent(input) => {
                     agent_message = true;
@@ -1098,7 +1098,7 @@ impl SessionCore {
         let reports = self.inputs.take_reports();
         if !reports.is_empty() {
             let turn = self.turn();
-            self.push_reports(turn, WakeupPlacement::NewTurn, reports.join("\n\n"));
+            self.push_reports(turn, WakeupPlacement::NewTurn, reports);
             self.commit();
             return Some(false);
         }
@@ -1108,12 +1108,12 @@ impl SessionCore {
         None
     }
 
-    /// A `wakeup` block of command reports, `text` one paragraph each.
-    fn push_reports(&mut self, turn: TurnId, placement: WakeupPlacement, text: String) {
+    /// A `wakeup` block of command reports, in the order they arrived.
+    fn push_reports(&mut self, turn: TurnId, placement: WakeupPlacement, reports: Vec<CommandReport>) {
         let id = BlockId::try_from(self.ids.next_id())
             .expect("an id source never gives an empty identity");
         self.transcript
-            .push_wakeup(id, turn, &self.model, placement, text);
+            .push_wakeup(id, turn, &self.model, placement, reports);
     }
 
     // Command reports.
@@ -1133,11 +1133,11 @@ impl SessionCore {
     /// Admits a command's report for the next boundary: it joins the running
     /// turn, or opens a continuation. A session that is closing keeps no
     /// more input.
-    pub(super) fn admit_report(&mut self, text: String) {
+    pub(super) fn admit_report(&mut self, report: CommandReport) {
         if self.disposing {
             return;
         }
-        self.inputs.add(Input::Report(text));
+        self.inputs.add(Input::Report(report));
         self.wake();
     }
 
