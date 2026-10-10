@@ -3,7 +3,7 @@
 // For the full copyright and license information, please view the LICENSE-*
 // files that was distributed with this source code.
 
-use crate::params::Params;
+use crate::params::{Format, Params};
 use regex::Regex;
 use {std::ffi::OsString, uucore::context::io::Write};
 use unicode_width::UnicodeWidthStr;
@@ -37,17 +37,13 @@ pub fn do_expand_tabs(line: &[u8], tabsize: usize) -> Vec<u8> {
     result
 }
 
-/// A line with what `-i`, `-b` and `-w` leave of it, which is what lines are
-/// compared by.
-struct KeyedLine<'a> {
-    line: &'a [u8],
-    key: Vec<u8>,
-}
-
-impl PartialEq for KeyedLine<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        self.key == other.key
-    }
+/// One step of a line diff: a line only the first file has, one only the
+/// second has, or a line both have, given from each.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Edit<'a> {
+    Left(&'a [u8]),
+    Right(&'a [u8]),
+    Both(&'a [u8], &'a [u8]),
 }
 
 /// What `-i`, `-b` and `-w` compare of `line`, as GNU diff does in the C
@@ -72,34 +68,170 @@ fn line_key(line: &[u8], params: &Params) -> Vec<u8> {
 }
 
 /// The line diff of `expected` and `actual`, comparing lines as `-i`, `-b`
-/// and `-w` say; a line both sides have is given from each side.
-pub fn diff_lines<'a>(
-    expected: &[&'a [u8]],
-    actual: &[&'a [u8]],
-    params: &Params,
-) -> Vec<diff::Result<&'a [u8]>> {
-    if !params.ignore_case && !params.ignore_space_change && !params.ignore_all_space {
-        return diff::slice(expected, actual)
-            .into_iter()
-            .map(|result| match result {
-                diff::Result::Left(line) => diff::Result::Left(*line),
-                diff::Result::Right(line) => diff::Result::Right(*line),
-                diff::Result::Both(left, right) => diff::Result::Both(*left, *right),
+/// and `-w` say, in GNU diff's way: Myers' algorithm in linear space with
+/// GNU's preprocessing and its cost limit for expensive inputs (`-d` lifts
+/// it), and each change slid as far down as it goes, or to meet a change in
+/// the other file. A change deletes before it inserts.
+pub fn diff_lines<'a>(expected: &[&'a [u8]], actual: &[&'a [u8]], params: &Params) -> Vec<Edit<'a>> {
+    let ignores = params.ignore_case || params.ignore_space_change || params.ignore_all_space;
+    let mut interner = imara_diff::Interner::new(expected.len() + actual.len());
+    let mut intern = |lines: &[&'a [u8]]| -> Vec<imara_diff::Token> {
+        lines
+            .iter()
+            .map(|&line| {
+                interner.intern(if ignores { std::borrow::Cow::Owned(line_key(line, params)) } else { line.into() })
             })
-            .collect();
-    }
-    let keyed = |lines: &[&'a [u8]]| -> Vec<KeyedLine<'a>> {
-        lines.iter().map(|&line| KeyedLine { line, key: line_key(line, params) }).collect()
+            .collect()
     };
-    let (expected, actual) = (keyed(expected), keyed(actual));
-    diff::slice(&expected, &actual)
-        .into_iter()
-        .map(|result| match result {
-            diff::Result::Left(line) => diff::Result::Left(line.line),
-            diff::Result::Right(line) => diff::Result::Right(line.line),
-            diff::Result::Both(left, right) => diff::Result::Both(left.line, right.line),
-        })
-        .collect()
+    // GNU sets aside the files' identical first lines, then their identical
+    // last lines, keeping as many of each as the context asks for (its
+    // horizon), and diffs only the rest, so no change slides further.
+    let horizon = match params.format {
+        Format::Unified | Format::Context => params.context_count,
+        _ => 0,
+    };
+    let common = expected.len().min(actual.len());
+    let prefix = expected.iter().zip(actual).take_while(|(old, new)| old == new).count();
+    let prefix = prefix - prefix.min(horizon);
+    let suffix = expected.iter().rev().zip(actual.iter().rev()).take(common - prefix).take_while(|(old, new)| old == new).count();
+    let suffix = suffix - suffix.min(horizon);
+    let before = intern(&expected[prefix..expected.len() - suffix]);
+    let after = intern(&actual[prefix..actual.len() - suffix]);
+    let algorithm = if params.minimal { imara_diff::Algorithm::MyersMinimal } else { imara_diff::Algorithm::Myers };
+    let mut diff = imara_diff::Diff::default();
+    diff.compute_with(algorithm, &before, &after, interner.num_tokens());
+    let mut changed = [
+        (0..before.len() as u32).map(|line| diff.is_removed(line)).collect::<Vec<_>>(),
+        (0..after.len() as u32).map(|line| diff.is_added(line)).collect::<Vec<_>>(),
+    ];
+    shift_boundaries(&mut changed, [&before, &after]);
+
+    let mut edits = Vec::with_capacity(expected.len().max(actual.len()));
+    edits.extend(expected[..prefix].iter().zip(actual).map(|(&left, &right)| Edit::Both(left, right)));
+    let (expected_body, actual_body) = (&expected[prefix..], &actual[prefix..]);
+    let (mut old, mut new) = (0, 0);
+    while old < before.len() || new < after.len() {
+        if old < before.len() && changed[0][old] {
+            edits.push(Edit::Left(expected_body[old]));
+            old += 1;
+        } else if new < after.len() && changed[1][new] {
+            edits.push(Edit::Right(actual_body[new]));
+            new += 1;
+        } else {
+            edits.push(Edit::Both(expected_body[old], actual_body[new]));
+            old += 1;
+            new += 1;
+        }
+    }
+    edits.extend(expected_body[old..].iter().zip(&actual_body[new..]).map(|(&left, &right)| Edit::Both(left, right)));
+    edits
+}
+
+/// GNU diff's `shift_boundaries`, line for line: slides each run of changed
+/// lines back to merge with the run before it, then forward as far as it
+/// goes, and then back again to where it meets a run of the other file.
+/// `changed[f][i]` says whether line `i` of file `f` is changed, and
+/// `lines[f]` gives the lines as tokens.
+fn shift_boundaries(changed: &mut [Vec<bool>; 2], lines: [&[imara_diff::Token]; 2]) {
+    // Both files' flags with an unchanged line before and after, as GNU's
+    // arrays have, so the scans below may look one line past either end.
+    let mut flags: [Vec<bool>; 2] = [0, 1].map(|f| {
+        let mut padded = Vec::with_capacity(changed[f].len() + 2);
+        padded.push(false);
+        padded.extend_from_slice(&changed[f]);
+        padded.push(false);
+        padded
+    });
+    for f in 0..2 {
+        let [first, second] = &mut flags;
+        let (changed, other) = if f == 0 { (first, &*second) } else { (second, &*first) };
+        // GNU's line indexes, each one more here for the padding.
+        let at = |line: isize| (line + 1) as usize;
+        let equivs = lines[f];
+        let same = |a: isize, b: isize| equivs[a as usize] == equivs[b as usize];
+        let i_end = equivs.len() as isize;
+        let (mut i, mut j): (isize, isize) = (0, 0);
+        loop {
+            while i < i_end && !changed[at(i)] {
+                loop {
+                    let was = other[at(j)];
+                    j += 1;
+                    if !was {
+                        break;
+                    }
+                }
+                i += 1;
+            }
+            if i == i_end {
+                break;
+            }
+            let mut start = i;
+            loop {
+                i += 1;
+                if !changed[at(i)] {
+                    break;
+                }
+            }
+            while other[at(j)] {
+                j += 1;
+            }
+            let mut corresponding;
+            loop {
+                let runlength = i - start;
+                while start > 0 && same(start - 1, i - 1) {
+                    start -= 1;
+                    changed[at(start)] = true;
+                    i -= 1;
+                    changed[at(i)] = false;
+                    while changed[at(start - 1)] {
+                        start -= 1;
+                    }
+                    loop {
+                        j -= 1;
+                        if !other[at(j)] {
+                            break;
+                        }
+                    }
+                }
+                corresponding = if other[at(j - 1)] { i } else { i_end };
+                while i != i_end && same(start, i) {
+                    changed[at(start)] = false;
+                    start += 1;
+                    changed[at(i)] = true;
+                    i += 1;
+                    while changed[at(i)] {
+                        i += 1;
+                    }
+                    loop {
+                        j += 1;
+                        if !other[at(j)] {
+                            break;
+                        }
+                        corresponding = i;
+                    }
+                }
+                if runlength == i - start {
+                    break;
+                }
+            }
+            while corresponding < i {
+                start -= 1;
+                changed[at(start)] = true;
+                i -= 1;
+                changed[at(i)] = false;
+                loop {
+                    j -= 1;
+                    if !other[at(j)] {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    for f in 0..2 {
+        let len = changed[f].len();
+        changed[f].copy_from_slice(&flags[f][1..=len]);
+    }
 }
 
 /// Whether `-B` ignores a change made of these lines: all of them are empty.
