@@ -28,6 +28,8 @@ const props = withDefaults(
     open: boolean
     /** False for a pinned catalog specimen: the window does not steal page clicks. */
     dismissOutside?: boolean
+    /** The tabs change at once, with no motion, as `TabStrip`'s `still` says. */
+    stillTabs?: boolean
   }>(),
   {
     dismissOutside: true,
@@ -96,7 +98,7 @@ function openStripMenu(event: MouseEvent): void {
       class="overlay-window pointer-events-auto absolute inset-0 z-10 flex min-h-0 origin-bottom flex-col overflow-hidden rounded-xl bg-surface"
     >
       <div class="flex h-10 shrink-0 items-center gap-1 bg-surface-base px-1.5" @contextmenu="openStripMenu">
-        <TabStrip class="flex-1">
+        <TabStrip class="flex-1" :still="stillTabs">
           <slot name="tabs" :open-tab-menu="openTabMenu" />
         </TabStrip>
         <Dropdown v-if="$slots.stripMenu" :overlay-store="appOverlayStore">
