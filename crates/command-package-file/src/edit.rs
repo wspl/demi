@@ -27,6 +27,9 @@ const REPORT_LINES: usize = 60;
 /// make them one.
 const JOIN_LINES: usize = 2;
 
+/// How many characters of each of the closest lines an error shows.
+const CLOSEST_CHARS: usize = 200;
+
 /// One file the edit changes, as the agent named it.
 struct Planned {
     name: String,
@@ -53,7 +56,7 @@ pub(crate) fn edit(
         } => {
             let path = resolve(cwd, name)?;
             let before = read(&path)?;
-            let replacement = text_replacement(&before, name, old, new, *choice)?;
+            let replacement = text_replacement(&before, &path, old, new, *choice)?;
             let after = replace_all(&before, vec![replacement], &path)?;
             vec![Planned {
                 name: name.clone(),
@@ -176,10 +179,11 @@ struct Replacement {
     block: usize,
 }
 
-/// `--old` replaced by `--new`, at the match `choice` names.
+/// `--old` replaced by `--new` in `content`, the file at `path`, at the
+/// match `choice` names.
 fn text_replacement(
     content: &str,
-    name: &str,
+    path: &Path,
     old: &str,
     new: &str,
     choice: Choice,
@@ -215,8 +219,21 @@ fn text_replacement(
         }
         Choice::Only => match matches.as_slice() {
             [index] => *index,
-            [] => return Err(FileError::NoMatch(name.to_owned())),
-            _ => return Err(FileError::MultipleMatches(name.to_owned())),
+            [] => {
+                let search: Vec<&str> = old.lines().collect();
+                return Err(FileError::OldNoMatch {
+                    path: path.to_owned(),
+                    closest: Lines::of(content).closest(&search),
+                });
+            }
+            _ => {
+                let (count, places) = places(matches.iter().map(|&index| line_of(content, index)));
+                return Err(FileError::OldMatchesSeveral {
+                    path: path.to_owned(),
+                    count,
+                    places,
+                });
+            }
         },
     };
     // `--old` is the edit's one replacement, so it overlaps no other.
@@ -299,38 +316,39 @@ impl<'a> File<'a> {
     /// is left. Occurrences are counted as `str::match_indices` finds them,
     /// so overlapping ones count as one.
     fn replacement(&self, number: usize, block: &Block, path: &Path) -> Result<Replacement, FileError> {
-        let search = text_of(&block.search, "\n");
-        // An empty text occurs everywhere and nowhere: a SEARCH of one
-        // blank line names no place of the file.
-        let found: Vec<usize> = if search.is_empty() {
-            Vec::new()
-        } else {
-            self.text
-                .match_indices(search.as_str())
-                .map(|(index, _)| index)
-                .collect()
-        };
+        let lines = text_lines(&block.search);
+        // Blank lines alone match too many places to name one.
+        if lines.iter().all(|line| line.trim().is_empty()) {
+            return Err(FileError::BlankSearch {
+                block: number,
+                path: path.to_owned(),
+            });
+        }
+        let search = lines.join("\n");
+        let found: Vec<usize> = self
+            .text
+            .match_indices(search.as_str())
+            .map(|(index, _)| index)
+            .collect();
         let start = match found.as_slice() {
             [start] => *start,
             [] => {
                 return Err(FileError::BlockNoMatch {
                     block: number,
                     path: path.to_owned(),
-                    closest: self.lines.closest(block),
+                    closest: self.lines.closest(&lines),
                 });
             }
-            _ => {
-                return Err(several(
-                    number,
-                    path,
-                    found.iter().map(|&index| line_of(&self.text, index)),
-                ));
-            }
+            _ => return Err(several(number, path, found.iter().map(|&index| line_of(&self.text, index)))),
         };
         let ending = self.lines.ending_from(line_of(&self.text, start) - 1);
-        let text = text_of(&block.replace, ending);
+        let text = text_lines(&block.replace).join(ending);
         let mut end = start + search.len();
-        if text.is_empty() && !search.ends_with('\n') && self.text[end..].starts_with('\n') {
+        // A SEARCH of whole lines, from a line's start to a line's end,
+        // replaced by no lines at all, takes its last line ending too.
+        let whole_lines = (start == 0 || self.text[..start].ends_with('\n'))
+            && self.text[end..].starts_with('\n');
+        if block.replace.is_empty() && whole_lines {
             end += 1;
         }
         Ok(Replacement {
@@ -341,23 +359,36 @@ impl<'a> File<'a> {
     }
 }
 
-/// The text lines of a block's SEARCH or REPLACE without sections, joined
-/// by `ending`: the text between its markers without its last line ending.
-fn text_of(lines: &[BlockLine], ending: &str) -> String {
+/// The text lines of a block's SEARCH or REPLACE; the text between its
+/// markers is them joined by line endings, without the last one. Joined, an
+/// empty list and one empty line are the same text, so a caller that tells
+/// them apart looks at the block.
+fn text_lines(lines: &[BlockLine]) -> Vec<&str> {
     lines
         .iter()
-        .map(|line| match line {
-            BlockLine::Text(text) => text.as_str(),
-            // The caller matches a block with sections as lines.
-            BlockLine::Section => unreachable!("a block matched as text holds no section"),
+        .filter_map(|line| match line {
+            BlockLine::Text(text) => Some(text.as_str()),
+            BlockLine::Section => None,
         })
-        .collect::<Vec<_>>()
-        .join(ending)
+        .collect()
 }
 
 /// The error of the `number`th block of the file at `path`, whose SEARCH
 /// occurs at each of `lines`, 1-based and ascending.
 fn several(number: usize, path: &Path, lines: impl Iterator<Item = usize>) -> FileError {
+    let (count, places) = places(lines);
+    FileError::BlockMatchesSeveral {
+        block: number,
+        path: path.to_owned(),
+        count,
+        places,
+    }
+}
+
+/// How many times a text occurs, at `lines`, 1-based and ascending, and
+/// those lines as an error names them: `line 12`, or `lines 12, 40 and 77`
+/// for several, each line once.
+fn places(lines: impl Iterator<Item = usize>) -> (usize, String) {
     let mut lines: Vec<usize> = lines.collect();
     let count = lines.len();
     lines.dedup();
@@ -367,14 +398,9 @@ fn several(number: usize, path: &Path, lines: impl Iterator<Item = usize>) -> Fi
             "lines {} and {last}",
             first.iter().map(usize::to_string).collect::<Vec<_>>().join(", ")
         ),
-        [] => unreachable!("a SEARCH that occurs several times occurs somewhere"),
+        [] => unreachable!("a text that occurs several times occurs somewhere"),
     };
-    FileError::BlockMatchesSeveral {
-        block: number,
-        path: path.to_owned(),
-        count,
-        places,
-    }
+    (count, places)
 }
 
 /// A file's lines: where each starts, where its text ends, and where its
@@ -518,7 +544,7 @@ impl<'a> Lines<'a> {
                 return Err(FileError::BlockNoMatch {
                     block: number,
                     path: path.to_owned(),
-                    closest: self.closest(block),
+                    closest: self.closest(&text_lines(&block.search)),
                 });
             }
             _ => {
@@ -560,21 +586,12 @@ impl<'a> Lines<'a> {
         })
     }
 
-    /// The lines of the file most like the text lines of `block`'s SEARCH,
-    /// numbered: as many lines as it has, from the first that matches its
-    /// lines best.
-    fn closest(&self, block: &Block) -> String {
+    /// The lines of the file most like the lines of `search`, numbered: as
+    /// many lines as it has, from the first that matches its lines best.
+    fn closest(&self, search: &[&str]) -> String {
         if self.lines.is_empty() {
             return "The file is empty.".to_owned();
         }
-        let search: Vec<&str> = block
-            .search
-            .iter()
-            .filter_map(|line| match line {
-                BlockLine::Text(text) => Some(text.as_str()),
-                BlockLine::Section => None,
-            })
-            .collect();
         let count = search.len().clamp(1, self.lines.len());
         let score = |first: usize| -> f64 {
             search
@@ -593,7 +610,14 @@ impl<'a> Lines<'a> {
             }
         }
         let lines = (best..best + count)
-            .map(|index| format!("{}: {}", index + 1, self.text(index)))
+            .map(|index| {
+                // A long line shows its start, so an error stays a message.
+                let text = self.text(index);
+                match text.char_indices().nth(CLOSEST_CHARS) {
+                    Some((end, _)) => format!("{}: {}\u{2026}", index + 1, &text[..end]),
+                    None => format!("{}: {text}", index + 1),
+                }
+            })
             .collect::<Vec<_>>()
             .join("\n");
         let span = match count {
