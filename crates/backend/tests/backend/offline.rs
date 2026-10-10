@@ -1,27 +1,18 @@
 //! A conversation whose Host goes offline (`sessions-and-targets.md` § Host
-//! operations, § Switch the primary target; `product.md` § Recovering an
-//! unfinished turn): a `shell` call on an offline primary device waits for
-//! its runner, its row says so, and it runs once the runner is back; Stop
-//! ends the wait as it ends any turn; a move meanwhile ends the waiting call
-//! as not run, tells the agent, and the turn goes on on the new Host; an
-//! offline attached device fails at once with its offline error; and a tree
-//! that works otherwise still refuses the move. The model is an Anthropic
-//! endpoint the test scripts, or a scripted family for a tree with a child;
-//! the devices are real runners.
+//! operations, § Switch the primary target): the agent's operation on an
+//! offline device, primary or attached, fails at once with the device's
+//! offline error, worded for the model so it can decide what to do; and a
+//! move away from an offline device leaves the commands still running there
+//! to its runner, which reports their ends once it is back. The model is an
+//! Anthropic endpoint the test scripts; the devices are real runners.
 
-use std::sync::Arc;
-
-use demi_conversation_socket_protocol::ServerFrame;
+use demi_agent_tools::testing::field;
 use demi_provider_common::testing::MockVendor;
-use demi_shared_types::SessionPhase;
-use demi_web_api_protocol::error::ErrorCode;
-use reqwest::StatusCode;
-use serde_json::json;
 
-use crate::conversations::{Socket, anthropic_at, create, send};
-use crate::subagents::{self, Scripts, tree_on};
+use crate::conversations::{anthropic_at, create};
+use crate::lifetime::{Network, until_requested};
 use crate::support::{Harness, Paired, Session, TestBackend};
-use crate::work::{Driven, say, shell, switch};
+use crate::work::{Driven, resident, say, shell, switch};
 
 const FIRST: &str = "7e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a07";
 
@@ -39,120 +30,46 @@ async fn on<'a>(
     Driven::open(backend, master, vendor, FIRST, &provider, "/offline").await
 }
 
-/// Stops `paired`'s runner and waits until the backend shows it offline.
-async fn offline(backend: &TestBackend, master: &Session, paired: &mut Paired) {
+/// Stops `paired`'s runner, waits until the backend shows it offline, and
+/// lets 40 seconds pass on the backend's clock.
+async fn offline_for_40s(harness: &Harness, backend: &TestBackend, master: &Session, paired: &mut Paired) {
     paired.runner.stop().await;
     backend.until_online(master, paired.id(), false).await;
+    harness.clock.advance(jiff::SignedDuration::from_secs(40));
 }
 
-/// Waits until the page is told that the root's call `call` waits for the
-/// Host `host`.
-async fn until_waiting(socket: &mut Socket, call: &str, host: &str) {
-    socket
-        .until(|frame| {
-            matches!(frame, ServerFrame::WaitingCalls { subagent_id: None, waiting_calls }
-                if waiting_calls.iter().any(|waiting| waiting.tool_use_id == call && waiting.host == host))
+/// Whether a request to the model carried the call `call`'s result as an
+/// error.
+fn errored(vendor: &MockVendor, call: &str) -> bool {
+    vendor.requests().iter().any(|request| {
+        request.json()["messages"].as_array().unwrap().iter().any(|message| {
+            message["content"].as_array().into_iter().flatten().any(|block| {
+                block["type"] == "tool_result" && block["tool_use_id"] == call && block["is_error"] == true
+            })
         })
-        .await;
-}
-
-/// Waits for the idle phase of a turn whose running phase was read already.
-async fn until_idle(socket: &mut Socket) {
-    socket
-        .until(|frame| matches!(frame, ServerFrame::Phase { phase: SessionPhase::Idle }))
-        .await;
+    })
 }
 
 #[tokio::test]
-async fn a_shell_call_on_an_offline_primary_device_waits_for_its_runner_and_runs_once_it_is_back() {
+async fn a_shell_call_on_an_offline_primary_device_says_it_is_offline_and_what_becomes_of_its_commands() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let mut alpha = backend.pair(&master, "alpha").await;
     let mut work = on(&backend, &master, &vendor, &alpha).await;
-    offline(&backend, &master, &mut alpha).await;
+    offline_for_40s(&harness, &backend, &master, &mut alpha).await;
 
-    let before = work
-        .start(vec![shell("t1", "echo back", 10_000), say("done")])
-        .await;
-    until_waiting(&mut work.socket, "t1", "alpha").await;
-    alpha.runner.start_again();
-    until_idle(&mut work.socket).await;
-
-    // The model never learns that the Host was away: it reads the command's
-    // ordinary result.
-    let turn = work.observe(before);
-    assert!(
-        turn.received[0].contains("exitCode: 0") && turn.received[0].contains("back"),
-        "{}",
-        turn.received[0]
-    );
-    backend.close().await;
-}
-
-#[tokio::test]
-async fn a_stop_ends_a_shell_call_that_waits_for_the_offline_primary_device() {
-    let vendor = MockVendor::start().await;
-    let harness = Harness::new();
-    let (backend, master) = harness.start_set_up().await;
-    let mut alpha = backend.pair(&master, "alpha").await;
-    let mut work = on(&backend, &master, &vendor, &alpha).await;
-    offline(&backend, &master, &mut alpha).await;
-
-    work.start(vec![shell("t1", "echo back", 10_000)]).await;
-    until_waiting(&mut work.socket, "t1", "alpha").await;
-    work.socket.stop().await;
-
-    // The next turn's request carries the stopped call's result.
-    let next = work.turn(vec![say("stopped")]).await;
-    assert_eq!(next.received, ["Tool call aborted: the user stopped the turn."]);
-    backend.close().await;
-}
-
-#[tokio::test]
-async fn a_move_while_a_call_waits_ends_it_as_not_run_tells_the_agent_and_the_turn_goes_on_on_the_new_host() {
-    let vendor = MockVendor::start().await;
-    let harness = Harness::new();
-    let (backend, master) = harness.start_set_up().await;
-    let mut alpha = backend.pair(&master, "alpha").await;
-    let beta = backend.pair(&master, "beta").await;
-    let mut work = on(&backend, &master, &vendor, &alpha).await;
-    offline(&backend, &master, &mut alpha).await;
-
-    let before = work
-        .start(vec![
-            shell("t1", "pwd", 10_000),
-            shell("t2", "pwd", 10_000),
-            say("moved on"),
-        ])
-        .await;
-    until_waiting(&mut work.socket, "t1", "alpha").await;
-    // A move without notifyAgent: a waiting turn is told all the same.
-    let beta_home = beta.runner.home_dir().to_owned();
-    switch(&backend, &master, FIRST, &beta, &beta_home).await;
-    until_idle(&mut work.socket).await;
-
-    let turn = work.observe(before);
+    let tried = work.turn(vec![shell("t1", "echo hello", 10_000), say("offline")]).await;
     assert_eq!(
-        turn.received[0],
-        "Tool call not run: the user moved this conversation from alpha to beta while this call waited for alpha, which was offline. Run it again there if it is still needed."
+        tried.received[0],
+        "alpha is offline: its runner has been disconnected for 40s, so nothing can run there now; commands already running there are kept for up to 10m and report when it is back."
     );
-    let next = turn.requests[1]["messages"].to_string();
-    assert!(
-        next.contains("The user moved this conversation from alpha (") && next.contains(" to beta ("),
-        "{next}"
-    );
-    assert!(next.contains("[Execution context "), "{next}");
-    assert!(
-        turn.received[1].contains(beta_home.to_str().unwrap()),
-        "{}",
-        turn.received[1]
-    );
+    assert!(errored(&vendor, "t1"), "the result is an error to the model");
     backend.close().await;
 }
 
 #[tokio::test]
-async fn an_offline_attached_device_fails_at_once_with_its_offline_error() {
+async fn a_command_on_an_offline_attached_device_fails_at_once_with_its_offline_error() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -160,59 +77,58 @@ async fn an_offline_attached_device_fails_at_once_with_its_offline_error() {
     let mut build = backend.pair(&master, "build-box").await;
     let mut work = on(&backend, &master, &vendor, &alpha).await;
     harness.attach(FIRST, build.id(), "build-box");
-    offline(&backend, &master, &mut build).await;
+    offline_for_40s(&harness, &backend, &master, &mut build).await;
 
-    let turn = work
+    let tried = work
         .turn(vec![
             shell("t1", "demi host shell --host build-box 'echo hi'", 10_000),
             say("noted"),
         ])
         .await;
     assert!(
-        turn.received[0].contains("build-box is offline: its runner has been disconnected for ")
-            && turn.received[0].contains(", so nothing can run there now; commands already running there are kept for up to 10m and report when it is back."),
+        tried.received[0].contains(
+            "build-box is offline: its runner has been disconnected for 40s, so nothing can run there now; commands already running there are kept for up to 10m and report when it is back."
+        ),
         "{}",
-        turn.received[0]
+        tried.received[0]
     );
     backend.close().await;
 }
 
+// About three seconds: two real devices pair, one through a network the
+// test cuts and opens again, and the background command's call waits for
+// two quiet seconds.
 #[tokio::test]
-async fn a_move_is_refused_while_a_child_thinks_beside_a_call_that_waits() {
-    let scripts = Arc::new(Scripts::default());
-    let (_harness, backend, master, mut paired, _root, _provider) =
-        tree_on(&scripts, Harness::new()).await;
-    let conversation = crate::conversations::FIRST;
-    let mut socket = Socket::connect(&backend, &master, conversation).await;
-    socket.open().await;
-    scripts.root(
-        conversation,
-        vec![
-            subagents::shell("t1", "demi agent spawn --description thinker <<< 'Think it over'"),
-            subagents::say("spawned"),
-        ],
-    );
-    // The child's request stays open: it is still thinking.
-    scripts.child(vec![vec![]]);
-    socket.chat("m1", "Spawn a thinker").await;
-    offline(&backend, &master, &mut paired).await;
-
-    scripts.root(
-        conversation,
-        vec![subagents::shell("t2", "echo hi"), subagents::say("after")],
-    );
-    socket.send(&send("m2", "Go on")).await;
-    until_waiting(&mut socket, "t2", "laptop").await;
-    let refused = backend
-        .patch(
-            &format!("/api/conversations/{conversation}"),
-            &master,
-            json!({ "target": { "kind": "cloud" } }),
-        )
+async fn a_move_away_from_an_offline_device_leaves_its_running_command_there_which_reports_its_end_when_it_is_back() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let network = Network::start(backend.address()).await;
+    let alpha = backend.pair_through(&master, "alpha", &network.url).await;
+    let beta = backend.pair(&master, "beta").await;
+    let mut work = on(&backend, &master, &vendor, &alpha).await;
+    let home = alpha.runner.home_dir().to_owned();
+    let started = work
+        .turn(vec![
+            resident("t1", "printf 'started\\n'; while [ ! -f finish ]; do sleep 0.05; done; exit 3"),
+            say("started"),
+        ])
         .await;
-    assert_eq!(
-        refused.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::TurnInFlight)
-    );
+    assert!(started.received[0].starts_with("status: running"), "{}", started.received[0]);
+    let command = field(&started.received[0], "commandId").to_owned();
+
+    // The device goes away with the command running there, and the user
+    // moves the conversation once the agent's turn ended.
+    network.cut();
+    backend.until_online(&master, alpha.id(), false).await;
+    let beta_home = beta.runner.home_dir().to_owned();
+    switch(&backend, &master, FIRST, &beta, &beta_home).await;
+
+    // The command ends while its runner is away, and reports its end once
+    // the runner is back.
+    work.script(vec![say("noted")]);
+    std::fs::write(home.join("finish"), "").unwrap();
+    network.open();
+    until_requested(&vendor, &format!("Command {command} (t1) ended with exit code 3.")).await;
     backend.close().await;
 }

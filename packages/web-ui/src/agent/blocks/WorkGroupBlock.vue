@@ -12,9 +12,7 @@ import ToolCallBlock from './ToolCallBlock.vue'
 import PendingCallBlock from './PendingCallBlock.vue'
 import FileChangePills from './FileChangePills.vue'
 import ToolMedia from './ToolMedia.vue'
-import HostWaitNote from './HostWaitNote.vue'
 import { toolRowIcon } from './tool-row-icon'
-import { useCallWaits } from '../live-calls'
 import { storedShellView, toolCallTitle } from '../block-helpers'
 import { pendingCallTitle, toolRenderKind } from '../tool-rendering'
 import { thinkingFaceLabel } from '../thinking-label'
@@ -113,14 +111,6 @@ const face = computed<Face>(() => {
     rollKey: step.type === 'pending_call' && step.call.description === null ? `${stepKey(step)}:writing` : stepKey(step),
   }
 })
-/** Folded while it runs, the Host whose runner the newest call waits for, which the face names as the call's own row does. */
-const callWaits = useCallWaits()
-const waitingFor = computed(() => {
-  const step = newest.value
-  if (isOpen.value || !props.group.live || step.type !== 'tool_call' || step.status !== 'executing')
-    return undefined
-  return callWaits(step.toolUseId)
-})
 const calls = computed(() => props.group.steps.filter((step) => step.type === 'tool_call'))
 const changed = computed(() => callFiles(calls.value))
 const media = computed(() => foldedMedia(props.group.steps))
@@ -196,7 +186,6 @@ function pick(path: string): void {
       <component :is="face.icon" :size="ICON_PX.in28" />
     </template>
     <span class="min-w-0 truncate" :class="face.loading ? 'thinking-shimmer' : ''">{{ face.label }}</span>
-    <HostWaitNote v-if="waitingFor" :host="waitingFor" />
     <!-- A thinking with no text has nothing to open: no body, so no chevron. -->
     <template v-if="!lone || loneText !== ''" #body>
       <StreamedMarkdown

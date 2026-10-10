@@ -15,7 +15,7 @@ mod transcript;
 pub use client::{ClientContent, ClientFrame, ClientFrameKind, EditRequest, MediaRef};
 pub use server::{
     AbortResult, AbortTarget, CommandView, EditOutcome, Failures, JobPhase, ServerFrame,
-    ShellStatus, SteerOutcome, SubagentEvent, SubagentJob, WaitingCall,
+    ShellStatus, SteerOutcome, SubagentEvent, SubagentJob,
 };
 pub use transcript::{TranscriptPatch, TranscriptVersion};
 

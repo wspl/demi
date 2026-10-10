@@ -131,19 +131,13 @@ function reloadPlugins() {
 }
 /** The offline primary Host's card, until a move takes the conversation to another Host. */
 const offlineHost = ref(props.offlineHost ?? null)
-const moving = ref(false)
-let moveTimer = 0
-/** Moves after a beat, as the product's switch commits, and says where the product would run it. */
+/** The card goes with the move, as the product's does, and a toast says where the product would run it. */
 function moveHost(host: HostChoice) {
-  moving.value = true
-  moveTimer = window.setTimeout(() => {
-    moving.value = false
-    const to = host.kind === 'cloud'
-      ? 'Cloud'
-      : offlineHost.value?.devices.find((device) => device.id === host.id)?.name
-    offlineHost.value = null
-    productWould(`Move the Conversation to ${to}`)
-  }, 600)
+  const to = host.kind === 'cloud'
+    ? 'Cloud'
+    : offlineHost.value?.devices.find((device) => device.id === host.id)?.name
+  offlineHost.value = null
+  productWould(`Move the Conversation to ${to}`)
 }
 /** Counts the drafts shown from outside, here the restored ones. */
 const shown = ref(0)
@@ -366,7 +360,6 @@ function changeModel(change: ModelSettingsChange) {
 }
 onBeforeUnmount(() => {
   window.clearTimeout(reloadTimer)
-  window.clearTimeout(moveTimer)
   uploads.cancelAll()
   host.release()
   while (attached.value.length) {
@@ -400,7 +393,7 @@ onBeforeUnmount(() => {
     :draft-shown="shown"
     :plugins-changed="pluginsChanged"
     :reloading="reloading"
-    :offline-host="offlineHost && { ...offlineHost, moving }"
+    :offline-host="offlineHost"
     @move-host="moveHost"
     remote-files
     @reload-plugins="reloadPlugins"
