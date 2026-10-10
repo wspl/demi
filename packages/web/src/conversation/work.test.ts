@@ -102,7 +102,7 @@ test('the changes of a request open in the Change view with the panel, only whil
 test('a click on what the open panel already shows closes it, and a click on anything else shows that', () => {
   signIn('one')
   const plugin = (id: string) => ({ id, name: id, description: 'A plugin.', enabled: true, packages: [] })
-  useProduct().snapshot = productState({ plugins: [plugin('changes'), plugin('file-browser')] })
+  useProduct().read = productState({ plugins: [plugin('changes'), plugin('file-browser')] })
   const work = useWorkPanel()
   const state = work.stateFor('a')
   const edit = (segment: number) => ({ node: null, request: 'user', file: 'login.ts', edit: { call: 'call', path: 'login.ts', segment } })
