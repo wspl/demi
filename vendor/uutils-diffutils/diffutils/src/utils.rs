@@ -3,6 +3,7 @@
 // For the full copyright and license information, please view the LICENSE-*
 // files that was distributed with this source code.
 
+use crate::params::Params;
 use regex::Regex;
 use {std::ffi::OsString, uucore::context::io::Write};
 use unicode_width::UnicodeWidthStr;
@@ -34,6 +35,76 @@ pub fn do_expand_tabs(line: &[u8], tabsize: usize) -> Vec<u8> {
     }
 
     result
+}
+
+/// A line with what `-i`, `-b` and `-w` leave of it, which is what lines are
+/// compared by.
+struct KeyedLine<'a> {
+    line: &'a [u8],
+    key: Vec<u8>,
+}
+
+impl PartialEq for KeyedLine<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key
+    }
+}
+
+/// What `-i`, `-b` and `-w` compare of `line`, as GNU diff does in the C
+/// locale: `-w` drops every white space byte, `-b` makes each run one space
+/// and drops a run at the end, and `-i` lowers ASCII letters.
+fn line_key(line: &[u8], params: &Params) -> Vec<u8> {
+    let ignores_space = params.ignore_all_space || params.ignore_space_change;
+    let mut key = Vec::with_capacity(line.len());
+    let mut after_space = false;
+    for &byte in line {
+        if ignores_space && (byte.is_ascii_whitespace() || byte == b'\x0b') {
+            after_space = true;
+            continue;
+        }
+        if after_space && !params.ignore_all_space {
+            key.push(b' ');
+        }
+        after_space = false;
+        key.push(if params.ignore_case { byte.to_ascii_lowercase() } else { byte });
+    }
+    key
+}
+
+/// The line diff of `expected` and `actual`, comparing lines as `-i`, `-b`
+/// and `-w` say; a line both sides have is given from each side.
+pub fn diff_lines<'a>(
+    expected: &[&'a [u8]],
+    actual: &[&'a [u8]],
+    params: &Params,
+) -> Vec<diff::Result<&'a [u8]>> {
+    if !params.ignore_case && !params.ignore_space_change && !params.ignore_all_space {
+        return diff::slice(expected, actual)
+            .into_iter()
+            .map(|result| match result {
+                diff::Result::Left(line) => diff::Result::Left(*line),
+                diff::Result::Right(line) => diff::Result::Right(*line),
+                diff::Result::Both(left, right) => diff::Result::Both(*left, *right),
+            })
+            .collect();
+    }
+    let keyed = |lines: &[&'a [u8]]| -> Vec<KeyedLine<'a>> {
+        lines.iter().map(|&line| KeyedLine { line, key: line_key(line, params) }).collect()
+    };
+    let (expected, actual) = (keyed(expected), keyed(actual));
+    diff::slice(&expected, &actual)
+        .into_iter()
+        .map(|result| match result {
+            diff::Result::Left(line) => diff::Result::Left(line.line),
+            diff::Result::Right(line) => diff::Result::Right(line.line),
+            diff::Result::Both(left, right) => diff::Result::Both(left.line, right.line),
+        })
+        .collect()
+}
+
+/// Whether `-B` ignores a change made of these lines: all of them are empty.
+pub fn is_blank_change<'a>(mut lines: impl Iterator<Item = &'a [u8]>) -> bool {
+    lines.all(<[u8]>::is_empty)
 }
 
 /// Write a single line to an output stream, expanding tabs to space if necessary.
@@ -76,7 +147,7 @@ pub fn get_modification_time(file_path: &str) -> String {
     modification_time
 }
 
-pub fn format_failure_to_read_input_file(
+pub fn format_file_error(
     executable: &OsString,
     filepath: &OsString,
     error: &uucore::context::io::Error,
@@ -92,14 +163,14 @@ pub fn format_failure_to_read_input_file(
     )
 }
 
-pub fn report_failure_to_read_input_file(
+pub fn report_file_error(
     executable: &OsString,
     filepath: &OsString,
     error: &uucore::context::io::Error,
 ) {
     uucore::context_eprintln!(
         "{}",
-        format_failure_to_read_input_file(executable, filepath, error)
+        format_file_error(executable, filepath, error)
     );
 }
 
