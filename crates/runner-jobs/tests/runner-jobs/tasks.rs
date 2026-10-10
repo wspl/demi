@@ -165,6 +165,11 @@ impl ShellJob for Played {
         self.cancellation.is_cancelled()
     }
 
+    /// A played job has no background tasks.
+    fn outliving(&self) -> tokio::sync::watch::Receiver<Vec<String>> {
+        tokio::sync::watch::Sender::new(Vec::new()).subscribe()
+    }
+
     fn wait(&mut self) -> BoxFuture<'_, ProcessExit> {
         Box::pin(async move {
             if let Some(exit) = self.exit.take() {

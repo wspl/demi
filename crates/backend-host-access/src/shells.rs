@@ -521,6 +521,10 @@ impl ShellEnvironment for Registered {
         self.environment.quiet(command)
     }
 
+    fn outliving(&self, command: &CommandId) -> Result<Vec<String>, ShellError> {
+        self.environment.outliving(command)
+    }
+
     fn media(&self, command: &CommandId) -> Result<Vec<CommandMedium>, ShellError> {
         self.environment.media(command)
     }

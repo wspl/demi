@@ -855,7 +855,7 @@ async fn a_status_shows_the_latest_first_registered_hint_and_none_once_the_job_e
     };
     let shown =
         |shell: &RemoteShellEnvironment| match shell.status(&started.command_id).unwrap().state {
-            CommandState::Running { hint } => hint,
+            CommandState::Running { hint, .. } => hint,
             other => panic!("expected a running command, got {other:?}"),
         };
     link.send(hint("foreign", Some("another job"), "not-this-job"))

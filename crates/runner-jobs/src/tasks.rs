@@ -452,6 +452,9 @@ impl JobConfig {
         // The media its commands hand to it, as they arrive
         // (`runtime.md` § What `demi file view` shows).
         let mut arrivals: Option<mpsc::UnboundedReceiver<Arrival>> = None;
+        // The background tasks that keep a job running once its script has
+        // ended (`runtime.md` § Results and previews); a raw process has none.
+        let mut outliving: Option<watch::Receiver<Vec<String>>> = None;
         let (mut child, stdin, stdout) = match spec.command {
             TaskCommand::Process {
                 command,
@@ -563,6 +566,7 @@ impl JobConfig {
                         edits: recorder,
                     })
                     .await?;
+                outliving = Some(child.outliving());
                 (Execution::shell(child), stdin, stdout)
             }
         };
@@ -681,6 +685,23 @@ impl JobConfig {
                         followed = false;
                         follow_open = false;
                     }
+                },
+                changed = async { outliving.as_mut().expect("the job's tasks are watched").changed().await }, if outliving.is_some() => match changed {
+                    Ok(()) => {
+                        let tasks = outliving
+                            .as_mut()
+                            .expect("the job's tasks are watched")
+                            .borrow_and_update()
+                            .clone();
+                        if let Some(message) = outliving_message(&id, &tasks) {
+                            tokio::select! {
+                                _ = cancel.cancelled() => child.cancel(),
+                                _ = self.output.send(message.map_err(io::Error::other)?) => {},
+                            }
+                        }
+                    }
+                    // The job's shell let go of its tasks: it is ending.
+                    Err(_) => outliving = None,
                 },
                 // A medium waits for what the job's stdout pipe holds when
                 // it arrives, so its line follows output written before it
@@ -941,6 +962,23 @@ async fn take_chunk(
         }
     }
     Ok(false)
+}
+
+/// The `job_outliving` that names `tasks`, each command line cut to the
+/// wire's bound; none while the script runs, when there are none.
+fn outliving_message(id: &str, tasks: &[String]) -> Option<Result<wire::Frame, wire::WireError>> {
+    let tasks: Vec<String> = tasks
+        .iter()
+        .filter(|line| !line.is_empty())
+        .take(wire::JOB_OUTLIVING_TASKS)
+        .map(|line| line[..line.floor_char_boundary(wire::JOB_TASK_LINE_BYTES)].to_owned())
+        .collect();
+    (!tasks.is_empty()).then(|| {
+        wire::encode(&wire::Outbound::JobOutliving {
+            job_id: id.to_owned(),
+            tasks,
+        })
+    })
 }
 
 /// The next medium a job's commands hand to it; never, for a job without

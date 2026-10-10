@@ -327,7 +327,12 @@ async fn status_one<H: HostResolver>(
             let idle_ms = environment
                 .quiet(&command)
                 .map_or(0, |quiet| u64::try_from(quiet.as_millis()).unwrap_or(u64::MAX));
-            let state = CommandState::Running { hint: None };
+            // A command its environment let go of since names no task, as
+            // one that ended names none.
+            let state = CommandState::Running {
+                hint: None,
+                outliving: environment.outliving(&command).unwrap_or_default(),
+            };
             looking.set_place(&command, whole.seen_through());
             whole_look_text(&command, state, running_ms, idle_ms, Arc::new(whole), place, look)
         }

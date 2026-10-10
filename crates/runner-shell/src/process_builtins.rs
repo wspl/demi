@@ -2,7 +2,12 @@
 //! shares: in a job each acts for the job's shell instead, or refuses
 //! (`runner.md` § Builtins that act on a process).
 
-use std::{collections::HashMap, io::Write};
+use std::{
+    collections::{BTreeMap, HashMap},
+    io::Write,
+};
+
+use futures_util::{FutureExt as _, StreamExt as _, stream::FuturesUnordered};
 
 use brush_core::{
     CommandArg, ExecutionContext, ExecutionControlFlow, ExecutionExitCode, ExecutionResult,
@@ -16,6 +21,18 @@ use brush_core::{
 /// text and a builtin's special status stay brush's.
 pub(crate) fn register(registrations: &mut HashMap<String, Registration<DefaultShellExtensions>>) {
     registrations.insert("exec".into(), builtins::builtin::<Exec, _>().special());
+    registrations.insert(
+        "disown".into(),
+        Registration {
+            execute_func: disown,
+            content_func: |name, _, _| {
+                Ok(format!("{name}: keeps each task in its job, which runs on while the task does"))
+            },
+            disabled: false,
+            special_builtin: false,
+            declaration_builtin: false,
+        },
+    );
     replace(registrations, "fg", fg);
     // Statics hold brush's own builtins, which the runner's run for what they
     // leave to them and which a registration's plain function pointer cannot
@@ -158,6 +175,17 @@ fn fg(
     Box::pin(async move { refused(&context, "no job control") })
 }
 
+/// `disown` would let a task outlive its job; here it keeps the task in its
+/// job, which runs on while the task does and whose stop stops it, so it
+/// succeeds and changes nothing else (`runner.md` § Background tasks and
+/// timeouts).
+fn disown(
+    _context: ExecutionContext<'_>,
+    _args: Vec<CommandArg>,
+) -> BoxFuture<'_, Result<ExecutionResult, brush_core::Error>> {
+    Box::pin(async { Ok(ExecutionResult::success()) })
+}
+
 /// Brush's `kill`, which lists signals for the runner's.
 #[cfg(unix)]
 static BRUSH_KILL: std::sync::OnceLock<builtins::CommandExecuteFunc<DefaultShellExtensions>> =
@@ -190,7 +218,7 @@ fn wait(
     }
     Box::pin(async move {
         if words.is_empty() {
-            wait_tasks(context.shell).await?;
+            wait_tasks(context.shell, |_| {}).await?;
             return Ok(ExecutionResult::success());
         }
         let scope = crate::interpreter::scope(context.shell)?;
@@ -270,13 +298,40 @@ async fn task_status(
 }
 
 /// Waits for every background task of `shell` to end, as `wait` alone and
-/// the end of a job do. A task a signal stopped ended as asked.
-pub(crate) async fn wait_tasks(shell: &mut Shell) -> Result<(), brush_core::Error> {
+/// the end of a job do. A task a signal stopped ended as asked. `running`
+/// hears the command lines of the tasks that still run: once those that had
+/// ended are waited for, and again after each end.
+pub(crate) async fn wait_tasks(
+    shell: &mut Shell,
+    mut running: impl FnMut(Vec<String>),
+) -> Result<(), brush_core::Error> {
     let scope = crate::interpreter::scope(shell)?;
-    for job in std::mem::take(&mut shell.jobs_mut().jobs) {
-        task_status(&scope, job).await?;
+    let jobs = std::mem::take(&mut shell.jobs_mut().jobs);
+    let mut lines: BTreeMap<usize, String> = jobs
+        .iter()
+        .map(|job| (job.id, job.command_line.clone()))
+        .collect();
+    let mut waits: FuturesUnordered<_> = jobs
+        .into_iter()
+        .map(|job| {
+            let scope = &scope;
+            async move { (job.id, task_status(scope, job).await) }
+        })
+        .collect();
+    loop {
+        while let Some(Some((id, status))) = waits.next().now_or_never() {
+            status?;
+            lines.remove(&id);
+        }
+        if waits.is_empty() {
+            return Ok(());
+        }
+        running(lines.values().cloned().collect());
+        if let Some((id, status)) = waits.next().await {
+            status?;
+            lines.remove(&id);
+        }
     }
-    Ok(())
 }
 
 /// `suspend` would stop the runner.

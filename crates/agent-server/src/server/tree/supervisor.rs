@@ -1226,6 +1226,7 @@ fn subagent_preamble(child: u64, parent: u64, can_spawn: bool) -> String {
     [
         format!("You are a subagent: agent {child} of this conversation, spawned by agent {parent}. Your transcript starts empty; the task brief in the first user message is your entire context."),
         "A turn you end with your answer returns that answer to the parent as the result and ends the session once nothing you started still runs: no queued or unread messages or command reports, no running children or commands of your own. To wait for your commands or children, end your turn: their end wakes you. Write the answer for the parent agent, in the shape the task brief asked for.".to_owned(),
+        "Report a command you leave running for your parent, such as a server, to the parent at once with `demi agent send parent`: name what runs and its command number, which the parent stops with `demi shell stop <commandId>` when done. Your result waits until that command ends.".to_owned(),
         spawning.to_owned(),
         "`demi agent send <id|parent>` delivers useful interim information, questions, or blockers through internal steering or an idle wakeup. It reads the message only from stdin (use a quoted heredoc). Your final answer is delivered automatically; do not send a duplicate final result. `demi agent list` renders the whole agent tree with your position.".to_owned(),
         "You are not talking to the product user; do not address them.".to_owned(),

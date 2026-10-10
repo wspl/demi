@@ -831,25 +831,30 @@ impl RemoteShellEnvironment {
             .ok_or_else(|| ShellError::UnknownCommand(command.clone()))
     }
 
-    /// The model's status of `command`.
-    fn view(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
+    /// The job of `command` while the command runs.
+    fn running_job(&self, command: &CommandId) -> Result<Option<RemoteJob>, ShellError> {
         let record = self.record(command)?;
-        let hint = self
+        if !record.borrow().is_running() {
+            return Ok(None);
+        }
+        Ok(self
             .0
             .state
             .borrow()
             .running
             .get(command)
-            .and_then(|running| {
-                running
-                    .job
-                    .borrow()
-                    .as_ref()
-                    .and_then(RemoteJob::running_hint)
-            });
+            .and_then(|running| running.job.borrow().clone()))
+    }
+
+    /// The model's status of `command`.
+    fn view(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
+        let (hint, outliving) = match self.running_job(command)? {
+            Some(job) => (job.running_hint(), job.outliving()),
+            None => (None, Vec::new()),
+        };
+        let record = self.record(command)?;
         let mut record = record.borrow_mut();
-        let hint = if record.is_running() { hint } else { None };
-        Ok(record.status(self.0.options.output_limit, hint))
+        Ok(record.status(self.0.options.output_limit, hint, outliving))
     }
 
     /// Stops a running command: asks it to end, and ends it when it does not.
@@ -911,6 +916,13 @@ impl ShellEnvironment for RemoteShellEnvironment {
 
     fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError> {
         Ok(self.record(command)?.borrow().quiet())
+    }
+
+    fn outliving(&self, command: &CommandId) -> Result<Vec<String>, ShellError> {
+        Ok(self
+            .running_job(command)?
+            .map(|job| job.outliving())
+            .unwrap_or_default())
     }
 
     fn media(&self, command: &CommandId) -> Result<Vec<CommandMedium>, ShellError> {

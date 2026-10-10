@@ -101,6 +101,10 @@ pub(crate) struct Work {
     /// before its start returns, such as print what a script waits for
     /// before it signals the process.
     starting: RwLock<()>,
+    /// The command lines of the background tasks that keep the job running
+    /// once its script has ended; empty while the script runs
+    /// (`runtime.md` § Results and previews).
+    outliving: watch::Sender<Vec<String>>,
 }
 
 #[derive(Default)]
@@ -141,7 +145,23 @@ impl Work {
             tasks: Mutex::default(),
             groups: Mutex::default(),
             starting: RwLock::default(),
+            outliving: watch::Sender::new(Vec::new()),
         }
+    }
+
+    /// The script has ended, and `tasks`, by their command lines, still run.
+    pub(crate) fn outlived_by(&self, tasks: Vec<String>) {
+        self.outliving.send_if_modified(|current| {
+            let changed = *current != tasks;
+            *current = tasks;
+            changed
+        });
+    }
+
+    /// The background tasks that keep the job running once its script has
+    /// ended, and each change of them.
+    pub(crate) fn outliving(&self) -> watch::Receiver<Vec<String>> {
+        self.outliving.subscribe()
     }
 
     /// Held while a process starts and enters the table.
