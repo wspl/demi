@@ -377,3 +377,53 @@ async fn an_rpc_call_of_a_job_no_agent_took_up_yet_takes_it_up_and_is_served() {
     std::fs::write(home.join("finish"), "").unwrap();
     backend.close().await;
 }
+
+// Several seconds: a real device pairs and installs the builtin package,
+// the call waits for two quiet seconds, and the network goes away and
+// comes back.
+#[tokio::test]
+async fn a_medium_a_job_returns_while_its_connection_is_away_reaches_its_end_result() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_file_package();
+    let (backend, master) = harness.start_set_up().await;
+    let network = Network::start(backend.address()).await;
+    let alpha = backend.pair_through(&master, "alpha", &network.url).await;
+    let mut work = on_device(&backend, &master, &vendor, &alpha).await;
+    let home = alpha.runner.home_dir().to_owned();
+    let png = demi_agent_store::testing::png(4, 3, 1).into_bytes();
+    std::fs::write(home.join("shot.png"), &png).unwrap();
+    // The package is installed while the runner is connected.
+    work.turn(vec![shell("t0", "demi file view shot.png > /dev/null", 30_000), say("viewed")])
+        .await;
+    let script = "printf 'waiting\\n'; while [ ! -f go ]; do sleep 0.05; done; demi file view shot.png > /dev/null 2> view.err; touch viewed";
+    let command = started(&mut work, "t1", script).await;
+
+    // The job returns its medium while its runner is away, and ends.
+    network.cut();
+    backend.until_online(&master, alpha.id(), false).await;
+    std::fs::write(home.join("go"), "").unwrap();
+    until_exists(&home.join("viewed")).await;
+    work.script(vec![say("noted")]);
+    network.open();
+    until_requested(&vendor, &format!("Command {command} (t1) ended with exit code 0.")).await;
+    work.socket.until_idle().await;
+
+    // Its end report carries the medium, which the next connection
+    // announced again (`runtime.md` § What a result attaches).
+    let report = format!("Command {command} (t1) ended with exit code 0.");
+    let message = vendor
+        .requests()
+        .iter()
+        .filter_map(|request| {
+            request.json()["messages"]
+                .as_array()?
+                .iter()
+                .find(|message| message.to_string().contains(&report))
+                .cloned()
+        })
+        .next()
+        .expect("a request carries the report");
+    let carried = message.to_string();
+    assert!(carried.contains("\"type\":\"image\""), "{carried}");
+    backend.close().await;
+}
