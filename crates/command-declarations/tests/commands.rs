@@ -166,6 +166,18 @@ fn a_usage_error_is_clap_s_with_the_command_s_usage_and_demi_s_tips() {
             None,
             "error: unexpected argument '--olf' found; a similar argument exists: '--old'\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]; more with --help",
         ),
+        // An option with no near name points at the options, never at
+        // passing it after `--`, which only a rest field takes.
+        (
+            &["edit", "a.txt", "--selector", "h1"],
+            None,
+            "error: unexpected argument '--selector' found; see the options with --help\nUsage: filer edit <path> --old <old> --new <new> [--occurrence <occurrence>]; more with --help",
+        ),
+        (
+            &["forward", "--selector"],
+            None,
+            "error: unexpected argument '--selector' found; to pass '--selector' as a value, use '-- --selector'\nUsage: filer forward -- <args>...; more with --help",
+        ),
         (
             &["crete", "a.txt"],
             None,
