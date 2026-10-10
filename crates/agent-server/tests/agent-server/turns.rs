@@ -949,3 +949,34 @@ async fn a_restored_report_of_a_command_no_shells_hold_carries_its_stored_output
         "{request}"
     );
 }
+
+/// A job's `rpc` call asks its node to take its command up; when the
+/// command cannot be taken up, as when its Host cannot be reached, the call
+/// hears why instead of waiting for a take-up that never comes
+/// (`runtime.md` § Command reports). A job no live node ran is unknown. A
+/// few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_job_whose_command_cannot_be_taken_up_answers_why() {
+    use demi_agent_store::RunningCommand;
+    use demi_shared_types::CommandId;
+
+    let script = ScriptedRuntime::new([]);
+    let fixture = Fixture::new(&script);
+    fixture.store.record_running(
+        conversation(),
+        RunningCommand {
+            command: CommandId::try_from("7").unwrap(),
+            job: "job-7".into(),
+            tool_use_id: "t1".into(),
+        },
+    );
+    let _client = fixture.opened().await;
+
+    let refused = fixture.server.take_up_job(&conversation(), "job-7").await;
+    assert_eq!(refused, Err("this agent runs no shell tools".to_owned()));
+    let unknown = fixture.server.take_up_job(&conversation(), "job-8").await;
+    assert_eq!(
+        unknown,
+        Err("rpc requires a live job dispatched to this device".to_owned())
+    );
+}

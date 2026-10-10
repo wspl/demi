@@ -241,6 +241,21 @@ impl<H: HostResolver> AgentServer<H> {
         Ok(())
     }
 
+    /// Takes up the command of the conversation `root`'s live tree whose
+    /// job is `job`, as the job's `rpc` call asks once the tree is restored
+    /// (`runtime.md` § Command reports); why it could not be, when it could
+    /// not.
+    pub async fn take_up_job(&self, root: &NodeId, job: &str) -> Result<(), String> {
+        let unknown = || "rpc requires a live job dispatched to this device".to_owned();
+        let tree = self.tree(root).ok_or_else(unknown)?;
+        for node in tree.nodes() {
+            if let Some(taken) = node.take_up_job(job).await {
+                return taken;
+            }
+        }
+        Err(unknown())
+    }
+
     /// The conversation `root`'s live tree, or its tree opened from the store
     /// in `cwd` with what the restored tree does next, which the caller hands
     /// to [`Tree::continue_restored`] once it attached what it attaches. The
