@@ -1250,6 +1250,51 @@ async fn a_backend_restart_keeps_the_cloud_and_a_command_on_it_reports_its_end()
     backend.close().await;
 }
 
+/// A Cloud taken over at a backend start keeps its lifetime cap's clock:
+/// the cap counts from the boot its record keeps, not from the start
+/// (`managed-hosts.md` § Lifecycle and capacity). Here the Cloud booted two
+/// hours before a start whose cap is one hour, so the start stops it at
+/// once. Several seconds: the Cloud boots once, and the call that leaves a
+/// command holding it waits for two quiet seconds.
+#[tokio::test]
+async fn a_cloud_taken_over_at_a_backend_start_keeps_its_lifetime_cap_clock() {
+    let vendor = MockVendor::start().await;
+    let mut harness = Harness::new();
+    harness.cloud.lifetime_cap = Duration::from_secs(60 * 60);
+    harness.cloud.sweep = Duration::from_millis(100);
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/a").await;
+    create(&backend, &master, FIRST).await;
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
+    // A command left running holds the Cloud: no idle stop comes.
+    let script = "printf 'started\\n'; while :; do sleep 0.05; done";
+    let started = work
+        .turn(vec![crate::work::resident("t1", script), say("waiting")])
+        .await;
+    assert!(started.received[0].starts_with("status: running"), "{}", started.received[0]);
+    let device = the_cloud(&harness);
+
+    let address = backend.address();
+    backend.close().await;
+    let moved = harness
+        .control_database()
+        .execute(
+            "UPDATE devices SET cloud_started_at = cloud_started_at - 7200000 WHERE kind = 'managed' AND cloud_started_at IS NOT NULL",
+            [],
+        )
+        .unwrap();
+    assert_eq!(moved, 1, "the Cloud's boot is recorded");
+    work.script(vec![say("noted")]);
+    let backend = harness.start_at(address).await;
+    eventually("the Cloud stops at its lifetime cap", || async {
+        harness.manager.count(&format!("hibernate:{device}")) == 1
+            && !harness.manager.running(&device)
+    })
+    .await;
+    assert_eq!(harness.manager.count(&format!("wake:{device}")), 1);
+    backend.close().await;
+}
+
 /// An upgrade stops the Cloud with the manager, so the command on it ends:
 /// the next start takes its conversation up, which starts the Cloud with
 /// the new release's programs, and the command is reported lost to the
