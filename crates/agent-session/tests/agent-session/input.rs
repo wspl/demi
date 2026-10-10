@@ -629,7 +629,7 @@ async fn a_stop_writes_the_waiting_message_before_its_marker_and_holds_nothing_a
     assert_eq!(
         provider.requests()[4].items.last(),
         Some(&InferenceItem::UserMessage {
-            content: sent_text("Build: ended"),
+            content: sent_text(&ended_report("7", "Build")),
         })
     );
 }
@@ -894,7 +894,7 @@ async fn a_command_left_running_reports_every_interval_until_its_end_and_as_its_
     assert_eq!(
         provider.requests()[2].items.last(),
         Some(&InferenceItem::UserMessage {
-            content: sent_text("Run the suite: still running (1)"),
+            content: sent_text(&running_report("17", "Run the suite", 1, 300_000)),
         })
     );
     let blocks = session.transcript().blocks;
@@ -916,7 +916,7 @@ async fn a_command_left_running_reports_every_interval_until_its_end_and_as_its_
     assert_eq!(
         provider.requests()[4].items.last(),
         Some(&InferenceItem::UserMessage {
-            content: sent_text("Run the suite: ended"),
+            content: sent_text(&ended_report("17", "Run the suite")),
         })
     );
     assert!(!session.status().commands);
@@ -968,7 +968,10 @@ async fn reports_that_arrive_during_a_turn_join_it_as_one_steer() {
         wakeups.as_slice(),
         [Block::Wakeup(wakeup)] if wakeup.placement == WakeupPlacement::Steer
     ));
-    assert_eq!(steers(&provider.requests()[3].items), ["Build: ended\n\nLint: ended"]);
+    assert_eq!(
+        steers(&provider.requests()[3].items),
+        [format!("{}\n\n{}", ended_report("17", "Build"), ended_report("18", "Lint"))]
+    );
 }
 
 // A report that arrived before dispose, and a command that still runs, are
@@ -996,7 +999,7 @@ async fn waiting_reports_and_running_commands_survive_dispose() {
     drop(running);
     drop(session);
     let state = store.checkpoint(&root()).unwrap().state;
-    assert_eq!(state.reports, ["Build: ended"]);
+    assert_eq!(state.reports.iter().map(report_text).collect::<Vec<_>>(), [ended_report("17", "Build")]);
     assert_eq!(
         state.intervals,
         [CommandInterval {
@@ -1019,7 +1022,7 @@ async fn waiting_reports_and_running_commands_survive_dispose() {
     );
     assert!(continuation.interrupted);
     restored.resume().unwrap().await.unwrap();
-    assert_eq!(steers(&later.requests()[0].items), ["Build: ended"]);
+    assert_eq!(steers(&later.requests()[0].items), [ended_report("17", "Build")]);
     commands.end("18");
     until(|| later.requests().len() == 2).await;
     restored.settled().await;
@@ -1028,7 +1031,7 @@ async fn waiting_reports_and_running_commands_survive_dispose() {
     assert_eq!(
         later.requests()[1].items.last(),
         Some(&InferenceItem::UserMessage {
-            content: sent_text("Serve: ended"),
+            content: sent_text(&ended_report("18", "Serve")),
         })
     );
 }
@@ -1101,7 +1104,7 @@ async fn a_session_restored_after_an_interrupted_turn_holds_its_reports_and_mess
         steers(&request.items),
         [
             agent_message_envelope(&agent_message("news")),
-            "Build: ended".to_owned()
+            ended_report("17", "Build")
         ]
     );
 }
@@ -1160,7 +1163,7 @@ fn reports_sent(provider: &ScriptedRuntime) -> Vec<String> {
         })
         .flatten()
         .filter_map(|part| match part {
-            UserPart::Text(text) if text.contains(": ended") => Some(text.clone()),
+            UserPart::Text(text) if text.contains(") ended.") => Some(text.clone()),
             _ => None,
         })
         .collect()
@@ -1190,7 +1193,7 @@ async fn a_stop_ends_the_watched_calls_command_and_leaves_an_earlier_calls_repor
         let kinds = kinds(&blocks);
         let stopped = kinds.iter().position(|kind| kind == "abort").expect("the stop marker");
         assert_eq!(kinds[stopped + 1..], ["wakeup", "text", "response"], "{end_on_stop}");
-        assert_eq!(reports_sent(&provider), ["Serve: ended"], "{end_on_stop}");
+        assert_eq!(reports_sent(&provider), [ended_report("17", "Serve")], "{end_on_stop}");
         assert!(!session.status().commands);
     }
 }
