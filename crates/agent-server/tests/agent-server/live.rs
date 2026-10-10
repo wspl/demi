@@ -182,6 +182,14 @@ impl ShellEnvironment for ScriptedShell {
         Box::pin(async { false })
     }
 
+    fn adopt(&self, _: &CommandId, _: &str, _: &str, _: demi_host_interface::JobCaller) {
+        unreachable!("the scripted shell takes up no command")
+    }
+
+    fn detach_all(&self) -> LocalBoxFuture<'_, ()> {
+        Box::pin(async {})
+    }
+
     fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async {})
     }

@@ -378,7 +378,14 @@ fn reports_that_arrived_together_reach_the_model_as_their_text_one_paragraph_eac
             ),
             report("18", "Start the dev server", ReportEvent::Stopped { by: Some(StoppedBy::User) }, ""),
             report("19", "", ReportEvent::Stopped { by: Some(StoppedBy::Agent { number: 2 }) }, ""),
-            report("20", "Watch the files", ReportEvent::lost_with_connection(), ""),
+            report(
+                "20",
+                "Watch the files",
+                ReportEvent::Lost {
+                    reason: "Demi was upgraded and the Host's runner replaced itself".into(),
+                },
+                "",
+            ),
         ],
         entries: Vec::new(),
     });
@@ -407,7 +414,7 @@ fn reports_that_arrived_together_reach_the_model_as_their_text_one_paragraph_eac
          Command 19 was stopped by agent 2.\n\
          output: (empty)\n\
          \n\
-         Command 20 (Watch the files) was lost: its Host's connection ended. Start it again if it is still needed.\n\
+         Command 20 (Watch the files) was lost: Demi was upgraded and the Host's runner replaced itself. Start it again if it is still needed.\n\
          output: (empty)"
     );
 }
