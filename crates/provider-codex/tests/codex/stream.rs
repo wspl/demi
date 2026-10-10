@@ -66,17 +66,17 @@ async fn a_run_streams_thinking_text_tool_calls_and_usage() {
 }
 
 #[tokio::test]
-async fn a_stream_that_ends_without_completion_responds_with_zero_usage() {
+async fn a_stream_that_ends_without_completion_fails_after_its_text() {
     let (events, _vendor) = events_of(stream(&[
         json!({ "type": "response.output_text.delta", "delta": "hi" }),
     ]))
     .await;
+    let [ProviderEvent::TextDelta(text), ProviderEvent::Error(failure)] = &events[..] else {
+        panic!("{events:?}");
+    };
     assert_eq!(
-        events,
-        [
-            ProviderEvent::TextDelta("hi".into()),
-            ProviderEvent::Response(TokenUsage::default())
-        ]
+        (text.as_str(), &failure.code),
+        ("hi", &Some(demi_provider_common::ErrorCode::Overloaded))
     );
 }
 

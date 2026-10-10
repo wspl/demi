@@ -53,7 +53,7 @@ fn tool_result(id: &str, output: Vec<ResultPart>) -> InferenceItem {
 async fn a_run_streams_from_the_models_endpoint_with_the_key() {
     let vendor = MockVendor::start().await;
     for base in ["/v1beta", "/v1beta/"] {
-        vendor.respond(chunks(&[]));
+        vendor.respond(chunks(&[json!({ "candidates": [{ "finishReason": "STOP" }] })]));
         let mut runtime = provider_at(&vendor, base)
             .runtime(RuntimeEnv {
                 http: reqwest::Client::new(),
