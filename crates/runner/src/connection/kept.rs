@@ -132,20 +132,21 @@ impl Kept {
     }
 
     /// The connection ended: the jobs run on, and their commands' calls in
-    /// flight end with it. The grace starts unless the runner stopped
-    /// waiting already.
+    /// flight end with it. The grace starts when the connection served.
     pub fn disconnected(&mut self) {
         self.output.send_replace(None);
         // Calls in flight end: their events go nowhere any more.
         self.relay = Relay::default();
-        self.reach.send_if_modified(|reach| {
+        let served = self.reach.send_if_modified(|reach| {
             if matches!(reach, Reach::Connected(_)) {
                 *reach = Reach::Away;
                 return true;
             }
             false
         });
-        if matches!(*self.reach.borrow(), Reach::Away) {
+        // A connection that never served, such as one refused, starts no
+        // grace again.
+        if served {
             self.lost = Some(Instant::now());
         }
     }
