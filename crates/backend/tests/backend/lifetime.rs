@@ -345,3 +345,35 @@ async fn a_command_that_ends_while_its_conversation_is_closed_reports_its_end_wh
     .await;
     backend.close().await;
 }
+
+// Several seconds: a real device pairs, the call waits for two quiet
+// seconds, and the backend restarts while the runner is paused.
+#[tokio::test]
+async fn an_rpc_call_of_a_job_no_agent_took_up_yet_takes_it_up_and_is_served() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    let mut work = on_device(&backend, &master, &vendor, &alpha).await;
+    let home = alpha.runner.home_dir().to_owned();
+    // Once let go, the job asks the backend about itself with an rpc call.
+    let script = "printf 'started\\n'; while [ ! -f go ]; do sleep 0.05; done; demi shell status 1 > status.txt 2>&1; touch asked; while [ ! -f finish ]; do sleep 0.05; done";
+    let command = started(&mut work, "t1", script).await;
+    assert_eq!(command, "1");
+
+    // The backend restarts, and holds the take-up its runner's hello asks
+    // for: the job is known only from its records when it calls.
+    let address = backend.address();
+    backend.close().await;
+    let backend = harness.start_at(address).await;
+    let takes_up = backend.hold_hellos(demi_backend_user_shard::holds::HelloStep::TakeUp);
+    backend.until_online(&master, alpha.id(), true).await;
+    std::fs::write(home.join("go"), "").unwrap();
+    until_exists(&home.join("asked")).await;
+    let status = std::fs::read_to_string(home.join("status.txt")).unwrap();
+    assert!(status.starts_with("status: running"), "{status}");
+
+    takes_up.release();
+    std::fs::write(home.join("finish"), "").unwrap();
+    backend.close().await;
+}
