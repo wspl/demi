@@ -449,7 +449,8 @@ Five minutes later the node is woken with a report, "Command 17 is still
 running; no output for 4 minutes 50 seconds", and the newest lines. The model
 sees that the suite hangs in one test, stops it and runs that test alone.
 Had the suite ended first, the node would have been woken with "Command 17
-ended with exit code 1; look at it with demi shell status 17." The model never
+(Run the test suite) ended with exit code 1" and the suite's last lines, as
+the call's result would have shown them. The model never
 asks to be woken: as Claude Code wakes its model when a background command
 or a subagent ends, the work it waits for wakes it.
 
@@ -476,20 +477,27 @@ or a subagent ends, the work it waits for wakes it.
     number serves, a number when it wants to hear from a resident one. A
     report says how, so the model changes it where it already looks at the
     command.
-- **Every end is reported.** A command whose call returned while it still
-  ran tells its node when it ends, however it ends: an exit with its status,
+- **Every end is reported, with what the model would look at.** A command
+  whose call returned while it still ran tells its node when it ends,
+  however it ends: an exit with its status,
   a stop by the user or another agent, or a loss with its reason
   ([Lost commands](#lost-commands)). A command the node stopped itself with
   `demi shell stop`, which printed `[command 17 stopped]`, and one whose end
-  the model saw in a result already, tell nothing more.
+  the model saw in a result already, tell nothing more. An end report is the
+  result that reports the command's end
+  ([What a result attaches](#what-a-result-attaches)): it carries the output
+  since the model's last look, bounded as a `shell` result is, and the media
+  the job viewed, so the model needs no `demi shell status` to see how it
+  ended: in a product check, a model woken by an end without its output
+  spent one more request on a look every time.
 - **How a report arrives.** A report joins a turn that accepts steers at its
   next continuation boundary, as a `wakeup` block with the placement
   `steer`; otherwise it starts a continuation whose input is a `wakeup` block
   with the placement `new_turn`. Each report names the command by its
   number and its call's title, as Claude Code's notice names a background
   command by its description, since a model may have several running:
-  `Command 17 (Run the test suite) ended with exit code 1; look at it with
-  demi shell status 17.` Reports that arrive together are one block,
+  `Command 17 (Run the test suite) ended with exit code 1.`, followed by its
+  output as a result shows it. Reports that arrive together are one block,
   one paragraph each: `Command 18 was stopped by the user.`,
   `Command 19 was lost: Demi was upgraded and the Host's runner replaced
   itself. Start it again if it is still needed.` A report never appears in
@@ -505,10 +513,10 @@ or a subagent ends, the work it waits for wakes it.
   still running*; a failure, a stop and a loss carry the same tag a shell row
   carries ([Rendering boundary](#rendering-boundary)), and a click opens the
   command's terminal tab. So the block holds each report as data, its
-  `commandId`, the call's `title` and its `event` (`running`, `ended` with
+  `commandId`, the call's `title`, its `event` (`running`, `ended` with
   its exit code, `stopped` with who stopped it, or `lost` with its reason),
-  and the text the model reads is rendered from them in one place, never
-  stored beside them. A report that carries media shows them under its row,
+  and the output and media it carried, and the text the model reads is
+  rendered from them in one place, never stored beside them. A report that carries media shows them under its row,
   as a call's result does
   ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
 - **Waiting is ending the turn.** A model that has nothing left to do but
