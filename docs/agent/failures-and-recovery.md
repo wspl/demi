@@ -226,8 +226,12 @@ leave such a record, and a compaction leaves none:
   `error` block of Demi's own, cause `host_offline` with the device, after
   the agent's last words, so the turn offers Resume
   ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
-  Resume continues it with a `resume` block whose reason says the device is
-  back: "MacBook Pro is back online. Continue from where you left off." A
+  Resume continues it with a `resume` block whose reason says where the
+  turn now runs: "MacBook Pro is back online. Continue from where you left
+  off.", or, after the user moved the conversation meanwhile, "This
+  conversation now runs on Cloud. Continue from where you left off." The
+  backend composes the reason as it passes the user's Resume to the
+  session, since it alone knows the conversation's primary Host. A
   child's turn gets none: its result, which says what it could not do,
   reaches its parent, whose own turn decides.
 - **A compaction** is not a turn's end. Its boundary and marker are kept
@@ -300,8 +304,9 @@ appended, and inference continues after the preserved progress. The model
 receives the `resume` block as "Continue from where you left off.", after
 the sentence its reason holds when it has one: "Demi resumed this turn
 after the backend restarted." when the system resumed a subagent's turn
-after a restart, or "MacBook Pro is back online." when the user resumed a
-turn its offline Host left unfinished.
+after a restart, or "MacBook Pro is back online." or "This conversation
+now runs on Cloud." when the user resumed a turn its offline Host left
+unfinished.
 
 The product offers `resume` in one control above the composer, labeled Resume
 after an error and Continue after the user's Stop
