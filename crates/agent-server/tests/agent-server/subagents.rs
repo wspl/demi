@@ -230,6 +230,10 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
             .starts_with("You are a subagent: agent 1 of this conversation, spawned by agent 0.")
     );
     assert!(preamble.contains("`demi agent spawn` spawns your own children."));
+    assert!(
+        preamble.contains("Report a command you leave running for your parent, such as a server, to the parent at once with `demi agent send parent`"),
+        "{preamble}"
+    );
     assert_eq!(first, brief);
 
     // The parent heard the result once, as agent input of the request that

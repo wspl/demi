@@ -333,8 +333,15 @@ impl CommandRecord {
     /// The model's status: each stream's output since the model's last view,
     /// at most `max_output_bytes` of it (all of it when zero), and its tail;
     /// once the command ended, its whole output and how much of each stream
-    /// the model had seen. The view moves only the model's positions.
-    pub fn status(&mut self, max_output_bytes: usize, hint: Option<String>) -> CommandStatus {
+    /// the model had seen. The view moves only the model's positions. `hint`
+    /// and `outliving` are what the command's job says while it runs
+    /// ([`CommandState::Running`]).
+    pub fn status(
+        &mut self,
+        max_output_bytes: usize,
+        hint: Option<String>,
+        outliving: Vec<String>,
+    ) -> CommandStatus {
         let whole = self.whole.clone().map(|output| {
             let seen = self.seen();
             self.model.whole = true;
@@ -372,7 +379,7 @@ impl CommandRecord {
         );
         let now = Instant::now();
         let state = match &self.phase {
-            Phase::Running => CommandState::Running { hint },
+            Phase::Running => CommandState::Running { hint, outliving },
             Phase::Exited {
                 exit_code,
                 binary_stdout,

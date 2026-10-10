@@ -26,7 +26,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names.
-pub const VERSION: u32 = 39;
+pub const VERSION: u32 = 40;
 /// How long a runner keeps its jobs and services without a connection
 /// before it stops them (`runner.md` § Command lifetime).
 pub const UNREACHED_GRACE: Duration = Duration::from_secs(10 * 60);
@@ -34,6 +34,11 @@ pub const UNREACHED_GRACE: Duration = Duration::from_secs(10 * 60);
 /// how long one unanswered counts as lost (`runner.md` § Command lifetime).
 pub const RUNNER_PING_INTERVAL: Duration = Duration::from_secs(30);
 pub const RUNNER_PING_TIMEOUT: Duration = Duration::from_secs(60);
+/// The most background tasks a `job_outliving` names, and the most bytes of
+/// each one's command line: enough to tell a model what keeps its command
+/// running without crowding its output out of the result.
+pub const JOB_OUTLIVING_TASKS: usize = 32;
+pub const JOB_TASK_LINE_BYTES: usize = 256;
 /// The largest frame either end sends.
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 /// How much of the start of each stream a job always sends, and how much of

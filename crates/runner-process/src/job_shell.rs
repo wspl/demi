@@ -13,7 +13,7 @@ use demi_command_protocol::LocalInvocation;
 use demi_command_sdk::{Handler, edits::Recorder};
 use demi_runner_protocol::wire::Signal;
 use futures_util::future::BoxFuture;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::process::{OutputChunk, ProcessExit, ProcessInput};
@@ -80,6 +80,11 @@ pub trait ShellJob: Send + Sync {
     fn cancel(&self);
 
     fn is_cancelled(&self) -> bool;
+
+    /// The background tasks that keep the job running once its script has
+    /// ended, each by its command line, and each change of them as they end;
+    /// empty while the script runs (`runtime.md` § Results and previews).
+    fn outliving(&self) -> watch::Receiver<Vec<String>>;
 
     /// The job's exit, once everything it ran has finished.
     fn wait(&mut self) -> BoxFuture<'_, ProcessExit>;

@@ -844,26 +844,31 @@ impl RemoteShellEnvironment {
             .ok_or_else(|| ShellError::UnknownCommand(command.clone()))
     }
 
-    /// The model's status of `command`.
-    fn view(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
+    /// The job of `command` while the command runs.
+    fn running_job(&self, command: &CommandId) -> Result<Option<RemoteJob>, ShellError> {
         let record = self.record(command)?;
-        let hint = self
+        if !record.borrow().is_running() {
+            return Ok(None);
+        }
+        Ok(self
             .0
             .state
             .borrow()
             .running
             .get(command)
-            .and_then(|running| {
-                running
-                    .job
-                    .borrow()
-                    .as_ref()
-                    .and_then(RemoteJob::running_hint)
-            });
+            .and_then(|running| running.job.borrow().clone()))
+    }
+
+    /// The model's status of `command`.
+    fn view(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
+        let (hint, outliving) = match self.running_job(command)? {
+            Some(job) => (job.running_hint(), job.outliving()),
+            None => (None, Vec::new()),
+        };
+        let record = self.record(command)?;
         let mut record = record.borrow_mut();
-        let hint = if record.is_running() { hint } else { None };
         let before = record.seen();
-        let status = record.status(self.0.options.output_limit, hint);
+        let status = record.status(self.0.options.output_limit, hint, outliving);
         let seen = record.seen();
         // The record of a command that runs keeps the model's place; one
         // that ended has no record as running any more.
@@ -938,6 +943,15 @@ impl ShellEnvironment for RemoteShellEnvironment {
 
     fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError> {
         Ok(self.record(command)?.borrow().quiet())
+    }
+
+    fn outliving(&self, command: &CommandId) -> Vec<String> {
+        // A command the environment does not hold names no task.
+        self.running_job(command)
+            .ok()
+            .flatten()
+            .map(|job| job.outliving())
+            .unwrap_or_default()
     }
 
     fn unreachable(&self, command: &CommandId) -> Option<Unreachable> {

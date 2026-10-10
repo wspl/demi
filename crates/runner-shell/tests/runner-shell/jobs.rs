@@ -75,7 +75,7 @@ async fn a_stopped_job_reports_the_signal_that_ended_it() {
 }
 
 /// Reads the job's output until it holds `text`, and gives all it read.
-async fn output_until(job: &mut Job, read: &mut String, text: &str) {
+pub(crate) async fn output_until(job: &mut Job, read: &mut String, text: &str) {
     tokio::time::timeout(Duration::from_secs(60), async {
         while !read.contains(text) {
             let Some(chunk) = job.output.recv().await else {
