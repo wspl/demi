@@ -29,6 +29,7 @@ import { callTerminal, dockTerminals } from './terminals'
 import { provideCommandOpener } from './command-reports'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import type { ChatSessionState, PendingSubmissionState } from './types'
+import type { HostMenuHost } from '../hosts/types'
 import type { MessageForkHandler } from './message-fork'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
@@ -67,11 +68,11 @@ const props = withDefaults(defineProps<{
   /** The conversation's Host files its messages name; absent, their paths stay text. */
   files?: ConversationFiles
   /**
-   * Whether the user's device `deviceId` is online now, as its state
-   * updates say; the dock's Resume waits for the device a turn's Host
-   * absence left it unfinished on. Absent, every device counts as online.
+   * The conversation's current primary Host, live over its state updates:
+   * the dock's Resume continues an unfinished turn there, so it waits while
+   * that Host is an offline device. Absent, Resume waits for nothing.
    */
-  deviceOnline?: (deviceId: string) => boolean
+  primaryHost?: HostMenuHost | null
   /** The conversation's undecided permission requests, oldest first, which the card above the composer shows. */
   permissionRequests?: readonly PermissionRequestView[]
   /** A decision on a permission request is on its way. */
@@ -205,10 +206,10 @@ const recovery = computed(() =>
     ? turnRecovery(props.conversation.phase, getVisibleBlocks(props.conversation.blocks))
     : null,
 )
-/** The device Resume waits for while it is offline, which the disabled chip names. */
+/** The primary Host Resume waits for while it is offline, which the disabled chip names. */
 const resumeWait = computed(() =>
   recovery.value === 'resume'
-    ? resumeWaitsFor(getVisibleBlocks(props.conversation.blocks), props.deviceOnline ?? (() => true))
+    ? resumeWaitsFor(getVisibleBlocks(props.conversation.blocks), props.primaryHost ?? null)
     : null,
 )
 function recover(): void {
