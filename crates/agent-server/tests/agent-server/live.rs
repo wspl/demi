@@ -139,12 +139,16 @@ impl ShellEnvironment for ScriptedShell {
 
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
         let record = self.record(command)?;
-        let status = record.borrow_mut().status(DEFAULT_OUTPUT_LIMIT_BYTES, None);
+        let status = record.borrow_mut().status(DEFAULT_OUTPUT_LIMIT_BYTES, None, Vec::new());
         Ok(status)
     }
 
     fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError> {
         Ok(self.record(command)?.borrow().quiet())
+    }
+
+    fn outliving(&self, _: &CommandId) -> Vec<String> {
+        Vec::new()
     }
 
     fn unreachable(&self, _: &CommandId) -> Option<demi_shared_types::Unreachable> {
