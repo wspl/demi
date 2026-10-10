@@ -136,6 +136,33 @@ impl LinkPolicy for ShardPolicy {
 
     /// Revokes the device at its runner's request, as the user's
     /// revocation does: only a paired device.
+    /// Restores the tree of the conversation the backend recorded the job
+    /// for, as a report of the job does, so its agent takes it up.
+    fn take_up_job(&self, job: String) -> LocalBoxFuture<'static, Result<(), String>> {
+        let shard = self.shard();
+        let device = self.device.clone();
+        Box::pin(async move {
+            let shard = shard?;
+            let conversation = shard
+                .services()
+                .control
+                .running_jobs(device)
+                .await
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .find(|(recorded, _)| *recorded == job)
+                .map(|(_, conversation)| conversation)
+                .ok_or("rpc requires a live job dispatched to this device")?;
+            // Counted before the open, so the close waits for it before the
+            // agent shuts down.
+            let _opening = shard.tree_openers().token();
+            if shard.is_closing() {
+                return Err("the backend is shutting down".into());
+            }
+            shard.restore_tree(&conversation).await
+        })
+    }
+
     fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>> {
         let shard = self.shard();
         let device = self.device.clone();

@@ -494,6 +494,7 @@ impl JobConfig {
                     path,
                     output,
                     lengths,
+                    media: announced,
                     running,
                 } = self.directories.create(&id, &cancel).await?;
                 env.insert("DEMI_JOB_ID".into(), id.clone());
@@ -519,7 +520,7 @@ impl JobConfig {
                         None
                     }
                 };
-                job = Some((Logs::new(output, lengths), recorder.clone(), running));
+                job = Some((Logs::new(output, lengths, announced), recorder.clone(), running));
                 let commands = match commands {
                     Some((manifest_hash, command, viewable)) => {
                         let (sender, receiver) = mpsc::unbounded_channel();
@@ -1170,15 +1171,22 @@ struct Logs {
     /// Each stream's length, as its directory reports it to the next
     /// connection.
     lengths: Arc<StreamLengths>,
+    /// The `job_medium`s sent, which the next connection hears again.
+    announced: Arc<std::sync::Mutex<Vec<wire::Frame>>>,
     stdout: Log,
     stderr: Log,
 }
 
 impl Logs {
-    fn new(kept: KeptOutput, lengths: Arc<StreamLengths>) -> Self {
+    fn new(
+        kept: KeptOutput,
+        lengths: Arc<StreamLengths>,
+        announced: Arc<std::sync::Mutex<Vec<wire::Frame>>>,
+    ) -> Self {
         Self {
             kept,
             lengths,
+            announced,
             stdout: Log::new(OutputStream::Stdout),
             stderr: Log::new(OutputStream::Stderr),
         }
@@ -1209,7 +1217,14 @@ impl Logs {
                 .map_err(io::Error::other)?,
             );
         }
-        frames.extend(arrival.medium);
+        if let Some(medium) = arrival.medium {
+            // No section panics while it holds the lock.
+            self.announced
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(medium.clone());
+            frames.push(medium);
+        }
         Ok(frames)
     }
 

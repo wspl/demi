@@ -8,7 +8,7 @@
 //! persistence).
 
 use demi_shared_types::{CommandId, NodeId, Timestamp};
-use demi_web_api_protocol::ids::{ConversationId, DeviceId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::StorageError;
@@ -114,6 +114,26 @@ impl ControlService {
         self.call(move |connection, _| {
             connection.execute("DELETE FROM running_jobs WHERE job_id = ?1", [job])?;
             Ok(())
+        })
+        .await
+    }
+
+    /// The Clouds whose jobs are recorded running, each with its owner.
+    pub async fn clouds_with_running_jobs(&self) -> Result<Vec<(DeviceId, UserId)>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare_cached(
+                "SELECT DISTINCT devices.id, devices.user_id FROM running_jobs
+                 JOIN devices ON devices.id = running_jobs.device_id
+                 WHERE devices.kind = 'managed'",
+            )?;
+            let mut rows = statement.query([])?;
+            let mut clouds = Vec::new();
+            while let Some(row) = rows.next()? {
+                let device = decode("devices", "id", DeviceId::try_from(row.get::<_, String>(0)?))?;
+                let user = decode("devices", "user_id", UserId::try_from(row.get::<_, String>(1)?))?;
+                clouds.push((device, user));
+            }
+            Ok(clouds)
         })
         .await
     }

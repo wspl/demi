@@ -122,13 +122,14 @@ impl Kept {
     }
 
     /// A connection serves from now on: the jobs' messages and their
-    /// commands' requests go to it. Answers the exits of the jobs that
-    /// ended and are not released, which the connection sends again.
+    /// commands' requests go to it. Answers what the connection sends again
+    /// of the jobs not released: their media's announcements and the exits
+    /// of those that ended.
     pub fn connected(&mut self, live: Live, output: mpsc::Sender<wire::Frame>) -> Vec<wire::Frame> {
         self.lost = None;
         self.output.send_replace(Some(output));
         self.reach.send_replace(Reach::Connected(live));
-        self.directories.exits()
+        self.directories.announcements()
     }
 
     /// The connection ended: the jobs run on, and their commands' calls in

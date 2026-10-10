@@ -215,7 +215,7 @@ async fn recovery_publishes_the_working_pair_a_crash_left_and_removes_stages() {
     )
     .unwrap();
     std::fs::create_dir(working.join(".wake-0f6c3d4e")).unwrap();
-    recovery::fence_and_save(&fixture.core).await.unwrap();
+    recovery::fence_and_save(&fixture.core, &[]).await.unwrap();
     let saved = fixture.state("dev-1").await.unwrap();
     assert_ne!(saved.generation, committed.generation);
     assert_eq!(saved.reset_id, committed.reset_id);
@@ -224,7 +224,7 @@ async fn recovery_publishes_the_working_pair_a_crash_left_and_removes_stages() {
 
     // A working entry that names no device is an error, never skipped.
     std::fs::create_dir(working.join("not a device")).unwrap();
-    let error = recovery::fence_and_save(&fixture.core).await.unwrap_err();
+    let error = recovery::fence_and_save(&fixture.core, &[]).await.unwrap_err();
     assert!(matches!(error, RecoveryError::Name(_)), "{error}");
     std::fs::remove_dir(working.join("not a device")).unwrap();
 
@@ -235,7 +235,7 @@ async fn recovery_publishes_the_working_pair_a_crash_left_and_removes_stages() {
         r#"{"id":"demi-0f6c3d4e","slot":8}"#,
     )
     .unwrap();
-    let error = recovery::fence_and_save(&fixture.core).await.unwrap_err();
+    let error = recovery::fence_and_save(&fixture.core, &[]).await.unwrap_err();
     assert_eq!(
         error.to_string(),
         "Existing Cloud slot exceeds configured pool"
