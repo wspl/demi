@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { Block } from '@demicodes/protocol'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-import { standardToolTitle } from '@demicodes/web-ui/agent/tool-rendering'
+import { shellTitle } from '@demicodes/web-ui/agent/tool-rendering'
 
 /**
  * The commands a transcript remembers: title, script, start, output, and the end when
@@ -22,8 +22,9 @@ export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] 
       continue
     }
     const previous = commands.get(view.commandId)
-    // The call that started it names it; a look at it does not.
-    const call = (block.toolName === 'shell_exec' ? shellCall(block.input) : undefined) ?? previous
+    // The `shell` call that started it names it; a stored `shell_status` look
+    // at it, from before that tool was removed, does not.
+    const call = (block.toolName === 'shell' ? shellCall(block.input) : undefined) ?? previous
     commands.set(view.commandId, {
       id: view.commandId,
       title: call?.title ?? view.commandId,
@@ -44,29 +45,29 @@ export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] 
   return [...commands.values()]
 }
 
-/** A `shell_exec` call's title, as its row shows it, and its script. */
+/** A `shell` call's title, as its row shows it, and its script. */
 export interface ShellCall {
   title: string
   script: string
 }
 
-/** The `shell_exec` call `toolUseId` among `blocks`, the latest when a model reused the id. */
+/** The `shell` call `toolUseId` among `blocks`, the latest when a model reused the id. */
 export function findShellCall(blocks: readonly Block[], toolUseId: string): ShellCall | undefined {
   const call = blocks.findLast(
     (block) => block.type === 'tool_call' && block.toolUseId === toolUseId,
   )
-  return call?.type === 'tool_call' && call.toolName === 'shell_exec'
+  return call?.type === 'tool_call' && call.toolName === 'shell'
     ? shellCall(call.input)
     : undefined
 }
 
 const shellCallInput = z.object({ script: z.string(), description: z.string().optional() })
 
-/** A `shell_exec` call's title and script, from its input's JSON text. */
+/** A `shell` call's title and script, from its input's JSON text. */
 function shellCall(input: string): ShellCall | undefined {
   const parsed = shellCallInput.safeParse(parseInput(input))
   return parsed.success
-    ? { title: standardToolTitle('shell_exec', parsed.data), script: parsed.data.script }
+    ? { title: shellTitle(parsed.data), script: parsed.data.script }
     : undefined
 }
 
