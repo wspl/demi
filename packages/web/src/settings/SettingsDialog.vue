@@ -26,7 +26,6 @@ import {
   type EmailChangeStart,
   type NicknamePatch,
   type PasswordChange,
-  type PluginSwitch,
 } from '../api/generated/web-api'
 import { useSession } from '../auth/session'
 import { useResources } from '../state/resources'
@@ -36,6 +35,7 @@ import { useNotifications } from '../state/notifications'
 import { useConversations } from '../conversation/store'
 import DevicesPanel from './DevicesPanel.vue'
 import { useSettingsAddress } from './address'
+import { usePluginSettings } from './plugins'
 import ProvidersPanel from './ProvidersPanel.vue'
 import InstructionsPanel from './InstructionsPanel.vue'
 import SubagentsPanel from './SubagentsPanel.vue'
@@ -47,6 +47,7 @@ const preferences = usePreferences()
 const notifications = useNotifications()
 const session = useSession()
 const conversations = useConversations()
+const pluginSettings = usePluginSettings()
 const router = useRouter()
 const lifetime = new AbortController()
 const sections = computed(() =>
@@ -330,41 +331,6 @@ onUnmounted(() => {
   passwordRequest?.abort()
 })
 
-/** The switches asked for and not yet in the product state, by plugin. */
-const wantedPlugins = ref(new Map<string, boolean>())
-const plugins = computed(() =>
-  (product.snapshot?.plugins ?? []).map((plugin) => ({
-    ...plugin,
-    enabled: wantedPlugins.value.get(plugin.id) ?? plugin.enabled,
-  })),
-)
-
-/**
- * Turns a plugin on or off; the switch shows the choice until the channel
- * brings the plugin list that holds it, or falls back with a toast.
- */
-async function switchPlugin(id: string, enabled: boolean): Promise<void> {
-  if (wantedPlugins.value.has(id)) {
-    return
-  }
-  wantedPlugins.value.set(id, enabled)
-  try {
-    await apiRequest(`/plugins/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      signal: lifetime.signal,
-      ...jsonBody({ enabled } satisfies PluginSwitch),
-    })
-    await product.until(
-      (state) => state.plugins.some((plugin) => plugin.id === id && plugin.enabled === enabled),
-      lifetime.signal,
-    )
-  } catch (error) {
-    report(enabled ? 'Could Not Turn the Plugin On' : 'Could Not Turn the Plugin Off', error)
-  } finally {
-    wantedPlugins.value.delete(id)
-  }
-}
-
 const archived = computed(() =>
   conversations.items
     .filter((conversation) => conversation.archived)
@@ -373,13 +339,10 @@ const archived = computed(() =>
       title: conversation.title,
     })),
 )
+/** Restores the conversation, which shows at once, and opens it. */
 async function restore(id: string): Promise<void> {
-  if (conversations.pendingChanges.includes(id)) {
-    return
-  }
-  if (await conversations.restore([id])) {
-    await openConversation(id)
-  }
+  void conversations.restore([id])
+  await openConversation(id)
 }
 /** An archived conversation opens read-only, with the bar that offers Restore; leaving settings' address closes them. */
 async function openConversation(id: string): Promise<void> {
@@ -464,9 +427,8 @@ function resetShortcuts(): void {
     <SubagentsPanel v-else-if="section === 'subagents'" />
     <SettingsPlugins
       v-else-if="section === 'plugins'"
-      :plugins="plugins"
-      :pending="[...wantedPlugins.keys()]"
-      @switch="switchPlugin"
+      :plugins="product.snapshot?.plugins ?? []"
+      @switch="pluginSettings.switchPlugin"
     />
     <PageScope
       v-else-if="section !== null && settingsPage(PLUGIN_PAGES, section)?.settings"
@@ -477,7 +439,6 @@ function resetShortcuts(): void {
       v-else-if="section === 'archived'"
       :conversations="archived"
       :load="conversations.listStatus"
-      :pending-ids="conversations.pendingChanges"
       :overlay-store="appOverlayStore"
       @retry="conversations.reloadList"
       @open="openConversation"

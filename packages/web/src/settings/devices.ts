@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { useSession } from '../auth/session'
-import { computed, onScopeDispose, ref, watch, type Ref } from 'vue'
+import { computed, onScopeDispose, ref, watch } from 'vue'
+import { SerialQueue } from '@demicodes/utils'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useProduct } from '../state/product'
@@ -18,8 +19,8 @@ export const useDeviceSettings = defineStore('device-settings', () => {
   const product = useProduct()
   let lifetime = new AbortController()
   const revoking = ref<string[]>([])
-  const renaming = ref<string[]>([])
-  const changing = ref<string[]>([])
+  /** The device changes on their way, which go one at a time in order. */
+  const writes = new SerialQueue()
   const reset = ref<
     | { status: 'idle' | 'pending' }
     | {
@@ -74,42 +75,52 @@ export const useDeviceSettings = defineStore('device-settings', () => {
   }
 
   /**
-   * Changes a paired device: what `change` names, while its id is in
-   * `pending`; the channel brings the change to every page, this one
-   * included, and a refusal is a toast titled `failed`.
+   * Changes a paired device as `body` says, at once, and sends the change
+   * after the earlier ones; the change lands with the device the backend
+   * answers, the channel brings it to every other page, and a refusal gives
+   * the device back with a toast titled `failed`.
    */
-  async function change(id: string, body: ChangeDevice, pending: Ref<string[]>, failed: HeadlineText): Promise<void> {
-    if (pending.value.includes(id)) {
-      return
-    }
+  function change(
+    id: string,
+    body: { name: string } | { route: DeviceRoute },
+    failed: HeadlineText,
+  ): Promise<void> {
+    const shown = product.change('devices', (state) => ({
+      ...state,
+      devices: state.devices.map((device) => device.id === id ? { ...device, ...body } : device),
+    }))
     const current = lifetime
-    pending.value.push(id)
-    try {
-      const response = await apiRequest(`/devices/${encodeURIComponent(id)}`, {
-        method: 'PATCH',
-        signal: current.signal,
-        ...jsonBody(body),
+    return writes
+      .run(async () => {
+        current.signal.throwIfAborted()
+        shown.send()
+        const response = await apiRequest(`/devices/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          signal: current.signal,
+          ...jsonBody(body satisfies ChangeDevice),
+        })
+        const { device } = await readResponse(response, deviceAnswerSchema)
+        shown.land((read) => ({
+          type: 'devices',
+          devices: read.devices.map((candidate) => candidate.id === device.id ? device : candidate),
+        }))
       })
-      await readResponse(response, deviceAnswerSchema)
-    } catch (error) {
-      if (!current.signal.aborted) {
-        reportError(failed, error, { userVisible: true })
-      }
-    } finally {
-      if (current === lifetime) {
-        pending.value = pending.value.filter((value) => value !== id)
-      }
-    }
+      .catch((error) => {
+        shown.drop()
+        if (!current.signal.aborted) {
+          reportError(failed, error, { userVisible: true })
+        }
+      })
   }
 
-  /** Gives a paired device a new name. */
+  /** Gives a paired device a new name, as the backend keeps it: without the spaces around it. */
   function rename(id: string, name: string): Promise<void> {
-    return change(id, { name }, renaming, 'Could Not Rename Device')
+    return change(id, { name: name.trim() }, 'Could Not Rename Device')
   }
 
   /** Sets a paired device's route, which every page of the user's follows. */
   function setRoute(id: string, route: DeviceRoute): Promise<void> {
-    return change(id, { route }, changing, 'Could Not Change the Route')
+    return change(id, { route }, 'Could Not Change the Route')
   }
 
   async function resetCloud(operationId: string): Promise<void> {
@@ -150,8 +161,6 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       lifetime.abort()
       lifetime = new AbortController()
       revoking.value = []
-      renaming.value = []
-      changing.value = []
       reset.value = { status: 'idle' }
     },
   )
@@ -161,9 +170,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     reset,
     revoking,
     revoke,
-    renaming,
     rename,
-    changing,
     setRoute,
     resetCloud,
   }

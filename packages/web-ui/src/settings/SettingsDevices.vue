@@ -36,9 +36,7 @@ const props = defineProps<{
   shown?: string | null
   /** The runner release the server's devices follow; null on a server without them. */
   runnerRelease: string | null
-  /** The devices whose change of their route, name or revocation is under way. */
-  changingIds?: string[]
-  renamingIds?: string[]
+  /** The devices whose revocation is under way. */
   revokingIds?: string[]
   /** The most characters a device's name has; null for no limit. */
   nameMaxLength: number | null
@@ -103,8 +101,6 @@ const pageProjects = computed(() =>
     :runner-release="runnerRelease"
     :projects="pageProjects"
     :name-max-length="nameMaxLength"
-    :changing="!!shown && changingIds?.includes(shown)"
-    :renaming="!!shown && renamingIds?.includes(shown)"
     :revoking="!!shown && revokingIds?.includes(shown)"
     :overlay-store="overlayStore"
     @back="emit('show', null)"

@@ -58,9 +58,6 @@ const props = defineProps<{
   /** The names of the projects on the device, which go with it. */
   projects?: readonly string[]
   nameMaxLength: number | null
-  /** A change of the device's route is under way. */
-  changing?: boolean
-  renaming?: boolean
   revoking?: boolean
   overlayStore: OverlayStore
 }>()
@@ -230,7 +227,6 @@ function revoke() {
           :overlay-store="overlayStore"
           variant="default"
           trigger-label="Route"
-          :disabled="changing"
         >
           <template #trigger>{{ DEVICE_ROUTE_LABEL[device.direct.route] }}</template>
           <template #content="{ close }">
@@ -260,7 +256,7 @@ function revoke() {
     <SettingsGroup title="Device">
       <SettingsRow v-if="device" label="Name">
         <span class="min-w-0 truncate text-chrome text-fg-muted">{{ device.name }}</span>
-        <Button size="sm" :loading="renaming" @click="renameOpen = true">Rename…</Button>
+        <Button size="sm" @click="renameOpen = true">Rename…</Button>
       </SettingsRow>
       <SettingsRow label="System">
         <span class="text-chrome text-fg-muted">{{ system ?? 'Not reported yet' }}</span>
