@@ -266,6 +266,12 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             // A Host whose runner is away runs nothing now: the call's
             // result is its offline error as it is, worded for the model
             // (`sessions-and-targets.md` § Host operations).
+            Err(ShellError::HostOffline { device, message }) => {
+                return Ok(ToolOutcome {
+                    effect: Some(ToolEffect::HostOffline(device)),
+                    ..ToolOutcome::error(message)
+                });
+            }
             Err(ShellError::Host(error)) if error.kind == HostErrorKind::Offline => {
                 return Ok(ToolOutcome::error(error.message));
             }

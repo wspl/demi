@@ -11,7 +11,9 @@ use std::{
 
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
 use demi_shared_gates::{GateLease, Reservation};
-use demi_shared_types::{CommandId, CommandReport, InstructionEntry, ModelSelection, ToolView, TurnId};
+use demi_shared_types::{
+    CommandId, CommandReport, ErrorDevice, InstructionEntry, ModelSelection, ToolView, TurnId,
+};
 use futures_util::{future::LocalBoxFuture, stream::LocalBoxStream};
 use serde_json::Value;
 use tokio::sync::watch;
@@ -55,6 +57,14 @@ pub trait SessionRuntime {
 
     /// The tools the model may call.
     fn tools(&self) -> Arc<[ToolDefinition]>;
+
+    /// Whether a turn left undone because a call's Host was offline ends
+    /// unfinished, with an error block that offers Resume: a root's does;
+    /// a child's result says what it could not do, and its parent decides
+    /// (`failures-and-recovery.md` § The unfinished turn).
+    fn ends_offline_turns_unfinished(&self) -> bool {
+        false
+    }
 
     /// Whether consecutive calls of `tool` in one round run together as one
     /// step (`runtime.md` § Dispatch and failures); a call of any other tool
@@ -339,6 +349,10 @@ pub enum ToolEffect {
         interval_ms: Option<u32>,
         title: String,
     },
+    /// The call ran nothing because its Host, `device`, was offline: unless
+    /// a later call of the turn runs there, a root's turn that ends after it
+    /// is unfinished (`failures-and-recovery.md` § The unfinished turn).
+    HostOffline(ErrorDevice),
 }
 
 /// A tool that failed; its call completes as `Tool failed: <message>`.
