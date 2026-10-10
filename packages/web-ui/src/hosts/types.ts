@@ -9,6 +9,9 @@ export interface HostDeviceOption {
   path?: DevicePath | null
 }
 
+/** A Host chosen to run on: the Cloud, or a device by its id. */
+export type HostChoice = { kind: 'cloud' } | { kind: 'device'; id: string }
+
 export interface HostMenuHost {
   id: string
   name: string

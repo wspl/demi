@@ -585,7 +585,17 @@ async fn run_on_host(
             Ok(Some(end))
         })
         .await
-        .map_err(|error| error.to_string())??;
+        .map_err(|error| error.to_string())
+        .and_then(|ran| ran);
+    // A far job that never started never takes its pipes: they end with
+    // why, or the calling command would read them until their arrival
+    // deadline.
+    let ran = ran.inspect_err(|reason| {
+        stdout.fail(reason);
+        if let Some(stdin) = &stdin {
+            stdin.fail(reason);
+        }
+    })?;
     // Stopped before it started.
     let Some(ran) = ran else {
         return Ok(130);
