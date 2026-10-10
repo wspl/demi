@@ -182,11 +182,12 @@ function pick(path: string): void {
     :roll-key="face.rollKey"
     :icon-key="face.iconKey"
     :cut-key="isOpen && !lone ? 'open' : 'folded'"
+    :loading="face.loading"
   >
     <template #icon>
       <component :is="face.icon" :size="ICON_PX.in28" />
     </template>
-    <span class="min-w-0 truncate" :class="face.loading ? 'thinking-shimmer' : ''">{{ face.label }}</span>
+    <span class="min-w-0 truncate">{{ face.label }}</span>
     <!-- A thinking with no text has nothing to open: no body, so no chevron. -->
     <template v-if="!lone || loneText !== ''" #body>
       <StreamedMarkdown
