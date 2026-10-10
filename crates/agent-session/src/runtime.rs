@@ -100,6 +100,23 @@ pub trait SessionRuntime {
         false
     }
 
+    /// Whether a look of the node at `command` runs now, such as a `demi
+    /// shell status --wait` that waits for its end: the command's end report
+    /// then ends no window, since the look shows the end itself
+    /// (`runtime.md` § Command reports). None by default.
+    fn looks_at(&self, command: &CommandId) -> bool {
+        let _ = command;
+        false
+    }
+
+    /// Readies `report` as it is written into the transcript: it reads the
+    /// output the report carries, or marks the place what it read, so that a
+    /// report dropped before then moves no place in its command's output
+    /// (`runtime.md` § Command reports). Nothing by default.
+    fn write_report(&self, report: &mut CommandReport) {
+        let _ = report;
+    }
+
     /// Releases what the node's tools hold, such as its shell environments
     /// and the commands they run, once its session is disposed; the session's
     /// dispose finishes only after it. Nothing by default.

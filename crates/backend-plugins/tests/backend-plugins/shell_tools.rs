@@ -588,6 +588,9 @@ async fn an_end_a_look_showed_while_its_report_waited_is_not_reported() {
         let serve = fixture.shell_commands()[0].clone();
         let looked = looked.borrow().clone();
         assert!(looked.contains("status: exited\nexitCode: 0"), "{looked}");
+        // The waiting report read nothing of the output, so the look shows
+        // the command's last lines.
+        assert!(looked.contains("\noutput:\nfinished\n"), "{looked}");
         // The end the look showed tells nothing more: no request after the
         // look's answer, and no report in any.
         assert_eq!(script.requests().len(), 2, "{:#?}", script.requests().iter().map(|request| request.items.last().cloned()).collect::<Vec<_>>());
@@ -598,6 +601,75 @@ async fn an_end_a_look_showed_while_its_report_waited_is_not_reported() {
             .any(|input| input.contains(&format!("Command {serve} (Run the test script) ended")));
         assert!(!reported_end);
         assert!(!fixture.kinds().contains(&"wakeup".to_owned()), "{:?}", fixture.kinds());
+        fixture.stop().await;
+    })
+    .await;
+}
+
+// About a second: three shell jobs and a look through the status command.
+// A look at two commands waits for both; the first one's end report arrives
+// meanwhile and ends no window, since the look shows that end itself
+// (`runtime.md` § Command reports).
+#[tokio::test(flavor = "local")]
+async fn the_end_report_of_a_command_a_look_waits_for_ends_no_window() {
+    within(async {
+        let turns = [
+            Turn::Events(vec![
+                exec("serve", "until [ -e done ]; do sleep 0.05; done; echo finished", 500),
+                exec("other", "until [ -e other-done ]; do sleep 0.05; done", 500),
+            ]),
+            // A call whose window far outlasts the test, which ends when the
+            // test lets it.
+            Turn::Events(vec![exec("wait", "until [ -e let-go ]; do sleep 0.05; done; echo let go", 600_000)]),
+        ]
+        .into_iter()
+        .chain(replies(3));
+        let script = ScriptedRuntime::new(turns);
+        let fixture = Fixture::start_with(&script, reporting()).await;
+        let mut client = fixture.opened().await;
+        client
+            .send(ClientFrame::Send {
+                message_id: "message-1".try_into().unwrap(),
+                content: client_text("Serve, then wait."),
+            })
+            .await;
+        client.next_until(|frame| shows_call(frame, "wait")).await;
+        let [serve, other] = &fixture.shell_commands()[..2] else {
+            panic!("the two commands")
+        };
+        let root = fixture.server.node(&conversation(), &conversation()).unwrap();
+        // The model looks at both commands and waits for their ends.
+        let look = tokio::task::spawn_local({
+            let root = root.clone();
+            let workspace = fixture.workspace.clone();
+            let ids = json!({ "id": [serve, other], "wait": "30s" });
+            async move { node_call(&root, &workspace, &["shell", "status"], ids).await }
+        });
+        while !root.looks_at(serve) {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        // The first command ends while the look waits: its end report waits
+        // for the turn's boundary.
+        std::fs::write(format!("{}/done", fixture.workspace), "").unwrap();
+        while !root.session().status().input {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        // The other command ends, and the look shows both ends; the running
+        // call was not cut short meanwhile, and ends once it is let go.
+        std::fs::write(format!("{}/other-done", fixture.workspace), "").unwrap();
+        let (code, looked, stderr) = look.await.unwrap();
+        assert_eq!(code, 0, "{stderr}");
+        assert!(looked.contains("\noutput:\nfinished\n"), "{looked}");
+        std::fs::write(format!("{}/let-go", fixture.workspace), "").unwrap();
+        client.next_until(is_idle).await;
+        let results: Results = Rc::default();
+        for request in &script.requests() {
+            record(&results, request);
+        }
+        let results = results.borrow();
+        let waited = result(&results, "wait");
+        assert_eq!(field(waited, "status"), "exited", "{waited}");
+        assert_eq!(shown_output(waited), "let go\n", "{waited}");
         fixture.stop().await;
     })
     .await;

@@ -39,6 +39,31 @@ pub struct Environments {
     /// Who stopped each command that was stopped, which its end's report
     /// names.
     stops: RefCell<HashMap<CommandId, Stopper>>,
+    /// How many of the node's looks at each command run now, such as a
+    /// `demi shell status --wait` that waits for its end: an end report of
+    /// such a command ends no window, since the look shows the end itself
+    /// (`runtime.md` § Command reports).
+    looks: RefCell<HashMap<CommandId, usize>>,
+}
+
+/// A look of the node at some commands, while it runs; dropping it ends it.
+pub struct Looking<'a> {
+    environments: &'a Environments,
+    commands: Vec<CommandId>,
+}
+
+impl Drop for Looking<'_> {
+    fn drop(&mut self) {
+        let mut looks = self.environments.looks.borrow_mut();
+        for command in &self.commands {
+            if let Some(count) = looks.get_mut(command) {
+                *count -= 1;
+                if *count == 0 {
+                    looks.remove(command);
+                }
+            }
+        }
+    }
 }
 
 /// Who stopped a command.
@@ -199,6 +224,23 @@ impl Environments {
     /// Moves the node's place in `command`'s whole output to `seen`.
     pub fn set_place(&self, command: &CommandId, seen: Seen) {
         self.places.borrow_mut().insert(command.clone(), seen);
+    }
+
+    /// The node looks at `commands` until the returned look is dropped.
+    pub fn look_at(&self, commands: Vec<CommandId>) -> Looking<'_> {
+        let mut looks = self.looks.borrow_mut();
+        for command in &commands {
+            *looks.entry(command.clone()).or_default() += 1;
+        }
+        Looking {
+            environments: self,
+            commands,
+        }
+    }
+
+    /// Whether a look of the node at `command` runs now.
+    pub fn looks_at(&self, command: &CommandId) -> bool {
+        self.looks.borrow().contains_key(command)
     }
 
     /// `stopper` stops `command`, which the node's environments hold.

@@ -2,7 +2,9 @@
 //! its progress while it runs, or its end, each with the output since the
 //! node's last look as a `shell` result shows it. A report is data; the text
 //! the model reads is rendered from it where it is replayed
-//! ([`demi_agent_transcript::report_text`]).
+//! ([`demi_agent_transcript::report_text`]). Its output moves the node's
+//! place only when the report is written into the transcript, so a report
+//! dropped because a look showed the end first moves nothing.
 
 use demi_agent_transcript::{REPLAY_CHARS, report_text};
 use demi_host_interface::CommandStatus;
@@ -22,21 +24,30 @@ pub enum EndOf {
     Unrecorded,
 }
 
-/// The report of `status`, a command that still runs and reports every
-/// `interval_ms`: how long it has run and printed nothing, and what a look
-/// shows of its output.
-pub fn progress_report(status: &CommandStatus, title: &str, interval_ms: u32) -> CommandReport {
-    let event = ReportEvent::Running {
-        running_ms: status.running_ms,
-        idle_ms: status.idle_ms,
-        interval_ms,
-    };
-    report(&status.command_id, title, event, Some(status))
+/// The report of `command`, which still runs and reports every
+/// `interval_ms`: how long it has run and printed nothing. Its output is
+/// read when the report is written ([`fill_output`]), which moves the
+/// node's place then.
+pub fn progress_report(
+    command: &CommandId,
+    title: &str,
+    running_ms: u64,
+    idle_ms: u64,
+    interval_ms: u32,
+) -> CommandReport {
+    report(
+        command,
+        title,
+        ReportEvent::Running {
+            running_ms,
+            idle_ms,
+            interval_ms,
+        },
+    )
 }
 
-/// The report of `command`'s end, `end`, with what it printed since the
-/// node's last look, as `status` shows it once it ended; no output when its
-/// output is not known.
+/// The report of `command`'s end, `end`; its output is read from
+/// `status` once it ended, or when the report is written ([`fill_output`]).
 pub fn end_report(
     command: &CommandId,
     title: &str,
@@ -57,27 +68,28 @@ pub fn end_report(
         EndOf::Lost => ReportEvent::lost_with_connection(),
         EndOf::Unrecorded => ReportEvent::Ended { exit_code: None },
     };
-    report(command, title, event, status)
+    let mut report = report(command, title, event);
+    if let Some(status) = status {
+        fill_output(&mut report, status);
+    }
+    report
 }
 
-/// A report of `event` whose output, read from `status`, takes what the
-/// replay bound leaves after the report's other lines, so that replay sends
-/// it unchanged (`runtime.md` § Results and previews).
-fn report(
-    command: &CommandId,
-    title: &str,
-    event: ReportEvent,
-    status: Option<&CommandStatus>,
-) -> CommandReport {
-    let mut report = CommandReport {
+/// Gives `report` the output `status` shows since the node's last look,
+/// within what the replay bound leaves after the report's other lines, so
+/// that replay sends it unchanged (`runtime.md` § Results and previews).
+pub fn fill_output(report: &mut CommandReport, status: &CommandStatus) {
+    report.output.clear();
+    let others = report_text(report).chars().count();
+    report.output = report_output(status, REPLAY_CHARS.saturating_sub(others));
+}
+
+/// A report of `event`, without output yet.
+fn report(command: &CommandId, title: &str, event: ReportEvent) -> CommandReport {
+    CommandReport {
         command_id: command.clone(),
         title: title.to_owned(),
         event,
         output: String::new(),
-    };
-    if let Some(status) = status {
-        let others = report_text(&report).chars().count();
-        report.output = report_output(status, REPLAY_CHARS.saturating_sub(others));
     }
-    report
 }
