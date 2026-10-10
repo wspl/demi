@@ -72,6 +72,8 @@ pub(crate) struct JobEntry {
     /// How much of each stream's first `JOB_VIEW_BYTES` reached its
     /// consumer, so output the backend read again is not delivered twice.
     head: [u64; 2],
+    /// Where the last output of each stream that reached its consumer ends.
+    seen: [u64; 2],
     /// While its kept output is read after a new connection, the output
     /// that arrives meanwhile, which follows what the read delivers.
     resyncing: Option<Vec<JobOutput>>,
@@ -133,6 +135,7 @@ impl DeviceJobs {
                 attached: Some(link.downgrade()),
                 attachments,
                 head: [0; 2],
+                seen: [0; 2],
                 resyncing: None,
                 unreached: false,
             },
@@ -155,6 +158,7 @@ impl DeviceJobs {
             attached: None,
             attachments: watch::Sender::new(0),
             head: [0; 2],
+            seen: [0; 2],
             resyncing: None,
             unreached: false,
         });
@@ -289,7 +293,11 @@ impl DeviceJobs {
             job.attached = Some(link.downgrade());
             job.attachments.send_modify(|count| *count += 1);
             job.unreached = kept.ended.as_ref().is_some_and(|end| end.unreached);
-            if kept.ended.is_none() {
+            // A job that runs and printed what its consumer did not
+            // receive has its kept output read again.
+            let missed = kept.output.stdout_bytes > job.seen[0]
+                || kept.output.stderr_bytes > job.seen[1];
+            if kept.ended.is_none() && missed {
                 job.resyncing.get_or_insert_with(Vec::new);
                 adoption.resync.push((kept.job_id.clone(), kept.output));
             }
@@ -363,6 +371,7 @@ impl JobEntry {
             attached: None,
             attachments: watch::Sender::new(0),
             head: [0; 2],
+            seen: [0; 2],
             resyncing: None,
             unreached: false,
         }
@@ -375,12 +384,13 @@ impl JobEntry {
             StreamKind::Stdout => 0,
             StreamKind::Stderr => 1,
         };
+        let end = chunk.offset + chunk.bytes.len() as u64;
+        self.seen[index] = self.seen[index].max(end);
         if chunk.offset >= JOB_VIEW_BYTES as u64 {
             self.shared.push(chunk);
             return;
         }
         let head = self.head[index];
-        let end = chunk.offset + chunk.bytes.len() as u64;
         if end <= head && !chunk.bytes.is_empty() {
             return;
         }
