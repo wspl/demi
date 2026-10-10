@@ -1,23 +1,16 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { ToolResultContentBlock } from '@demicodes/protocol'
 import { ICON_PX } from '../../ui/icon-metrics'
-import { toolMedia } from '../tool-media'
+import type { ToolMedium } from '../tool-media'
 import MediumThumbnail from '../MediumThumbnail.vue'
 
 /**
- * The images and videos a call's result carries, under the call's row, side
- * by side in the order of the result and wrapping onto the next row, whether
- * the call is folded or open; a medium that is gone shows a line that says
- * why where it was (`file-previews.md` § Media a tool returned).
+ * The images and videos a call's result carries, under the call's row or a
+ * folded group's, side by side in the order of the result and wrapping onto
+ * the next row, whether the call is folded or open; a medium that is gone
+ * shows a line that says why where it was (`file-previews.md` § Media a tool
+ * returned).
  */
-const props = defineProps<{
-  output: readonly ToolResultContentBlock[]
-  /** The call's title, which names each medium. */
-  title: string
-}>()
-
-const media = computed(() => toolMedia(props.output))
+defineProps<{ media: readonly ToolMedium[] }>()
 </script>
 
 <template>
@@ -38,7 +31,7 @@ const media = computed(() => toolMedia(props.output))
         v-else
         :kind="medium.kind"
         :source="medium.source"
-        :name="title"
+        :name="medium.name"
       />
     </template>
   </div>

@@ -11,6 +11,7 @@ import ThinkingBlock from './ThinkingBlock.vue'
 import ToolCallBlock from './ToolCallBlock.vue'
 import PendingCallBlock from './PendingCallBlock.vue'
 import FileChangePills from './FileChangePills.vue'
+import ToolMedia from './ToolMedia.vue'
 import { toolRowIcon } from './tool-row-icon'
 import { storedShellView, toolCallTitle } from '../block-helpers'
 import { pendingCallTitle, toolRenderKind } from '../tool-rendering'
@@ -20,6 +21,7 @@ import { useEditSelection, useTranscript } from '../edit-selection'
 import { callFiles, pillSelection } from '../../files/request-changes'
 import type { ChangeFile } from '../../files/changes'
 import { useFileLineCounts } from '../useFileLineCounts'
+import { foldedMedia } from '../tool-media'
 import { useElapsedTime } from '../../composables/useElapsedTime'
 
 /**
@@ -28,8 +30,9 @@ import { useElapsedTime } from '../../composables/useElapsedTime'
  * and what runs; once they end, a stack and what they did. A lone thinking is
  * the thinking's own row, so the first call rolls over it in place. Opening
  * the row shows every step as its own row; a step that joins while it is open
- * enters as a row joining the transcript does. Folded, the files the steps
- * changed show under it; open, each under its own call.
+ * enters as a row joining the transcript does. Folded, the media the calls
+ * returned show under it, and below them the files the steps changed; open,
+ * each under its own call.
  */
 const props = defineProps<{ group: WorkGroupBlock }>()
 const isOpen = defineModel<boolean>('open', { default: false })
@@ -110,6 +113,7 @@ const face = computed<Face>(() => {
 })
 const calls = computed(() => props.group.steps.filter((step) => step.type === 'tool_call'))
 const changed = computed(() => callFiles(calls.value))
+const media = computed(() => foldedMedia(props.group.steps))
 // Folded, each file the steps changed shows once, with the lines of its
 // changes across them counted from its two ends, as the Change view's All
 // Changes counts them; until they are counted, or when its ends were not kept, its name alone.
@@ -209,6 +213,10 @@ function pick(path: string): void {
       </div>
     </template>
   </FunctionalBlock>
+  <!-- The calls' media fold away as the group opens to show each under its own call, so none shows twice. -->
+  <Fold :open="!isOpen && media.length > 0">
+    <ToolMedia :media="media" />
+  </Fold>
   <!-- The summed pills fold in as the first file changes, and away as the group opens to show each call's own. -->
   <Fold :open="!isOpen && files.length > 0">
     <div ref="pills">

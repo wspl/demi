@@ -7,6 +7,7 @@ import FunctionalBlock from './FunctionalBlock.vue'
 import CommandEndTag from './CommandEndTag.vue'
 import ToolMedia from './ToolMedia.vue'
 import { reportMark, reportSentence, useCommandOpener } from '../command-reports'
+import { toolMedia } from '../tool-media'
 
 /**
  * The reports of a `wakeup` block, one row each where the block lies, as an
@@ -24,8 +25,7 @@ const rows = computed(() => props.reports.map((report, index) => ({
   sentence: reportSentence(report),
   mark: reportMark(report),
   action: open(report.commandId),
-  media: report.media ?? [],
-  title: report.title,
+  media: toolMedia(report.media ?? [], report.title),
 })))
 </script>
 
@@ -42,7 +42,7 @@ const rows = computed(() => props.reports.map((report, index) => ({
         <span class="min-w-0 truncate">{{ row.sentence }}</span>
         <CommandEndTag v-if="row.mark" :mark="row.mark" />
       </FunctionalBlock>
-      <ToolMedia :output="row.media" :title="row.title" />
+      <ToolMedia :media="row.media" />
     </template>
   </div>
 </template>
