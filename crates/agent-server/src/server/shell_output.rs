@@ -49,7 +49,7 @@ const STATUS_SUMMARY: &str = "Look at commands of this conversation by their com
 
 const INPUT_SUMMARY: &str = "Write stdin to a running command's input by its commandId, such as an answer to its prompt, with a newline for a line-based prompt (`demi shell input 17 <<'EOF'`). Prints nothing; a command that is not running fails. Look at what the command did with it with demi shell status.";
 
-const STOP_SUMMARY: &str = "Stop running commands of this conversation by their commandIds, in order, whichever agent ran them, and wait until each has ended. Its next status shows it aborted, with its last output. Stopping a command that has ended already succeeds, so it is safe to repeat.";
+const STOP_SUMMARY: &str = "Stop running commands of this conversation by their commandIds, in order, whichever agent ran them, and wait until each has ended. Its next status shows it stopped, with its last output. Stopping a command that has ended already succeeds, so it is safe to repeat.";
 
 const OUTPUT_SUMMARY: &str = "Print a command's whole output by its commandId: numbered lines a page at a time, as `cat -n` shows them, from the first line or the lines --lines <from>-<to> names; the newest with --tail <n>. --stdout or --stderr takes one stream, with line numbers of its own. --raw prints the bytes as they are, unnumbered and unpaged, for pipes and files: `grep -n` on it gives the numbers --lines takes (`demi shell output 17 --raw | grep -n FAIL`). Any command of this conversation, running or ended.";
 
@@ -290,18 +290,14 @@ async fn status_one<H: HostResolver>(
             .environment_of(&command)
             .ok_or_else(|| format!("command {id} is no longer held"))?;
         let status = environment.status(&command).map_err(|error| error.to_string())?;
-        if matches!(status.state, CommandState::Running { .. }) {
-            lines.push(look_text(&status, look));
-            return Ok(lines.join("\n"));
+        let look = Look {
+            unreachable: environment.unreachable(&command),
+            ..look
+        };
+        lines.push(look_text(&status, look));
+        if !matches!(status.state, CommandState::Running { .. }) {
+            node.saw_end(&command).await;
         }
-        // A command its Host lost says why, as its record keeps it
-        // (`runtime.md` § Lost commands).
-        let end = tree.store().command_end(&command).await.ok().flatten();
-        match end {
-            Some(end @ CommandEnd::Lost { .. }) => lines.extend(ended_lines(id, end)),
-            _ => lines.push(look_text(&status, look)),
-        }
-        node.saw_end(&command).await;
         return Ok(lines.join("\n"));
     }
     let running = held.as_ref().and_then(|node| {
@@ -312,7 +308,7 @@ async fn status_one<H: HostResolver>(
             .is_none()
             .then_some((node, environment))
     });
-    let place = looking.place(&command);
+    let place = looking.place(&command).await;
     let shown = match running {
         Some((node, environment)) => {
             let whole = environment
@@ -327,20 +323,25 @@ async fn status_one<H: HostResolver>(
             let idle_ms = environment
                 .quiet(&command)
                 .map_or(0, |quiet| u64::try_from(quiet.as_millis()).unwrap_or(u64::MAX));
-            // A command its environment let go of since names no task, as
-            // one that ended names none.
             let state = CommandState::Running {
                 hint: None,
-                outliving: environment.outliving(&command).unwrap_or_default(),
+                outliving: environment.outliving(&command),
             };
-            looking.set_place(&command, whole.seen_through());
+            let look = Look {
+                unreachable: environment.unreachable(&command),
+                ..look
+            };
+            looking.set_place(&command, whole.seen_through()).await;
             whole_look_text(&command, state, running_ms, idle_ms, Arc::new(whole), place, look)
         }
+        // An end a look showed tells the node nothing more, however the
+        // command ended (`runtime.md` § Command reports).
         None => match tree.store().command_output(&command).await {
             Ok(Some(StoredCommand {
                 end,
                 output: StoredOutput::Stored { output, .. },
             })) => {
+                looking.set_place(&command, Seen::ALL).await;
                 let state = match end {
                     CommandEnd::Exited { exit_code } => CommandState::Exited {
                         exit_code,
@@ -348,15 +349,21 @@ async fn status_one<H: HostResolver>(
                         media: Vec::new(),
                     },
                     CommandEnd::Stopped => CommandState::Aborted,
-                    CommandEnd::Lost { .. } | CommandEnd::Unrecorded => {
+                    CommandEnd::Lost { reason } => CommandState::Lost {
+                        reason,
+                        media: Vec::new(),
+                    },
+                    CommandEnd::Unrecorded => {
                         lines.extend(ended_lines(id, end));
                         return Ok(lines.join("\n"));
                     }
                 };
-                looking.set_place(&command, Seen::ALL);
                 whole_look_text(&command, state, 0, 0, Arc::new(output), place, look)
             }
-            Ok(Some(StoredCommand { end, .. })) => ended_lines(id, end).join("\n"),
+            Ok(Some(StoredCommand { end, .. })) => {
+                looking.set_place(&command, Seen::ALL).await;
+                ended_lines(id, end).join("\n")
+            }
             Ok(None) => ended_lines(id, CommandEnd::Unrecorded).join("\n"),
             Err(error) => return Err(format!("the output of {id} could not be read: {error}")),
         },
@@ -373,7 +380,7 @@ fn ended_lines(id: &str, end: CommandEnd) -> Vec<String> {
         CommandEnd::Exited { exit_code } => {
             vec!["status: exited".to_owned(), format!("exitCode: {exit_code}")]
         }
-        CommandEnd::Stopped => vec!["status: aborted".to_owned()],
+        CommandEnd::Stopped => vec!["status: stopped".to_owned()],
         CommandEnd::Lost { reason } => vec![format!("status: lost: {reason}")],
         CommandEnd::Unrecorded => vec!["status: ended".to_owned()],
     };
@@ -458,8 +465,11 @@ async fn stop_one<H: HostResolver>(tree: &Tree<H>, caller: &NodeId, id: &str) ->
                 };
                 match stopped.map_err(|error| error.to_string())? {
                     Ending::Aborted => format!("[command {id} stopped]\n"),
-                    // It ended by itself before the stop reached it.
-                    Ending::Exited(_) => format!("[command {id} had already ended]\n"),
+                    // It ended by itself, or was lost, before the stop
+                    // reached it.
+                    Ending::Exited(_) | Ending::Lost(_) => {
+                        format!("[command {id} had already ended]\n")
+                    }
                 }
             }
             _ => format!("[command {id} had already ended]\n"),

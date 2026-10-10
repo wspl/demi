@@ -9,13 +9,13 @@ use demi_agent_session::ToolOutcome;
 use demi_agent_store::images;
 use demi_agent_transcript::REPLAY_CHARS;
 use demi_host_interface::{
-    BinaryOutput, CommandMedium, CommandState, CommandStatus, Newest, OutputText, Piece, Seen,
-    Streams, WholeOutput, WholeView,
+    BinaryOutput, CommandMedium, CommandState, CommandStatus, LOST_EXIT_CODE, Newest, OutputText,
+    Piece, Seen, Streams, WholeOutput, WholeView,
 };
 use demi_provider_common::{MediaBytes, RequestLimits, ResultPart, ToolResultKinds};
 use demi_shared_types::{
     B64Bytes, CommandId, Model, ModelMediaKind, OutputChunk, OutputView, ShellToolView,
-    ShellViewStatus, StreamView, ToolView, model_media_type_for,
+    ShellViewStatus, StreamView, ToolView, Unreachable, model_media_type_for,
 };
 
 use super::PAGE_CHARS;
@@ -43,12 +43,15 @@ pub struct Look<'a> {
     /// milliseconds, or only its end when none; not known when the outer
     /// option is none, as for a look at another agent's command.
     pub interval_ms: Option<Option<u32>>,
+    /// The command's Host is unreachable, so its silence is not the
+    /// command's (`runtime.md` § The `demi shell` commands).
+    pub unreachable: Option<Unreachable>,
 }
 
 /// The `shell` call's outcome for `status`: its text, the media it attaches
 /// and the lines about them, and its view. `model` is the call's, and its
 /// vendor takes requests within `limits`. A command that exited with a
-/// status other than 0, or was stopped, is an error to the provider
+/// status other than 0, or was stopped or lost, is an error to the provider
 /// (`runtime.md` § Results and previews).
 pub(super) async fn shell_outcome(
     status: &CommandStatus,
@@ -58,13 +61,17 @@ pub(super) async fn shell_outcome(
 ) -> ToolOutcome {
     let text = unseen_output(status);
     let mut output = vec![ResultPart::Text(result_text(status, &text, look))];
-    if let CommandState::Exited {
-        binary_stdout,
-        media,
-        ..
-    } = &status.state
-    {
-        let (parts, lines) = attached_media(media, binary_stdout.as_ref(), model, limits).await;
+    let ended_with = match &status.state {
+        CommandState::Exited {
+            binary_stdout,
+            media,
+            ..
+        } => Some((media, binary_stdout.as_ref())),
+        CommandState::Lost { media, .. } => Some((media, None)),
+        CommandState::Running { .. } | CommandState::Aborted => None,
+    };
+    if let Some((media, binary_stdout)) = ended_with {
+        let (parts, lines) = attached_media(media, binary_stdout, model, limits).await;
         output.extend(parts);
         if !lines.is_empty() {
             output.push(ResultPart::Text(lines.join("\n")));
@@ -73,7 +80,7 @@ pub(super) async fn shell_outcome(
     let is_error = match status.state {
         CommandState::Running { .. } => false,
         CommandState::Exited { exit_code, .. } => exit_code != 0,
-        CommandState::Aborted => true,
+        CommandState::Aborted | CommandState::Lost { .. } => true,
     };
     ToolOutcome {
         output,
@@ -170,15 +177,19 @@ fn unseen_output(status: &CommandStatus) -> OutputText {
 fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> String {
     let command = &status.command_id;
     let running = matches!(status.state, CommandState::Running { .. });
+    let unreachable = look.unreachable.filter(|_| running);
     let mut before: Vec<String> = look.note.into_iter().map(str::to_owned).collect();
-    before.push(format!("status: {}", view_status(&status.state)));
+    before.push(status_line(&status.state, unreachable));
     if let CommandState::Exited { exit_code, .. } = status.state {
         before.push(format!("exitCode: {exit_code}"));
     }
     before.push(format!("commandId: {command}"));
     if running {
         before.push(format!("runningMs: {}", status.running_ms));
-        before.push(format!("idleMs: {}", status.idle_ms));
+        // While its Host is unreachable, the silence is not the command's.
+        if unreachable.is_none() {
+            before.push(format!("idleMs: {}", status.idle_ms));
+        }
     }
     let newest = newest_of(status);
     let mut after = Vec::new();
@@ -196,8 +207,7 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> Str
                 None => after.push(running_next(command, look.interval_ms)),
             }
         }
-        CommandState::Aborted => after.push("next: command was intentionally stopped.".to_owned()),
-        CommandState::Exited { .. } => {}
+        CommandState::Exited { .. } | CommandState::Aborted | CommandState::Lost { .. } => {}
     }
     // The other lines, the output's label among them, each with its newline.
     let markers: usize = newest.iter().map(|newest| newest_marker(newest).chars().count() + 1).sum();
@@ -218,6 +228,23 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> Str
     }
     lines.extend(after);
     lines.join("\n")
+}
+
+/// The line that says where the command is, as the model reads it
+/// (`runtime.md` § The `demi shell` commands): running, as far as Demi knows
+/// while its Host is `unreachable`; exited; stopped; or lost, with why.
+fn status_line(state: &CommandState, unreachable: Option<Unreachable>) -> String {
+    match (state, unreachable) {
+        (CommandState::Running { .. }, Some(unreachable)) => format!(
+            "status: running, as far as Demi knows; its Host has been unreachable for {}, and its runner keeps it for up to {}",
+            super::duration(unreachable.away_ms),
+            super::duration(unreachable.grace_ms)
+        ),
+        (CommandState::Running { .. }, None) => "status: running".to_owned(),
+        (CommandState::Exited { .. }, _) => "status: exited".to_owned(),
+        (CommandState::Aborted, _) => "status: stopped".to_owned(),
+        (CommandState::Lost { reason, .. }, _) => format!("status: lost: {reason}"),
+    }
 }
 
 /// What a command's report carries of `status`'s output (`runtime.md`
@@ -683,10 +710,12 @@ fn document_name(number: u32) -> String {
     format!("document-{number}.pdf")
 }
 
+/// Where the command is, as the user's view of the call shows it: a loss
+/// shows as the failure it is, as the pages show it ([`LOST_EXIT_CODE`]).
 fn view_status(state: &CommandState) -> ShellViewStatus {
     match state {
         CommandState::Running { .. } => ShellViewStatus::Running,
-        CommandState::Exited { .. } => ShellViewStatus::Exited,
+        CommandState::Exited { .. } | CommandState::Lost { .. } => ShellViewStatus::Exited,
         CommandState::Aborted => ShellViewStatus::Aborted,
     }
 }
@@ -712,7 +741,8 @@ fn shell_view(status: &CommandStatus, text: &OutputText) -> ShellToolView {
         command_id: status.command_id.clone(),
         exit_code: match status.state {
             CommandState::Exited { exit_code, .. } => Some(exit_code),
-            _ => None,
+            CommandState::Lost { .. } => Some(LOST_EXIT_CODE),
+            CommandState::Running { .. } | CommandState::Aborted => None,
         },
         running_ms: status.running_ms,
         idle_ms: status.idle_ms,
@@ -1036,7 +1066,7 @@ mod tests {
         aborted.state = CommandState::Aborted;
         assert_eq!(
             result(&aborted).await,
-            "status: aborted\ncommandId: 17\noutput: (empty)\nnext: command was intentionally stopped."
+            "status: stopped\ncommandId: 17\noutput: (empty)"
         );
     }
 

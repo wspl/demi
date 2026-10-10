@@ -287,7 +287,13 @@ for every kind of target: it resolves the target, refuses an archived
 conversation, wakes a stopped Cloud and holds it for the operation, and takes
 the conversation's file gate so the operation excludes an archive or a target
 switch. A paired device without a live runner fails the operation with the
-runner's offline error. There is no second way to a conversation's Host; the
+runner's offline error. A `shell` call gets it as its result, worded for the
+model so it stops trying: `browse-slot-1 is offline: its runner has been
+disconnected for 40 seconds, so nothing can run there now. Commands already
+running there are kept for up to 10 minutes and report when it is back; end
+your turn to wait for them, or tell the user the device is offline.` In a
+product check, a model told only `runner disconnected` ran seven more
+commands to ping the device. There is no second way to a conversation's Host; the
 two ways to a device that touch no conversation's files are named in
 [Every way to a Host](#every-way-to-a-host). Lifecycle cleanup is the explicitly
 scoped extension in [Lifecycle access](#lifecycle-access); it still uses this

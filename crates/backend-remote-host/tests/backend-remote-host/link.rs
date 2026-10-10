@@ -1306,6 +1306,10 @@ impl CommandKeeper for Publisher {
         Box::pin(async { None })
     }
 
+    fn looked<'a>(&'a self, _: &'a CommandId, _: demi_host_interface::Seen) -> LocalBoxFuture<'a, ()> {
+        Box::pin(async {})
+    }
+
     fn keep_output<'a>(
         &'a self,
         _: &'a CommandId,

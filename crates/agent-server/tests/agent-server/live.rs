@@ -147,9 +147,12 @@ impl ShellEnvironment for ScriptedShell {
         Ok(self.record(command)?.borrow().quiet())
     }
 
-    fn outliving(&self, command: &CommandId) -> Result<Vec<String>, ShellError> {
-        self.record(command)?;
-        Ok(Vec::new())
+    fn outliving(&self, _: &CommandId) -> Vec<String> {
+        Vec::new()
+    }
+
+    fn unreachable(&self, _: &CommandId) -> Option<demi_shared_types::Unreachable> {
+        None
     }
 
     fn media(&self, command: &CommandId) -> Result<Vec<demi_host_interface::CommandMedium>, ShellError> {
@@ -187,7 +190,7 @@ impl ShellEnvironment for ScriptedShell {
         Box::pin(async { false })
     }
 
-    fn adopt(&self, _: &CommandId, _: &str, _: &str, _: demi_host_interface::JobCaller) {
+    fn adopt(&self, _: demi_host_interface::TakenUp) {
         unreachable!("the scripted shell takes up no command")
     }
 

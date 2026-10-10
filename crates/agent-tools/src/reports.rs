@@ -8,7 +8,7 @@
 
 use demi_agent_transcript::{REPLAY_CHARS, report_text};
 use demi_host_interface::CommandStatus;
-use demi_shared_types::{CommandId, CommandReport, ReportEvent, StoppedBy};
+use demi_shared_types::{CommandId, CommandReport, ReportEvent, StoppedBy, Unreachable};
 
 use crate::{Stopper, result::report_output};
 
@@ -25,8 +25,9 @@ pub enum EndOf {
 }
 
 /// The report of `command`, which still runs and reports every
-/// `interval_ms`: how long it has run and printed nothing. Its output is
-/// read when the report is written ([`fill_output`]), which moves the
+/// `interval_ms`: how long it has run and printed nothing, or how long its
+/// Host has been `unreachable` (`runtime.md` § Command reports). Its output
+/// is read when the report is written ([`fill_output`]), which moves the
 /// node's place then.
 pub fn progress_report(
     command: &CommandId,
@@ -34,6 +35,7 @@ pub fn progress_report(
     running_ms: u64,
     idle_ms: u64,
     interval_ms: u32,
+    unreachable: Option<Unreachable>,
 ) -> CommandReport {
     report(
         command,
@@ -42,6 +44,7 @@ pub fn progress_report(
             running_ms,
             idle_ms,
             interval_ms,
+            unreachable,
         },
     )
 }
