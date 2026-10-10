@@ -18,6 +18,7 @@ use futures_util::future::LocalBoxFuture;
 
 use crate::{
     AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, NodeClose, NodeRecord,
+    RunningCommand,
     SessionStore, StoreError, StoredCommand, media::BlobStore,
 };
 
@@ -98,6 +99,8 @@ struct Stored {
     children_holds: BTreeMap<NodeId, Rc<Hold>>,
     /// What the product's keeper stored of each ended command's output.
     outputs: BTreeMap<CommandId, StoredCommand>,
+    /// The commands each node ran that are recorded running.
+    running: BTreeMap<NodeId, Vec<RunningCommand>>,
 }
 
 /// Calls waiting until a test lets them through.
@@ -179,6 +182,12 @@ impl MemoryTreeStore {
     /// product's keeper does when the command ends.
     pub fn keep_output(&self, command: CommandId, stored: StoredCommand) {
         self.stored.borrow_mut().outputs.insert(command, stored);
+    }
+
+    /// Records `running` as a command `node` ran that runs, as the
+    /// product's keeper does when its job starts.
+    pub fn record_running(&self, node: NodeId, running: RunningCommand) {
+        self.stored.borrow_mut().running.entry(node).or_default().push(running);
     }
 
     /// Every save so far, in order, with the node it was for.
@@ -485,8 +494,16 @@ impl AgentTreeStore for MemoryTreeStore {
         &'a self,
         command: &'a CommandId,
     ) -> LocalBoxFuture<'a, Result<Option<CommandEnd>, StoreError>> {
-        let end = self.stored.borrow().outputs.get(command).map(|stored| stored.end);
+        let end = self.stored.borrow().outputs.get(command).map(|stored| stored.end.clone());
         Box::pin(async move { Ok(end) })
+    }
+
+    fn running_commands<'a>(
+        &'a self,
+        node: &'a NodeId,
+    ) -> LocalBoxFuture<'a, Result<Vec<RunningCommand>, StoreError>> {
+        let running = self.stored.borrow().running.get(node).cloned().unwrap_or_default();
+        Box::pin(async move { Ok(running) })
     }
 }
 

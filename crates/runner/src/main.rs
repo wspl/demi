@@ -185,6 +185,11 @@ enum Action {
         /// runner the installer or `start` starts in the background does.
         #[arg(long, hide = true)]
         log: bool,
+        /// How long a test's runner keeps its jobs without a connection, in
+        /// milliseconds, in place of `UNREACHED_GRACE`.
+        #[cfg(feature = "test-fixtures")]
+        #[arg(long, env = "DEMI_UNREACHED_GRACE_MS", hide = true)]
+        unreached_grace_ms: Option<u64>,
     },
     /// Reports whether the installation's runner is active; exits with 3
     /// when it runs another release.
@@ -237,6 +242,7 @@ struct Installation {
 }
 
 async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
+    let mut unreached_grace = wire::UNREACHED_GRACE;
     let (installation, boot_path, name, managed, artifacts, log, removing) = match cli.action {
         Action::Run {
             installation,
@@ -245,7 +251,15 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             managed,
             artifacts,
             log,
-        } => (installation, managed_boot, name, managed, artifacts, log, false),
+            #[cfg(feature = "test-fixtures")]
+            unreached_grace_ms,
+        } => {
+            #[cfg(feature = "test-fixtures")]
+            if let Some(grace) = unreached_grace_ms {
+                unreached_grace = std::time::Duration::from_millis(grace);
+            }
+            (installation, managed_boot, name, managed, artifacts, log, false)
+        }
         Action::Status { installation } => {
             let state = RunnerState::open(directory(&installation, None)?).await?;
             let release = installation.release.as_deref();
@@ -456,6 +470,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         installed: installed.filter(|_| !removing),
         removal,
         removing,
+        unreached_grace,
     };
     let stop = CancellationToken::new();
     let running = registration::run(options, stop.clone());

@@ -42,6 +42,14 @@ const COLUMNS: &str =
 /// Writes `rows` in one transaction; a command that has a row keeps it.
 pub fn insert(connection: &mut Connection, rows: &[CommandOutput]) -> Result<(), StorageError> {
     let transaction = connection.transaction()?;
+    insert_in(&transaction, rows)?;
+    transaction.commit()?;
+    Ok(())
+}
+
+/// Writes `rows` in the caller's transaction; a command that has a row
+/// keeps it.
+pub(crate) fn insert_in(transaction: &Connection, rows: &[CommandOutput]) -> Result<(), StorageError> {
     {
         let mut insert = transaction.prepare_cached(&format!(
             "INSERT INTO command_outputs ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
@@ -54,9 +62,9 @@ pub fn insert(connection: &mut Connection, rows: &[CommandOutput]) -> Result<(),
             };
             let missing_bytes =
                 missing.map(|missing| i64::try_from(missing.bytes).unwrap_or(i64::MAX));
-            let ending = match row.end {
+            let ending = match &row.end {
                 CommandEnd::Unrecorded => None,
-                end => Some(to_json(&end)),
+                end => Some(to_json(end)),
             };
             insert.execute(params![
                 row.command.as_str(),
@@ -69,7 +77,6 @@ pub fn insert(connection: &mut Connection, rows: &[CommandOutput]) -> Result<(),
             ])?;
         }
     }
-    transaction.commit()?;
     Ok(())
 }
 

@@ -371,12 +371,11 @@ async fn directories_become(host: &Host, count: usize) {
 }
 
 /// A job's directory lasts until the backend releases the job, which keeps
-/// a running job's; the connection's end removes every one, and a runner
-/// that starts removes what an earlier one left (`runner.md` § Pipes and
-/// output). About two seconds: the runner starts twice, and two shell jobs
-/// start a login shell each.
+/// a running job's, and a runner that starts removes what an earlier one
+/// left (`runner.md` § Pipes and output). About two seconds: the runner
+/// starts three times, and two shell jobs start a login shell each.
 #[tokio::test]
-async fn job_directories_go_with_their_release_the_connection_and_the_next_start() {
+async fn job_directories_go_with_their_release_and_the_next_start() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let mut host = Host::start(BTreeMap::new()).await;
         host.stop().await;
@@ -400,8 +399,11 @@ async fn job_directories_go_with_their_release_the_connection_and_the_next_start
         .await;
         directories_become(&host, 1).await;
 
-        host.stop().await;
+        // A runner that ends loses its jobs; the next one removes what they
+        // left.
+        host.restart().await;
         assert_eq!(directories(&host), Vec::<PathBuf>::new());
+        host.close().await;
     })
     .await
     .unwrap();

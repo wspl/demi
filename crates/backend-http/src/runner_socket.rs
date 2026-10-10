@@ -16,7 +16,7 @@ use demi_backend_runners::codes::ClaimCode;
 use demi_backend_runners::devices::send;
 
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::shard::Shards;
+use demi_backend_user_shard::shard::{KeptJobs, Shards};
 
 /// Serves a runner's socket until it is handed to a shard or closes.
 pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: WebSocket) {
@@ -33,6 +33,7 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
         protocol,
         token,
         runner,
+        kept,
     } = hello;
     if protocol != wire::VERSION {
         let reason = format!(
@@ -106,7 +107,7 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
     let owner = device.user.clone();
     let adopted = shards
         .of(&owner)
-        .adopt(move |shard| async move { shard.adopt_runner(device, runner, socket).await })
+        .adopt(move |shard| async move { shard.adopt_runner(device, runner, kept, socket).await })
         .await;
     // A shard that is closing takes no runner: dropping the socket closes it
     // without a word, as shutdown does to every runner.
@@ -120,6 +121,7 @@ struct Hello {
     protocol: u32,
     token: Option<DeviceToken>,
     runner: RunnerInfo,
+    kept: KeptJobs,
 }
 
 /// The first message, which must be a hello; none when the socket closed or
@@ -140,10 +142,13 @@ async fn hello(socket: &mut WebSocket) -> Option<Hello> {
                 protocol,
                 device_token,
                 runner,
+                instance,
+                jobs,
             }) => Some(Hello {
                 protocol,
                 token: device_token,
                 runner,
+                kept: KeptJobs { instance, jobs },
             }),
             Ok(_) => {
                 tracing::info!("closing a runner connection whose first message is not a hello");

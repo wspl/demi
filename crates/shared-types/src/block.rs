@@ -383,16 +383,6 @@ pub enum ReportEvent {
     },
 }
 
-impl ReportEvent {
-    /// A command lost with its Host's connection, the one loss whose
-    /// reason the backend knows today.
-    pub fn lost_with_connection() -> Self {
-        Self::Lost {
-            reason: "its Host's connection ended".to_owned(),
-        }
-    }
-}
-
 /// Who stopped a command, when it was not the node that ran it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
@@ -413,9 +403,7 @@ pub enum StoppedBy {
 
 /// How a command ended, as the conversation's record of its output keeps
 /// it (`storage.md` § Command outputs).
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, garde::Validate,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
     tag = "kind",
     rename_all = "snake_case",
@@ -430,8 +418,11 @@ pub enum CommandEnd {
     /// It was stopped: by a page, `demi shell stop`, a Stop of its action,
     /// or the end of its node's shells.
     Stopped,
-    /// It ended with its Host's connection.
-    Lost,
+    /// Its Host lost it, for this reason (`runtime.md` § Lost commands).
+    Lost {
+        #[garde(length(chars, min = 1, max = 1024))]
+        reason: String,
+    },
     /// Its record was made by a release before 0.1.21, which kept no end.
     Unrecorded,
 }
@@ -512,7 +503,8 @@ fn is_message_id(message_id: &BlockId) -> impl FnOnce(&BlockId, &()) -> garde::R
 }
 
 /// The turn continues after a cut; the model receives "Continue from where
-/// you left off."
+/// you left off.", or, when the system resumed it, why
+/// (`failures-and-recovery.md` § The unfinished turn).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResumeBlock {
@@ -524,6 +516,11 @@ pub struct ResumeBlock {
     pub created_at: Timestamp,
     #[garde(dive)]
     pub model: ModelSelection,
+    /// What made Demi resume the turn, such as "the backend restarted";
+    /// omitted when the user did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub reason: Option<String>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
     /// a process resumes); omitted when there are none. They never leave

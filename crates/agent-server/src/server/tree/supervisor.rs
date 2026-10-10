@@ -729,6 +729,8 @@ impl<H: HostResolver> Tree<H> {
             // its final checkpoint for a later round.
             session.hold();
             stop_all(session).await;
+            // Its commands stop too: nothing of it runs on.
+            child.node.end_shells().await;
             // A start of its own under way ends first, so its child is
             // closed with the others.
             let _turn = self.starts.acquire(child.id().clone()).await;
