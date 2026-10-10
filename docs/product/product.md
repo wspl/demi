@@ -341,11 +341,19 @@ user's next action already is:
       Insufficient balance. Manage your billing here: ...
       HTTP 401 · req_01J8...
 
+  +--------------------------------------------------------------+
+  | MacBook Pro is offline.               [Move to Another Host…] |  <- a card
+  +--------------------------------------------------------------+
   [ > Resume ]   [ 2 Running ]  [ 1 Agent ]        <- the dock's chips
   +--------------------------------------------------------------+
   | Ask Demi...                                  GLM-5.3-Flash   |
   +--------------------------------------------------------------+
 ```
+
+The chips sit directly on the input, and nothing comes between them: a card
+above the composer, such as a device's offline card, a permission request
+or a notice, stands above the chips, so the control the user reaches for
+next stays where the hand already is.
 
 Its label follows the cause, because the user's expectation differs:
 
