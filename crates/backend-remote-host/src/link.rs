@@ -440,7 +440,8 @@ impl<E: Clone, C> Shared<E, C> {
         }
     }
 
-    fn outlived_by(&self, tasks: Vec<String>) {
+    /// The job's script has ended, and `tasks` still run.
+    pub(crate) fn outlived_by(&self, tasks: Vec<String>) {
         let mut state = self.state.borrow_mut();
         if state.end.is_none() {
             state.outliving = tasks;

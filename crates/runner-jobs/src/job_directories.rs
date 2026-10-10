@@ -15,6 +15,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use demi_runner_protocol::wire;
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use crate::job_media::MEDIA_DIRECTORY;
@@ -37,6 +38,9 @@ struct Held {
     media: Arc<Mutex<Vec<wire::Frame>>>,
     /// The job's exit and how it ended, once it ended.
     exit: Option<(wire::Frame, wire::KeptEnd)>,
+    /// The background tasks that keep the job running once its script has
+    /// ended, as its shell names them.
+    outliving: Option<watch::Receiver<Vec<String>>>,
 }
 
 /// A job's directory and its kept output. The directory counts as running
@@ -77,6 +81,16 @@ impl StreamLengths {
 pub struct Running {
     directories: Arc<JobDirectories>,
     job: String,
+}
+
+impl Running {
+    /// The job's shell names the tasks that outlive its script in
+    /// `outliving`, which a hello lists while the job runs.
+    pub fn outlived_by(&self, outliving: watch::Receiver<Vec<String>>) {
+        if let Some(held) = self.directories.lock().get_mut(&self.job) {
+            held.outliving = Some(outliving);
+        }
+    }
 }
 
 impl Drop for Running {
@@ -146,6 +160,7 @@ impl JobDirectories {
                 running: true,
                 media: media.clone(),
                 exit: None,
+                outliving: None,
             },
         );
         Ok(JobDirectory {
@@ -170,9 +185,10 @@ impl JobDirectories {
     }
 
     /// The jobs whose directories are kept, as a hello lists them: each
-    /// one's end once it ended, its streams' lengths and how many media it
-    /// keeps. `running` names the jobs that run, also one whose directory
-    /// is not made yet.
+    /// one's end once it ended, its streams' lengths, how many media it
+    /// keeps and, while it runs, the tasks that outlive its script.
+    /// `running` names the jobs that run, also one whose directory is not
+    /// made yet.
     pub fn kept(&self, running: &[String]) -> Vec<wire::KeptJob> {
         let jobs = self.lock();
         let mut kept: Vec<wire::KeptJob> = jobs
@@ -182,6 +198,10 @@ impl JobDirectories {
                 ended: held.exit.as_ref().map(|(_, end)| end.clone()),
                 output: held.lengths.get(),
                 media: media_count(&held.path.join(MEDIA_DIRECTORY)),
+                outliving: match (&held.exit, &held.outliving) {
+                    (None, Some(outliving)) => crate::tasks::wire_tasks(&outliving.borrow()),
+                    _ => Vec::new(),
+                },
             })
             .collect();
         for job in running {
@@ -194,6 +214,7 @@ impl JobDirectories {
                         stderr_bytes: 0,
                     },
                     media: 0,
+                    outliving: Vec::new(),
                 });
             }
         }
