@@ -10,7 +10,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 use bytes::Bytes;
 use demi_shared_types::{
     BinaryStdout, CommandId, EditedFile, NodeId, OutputView, PathChange, Sequence, StreamKind,
-    StreamView, Unreachable,
+    StreamView,
 };
 use demi_command_protocol::Viewable;
 use futures_util::future::LocalBoxFuture;
@@ -154,6 +154,15 @@ pub struct ExecRequest {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct JobCaller {
     pub node: NodeId,
+}
+
+/// How long a running command's Host has been unreachable, as far as Demi
+/// knows, and how long its runner keeps the command without a connection
+/// (`runner.md` § Command lifetime).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unreachable {
+    pub away_ms: u64,
+    pub grace_ms: u64,
 }
 
 /// A command an environment takes up again: the call `tool_use_id`

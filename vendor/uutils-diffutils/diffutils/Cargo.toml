@@ -39,8 +39,9 @@ path = "tests/integration.rs"
 [dependencies.chrono]
 version = "0.4.38"
 
-[dependencies.diff]
-version = "0.1.13"
+[dependencies.imara-diff]
+version = "0.2.0"
+default-features = false
 
 [dependencies.glob]
 version = "0.3.4"
@@ -94,10 +95,11 @@ patches = [
     "diff DIR FILE compares DIR/FILE, diff DIR - fails with cannot compare '-' to a directory, and the same-file check resolves against the job's working directory",
     "The normal format prints a range of one line as that line's number, as GNU's 1a2 and 2d1, where upstream printed 1a2,2 and 2,2d1",
     "Binary files: a file with a NUL in its first block (st_blksize, else 4096 bytes, GNU's first read) differs as Binary files A and B differ, or Files A and B differ with -q, unless -a/--text compares it as text",
-    "-i/--ignore-case, -b/--ignore-space-change, -w/--ignore-all-space and -B/--ignore-blank-lines compare as GNU diff 3.12 in the C locale: lines are diffed by what the options leave of them and printed as each file has them, -b and -w ignore a missing newline at the end, -B drops a hunk whose changed lines are all empty, and a pair that differs only in what is ignored is identical (status 0, -s reports it); -d/--minimal is accepted, the line diff being minimal already",
+    "-i/--ignore-case, -b/--ignore-space-change, -w/--ignore-all-space and -B/--ignore-blank-lines compare as GNU diff 3.12 in the C locale: lines are diffed by what the options leave of them and printed as each file has them, -b and -w ignore a missing newline at the end, -B drops a hunk whose changed lines are all empty, and a pair that differs only in what is ignored is identical (status 0, -s reports it)",
     "-x PAT/--exclude=PAT and -X FILE/--exclude-from=FILE leave the names their glob patterns match out of a directory comparison, never an operand",
     "Usage errors are GNU getopt's: invalid option -- 'k', unrecognized option '--foo', option requires an argument -- 'x', option '--exclude-from' requires an argument and option '--ign' is ambiguous; possibilities: ..., each followed by Try 'diff --help' for more information., status 2; long options take GNU's unambiguous abbreviations (--recur)",
     "A failed write to standard output reports diff: standard output: REASON or cmp: standard output: REASON with status 2, as GNU's, instead of panicking; cmp flushes its buffered output before it ends so such a failure is seen; a closed pipe ends either through uucore::context's write",
+    "The line diff is GNU diff's in linear space and O(ND) time, in place of the diff crate's longest-common-subsequence table, which grew with the product of the files' lengths (two 300,000-line files asked for 360 GB inside the runner's process): utils::diff_lines sets aside the identical first and last lines but for the context's horizon, as GNU's find_identical_ends does, runs imara-diff's Myers (GNU's and xdiff's preprocessing and cost limit; -d/--minimal lifts the limit), and slides the changes with a line-for-line port of GNU's shift_boundaries. On a random corpus of 320 file pairs in five formats, 1575 of 1600 outputs are GNU's byte for byte (the diff crate's: 1117); the others are equally short alignments imara-diff's middle snake picks differently, and on pathological inputs where the cost limit applies its constants differ from GNU's",
     "Hunks are GNU's: changes at most twice the context apart share a hunk (upstream split them at the context), a context hunk marks every line of a group that both deletes and inserts with ! and prints the second file's common lines on its side, and an ed script lists the changes last to first with a one-line range as one number (5d, 2c)",
     "-y exits with status 1 when the files differ: the status comes from the contents, since side_diff writes its output itself and returns nothing",
 ]

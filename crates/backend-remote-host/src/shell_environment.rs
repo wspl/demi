@@ -27,7 +27,8 @@ use demi_host_interface::{
     BinaryOutput, CommandMedium, CommandRecord, CommandSet, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, Ending, ExecRequest, Host, HostError, HostKey,
     JobCaller, Missing, Numbers, OutputRecord, PageFeed, PageView, ProcessEnd, Seen,
-    ShellEnvironment, ShellError, SpawnErrorKind, Streams, TakenUp, WholeOutput, binary_line,
+    ShellEnvironment, ShellError, SpawnErrorKind, Streams, TakenUp, Unreachable, WholeOutput,
+    binary_line,
 };
 use demi_runner_protocol::{
     manifest::ManifestError,
@@ -35,7 +36,7 @@ use demi_runner_protocol::{
 };
 use demi_shared_types::{
     BlobRef, CommandEnd, CommandId, EditCopies, EditKind, EditSegment, EditedFile, PathChange,
-    Sequence, StreamKind, Unreachable,
+    Sequence, StreamKind,
 };
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;

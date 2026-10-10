@@ -10,12 +10,12 @@ use demi_agent_store::images;
 use demi_agent_transcript::REPLAY_CHARS;
 use demi_host_interface::{
     BinaryOutput, CommandMedium, CommandState, CommandStatus, LOST_EXIT_CODE, Newest, OutputText,
-    Piece, Seen, Streams, WholeOutput, WholeView,
+    Piece, Seen, Streams, Unreachable, WholeOutput, WholeView,
 };
 use demi_provider_common::{MediaBytes, RequestLimits, ResultPart, ToolResultKinds};
 use demi_shared_types::{
     B64Bytes, CommandId, Model, ModelMediaKind, OutputChunk, OutputView, ShellToolView,
-    ShellViewStatus, StreamView, ToolView, Unreachable, model_media_type_for,
+    ShellViewStatus, StreamView, ToolView, model_media_type_for,
 };
 
 use super::PAGE_CHARS;
@@ -44,7 +44,8 @@ pub struct Look<'a> {
     /// option is none, as for a look at another agent's command.
     pub interval_ms: Option<Option<u32>>,
     /// The command's Host is unreachable, so its silence is not the
-    /// command's (`runtime.md` § The `demi shell` commands).
+    /// command's: a look from another Host says so (`runtime.md` § The
+    /// `demi shell` commands).
     pub unreachable: Option<Unreachable>,
 }
 

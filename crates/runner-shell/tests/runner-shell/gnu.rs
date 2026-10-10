@@ -635,3 +635,28 @@ async fn diff_hunks_are_gnu_diffs() {
     )
     .await;
 }
+
+/// `diff` compares two 300,000-line files that mostly differ in bounded
+/// time and memory, as GNU's does: it runs inside the runner's process, so
+/// a line diff that grows with the product of the files' lengths, as the
+/// one before did, would exhaust the memory of the runner and every job on
+/// its Host. Nine lines in ten differ. Runs in about 1 s; the budget allows
+/// 30 s on a loaded machine.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn diff_compares_large_files_in_bounded_time_and_memory() {
+    const LINES: usize = 300_000;
+    let root = tempfile::tempdir().unwrap();
+    let first: String = (0..LINES).map(|line| format!("line {line}\n")).collect();
+    let second: String = (0..LINES)
+        .map(|line| if line % 10 == 0 { format!("line {line}\n") } else { format!("other {line}\n") })
+        .collect();
+    fs::write(root.path().join("first"), first).unwrap();
+    fs::write(root.path().join("second"), second).unwrap();
+    let started = std::time::Instant::now();
+    let (code, output, error) = job(root.path(), "diff first second | wc -l; diff first second >/dev/null").await;
+    let elapsed = started.elapsed();
+    assert_eq!((code, error.as_str()), (1, ""), "{output}");
+    let lines: usize = output.lines().next().unwrap().trim().parse().unwrap();
+    assert!(lines > LINES, "{output}");
+    assert!(elapsed < std::time::Duration::from_secs(30), "{elapsed:?}");
+}

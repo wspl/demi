@@ -41,6 +41,8 @@ pub struct Params {
     pub ignore_all_space: bool,
     /// `-B`: a change whose lines are all empty is ignored.
     pub ignore_blank_lines: bool,
+    /// `-d`: the smallest set of changes, however long finding it takes.
+    pub minimal: bool,
     /// `-x` and the lines of `-X`'s files: the names a directory comparison
     /// leaves out.
     pub excludes: Vec<glob::Pattern>,
@@ -69,6 +71,7 @@ impl Default for Params {
             ignore_space_change: false,
             ignore_all_space: false,
             ignore_blank_lines: false,
+            minimal: false,
             excludes: Vec::new(),
             options: Vec::new(),
         }
@@ -134,8 +137,8 @@ pub fn parse_params<I: Iterator<Item = OsString>>(mut opts: Peekable<I>) -> Resu
             params.recursive = true;
             continue;
         }
-        // The line diff is a longest common subsequence, minimal already.
         if param == "-d" || param == "--minimal" {
+            params.minimal = true;
             continue;
         }
         if param == "-a" || param == "--text" {

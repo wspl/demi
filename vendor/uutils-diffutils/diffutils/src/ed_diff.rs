@@ -78,7 +78,7 @@ fn make_diff(
 
     for result in crate::utils::diff_lines(&expected_lines, &actual_lines, params) {
         match result {
-            diff::Result::Left(str) => {
+            crate::utils::Edit::Left(str) => {
                 if !mismatch.actual.is_empty() {
                     results.push(mismatch);
                     mismatch = Mismatch::new(line_number_expected, line_number_actual);
@@ -86,11 +86,11 @@ fn make_diff(
                 mismatch.expected.push(str.to_vec());
                 line_number_expected += 1;
             }
-            diff::Result::Right(str) => {
+            crate::utils::Edit::Right(str) => {
                 mismatch.actual.push(str.to_vec());
                 line_number_actual += 1;
             }
-            diff::Result::Both(_str, _) => {
+            crate::utils::Edit::Both(_str, _) => {
                 line_number_expected += 1;
                 line_number_actual += 1;
                 if !mismatch.actual.is_empty() || !mismatch.expected.is_empty() {

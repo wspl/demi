@@ -29,10 +29,10 @@ use demi_backend_runners::router::CommandRegistration;
 use demi_command_protocol::{CommandCaller, EDIT_FILE_BYTES};
 use demi_host_interface::{
     CommandMedium, CommandStatus, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
-    PageView, Seen, ShellEnvironment, ShellError, TakenUp, WholeOutput,
+    PageView, Seen, ShellEnvironment, ShellError, TakenUp, Unreachable, WholeOutput,
 };
 use demi_runner_protocol::wire::JobFileChange;
-use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile, NodeId, Unreachable};
+use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile, NodeId};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
