@@ -24,8 +24,8 @@ use demi_agent_tools::{
 };
 use demi_agent_transcript::IdSource;
 use demi_host_interface::{
-    CommandSet, CommandState, Ending, JobCaller, Numbers, PageFeed, PageState, PageView, ShellEnvironment,
-    ShellError, WholeOutput,
+    CommandSet, CommandState, Ending, JobCaller, Numbers, PageFeed, PageState, PageView, Seen,
+    ShellEnvironment, ShellError, WholeOutput,
 };
 use demi_provider_common::{ProviderRuntime, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
@@ -107,9 +107,20 @@ impl<H: HostResolver> Node<H> {
         self.runtime.environments.stopped_by(command, stopper);
     }
 
-    /// A look showed the node `command`'s end, which one of its
-    /// environments held: its handle is released, and its end tells the
-    /// node nothing more.
+    /// The node's place in the whole output of `command`, which it looks at
+    /// without holding it (`runtime.md` § The `demi shell` commands).
+    pub(crate) fn place(&self, command: &CommandId) -> Seen {
+        self.runtime.environments.place(command)
+    }
+
+    /// Moves the node's place in `command`'s whole output to `seen`.
+    pub(crate) fn set_place(&self, command: &CommandId, seen: Seen) {
+        self.runtime.environments.set_place(command, seen);
+    }
+
+    /// A look showed the node `command`'s end, and all of its output, which
+    /// one of its environments held: its handle is released, and its end
+    /// tells the node nothing more.
     pub(crate) async fn saw_end(&self, command: &CommandId) {
         self.runtime.environments.saw_end(command);
         if let Some(environment) = self.runtime.environments.owning(command) {
