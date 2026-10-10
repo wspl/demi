@@ -14,8 +14,8 @@ use std::{
 use demi_agent_session::{
     ActionEnd, AdmissionError, AgentMessageError, AgentSession, CompactionConfig, Continuation,
     EditCheck, EditContent, EditError, EditSubmission, ModelSwitch, NewContext, SeenContext,
-    SessionConfig, SessionDeps, SessionEvent, SessionInit, SessionRuntime, SteerError,
-    StepOutcomes, Subscription, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome,
+    SessionConfig, SessionDeps, SessionEvent, SessionInit, SessionRuntime, StartedCommand,
+    SteerError, StepOutcomes, Subscription, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome,
 };
 use demi_conversation_socket_protocol::{AbortResult, AbortTarget, TranscriptPatch};
 use demi_provider_common::{
@@ -35,7 +35,8 @@ use serde_json::json;
 use tokio::{sync::oneshot, task::JoinHandle};
 
 use demi_agent_store::{
-    AgentTreeStore, Checkpoint, EditReceipt, NodeRecord, SessionStore, StoreError,
+    AgentTreeStore, Checkpoint, CommandInterval, EditReceipt, NodeRecord, RunningCommand,
+    SessionStore, StoreError,
     media::HeldMedia,
     testing::{MemoryTreeStore, model_of, model_reading, sent_text, test_model, text},
 };
@@ -259,13 +260,23 @@ fn counted(name: &str, answer: &'static str) -> ((String, Invoke), Rc<Cell<u32>>
 type Releases = Rc<RefCell<Vec<oneshot::Sender<()>>>>;
 
 /// A tool that tells the test it started, then waits until the test lets it
-/// finish.
+/// finish; one whose input names a `commandId` tells its session it started
+/// that command, every `intervalMs`.
 fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>) {
     let (started, started_rx) = oneshot::channel();
     let started = Rc::new(RefCell::new(Some(started)));
     let releases: Releases = Rc::default();
     let gate = releases.clone();
-    let invoke = tool(name, move |_| {
+    let invoke = tool(name, move |call| {
+        if let Some(command) = call.input["commandId"].as_str() {
+            call.command.started(StartedCommand {
+                command: CommandId::try_from(command).unwrap(),
+                interval_ms: call.input["intervalMs"]
+                    .as_u64()
+                    .map(|interval| u32::try_from(interval).unwrap()),
+                title: "Run the tests".into(),
+            });
+        }
         if let Some(started) = started.borrow_mut().take() {
             let _ = started.send(());
         }
@@ -910,11 +921,13 @@ async fn a_failing_tool_and_an_unknown_tool_complete_their_calls_as_errors_and_t
     assert_eq!(kinds(&blocks[3..]), ["text", "response"]);
 }
 
+/// The call's result says the user stopped the turn and the command the
+/// call watched was stopped (`runtime.md` § Interrupted calls).
 #[tokio::test(flavor = "local")]
 async fn stop_during_a_tool_drops_the_call_and_records_the_stop_before_it_answers() {
     let provider = ScriptedRuntime::new([
         Turn::Events(vec![
-            event::tool_call("call-1", "slow", json!({})),
+            event::tool_call("call-1", "slow", json!({ "commandId": "254" })),
             event::response(1, 1),
         ]),
         Turn::Events(vec![event::text("continued"), event::response(1, 1)]),
@@ -940,10 +953,8 @@ async fn stop_during_a_tool_drops_the_call_and_records_the_stop_before_it_answer
         kinds(&blocks),
         ["user", "tool_call:error", "response", "abort"]
     );
-    assert_eq!(
-        tool_output(&blocks[1]).1,
-        texts(&["Tool call aborted: slow"])
-    );
+    let stopped = "Tool call aborted: the user stopped the turn; command 254 was stopped.";
+    assert_eq!(tool_output(&blocks[1]).1, texts(&[stopped]));
     assert_eq!(running.await, Ok(ActionEnd::Aborted));
     assert_eq!(session.phase(), SessionPhase::Idle);
     // The next request carries the aborted call's result.
@@ -961,7 +972,7 @@ async fn stop_during_a_tool_drops_the_call_and_records_the_stop_before_it_answer
         request.items[2],
         InferenceItem::ToolResult {
             tool_use_id: "call-1".into(),
-            output: sent_texts(&["Tool call aborted: slow"]),
+            output: sent_texts(&[stopped]),
             is_error: true,
         }
     );
@@ -1008,7 +1019,60 @@ async fn a_stop_during_a_step_keeps_the_result_of_a_call_that_returned() {
         ["user", "tool_call:completed", "tool_call:error", "response", "abort"]
     );
     assert_eq!(tool_output(&blocks[1]).1, texts(&["quick"]));
-    assert_eq!(tool_output(&blocks[2]).1, texts(&["Tool call aborted: work"]));
+    // A call that started no command ends after the reason.
+    assert_eq!(
+        tool_output(&blocks[2]).1,
+        texts(&["Tool call aborted: the user stopped the turn."])
+    );
+}
+
+/// A hold of the conversation stops the running call as a Stop does, and
+/// its result names the hold (`runtime.md` § Interrupted calls).
+#[tokio::test(flavor = "local")]
+async fn a_hold_stops_the_running_call_and_its_result_names_the_hold() {
+    let provider = ScriptedRuntime::new([Turn::Events(vec![
+        event::tool_call("call-1", "slow", json!({ "commandId": "254" })),
+        event::response(1, 1),
+    ])]);
+    let store = MemoryTreeStore::new();
+    let (slow, _releases, started) = gated_tool("slow");
+    let session = start(&provider, vec![slow], &store, SessionConfig::default()).await;
+    let running = session.send(text("go"), turn("t1")).unwrap();
+    started.await.unwrap();
+
+    session.stop_running("the Cloud is being reset").await;
+
+    assert_eq!(running.await, Ok(ActionEnd::Aborted));
+    let blocks = session.transcript().blocks;
+    assert_eq!(kinds(&blocks), ["user", "tool_call:error", "response", "abort"]);
+    assert_eq!(
+        tool_output(&blocks[1]).1,
+        texts(&["Tool call aborted: the Cloud is being reset; command 254 was stopped."])
+    );
+}
+
+/// An action that fails before its calls ran completes them with the
+/// failure, so the next request replays no call without a result
+/// (`runtime.md` § Interrupted calls).
+#[tokio::test(flavor = "local")]
+async fn a_save_that_fails_before_dispatch_completes_the_calls_with_the_failure() {
+    let provider = ScriptedRuntime::new([Turn::Events(vec![
+        event::tool_call("call-1", "slow", json!({})),
+        event::response(1, 1),
+    ])]);
+    let store = MemoryTreeStore::new();
+    let (slow, _releases, _started) = gated_tool("slow");
+    let session = start(&provider, vec![slow], &store, SessionConfig::default()).await;
+    store.fail_saves(1);
+
+    let failed = session.send(text("go"), turn("t1")).unwrap().await;
+
+    assert!(failed.is_err(), "{failed:?}");
+    let blocks = session.transcript().blocks;
+    assert_eq!(
+        tool_output(&blocks[1]).1,
+        texts(&["Tool call aborted: the database refused the save."])
+    );
 }
 
 /// A call of a step completes in the transcript as soon as it returns, while
@@ -1085,7 +1149,7 @@ async fn stop_while_a_hook_hangs_records_the_stop_without_waiting_for_the_hook()
 #[tokio::test(flavor = "local")]
 async fn dispose_during_a_tool_saves_the_interrupted_turn_and_keeps_the_queue() {
     let provider = ScriptedRuntime::new([Turn::Events(vec![
-        event::tool_call("call-1", "slow", json!({})),
+        event::tool_call("call-1", "slow", json!({ "commandId": "254", "intervalMs": 300000 })),
         event::response(1, 1),
     ])]);
     let store = MemoryTreeStore::new();
@@ -1105,9 +1169,18 @@ async fn dispose_during_a_tool_saves_the_interrupted_turn_and_keeps_the_queue() 
         kinds(&checkpoint.transcript),
         ["user", "tool_call:error", "response", "error"]
     );
+    // The shutdown left the command running: the result says so, and the
+    // command reports to the node as one a call left running does.
     assert_eq!(
         tool_output(&checkpoint.transcript[1]).1,
-        texts(&["Tool call aborted: slow"])
+        texts(&["Tool call interrupted: the backend shut down while this call watched command 254, which keeps running; look at it with demi shell status 254."])
+    );
+    assert_eq!(
+        checkpoint.state.intervals,
+        [CommandInterval {
+            command_id: CommandId::try_from("254").unwrap(),
+            interval_ms: Some(300_000),
+        }]
     );
     let Block::Error(record) = &checkpoint.transcript[3] else {
         unreachable!()
@@ -1167,8 +1240,15 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
         clock: Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
         config: SessionConfig::default(),
     };
+    // The conversation recorded the command the call started running.
+    let running = [RunningCommand {
+        command: CommandId::try_from("254").unwrap(),
+        job: "job-254".into(),
+        tool_use_id: "call-1".into(),
+    }];
     let (restored, continuation) =
-        AgentSession::restore(checkpoint, root(), Box::new(later.clone()), deps, &[]).unwrap();
+        AgentSession::restore(checkpoint, root(), Box::new(later.clone()), deps, &running)
+            .unwrap();
 
     assert!(continuation.interrupted);
     assert_eq!(restored.phase(), SessionPhase::Idle);
@@ -1178,10 +1258,12 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
         (
             ToolCallStatus::Error,
             texts(&[
-                "Tool call interrupted: write_once (the process died before a result was recorded)"
+                "Tool call interrupted: the backend stopped before its result was recorded; command 254 keeps running if its Host kept it."
             ])
         )
     );
+    // It reports its end to the node.
+    assert_eq!(restored.interval_of(&running[0].command), Some(None));
     restored
         .send(text("go on"), turn("t2"))
         .unwrap()
