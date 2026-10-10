@@ -43,7 +43,7 @@ import { galleryBrowser, type GalleryBrowser } from '../fixtures/live-browser'
 import { galleryConversationFiles } from '../fixtures/message-files'
 import GalleryAttachmentMessage from '../components/GalleryAttachmentMessage.vue'
 import { productWould } from '../product-would'
-import { provideCommandOpener } from '@demicodes/web-ui/agent/command-reports'
+import type { TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../generated/pages'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
@@ -78,6 +78,7 @@ import { firstInspectSubagentId, firstRunningSubagentId } from '@demicodes/web-u
 import GalleryCachedSessions from '../components/GalleryCachedSessions.vue'
 import GalleryTranscriptEntrance from '../components/GalleryTranscriptEntrance.vue'
 import GalleryHistoryWindow from '../components/GalleryHistoryWindow.vue'
+import GalleryCommandWakeup from '../components/GalleryCommandWakeup.vue'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
 import GalleryMessageEditing from '../components/GalleryMessageEditing.vue'
 import GalleryAssistantMessages from '../components/GalleryAssistantMessages.vue'
@@ -339,7 +340,7 @@ const panelActiveConversationId = ref<string | null>('c-login')
 /** The frame's search window, over the sidebar's conversations and the session's messages, which belong to c-login. */
 const frameSearchOpen = ref(false)
 /** The message a search result opened the session at, until the session has shown it. */
-const frameReveal = ref<string | null>(null)
+const frameReveal = ref<TranscriptReveal | null>(null)
 const frameSearchable = computed(() =>
   panelConversations.value.map((conversation) => ({
     conversationId: conversation.id,
@@ -359,7 +360,7 @@ const frameSearch = fixtureSearch(() => frameSearchable.value)
 function openFrameResult(row: SearchRow): void {
   frameSearchOpen.value = false
   panelActiveConversationId.value = row.conversationId
-  frameReveal.value = row.match?.blockId ?? null
+  frameReveal.value = row.match ? { node: null, blockId: row.match.blockId } : null
 }
 /**
  * One specimen's work panel over the gallery workspace, as the product's work
@@ -711,8 +712,6 @@ const writingBlocks = callBeingWrittenBlocks()
 const lookBlocks = commandLookBlocks()
 // A run that viewed screenshots, folded with them under its row, and a report that carried some.
 const viewedBlocks = viewedMediaBlocks()
-// A report row in a transcript opens its command's terminal tab; the gallery has no terminal panel beside it, so it says so.
-provideCommandOpener((commandId) => () => productWould(`The Terminal Panel Opens on Command ${commandId}`))
 const writingSpecimens = [
   { variant: 'being written, no description yet', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: null }] },
   { variant: 'being written, with its description', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: 'Write the categorizer' }] },
@@ -1885,7 +1884,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Command Reports"
-        note="A command a call left running tells the agent of its progress and its end, and the transcript shows each report as a row where it arrived, so a reply the agent writes after it never appears without its cause. The row reads the call’s title and, set apart from it after a dot, what happened, in the user’s words, since a title is an imperative and the two never read as one sentence; a failure, a stop and a loss carry the tag a shell row carries, the exit code or the reason in its tooltip. Reports that arrived together are one row each. A click on a row opens the command’s terminal tab; a command no terminal tab shows is no control."
+        note="A command a call left running tells the agent of its progress and its end, and the transcript shows each report as a row where it arrived, so a reply the agent writes after it never appears without its cause. A report of progress has no row: the answer it wakes says what the model learned. An end shows as a notice with a bell that says what happened, in the user’s words, then names the call by its title, since a title is an imperative and never the subject of a sentence; a failure, a stop and a loss carry the tag a shell row carries, the exit code or the reason in its tooltip. Ends that arrived together are one row each. The title, underlined with dots, brings the call that started the command into view."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack">
@@ -1899,9 +1898,6 @@ onBeforeUnmount(() => {
               <div class="w-[300px]">
                 <GalleryCommandReports :reports="reportsTogether" />
               </div>
-            </GallerySpecimen>
-            <GallerySpecimen variant="a command no terminal tab shows" wide>
-              <GalleryCommandReports :reports="reportsTogether" :untracked="['17', '18', '22']" />
             </GallerySpecimen>
           </div>
         </div>
@@ -2243,6 +2239,7 @@ onBeforeUnmount(() => {
     </template>
 
     <template v-if="view === 'turns'">
+      <GalleryCommandWakeup />
       <GallerySection
         title="Turn"
         note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the message says so with Retry, which sends it again with the same ID and shows Requesting from then. Offline sends while the backend cannot be reached: the message says it waits to be sent, never that it failed, and goes with its ID once Demi is back. Resume, Retry and Connect wait for the server first."
@@ -2707,7 +2704,7 @@ onBeforeUnmount(() => {
               <ChatSession
                 :conversation="session"
                 has-provider
-                :reveal-block-id="frameReveal"
+                :reveal="frameReveal"
                 @revealed="frameReveal = null"
                 :aside-open="panelAsideOpen"
                 :select-edit="(selection) => { panelWork.selectEdit(selection); panelAsideOpen = true }"

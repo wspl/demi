@@ -20,6 +20,7 @@ import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selectio
 import { lookupAttachment } from '../api/attachments'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
+import type { Conversation } from '../state/types'
 
 const store = useConversations()
 const resources = useResources()
@@ -145,19 +146,27 @@ function readHistory(read: Promise<void>): void {
   read.catch((error: unknown) => console.warn('A page of the transcript was not read', error))
 }
 
-// A search result opens at its message: the page reads the window around it
-// once the conversation's latest page is there (`web-application.md`
-// § Transcript windows).
+// A search result opens at its message, and a report's title at its
+// command's call: the page reads the window around it once the
+// conversation's latest page is there (`web-application.md` § Transcript
+// windows).
 watch(
   () => [store.reveal, conversation.value?.load] as const,
   ([reveal, load]) => {
     const current = conversation.value
     if (reveal && current && reveal.conversationId === current.id && load === 'ready') {
-      readHistory(store.history.readAround(current, null, reveal.blockId))
+      readHistory(store.history.readAround(current, reveal.node, reveal.blockId))
     }
   },
   { immediate: true },
 )
+
+/** Goes to the call that started a command a report names, wherever it lies. */
+function revealCommand(current: Conversation, commandId: string): void {
+  readHistory(store.history.findCommand(current, commandId).then((at) => {
+    store.reveal = { conversationId: current.id, ...at }
+  }))
+}
 
 function saveScroll(id: string, state: PersistedScrollState | null): void {
   const item = store.items.find((item) => item.id === id)
@@ -251,10 +260,10 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @update:message-edit="conversation.messageEdit = $event"
     @regenerate="store.regenerate(conversation, $event)"
     @save-scroll="saveScroll"
-    :reveal-block-id="store.reveal?.conversationId === conversation.id ? store.reveal.blockId : null"
+    :reveal="store.reveal?.conversationId === conversation.id ? store.reveal : null"
     @revealed="store.reveal = null"
     :read-block="(node, id) => store.history.readWhole(conversation!, node, id)"
-    :read-command="(id) => store.history.readCommand(conversation!, id)"
+    :reveal-command="(id) => revealCommand(conversation!, id)"
     @read-before="readHistory(store.history.readBefore(conversation!, null))"
     @read-after="readHistory(store.history.readAfter(conversation!, null))"
     @show-latest="conversation.shownAt = null"

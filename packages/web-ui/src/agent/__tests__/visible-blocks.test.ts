@@ -4,7 +4,7 @@ import { compactionSummaryTokens, getVisibleBlocks } from '../visible-blocks'
 
 const createdAt = '1970-01-01T00:00:00.000Z'
 
-test('the transcript hides what the reader never sees, usage, resumes and the context, and shows a wakeup as its reports', () => {
+test('the transcript hides what the reader never sees, usage, resumes, the context and progress, and shows a wakeup as its ends', () => {
   const blocks: Block[] = [
     { type: 'user', id: 'user-1', turnId: 'user-1', createdAt, model, content: [{ type: 'text', text: 'go' }], preamble: null },
     tool('call-1', 'shell'),
@@ -14,6 +14,8 @@ test('the transcript hides what the reader never sees, usage, resumes and the co
     { type: 'resume', id: 'resume-1', turnId: 'wakeup-1', createdAt, model },
     { type: 'steer', id: 'steer-1', turnId: 'wakeup-1', createdAt, model, content: [{ type: 'text', text: 'also' }] },
     tool('call-2', 'shell'),
+    // Progress alone: the answer it wakes says what the model learned.
+    { type: 'wakeup', id: 'wakeup-2', turnId: 'wakeup-2', createdAt, model, placement: 'new_turn', reports: [{ commandId: '18', title: 'Build', event: { kind: 'running', runningMs: 30_000, idleMs: 0, intervalMs: 30_000 }, output: '' }] },
   ]
 
   expect(getVisibleBlocks(blocks).map((block) => block.id)).toEqual(

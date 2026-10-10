@@ -4,6 +4,7 @@ import { SerialQueue } from '@demicodes/utils'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import type { ClientContent } from '@demicodes/protocol'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
+import type { TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { ConversationRuntime, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
 import {
   regenerateMessage,
@@ -138,10 +139,11 @@ export const useConversations = defineStore('conversations', () => {
    */
   const composerFocusRequests = ref(0)
   /**
-   * The message a search result opened its conversation at, which the
-   * conversation's page brings into view and marks once, then clears.
+   * The block a search result opened its conversation at, or a report's
+   * title went to, which the conversation's page brings into view and marks
+   * once, then clears.
    */
-  const reveal = ref<{ conversationId: string; blockId: string } | null>(null)
+  const reveal = ref<(TranscriptReveal & { conversationId: string }) | null>(null)
   /** The delivery of each conversation's sent message, while it is on its way. */
   const sending = new Map<string, Promise<void>>()
   let storageErrorReported = false
