@@ -3,7 +3,7 @@
 // For the full copyright and license information, please view the LICENSE
 // file that was distributed with this source code.
 
-use crate::Config;
+use crate::{BinaryMode, Config};
 use crate::context_buffer::LineView;
 use std::ffi::OsStr;
 use uucore::context::io::{self, BufWriter, StdoutLock, Write};
@@ -50,20 +50,36 @@ impl<'a> OutputWriter<'a> {
         self.out.flush()
     }
 
-    /// Write a matching or context line.
-    pub fn write_line(&mut self, view: &LineView<'_>, filename: &Path) -> io::Result<()> {
+    /// Write a matching or context line. Returns false when it held back the
+    /// line, or under `-o` a part of it, for not being text.
+    pub fn write_line(&mut self, view: &LineView<'_>, filename: &Path) -> io::Result<bool> {
         if self.config.only_matching && view.is_match {
             self.write_only_matching(view, filename)
+        } else if self.is_binary(view.line) {
+            Ok(false)
         } else {
-            self.write_line_with_matches(view, filename)
+            self.write_line_with_matches(view, filename).map(|()| true)
         }
     }
 
-    /// Write only the matching portions of a line (`-o` mode).
-    fn write_only_matching(&mut self, view: &LineView<'_>, filename: &Path) -> io::Result<()> {
+    /// Whether `bytes` are to be held back from the output: GNU grep prints
+    /// no line, or part of one, with an encoding error unless the input is
+    /// text (`-a`). Like the rest of this grep, it takes the locale as UTF-8.
+    fn is_binary(&self, bytes: &[u8]) -> bool {
+        self.config.binary_mode != BinaryMode::Text && std::str::from_utf8(bytes).is_err()
+    }
+
+    /// Write only the matching portions of a line (`-o` mode). Returns false
+    /// when it held back a portion for not being text.
+    fn write_only_matching(&mut self, view: &LineView<'_>, filename: &Path) -> io::Result<bool> {
+        let mut whole = true;
         for &(start, end) in view.match_positions {
             if start == end {
                 continue; // Skip zero-length matches
+            }
+            if self.is_binary(&view.line[start..end]) {
+                whole = false;
+                continue;
             }
 
             self.write_prefix(
@@ -81,7 +97,8 @@ impl<'a> OutputWriter<'a> {
             self.write_terminator()?;
         }
 
-        self.maybe_flush()
+        self.maybe_flush()?;
+        Ok(whole)
     }
 
     /// Otherwise, write the whole line, with optional color highlighting of matches.

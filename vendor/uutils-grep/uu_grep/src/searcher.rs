@@ -33,7 +33,10 @@ pub struct Searcher<'a> {
     session_match_count: u64,
     session_after_remaining: usize,
     session_last_printed_line: u64, // 0 = nothing yet
+    /// A NUL was read: the file is binary.
     session_binary_detected: bool,
+    /// A line to print was held back for not being text.
+    session_line_held_back: bool,
     /// Byte offset, relative to where this session started reading, just past
     /// the terminator of the last selected line. Used to rewind standard input
     /// when `-m` stops the search early.
@@ -59,6 +62,7 @@ impl<'a> Searcher<'a> {
             session_after_remaining: 0,
             session_last_printed_line: 0,
             session_binary_detected: false,
+            session_line_held_back: false,
             session_last_match_end: 0,
         }
     }
@@ -273,7 +277,9 @@ impl<'a> Searcher<'a> {
     /// Suppressed by `-c`, `-l`, `-L`, `-q` (all folded into
     /// [`Self::binary_notice_enabled`] at construction time).
     fn session_should_emit_binary_notice(&self) -> bool {
-        self.binary_notice_enabled && self.session_binary_detected && self.session_any_match()
+        self.binary_notice_enabled
+            && (self.session_binary_detected && self.session_any_match()
+                || self.session_line_held_back)
     }
 
     /// Whether the current configuration can use the buffer-at-a-time fast
@@ -341,7 +347,7 @@ impl<'a> Searcher<'a> {
 
         let mut count: u64 = 0;
         let mut matched = false;
-        'outer: while let Some((chunk, chunk_off)) = lb.read_chunk(reader)? {
+        'outer: while let Some((chunk, chunk_off, _)) = lb.read_chunk(reader)? {
             let mut p = 0;
             while p < chunk.len() {
                 let Some(rel) = leftmost_match(finders, &chunk[p..]) else {
@@ -382,8 +388,9 @@ impl<'a> Searcher<'a> {
     }
 
     /// Fast path that prints whole matching lines (optionally with `-n`, `-b`,
-    /// filename prefixes, `-m`). Binary files are detected per chunk and reported
-    /// with the usual notice instead of dumping their lines.
+    /// filename prefixes, `-m`). A file is binary once a NUL has been read, and
+    /// its first match after that ends the search with the usual notice; a
+    /// line that is not text is held back, and the notice follows the file.
     fn fast_print(
         &mut self,
         lb: &mut LineBuffer,
@@ -402,13 +409,16 @@ impl<'a> Searcher<'a> {
         let mut count: u64 = 0;
         let mut matched = false;
         let mut binary = false;
+        let mut held_back = false;
         // Number of terminators in all previously consumed chunks (for `-n`).
         let mut base_lines: u64 = 0;
 
-        'outer: while let Some((chunk, chunk_off)) = lb.read_chunk(reader)? {
+        'outer: while let Some((chunk, chunk_off, nul_read)) = lb.read_chunk(reader)? {
+            // GNU grep looks for a NUL in each buffer it reads before it looks
+            // at the lines in it.
+            binary |= detect_binary && nul_read;
             let mut p = 0;
-            // NUL scanned up to here; terminators counted up to `nl_cursor`.
-            let mut nul_scanned = 0;
+            // Terminators counted up to `nl_cursor`.
             let mut nl_cursor = 0;
             let mut nl_before = 0u64;
 
@@ -421,13 +431,11 @@ impl<'a> Searcher<'a> {
                 }
                 let (line_beg, line_end) = line_bounds(chunk, p + rel);
 
-                // A NUL anywhere up to this line marks the file binary, as does
-                // an invalid-UTF-8 matching line.
-                if detect_binary && !binary {
-                    if memchr(0, &chunk[nul_scanned..line_end]).is_some() {
-                        binary = true;
-                    }
-                    nul_scanned = line_end;
+                if binary {
+                    // First match in a binary file: stop and emit the notice
+                    // once at the end instead of dumping the line.
+                    matched = true;
+                    break 'outer;
                 }
 
                 let line = &chunk[line_beg..line_end];
@@ -438,17 +446,6 @@ impl<'a> Searcher<'a> {
                     line
                 };
 
-                if detect_binary && !binary && std::str::from_utf8(line).is_err() {
-                    binary = true;
-                }
-
-                if binary {
-                    // First match in a binary file: stop and emit the notice
-                    // once at the end instead of dumping the line.
-                    matched = true;
-                    break 'outer;
-                }
-
                 let line_number = if want_lineno {
                     nl_before += count_terminators(&chunk[nl_cursor..line_beg]);
                     nl_cursor = line_beg;
@@ -456,7 +453,7 @@ impl<'a> Searcher<'a> {
                 } else {
                     0
                 };
-                self.writer.write_line(
+                held_back |= !self.writer.write_line(
                     &LineView {
                         line,
                         line_number,
@@ -472,10 +469,7 @@ impl<'a> Searcher<'a> {
                 self.session_last_match_end = chunk_off + p as u64;
             }
 
-            // Carry NUL detection and the line tally across the chunk boundary.
-            if detect_binary && !binary && memchr(0, &chunk[nul_scanned..]).is_some() {
-                binary = true;
-            }
+            // Carry the line tally across the chunk boundary.
             if want_lineno {
                 base_lines += nl_before + count_terminators(&chunk[nl_cursor..]);
             }
@@ -483,7 +477,7 @@ impl<'a> Searcher<'a> {
 
         self.session_match_count = count;
 
-        if binary && notice_enabled && matched {
+        if notice_enabled && (binary && matched || held_back) {
             self.writer.report_binary_match(path);
         }
         Ok(matched)
@@ -505,12 +499,13 @@ impl<'a> Searcher<'a> {
         self.session_after_remaining = 0;
         self.session_last_printed_line = 0;
         self.session_binary_detected = false;
+        self.session_line_held_back = false;
         self.session_last_match_end = 0;
         lb.reset();
 
         let mut line_number: u64 = 0;
 
-        while let Some((line, line_start)) = lb.read_line(reader)? {
+        while let Some((line, line_start, nul_read)) = lb.read_line(reader)? {
             line_number += 1;
             // Offset of the next line. A final line without a terminator makes
             // this one byte past the input, which reads the same as its end.
@@ -525,19 +520,22 @@ impl<'a> Searcher<'a> {
                     line
                 };
 
-            // Any null byte flips us into binary mode.
-            if !self.session_mark_binary_if(|| memchr(0, line).is_some()) {
-                return Ok(false);
+            // GNU grep looks for a NUL in each buffer it reads before it looks
+            // at the lines in it: one makes the file binary.
+            if nul_read
+                && !self.session_binary_detected
+                && self.config.binary_mode != BinaryMode::Text
+            {
+                self.session_binary_detected = true;
+                if self.config.binary_mode == BinaryMode::WithoutMatch {
+                    // `-I`: the file is one without a match, which `-c` and
+                    // `-L` still report.
+                    self.session_match_count = 0;
+                    break;
+                }
             }
 
             if let Some(positions) = self.session_match_line(line) {
-                // TODO: GNU grep respects LANG. Here, I'm always checking for valid UTF-8.
-                if self.config.binary_mode != BinaryMode::WithoutMatch
-                    && !self.session_mark_binary_if(|| std::str::from_utf8(line).is_err())
-                {
-                    return Ok(false);
-                }
-
                 self.session_last_match_end = after_line;
 
                 // Print the match and context, and update session state accordingly.
@@ -545,7 +543,8 @@ impl<'a> Searcher<'a> {
                     return Ok(true);
                 }
 
-                if self.session_should_emit_binary_notice() {
+                if self.session_binary_detected && self.binary_notice_enabled {
+                    // First match in a binary file: report it and stop.
                     self.writer.report_binary_match(path);
                     return Ok(true);
                 }
@@ -559,19 +558,6 @@ impl<'a> Searcher<'a> {
         }
 
         self.session_finalize(path)
-    }
-
-    /// Mark the file as binary when `predicate` returns true.
-    #[inline(always)]
-    fn session_mark_binary_if(&mut self, predicate: impl FnOnce() -> bool) -> bool {
-        if self.session_binary_detected || self.config.binary_mode == BinaryMode::Text {
-            return true;
-        }
-        if !predicate() {
-            return true;
-        }
-        self.session_binary_detected = true;
-        self.config.binary_mode != BinaryMode::WithoutMatch
     }
 
     fn session_match_line(&self, line: &[u8]) -> Option<Vec<(usize, usize)>> {
@@ -632,7 +618,7 @@ impl<'a> Searcher<'a> {
     ) -> io::Result<()> {
         if self.session_after_remaining > 0 {
             if !self.session_suppress_normal_output() {
-                self.writer.write_line(
+                self.session_line_held_back |= !self.writer.write_line(
                     &LineView {
                         line,
                         line_number,
@@ -685,11 +671,11 @@ impl<'a> Searcher<'a> {
         }
 
         for ctx in context {
-            self.writer.write_line(&ctx.view(), path)?;
+            self.session_line_held_back |= !self.writer.write_line(&ctx.view(), path)?;
             self.session_last_printed_line = ctx.line_number;
         }
 
-        self.writer.write_line(view, path)?;
+        self.session_line_held_back |= !self.writer.write_line(view, path)?;
         self.session_last_printed_line = view.line_number;
         Ok(())
     }
