@@ -545,7 +545,10 @@ impl RemoteShellEnvironment {
                         tracing::debug!(%command, "could not interrupt the job: {error}");
                     }
                 }
-                () = self.0.detached.cancelled() => return Followed::Detached,
+                () = self.0.detached.cancelled() => {
+                    job.let_go();
+                    return Followed::Detached;
+                }
             }
         }
         let end = job.end().await;
