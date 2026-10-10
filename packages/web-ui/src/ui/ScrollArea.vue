@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, type CSSProperties } from 'vue'
 import { useOverlayScrollbars } from 'overlayscrollbars-vue'
 import { scrollbarsOptions, scrollbarsTarget, type ScrollAxis } from './scrollbars'
 
@@ -34,11 +34,32 @@ const [initialize] = useOverlayScrollbars({
   options: computed(() => scrollbarsOptions(props.axis)),
 })
 
-// At once, not deferred: a caller reads the viewport's geometry as it mounts.
-onMounted(() => {
-  if (viewport.value && root.value)
-    initialize(scrollbarsTarget(viewport.value, root.value))
-})
+// The bar is set up when it would first show, as the content scrollers'
+// (`useContentScrollers`): the pointer comes onto the scroller, the focus
+// moves into it, or it scrolls. A list mounts many scrollers, most never
+// touched, and setting one up costs layouts. Until then the viewport scrolls
+// natively with its native bar hidden, as OverlayScrollbars leaves an
+// element it is about to take over, and its geometry is the same before and
+// after, so a caller can read it as it mounts.
+const started = ref(false)
+function start(): void {
+  if (started.value || !viewport.value || !root.value)
+    return
+  started.value = true
+  initialize(scrollbarsTarget(viewport.value, root.value))
+}
+
+// Before the bar is set up, the viewport clips the axis it does not scroll
+// along, as `scrollbarsOptions` has the bar do once it is.
+const nativeOverflow = computed((): CSSProperties => ({
+  overflowX: props.axis === 'y' ? 'hidden' : 'auto',
+  overflowY: props.axis === 'x' ? 'hidden' : 'auto',
+}))
+
+function onScroll(event: Event): void {
+  start()
+  emit('scroll', event)
+}
 
 defineExpose({
   /** The scrolling element, for scrollTop and scrollTo. */
@@ -47,7 +68,14 @@ defineExpose({
 </script>
 
 <template>
-  <div ref="root" class="scroll-area relative flex min-h-0 flex-col overflow-hidden">
+  <!-- While capturing, before the event reaches the viewport: the bar set up
+       now hears this same event arrive and shows. -->
+  <div
+    ref="root"
+    class="scroll-area relative flex min-h-0 flex-col overflow-hidden"
+    @pointerover.capture.passive="start"
+    @focusin="start"
+  >
     <!-- A stacking context of its own (a flex item with a z-index), as
          OverlayScrollbars gives a viewport it makes: what the content pins
          over itself (a sticky header) stays under the bar, which follows it
@@ -57,7 +85,8 @@ defineExpose({
       data-overlayscrollbars-initialize
       class="scroll-area-viewport z-0 min-h-0 flex-auto"
       :class="viewportClass"
-      @scroll.passive="emit('scroll', $event)"
+      :style="started ? undefined : nativeOverflow"
+      @scroll.passive="onScroll"
     >
       <slot />
     </div>
