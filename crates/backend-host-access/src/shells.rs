@@ -537,6 +537,10 @@ impl ShellEnvironment for Registered {
         self.environment.quiet(command)
     }
 
+    fn outliving(&self, command: &CommandId) -> Vec<String> {
+        self.environment.outliving(command)
+    }
+
     fn unreachable(&self, command: &CommandId) -> Option<Unreachable> {
         self.environment.unreachable(command)
     }
