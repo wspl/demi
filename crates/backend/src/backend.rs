@@ -22,7 +22,7 @@ use demi_backend_database::StorageError;
 use demi_backend_http::{AppState, Edge, Site, WebBuildError, runner_socket, web_build};
 use demi_backend_user_shard::conversation::search::index_at_start;
 use demi_backend_user_shard::conversation::{
-    finish_deletions, rearm_wakeups, recover_forks, settle_pending,
+    finish_deletions, recover_forks, settle_pending,
 };
 use demi_backend_user_shard::shard::deliver_decisions;
 use demi_backend_user_shard::services::{
@@ -239,23 +239,13 @@ impl Backend {
             );
         }
         // Each move or detach an agent asked for that a restart cut off is
-        // made, before a saved wakeup opens its tree
+        // made, before a page opens its tree
         // (`sessions-and-targets.md` § Switch the primary target). A failure
         // does not stop the start: the next start makes it.
         if let Err(error) = settle_pending(&services.control, &shards.shards()).await {
             tracing::error!(
                 error = &error as &dyn std::error::Error,
                 "the pending moves cannot be listed"
-            );
-        }
-        // Each saved wakeup is armed again, so it fires with no page open
-        // (`runtime.md` § Yield wakeups). A failure does not stop the start:
-        // a wakeup not armed here still fires once a page opens its
-        // conversation.
-        if let Err(error) = rearm_wakeups(&services.control, &shards.shards()).await {
-            tracing::error!(
-                error = &error as &dyn std::error::Error,
-                "the saved wakeups cannot be listed"
             );
         }
         // Each permission decision whose message a restart cut off reaches

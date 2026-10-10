@@ -1,17 +1,19 @@
-//! The standard tools (`runtime.md` § Tools): `shell_exec`, `shell_status`
-//! and `yield`, and only these. The shell tools
-//! reach the conversation's current Host through the product's resolver and
-//! run in the node's shell environment for that Host, which the product
-//! makes; `yield` returns an effect for the session to apply. A tool never
-//! reaches into its session: it returns its outcome. The product also
-//! supplies the context sources, and the rules of these tools are a layer
-//! of every node's system prompt.
+//! The one tool, `shell` (`runtime.md` § Tools): it reaches the
+//! conversation's current Host through the product's resolver and runs in
+//! the node's shell environment for that Host, which the product makes. A
+//! tool never reaches into its session: it returns its outcome, and a call
+//! that leaves its command running asks the session to watch it, so the
+//! command reports to the node (`runtime.md` § Command reports). What the
+//! `demi shell` commands and the reports show of a command is made here as
+//! well. The product also supplies the context sources, and the rules of the
+//! tool are a layer of every node's system prompt.
 
 mod environments;
 mod frames;
 mod input;
 mod product;
 mod prompt;
+mod reports;
 mod result;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
@@ -19,6 +21,7 @@ pub mod testing;
 use std::{
     rc::Rc,
     sync::{Arc, LazyLock},
+    time::Duration,
 };
 
 use bytes::Bytes;
@@ -27,21 +30,20 @@ use demi_agent_session::{
 };
 use demi_agent_store::AgentTreeStore;
 use demi_host_interface::{
-    CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller,
-    Numbers, ObservationWindow, PageFeed, ShellEnvironment, ShellError, watch,
+    CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, JobCaller, Numbers,
+    PageFeed, ShellEnvironment, ShellError,
 };
-use demi_provider_common::{RequestLimits, ToolDefinition};
-use demi_shared_types::{CommandId, ModelSelection, NodeId, Sequence};
-use futures_util::{
-    StreamExt,
-    future::LocalBoxFuture,
-    stream::{self, FuturesUnordered},
-};
+use demi_provider_common::ToolDefinition;
+use demi_shared_types::{CommandId, NodeId, Sequence};
+use futures_util::{future::LocalBoxFuture, stream::FuturesUnordered};
 
-pub use environments::Environments;
+pub use environments::{Environments, Stopper};
 use environments::Handle;
 pub use frames::{shell_output, stored_running_commands};
-use input::{DelayMs, ShellExecInput, StatusFields, StatusInput, YieldInput, parse};
+pub use input::{INTERVAL_CAP_MS, INTERVAL_FLOOR_MS, taken_interval};
+use input::{ShellInput, parse};
+pub use reports::{EndOf, end_report, progress_report};
+pub use result::{Look, look_text};
 pub use product::{
     ContextAnswer, ContextSource, HostResolver, NodeContext, Profile, ProfileModel, SubagentSettings,
     SubagentSource, Toolset, ToolsetSource, Unavailable,
@@ -98,72 +100,34 @@ pub trait ShellEnvironmentFactory<H> {
     ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>>;
 }
 
-/// The three tools, in the order the model is given them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StandardTool {
-    ShellExec,
-    ShellStatus,
-    Yield,
-}
+/// The tool's name.
+const SHELL: &str = "shell";
 
-impl StandardTool {
-    const ALL: [Self; 3] = [Self::ShellExec, Self::ShellStatus, Self::Yield];
+/// What the `shell` tool does, as the model is told.
+const SHELL_DESCRIPTION: &str = "Start a shell script in the conversation's working directory and watch it as intervalMs says. Watching is not a deadline: a command still running when the call returns keeps running, the result carries its commandId, and the command reports to you as its interval says until it ends. Completed short output is returned directly. The shell calls of one response run at the same time.";
 
-    fn name(self) -> &'static str {
-        match self {
-            Self::ShellExec => "shell_exec",
-            Self::ShellStatus => "shell_status",
-            Self::Yield => "yield",
-        }
-    }
-
-    fn named(name: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|tool| tool.name() == name)
-    }
-
-    fn definition(self) -> ToolDefinition {
-        let (description, input_schema) = match self {
-            Self::ShellExec => (
-                "Start a shell script and watch it for up to timeoutMs. timeoutMs is how long to watch, not a deadline: when it passes, or when the user steers, the command keeps running and the result carries its commandId. Completed short output is returned directly. The shell_exec calls of one response run at the same time.",
-                input::schema::<ShellExecInput>(),
-            ),
-            Self::ShellStatus => (
-                "Look at a command by its commandId: write stdin to it first when given (description is then required), then watch it for up to timeoutMs, or look at once without timeoutMs. Returns its status and the output since your last look.",
-                input::schema::<StatusFields>(),
-            ),
-            Self::Yield => (
-                "End this turn and be woken after durationMs, or as soon as the first of the commands commandIds names ends, whichever comes first. The user can talk to you meanwhile.",
-                input::schema::<YieldInput>(),
-            ),
-        };
-        ToolDefinition {
-            name: self.name().to_owned(),
-            description: description.to_owned(),
-            input_schema,
-        }
-    }
-}
-
-/// The definitions the model receives, made once.
+/// The definitions the model receives, made once: the `shell` tool alone.
 pub fn definitions() -> Arc<[ToolDefinition]> {
-    static DEFINITIONS: LazyLock<Arc<[ToolDefinition]>> =
-        LazyLock::new(|| StandardTool::ALL.map(StandardTool::definition).into());
+    static DEFINITIONS: LazyLock<Arc<[ToolDefinition]>> = LazyLock::new(|| {
+        Arc::new([ToolDefinition {
+            name: SHELL.to_owned(),
+            description: SHELL_DESCRIPTION.to_owned(),
+            input_schema: input::schema::<ShellInput>(),
+        }])
+    });
     DEFINITIONS.clone()
 }
 
 /// Whether consecutive calls of `tool` in one round run together as one
-/// step: `shell_exec`'s do (`runtime.md` § Dispatch and failures).
+/// step: `shell`'s do (`runtime.md` § Dispatch and failures).
 pub fn runs_together(tool: &str) -> bool {
-    StandardTool::named(tool) == Some(StandardTool::ShellExec)
+    tool == SHELL
 }
 
-/// The conversation's commands, whichever agent of it ran them, which a
-/// `yield` may name (`runtime.md` § Yield wakeups).
-pub trait ConversationCommands {
-    /// Whether `command` is a command of the conversation, running or
-    /// ended.
-    fn knows<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<bool, String>>;
-}
+/// How long a resident command's call waits for its output to be quiet.
+const QUIET: Duration = Duration::from_secs(2);
+/// The longest a resident command's call watches it.
+const RESIDENT_WINDOW: Duration = Duration::from_secs(30);
 
 /// A node's access to its shell environments: the resolver that names the
 /// current Host, the product's factory, the environments made so far, and
@@ -180,8 +144,9 @@ pub struct ShellAccess<'a, H: HostResolver> {
     pub feed: &'a Rc<dyn PageFeed>,
     /// The conversation's numbers, which its environments are made with.
     pub numbers: &'a Rc<dyn Numbers>,
-    /// The conversation's commands, which a `yield` names.
-    pub conversation: &'a dyn ConversationCommands,
+    /// The least interval a command reports at, in milliseconds:
+    /// [`INTERVAL_FLOOR_MS`] in the product.
+    pub interval_floor_ms: u32,
 }
 
 // Every field is a reference or a number, so a step's tasks each hold a
@@ -221,16 +186,14 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             .map_err(CallError::Failed)
     }
 
-    /// Runs one step of a round (`runtime.md` § Dispatch and failures): a
-    /// call of `shell_status` or `yield`, or `shell_exec` calls, which start
-    /// together. Yields each call's outcome, by its index, as the call
+    /// Runs one step of a round (`runtime.md` § Dispatch and failures):
+    /// `shell` calls, which start together, each a job of its own, or a call
+    /// of a tool the node does not have, which completes as `Tool not
+    /// found`. Yields each call's outcome, by its index, as the call
     /// returns. A refused input completes its call as an error that names
     /// the offending field; a failure of the Host or its environment
     /// completes it as `Tool failed: <message>`.
     pub fn invoke_step(self, calls: Vec<ToolInvocation>) -> StepOutcomes<'a> {
-        if !calls.is_empty() && calls.iter().all(|call| runs_together(&call.tool_name)) {
-            return Box::pin(stream::once(self.exec_step(calls)).flatten());
-        }
         let calls: FuturesUnordered<_> = calls
             .into_iter()
             .enumerate()
@@ -239,55 +202,36 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         Box::pin(calls)
     }
 
-    /// Runs one call of a standard tool.
+    /// Runs one call.
     async fn invoke(self, call: ToolInvocation) -> Result<ToolOutcome, ToolFailure> {
-        let Some(tool) = StandardTool::named(&call.tool_name) else {
+        if call.tool_name != SHELL {
             return Ok(ToolOutcome::error(format!(
                 "Tool not found: {}",
                 call.tool_name
             )));
-        };
-        match tool {
-            StandardTool::ShellExec => {
-                let mut ran = self.exec_step(vec![call]).await;
-                ran.next().await.expect("one call").1
-            }
-            StandardTool::ShellStatus => outcome(self.status(call).await),
-            StandardTool::Yield => outcome(self.yield_wakeup(call).await),
+        }
+        match parse::<ShellInput>(SHELL, call.input.clone()) {
+            Ok(input) => outcome(self.shell(call, input).await),
+            Err(refusal) => Ok(ToolOutcome::error(refusal)),
         }
     }
 
-    /// Runs a step's `shell_exec` calls together, each a job of its own
-    /// (`runtime.md` § Dispatch and failures), yielding each call's outcome
-    /// as it returns.
-    async fn exec_step(self, calls: Vec<ToolInvocation>) -> StepOutcomes<'a> {
-        let mut refused = Vec::new();
-        let mut planned = Vec::with_capacity(calls.len());
-        for (index, call) in calls.into_iter().enumerate() {
-            match parse::<ShellExecInput>(StandardTool::ShellExec.name(), call.input.clone()) {
-                Ok(input) => planned.push((index, call, input)),
-                Err(refusal) => refused.push((index, Ok(ToolOutcome::error(refusal)))),
-            }
-        }
-        let execs: FuturesUnordered<_> = planned
-            .into_iter()
-            .map(|(index, call, input)| async move { (index, outcome(self.exec(call, input).await)) })
-            .collect();
-        Box::pin(stream::iter(refused).chain(execs))
-    }
-
-    /// Starts a `shell_exec` call's script and watches it for up to its
-    /// window (`runtime.md` § The window).
-    async fn exec(
-        &self,
-        call: ToolInvocation,
-        input: ShellExecInput,
-    ) -> Result<ToolOutcome, CallError> {
+    /// Starts a `shell` call's script and watches it as its interval says
+    /// (`runtime.md` § The window); a command that still runs then reports
+    /// to the node from now on.
+    async fn shell(&self, call: ToolInvocation, input: ShellInput) -> Result<ToolOutcome, CallError> {
         // A call after one that the user's send now returned never starts
         // (`runtime.md` § Send now).
         if call.arrival.sent_now() {
             return Ok(ToolOutcome::not_run());
         }
+        let (interval_ms, note) = match input.interval_ms.0 {
+            Some(asked) => {
+                let (taken, note) = taken_interval(asked, self.interval_floor_ms, "intervalMs");
+                (Some(taken), note)
+            }
+            None => (None, None),
+        };
         let (slot, environment) = self.environment(Handle::None).await?;
         if let Some(suppressed) = slot.repeated(&input.script) {
             return Ok(suppressed);
@@ -303,78 +247,40 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         let (status, ended_by) = watch(
             environment.as_ref(),
             &command,
-            Some(window(input.timeout_ms)),
+            interval_ms,
             call.arrival.arrived(),
         )
         .await?;
-        let called = Called {
-            model: &call.model,
-            limits: call.request_limits,
-            sent_now: ended_by == Some(WindowEnd::SentNow),
-            above_cap: watched_above_cap(Some(input.timeout_ms)),
-        };
-        Ok(finish(environment.as_ref(), status, called).await)
-    }
-
-    /// A `shell_status` call: writes its input to the command first when it
-    /// has some, then watches the command for up to its window, or looks at
-    /// once without one.
-    async fn status(&self, call: ToolInvocation) -> Result<ToolOutcome, CallError> {
-        let input: StatusInput =
-            parse(StandardTool::ShellStatus.name(), call.input).map_err(CallError::Refused)?;
-        if call.arrival.sent_now() {
-            return Ok(ToolOutcome::not_run());
-        }
-        let command = &input.command_id;
-        let (_, environment) = self.environment(Handle::Command(command)).await?;
-        if let Some(stdin) = input.stdin {
-            environment.write(command, Bytes::from(stdin.0)).await?;
-        }
-        let (status, ended_by) = watch(
-            environment.as_ref(),
-            command,
-            input.timeout_ms.map(window),
-            call.arrival.arrived(),
+        let mut outcome = result::shell_outcome(
+            &status,
+            &call.model.model,
+            call.request_limits,
+            Look {
+                note: note.as_deref(),
+                sent_now: ended_by == Some(WindowEnd::SentNow),
+                interval_ms: Some(interval_ms),
+                report: false,
+            },
         )
-        .await?;
-        let called = Called {
-            model: &call.model,
-            limits: call.request_limits,
-            sent_now: ended_by == Some(WindowEnd::SentNow),
-            above_cap: watched_above_cap(input.timeout_ms),
-        };
-        Ok(finish(environment.as_ref(), status, called).await)
+        .await;
+        if matches!(status.state, CommandState::Running { .. }) {
+            outcome.effect = Some(ToolEffect::Background {
+                command,
+                interval_ms,
+                title: input.description.0,
+            });
+        } else {
+            self.release(environment.as_ref(), &command).await;
+        }
+        Ok(outcome)
     }
 
-    /// A `yield` call: the wakeup it asks the session for. A command it
-    /// names must be one of the conversation's.
-    async fn yield_wakeup(&self, call: ToolInvocation) -> Result<ToolOutcome, CallError> {
-        let input: YieldInput =
-            parse(StandardTool::Yield.name(), call.input).map_err(CallError::Refused)?;
-        let commands = input.command_ids.unwrap_or_default();
-        for command in &commands {
-            if !self
-                .conversation
-                .knows(command)
-                .await
-                .map_err(CallError::Failed)?
-            {
-                return Ok(ToolOutcome::error(format!(
-                    "yield: no command {command} in this conversation"
-                )));
-            }
-        }
-        // The session writes the result: the wakeup's id is its own.
-        Ok(ToolOutcome {
-            output: Vec::new(),
-            is_error: false,
-            view: None,
-            effect: Some(ToolEffect::ScheduleYield {
-                duration_ms: input.duration_ms.taken(),
-                commands,
-                above_cap: input.duration_ms.above_cap("durationMs", "scheduled for"),
-            }),
-        })
+    /// Forgets a command whose end a look showed the node: its handle is
+    /// released, and `demi shell output` reads its output from then on.
+    async fn release(&self, environment: &dyn ShellEnvironment, command: &CommandId) {
+        self.environments.saw_end(command);
+        // A command the environment already forgot has nothing to release.
+        environment.release_command(command).await;
     }
 
     /// Writes `stdin` to a running command of the current Host, as a page's
@@ -385,41 +291,92 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         Ok(())
     }
 
-    /// Stops a running command of the current Host, as a page's stop does.
+    /// Stops a running command of the current Host, as a page's stop does:
+    /// its end's report says the user stopped it.
     pub async fn abort(&self, command: &CommandId) -> Result<(), CallError> {
         let (_, environment) = self.environment(Handle::Command(command)).await?;
+        self.environments.stopped_by(command, Stopper::User);
         environment.abort(command).await?;
         Ok(())
     }
 }
 
-/// A call's outcome: a refused input completes it as an error the model
-/// reads, a failure as `Tool failed: <message>`.
-fn outcome(ran: Result<ToolOutcome, CallError>) -> Result<ToolOutcome, ToolFailure> {
-    match ran {
-        Ok(outcome) => Ok(outcome),
-        Err(CallError::Refused(text)) => Ok(ToolOutcome::error(text)),
-        Err(CallError::Failed(message)) => Err(ToolFailure(message)),
+/// Watches `command` until the first of (`runtime.md` § The window): it
+/// ends; `interval_ms` passes, or for a resident command, its output has
+/// been quiet for 2 seconds or 30 seconds have passed; or `until` resolves.
+/// Then returns its status, with what `until` gave when it ended the watch.
+/// Ending the watch never stops the command.
+async fn watch<T>(
+    environment: &dyn ShellEnvironment,
+    command: &CommandId,
+    interval_ms: Option<u32>,
+    until: impl Future<Output = T>,
+) -> Result<(CommandStatus, Option<T>), ShellError> {
+    let window = async {
+        match interval_ms {
+            Some(interval) => {
+                tokio::time::sleep(Duration::from_millis(interval.into())).await;
+                Ok(())
+            }
+            None => {
+                tokio::select! {
+                    quiet = quiet(environment, command) => quiet,
+                    () = tokio::time::sleep(RESIDENT_WINDOW) => Ok(()),
+                }
+            }
+        }
+    };
+    let mut ended_by = None;
+    tokio::select! {
+        ended = environment.ended(command) => {
+            ended?;
+        }
+        watched = window => watched?,
+        reason = until => ended_by = Some(reason),
+    }
+    Ok((environment.status(command)?, ended_by))
+}
+
+/// Resolves once `command`'s output has been quiet for [`QUIET`]; it waits
+/// for the moment the quiet would be reached, and looks again then.
+async fn quiet(environment: &dyn ShellEnvironment, command: &CommandId) -> Result<(), ShellError> {
+    loop {
+        let quiet = environment.quiet(command)?;
+        if quiet >= QUIET {
+            return Ok(());
+        }
+        tokio::time::sleep(QUIET - quiet).await;
     }
 }
 
-/// The window a call's `timeoutMs` names, at most the cap.
-fn window(timeout: DelayMs) -> ObservationWindow {
-    ObservationWindow::from_millis(u64::from(timeout.taken()))
-        .expect("the cap is a window an environment takes")
+/// A call's outcome: a failure completes it as `Tool failed: <message>`.
+fn outcome(ran: Result<ToolOutcome, CallError>) -> Result<ToolOutcome, ToolFailure> {
+    ran.map_err(|CallError::Failed(message)| ToolFailure(message))
 }
 
-/// The line a shell tool's result starts with when its `timeoutMs` was above
-/// the cap (`runtime.md` § Tool input).
-fn watched_above_cap(timeout: Option<DelayMs>) -> Option<String> {
-    timeout?.above_cap("timeoutMs", "watched for")
+/// A duration as the model reads it: `45s`, `4m`, `1m5s`, `2h` or `1h3m`,
+/// rounded to the nearest second.
+pub fn duration(ms: u64) -> String {
+    let seconds = (ms + 500) / 1000;
+    if seconds < 60 {
+        return format!("{seconds}s");
+    }
+    let minutes = seconds / 60;
+    if minutes < 60 {
+        return match seconds % 60 {
+            0 => format!("{minutes}m"),
+            rest => format!("{minutes}m{rest}s"),
+        };
+    }
+    match minutes % 60 {
+        0 => format!("{}h", minutes / 60),
+        rest => format!("{}h{rest}m", minutes / 60),
+    }
 }
 
 /// Why a call did not produce a result of its tool.
 #[derive(Debug)]
 pub enum CallError {
-    /// The input is refused, with the text the model receives.
-    Refused(String),
     /// The Host or its environment failed.
     Failed(String),
 }
@@ -427,7 +384,7 @@ pub enum CallError {
 impl std::fmt::Display for CallError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Refused(text) | Self::Failed(text) => formatter.write_str(text),
+            Self::Failed(text) => formatter.write_str(text),
         }
     }
 }
@@ -438,34 +395,3 @@ impl From<ShellError> for CallError {
     }
 }
 
-/// The model of the request that asked for a call, what its vendor takes in
-/// one request, whether the user's send now ended the call's window, and
-/// the line that says its window was above the cap.
-struct Called<'a> {
-    model: &'a ModelSelection,
-    limits: RequestLimits,
-    sent_now: bool,
-    above_cap: Option<String>,
-}
-
-/// A shell tool's outcome. A result that reports the command's end releases
-/// its handle; `demi shell output` reads its output from then on.
-async fn finish(
-    environment: &dyn ShellEnvironment,
-    status: CommandStatus,
-    called: Called<'_>,
-) -> ToolOutcome {
-    let outcome = result::shell_outcome(
-        &status,
-        &called.model.model,
-        called.limits,
-        called.sent_now,
-        called.above_cap.as_deref(),
-    )
-    .await;
-    if !matches!(status.state, CommandState::Running { .. }) {
-        // A command the environment already forgot has nothing to release.
-        environment.release_command(&status.command_id).await;
-    }
-    outcome
-}

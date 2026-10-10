@@ -200,7 +200,7 @@
                 "serviceTierId": null
               },
               "toolUseId": "call-1",
-              "toolName": "shell_exec",
+              "toolName": "shell",
               "input": "{\"script\":\"ls\",\"description\":\"List the files\"}",
               "status": "executing",
               "output": [],
@@ -268,13 +268,13 @@
                 "serviceTierId": null
               },
               "toolUseId": "call-1",
-              "toolName": "shell_exec",
+              "toolName": "shell",
               "input": "{\"script\":\"ls\",\"description\":\"List the files\"}",
               "status": "error",
               "output": [
                 {
                   "type": "text",
-                  "text": "shell_exec input is invalid:\nmissing field `timeoutMs`"
+                  "text": "shell input is invalid:\nmissing field `intervalMs`"
                 }
               ],
               "view": null
@@ -462,13 +462,13 @@
           "serviceTierId": null
         },
         "toolUseId": "call-1",
-        "toolName": "shell_exec",
+        "toolName": "shell",
         "input": "{\"script\":\"ls\",\"description\":\"List the files\"}",
         "status": "error",
         "output": [
           {
             "type": "text",
-            "text": "shell_exec input is invalid:\nmissing field `timeoutMs`"
+            "text": "shell input is invalid:\nmissing field `intervalMs`"
           }
         ],
         "view": null

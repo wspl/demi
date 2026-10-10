@@ -333,7 +333,8 @@ pub fn fork_seed(
             phase: demi_shared_types::SessionPhase::Idle,
             queue: Vec::new(),
             agent_inputs: Vec::new(),
-            wakeups: Vec::new(),
+            reports: Vec::new(),
+            intervals: Vec::new(),
             edits: Vec::new(),
             ..state
         },

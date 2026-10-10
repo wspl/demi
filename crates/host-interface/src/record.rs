@@ -1,4 +1,4 @@
-//! One command's record: the model's view, which `shell_status` reads, and
+//! One command's record: the model's view, which its looks read, and
 //! the pages' view (`runtime.md` § Results and previews, § Live output).
 //! Every shell environment keeps its commands in these; a record does not
 //! know what ran the script.
@@ -24,7 +24,7 @@ pub const TAIL_CHARS: usize = 4096;
 #[derive(Debug)]
 pub struct CommandRecord {
     command_id: CommandId,
-    /// The `shell_exec` call that started the command.
+    /// The `shell` call that started the command.
     tool_use_id: String,
     started: Instant,
     last_output: Instant,
@@ -71,7 +71,7 @@ impl PageText {
 }
 
 /// A command as the pages see it (`runtime.md` § Live output): its handle,
-/// the `shell_exec` call that started it, where it is, the last
+/// the `shell` call that started it, where it is, the last
 /// [`TAIL_CHARS`] characters of the pages' view of its output, and how many
 /// characters that view has held since the command started.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,7 +131,7 @@ pub enum Ending {
 }
 
 impl CommandRecord {
-    /// A running command that the `shell_exec` call `tool_use_id` started.
+    /// A running command that the `shell` call `tool_use_id` started.
     pub fn new(command_id: CommandId, tool_use_id: String) -> Self {
         let now = Instant::now();
         Self {
@@ -156,6 +156,12 @@ impl CommandRecord {
 
     pub fn is_running(&self) -> bool {
         matches!(self.phase, Phase::Running)
+    }
+
+    /// How long the command has printed nothing (`runtime.md` § Results and
+    /// previews), which no look moves.
+    pub fn quiet(&self) -> std::time::Duration {
+        Instant::now() - self.last_output
     }
 
     /// How the command ended; none while it runs.
