@@ -148,6 +148,10 @@ struct CodexTier {
 impl CodexModel {
     fn into_model(self) -> ProviderModel {
         let supports_tools = self.supports_tools();
+        let supports_attachments = self
+            .input_modalities
+            .as_ref()
+            .map(|modalities| modalities.iter().any(|modality| modality == "image"));
         let efforts: Vec<String> = self
             .supported_reasoning_levels
             .into_iter()
@@ -160,11 +164,17 @@ impl CodexModel {
             context_window: self.context_window.map(NonZeroU32::get),
             output_limit: None,
             supports_tools,
-            supports_attachments: self
-                .input_modalities
-                .map(|modalities| modalities.iter().any(|modality| modality == "image")),
+            supports_attachments,
             supports_video: None,
-            accepted_extensions: None,
+            // The backend documents no file part, so the list names the
+            // images alone (`models.md` § Accepted attachment types).
+            accepted_extensions: supports_attachments.map(|images| {
+                if images {
+                    demi_shared_types::IMAGE_FILE_EXTENSIONS.to_vec()
+                } else {
+                    Vec::new()
+                }
+            }),
             supports_reasoning: Some(!efforts.is_empty()),
             supported_thinking_efforts: Some(efforts),
             // Leaving reasoning out gets Codex's default, not no reasoning.

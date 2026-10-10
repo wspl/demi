@@ -154,14 +154,6 @@ impl ShellEnvironment for ScriptedShell {
         Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
     }
 
-    fn read_medium<'a>(
-        &'a self,
-        command: &'a CommandId,
-        _number: u32,
-    ) -> LocalBoxFuture<'a, Result<Bytes, ShellError>> {
-        Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
-    }
-
     fn write<'a>(
         &'a self,
         command: &'a CommandId,

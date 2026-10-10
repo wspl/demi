@@ -302,7 +302,10 @@ ALTER TABLE command_outputs_next RENAME TO command_outputs;
 
 /// From 0.1.21's conversation schema: commands no longer run in shells, the
 /// model has one tool, `shell`, and command reports replace yield wakeups
-/// (`runtime.md` § Command reports). Block format 2 also lets a block keep
+/// (`runtime.md` § Command reports). A command's output keeps no media: the
+/// model views a file again when it needs it (`runtime.md` § Where media are
+/// kept), so the media column goes, which a CHECK names, and the table is
+/// made anew, as for 0.1.11. Block format 2 also lets a block keep
 /// the entries of a vendor's own record of the session (`claude-code.md`
 /// § The session a process resumes), which no block 0.1.21 stored has, so
 /// leaving the field out writes them as format 2.
@@ -318,6 +321,24 @@ INSERT INTO sequences_next (name, next) SELECT name, next FROM sequences;
 DROP TABLE sequences;
 ALTER TABLE sequences_next RENAME TO sequences;
 ALTER TABLE nodes DROP COLUMN wakeup_at;
+CREATE TABLE command_outputs_next (
+  command_id     TEXT PRIMARY KEY,
+  ended_at       INTEGER NOT NULL,
+  ending         TEXT,
+  blob           TEXT,
+  missing_bytes  INTEGER CHECK (missing_bytes >= 0),
+  missing_reason TEXT,
+  not_stored     TEXT,
+  CHECK ((blob IS NOT NULL) + (not_stored IS NOT NULL) = 1),
+  CHECK ((missing_bytes IS NULL) = (missing_reason IS NULL)),
+  CHECK (missing_bytes IS NULL OR blob IS NOT NULL)
+) STRICT;
+INSERT INTO command_outputs_next
+  (command_id, ended_at, ending, blob, missing_bytes, missing_reason, not_stored)
+  SELECT command_id, ended_at, ending, blob, missing_bytes, missing_reason, not_stored
+  FROM command_outputs;
+DROP TABLE command_outputs;
+ALTER TABLE command_outputs_next RENAME TO command_outputs;
 ",
     )?;
     blocks_of_one_tool(transaction)?;
@@ -1030,14 +1051,10 @@ CREATE TABLE command_outputs (
   blob           TEXT,
   missing_bytes  INTEGER CHECK (missing_bytes >= 0),
   missing_reason TEXT,
-  -- The command's media, a JSON array, beside a stored output.
-  -- command_outputs.media: command media format 1
-  media          TEXT,
   not_stored     TEXT,
   CHECK ((blob IS NOT NULL) + (not_stored IS NOT NULL) = 1),
   CHECK ((missing_bytes IS NULL) = (missing_reason IS NULL)),
-  CHECK (missing_bytes IS NULL OR blob IS NOT NULL),
-  CHECK ((media IS NULL) = (blob IS NULL))
+  CHECK (missing_bytes IS NULL OR blob IS NOT NULL)
 ) STRICT;
 
 -- Each attachment the agent uploaded, by its number in the conversation's
@@ -1250,7 +1267,7 @@ mod tests {
     /// leaves the database as it was.
     #[test]
     fn a_conversation_of_0_1_11_keeps_its_rows_and_an_output_it_removed_stops_the_migration() {
-        use demi_host_interface::{MediumKept, Missing, StoredMedium};
+        use demi_host_interface::Missing;
         use demi_shared_types::{BlobRef, CommandEnd, CommandId, Sequence, Timestamp};
 
         use crate::command_outputs::{self, CommandOutput, OutputRow};
@@ -1258,22 +1275,11 @@ mod tests {
 
         let shipped = CONVERSATION.history[0].sql;
         let blob = BlobRef::try_from("a".repeat(64)).unwrap();
-        let media = vec![
-            StoredMedium {
-                number: 1,
-                media_type: "image/png".to_owned(),
-                size: 12,
-                kept: MediumKept::Stored { blob: blob.clone() },
-            },
-            StoredMedium {
-                number: 2,
-                media_type: "video/mp4".to_owned(),
-                size: 40,
-                kept: MediumKept::Missing {
-                    reason: "lost with the Host's connection".to_owned(),
-                },
-            },
-        ];
+        // The media 0.1.11 kept beside an output, which go with 0.1.21's
+        // migration.
+        let media = format!(
+            r#"[{{"number":1,"mediaType":"image/png","size":12,"kept":{{"state":"stored","blob":"{blob}"}}}}]"#
+        );
         let (_directory, path, mut connection) = database(shipped);
         connection
             .execute_batch("INSERT INTO sequences (name, next) VALUES ('command', 7), ('tab', 3);")
@@ -1284,7 +1290,7 @@ mod tests {
                    (command_id, ended_at, blob, missing_bytes, missing_reason, media, not_stored, removed_at)
                  VALUES ('c1', 1000, ?1, 25, 'lost with the Host''s connection', ?2, NULL, NULL),
                         ('c2', 2000, NULL, NULL, NULL, NULL, 'the object store refused the write', NULL)",
-                rusqlite::params![blob.as_str(), serde_json::to_string(&media).unwrap()],
+                rusqlite::params![blob.as_str(), media],
             )
             .unwrap();
 
@@ -1303,7 +1309,6 @@ mod tests {
                         bytes: 25,
                         reason: "lost with the Host's connection".to_owned(),
                     }),
-                    media,
                 },
             })
         );

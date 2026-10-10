@@ -1,5 +1,5 @@
-//! The `file.*` operations: reading a file, and creating, editing or patching
-//! files one mutation at a time.
+//! The `file.*` operations: showing the model a file, and creating, editing
+//! or patching files one mutation at a time.
 
 use std::{
     fs,
@@ -7,10 +7,9 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_package_file_protocol::{EditArgsError, Operation, PatchArgs, ReadArgs};
+use demi_command_package_file_protocol::{EditArgsError, Operation, PatchArgs, ViewArgs};
 use demi_command_protocol::{
-    CommandError, Completion, MAX_MEDIUM_BYTES, StdoutTarget, begins_as_text, is_text,
-    sniff_media_type,
+    CommandError, Completion, MAX_MEDIUM_BYTES, begins_as_text, is_text, sniff_media_type,
 };
 use demi_command_sdk::{
     InvocationContext, ServiceError,
@@ -28,8 +27,11 @@ use crate::{
     patch::{self, PatchError},
 };
 
-/// How much of a file one read sends on.
-const READ_BYTES: usize = 64 * 1024;
+/// How much of a file over the medium bound is read to tell what it is.
+const OPENING_BYTES: usize = 64 * 1024;
+
+/// What the view lines name stdin by.
+const STDIN: &str = "stdin";
 
 /// Why a file operation failed; its message is what the agent reads.
 #[derive(Debug, thiserror::Error)]
@@ -42,10 +44,16 @@ pub enum FileError {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Publication(#[from] demi_shared_artifacts::Error),
-    #[error(
-        "a binary file ({size} bytes) that is not an image or video; redirect it to copy it: {copy}"
-    )]
-    Binary { size: u64, copy: String },
+    #[error("a text file; read it with cat {0}")]
+    Text(String),
+    #[error("not an image, a video or a PDF ({0} bytes)")]
+    NotMedia(u64),
+    #[error("{:.1} MiB; a medium is at most 16 MiB", *.0 as f64 / (1024.0 * 1024.0))]
+    TooLarge(u64),
+    #[error("this conversation's model, {model}, does not read {media_type} in a tool result")]
+    NotViewable { model: String, media_type: String },
+    #[error("a job demi host shell runs shows no model its media; pipe the bytes into demi file view in your own script instead")]
+    NoModel,
     #[error("File has no parent directory")]
     NoParent,
     #[error("Occurrence {0} is out of range")]
@@ -141,7 +149,7 @@ pub async fn invoke(
     mutations: SerialGate,
 ) -> Result<Completion, ServiceError> {
     let result = match operation {
-        Operation::Read(args) => return read(&context, &args).await,
+        Operation::View(args) => return view(context, &args).await,
         Operation::Edit(args) => {
             mutate(&context, &mutations, move |cwd, cancellation, recording| {
                 edit::edit(cwd, &args, cancellation, recording)
@@ -177,13 +185,39 @@ pub fn failure(error: &FileError) -> Completion {
     }
 }
 
-/// Reads each file in order (`commands.md` § File commands). A file that
-/// cannot be read writes `<command>: <path>: <reason>` to stderr, as `cat`
-/// does, and the next file is read; the command exits 1 when any failed.
-async fn read(context: &InvocationContext, args: &ReadArgs) -> Result<Completion, ServiceError> {
+/// Shows the model each path, or stdin for `-` and when it names none, in
+/// order (`runtime.md` § What `demi file view` shows). One that fails writes
+/// `<command>: <path>: <reason>` to stderr, and the next one is viewed; the
+/// command prints nothing to stdout and exits 1 when any failed.
+async fn view(mut context: InvocationContext, args: &ViewArgs) -> Result<Completion, ServiceError> {
+    let command = context.request.command.clone();
+    let named = args.path.as_deref().unwrap_or_default();
+    // Stdin that is the job's own input would wait until the job ends.
+    if named.is_empty() && context.request.live_input == Some(true) {
+        context
+            .output
+            .stderr(Bytes::from(format!(
+                "{command}: no file named, and stdin is the job's input; name a file or pipe one in\n"
+            )))
+            .await?;
+        return Ok(Completion {
+            exit_code: 1,
+            error: None,
+        });
+    }
+    let paths: Vec<&str> = if named.is_empty() {
+        vec!["-"]
+    } else {
+        named.iter().map(String::as_str).collect()
+    };
     let mut failed = false;
-    for path in &args.path {
-        match read_one(context, path).await {
+    for path in paths {
+        let (shown, result) = if path == "-" {
+            (STDIN, view_stdin(&mut context).await)
+        } else {
+            (path, view_file(&context, path).await)
+        };
+        match result {
             Ok(()) => {}
             Err(FileError::Cancelled) => return Err(ServiceError::Cancelled),
             Err(FileError::Output(error)) => return Err(error),
@@ -191,10 +225,7 @@ async fn read(context: &InvocationContext, args: &ReadArgs) -> Result<Completion
                 failed = true;
                 context
                     .output
-                    .stderr(Bytes::from(format!(
-                        "{}: {path}: {error}\n",
-                        context.request.command
-                    )))
+                    .stderr(Bytes::from(format!("{command}: {shown}: {error}\n")))
                     .await?;
             }
         }
@@ -205,68 +236,95 @@ async fn read(context: &InvocationContext, args: &ReadArgs) -> Result<Completion
     })
 }
 
-/// Streams the file at `path` to stdout. A job's command reading a regular
-/// file of at most 16 MiB whose bytes are an image or video a model reads
-/// returns it as a medium instead; a regular file that is neither text nor
-/// a medium, read into the job's output, fails whatever its size, since its
-/// bytes would mean nothing there: a larger file is judged by its first
-/// bytes.
-async fn read_one(context: &InvocationContext, path: &str) -> Result<(), FileError> {
+/// Shows the model the file at `path`. A file over the medium bound is
+/// judged by its first bytes, so a large text file still names `cat`.
+async fn view_file(context: &InvocationContext, path: &str) -> Result<(), FileError> {
     let resolved = demi_command_sdk::paths::resolve(&context.request.cwd, path)?;
     let mut file = tokio::fs::File::open(resolved).await?;
-    let metadata = file.metadata().await?;
-    let binary = || FileError::Binary {
-        size: metadata.len(),
-        copy: copy_command(&context.request.command, path),
-    };
-    let into_job = context.request.stdout == Some(StdoutTarget::Job) && metadata.is_file();
-    if context.request.stdout.is_some() && metadata.is_file() && metadata.len() <= MAX_MEDIUM_BYTES
-    {
-        let mut bytes = Vec::new();
-        tokio::select! {
-            _ = context.cancellation.cancelled() => return Err(FileError::Cancelled),
-            result = file.read_to_end(&mut bytes) => result?,
-        };
-        let bytes = Bytes::from(bytes);
-        if sniff_media_type(&bytes).is_some() {
-            context.output.medium(bytes).await?;
-        } else if into_job && !is_text(&bytes) {
-            return Err(binary());
-        } else {
-            context.output.stdout(bytes).await?;
-        }
-        return Ok(());
-    }
-    let mut buffer = vec![0; READ_BYTES];
-    let mut first = true;
-    loop {
+    let size = file.metadata().await?.len();
+    if size > MAX_MEDIUM_BYTES {
+        let mut opening = vec![0; OPENING_BYTES];
         let count = tokio::select! {
             _ = context.cancellation.cancelled() => return Err(FileError::Cancelled),
-            result = file.read(&mut buffer) => result?,
+            result = file.read(&mut opening) => result?,
         };
-        if count == 0 {
-            return Ok(());
+        return Err(oversized(path, &opening[..count], size));
+    }
+    let mut bytes = Vec::new();
+    tokio::select! {
+        _ = context.cancellation.cancelled() => return Err(FileError::Cancelled),
+        result = file.read_to_end(&mut bytes) => result?,
+    };
+    show(context, path, Bytes::from(bytes)).await
+}
+
+/// Shows the model what stdin holds. Stdin over the medium bound is read to
+/// its end, so the writer is not cut off and the line names its size.
+async fn view_stdin(context: &mut InvocationContext) -> Result<(), FileError> {
+    if context.request.live_input == Some(true) {
+        return Err(FileError::Io(std::io::Error::other(
+            "stdin is the job's input; pipe a file in",
+        )));
+    }
+    let mut bytes = Vec::new();
+    let mut size = 0u64;
+    loop {
+        let chunk = tokio::select! {
+            _ = context.cancellation.cancelled() => return Err(FileError::Cancelled),
+            chunk = context.input.next() => chunk.map_err(FileError::Output)?,
+        };
+        let Some(chunk) = chunk else {
+            break;
+        };
+        size += chunk.len() as u64;
+        if size <= MAX_MEDIUM_BYTES || bytes.len() < OPENING_BYTES {
+            bytes.extend_from_slice(&chunk);
         }
-        if first && into_job && !begins_as_text(&buffer[..count]) {
-            return Err(binary());
-        }
-        first = false;
-        context
-            .output
-            .stdout(Bytes::copy_from_slice(&buffer[..count]))
-            .await?;
+    }
+    if size > MAX_MEDIUM_BYTES {
+        return Err(oversized(STDIN, &bytes, size));
+    }
+    show(context, STDIN, Bytes::from(bytes)).await
+}
+
+/// Why `named`, `size` bytes beginning with `opening`, more than a medium
+/// may be, is not shown: a text file names `cat`, and anything else its size.
+fn oversized(named: &str, opening: &[u8], size: u64) -> FileError {
+    if begins_as_text(opening) {
+        FileError::Text(quoted(named))
+    } else if sniff_media_type(opening).is_some() {
+        FileError::TooLarge(size)
+    } else {
+        FileError::NotMedia(size)
     }
 }
 
-/// The command line that copies the file at `path` by redirecting
-/// `command`'s stdout, such as `demi file read data.bin > copy.bin`.
-fn copy_command(command: &str, path: &str) -> String {
-    let copy = match Path::new(path).extension().and_then(|extension| extension.to_str()) {
-        Some(extension) => format!("copy.{extension}"),
-        None => "copy".to_owned(),
+/// Returns `bytes`, named `named`, as a medium of the job when they are a
+/// medium the job's model reads in a tool result.
+async fn show(context: &InvocationContext, named: &str, bytes: Bytes) -> Result<(), FileError> {
+    let Some(media_type) = sniff_media_type(&bytes) else {
+        return Err(if !bytes.is_empty() && is_text(&bytes) {
+            FileError::Text(quoted(named))
+        } else {
+            FileError::NotMedia(bytes.len() as u64)
+        });
     };
-    let quoted = shlex::try_quote(path).map_or_else(|_| path.into(), |quoted| quoted.into_owned());
-    format!("{command} {quoted} > {copy}")
+    let Some(viewable) = &context.request.viewable else {
+        return Err(FileError::NoModel);
+    };
+    if !viewable.media_types.iter().any(|viewed| viewed == media_type) {
+        return Err(FileError::NotViewable {
+            model: viewable.model.clone(),
+            media_type: media_type.to_owned(),
+        });
+    }
+    context.output.medium(bytes).await?;
+    Ok(())
+}
+
+/// `path` as a shell word, as the line that names `cat` writes it.
+fn quoted(path: &str) -> String {
+    shlex::try_quote(path).map_or_else(|_| path.into(), |quoted| quoted.into_owned())
 }
 
 /// Runs `mutation` on the blocking pool while it holds `mutations`, and

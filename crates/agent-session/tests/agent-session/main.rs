@@ -1333,6 +1333,7 @@ fn media_parts(request: &demi_provider_common::InferenceRequest) -> Vec<String> 
         ResultPart::Text(text) => text.clone(),
         ResultPart::Image(_) => "<image>".to_owned(),
         ResultPart::Video(_) => "<video>".to_owned(),
+        ResultPart::Document { .. } => "<document>".to_owned(),
     });
     user.chain(result).collect()
 }
@@ -1371,6 +1372,7 @@ async fn a_medium_the_requests_model_cannot_take_reaches_it_as_the_same_text_in_
     let small = ScriptedRuntime::new([answer("small")]).with_limits(RequestLimits {
         body_bytes: Some(6_000),
         images: None,
+        tool_results: demi_provider_common::ToolResultKinds::ALL,
     });
     let record = tool("record", move |_| {
         let video = ResultPart::Video(MediaBytes {

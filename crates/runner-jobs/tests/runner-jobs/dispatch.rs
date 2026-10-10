@@ -74,7 +74,6 @@ impl Fixture {
                 root: "fixture".into(),
                 argv,
                 live: true,
-                stdout: demi_command_protocol::StdoutTarget::Job,
             })
             .unwrap(),
             cwd: self.directory.path().to_string_lossy().into_owned(),

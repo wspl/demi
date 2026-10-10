@@ -7,14 +7,14 @@ use crate::{
     commands::command_output::CommandOutput, commands::contexts::ExecutionContext,
     connection::ConnectionHandle,
 };
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use demi_command_declarations::Parsed;
 use demi_command_sdk::{Input, ServiceError};
 use demi_runner_process::pipes::PipeClient;
 use demi_runner_protocol::wire::{self, PipeRef};
 use futures_util::StreamExt;
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::BTreeMap,
     io,
     sync::Arc,
     time::Duration,
@@ -43,18 +43,8 @@ pub enum CallEvent {
         stdout: PipeRef,
     },
     Stderr(Bytes),
-    /// The handler returned a medium (`commands.md` § Return media).
-    Medium(RpcMedium),
     Pull,
     Exit(u8),
-}
-
-/// A medium an `rpc` handler returned: it goes after the first `after`
-/// bytes of the call's stdout, and its `size` bytes flow through `pipe`.
-pub struct RpcMedium {
-    pub after: u64,
-    pub size: u64,
-    pub pipe: PipeRef,
 }
 
 struct CallTransport<'a> {
@@ -228,11 +218,8 @@ async fn exchange(
     let (stdin_sender, stdin_receiver) = oneshot::channel();
     let (stdout_sender, stdout_receiver) = oneshot::channel();
     let (pull, demanded) = mpsc::channel(1);
-    let (media, returned) = mpsc::channel(EVENTS);
     let control = async {
         let mut pipe_senders = Some((stdin_sender, stdout_sender));
-        // Dropped with this future: the call returns no media after its exit.
-        let media = media;
         while let Some(event) = events.recv().await {
             match event {
                 CallEvent::Pipes { stdin, stdout } => {
@@ -250,15 +237,6 @@ async fn exchange(
                         .map_err(|_| ServiceError::Cancelled)?;
                 }
                 CallEvent::Stderr(bytes) => errors.stderr(bytes).await?,
-                CallEvent::Medium(medium) => {
-                    if pipe_senders.is_some() {
-                        return Err(ServiceError::failed(RpcError::MediumBeforePipes));
-                    }
-                    media
-                        .send(medium)
-                        .await
-                        .map_err(|_| ServiceError::Cancelled)?;
-                }
                 CallEvent::Pull if request.live => pull
                     .try_send(())
                     .map_err(|_| ServiceError::failed(RpcError::OverlappingDemands))?,
@@ -286,15 +264,7 @@ async fn exchange(
         else {
             return Ok(());
         };
-        let call = Download {
-            pipes,
-            connection,
-            stop,
-            output,
-            pending: VecDeque::new(),
-            written: 0,
-        };
-        call.run(&reference, returned).await
+        download(pipes, connection, stop, output, &reference).await
     };
     let input = send_input(
         pipes,
@@ -325,137 +295,25 @@ async fn exchange(
     }
 }
 
-/// A call's stdout pipe, as its download sees it.
-enum Stdout {
-    Opening,
-    Open(futures_util::stream::BoxStream<'static, io::Result<Bytes>>),
-    Ended,
-}
-
-impl Stdout {
-    /// The next chunk of an open pipe.
-    async fn next(&mut self) -> Option<io::Result<Bytes>> {
-        match self {
-            Self::Open(stream) => stream.next().await,
-            Self::Opening | Self::Ended => None,
-        }
-    }
-}
-
-/// A call's stdout as the calling process receives it: the pipe's bytes,
-/// with each medium the handler returned placed after the bytes it followed.
-struct Download<'a, 'o> {
-    pipes: &'a PipeClient,
-    connection: &'a mpsc::Sender<wire::Frame>,
-    stop: &'a CancellationToken,
-    output: &'a mut CommandOutput<'o>,
-    /// The media that wait for their place in stdout, in the order returned.
-    pending: VecDeque<RpcMedium>,
-    /// The stdout bytes passed on so far.
-    written: u64,
-}
-
-impl Download<'_, '_> {
-    /// Reads the stdout pipe `reference` to its end, and the media that
-    /// arrive at `returned` until it closes. A medium is read while the
-    /// pipe opens too: the backend opens it only once the handler writes
-    /// stdout or ends, and a handler that returns a medium first waits until
-    /// the runner has read it.
-    async fn run(
-        mut self,
-        reference: &PipeRef,
-        mut returned: mpsc::Receiver<RpcMedium>,
-    ) -> Result<(), ServiceError> {
-        let pipes = self.pipes;
-        let opening = pipes.get(&reference.url, self.stop.clone());
-        tokio::pin!(opening);
-        let mut stdout = Stdout::Opening;
-        let mut media_open = true;
-        loop {
-            let ended = matches!(stdout, Stdout::Ended);
-            self.deliver_due(ended).await?;
-            if ended && !media_open {
-                return Ok(());
-            }
-            tokio::select! {
-                medium = returned.recv(), if media_open => match medium {
-                    Some(medium) => self.pending.push_back(medium),
-                    None => media_open = false,
-                },
-                opened = &mut opening, if matches!(stdout, Stdout::Opening) => match opened {
-                    Ok(stream) => stdout = Stdout::Open(stream),
-                    Err(error) => return self.failed(reference, error).await,
-                },
-                chunk = stdout.next(), if matches!(stdout, Stdout::Open(_)) => match chunk {
-                    Some(Ok(bytes)) => self.pass(bytes).await?,
-                    Some(Err(error)) => return self.failed(reference, error).await,
-                    None => {
-                        stdout = Stdout::Ended;
-                        report(self.connection, reference, &Ok(()), self.stop).await?;
-                    }
-                },
-            }
-        }
-    }
-
-    /// Reports the pipe `reference`, the call's stdout or a medium's,
-    /// failed with `error`, which fails the call.
-    async fn failed(&self, reference: &PipeRef, error: io::Error) -> Result<(), ServiceError> {
-        let result = Err(error);
-        report(self.connection, reference, &result, self.stop).await?;
-        result.map_err(ServiceError::failed)
-    }
-
-    /// Passes `bytes` on, delivering each medium whose place falls within
-    /// them where it falls.
-    async fn pass(&mut self, mut bytes: Bytes) -> Result<(), ServiceError> {
-        while !bytes.is_empty() {
-            let room = self
-                .pending
-                .front()
-                .map_or(u64::MAX, |medium| medium.after.saturating_sub(self.written));
-            let count = usize::try_from(room).unwrap_or(usize::MAX).min(bytes.len());
-            let part = bytes.split_to(count);
-            self.written += part.len() as u64;
-            self.output.stdout(part).await?;
-            self.deliver_due(false).await?;
-        }
-        Ok(())
-    }
-
-    /// Delivers each waiting medium whose place stdout has reached: every
-    /// one once stdout has `ended`.
-    async fn deliver_due(&mut self, ended: bool) -> Result<(), ServiceError> {
-        while let Some(medium) = self
-            .pending
-            .pop_front_if(|medium| ended || medium.after <= self.written)
-        {
-            let bytes = match self.read(&medium).await {
-                Ok(bytes) => bytes,
-                Err(error) => return self.failed(&medium.pipe, error).await,
-            };
-            report(self.connection, &medium.pipe, &Ok(()), self.stop).await?;
-            self.output.medium(bytes).await?;
-        }
-        Ok(())
-    }
-
-    /// The bytes of `medium`, exactly its size.
-    async fn read(&self, medium: &RpcMedium) -> io::Result<Bytes> {
-        let mut stream = self.pipes.get(&medium.pipe.url, self.stop.clone()).await?;
-        let mut bytes = BytesMut::new();
+/// Reads the call's stdout pipe `reference` to its end into `output`, and
+/// reports how the pipe ended.
+async fn download(
+    pipes: &PipeClient,
+    connection: &mpsc::Sender<wire::Frame>,
+    stop: &CancellationToken,
+    output: &mut CommandOutput<'_>,
+    reference: &PipeRef,
+) -> Result<(), ServiceError> {
+    let result = async {
+        let mut stream = pipes.get(&reference.url, stop.clone()).await?;
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            if bytes.len() as u64 + chunk.len() as u64 > medium.size {
-                return Err(io::Error::other("a medium's bytes exceed its size"));
-            }
-            bytes.extend_from_slice(&chunk);
+            output.stdout(chunk?).await.map_err(io::Error::other)?;
         }
-        if bytes.len() as u64 != medium.size {
-            return Err(io::Error::other("a medium's bytes fall short of its size"));
-        }
-        Ok(bytes.freeze())
+        Ok::<_, io::Error>(())
     }
+    .await;
+    report(connection, reference, &result, stop).await?;
+    result.map_err(ServiceError::failed)
 }
 
 async fn send_input(
@@ -542,8 +400,6 @@ enum RpcError {
     OverlappingDemands,
     #[error("RPC success arrived before pipe descriptors")]
     SuccessBeforePipes,
-    #[error("an RPC medium arrived before pipe descriptors")]
-    MediumBeforePipes,
 }
 
 /// The frame that ends a call's standard input.
