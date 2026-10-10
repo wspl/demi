@@ -329,6 +329,7 @@ async fn a_process_gets_what_was_sent_at_its_start_and_unread_input_blocks_nothi
     // and a kill still ends them.
     let job = host
         .start_job(JobStart {
+        id: RemoteHost::job_id(),
             script: "printf ready; sleep 30".into(),
             cwd: fixture.home().into(),
             env: BTreeMap::new(),
@@ -917,6 +918,7 @@ async fn a_jobs_pipes_carry_its_stdin_and_stdout_and_a_refused_end_stops_nothing
     .await;
     let host = fixture.host();
     let job = |script: &str, stdin: Option<PipeRef>, stdout: Option<PipeRef>| JobStart {
+        id: RemoteHost::job_id(),
         script: script.into(),
         cwd: fixture.home().into(),
         env: BTreeMap::from([("PATH".to_owned(), "/usr/bin:/bin".to_owned())]),

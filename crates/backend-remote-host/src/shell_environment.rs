@@ -7,7 +7,11 @@
 //! product's keeper stores the whole output, and the runner lets the job's
 //! directory go (`runtime.md` § The whole output). Every job starts in the
 //! conversation's working directory on the Host, and nothing of an earlier
-//! one carries over (`runtime.md` § Running shell tools).
+//! one carries over (`runtime.md` § Running shell tools). A command outlives
+//! the environment: its keeper records it running before its job starts, a
+//! disposed environment lets its jobs run on, and the next environment of
+//! its node takes them up again (`sessions-and-targets.md` § Recovery and
+//! persistence).
 
 use std::{
     cell::{Cell, RefCell},
@@ -64,6 +68,18 @@ pub trait HostAccess {
 /// its whole output with its media (`runtime.md` § The whole output, § Where
 /// media are kept). A failure to keep them is the keeper's to record.
 pub trait CommandKeeper {
+    /// Records that `command`, which the call `tool_use_id` started, runs
+    /// as the job `job` on the environment's Host, before the job starts,
+    /// so that a backend that starts again takes it up (`storage.md`
+    /// § Command outputs). A failure to record it is the keeper's to log:
+    /// the command runs all the same.
+    fn started<'a>(
+        &'a self,
+        command: &'a CommandId,
+        tool_use_id: &'a str,
+        job: &'a str,
+    ) -> LocalBoxFuture<'a, ()>;
+
     /// The list the command's view shows of `files`: every file, each
     /// segment with its copies when they were stored.
     fn retain<'a>(
@@ -76,7 +92,8 @@ pub trait CommandKeeper {
     /// namespace holds it, so a medium it holds is not read from the Host.
     fn stored_blob<'a>(&'a self, blob: &'a BlobRef) -> LocalBoxFuture<'a, Option<Bytes>>;
 
-    /// Records the command's end, `end`, with its whole output and media.
+    /// Records the command's end, `end`, with its whole output and media,
+    /// in place of its record as running.
     fn keep_output<'a>(
         &'a self,
         command: &'a CommandId,
@@ -165,6 +182,9 @@ struct Environment {
     state: RefCell<State>,
     /// The jobs' tasks.
     tasks: TaskTracker,
+    /// Cancelled when the environment lets go of its commands, which run
+    /// on (`runtime.md` § Dispose and restore).
+    detached: CancellationToken,
     /// Changes each time one of its commands ends, which a wait for a
     /// command's end watches.
     ends: watch::Sender<()>,
@@ -174,6 +194,22 @@ struct Environment {
 struct State {
     records: HashMap<CommandId, Rc<RefCell<CommandRecord>>>,
     running: HashMap<CommandId, Rc<Running>>,
+}
+
+/// How a command's run begins: with a new job, or with one it takes up
+/// again.
+enum Begin {
+    Start(ExecRequest),
+    Adopt { job: String, caller: JobCaller },
+}
+
+/// How following a job ended.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Followed {
+    /// The command settled, or never ran.
+    Ended,
+    /// The environment let go of it, and it runs on.
+    Detached,
 }
 
 /// How a command ended and the whole output it settles with, which
@@ -240,6 +276,7 @@ impl RemoteShellEnvironment {
             options,
             state: RefCell::default(),
             tasks: TaskTracker::new(),
+            detached: CancellationToken::new(),
             ends: watch::Sender::new(()),
         }))
     }
@@ -252,12 +289,51 @@ impl RemoteShellEnvironment {
         cancel: CancellationToken,
     ) -> Result<CommandId, ShellError> {
         let command = numbered(self.0.options.numbers.next(Sequence::Command).await?);
-        let record = Rc::new(RefCell::new(CommandRecord::new(
-            command.clone(),
-            request.tool_use_id,
-        )));
+        let tool_use_id = request.tool_use_id.clone();
+        let (running, record) = self.hold(&command, tool_use_id, cancel.child_token());
+        let environment = self.clone();
+        let task_command = command.clone();
+        self.0.tasks.spawn_local(async move {
+            environment
+                .run(task_command, Begin::Start(request), running, record)
+                .await;
+        });
+        Ok(command)
+    }
+
+    /// Takes up `command`, which the call `tool_use_id` started as the job
+    /// `job` on this environment's Host before the backend restarted or
+    /// the environment that ran it let go of it (`sessions-and-targets.md`
+    /// § Recovery and persistence): it is followed to its end as if nothing
+    /// had happened, and its runner's next hello says whether it went on,
+    /// ended or was lost. A command the environment holds already stays as
+    /// it is.
+    pub fn adopt(&self, command: &CommandId, tool_use_id: &str, job: &str, caller: JobCaller) {
+        if self.0.state.borrow().records.contains_key(command) {
+            return;
+        }
+        let (running, record) =
+            self.hold(command, tool_use_id.to_owned(), CancellationToken::new());
+        let environment = self.clone();
+        let task_command = command.clone();
+        let job = job.to_owned();
+        self.0.tasks.spawn_local(async move {
+            environment
+                .run(task_command, Begin::Adopt { job, caller }, running, record)
+                .await;
+        });
+    }
+
+    /// Holds a new running command and tells the pages of it.
+    fn hold(
+        &self,
+        command: &CommandId,
+        tool_use_id: String,
+        stop: CancellationToken,
+    ) -> (Rc<Running>, Rc<RefCell<CommandRecord>>) {
+        let record = Rc::new(RefCell::new(CommandRecord::new(command.clone(), tool_use_id)));
         let running = Rc::new(Running {
-            stop: cancel.child_token(),
+            stop,
             job: watch::Sender::new(None),
             received: RefCell::new(Vec::new()),
             aborted: Cell::new(false),
@@ -270,14 +346,7 @@ impl RemoteShellEnvironment {
         }
         // The pages learn of the command before its first output.
         self.report(&record);
-        let environment = self.clone();
-        let task_command = command.clone();
-        self.0.tasks.spawn_local(async move {
-            environment
-                .run(task_command, request.script, request.caller, running, record)
-                .await;
-        });
-        Ok(command)
+        (running, record)
     }
 
     /// Tells the pages that `record`'s view changed.
@@ -286,37 +355,55 @@ impl RemoteShellEnvironment {
     }
 
     /// Runs one command to its end, inside the product's host access when
-    /// there is one.
+    /// there is one; a command taken up again runs outside it, since it
+    /// holds its Host already and its runner may still be away. A command
+    /// the environment lets go of runs on, unsettled.
     async fn run(
         &self,
         command: CommandId,
-        script: String,
-        caller: JobCaller,
+        begin: Begin,
         running: Rc<Running>,
         record: Rc<RefCell<CommandRecord>>,
     ) {
         let failure: RefCell<Option<String>> = RefCell::new(None);
+        let followed = Cell::new(Followed::Ended);
+        let adopted = matches!(begin, Begin::Adopt { .. });
         let job = async {
-            if let Err(error) = self
-                .execute(&command, script, caller, &running, &record)
-                .await
-            {
-                *failure.borrow_mut() = Some(error);
+            let ran = match begin {
+                Begin::Start(request) => {
+                    self.execute(&command, request, &running, &record).await
+                }
+                Begin::Adopt { job, caller } => {
+                    let job = self.0.options.host.adopt_job(
+                        job,
+                        self.context().await,
+                        Some(caller),
+                        self.0.options.commands.clone(),
+                    );
+                    Ok(self.follow(&command, job, &running, &record).await)
+                }
+            };
+            match ran {
+                Ok(outcome) => followed.set(outcome),
+                Err(error) => *failure.borrow_mut() = Some(error),
             }
         };
         let access = match &self.0.options.access {
-            Some(access) => {
+            Some(access) if !adopted => {
                 let key = self.0.options.host.key();
                 access
                     .run_job(&key, running.stop.clone(), Box::pin(job))
                     .await
                     .map_err(|error| error.message)
             }
-            None => {
+            _ => {
                 job.await;
                 Ok(())
             }
         };
+        if followed.get() == Followed::Detached {
+            return;
+        }
         let failure = access.err().or_else(|| failure.into_inner());
         if let Some(reason) = failure
             && record.borrow().is_running()
@@ -341,16 +428,27 @@ impl RemoteShellEnvironment {
         running.settled.send_replace(true);
     }
 
+    /// The command context of a job taken up again, whose rpc calls act
+    /// for its node; with none, its calls are refused.
+    async fn context(&self) -> Option<CommandContext> {
+        match (self.0.options.context)().await {
+            Ok(context) => Some(context),
+            Err(error) => {
+                tracing::warn!("a command taken up again has no command context: {error}");
+                None
+            }
+        }
+    }
+
     /// Starts the job and follows it to its end; an error is why it never
     /// ran.
     async fn execute(
         &self,
         command: &CommandId,
-        script: String,
-        caller: JobCaller,
+        request: ExecRequest,
         running: &Running,
         record: &Rc<RefCell<CommandRecord>>,
-    ) -> Result<(), String> {
+    ) -> Result<Followed, String> {
         let context = (self.0.options.context)()
             .await
             .map_err(|error| error.message)?;
@@ -362,35 +460,56 @@ impl RemoteShellEnvironment {
         let cwd = self.0.options.host.default_cwd().to_owned();
         let mut env = self.0.options.initial_env.clone();
         env.insert("PWD".into(), cwd.clone());
+        let id = RemoteHost::job_id();
+        if let Some(keeper) = &self.0.options.keeper {
+            keeper.started(command, &request.tool_use_id, &id).await;
+        }
         let job = self
             .0
             .options
             .host
             .start_job(JobStart {
-                script,
+                id,
+                script: request.script,
                 cwd,
                 env,
                 context,
-                caller: Some(caller),
+                caller: Some(request.caller),
                 commands: self.0.options.commands.clone(),
                 stdin: None,
                 stdout: None,
             })
             .await
             .map_err(|error| error.message)?;
+        Ok(self.follow(command, job, running, record).await)
+    }
+
+    /// Follows the job to its end and settles the command with it, unless
+    /// the environment lets go of it first.
+    async fn follow(
+        &self,
+        command: &CommandId,
+        job: RemoteJob,
+        running: &Running,
+        record: &Rc<RefCell<CommandRecord>>,
+    ) -> Followed {
         running.job.send_replace(Some(job.clone()));
         let mut streams = [Received::default(), Received::default()];
         // The job is followed while a page watches; it starts unfollowed.
         let mut watching = self.0.options.feed.watching();
         let mut watch_open = true;
         let mut followed = false;
+        // A new connection knows nothing of how the job was followed.
+        let mut told = false;
         let stopped = running.stop.cancelled();
         tokio::pin!(stopped);
         let mut signalled = false;
+        let mut attachments = job.clone();
         loop {
             let follow = watch_open && *watching.borrow_and_update();
-            if follow != followed {
+            if follow != followed || !told {
                 followed = follow;
+                told = true;
                 if let Err(error) = job.follow(followed).await {
                     // The job's end or the connection's loss says what
                     // happened; a following that could not change is
@@ -412,6 +531,7 @@ impl RemoteShellEnvironment {
                     // A feed that is gone has no page.
                     watch_open = changed.is_ok();
                 }
+                () = attachments.reattached() => told = false,
                 () = &mut stopped, if !signalled => {
                     signalled = true;
                     if let Err(error) = job.kill(wire::Signal::Terminate).await {
@@ -420,6 +540,7 @@ impl RemoteShellEnvironment {
                         tracing::debug!(%command, "could not interrupt the job: {error}");
                     }
                 }
+                () = self.0.detached.cancelled() => return Followed::Detached,
             }
         }
         let end = job.end().await;
@@ -429,7 +550,7 @@ impl RemoteShellEnvironment {
             streams,
         };
         self.finish(command, running, record, ended).await;
-        Ok(())
+        Followed::Ended
     }
 
     /// Settles the record from the job's end: its edits and its whole
@@ -443,6 +564,9 @@ impl RemoteShellEnvironment {
         ended: EndedJob<'_>,
     ) {
         let EndedJob { job, end, streams } = ended;
+        // A job its runner stopped once its connection stayed away is lost,
+        // with its output kept.
+        let lost = end.lost.clone();
         // The reads the completion needs go out together (`runner.md`
         // § Host operations): the edits' copies, the kept output and the
         // media.
@@ -506,7 +630,9 @@ impl RemoteShellEnvironment {
                     .map(|medium| command_medium(medium, Err(LOST.into())))
                     .collect();
                 let settlement = Settlement {
-                    end: CommandEnd::Lost,
+                    end: CommandEnd::Lost {
+                        reason: reason.clone(),
+                    },
                     output: WholeOutput::new(received, missing),
                     binary_stdout: None,
                     media,
@@ -579,10 +705,10 @@ impl RemoteShellEnvironment {
         } else if let Some(length) = binary_length {
             page.insert_str(0, &format!("{}\n", binary_line(length)));
         }
-        let end = if running.aborted.get() {
-            CommandEnd::Stopped
-        } else {
-            CommandEnd::Exited { exit_code }
+        let end = match lost {
+            Some(reason) => CommandEnd::Lost { reason },
+            None if running.aborted.get() => CommandEnd::Stopped,
+            None => CommandEnd::Exited { exit_code },
         };
         {
             let mut record = record.borrow_mut();
@@ -663,7 +789,7 @@ impl RemoteShellEnvironment {
             page,
         } = settlement;
         if let Some(keeper) = &self.0.options.keeper {
-            keeper.keep_output(command, end, &output, &media).await;
+            keeper.keep_output(command, end.clone(), &output, &media).await;
         }
         if let Some(job) = job {
             job.release().await;
@@ -876,6 +1002,18 @@ impl ShellEnvironment for RemoteShellEnvironment {
         })
     }
 
+    fn adopt(&self, command: &CommandId, tool_use_id: &str, job: &str, caller: JobCaller) {
+        RemoteShellEnvironment::adopt(self, command, tool_use_id, job, caller);
+    }
+
+    fn detach_all(&self) -> LocalBoxFuture<'_, ()> {
+        Box::pin(async move {
+            self.0.detached.cancel();
+            self.0.tasks.close();
+            self.0.tasks.wait().await;
+        })
+    }
+
     fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async move {
             let running: Vec<_> = self.0.state.borrow().running.keys().cloned().collect();
@@ -914,7 +1052,7 @@ fn ending_of(end: CommandEnd) -> Ending {
     match end {
         CommandEnd::Exited { exit_code } => Ending::Exited(exit_code),
         CommandEnd::Stopped => Ending::Aborted,
-        CommandEnd::Lost | CommandEnd::Unrecorded => Ending::Exited(127),
+        CommandEnd::Lost { .. } | CommandEnd::Unrecorded => Ending::Exited(127),
     }
 }
 

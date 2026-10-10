@@ -3,7 +3,9 @@
 //! When the queue is full the reader waits, so the backend's writes wait too;
 //! only a message that breaks the protocol closes the connection. A
 //! connection the runner ends on purpose, as a drain or a stop does, ends
-//! with a close frame.
+//! with a close frame. The runner pings the backend, and counts a
+//! connection it hears nothing on for a while as lost, as one the network
+//! dropped without closing it is (`runner.md` § Command lifetime).
 
 use std::{io, time::Duration};
 
@@ -133,7 +135,22 @@ impl Transport {
             // Ends with the refusal of a message this side cannot decode,
             // which the connection then closes over.
             let receive = async {
-                while let Some(message) = reader.next().await {
+                loop {
+                    // The backend answers each ping, and pings itself.
+                    let Ok(message) =
+                        tokio::time::timeout(wire::RUNNER_PING_TIMEOUT, reader.next()).await
+                    else {
+                        return Err(io::Error::new(
+                            io::ErrorKind::TimedOut,
+                            format!(
+                                "the backend did not answer for {} seconds",
+                                wire::RUNNER_PING_TIMEOUT.as_secs()
+                            ),
+                        ));
+                    };
+                    let Some(message) = message else {
+                        break;
+                    };
                     match message.map_err(io::Error::other)? {
                         Message::Binary(bytes) => {
                             let message = match wire::decode(&bytes) {
@@ -167,9 +184,20 @@ impl Transport {
                 Ok::<_, io::Error>(None)
             };
             let send = async {
+                let mut pings = tokio::time::interval_at(
+                    tokio::time::Instant::now() + wire::RUNNER_PING_INTERVAL,
+                    wire::RUNNER_PING_INTERVAL,
+                );
                 loop {
                     let message = tokio::select! {
                         biased;
+                        _ = pings.tick() => {
+                            tokio::time::timeout(WRITE_TIMEOUT, writer.send(Message::Ping(Vec::new().into())))
+                                .await
+                                .map_err(io::Error::other)?
+                                .map_err(io::Error::other)?;
+                            continue;
+                        }
                         Some(message) = controls.recv() => message,
                         Some(message) = outgoing.recv() => message,
                         else => break,

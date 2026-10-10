@@ -3,21 +3,24 @@
 //! `<job root>/job-<random>/`. The job root is `jobs/` in a
 //! paired device's installation state, and `/var/lib/demi/jobs` on a Cloud's
 //! system image. A job's directory lasts until the backend has what it needs
-//! of the job: its `job_release`, the connection's end, or, for what a
-//! runner that ended left, the next connection's start.
+//! of the job: its `job_release`, or, for what a runner that ended left, the
+//! next runner's start. A connection loss keeps it, with the job's exit once
+//! the job ended, which the next connection reports again (`runner.md`
+//! § Command lifetime).
 
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use demi_runner_protocol::wire;
 use tokio_util::sync::CancellationToken;
 
 use crate::job_media::MEDIA_DIRECTORY;
 use crate::kept_output::{KeptOutput, KeptReader};
 
-/// The job directories under one installation's job root, for one
-/// connection.
+/// The job directories under one installation's job root.
 pub struct JobDirectories {
     root: PathBuf,
     /// Each job's directory, from its start until its release or the
@@ -28,7 +31,10 @@ pub struct JobDirectories {
 struct Held {
     path: PathBuf,
     output: KeptReader,
+    lengths: Arc<StreamLengths>,
     running: bool,
+    /// The job's exit and how it ended, once it ended.
+    exit: Option<(wire::Frame, wire::KeptEnd)>,
 }
 
 /// A job's directory and its kept output. The directory counts as running
@@ -36,7 +42,30 @@ struct Held {
 pub struct JobDirectory {
     pub path: PathBuf,
     pub output: KeptOutput,
+    /// Each stream's length, which the job sets as it writes.
+    pub lengths: Arc<StreamLengths>,
     pub running: Running,
+}
+
+/// Each stream's length of a job's output, which a hello reports.
+#[derive(Default)]
+pub struct StreamLengths {
+    stdout: AtomicU64,
+    stderr: AtomicU64,
+}
+
+impl StreamLengths {
+    pub fn set(&self, lengths: wire::OutputLengths) {
+        self.stdout.store(lengths.stdout_bytes, Ordering::Relaxed);
+        self.stderr.store(lengths.stderr_bytes, Ordering::Relaxed);
+    }
+
+    pub fn get(&self) -> wire::OutputLengths {
+        wire::OutputLengths {
+            stdout_bytes: self.stdout.load(Ordering::Relaxed),
+            stderr_bytes: self.stderr.load(Ordering::Relaxed),
+        }
+    }
 }
 
 /// A running job's hold on its directory, which a release keeps.
@@ -101,12 +130,15 @@ impl JobDirectories {
         .await
         .map_err(io::Error::other)??;
         let output = KeptOutput::create(path.join("output"), cancel).await?;
+        let lengths = Arc::new(StreamLengths::default());
         self.lock().insert(
             job.to_owned(),
             Held {
                 path: path.clone(),
                 output: output.reader(),
+                lengths: lengths.clone(),
                 running: true,
+                exit: None,
             },
         );
         Ok(JobDirectory {
@@ -116,7 +148,57 @@ impl JobDirectories {
             },
             path,
             output,
+            lengths,
         })
+    }
+
+    /// Keeps `job`'s exit, `frame`, and how it ended with its directory,
+    /// until the backend releases it; a job without a directory keeps
+    /// nothing.
+    pub fn ended(&self, job: &str, frame: wire::Frame, end: wire::KeptEnd) {
+        if let Some(held) = self.lock().get_mut(job) {
+            held.exit = Some((frame, end));
+        }
+    }
+
+    /// The jobs whose directories are kept, as a hello lists them: each
+    /// one's end once it ended, its streams' lengths and how many media it
+    /// keeps. `running` names the jobs that run, also one whose directory
+    /// is not made yet.
+    pub fn kept(&self, running: &[String]) -> Vec<wire::KeptJob> {
+        let jobs = self.lock();
+        let mut kept: Vec<wire::KeptJob> = jobs
+            .iter()
+            .map(|(job, held)| wire::KeptJob {
+                job_id: job.clone(),
+                ended: held.exit.as_ref().map(|(_, end)| end.clone()),
+                output: held.lengths.get(),
+                media: media_count(&held.path.join(MEDIA_DIRECTORY)),
+            })
+            .collect();
+        for job in running {
+            if !jobs.contains_key(job) {
+                kept.push(wire::KeptJob {
+                    job_id: job.clone(),
+                    ended: None,
+                    output: wire::OutputLengths {
+                        stdout_bytes: 0,
+                        stderr_bytes: 0,
+                    },
+                    media: 0,
+                });
+            }
+        }
+        kept
+    }
+
+    /// The exits of the jobs that ended and are not released yet, which a
+    /// new connection sends again.
+    pub fn exits(&self) -> Vec<wire::Frame> {
+        self.lock()
+            .values()
+            .filter_map(|held| held.exit.as_ref().map(|(frame, _)| frame.clone()))
+            .collect()
     }
 
     /// The kept output of `job`, while its directory lasts.
@@ -153,9 +235,8 @@ impl JobDirectories {
     }
 
     /// Removes every directory under the root but those of the jobs that
-    /// run: at the connection's start, what an earlier one left, and at its
-    /// end, once its jobs ended, all of them.
-    pub async fn clear(&self) {
+    /// run: at the runner's start, what an earlier runner left.
+    async fn clear(&self) {
         let running: Vec<PathBuf> = {
             let mut jobs = self.lock();
             jobs.retain(|_, held| held.running);
@@ -186,6 +267,13 @@ impl JobDirectories {
             tracing::warn!("the job directories were not cleared: {error}");
         }
     }
+}
+
+/// How many media a job keeps in `directory`: none before its first.
+fn media_count(directory: &Path) -> u32 {
+    std::fs::read_dir(directory)
+        .map(|entries| u32::try_from(entries.flatten().count()).unwrap_or(u32::MAX))
+        .unwrap_or(0)
 }
 
 async fn remove(path: PathBuf) {

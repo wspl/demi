@@ -795,6 +795,14 @@ pub enum Outbound {
         device_token: Option<DeviceToken>,
         #[garde(dive)]
         runner: RunnerInfo,
+        /// A number this start of the runner drew, the same for each of its
+        /// connections, so the backend tells a runner that kept its jobs
+        /// from one that started anew (`runner.md` § Command lifetime).
+        instance: u64,
+        /// The jobs the runner keeps, running or ended and not yet
+        /// released.
+        #[garde(dive)]
+        jobs: Vec<KeptJob>,
     },
     /// Liveness, with the count of running jobs the idle rule reads.
     Pong {
@@ -1595,6 +1603,44 @@ pub enum SpawnErrorKind {
 pub struct OutputLengths {
     pub stdout_bytes: u64,
     pub stderr_bytes: u64,
+}
+
+/// A job a runner keeps through a connection loss, as its hello lists it
+/// (`runner.md` § Command lifetime): its end once it ended, each stream's
+/// length, and how many media it keeps. The exit of a job that ended follows
+/// the hello's answer, as when the job ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[garde(allow_unvalidated)]
+pub struct KeptJob {
+    #[garde(length(min = 1, max = 64))]
+    pub job_id: String,
+    /// Its end; none while it runs.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    pub ended: Option<KeptEnd>,
+    pub output: OutputLengths,
+    pub media: u32,
+}
+
+/// How a kept job ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct KeptEnd {
+    #[serde(deserialize_with = "Option::deserialize")]
+    pub exit_code: Option<i32>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    pub signal: Option<String>,
+    /// The runner stopped it after the connection stayed away for
+    /// `UNREACHED_GRACE`.
+    pub unreached: bool,
 }
 
 /// A file a job changed: its edit record entry and its line counts.

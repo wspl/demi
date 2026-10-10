@@ -527,6 +527,7 @@ async fn run_on_host(
                 .await
                 .map_err(|error| error.message)?;
             let start = JobStart {
+                id: demi_backend_remote_host::RemoteHost::job_id(),
                 script,
                 cwd: target.path.clone(),
                 env: BTreeMap::new(),

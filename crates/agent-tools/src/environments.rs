@@ -354,6 +354,14 @@ mod tests {
             Box::pin(async { false })
         }
 
+        fn adopt(&self, _: &CommandId, _: &str, _: &str, _: demi_host_interface::JobCaller) {
+            unreachable!("the environments take up no command")
+        }
+
+        fn detach_all(&self) -> LocalBoxFuture<'_, ()> {
+            unreachable!("the environments let go of no command")
+        }
+
         fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {
             self.disposed.set(self.disposed.get() + 1);
             Box::pin(async {})
