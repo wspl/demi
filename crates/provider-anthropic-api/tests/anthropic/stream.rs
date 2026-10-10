@@ -141,22 +141,20 @@ async fn redacted_thinking_is_kept_as_received() {
 }
 
 #[tokio::test]
-async fn a_stream_that_ends_without_message_stop_still_responds_with_its_usage() {
+async fn a_stream_that_ends_without_message_stop_fails_and_keeps_the_text() {
     let events = events_of(recorded(&[
         json!({ "type": "message_start", "message": { "usage": { "input_tokens": 7 } } }),
         delta(0, json!({ "type": "text_delta", "text": "partial" })),
+        json!({ "type": "message_delta", "delta": {}, "usage": { "output_tokens": 3 } }),
     ]))
     .await;
-    let usage = TokenUsage {
-        input_tokens: 7,
-        ..TokenUsage::default()
+    let [ProviderEvent::TextDelta(text), ProviderEvent::Error(failure)] = &events[..] else {
+        panic!("{events:?}");
     };
+    assert_eq!(text, "partial");
     assert_eq!(
-        events,
-        [
-            ProviderEvent::TextDelta("partial".into()),
-            ProviderEvent::Response(usage)
-        ]
+        (failure.message.as_str(), &failure.code),
+        ("The provider's stream ended before the reply was complete", &Some(ErrorCode::Network))
     );
 }
 
@@ -276,17 +274,9 @@ async fn an_error_event_ends_the_run_with_its_classified_failure() {
 }
 
 #[tokio::test]
-async fn every_stop_reason_ends_the_run_with_its_response() {
-    // A stop reason says why the model stopped; it is not a failure, and the
-    // calls a stopped turn made are still the turn's calls.
-    for reason in [
-        "end_turn",
-        "tool_use",
-        "max_tokens",
-        "stop_sequence",
-        "refusal",
-        "pause_turn",
-    ] {
+async fn a_complete_stop_reason_ends_the_run_with_its_response_and_any_other_fails() {
+    // The model finished, so the calls of the reply are the turn's calls.
+    for reason in [Some("end_turn"), Some("tool_use"), Some("stop_sequence"), None] {
         let events = events_of(recorded(&[
             delta(0, json!({ "type": "text_delta", "text": "done" })),
             json!({ "type": "message_delta", "delta": { "stop_reason": reason }, "usage": { "output_tokens": 2 } }),
@@ -303,7 +293,33 @@ async fn every_stop_reason_ends_the_run_with_its_response() {
                 ProviderEvent::TextDelta("done".into()),
                 ProviderEvent::Response(usage)
             ],
-            "{reason}"
+            "{reason:?}"
+        );
+    }
+    // The vendor cut the reply short: a failure with its reason, after the
+    // text that streamed.
+    for (reason, message) in [
+        ("max_tokens", "The reply reached the model's output limit (max_tokens)"),
+        ("model_context_window_exceeded", "The reply reached the model's output limit (model_context_window_exceeded)"),
+        ("refusal", "The provider's filter stopped the reply (refusal)"),
+        ("pause_turn", "The provider ended the reply before it was complete (pause_turn)"),
+    ] {
+        let stopped = json!({ "type": "message_delta", "delta": { "stop_reason": reason }, "usage": { "output_tokens": 2 } });
+        let events = events_of(recorded(&[
+            delta(0, json!({ "type": "text_delta", "text": "half" })),
+            stopped.clone(),
+            message_stop(),
+        ]))
+        .await;
+        let [ProviderEvent::TextDelta(text), ProviderEvent::Error(failure)] = &events[..] else {
+            panic!("{reason}: {events:?}");
+        };
+        assert_eq!(text, "half");
+        assert_eq!((failure.message.as_str(), &failure.code), (message, &Some(ErrorCode::Incomplete)));
+        let diagnostics = failure.diagnostics.as_ref().unwrap();
+        assert_eq!(
+            (diagnostics.source, diagnostics.provider_code.as_deref(), diagnostics.upstream.clone()),
+            (FailureSource::Stream, Some(reason), Some(stopped.to_string()))
         );
     }
 }

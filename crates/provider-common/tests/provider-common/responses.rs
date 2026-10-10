@@ -182,14 +182,15 @@ async fn a_finished_items_text_is_emitted_only_when_no_delta_streamed_it() {
 }
 
 #[tokio::test]
-async fn a_stream_that_ends_without_its_completion_still_responds_with_zero_usage() {
+async fn a_stream_that_ends_without_its_completion_fails_and_keeps_the_text() {
     let events = events(&[json!({ "type": "response.output_text.delta", "delta": "hi" })]).await;
+    let [ProviderEvent::TextDelta(text), ProviderEvent::Error(failure)] = &events[..] else {
+        panic!("{events:?}");
+    };
+    assert_eq!(text, "hi");
     assert_eq!(
-        events,
-        [
-            ProviderEvent::TextDelta("hi".into()),
-            ProviderEvent::Response(TokenUsage::default())
-        ]
+        (failure.message.as_str(), &failure.code),
+        ("The provider's stream ended before the reply was complete", &Some(ErrorCode::Network))
     );
 }
 
@@ -239,15 +240,15 @@ async fn failed_incomplete_and_error_events_end_the_run_classified_and_naming_th
         ),
         (
             json!({ "type": "response.incomplete", "response": { "incomplete_details": { "reason": "max_output_tokens" } } }),
-            "Incomplete Codex response returned, reason: max_output_tokens",
-            Some(ErrorCode::ContextLengthExceeded),
-            None,
+            "The reply reached the model's output limit (max_output_tokens)",
+            Some(ErrorCode::Incomplete),
+            Some("max_output_tokens"),
         ),
         (
             json!({ "type": "response.incomplete", "response": { "incomplete_details": { "reason": "content_filter" } } }),
-            "Incomplete Codex response returned, reason: content_filter",
+            "The provider's filter stopped the reply (content_filter)",
             Some(ErrorCode::Incomplete),
-            None,
+            Some("content_filter"),
         ),
         (
             json!({ "type": "error", "code": "server_error", "message": "backend failed" }),

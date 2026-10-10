@@ -33,7 +33,7 @@ async fn thought_parts_stream_as_thinking_and_a_function_call_emits_its_signatur
         parts(json!([{ "text": "weighing options", "thought": true }])),
         parts(json!([{ "functionCall": { "name": "shell_exec", "args": { "command": "ls" }, "id": "c1" }, "thoughtSignature": "sig-1" }])),
         parts(json!([{ "text": "done" }])),
-        json!({ "usageMetadata": { "promptTokenCount": 10, "candidatesTokenCount": 4, "thoughtsTokenCount": 20, "cachedContentTokenCount": 3 } }),
+        json!({ "candidates": [{ "finishReason": "STOP" }], "usageMetadata": { "promptTokenCount": 10, "candidatesTokenCount": 4, "thoughtsTokenCount": 20, "cachedContentTokenCount": 3 } }),
     ]))
     .await;
     // Thinking is billed apart from the answer, and both are output; the
@@ -107,6 +107,45 @@ async fn a_call_without_an_id_gets_a_new_unique_one() {
         all.iter().all(|id| id.starts_with("shell_exec_")),
         "{all:?}"
     );
+}
+
+#[tokio::test]
+async fn a_stream_that_ends_without_a_finish_reason_fails_and_keeps_the_text() {
+    let events = events_of(chunks(&[
+        parts(json!([{ "text": "expected 200, got" }])),
+        json!({ "usageMetadata": { "promptTokenCount": 10, "candidatesTokenCount": 4 } }),
+    ]))
+    .await;
+    let [ProviderEvent::TextDelta(text), ProviderEvent::Error(failure)] = &events[..] else {
+        panic!("{events:?}");
+    };
+    assert_eq!(text, "expected 200, got");
+    assert_eq!(
+        (failure.message.as_str(), &failure.code),
+        ("The provider's stream ended before the reply was complete", &Some(ErrorCode::Network))
+    );
+}
+
+#[tokio::test]
+async fn a_reply_ended_for_the_output_limit_or_a_filter_fails_with_the_vendors_reason() {
+    for (end, reason, message) in [
+        (json!({ "candidates": [{ "finishReason": "MAX_TOKENS" }] }), "MAX_TOKENS", "The reply reached the model's output limit (MAX_TOKENS)"),
+        (json!({ "candidates": [{ "finishReason": "SAFETY" }] }), "SAFETY", "The provider's filter stopped the reply (SAFETY)"),
+        (json!({ "promptFeedback": { "blockReason": "PROHIBITED_CONTENT" } }), "PROHIBITED_CONTENT", "The provider's filter stopped the reply (PROHIBITED_CONTENT)"),
+        (json!({ "candidates": [{ "finishReason": "MALFORMED_FUNCTION_CALL" }] }), "MALFORMED_FUNCTION_CALL", "The provider ended the reply before it was complete (MALFORMED_FUNCTION_CALL)"),
+    ] {
+        let events = events_of(chunks(&[parts(json!([{ "text": "half" }])), end.clone()])).await;
+        let [ProviderEvent::TextDelta(text), ProviderEvent::Error(failure)] = &events[..] else {
+            panic!("{reason}: {events:?}");
+        };
+        assert_eq!(text, "half");
+        assert_eq!((failure.message.as_str(), &failure.code), (message, &Some(ErrorCode::Incomplete)));
+        let diagnostics = failure.diagnostics.as_ref().unwrap();
+        assert_eq!(
+            (diagnostics.source, diagnostics.provider_code.as_deref(), diagnostics.upstream.clone()),
+            (FailureSource::Stream, Some(reason), Some(end.to_string()))
+        );
+    }
 }
 
 #[tokio::test]
