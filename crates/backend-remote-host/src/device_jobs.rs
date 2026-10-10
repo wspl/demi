@@ -352,6 +352,12 @@ impl DeviceJobs {
             job.away_since = None;
             job.attachments.send_modify(|count| *count += 1);
             job.unreached = kept.ended.as_ref().is_some_and(|end| end.unreached);
+            // A restarted backend, or one whose connection missed a
+            // `job_outliving`, learns from the hello what keeps the job
+            // running after its script.
+            if kept.ended.is_none() {
+                job.shared.outlived_by(kept.outliving.clone());
+            }
             // A job that runs and printed what its consumer did not
             // receive has its kept output read again.
             let missed = kept.output.stdout_bytes > job.seen[0]

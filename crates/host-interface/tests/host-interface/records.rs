@@ -23,7 +23,7 @@ async fn byte_views_deliver_each_stream_once_and_model_looks_repeat_unfinished_l
     tokio::time::advance(std::time::Duration::from_millis(250)).await;
 
     // "hé" is three bytes: a two-byte budget ends before the é, never inside it.
-    let first = record.status(2, None);
+    let first = record.status(2, None, Vec::new());
     assert_eq!(first.stdout.delta, "h");
     assert_eq!(first.stdout.offset, 1);
     assert!(first.stdout.truncated);
@@ -31,9 +31,9 @@ async fn byte_views_deliver_each_stream_once_and_model_looks_repeat_unfinished_l
     assert_eq!(first.output.text, "h");
     assert_eq!(first.output.offset, 0);
     assert_eq!(first.running_ms, 250);
-    assert!(matches!(first.state, CommandState::Running { hint: None }));
+    assert!(matches!(first.state, CommandState::Running { hint: None, .. }));
 
-    let rest = record.status(0, Some("Working".into()));
+    let rest = record.status(0, Some("Working".into()), Vec::new());
     assert_eq!(rest.stdout.delta, "éllo wörld\n");
     assert_eq!(rest.stdout.bytes, "héllo wörld\n".len() as u64);
     assert!(!rest.stdout.truncated);
@@ -54,17 +54,17 @@ async fn byte_views_deliver_each_stream_once_and_model_looks_repeat_unfinished_l
         ]
     );
     assert!(
-        matches!(rest.state, CommandState::Running { hint: Some(ref hint) } if hint == "Working")
+        matches!(rest.state, CommandState::Running { hint: Some(ref hint), .. } if hint == "Working")
     );
 
-    let empty = record.status(0, None);
+    let empty = record.status(0, None, Vec::new());
     assert_eq!(empty.stdout.delta, "");
     assert_eq!(empty.output.chunks, []);
     assert_eq!(empty.idle_ms, 250);
 
     // A view names the line of the merged output its text starts in.
     record.append_output(StreamKind::Stdout, "next\n");
-    let more = record.status(0, None);
+    let more = record.status(0, None, Vec::new());
     assert_eq!((more.output.text.as_str(), more.output.line), ("next\n", 3));
 }
 
@@ -75,7 +75,7 @@ async fn byte_views_deliver_each_stream_once_and_model_looks_repeat_unfinished_l
 fn the_end_gives_the_whole_output_once_with_what_the_model_had_seen() {
     let mut record = new_record();
     record.append_output(StreamKind::Stdout, "head\n");
-    assert_eq!(record.status(0, None).output.text, "head\n");
+    assert_eq!(record.status(0, None, Vec::new()).output.text, "head\n");
     let whole = Arc::new(WholeOutput::new(
         vec![
             OutputRecord::Output(StreamKind::Stdout, Bytes::from_static(b"head\nmore\n")),
@@ -98,7 +98,7 @@ fn the_end_gives_the_whole_output_once_with_what_the_model_had_seen() {
         Vec::new(),
         ""
     ));
-    let exited = record.status(0, None);
+    let exited = record.status(0, None, Vec::new());
     let view = exited.whole.expect("the whole output");
     assert_eq!(view.output, whole);
     assert_eq!(
@@ -116,7 +116,7 @@ fn the_end_gives_the_whole_output_once_with_what_the_model_had_seen() {
             media: Vec::new(),
         }
     );
-    let again = record.status(0, None).whole.expect("the whole output");
+    let again = record.status(0, None, Vec::new()).whole.expect("the whole output");
     assert_eq!(
         again.seen,
         Seen {
@@ -138,7 +138,7 @@ fn a_stop_ends_the_command_aborted_and_one_whose_streams_never_ended_keeps_its_v
         ""
     ));
     assert!(matches!(
-        record.status(0, None).state,
+        record.status(0, None, Vec::new()).state,
         CommandState::Aborted
     ));
 
@@ -146,7 +146,7 @@ fn a_stop_ends_the_command_aborted_and_one_whose_streams_never_ended_keeps_its_v
     let mut record = new_record();
     record.append_output(StreamKind::Stdout, &long);
     record.mark_aborted();
-    let status = record.status(1, None);
+    let status = record.status(1, None, Vec::new());
     assert!(matches!(status.state, CommandState::Aborted));
     assert!(status.whole.is_none());
     assert_eq!(status.stdout.tail.chars().count(), TAIL_CHARS);
@@ -163,7 +163,7 @@ async fn the_pages_view_keeps_the_newest_characters_and_their_count_until_the_en
     assert!(record.append_output(StreamKind::Stdout, "é"));
     assert!(!record.append_output(StreamKind::Stdout, ""));
     // The model's read moves only the model's place.
-    record.status(0, None);
+    record.status(0, None, Vec::new());
     let beyond = "x".repeat(TAIL_CHARS);
     assert!(record.append_page_output(&beyond));
     tokio::time::advance(std::time::Duration::from_millis(40)).await;
@@ -176,7 +176,7 @@ async fn the_pages_view_keeps_the_newest_characters_and_their_count_until_the_en
     );
     // Output only the pages' view holds is not the model's. The model still
     // sees its unfinished line from the previous look.
-    assert_eq!(record.status(0, None).output.text, "é");
+    assert_eq!(record.status(0, None, Vec::new()).output.text, "é");
 
     // The end adds what it brings, once; nothing changes the view after it.
     assert!(record.settle(

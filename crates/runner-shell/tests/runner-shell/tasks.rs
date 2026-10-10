@@ -2,10 +2,17 @@
 //! and timeouts): `$!` names a task by an id above every process ID, which
 //! `kill`, `wait` and `jobs -p` take; `kill` stops the whole task, and
 //! `wait` gives bash's statuses; `timeout` stops its command as `kill` stops
-//! a task, with GNU's statuses.
+//! a task, with GNU's statuses; `disown` and `nohup` keep a task in its job,
+//! which names the tasks that outlive its script.
 
-use demi_runner_shell::testing::{Scope, ShellOptions, execute};
+use demi_runner_process::job_shell::ShellJob;
+use demi_runner_protocol::wire::Signal;
+use demi_runner_shell::{
+    ShellRuntime,
+    testing::{Job, Scope, ShellOptions, execute},
+};
 use std::{fs, path::Path, time::Duration};
+use tokio_util::sync::CancellationToken;
 
 /// Runs `script` as a job in `root`, with the system's programs on `PATH`,
 /// and returns its status, standard output and standard error.
@@ -19,7 +26,7 @@ async fn job(root: &Path, script: &str) -> (u8, String, String) {
         execute(
             script,
             ShellOptions {
-                scope: Scope::new(tokio_util::sync::CancellationToken::new(), None),
+                scope: Scope::new(CancellationToken::new(), None),
                 login: false,
                 cwd: root.into(),
                 env,
@@ -180,4 +187,80 @@ async fn timeout_stops_its_command_with_gnus_statuses() {
             "{script}"
         );
     }
+}
+
+/// Starts `script` as the runner starts a job, with the system's programs
+/// on `PATH`, reads its output until `ready`, waits until the job names the
+/// tasks that keep it running after its script, and stops it with `TERM`;
+/// a task that runs on keeps the job from ending within the hang guard.
+/// Gives what it printed and those tasks; the process whose ID the script
+/// wrote to `leader` is gone.
+#[cfg(unix)]
+async fn stopped_after_its_script(script: &str, ready: &str) -> (String, Vec<String>) {
+    let root = tempfile::tempdir().unwrap();
+    let mut env = super::home(root.path());
+    env.insert("PATH".into(), "/usr/bin:/bin".into());
+    let mut job = Job::start(
+        script.into(),
+        root.path().into(),
+        env,
+        false,
+        Scope::new(CancellationToken::new(), None),
+        &ShellRuntime::current(),
+    )
+    .await
+    .unwrap();
+    let mut read = String::new();
+    crate::jobs::output_until(&mut job, &mut read, ready).await;
+    let mut outliving = job.outliving();
+    let outliving = tokio::time::timeout(
+        Duration::from_secs(60),
+        outliving.wait_for(|tasks| !tasks.is_empty()),
+    )
+    .await
+    .expect("the job names the tasks that outlive its script")
+    .unwrap()
+    .clone();
+    job.signal(Signal::Terminate).unwrap();
+    let exit = tokio::time::timeout(Duration::from_secs(60), job.wait())
+        .await
+        .unwrap();
+    assert_eq!(exit.signal.as_deref(), Some("SIGTERM"));
+    // The job ends once every process it started has.
+    let leader: i32 = fs::read_to_string(root.path().join("leader")).unwrap().trim().parse().unwrap();
+    assert_eq!(unsafe { libc::kill(leader, 0) }, -1, "{leader} survived");
+    (read, outliving)
+}
+
+/// `disown` keeps a task in its job: it succeeds, `jobs -p` still lists the
+/// task, the job runs on after its script while the task does and names it,
+/// and stopping the job stops the task, so no process is left. Before,
+/// `disown` was brush's unimplemented builtin and gave 99. About 0.05 s.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn disown_keeps_a_task_in_its_job() {
+    let task = "/bin/sh -c 'echo $$ > leader; exec /bin/sleep 300'";
+    let script = format!(
+        "{task} & disown; echo \"disown $?\"; jobs -p; \
+         until [ -s leader ]; do sleep 0.01; done; echo ready"
+    );
+    let (read, outliving) = stopped_after_its_script(&script, "ready\n").await;
+    assert_eq!(read, "disown 0\n4194305\nready\n");
+    assert_eq!(outliving, [task]);
+}
+
+/// `nohup` runs its command ignoring `HUP`, as a process of the job: the
+/// command survives the `HUP` it sends itself, the job runs on after its
+/// script while the command does and names it, and stopping the job stops
+/// the command, so no process is left. The Host's own `nohup` does this; a
+/// command that started a session of its own would run on past the stop
+/// and hold the job until the hang guard. About 0.05 s.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nohup_keeps_a_task_in_its_job_and_ignores_hup() {
+    let task = "nohup /bin/sh -c 'echo $$ > leader; kill -HUP $$; echo survived; exec /bin/sleep 300'";
+    let script = format!("{task} & echo started");
+    let (read, outliving) = stopped_after_its_script(&script, "survived\n").await;
+    assert_eq!(read, "started\nsurvived\n");
+    assert_eq!(outliving, [task]);
 }

@@ -156,6 +156,51 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
     backend.close().await;
 }
 
+// About 1.5 s: a real device pairs, and the first call waits out its window
+// of a second.
+//
+// A command whose script has ended but whose background task runs on says
+// so and names the task, in its result and in `demi shell status`, and its
+// stop stops the task. Before, the result said only that the command keeps
+// running, which a model took for a hang.
+#[tokio::test]
+async fn a_command_whose_script_ended_names_the_background_task_that_keeps_it_running() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    create(&backend, &master, CONVERSATION).await;
+    let (_device, _) = on_device(&harness, &backend, &master, CONVERSATION).await;
+    let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
+    let line = "the script has ended; its background task \"sleep 30\" keeps the command running, and stopping the command stops it";
+
+    let started = work
+        .turn(vec![shell("t1", "sleep 30 & echo started", 1_000), say("running")])
+        .await;
+    let result = &started.received[0];
+    assert!(result.starts_with("status: running"), "{result}");
+    assert!(result.contains(&format!("output:\nstarted\n{line}\nnext: ")), "{result}");
+    let command = field(result, "commandId").to_owned();
+
+    let look = format!("demi shell status {command}");
+    let looked = work
+        .turn(vec![shell("t2", &look, 30_000), say("looked")])
+        .await;
+    let shown = shown_output(&looked.received[0]);
+    assert!(shown.starts_with("status: running"), "{shown}");
+    assert!(shown.contains(&format!("\n{line}\n")), "{shown}");
+
+    let stop = format!("demi shell stop {command}");
+    let stopped = work
+        .turn(vec![shell("t3", &stop, 30_000), say("stopped")])
+        .await;
+    assert_eq!(
+        shown_output(&stopped.received[0]),
+        format!("[command {command} stopped]\n")
+    );
+    backend.close().await;
+}
+
 // A few seconds: a real device installs the builtin package, and one turn
 // runs a shell job.
 //

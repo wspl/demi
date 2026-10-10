@@ -933,6 +933,12 @@ impl RemoteJob {
         self.shared.running_hint()
     }
 
+    /// The background tasks that keep the job running once its script has
+    /// ended, by their command lines; empty while the script runs.
+    pub fn outliving(&self) -> Vec<String> {
+        self.shared.outliving()
+    }
+
     pub fn ended(&self) -> Option<JobEnd> {
         self.shared.ended()
     }

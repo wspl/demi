@@ -268,6 +268,10 @@ impl ShellJob for Job {
         self.cancel.is_cancelled()
     }
 
+    fn outliving(&self) -> tokio::sync::watch::Receiver<Vec<String>> {
+        self.scope.work.outliving()
+    }
+
     /// `KILL` ends the job at once; the other signals that end a job stop
     /// it the first way (`runner.md` § Cancellation and completion): its
     /// shell work ends at its next step, every process group it started
