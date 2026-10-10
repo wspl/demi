@@ -429,7 +429,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     // A Cloud's temporary directory, which its runner's `TMPDIR` names,
     // starts each boot empty (`managed-hosts.md` § Images).
     if boot.is_some() {
-        empty(Path::new(TEMPORARY_DIRECTORY)).await;
+        prepare_temporary(Path::new(TEMPORARY_DIRECTORY)).await;
     }
     let installation_directory = directory.clone();
     // A Cloud's runner reaches its backend through the socket the machine
@@ -525,11 +525,20 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     }
 }
 
-/// Removes everything in `directory`, which stays; what cannot go is logged,
-/// since a file left behind only takes space.
-async fn empty(directory: &Path) {
+/// Makes `directory` when it is missing and removes everything in it, which
+/// stays. A Cloud pinned to a base from before the image made the directory
+/// has only its parent, `/var/lib/demi`, which is the `demi` user's and
+/// private to it, so the directory made in it is private too. What cannot go
+/// is logged, since a file left behind only takes space; a directory that
+/// cannot be made is logged too, and the first temporary file fails with its
+/// reason.
+async fn prepare_temporary(directory: &Path) {
     let directory = directory.to_owned();
     let emptied = tokio::task::spawn_blocking(move || {
+        if let Err(error) = std::fs::create_dir_all(&directory) {
+            tracing::warn!(directory = %directory.display(), "the temporary directory could not be made: {error}");
+            return;
+        }
         let entries = match std::fs::read_dir(&directory) {
             Ok(entries) => entries,
             Err(error) => {
