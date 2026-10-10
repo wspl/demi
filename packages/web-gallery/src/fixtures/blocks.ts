@@ -755,7 +755,7 @@ export const yieldCommandsTool = toolCall({
   status: 'completed',
   input: JSON.stringify({ durationMs: 900_000, commandIds: [17] }),
   output: [{ type: 'text', text: 'yield scheduled\ndurationMs: 900000\ncommandIds: 17' }],
-  view: { kind: 'yield_wakeup', wakeupId: 'wk-build', durationMs: 900_000, commandIds: ['17'] },
+  view: null,
 })
 
 /** A look at the login test without a title of its own: it names the command and shows what it found. */
@@ -1058,10 +1058,11 @@ export function lookAndWaitBlocks(): Block[] {
     toolName: 'yield',
     status: 'completed',
     input: JSON.stringify({ durationMs: 600_000, commandIds: [commandId] }),
-    view: { kind: 'yield_wakeup', wakeupId: `${id}-wakeup`, durationMs: 600_000, commandIds: [String(commandId)] },
+    view: null,
   })
   const wakeup = (id: string, at: number): Block => ({
     type: 'wakeup', id, turnId: `${id}-turn`, createdAt: iso(at), model: demoModel, placement: 'new_turn',
+    text: 'Command 51 (Run the end-to-end suite) ended with exit code 0; look at it with demi shell status 51.',
   })
   return [
     user('look-start', 900_000, 'Run the end-to-end suite.'),
