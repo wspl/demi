@@ -167,6 +167,53 @@ fn a_reference_after_the_tab_is_the_element_and_key_takes_its_key_positionally()
     );
     assert!(
         refused(&["click", TAB, "--exact", "false"])
-            .contains("  tip: --exact alone is true; write --exact=false for false\n")
+            .starts_with("error: unexpected argument 'false' found; --exact alone is true; write --exact=false for false\n")
     );
+}
+
+/// `eval` takes a short expression as its last positional, as models write
+/// it, or statements from stdin; the token after the tab is the ref when it
+/// reads as one (`browser.md` § Evaluation, console, and viewport). Before,
+/// `eval t1 'getComputedStyle(…)'` failed as a ref that does not match
+/// "^e[1-9][0-9]{0,14}$", and a model read the regular expression to learn
+/// what it had done wrong.
+#[test]
+fn eval_takes_its_expression_as_the_last_positional_or_from_stdin() {
+    let root = roots(Browser::new().manifest()).remove(0);
+    let eval = |line: &[&str], stdin: Option<&str>| {
+        let mut argv = vec!["browser", "eval", TAB];
+        argv.extend(line);
+        parse(&root, &argv, stdin).map(|parsed| serde_json::Value::Object(parsed.values))
+    };
+    let style = "getComputedStyle(document.documentElement).backgroundColor";
+    // Given as the positional, the expression comes from argv and stdin is
+    // not read: the runner passes no body.
+    assert_eq!(
+        eval(&[style], None).unwrap(),
+        serde_json::json!({"tab": TAB, "expression": style})
+    );
+    assert_eq!(
+        eval(&["e21"], Some("element.value")).unwrap(),
+        serde_json::json!({"tab": TAB, "ref": "e21", "expression": "element.value"})
+    );
+    assert_eq!(
+        eval(&["e21", "element.value"], None).unwrap(),
+        serde_json::json!({"tab": TAB, "ref": "e21", "expression": "element.value"})
+    );
+    // A value that does not match a pattern is named with what the pattern
+    // stands for, never the expression.
+    let refused = eval(&["foo", "element.id"], None).unwrap_err().to_string();
+    let lines: Vec<&str> = refused.lines().collect();
+    assert_eq!(lines[0], "error: \"foo\" is not a ref, such as e12");
+    assert!(lines[1].starts_with("Usage: demi browser eval <tab> [<ref>] [<expression>] "), "{refused}");
+    assert!(lines[1].ends_with("; more with --help") && lines.len() == 2, "{refused}");
+    assert!(
+        parse(&root, &["browser", "info", "tab1"], None)
+            .unwrap_err()
+            .to_string()
+            .starts_with("error: \"tab1\" is not a tab ID, such as t1\n"),
+    );
+    let help = help(&root, &["browser", "eval"]);
+    assert!(help.contains("  demi browser eval <tab> [<ref>] [<expression>] "), "{help}");
+    assert!(help.contains("Stdin body: expression, not read when given as <expression>"), "{help}");
 }

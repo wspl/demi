@@ -295,7 +295,7 @@ fn manifests_verify_their_packages_bindings_and_hash() {
     // A received tree follows the declaration rules, whatever built it.
     let mut contradictory = manifest();
     contradictory["roots"]["fixture"]["tree"]["subcommands"][0]["positionals"] =
-        json!(["path", "body"]);
+        json!(["body", "path"]);
     let error = Manifest::parse(contradictory).unwrap_err().to_string();
     assert!(error.contains("multiple input sources for body"), "{error}");
 }
@@ -400,7 +400,7 @@ fn a_built_manifest_pins_its_native_commands_and_hashes_as_the_recorded_one() {
     assert!(refusal(vec![], twice).contains("duplicate command package"));
     let contradictory = declaration(json!({"name": "note", "summary": "Note", "kind": "rpc",
         "input": {"type": "object", "properties": {"text": {"type": "string"}}},
-        "positionals": ["text"], "stdinField": "text"}));
+        "positionals": ["text"], "restField": "text"}));
     assert!(refusal(vec![contradictory], vec![]).contains("multiple input sources for text"));
 
     // The hash covers every declaration and every descriptor, since a runner

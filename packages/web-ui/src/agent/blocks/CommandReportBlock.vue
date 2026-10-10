@@ -6,7 +6,7 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import FunctionalBlock from './FunctionalBlock.vue'
 import CommandEndTag from './CommandEndTag.vue'
 import ToolMedia from './ToolMedia.vue'
-import { reportMark, reportSentence, useCommandOpener } from '../command-reports'
+import { reportMark, reportOutcome, reportTitle, useCommandOpener } from '../command-reports'
 import { toolMedia } from '../tool-media'
 
 /**
@@ -22,7 +22,8 @@ const props = defineProps<{ reports: readonly CommandReport[] }>()
 const open = useCommandOpener()
 const rows = computed(() => props.reports.map((report, index) => ({
   key: `${report.commandId}:${index}`,
-  sentence: reportSentence(report),
+  title: reportTitle(report),
+  outcome: reportOutcome(report),
   mark: reportMark(report),
   action: open(report.commandId),
   media: toolMedia(report.media ?? [], report.title),
@@ -39,7 +40,9 @@ const rows = computed(() => props.reports.map((report, index) => ({
         <template #icon>
           <SquareTerminal :size="ICON_PX.in28" />
         </template>
-        <span class="min-w-0 truncate">{{ row.sentence }}</span>
+        <!-- The outcome is set apart from the title, as a row's secondary text is, and stays whole while a long title truncates. -->
+        <span class="min-w-0 truncate">{{ row.title }}</span>
+        <span class="-ml-1 shrink-0 text-fg-subtle">· {{ row.outcome }}</span>
         <CommandEndTag v-if="row.mark" :mark="row.mark" />
       </FunctionalBlock>
       <ToolMedia :media="row.media" />
