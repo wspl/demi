@@ -1,4 +1,4 @@
-import type { AgentMessage, Block, EditedFile, ModelSelection, ToolResultContentBlock, UserContentBlock } from '@demicodes/protocol'
+import type { AgentMessage, Block, CommandReport, EditedFile, ModelSelection, ToolResultContentBlock, UserContentBlock } from '@demicodes/protocol'
 import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { ShellToolView as ShellView, ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import { editCopies, galleryBlobSize, galleryBlobs, missingBlob } from './blobs'
@@ -6,7 +6,7 @@ import { editCopies, galleryBlobSize, galleryBlobs, missingBlob } from './blobs'
 export type { ShellView }
 
 /**
- * A complete shell view, the shape `shell_exec` writes and every reader
+ * A complete shell view, the shape `shell` writes and every reader
  * validates. A specimen names only the parts it is about; the rest is what a
  * finished command leaves behind.
  */
@@ -190,7 +190,7 @@ Let me search the test for the old name first.`
 
 export const shellTool = toolCall({
   id: 'tool-shell',
-  toolName: 'shell_exec',
+  toolName: 'shell',
   status: 'completed',
   input: JSON.stringify({
     script: 'rg -n "sid" packages/web/src',
@@ -219,7 +219,7 @@ export const shellTool = toolCall({
  */
 export const returnedShellTool = toolCall({
   id: 'tool-shell-returned',
-  toolName: 'shell_exec',
+  toolName: 'shell',
   status: 'completed',
   input: JSON.stringify({ script: 'bun test src/auth.test.ts', description: 'Run the auth tests' }),
   view: shellView({
@@ -235,7 +235,7 @@ export const returnedShellTool = toolCall({
  */
 export const returnedFailingShellTool = toolCall({
   id: 'tool-shell-returned-failing',
-  toolName: 'shell_exec',
+  toolName: 'shell',
   status: 'completed',
   input: JSON.stringify({ script: 'bun run typecheck --watch', description: 'Watch the type check' }),
   view: shellView({
@@ -257,7 +257,7 @@ export const RUNNING_SHELL_DESCRIPTION = 'Run the login test'
 
 export const runningShellTool = toolCall({
   id: 'tool-shell-run',
-  toolName: 'shell_exec',
+  toolName: 'shell',
   status: 'executing',
   input: JSON.stringify({
     script: RUNNING_SHELL_SCRIPT,
@@ -277,7 +277,7 @@ export const runningShellTool = toolCall({
  */
 export const longScriptShellTool = toolCall({
   id: 'tool-shell-script',
-  toolName: 'shell_exec',
+  toolName: 'shell',
   status: 'completed',
   input: JSON.stringify({
     script: [
@@ -323,7 +323,7 @@ export const longScriptShellTool = toolCall({
  */
 export const longLineShellTool = toolCall({
   id: 'tool-shell-long-line',
-  toolName: 'shell_exec',
+  toolName: 'shell',
   status: 'completed',
   input: JSON.stringify({
     script: [
@@ -353,7 +353,7 @@ export const longLineShellTool = toolCall({
 
 export const editingShellTool = toolCall({
   id: 'tool-shell-edit',
-  toolName: 'shell_exec',
+  toolName: 'shell',
   status: 'completed',
   input: JSON.stringify({
     script: 'sed -i "s/sid/session/" packages/web/src/auth.test.ts && bun test packages/web/src/auth.test.ts',
@@ -463,7 +463,7 @@ function returnedMediaCall(
 
 /** A screenshot the agent took, under its call (`file-previews.md` § Media a tool returned). */
 export const screenshotTool = returnedMediaCall(
-  { id: 'tool-screenshot', toolName: 'shell_exec', input: screenshotInput },
+  { id: 'tool-screenshot', toolName: 'shell', input: screenshotInput },
   '17',
   [{ tab: 't1', width: 480, height: 300, bytes: 15_822, medium: blobImage(galleryBlobs.screenshot) }],
 )
@@ -475,7 +475,7 @@ export const screenshotTool = returnedMediaCall(
 export const screenshotsTool = returnedMediaCall(
   {
     id: 'tool-screenshots',
-    toolName: 'shell_exec',
+    toolName: 'shell',
     input: JSON.stringify({
       script: 'for t in t1 t2 t3; do demi browser screenshot "$t"; done',
       description: 'Compare the login page in three tabs',
@@ -494,7 +494,7 @@ export const screenshotsTool = returnedMediaCall(
 export const fullPageTool = binaryStdoutCall(
   {
     id: 'tool-full-page',
-    toolName: 'shell_exec',
+    toolName: 'shell',
     input: JSON.stringify({
       script: 'demi browser screenshot t1 --full-page | convert - -strip png:-',
       description: 'Capture the whole login page',
@@ -510,7 +510,7 @@ export const fullPageTool = binaryStdoutCall(
 export const wideImageTool = binaryStdoutCall(
   {
     id: 'tool-wide-image',
-    toolName: 'shell_exec',
+    toolName: 'shell',
     input: JSON.stringify({
       script: 'cat out/timeline.png',
       description: 'Show the timeline of the run',
@@ -526,7 +526,7 @@ export const wideImageTool = binaryStdoutCall(
 export const smallImageTool = binaryStdoutCall(
   {
     id: 'tool-small-image',
-    toolName: 'shell_exec',
+    toolName: 'shell',
     input: JSON.stringify({
       script: 'cat public/favicon.png',
       description: 'Show the favicon',
@@ -545,7 +545,7 @@ export const smallImageTool = binaryStdoutCall(
 export const recordingTool = binaryStdoutCall(
   {
     id: 'tool-recording',
-    toolName: 'shell_exec',
+    toolName: 'shell',
     input: JSON.stringify({
       script: 'cat out/checkout.webm',
       description: 'Show the recording of the checkout flow',
@@ -564,7 +564,7 @@ export const recordingTool = binaryStdoutCall(
 export const unsizedRecordingTool = binaryStdoutCall(
   {
     id: 'tool-recording-unsized',
-    toolName: 'shell_exec',
+    toolName: 'shell',
     input: JSON.stringify({
       script: 'cat out/demo.mp4',
       description: 'Show the demo of the checkout',
@@ -576,24 +576,30 @@ export const unsizedRecordingTool = binaryStdoutCall(
   { type: 'video', source: { type: 'ref', ref: galleryBlobs.unsizedRecording, mediaType: 'video/mp4' } },
 )
 
-/** A command that exited after its call returned: the status call that saw the exit carries the picture. */
-export const statusImageTool = binaryStdoutCall(
-  {
-    id: 'tool-status-image',
-    toolName: 'shell_status',
-    input: JSON.stringify({ commandId: 'cmd-chart', description: 'Check the latency chart' }),
-  },
-  'cmd-chart',
-  16_078,
-  'image/png',
-  blobImage(galleryBlobs.chart),
-)
+/**
+ * A command that exited after its call returned: the look that saw the end,
+ * a `shell` call that runs `demi shell status`, carries the picture it viewed.
+ */
+export const statusImageTool = toolCall({
+  id: 'tool-status-image',
+  toolName: 'shell',
+  status: 'completed',
+  input: JSON.stringify({ script: 'demi shell status 24', description: 'Check the latency chart', intervalMs: 15_000 }),
+  output: [
+    { type: 'text', text: 'status: exited\nexitCode: 0\ncommandId: 25\noutput:\nstatus: exited\nexitCode: 0\ncommandId: 24\noutput:\n[image 1: image/png, 16078 bytes]\n' },
+    blobImage(galleryBlobs.chart),
+  ],
+  view: shellView({
+    commandId: '25',
+    chunks: [{ stream: 'stdout', text: 'status: exited\nexitCode: 0\ncommandId: 24\noutput:\n[image 1: image/png, 16078 bytes]\n' }],
+  }),
+})
 
 /** A recording whose bytes could not be stored: in its place, the part that says so and why. */
 export const notStoredVideoTool = binaryStdoutCall(
   {
     id: 'tool-recording-not-stored',
-    toolName: 'shell_exec',
+    toolName: 'shell',
     input: JSON.stringify({
       script: 'cat out/checkout.webm',
       description: 'Show the recording of the checkout flow',
@@ -612,7 +618,7 @@ export const notStoredVideoTool = binaryStdoutCall(
 
 /** A screenshot whose blob the page cannot load. */
 export const missingImageTool = returnedMediaCall(
-  { id: 'tool-screenshot-missing', toolName: 'shell_exec', input: screenshotInput },
+  { id: 'tool-screenshot-missing', toolName: 'shell', input: screenshotInput },
   '11',
   [{ tab: 't1', width: 480, height: 300, bytes: 15_822, medium: blobImage(missingBlob) }],
 )
@@ -625,7 +631,7 @@ function fileChangeCase(
 ): ToolCallBlock {
   return toolCall({
     id: `tool-files-${id}`,
-    toolName: 'shell_exec',
+    toolName: 'shell',
     status,
     input: JSON.stringify({ script: `demi-edit ${id}`, description }),
     view: shellView({
@@ -755,7 +761,7 @@ export function changesDemoBlocks(): Block[] {
     binaryStdoutCall(
       {
         id: 'changes-snapshot-diff',
-        toolName: 'shell_exec',
+        toolName: 'shell',
         input: JSON.stringify({
           script: 'bun scripts/snapshot-diff.ts login && cat out/login-diff.png',
           description: 'Compare the login snapshot before and after',
@@ -774,115 +780,195 @@ export function changesDemoBlocks(): Block[] {
   ]
 }
 
-export const yieldTool = toolCall({
-  id: 'tool-yield',
-  toolName: 'yield',
-  status: 'completed',
-  input: JSON.stringify({ durationMs: 600_000, description: 'Check the build when it ends' }),
-})
+/**
+ * What `demi shell status <commandId>` prints of a command, as a look's own
+ * command shows it in its output.
+ */
+function statusText(commandId: string, status: 'running' | 'exited', output: string): string {
+  return status === 'running'
+    ? `status: running\ncommandId: ${commandId}\noutput:\n${output}`
+    : `status: exited\nexitCode: 0\ncommandId: ${commandId}\noutput:\n${output}`
+}
 
-/** A wait for the login test's end, which names it as a reference to its call. */
-export const yieldCommandsTool = toolCall({
-  id: 'tool-yield-commands',
-  toolName: 'yield',
-  status: 'completed',
-  input: JSON.stringify({ durationMs: 900_000, commandIds: [17] }),
-  output: [{ type: 'text', text: 'yield scheduled\ndurationMs: 900000\ncommandIds: 17' }],
-  view: null,
-})
+/**
+ * A `shell` call whose script only looks at a command with `demi shell
+ * status`: a call of its own, titled by its description, whose command
+ * printed what it saw.
+ */
+function lookCall(
+  id: string,
+  description: string,
+  looked: string,
+  ownCommandId: string,
+  seen: string,
+  at = 120_000,
+): ToolCallBlock {
+  return toolCall({
+    id,
+    createdAt: iso(at),
+    toolName: 'shell',
+    status: 'completed',
+    input: JSON.stringify({ script: `demi shell status ${looked}`, description, intervalMs: 15_000 }),
+    view: shellView({ commandId: ownCommandId, chunks: [{ stream: 'stdout', text: seen }] }),
+  })
+}
 
-/** A look at the login test without a title of its own: it names the command and shows what it found. */
-export const statusTool = toolCall({
-  id: 'tool-status',
-  toolName: 'shell_status',
-  status: 'completed',
-  input: JSON.stringify({ commandId: 17 }),
-  view: shellView({ commandId: '17', status: 'running', chunks: [] }),
-})
+/** A look at the login test: the script only runs `demi shell status 17`. */
+export const lookTool = lookCall(
+  'tool-look',
+  'Check the login test',
+  '17',
+  '20',
+  statusText('17', 'running', '✓ auth.test.ts > signs in (12 ms)\n'),
+)
 
-/** A look that answers the prompt the command waits for. */
+/** An answer to the prompt the login test waits for, then a look at what it did with it. */
 export const inputTool = toolCall({
   id: 'tool-input',
-  toolName: 'shell_status',
+  toolName: 'shell',
   status: 'completed',
-  input: JSON.stringify({ commandId: 17, stdin: 'r\n', description: 'Rerun the failed tests' }),
-  view: shellView({ commandId: '17', status: 'running', chunks: [] }),
+  input: JSON.stringify({
+    script: "demi shell input 17 <<'EOF'\nr\nEOF\ndemi shell status 17",
+    description: 'Rerun the failed tests',
+    intervalMs: 15_000,
+  }),
+  view: shellView({
+    commandId: '21',
+    chunks: [{ stream: 'stdout', text: statusText('17', 'running', 'Rerunning 1 failed test\n') }],
+  }),
 })
 
 /** A stop of the login test, which a command of the shell does. */
 export const stopTool = toolCall({
   id: 'tool-stop',
-  toolName: 'shell_exec',
+  toolName: 'shell',
   status: 'completed',
   input: JSON.stringify({
     script: 'demi shell stop 17',
     description: 'Stop the login test',
-    timeoutMs: 10_000,
+    intervalMs: 15_000,
   }),
   view: shellView({
-    commandId: '21',
+    commandId: '22',
     chunks: [{ stream: 'stdout', text: '[command 17 stopped]\n' }],
   }),
 })
 
-/** The look after the stop: the command it names was stopped. */
-export const stoppedLookTool = toolCall({
-  id: 'tool-stopped-look',
-  toolName: 'shell_status',
-  status: 'completed',
-  input: JSON.stringify({ commandId: 17 }),
-  view: shellView({ commandId: '17', status: 'aborted', chunks: [] }),
+/**
+ * A command that failed: its result is an error to the model, and its row
+ * says so with its tag, and in words above its output once opened.
+ */
+export const errorTool = toolCall({
+  id: 'tool-error',
+  toolName: 'shell',
+  status: 'error',
+  input: JSON.stringify({ script: 'rm /tmp/demi.lock', description: 'Remove the stale lock file', intervalMs: 15_000 }),
+  output: [{ type: 'text', text: "status: exited\nexitCode: 1\ncommandId: 23\noutput:\nrm: cannot remove '/tmp/demi.lock': Permission denied\n" }],
+  view: shellView({
+    commandId: '23',
+    exitCode: 1,
+    chunks: [{ stream: 'stderr', text: "rm: cannot remove '/tmp/demi.lock': Permission denied\n" }],
+  }),
 })
 
 /**
- * The calls the reference specimens show: commands that succeeded, failed,
- * were stopped or still run, one with a title too long for a narrow row,
- * and the looks and waits that name them.
+ * The calls the end specimens show: commands that succeeded, failed, were
+ * stopped or still run, one with a title too long for a narrow row, looks
+ * at them, and calls that ran nothing: the repeat guard's and a refused
+ * input's.
  */
-export function commandReferenceBlocks(): Block[] {
+export function commandEndBlocks(): ToolCallBlock[] {
   type End = { status: 'exited', exitCode: number } | { status: 'running' | 'aborted' }
-  const exec = (id: string, commandId: string, description: string, end: End) => toolCall({
+  const failed = (end: End) => end.status === 'aborted' || (end.status === 'exited' && end.exitCode !== 0)
+  const run = (id: string, commandId: string, description: string, end: End) => toolCall({
     id,
-    toolName: 'shell_exec',
-    status: 'completed',
-    input: JSON.stringify({ script: 'bun test', description, timeoutMs: 2_000 }),
+    toolName: 'shell',
+    status: failed(end) ? 'error' : 'completed',
+    input: JSON.stringify({ script: 'bun test', description, intervalMs: 15_000 }),
+    output: [{ type: 'text', text: `status: ${end.status}\ncommandId: ${commandId}\noutput:\n` }],
     view: shellView({ commandId, ...end, chunks: [] }),
   })
-  const look = (id: string, input: Record<string, unknown>, end: End) => toolCall({
-    id,
-    toolName: 'shell_status',
-    status: 'completed',
-    input: JSON.stringify(input),
-    view: shellView({ commandId: String(input.commandId), ...end, chunks: [] }),
-  })
   return [
-    exec('ref-short', '31', 'Run the first short sleep', { status: 'exited', exitCode: 0 }),
-    exec('ref-long', '32', 'Run the whole test suite and collect coverage for every package in the workspace', { status: 'running' }),
-    exec('ref-failed', '33', 'Run the login test', { status: 'exited', exitCode: 1 }),
-    exec('ref-stopped-run', '34', 'Start the dev server', { status: 'aborted' }),
-    look('ref-look', { commandId: 31 }, { status: 'exited', exitCode: 0 }),
-    look('ref-look-failed', { commandId: 33 }, { status: 'exited', exitCode: 1 }),
-    look('ref-input', { commandId: 32, stdin: 'y\n' }, { status: 'running' }),
+    run('end-short', '31', 'Run the first short sleep', { status: 'exited', exitCode: 0 }),
+    run('end-long', '32', 'Run the whole test suite and collect coverage for every package in the workspace', { status: 'running' }),
+    run('end-failed', '33', 'Run the login test', { status: 'exited', exitCode: 1 }),
+    run('end-stopped', '34', 'Start the dev server', { status: 'aborted' }),
+    lookCall('end-look', 'Check the first short sleep', '31', '35', statusText('31', 'exited', 'slept 2 s\n')),
+    lookCall('end-look-several', 'Check the test suite and the dev server', '32 34', '36', statusText('32', 'running', '[412/980] packages/web\n')),
     toolCall({
-      id: 'ref-wait',
-      toolName: 'yield',
-      status: 'completed',
-      input: JSON.stringify({ durationMs: 600_000, commandIds: [32, 31] }),
+      id: 'end-repeated',
+      toolName: 'shell',
+      status: 'error',
+      input: JSON.stringify({ script: 'demi shell status 32', description: 'Check the test suite again', intervalMs: 15_000 }),
+      output: [{ type: 'text', text: 'Repeated identical shell call suppressed.\nThe same script has been run 7 consecutive times in this agent session.\nInspect the previous output, use a different command, or provide the final answer instead of repeating it.' }],
+      view: { kind: 'repeated_shell', script: 'demi shell status 32', count: 7 },
     }),
-    look('ref-stopped', { commandId: 34 }, { status: 'aborted' }),
-    look('ref-long-failed', { commandId: 32 }, { status: 'exited', exitCode: 2 }),
-    // A command of another agent's transcript: its title, without a jump.
-    look('ref-other', { commandId: 40 }, { status: 'exited', exitCode: 0 }),
-  ] as Block[]
+    toolCall({
+      id: 'end-refused',
+      toolName: 'shell',
+      status: 'error',
+      input: JSON.stringify({ script: 'bun run lint', intervalMs: 15_000 }),
+      output: [{ type: 'text', text: 'shell input is invalid:\nmissing field `description`' }],
+    }),
+  ]
 }
 
-export const errorTool = toolCall({
-  id: 'tool-error',
-  toolName: 'shell_exec',
-  status: 'error',
-  input: JSON.stringify({ script: 'false', description: 'Remove the stale lock file' }),
-  output: [{ type: 'text', text: 'exit 1\npermission denied: /tmp/locked\n' }],
-})
+/** A report of `commandId`, whose call is titled `title`. */
+function report(commandId: string, title: string, event: CommandReport['event'], output = ''): CommandReport {
+  return { commandId, title, event, output }
+}
+
+const suite = 'Run the test suite'
+
+/**
+ * The reports the report-row specimens show, one of each event (`runtime.md`
+ * § Command reports), by the specimen's variant.
+ */
+export function commandReportCases(): { variant: string, reports: CommandReport[] }[] {
+  return [
+    { variant: 'still running', reports: [report('17', suite, { kind: 'running', runningMs: 300_000, idleMs: 12_000, intervalMs: 300_000 }, '[412/980] packages/web')] },
+    { variant: 'ended', reports: [report('17', suite, { kind: 'ended', exitCode: 0 }, '980 passed (6m 2s)')] },
+    { variant: 'ended with a failure', reports: [report('17', suite, { kind: 'ended', exitCode: 1 }, 'FAIL auth.test.ts')] },
+    { variant: 'stopped by you', reports: [report('18', 'Start the dev server', { kind: 'stopped', by: { kind: 'user' } })] },
+    { variant: 'stopped by another agent', reports: [report('19', 'Watch the type check', { kind: 'stopped', by: { kind: 'agent', number: 2 } })] },
+    { variant: 'lost', reports: [report('20', 'Serve the docs', { kind: 'lost', reason: 'its Host’s connection ended' })] },
+    { variant: 'a call whose title is not known', reports: [report('21', '', { kind: 'ended', exitCode: 2 })] },
+  ]
+}
+
+/** Reports that arrived together, one block, one row each; the last title is too long for a narrow row. */
+export function severalReports(): CommandReport[] {
+  return [
+    report('17', suite, { kind: 'ended', exitCode: 1 }, 'FAIL auth.test.ts'),
+    report('18', 'Start the dev server', { kind: 'stopped', by: { kind: 'user' } }),
+    report('22', 'Build the documentation site with every locale and the API reference', { kind: 'running', runningMs: 600_000, idleMs: 0, intervalMs: 600_000 }),
+  ]
+}
+
+/**
+ * Calls of tools the runtime no longer has, as a conversation from before
+ * they were removed keeps them: a look and a wait, each a generic tool card
+ * (`runtime.md` § Rendering boundary).
+ */
+export function removedToolBlocks(): ToolCallBlock[] {
+  return [
+    toolCall({
+      id: 'removed-status',
+      toolName: 'shell_status',
+      status: 'completed',
+      input: JSON.stringify({ commandId: 17 }),
+      output: [{ type: 'text', text: statusText('17', 'running', '✓ auth.test.ts > signs in (12 ms)\n') }],
+      view: shellView({ commandId: '17', status: 'running', chunks: [] }),
+    }),
+    toolCall({
+      id: 'removed-yield',
+      toolName: 'yield',
+      status: 'completed',
+      input: JSON.stringify({ durationMs: 600_000, commandIds: [17] }),
+      output: [{ type: 'text', text: 'yield scheduled\ndurationMs: 600000\ncommandIds: 17' }],
+    }),
+  ]
+}
 
 /** One request and one answer: enough history for a failure to keep on screen. */
 export function shortTranscriptBlocks(): Block[] {
@@ -981,12 +1067,9 @@ export function transcriptDemoBlocks(): Block[] {
     },
     runningShellTool as Block,
     editingShellTool as Block,
-    statusTool as Block,
+    lookTool as Block,
     inputTool as Block,
-    yieldTool as Block,
-    yieldCommandsTool as Block,
     stopTool as Block,
-    stoppedLookTool as Block,
     errorTool as Block,
     {
       type: 'compaction_boundary',
@@ -1053,12 +1136,15 @@ export function transcriptDemoBlocks(): Block[] {
 }
 
 /**
- * Runs that start no command, and one that does (`runtime.md` § Work
- * groups): the agent starts the end-to-end suite, then, asked, only looks
- * at it, only waits for its end, and runs it again and waits. Each run's
- * row reads what it did: Checked 1 command, Waited, Ran 1 command, waited.
+ * Runs that only check a command, and ones that run one too (`runtime.md`
+ * § Work groups): the agent starts the end-to-end suite and ends its turn;
+ * asked, it checks the suite twice; the suite's end report wakes it, a row
+ * of its own, and carries the suite's last lines, so the agent answers
+ * without a look; asked again, it runs the suite once more and checks the
+ * first run's log. The groups read Checked 1 command and Ran 1 command,
+ * checked 1 command.
  */
-export function lookAndWaitBlocks(): Block[] {
+export function commandLookBlocks(): Block[] {
   const user = (id: string, at: number, text: string): Block => ({
     type: 'user', id, turnId: `${id}-turn`, createdAt: iso(at), model: demoModel,
     content: [{ type: 'text', text }], preamble: null,
@@ -1072,52 +1158,33 @@ export function lookAndWaitBlocks(): Block[] {
   const run = (id: string, at: number, commandId: string): Block => toolCall({
     id,
     createdAt: iso(at),
-    toolName: 'shell_exec',
+    toolName: 'shell',
     status: 'completed',
-    input: JSON.stringify({ script: 'bun run e2e', description: 'Run the end-to-end suite', timeoutMs: 5_000 }),
+    input: JSON.stringify({ script: 'bun run e2e', description: 'Run the end-to-end suite', intervalMs: 300_000 }),
     view: shellView({ commandId, status: 'running', chunks: [{ stream: 'stdout', text: 'Running 140 specs\n' }] }),
   })
-  const look = (id: string, at: number, output: string): Block => toolCall({
-    id,
-    createdAt: iso(at),
-    toolName: 'shell_status',
-    status: 'completed',
-    input: JSON.stringify({ commandId: 51 }),
-    view: shellView({ commandId: '51', status: 'running', chunks: [{ stream: 'stdout', text: output }] }),
-  })
-  const wait = (id: string, at: number, commandId: number): Block => toolCall({
-    id,
-    createdAt: iso(at),
-    toolName: 'yield',
-    status: 'completed',
-    input: JSON.stringify({ durationMs: 600_000, commandIds: [commandId] }),
-    view: null,
-  })
-  const wakeup = (id: string, at: number): Block => ({
-    type: 'wakeup', id, turnId: `${id}-turn`, createdAt: iso(at), model: demoModel, placement: 'new_turn',
-    text: 'Command 51 (Run the end-to-end suite) ended with exit code 0; look at it with demi shell status 51.',
-  })
+  const look = (id: string, at: number, description: string, ownCommandId: string, seen: string): Block =>
+    lookCall(id, description, '51', ownCommandId, seen, at)
+  const report: Block = {
+    type: 'wakeup', id: 'look-report', turnId: 'look-report-turn', createdAt: iso(300_000), model: demoModel, placement: 'new_turn',
+    reports: [{ commandId: '51', title: 'Run the end-to-end suite', event: { kind: 'ended', exitCode: 0 }, output: '140 passed (4m 12s)' }],
+  }
   return [
     user('look-start', 900_000, 'Run the end-to-end suite.'),
     run('look-suite', 890_000, '51'),
-    reply('look-started', 880_000, 'The suite is running. It takes a few minutes.'),
+    reply('look-started', 880_000, 'The suite is running; it takes a few minutes. I will tell you when it ends.'),
     user('look-ask', 700_000, 'Is it done?'),
     think('look-think', 690_000, 'Look at how far the suite got.'),
-    look('look-first', 685_000, '[84/140] checkout.spec.ts\n'),
+    look('look-first', 685_000, 'Check the end-to-end suite', '53', statusText('51', 'running', '[84/140] checkout.spec.ts\n')),
     think('look-think-again', 680_000, 'It is on the checkout specs. Look once more before answering.'),
-    look('look-second', 675_000, '[86/140] checkout.spec.ts\n'),
-    reply('look-answer', 670_000, 'Not yet: 86 of 140 specs passed so far, and none failed.'),
-    user('wait-ask', 500_000, 'Tell me once it ends.'),
-    think('wait-think', 495_000, 'Wait for the suite to end.'),
-    wait('wait-first', 490_000, 51),
-    wakeup('wait-woken', 300_000),
-    reply('wait-answer', 295_000, 'The suite ended: all 140 specs passed.'),
-    user('again-ask', 200_000, 'Run it once more and tell me when it ends.'),
+    look('look-second', 675_000, 'Check the end-to-end suite again', '54', statusText('51', 'running', '[86/140] checkout.spec.ts\n')),
+    reply('look-answer', 670_000, 'Not yet: 86 of 140 specs passed so far, and none failed. I will tell you when it ends.'),
+    report,
+    reply('report-answer', 295_000, 'The suite ended: all 140 specs passed in 4 minutes 12 seconds.'),
+    user('again-ask', 200_000, 'Run it once more, and show me how long the first run took.'),
     run('again-suite', 195_000, '52'),
-    think('again-think', 190_000, 'Wait for the second run to end.'),
-    wait('again-wait', 185_000, 52),
-    wakeup('again-woken', 60_000),
-    reply('again-answer', 55_000, 'The second run passed too: 140 of 140 specs.'),
+    look('again-look', 190_000, 'Read the first run’s timing', '56', statusText('51', 'exited', '140 passed (4m 12s)\n')),
+    reply('again-answer', 185_000, 'The first run took 4 minutes 12 seconds. The second one is running; I will tell you when it ends.'),
   ]
 }
 

@@ -11,7 +11,7 @@ use std::{
 
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
 use demi_shared_gates::{GateLease, Reservation};
-use demi_shared_types::{CommandId, InstructionEntry, ModelSelection, ToolView, TurnId};
+use demi_shared_types::{CommandId, CommandReport, InstructionEntry, ModelSelection, ToolView, TurnId};
 use futures_util::{future::LocalBoxFuture, stream::LocalBoxStream};
 use serde_json::Value;
 use tokio::sync::watch;
@@ -93,9 +93,34 @@ pub trait SessionRuntime {
         command: &'a CommandId,
         title: &'a str,
         interval_ms: Option<u32>,
-    ) -> LocalBoxFuture<'a, Option<String>> {
+    ) -> LocalBoxFuture<'a, Option<CommandReport>> {
         let _ = (command, title, interval_ms);
         Box::pin(async { None })
+    }
+
+    /// Whether a look showed the node `command`'s end: a `demi shell status`
+    /// or a `shell` result that reported it (`runtime.md` § Command
+    /// reports). None by default.
+    fn end_seen(&self, command: &CommandId) -> bool {
+        let _ = command;
+        false
+    }
+
+    /// Whether a look of the node at `command` runs now, such as a `demi
+    /// shell status --wait` that waits for its end: the command's end report
+    /// then ends no window, since the look shows the end itself
+    /// (`runtime.md` § Command reports). None by default.
+    fn looks_at(&self, command: &CommandId) -> bool {
+        let _ = command;
+        false
+    }
+
+    /// Readies `report` as it is written into the transcript: it reads the
+    /// output the report carries, or marks the place what it read, so that a
+    /// report dropped before then moves no place in its command's output
+    /// (`runtime.md` § Command reports). Nothing by default.
+    fn write_report(&self, report: &mut CommandReport) {
+        let _ = report;
     }
 
     /// Releases what the node's tools hold, such as its shell environments

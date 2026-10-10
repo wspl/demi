@@ -6,6 +6,7 @@ import type { MessageListBlock } from '../pending-steers'
 import UserBlock from './UserBlock.vue'
 import ThinkingBlock from './ThinkingBlock.vue'
 import AgentReceiptBlock from './AgentReceiptBlock.vue'
+import CommandReportBlock from './CommandReportBlock.vue'
 import AssistantTextBlock from './AssistantTextBlock.vue'
 import ToolCallBlock from './ToolCallBlock.vue'
 import PendingCallBlock from './PendingCallBlock.vue'
@@ -51,7 +52,7 @@ const attrs = useAttrs()
 /** Rows built on FunctionalBlock: the 28px chrome face. Text streams in on its own. */
 const entersAsChrome = computed(() =>
   props.entering
-  && (props.block.type === 'agent_message' || props.block.type === 'thinking' || props.block.type === 'tool_call' || props.block.type === 'pending_call' || props.block.type === 'work_group' || props.block.type === 'abort'),
+  && (props.block.type === 'agent_message' || props.block.type === 'wakeup' || props.block.type === 'thinking' || props.block.type === 'tool_call' || props.block.type === 'pending_call' || props.block.type === 'work_group' || props.block.type === 'abort'),
 )
 </script>
 
@@ -102,6 +103,10 @@ const entersAsChrome = computed(() =>
     <AgentReceiptBlock
       v-if="block.type === 'agent_message'"
       :message="block.message"
+    />
+    <CommandReportBlock
+      v-else-if="block.type === 'wakeup'"
+      :reports="block.reports"
     />
     <ThinkingBlock
       v-else-if="block.type === 'thinking'"

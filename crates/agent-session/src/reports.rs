@@ -174,10 +174,10 @@ async fn report(session: &Weak<SessionShared>, command: &CommandId) {
     };
     let runtime = s.runtime.clone();
     drop(s);
-    let Some(text) = runtime.report(command, &title, interval_ms).await else {
+    let Some(report) = runtime.report(command, &title, interval_ms).await else {
         return;
     };
     if let Some(s) = session.upgrade() {
-        s.update(|core| core.admit_report(text));
+        s.update(|core| core.admit_report(report));
     }
 }

@@ -185,6 +185,12 @@ async fn status<H: HostResolver>(
         (None, true) => Some(None),
         (None, false) => None,
     };
+    // The caller looks at the commands from now on: their end reports end
+    // no window of its calls, since this look shows their ends itself.
+    let looking = call.tree.node(&call.caller);
+    let _look = looking.as_ref().map(|node| {
+        node.look_at(args.id.iter().filter_map(|id| CommandId::try_from(id.as_str()).ok()).collect())
+    });
     if let Some(text) = &args.wait {
         let wait = match milliseconds(text) {
             Ok(wait) => Duration::from_millis(wait),

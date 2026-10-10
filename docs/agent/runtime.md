@@ -449,7 +449,8 @@ Five minutes later the node is woken with a report, "Command 17 is still
 running; no output for 4 minutes 50 seconds", and the newest lines. The model
 sees that the suite hangs in one test, stops it and runs that test alone.
 Had the suite ended first, the node would have been woken with "Command 17
-ended with exit code 1; look at it with demi shell status 17." The model never
+(Run the test suite) ended with exit code 1" and the suite's last lines, as
+the call's result would have shown them. The model never
 asks to be woken: as Claude Code wakes its model when a background command
 or a subagent ends, the work it waits for wakes it.
 
@@ -476,26 +477,53 @@ or a subagent ends, the work it waits for wakes it.
     number serves, a number when it wants to hear from a resident one. A
     report says how, so the model changes it where it already looks at the
     command.
-- **Every end is reported.** A command whose call returned while it still
-  ran tells its node when it ends, however it ends: an exit with its status,
+- **Every end is reported, with what the model would look at.** A command
+  whose call returned while it still ran tells its node when it ends,
+  however it ends: an exit with its status,
   a stop by the user or another agent, or a loss with its reason
   ([Lost commands](#lost-commands)). A command the node stopped itself with
   `demi shell stop`, which printed `[command 17 stopped]`, and one whose end
-  the model saw in a result already, tell nothing more.
+  the model saw in a result already, tell nothing more. An end report is the
+  result that reports the command's end
+  ([What a result attaches](#what-a-result-attaches)): it carries the output
+  since the model's last look, bounded as a `shell` result is, and the media
+  the job viewed, so the model needs no `demi shell status` to see how it
+  ended: in a product check, a model woken by an end without its output
+  spent one more request on a look every time.
 - **How a report arrives.** A report joins a turn that accepts steers at its
   next continuation boundary, as a `wakeup` block with the placement
   `steer`; otherwise it starts a continuation whose input is a `wakeup` block
   with the placement `new_turn`. Each report names the command by its
   number and its call's title, as Claude Code's notice names a background
   command by its description, since a model may have several running:
-  `Command 17 (Run the test suite) ended with exit code 1; look at it with
-  demi shell status 17.` Reports that arrive together are one block,
+  `Command 17 (Run the test suite) ended with exit code 1.`, followed by its
+  output as a result shows it. Reports that arrive together are one block,
   one paragraph each: `Command 18 was stopped by the user.`,
   `Command 19 was lost: Demi was upgraded and the Host's runner replaced
   itself. Start it again if it is still needed.` A report never appears in
   the queue or among the pending steers, and a running call's window ends
-  when one arrives ([The window](#the-window)). A report moves the model's
-  place in the command's output as a look does.
+  when one arrives ([The window](#the-window)), except the end report of a
+  command that call watches or looks at, whose end the call shows itself. A
+  report moves the model's place in the command's output as a look does,
+  when it is written into the transcript; an end report dropped because a
+  look showed the end first moves nothing, so the look shows the last
+  lines. An end report whose job viewed media is never dropped: it carries
+  the media, without the output the look showed.
+- **What the user sees.** The transcript shows each report as a row where
+  its block lies, as an agent message shows as its receipt row, so a reply
+  the agent writes after it never appears without its cause, as Claude Code
+  shows a line when a background task ends. The row names the call's title
+  and what happened, in the user's words: *Run the test suite ended with exit
+  code 1*, *Start the dev server was stopped by you*, *Run the test suite is
+  still running*; a failure, a stop and a loss carry the same tag a shell row
+  carries ([Rendering boundary](#rendering-boundary)), and a click opens the
+  command's terminal tab. So the block holds each report as data, its
+  `commandId`, the call's `title`, its `event` (`running`, `ended` with
+  its exit code, `stopped` with who stopped it, or `lost` with its reason),
+  and the output and media it carried, and the text the model reads is
+  rendered from them in one place, never stored beside them. A report that carries media shows them under its row,
+  as a call's result does
+  ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
 - **Waiting is ending the turn.** A model that has nothing left to do but
   wait for a command or a subagent ends its turn, with a reply that says
   what it waits for, since the user reads only what the model wrote. The
@@ -772,15 +800,26 @@ job showed the model.
   arrives, after the output before it: `[image 1: image/png, 1280 × 720 px,
   412000 bytes]`, `[video 2: video/mp4, 12.4 s, 1920 × 1080 px, 8598311
   bytes]` (the duration and size when the container's header gives them),
-  `[document 3: application/pdf, 182044 bytes]`. The word is the
-  medium's kind; the number is the job's.
+  `[document 3: report.pdf, application/pdf, 182044 bytes]`. The word is the
+  medium's kind; the number is the job's. A document carries its file's
+  name to the model, which a provider's document part takes as its title;
+  one from stdin is named `document-3.pdf`. The handler of `demi file view`
+  reads these facts from the medium's header, once, and they travel with the
+  medium; the runner writes the line only after it has read what the job's
+  output already holds, so a line never comes before output written before
+  the command.
 - **What it takes.** Bytes, at most 16 MiB, of a media type the conversation's
   model reads in a tool result: a type of the model-media table
   ([Accepted attachment types](../providers/models.md#accepted-attachment-types))
   that the model accepts and its provider carries in a tool result
   ([Media in tool results](../providers/providers.md#media-in-tool-results)).
   The job carries that list from its start, as the backend gives it for the
-  node's model. A path that fails gets a line on stderr; the command goes on
+  node's model, with the model's name for the refusal line. A job that
+  `demi host shell` starts on another Host carries none, since its output
+  is relayed into the invoking command and no result reports its end: there
+  the command fails with
+  `demi file view: shot.png: a job on another Host shows the model nothing; pipe its bytes into demi file view in your own script`,
+  as `demi host shell --host laptop 'cat shot.png' | demi file view` does. A path that fails gets a line on stderr; the command goes on
   with the next one and exits with status 1:
   - `demi file view: notes.txt: a text file; read it with cat notes.txt`
   - `demi file view: data.bin: not an image, a video or a PDF (48213 bytes)`
@@ -819,10 +858,13 @@ does, whatever the shell did with the command's stdout.
 #### What a result attaches
 
 Media reach the model only in the result that reports the job's end: the
-`shell` result when the job ends within its window, otherwise the report
-or `demi shell status` that reports the end. A
-result that shows the job running attaches none, so each medium is attached
-once and a job's media arrive together, in their order.
+`shell` result when the job ends within its window, otherwise its end
+report ([Command reports](#command-reports)). A result that shows the job
+running attaches none, so each medium is attached once and a job's media
+arrive together, in their order. A `demi shell status` that shows the end
+shows the media's lines and attaches nothing, since it is a job of its own:
+the end report then still comes, carrying the media alone, though the look
+showed the end.
 
 The result attaches each of its media, in order, while these rules hold:
 
@@ -1172,7 +1214,7 @@ Words used for session data:
 | --- | --- | --- | --- |
 | `user` | A send or an edit: the submitted content and, for a subagent, its identity (`preamble`, [Child context](subagents.md#child-context)) | A user message: the preamble, then the content | Yes; the only editable block ([Message editing](message-editing.md)) |
 | `context` | The session before a provider request, with the text one context source answered ([Context](#context)), the source's name (`source`), and for the instructions source the list of what the text holds (`instructions`, [What the card lists](instructions.md#what-the-card-lists)) | A user message with its text | No |
-| `wakeup` | Command reports that arrived together, with the placement `new_turn` or `steer` | The reports' text, as a user message or as a steer | No |
+| `wakeup` | Command reports that arrived together, with the placement `new_turn` or `steer`: each report's command, its call's title and what it reports | The reports' text, as a user message or as a steer | As a report row ([Command reports](#command-reports)) |
 | `steer` | A human steer, at a continuation boundary | A steer in the current turn | Yes |
 | `agent_message` | Another agent of the tree ([Communication](subagents.md#communication)) | A steer holding the message's source envelope | As a receipt row |
 | `resume` | A turn continuing after a cut: `resume`, compaction inside a turn, or a model switch that landed inside a turn and compacted | A user message: "Continue from where you left off." | No |
@@ -1507,6 +1549,9 @@ Renderers read them directly; there is no separate render model.
    `shell_exec` call became a `shell` call when its conversation's database
    was migrated, since `shell` is what it became
    ([Schemas and migrations](../backend/storage.md#schemas-and-migrations)).
+   A stored wakeup of a yield became what it stood for: one a command's end
+   fired, that command's report, titled by its call's `description`; one its
+   time fired, a `resume` block, since all it told the model was to go on.
 4. The generic tool card is only for a tool name the runtime does not have. A
    model can request one; its call then ends with `Tool not found`.
 5. The renderers live in `web-ui`. `web` and `web-gallery` feed them the same
@@ -1548,16 +1593,13 @@ Live frames add to the transcript; they do not replace it:
   replace the `tool_call` rendering.
 
 A patch replaces a block at its index, and renderers key blocks by their id,
-so an update never shows a second record. Renderers tell shell execution,
-a look at a command, with or without input, and waiting apart by tool
-name and input. A look or a wait without a `description` takes the title of
-the command it names, never a bare number: *Check* or *Wait for* and then
-the command's title with a dotted underline, as a reference, *Check
-Run the test suite*. Clicking the underlined title scrolls the transcript to
-that command's call and highlights it for a moment, as a chat app jumps to a
-quoted message; a command of another agent's transcript is named the same
-way, without the underline or the jump. A title too long for its row is cut
-at the end with an ellipsis. Every shell row, a run or a look,
+so an update never shows a second record. Renderers title a `shell` call by its
+`description`, which the tool requires; a title too long for its row is cut
+at the end with an ellipsis. A call whose script only looks at commands with
+`demi shell status` counts in its work group as a check
+([Work groups](#work-groups)). A call of a tool the request no longer
+declares, such as a stored `yield` or `shell_status`, shows as the generic
+tool card. Every shell row, a run or a look,
 marks how its command ended the same way, and only when something went
 wrong: a small tag after its title, the gallery's `Tag`, red *Failed* for an
 exit code other than 0, grey *Stopped* for a stopped command, with the exit
@@ -1754,7 +1796,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | `steer_result` | The steer id and an `outcome`: `{ status: "accepted" }` or `{ status: "rejected", reason }` |
 | `edit_result` | The operation id and an `outcome`: `{ status: "accepted", turnId }` or `{ status: "rejected", reason }` |
 | `abort_result` | What was stopped, and whether another `abort` would stop more |
-| `shell_output` | A command's live view ([Live output](#live-output)): `subagentId` when the command is a subagent's, and its `status`: `running`, `exited` with the `exitCode`, or `aborted`, each with the `commandId`, the `toolUseId` of the `shell_exec` call that started it, the `tail` and `chars` of the pages' view, and `runningMs` |
+| `shell_output` | A command's live view ([Live output](#live-output)): `subagentId` when the command is a subagent's, and its `status`: `running`, `exited` with the `exitCode`, or `aborted`, each with the `commandId`, the `toolUseId` of the `shell` call that started it, the `tail` and `chars` of the pages' view, and `runningMs` |
 | `shell_write_result` | The command id |
 | `pending_calls` | The calls the model is writing, each `{ toolUseId, toolName, description }`, `description` null until written, and `subagentId` when they are a subagent's ([Calls being written](#calls-being-written)) |
 | `retry_scheduled` | The attempt, the delay in milliseconds, the code and the diagnostics of a failure being retried ([Retries](failures-and-recovery.md#retries)) |
@@ -2006,7 +2048,7 @@ where a tool runs; no test calls a real model.
 | The model switches to one that does not read WebP after a job viewed a WebP image | That job's result says the image was not attached, and why |
 | A job views its 33rd medium | Its line reads that it was not kept; the command goes on and succeeds |
 | A job prints 20 MiB and then views a screenshot | The screenshot is attached |
-| A job views a medium and is still running when the call's window ends | The `shell` result attaches nothing; the report or `demi shell status` that reports its end attaches the medium |
+| A job views a medium and is still running when the call's window ends | The `shell` result attaches nothing; the end report attaches the medium, also after a `demi shell status` showed the end, which shows only the medium's line |
 | The Host's connection is lost after a job viewed a medium | The result that reports the end says the medium was lost with the connection |
 | A command prints 200 KB of lines and exits | Its result shows whole lines from the start and the end and the line naming the lines between and `demi shell output 17 --lines`, and fits the replay bound, so every request carries it unchanged; the pages that command prints hold those lines, numbered, with the next page's command, and `--raw` prints the 200 KB in the order the runner read them |
 | A page of a command's output | At most 12,000 characters of whole lines, so the result that holds it is not cut; a line over 2,000 characters shows its start and how to read it whole |
