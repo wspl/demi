@@ -719,6 +719,11 @@ output:
   for the next step while it runs or once it was stopped: that the node
   will hear from the command as its interval says, and that
   `demi shell status`, `input` and `stop` look at it, answer it and stop it.
+  A command whose script has ended but whose background tasks still run
+  says so, naming them, since a model that started `nohup server &` and saw
+  its command still running took it for a hang:
+  `the script has ended; its background task "PORT=18948 bun src/server.ts"
+  keeps the command running, and stopping the command stops it`.
 - A result whose command exited with a status other than 0, or was stopped
   or lost, is marked as an error to the provider (`is_error` on Anthropic's
   API), as Claude Code marks a failed command, so the model weighs it as a

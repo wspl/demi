@@ -854,6 +854,12 @@ the dev server it started runs on, holding its port.
   128 plus the signal that ended it. An id that is neither fails with
   `wait: pid 999999 is not a child of this shell` and status 127. `wait`
   alone waits for every task and gives 0.
+- **`disown` and `nohup`** keep a task in its job: the command runs on
+  while the task does, and stopping the command stops it, as the runner
+  leaves no process that no command stands for. `disown` succeeds and
+  changes nothing else; `nohup` runs its command ignoring `HUP`, as GNU's
+  does. A server meant to outlive a script runs as a command of its own,
+  with `intervalMs` null ([Tool input](../agent/runtime.md#tool-input)).
 - **`timeout DURATION COMMAND…`** runs COMMAND as `command` would, a builtin,
   a standard utility or a program, so its writes are tracked like any
   other, and stops it as `kill` stops a task once DURATION has passed. Its
