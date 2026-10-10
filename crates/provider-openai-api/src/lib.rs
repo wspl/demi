@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RequestLimits, RuntimeEnv, RuntimeError, Secret, VendorPolicy, endpoint_url, read_http_failure,
+    RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, VendorPolicy, endpoint_url, read_http_failure,
 };
 use demi_shared_types::{
     AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
@@ -150,6 +150,11 @@ impl ProviderRuntime for OpenAiRuntime {
     /// The OpenAI API's, on either wire; a compatible vendor that takes less
     /// refuses a request as too large, which compaction answers.
     fn request_limits(&self, _model: &Model) -> RequestLimits {
-        RequestLimits::OPENAI
+        // Images and documents in a user message right after the call's
+        // output, in both APIs (`providers.md` § Media in tool results).
+        RequestLimits {
+            tool_results: ToolResultKinds::IMAGES_AND_DOCUMENTS,
+            ..RequestLimits::OPENAI
+        }
     }
 }

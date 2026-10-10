@@ -74,7 +74,6 @@ impl JobShell for ShellRuntime {
                 job.cwd,
                 job.env,
                 job.live,
-                job.output,
                 scope,
                 self,
             )

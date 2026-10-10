@@ -69,7 +69,8 @@ async fn invoke(service: &ServiceProcess, operation: &str, input: Vec<u8>) -> (V
             env: Default::default(),
             edits: None,
             json: None,
-            stdout: None,
+            live_input: None,
+            viewable: None,
         })
         .await
         .unwrap();

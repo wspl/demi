@@ -2,11 +2,11 @@
 //! ended command's whole output is a blob of the conversation owner's
 //! namespace, in the kept output's records, and the conversation's
 //! `command_outputs` table holds one row per command, keyed by its id,
-//! which says when the command ended and how, and whether its output is stored, with
-//! its media, or was not stored and why. A row is written once when its
+//! which says when the command ended and how, and whether its output is
+//! stored, or was not stored and why. A row is written once when its
 //! command ends, or copied into a Fork's destination, and never changes.
 
-use demi_host_interface::{Missing, StoredMedium};
+use demi_host_interface::Missing;
 use demi_shared_types::{BlobRef, Block, CommandEnd, CommandId, Timestamp, ToolView};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
@@ -16,12 +16,10 @@ use super::columns::{decode, instant, json, to_json};
 /// What a conversation holds of an ended command's output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OutputRow {
-    /// Its blob, the bytes at its end that the backend does not have, and
-    /// the command's media by number.
+    /// Its blob, and the bytes at its end that the backend does not have.
     Stored {
         blob: BlobRef,
         missing: Option<Missing>,
-        media: Vec<StoredMedium>,
     },
     /// Why it was not stored.
     NotStored(String),
@@ -39,24 +37,20 @@ pub struct CommandOutput {
 }
 
 const COLUMNS: &str =
-    "command_id, ended_at, ending, blob, missing_bytes, missing_reason, media, not_stored";
+    "command_id, ended_at, ending, blob, missing_bytes, missing_reason, not_stored";
 
 /// Writes `rows` in one transaction; a command that has a row keeps it.
 pub fn insert(connection: &mut Connection, rows: &[CommandOutput]) -> Result<(), StorageError> {
     let transaction = connection.transaction()?;
     {
         let mut insert = transaction.prepare_cached(&format!(
-            "INSERT INTO command_outputs ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "INSERT INTO command_outputs ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
              ON CONFLICT (command_id) DO NOTHING"
         ))?;
         for row in rows {
-            let (blob, missing, media, not_stored) = match &row.output {
-                OutputRow::Stored {
-                    blob,
-                    missing,
-                    media,
-                } => (Some(blob), missing.as_ref(), Some(media), None),
-                OutputRow::NotStored(reason) => (None, None, None, Some(reason)),
+            let (blob, missing, not_stored) = match &row.output {
+                OutputRow::Stored { blob, missing } => (Some(blob), missing.as_ref(), None),
+                OutputRow::NotStored(reason) => (None, None, Some(reason)),
             };
             let missing_bytes =
                 missing.map(|missing| i64::try_from(missing.bytes).unwrap_or(i64::MAX));
@@ -71,7 +65,6 @@ pub fn insert(connection: &mut Connection, rows: &[CommandOutput]) -> Result<(),
                 blob.map(BlobRef::as_str),
                 missing_bytes,
                 missing.map(|missing| missing.reason.as_str()),
-                media.map(to_json),
                 not_stored,
             ])?;
         }
@@ -134,11 +127,6 @@ pub fn commands_of(blocks: &[Block]) -> Vec<CommandId> {
     commands
 }
 
-/// A stored output's media, read back from their column.
-fn stored_media(text: String) -> Result<Vec<StoredMedium>, StorageError> {
-    json("command_outputs", "media", &text)
-}
-
 /// A row read back, decoded and checked.
 fn output_row(row: &Row<'_>) -> rusqlite::Result<Result<CommandOutput, StorageError>> {
     Ok(decode_row(row))
@@ -159,15 +147,9 @@ fn decode_row(row: &Row<'_>) -> Result<CommandOutput, StorageError> {
     let stored: Option<String> = row.get("blob")?;
     let missing_bytes: Option<i64> = row.get("missing_bytes")?;
     let missing_reason: Option<String> = row.get("missing_reason")?;
-    let media: Option<String> = row.get("media")?;
     let not_stored: Option<String> = row.get("not_stored")?;
     let output = match (stored, not_stored) {
         (Some(stored), None) => {
-            let media = stored_media(media.ok_or_else(|| StorageError::Corrupt {
-                table: "command_outputs",
-                column: "media",
-                reason: "a stored output comes with its media".into(),
-            })?)?;
             let missing = match (missing_bytes, missing_reason) {
                 (Some(bytes), Some(reason)) => Some(Missing {
                     bytes: decode("command_outputs", "missing_bytes", u64::try_from(bytes))?,
@@ -185,7 +167,6 @@ fn decode_row(row: &Row<'_>) -> Result<CommandOutput, StorageError> {
             OutputRow::Stored {
                 blob: blob(stored)?,
                 missing,
-                media,
             }
         }
         (None, Some(reason)) => OutputRow::NotStored(reason),

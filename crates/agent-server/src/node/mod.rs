@@ -10,7 +10,7 @@ use std::{
     sync::Arc,
 };
 
-use bytes::Bytes;
+
 
 use demi_agent_session::{
     AgentSession, Continuation, NewContext, RestoreError, SeenContext, SessionConfig, SessionDeps,
@@ -149,21 +149,6 @@ impl<H: HostResolver> Node<H> {
             .owning(command)
             .ok_or_else(|| ShellError::UnknownCommand(command.clone()))?;
         environment.read_output(command).await
-    }
-
-    /// Medium `number` of `command`, which one of the node's environments
-    /// runs, as its Host keeps it.
-    pub(crate) async fn read_medium(
-        &self,
-        command: &CommandId,
-        number: u32,
-    ) -> Result<Bytes, ShellError> {
-        let environment = self
-            .runtime
-            .environments
-            .owning(command)
-            .ok_or_else(|| ShellError::UnknownCommand(command.clone()))?;
-        environment.read_medium(command, number).await
     }
 
     /// The pages' view of each live command of the node (`runtime.md`

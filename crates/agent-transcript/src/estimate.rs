@@ -139,7 +139,9 @@ pub fn request_size(system_prompt: &str, items: &[InferenceItem]) -> RequestSize
                             size.images += 1;
                             size.bytes += bytes.data.base64_len();
                         }
-                        ResultPart::Video(bytes) => size.bytes += bytes.data.base64_len(),
+                        ResultPart::Video(bytes) | ResultPart::Document { bytes, .. } => {
+                            size.bytes += bytes.data.base64_len();
+                        }
                     }
                 }
             }
@@ -313,12 +315,25 @@ fn result_estimate<'a>(
         }
         ToolResultContentBlock::Image { source } => (ModelMediaKind::Image, source),
         ToolResultContentBlock::Video { source } => (ModelMediaKind::Video, source),
+        ToolResultContentBlock::Document { source } => {
+            return match request.tool_document(source) {
+                Ok(MediaBytes { data, media_type }) => {
+                    let DocumentSource::Ref { file_name, .. } = source;
+                    (
+                        Cow::Owned(format!("{file_name} {media_type}")),
+                        byte_count(data.len()).div_ceil(DOCUMENT_BYTES_PER_TOKEN),
+                    )
+                }
+                Err(text) => (Cow::Owned(text), 0),
+            };
+        }
     };
     match request.tool_medium(kind, source) {
         Ok(MediaBytes { data, media_type }) => {
-            let weight = match kind {
-                ModelMediaKind::Image => image_weight(&data),
-                ModelMediaKind::Video => 0,
+            let weight = if kind == ModelMediaKind::Image {
+                image_weight(&data)
+            } else {
+                0
             };
             (Cow::Owned(media_type), weight)
         }

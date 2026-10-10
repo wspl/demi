@@ -1564,7 +1564,6 @@ dependencies = [
  "futures-util",
  "garde",
  "image",
- "nom-exif",
  "serde",
  "serde_json",
  "sha2",
@@ -2242,6 +2241,8 @@ version = "0.1.21"
 dependencies = [
  "bytes",
  "garde",
+ "image",
+ "nom-exif",
  "schemars",
  "serde",
  "serde_json",

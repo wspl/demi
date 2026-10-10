@@ -8,7 +8,7 @@
 //! cancelled it, or 1 with the first cause that stopped it.
 
 use std::{
-    cell::{Cell, RefCell},
+    cell::RefCell,
     collections::BTreeMap,
     rc::Rc,
 };
@@ -20,8 +20,7 @@ use demi_host_interface::{
 };
 use demi_runner_protocol::wire::{Inbound, STDIN_CHUNK_BYTES, WireBytes};
 use demi_shared_gates::SerialGate;
-use demi_command_protocol::MAX_MEDIUM_BYTES;
-use demi_shared_types::{B64Bytes, BlobRef};
+use demi_shared_types::B64Bytes;
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
 use tokio::sync::oneshot;
@@ -30,7 +29,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     Link,
     link::JobOrigin,
-    pipes::{Pipe, PipeError, PipeFailure, PipeReader, PipeWriter},
+    pipes::{Pipe, PipeError, PipeReader, PipeWriter},
 };
 
 /// An `rpc_call` as the runner sent it.
@@ -298,7 +297,6 @@ async fn run(
         call_id: call.call_id.clone(),
         entry: entry.clone(),
         stdout: RefCell::new(Stdout::Held(stdout.clone())),
-        stdout_written: Cell::new(0),
         stdout_turn: SerialGate::new(),
         stdin: RefCell::new(stdin.clone().map(Stdin::Unread)),
         stdin_turn: SerialGate::new(),
@@ -360,9 +358,7 @@ struct RelayPort {
     call_id: String,
     entry: Rc<CallEntry>,
     stdout: RefCell<Stdout>,
-    /// The bytes written to standard output so far, which a medium follows.
-    stdout_written: Cell<u64>,
-    /// Writes to standard output and media take turns.
+    /// Writes to standard output take turns.
     stdout_turn: SerialGate,
     stdin: RefCell<Option<Stdin>>,
     stdin_turn: SerialGate,
@@ -417,52 +413,9 @@ impl RelayPort {
                 return Err(PortError::Ended("the call has ended".into()));
             }
         };
-        let length = bytes.len() as u64;
         let written = writer.write(bytes).await;
         *self.stdout.borrow_mut() = Stdout::Writing(writer);
-        written.map_err(|failure| PortError::Ended(failure.to_string()))?;
-        self.stdout_written.set(self.stdout_written.get() + length);
-        Ok(())
-    }
-
-    /// Returns the blob `blob` as a medium of the call (`commands.md`
-    /// § Return media): its bytes flow to the runner through a pipe of their
-    /// own, placed after the stdout written so far, and the answer waits
-    /// until the runner has read them, so stdout written later follows them.
-    async fn return_medium(&self, blob: BlobRef) -> Result<(), PortError> {
-        let bytes = self
-            .link
-            .policy()
-            .read_blob(blob.clone())
-            .await
-            .map_err(PortError::Failed)?
-            .ok_or_else(|| PortError::Ended(format!("no blob {blob} to return")))?;
-        if bytes.len() as u64 > MAX_MEDIUM_BYTES {
-            return Err(PortError::Ended(format!(
-                "a medium is at most {MAX_MEDIUM_BYTES} bytes; blob {blob} has {}",
-                bytes.len()
-            )));
-        }
-        let _turn = self.stdout_turn.acquire().await;
-        let pipe = self.link.pipes().to_device(self.link.device());
-        self.entry.pipes.borrow_mut().push(pipe.clone());
-        let ended = |failure: PipeFailure| PortError::Ended(failure.to_string());
-        let mut writer = pipe
-            .writer()
-            .map_err(|error| PortError::Ended(format!("medium: {error}")))?;
-        let medium = Inbound::RpcMedium {
-            call_id: self.call_id.clone(),
-            after: self.stdout_written.get(),
-            size: bytes.len() as u64,
-            pipe: pipe.wire_ref(),
-        };
-        self.link
-            .send(&medium)
-            .await
-            .map_err(|error| PortError::Ended(error.to_string()))?;
-        writer.write(bytes).await.map_err(ended)?;
-        writer.end();
-        pipe.done().await.map_err(ended)
+        written.map_err(|failure| PortError::Ended(failure.to_string()))
     }
 
     async fn read_stdin(&self) -> Result<Option<Bytes>, PortError> {
@@ -508,10 +461,6 @@ impl PortTransport for RelayPort {
                             .await
                             .map_err(|error| PortError::Ended(error.to_string()))?;
                     }
-                    Ok(PortResponse::Written {})
-                }
-                PortRequest::Medium { blob } => {
-                    self.return_medium(blob).await?;
                     Ok(PortResponse::Written {})
                 }
                 PortRequest::ReadStdin {} => Ok(PortResponse::Input {

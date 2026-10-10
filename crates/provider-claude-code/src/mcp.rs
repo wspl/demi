@@ -296,8 +296,10 @@ impl ServerHandler for Server {
 }
 
 /// A tool's result as MCP content: text, an image as base64 with its media
-/// type, and a video as text naming its media type, since MCP has no video;
-/// a failed tool sets the error flag.
+/// type, and a video or a document as text naming its media type, since MCP
+/// has no video and the CLI saves a PDF resource to a file rather than give
+/// it to the model (`providers.md` § Media in tool results); a failed tool
+/// sets the error flag.
 pub(crate) fn tool_result(output: &[ResultPart], is_error: bool) -> CallToolResult {
     let content = output
         .iter()
@@ -306,7 +308,9 @@ pub(crate) fn tool_result(output: &[ResultPart], is_error: bool) -> CallToolResu
             ResultPart::Image(bytes) => {
                 ContentBlock::image(STANDARD.encode(&bytes.data), bytes.media_type.clone())
             }
-            ResultPart::Video(bytes) => ContentBlock::text(video_text(bytes)),
+            ResultPart::Video(bytes) | ResultPart::Document { bytes, .. } => {
+                ContentBlock::text(unsent_text(bytes))
+            }
         })
         .collect();
     if is_error {
@@ -316,7 +320,13 @@ pub(crate) fn tool_result(output: &[ResultPart], is_error: bool) -> CallToolResu
     }
 }
 
-/// A video of a tool's result, which MCP content cannot hold, named in text.
-pub(crate) fn video_text(bytes: &MediaBytes) -> String {
-    format!("[video:{}]", bytes.media_type)
+/// A video or a document of a tool's result, which this provider does not
+/// give the model, named in text: `[video:video/mp4]`.
+pub(crate) fn unsent_text(bytes: &MediaBytes) -> String {
+    let kind = if bytes.media_type.starts_with("video/") {
+        "video"
+    } else {
+        "document"
+    };
+    format!("[{kind}:{}]", bytes.media_type)
 }

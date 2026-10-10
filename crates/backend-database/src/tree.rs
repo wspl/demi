@@ -321,12 +321,8 @@ impl AgentTreeStore for SqliteTreeStore {
             let Some(row) = row else {
                 return Ok(None);
             };
-            let (blob, missing, media) = match row.output {
-                OutputRow::Stored {
-                    blob,
-                    missing,
-                    media,
-                } => (blob, missing, media),
+            let (blob, missing) = match row.output {
+                OutputRow::Stored { blob, missing } => (blob, missing),
                 OutputRow::NotStored(reason) => {
                     return Ok(Some(StoredCommand {
                         end: row.end,
@@ -350,7 +346,7 @@ impl AgentTreeStore for SqliteTreeStore {
                     })?;
             Ok(Some(StoredCommand {
                 end: row.end,
-                output: StoredOutput::Stored { output, media },
+                output: StoredOutput::Stored { output },
             }))
         })
     }

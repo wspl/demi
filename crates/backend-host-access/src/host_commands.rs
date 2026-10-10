@@ -531,6 +531,9 @@ async fn run_on_host(
                 cwd: target.path.clone(),
                 env: BTreeMap::new(),
                 context: invocation.context.clone(),
+                // No result attaches the far job's media: its stdout is the
+                // calling command's.
+                viewable: None,
                 caller: invocation.caller.clone(),
                 commands,
                 stdin: stdin.as_ref().map(Pipe::wire_ref),

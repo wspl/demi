@@ -402,7 +402,7 @@ fn written_as(item: &InferenceItem, written: &[Value], pending: &[Value]) -> Opt
 }
 
 /// A tool's result as the CLI gives the vendor one Demi sent it over MCP:
-/// text, images with their base64, and a video named in text.
+/// text, images with their base64, and a video or a document named in text.
 fn result_content(output: &[ResultPart]) -> Vec<Value> {
     output
         .iter()
@@ -416,7 +416,9 @@ fn result_content(output: &[ResultPart]) -> Vec<Value> {
                     "data": STANDARD.encode(&bytes.data),
                 },
             }),
-            ResultPart::Video(bytes) => json!({ "type": "text", "text": mcp::video_text(bytes) }),
+            ResultPart::Video(bytes) | ResultPart::Document { bytes, .. } => {
+                json!({ "type": "text", "text": mcp::unsent_text(bytes) })
+            }
         })
         .collect()
 }
@@ -475,7 +477,7 @@ pub(crate) fn media<'a>(items: &'a [InferenceItem]) -> HashMap<String, &'a B64By
                 for part in output {
                     match part {
                         ResultPart::Image(bytes) | ResultPart::Video(bytes) => add(bytes),
-                        ResultPart::Text(_) => {}
+                        ResultPart::Text(_) | ResultPart::Document { .. } => {}
                     }
                 }
             }

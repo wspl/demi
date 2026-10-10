@@ -45,7 +45,7 @@ pub use host::{
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnError,
     SpawnErrorKind, SpawnRequest, WhenExists, WriteOptions,
 };
-pub use media::{CommandMedium, MediumKept, StoredMedium};
+pub use media::CommandMedium;
 pub use output::{
     Backward, Forward, Missing, OutputRecord, OutputText, Piece, Seen, Streams, WholeOutput,
     binary_line,

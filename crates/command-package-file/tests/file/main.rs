@@ -5,10 +5,14 @@
 
 use std::{collections::BTreeMap, path::Path, time::Duration};
 
+use bytes::Bytes;
 use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, Completion, EditContext, Invocation, Record,
+    Viewable,
 };
-use demi_command_sdk::{Client, testing::ServiceProcess};
+use demi_command_sdk::{
+    Client, Exchange, InputSource, OutputSink, ServiceError, testing::ServiceProcess,
+};
 
 /// Where a test's invocations record their edits: beside the files, under
 /// `cwd`.
@@ -51,7 +55,8 @@ async fn call(
         args,
         cwd: cwd.into(),
         env: BTreeMap::new(),
-        stdout: None,
+        live_input: None,
+        viewable: None,
     };
     // The file commands never ask for input: the request stays open without
     // input or its end.
@@ -83,7 +88,7 @@ async fn the_resident_program_serves_every_file_operation_and_records_its_edits(
             .unwrap();
         let pid = service.id().unwrap();
         let client = service.client();
-        assert!(client.info().await.unwrap().operations.contains(&"file.read".into()));
+        assert!(client.info().await.unwrap().operations.contains(&"file.view".into()));
         let create = |content: &str| serde_json::json!({"blocks": format!("nested/a.txt\n<<<<<<< SEARCH\n=======\n{content}>>>>>>> REPLACE\n")});
         let (result, output, _) = call(client, cwd, "file.edit", create("alpha\nbeta\n")).await;
         assert_eq!(result.exit_code, 0);
@@ -96,13 +101,7 @@ async fn the_resident_program_serves_every_file_operation_and_records_its_edits(
         let (result, output, error) = call(client, cwd, "file.patch", serde_json::json!({"patch":patch})).await;
         assert_eq!(result.exit_code, 0, "{}", String::from_utf8_lossy(&error));
         assert_eq!(output, b"Patched 2 file(s)\n");
-        let (_, output, _) = call(client, cwd, "file.read", serde_json::json!({"path":["nested/a.txt"]})).await;
-        assert_eq!(output, b"alpha\ndelta\n");
-        let binary = [0, 255, 10, 13, 128];
-        std::fs::write(root.path().join("image.bin"), binary).unwrap();
-        let (result, output, _) = call(client, cwd, "file.read", serde_json::json!({"path":["image.bin"]})).await;
-        assert_eq!(result.exit_code, 0);
-        assert_eq!(output, binary);
+        assert_eq!(std::fs::read(root.path().join("nested/a.txt")).unwrap(), b"alpha\ndelta\n");
         let recorder = demi_command_sdk::edits::Recorder::new(demi_command_protocol::EditContext {
             directory: root.path().join("changes").to_string_lossy().into_owned(),
             lock: root.path().join("edits.lock").to_string_lossy().into_owned(),
@@ -640,4 +639,171 @@ impl Drop for Locked {
 
         let _ = std::fs::set_permissions(&self.directory, std::fs::Permissions::from_mode(0o755));
     }
+}
+
+/// What `demi file view` handed to its job and wrote.
+#[derive(Debug, Default)]
+struct Viewed {
+    stdout: Vec<u8>,
+    stderr: String,
+    media: Vec<Bytes>,
+}
+
+impl OutputSink for Viewed {
+    type Error = ServiceError;
+
+    async fn stdout(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
+        self.stdout.extend_from_slice(&bytes);
+        Ok(())
+    }
+
+    async fn stderr(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
+        self.stderr.push_str(&String::from_utf8_lossy(&bytes));
+        Ok(())
+    }
+
+    async fn medium(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
+        self.media.push(bytes);
+        Ok(())
+    }
+}
+
+/// A job's stdin: `chunks` in turn, then its end; none at all when it is
+/// the job's own input, which must never be read.
+struct Stdin {
+    chunks: Vec<Bytes>,
+    live: bool,
+}
+
+impl InputSource for Stdin {
+    type Error = ServiceError;
+
+    async fn next(&mut self) -> Result<Option<Bytes>, ServiceError> {
+        assert!(!self.live, "the job's own input was read");
+        Ok((!self.chunks.is_empty()).then(|| self.chunks.remove(0)))
+    }
+}
+
+/// Runs `demi file view` with `paths` in `cwd` as a job's command whose
+/// model, `model`, reads `viewable` in a tool result, with `stdin`.
+async fn view(
+    client: &Client,
+    cwd: &str,
+    paths: &[&str],
+    model: &str,
+    viewable: &[&str],
+    stdin: Stdin,
+) -> (u8, Viewed) {
+    let request = Invocation {
+        context: CommandContext {
+            color_scheme: demi_command_protocol::ColorScheme::Light,
+            conversation: "file-test-conversation".into(),
+            caller: CommandCaller::agent(1),
+            locale: CommandLocale {
+                time_zone: "UTC".into(),
+                languages: vec!["en-US".into()],
+            },
+        },
+        json: None,
+        edits: Some(edits(cwd)),
+        operation: "file.view".into(),
+        invocation_id: "view".into(),
+        command: "demi file view".into(),
+        args: serde_json::json!({ "path": paths }),
+        cwd: cwd.into(),
+        env: BTreeMap::new(),
+        live_input: Some(stdin.live),
+        viewable: Some(Viewable {
+            model: model.into(),
+            media_types: viewable.iter().map(|&media_type| media_type.to_owned()).collect(),
+        }),
+    };
+    let (input, output) = client.invoke(&request).await.unwrap();
+    let mut stdin = stdin;
+    let mut viewed = Viewed::default();
+    let completion = Exchange::new(input, output)
+        .run(&mut stdin, &mut viewed)
+        .await
+        .unwrap();
+    assert_eq!(completion.error, None);
+    (completion.exit_code, viewed)
+}
+
+/// A PNG's signature and bytes after it, as much as `demi file view` reads
+/// to tell what it is.
+fn png() -> Vec<u8> {
+    let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+    bytes.resize(64, 1);
+    bytes
+}
+
+const PDF: &[u8] = b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n";
+
+/// About 1 s here: the program starts and views twelve times.
+///
+/// Planted defects this catches: a view that writes the medium to stdout;
+/// one that stops at the first path that fails; a text file, bytes that are
+/// no medium, a type the model does not read, or more than 16 MiB handed
+/// to the job; a PDF not recognized; stdin not read for `-` or no path; and
+/// the job's own input read, which would wait until the job ends.
+#[tokio::test]
+async fn demi_file_view_hands_each_medium_to_the_job_and_names_what_it_cannot_show() {
+    tokio::time::timeout(Duration::from_secs(15), async {
+        let (root, service) = service_with(&[("notes.txt", "hello\n")]).await;
+        let cwd = root.path().to_str().unwrap();
+        std::fs::write(root.path().join("a.png"), png()).unwrap();
+        std::fs::write(root.path().join("report.pdf"), PDF).unwrap();
+        std::fs::write(root.path().join("data.bin"), [0u8, 255, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]).unwrap();
+        let mut big = png();
+        big.resize(17 * 1024 * 1024, 1);
+        std::fs::write(root.path().join("capture.png"), big).unwrap();
+        let client = service.client();
+        let both = ["image/png", "application/pdf"];
+        let none = || Stdin { chunks: Vec::new(), live: false };
+
+        // Paths in order: the media go to the job, nothing to stdout, a
+        // line for each that cannot be shown, and the others still shown.
+        let paths = ["a.png", "notes.txt", "data.bin", "missing.png", "report.pdf", "capture.png"];
+        let (code, viewed) = view(client, cwd, &paths, "test-model", &both, none()).await;
+        assert_eq!(code, 1);
+        assert_eq!(viewed.stdout, b"");
+        assert_eq!(viewed.media, [Bytes::from(png()), Bytes::from_static(PDF)]);
+        assert_eq!(
+            viewed.stderr,
+            "demi file view: notes.txt: a text file; read it with cat notes.txt\n\
+             demi file view: data.bin: not an image, a video or a PDF (13 bytes)\n\
+             demi file view: missing.png: No such file or directory\n\
+             demi file view: capture.png: 17.0 MiB; a medium is at most 16 MiB\n"
+        );
+
+        // A type the model does not read in a tool result names the model.
+        let (code, viewed) = view(client, cwd, &["report.pdf"], "deepseek-v4.1-flash", &["image/png"], none()).await;
+        assert_eq!((code, viewed.media.len()), (1, 0));
+        assert_eq!(
+            viewed.stderr,
+            "demi file view: report.pdf: this conversation's model, deepseek-v4.1-flash, does not read application/pdf in a tool result\n"
+        );
+
+        // A pipe: stdin when no path is named or the path is -.
+        for paths in [&[][..], &["-"][..]] {
+            let piped = Stdin { chunks: vec![Bytes::from(png()[..20].to_vec()), Bytes::from(png()[20..].to_vec())], live: false };
+            let (code, viewed) = view(client, cwd, paths, "test-model", &both, piped).await;
+            assert_eq!((code, viewed.media.clone(), viewed.stderr.as_str()), (0, vec![Bytes::from(png())], ""));
+        }
+        let text = Stdin { chunks: vec![Bytes::from_static(b"plain words\n")], live: false };
+        let (code, viewed) = view(client, cwd, &[], "test-model", &both, text).await;
+        assert_eq!((code, viewed.stderr.as_str()), (1, "demi file view: stdin: a text file; read it with cat stdin\n"));
+
+        // The job's own input is never read: nothing waits for input.
+        let live = Stdin { chunks: Vec::new(), live: true };
+        let (code, viewed) = view(client, cwd, &[], "test-model", &both, live).await;
+        assert_eq!(code, 1);
+        assert_eq!(
+            viewed.stderr,
+            "demi file view: no file named, and stdin is the job's input; name a file or pipe one in\n"
+        );
+        assert!(service.shutdown().await.unwrap().success());
+    })
+    .await
+    .unwrap();
 }

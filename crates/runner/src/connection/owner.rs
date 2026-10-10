@@ -739,6 +739,7 @@ impl Owner<'_> {
                 job_id,
                 manifest_hash,
                 context,
+                viewable,
                 script,
                 cwd,
                 env,
@@ -762,7 +763,9 @@ impl Owner<'_> {
                         script: script.clone(),
                         stdin: stdin.clone(),
                         stdout: stdout.clone(),
-                        commands: manifest_hash.clone().map(|hash| (hash, context.clone())),
+                        commands: manifest_hash
+                            .clone()
+                            .map(|hash| (hash, context.clone(), viewable.clone())),
                     },
                 })
             }

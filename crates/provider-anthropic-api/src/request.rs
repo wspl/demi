@@ -151,6 +151,7 @@ enum Block<'a> {
 enum ResultBlock<'a> {
     Text { text: Cow<'a, str> },
     Image { source: Base64<'a> },
+    Document { source: Base64<'a>, title: &'a str },
 }
 
 /// Inline bytes; `data` serializes as base64.
@@ -476,8 +477,9 @@ fn user_content(content: &[UserPart]) -> Vec<Block<'_>> {
         .collect()
 }
 
-/// A tool result's content: text and images; a video becomes a placeholder
-/// that names its type.
+/// A tool result's content: text, images and documents (`providers.md`
+/// § Media in tool results); a video becomes a placeholder that names its
+/// type.
 fn tool_result_content(output: &[ResultPart]) -> Vec<ResultBlock<'_>> {
     output
         .iter()
@@ -490,6 +492,10 @@ fn tool_result_content(output: &[ResultPart]) -> Vec<ResultBlock<'_>> {
             },
             ResultPart::Image(bytes) => ResultBlock::Image {
                 source: Base64::from(bytes),
+            },
+            ResultPart::Document { bytes, file_name } => ResultBlock::Document {
+                source: Base64::from(bytes),
+                title: file_name,
             },
         })
         .collect()

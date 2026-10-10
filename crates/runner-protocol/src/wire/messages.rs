@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use demi_command_protocol::{
     ArtifactLocation, CommandContext, EditCopies, EditKind, MAX_NUMBERS, PackageDescriptor,
-    PathChange, ServiceSequence, conversation_name, digest, without_nul,
+    PathChange, ServiceSequence, Viewable, conversation_name, digest, without_nul,
 };
 use demi_shared_types::BlobRef;
 use schemars::JsonSchema;
@@ -138,8 +138,10 @@ pub enum Inbound {
     },
     /// One job: `bash -c script` in `cwd` with exactly `env`; a `cwd` that
     /// does not exist fails it before its script runs. Its declared
-    /// commands receive `context`; `stdin` and `stdout` attach the job's fd 0
-    /// and fd 1 to pipes whose other ends are elsewhere.
+    /// commands receive `context` and may show the model the media types
+    /// `viewable` names, none for a job whose media reach no model, as one
+    /// `demi host shell` runs; `stdin` and `stdout` attach the job's fd 0 and
+    /// fd 1 to pipes whose other ends are elsewhere.
     JobStart {
         job_id: String,
         #[serde(
@@ -151,6 +153,13 @@ pub enum Inbound {
         manifest_hash: Option<String>,
         #[garde(dive)]
         context: CommandContext,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        #[garde(dive)]
+        viewable: Option<Viewable>,
         script: String,
         cwd: String,
         env: BTreeMap<String, String>,
@@ -230,16 +239,6 @@ pub enum Inbound {
     RpcOutput {
         call_id: String,
         bytes: WireBytes,
-    },
-    /// The handler returned a medium of `size` bytes after the first `after`
-    /// bytes of the call's stdout; its bytes flow through `pipe`
-    /// (`commands.md` § Return media).
-    RpcMedium {
-        call_id: String,
-        after: u64,
-        #[garde(range(max = demi_command_protocol::MAX_MEDIUM_BYTES))]
-        size: u64,
-        pipe: PipeRef,
     },
     /// Follows the stdout pipe's drain, so the process has written everything
     /// before it exits with the code.
@@ -911,9 +910,9 @@ pub enum Outbound {
         path_changes: Vec<PathChange>,
         files_truncated: bool,
     },
-    /// A medium a command whose stdout is the job's output returned, once
-    /// the job keeps it (`runner.md` § Pipes and output). Every one of a
-    /// job precedes its `job_exit`.
+    /// A medium `demi file view` handed to the job, once the job keeps it
+    /// (`runner.md` § Pipes and output). Every one of a job precedes its
+    /// `job_exit`.
     JobMedium {
         job_id: String,
         #[garde(range(min = 1))]

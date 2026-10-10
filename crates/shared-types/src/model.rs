@@ -37,6 +37,16 @@ pub const ATTACHMENT_FILE_EXTENSIONS: [FileExtension; 6] = [
     FileExtension::Pdf,
 ];
 
+/// The image types, which a provider whose wire carries no document lists
+/// alone (`models.md` § Accepted attachment types).
+pub const IMAGE_FILE_EXTENSIONS: [FileExtension; 5] = [
+    FileExtension::Png,
+    FileExtension::Jpg,
+    FileExtension::Jpeg,
+    FileExtension::Gif,
+    FileExtension::Webp,
+];
+
 /// The video types, which only a model known to read video accepts.
 pub const VIDEO_FILE_EXTENSIONS: [FileExtension; 4] = [
     FileExtension::Mp4,

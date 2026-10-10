@@ -15,7 +15,7 @@ use std::{
 use bytes::Bytes;
 use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, Completion, Invocation, MAX_MEDIUM_BYTES,
-    ProtocolError, Record, RecordDecoder, StdoutTarget, sniff_media_type,
+    ProtocolError, Record, RecordDecoder, Viewable, sniff_media_type,
 };
 use demi_command_sdk::{
     Client, Exchange, Handler, InputSource, InvocationContext, OutputSink, ServiceError, serve,
@@ -102,9 +102,10 @@ impl InputSource for Nothing {
     }
 }
 
-/// Runs `shot` on the [`Returning`] service, made where its caller's stdout
-/// goes is `stdout`, and answers what reached the caller.
-async fn shot(stdout: Option<StdoutTarget>) -> Vec<Received> {
+/// Runs `shot` on the [`Returning`] service, as a job's command when
+/// `viewable` names what its job may show, and answers what reached the
+/// caller.
+async fn shot(viewable: Option<Viewable>) -> Vec<Received> {
     let (client_io, server_io) = tokio::io::duplex(64 * 1024);
     let server = tokio::spawn(serve(server_io, Arc::new(Returning)));
     let (client, connection) = Client::connect(client_io).await.unwrap();
@@ -127,7 +128,8 @@ async fn shot(stdout: Option<StdoutTarget>) -> Vec<Received> {
         env: BTreeMap::new(),
         edits: None,
         json: None,
-        stdout,
+        live_input: viewable.as_ref().map(|_| false),
+        viewable,
     };
     let (input, output) = client.invoke(&request).await.unwrap();
     let mut received = Recorded::default();
@@ -147,7 +149,10 @@ async fn shot(stdout: Option<StdoutTarget>) -> Vec<Received> {
 /// output that followed it.
 #[tokio::test]
 async fn a_returned_medium_reaches_the_caller_whole_in_its_place() {
-    let received = tokio::time::timeout(Duration::from_secs(5), shot(Some(StdoutTarget::Job)))
+    let received = tokio::time::timeout(Duration::from_secs(5), shot(Some(Viewable {
+        model: "test-model".into(),
+        media_types: vec!["image/png".into()],
+    })))
         .await
         .unwrap();
     assert_eq!(
@@ -228,8 +233,9 @@ fn media_are_recognized_by_their_magic_numbers_and_nothing_else() {
         Some("video/x-m4v")
     );
 
+    assert_eq!(sniffed(&bytes(&[b"%PDF-1.7"])), Some("application/pdf"));
+
     // Outside the closed set, and too short to tell: no guessing.
-    assert_eq!(sniffed(&bytes(&[b"%PDF-1.7"])), None);
     assert_eq!(sniffed(&bytes(&[b"plain text here"])), None);
     assert_eq!(sniffed(b"\x89PNG\r\n\x1a\n\0\0\0"), None);
 }

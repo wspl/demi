@@ -9,7 +9,8 @@ use std::ops::Range;
 
 use demi_agent_store::media::{Held, ModelView, missing_text};
 use demi_provider_common::{
-    InferenceItem, MediaBytes, Medium, RequestLimits, ResultPart, ToolDefinition, UserPart,
+    InferenceItem, MediaBytes, Medium, RequestLimits, ResultPart, ToolDefinition, ToolResultKinds,
+    UserPart,
 };
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, B64Bytes, INSTRUCTIONS_SOURCE, BlobRef, Block, BlockId, CompletionOutcome,
@@ -210,6 +211,8 @@ pub struct RequestView<'a> {
     /// Half of the body limit, the most base64 one medium may take; none
     /// when the vendor documents no limit.
     half_body: Option<u64>,
+    /// The kinds of media the vendor's wire carries in a tool result.
+    tool_results: ToolResultKinds,
 }
 
 impl<'a> RequestView<'a> {
@@ -226,6 +229,7 @@ impl<'a> RequestView<'a> {
             model,
             tools,
             half_body: limits.body_bytes.map(|bytes| bytes / 2),
+            tool_results: limits.tool_results,
         }
     }
 
@@ -253,6 +257,10 @@ impl<'a> RequestView<'a> {
                 ToolResultContentBlock::Text { text } => text.clone(),
                 ToolResultContentBlock::Image { source } | ToolResultContentBlock::Video { source } => {
                     let ToolMediaSource::Ref { media_type, .. } = source;
+                    format!("[{media_type}]")
+                }
+                ToolResultContentBlock::Document { source } => {
+                    let DocumentSource::Ref { media_type, .. } = source;
                     format!("[{media_type}]")
                 }
                 ToolResultContentBlock::Gone { kind, cause, .. } => gone_text(*kind, cause),
@@ -354,13 +362,39 @@ impl<'a> RequestView<'a> {
                     Err(text) => ResultPart::Text(text),
                 }
             }
+            ToolResultContentBlock::Document { source } => match self.tool_document(source) {
+                Ok(bytes) => {
+                    let DocumentSource::Ref { file_name, .. } = source;
+                    ResultPart::Document {
+                        bytes,
+                        file_name: file_name.clone(),
+                    }
+                }
+                Err(text) => ResultPart::Text(text),
+            },
             ToolResultContentBlock::Gone { kind, cause, .. } => {
                 ResultPart::Text(bound_text(&gone_text(*kind, cause)).into_owned())
             }
         }
     }
 
-    /// A tool result's image or video: its held bytes, or its text.
+    /// A tool result's document: its held bytes, or its text when the
+    /// request's model does not read it in a tool result
+    /// (`providers.md` § Media in tool results).
+    pub(crate) fn tool_document(&self, source: &DocumentSource) -> Result<MediaBytes, String> {
+        let DocumentSource::Ref {
+            r#ref,
+            media_type,
+            file_name,
+        } = source;
+        let accepted = self.tool_results.carries(ModelMediaKind::Document)
+            && accepts_document(self.model, media_type);
+        self.bytes("document", r#ref, media_type, file_name, accepted)
+    }
+
+    /// A tool result's image or video: its held bytes, or its text when the
+    /// request's model does not read it in a tool result
+    /// (`providers.md` § Media in tool results).
     pub(crate) fn tool_medium(
         &self,
         kind: ModelMediaKind,
@@ -369,7 +403,7 @@ impl<'a> RequestView<'a> {
         let ToolMediaSource::Ref {
             r#ref, media_type, ..
         } = source;
-        let accepted = model_accepts_media_type(self.model, media_type);
+        let accepted = self.tool_results.reads(self.model, media_type);
         self.bytes(kind.name(), r#ref, media_type, media_type, accepted)
     }
 

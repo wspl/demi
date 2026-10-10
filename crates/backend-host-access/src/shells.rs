@@ -26,8 +26,8 @@ use demi_backend_runners::host_key::device_of;
 use demi_backend_runners::router::CommandRegistration;
 use demi_command_protocol::{CommandCaller, EDIT_FILE_BYTES};
 use demi_host_interface::{
-    CommandMedium, CommandStatus, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
-    MediumKept, PageView, ShellEnvironment, ShellError, StoredMedium, WholeOutput,
+    CommandStatus, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
+    PageView, ShellEnvironment, ShellError, WholeOutput,
 };
 use demi_runner_protocol::wire::JobFileChange;
 use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile};
@@ -323,37 +323,6 @@ async fn read_copies(
     }
 }
 
-impl Keeper {
-    /// Stores each of a command's media the backend has as a blob, before
-    /// its row names it (`storage.md` § Command outputs).
-    async fn store_media(&self, command: &CommandId, media: &[CommandMedium]) -> Vec<StoredMedium> {
-        let mut stored = Vec::with_capacity(media.len());
-        for medium in media {
-            let kept = match &medium.bytes {
-                Ok(bytes) => match self.blobs.put(bytes.clone()).await {
-                    Ok(blob) => MediumKept::Stored { blob },
-                    Err(error) => {
-                        tracing::warn!(conversation = %self.conversation, %command, number = medium.number, "a command's medium was not stored: {error}");
-                        MediumKept::Missing {
-                            reason: format!("not stored: {error}"),
-                        }
-                    }
-                },
-                Err(reason) => MediumKept::Missing {
-                    reason: reason.clone(),
-                },
-            };
-            stored.push(StoredMedium {
-                number: medium.number,
-                media_type: medium.media_type.clone(),
-                size: medium.size,
-                kept,
-            });
-        }
-        stored
-    }
-}
-
 impl CommandKeeper for Keeper {
     fn retain<'a>(
         &'a self,
@@ -429,7 +398,6 @@ impl CommandKeeper for Keeper {
         command: &'a CommandId,
         end: CommandEnd,
         output: &'a WholeOutput,
-        media: &'a [CommandMedium],
     ) -> LocalBoxFuture<'a, ()> {
         Box::pin(async move {
             let ended = self.clock.now();
@@ -437,7 +405,6 @@ impl CommandKeeper for Keeper {
                 Ok(blob) => OutputRow::Stored {
                     blob,
                     missing: output.missing().cloned(),
-                    media: self.store_media(command, media).await,
                 },
                 Err(reason) => {
                     tracing::warn!(conversation = %self.conversation, %command, "a command's output was not stored: {reason}");
@@ -496,14 +463,6 @@ impl ShellEnvironment for Registered {
         command: &'a CommandId,
     ) -> LocalBoxFuture<'a, Result<WholeOutput, ShellError>> {
         self.environment.read_output(command)
-    }
-
-    fn read_medium<'a>(
-        &'a self,
-        command: &'a CommandId,
-        number: u32,
-    ) -> LocalBoxFuture<'a, Result<Bytes, ShellError>> {
-        self.environment.read_medium(command, number)
     }
 
     fn write<'a>(

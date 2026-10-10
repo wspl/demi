@@ -57,13 +57,7 @@ pub fn snippet(bytes: &[u8]) -> String {
 /// model can read them natively, as an image, a video or a PDF, else the one
 /// it was sent with.
 pub fn upload_media_type(sent: &str, bytes: &[u8]) -> String {
-    if let Some(media) = sniff_media_type(bytes) {
-        return media.to_owned();
-    }
-    if bytes.starts_with(b"%PDF-") {
-        return PDF.to_owned();
-    }
-    sent.to_owned()
+    sniff_media_type(bytes).map_or_else(|| sent.to_owned(), str::to_owned)
 }
 
 /// An upload written to the conversation's Host, as its message receives it.
@@ -124,7 +118,7 @@ pub async fn upload_blocks(
                 Err(_) => None,
             }
         }
-        Some(media) => {
+        Some(media) if media.kind == ModelMediaKind::Video => {
             let size = pixel_size(upload.bytes.clone().into_bytes(), media.media_type);
             held.hold(upload.sha256.clone(), upload.bytes.clone());
             Some(UserContentBlock::Video {
@@ -136,23 +130,28 @@ pub async fn upload_blocks(
                 },
             })
         }
-        None if is_pdf(upload.media_type, upload.bytes) => {
-            held.hold(upload.sha256.clone(), upload.bytes.clone());
-            Some(UserContentBlock::Document {
-                source: DocumentSource::Ref {
-                    r#ref: upload.sha256.clone(),
-                    media_type: PDF.to_owned(),
-                    file_name: upload.name.to_owned(),
-                },
-            })
-        }
+        // A PDF by its bytes, or by the type it was sent with.
+        Some(_) => document(&upload, &mut held),
+        None if is_pdf(upload.media_type) => document(&upload, &mut held),
         None => None,
     };
     Ok((medium.into_iter().chain([record]).collect(), held))
 }
 
-fn is_pdf(media_type: &str, bytes: &[u8]) -> bool {
-    media_type.split(';').next().map(str::trim) == Some(PDF) || bytes.starts_with(b"%PDF-")
+fn is_pdf(media_type: &str) -> bool {
+    media_type.split(';').next().map(str::trim) == Some(PDF)
+}
+
+/// The document an upload of a PDF becomes, its bytes held.
+fn document(upload: &Upload<'_>, held: &mut HeldMedia) -> Option<UserContentBlock> {
+    held.hold(upload.sha256.clone(), upload.bytes.clone());
+    Some(UserContentBlock::Document {
+        source: DocumentSource::Ref {
+            r#ref: upload.sha256.clone(),
+            media_type: PDF.to_owned(),
+            file_name: upload.name.to_owned(),
+        },
+    })
 }
 
 /// The text an upload that is gone, or not the sender's, becomes.
