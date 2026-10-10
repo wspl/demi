@@ -63,12 +63,12 @@ const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?:
   { variant: 'One line', content: text('Rename the session cookie in the login test.') },
   { variant: 'Five lines · whole', content: text(steps.join('\n')) },
   {
-    variant: 'Five lines with a blank one · whole',
-    content: text(['The login test fails after the cookie rename.', '', ...steps.slice(0, 3)].join('\n')),
+    variant: 'Under the fold · whole',
+    content: text([...steps, '', ...steps, '', 'Expected the sign-in page; got a blank screen.'].join('\n')),
   },
   {
-    variant: 'Six lines · the fifth fades',
-    content: text([...steps, 'Expected the sign-in page; got a blank screen.'].join('\n')),
+    variant: 'Over the fold · folds, with Show More',
+    content: text([longUserText, ...steps, longUserText].join('\n\n')),
   },
   {
     variant: 'One paragraph · the cut follows the width',
@@ -117,7 +117,7 @@ const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?:
 <template>
   <GallerySection
     title="User Message Length"
-    note="A message longer than five lines shows its first five, and the fifth fades out. A line of text across the cut shows whole; an image or a code block across it is cut there. A file is a capsule on its line and counts as text. Drag a frame’s right edge: the cut follows the wrapping."
+    note="A message taller than 300px folds to about 200px, as Claude Code's does, its last line fading out, and Show More under it opens it whole; Show Less folds it again. A message under 300px shows whole, since folding it would hide less than the control takes. A line of text across the fold shows whole; an image or a code block across it is cut there. A file is a capsule on its line and counts as text. Drag a frame’s right edge: the fold follows the wrapping."
   >
     <div class="specimen-stack specimen-stack-loose">
       <GallerySpecimen
