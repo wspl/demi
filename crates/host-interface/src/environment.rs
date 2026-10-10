@@ -58,6 +58,13 @@ pub trait ShellEnvironment {
     /// its output.
     fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError>;
 
+    /// The command lines of the background tasks that keep `command`
+    /// running once its script has ended, which moves no place in its
+    /// output (`runtime.md` § Results and previews); empty while its script
+    /// runs, and for a command that ended or that the environment does not
+    /// hold.
+    fn outliving(&self, command: &CommandId) -> Vec<String>;
+
     /// How long the Host of `command`, which runs, has been unreachable as
     /// far as the environment knows, and how long its runner keeps it so
     /// (`runtime.md` § Command reports); none while its connection serves
@@ -203,8 +210,13 @@ pub struct Newest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandState {
     /// It runs; `hint` is the running declared command's guidance for the
-    /// model, when it declares one.
-    Running { hint: Option<String> },
+    /// model, when it declares one, and `outliving` the command lines of the
+    /// background tasks that keep it running once its script has ended,
+    /// empty while the script runs.
+    Running {
+        hint: Option<String>,
+        outliving: Vec<String>,
+    },
     Exited {
         exit_code: i32,
         /// Present when the final stdout was not text.

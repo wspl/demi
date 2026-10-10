@@ -415,6 +415,7 @@ async fn a_lost_connection_fails_what_it_carried_and_the_next_one_serves_the_sam
             stderr_bytes: 0,
         },
         media: 0,
+        outliving: Vec::new(),
     };
     let mut link = device.connect_with(None, 1, vec![kept]);
     link.send(job_exit(job.id(), Some(0), None)).await;
@@ -855,7 +856,7 @@ async fn a_status_shows_the_latest_first_registered_hint_and_none_once_the_job_e
     };
     let shown =
         |shell: &RemoteShellEnvironment| match shell.status(&started.command_id).unwrap().state {
-            CommandState::Running { hint } => hint,
+            CommandState::Running { hint, .. } => hint,
             other => panic!("expected a running command, got {other:?}"),
         };
     link.send(hint("foreign", Some("another job"), "not-this-job"))
@@ -2056,6 +2057,7 @@ async fn a_job_kept_through_a_lost_connection_gets_the_output_it_printed_meanwhi
             stderr_bytes: 0,
         },
         media: 0,
+        outliving: Vec::new(),
     };
     let mut link = device.connect_with(None, 1, vec![kept]);
     // Output that arrives during the read waits for it.
@@ -2149,6 +2151,7 @@ async fn a_job_the_backend_has_no_command_for_is_stopped_and_released() {
                 stderr_bytes: 0,
             },
             media: 0,
+            outliving: Vec::new(),
         }
     };
     let ended = demi_runner_protocol::wire::KeptEnd {

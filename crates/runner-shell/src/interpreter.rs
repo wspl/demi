@@ -114,8 +114,10 @@ pub async fn execute(
         .run_string(script, &SourceInfo::default(), &shell.default_exec_params())
         .await?;
     // The runner job owns asynchronous shell tasks until completion or cancellation.
-    // Keep their interpreter and builtin threads alive while retaining the foreground status.
-    crate::process_builtins::wait_tasks(&mut shell).await?;
+    // Keep their interpreter and builtin threads alive while retaining the foreground status,
+    // and tell the job which tasks keep it running now that its script has ended.
+    let work = options.scope.work.clone();
+    crate::process_builtins::wait_tasks(&mut shell, |tasks| work.outlived_by(tasks)).await?;
     Ok(ShellResult {
         code: result.exit_code.into(),
     })
