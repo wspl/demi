@@ -29,7 +29,7 @@ use demi_provider_common::{
     RequestBlock, RequestLimits, ToolDefinition,
 };
 use demi_shared_types::{
-    AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, CommandReport, FailureSource, ReportEvent,
+    AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, CommandReport, ErrorDevice, FailureSource, ReportEvent,
     ModelSelection, NodeId, PendingCall, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
     ToolResultContentBlock, ToolView, TurnId, UserContentBlock, WakeupPlacement,
 };
@@ -84,6 +84,10 @@ pub(crate) struct SessionCore {
     /// call's result names when something other than its tool ends it
     /// (`runtime.md` § Interrupted calls).
     pub(super) calls: HashMap<String, CallCommand>,
+    /// The Host a call of the running turn found offline, while no later
+    /// call of the turn ran there: a turn that ends so is unfinished
+    /// (`failures-and-recovery.md` § The unfinished turn). Live only.
+    pub(super) offline_host: Option<ErrorDevice>,
     pub(super) edits: Vec<EditReceipt>,
     /// The edit being prepared or run, from its admission until its action
     /// ends.
@@ -371,6 +375,7 @@ impl SessionCore {
             runtime: parts.runtime,
             watched: parts.watched,
             calls: HashMap::new(),
+            offline_host: None,
             edits: parts.edits,
             editing: None,
             activity: Activity::Idle,

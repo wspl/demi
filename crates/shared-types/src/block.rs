@@ -516,8 +516,11 @@ pub struct ResumeBlock {
     pub created_at: Timestamp,
     #[garde(dive)]
     pub model: ModelSelection,
-    /// What made Demi resume the turn, such as "the backend restarted";
-    /// omitted when the user did.
+    /// Why the turn is resumed, as the model reads it before "Continue
+    /// from where you left off.": "Demi resumed this turn after the backend
+    /// restarted.", or, when the user resumes a turn its Host's absence left
+    /// unfinished, "MacBook Pro is back online."; omitted when the user
+    /// resumes with nothing to add.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(skip)]
     pub reason: Option<String>,
@@ -730,6 +733,33 @@ pub struct ErrorBlock {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[garde(skip)]
     pub outside_turn: bool,
+    /// The device of a `host_offline` failure, which the turn's Resume
+    /// waits for (`failures-and-recovery.md` § The unfinished turn);
+    /// omitted for any other failure.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "ErrorDevice")]
+    #[garde(dive)]
+    pub device: Option<ErrorDevice>,
+}
+
+/// The code of the error block a turn ends with when a call of it failed
+/// because its Host was offline and no later call ran there
+/// (`failures-and-recovery.md` § The unfinished turn).
+pub const HOST_OFFLINE: &str = "host_offline";
+
+/// A device a failure names: its id, by which the page follows its state,
+/// and its name as its record gave it then.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ErrorDevice {
+    #[garde(length(min = 1))]
+    pub id: String,
+    #[garde(length(min = 1))]
+    pub name: String,
 }
 
 /// Compaction's summary of the history before it, inserted where the kept

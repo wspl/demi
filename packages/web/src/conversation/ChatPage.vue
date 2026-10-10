@@ -37,6 +37,14 @@ const conversation = computed(() =>
 )
 /** The header's place, which carries out a move the offline primary Host's card asks for. */
 const place = useTemplateRef<InstanceType<typeof WorkspaceInfo>>('place')
+/**
+ * Whether the user's device is online, live over the account's device
+ * states; a device the user no longer has holds nothing back.
+ */
+function deviceOnline(deviceId: string): boolean {
+  const state = resources.deviceById(deviceId)?.state
+  return state === undefined || state === 'online'
+}
 const pageKind = computed(() =>
   !props.id && store.listStatus === 'ready'
     ? 'none'
@@ -187,6 +195,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :select-edit="selectEdit"
     :read-edit="readEditCopies"
     :files="files"
+    :device-online="deviceOnline"
     :permission-requests="permissions.stateFor(conversation.id).requests"
     :deciding-permission="permissions.stateFor(conversation.id).deciding"
     @decide-permission="(id, decision) => permissions.decide(conversation!.id, id, decision)"

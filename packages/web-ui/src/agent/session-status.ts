@@ -125,16 +125,46 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
  */
 export function turnRecovery(
   phase: 'idle' | string,
-  blocks: readonly { type: string; outsideTurn?: boolean }[],
+  blocks: readonly RecordCandidate[],
 ): 'resume' | 'continue' | null {
   if (phase !== 'idle') {
     return null
   }
-  const end = blocks.findLast(
-    (block) => !isCompactionDivider(block) && !(block.type === 'error' && block.outsideTurn),
-  )
+  const end = turnRecord(blocks)
   if (end?.type === 'error') {
     return 'resume'
   }
   return end?.type === 'abort' ? 'continue' : null
+}
+
+/** What `turnRecovery` reads of a block. */
+interface RecordCandidate {
+  type: string
+  outsideTurn?: boolean
+  code?: string | null
+  device?: { id: string; name: string }
+}
+
+/** The record that ended the last turn among `blocks`, or the block that ended it otherwise. */
+function turnRecord<T extends RecordCandidate>(blocks: readonly T[]): T | undefined {
+  return blocks.findLast(
+    (block) => !isCompactionDivider(block) && !(block.type === 'error' && block.outsideTurn),
+  )
+}
+
+/**
+ * The device whose return the dock's Resume waits for (`product.md`
+ * § Recovering an unfinished turn): the turn ended unfinished because that
+ * device was offline, and `online` says it still is not. Null when Resume
+ * may go.
+ */
+export function resumeWaitsFor(
+  blocks: readonly RecordCandidate[],
+  online: (deviceId: string) => boolean,
+): string | null {
+  const end = turnRecord(blocks)
+  if (end?.type !== 'error' || end.code !== 'host_offline' || !end.device) {
+    return null
+  }
+  return online(end.device.id) ? null : end.device.name
 }
