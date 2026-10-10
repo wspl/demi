@@ -9,7 +9,6 @@ use demi_agent_session::WindowEnd;
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, BlockId, CompletionOutcome, PendingSteer, WakeupPlacement,
 };
-use tokio_util::sync::CancellationToken;
 
 use super::*;
 
@@ -205,9 +204,8 @@ async fn a_stop_writes_the_pending_steers_before_its_marker_and_a_steer_needs_a_
     );
 }
 
-/// How a watching tool's window ended, and the token that would stop its
-/// command.
-type Watched = Rc<RefCell<Option<(WindowEnd, CancellationToken)>>>;
+/// How a watching tool's window ended.
+type Watched = Rc<RefCell<Option<WindowEnd>>>;
 
 /// A tool that watches its command as a shell tool does, until input or a
 /// send now ends its window, and answers what ended it.
@@ -223,7 +221,7 @@ fn watching_tool() -> ((String, Invoke), Watched, oneshot::Receiver<()>) {
         let ended = ended.clone();
         Box::pin(async move {
             let end = call.arrival.arrived().await;
-            *ended.borrow_mut() = Some((end, call.cancel));
+            *ended.borrow_mut() = Some(end);
             Ok(output(match end {
                 WindowEnd::SentNow => "moved to the background",
                 WindowEnd::Input => "input arrived",
@@ -269,10 +267,10 @@ async fn steer_now_returns_the_running_call_at_once_and_the_turn_goes_on_with_th
     session.steer_now(&steer_id("s1"));
 
     assert_eq!(running.await, Ok(ActionEnd::Completed));
-    // The call returned for the send now, and nothing stops its command.
-    let (end, command) = watched.borrow_mut().take().unwrap();
+    // The call returned for the send now: it was not dropped, so nothing
+    // stops its command.
+    let end = watched.borrow_mut().take().unwrap();
     assert_eq!(end, WindowEnd::SentNow);
-    assert!(!command.is_cancelled());
     // The call after it never ran.
     assert_eq!(later_runs.get(), 0);
     let blocks = session.transcript().blocks;
@@ -367,9 +365,8 @@ async fn a_queued_message_sent_now_ends_the_turn_without_a_marker_and_runs_next(
     assert_eq!(running.await, Ok(ActionEnd::Completed));
     assert_eq!(third.await, Ok(ActionEnd::Completed));
     assert_eq!(second.await, Ok(ActionEnd::Completed));
-    let (end, command) = watched.borrow_mut().take().unwrap();
+    let end = watched.borrow_mut().take().unwrap();
     assert_eq!(end, WindowEnd::SentNow);
-    assert!(!command.is_cancelled());
     // The turn ended at the boundary with the pending steer written, and no
     // stopped marker; the message sent now ran before the one it passed.
     assert_eq!(
@@ -1109,9 +1106,9 @@ async fn a_session_restored_after_an_interrupted_turn_holds_its_reports_and_mess
     );
 }
 
-/// A turn that leaves command 17 running and then runs a tool that waits for
-/// the test, which stops it.
-async fn stopped_while_its_command_runs(
+/// A turn whose first call leaves command 17 running and whose next call
+/// watches command 18 until the test stops the turn.
+async fn stopped_while_a_call_watches(
     end_on_stop: bool,
 ) -> (AgentSession, Rc<TestCommands>, ScriptedRuntime, Rc<MemoryTreeStore>) {
     let provider = ScriptedRuntime::new([
@@ -1121,19 +1118,17 @@ async fn stopped_while_its_command_runs(
                 "work",
                 json!({ "commandId": "17", "intervalMs": null, "description": "Serve" }),
             ),
-            event::tool_call("slow-1", "slow", json!({})),
+            event::tool_call("watch-18", "watch", json!({ "commandId": "18" })),
             event::response(1, 1),
         ]),
-        // A report would open a turn of its own.
         answer("noted"),
     ]);
     let store = MemoryTreeStore::new();
     let runtime = test_runtime(Vec::new());
     let commands = runtime.commands.clone();
     commands.end_on_stop.set(end_on_stop);
-    let (slow, _releases, started) = gated_tool("slow");
     let runtime = TestRuntime {
-        tools: vec![background_tool(&commands), slow],
+        tools: vec![background_tool(&commands), command_watching_tool(&commands)],
         ..runtime
     };
     let session = start_at(
@@ -1145,37 +1140,57 @@ async fn stopped_while_its_command_runs(
     )
     .await;
     let running = session.send(text("serve"), turn("t1")).unwrap();
-    started.await.unwrap();
-    assert!(session.status().commands);
+    until(|| session.status().commands && provider.requests().len() == 1).await;
+    tokio::task::yield_now().await;
     session.abort().await;
     running.await.unwrap();
     (session, commands, provider, store)
 }
 
-/// The Stop's end of a command the stopped action left running is the
-/// Stop's, which the node knows: no report of it.
-async fn assert_unreported(session: &AgentSession, provider: &ScriptedRuntime, store: &MemoryTreeStore) {
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    session.settled().await;
-    let kinds = kinds(&session.transcript().blocks);
-    assert!(!kinds.contains(&"wakeup".to_owned()), "{kinds:?}");
-    assert_eq!(provider.requests().len(), 1);
-    assert!(!session.status().commands && !session.status().input);
-    session.flush().await.unwrap();
-    let state = store.checkpoint(&root()).unwrap().state;
-    assert!(state.reports.is_empty() && state.intervals.is_empty(), "{state:?}");
+/// What the requests after the first carried of commands' reports.
+fn reports_sent(provider: &ScriptedRuntime) -> Vec<String> {
+    provider.requests()[1..]
+        .iter()
+        .flat_map(|request| request.items.iter())
+        .filter_map(|item| match item {
+            InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
+                Some(content)
+            }
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|part| match part {
+            UserPart::Text(text) if text.contains(": ended") => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
-// A fixed race: the end of a command the user's Stop ended was reported,
-// written into the stopped turn or opening a turn after it, as it came
-// before or after the stop was recorded. A few milliseconds of paused time.
+// A Stop stops only what the node is doing: the call that watched command
+// 18 stops it and says so in its result, so its end, before or after the
+// stop is recorded, reports nothing; command 17, which an earlier call left
+// running, runs on and still reports its end, which opens a turn of its
+// own (`runtime.md` § Stop). Paused clock: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
-async fn a_command_the_users_stop_ends_reports_nothing_whenever_it_ends() {
-    // It ends as the stop goes out, as a real command does.
-    let (session, _, provider, store) = stopped_while_its_command_runs(true).await;
-    assert_unreported(&session, &provider, &store).await;
-    // It ends only after the stop was recorded.
-    let (session, commands, provider, store) = stopped_while_its_command_runs(false).await;
-    commands.end("17");
-    assert_unreported(&session, &provider, &store).await;
+async fn a_stop_ends_the_watched_calls_command_and_leaves_an_earlier_calls_reporting() {
+    for end_on_stop in [true, false] {
+        let (session, commands, provider, _store) = stopped_while_a_call_watches(end_on_stop).await;
+        if !end_on_stop {
+            commands.end("18");
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        session.settled().await;
+        assert_eq!(provider.requests().len(), 1, "{end_on_stop}");
+        assert!(session.status().commands);
+        // The earlier call's command still reports its end after the Stop.
+        commands.end("17");
+        until(|| provider.requests().len() == 2).await;
+        session.settled().await;
+        let blocks = session.transcript().blocks;
+        let kinds = kinds(&blocks);
+        let stopped = kinds.iter().position(|kind| kind == "abort").expect("the stop marker");
+        assert_eq!(kinds[stopped + 1..], ["wakeup", "text", "response"], "{end_on_stop}");
+        assert_eq!(reports_sent(&provider), ["Serve: ended"], "{end_on_stop}");
+        assert!(!session.status().commands);
+    }
 }

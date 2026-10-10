@@ -17,7 +17,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use demi_agent_server::testing::client_text;
 use demi_agent_tools::testing::{field, shown_output};
-use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
+use demi_conversation_socket_protocol::{ClientFrame, ServerFrame, ShellStatus};
 use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderEvent, ResultPart, UserPart,
     testing::{ScriptedRuntime, Turn},
@@ -691,6 +691,54 @@ async fn a_look_at_another_agents_command_shows_the_output_since_the_lookers_own
         // still shows it `two`.
         let report = reported(&script, &format!("Command {serve} (Run the test script) is still running")).await;
         assert!(report.contains("\noutput:\ntwo"), "{report}");
+        fixture.stop().await;
+    })
+    .await;
+}
+
+// About three seconds: two scripts, each a shell job, and the two seconds
+// of quiet that end the first call.
+#[tokio::test(flavor = "local")]
+async fn a_stop_ends_the_command_a_call_watches_and_leaves_one_an_earlier_call_left_running() {
+    within(async {
+        let script = tolerant(vec![
+            vec![resident("serve", "echo ready; until [ -e stop ]; do sleep 0.05; done")],
+            // A window far longer than the test, which the Stop ends.
+            vec![exec("slow", "until [ -e never ]; do sleep 0.05; done", 600_000)],
+        ]);
+        let fixture = Fixture::start(&script).await;
+        let mut client = fixture.opened().await;
+        client
+            .send(ClientFrame::Send {
+                message_id: "message-1".try_into().unwrap(),
+                content: client_text("Serve, then wait."),
+            })
+            .await;
+        client.next_until(|frame| shows_call(frame, "slow")).await;
+        client.send(ClientFrame::Abort {}).await;
+        client
+            .next_until(|frame| matches!(frame, ServerFrame::AbortResult { .. }))
+            .await;
+        // The watched command ended with its call.
+        client
+            .next_until(|frame| {
+                matches!(frame, ServerFrame::ShellOutput { status, .. }
+                    if status.command().tool_use_id == "slow"
+                        && !matches!(**status, ShellStatus::Running { .. }))
+            })
+            .await;
+
+        // The server an earlier call left running runs on, and its end
+        // wakes the stopped node.
+        let serve = fixture_command(&script, "serve").await;
+        std::fs::write(format!("{}/stop", fixture.workspace), "").unwrap();
+        reported(
+            &script,
+            &format!(
+                "Command {serve} (Run the test script) ended with exit code 0; look at it with demi shell status {serve}."
+            ),
+        )
+        .await;
         fixture.stop().await;
     })
     .await;

@@ -473,7 +473,6 @@ async fn run_tools(
                     input: tool_input(&call.input),
                     model: model.clone(),
                     request_limits,
-                    cancel: cancel.child_token(),
                     arrival: InputArrival::new(s.arrivals.subscribe(), joined),
                 })
                 .collect();
