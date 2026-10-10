@@ -853,7 +853,14 @@ job showed the model.
   its bytes as any program does, so `> shot.png` saves them and
   `| demi file view` shows them; `demi browser screenshot` does the same
   ([Images and large outputs](../browser/browser.md#images-and-large-outputs)).
-  A job's stdout that is not text is never shown to the model: the output
+  Bytes are binary when their first 8 KiB hold a NUL byte or they read as
+  a media type Demi recognises, as git and GNU diff decide; any other bytes
+  are text, and a byte that is no UTF-8 shows as U+FFFD, as a terminal
+  shows it. One rule decides it for a job's stdout and for edit tracking's
+  copies ([Edit tracking](../execution/edit-tracking.md)), so a stray byte,
+  such as a raw line `grep` printed from a git object, costs one character
+  rather than hiding the whole output, as it did in a product check. A
+  job's stdout that is binary is never shown to the model: the output
   shows it as one line, `<binary stdout: 412000 bytes>`, and the result's
   line says what to do instead:
   `[binary stdout, 412000 bytes: not shown; to look at an image, a video or a PDF, pipe it into demi file view; to keep it, redirect it to a file]`.

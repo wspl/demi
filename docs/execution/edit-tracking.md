@@ -327,7 +327,9 @@ stored once, however many segments and Forks name it.
 Only creations and modifications are reported because the conversation shows
 what the model wrote, not the state of the directory.
 
-Binary contents are never retained, whatever their size: copies of images and
+Binary contents, by the one rule a job's stdout is judged by
+([What `demi file view` shows](../agent/runtime.md#what-demi-file-view-shows)),
+are never retained, whatever their size: copies of images and
 media would fill the blob store for little use, since the change view's
 history is about text. The work panel shows a binary file only as it exists
 on the Host ([File previews](../product/file-previews.md)).
