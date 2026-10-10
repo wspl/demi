@@ -1172,109 +1172,119 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
     // Check existence of path provided in argument
     let mut seen_inodes: HashSet<FileInfo> = HashSet::default();
 
-    'loop_file: for path in files {
-        // Skip if we don't want to ignore anything
-        if !&traversal_options.excludes.is_empty() {
-            let path_string = path.to_string_lossy();
-            for pattern in &traversal_options.excludes {
-                if pattern.matches(&path_string) {
-                    // if the directory is ignored, leave early
-                    if traversal_options.verbose {
-                        uucore::context_println!(
-                            "{}",
-                            translate!("du-verbose-ignored", "path" => path_string.quote())
-                        );
+    // The walk sends what it finds to the printing thread; a send fails
+    // when that thread has ended, as on a closed pipe.
+    let walked = (|| -> UResult<()> {
+        'loop_file: for path in files {
+            // Skip if we don't want to ignore anything
+            if !&traversal_options.excludes.is_empty() {
+                let path_string = path.to_string_lossy();
+                for pattern in &traversal_options.excludes {
+                    if pattern.matches(&path_string) {
+                        // if the directory is ignored, leave early
+                        if traversal_options.verbose {
+                            uucore::context_println!(
+                                "{}",
+                                translate!("du-verbose-ignored", "path" => path_string.quote())
+                            );
+                        }
+                        continue 'loop_file;
                     }
+                }
+            }
+
+            // Determine which traversal method to use
+            #[cfg(all(unix, not(target_os = "redox")))]
+            let use_safe_traversal = traversal_options.dereference != Deref::All;
+            #[cfg(not(all(unix, not(target_os = "redox"))))]
+            let use_safe_traversal = false;
+
+            // Pre-populate seen_inodes with the starting directory to detect cycles
+            let stat = Stat::new(&path, None, &traversal_options);
+            if let Ok(stat) = stat.as_ref()
+                && let Some(inode) = stat.inode
+            {
+                if !traversal_options.count_links && seen_inodes.contains(&inode) {
                     continue 'loop_file;
                 }
+                seen_inodes.insert(inode);
             }
-        }
 
-        // Determine which traversal method to use
-        #[cfg(all(unix, not(target_os = "redox")))]
-        let use_safe_traversal = traversal_options.dereference != Deref::All;
-        #[cfg(not(all(unix, not(target_os = "redox"))))]
-        let use_safe_traversal = false;
-
-        // Pre-populate seen_inodes with the starting directory to detect cycles
-        let stat = Stat::new(&path, None, &traversal_options);
-        if let Ok(stat) = stat.as_ref()
-            && let Some(inode) = stat.inode
-        {
-            if !traversal_options.count_links && seen_inodes.contains(&inode) {
-                continue 'loop_file;
-            }
-            seen_inodes.insert(inode);
-        }
-
-        if use_safe_traversal {
-            // Use safe traversal (Unix except Redox, when not using -L)
-            #[cfg(all(unix, not(target_os = "redox")))]
-            {
-                match safe_du(
-                    &path,
-                    &traversal_options,
-                    0,
-                    &mut seen_inodes,
-                    &print_tx,
-                    None,
-                    Some(stat),
-                ) {
-                    Ok(stat) => {
-                        print_tx
-                            .send(Ok(StatPrintInfo { stat, depth: 0 }))
-                            .map_err(|e| USimpleError::new(1, e.to_string()))?;
-                    }
-                    Err(e) => {
-                        // Check if this is our "already handled" error
-                        if let mpsc::SendError(Err(simple_error)) = e.as_ref()
-                            && simple_error.code() == 0
-                        {
-                            // Error already handled, continue to next file
-                            continue 'loop_file;
+            if use_safe_traversal {
+                // Use safe traversal (Unix except Redox, when not using -L)
+                #[cfg(all(unix, not(target_os = "redox")))]
+                {
+                    match safe_du(
+                        &path,
+                        &traversal_options,
+                        0,
+                        &mut seen_inodes,
+                        &print_tx,
+                        None,
+                        Some(stat),
+                    ) {
+                        Ok(stat) => {
+                            print_tx
+                                .send(Ok(StatPrintInfo { stat, depth: 0 }))
+                                .map_err(|e| USimpleError::new(1, e.to_string()))?;
                         }
-                        return Err(USimpleError::new(1, e.to_string()));
+                        Err(e) => {
+                            // Check if this is our "already handled" error
+                            if let mpsc::SendError(Err(simple_error)) = e.as_ref()
+                                && simple_error.code() == 0
+                            {
+                                // Error already handled, continue to next file
+                                continue 'loop_file;
+                            }
+                            return Err(USimpleError::new(1, e.to_string()));
+                        }
                     }
                 }
-            }
-        } else {
-            // Use regular traversal (non-Linux or when -L is used)
-            if let Ok(stat) = stat {
-                let stat = du_regular(
-                    stat,
-                    &traversal_options,
-                    0,
-                    &mut seen_inodes,
-                    &print_tx,
-                    None,
-                    None,
-                )
-                .map_err(|e| USimpleError::new(1, e.to_string()))?;
-
-                print_tx
-                    .send(Ok(StatPrintInfo { stat, depth: 0 }))
-                    .map_err(|e| USimpleError::new(1, e.to_string()))?;
             } else {
-                #[cfg(unix)]
-                let error_msg = translate!("du-error-cannot-access", "path" => path.quote());
-                #[cfg(not(unix))]
-                let error_msg =
-                    translate!("du-error-cannot-access-no-such-file", "path" => path.quote());
-
-                print_tx
-                    .send(Err(USimpleError::new(1, error_msg)))
+                // Use regular traversal (non-Linux or when -L is used)
+                if let Ok(stat) = stat {
+                    let stat = du_regular(
+                        stat,
+                        &traversal_options,
+                        0,
+                        &mut seen_inodes,
+                        &print_tx,
+                        None,
+                        None,
+                    )
                     .map_err(|e| USimpleError::new(1, e.to_string()))?;
+
+                    print_tx
+                        .send(Ok(StatPrintInfo { stat, depth: 0 }))
+                        .map_err(|e| USimpleError::new(1, e.to_string()))?;
+                } else {
+                    #[cfg(unix)]
+                    let error_msg = translate!("du-error-cannot-access", "path" => path.quote());
+                    #[cfg(not(unix))]
+                    let error_msg =
+                        translate!("du-error-cannot-access-no-such-file", "path" => path.quote());
+
+                    print_tx
+                        .send(Err(USimpleError::new(1, error_msg)))
+                        .map_err(|e| USimpleError::new(1, e.to_string()))?;
+                }
             }
         }
-    }
+        Ok(())
+    })();
 
     drop(print_tx);
 
-    printing_thread
-        .join()
-        .map_err(|_| USimpleError::new(1, translate!("du-error-printing-thread-panicked")))??;
-
-    Ok(())
+    // A printing thread that ended the invocation, as a write to a closed
+    // pipe does, ends it here too, before the walk's failed send is reported.
+    let printed = printing_thread.join().map_err(|payload| {
+        if payload.is::<uucore::context::ExitRequest>() {
+            std::panic::resume_unwind(payload);
+        }
+        USimpleError::new(1, translate!("du-error-printing-thread-panicked"))
+    })?;
+    printed?;
+    walked
 }
 
 // Parse --time-style argument, falling back to environment variable if necessary.
