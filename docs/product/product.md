@@ -308,19 +308,15 @@ either without the user typing anything.
   conversation writes it when it is next opened. No turn ends unfinished
   without either such a record or the user's own Stop.
 
-  A primary Host that goes offline neither ends a turn nor reaches the
-  agent: an operation that needs it waits until its runner is back, however
-  long that takes, and the call's row reads *Waiting for Old Laptop*
-  ([Host operations](../execution/sessions-and-targets.md#host-operations)).
-  The agent could do nothing useful with the news; it pinged the device
-  seven times in a product check. Above the composer the device's offline
-  card says how to start its runner and offers **Move to Another Host…**,
-  the Run On menu's online Hosts: the move ends the waiting calls as not
-  run, tells the agent where the conversation now runs, and the turn goes
-  on there ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)).
-  Stop ends the wait as it ends any turn. An attached device that is
-  offline fails the operation with its offline error instead, since the
-  agent chose that device and can choose another.
+  A Host that goes offline does not end a turn. The operation that needed it
+  fails with the runner's offline error, worded for the agent
+  ([Host operations](../execution/sessions-and-targets.md#host-operations)),
+  the tool call shows that error, and the agent decides: it retries later,
+  ends its turn to wait, or tells the user. Above the composer the device's
+  offline card says how to start its runner and offers **Move to Another
+  Host…**, the Run On menu's online Hosts, which moves the conversation as
+  the menu does once the tree is idle
+  ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)).
 - **The user stopped it.** Stop is a decision, not a failure, and the
   transcript marks the turn as stopped.
 
