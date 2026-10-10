@@ -823,7 +823,9 @@ job showed the model.
   with the next one and exits with status 1:
   - `demi file view: notes.txt: a text file; read it with cat notes.txt`
   - `demi file view: data.bin: not an image, a video or a PDF (48213 bytes)`
-  - `demi file view: report.pdf: this conversation's model, deepseek-v4.1-flash, does not read application/pdf in a tool result`
+  - `demi file view: report.pdf: this conversation's model, deepseek-v4.1-flash, does not read application/pdf in a tool result`,
+    or, when which types the model reads is unknown,
+    `demi file view: shot.png: it is not known which files this conversation's model, deepseek-v4.1-flash, reads; its provider entry can name them`
   - `demi file view: capture.mov: 23.1 MiB; a medium is at most 16 MiB`
   - `demi file view: shot.png: No such file or directory`, the system's own
     words ([Handle an rpc call](../execution/commands.md#handle-an-rpc-call)).
