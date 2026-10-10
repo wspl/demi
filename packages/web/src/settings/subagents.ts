@@ -1,6 +1,8 @@
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { defineStore } from 'pinia'
+import { SerialQueue } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import type { SettingsSubagentDraft } from '@demicodes/web-ui/settings/types'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
@@ -11,7 +13,7 @@ import {
   type SubagentSettings,
   type SubagentSwitch,
 } from '../api/generated/web-api'
-import { useProduct } from '../state/product'
+import { useProduct, type Answer } from '../state/product'
 
 /** `settings` with `profile` in its place by id, the profiles in name order. */
 function withProfile(settings: SubagentSettings, profile: SubagentProfile): SubagentSettings {
@@ -20,102 +22,109 @@ function withProfile(settings: SubagentSettings, profile: SubagentProfile): Suba
   return { ...settings, profiles }
 }
 
+/** The answer that leaves the subagent settings as `next` makes them of those the page last read. */
+function settingsAnswer(next: (current: SubagentSettings) => SubagentSettings): Answer {
+  return (read) => ({ type: 'subagents', subagents: next(read.subagents) })
+}
+
 /**
  * The user's subagent settings as the Subagent section changes them
- * (`web-api.md` § Subagents). Each write's answer goes into the product
- * state at once; the channel brings the same part to every other page.
+ * (`web-api.md` § Subagents). A switch shows at once and its write follows
+ * the earlier ones (`web-application.md` § Responding to the user); a saved
+ * or deleted profile shows its answer. The channel brings the same part to
+ * every other page.
  */
 export const useSubagentSettings = defineStore('subagent-settings', () => {
   const product = useProduct()
-  const switching = ref(false)
-  /** The profiles whose switch is being saved. */
-  const pending = ref<string[]>([])
+  const writes = new SerialQueue()
   const settings = computed(() => product.snapshot?.subagents ?? null)
 
-  /** Applies the subagent settings `next` makes of the current ones, as a write sent `at` left them. */
-  function answered(at: number, next: (current: SubagentSettings) => SubagentSettings): void {
-    const current = settings.value
-    if (current) {
-      product.answered(at, { type: 'subagents', subagents: next(current) })
-    }
+  /**
+   * Shows `next` of the settings at once and sends `write` after the earlier
+   * switches; the change lands with what `write` answers, or leaves with a
+   * toast titled `failed`.
+   */
+  function switchSettings(
+    next: (current: SubagentSettings) => SubagentSettings,
+    write: () => Promise<Answer | undefined>,
+    failed: HeadlineText,
+  ): Promise<void> {
+    const change = product.change('subagents', (state) => ({ ...state, subagents: next(state.subagents) }))
+    return writes
+      .run(async () => {
+        change.send()
+        change.land(await write())
+      })
+      .catch((error) => {
+        change.drop()
+        reportError(failed, error, { userVisible: true })
+      })
   }
 
-  async function switchSubagents(enabled: boolean): Promise<void> {
-    if (switching.value) {
-      return
-    }
-    switching.value = true
-    try {
-      const at = product.sent()
-      await apiRequest('/subagents', {
-        method: 'PUT',
-        ...jsonBody({ enabled } satisfies SubagentSwitch),
-      })
-      answered(at, (current) => ({ ...current, enabled }))
-    } catch (error) {
-      reportError(enabled ? 'Could Not Turn Subagents On' : 'Could Not Turn Subagents Off', error, {
-        userVisible: true,
-      })
-    } finally {
-      switching.value = false
-    }
+  function switchSubagents(enabled: boolean): Promise<void> {
+    return switchSettings(
+      (current) => ({ ...current, enabled }),
+      async () => {
+        await apiRequest('/subagents', {
+          method: 'PUT',
+          ...jsonBody({ enabled } satisfies SubagentSwitch),
+        })
+        return undefined
+      },
+      enabled ? 'Could Not Turn Subagents On' : 'Could Not Turn Subagents Off',
+    )
   }
 
-  /** Sends `patch` of the profile `id` and applies the profile it answers. */
-  async function patchProfile(id: string, patch: ProfilePatch): Promise<void> {
-    const at = product.sent()
+  /** Sends `patch` of the profile `id`; answers the profile it answers. */
+  async function patchProfile(id: string, patch: ProfilePatch): Promise<SubagentProfile> {
     const response = await apiRequest(`/subagents/profiles/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       ...jsonBody(patch),
     })
-    const { profile } = await readResponse(response, profileAnswerSchema)
-    answered(at, (current) => withProfile(current, profile))
+    return (await readResponse(response, profileAnswerSchema)).profile
   }
 
-  async function switchProfile(id: string, enabled: boolean): Promise<void> {
-    if (pending.value.includes(id)) {
-      return
-    }
-    pending.value.push(id)
-    try {
-      await patchProfile(id, { enabled })
-    } catch (error) {
-      reportError(enabled ? 'Could Not Enable the Profile' : 'Could Not Disable the Profile', error, {
-        userVisible: true,
-      })
-    } finally {
-      pending.value = pending.value.filter((candidate) => candidate !== id)
-    }
+  function switchProfile(id: string, enabled: boolean): Promise<void> {
+    return switchSettings(
+      (current) => ({
+        ...current,
+        profiles: current.profiles.map((profile) => profile.id === id ? { ...profile, enabled } : profile),
+      }),
+      async () => {
+        const profile = await patchProfile(id, { enabled })
+        return settingsAnswer((current) => withProfile(current, profile))
+      },
+      enabled ? 'Could Not Enable the Profile' : 'Could Not Disable the Profile',
+    )
   }
 
   /** Creates a profile, or changes the profile `id`; a refusal is thrown for the editor to show. */
   async function saveProfile(id: string | null, draft: SettingsSubagentDraft): Promise<void> {
-    if (id !== null) {
-      await patchProfile(id, draft)
-      return
-    }
     const at = product.sent()
-    const response = await apiRequest('/subagents/profiles', {
-      method: 'POST',
-      ...jsonBody(draft satisfies NewProfile),
-    })
-    const { profile } = await readResponse(response, profileAnswerSchema)
-    answered(at, (current) => withProfile(current, profile))
+    let profile: SubagentProfile
+    if (id !== null) {
+      profile = await patchProfile(id, draft)
+    } else {
+      const response = await apiRequest('/subagents/profiles', {
+        method: 'POST',
+        ...jsonBody(draft satisfies NewProfile),
+      })
+      profile = (await readResponse(response, profileAnswerSchema)).profile
+    }
+    product.answered(at, settingsAnswer((current) => withProfile(current, profile)))
   }
 
   async function deleteProfile(id: string): Promise<void> {
     const at = product.sent()
     await apiRequest(`/subagents/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' })
-    answered(at, (current) => ({
+    product.answered(at, settingsAnswer((current) => ({
       ...current,
       profiles: current.profiles.filter((profile) => profile.id !== id),
-    }))
+    })))
   }
 
   return {
     settings,
-    switching,
-    pending,
     switchSubagents,
     switchProfile,
     saveProfile,

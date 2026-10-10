@@ -69,7 +69,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Conversations',
-    'Plain conversations that run in no checkout. Manual order, pinned on top. One on a paired device shows that device at its row’s end: the device’s icon with a dot for its state, or without a dot once the device is removed, left of the pin when the row is pinned; a row on the Cloud shows none. On hover Archive and Pin take the marks’ places. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
+    'Plain conversations that run in no checkout. Manual order, pinned on top. One on a paired device shows that device at its row’s end: the device’s icon with a dot for its state, or without a dot once the device is removed, left of the pin when the row is pinned; a row on the Cloud shows none. On hover Archive takes the row’s end, and a pinned row shows Unpin before it, so the pin moves one place left; a row that is not pinned offers Pin in its menu. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
   ],
   [
     'Projects',
@@ -77,7 +77,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Row',
-    'A title and one quiet dot: yellow while a permission request waits for the user, over every other mark and whether the row is open or read; breathing while running, blue for a result waiting to be read, orange when the conversation failed or was stopped, a faint ring when settled. A cut title ends in an ellipsis and shows whole in its tooltip. Pin and archive appear on hover; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list’s scrollbar floats over that margin and takes no room.'
+    'A title and one quiet dot: yellow while a permission request waits for the user, over every other mark and whether the row is open or read; breathing while running, blue for a result waiting to be read, orange when the conversation failed or was stopped, a faint ring when settled. A cut title ends in an ellipsis and shows whole in its tooltip. Archive appears on hover, with Unpin before it on a pinned row; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list’s scrollbar floats over that margin and takes no room.'
   ],
   [
     'Selection',
@@ -194,6 +194,39 @@ function removeProject(id: string): void {
   )
 }
 
+/** The hover specimen's rows: pinned and not, each on the Cloud and on a paired device. */
+function hoverRows(): SidebarConversation[] {
+  const row = (id: string, title: string, pinned: boolean, device?: SidebarConversation['device']): SidebarConversation => ({
+    id, title, pinned, device, updatedAt: '2026-10-10T09:00:00Z', status: 'done', projectId: null, unread: false,
+  })
+  const laptop = { kind: 'paired', name: 'MacBook Pro', state: 'online' } as const
+  return [
+    row('h-pinned', 'Release checklist', true),
+    row('h-pinned-device', 'Profile the indexer', true, laptop),
+    row('h-plain', 'Fix the login test', false),
+    row('h-plain-device', 'Tidy the dotfiles', false, laptop),
+  ]
+}
+const hoverConversations = ref(hoverRows())
+const hoverActive = ref<string | null>(null)
+
+/** Archives hover rows as the product does: they leave, and the toast's Undo puts them back where they were. */
+function archiveHover(ids: string[]): void {
+  const before = hoverConversations.value
+  hoverConversations.value = without(before, ids)
+  showArchived(ids.length, () => {
+    const kept = new Set(hoverConversations.value.map((conversation) => conversation.id))
+    hoverConversations.value = before.filter((conversation) => kept.has(conversation.id) || ids.includes(conversation.id))
+  })
+}
+
+/** Pins or unpins hover rows; pinned rows lead, as the product's list orders them. */
+function pinHover(ids: string[], pinned: boolean): void {
+  const changed = hoverConversations.value.map((conversation) =>
+    ids.includes(conversation.id) ? { ...conversation, pinned } : conversation)
+  hoverConversations.value = [...changed.filter((c) => c.pinned), ...changed.filter((c) => !c.pinned)]
+}
+
 const fixedConversations = computed(() => demoConversations())
 const fixedProjects = computed(() => demoProjects())
 const activeTitle = computed(
@@ -308,6 +341,42 @@ onBeforeUnmount(() => listRestore.stop())
         </div>
         </GalleryOverlayWell>
       </GallerySpecimen>
+    </GallerySection>
+
+    <GallerySection
+      title="Row Hover"
+      note="Hover a row: Archive takes its end. A pinned row shows Unpin before Archive, so its pin moves one place left; a row that is not pinned offers Pin in its menu, as right-click shows. A device’s mark gives its place to the actions as the pin does. Archive drops the row, and the toast’s Undo brings it back; Reset gives the specimen its rows again."
+    >
+      <div class="specimen-row specimen-row-wide items-start">
+        <GallerySpecimen variant="pinned and not · live">
+          <div class="flex flex-col gap-2">
+            <div>
+              <Button variant="ghost" size="sm" @click="hoverConversations = hoverRows()">Reset</Button>
+            </div>
+            <div class="gallery-frame flex h-[26rem] overflow-hidden">
+              <AppSidebar
+                :new-shortcut="newShortcut"
+                :search-shortcut="searchShortcut"
+                :account="demoAccount"
+                :projects="[]"
+                :conversations="hoverConversations"
+                :active-id="hoverActive"
+                @search="productWould('Open the Search Window')"
+                @create="productWould('Start a New Conversation')"
+                @add-project="productWould('Add a Project')"
+                @open-settings="wouldOpenSettings"
+                @sign-out="productWould('Sign Out')"
+                @select="(id) => (hoverActive = id)"
+                @reorder="(request) => productWould(request.kind === 'project' ? 'Move the Project' : 'Move the Conversation')"
+                @rename="(id, title) => (hoverConversations = hoverConversations.map((c) => (c.id === id ? { ...c, title } : c)))"
+                @pin="pinHover"
+                @archive="archiveHover"
+                @delete="(ids) => (hoverConversations = without(hoverConversations, ids))"
+              />
+            </div>
+          </div>
+        </GallerySpecimen>
+      </div>
     </GallerySection>
 
     <GallerySection
