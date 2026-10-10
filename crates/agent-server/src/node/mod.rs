@@ -42,7 +42,7 @@ use crate::server::ProviderResolver;
 
 /// What made Demi resume a child's turn the process interrupted, as its
 /// model reads it.
-const RESTARTED: &str = "the backend restarted";
+const RESTARTED: &str = "Demi resumed this turn after the backend restarted.";
 
 /// A node's place in its tree, which sets its lifecycle policy: a child
 /// resumes a turn the process interrupted and closes once it is quiescent;
@@ -437,6 +437,13 @@ impl<H: HostResolver> NodeRuntime<H> {
 impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     fn enter_action(&self) -> LocalBoxFuture<'_, GateLease> {
         Box::pin(self.admission.enter(Purpose::Demand))
+    }
+
+    /// A root's turn only: a child's result says what it could not do, and
+    /// its parent's turn decides (`failures-and-recovery.md` § The
+    /// unfinished turn).
+    fn ends_offline_turns_unfinished(&self) -> bool {
+        self.node == self.root
     }
 
     fn reserve_edit(&self) -> LocalBoxFuture<'_, Result<Option<Reservation>, String>> {

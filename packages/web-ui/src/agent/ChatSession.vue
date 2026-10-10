@@ -39,7 +39,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
-import { sessionFailureNotice, turnRecovery } from './session-status'
+import { resumeWaitsFor, sessionFailureNotice, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
 import PermissionCard from '../permissions/PermissionCard.vue'
@@ -66,6 +66,12 @@ const props = withDefaults(defineProps<{
   asideOpen?: boolean
   /** The conversation's Host files its messages name; absent, their paths stay text. */
   files?: ConversationFiles
+  /**
+   * Whether the user's device `deviceId` is online now, as its state
+   * updates say; the dock's Resume waits for the device a turn's Host
+   * absence left it unfinished on. Absent, every device counts as online.
+   */
+  deviceOnline?: (deviceId: string) => boolean
   /** The conversation's undecided permission requests, oldest first, which the card above the composer shows. */
   permissionRequests?: readonly PermissionRequestView[]
   /** A decision on a permission request is on its way. */
@@ -199,6 +205,17 @@ const recovery = computed(() =>
     ? turnRecovery(props.conversation.phase, getVisibleBlocks(props.conversation.blocks))
     : null,
 )
+/** The device Resume waits for while it is offline, which the disabled chip names. */
+const resumeWait = computed(() =>
+  recovery.value === 'resume'
+    ? resumeWaitsFor(getVisibleBlocks(props.conversation.blocks), props.deviceOnline ?? (() => true))
+    : null,
+)
+function recover(): void {
+  if (!resumeWait.value) {
+    emit('retry')
+  }
+}
 const canEdit = computed(() => !!props.editVersion && !props.messageEdit
   && !props.pendingSubmission
   && !props.conversation.archived
@@ -381,10 +398,17 @@ watch(() => props.conversation.id, close)
             </template>
             <template #chips>
               <!-- The transcript says what happened; the one recovery control is here, over the input. -->
-              <SessionDockChip v-if="recovery" @click="emit('retry')">
-                <Play :size="ICON_PX.in28" />
-                {{ recovery === 'resume' ? 'Resume' : 'Continue' }}
-              </SessionDockChip>
+              <Tooltip
+                v-if="recovery"
+                :content="resumeWait ? `${resumeWait} is still offline` : undefined"
+                :disabled="resumeWait === null"
+                class="inline-flex"
+              >
+                <SessionDockChip :disabled="resumeWait !== null" @click="recover">
+                  <Play :size="ICON_PX.in28" />
+                  {{ recovery === 'resume' ? 'Resume' : 'Continue' }}
+                </SessionDockChip>
+              </Tooltip>
               <TerminalChip
                 :terminals="terminals"
                 :open="activeTerminalId !== null"

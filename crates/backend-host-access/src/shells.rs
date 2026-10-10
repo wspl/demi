@@ -32,7 +32,7 @@ use demi_host_interface::{
     PageView, Seen, ShellEnvironment, ShellError, TakenUp, Unreachable, WholeOutput,
 };
 use demi_runner_protocol::wire::JobFileChange;
-use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile, NodeId};
+use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile, ErrorDevice, NodeId};
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
@@ -539,19 +539,33 @@ struct Offline {
 }
 
 impl Offline {
-    /// The device's offline error, as its record says it now; none for a
-    /// Cloud, which the job's admission wakes.
-    async fn error(&self) -> Option<HostError> {
+    /// The device's offline error, as its record says it now, which tells
+    /// the model that the user can resume the turn once the device is back
+    /// (`sessions-and-targets.md` § Host operations); none for a Cloud,
+    /// which the job's admission wakes.
+    async fn error(&self) -> Option<ShellError> {
         let Some(shard) = self.shard.upgrade() else {
-            return Some(HostError::offline("the backend is shutting down"));
+            return Some(HostError::offline("the backend is shutting down").into());
         };
         match shard.control().device(self.device.clone()).await {
             Ok(Some(record)) if record.kind == DeviceKind::Managed => None,
-            Ok(Some(record)) => Some(shard.offline(&record)),
-            Ok(None) => Some(HostError::offline("the device was removed")),
-            Err(error) => Some(HostError::offline(format!(
-                "the device is offline, and its record could not be read: {error}"
-            ))),
+            Ok(Some(record)) => Some(ShellError::HostOffline {
+                message: format!(
+                    "{}; the user can resume this turn once it is back.",
+                    shard.offline_reason(&record)
+                ),
+                device: ErrorDevice {
+                    id: record.id.to_string(),
+                    name: record.name,
+                },
+            }),
+            Ok(None) => Some(HostError::offline("the device was removed").into()),
+            Err(error) => Some(
+                HostError::offline(format!(
+                    "the device is offline, and its record could not be read: {error}"
+                ))
+                .into(),
+            ),
         }
     }
 }
@@ -569,7 +583,7 @@ impl ShellEnvironment for Registered {
             if !self.host.online()
                 && let Some(error) = self.offline.error().await
             {
-                return Err(ShellError::Host(error));
+                return Err(error);
             }
             self.environment.start(request, cancel).await
         })
