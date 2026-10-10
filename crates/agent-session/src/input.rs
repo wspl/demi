@@ -3,7 +3,7 @@
 //! reports that arrived, each waiting for a continuation boundary. Pure
 //! state: the session decides when a boundary takes them.
 
-use demi_shared_types::{AgentMessage, BlockId, PendingSteer};
+use demi_shared_types::{AgentMessage, BlockId, CommandReport, PendingSteer};
 
 use demi_agent_store::PendingAgentInput;
 
@@ -12,8 +12,8 @@ use demi_agent_store::PendingAgentInput;
 pub(super) enum Input {
     /// A human steer, which the pending steers list shows.
     Steer(PendingSteer),
-    /// A command report, its paragraph of text, kept in the checkpoint.
-    Report(String),
+    /// A command report, kept in the checkpoint.
+    Report(CommandReport),
     /// A message from another agent of the tree, kept in the checkpoint.
     Agent(PendingAgentInput),
 }
@@ -62,7 +62,7 @@ pub(super) struct InputQueue {
 
 impl InputQueue {
     /// A queue that starts with what a checkpoint kept.
-    pub(super) fn restored(agent_inputs: Vec<PendingAgentInput>, reports: Vec<String>) -> Self {
+    pub(super) fn restored(agent_inputs: Vec<PendingAgentInput>, reports: Vec<CommandReport>) -> Self {
         let mut queue = Self::default();
         for input in agent_inputs {
             queue.add(Input::Agent(input));
@@ -78,6 +78,13 @@ impl InputQueue {
             self.joining += 1;
         }
         self.entries.push(input);
+        self.arrivals += 1;
+    }
+
+    /// Adds a command report that ends no window: the end report of a
+    /// command a running call looks at, whose end the call shows itself.
+    pub(super) fn add_quiet(&mut self, report: CommandReport) {
+        self.entries.push(Input::Report(report));
         self.arrivals += 1;
     }
 
@@ -133,7 +140,7 @@ impl InputQueue {
     }
 
     /// The command reports waiting, as the checkpoint keeps them.
-    pub(super) fn reports(&self) -> Vec<String> {
+    pub(super) fn reports(&self) -> Vec<CommandReport> {
         self.entries
             .iter()
             .filter_map(|input| match input {
@@ -177,8 +184,20 @@ impl InputQueue {
         taken
     }
 
+    /// Withdraws the waiting command reports `keep` does not keep, as a
+    /// withdrawn steer is: they cause no request.
+    pub(super) fn retain_reports(&mut self, mut keep: impl FnMut(&CommandReport) -> bool) {
+        let before = self.entries.len();
+        self.entries.retain(|input| match input {
+            Input::Report(report) => keep(report),
+            _ => true,
+        });
+        let withdrawn = u64::try_from(before - self.entries.len()).unwrap_or(u64::MAX);
+        self.arrivals = self.arrivals.saturating_sub(withdrawn);
+    }
+
     /// Takes the command reports: the input a continuation opens with.
-    pub(super) fn take_reports(&mut self) -> Vec<String> {
+    pub(super) fn take_reports(&mut self) -> Vec<CommandReport> {
         self.entries
             .extract_if(.., |input| matches!(input, Input::Report(_)))
             .filter_map(|input| match input {
