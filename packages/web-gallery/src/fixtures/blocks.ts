@@ -271,18 +271,6 @@ export const runningShellTool = toolCall({
 })
 
 /**
- * A call whose primary Host's runner is away: it waits for the runner, and
- * its row reads *Waiting for Old Laptop* (`sessions-and-targets.md` § Host
- * operations). It started no command yet.
- */
-export const waitingShellTool = toolCall({
-  id: 'tool-shell-wait',
-  toolName: 'shell',
-  status: 'executing',
-  input: JSON.stringify({ script: 'bun test packages/web', description: 'Run the web tests' }),
-})
-
-/**
  * A heredoc that writes a whole page, with output longer than the box: the
  * command shows two lines until a click shows it whole, and then scrolls on
  * its own above the output.
