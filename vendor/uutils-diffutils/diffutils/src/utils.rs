@@ -52,16 +52,21 @@ pub fn do_write_line(
     }
 }
 
-/// Retrieves the modification time of the input file specified by file path
-/// If an error occurs, it returns the current system time
+/// Retrieves the modification time of the input file specified by file path.
+/// A file that does not exist, which `-N` compares as empty, has the epoch,
+/// as GNU's; on another error, such as for standard input, it returns the
+/// current system time.
 pub fn get_modification_time(file_path: &str) -> String {
     use chrono::{DateTime, Local};
     use uucore::context::fs;
+    use uucore::context::io::ErrorKind;
     use std::time::SystemTime;
 
-    let modification_time: SystemTime = fs::metadata(file_path)
-        .and_then(|m| m.modified())
-        .unwrap_or(SystemTime::now());
+    let modification_time: SystemTime = match fs::metadata(file_path).and_then(|m| m.modified()) {
+        Ok(time) => time,
+        Err(error) if error.kind() == ErrorKind::NotFound => SystemTime::UNIX_EPOCH,
+        Err(_) => SystemTime::now(),
+    };
 
     let modification_time: DateTime<Local> = modification_time.into();
     let modification_time: String = modification_time
@@ -189,19 +194,16 @@ mod tests {
         }
 
         #[test]
-        fn invalid_file() {
+        fn absent_file() {
             use chrono::{DateTime, Local};
             use std::time::SystemTime;
 
-            let invalid_file = "target/utils/invalid-file";
+            let absent_file = "target/utils/absent-file";
 
-            // store current time before calling `get_modification_time`
-            // Because the file is invalid, it will return SystemTime::now()
-            // which will be greater than previously saved time
-            let current_time: DateTime<Local> = SystemTime::now().into();
-            let m_time: DateTime<Local> = get_modification_time(invalid_file).parse().unwrap();
+            let epoch: DateTime<Local> = SystemTime::UNIX_EPOCH.into();
+            let m_time: DateTime<Local> = get_modification_time(absent_file).parse().unwrap();
 
-            assert!(m_time > current_time);
+            assert_eq!(m_time, epoch);
         }
     }
 }
