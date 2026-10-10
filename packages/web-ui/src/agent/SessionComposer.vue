@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import { isFocusedElementEditable } from '@vueuse/core'
 import type { ContextUsage, InstructionEntry } from '@demicodes/protocol'
 import { ArrowUp, File as FileIcon, HardDrive, Plus, RotateCcw, Square, X } from '@lucide/vue'
@@ -29,6 +29,7 @@ import ReplacedDraftNotice from './ReplacedDraftNotice.vue'
 import PluginsChangedNotice from './PluginsChangedNotice.vue'
 import HostOfflineNotice from './HostOfflineNotice.vue'
 import type { OfflineHost } from './offline-host'
+import { dockCardsKey } from './dock-cards'
 import type { HostChoice } from '../hosts/types'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
@@ -169,6 +170,11 @@ const edit = useMessageEditComposer({
 /** Up Arrow in the empty draft opens the editor on the last message, where the page offers editing it. */
 const editLastMessage = useEditLastMessage()
 const editLast = computed(() => props.disabled ? undefined : editLastMessage())
+/**
+ * Where a dock stands the composer's cards, above its chips; none outside a
+ * dock, where the cards stand over the input.
+ */
+const dockCards = inject(dockCardsKey, () => ref<HTMLElement>(), true)
 /** Read once, as the composer shows: the focus it finds then decides. */
 const touchOnly = useTouchOnly()
 const takesFocus = props.focusOnShow && !touchOnly.value && !isFocusedElementEditable()
@@ -425,25 +431,30 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
         multiple
         @change="fileChange"
       />
-      <HostOfflineNotice
-        v-if="offlineHost"
-        class="mb-2"
-        v-bind="offlineHost"
-        @move="emit('moveHost', $event)"
-      />
-      <PluginsChangedNotice
-        v-if="pluginsChanged"
-        class="mb-2"
-        :reloading="reloading"
-        @reload="emit('reloadPlugins')"
-      />
-      <ReplacedDraftNotice
-        v-if="replacedPreview !== null"
-        class="mb-2"
-        :preview="replacedPreview"
-        @restore="emit('restoreReplaced')"
-        @dismiss="emit('dismissReplaced')"
-      />
+      <!-- The cards stand above the dock's chips, which sit directly on the input. The dock's
+           place for them exists once the dock is mounted: until then, and outside a dock, they
+           stand here. -->
+      <Teleport :to="dockCards" :disabled="!dockCards">
+        <HostOfflineNotice
+          v-if="offlineHost"
+          class="mb-2"
+          v-bind="offlineHost"
+          @move="emit('moveHost', $event)"
+        />
+        <PluginsChangedNotice
+          v-if="pluginsChanged"
+          class="mb-2"
+          :reloading="reloading"
+          @reload="emit('reloadPlugins')"
+        />
+        <ReplacedDraftNotice
+          v-if="replacedPreview !== null"
+          class="mb-2"
+          :preview="replacedPreview"
+          @restore="emit('restoreReplaced')"
+          @dismiss="emit('dismissReplaced')"
+        />
+      </Teleport>
       <ComposerShell
         :focused="focused || props.focused"
         :expanded="multiline"

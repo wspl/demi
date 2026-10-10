@@ -318,8 +318,9 @@ either without the user typing anything.
   was offline, with no later call of the turn run on that Host, the
   transcript gets an error record of Demi's fact, "MacBook Pro went offline,
   so this turn could not finish its work.", and the dock offers **Resume**,
-  which stays disabled, *MacBook Pro is still offline*, until the device is
-  back. Nothing wakes the agent by itself when the device returns, so a user
+  which stays disabled, *MacBook Pro is still offline*, while the Host the
+  conversation runs on is an offline device: until the device is back, or
+  the user moves the conversation to a Host that is online. Nothing wakes the agent by itself when the device returns, so a user
   who was away is not surprised by it starting work again; the user
   resumes, and the agent's next request says the device is back. Above the
   composer the device's offline card says how to start its runner and

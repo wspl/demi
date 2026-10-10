@@ -48,7 +48,13 @@ an invalid usage of a parameter, keeps the vendor's code and is not retried.
 
 A failure Demi finds itself gets its code by an explicit rule, never by
 matching words in its message. A timeout or a network failure is
-`overloaded`. A decode or protocol failure has no code, its source is
+`overloaded`, and so is a stream that ends before the vendor said the reply
+is complete ([Reading vendor input](../providers/providers.md#reading-vendor-input)):
+retried while nothing it streamed is final, as when it broke during the
+reasoning, and otherwise ending the turn with Resume. A reply the vendor
+ended before it was complete, for its output limit, a filter or another
+reason it names, is `incomplete`, which is never retried, since sending the
+same request again ends it the same way. A decode or protocol failure has no code, its source is
 `stream`, and its record is the text Demi could not read; it is never retried
 automatically, and `resume` can continue the turn.
 
@@ -220,8 +226,12 @@ leave such a record, and a compaction leaves none:
   `error` block of Demi's own, cause `host_offline` with the device, after
   the agent's last words, so the turn offers Resume
   ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
-  Resume continues it with a `resume` block whose reason says the device is
-  back: "MacBook Pro is back online. Continue from where you left off." A
+  Resume continues it with a `resume` block whose reason says where the
+  turn now runs: "MacBook Pro is back online. Continue from where you left
+  off.", or, after the user moved the conversation meanwhile, "This
+  conversation now runs on Cloud. Continue from where you left off." The
+  backend composes the reason as it passes the user's Resume to the
+  session, since it alone knows the conversation's primary Host. A
   child's turn gets none: its result, which says what it could not do,
   reaches its parent, whose own turn decides.
 - **A compaction** is not a turn's end. Its boundary and marker are kept
@@ -294,8 +304,9 @@ appended, and inference continues after the preserved progress. The model
 receives the `resume` block as "Continue from where you left off.", after
 the sentence its reason holds when it has one: "Demi resumed this turn
 after the backend restarted." when the system resumed a subagent's turn
-after a restart, or "MacBook Pro is back online." when the user resumed a
-turn its offline Host left unfinished.
+after a restart, or "MacBook Pro is back online." or "This conversation
+now runs on Cloud." when the user resumed a turn its offline Host left
+unfinished.
 
 The product offers `resume` in one control above the composer, labeled Resume
 after an error and Continue after the user's Stop
