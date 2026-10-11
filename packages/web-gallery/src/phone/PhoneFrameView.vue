@@ -30,12 +30,14 @@ import { PLUGIN_PAGES } from '../generated/pages'
 import { productWould } from '../product-would'
 import { demoAccount, demoConversations, demoProjects } from '../sidebar/sidebar-data'
 import { useTurnFlow } from '../turn-flow'
+import type { SidebarConversation } from '@demicodes/web-ui/sidebar/types'
+import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
 
 /**
  * One phone of the Phone page (`GalleryPhoneFrame`): the app frame at a
  * phone's size, live, over the gallery's fixtures, opened on a scene: a
  * turn running, the title sheet, the sidebar, the model picker, the work
- * panel on a Change, a file or a browser tab, the Agents or Running window,
+ * panel on a Change, a file, its file tree or a browser tab, the Agents or Running window,
  * or Settings. The safe areas are the iPhone 15's, which the frame draws its
  * status bar and home indicator over.
  */
@@ -88,6 +90,17 @@ const sidebarOpen = ref(false)
 const projects = ref(demoProjects())
 const conversations = ref(demoConversations())
 const activeId = ref<string | null>('c-login')
+/** The session shown is the sidebar's open row: its title sheet offers that row's menu. */
+const shownListed = computed(() => conversations.value.find((conversation) => conversation.id === activeId.value))
+function updateShown(change: (conversation: SidebarConversation) => SidebarConversation): void {
+  conversations.value = conversations.value.map((conversation) => (conversation.id === activeId.value ? change(conversation) : conversation))
+}
+/** Archive and Delete take the shown row from the list; the product would then open a new conversation. */
+function leaveShown(would: TitleText): void {
+  conversations.value = conversations.value.filter((conversation) => conversation.id !== activeId.value)
+  activeId.value = null
+  productWould(would)
+}
 
 // Settings reaches the fixture's skills plugin, as the Settings page does.
 const settings = createSettingsState()
@@ -102,6 +115,15 @@ const settingsSections = computed(() =>
 
 function press(selector: string): void {
   document.querySelector<HTMLElement>(selector)?.click()
+}
+
+/** Presses the control `selector` names once the page shows it, as the user would; gives up after a few seconds. */
+function pressWhenShown(selector: string, tries = 120): void {
+  const element = document.querySelector<HTMLElement>(selector)
+  if (element)
+    element.click()
+  else if (tries > 0)
+    requestAnimationFrame(() => pressWhenShown(selector, tries - 1))
 }
 
 /** Presses the dock's chip whose label matches, as the user would. */
@@ -136,6 +158,11 @@ onMounted(async () => {
     case 'file':
       work.openIn({ intent: 'file', payload: { path: COOKIE } })
       work.open.value = true
+      break
+    case 'tree':
+      work.openIn({ intent: 'file', payload: { path: COOKIE } })
+      work.open.value = true
+      pressWhenShown('[aria-label="Show file tree"]')
       break
     case 'browser':
       void work.agentOpens('https://example.test/orders', true)
@@ -189,13 +216,14 @@ onMounted(async () => {
         :select-edit="work.selectEdit"
         :files="files"
         :primary-host="primaryHost"
-        archivable
+        :listed="shownListed"
         :pending-submissions="flow.pendingSubmissions.value"
         :removing="flow.removing.value"
         @open-aside="work.open.value = true"
         @rename="session.title = $event"
-        @retitle="productWould('Detect the Title')"
-        @archive="productWould('Archive the Conversation')"
+        @pin="(pinned) => updateShown((conversation) => ({ ...conversation, pinned }))"
+        @archive="leaveShown('Archive the Conversation and Open a New One')"
+        @delete="leaveShown('Delete the Conversation and Open a New One')"
         @retry="flow.resume()"
         @retry-submission="flow.retrySubmission"
         @abort-subagents="flow.abortSubagents"

@@ -18,8 +18,11 @@
   unicode-range: U+0600-06FF, U+0750-077F, U+0870-08FF, U+FB50-FDFF, U+FE70-FEFF;
 }
 
-/* A touch device without a hover (`touch-only.ts`): what a hover reveals shows there at rest. */
-@custom-variant touch (@media (hover: none) and (pointer: coarse));
+/* The phone layout, below 768 px (`ui/phone.ts`, whose PHONE_QUERY is the
+   same query): one pane at a time, a finger's sizes, what a hover reveals
+   shown at rest. It is the one switch for touch behavior: a touch screen in
+   the desktop layout is treated as a desktop. */
+@custom-variant phone (@media (max-width: 767px));
 
 @theme {
   --font-mono: "Code Arabic", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -285,15 +288,15 @@ body,
   --safe-bottom: 0px;
 }
 
-html {
-  -webkit-tap-highlight-color: transparent;
-}
+/* The phone layout: the page is the app's and stays put. It never zooms (a
+   picture zooms itself), never rubber-bands or pulls as a whole, shows no
+   tap highlight, and is exactly the visible area, the on-screen keyboard's
+   part left out (`phone-page.ts`); only the scrollers inside it scroll. */
+@media (max-width: 767px) {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
 
-/* A touch device (`touch-only.ts`): the page is the app's and stays put. It
-   never zooms (a picture zooms itself), never rubber-bands or pulls as a
-   whole, and is exactly the visible area, the on-screen keyboard's part
-   left out (`phone-page.ts`); only the scrollers inside it scroll. */
-@media (hover: none) and (pointer: coarse) {
   html,
   body {
     overscroll-behavior: none;
@@ -344,20 +347,18 @@ button,
   cursor: default;
 }
 
-/* A control is pressed, not read: a long press on one selects no text and
-   brings up no callout. A message's text stays selectable. */
-@layer base {
-  :where(button, [role="button"], [role="checkbox"], [role="switch"], [role="radio"], [role="tab"], [role="menuitem"], [role="option"]) {
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
-  }
-}
-
-/* A finger's target is 44 × 44 px at least: a smaller control's hit area
-   reaches past its edges, where nothing else of it draws. */
-@media (hover: none) and (pointer: coarse) {
+/* On a phone a control is pressed, not read: a long press on one selects no
+   text and brings up no callout, while a message's text stays selectable.
+   And a finger's target is 44 × 44 px at least: a smaller control's hit
+   area reaches past its edges, where nothing else of it draws. */
+@media (max-width: 767px) {
   @layer base {
+    :where(button, [role="button"], [role="checkbox"], [role="switch"], [role="radio"], [role="tab"], [role="menuitem"], [role="option"]) {
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
     :where(button, [role="button"], [role="tab"]) {
       position: relative;
     }
@@ -727,7 +728,13 @@ html[data-theme="light"] .file-pill {
 }
 
 .sheet .menu-row {
-  font-size: 15px;
+  font-size: 16px;
+}
+
+/* Its icons grow with its text, as the sidebar's rows' do (ICON_PX.phoneRow). */
+.sheet .menu-row svg.lucide {
+  width: 18px;
+  height: 18px;
 }
 
 /* The list's ScrollArea viewport. */

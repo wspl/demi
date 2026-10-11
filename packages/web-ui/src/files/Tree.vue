@@ -6,9 +6,10 @@ import DropOutline from '../ui/DropOutline.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import TypeSelectHint from '../ui/TypeSelectHint.vue'
 import TreeRow from './TreeRow.vue'
+import { usePhone } from '../ui/phone'
 import {
-  TREE_ROW_PITCH_PX,
   TREE_ROW_PX,
+  TREE_ROW_PHONE_PX,
   revealTreeRow,
   stickyTreeRows,
   treeBlock,
@@ -79,7 +80,10 @@ defineSlots<{
 // The pinned stack: measured from the rows' positions on every scroll and layout.
 // Its first slot starts under the viewport padding, the caption and one gap,
 // exactly where the first row starts, so a row and its pinned copy coincide.
-const STACK_TOP_PX = 4 + TREE_ROW_PX + 1
+// On a phone every row, the caption's included, is a finger's height.
+const phone = usePhone()
+const rowPx = computed(() => (phone.value ? TREE_ROW_PHONE_PX : TREE_ROW_PX))
+const stackTopPx = computed(() => 4 + rowPx.value + 1)
 const scrollArea = ref<InstanceType<typeof ScrollArea> | null>(null)
 const rowEls = new Map<string, HTMLElement>()
 // The row each element stands for, pinned copies too, to tell where an event happened.
@@ -143,11 +147,12 @@ function updateSticky(): void {
     props.rows,
     (path) => rowEls.get(path)?.offsetTop,
     viewport.scrollTop,
-    STACK_TOP_PX,
+    stackTopPx.value,
+    rowPx.value,
   )
   stickyPaths.value = stack.paths
   stickyOffset.value = stack.offset
-  const stackBottom = viewport.scrollTop + STACK_TOP_PX + stack.paths.length * TREE_ROW_PITCH_PX + stack.offset
+  const stackBottom = viewport.scrollTop + stackTopPx.value + stack.paths.length * (rowPx.value + 1) + stack.offset
   const selectedTop = props.selected === null ? undefined : rowEls.get(props.selected)?.offsetTop
   selectedUnderStack.value = selectedTop !== undefined && selectedTop < stackBottom
 }
@@ -183,7 +188,7 @@ function scrollToRow(path: string): void {
   const viewport = scrollArea.value?.el
   const el = rowEls.get(path)
   if (viewport && el) {
-    viewport.scrollTop = el.offsetTop - STACK_TOP_PX
+    viewport.scrollTop = el.offsetTop - stackTopPx.value
   }
 }
 
@@ -199,7 +204,7 @@ function revealRow(path: string): void {
   if (!viewport || !el || !row) {
     return
   }
-  const top = revealTreeRow(viewport, { depth: row.depth, top: el.offsetTop }, STACK_TOP_PX)
+  const top = revealTreeRow(viewport, { depth: row.depth, top: el.offsetTop }, stackTopPx.value, rowPx.value)
   if (top !== null) {
     viewport.scrollTop = top
   }
@@ -311,7 +316,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
          the rows it covers get no hover or click through it. -->
     <div class="absolute inset-x-0 top-0 isolate z-[1] flex flex-col bg-surface-editor p-1 pb-0">
       <div
-        class="relative z-10 flex h-7 shrink-0 select-none items-center bg-surface-editor px-2 text-chrome font-medium text-fg-muted"
+        class="relative z-10 flex h-7 shrink-0 select-none items-center bg-surface-editor px-2 text-chrome font-medium text-fg-muted phone:h-11 phone:text-[15px]"
         :title="captionTitle"
       >
         <span class="min-w-0 flex-1 truncate">{{ caption }}</span>
@@ -324,7 +329,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
           v-for="(row, index) in stickyRows"
           :key="row.path"
           class="relative overflow-hidden"
-          :style="{ height: `${index === stickyRows.length - 1 ? Math.max(0, TREE_ROW_PX + stickyOffset) : TREE_ROW_PX}px` }"
+          :style="{ height: `${index === stickyRows.length - 1 ? Math.max(0, rowPx + stickyOffset) : rowPx}px` }"
         >
           <TreeRow
             :ref="(el) => bindPinned(row.path, el)"
@@ -347,7 +352,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
       <div v-if="scrolled && rows.length > 0" class="pointer-events-none absolute inset-x-0 top-full h-2 bg-linear-to-b from-surface-editor to-transparent" />
     </div>
     <!-- The caption's room plus one gap; the pinned copy above covers it. -->
-    <div class="h-[29px] shrink-0" aria-hidden="true" />
+    <div class="shrink-0" :style="{ height: `${rowPx + 1}px` }" aria-hidden="true" />
     <div
       ref="treeEl"
       role="tree"

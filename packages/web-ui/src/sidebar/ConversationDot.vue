@@ -19,7 +19,7 @@ const tone = computed(() => statusTone(props.conversation.status))
 </script>
 
 <template>
-  <span class="flex size-3.5 shrink-0 items-center justify-center">
+  <span class="flex size-3.5 shrink-0 items-center justify-center phone:size-4 phone:[&>*]:scale-[1.35]">
     <span
       v-if="conversation.needsYou"
       class="size-1.5 rounded-full bg-on-attention"
