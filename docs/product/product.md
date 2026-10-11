@@ -613,6 +613,15 @@ few milliseconds reads as the list twitching.
   steer: the steer shows under that row with *Will be sent to the agent at
   its next step*, and nothing shows under the steer, since the run's row
   already says the agent works.
+- **A turn's end is one change.** The turn's last text and the conversation
+  going idle reach the page together, so the page never draws a frame between
+  them in which finished text, with nothing after it, is followed by
+  Requesting.
+- **A steer that will start the turn** is drawn as the message it becomes:
+  when nothing runs and the first message on its way was sent as a steer, as
+  when the message before it was not delivered, its row reads as the user's
+  next message, with no *Will be sent to the agent at its next step*, from the
+  moment the page knows it starts the turn.
 - **The message being sent** is drawn as the message it will become, at its
   height: whether it is still on its way shows in the Requesting row, and a
   lost connection in the Connecting row or the connection banner, never as
