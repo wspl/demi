@@ -16,7 +16,7 @@ use demi_agent_session::{
     ActionEnd, AdmissionError, AgentMessageError, AgentSession, CompactionConfig, Continuation,
     EditCheck, EditContent, EditError, EditSubmission, ModelSwitch, NewContext, SeenContext,
     SessionConfig, SessionDeps, SessionEvent, SessionInit, SessionRuntime, StartedCommand,
-    SteerError, StepOutcomes, Subscription, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome,
+    SteerError, StepOutcomes, Subscription, SystemPrompt, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome,
 };
 use demi_conversation_socket_protocol::{AbortResult, AbortTarget, TranscriptPatch};
 use demi_provider_common::{
@@ -43,6 +43,7 @@ use demi_agent_store::{
 };
 use demi_agent_transcript::{report_text, testing::SequentialIds};
 
+mod breakdown;
 mod compaction;
 mod editing;
 mod generated;
@@ -64,6 +65,11 @@ struct TestRuntime {
     /// What the `execution` source tells the model while the context it
     /// receives does not hold it.
     execution: Option<&'static str>,
+    /// What other sources tell the model, each while the context it
+    /// receives does not hold it.
+    context: Vec<NewContext>,
+    /// The system prompt it gives every model.
+    prompt: SystemPrompt,
     /// The context each request's sources were shown, as `source: text`.
     seen: Rc<RefCell<Vec<Vec<String>>>>,
     /// While set, the window the node answers for every model in place of
@@ -122,6 +128,9 @@ impl TestCommands {
     }
 }
 
+/// The system prompt the test runtime gives every model.
+const SYSTEM_PROMPT: &str = "system prompt";
+
 impl SessionRuntime for TestRuntime {
     fn enter_action(&self) -> LocalBoxFuture<'_, GateLease> {
         Box::pin(self.admission.enter(Purpose::Demand))
@@ -136,8 +145,9 @@ impl SessionRuntime for TestRuntime {
     fn system_prompt<'a>(
         &'a self,
         _model: &'a ModelSelection,
-    ) -> LocalBoxFuture<'a, Result<String, String>> {
-        Box::pin(async { Ok("system prompt".to_owned()) })
+    ) -> LocalBoxFuture<'a, Result<SystemPrompt, String>> {
+        let prompt = self.prompt.clone();
+        Box::pin(async move { Ok(prompt) })
     }
 
     fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {
@@ -165,15 +175,17 @@ impl SessionRuntime for TestRuntime {
                 .map(|seen| format!("{}: {}", seen.source, seen.text))
                 .collect(),
         );
-        let news = self
-            .execution
-            .filter(|text| !seen.iter().any(|seen| seen.text == *text))
-            .map(|text| NewContext {
-                source: "execution".into(),
-                text: text.into(),
-                instructions: Vec::new(),
-            });
-        Box::pin(async move { news.into_iter().collect() })
+        let execution = self.execution.map(|text| NewContext {
+            source: "execution".into(),
+            text: text.into(),
+            instructions: Vec::new(),
+        });
+        let news: Vec<NewContext> = execution
+            .into_iter()
+            .chain(self.context.iter().cloned())
+            .filter(|news| !seen.iter().any(|seen| seen.text == news.text))
+            .collect();
+        Box::pin(async move { news })
     }
 
     fn tools(&self) -> Arc<[ToolDefinition]> {
@@ -481,6 +493,8 @@ fn test_runtime(tools: Vec<(String, Invoke)>) -> TestRuntime {
         admission: ActivityGate::new(),
         hanging_preamble: Rc::default(),
         execution: None,
+        context: Vec::new(),
+        prompt: SystemPrompt::identity(SYSTEM_PROMPT),
         seen: Rc::default(),
         window_in_use: Rc::default(),
         together: Vec::new(),

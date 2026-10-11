@@ -152,7 +152,8 @@ export interface SettingsQuotaWindow {
   label: SentenceText
   used: number
   max: number
-  resets: string | null
+  /** When the window resets, as the vendor reported it; null when unknown. */
+  resetsAt: string | null
 }
 
 export type SettingsQuotaRefresh = 'automatic' | 'manual'

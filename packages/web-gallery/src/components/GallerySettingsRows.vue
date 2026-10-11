@@ -23,6 +23,7 @@ import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/theme/productAppearance'
 import { productWould } from '../product-would'
+import { DAY, HOUR, MINUTE, ahead } from '../fixtures/time'
 
 /**
  * One row of each kind of control a settings card holds, as the product's
@@ -46,8 +47,8 @@ const theme = ref<Theme>('system')
 const sound = ref(true)
 /** The account row's usage, which Refresh reads again: each window a little further used. */
 const usage = ref<SettingsQuotaWindow[]>([
-  { id: 'five_hour', label: '5h session', used: 62, max: 100, resets: 'in 2 h 10 min' },
-  { id: 'seven_day', label: '7d all models', used: 31, max: 100, resets: 'Monday' },
+  { id: 'five_hour', label: '5h session', used: 62, max: 100, resetsAt: ahead(130 * MINUTE) },
+  { id: 'seven_day', label: '7d all models', used: 31, max: 100, resetsAt: ahead(3 * DAY + 4 * HOUR) },
 ])
 function refreshUsage(): void {
   usage.value = usage.value.map((window) => ({ ...window, used: Math.min(window.max, window.used + 3) }))

@@ -3,6 +3,10 @@
 //! commands and the model identity, in that order, then the instructions a
 //! subagent profile added.
 
+use demi_agent_session::{PromptLayer, SystemPrompt};
+use demi_host_interface::CapabilityIndex;
+use demi_shared_types::PromptLayerKind;
+
 use crate::input::DESCRIPTION;
 
 /// The rules of the `shell` tool, which every node's system prompt carries.
@@ -30,37 +34,53 @@ pub struct ModelIdentity<'a> {
     pub id: &'a str,
 }
 
-/// The system prompt of a node: the product's `identity`, the product's
-/// harness `guide`, the rules of the `shell` tool, the capability `index` of
-/// its commands when it has any, the line naming `model`, and last, under a
-/// heading of their own, the instructions its subagent profile `added`, which
-/// never replace any of the product's layers.
+/// The system prompt of a node by its layers: the product's `identity`,
+/// the product's harness `guide`, the rules of the `shell` tool, the
+/// capability `index` of its commands when it has any, the line naming
+/// `model`, and last, under a heading of their own, the instructions its
+/// subagent profile `added`, which never replace any of the product's
+/// layers.
 pub fn system_prompt(
     identity: &str,
     guide: &str,
-    index: &str,
+    index: &CapabilityIndex,
     model: ModelIdentity<'_>,
     added: Option<&str>,
-) -> String {
-    let mut sections = Vec::new();
-    for layer in [identity, guide] {
-        if !layer.trim().is_empty() {
-            sections.push(layer.to_owned());
+) -> SystemPrompt {
+    let mut layers = Vec::new();
+    for (kind, text) in [
+        (PromptLayerKind::Identity, identity),
+        (PromptLayerKind::HarnessGuide, guide),
+    ] {
+        if !text.trim().is_empty() {
+            layers.push(PromptLayer::Text {
+                kind,
+                text: text.to_owned(),
+            });
         }
     }
-    sections.push(format!(
-        "{}\n- Tool description: {DESCRIPTION}",
-        TOOL_RULES.join("\n")
-    ));
-    if !index.trim().is_empty() {
-        sections.push(format!("Capabilities:\n\n{index}"));
+    layers.push(PromptLayer::Text {
+        kind: PromptLayerKind::ToolRules,
+        text: format!("{}\n- Tool description: {DESCRIPTION}", TOOL_RULES.join("\n")),
+    });
+    if !index.is_empty() {
+        layers.push(PromptLayer::Commands {
+            text: format!("Capabilities:\n\n{}", index.text()),
+            index: index.clone(),
+        });
     }
-    sections.push(format!(
-        "This conversation runs on {} ({}, {}). If asked which model you are, answer with this.",
-        model.name, model.family, model.id
-    ));
+    layers.push(PromptLayer::Text {
+        kind: PromptLayerKind::ModelIdentity,
+        text: format!(
+            "This conversation runs on {} ({}, {}). If asked which model you are, answer with this.",
+            model.name, model.family, model.id
+        ),
+    });
     if let Some(added) = added.filter(|added| !added.trim().is_empty()) {
-        sections.push(format!("Instructions for this subagent:\n\n{added}"));
+        layers.push(PromptLayer::Text {
+            kind: PromptLayerKind::ProfileInstructions,
+            text: format!("Instructions for this subagent:\n\n{added}"),
+        });
     }
-    sections.join("\n\n")
+    SystemPrompt { layers }
 }

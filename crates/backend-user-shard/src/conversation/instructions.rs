@@ -13,7 +13,7 @@ use demi_backend_host_access::conversation_of;
 use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_plugin_interface::project::{self, join};
 use demi_plugin_interface::{HostFile, HostRead};
-use demi_shared_types::{INSTRUCTIONS_SOURCE, InstructionEntry, TurnId, xml_escaped};
+use demi_shared_types::{INSTRUCTIONS_SOURCE, InstructionEntry, TurnId};
 use demi_web_api_protocol::ids::ConversationId;
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
@@ -222,21 +222,17 @@ fn render(personal: &str, files: &[ProjectFile]) -> Option<ContextAnswer> {
     }
     let mut text = String::from(PREAMBLE);
     let mut instructions = Vec::new();
-    if !personal.is_empty() {
-        text.push_str(&format!(
-            "\n\n<personal_instructions>\n{personal}\n</personal_instructions>"
-        ));
-        instructions.push(InstructionEntry::Personal);
-    }
-    for file in files {
-        text.push_str(&format!(
-            "\n\n<project_instructions path=\"{}\">\n{}\n</project_instructions>",
-            xml_escaped(&file.path),
-            file.text
-        ));
-        instructions.push(InstructionEntry::File {
+    let personal = (!personal.is_empty()).then(|| (InstructionEntry::Personal, personal));
+    let files = files.iter().map(|file| {
+        let entry = InstructionEntry::File {
             path: file.path.clone(),
-        });
+        };
+        (entry, file.text.as_str())
+    });
+    for (entry, body) in personal.into_iter().chain(files) {
+        text.push_str("\n\n");
+        text.push_str(&entry.section(body));
+        instructions.push(entry);
     }
     Some(ContextAnswer { text, instructions })
 }

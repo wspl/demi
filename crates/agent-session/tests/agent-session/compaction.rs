@@ -13,7 +13,7 @@ use demi_agent_transcript::{
     COMPACTION_NOTE, RequestView, estimate::block_tokens, testing::RESUME_TEXT,
 };
 use demi_provider_common::{PromptCache, ProviderFailure, RequestLimits, testing::TokioClock};
-use demi_shared_types::{BlockId, ContextUsage, MediaSource, QueuedMessage, TokenUsage};
+use demi_shared_types::{BlockId, MediaSource, QueuedMessage, TokenUsage};
 
 use super::*;
 
@@ -713,12 +713,8 @@ async fn the_usage_and_the_compact_gate_count_against_the_limit_the_user_set() {
 
     let full = session.context_usage().await.unwrap();
     assert_eq!(
-        full,
-        ContextUsage {
-            tokens: 400,
-            window: Some(1_000),
-            compact_from: Some(500),
-        }
+        (full.tokens, full.window, full.compact_from),
+        (400, Some(1_000), Some(500))
     );
     assert_eq!(
         compaction_refusal(&full).as_deref(),
@@ -729,12 +725,8 @@ async fn the_usage_and_the_compact_gate_count_against_the_limit_the_user_set() {
     window.set(Some(600));
     let limited = session.context_usage().await.unwrap();
     assert_eq!(
-        limited,
-        ContextUsage {
-            tokens: 400,
-            window: Some(600),
-            compact_from: Some(300),
-        }
+        (limited.tokens, limited.window, limited.compact_from),
+        (400, Some(600), Some(300))
     );
     assert_eq!(compaction_refusal(&limited), None);
     assert_eq!(session.held_context_usage().await, Some(limited));
@@ -2775,8 +2767,9 @@ async fn a_pass_keeps_the_users_newest_words_within_their_budget_beside_its_summ
             event::response(0, 0),
         ]),
         answer("done"),
-        // A long report, which the window keeps after its cut.
-        answer(&"r".repeat(64_000)),
+        // A long report of 16,000 tokens in as many characters, which the
+        // replay bound keeps whole, and the window keeps after its cut.
+        answer(&"😀".repeat(16_000)),
         answer("summary one"),
         answer("going on"),
         answer("summary two"),
@@ -2797,9 +2790,12 @@ async fn a_pass_keeps_the_users_newest_words_within_their_budget_beside_its_summ
     let mut held = HeldMedia::default();
     held.hold(BlobRef::of(&photo), photo.clone());
     session.hold_media(held);
-    // 12,000 tokens and a screenshot; then 9,000 tokens.
-    let second = format!("Second {}", "s".repeat(47_993));
-    let third = format!("Third {}", "t".repeat(35_994));
+    // 12,000 tokens and a screenshot; then 9,000 tokens. Their characters
+    // are wide, so the replay bound keeps each whole and its estimate is
+    // its own.
+    let second = format!("Second s{}", "😀".repeat(11_998));
+    let third = format!("Third {}", "あ".repeat(11_998));
+    let up_to = |tokens: usize| second[..second.floor_char_boundary(tokens * 4)].to_owned();
     session.send(text("Keep the old rule."), turn("t1")).unwrap().await.unwrap();
     let mut with_image = text(&second);
     with_image.push(UserContentBlock::Image {
@@ -2841,7 +2837,7 @@ async fn a_pass_keeps_the_users_newest_words_within_their_budget_beside_its_summ
     assert_eq!(
         kept,
         [
-            vec![second[..edge * 4].to_owned()],
+            vec![up_to(edge)],
             vec![third.clone()],
             vec!["Mind the tests.".to_owned()],
             vec!["Now report.".to_owned()],
@@ -2881,7 +2877,7 @@ async fn a_pass_keeps_the_users_newest_words_within_their_budget_beside_its_summ
     assert_eq!(
         kept_texts(boundary),
         [
-            vec![second[..edge * 4].to_owned()],
+            vec![up_to(edge)],
             vec![third.clone()],
             vec!["Mind the tests.".to_owned()],
             vec!["Now report.".to_owned()],

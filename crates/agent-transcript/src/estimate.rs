@@ -4,15 +4,17 @@
 
 use std::borrow::Cow;
 
-use demi_provider_common::{InferenceItem, MediaBytes, Medium, ResultPart, UserPart};
+use demi_provider_common::{
+    InferenceItem, MediaBytes, Medium, ResultPart, ToolDefinition, UserPart,
+};
 use demi_shared_types::{
-    B64Bytes, Block, DocumentSource, Model, ModelMediaKind, ToolResultContentBlock,
-    UserContentBlock,
+    B64Bytes, Block, DocumentSource, INSTRUCTIONS_SOURCE, Model, ModelMediaKind,
+    ToolResultContentBlock, UserContentBlock,
 };
 
 use super::{
     COMPACTION_NOTE, gone_text,
-    replay::{RequestView, resume_text},
+    replay::{RequestView, bound_text, resume_text},
     replay_start,
 };
 
@@ -35,8 +37,50 @@ pub fn text_tokens(text: &str) -> u64 {
 /// § Block estimates): with its bytes, weighed by them, or as the text that
 /// names it, which counts as text.
 pub fn block_tokens(block: &Block, request: &RequestView) -> u64 {
+    block_weight(block, request).tokens()
+}
+
+/// A block's estimate in its two parts: its text's and its media's.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BlockWeight {
+    /// The estimate of its text, as the request carries it.
+    pub text: u64,
+    /// The weight of the media the request carries with their bytes.
+    pub media: u64,
+}
+
+impl BlockWeight {
+    /// The block's estimate, [`block_tokens`].
+    pub fn tokens(self) -> u64 {
+        self.text + self.media
+    }
+}
+
+/// A block's estimate in `request`, its text's and its media's apart.
+pub fn block_weight(block: &Block, request: &RequestView) -> BlockWeight {
     let (text, media) = block_estimate(block, request);
-    text_tokens(&text) + media
+    BlockWeight {
+        text: text_tokens(&text),
+        media,
+    }
+}
+
+/// The estimate of a tool's definition: its JSON's, as a request declares
+/// it.
+pub fn tool_tokens(tool: &ToolDefinition) -> u64 {
+    let json = serde_json::json!({
+        "name": tool.name,
+        "description": tool.description,
+        "input_schema": tool.input_schema,
+    });
+    text_tokens(&json.to_string())
+}
+
+/// The estimate of what a request carries before its history: its
+/// `system_prompt` and `tools`, each its text's (`compaction.md` § Context
+/// estimate, rule 5).
+pub fn prompt_tokens(system_prompt: &str, tools: &[ToolDefinition]) -> u64 {
+    text_tokens(system_prompt) + tools.iter().map(tool_tokens).sum::<u64>()
 }
 
 /// Where the estimate of the next request starts weighing blocks
@@ -45,6 +89,8 @@ pub fn block_tokens(block: &Block, request: &RequestView) -> u64 {
 /// last compaction boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ContextAnchor {
+    /// Whether a reported usage anchors the estimate.
+    pub anchored: bool,
     /// The reported usage the estimate starts from; zero without one.
     pub tokens: u64,
     /// The index, in the blocks the anchor was found in, of the first block
@@ -60,22 +106,38 @@ pub fn context_anchor(blocks: &[Block], model: &Model) -> ContextAnchor {
     let window = model.context_window;
     match usage_anchor(blocks).filter(|(_, tokens)| window == 0 || *tokens <= u64::from(window)) {
         Some((index, tokens)) => ContextAnchor {
+            anchored: true,
             tokens,
             from: index + 1,
         },
         None => ContextAnchor {
+            anchored: false,
             tokens: 0,
             from: replay_start(blocks),
         },
     }
 }
 
-/// The estimate of `request`, the next request of its model: its
-/// [`context_anchor`] plus the estimates of the blocks from the anchor on.
-pub fn context_tokens(request: &RequestView) -> u64 {
+/// The estimate of `request`, the next request of its model, with
+/// `system_prompt`: its [`context_anchor`] plus the estimates of the blocks
+/// from the anchor on; without an anchor, the estimate of the system prompt
+/// and the tools in its place, so a request just after a compaction is not
+/// read as the history alone.
+pub fn context_tokens(request: &RequestView, system_prompt: &str) -> u64 {
     let blocks = request.blocks();
     let anchor = context_anchor(blocks, request.model());
-    anchor.tokens + blocks_tokens(&blocks[anchor.from..], request)
+    anchor_tokens(&anchor, system_prompt, request.tools())
+        + blocks_tokens(&blocks[anchor.from..], request)
+}
+
+/// What the estimate starts from at `anchor`: the usage it holds, or
+/// without one the estimate of `system_prompt` and `tools`.
+pub fn anchor_tokens(anchor: &ContextAnchor, system_prompt: &str, tools: &[ToolDefinition]) -> u64 {
+    if anchor.anchored {
+        anchor.tokens
+    } else {
+        prompt_tokens(system_prompt, tools)
+    }
 }
 
 /// The estimates of `blocks`, summed, each as `request` carries it.
@@ -230,7 +292,7 @@ fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
             return (lines.join("\n"), media);
         }
         Block::Wakeup(wakeup) => {
-            let mut lines = vec![crate::reports_text(&wakeup.reports)];
+            let mut lines = vec![bound_text(&crate::reports_text(&wakeup.reports)).into_owned()];
             let mut media = 0;
             for part in wakeup.reports.iter().flat_map(|report| &report.media) {
                 let (line, weight) = result_estimate(part, request);
@@ -239,14 +301,19 @@ fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
             }
             return (lines.join("\n"), media);
         }
-        Block::Context(context) => context.text.clone(),
+        // The instructions are sent whole (`compaction.md` § Text bounds).
+        Block::Context(context) if context.source == INSTRUCTIONS_SOURCE => context.text.clone(),
+        Block::Context(context) => bound_text(&context.text).into_owned(),
         Block::AgentMessage(receipt) => {
             serde_json::to_string(&receipt.message).expect("an agent message serializes to JSON")
         }
         Block::Resume(resume) => resume_text(resume),
-        Block::Thinking(thinking) => thinking.text.clone(),
+        Block::Thinking(thinking) => match &thinking.signature {
+            Some(_) => thinking.text.clone(),
+            None => bound_text(&thinking.text).into_owned(),
+        },
         Block::RedactedThinking(redacted) => redacted.data.clone(),
-        Block::Text(text) => text.text.clone(),
+        Block::Text(text) => bound_text(&text.text).into_owned(),
         Block::Response(response) => {
             serde_json::to_string(&response.usage).expect("token usage serializes to JSON")
         }
@@ -262,7 +329,7 @@ fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
                 lines.push(text);
                 media += weight;
             }
-            lines.push(boundary.summary.clone());
+            lines.push(bound_text(&boundary.summary).into_owned());
             return (lines.join("\n"), media);
         }
         Block::CompactionMarker(marker) => marker.compacted_tokens.to_string(),
@@ -298,7 +365,7 @@ fn content_part_estimate<'a>(
     request: &RequestView,
 ) -> (Cow<'a, str>, u64) {
     match part {
-        UserContentBlock::Text { text } => (Cow::Borrowed(text.as_str()), 0),
+        UserContentBlock::Text { text } => (bound_text(text), 0),
         UserContentBlock::Reference { reference } => (Cow::Borrowed(reference.as_str()), 0),
         UserContentBlock::Attachment(attachment) => (
             Cow::Owned(format!("{} {}", attachment.name, attachment.path)),
@@ -337,7 +404,7 @@ fn result_estimate<'a>(
     request: &RequestView,
 ) -> (Cow<'a, str>, u64) {
     let (kind, source) = match part {
-        ToolResultContentBlock::Text { text } => return (Cow::Borrowed(text.as_str()), 0),
+        ToolResultContentBlock::Text { text } => return (bound_text(text), 0),
         ToolResultContentBlock::Gone { kind, cause, .. } => {
             return (Cow::Owned(gone_text(*kind, cause)), 0);
         }
