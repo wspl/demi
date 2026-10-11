@@ -50,6 +50,8 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::{self, Message};
 
+use demi_backend_database::{DatabaseKind, schema_testing};
+
 use crate::support::{Harness, MASTER_EMAIL, PATIENCE, Paired, Session, TestBackend, eventually};
 
 /// The conversation ids the tests create.
@@ -1857,6 +1859,96 @@ async fn the_summary_names_the_roots_latest_ended_turn_as_its_status_says_it_end
             None
         )
     );
+    backend.close().await;
+}
+
+/// A summary read while the conversation's database migrates waits for the
+/// migration and lists the conversation's facts (`storage.md` § Schemas and
+/// migrations): after an upgrade, the database of the previous release's
+/// schema migrates as its conversation opens, holding its write lock for as
+/// long as the migration takes, and a page's summaries that come meanwhile
+/// still say how its turn ended. On prod the summary read migrated the
+/// database itself beside the open, gave up on the lock after its busy
+/// timeout and listed the conversation idle, with revision 0. A turn and a
+/// restart against the mock vendor, under a second.
+#[tokio::test]
+async fn a_summary_read_while_the_conversations_database_migrates_lists_its_facts() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    vendor.respond(answer(&["Done."], 1, 1));
+    socket.chat("m1", "Hello").await;
+    let facts = |summary: &ConversationSummary| {
+        (
+            summary.status,
+            summary.revision,
+            summary.last_turn.as_ref().map(|turn| turn.outcome),
+        )
+    };
+    let before = facts(&summary(&backend, &master, FIRST).await);
+    assert_eq!(before.0, ConversationStatus::Completed);
+    drop(socket);
+    backend.close().await;
+
+    // The upgrade left the database at the previous release's schema, whose
+    // last migration changes no table.
+    let database = rusqlite::Connection::open(
+        harness
+            .data_dir()
+            .join("conversations")
+            .join(format!("{FIRST}.sqlite")),
+    )
+    .unwrap();
+    database
+        .pragma_update(
+            None,
+            "user_version",
+            schema_testing::shipped_version(DatabaseKind::Conversation),
+        )
+        .unwrap();
+    drop(database);
+
+    let backend = harness.start().await;
+    let hold = backend.hold_migrations();
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket
+        .send(&ClientFrame::Open {
+            from: None,
+            edge: None,
+        })
+        .await;
+    tokio::time::timeout(PATIENCE, hold.until_migrating(1))
+        .await
+        .expect("opening the conversation migrates its database");
+    let listed = {
+        let listing = summaries(&backend, &master);
+        tokio::pin!(listing);
+        tokio::select! {
+            listed = &mut listing => {
+                let listed: Vec<_> = listed.iter().map(facts).collect();
+                panic!("the summaries answered while the database migrated: {listed:?}");
+            }
+            waited = tokio::time::timeout(PATIENCE, hold.until_reads_wait(1)) => {
+                waited.expect("the summary read waits for the migration");
+            }
+        }
+        hold.release();
+        listing.await
+    };
+    let listed = listed
+        .iter()
+        .find(|summary| summary.id.as_str() == FIRST)
+        .expect("the conversation is listed");
+    assert_eq!(facts(listed), before);
+    let handshake = socket
+        .until(|frame| matches!(frame, ServerFrame::PendingSteers { .. }))
+        .await;
+    assert_eq!(handshake.first(), Some(&ServerFrame::Opened), "{handshake:?}");
     backend.close().await;
 }
 
