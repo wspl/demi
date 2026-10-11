@@ -306,7 +306,7 @@ export interface SettingsSubagentProfile {
   description: string
   /** The model a child infers with; null for its parent's. */
   model: ModelSettings | null
-  /** The text that replaces a child's instructions; null for its parent's. */
+  /** The text added to a child's system prompt after Demi's own; null for none. */
   instructions: string | null
   /** Whether the profile's children may spawn children of their own. */
   canSpawn: boolean

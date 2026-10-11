@@ -61,8 +61,9 @@ impl ReadBlob for NoBlobs {
 /// release before the one that ships the current schema, and of each
 /// development build a server keeps data of (`upgrades.md` § A development
 /// build on a server); 0.1.22-dev.20261011T123543Z shipped the last of
-/// those. The schema with the subagent limits after it no server keeps, but
-/// development databases do, and the server's migrate through it.
+/// those. The schemas with the subagent limits and without Detect Title
+/// after it no server keeps, but development databases do, and the server's
+/// migrate through them.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
     history: &[
@@ -106,6 +107,10 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.subagent-limits.sql"),
             migration: Migration::Sql(CONTROL_FROM_SUBAGENT_LIMITS),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.no-detect-title.sql"),
+            migration: Migration::Sql(CONTROL_FROM_NO_DETECT_TITLE),
+        },
     ],
 };
 
@@ -113,9 +118,9 @@ pub(crate) const CONTROL: Schema = Schema {
 /// published release before the one that ships the current schema, and of
 /// each development build a server keeps data of (`upgrades.md` § A
 /// development build on a server); 0.1.22-dev.20261011T123543Z shipped the
-/// last of those. The schema of transcript block format 4 after it no
-/// server keeps, but development databases do, and the server's migrate
-/// through it.
+/// last of those. The schemas of transcript block formats 4 and 5 after it
+/// no server keeps, but development databases do, and the server's migrate
+/// through them.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -143,8 +148,18 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.22-dev.block-format-4.sql"),
             migration: Migration::Code(boundaries_with_kept_messages),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.block-format-5.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_BLOCK_FORMAT_5),
+        },
     ],
 };
+
+/// From the conversation schema of transcript block format 5 before a
+/// node's instructions were the ones its profile adds (`subagents.md`
+/// § Persistence): only the column's comment changed, and what a node
+/// stored there before reads as what its profile added.
+const CONVERSATION_FROM_BLOCK_FORMAT_5: &str = "";
 
 /// From the conversation schema of transcript block format 4 to format 5,
 /// where a `compaction_boundary` holds the user's messages its pass kept
@@ -221,6 +236,28 @@ ALTER TABLE user_subagents ADD COLUMN max_depth INTEGER DEFAULT 1 CHECK (max_dep
 const CONTROL_FROM_SUBAGENT_LIMITS: &str = "
 ALTER TABLE conversations DROP COLUMN user_messages;
 ALTER TABLE conversations DROP COLUMN titled_messages;
+";
+
+/// From the control schema without Detect Title: each subagent limit keeps
+/// its number while it is lifted (`subagents.md` § Limits), so a limit
+/// stored as Unlimited, a null, takes its default number and stays
+/// Unlimited. The table is rebuilt, since SQLite cannot make a column NOT
+/// NULL in place.
+const CONTROL_FROM_NO_DETECT_TITLE: &str = "
+CREATE TABLE user_subagents_kept (
+  user_id             TEXT PRIMARY KEY REFERENCES users (id),
+  enabled             INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+  max_live            INTEGER NOT NULL CHECK (max_live >= 1),
+  max_live_unlimited  INTEGER NOT NULL CHECK (max_live_unlimited IN (0, 1)),
+  max_depth           INTEGER NOT NULL CHECK (max_depth >= 1),
+  max_depth_unlimited INTEGER NOT NULL CHECK (max_depth_unlimited IN (0, 1))
+) STRICT;
+INSERT INTO user_subagents_kept
+  SELECT user_id, enabled, coalesce(max_live, 10), max_live IS NULL,
+         coalesce(max_depth, 1), max_depth IS NULL
+  FROM user_subagents;
+DROP TABLE user_subagents;
+ALTER TABLE user_subagents_kept RENAME TO user_subagents;
 ";
 
 /// From 0.1.11's control schema: the retention pass, which read when each
@@ -1058,17 +1095,21 @@ CREATE TABLE user_instructions (
 
 -- Each user's Subagents switch and limits (`subagents.md` § Profiles,
 -- § Limits): a user with no row has subagents on, at most 10 live and 1
--- level deep, the defaults the columns hold too. A null limit is Unlimited.
+-- level deep. Each limit is the number last set and whether it is lifted
+-- (Unlimited), which keeps the number.
 CREATE TABLE user_subagents (
-  user_id   TEXT PRIMARY KEY REFERENCES users (id),
-  enabled   INTEGER NOT NULL CHECK (enabled IN (0, 1)),
-  max_live  INTEGER DEFAULT 10 CHECK (max_live >= 1),
-  max_depth INTEGER DEFAULT 1 CHECK (max_depth >= 1)
+  user_id             TEXT PRIMARY KEY REFERENCES users (id),
+  enabled             INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+  max_live            INTEGER NOT NULL CHECK (max_live >= 1),
+  max_live_unlimited  INTEGER NOT NULL CHECK (max_live_unlimited IN (0, 1)),
+  max_depth           INTEGER NOT NULL CHECK (max_depth >= 1),
+  max_depth_unlimited INTEGER NOT NULL CHECK (max_depth_unlimited IN (0, 1))
 ) STRICT;
 
 -- Each user's subagent profiles: the model settings as JSON, null for the
--- parent's model, and the instructions that replace the parent's, null for
--- the parent's. A name is unique among its user's profiles.
+-- parent's model, and the instructions added to a child's system prompt
+-- after the product's, null for none. A name is unique among its user's
+-- profiles.
 CREATE TABLE subagent_profiles (
   id           TEXT PRIMARY KEY,
   user_id      TEXT NOT NULL REFERENCES users (id),
@@ -1405,8 +1446,8 @@ CREATE TABLE nodes (
   parent_id        TEXT REFERENCES nodes (id) ON DELETE CASCADE,
   description      TEXT NOT NULL,
   profile          TEXT,
-  -- The instructions the node's profile replaced its parent's with; null
-  -- when it has its parent's.
+  -- The instructions the node's profile added to its system prompt; null
+  -- when it added none, or the node has its parent's prompt.
   instructions     TEXT,
   round            INTEGER NOT NULL CHECK (round >= 1),
   started_at       INTEGER NOT NULL,
@@ -2486,17 +2527,58 @@ mod tests {
         }
     }
 
+    /// A subagent limit stored before the number was kept: a number stays
+    /// the limit, and a null, Unlimited, stays lifted with the default
+    /// number, so choosing Limited shows 10 or 1, never an empty field.
+    #[test]
+    fn a_lifted_limit_of_the_control_schema_without_detect_title_keeps_a_number() {
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/control-0.1.22-dev.no-detect-title.sql"));
+        connection
+            .execute_batch(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('u1', 'a@example.test', 'a', 'h', 'master', 0),
+                          ('u2', 'b@example.test', 'b', 'h', 'user', 0);
+                 INSERT INTO user_subagents (user_id, enabled, max_live, max_depth)
+                   VALUES ('u1', 1, NULL, 3), ('u2', 0, 4, NULL);",
+            )
+            .unwrap();
+
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let rows: Vec<(String, bool, i64, bool, i64, bool)> = connection
+            .prepare(
+                "SELECT user_id, enabled, max_live, max_live_unlimited, max_depth, max_depth_unlimited
+                 FROM user_subagents ORDER BY user_id",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(
+            rows,
+            [
+                ("u1".to_owned(), true, 10, true, 3, false),
+                ("u2".to_owned(), false, 4, false, 1, true),
+            ]
+        );
+    }
+
     /// The development builds' schemas are the ones their server's
-    /// databases record, and format 4's and the subagent limits' the ones
-    /// development databases record.
+    /// databases record, and formats 4 and 5's, the subagent limits' and
+    /// the one without Detect Title the ones development databases record.
     #[test]
     fn the_development_builds_in_the_history_are_the_ones_their_server_records() {
         for (schema, development, version) in [
             (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql"), 1_563_671_332),
             (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql"), 845_924_528),
             (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.block-format-4.sql"), 2_090_642_600),
+            (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.block-format-5.sql"), 830_873_636),
             (&CONTROL, include_str!("schema/control-0.1.22-dev.20261011T123543Z.sql"), 388_363_661),
             (&CONTROL, include_str!("schema/control-0.1.22-dev.subagent-limits.sql"), 491_070_162),
+            (&CONTROL, include_str!("schema/control-0.1.22-dev.no-detect-title.sql"), 1_079_978_983),
         ] {
             assert_eq!(version_of(development), version);
             assert!(schema.history.iter().any(|shipped| shipped.sql == development));

@@ -9,6 +9,7 @@ import {
   profileAnswerSchema,
   type NewProfile,
   type ProfilePatch,
+  type SubagentLimit,
   type SubagentProfile,
   type SubagentSettings,
   type SubagentsPatch,
@@ -80,8 +81,8 @@ export const useSubagentSettings = defineStore('subagent-settings', () => {
     )
   }
 
-  /** Sets Maximum subagents or Maximum depth; null is Unlimited, which the page confirmed. */
-  function setLimit(limit: 'maxLive' | 'maxDepth', value: number | null): Promise<void> {
+  /** Sets Maximum subagents or Maximum depth; Unlimited, which keeps the number, the page confirmed. */
+  function setLimit(limit: 'maxLive' | 'maxDepth', value: SubagentLimit): Promise<void> {
     return switchSettings(
       limit,
       (current) => ({ ...current, [limit]: value }),

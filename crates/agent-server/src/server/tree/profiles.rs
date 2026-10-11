@@ -22,7 +22,9 @@ const SUBAGENTS_OFF: &str = "subagents are turned off in settings; do this work 
 /// parent's for the inherit profile.
 pub(super) struct Setup {
     pub(super) model: ModelSelection,
-    /// The instructions that replace the parent's; none for the parent's.
+    /// The instructions the profile adds to the child's system prompt; none
+    /// when it adds none, and for the inherit profile, whose child copies
+    /// its parent's.
     pub(super) instructions: Option<String>,
     pub(super) can_spawn: bool,
     /// The limits the settings set at that moment, which the spawn checks

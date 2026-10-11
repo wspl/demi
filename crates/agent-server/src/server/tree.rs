@@ -35,7 +35,7 @@ use self::{live::LiveOutput, supervisor::Child};
 use super::{AgentServer, ResolveError, commands, connection::Outbox};
 use crate::{
     Node,
-    node::{self, AssembleError, NodeRole, NodeSpec, Origin},
+    node::{self, AssembleError, Instructions, NodeRole, NodeSpec, Origin},
 };
 
 /// A conversation's live tree.
@@ -254,7 +254,10 @@ impl<H: HostResolver> Tree<H> {
             runtime,
             providers: deps.providers.clone(),
             hosts: deps.hosts.clone(),
-            instructions: deps.instructions.clone(),
+            instructions: Instructions {
+                identity: deps.instructions.clone(),
+                added: None,
+            },
             guide: deps.guide.clone(),
             preamble: None,
             context: deps.context.clone(),

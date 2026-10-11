@@ -28,6 +28,7 @@ import {
   subagentProviders,
 } from '../fixtures/subagent-profiles'
 import { productWould } from '../product-would'
+import { setGalleryContextLimit } from '../fixtures/context-limits'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import { demoDeviceInstallation, demoDeviceReport } from '../fixtures/device-installation'
@@ -163,6 +164,7 @@ function pinnedEditor(id: string | null) {
     : { name: '', description: '', model: null, instructions: null, canSpawn: true }
   return { open: ref(true), draft }
 }
+const profileModels = computed(() => subagentModels())
 const inheritEditor = pinnedEditor(null)
 const ownEditor = pinnedEditor('explore')
 
@@ -323,7 +325,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Profile Editor · Inherits"
-        note="A new profile: the parent’s model and prompt, its children may spawn. Create Profile stays off until the name and the description are filled."
+        note="A new profile: the parent’s model and no instructions of its own, its children may spawn. Create Profile stays off until the name and the description are filled. The model menu is the composer’s, with Parent’s Model at its top."
       >
         <GalleryOverlayWell size="tall">
           <Button v-if="!inheritEditor.open.value" size="md" @click="inheritEditor.open.value = true">Open</Button>
@@ -333,16 +335,18 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
             mode="create"
             :profile="inheritEditor.draft"
             :providers="subagentProviders"
-            :models="subagentModels"
+            :models="profileModels"
+            :catalog-models="profileModels"
             @close="inheritEditor.open.value = false"
             @save="saved(inheritEditor, $event)"
+            @context-limit="setGalleryContextLimit"
           />
         </GalleryOverlayWell>
       </GallerySection>
 
       <GallerySection
-        title="Profile Editor · Own Prompt, Another Provider’s Model"
-        note="The explore profile: GPT-5 of OpenAI with Fast, while the conversations run on Anthropic, a prompt that replaces the parent’s, and no spawning."
+        title="Profile Editor · Own Instructions, Another Provider’s Model"
+        note="The explore profile: GPT-5 of OpenAI with Fast, while the conversations run on Anthropic, instructions added to Demi’s own, and no spawning."
       >
         <GalleryOverlayWell size="tall">
           <Button v-if="!ownEditor.open.value" size="md" @click="ownEditor.open.value = true">Open</Button>
@@ -352,9 +356,11 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
             mode="edit"
             :profile="ownEditor.draft"
             :providers="subagentProviders"
-            :models="subagentModels"
+            :models="profileModels"
+            :catalog-models="profileModels"
             @close="ownEditor.open.value = false"
             @save="saved(ownEditor, $event)"
+            @context-limit="setGalleryContextLimit"
             @delete="deleted(ownEditor)"
           />
         </GalleryOverlayWell>

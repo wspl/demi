@@ -6,7 +6,7 @@ import ConfirmDialog from './ConfirmDialog.vue'
 import Dropdown from './Dropdown.vue'
 import Menu from './Menu.vue'
 import MenuItem from './MenuItem.vue'
-import { LIMIT_PROBLEM, limitStep, parseLimit, type LimitEvent, type LimitPhase } from './limit-field'
+import { LIMIT_PROBLEM, limitStep, parseLimit, type LimitEvent, type LimitPhase, type LimitValue } from './limit-field'
 import type { HeadlineText, SentenceText, TitleText } from './ui-text'
 
 /**
@@ -14,13 +14,13 @@ import type { HeadlineText, SentenceText, TitleText } from './ui-text'
  * and a menu at the row's end chooses Limited or Unlimited, as Xcode's
  * scheme editor pairs a choice with a count. Unlimited asks first in a
  * dialog whose body is the default slot; its Cancel, the default button,
- * keeps the number. Limited from Unlimited opens an empty field, and
- * leaving it empty stays Unlimited. The field commits on Enter or blur and
+ * keeps the limit. Unlimited hides the field and keeps its number, which
+ * Limited shows again as it was. The field commits on Enter or blur and
  * reports text that is no limit through `problem`, as CommitTextInput does.
  */
 const props = defineProps<{
-  /** The limit; null for Unlimited. */
-  modelValue: number | null
+  /** The limit: its number, kept while it is lifted, and whether it is. */
+  modelValue: LimitValue
   /** The setting's name, which the field and the menu are named by. */
   label: SentenceText
   overlayStore: OverlayStore
@@ -31,13 +31,13 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  /** A new limit; null for Unlimited, once the dialog confirmed it. */
-  commit: [value: number | null]
+  /** A new limit; Unlimited only once the dialog confirmed it. */
+  commit: [value: LimitValue]
   problem: [message: SentenceText | null]
 }>()
 
 const phase = ref<LimitPhase>('shown')
-const limited = computed(() => props.modelValue !== null || phase.value === 'typing')
+const limited = computed(() => !props.modelValue.unlimited)
 const choice = computed(() => (limited.value ? 'Limited' : 'Unlimited'))
 
 function on(event: LimitEvent): void {
@@ -49,25 +49,14 @@ function on(event: LimitEvent): void {
   }
 }
 
-/** Empty text is no problem while the field waits for a first number. */
 function validate(text: string): SentenceText | null {
-  if (props.modelValue === null && !text.trim()) {
-    return null
-  }
   return parseLimit(text) === null ? LIMIT_PROBLEM : null
-}
-
-/** A field left empty while it waits for a first number goes back to Unlimited. */
-function leave(event: FocusEvent): void {
-  if (event.target instanceof HTMLInputElement && !event.target.value.trim()) {
-    on('leaveEmpty')
-  }
 }
 
 function commitText(text: string): void {
   const limit = parseLimit(text)
   if (limit !== null) {
-    emit('commit', limit)
+    emit('commit', { limit, unlimited: false })
   }
 }
 </script>
@@ -76,8 +65,7 @@ function commitText(text: string): void {
   <div class="inline-flex min-w-0 items-center gap-2">
     <CommitTextInput
       v-if="limited"
-      :model-value="modelValue === null ? '' : String(modelValue)"
-      :focused="phase === 'typing'"
+      :model-value="String(modelValue.limit)"
       :validate="validate"
       :aria-label="label"
       size="sm"
@@ -85,7 +73,6 @@ function commitText(text: string): void {
       class="w-16"
       @commit="commitText"
       @problem="emit('problem', $event)"
-      @blur="leave"
     />
     <Dropdown
       size="sm"

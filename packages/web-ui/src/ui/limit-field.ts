@@ -1,43 +1,45 @@
 import type { SentenceText } from './ui-text'
 
 /**
- * What a limit field is doing besides showing its value (LimitField):
- * `shown`, at rest; `typing` a number after Limited was chosen while the
- * value is Unlimited, before one is committed; `confirming` Unlimited in
- * the dialog that warns first.
+ * A limit: the whole number from 1 last set, and whether it is lifted
+ * (Unlimited). Lifting it keeps the number, so Limited brings it back.
  */
-export type LimitPhase = 'shown' | 'typing' | 'confirming'
-
-/**
- * What the user does to a limit field; `leaveEmpty` leaves the field with no
- * text. Text that is no limit keeps the field as it is, with its problem.
- */
-export type LimitEvent = 'chooseLimited' | 'chooseUnlimited' | 'confirm' | 'cancel' | 'leaveEmpty'
-
-/** Where an event leaves the field, and the value it commits, if any: null for Unlimited. */
-export interface LimitStep {
-  phase: LimitPhase
-  commit?: number | null
+export interface LimitValue {
+  limit: number
+  unlimited: boolean
 }
 
 /**
- * The step `event` takes from `phase` while the value is `value`, null for
- * Unlimited. Unlimited is never committed without the dialog's confirmation;
- * its Cancel, the default answer, keeps the value. Limited from Unlimited
- * opens an empty field, and leaving it empty stays Unlimited.
+ * What a limit field is doing besides showing its value (LimitField):
+ * `shown`, at rest; `confirming` Unlimited in the dialog that warns first.
  */
-export function limitStep(value: number | null, phase: LimitPhase, event: LimitEvent): LimitStep {
+export type LimitPhase = 'shown' | 'confirming'
+
+/** What the user does to a limit field's choice of Limited or Unlimited, or to its dialog. */
+export type LimitEvent = 'chooseLimited' | 'chooseUnlimited' | 'confirm' | 'cancel'
+
+/** Where an event leaves the field, and the value it commits, if any. */
+export interface LimitStep {
+  phase: LimitPhase
+  commit?: LimitValue
+}
+
+/**
+ * The step `event` takes from `phase` while the value is `value`. Unlimited
+ * is never committed without the dialog's confirmation; its Cancel, the
+ * default answer, keeps the value. Either choice keeps the number: Limited
+ * from Unlimited commits the number as it was, never an empty field.
+ */
+export function limitStep(value: LimitValue, phase: LimitPhase, event: LimitEvent): LimitStep {
   switch (event) {
     case 'chooseLimited':
-      return { phase: value === null ? 'typing' : 'shown' }
+      return value.unlimited ? { phase: 'shown', commit: { limit: value.limit, unlimited: false } } : { phase: 'shown' }
     case 'chooseUnlimited':
-      return { phase: value === null ? 'shown' : 'confirming' }
+      return { phase: value.unlimited ? 'shown' : 'confirming' }
     case 'confirm':
-      return phase === 'confirming' ? { phase: 'shown', commit: null } : { phase }
+      return phase === 'confirming' ? { phase: 'shown', commit: { limit: value.limit, unlimited: true } } : { phase }
     case 'cancel':
-      return { phase: phase === 'confirming' ? 'shown' : phase }
-    case 'leaveEmpty':
-      return { phase: phase === 'typing' ? 'shown' : phase }
+      return { phase: 'shown' }
   }
 }
 
