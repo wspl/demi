@@ -39,8 +39,8 @@ export function galleryAttachment(id: string): AttachmentLookup {
 /**
  * A reply whose list items show what each fix looks like, as agents write
  * them: a screenshot on the line after an item's words, which stands on its
- * own line under them, at most 480 × 320, and two screenshots after
- * another item's words, one per line, which stand side by side under them.
+ * own line under them as a tile, and two screenshots after another item's
+ * words, one per line, which stand side by side under them.
  */
 export const listAttachmentMarkdown = `Two fixes, each with what it looks like now:
 
@@ -53,32 +53,43 @@ export const listAttachmentMarkdown = `Two fixes, each with what it looks like n
 Both are in the branch.
 `
 
+/** A reply with one screenshot between its words: a tile a third of the message's width, on a line of its own. */
+export const loneImageMarkdown = `The sign-in page works again. The form as it shows now:
+
+![The fixed sign-in page](attachment:a1)
+
+The button waits for the session before it moves on.
+`
+
+/** A reply with a recording and the page it ends on, one per line: two tiles side by side. */
+export const twoMediaMarkdown = `The recording and the page it ends on:
+
+![The flow from sign-in to the dashboard](attachment:a2)
+![The dashboard it ends on](attachment:a6)
+`
+
 /**
- * A reply that gives the user what the agent made: four screenshots of
- * different sizes in a run, a recording and a screenshot in a run, links to
- * them and to a file, a number the conversation does not have, a lone image
- * after text, and a lone recording whose size its record does not carry.
+ * A reply with five pictures one per line: three tiles fill the line and
+ * the other two wrap onto the next, the tall page and the wide timeline
+ * each fitted whole in its tile.
  */
-export const attachmentMarkdown = `The sign-in page works again. Each step, from the form to the chart:
+export const fiveMediaMarkdown = `Each step, from the form to the chart:
 
 ![The fixed sign-in page](attachment:a1)
 ![The whole dashboard, top to bottom](attachment:a4)
 ![The timeline of the steps](attachment:a5)
 ![The weekly chart](attachment:a6)
-
-The recording and the page it ends on:
-
 ![The flow from sign-in to the dashboard](attachment:a2)
+`
 
-![The dashboard it ends on](attachment:a6)
-
-The [setup guide](attachment:a3) has the steps, and [the screenshot](attachment:a1) and [the recording](attachment:a2) open large.
+/**
+ * A reply that names attachments in its words: links to them and to a
+ * file, a number the conversation does not have, and a recording whose
+ * size its record does not carry.
+ */
+export const attachmentMarkdown = `The [setup guide](attachment:a3) has the steps, and [the screenshot](attachment:a1) and [the recording](attachment:a2) open large.
 
 ![The old capture](attachment:a9)
-
-The chart on its own:
-
-![The weekly chart](attachment:a6)
 
 The demo on its own:
 
