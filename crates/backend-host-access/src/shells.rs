@@ -358,6 +358,7 @@ impl CommandKeeper for Keeper {
         &'a self,
         command: &'a CommandId,
         tool_use_id: &'a str,
+        title: &'a str,
         job: &'a str,
     ) -> LocalBoxFuture<'a, ()> {
         Box::pin(async move {
@@ -377,6 +378,7 @@ impl CommandKeeper for Keeper {
                 device: self.device.clone(),
                 job: job.to_owned(),
                 tool_use_id: tool_use_id.to_owned(),
+                title: title.to_owned(),
                 started: self.clock.now(),
                 places: Default::default(),
             };
@@ -477,6 +479,7 @@ impl CommandKeeper for Keeper {
     fn keep_output<'a>(
         &'a self,
         command: &'a CommandId,
+        title: &'a str,
         end: CommandEnd,
         output: &'a WholeOutput,
     ) -> LocalBoxFuture<'a, ()> {
@@ -494,6 +497,7 @@ impl CommandKeeper for Keeper {
             };
             let row = CommandOutput {
                 command: command.clone(),
+                title: title.to_owned(),
                 ended,
                 end,
                 output: stored,
@@ -595,6 +599,10 @@ impl ShellEnvironment for Registered {
 
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
         self.environment.status(command)
+    }
+
+    fn title(&self, command: &CommandId) -> Option<String> {
+        self.environment.title(command)
     }
 
     fn quiet(&self, command: &CommandId) -> Result<std::time::Duration, ShellError> {

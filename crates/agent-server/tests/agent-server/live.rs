@@ -119,6 +119,7 @@ impl ShellEnvironment for ScriptedShell {
         let record = Rc::new(RefCell::new(CommandRecord::new(
             command.clone(),
             request.caller.tool_use_id,
+            request.title,
         )));
         self.command.replace(Some(record.clone()));
         self.feed.changed(&record);
@@ -135,6 +136,10 @@ impl ShellEnvironment for ScriptedShell {
                 None => std::future::pending().await,
             }
         })
+    }
+
+    fn title(&self, command: &CommandId) -> Option<String> {
+        Some(self.record(command).ok()?.borrow().title().to_owned())
     }
 
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {

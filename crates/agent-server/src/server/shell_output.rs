@@ -340,6 +340,7 @@ async fn status_one<H: HostResolver>(
             Ok(Some(StoredCommand {
                 end,
                 output: StoredOutput::Stored { output, .. },
+                ..
             })) => {
                 looking.set_place(&command, Seen::ALL).await;
                 let state = match end {
@@ -589,6 +590,7 @@ async fn find<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<Found, String
         Ok(Some(StoredCommand {
             end,
             output: StoredOutput::Stored { output, .. },
+            ..
         })) => Ok(Found {
             output,
             end: Some(end),

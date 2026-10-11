@@ -29,6 +29,9 @@ pub enum OutputRow {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandOutput {
     pub command: CommandId,
+    /// The title of the call that started it, which its reports name;
+    /// empty for a row written before rows kept it.
+    pub title: String,
     pub ended: Timestamp,
     /// How it ended; `Unrecorded` for a row a release before 0.1.21 wrote,
     /// which the column holds as null.
@@ -37,7 +40,7 @@ pub struct CommandOutput {
 }
 
 const COLUMNS: &str =
-    "command_id, ended_at, ending, blob, missing_bytes, missing_reason, not_stored";
+    "command_id, ended_at, ending, blob, missing_bytes, missing_reason, not_stored, title";
 
 /// Writes `rows` in one transaction; a command that has a row keeps it.
 pub fn insert(connection: &mut Connection, rows: &[CommandOutput]) -> Result<(), StorageError> {
@@ -52,7 +55,7 @@ pub fn insert(connection: &mut Connection, rows: &[CommandOutput]) -> Result<(),
 pub(crate) fn insert_in(transaction: &Connection, rows: &[CommandOutput]) -> Result<(), StorageError> {
     {
         let mut insert = transaction.prepare_cached(&format!(
-            "INSERT INTO command_outputs ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "INSERT INTO command_outputs ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT (command_id) DO NOTHING"
         ))?;
         for row in rows {
@@ -74,6 +77,7 @@ pub(crate) fn insert_in(transaction: &Connection, rows: &[CommandOutput]) -> Res
                 missing_bytes,
                 missing.map(|missing| missing.reason.as_str()),
                 not_stored,
+                row.title,
             ])?;
         }
     }
@@ -187,6 +191,7 @@ fn decode_row(row: &Row<'_>) -> Result<CommandOutput, StorageError> {
     };
     Ok(CommandOutput {
         command,
+        title: row.get("title")?,
         ended,
         end,
         output,

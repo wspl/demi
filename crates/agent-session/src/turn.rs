@@ -670,9 +670,8 @@ async fn record_result(s: &Rc<SessionShared>, call: &PendingCall, outcome: ToolO
         Some(ToolEffect::Background {
             command,
             interval_ms,
-            title,
         }) => {
-            s.update(|core| core.watch_command(command.clone(), interval_ms, title));
+            s.update(|core| core.watch_command(command.clone(), interval_ms));
             reports::start_watch(s, &command);
         }
         Some(ToolEffect::HostOffline(device)) => {

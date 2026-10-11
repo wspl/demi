@@ -983,6 +983,7 @@ async fn a_restored_report_of_a_command_no_shells_hold_carries_its_stored_output
     store.keep_output(
         command.clone(),
         StoredCommand {
+            title: "Build".into(),
             end: CommandEnd::Exited { exit_code: 0 },
             output: StoredOutput::Stored {
                 output: WholeOutput::new(
@@ -1049,6 +1050,7 @@ async fn a_job_whose_command_cannot_be_taken_up_answers_why() {
             command: CommandId::try_from("7").unwrap(),
             job: "job-7".into(),
             tool_use_id: "t1".into(),
+            title: "Build".into(),
             started: demi_shared_types::Timestamp::UNIX_EPOCH,
             place: Default::default(),
         },
