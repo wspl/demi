@@ -29,6 +29,8 @@ export const galleryBlobs = {
   chart: fixture('3d'.repeat(32), '/fixtures/preview/photo-before.png', { width: 480, height: 300 }),
   /** A 48 × 48 icon, smaller than a thumbnail. */
   icon: fixture('4e'.repeat(32), '/fixtures/preview/icon-small.png', { width: 48, height: 48 }),
+  /** A 171 × 40 frame of a progress strip, shorter than a thumbnail. */
+  frame: fixture('5e'.repeat(32), '/fixtures/preview/frame-strip.png', { width: 171, height: 40 }),
   /** A 1600 × 300 timeline, wider than a message. */
   timeline: fixture('6b'.repeat(32), '/fixtures/preview/timeline-wide.png', { width: 1600, height: 300 }),
   /** A three-second 320 × 180 recording, as WebM, which every web browser plays. */
