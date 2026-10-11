@@ -55,7 +55,7 @@ export function openMessageLink(
     return
   event.preventDefault()
   const line = Number(link.getAttribute('data-line'))
-  files.open({ path: link.getAttribute('href') ?? '', line: line > 0 ? line : null }, event.detail)
+  files.open({ path: link.getAttribute('href') ?? '', line: line > 0 ? line : null })
 }
 
 /** Return or Space on an agent's link, inline text that acts as a button, clicks it as on a button. */
