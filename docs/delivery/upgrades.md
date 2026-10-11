@@ -346,7 +346,10 @@ after an upgrade.
   next build does not know: the Data check of [Prepare](#prepare) then stops
   the deploy before anything is interrupted, and names the databases. The
   developer resolves it before deploying again; nothing is migrated by
-  guesswork.
+  guesswork. When a server keeps data of a development build, its schema
+  enters the history as a published release's does, named by that build's
+  version, with a tested migration, so the next deploy and the next release
+  carry the data on.
 
 A deploy prints what it built, the server's release afterwards
 (`demi-server status`) and how long each stage took.
