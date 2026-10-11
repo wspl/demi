@@ -1,12 +1,12 @@
 //! Where history is cut: the recovery of an unfinished turn
 //! (`failures-and-recovery.md` § Recovery is one mechanism), the prefix an
 //! edit keeps (`message-editing.md`), the prefix a Fork keeps
-//! (`conversation-fork.md`) and the window compaction summarizes
-//! (`compaction.md` § One pass). Each is a pure reading of the blocks.
+//! (`conversation-fork.md`). Each is a pure reading of the blocks; the
+//! window compaction summarizes is [`crate::compaction`]'s.
 
 use demi_shared_types::{Block, BlockId, ErrorBlock, TextBlock, ToolCallStatus, TurnId, is_blank};
 
-use super::{is_compaction, latest_answer, opens_input_turn, replay_start};
+use super::{is_compaction, opens_input_turn};
 
 /// Where re-inference restarts after a turn failed to finish.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -161,40 +161,6 @@ pub fn through_assistant<'a>(
         return Err(CutError::UnfinishedToolCalls);
     }
     Ok(prefix)
-}
-
-/// The blocks compaction summarizes (`compaction.md` § One pass): what the
-/// session's latest answered request carried, from the last
-/// `compaction_boundary`, or the first block, to the cut, where that
-/// request's answer begins. With no request answered since the last
-/// compaction, the window ends where the input no request answered begins,
-/// which the pass keeps.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CompactionWindow {
-    pub start: usize,
-    pub cut: usize,
-}
-
-/// The window of the next pass over `blocks`.
-pub fn compaction_window(blocks: &[Block]) -> CompactionWindow {
-    let start = replay_start(blocks);
-    let cut = latest_answer(blocks).unwrap_or_else(|| unanswered_input(blocks).max(start));
-    CompactionWindow { start, cut }
-}
-
-/// Where the input no request has answered begins: at the last `user` block
-/// after the latest `response` block, or right after that response when no
-/// `user` block follows it; without a response, at the last `user` block,
-/// or at the first block.
-fn unanswered_input(blocks: &[Block]) -> usize {
-    let answered = blocks
-        .iter()
-        .rposition(|block| matches!(block, Block::Response(_)))
-        .map_or(0, |response| response + 1);
-    blocks[answered..]
-        .iter()
-        .rposition(|block| matches!(block, Block::User(_)))
-        .map_or(answered, |user| answered + user)
 }
 
 /// The last `text` block from `since` on, the agent's last answer.

@@ -1530,6 +1530,7 @@ dependencies = [
  "demi-conversation-socket-protocol",
  "demi-host-interface",
  "demi-provider-anthropic-api",
+ "demi-provider-claude-code",
  "demi-provider-codex",
  "demi-provider-common",
  "demi-provider-google",

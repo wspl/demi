@@ -1,0 +1,87 @@
+{
+  "model": "model-a",
+  "messages": [
+    {
+      "role": "system",
+      "content": "system prompt"
+    },
+    {
+      "role": "user",
+      "content": "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Continue the work from where it stands; do not mention or restate the summary."
+    },
+    {
+      "role": "user",
+      "content": "The release build fails; here is the screen."
+    },
+    {
+      "role": "user",
+      "content": "Use the release profile."
+    },
+    {
+      "role": "user",
+      "content": "Fix it, and don't touch the migration files."
+    },
+    {
+      "role": "user",
+      "content": "<summary>\n## Goal\n- Fix the release build.\n## Constraints and preferences\n- \"don't touch the migration files\"\n## Progress\n- `libssl` added to the link line; tests pass.\n## Next step\n- Ship it.\n</summary>"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call-test",
+          "type": "function",
+          "function": {
+            "name": "test",
+            "arguments": "{\"suite\":\"release\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call-test",
+      "content": "running 40 tests\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest result: ok"
+    },
+    {
+      "role": "assistant",
+      "content": "I added `libssl` to the link line; the tests pass."
+    },
+    {
+      "role": "user",
+      "content": "Ship it."
+    }
+  ],
+  "stream": true,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "look",
+        "description": "",
+        "parameters": {}
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "note",
+        "description": "",
+        "parameters": {}
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "test",
+        "description": "",
+        "parameters": {}
+      }
+    }
+  ],
+  "tool_choice": "auto",
+  "stream_options": {
+    "include_usage": true
+  }
+}

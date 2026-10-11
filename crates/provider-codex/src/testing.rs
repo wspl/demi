@@ -221,3 +221,9 @@ async fn serve(stream: TcpStream, script: Script, recorded: &Recorded) {
         }
     }
 }
+
+/// The body `request` goes as over server-sent events, which its WebSocket
+/// message carries too.
+pub fn body(request: &demi_provider_common::InferenceRequest) -> Vec<u8> {
+    crate::request::encode(request, false).http.to_vec()
+}

@@ -76,6 +76,7 @@ fn reasoning_between_the_last_boundary_and_its_marker_is_marked_as_kept_past_a_s
         model: model.clone(),
         summary: "the user asked twice".into(),
         summary_tokens: 5,
+        kept: Vec::new(),
     });
     let marker = Block::CompactionMarker(CompactionMarkerBlock {
         id: id("marker"),
