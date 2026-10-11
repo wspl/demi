@@ -12,7 +12,7 @@ import PathInput from './PathInput.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import { fitCrumbs, type CrumbFit } from './crumb-fit'
 import { landmarkIcon } from './file-icons'
-import { normalizePath, parentPath, pathSegments, relativePath, resolveHostPath } from './paths'
+import { normalizePath, parentPath, pathSegments, relativePath, typedPath } from './paths'
 import type { FileBrowserSource } from './types'
 
 /**
@@ -23,7 +23,7 @@ import type { FileBrowserSource } from './types'
  * crumb turns it into a text field with the path, the way the Windows
  * address bar edits, and Enter asks the host to go where it says; a bar with
  * a `root` shows the path from there, as its crumbs do, and a relative path
- * starts from `root`. While it is a field it completes the path from the
+ * starts from `root`; `~` names the source's home. While it is a field it completes the path from the
  * source's listings (`PathInput`): a completed directory keeps the field
  * open on its entries, a completed file goes there as Enter would. A bar with a `root` starts its crumbs there, the
  * way a file view shows a path inside its workspace; `leaf` says what the last
@@ -163,7 +163,7 @@ function startEdit() {
 
 function commit() {
   editing.value = false
-  const next = normalizePath(props.root === undefined ? draft.value : resolveHostPath(props.root, draft.value))
+  const next = typedPath(draft.value, { home: props.source.home, root: props.root })
   if (next !== props.path)
     emit('navigate', next)
 }
