@@ -404,15 +404,51 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
         (StatusCode::OK, &PNG[..])
     );
 
-    // The same name again is the next free one; nothing is overwritten.
+    // The same file sent again, pasted or put back by Undo Send, is the one
+    // already there, not written again; another file of the same name takes
+    // the next free path and overwrites nothing. Each keeps its name.
+    let shot = format!("{directory}/shot.png");
+    let modified = || std::fs::metadata(&shot).unwrap().modified().unwrap();
+    let first_written = modified();
+    let other_png = demi_agent_store::testing::png(4, 3, 1).as_bytes().to_vec();
+    let other = upload(&backend, &master, "shot.png", "image/png", &other_png).await;
     vendor.respond(answer(&["Again."], 1, 1));
     socket
-        .send(&with_upload("m2", "Once more", &[(&image, "shot.png")]))
+        .send(&with_upload(
+            "m2",
+            "Once more",
+            &[(&image, "shot.png"), (&other, "shot.png")],
+        ))
         .await;
     socket.until_idle().await;
+    assert_eq!(modified(), first_written);
     assert_eq!(
         std::fs::read(format!("{directory}/shot-2.png")).unwrap(),
-        *PNG
+        other_png
+    );
+    let blocks = transcript(&backend, &master, FIRST).await.blocks;
+    let records: Vec<(String, String)> = blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::User(user) => Some(&user.content),
+            _ => None,
+        })
+        .nth(1)
+        .unwrap()
+        .iter()
+        .filter_map(|part| match part {
+            UserContentBlock::Attachment(record) => {
+                Some((record.name.clone(), record.path.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        records,
+        [
+            ("shot.png".to_owned(), shot.clone()),
+            ("shot.png".to_owned(), format!("{directory}/shot-2.png"))
+        ]
     );
 
     // A steer names an upload as a message does: the file goes to the Host,
@@ -451,17 +487,11 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
             )
         })
         .await;
-    assert_eq!(
-        std::fs::read(format!("{directory}/shot-3.png")).unwrap(),
-        *PNG
-    );
+    assert_eq!(modified(), first_written);
+    assert!(!std::path::Path::new(&format!("{directory}/shot-3.png")).exists());
     let continued = vendor.requests()[3].json()["messages"].to_string();
     assert!(
         continued.contains("And this one") && continued.contains(&base64),
-        "{continued}"
-    );
-    assert!(
-        continued.contains(&format!("{directory}/shot-3.png")),
         "{continued}"
     );
 

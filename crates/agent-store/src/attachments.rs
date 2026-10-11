@@ -63,9 +63,10 @@ pub fn upload_media_type(sent: &str, bytes: &[u8]) -> String {
 /// An upload written to the conversation's Host, as its message receives it.
 #[derive(Debug, Clone, Copy)]
 pub struct Upload<'a> {
-    /// The name it was written under.
+    /// The name the user gave it.
     pub name: &'a str,
-    /// Where it was written, absolute, on the conversation's Host.
+    /// Where it was written, absolute, on the conversation's Host: under its
+    /// name, or that name with a number when another file had it.
     pub path: &'a str,
     /// The media type it was recorded with ([`upload_media_type`]).
     pub media_type: &'a str,

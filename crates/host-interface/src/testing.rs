@@ -552,7 +552,7 @@ pub fn host_conformance_cases(host: Rc<dyn Host>, root: &str, path: &str) -> Vec
         },
     );
     case(
-        "fs: a write replaces a file, refuses one, or takes a free name, and never a directory",
+        "fs: a write replaces a file, refuses one, or takes a free name or that of the same bytes, and never a directory",
         |c| {
             Box::pin(async move {
                 let fs = c.host.fs();
@@ -601,6 +601,8 @@ pub fn host_conformance_cases(host: Rc<dyn Host>, root: &str, path: &str) -> Vec
                 equal(&renamed.map_err(text)?, &"notes-2.txt".to_owned(), "a free name")?;
                 let again = write("notes.txt", "three", WhenExists::Rename).await;
                 equal(&again.map_err(text)?, &"notes-3.txt".to_owned(), "the next free name")?;
+                let same = write("notes.txt", "two", WhenExists::Rename).await;
+                equal(&same.map_err(text)?, &"notes-2.txt".to_owned(), "the name of the same bytes")?;
                 equal(&read(&c, &format!("{root}/notes-2.txt")).await?, "two", "the renamed file")?;
                 let replaced = write("notes.txt", "four", WhenExists::Replace).await;
                 equal(&replaced.map_err(text)?, &"notes.txt".to_owned(), "a replaced file")?;
