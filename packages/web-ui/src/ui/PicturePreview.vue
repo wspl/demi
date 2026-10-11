@@ -17,11 +17,11 @@ const CARD_MIN_WIDTH = 240
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { autoUpdate, flip, getOverflowAncestors, offset, shift, useFloating } from '@floating-ui/vue'
+import { autoUpdate, getOverflowAncestors, offset, shift, useFloating, type Middleware } from '@floating-ui/vue'
 import { loadedSize, type PixelSize } from '../files/thumbnail'
 import { useLayerElevation } from '../overlay/layerElevation'
 import { usePhone } from './phone'
-import { previewBox, previewLimit, usePreviewPage } from './picture-preview'
+import { PREVIEW_GAP, previewBox, previewLimit, previewPlacement, usePreviewPage } from './picture-preview'
 
 defineOptions({ inheritAttrs: false })
 
@@ -30,7 +30,9 @@ defineOptions({ inheritAttrs: false })
  * on hover), for every picture the page shows smaller than the card: a
  * row's pictures, a message's pictures, a sent message's image capsule.
  * Resting the pointer on the picture for 300 ms shows a card above it, or
- * below it when the page has no room above, kept within the page: the
+ * below it when the page has no room above, kept within the page, and on
+ * the side with more room, scaled down to fit it, when neither side has room
+ * (`previewPlacement`), never over the picture: the
  * picture at its own size on the screen, its pixels one to one, scaled down
  * to fit 70% of the page's width and height and never enlarged
  * (`previewBox`), over a checkerboard where it is transparent, a video's
@@ -59,6 +61,8 @@ const props = defineProps<{
 const wrapper = ref<HTMLElement | null>(null)
 const anchor = computed(() => props.trigger ?? wrapper.value)
 const card = ref<HTMLElement | null>(null)
+/** The card's image or video. */
+const picture = ref<HTMLElement | null>(null)
 const open = ref(false)
 const elevation = useLayerElevation()
 /** The picture's size once the card's copy loaded, for a picture whose size was unknown. */
@@ -68,20 +72,48 @@ const ready = ref(false)
 const known = computed(() => props.size ?? loaded.value)
 const page = usePreviewPage()
 const box = computed(() => known.value ? previewBox(known.value, page.value.pixelRatio, page.value.size) : null)
+/** The picture's size on the side the card went, scaled down when neither side had room for `box`; null until placed. */
+const placed = ref<PixelSize | null>(null)
+const shown = computed(() => placed.value ?? box.value)
 /** The most a picture whose size is still unknown takes, so it never covers the page as it loads. */
 const limit = computed(() => previewLimit(page.value.size))
-const pictureStyle = computed(() => box.value
-  ? { width: `${box.value.width}px`, height: `${box.value.height}px` }
+const pictureStyle = computed(() => shown.value
+  ? { width: `${shown.value.width}px`, height: `${shown.value.height}px` }
   : { maxWidth: `${limit.value.width}px`, maxHeight: `${limit.value.height}px` })
 watch(() => props.src, () => {
   loaded.value = null
 })
 
+/**
+ * Picks the card's side and its picture's size there (`previewPlacement`)
+ * each time the card is positioned, so it follows the picture's moving and
+ * the window's resizing. A picture whose size is unknown yet is placed as it
+ * shows, unscaled.
+ */
+const room: Middleware = {
+  name: 'pictureRoom',
+  fn({ placement, elements }) {
+    const image = picture.value
+    if (!image)
+      return {}
+    const own = box.value ?? { width: image.offsetWidth, height: image.offsetHeight }
+    const rect = elements.reference.getBoundingClientRect()
+    const next = previewPlacement(own, elements.floating.offsetHeight - image.offsetHeight, {
+      above: rect.top,
+      below: page.value.size.height - rect.bottom,
+    })
+    const size = box.value ? next.picture : null
+    if (size?.width !== placed.value?.width || size?.height !== placed.value?.height)
+      placed.value = size
+    return next.side === placement ? {} : { reset: { placement: next.side } }
+  },
+}
+
 const { floatingStyles } = useFloating(anchor, card, {
   placement: 'top',
   strategy: 'fixed',
-  // Kept within the page on both axes: a card too tall for either side of its picture moves over the picture, which it takes no pointer from.
-  middleware: [offset(8), flip({ fallbackPlacements: ['bottom'] }), shift({ padding: 8, crossAxis: true })],
+  // Kept within the page across; never moved up or down over the picture, which `room` sizes it to stay off.
+  middleware: [room, offset(PREVIEW_GAP), shift({ padding: PREVIEW_GAP })],
   whileElementsMounted: autoUpdate,
   transform: false,
 })
@@ -107,6 +139,8 @@ function show(): void {
     openCard.close()
   openCard = self
   ready.value = false
+  // Placed anew for where the picture is now.
+  placed.value = null
   open.value = true
   // The picture moving away under a resting pointer, as the transcript scrolls, leaves it: the card goes.
   scrollTargets = anchor.value ? getOverflowAncestors(anchor.value) : []
@@ -213,8 +247,8 @@ onBeforeUnmount(() => {
         :style="{
           ...floatingStyles,
           '--elevation': elevation,
-          width: box ? `${Math.max(box.width, CARD_MIN_WIDTH) + 12}px` : undefined,
-          maxWidth: box ? undefined : `${limit.width + 12}px`,
+          width: shown ? `${Math.max(shown.width, CARD_MIN_WIDTH) + 12}px` : undefined,
+          maxWidth: shown ? undefined : `${limit.width + 12}px`,
         }"
         aria-hidden="true"
         data-picture-preview
@@ -222,6 +256,7 @@ onBeforeUnmount(() => {
         <div class="flex justify-center">
           <img
             v-if="kind === 'image'"
+            ref="picture"
             :src="src"
             alt=""
             class="block rounded-md object-contain"
@@ -231,6 +266,7 @@ onBeforeUnmount(() => {
           >
           <video
             v-else
+            ref="picture"
             :src="src"
             muted
             playsinline
