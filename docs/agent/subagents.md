@@ -565,10 +565,11 @@ any child is created, with a message that says which:
    this agent is at the deepest level of subagents Settings > Subagents allows (1); do this work in this session.
    ```
 
-6. **The conversation is under its limit of live subagents.** Otherwise:
+6. **The conversation is under its limit of live subagents.** Otherwise,
+   with the count as it is, which a lowered limit leaves above the limit:
 
    ```text
-   this conversation already has 10 live subagents, the most Settings > Subagents allows; wait for one to finish (`demi agent list`), or do this work in this session.
+   this conversation has 12 live subagents and Settings > Subagents allows 10; wait for one to finish (`demi agent list`), or do this work in this session.
    ```
 
    A `resume` makes a closed child live again, so it fails the same way.
