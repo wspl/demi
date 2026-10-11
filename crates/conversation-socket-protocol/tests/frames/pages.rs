@@ -140,3 +140,31 @@ fn a_pages_light_form_keeps_the_lists_of_the_latest_call_of_each_run_and_request
         }
     }
 }
+
+fn thinking(id: &str, text: &str, signature: Option<&str>) -> Value {
+    json!({
+        "type": "thinking", "id": id, "createdAt": "2026-10-01T00:00:00.000Z",
+        "model": model(), "text": text, "signature": signature
+    })
+}
+
+#[test]
+fn a_pages_thinking_carries_its_texts_length_in_place_of_its_text() {
+    // Thinking with text, and the textless signed thinking Gemini writes
+    // before a call, which the page hides as it does live.
+    let cases = [
+        ("text", thinking("k1", "Käse 🧀 first.", Some("anthropic:sig")), 13),
+        ("no text", thinking("k2", "", Some("google:sig")), 0),
+    ];
+    for (name, whole, length) in cases {
+        let block: Block = demi_shared_types::decode_value(whole.clone()).unwrap();
+        let light = serde_json::to_value(&light(std::slice::from_ref(&block))[0]).unwrap();
+        let mut expected = whole.clone();
+        expected["text"] = json!("");
+        expected["signature"] = Value::Null;
+        expected["textLength"] = json!(length);
+        assert_eq!(light, expected, "{name}");
+        // The block whole, as a row opened reads it, carries no length.
+        assert_eq!(serde_json::to_value(&block).unwrap(), whole, "{name}");
+    }
+}

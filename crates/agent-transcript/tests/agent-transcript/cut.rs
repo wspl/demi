@@ -49,6 +49,7 @@ fn completed(value: &str) -> Block {
 fn thinking() -> Block {
     Block::Thinking(ThinkingBlock {
         run: None,
+        text_length: None,
         entries: Vec::new(),
         id: id("thinking"),
         created_at: Timestamp::UNIX_EPOCH,
