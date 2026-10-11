@@ -25,8 +25,13 @@ const props = defineProps<{ active?: boolean }>()
 const SPEED_PX_S = 140
 const MIN_SWEEP_MS = 1_600
 const MAX_SWEEP_MS = 2_600
-/** The band's width, in the row's own font size. */
-const BAND_EM = 4
+/**
+ * The band's width, in the row's own font size: a word lit at once, with a
+ * soft edge on each side, as Claude's Thinking reads; at 4em only a letter
+ * or two was lit and the band read as a thin line, and at 8em a short row
+ * such as Thinking lit whole and read as a pulse.
+ */
+const BAND_EM = 6
 
 const root = useTemplateRef<HTMLElement>('root')
 const band = useTemplateRef<HTMLElement>('band')
