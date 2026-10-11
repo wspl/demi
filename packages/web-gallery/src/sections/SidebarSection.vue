@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 import { moveBefore } from '@demicodes/utils'
 import type { SidebarConversation, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import { RestoreSweep } from '../fixtures/restore-sweep'
@@ -14,7 +14,8 @@ import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
-import { showArchived } from '@demicodes/web-ui/sidebar/archived-toast'
+import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
+import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import type { SettingsTab } from '@demicodes/web-ui/settings/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -159,17 +160,55 @@ function patchMany(
   )
 }
 
-/** Archives the rows, as the product does: they leave the list, and the toast's Undo puts them back where they were. */
+/** The rows the specimens archived, which the open one's title is still found among. */
+const archivedRows = ref<SidebarConversation[]>([])
+/** The answers the specimens' archives wait for, cleared when the page goes. */
+const answers = new Set<ReturnType<typeof setTimeout>>()
+
+/**
+ * Archives the rows of `list` as the product does: they leave at once and the
+ * toast says so, and the open one stays open. The backend's answer, which the
+ * specimen gives a moment later, refuses a running row, as the backend
+ * refuses running work: it comes back where it was, a toast says why, and
+ * the same toast counts the others, whose Undo puts only them back.
+ */
+function archiveRows(list: Ref<SidebarConversation[]>, ids: string[]): void {
+  const before = list.value
+  const rows = before.filter((conversation) => ids.includes(conversation.id))
+  list.value = without(before, ids)
+  archivedRows.value = [...archivedRows.value, ...rows]
+  const bringBack = (back: string[]) => {
+    const kept = new Set(list.value.map((conversation) => conversation.id))
+    list.value = before.filter((conversation) => kept.has(conversation.id) || back.includes(conversation.id))
+    archivedRows.value = without(archivedRows.value, back)
+  }
+  const toast = showArchived(ids.length, () => bringBack(ids))
+  const refused = rows.filter((conversation) => conversation.status === 'active')
+  if (!refused.length) {
+    return
+  }
+  const answer = setTimeout(() => {
+    answers.delete(answer)
+    const archived = ids.filter((id) => !refused.some((conversation) => conversation.id === id))
+    bringBack(refused.map((conversation) => conversation.id))
+    if (archived.length) {
+      updateArchived(toast, archived.length, () => bringBack(archived))
+    } else {
+      dismissToast(toast)
+    }
+    showToast({
+      title: ids.length === 1 ? 'Could Not Archive the Conversation' : 'Some conversations were not archived.',
+      message: refused
+        .map((conversation) => `${conversation.title}: A conversation with running work cannot be archived, restored or moved`)
+        .join('\n'),
+      tone: 'danger',
+    })
+  }, 800)
+  answers.add(answer)
+}
+
 function dropMany(ids: string[]): void {
-  const set = new Set(ids)
-  const before = conversations.value
-  conversations.value = before.filter((conversation) => !set.has(conversation.id))
-  if (activeId.value && set.has(activeId.value))
-    activeId.value = conversations.value[0]?.id ?? null
-  showArchived(ids.length, () => {
-    const kept = new Set(conversations.value.map((conversation) => conversation.id))
-    conversations.value = before.filter((conversation) => kept.has(conversation.id) || set.has(conversation.id))
-  })
+  archiveRows(conversations, ids)
 }
 
 /** Deletes the rows the dialog asked about, as the product does: they leave the list for good. */
@@ -210,14 +249,8 @@ function hoverRows(): SidebarConversation[] {
 const hoverConversations = ref(hoverRows())
 const hoverActive = ref<string | null>(null)
 
-/** Archives hover rows as the product does: they leave, and the toast's Undo puts them back where they were. */
 function archiveHover(ids: string[]): void {
-  const before = hoverConversations.value
-  hoverConversations.value = without(before, ids)
-  showArchived(ids.length, () => {
-    const kept = new Set(hoverConversations.value.map((conversation) => conversation.id))
-    hoverConversations.value = before.filter((conversation) => kept.has(conversation.id) || ids.includes(conversation.id))
-  })
+  archiveRows(hoverConversations, ids)
 }
 
 /** Pins or unpins hover rows; pinned rows lead, as the product's list orders them. */
@@ -229,11 +262,15 @@ function pinHover(ids: string[], pinned: boolean): void {
 
 const fixedConversations = computed(() => demoConversations())
 const fixedProjects = computed(() => demoProjects())
-const activeTitle = computed(
-  () =>
-    conversations.value.find((conversation) => conversation.id === activeId.value)?.title ??
-    'No conversation selected'
-)
+const activeTitle = computed(() => {
+  const listed = conversations.value.find((conversation) => conversation.id === activeId.value)
+  if (listed) {
+    return listed.title
+  }
+  // An archived conversation stays open, read-only, as the product shows it.
+  const archived = archivedRows.value.find((conversation) => conversation.id === activeId.value)
+  return archived ? `${archived.title} · Archived` : 'No conversation selected'
+})
 
 const listRestore = new RestoreSweep()
 const recoveredStatus = ref<ListLoad>('failed')
@@ -265,7 +302,12 @@ function breakSidebar(): void {
   recoveredConversations.value = []
 }
 
-onBeforeUnmount(() => listRestore.stop())
+onBeforeUnmount(() => {
+  listRestore.stop()
+  for (const answer of answers) {
+    clearTimeout(answer)
+  }
+})
 </script>
 
 <template>
@@ -288,7 +330,7 @@ onBeforeUnmount(() => listRestore.stop())
 
     <GallerySection
       title="Expanded"
-      note="The product frame: the sidebar on the base surface, the raised session beside it, and the divider between them. Drag the divider, use the arrows on it, or double-click it to return to the default."
+      note="The product frame: the sidebar on the base surface, the raised session beside it, and the divider between them. Drag the divider, use the arrows on it, or double-click it to return to the default. Archive acts as the product does: the rows leave and the toast says so at once, and the open conversation stays open, read-only. A moment later the specimen answers as the backend would, which refuses a running conversation: its row comes back where it was, a toast says why, and the archive’s toast then counts, and its Undo brings back, only the others."
     >
       <GallerySpecimen variant="expanded · live" wide>
         <GalleryOverlayWell size="tall" class="w-full">

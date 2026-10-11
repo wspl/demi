@@ -30,28 +30,31 @@ function settingsAnswer(next: (current: SubagentSettings) => SubagentSettings): 
 /**
  * The user's subagent settings as the Subagent section changes them
  * (`web-api.md` § Subagents). A switch shows at once and its write follows
- * the earlier ones (`web-application.md` § Responding to the user); a saved
+ * the earlier ones of the same switch (`web-application.md` § Responding to
+ * the user): the Subagents switch, or one profile's; a saved
  * or deleted profile shows its answer. The channel brings the same part to
  * every other page.
  */
 export const useSubagentSettings = defineStore('subagent-settings', () => {
   const product = useProduct()
+  /** The switches on their way, by what they switch: `subagents`, or `profile:<id>`. */
   const writes = new SerialQueue()
   const settings = computed(() => product.snapshot?.subagents ?? null)
 
   /**
    * Shows `next` of the settings at once and sends `write` after the earlier
-   * switches; the change lands with what `write` answers, or leaves with a
+   * switches of `key`; the change lands with what `write` answers, or leaves with a
    * toast titled `failed`.
    */
   function switchSettings(
+    key: string,
     next: (current: SubagentSettings) => SubagentSettings,
     write: () => Promise<Answer | undefined>,
     failed: HeadlineText,
   ): Promise<void> {
     const change = product.change('subagents', (state) => ({ ...state, subagents: next(state.subagents) }))
     return writes
-      .run(async () => {
+      .run(key, async () => {
         change.send()
         change.land(await write())
       })
@@ -63,6 +66,7 @@ export const useSubagentSettings = defineStore('subagent-settings', () => {
 
   function switchSubagents(enabled: boolean): Promise<void> {
     return switchSettings(
+      'subagents',
       (current) => ({ ...current, enabled }),
       async () => {
         await apiRequest('/subagents', {
@@ -86,6 +90,7 @@ export const useSubagentSettings = defineStore('subagent-settings', () => {
 
   function switchProfile(id: string, enabled: boolean): Promise<void> {
     return switchSettings(
+      `profile:${id}`,
       (current) => ({
         ...current,
         profiles: current.profiles.map((profile) => profile.id === id ? { ...profile, enabled } : profile),

@@ -1,25 +1,32 @@
-/** Orders operations on one resource without blocking unrelated resources. */
+/**
+ * Orders operations by the things they change: the operations on one thing
+ * run one at a time, in the order they were added, and a failed one does not
+ * stop the next; operations on different things run side by side. An
+ * operation on several things waits for the earlier operations on each of
+ * them, and the later operations on any of them wait for it.
+ */
 export class SerialQueue {
-  private tail: Promise<unknown> = Promise.resolve()
-  private pending = 0
+  /** The end of the last operation added on each thing, while it runs or waits. */
+  private readonly tails = new Map<string, Promise<void>>()
 
-  get idle(): boolean {
-    return this.pending === 0
-  }
-
-  run<T>(operation: () => Promise<T>): Promise<T> {
-    this.pending += 1
-    const next = this.tail.then(operation).finally(() => {
-      this.pending -= 1
-    })
-    // The caller receives a failure through `next`; the tail only keeps the
+  run<T>(keys: string | readonly string[], operation: () => Promise<T>): Promise<T> {
+    const things = typeof keys === 'string' ? [keys] : [...new Set(keys)]
+    const earlier = things.flatMap((key) => this.tails.get(key) ?? [])
+    const next = Promise.all(earlier).then(operation)
+    // The caller receives a failure through `next`; a tail only keeps the
     // order, so the next operation runs after a failed one too.
-    this.tail = next.catch(() => {})
+    const tail = next.then(() => {}, () => {})
+    for (const key of things) {
+      this.tails.set(key, tail)
+    }
+    void tail.then(() => {
+      for (const key of things) {
+        if (this.tails.get(key) === tail) {
+          this.tails.delete(key)
+        }
+      }
+    })
     return next
-  }
-
-  async settled(): Promise<void> {
-    await this.tail
   }
 }
 

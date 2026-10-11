@@ -80,6 +80,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   /** Each process provider's CLI, as last read (`claude-code.md` § What the user sees). */
   const clis = ref<Record<string, SettingsProviderCli>>({})
   let lifetime = new AbortController()
+  /** The provider operations on their way, by provider: each provider's in order. */
   const writes = new SerialQueue()
   /** The operation running for each provider, which an edit made during a test waits for. */
   const running = new Map<string, Promise<void>>()
@@ -161,7 +162,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
     const current = lifetime
     operations.value[id] = operation
-    const done = writes.run(async () => {
+    const done = writes.run(id, async () => {
       current.signal.throwIfAborted()
       await action(current.signal)
     })
