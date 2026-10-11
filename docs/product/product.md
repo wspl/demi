@@ -898,7 +898,12 @@ What follows from that split:
   deletes it, undo brings it back, and it can be dragged to another place in
   the text; it carries no control of its own for any of that.
 - A dropped file lands where it is dropped, a picked or pasted one at the
-  cursor, and one added from a file browser at the cursor. A file joins the
+  cursor, and one added from a file browser at the cursor. A message holds any
+  files the user adds, two of the same name included, as two screenshots
+  pasted one after the other are both `image.png`: a name says nothing about
+  a file's contents, and the Host keeps both, under its own suffixes
+  ([Sending a file](#attachments)). Only an empty file and one over 25 MB are
+  refused. A file joins the
   message as one change to its document, so there is never a file without a
   capsule or a capsule without a file.
 - Deleting a capsule takes its file out of the message and stops its upload.
