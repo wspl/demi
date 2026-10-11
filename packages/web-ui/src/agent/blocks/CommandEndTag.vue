@@ -6,8 +6,9 @@ import type { CommandEndMark } from '../command-end'
 
 /**
  * A row's mark of a command that went wrong, after its title: red Failed
- * with the exit code in its tooltip, grey Stopped, or grey Lost with why in
- * its tooltip. It never shrinks, so a long title gives up its end to it.
+ * with the exit code in its tooltip, grey Stopping… while a stop waits for
+ * the command's runner to end it, grey Stopped, or grey Lost with why in its
+ * tooltip. It never shrinks, so a long title gives up its end to it.
  */
 defineProps<{ mark: CommandEndMark }>()
 </script>
@@ -27,5 +28,6 @@ defineProps<{ mark: CommandEndMark }>()
   >
     <Tag>Lost</Tag>
   </Tooltip>
+  <Tag v-else-if="mark.kind === 'stopping'" class="shrink-0">Stopping…</Tag>
   <Tag v-else class="shrink-0">Stopped</Tag>
 </template>

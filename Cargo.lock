@@ -2771,6 +2771,7 @@ dependencies = [
  "rlimit",
  "rustix",
  "serde",
+ "sysinfo",
  "tempfile",
  "tokio",
  "tokio-tungstenite",

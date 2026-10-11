@@ -31,6 +31,10 @@ pub const VERSION: u32 = 43;
 /// How long a runner keeps its jobs and services without a connection
 /// before it stops them (`runner.md` § Command lifetime).
 pub const UNREACHED_GRACE: Duration = Duration::from_secs(10 * 60);
+/// How long a stopped job has after `TERM` before a stop sends `KILL`, the
+/// backend's stop and the runner's own alike (`runner.md` § Cancellation
+/// and completion).
+pub const STOP_GRACE: Duration = Duration::from_secs(5);
 /// How often a runner asks its connection whether the backend is there, and
 /// how long one unanswered counts as lost (`runner.md` § Command lifetime).
 pub const RUNNER_PING_INTERVAL: Duration = Duration::from_secs(30);

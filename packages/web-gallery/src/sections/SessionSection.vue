@@ -331,9 +331,29 @@ const returnedFailingCommand = reactive<TerminalRecord>({
   toolUseId: returnedFailingShellTool.toolUseId,
 })
 
-/** Ends a returned call's command as its last frame would, `end` saying how, or runs it again. */
+/** How long the gallery's runner takes to say that a stopped command ended, while it shows Stopping…. */
+const STOPPING_MS = 3000
+/** The stops waiting for that word. */
+const stoppingTimers = new Set<number>()
+onBeforeUnmount(() => stoppingTimers.forEach((timer) => window.clearTimeout(timer)))
+
+/**
+ * Ends a returned call's command as its last frames would, `end` saying how,
+ * or runs it again. A stop shows the command stopping until its runner, simulated
+ * here, says that it ended.
+ */
 function toggleReturnedCommand(command: TerminalRecord | undefined, end: Pick<TerminalRecord, 'phase' | 'exitCode'>): void {
-  if (!command) {
+  if (!command || command.stopping) {
+    return
+  }
+  if (command.phase === 'running' && end.phase === 'aborted') {
+    command.stopping = true
+    const timer = window.setTimeout(() => {
+      stoppingTimers.delete(timer)
+      delete command.stopping
+      Object.assign(command, end, { endedAt: new Date().toISOString() })
+    }, STOPPING_MS)
+    stoppingTimers.add(timer)
     return
   }
   if (command.phase === 'running') {
@@ -1868,7 +1888,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="FunctionalBlock"
-        note="Thinking, shell (collapsed and expanded), loading, and error. Thinking that streams is one folded row, Thinking with how long it has lasted; the reader opens it to read along, and it never opens or folds by itself, also when it ends (Replay). A shell call shows its command and output in one box: the command stays at the top, highlighted as Bash in the colors all code shows in after a muted $, and only the output under it scrolls once it fills the box. The command wraps at its spaces, as an editor’s word wrap does: a word moves to the next line whole, never split at a hyphen or inside, and only a word longer than the line breaks, at any character, as the long line’s signed address shows. The output wraps as a terminal wraps: each line fills to the box’s edge and breaks at any character. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. A shell row shimmers while its command runs, also after its call returned with the command running on as one of the conversation’s running commands, until the command’s end arrives, and then marks how it ended as any shell row does: Stopped, or Failed for an exit code other than 0 (End Command). A command that has run more than 3 seconds wears how long, counting up, as a grey tag where Failed or Stopped would stand: Run Again starts it anew, and the tag shows from 3 seconds on, so a quick command never flashes one; the tag goes when the command ends. The time counts from the command’s start as the server reports it, so a reload shows the true time. Opened, the line above the output says how long it has run, Running for 1m28s, then Exited with 0 after 2m13s, Failed with exit code 1 after 47s or Stopped after 5s; a command that ended within a second says no time, Exited with 0. While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
+        note="Thinking, shell (collapsed and expanded), loading, and error. Thinking that streams is one folded row, Thinking with how long it has lasted; the reader opens it to read along, and it never opens or folds by itself, also when it ends (Replay). A shell call shows its command and output in one box: the command stays at the top, highlighted as Bash in the colors all code shows in after a muted $, and only the output under it scrolls once it fills the box. The command wraps at its spaces, as an editor’s word wrap does: a word moves to the next line whole, never split at a hyphen or inside, and only a word longer than the line breaks, at any character, as the long line’s signed address shows. The output wraps as a terminal wraps: each line fills to the box’s edge and breaks at any character. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. A shell row shimmers while its command runs, also after its call returned with the command running on as one of the conversation’s running commands, until the command’s end arrives, and then marks how it ended as any shell row does: Stopped, or Failed for an exit code other than 0 (End Command). A command that has run more than 3 seconds wears how long, counting up, as a grey tag where Failed or Stopped would stand: Run Again starts it anew, and the tag shows from 3 seconds on, so a quick command never flashes one; the tag goes when the command ends. A stop puts Stopping… in the tag’s place until the command’s runner says that it ended, and the command counts as running meanwhile; opened, the line above the output says Stopping…. The time counts from the command’s start as the server reports it, so a reload shows the true time. Opened, the line above the output says how long it has run, Running for 1m28s, then Exited with 0 after 2m13s, Failed with exit code 1 after 47s or Stopped after 5s; a command that ended within a second says no time, Exited with 0. While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -1968,7 +1988,7 @@ onBeforeUnmount(() => {
                 :block="returnedShellTool"
                 :input="parseToolInput(returnedShellTool.input)"
               />
-              <Button size="sm" variant="ghost" class="mt-1" @click="toggleReturnedCommand(returnedCommand, { phase: 'aborted' })">
+              <Button size="sm" variant="ghost" class="mt-1" :disabled="returnedCommand?.stopping" @click="toggleReturnedCommand(returnedCommand, { phase: 'aborted' })">
                 {{ returnedCommand?.phase === 'running' ? 'End Command' : 'Run Again' }}
               </Button>
             </GallerySpecimen>
@@ -2670,7 +2690,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Terminals"
-        note="The same window. Tabs are running jobs, each titled by its call’s description, cut at the end and whole in its tooltip; the body is a read-only xterm with ANSI color from bun, rg and git. The terminal opens with the script as a terminal shows what was typed: a muted $ and the first line, a muted > before each further line (Show the auth test changes), long lines wrapped at the terminal’s width (Find where the old cookie name is still used), the script highlighted as Bash in the colors all code shows in (Count the old cookie name and list the changed files), then the output. The watch tab’s output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame’s tail anew. A click on a tab only selects it; its menu, from a right-click or the Menu key or Shift+F10, ends a running command (End Command) or closes an ended one’s tab (Close Tab). A press outside every window closes it while it is the newest; Close (×), or Escape with the focus on its strip, closes it too, while the terminal keeps the Escape typed into it."
+        note="The same window. Tabs are running jobs, each titled by its call’s description, cut at the end and whole in its tooltip; the body is a read-only xterm with ANSI color from bun, rg and git. The terminal opens with the script as a terminal shows what was typed: a muted $ and the first line, a muted > before each further line (Show the auth test changes), long lines wrapped at the terminal’s width (Find where the old cookie name is still used), the script highlighted as Bash in the colors all code shows in (Count the old cookie name and list the changed files), then the output. The watch tab’s output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame’s tail anew. A click on a tab only selects it; its menu, from a right-click or the Menu key or Shift+F10, ends a running command (End Command) or closes an ended one’s tab (Close Tab). A command being stopped shows a spinner in its tab’s mark until its runner says that it ended, and End Command is off meanwhile. A press outside every window closes it while it is the newest; Close (×), or Escape with the focus on its strip, closes it too, while the terminal keeps the Escape typed into it."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
