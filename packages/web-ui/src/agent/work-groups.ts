@@ -36,23 +36,17 @@ export interface WorkGroupBlock {
 }
 
 /**
- * Whether a block the transcript shows is a step of the work. A `wakeup` it
- * shows has an end to show, since one of progress alone is not shown
- * (`visible-blocks.ts`); an agent message is a step when another agent sent
- * it, never the user's decision or Demi's notice.
+ * Whether a block the transcript shows is a step of the work: one the
+ * backend stored in a run (`runtime.md` § Work groups), or a call the model
+ * is still writing, which joins the run at the transcript's end.
  */
 export function isWorkStep(block: MessageListBlock): block is WorkStep {
-  switch (block.type) {
-    case 'thinking':
-    case 'tool_call':
-    case 'pending_call':
-    case 'wakeup':
-      return true
-    case 'agent_message':
-      return block.message.event.type === 'message' || block.message.event.type === 'completion'
-    default:
-      return false
-  }
+  return block.type === 'pending_call' || ('run' in block && block.run !== undefined)
+}
+
+/** The run a step belongs to; none for a call being written, which joins whichever run it follows. */
+function runOf(step: WorkStep): string | undefined {
+  return step.type === 'pending_call' ? undefined : step.run
 }
 
 export function isNoticeStep(step: WorkStep): step is NoticeStep {
@@ -76,12 +70,12 @@ function isEmptyThinking(block: MessageListBlock): boolean {
 }
 
 /**
- * The list's rows with the work grouped (`runtime.md` § Work groups). A
- * thinking block without text shows only while it is the newest block of a
- * running turn, as what the agent is doing; once anything follows it or the
- * turn ends, it has nothing to show and goes. A run ends at the agent's
- * text and at the user's words and decisions; a command's notice or an
- * agent's receipt between two calls is a step of it. The steps at the end
+ * The list's rows with the work grouped (`runtime.md` § Work groups): the
+ * steps of one run, as the backend stored each step's run, and the calls
+ * being written after them. A thinking block without text shows only while
+ * it is the newest block of a running turn, as what the agent is doing;
+ * once anything follows it or the turn ends, it has nothing to show and
+ * goes. The steps at the end
  * of a running turn are one group from the first step on, each new step
  * showing over the one before in the same row, so a step that joins never
  * adds a row that then merges into it. Once they ended, they stay one group
@@ -104,9 +98,14 @@ export function groupWork(blocks: readonly MessageListBlock[], running: boolean)
       index += 1
       continue
     }
-    let end = index
-    while (end < blocks.length && isWorkStep(blocks[end]!))
+    const run = runOf(block)
+    let end = index + 1
+    while (end < blocks.length) {
+      const next = blocks[end]!
+      if (!isWorkStep(next) || (next.type !== 'pending_call' && runOf(next) !== run))
+        break
       end += 1
+    }
     const next = blocks[end]
     const live = running && next === undefined
     const steps = blocks.slice(index, end).filter((step, at, run): step is WorkStep =>

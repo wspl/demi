@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch, type Component } from 'vue'
-import { useElementVisibility } from '@vueuse/core'
 import { Brain, Layers } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Fold from '@demicodes/web-ui/ui/Fold.vue'
@@ -16,14 +15,12 @@ import NoticeStepFace from './NoticeStepFace.vue'
 import FileChangePills from './FileChangePills.vue'
 import ToolMedia from './ToolMedia.vue'
 import { stepIcon } from './tool-row-icon'
-import { storedShellView, toolCallTitle } from '../block-helpers'
+import { toolCallTitle } from '../block-helpers'
 import { pendingCallTitle } from '../tool-rendering'
 import { thinkingFaceLabel } from '../thinking-label'
 import { isNoticeStep, stepKey, workRunning, workSummary, type NoticeStep, type WorkGroupBlock, type WorkStep } from '../work-groups'
 import { useEditSelection, useTranscript } from '../edit-selection'
-import { callFiles, pillSelection } from '../../files/request-changes'
-import type { ChangeFile } from '../../files/changes'
-import { useFileLineCounts } from '../useFileLineCounts'
+import { changeFile, pillSelection, runFiles } from '../../files/request-changes'
 import { foldedMedia } from '../tool-media'
 import { useElapsedTime } from '../../composables/useElapsedTime'
 import BlockScope from './BlockScope.vue'
@@ -137,20 +134,12 @@ const face = computed<Face>(() => {
 const calls = computed(() => props.group.steps.filter((step) => step.type === 'tool_call'))
 const select = useEditSelection()
 const transcript = useTranscript()
-// What the request does not show, such as a file in a temporary directory,
-// the summed pills leave out too.
-const changed = computed(() => callFiles(calls.value, transcript?.requests() ?? null))
+// Folded, each file the run changed shows once, with its lines from before
+// the run to after its latest call, as that call stored them; a file whose
+// ends were not kept is named alone.
+const changed = computed(() => runFiles(calls.value))
+const files = computed(() => changed.value.map(changeFile))
 const media = computed(() => foldedMedia(props.group.steps))
-// Folded, each file the steps changed shows once, with the lines of its
-// changes across them counted from its two ends, as the Change view's All
-// Changes counts them; until they are counted, or when its ends were not kept, its name alone.
-const pills = ref<HTMLElement | null>(null)
-const pillsShown = useElementVisibility(pills)
-const counts = useFileLineCounts(() => changed.value, () => pillsShown.value && !isOpen.value)
-const files = computed<ChangeFile[]>(() => changed.value.map((file) => {
-  const count = counts.value.get(file.path)
-  return { path: file.path, kind: file.kind, added: count?.added ?? 0, removed: count?.removed ?? 0 }
-}))
 
 // A step enters once, as it first appears, the way a row joining the
 // transcript does: one that joins while the row is open slides in; opening
@@ -176,15 +165,13 @@ onBeforeUnmount(() => {
 })
 
 /**
- * A summed pill opens its file at the first of the group's calls that
- * changed it, under the name the file had in that call.
+ * A summed pill opens its file at the first of the run's calls that
+ * changed it, under the name the file has in the request now.
  */
 function selection(path: string) {
-  if (!transcript)
-    return null
   const first = changed.value.find((file) => file.path === path)?.edits[0]
-  const call = first && calls.value.find((step) => storedShellView(step)?.commandId === first.call)
-  return call ? pillSelection(transcript.node, transcript.requests(), call, first.path) : null
+  const call = calls.value.at(-1)
+  return transcript && first && call ? pillSelection(transcript.node, transcript.requests(), call, first.call, first.path) : null
 }
 function selectable(path: string): boolean {
   return select() !== undefined && selection(path) !== null
@@ -264,16 +251,14 @@ function pick(path: string, clicks: number): void {
     </Fold>
     <!-- The summed pills fold in as the first file changes, and away as the group opens to show each call's own. -->
     <Fold :open="!isOpen && files.length > 0">
-      <div ref="pills">
-        <FileChangePills
-          v-if="files.length > 0"
-          class="py-1"
-          :style="{ paddingLeft: `${ICON_PX.in28 + 8}px` }"
-          :files="files"
-          :selectable="selectable"
-          @select="pick"
-        />
-      </div>
+      <FileChangePills
+        v-if="files.length > 0"
+        class="py-1"
+        :style="{ paddingLeft: `${ICON_PX.in28 + 8}px` }"
+        :files="files"
+        :selectable="selectable"
+        @select="pick"
+      />
     </Fold>
   </template>
 </template>

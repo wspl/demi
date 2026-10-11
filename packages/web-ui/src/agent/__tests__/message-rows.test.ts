@@ -14,10 +14,12 @@ import { createdAt, model, userBlock } from './agent-harness'
 // product. Pure, with a fake clock: a few milliseconds.
 
 const text = (id: string, body: string): Block => ({ type: 'text', id, createdAt, model, text: body })
-const thinking = (id: string): Block => ({ type: 'thinking', id, createdAt, model, text: '', signature: null })
-const call = (id: string, status: 'executing' | 'completed'): Block => ({
+/** A step of the run `run`, the id of its first block, as the backend stores it. */
+const thinking = (id: string, run = id): Block => ({ type: 'thinking', id, run, createdAt, model, text: '', signature: null })
+const call = (id: string, status: 'executing' | 'completed', run = id): Block => ({
   type: 'tool_call',
   id,
+  run,
   createdAt,
   model,
   toolUseId: `${id}-use`,
@@ -129,14 +131,16 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
     state.pendingCalls = writing('Wait two seconds')
   })
   // The call's block comes before the page drops the call being written.
+  // The run starts at its first block: the thinking, or the call's own.
+  const runOf = first === 'thinking' ? 'k-1' : 'c-1'
   await step('command', () => {
-    state.blocks = [...state.blocks, call('c-1', 'executing')]
+    state.blocks = [...state.blocks, call('c-1', 'executing', runOf)]
   })
   await step('call written', () => {
     state.pendingCalls = []
   })
   await step('command ended', () => {
-    state.blocks = state.blocks.map((block) => block.id === 'c-1' ? call('c-1', 'completed') : block)
+    state.blocks = state.blocks.map((block) => block.id === 'c-1' ? call('c-1', 'completed', runOf) : block)
   })
   // While the model is waited for, the run's row is the turn's activity: it
   // shimmers, and no Requesting row shows under it.
@@ -495,6 +499,7 @@ test('a notice and a receipt join the running run, which stays one row under one
   state.blocks = [...state.blocks, {
     type: 'wakeup',
     id: 'n-1',
+    run: 'c-1',
     turnId: 'n-1',
     createdAt,
     model,
@@ -506,6 +511,7 @@ test('a notice and a receipt join the running run, which stays one row under one
   state.blocks = [...state.blocks, {
     type: 'agent_message',
     id: 'm-2',
+    run: 'c-1',
     turnId: 'n-1',
     createdAt,
     model,

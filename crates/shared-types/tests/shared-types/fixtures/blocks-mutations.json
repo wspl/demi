@@ -300,10 +300,26 @@
       "webAppRefuses": true
     },
     {
-      "why": "an edited file without segments",
+      "why": "a written file without segments",
       "fixture": "tc2",
       "set": {
         "/view/files/0/edits": []
+      },
+      "webAppRefuses": false
+    },
+    {
+      "why": "a removed file with segments",
+      "fixture": "tc2",
+      "set": {
+        "/view/files/2/edits": [{}]
+      },
+      "webAppRefuses": false
+    },
+    {
+      "why": "a kind of change no file has",
+      "fixture": "tc2",
+      "set": {
+        "/view/runFiles/0/kind": "copied"
       },
       "webAppRefuses": true
     },

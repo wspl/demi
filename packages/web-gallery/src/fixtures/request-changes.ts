@@ -1,6 +1,6 @@
-import type { Block, EditedFile, PathChange } from '@demicodes/protocol'
+import type { Block, ChangedFile, EditedFile, PathChange } from '@demicodes/protocol'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
-import { demoModel, shellView, uncopiedFile } from './blocks'
+import { demoModel, inRun, listedFile, listedFiles, ownLists, shellView, uncopiedFile, withLists } from './blocks'
 import { editCopies } from './blobs'
 import { ago } from './time'
 import { WORKSPACE_ROOT } from './workspace'
@@ -85,6 +85,21 @@ function shell(
   }
 }
 
+/** The files a shell call's view lists. */
+function ownFiles(block: ToolCallBlock): EditedFile[] {
+  return block.view?.kind === 'shell' ? block.view.files ?? [] : []
+}
+
+/** A file a call removed, or renamed from `from`, as its view lists it. */
+function moved(path: string, kind: 'deleted' | 'renamed', from?: string): EditedFile {
+  return { path: `${WORKSPACE_ROOT}/${path}`, kind, ...(from ? { from: `${WORKSPACE_ROOT}/${from}` } : {}), added: 0, removed: 0, edits: [] }
+}
+
+/** A file listed removed or renamed without an edit. */
+function listedMove(file: EditedFile): ChangedFile {
+  return { path: file.path, kind: file.kind, ...(file.from ? { from: file.from } : {}), edits: [] }
+}
+
 /**
  * The design's example: the user asks to fix the sign-in page. The agent
  * edits login.ts twice and creates form.css in one call, starts the build
@@ -92,18 +107,25 @@ function shell(
  * login.ts a third time and replies. One request, two files, login.ts edited three times.
  */
 export function signInRequestBlocks(prefix: string): Block[] {
+  const fix = shell(`${prefix}-fix`, 590_000, 'demi file patch < fix.patch', 'Fix the sign-in check and add the form styles', [
+    file('src/auth/login.ts', 'modified', LOGIN.slice(0, 3), { added: 2, removed: 2 }),
+    file('src/auth/form.css', 'added', ['', FORM], { added: 8, removed: 0 }),
+  ])
+  const error = shell(`${prefix}-error`, 500_000, 'demi file edit src/auth/login.ts', 'Throw the old error text', [
+    file('src/auth/login.ts', 'modified', LOGIN.slice(2), { added: 1, removed: 1 }),
+  ])
+  const [login, form] = listedFiles(fix)
+  const errorRun = listedFiles(error)
+  // login.ts from before the request to after its third edit.
+  const request = [{ ...login!, lines: { added: 2, removed: 2 }, edits: [...login!.edits, ...errorRun[0]!.edits] }, form!]
   return [
     user(`${prefix}-user`, 600_000, 'Fix the sign-in page: an empty email must not sign in, and the form fields should fill the width.'),
-    shell(`${prefix}-fix`, 590_000, 'demi file patch < fix.patch', 'Fix the sign-in check and add the form styles', [
-      file('src/auth/login.ts', 'modified', LOGIN.slice(0, 3), { added: 2, removed: 2 }),
-      file('src/auth/form.css', 'added', ['', FORM], { added: 8, removed: 0 }),
-    ]),
-    shell(`${prefix}-build`, 580_000, 'bun run build', 'Start the build'),
+    ...inRun(fix, withLists(shell(`${prefix}-build`, 580_000, 'bun run build', 'Start the build'), listedFiles(fix))),
     text(`${prefix}-waiting`, 570_000, 'The build is running. I will go on once it ends.'),
-    { type: 'wakeup', id: `${prefix}-wakeup`, turnId: `${prefix}-wakeup-turn`, createdAt: ago(510_000), model: demoModel, placement: 'new_turn', reports: [{ commandId: `cmd-${prefix}-build`, title: 'Start the build', event: { kind: 'ended', exitCode: 0 }, output: 'built in 4.2s' }] },
-    shell(`${prefix}-error`, 500_000, 'demi file edit src/auth/login.ts', 'Throw the old error text', [
-      file('src/auth/login.ts', 'modified', LOGIN.slice(2), { added: 1, removed: 1 }),
-    ]),
+    ...inRun(
+      { type: 'wakeup', id: `${prefix}-wakeup`, turnId: `${prefix}-wakeup-turn`, createdAt: ago(510_000), model: demoModel, placement: 'new_turn', reports: [{ commandId: `cmd-${prefix}-build`, title: 'Start the build', event: { kind: 'ended', exitCode: 0 }, output: 'built in 4.2s' }] },
+      withLists(error, errorRun, request),
+    ),
     text(`${prefix}-reply`, 490_000, 'An empty email no longer signs in: it throws the old error text. The form fields now fill the width, and the build passes.'),
   ]
 }
@@ -114,15 +136,19 @@ export function signInRequestBlocks(prefix: string): Block[] {
  * with no original to start All Changes from, opens at its second edit.
  */
 export function uncopiedRequestBlocks(): Block[] {
+  const logo = shell('uncopied-logo', 390_000, 'cp new-logo.png assets/logo.png', 'Replace the logo', [
+    uncopiedFile({ path: `${WORKSPACE_ROOT}/assets/logo.png`, kind: 'modified', added: 0, removed: 0 }),
+    uncopiedFile({ path: `${WORKSPACE_ROOT}/README.md`, kind: 'modified', added: 1, removed: 1 }),
+  ])
+  const readme = shell('uncopied-readme', 380_000, 'demi file edit README.md', 'Say when the logo changed', [
+    file('README.md', 'modified', README, { added: 1, removed: 1 }),
+  ])
+  // The readme's first original was not kept, so it has no lines to show.
+  const [image, firstReadme] = listedFiles(logo)
+  const files = [image!, { ...firstReadme!, edits: [...firstReadme!.edits, ...listedFiles(readme)[0]!.edits] }]
   return [
     user('uncopied-user', 400_000, 'Replace the logo and say so in the readme.'),
-    shell('uncopied-logo', 390_000, 'cp new-logo.png assets/logo.png', 'Replace the logo', [
-      uncopiedFile({ path: `${WORKSPACE_ROOT}/assets/logo.png`, kind: 'modified', added: 0, removed: 0 }),
-      uncopiedFile({ path: `${WORKSPACE_ROOT}/README.md`, kind: 'modified', added: 1, removed: 1 }),
-    ]),
-    shell('uncopied-readme', 380_000, 'demi file edit README.md', 'Say when the logo changed', [
-      file('README.md', 'modified', README, { added: 1, removed: 1 }),
-    ]),
+    ...inRun(logo, withLists(readme, files)),
     text('uncopied-reply', 370_000, 'The logo is replaced and the readme says so.'),
   ]
 }
@@ -135,24 +161,66 @@ export function uncopiedRequestBlocks(): Block[] {
  * notes a later call removed (`edit-tracking.md` § Temporary files).
  */
 export function movedRequestBlocks(): Block[] {
+  const write = shell('moved-write', 250_000, 'cat > /tmp/page.ts.new <<\'EOF\'\n…\nEOF', 'Write the new page', [
+    file('/tmp/page.ts.new', 'added', ['', PAGE[1]!], { added: 8, removed: 0 }),
+  ])
+  const place = shell('moved-place', 240_000, 'mv /tmp/page.ts.new src/page.ts', 'Put the new page in place', [
+    file('src/page.ts', 'modified', PAGE, { added: 6, removed: 1 }),
+  ], [{ kind: 'renamed', from: '/tmp/page.ts.new', to: `${WORKSPACE_ROOT}/src/page.ts` }])
+  // src/page.ts with both edits: the one made in /tmp, and its move over the old page.
+  const [newPage] = listedFiles(place)
+  const scratch = listedFile('cmd-moved-write', ownFiles(write)[0]!)
+  const page = { ...newPage!, edits: [scratch.edits[0]!, ...newPage!.edits] }
   return [
     user('moved-user', 260_000, 'Give the page the new layout, and clean up after yourself.'),
-    shell('moved-write', 250_000, 'cat > /tmp/page.ts.new <<\'EOF\'\n…\nEOF', 'Write the new page', [
-      file('/tmp/page.ts.new', 'added', ['', PAGE[1]!], { added: 8, removed: 0 }),
-    ]),
-    shell('moved-place', 240_000, 'mv /tmp/page.ts.new src/page.ts', 'Put the new page in place', [
-      file('src/page.ts', 'modified', PAGE, { added: 6, removed: 1 }),
-    ], [{ kind: 'renamed', from: '/tmp/page.ts.new', to: `${WORKSPACE_ROOT}/src/page.ts` }]),
-    shell('moved-check', 235_000, 'cat > /tmp/check-layout.py <<\'EOF\'\n…\nEOF\npython3 /tmp/check-layout.py', 'Check the new layout', [
-      file('/tmp/check-layout.py', 'added', ['', CHECK], { added: 4, removed: 0 }),
-    ]),
-    shell('moved-notes', 230_000, 'printf … > notes.tmp', 'Note what to check', [
-      file('notes.tmp', 'added', ['', NOTES], { added: 2, removed: 0 }),
-    ]),
-    shell('moved-clean', 220_000, 'rm notes.tmp', 'Remove the scratch notes', [], [
-      { kind: 'removed', path: `${WORKSPACE_ROOT}/notes.tmp` },
-    ]),
+    ...inRun(
+      write,
+      place,
+      shell('moved-check', 235_000, 'cat > /tmp/check-layout.py <<\'EOF\'\n…\nEOF\npython3 /tmp/check-layout.py', 'Check the new layout', [
+        file('/tmp/check-layout.py', 'added', ['', CHECK], { added: 4, removed: 0 }),
+      ]),
+      shell('moved-notes', 230_000, 'printf … > notes.tmp', 'Note what to check', [
+        file('notes.tmp', 'added', ['', NOTES], { added: 2, removed: 0 }),
+      ]),
+      withLists(shell('moved-clean', 220_000, 'rm notes.tmp', 'Remove the scratch notes', [moved('notes.tmp', 'deleted')], [
+        { kind: 'removed', path: `${WORKSPACE_ROOT}/notes.tmp` },
+      ]), [page]),
+    ),
     text('moved-reply', 210_000, 'The page has the new layout, and the scratch notes are gone.'),
+  ]
+}
+
+/**
+ * A request in two runs that removes and renames files: its first run
+ * drafts notes and edits the readme, its second removes the notes, the old
+ * guide, which was there before, and renames the setup page. The first
+ * run's pills keep the notes it made; the second's show them and the old
+ * guide struck through and the setup page under its new name; the request
+ * lists the readme, the old guide and the renamed page, not the notes
+ * (`edit-tracking.md` § Temporary files).
+ */
+export function cleanupRequestBlocks(): Block[] {
+  const draft = shell('cleanup-draft', 180_000, 'printf … > docs/draft.md && demi file edit README.md', 'Draft the notes and link them', [
+    file('docs/draft.md', 'added', ['', NOTES], { added: 2, removed: 0 }),
+    file('README.md', 'modified', README, { added: 1, removed: 1 }),
+  ])
+  const tidy = shell('cleanup-tidy', 160_000, 'rm docs/draft.md docs/old-guide.md && mv docs/setup.md docs/install.md', 'Remove the drafts and rename the setup page', [
+    moved('docs/draft.md', 'deleted'),
+    moved('docs/old-guide.md', 'deleted'),
+    moved('docs/install.md', 'renamed', 'docs/setup.md'),
+  ], [
+    { kind: 'removed', path: `${WORKSPACE_ROOT}/docs/draft.md` },
+    { kind: 'removed', path: `${WORKSPACE_ROOT}/docs/old-guide.md` },
+    { kind: 'renamed', from: `${WORKSPACE_ROOT}/docs/setup.md`, to: `${WORKSPACE_ROOT}/docs/install.md` },
+  ])
+  const [, readme] = listedFiles(draft)
+  const [notes, guide, install] = ownFiles(tidy).map(listedMove)
+  return [
+    user('cleanup-user', 190_000, 'Tidy the docs: draft notes for the release, then drop what is out of date.'),
+    ...inRun(ownLists(draft)),
+    text('cleanup-drafted', 170_000, 'Drafted the notes and linked them from the readme. Now the old pages.'),
+    ...inRun(withLists(tidy, [notes!, guide!, install!], [readme!, guide!, install!])),
+    text('cleanup-reply', 150_000, 'The old guide is gone, the setup page is now install.md, and the draft notes are removed.'),
   ]
 }
 
@@ -163,9 +231,9 @@ export const SUBAGENT = 'gallery-subagent'
 export function subagentBlocks(): Block[] {
   return [
     user('subagent-user', 300_000, 'Rename the sid cookie to session in src/auth/cookie.ts.', 'You are a subagent of the conversation’s agent.'),
-    shell('subagent-rename', 290_000, 'demi file edit src/auth/cookie.ts', 'Rename the cookie', [
+    ...inRun(ownLists(shell('subagent-rename', 290_000, 'demi file edit src/auth/cookie.ts', 'Rename the cookie', [
       file('src/auth/cookie.ts', 'modified', COOKIE, { added: 1, removed: 1 }),
-    ]),
+    ]))),
     text('subagent-reply', 280_000, 'Renamed the cookie to session.'),
   ]
 }
@@ -174,8 +242,7 @@ export function subagentBlocks(): Block[] {
 export function subagentParentBlocks(): Block[] {
   return [
     user('parent-user', 310_000, 'Have a subagent rename the session cookie.'),
-    shell('parent-spawn', 305_000, 'demi agent spawn --description "Rename the cookie"', 'Start a subagent'),
-    {
+    ...inRun(shell('parent-spawn', 305_000, 'demi agent spawn --description "Rename the cookie"', 'Start a subagent'), {
       type: 'agent_message',
       id: 'parent-receipt',
       turnId: 'parent-receipt-turn',
@@ -189,12 +256,12 @@ export function subagentParentBlocks(): Block[] {
         content: 'Renamed the cookie to session.',
         event: { type: 'completion', outcome: 'completed' },
       },
-    },
+    }),
     text('parent-reply', 270_000, 'The subagent renamed the cookie to session in src/auth/cookie.ts.'),
   ]
 }
 
 /** A call shown on its own, in a request of its own, as its pills open it. */
 export function standaloneRequest(block: Block): Block[] {
-  return [user(`${block.id}-request`, 700_000, 'Fix the cookie rename.'), block]
+  return [user(`${block.id}-request`, 700_000, 'Fix the cookie rename.'), ...inRun(ownLists(block))]
 }

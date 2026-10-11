@@ -1,6 +1,6 @@
 import { baseName, delay } from '@demicodes/utils'
 import type { ChangeFile, ChangeSetSource, ChangeSides, WorkingTreeChange } from '@demicodes/web-ui/files/changes'
-import { diffLineCounts } from '@demicodes/web-ui/files/diff-counts'
+import { diffLineCounts } from './diff-counts'
 import { HostFiles } from '@demicodes/web-ui/files/file-cache'
 import { keptChangeSet, type ContentReads } from '@demicodes/web-ui/files/kept-source'
 import {
