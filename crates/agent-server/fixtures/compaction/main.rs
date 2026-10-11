@@ -5,7 +5,9 @@
 //! times, and after each pass checks that the facts, the constraint and the
 //! open task planted at its start survive, that the model continues without
 //! restating the summary, and that the summary request read the vendor's
-//! cache.
+//! cache. Each check's question goes to a throwaway copy of the
+//! conversation, so no check's answer reaches the history a later pass
+//! summarizes.
 //!
 //! ```sh
 //! target/debug/examples/compaction-fixture recall --passes 3
@@ -28,7 +30,8 @@ use demi_agent_server::{
     testing::{TestClient, client_text},
 };
 use demi_agent_store::{
-    AgentTreeStore, CheckpointState, CheckpointUpdate, NodeRecord, testing::MemoryTreeStore,
+    AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, NodeRecord,
+    testing::MemoryTreeStore,
 };
 use demi_agent_tools::{
     HostResolver, ProfileModel, SubagentSettings, Toolset, Unavailable,
@@ -74,6 +77,9 @@ const CONSTRAINT_PROMPT: &str = "请在 `migrations/0042_users.sql` 里给 users
 const RECALL_PROMPT: &str =
     "只回答暗号值,用「ALPHA=…, BETA=…, GAMMA=…」格式:我最早让你记住的三个暗号分别是什么?";
 const FILLER_PROMPT: &str = "下面是一段参考资料,先不用分析,只回复 ok。";
+/// The turn a model switch lands with: a switch takes effect, and compacts,
+/// at the conversation's next request, which must not be a check's.
+const LANDING_PROMPT: &str = "只回复 ok。";
 
 /// How much reference text one filler turn carries.
 const FILLER_CHARS: usize = 48_000;
@@ -427,6 +433,13 @@ struct Conversation {
     server: Rc<AgentServer<NoHosts>>,
     client: TestClient<NoHosts>,
     root: NodeId,
+    cwd: String,
+    /// The model the conversation's next request uses.
+    model: ModelSelection,
+    /// The copies the checks were asked on so far.
+    copies: usize,
+    /// The `error` blocks the copies ended with.
+    copy_errors: usize,
     requests: Requests,
     /// The requests already matched to a boundary.
     matched: HashSet<usize>,
@@ -445,6 +458,7 @@ impl Conversation {
             selection: model.clone(),
             requests: requests.clone(),
         });
+        let current = model.clone();
         let reference = reference_texts(&fixture.blocks);
         if reference.is_empty() {
             return Err("the fixture has no tool output for the filler turns".into());
@@ -453,16 +467,7 @@ impl Conversation {
         let store = MemoryTreeStore::new();
         let block_count = fixture.blocks.len();
         let initial = CheckpointUpdate {
-            state: CheckpointState {
-                phase: SessionPhase::Idle,
-                queue: Vec::new(),
-                agent_inputs: Vec::new(),
-                reports: Vec::new(),
-                intervals: Vec::new(),
-                cwd: fixture.cwd.clone(),
-                model,
-                edits: Vec::new(),
-            },
+            state: idle_state(&fixture.cwd, model),
             changed_blocks: fixture.blocks.into_iter().enumerate().collect(),
             block_count,
         };
@@ -493,22 +498,15 @@ impl Conversation {
             // No product shows the conversations' statuses.
             status_changed: Rc::new(|_| {}),
         });
-        // A turn of the real model may take minutes.
-        let mut client =
-            TestClient::connect(&server, &root, &fixture.cwd).with_hang_guard(TURN_TIMEOUT);
-        client
-            .send(ClientFrame::Open {
-                from: None,
-                edge: None,
-            })
-            .await;
-        client
-            .next_until(|frame| matches!(frame, ServerFrame::PendingSteers { .. }))
-            .await;
+        let client = open_client(&server, &root, &fixture.cwd).await;
         Ok(Self {
             server,
             client,
             root,
+            cwd: fixture.cwd,
+            model: current,
+            copies: 0,
+            copy_errors: 0,
             requests,
             matched: HashSet::new(),
             reference,
@@ -518,13 +516,7 @@ impl Conversation {
     }
 
     fn blocks(&self) -> Vec<Block> {
-        self.server
-            .tree(&self.root)
-            .expect("the conversation is open")
-            .root()
-            .session()
-            .transcript()
-            .blocks
+        blocks_of(&self.server, &self.root)
     }
 
     fn generations(&self) -> usize {
@@ -549,60 +541,66 @@ impl Conversation {
             .expect("the fixture's history holds no media to read")
     }
 
-    /// Runs `frame` to the end of the action it starts; a wait longer than
-    /// an action may take fails as a hang.
+    /// Runs `frame` on the conversation to the end of the action it starts.
     async fn act(&mut self, frame: ClientFrame) {
-        self.client.send(frame).await;
-        let busy = |frame: &ServerFrame| matches!(frame, ServerFrame::Phase { phase } if *phase != SessionPhase::Idle);
-        let idle = |frame: &ServerFrame| matches!(frame, ServerFrame::Phase { phase } if *phase == SessionPhase::Idle);
-        self.client.next_until(busy).await;
-        self.client.next_until(idle).await;
+        act(&mut self.client, frame).await;
     }
 
-    /// Switches the model from the next request on, as the backend does; a
-    /// compaction the switch needs runs before that request.
-    async fn switch_to(&mut self, model: ModelSelection) {
+    /// Switches the model from the next request on, as the backend does,
+    /// and sends the turn it lands with; a compaction the switch needs runs
+    /// before that turn's request. Returns that turn.
+    async fn switch_to(&mut self, model: ModelSelection) -> Turn {
         let switch = self
             .server
-            .prepare_switch(&self.root, model)
+            .prepare_switch(&self.root, model.clone())
             .await
             .expect("DeepSeek's runtime is built")
             .expect("the conversation is open");
         self.server.switch_model(&self.root, switch).await;
+        self.model = model;
+        self.send(LANDING_PROMPT).await
     }
 
-    /// Sends `text` and returns its turn: the model's text and reasoning
-    /// after the message, wherever a compaction put the message.
+    /// Sends `text` to the conversation and returns its turn.
     async fn send(&mut self, text: &str) -> Turn {
-        let id = TurnId::try_from(uuid()).expect("a uuid is not empty");
-        self.act(ClientFrame::Send {
-            message_id: id.clone(),
-            content: client_text(text),
-        })
-        .await;
-        let blocks = self.blocks();
-        let start = blocks
-            .iter()
-            .position(|block| matches!(block, Block::User(user) if user.turn_id == id))
-            .map_or(blocks.len(), |position| position + 1);
-        let mut turn = Turn {
-            question: text.to_owned(),
-            thinking: String::new(),
-            answer: String::new(),
+        send(&self.server, &mut self.client, &self.root, text).await
+    }
+
+    /// Asks `text` on a throwaway copy of the conversation as it stands, and
+    /// returns its turn: the conversation's history never holds a check.
+    /// The copy is stored as a fork's seed is, with the whole transcript
+    /// rather than a fork's cut through a completed answer, which would
+    /// leave out the usage of the latest request and a boundary after it.
+    async fn ask(&mut self, text: &str) -> Turn {
+        self.copies += 1;
+        let copy = NodeId::try_from(format!("{}-check-{}", self.root, self.copies))
+            .expect("the id is not empty");
+        let seed = Checkpoint {
+            state: idle_state(&self.cwd, self.model.clone()),
+            transcript: self.blocks(),
         };
-        for block in &blocks[start..] {
-            match block {
-                Block::Text(text) => push_line(&mut turn.answer, &text.text),
-                Block::Thinking(thinking) => push_line(&mut turn.thinking, &thinking.text),
-                _ => {}
-            }
+        self.server
+            .initialize_fork(&copy, seed)
+            .await
+            .expect("an idle copy is stored");
+        let mut client = open_client(&self.server, &copy, &self.cwd).await;
+        let turn = send(&self.server, &mut client, &copy, text).await;
+        let blocks = blocks_of(&self.server, &copy);
+        self.copy_errors += count(&blocks, |block| matches!(block, Block::Error(_)));
+        let passes = count(&blocks, |block| {
+            matches!(block, Block::CompactionBoundary(_))
+        }) - self.generations();
+        if passes > 0 {
+            println!("   note: the copy for {:?} compacted {passes} times before its answer", head(text, 20));
         }
+        // Closing the copy's only connection disposes its tree.
+        client.send(ClientFrame::Close {}).await;
         turn
     }
 
     /// One filler turn: reference text from the fixture's own tool output,
-    /// which the model is asked only to acknowledge.
-    async fn grow(&mut self) {
+    /// which the model is asked only to acknowledge. Returns its turn.
+    async fn grow(&mut self) -> Turn {
         let mut text = format!("{FILLER_PROMPT}\n\n参考资料 #{}\n", self.fillers);
         while text.len() < FILLER_CHARS {
             let piece = &self.reference[self.next_reference % self.reference.len()];
@@ -611,7 +609,7 @@ impl Conversation {
             text.push('\n');
         }
         self.fillers += 1;
-        self.send(&text).await;
+        self.send(&text).await
     }
 
     /// The summary requests behind the boundaries the transcript gained
@@ -690,6 +688,98 @@ impl Conversation {
             .skip(before)
             .all(|written| written == window)
     }
+}
+
+/// A client attached to the conversation `root`, opened. A turn of the
+/// real model may take minutes.
+async fn open_client(
+    server: &Rc<AgentServer<NoHosts>>,
+    root: &NodeId,
+    cwd: &str,
+) -> TestClient<NoHosts> {
+    let mut client = TestClient::connect(server, root, cwd).with_hang_guard(TURN_TIMEOUT);
+    client
+        .send(ClientFrame::Open {
+            from: None,
+            edge: None,
+        })
+        .await;
+    client
+        .next_until(|frame| matches!(frame, ServerFrame::PendingSteers { .. }))
+        .await;
+    client
+}
+
+/// An idle session's state in `cwd` with `model`, with nothing waiting.
+fn idle_state(cwd: &str, model: ModelSelection) -> CheckpointState {
+    CheckpointState {
+        phase: SessionPhase::Idle,
+        queue: Vec::new(),
+        agent_inputs: Vec::new(),
+        reports: Vec::new(),
+        intervals: Vec::new(),
+        cwd: cwd.to_owned(),
+        model,
+        edits: Vec::new(),
+    }
+}
+
+fn blocks_of(server: &AgentServer<NoHosts>, root: &NodeId) -> Vec<Block> {
+    server
+        .tree(root)
+        .expect("the conversation is open")
+        .root()
+        .session()
+        .transcript()
+        .blocks
+}
+
+/// Runs `frame` to the end of the action it starts; a wait longer than an
+/// action may take fails as a hang.
+async fn act(client: &mut TestClient<NoHosts>, frame: ClientFrame) {
+    client.send(frame).await;
+    let busy = |frame: &ServerFrame| matches!(frame, ServerFrame::Phase { phase } if *phase != SessionPhase::Idle);
+    let idle = |frame: &ServerFrame| matches!(frame, ServerFrame::Phase { phase } if *phase == SessionPhase::Idle);
+    client.next_until(busy).await;
+    client.next_until(idle).await;
+}
+
+/// Sends `text` to the conversation `root` and returns its turn: the
+/// model's text and reasoning after the message, wherever a compaction put
+/// the message.
+async fn send(
+    server: &AgentServer<NoHosts>,
+    client: &mut TestClient<NoHosts>,
+    root: &NodeId,
+    text: &str,
+) -> Turn {
+    let id = TurnId::try_from(uuid()).expect("a uuid is not empty");
+    act(
+        client,
+        ClientFrame::Send {
+            message_id: id.clone(),
+            content: client_text(text),
+        },
+    )
+    .await;
+    let blocks = blocks_of(server, root);
+    let start = blocks
+        .iter()
+        .position(|block| matches!(block, Block::User(user) if user.turn_id == id))
+        .map_or(blocks.len(), |position| position + 1);
+    let mut turn = Turn {
+        question: text.to_owned(),
+        thinking: String::new(),
+        answer: String::new(),
+    };
+    for block in &blocks[start..] {
+        match block {
+            Block::Text(text) => push_line(&mut turn.answer, &text.text),
+            Block::Thinking(thinking) => push_line(&mut turn.thinking, &thinking.text),
+            _ => {}
+        }
+    }
+    turn
 }
 
 /// The earlier request `request` repeats, apart from the instruction it
@@ -843,40 +933,50 @@ impl Checks {
     }
 }
 
-/// The checks after a step that began with `before` boundaries: what next
-/// (the first answer, which must not restate a summary the step wrote), the
-/// constraint, and the secrets. After a switch from the window `previous`,
-/// the step's passes must be that model's.
+/// The checks after a step that began with `before` boundaries, each asked
+/// on its own copy of the conversation: what next, the constraint, and the
+/// secrets. `landed` is the conversation's own turn that ran a pass, when
+/// one did: a switch's landing turn or a filler turn. That turn's answer,
+/// and the answer to what next, the first question after the pass, must not
+/// restate a summary the step wrote. After a switch from the window
+/// `previous`, the step's passes must be that model's.
 async fn check(
     conversation: &mut Conversation,
     label: String,
     before: usize,
     expect_pass: bool,
+    landed: Option<&Turn>,
     previous: Option<u32>,
 ) -> Row {
-    let next = conversation.send(NEXT_PROMPT).await;
     let generations = conversation.generations();
     let passes = generations - before;
     let by_previous_model = previous.map(|window| conversation.written_with(before, window));
     let summaries = conversation.summaries(before);
     let summary = conversation.latest_summary().filter(|_| passes > 0);
+
+    let next = conversation.ask(NEXT_PROMPT).await;
     let continuation = summary.as_deref().map(|summary| {
-        let restated = restates(&next.answer, summary);
-        if let Some(reason) = restated {
-            println!("   continuation FAILED: {reason}");
+        let mut kept = true;
+        for turn in landed.into_iter().chain([&next]) {
+            if let Some(reason) = restates(&turn.answer, summary) {
+                println!("   continuation FAILED: {reason}");
+                println!("{}", turn.excerpt());
+                kept = false;
+            }
         }
-        restated.is_none()
+        kept
     });
+    if let Some(turn) = landed {
+        println!("   landing turn: {}", head(&turn.answer, 120));
+    }
     println!("   what next: {}", head(&next.answer, 300));
     let names_task = next.answer.contains(OPEN_TASK);
     if !names_task {
         println!("   open task FAILED: the answer does not name {OPEN_TASK}");
-    }
-    if !names_task || continuation == Some(false) {
         println!("{}", next.excerpt());
     }
 
-    let constraint = conversation.send(CONSTRAINT_PROMPT).await;
+    let constraint = conversation.ask(CONSTRAINT_PROMPT).await;
     let keeps = keeps_constraint(&constraint.answer);
     println!("   constraint: {}", head(&constraint.answer, 200));
     if !keeps {
@@ -884,23 +984,17 @@ async fn check(
         println!("{}", constraint.excerpt());
     }
 
-    let recall = conversation.send(RECALL_PROMPT).await;
+    let recall = conversation.ask(RECALL_PROMPT).await;
     let secrets = recalled(&recall.answer);
     println!("   recall {secrets}/3: {}", head(&recall.answer, 160));
     if secrets < 3 {
         println!("{}", recall.excerpt());
     }
 
-    // A compaction during the later checks counts with the step's.
-    let generations_after = conversation.generations();
-    let mut summaries = summaries;
-    if generations_after > generations {
-        summaries.extend(conversation.summaries(generations));
-    }
     Row {
         label,
-        generations: generations_after,
-        passes: generations_after - before,
+        generations,
+        passes,
         expect_pass,
         by_previous_model,
         summaries,
@@ -914,17 +1008,17 @@ async fn check(
 }
 
 /// Filler turns until the session admits a `compact` or compacts by itself;
-/// whether it compacted by itself.
-async fn fill_to_compact(conversation: &mut Conversation) -> Result<bool, String> {
+/// the filler turn that compacted, when one did.
+async fn fill_to_compact(conversation: &mut Conversation) -> Result<Option<Turn>, String> {
     let before = conversation.generations();
     for _ in 0..MAX_FILLER_TURNS {
-        if conversation.generations() > before {
-            return Ok(true);
-        }
         if conversation.usage().await.admits_compaction() {
-            return Ok(false);
+            return Ok(None);
         }
-        conversation.grow().await;
+        let turn = conversation.grow().await;
+        if conversation.generations() > before {
+            return Ok(Some(turn));
+        }
     }
     Err(format!(
         "{MAX_FILLER_TURNS} filler turns did not fill the context"
@@ -932,13 +1026,12 @@ async fn fill_to_compact(conversation: &mut Conversation) -> Result<bool, String
 }
 
 /// Filler turns until the estimate reaches `tokens`, or until one of them
-/// compacts; the boundaries they added.
-async fn fill_to(conversation: &mut Conversation, tokens: u64) -> Result<usize, String> {
+/// compacts.
+async fn fill_to(conversation: &mut Conversation, tokens: u64) -> Result<(), String> {
     let before = conversation.generations();
     for _ in 0..MAX_FILLER_TURNS {
-        let compacted = conversation.generations() - before;
-        if compacted > 0 || conversation.usage().await.tokens >= tokens {
-            return Ok(compacted);
+        if conversation.generations() > before || conversation.usage().await.tokens >= tokens {
+            return Ok(());
         }
         conversation.grow().await;
     }
@@ -981,25 +1074,26 @@ async fn recall(fixture: Fixture, run: &Run) -> Result<bool, String> {
     loaded(&conversation, built, run);
 
     println!("\n── baseline on the large window, expecting no compaction");
-    let mut rows = vec![check(&mut conversation, "baseline".into(), 0, false, None).await];
+    let mut rows = vec![check(&mut conversation, "baseline".into(), 0, false, None, None).await];
 
     for pass in 1..=run.passes {
         let before = conversation.generations();
-        let trigger = if pass == 1 {
+        let (trigger, landed) = if pass == 1 {
             println!("\n── pass {pass}/{}: switch to the small window", run.passes);
-            conversation.switch_to(deepseek_model(run.small)).await;
-            "switch"
+            let landed = conversation.switch_to(deepseek_model(run.small)).await;
+            ("switch", Some(landed))
         } else {
             println!("\n── pass {pass}/{}: filler, then compact", run.passes);
-            if fill_to_compact(&mut conversation).await? {
-                "auto"
-            } else {
-                conversation.act(ClientFrame::Compact {}).await;
-                "compact"
+            match fill_to_compact(&mut conversation).await? {
+                Some(landed) => ("auto", Some(landed)),
+                None => {
+                    conversation.act(ClientFrame::Compact {}).await;
+                    ("compact", None)
+                }
             }
         };
         let label = format!("pass {pass} ({trigger})");
-        let row = check(&mut conversation, label, before, true, None).await;
+        let row = check(&mut conversation, label, before, true, landed.as_ref(), None).await;
         let compacted = row.passes > 0;
         rows.push(row);
         if !compacted {
@@ -1026,17 +1120,17 @@ async fn switch(fixture: Fixture, run: &Run) -> Result<bool, String> {
             run.passes
         );
         let before = conversation.generations();
-        conversation.switch_to(large.clone()).await;
+        let landed = conversation.switch_to(large.clone()).await;
         if pass == 1 {
             let label = "small → large".to_owned();
-            rows.push(check(&mut conversation, label, before, false, None).await);
+            rows.push(check(&mut conversation, label, before, false, Some(&landed), None).await);
         }
-        let grown = fill_to(&mut conversation, u64::from(run.small)).await?;
+        fill_to(&mut conversation, u64::from(run.small)).await?;
+        let grown = conversation.generations() - before;
         if grown > 0 {
-            println!("   FAILED: the large window compacted {grown} times while filling");
-            let before = conversation.generations() - grown;
+            println!("   FAILED: the large window compacted {grown} times");
             rows.push(Row {
-                label: format!("pass {pass} fill on large"),
+                label: format!("pass {pass} on large"),
                 generations: conversation.generations(),
                 passes: grown,
                 expect_pass: false,
@@ -1052,9 +1146,17 @@ async fn switch(fixture: Fixture, run: &Run) -> Result<bool, String> {
             run.passes
         );
         let before = conversation.generations();
-        conversation.switch_to(small.clone()).await;
+        let landed = conversation.switch_to(small.clone()).await;
         let label = format!("pass {pass} large → small");
-        let row = check(&mut conversation, label, before, true, Some(run.large)).await;
+        let row = check(
+            &mut conversation,
+            label,
+            before,
+            true,
+            Some(&landed),
+            Some(run.large),
+        )
+        .await;
         let compacted = row.passes > 0;
         rows.push(row);
         if !compacted {
@@ -1068,7 +1170,7 @@ async fn switch(fixture: Fixture, run: &Run) -> Result<bool, String> {
 /// Prints the run's table, and answers whether it passed: every step's
 /// checks, and no `error` block.
 fn report(title: &str, conversation: &Conversation, rows: &[Row]) -> bool {
-    let errors = conversation.errors();
+    let errors = conversation.errors() + conversation.copy_errors;
     let mark = |ok: bool| if ok { "ok" } else { "FAIL" };
     println!("\n===== {title} =====");
     println!(
@@ -1137,7 +1239,10 @@ fn report(title: &str, conversation: &Conversation, rows: &[Row]) -> bool {
         usage.cache_write_tokens,
         usage.output_tokens
     );
-    println!("error blocks: {errors}");
+    println!(
+        "checks asked on {} copies; error blocks: {errors}",
+        conversation.copies
+    );
     let passed = errors == 0 && rows.iter().all(Row::passed);
     println!("{}", if passed { "PASSED" } else { "FAILED" });
     passed
