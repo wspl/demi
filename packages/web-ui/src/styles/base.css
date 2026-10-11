@@ -847,15 +847,10 @@ html[data-theme="light"] .file-pill {
 }
 
 @layer base {
-  /* While a ResizeHandle drags, the whole document keeps its cursor and selects nothing. */
-  html.is-resizing-x,
-  html.is-resizing-x * {
-    cursor: col-resize !important;
-    user-select: none !important;
-  }
-  html.is-resizing-y,
-  html.is-resizing-y * {
-    cursor: row-resize !important;
+  /* While a pointer drag lasts (`ui/pointer-drag.ts`), the whole document keeps its cursor and selects nothing. */
+  html.is-dragging,
+  html.is-dragging * {
+    cursor: var(--drag-cursor) !important;
     user-select: none !important;
   }
 }

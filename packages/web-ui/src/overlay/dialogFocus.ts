@@ -4,7 +4,7 @@ import { useAutofocus } from '../ui/autofocus'
 import { useFocusReturn } from './focusReturn'
 
 /** A field the user types in or picks a value from: what a dialog opens on first. */
-const FIELD = [
+export const FIELD = [
   'input:not([type=button],[type=submit],[type=reset],[type=checkbox],[type=radio],[type=range],[type=color],[type=file],[type=hidden])',
   'textarea',
   'select',
