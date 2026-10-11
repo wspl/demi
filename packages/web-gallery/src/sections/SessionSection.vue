@@ -2156,7 +2156,7 @@ onBeforeUnmount(() => {
             />
           </div>
         </GallerySpecimen>
-        <GallerySpecimen variant="moved and removed · the page written in /tmp and moved in, scratch notes removed" wide>
+        <GallerySpecimen variant="moved and removed · the page written in /tmp and moved in; a script left in /tmp and scratch notes removed show nowhere" wide>
           <div class="gallery-frame h-[26rem] bg-surface">
             <AgentMessageList
               class="h-full"

@@ -23,7 +23,7 @@ test('a frame of the turn that changes nothing of the request gives the Change v
     root: null,
     changes: uncommitted,
     edit: async () => null,
-    request: () => ({ id: 'user-1', files: frame.value }),
+    request: () => ({ id: 'user-1', files: frame.value, hidden: [] }),
     showChanges: () => {},
   }
   const data = showRequestEdit(firstChangeData(), { node: null, request: 'user-1', file: 'src/app.ts', edit: null })

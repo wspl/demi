@@ -1,4 +1,4 @@
-import type { Block, EditCopies, PathChange } from '@demicodes/protocol'
+import type { Block, EditCopies, EditedFile, PathChange } from '@demicodes/protocol'
 import { windowOf, type HeldTranscript } from '@demicodes/conversation-client'
 import { z } from 'zod'
 import { storedShellView, toolCallTitle } from '../agent/block-helpers'
@@ -48,14 +48,49 @@ export interface RequestFile {
 export interface TranscriptRequest {
   /** The `user` block that starts it. */
   id: string
-  /** In the order they were first changed. */
+  /** In the order they were first changed, without the files it does not show. */
   files: RequestFile[]
+  /**
+   * The files it changed and does not show (`edit-tracking.md` § Temporary
+   * files): one in a temporary directory, as it stands after the request's
+   * latest call, and one the request created and a later call removed. The
+   * pills of the calls that changed them leave them out too.
+   */
+  hidden: RequestFile[]
 }
 
 export interface TranscriptRequests {
   requests: TranscriptRequest[]
   /** The request each block belongs to, by block id; a block before the first `user` block has none. */
   requestOf: ReadonlyMap<string, TranscriptRequest>
+}
+
+/** A file as calls follow it: whether it is in a temporary directory where it stands now. */
+interface TrackedFile extends RequestFile {
+  temporary: boolean
+}
+
+/** The files a run of calls changed, as they stand after its latest call. */
+interface TrackedFiles {
+  /** The calls by their command, numbered as they come. */
+  order: Map<string, number>
+  files: TrackedFile[]
+  /** Those a call's removal took from `files`, as they stood then. */
+  removed: TrackedFile[]
+}
+
+function trackedFiles(): TrackedFiles {
+  return { order: new Map(), files: [], removed: [] }
+}
+
+/** `file` without what only following it needs. */
+function requestFile({ temporary: _temporary, ...file }: TrackedFile): RequestFile {
+  return file
+}
+
+/** Whether the file is a scratch file: in a temporary directory, or created by these calls and removed. */
+function scratch(file: TrackedFile): boolean {
+  return file.temporary || file.edits[0]?.created === true
 }
 
 /**
@@ -65,10 +100,18 @@ export interface TranscriptRequests {
 export function transcriptRequests(blocks: readonly Block[]): TranscriptRequests {
   const requests: TranscriptRequest[] = []
   const requestOf = new Map<string, TranscriptRequest>()
-  let current: { request: TranscriptRequest; calls: Map<string, number> } | null = null
+  let current: { request: TranscriptRequest; tracked: TrackedFiles } | null = null
+  const settle = () => {
+    if (current) {
+      const { files, removed } = current.tracked
+      current.request.files = files.filter((file) => !file.temporary).map(requestFile)
+      current.request.hidden = [...files.filter((file) => file.temporary), ...removed.filter(scratch)].map(requestFile)
+    }
+  }
   for (const block of blocks) {
     if (block.type === 'user') {
-      current = { request: { id: block.id, files: [] }, calls: new Map() }
+      settle()
+      current = { request: { id: block.id, files: [], hidden: [] }, tracked: trackedFiles() }
       requests.push(current.request)
     }
     if (!current) {
@@ -76,49 +119,78 @@ export function transcriptRequests(blocks: readonly Block[]): TranscriptRequests
     }
     requestOf.set(block.id, current.request)
     if (block.type === 'tool_call') {
-      addCall(current.request.files, current.calls, block)
+      addCall(current.tracked, block)
     }
   }
+  settle()
   return { requests, requestOf }
 }
 
 /**
- * The files `calls` changed, in the order first changed, each with its edits
- * in order: a request's, or a run of its calls the transcript shows as one
- * row, whose files are counted from the same two ends.
+ * Whether the file `path` names in the call `block` is one its request does
+ * not show. A call in no request, such as one shown on its own, has only its
+ * own report to go by: a file it left in a temporary directory.
  */
-export function callFiles(calls: readonly ToolCallBlock[]): RequestFile[] {
-  const files: RequestFile[] = []
-  const order = new Map<string, number>()
-  for (const call of calls) {
-    addCall(files, order, call)
+function hiddenFile(requests: TranscriptRequests | null, block: ToolCallBlock, path: string): boolean {
+  const request = requests?.requestOf.get(block.id)
+  const view = storedShellView(block)
+  if (!request) {
+    return view?.files?.find((file) => file.path === path)?.temporary === true
   }
-  return files
+  return request.hidden.some((file) => file.edits.some((edit) => edit.call === view?.commandId && edit.path === path))
+}
+
+/** The files a shell call's pills show: those it changed that its request shows. */
+export function callPillFiles(requests: TranscriptRequests | null, block: ToolCallBlock): EditedFile[] {
+  return (storedShellView(block)?.files ?? []).filter((file) => !hiddenFile(requests, block, file.path))
 }
 
 /**
- * Adds a call to the files of the calls before it, `order` numbering the
- * calls as they come: first its renames and removals, in the order it made
- * them, move or drop the files the earlier calls changed; then its own
- * files, which its job already names as they stand after it, join them.
+ * The files `calls` changed, in the order first changed, each with its edits
+ * in order: a run of a request's calls the transcript shows as one row,
+ * whose files are counted from the same two ends. A file the request does
+ * not show is left out (`TranscriptRequest.hidden`); calls in no request
+ * leave out the files they left in a temporary directory.
  */
-function addCall(files: RequestFile[], order: Map<string, number>, block: ToolCallBlock): void {
+export function callFiles(calls: readonly ToolCallBlock[], requests: TranscriptRequests | null): RequestFile[] {
+  const tracked = trackedFiles()
+  for (const call of calls) {
+    addCall(tracked, call)
+  }
+  const callOf = new Map(calls.map((call) => [storedShellView(call)?.commandId, call]))
+  return tracked.files
+    .filter((file) => {
+      const first = file.edits[0]
+      const call = first && callOf.get(first.call)
+      return call && requests?.requestOf.has(call.id) ? !hiddenFile(requests, call, first.path) : !file.temporary
+    })
+    .map(requestFile)
+}
+
+/**
+ * Adds a call to the files of the calls before it: first its renames and
+ * removals, in the order it made them, move or drop the files the earlier
+ * calls changed; then its own files, which its job already names as they
+ * stand after it, join them.
+ */
+function addCall(tracked: TrackedFiles, block: ToolCallBlock): void {
   const view = storedShellView(block)
   if (!view) {
     return
   }
+  const { files, order } = tracked
   order.set(view.commandId, order.size)
   // Files a rename of this call brought to a name the list did not hold:
   // whether a file was there before, only the call's own entry can tell.
   const arrived = new Set<string>()
   for (const change of view.pathChanges ?? []) {
-    applyPathChange(files, order, change, arrived)
+    applyPathChange(tracked, change, arrived)
   }
   const title = toolCallTitle(block)
   for (const file of view.files ?? []) {
     let entry = files.find((existing) => existing.path === file.path)
     if (!entry) {
-      entry = { path: file.path, kind: file.kind, edits: [] }
+      entry = { path: file.path, kind: file.kind, edits: [], temporary: file.temporary === true }
       files.push(entry)
     } else if (arrived.has(file.path)) {
       entry.kind = file.kind
@@ -142,14 +214,11 @@ function addCall(files: RequestFile[], order: Map<string, number>, block: ToolCa
  * into the entry the new name already has, if any, which keeps its kind and
  * its place, or the earlier of the two.
  */
-function applyPathChange(
-  files: RequestFile[],
-  order: ReadonlyMap<string, number>,
-  change: PathChange,
-  arrived: Set<string>,
-): void {
+function applyPathChange(tracked: TrackedFiles, change: PathChange, arrived: Set<string>): void {
+  const { files, order } = tracked
   if (change.kind === 'removed') {
     const kept = files.filter((file) => !isWithinPath(file.path, change.path))
+    tracked.removed.push(...files.filter((file) => isWithinPath(file.path, change.path)))
     files.splice(0, files.length, ...kept)
     return
   }
@@ -159,6 +228,8 @@ function applyPathChange(
     if (!target) {
       moved.path = path
       moved.kind = 'added'
+      // A folder's files are where the folder is.
+      moved.temporary = change.temporary === true
       arrived.add(path)
       continue
     }
