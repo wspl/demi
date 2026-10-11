@@ -42,9 +42,10 @@ const emit = defineEmits<{
     <div class="min-w-0 flex-1">
       <!-- The title wraps; 20px lines keep a one-line title centred on the icon. -->
       <div class="min-h-5 text-chrome leading-5 text-fg-emphasis">{{ title }}</div>
+      <!-- A message of several lines, such as one per refused conversation, keeps its lines. -->
       <div
         v-if="message"
-        class="text-[12px] leading-4 text-fg-muted"
+        class="text-[12px] leading-4 whitespace-pre-line text-fg-muted"
       >{{ message }}</div>
       <Button
         v-if="action"

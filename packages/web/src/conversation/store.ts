@@ -1,7 +1,7 @@
 import { computed, reactive, ref, toRaw, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue, deferred, moveBefore } from '@demicodes/utils'
-import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
+import type { HeadlineText, TitleText } from '@demicodes/web-ui/ui/ui-text'
 import type { ClientContent } from '@demicodes/protocol'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
 import type { TranscriptReveal } from '@demicodes/web-ui/agent/history'
@@ -17,6 +17,7 @@ import {
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { dismissToast } from '@demicodes/web-ui/infra/toast'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
+import { showRefused, type Refusal } from '@demicodes/web-ui/sidebar/refused-toast'
 import { forkConversation } from '../api/message-fork'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import {
@@ -1205,15 +1206,15 @@ export const useConversations = defineStore('conversations', () => {
    * `shown`, the change shows at once and the write lands it
    * (`web-application.md` § Responding to the user); without, it shows once
    * answered, as a move to another Host does. A refused item is reported
-   * with why, under `failed`'s title for one conversation or for several,
-   * and only its own change leaves. Answers whether every one changed, and
+   * with why, in a toast that says it could not `action` it, and only its
+   * own change leaves. Answers whether every one changed, and
    * the ones that did.
    */
   async function applyBatch(
     ids: string[],
     changes: Pick<ConversationPatch, 'pinned' | 'archived' | 'target' | 'notifyAgent'>,
     shown: boolean,
-    failed: { one: HeadlineText; many: HeadlineText },
+    action: TitleText,
   ): Promise<{ success: boolean; changed: string[] }> {
     // A draft has no agent to tell: the first send creates what the user sees.
     const { notifyAgent: _told, ...fields } = changes
@@ -1238,8 +1239,6 @@ export const useConversations = defineStore('conversations', () => {
     if (!ids.length) {
       return { success: true, changed }
     }
-    // The titles a refusal names, as they are now.
-    const titles = new Map(ids.map((id) => [id, items.value.find((item) => item.id === id)?.title ?? id]))
     // A conversation opened before the archive or restore lands waits for
     // it; the entry stands before the change shows, which may open it.
     const landed = deferred<void>()
@@ -1272,12 +1271,14 @@ export const useConversations = defineStore('conversations', () => {
           })
           const result = await readResponse(response, batchAnswerSchema)
           signal.throwIfAborted()
-          const failures: string[] = []
+          const refusals: Refusal[] = []
           for (const item of result.results) {
             const change = shownChanges.get(item.id)
+            // A refusal names the conversation as the list shows it now: its title may have come meanwhile.
+            const title = items.value.find((conversation) => conversation.id === item.id)?.title ?? item.id
             if (item.status === 'refused') {
               change?.drop()
-              failures.push(`${titles.get(item.id) ?? item.id}: ${item.message}`)
+              refusals.push({ title, reasons: [item.message] })
               continue
             }
             const answer = { type: 'conversation', conversation: item.conversation } as const
@@ -1289,17 +1290,15 @@ export const useConversations = defineStore('conversations', () => {
             } else {
               change.land(answer)
             }
-            if (!failed.length) {
+            if (failed.length) {
+              refusals.push({ title, reasons: failed.map((field) => field.message) })
+            } else {
               changed.push(item.id)
             }
-            failures.push(...failed.map((field) => `${titles.get(item.id) ?? item.id}: ${field.message}`))
           }
-          if (failures.length) {
+          if (refusals.length) {
             success = false
-            reportError(failures.length === 1 && ids.length === 1 ? failed.one : failed.many, failures.join('\n'), {
-              userVisible: true,
-              expected: true,
-            })
+            showRefused(action, refusals)
           }
         }
         return { success, changed }
@@ -1330,10 +1329,7 @@ export const useConversations = defineStore('conversations', () => {
    */
   async function archive(ids: string[]): Promise<boolean> {
     const shown = ids.filter((id) => items.value.some((item) => item.id === id && !item.archived))
-    const done = applyBatch(ids, { archived: true }, true, {
-      one: 'Could Not Archive the Conversation',
-      many: 'Some conversations were not archived.',
-    })
+    const done = applyBatch(ids, { archived: true }, true, 'Archive')
     if (!shown.length) {
       return (await done).success
     }
@@ -1377,7 +1373,7 @@ export const useConversations = defineStore('conversations', () => {
     const signal = lifetime.signal
     try {
       return await writes.run(synced, async () => {
-        const failures: string[] = []
+        const refusals: Refusal[] = []
         for (const [id, removal] of removals) {
           signal.throwIfAborted()
           removal.send()
@@ -1388,23 +1384,17 @@ export const useConversations = defineStore('conversations', () => {
               throw error
             }
             removal.drop()
-            failures.push(`${titles.get(id)}: ${error instanceof Error ? error.message : String(error)}`)
+            refusals.push({ title: titles.get(id) ?? id, reasons: [error instanceof Error ? error.message : String(error)] })
             continue
           }
           // The deletion lands; the channel brings it to every other page.
           removal.land()
           forget(id)
         }
-        if (failures.length) {
-          reportError(
-            failures.length === 1 && synced.length === 1
-              ? 'Could Not Delete the Conversation'
-              : 'Some conversations were not deleted.',
-            failures.join('\n'),
-            { userVisible: true, expected: true },
-          )
+        if (refusals.length) {
+          showRefused('Delete', refusals)
         }
-        return failures.length === 0
+        return refusals.length === 0
       })
     } catch (error) {
       for (const removal of removals.values()) {
@@ -1417,10 +1407,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /** Brings archived conversations back at once; answers whether every one came back. */
   async function restore(ids: string[]): Promise<boolean> {
-    const { success } = await applyBatch(ids, { archived: false }, true, {
-      one: 'Could Not Restore the Conversation',
-      many: 'Some conversations were not restored.',
-    })
+    const { success } = await applyBatch(ids, { archived: false }, true, 'Restore')
     return success
   }
 
@@ -1983,9 +1970,8 @@ export const useConversations = defineStore('conversations', () => {
     markRead,
     reloadList: () => product.reconnect(),
     reloadSession,
-    pin: async (ids: string[], pinned: boolean) => (await applyBatch(ids, { pinned }, true, pinned
-      ? { one: 'Could Not Pin the Conversation', many: 'Some conversations were not pinned.' }
-      : { one: 'Could Not Unpin the Conversation', many: 'Some conversations were not unpinned.' })).success,
+    pin: async (ids: string[], pinned: boolean) =>
+      (await applyBatch(ids, { pinned }, true, pinned ? 'Pin' : 'Unpin')).success,
     archive,
     restore,
     remove,
@@ -1996,10 +1982,7 @@ export const useConversations = defineStore('conversations', () => {
     switchTarget: (id: string, target: ConversationSummary['target'], notifyAgent = false) =>
       changeConversations(
         [id],
-        async () => (await applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, false, {
-          one: 'Could Not Move the Conversation',
-          many: 'Some conversations were not moved.',
-        })).success,
+        async () => (await applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, false, 'Move')).success,
         false,
       ),
     pendingChanges,
