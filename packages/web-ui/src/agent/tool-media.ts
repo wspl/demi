@@ -1,5 +1,6 @@
-import type { ToolMediaSource, ToolResultContentBlock } from '@demicodes/protocol'
+import type { CommandReport, ToolMediaSource, ToolResultContentBlock } from '@demicodes/protocol'
 import { toolCallTitle } from './block-helpers'
+import { reportShown } from './command-reports'
 import type { WorkStep } from './work-groups'
 
 /**
@@ -43,11 +44,26 @@ export function toolMedia(output: readonly ToolResultContentBlock[], name: strin
   })
 }
 
+/** What a command's end report shows under its notice row, as a call shows its result's. */
+export function reportMedia(report: CommandReport): ToolMedium[] {
+  return toolMedia(report.media ?? [], report.title)
+}
+
 /**
- * What a folded work group shows under its row: the media of its calls, in
- * the order of the calls, each as it shows under its own call's row; open,
- * each call shows its own (`file-previews.md` § Media a tool returned).
+ * What a folded work group shows under its row: the media of its calls and
+ * of its command notices, in their order, each as it shows under its own
+ * row; open, each row shows its own (`file-previews.md` § Media a tool
+ * returned).
  */
 export function foldedMedia(steps: readonly WorkStep[]): ToolMedium[] {
-  return steps.flatMap((step) => step.type === 'tool_call' ? toolMedia(step.output, toolCallTitle(step)) : [])
+  return steps.flatMap((step) => {
+    switch (step.type) {
+      case 'tool_call':
+        return toolMedia(step.output, toolCallTitle(step))
+      case 'wakeup':
+        return step.reports.filter(reportShown).flatMap(reportMedia)
+      default:
+        return []
+    }
+  })
 }

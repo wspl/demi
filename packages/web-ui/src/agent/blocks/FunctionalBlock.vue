@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, useSlots, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, useId, useSlots, watch } from 'vue'
 import { CircleX } from '@lucide/vue'
 import ChromeRoll from '@demicodes/web-ui/ui/ChromeRoll.vue'
 import Fold from '@demicodes/web-ui/ui/Fold.vue'
@@ -42,6 +42,8 @@ const props = defineProps<{
 }>()
 
 const slots = useSlots()
+/** The face, which names the button that toggles the row. */
+const faceId = useId()
 const isOpen = defineModel<boolean>('open', { default: false })
 const hasBodySlot = () => !!slots['body']
 const hasPinnedSlot = () => !!slots['pinned']
@@ -109,18 +111,26 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
 
 <template>
   <div class="overflow-hidden">
+    <!-- A click anywhere on the face toggles the row. The control that
+      toggles it is the button laid under the face, so a control the face
+      holds, such as a notice's title, is its sibling, never inside it: each
+      has its own focus and name, and Enter or Space on the button clicks
+      it, which reaches the face's click as a click on the face does. -->
     <div
-      class="flex h-7 cursor-default select-none items-center gap-2 text-row transition-colors duration-200 ease-out"
+      class="relative flex h-7 cursor-default select-none items-center gap-2 text-row transition-colors duration-200 ease-out"
       :class="isExpandable ? 'group text-fg-row hover:text-fg-muted' : 'text-fg-row'"
-      :role="isExpandable ? 'button' : undefined"
-      :tabindex="isExpandable ? 0 : undefined"
-      :aria-expanded="isExpandable ? isOpen : undefined"
       @click="toggle"
-      @keydown.enter.self.prevent="toggle"
-      @keydown.space.self.prevent="toggle"
     >
+      <button
+        v-if="isExpandable"
+        type="button"
+        class="absolute inset-0 cursor-default rounded-sm outline-offset-[-2px]"
+        :aria-expanded="isOpen"
+        :aria-labelledby="faceId"
+      ></button>
       <ChromeRoll
-        class="min-w-0"
+        :id="faceId"
+        class="relative min-w-0"
         :face-key="rollKey ?? 'static'"
         :icon-key="iconKey ?? 'icon'"
         :cut-key="cutKey"

@@ -33,6 +33,41 @@ const writing = (id: string, toolName = 'shell'): MessageListBlock => ({
   call: { toolUseId: `${id}-use`, toolName, description: null },
 })
 const steps = (...blocks: (Block | MessageListBlock)[]) => blocks as WorkGroupBlock['steps']
+/** A command's notice: the end of each command it names. */
+const notice = (id: string, ...commandIds: string[]): Block => ({
+  type: 'wakeup',
+  id,
+  turnId: 'turn-1',
+  createdAt,
+  model,
+  placement: 'steer',
+  reports: commandIds.map((commandId) => ({ commandId, title: `Run ${commandId}`, event: { kind: 'ended', exitCode: 0 }, output: '' })),
+})
+/** A receipt from another agent: an update, or its end. */
+const receipt = (id: string, agent: string, event: Extract<Block, { type: 'agent_message' }>['message']['event'] = { type: 'message' }): Block => ({
+  type: 'agent_message',
+  id,
+  turnId: 'turn-1',
+  createdAt,
+  model,
+  message: {
+    id,
+    sender: { id: agent, number: 2, description: `Check ${agent}`, round: 1 },
+    recipientId: 'conversation-1',
+    timestamp: createdAt,
+    content: 'Halfway there.',
+    event,
+  },
+})
+const steer = (id: string): Block => ({ type: 'steer', id, turnId: 'turn-1', createdAt, model, content: [{ type: 'text', text: 'Also check the logout.' }] })
+const allowed = (id: string): Block => ({
+  type: 'agent_message',
+  id,
+  turnId: 'turn-1',
+  createdAt,
+  model,
+  message: { id, recipientId: 'conversation-1', timestamp: createdAt, content: 'Allowed.', event: { type: 'permission', outcome: 'allowed', action: 'manage skills' } },
+})
 
 /** Each row as its id, a group as the ids of its steps. */
 function rows(list: readonly MessageListBlock[]): (string | string[])[] {
@@ -69,6 +104,43 @@ describe('the steps the transcript shows as one row', () => {
     const later = groupWork([text('r'), thinking('t1'), call('a'), writing('b')], true)
     expect(rows(later)).toEqual(['r', ['a', 'pending-call:b-use']])
     expect(later[1]!.id).toBe(live[1]!.id)
+  })
+})
+
+// A command's notice and an agent's receipt between two calls are steps of
+// the work, not its end; the agent's text and the user's words and
+// decisions end it (`runtime.md` § Work groups).
+describe('the notices and receipts between the steps', () => {
+  test('fold into the run, in their order, and the run reads what its calls did', () => {
+    const run = groupWork([call('a'), call('b'), call('c'), notice('n', '17'), receipt('m', 'ag-2'), call('d'), call('e'), text('r')], false)
+    expect(rows(run)).toEqual([['a', 'b', 'c', 'n', 'm', 'd', 'e'], 'r'])
+    expect(workSummary((run[0] as WorkGroupBlock).steps)).toBe('Ran 5 commands')
+  })
+
+  test('the agent’s text, a steer and the receipt of the user’s decision each end a run', () => {
+    expect(rows(groupWork([call('a'), notice('n', '17'), text('r'), call('b')], false))).toEqual([['a', 'n'], 'r', ['b']])
+    expect(rows(groupWork([call('a'), receipt('m', 'ag-2'), steer('s'), call('b')], false))).toEqual([['a', 'm'], 's', ['b']])
+    expect(rows(groupWork([call('a'), allowed('p'), call('b')], false))).toEqual([['a'], 'p', ['b']])
+  })
+
+  test('a lone notice or receipt is its own row', () => {
+    expect(rows(groupWork([text('r1'), notice('n', '17'), text('r2'), receipt('m', 'ag-2', { type: 'completion', outcome: 'completed' }), text('r3')], false)))
+      .toEqual(['r1', ['n'], 'r2', ['m'], 'r3'])
+  })
+
+  test('a run without a call reads what its notices and receipts told, each kind once, in the order it first had it', () => {
+    expect(workSummary(steps(notice('n1', '17'), notice('n2', '18')))).toBe('2 commands finished')
+    expect(workSummary(steps(receipt('m1', 'ag-2'), receipt('m2', 'ag-3'), thinking('t', 'Both are halfway.')))).toBe('Heard from 2 agents')
+    expect(workSummary(steps(
+      notice('n1', '17', '18'),
+      receipt('m1', 'ag-2', { type: 'completion', outcome: 'failed' }),
+      receipt('m2', 'ag-3'),
+      receipt('m3', 'ag-3'),
+      notice('n2', '17'),
+    ))).toBe('2 commands finished, 1 agent finished, heard from 1 agent')
+    // A call says what the run did; its notices add nothing.
+    expect(workSummary(steps(notice('n', '17'), check('s', 18)))).toBe('Checked 1 command')
+    expect(workRunning(steps(notice('n', '17'), receipt('m', 'ag-2')))).toBe('1 command finished, heard from 1 agent')
   })
 })
 
@@ -114,4 +186,8 @@ test('a run is one row under one name from its first step to its end', () => {
   expect(ids(groupWork([text('t'), thinking('k')], true))).toEqual(['t', 'work:k:1'])
   expect(ids(groupWork([text('t'), thinking('k'), call('c1')], true))).toEqual(['t', 'work:k:1'])
   expect(ids(groupWork([text('t'), thinking('k'), call('c1'), text('r')], true))).toEqual(['t', 'work:k:1', 'r'])
+  // A notice or a receipt that joins keeps the run's name, and one that starts the run names it.
+  expect(ids(groupWork([text('t'), call('c1'), notice('n', '17'), receipt('m', 'ag-2')], true))).toEqual(['t', 'work:c1-use:3'])
+  expect(ids(groupWork([text('t'), notice('n', '17')], true))).toEqual(['t', 'work:n:1'])
+  expect(ids(groupWork([text('t'), notice('n', '17'), thinking('k'), call('c1')], true))).toEqual(['t', 'work:n:2'])
 })

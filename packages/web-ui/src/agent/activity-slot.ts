@@ -2,6 +2,7 @@ import type { SessionPhase } from '@demicodes/protocol'
 import { CHROME_ROLL_MS } from '../ui/chrome-roll'
 import type { MessageListBlock } from './pending-steers'
 import type { SessionLoad } from './session-status'
+import { isWorkStep, type WorkStep } from './work-groups'
 
 /**
  * Why the transcript's tail row is waiting. `connecting` is the socket;
@@ -18,8 +19,12 @@ export type ActivityKind = 'connecting' | 'requesting'
  */
 export type PendingAction = 'resume' | null
 
-/** A block that enters the transcript through the activity slot: it rolls in as the slot's face, then the row becomes the block. */
-export type HandoffBlock = Extract<MessageListBlock, { type: 'thinking' | 'tool_call' | 'pending_call' }>
+/**
+ * A block that enters the transcript through the activity slot: a step of
+ * the work, which rolls in as the slot's face, then the row becomes the
+ * step's run (`runtime.md` § Work groups).
+ */
+export type HandoffBlock = WorkStep
 
 /** The face roll, then a beat before the transcript row takes over. */
 export const ACTIVITY_HANDOFF_MS = CHROME_ROLL_MS + 80
@@ -105,7 +110,7 @@ function isWaitingForProvider(input: ActivitySlotInput): boolean {
 }
 
 export function isHandoffBlock(block: MessageListBlock | undefined): block is HandoffBlock {
-  return block?.type === 'thinking' || block?.type === 'tool_call' || block?.type === 'pending_call'
+  return block !== undefined && isWorkStep(block)
 }
 
 function hasActiveOutput(blocks: readonly MessageListBlock[]): boolean {

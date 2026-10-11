@@ -1,10 +1,23 @@
 import type { MessageListBlock } from './pending-steers'
 import { upperFirst } from '@demicodes/utils'
 import { parseToolCallInput } from './block-helpers'
+import { reportShown } from './command-reports'
 import { shellStatusLooks, toolRenderKind } from './tool-rendering'
 
-/** A step of the agent's work: a thinking block, a tool call, or a call the model is still writing. */
-export type WorkStep = Extract<MessageListBlock, { type: 'thinking' | 'tool_call' | 'pending_call' }>
+/**
+ * A step of the agent's work (`runtime.md` § Work groups): a thinking block,
+ * a tool call, a call the model is still writing, a command's notice (a
+ * `wakeup` that shows), or an agent's receipt: an update or a child's end.
+ * The receipts of the user's own decisions are not steps: like the user's
+ * words, they end a run.
+ */
+export type WorkStep = Extract<MessageListBlock, { type: 'thinking' | 'tool_call' | 'pending_call' | 'wakeup' | 'agent_message' }>
+
+/** A step that tells of work done elsewhere: a command's notice or another agent's receipt. */
+export type NoticeStep = Extract<WorkStep, { type: 'wakeup' | 'agent_message' }>
+
+/** A call: one written whole, or one the model is still writing. */
+type CallStep = Extract<WorkStep, { type: 'tool_call' | 'pending_call' }>
 
 /**
  * Consecutive steps the transcript shows as one row: while they run, the
@@ -21,19 +34,39 @@ export interface WorkGroupBlock {
   endedAt: string | null
 }
 
-function isStep(block: MessageListBlock): block is WorkStep {
-  return block.type === 'thinking' || block.type === 'tool_call' || block.type === 'pending_call'
+/**
+ * Whether a block the transcript shows is a step of the work. A `wakeup` it
+ * shows has an end to show, since one of progress alone is not shown
+ * (`visible-blocks.ts`); an agent message is a step when another agent sent
+ * it, never the user's decision or Demi's notice.
+ */
+export function isWorkStep(block: MessageListBlock): block is WorkStep {
+  switch (block.type) {
+    case 'thinking':
+    case 'tool_call':
+    case 'pending_call':
+    case 'wakeup':
+      return true
+    case 'agent_message':
+      return block.message.event.type === 'message' || block.message.event.type === 'completion'
+    default:
+      return false
+  }
+}
+
+export function isNoticeStep(step: WorkStep): step is NoticeStep {
+  return step.type === 'wakeup' || step.type === 'agent_message'
 }
 
 /** What names a step across its forms: a call keeps its key from being written to its block, so its row never rolls again. */
 export function stepKey(step: WorkStep): string {
   switch (step.type) {
-    case 'thinking':
-      return step.id
     case 'tool_call':
       return step.toolUseId
     case 'pending_call':
       return step.call.toolUseId
+    default:
+      return step.id
   }
 }
 
@@ -45,13 +78,15 @@ function isEmptyThinking(block: MessageListBlock): boolean {
  * The list's rows with the work grouped (`runtime.md` § Work groups). A
  * thinking block without text shows only while it is the newest block of a
  * running turn, as what the agent is doing; once anything follows it or the
- * turn ends, it has nothing to show and goes. The steps at the end of a
- * running turn are one group from the first step on, each new step showing
- * over the one before in the same row, so a step that joins never adds a
- * row that then merges into it. Once they ended, they stay one group when
- * they hold a call or are a lone step; only thinking without a call falls
- * apart into its steps. A group of a lone call shows as the call's own row
- * (`WorkGroupBlock`), so it opens to the call.
+ * turn ends, it has nothing to show and goes. A run ends at the agent's
+ * text and at the user's words and decisions; a command's notice or an
+ * agent's receipt between two calls is a step of it. The steps at the end
+ * of a running turn are one group from the first step on, each new step
+ * showing over the one before in the same row, so a step that joins never
+ * adds a row that then merges into it. Once they ended, they stay one group
+ * when they hold a call, a notice or a receipt, or are a lone step; only
+ * thinking alone falls apart into its steps. A group of a lone call, notice
+ * or receipt shows as that step's own row (`WorkGroupBlock`).
  *
  * A group is named after the run's first block, as `stepKey` names it, so
  * the row keeps its name while the run grows, a call being written becomes
@@ -63,20 +98,19 @@ export function groupWork(blocks: readonly MessageListBlock[], running: boolean)
   let index = 0
   while (index < blocks.length) {
     const block = blocks[index]!
-    if (!isStep(block)) {
+    if (!isWorkStep(block)) {
       rows.push(block)
       index += 1
       continue
     }
     let end = index
-    while (end < blocks.length && isStep(blocks[end]!))
+    while (end < blocks.length && isWorkStep(blocks[end]!))
       end += 1
     const next = blocks[end]
     const live = running && next === undefined
     const steps = blocks.slice(index, end).filter((step, at, run): step is WorkStep =>
-      isStep(step) && !(isEmptyThinking(step) && !(live && at === run.length - 1)))
-    const calls = steps.filter((step) => step.type !== 'thinking').length
-    const grouped = steps.length > 0 && (live || steps.length === 1 || calls >= 1)
+      isWorkStep(step) && !(isEmptyThinking(step) && !(live && at === run.length - 1)))
+    const grouped = steps.length > 0 && (live || steps.length === 1 || steps.some((step) => step.type !== 'thinking'))
     if (grouped) {
       rows.push({
         type: 'work_group',
@@ -115,7 +149,7 @@ type CallKind =
   | { kind: 'check', commands: string[] }
   | { kind: 'generic', tool: string }
 
-function callKind(step: Exclude<WorkStep, { type: 'thinking' }>): CallKind {
+function callKind(step: CallStep): CallKind {
   const tool = step.type === 'tool_call' ? step.toolName : step.call.toolName
   if (toolRenderKind(tool) === 'generic')
     return { kind: 'generic', tool }
@@ -140,7 +174,7 @@ interface CallGroup {
 function callGroups(steps: readonly WorkStep[]): CallGroup[] {
   const groups = new Map<string, CallGroup>()
   for (const step of steps) {
-    if (step.type === 'thinking')
+    if (step.type === 'thinking' || isNoticeStep(step))
       continue
     const call = callKind(step)
     const key = call.kind === 'generic' ? `tool:${call.tool}` : call.kind
@@ -174,6 +208,44 @@ function describeCalls(steps: readonly WorkStep[], tense: keyof typeof WORDS): s
   return upperFirst(parts.join(', '))
 }
 
+/** An agent count as a row says it. */
+function agents(count: number): string {
+  return count === 1 ? '1 agent' : `${count} agents`
+}
+
+/** What a notice or a receipt told: a command's end, an agent's end, or an agent's update. */
+type NoticeKind = 'command' | 'agent' | 'update'
+
+const NOTICE_WORDS = {
+  command: (count: number) => `${commands(count)} finished`,
+  agent: (count: number) => `${agents(count)} finished`,
+  update: (count: number) => `heard from ${agents(count)}`,
+} satisfies Record<NoticeKind, (count: number) => string>
+
+/**
+ * What the run's notices and receipts told, each kind once, in the order the
+ * run first had it, counting the commands and the agents they named, each
+ * once: a run without a call reads them, as nothing else says what happened.
+ */
+function describeNotices(steps: readonly WorkStep[]): string {
+  const told = new Map<NoticeKind, Set<string>>()
+  const add = (kind: NoticeKind, name: string) => {
+    const names = told.get(kind) ?? new Set<string>()
+    names.add(name)
+    told.set(kind, names)
+  }
+  for (const step of steps) {
+    if (step.type === 'wakeup') {
+      step.reports.filter(reportShown).forEach((report) => add('command', report.commandId))
+    }
+    else if (step.type === 'agent_message') {
+      const { event, sender } = step.message
+      add(event.type === 'completion' ? 'agent' : 'update', sender?.id ?? step.id)
+    }
+  }
+  return upperFirst([...told].map(([kind, names]) => NOTICE_WORDS[kind](names.size)).join(', '))
+}
+
 /**
  * What an open group that still runs says it is doing: its steps show under
  * it, so it stands still. A run that starts commands says how many; one
@@ -184,10 +256,14 @@ export function workRunning(steps: readonly WorkStep[]): string {
   const ran = callGroups(steps).find((group) => group.kind === 'run')?.touched.size ?? 0
   if (ran > 0)
     return `Running ${commands(ran)}`
-  return describeCalls(steps, 'running') || 'Thinking'
+  return describeCalls(steps, 'running') || describeNotices(steps) || 'Thinking'
 }
 
-/** What an ended group says it did: each kind of call once, in the order the run first made it (`runtime.md` § Work groups). */
+/**
+ * What an ended group says it did (`runtime.md` § Work groups): each kind of
+ * call once, in the order the run first made it; a run without a call, what
+ * its notices and receipts told.
+ */
 export function workSummary(steps: readonly WorkStep[]): string {
-  return describeCalls(steps, 'ended')
+  return describeCalls(steps, 'ended') || describeNotices(steps)
 }
