@@ -8,16 +8,19 @@ export type ConversationStatus = 'idle' | 'active' | 'done' | 'error' | 'aborted
  * The tone of a conversation's status dot wherever it shows, a sidebar
  * row's, a tab's or an agent's mark, so one state has one look everywhere
  * (`product.md` § Conversations and projects): running in the accent, which
- * breathes, finished green, failed red. A Stop is the user's own decision,
- * neither finished nor failed, and like a conversation that has run nothing
- * yet it has no tone: the place's settled look.
+ * breathes, finished green, failed red. Green says there is a new answer, so
+ * where the place knows whether its answer was read, a sidebar row, a read
+ * answer settles; an agent's tab and link have no read state, pass no
+ * `answer`, and stay green. A Stop is the user's own decision, neither
+ * finished nor failed, and like a conversation that has run nothing yet it
+ * has no tone: the place's settled look.
  */
-export function statusTone(status: ConversationStatus): StatusDotTone | null {
+export function statusTone(status: ConversationStatus, answer?: { read: boolean }): StatusDotTone | null {
   switch (status) {
     case 'active':
       return 'accent'
     case 'done':
-      return 'success'
+      return answer?.read ? null : 'success'
     case 'error':
       return 'danger'
     case 'aborted':
