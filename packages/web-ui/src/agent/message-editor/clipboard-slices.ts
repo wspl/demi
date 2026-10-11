@@ -1,3 +1,4 @@
+import type { JSONContent } from '@tiptap/core'
 import { Fragment, Slice, type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/model'
 import { parseUserMarkdown } from '../../markdown/user-markdown'
 import { trimBlankLines } from '../message-input/copied-message'
@@ -37,4 +38,14 @@ export function trimmedSlice(slice: Slice, schema: Schema): Slice {
   const openStart = trimmed.from > 0 ? opens(content.firstChild) : slice.openStart
   const openEnd = trimmed.to < slice.content.childCount ? opens(content.lastChild) : slice.openEnd
   return new Slice(content, openStart, openEnd)
+}
+
+/**
+ * Content cut from a document, a slice's or a selection's, as a document of
+ * its own: inline content, as ProseMirror leaves a slice within one line,
+ * stands in a paragraph.
+ */
+export function fragmentDocument(content: Fragment): JSONContent {
+  const nodes: JSONContent[] = content.toJSON() ?? []
+  return { type: 'doc', content: content.firstChild?.isInline ? [{ type: 'paragraph', content: nodes }] : nodes }
 }

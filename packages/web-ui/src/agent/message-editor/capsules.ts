@@ -1,6 +1,7 @@
 import { inject, provide, type InjectionKey } from 'vue'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { z } from 'zod'
-import { baseName } from '@demicodes/utils'
+import { baseName, jsonOrNull } from '@demicodes/utils'
 import type { MediaSource as ContentMediaSource } from '@demicodes/protocol'
 import { decodedTarget } from '../../markdown/filePath'
 import type { MessageEditContent } from '../message-editing'
@@ -34,6 +35,11 @@ export interface MessageCapsule {
    * still on its way.
    */
   reference?: FileReference
+}
+
+/** The file a node of a message's document stands for, when it is a capsule. */
+export function capsuleOf(node: ProseMirrorNode): MessageCapsule | null {
+  return node.type.name === 'attachment' ? node.attrs['capsule'] ?? null : null
 }
 
 /** An image file's picture, from its bytes in the user's blobs; none for a file of another kind. */
@@ -90,14 +96,6 @@ export function readCapsule(value: string | null): MessageCapsule | null {
   }
   const read = capsuleSchema.safeParse(jsonOrNull(value))
   return read.success ? read.data : null
-}
-
-function jsonOrNull(value: string): unknown {
-  try {
-    return JSON.parse(value)
-  } catch {
-    return null
-  }
 }
 
 const transferContextKey: InjectionKey<TransferContext> = Symbol('message-transfers')

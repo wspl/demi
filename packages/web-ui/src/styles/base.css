@@ -1660,6 +1660,22 @@ html[data-theme="light"] .file-pill {
   color: var(--fg-muted);
 }
 
+/* A capsule never makes its line taller and never reaches into the next
+   line, at every text size, in a sent message as in the composer: its box,
+   border and thumbnail included, is the line's height less 2 px, hung from
+   the line's top 1 px down, so 1 px stays clear above and below it and it is
+   centred on the line, which centres the text's ascent and descent. Centred
+   on the x-height instead, as `vertical-align: middle` does, it would sit
+   about 0.09em lower in this typeface and reach past the line's bottom.
+   `1lh` is read on the wrapper, which takes the line's font and line height;
+   the pill inside fills it, its name a step smaller than the text (13 px
+   beside the default 14). */
+.message-capsule-line {
+  height: calc(1lh - 2px);
+  margin-top: 1px;
+  vertical-align: top;
+}
+
 /* One file in a message's text (`AttachmentCapsule`). What the pill holds is
    the control's own, not a picture in the message, so the corner above is not
    its corner: the thumbnail's is concentric with the pill's, the pill's
@@ -1669,6 +1685,7 @@ html[data-theme="light"] .file-pill {
   --capsule-radius: 0.375rem;
   --capsule-inset: 2px;
   border-radius: var(--capsule-radius);
+  font-size: calc(1em - 1px);
 }
 
 .message-capsule img {
@@ -1676,6 +1693,7 @@ html[data-theme="light"] .file-pill {
 }
 
 .message-capsule .message-capsule-thumb {
+  height: calc(100% - 2 * var(--capsule-inset));
   border-radius: calc(var(--capsule-radius) - var(--capsule-inset));
 }
 
