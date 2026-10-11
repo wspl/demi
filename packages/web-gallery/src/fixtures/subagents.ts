@@ -382,3 +382,42 @@ export function gallerySubagents(): SubagentRecord[] {
     },
   ]
 }
+
+/** A brief as a spawn writes one: Markdown with headings, a list and a table, which the child's transcript renders as an answer. */
+const RESEARCH_BRIEF = `# Research: why the login test flakes
+
+Read the login suite and find what makes it fail about one run in ten. Do not edit any file.
+
+## Look at
+
+- \`packages/web/src/auth.test.ts\`, its cookie assertions
+- The fixture server's start-up in \`test/fixtures/server.ts\`
+- The last week of CI runs of \`login.spec\`
+
+## Report
+
+| What | How |
+| --- | --- |
+| The failing assertion | Its file and line |
+| Its cause | One sentence |
+| A fix | The smallest change that holds |
+
+Send the report with \`demi agent send parent\` as soon as you have the cause.`
+
+/** A child at work on a brief written in full Markdown. */
+export function briefSubagent(): SubagentRecord {
+  return {
+    id: 'ag-flake',
+    number: 8,
+    name: 'Find why the login test flakes',
+    phase: 'running',
+    startedAt: ago(30_000),
+    failures: {},
+    pendingCalls: [],
+    waitingSince: null,
+    history: wholeHistory([
+      user('ag-flake-user', ago(30_000), RESEARCH_BRIEF),
+      text('ag-flake-text', ago(20_000), 'I will start with the cookie assertions, then the fixture server.'),
+    ]),
+  }
+}

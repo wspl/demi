@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test'
 import { EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
 import {
-  agentsChip,
+  agentsChipLabel,
+  childBrief,
   formatDuration,
   formatSubagentDuration,
   finishedSubagents,
@@ -159,19 +160,29 @@ test('the Agents panel opens on the oldest running child, or empty when none run
   expect([panels.agentsOpen.value, panels.activeSubagentId.value]).toEqual([true, null])
 })
 
-test('the dock chip counts live children, reads Agents once none runs, and hides without children', () => {
+test('the dock chip counts live children and shows only while one runs', () => {
   const running = (id: string) => agent({ id, name: id, phase: 'running' })
   const completed = agent({ id: 'done', name: 'Done', phase: 'completed' })
   const aborted = agent({ id: 'stopped', name: 'Stopped', phase: 'aborted' })
   const failed = agent({ id: 'failed', name: 'Failed', phase: 'error' })
   // Two live children: the finished ones beside them never count.
-  expect(agentsChip([running('a'), completed, running('b'), aborted, failed])).toEqual({
-    label: '2 Agents',
-    running: true,
-  })
-  expect(agentsChip([running('a'), completed])).toEqual({ label: '1 Agent', running: true })
-  // Every child has finished: the chip stays, with no count, for their history.
-  expect(agentsChip([completed, aborted, failed])).toEqual({ label: 'Agents', running: false })
+  expect(agentsChipLabel([running('a'), completed, running('b'), aborted, failed])).toBe('2 Agents')
+  expect(agentsChipLabel([running('a'), completed])).toBe('1 Agent')
+  // Every child has finished: no chip; their receipts and links open them.
+  expect(agentsChipLabel([completed, aborted, failed])).toBeNull()
   // The conversation never had a child.
-  expect(agentsChip([])).toBeNull()
+  expect(agentsChipLabel([])).toBeNull()
+})
+
+test('a child\'s brief renders as an agent\'s Markdown, and the conversation\'s own messages keep the user dialect', () => {
+  const brief = '# Research: login flake\n\n- Read the test\n- Find the cause'
+  // In a child's transcript: the brief its spawn wrote, as Markdown.
+  expect(childBrief('child-1', [{ type: 'text', text: brief }])).toBe(brief)
+  // The same text the user typed in the conversation's own transcript.
+  expect(childBrief(null, [{ type: 'text', text: brief }])).toBeNull()
+  // A message that holds a file is the user's, wherever it stands.
+  expect(childBrief('child-1', [
+    { type: 'text', text: 'See ' },
+    { type: 'attachment', name: 'a.png', path: '/h/a.png', mediaType: 'image/png', sizeBytes: 4, sha256: 'a'.repeat(64) },
+  ])).toBeNull()
 })

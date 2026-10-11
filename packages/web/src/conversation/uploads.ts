@@ -5,7 +5,6 @@ import {
   attachmentFileError,
   AttachmentUploadQueue,
   composerAttachmentFromFile,
-  composerFileNames,
   filePreviewUrl,
   isComposerFile,
   type UploadedFile,
@@ -180,7 +179,7 @@ export function createConversationUploads(
   function addFiles(conversation: Conversation, files: File[]): ProductAttachment[] {
     const taken: ProductAttachment[] = []
     for (const file of files) {
-      const error = attachmentFileError(file, composerFileNames(conversation.files))
+      const error = attachmentFileError(file)
       if (error) {
         onRefused(new Error(error))
         continue

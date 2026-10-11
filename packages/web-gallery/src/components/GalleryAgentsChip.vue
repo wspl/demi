@@ -1,17 +1,24 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
+import AssistantTextBlock from '@demicodes/web-ui/agent/blocks/AssistantTextBlock.vue'
+import { agentLinkWindow, findAgent, provideMessageAgents } from '@demicodes/web-ui/agent/agent-links'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import { useSessionPanels } from '@demicodes/web-ui/agent/useSessionPanels'
+import { agentLinksMarkdown } from '../fixtures/subagents'
+import { productWould } from '../product-would'
 import GalleryComposer from './GalleryComposer.vue'
 
 /**
  * A dock with the agents chip over a conversation's children, as the
- * product's session has it: the chip opens the Agents panel the way the
- * product's does, and a second click closes it.
+ * product's session has it: the chip shows while a child runs and opens the
+ * Agents panel the way the product's does, a second click closing it. The
+ * reply above links the children, so a finished one opens from its link
+ * once no chip shows, as in the product's transcript.
  */
 const props = defineProps<{
   agents: readonly SubagentRecord[]
@@ -23,15 +30,40 @@ const emit = defineEmits<{
   abortAgent: [id: string]
 }>()
 
-const { agentsOpen, activeSubagentId, toggleAgents } = useSessionPanels(
+const { agentsOpen, activeSubagentId, toggleAgents, close } = useSessionPanels(
   () => props.agents,
   () => props.terminals,
 )
+provideMessageAgents(() => ({
+  find: (number) => findAgent(props.agents, number),
+  open: (number) => {
+    const next = agentLinkWindow({ open: agentsOpen.value, activeId: activeSubagentId.value }, props.agents, number)
+    if (number === 0) {
+      productWould('The Main Transcript Comes into View')
+    }
+    if (!next) {
+      return
+    }
+    if (next.open) {
+      activeSubagentId.value = next.activeId
+    } else {
+      close()
+    }
+  },
+}))
+const surface = ref<InstanceType<typeof SessionSurface>>()
+const createdAt = new Date(Date.now() - 60_000).toISOString()
 </script>
 
 <template>
   <div class="gallery-frame h-[26rem] w-full bg-surface">
-    <SessionSurface>
+    <SessionSurface ref="surface">
+      <div
+        class="flex h-full flex-col justify-end"
+        :style="{ paddingBottom: `${surface?.dockHeight ?? 0}px` }"
+      >
+        <AssistantTextBlock :content="agentLinksMarkdown" :created-at="createdAt" />
+      </div>
       <template #dock>
         <SessionDock>
           <template #chips>
