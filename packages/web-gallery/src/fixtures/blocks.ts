@@ -644,7 +644,7 @@ export const wideImageTool = viewedCall(
   blobImage(galleryBlobs.timeline),
 )
 
-/** An icon smaller than a thumbnail: it keeps its own size, never enlarged. */
+/** An icon: its row picture is scaled down to 20 × 20, and its card keeps its own 48 × 48, never enlarged. */
 export const smallImageTool = viewedCall(
   {
     id: 'tool-small-image',
@@ -660,9 +660,9 @@ export const smallImageTool = viewedCall(
 )
 
 /**
- * Eight frames of a progress strip, each 171 × 40, shorter than a
- * thumbnail: they stand in rows 40 pixels tall, with no empty band under
- * each row before the next.
+ * Eight frames of a progress strip, each 171 × 40, wider than a row
+ * picture's proportions: each shows its middle, 48 × 20, and those that do
+ * not fit are counted.
  */
 export const shortFramesTool = (() => {
   const frames = Array.from({ length: 8 }, (_, index) => index + 1)

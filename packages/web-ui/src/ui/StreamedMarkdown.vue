@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
+import { useElementSize } from '@vueuse/core'
 import { md } from '@demicodes/web-ui/markdown/md'
-import { holdUndecidedMedium } from '@demicodes/web-ui/markdown/render'
-import { fitMessageMedia, fitMessageMedium } from '@demicodes/web-ui/markdown/media-run'
+import { fitMessageMedia, fitMessageMedium, messagePicture, messagePictures, type MessagePicture } from '@demicodes/web-ui/markdown/media-run'
 import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/highlight'
 import CodeBlockCopy from '@demicodes/web-ui/markdown/CodeBlockCopy.vue'
 import { openMessageLink, pressMessageLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
@@ -10,7 +10,6 @@ import { replyCodeFiles } from '@demicodes/web-ui/markdown/code-files'
 import { useMessageAgents } from '@demicodes/web-ui/agent/agent-links'
 import AgentLinkTip from '@demicodes/web-ui/agent/AgentLinkTip.vue'
 import PicturePreview from '@demicodes/web-ui/ui/PicturePreview.vue'
-import { runPicture, type RunPicture } from '@demicodes/web-ui/markdown/media-run'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
@@ -38,9 +37,9 @@ const props = withDefaults(defineProps<{
 const root = ref<HTMLElement>()
 useContentScrollers(root)
 const files = useMessageFiles()
-/** The part of a text that renders as it will stay: no markdown left half open, no medium still undecided. */
+/** The part of a text that renders as it will stay: no markdown left half open. */
 function settled(text: string): string {
-  return holdUndecidedMedium(holdIncompleteMarkdown(text).visible, files())
+  return holdIncompleteMarkdown(text).visible
 }
 const { shown, steps } = useStreamReveal(() => props.content, () => props.streaming, settled)
 
@@ -145,18 +144,25 @@ function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly RevealSte
 const codeBlocks = shallowRef<HTMLElement[]>([])
 const fileIcons = shallowRef<HTMLElement[]>([])
 const agentLinks = shallowRef<HTMLElement[]>([])
-/** The thumbnails of the message's runs of pictures, each with its preview on hover. */
-const runPictures = shallowRef<RunPicture[]>([])
+/** The message's pictures, each a tile with its preview on hover. */
+const pictures = shallowRef<MessagePicture[]>([])
 
 function findPlaces(el: HTMLElement): void {
   codeBlocks.value = [...el.querySelectorAll<HTMLElement>('.code-block')]
   fileIcons.value = [...el.querySelectorAll<HTMLElement>('[data-file-icon]')]
   agentLinks.value = [...el.querySelectorAll<HTMLElement>('[data-agent-link]')]
-  runPictures.value = [...el.querySelectorAll<HTMLImageElement | HTMLVideoElement>('.media-run img, .media-run video')].map(runPicture)
+  pictures.value = messagePictures(el)
 }
 
-// A render replaces the images and videos, which take their box before they
-// paint; one still loading takes it again when its size arrives.
+// A render replaces the images and videos, which take their tile before they
+// paint; one still loading takes it again when its size arrives, and every
+// one again when the message's width changes.
+const { width } = useElementSize(root)
+watch(width, () => {
+  if (root.value)
+    fitMessageMedia(root.value)
+})
+
 onMounted(() => {
   if (root.value) {
     fitMessageMedia(root.value)
@@ -169,9 +175,9 @@ function onMediumLoad(event: Event): void {
   if (!(medium instanceof HTMLImageElement || medium instanceof HTMLVideoElement))
     return
   fitMessageMedium(medium)
-  // A thumbnail whose size its render did not know has it now, for its preview's box.
-  if (runPictures.value.some((picture) => picture.element === medium))
-    runPictures.value = runPictures.value.map((picture) => (picture.element === medium ? runPicture(medium) : picture))
+  // A picture whose size its render did not know has it now, for its preview's box.
+  if (pictures.value.some((picture) => picture.element === medium))
+    pictures.value = pictures.value.map((picture) => (picture.element === medium ? messagePicture(medium) : picture))
 }
 
 watch(
@@ -209,7 +215,7 @@ watch(
     <FileIcon :name="place.dataset.fileIcon ?? ''" :is-directory="false" :size="ICON_PX.in28" />
   </Teleport>
   <PicturePreview
-    v-for="(picture, index) in runPictures"
+    v-for="(picture, index) in pictures"
     :key="index"
     :trigger="picture.element"
     :kind="picture.kind"

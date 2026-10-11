@@ -30,7 +30,7 @@ defineOptions({ inheritAttrs: false })
 /**
  * A picture's preview on hover (`file-previews.md` § A picture's preview
  * on hover), for every picture the page shows smaller than the card: a
- * row's pictures, a message run's thumbnails, a message's image capsule.
+ * row's pictures, a message's pictures, a sent message's image capsule.
  * Resting the pointer on the picture for 300 ms shows a card above it, or
  * below it when the page has no room above, kept within the page: the
  * picture fitted within 480 × 360 and never enlarged, over a checkerboard
