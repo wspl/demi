@@ -188,6 +188,19 @@ describe('the Change view on a request', () => {
     expect(await fileLineCounts(requests[0]!.files[0]!, read)).toEqual({ added: 1, removed: 1 })
   })
 
+  test('a created file without a final newline counts as its call does', async () => {
+    // `printf 'x' > page.txt`: the runner counts the call's +1 −0, since an empty original has no lines.
+    const created: EditedFile = { ...edited('/w/page.txt', 0, 1, 'added'), added: 1, removed: 0 }
+    const read = async (copies: { original: string; modified: string }) => ({
+      original: copies.original === blob(0) ? '' : 'x',
+      modified: copies.modified === blob(0) ? '' : 'x',
+    })
+    const files = callFiles([shellCall('write', 'Write the page', [created])], null)
+    expect(await fileLineCounts(files[0]!, read)).toEqual({ added: 1, removed: 0 })
+    // Removing it again counts its one line removed, and nothing added.
+    expect(diffLineCounts('x', '')).toEqual({ added: 0, removed: 1 })
+  })
+
   test('a run of a request’s calls counts its files from its own first edit to its last', async () => {
     const texts = (n: number) => `const x = ${n}\n`
     const read = async (copies: { original: string; modified: string }) => ({
