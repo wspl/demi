@@ -6,12 +6,17 @@ import { onBeforeUnmount, watch, type WatchSource } from 'vue'
  *
  * A layer that opens adds an entry at the same address to the window's
  * history; Back leaves that entry, which closes the layer, and the page's
- * router never hears of it (the `popstate` stops here). A layer that closes
- * another way, a tap or a drag, takes its entry off itself. A navigation the
- * app starts at that moment, such as a sheet's item that opens a
- * conversation, waits for that first (`historySettled`, which the app's
- * router awaits before each navigation): pushed before, the new page would
- * land under the entry about to be taken off.
+ * router, which hears every `popstate` before this module (its listener is
+ * older), finds itself at the address it was at. A layer that closes another
+ * way, a tap or a drag, takes its entry off itself, through the router's
+ * own history so that the router lets that `popstate` pass
+ * (`setHistoryTraversal`, which the app gives vue-router's
+ * `history.go(delta, false)`); otherwise the router would take the pop for
+ * the user's own and start a navigation of its own, cancelling one under way. A navigation
+ * the app starts at that moment, such as a row that opens a conversation
+ * and closes the drawer, waits for the removal first (`historySettled`,
+ * which the app's router awaits before each navigation): pushed before, the
+ * new page would land under the entry about to be taken off.
  *
  * A page shown inside another, as the gallery's phone frames are, adds no
  * entry: the browser's history and its Back belong to the page around it.
@@ -45,8 +50,14 @@ interface Layer {
 
 /** The layers with an entry of their own, in the order their entries were added. */
 const pushed: Layer[] = []
-/** The address the first layer opened at: Back to it is the layers', not the router's. */
-let layerAddress = ''
+/** Moves `delta` entries through the history without the app's router taking it for a navigation. */
+let traverse: (delta: number) => void = (delta) => history.go(delta)
+
+/** The app's router moves through the history for this module, and lets the `popstate` that follows pass. */
+export function setHistoryTraversal(go: (delta: number) => void): void {
+  traverse = go
+}
+
 /** The removal of entries under way, which a navigation waits for. */
 let takingOff: { done: Promise<void>; finish: () => void } | null = null
 let listening = false
@@ -60,17 +71,13 @@ function landedToken(state: unknown): string | null {
 
 function onPopState(event: PopStateEvent): void {
   if (takingOff) {
-    // The pop is our own removal: the address and the router's entry are as they were.
-    event.stopImmediatePropagation()
+    // The pop is our own removal, which the router let pass.
     takingOff.finish()
     return
   }
   if (pushed.length === 0)
     return
   const closed = pushed.splice(layersKeptByBack(pushed.map((layer) => layer.token), landedToken(event.state)))
-  // Back within the layers' entries stays at their address: no navigation for the router.
-  if (location.href === layerAddress)
-    event.stopImmediatePropagation()
   for (const layer of closed.reverse()) {
     layer.open = false
     layer.close()
@@ -81,8 +88,7 @@ function listen(): void {
   if (listening)
     return
   listening = true
-  // Capturing at the window runs before the router's own listener there, which can then be stopped.
-  window.addEventListener('popstate', onPopState, { capture: true })
+  window.addEventListener('popstate', onPopState)
 }
 
 /** Takes off the entries of the layers that closed on top, once the closing is over. */
@@ -109,7 +115,7 @@ function takeOffClosed(): void {
       finish()
     },
   }
-  history.go(-count)
+  traverse(-count)
 }
 
 /** Resolves once no entry of a closed layer is being taken off; the app's router awaits it before navigating. */
@@ -137,8 +143,6 @@ export function useBackClose(isOpen: WatchSource<boolean>, close: () => void, en
   watch([isOpen, enabled], ([open, on]) => {
     if (open && on && !layer) {
       listen()
-      if (pushed.length === 0)
-        layerAddress = location.href
       layer = { token: crypto.randomUUID(), open: true, close: () => {
         layer = null
         close()

@@ -38,7 +38,7 @@ import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import type { PlaceholderText } from '../ui/ui-text'
-import { useTouchOnly } from '../ui/touch-only'
+import { usePhone } from '../ui/phone'
 import {
   DEFAULT_SEND_WHILE_RUNNING,
   SEND_WAY_LABELS,
@@ -80,7 +80,7 @@ const props = withDefaults(
     /**
      * The draft takes the focus as the composer shows, so a new or opened
      * conversation is typed into at once (`product.md` § Conversations and
-     * projects); not on a touch phone, where it would raise the on-screen
+     * projects); not on a phone, where it would raise the on-screen
      * keyboard, nor while another field holds the focus.
      */
     focusOnShow?: boolean
@@ -186,8 +186,8 @@ const editLast = computed(() => props.disabled ? undefined : editLastMessage())
  */
 const dockCards = inject(dockCardsKey, () => ref<HTMLElement>(), true)
 /** Read once, as the composer shows: the focus it finds then decides. */
-const touchOnly = useTouchOnly()
-const takesFocus = props.focusOnShow && !touchOnly.value && !isFocusedElementEditable()
+const phone = usePhone()
+const takesFocus = props.focusOnShow && !phone.value && !isFocusedElementEditable()
 /** The editor shown: the edit's, or the draft's. */
 const editor = ref<InstanceType<typeof MessageEditor>>()
 const focused = ref(false)
@@ -439,10 +439,10 @@ defineExpose({
   },
   /**
    * The user asked for this draft again, as New does on the draft it
-   * shows: the message takes the focus, except on a touch phone.
+   * shows: the message takes the focus, except on a phone.
    */
   focusDraft(): void {
-    if (!touchOnly.value) {
+    if (!phone.value) {
       editor.value?.focus()
     }
   },

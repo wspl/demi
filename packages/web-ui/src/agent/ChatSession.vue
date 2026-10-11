@@ -4,7 +4,7 @@ import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
-import { Archive, ChevronDown, PanelLeft, PanelRight, Play, TextCursorInput } from '@lucide/vue'
+import { ChevronDown, PanelLeft, PanelRight, Play, TextCursorInput } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/protocol'
 import {
   beginMessageEdit,
@@ -37,6 +37,9 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
 import Sheet from '../ui/Sheet.vue'
 import RenameDialog from '../ui/RenameDialog.vue'
+import SidebarSelectionMenu from '../sidebar/SidebarSelectionMenu.vue'
+import ConversationDeleteDialog from '../sidebar/ConversationDeleteDialog.vue'
+import { copyConversationId } from './copy-conversation-id'
 import StatusDot from '../ui/StatusDot.vue'
 import { usePhone } from '../ui/phone'
 import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
@@ -69,8 +72,12 @@ const props = withDefaults(defineProps<{
   fork?: MessageForkHandler
   /** Whether the app frame's work panel is open; absent when the host has none. */
   asideOpen?: boolean
-  /** The phone's title sheet offers Archive; absent, it offers none, as for a conversation not saved yet. */
-  archivable?: boolean
+  /**
+   * The conversation as the sidebar lists it: on a phone its title sheet
+   * offers the sidebar row's menu for it. Absent, as for a conversation not
+   * saved yet or archived, the sheet offers only where it runs.
+   */
+  listed?: { pinned: boolean }
   /** The conversation's Host files its messages name; absent, their paths stay text. */
   files?: ConversationFiles
   /**
@@ -111,8 +118,10 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   openAside: []
   rename: [title: string]
-  /** Archive, from the phone's title sheet. */
+  /** The row menu's commands, from the phone's title sheet; Delete once the user confirmed it. */
+  pin: [pinned: boolean]
   archive: []
+  delete: []
   retry: []
   retryLoad: []
   /** Retry on the message `id`, whose delivery failed. */
@@ -207,6 +216,8 @@ function fromTitleSheet(then: () => void): void {
   titleSheetOpen.value = false
   then()
 }
+/** Delete… from the title sheet asks first, as the sidebar's does. */
+const deleteAsked = ref(false)
 
 /** The Rename button, or a double-click on the title, names it in place. */
 function beginRename(): void {
@@ -430,22 +441,16 @@ watch(
         <template #header>
           <p class="break-words text-[15px] font-medium text-fg-emphasis">{{ conversation.title }}</p>
         </template>
-        <Menu>
-          <MenuItem
-            :icon="TextCursorInput"
-            label="Rename"
-            :disabled="conversation.archived"
-            @select="fromTitleSheet(() => (renaming = true))"
-          />
-          <MenuItem
-            v-if="archivable"
-            :icon="Archive"
-            label="Archive"
-            :disabled="conversation.phase !== 'idle'"
-            disabled-reason="A running conversation cannot be archived"
-            @select="fromTitleSheet(() => emit('archive'))"
-          />
-        </Menu>
+        <SidebarSelectionMenu
+          v-if="listed"
+          :targets="[{ id: conversation.id, pinned: listed.pinned }]"
+          shown
+          @rename="fromTitleSheet(() => (renaming = true))"
+          @copy-id="fromTitleSheet(() => void copyConversationId(conversation.id))"
+          @pin="(_ids, pinned) => fromTitleSheet(() => emit('pin', pinned))"
+          @archive="fromTitleSheet(() => emit('archive'))"
+          @delete="fromTitleSheet(() => (deleteAsked = true))"
+        />
         <!-- Where the conversation runs, as the desktop's header shows it beside the title. -->
         <div v-if="$slots.workspace" class="px-4 pb-3 pt-1">
           <p class="pb-1 text-[12px] text-fg-subtle">Runs On</p>
@@ -468,6 +473,13 @@ watch(
         :max-length="null"
         @close="renaming = false"
         @rename="renaming = false; emit('rename', $event)"
+      />
+      <ConversationDeleteDialog
+        :is-open="deleteAsked"
+        :overlay-store="appOverlayStore"
+        :titles="[conversation.title]"
+        @close="deleteAsked = false"
+        @delete="deleteAsked = false; emit('delete')"
       />
     </header>
     <header

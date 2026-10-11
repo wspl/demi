@@ -1,6 +1,8 @@
 /** Layout of a tree's rows: the caption and every row are this tall, with a 1px gap. */
 export const TREE_ROW_PX = 28
 export const TREE_ROW_PITCH_PX = TREE_ROW_PX + 1
+/** A row's height on a phone (`ui/phone.ts`), a finger's target. */
+export const TREE_ROW_PHONE_PX = 44
 
 /**
  * One row of a tree as laid out: a file or directory at a depth, under a
@@ -47,9 +49,10 @@ export function revealTreeRow(
   view: { scrollTop: number; clientHeight: number },
   row: { depth: number; top: number },
   captionPx: number,
+  rowPx = TREE_ROW_PX,
 ): number | null {
-  const belowAncestors = row.top - captionPx - row.depth * TREE_ROW_PITCH_PX
-  const atBottom = row.top + TREE_ROW_PX - view.clientHeight
+  const belowAncestors = row.top - captionPx - row.depth * (rowPx + 1)
+  const atBottom = row.top + rowPx - view.clientHeight
   if (view.scrollTop > belowAncestors)
     return belowAncestors
   if (view.scrollTop < atBottom)
@@ -80,7 +83,9 @@ export function stickyTreeRows(
   rowTop: (path: string) => number | undefined,
   scrollTop: number,
   captionPx: number,
+  rowPx = TREE_ROW_PX,
 ): StickyTreeStack {
+  const pitch = rowPx + 1
   const byPath = new Map(rows.map((row) => [row.path, row]))
   const chainOf = (row: TreeRow): string[] => {
     const chain = [row.path]
@@ -103,18 +108,18 @@ export function stickyTreeRows(
   }
   const lastBottom = (dir: string): number => {
     const last = rows.findLast((row) => isInside(row, dir))
-    return last ? (rowTop(last.path) ?? 0) + TREE_ROW_PX : 0
+    return last ? (rowTop(last.path) ?? 0) + rowPx : 0
   }
   /** The row under `y`: the first one whose bottom is below it. */
   const rowAt = (y: number): TreeRow | undefined =>
     rows.find((row) => {
       const top = rowTop(row.path)
-      return top !== undefined && top + TREE_ROW_PX > y
+      return top !== undefined && top + rowPx > y
     })
   const paths: string[] = []
   let offset = 0
   for (let level = 0; ; level++) {
-    const slotTop = scrollTop + captionPx + level * TREE_ROW_PITCH_PX
+    const slotTop = scrollTop + captionPx + level * pitch
     const anchor = rowAt(slotTop)
     if (!anchor) {
       break
@@ -137,7 +142,7 @@ export function stickyTreeRows(
       break
     }
     paths.push(path)
-    offset = Math.min(0, bottom - (slotTop + TREE_ROW_PITCH_PX))
+    offset = Math.min(0, bottom - (slotTop + pitch))
   }
   return { paths, offset }
 }

@@ -7,6 +7,7 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { isTextCut } from '@demicodes/web-ui/ui/truncation'
+import { usePhone } from '@demicodes/web-ui/ui/phone'
 import { DEVICE_STATE_LABEL } from '@demicodes/web-ui/devices/state'
 import type { SidebarConversation } from './types'
 import ConversationDot from './ConversationDot.vue'
@@ -47,27 +48,31 @@ const deviceLabel = computed(() => {
   return device.kind === 'paired' ? `${device.name} · ${DEVICE_STATE_LABEL[device.state]}` : 'Removed device'
 })
 
+const phone = usePhone()
+
 // The marks the row's end shows at rest, each in a 24px box: the device's, then the pin.
 const restMarks = computed(() => (props.conversation.device ? 1 : 0) + (props.conversation.pinned ? 1 : 0))
 
 // The title's end clears what the row's end shows: the marks at rest, each 24px with an 8px gap
 // before them, and the actions on hover, Archive alone (24px) or Unpin and Archive on a pinned
 // row (50px). Where the marks are wider than the actions, the title keeps their margin on hover
-// rather than growing under the pointer.
+// rather than growing under the pointer. On a phone each box is 32px, and with no hover the open
+// row, which a tap opened, shows the actions instead of the marks.
 const titleMargin = computed(() => {
   const pinned = props.conversation.pinned
   if (props.menuOpen) {
-    return pinned ? 'mr-[50px]' : 'mr-6'
+    return pinned ? 'mr-[50px] phone:mr-[74px]' : 'mr-6 phone:mr-10'
   }
-  // A touch device has no hover: the open row, which a tap opened, shows the actions instead.
-  const touched = props.open ? (pinned ? 'touch:mr-[50px]' : 'touch:mr-6') : ''
+  const onPhone = props.open
+    ? (pinned ? 'phone:mr-[74px]' : 'phone:mr-10')
+    : ['phone:mr-0', 'phone:mr-10', 'phone:mr-[74px]'][restMarks.value]
   if (restMarks.value === 2) {
-    return `mr-[58px] ${touched}`
+    return `mr-[58px] ${onPhone}`
   }
   if (restMarks.value === 1) {
-    return `${pinned ? 'mr-8 group-hover/row:mr-[50px]' : 'mr-8'} ${touched}`
+    return `${pinned ? 'mr-8 group-hover/row:mr-[50px]' : 'mr-8'} ${onPhone}`
   }
-  return `group-hover/row:mr-6 ${touched}`
+  return `group-hover/row:mr-6 ${onPhone}`
 })
 
 // Selected rows are lit; the open one is also emphasized, so it stays visible inside a wider selection.
@@ -85,7 +90,7 @@ const rowClass = computed(() => [
 
 <template>
   <div
-    class="group/row relative flex h-7 cursor-default select-none items-center gap-2 rounded-md pl-2.5 pr-0.5 text-chrome transition-colors duration-200 ease-out"
+    class="group/row relative flex h-7 cursor-default select-none items-center gap-2 rounded-md pl-2.5 pr-0.5 text-chrome transition-colors duration-200 ease-out phone:h-11 phone:gap-3 phone:rounded-lg phone:pl-3 phone:text-[16px]"
     :class="rowClass"
     :aria-selected="selected"
     @click="emit('click', $event)"
@@ -117,15 +122,15 @@ const rowClass = computed(() => [
     <span
       v-if="!renaming"
       class="on-fill absolute inset-y-0 right-0.5 flex items-center gap-0.5 transition-opacity"
-      :class="menuOpen ? 'opacity-100' : ['opacity-0 group-hover/row:opacity-100 focus-within:opacity-100', open ? 'touch:opacity-100' : '']"
+      :class="menuOpen ? 'opacity-100' : ['opacity-0 group-hover/row:opacity-100 focus-within:opacity-100', open ? 'phone:opacity-100' : '']"
     >
       <!-- A pinned row offers Unpin before Archive; Pin is in the row's menu
            (`product.md` § Conversations and projects). -->
       <Tooltip v-if="conversation.pinned" content="Unpin" class="flex items-center">
         <IconButton
           :icon="PinOff"
-          :icon-size="ICON_PX.in20"
-          size="sm"
+          :icon-size="phone ? ICON_PX.in32 : ICON_PX.in20"
+          :size="phone ? 'lg' : 'sm'"
           variant="ghost"
           aria-label="Unpin"
           @click.stop="emit('unpin')"
@@ -134,7 +139,7 @@ const rowClass = computed(() => [
       <Tooltip content="Archive" class="flex items-center">
         <IconButton
           :icon="Archive"
-          size="sm"
+          :size="phone ? 'lg' : 'sm'"
           variant="ghost"
           aria-label="Archive"
           :disabled="conversation.status === 'active'"
@@ -147,16 +152,16 @@ const rowClass = computed(() => [
     <span
       v-if="restMarks && !menuOpen && !renaming"
       class="pointer-events-none absolute inset-y-0 right-0.5 flex items-center gap-0.5 text-fg-faint transition-opacity group-hover/row:opacity-0"
-      :class="open ? 'touch:opacity-0' : ''"
+      :class="open ? 'phone:opacity-0' : ''"
     >
-      <span v-if="deviceLabel" class="flex size-6 items-center justify-center">
+      <span v-if="deviceLabel" class="flex size-6 items-center justify-center phone:size-8">
         <DeviceIcon
           :state="conversation.device?.kind === 'paired' ? conversation.device.state : null"
           :label="deviceLabel"
         />
       </span>
-      <span v-if="conversation.pinned" class="flex size-6 items-center justify-center">
-        <Pin :size="ICON_PX.in20" />
+      <span v-if="conversation.pinned" class="flex size-6 items-center justify-center phone:size-8">
+        <Pin :size="phone ? ICON_PX.in32 : ICON_PX.in20" />
       </span>
     </span>
   </div>

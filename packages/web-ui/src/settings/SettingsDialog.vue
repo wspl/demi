@@ -10,7 +10,7 @@ import SidebarNavItem from '@demicodes/web-ui/sidebar/SidebarNavItem.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import { useTouchOnly } from '../ui/touch-only'
+import { usePhone } from '../ui/phone'
 import { SETTINGS_SECTIONS } from './sections'
 import { filterSettings, firstMatch } from './settings-filter'
 import { highlightFound } from '../ui/found-highlight'
@@ -59,11 +59,11 @@ const emit = defineEmits<{
   reselect: [section: SettingsTab]
 }>()
 
-const touchOnly = useTouchOnly()
-/** The sections this device lists: a touch phone has no keyboard to set up. */
+const phone = usePhone()
+/** The sections this layout lists: a phone has no keyboard to set up. */
 const shownSections = computed(() =>
   props.sections
-    .map((group) => ({ ...group, items: group.items.filter((item) => !item.keyboard || !touchOnly.value) }))
+    .map((group) => ({ ...group, items: group.items.filter((item) => !item.keyboard || !phone.value) }))
     .filter((group) => group.items.length),
 )
 const items = computed(() => shownSections.value.flatMap((group) => group.items))
