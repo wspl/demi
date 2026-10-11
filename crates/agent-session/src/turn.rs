@@ -503,7 +503,7 @@ async fn run_tools(
             }
         }
         let (before, joined) = s.read(|core| (core.inputs.arrivals(), core.inputs.joining()));
-        let ran = if tools.iter().any(|tool| tool.name == step[0].tool_name) {
+        let ran = if demi_provider_common::offers(&tools, &step[0].tool_name) {
             let (model, request_limits) =
                 s.read(|core| (core.model.clone(), core.request_limits()));
             let handles: Vec<CallCommand> = step.iter().map(|_| CallCommand::default()).collect();

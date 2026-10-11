@@ -226,7 +226,12 @@ open, and a click opens it large:
   box is no larger than the image either way, so a 50 × 50 icon stays
   50 × 50 and a 300 × 40 strip shows its middle 200 × 40. The medium's
   reference, and an attachment's record, carry an image's pixel size, so its
-  box is known before its bytes arrive. It is small because it is a step of the
+  box is known before its bytes arrive. A row of thumbnails is as tall as
+  its tallest box, not 80 pixels whatever they are: four 171 × 40 frames
+  stand in a row 40 pixels tall, with no empty band under them before the
+  next row. Only a medium whose size is unknown until it loads, such as a
+  video before its first frame, keeps the 80-pixel box, so the transcript
+  never shrinks when it arrives. It is small because it is a step of the
   work, not something the agent chose to show. A click opens it large over the dimmed page, as the File view shows an image:
   scaled down to fit and never enlarged, a click toggles actual size,
   transparency shows over a checkerboard, and its pixel size shows beneath
