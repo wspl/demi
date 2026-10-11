@@ -318,9 +318,7 @@ parent's own commands changed.
   changed counts once; a file whose two ends were not kept is named alone,
   and a file the run created and removed is at neither end and not listed.
   The pills show with their counts the moment the block does. A pill opens
-  its file at the first of the run's calls that changed it. A pill whose
-  edit the panel already shows closes the panel instead
-  ([Work panel](../product/web-application.md#work-panel)).
+  its file at the first of the run's calls that changed it.
 - **The Change view.** A pill opens the `edit` intent, which the work panel's
   Change view opens in Conversation mode on the request
   ([Intents](../architecture/plugin-pages.md#intents)); with the `changes`

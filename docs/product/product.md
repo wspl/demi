@@ -422,7 +422,7 @@ control that opens or changes one of these windows, a thumbnail, an
 attachment, an agent link or a receipt's sender, acts as that window's own
 control rather than as a press outside it: a second thumbnail shows its
 picture in the open viewer, and an agent link to the tab the window shows
-closes it, as its chip does. A window also closes by its chip or its
+leaves it as it is. A window also closes by its chip or its
 close control. For example, the user opens *2 Agents* and clicks a
 screenshot in the child's transcript: the viewer opens over the Agents
 window; a click on the transcript closes the viewer and leaves the Agents

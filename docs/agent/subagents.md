@@ -1014,9 +1014,9 @@ is ([Files named in messages](../product/file-previews.md#files-named-in-message
 and on hover the hover fill (`bg-hover`) behind both, as a
 mention in Slack or Linear reads as part of the sentence. Pointed at, it names the agent, *Subagent 4 · Finished*, and its
 description. A click opens the Agents window on that agent's tab, a finished
-one as its Completed menu picks it; a click when the window already shows
-that tab closes the window, as a control that opens what the work panel
-already shows closes it. `agent:0` in a subagent's transcript brings the
+one as its Completed menu picks it, and a click when the window already shows
+that tab leaves it as it is, as a pill that opens what the work panel
+already shows does. `agent:0` in a subagent's transcript brings the
 conversation's own transcript into view; its mark is the robot alone, which
 names *Main agent* when pointed at. A number the conversation does not
 have shows the link's text alone, and pointed at, *No agent 9 in this
