@@ -386,7 +386,11 @@ an unfinished turn keeps its Resume or Continue
 
 From the moment the user sends a message until the answer begins, the
 transcript's tail row says **Requesting**, with how long it has waited since
-the send. The message shows at once as it will stay, and delivering it to
+the send. The clock is the conversation's, not the page's: a page opened or
+reloaded during the wait, and a subagent's view shown during its wait, count
+from when the wait began
+([Waiting for the model](../agent/runtime.md#waiting-for-the-model)), so a
+wait that has lasted long never reads as one that just began. The message shows at once as it will stay, and delivering it to
 Demi is part of the same wait: there is no separate sending state, since
 which part of the system holds the message is no concern of the person
 waiting, and a row that changed its word when Demi confirmed the message

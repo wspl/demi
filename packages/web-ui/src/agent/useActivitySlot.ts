@@ -23,6 +23,8 @@ export interface ActivitySlotSources {
   input: () => Omit<ActivitySlotInput, 'startingTurn'>
   /** The message sent and not yet confirmed. */
   pendingSubmission: () => PendingSubmissionState | null
+  /** When the agent began to wait for the model's answer, as the server tells it; null when it waits for none. */
+  waitingSince: () => number | null
   /** The last block the list shows of the transcript: the one that may roll into the row. */
   tail: () => MessageListBlock | undefined
   /** The conversation the list shows; another one starts over. */
@@ -58,7 +60,7 @@ export function useActivitySlot(sources: ActivitySlotSources): {
   heldId: ComputedRef<string | null>
   slot: ComputedRef<ActivitySlotState | null>
 } {
-  const { input, pendingSubmission, tail, scope } = sources
+  const { input, pendingSubmission, waitingSince, tail, scope } = sources
 
   // The message on its way that starts a turn; null when none is. Read when
   // the message is sent, before the server's phase can answer it.
@@ -125,19 +127,32 @@ export function useActivitySlot(sources: ActivitySlotSources): {
     return kind ? { kind, incoming: null } : null
   })
 
-  // The clock starts when the row begins to wait for the provider, and runs on
-  // while it keeps waiting: across the confirmation of a message and the
-  // agent's own retries alike.
+  // The clock counts from when the wait began, which is the session's fact,
+  // not this view's (`runtime.md` § Waiting for the model): a view shown
+  // during a wait counts from the start the server tells, and runs on across
+  // the confirmation of a message and the agent's own retries alike. A wait
+  // this page started, by sending a message or a recovery, counts from that
+  // action, before the server has it. Until the server tells a start, the row
+  // counts from when it began to say Requesting.
   const requesting = computed(() => face.value?.kind === 'requesting' && !face.value.incoming)
-  const since = ref(Date.now())
+  const shownSince = ref(Date.now())
+  const startedHere = ref(false)
   watch(
     () => [requesting.value, scope()] as const,
     ([isRequesting, currentScope], [wasRequesting, previousScope]) => {
       if (isRequesting && (!wasRequesting || currentScope !== previousScope)) {
-        since.value = Date.now()
+        shownSince.value = Date.now()
+        startedHere.value = startingTurnId.value !== null || input().pendingAction === 'resume'
       }
     },
   )
+  const since = computed(() => {
+    const told = waitingSince()
+    if (told === null) {
+      return shownSince.value
+    }
+    return startedHere.value ? Math.min(told, shownSince.value) : told
+  })
 
   const slot = computed<ActivitySlotState | null>(() =>
     face.value ? { ...face.value, since: since.value } : null,

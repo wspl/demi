@@ -580,7 +580,7 @@ impl Fixture {
     pub async fn opened(&self) -> TestClient<TestProduct> {
         let mut client = self.client();
         client.send(open()).await;
-        let handshake = client.next_until(is_pending_calls).await;
+        let handshake = client.next_until(is_waiting).await;
         assert_eq!(
             handshake.first(),
             Some(&ServerFrame::Opened),
@@ -659,8 +659,8 @@ pub fn is_pending_steers(frame: &ServerFrame) -> bool {
 }
 
 /// The handshake's last frame before the usage.
-pub fn is_pending_calls(frame: &ServerFrame) -> bool {
-    matches!(frame, ServerFrame::PendingCalls { .. })
+pub fn is_waiting(frame: &ServerFrame) -> bool {
+    matches!(frame, ServerFrame::Waiting { .. })
 }
 
 pub fn is_context_usage(frame: &ServerFrame) -> bool {

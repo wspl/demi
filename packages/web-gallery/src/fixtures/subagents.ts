@@ -82,7 +82,8 @@ export function gallerySubagents(): SubagentRecord[] {
       phase: 'running',
       startedAt: ago(134_000),
       failures: {},
-    pendingCalls: [],
+      pendingCalls: [],
+      waitingSince: null,
       history: wholeHistory([
         user(
           'ag-cookie-user',
@@ -105,7 +106,11 @@ export function gallerySubagents(): SubagentRecord[] {
       phase: 'running',
       startedAt: ago(48_000),
       failures: {},
-    pendingCalls: [],
+      pendingCalls: [],
+      // The call's result went back 31 seconds ago and the model has not
+      // answered yet: the view says Requesting from then, however often it
+      // opens (`runtime.md` § Waiting for the model).
+      waitingSince: Date.now() - 31_000,
       history: wholeHistory([
         user(
           'ag-logout-user',
@@ -117,6 +122,13 @@ export function gallerySubagents(): SubagentRecord[] {
           ago(40_000),
           'Logout should drop the session cookie. The helper writes the new name; the test may still mention sid.',
         ),
+        shell(
+          'ag-logout-tool',
+          ago(36_000),
+          'Find where logout clears the session cookie',
+          'packages/web/src/auth.ts:42:  clearCookie(SESSION_COOKIE)\n',
+          'completed',
+        ),
       ]),
     },
     {
@@ -125,7 +137,8 @@ export function gallerySubagents(): SubagentRecord[] {
       phase: 'running',
       startedAt: ago(12_000),
       failures: {},
-    pendingCalls: [],
+      pendingCalls: [],
+      waitingSince: null,
       history: wholeHistory([
         user(
           'ag-snapshot-user',
@@ -141,7 +154,8 @@ export function gallerySubagents(): SubagentRecord[] {
       startedAt: ago(420_000),
       endedAt: ago(240_000),
       failures: {},
-    pendingCalls: [],
+      pendingCalls: [],
+      waitingSince: null,
       history: wholeHistory([
         user(
           'ag-comments-user',
@@ -174,7 +188,8 @@ export function gallerySubagents(): SubagentRecord[] {
       startedAt: ago(180_000),
       endedAt: ago(120_000),
       failures: {},
-    pendingCalls: [],
+      pendingCalls: [],
+      waitingSince: null,
       history: wholeHistory([
         user(
           'ag-ci-user',

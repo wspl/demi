@@ -118,6 +118,24 @@ pub enum ServerFrame {
         #[garde(dive)]
         pending_calls: Vec<PendingCall>,
     },
+    /// How long a node had waited for the model's answer when the frame
+    /// left, or null when it waits for none (`runtime.md` § Waiting for the
+    /// model).
+    Waiting {
+        /// The subagent that waits; absent for the root.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        #[schemars(with = "NodeId")]
+        #[garde(skip)]
+        subagent_id: Option<NodeId>,
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<u64>")]
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        waited_ms: Option<u64>,
+    },
     /// Answers `steer`.
     SteerResult {
         #[garde(skip)]

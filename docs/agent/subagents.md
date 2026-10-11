@@ -866,7 +866,9 @@ frames carry the same field ([Failure facts](../backend/backend.md#failure-facts
 A child's other session events, such as phase, queue and errors, send no
 frames; its commands' output reaches the web app as the root's does, in
 `shell_output` frames that name the child
-([Live output](runtime.md#live-output)). `ConversationClient` in
+([Live output](runtime.md#live-output)), and its waits for the model as the
+root's do, in `waiting` frames that name it
+([Waiting for the model](runtime.md#waiting-for-the-model)). `ConversationClient` in
 `@demicodes/conversation-client` mirrors the three frames as client events; its
 transcript events omit `revision`, as the root's do.
 

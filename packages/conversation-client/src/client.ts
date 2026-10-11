@@ -552,6 +552,15 @@ export class ConversationClient {
           this.emit({ type: 'pending_calls', subagentId: frame.subagentId, pendingCalls: structuredClone(frame.pendingCalls) })
         }
         return
+      case 'waiting': {
+        const since = frame.waitedMs === null ? null : Date.now() - frame.waitedMs
+        if (frame.subagentId === undefined) {
+          this.emit({ type: 'waiting', since })
+        } else {
+          this.emit({ type: 'waiting', subagentId: frame.subagentId, since })
+        }
+        return
+      }
       case 'steer_result':
         this.emit(frame)
         this.settleSteer(frame)

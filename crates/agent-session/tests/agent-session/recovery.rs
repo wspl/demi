@@ -2,7 +2,7 @@
 //! `retry` and `resume`.
 
 use demi_agent_transcript::testing::RESUME_TEXT;
-use demi_provider_common::ProviderFailure;
+use demi_provider_common::{ProviderFailure, testing::TokioClock};
 use demi_shared_types::{BlockId, SteerBlock};
 
 use super::*;
@@ -28,6 +28,59 @@ fn retries(session: &AgentSession) -> (Subscription, Rc<RefCell<Vec<SessionEvent
         }
     });
     (subscription, reports)
+}
+
+/// Every change of the session's wait for the model, as how long it had
+/// waited, or none once it ended.
+fn waits(session: &AgentSession) -> (Subscription, Rc<RefCell<Vec<Option<u64>>>>) {
+    let waits = Rc::new(RefCell::new(Vec::new()));
+    let subscription = session.subscribe({
+        let waits = waits.clone();
+        move |event| {
+            if let SessionEvent::WaitingChanged { waited_ms } = event {
+                waits.borrow_mut().push(*waited_ms);
+            }
+        }
+    });
+    (subscription, waits)
+}
+
+// A paused clock: a second and a half of the vendor's wait before the retry.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_wait_for_the_model_starts_with_the_first_attempt_runs_on_across_its_retry_and_ends_with_output()
+{
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![failure(
+            Some(ErrorCode::RateLimit),
+            Some(Duration::from_millis(1_500)),
+        )]),
+        Turn::Events(vec![event::text("made it"), event::response(1, 1)]),
+    ]);
+    let store = MemoryTreeStore::new();
+    let clock = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
+    let session = start_at(
+        &provider,
+        test_runtime(Vec::new()),
+        &store,
+        SessionConfig::default(),
+        clock,
+    )
+    .await;
+    let (_subscription, waits) = waits(&session);
+
+    let end = session.send(text("go"), turn("t1")).unwrap();
+    tokio::time::sleep(Duration::from_millis(1_000)).await;
+    assert_eq!(
+        session.waited_ms(),
+        Some(1_000),
+        "the wait runs on through the retry's delay"
+    );
+    assert_eq!(end.await, Ok(ActionEnd::Completed));
+
+    // One wait, from the first attempt to the answer's first text: the
+    // retry started none of its own.
+    assert_eq!(*waits.borrow(), [Some(0), None]);
+    assert_eq!(session.waited_ms(), None);
 }
 
 #[tokio::test(flavor = "local", start_paused = true)]

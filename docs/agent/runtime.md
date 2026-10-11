@@ -1756,6 +1756,38 @@ A vendor that sends calls only whole has no calls being written: between its
 text and its call, the tail row says Requesting
 ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
 
+### Waiting for the model
+
+While a node waits for the model's answer, the tail row of its transcript
+says Requesting with how long the wait has lasted
+([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
+How long is the session's fact, not the page's. For example, a subagent's
+request has waited eight minutes when the user first opens its view: the view
+says Requesting for 8m, and so does a page reloaded a minute later, where a
+clock started by the page would say 0s each time and look like a request that
+starts again.
+
+- **When a wait starts.** A request's first attempt starts it. The agent's
+  retries of the same request continue it
+  ([Retries](failures-and-recovery.md#retries)): the clock runs on across
+  them.
+- **When it ends.** The request's first output ends it: reasoning, text or a
+  call being written. So does the request's end, however it ends.
+- **What a page receives.** Each start and end is a `waiting` frame:
+  `waitedMs`, how long the node had waited when the frame left, or null when
+  it waits for nothing, and `subagentId` for a subagent. A page that opens the
+  conversation receives one for each node, the root and each live subagent,
+  after that node's transcript. The page counts from its own clock when the frame arrives,
+  minus `waitedMs`, and compares no time of the server's with its own, so a
+  difference between the two clocks never shows.
+- **A message the page sent.** Its wait starts at the send, before the server
+  has the message ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)):
+  that page counts from the send, the earlier of the two starts.
+
+Between a response that completed its text and the next request, the row may
+say Requesting before a wait started; the page counts from when the row began
+to say so until the next `waiting` frame arrives.
+
 ### Tool descriptions
 
 Every tool's input takes a `description`: a short title, shown to
@@ -1801,8 +1833,9 @@ client                               server
 open { from: 2999, edge: b_2999 } -> attach to the live tree
                 <------------------- opened
                 <------------------- transcript_reset { start: 2999, blocks, version: { epoch, revision: r } }
-                <------------------- phase, queue, pending_steers, pending_calls
-                <------------------- subagent started + subagent_transcript_reset,
+                <------------------- phase, queue, pending_steers, pending_calls, waiting
+                <------------------- subagent started + subagent_transcript_reset
+                                     + pending_calls + waiting,
                                      for each live subagent, depth first
                 <------------------- shell_output, for each live command
                 <------------------- transcript_patch { revision: r + 1 }
@@ -1868,6 +1901,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | `shell_write_result` | The command id |
 | `pending_calls` | The calls the model is writing, each `{ toolUseId, toolName, description }`, `description` null until written, and `subagentId` when they are a subagent's ([Calls being written](#calls-being-written)) |
 | `retry_scheduled` | The attempt, the delay in milliseconds, the code and the diagnostics of a failure being retried ([Retries](failures-and-recovery.md#retries)) |
+| `waiting` | `waitedMs`, how long a node had waited for the model's answer when the frame left, or null when it waits for none, and `subagentId` when the node is a subagent: when a wait starts or ends, and on open for each node ([Waiting for the model](#waiting-for-the-model)) |
 | `error` | A message, a code and diagnostics: a failed turn, a refused frame, or a failed save |
 | `rejected` | The refused command and the reason |
 | `subagent`, `subagent_transcript_reset`, `subagent_transcript_patch` | Subagent lifecycle and transcripts ([Protocol](subagents.md#protocol)) |
@@ -1949,7 +1983,8 @@ whether the page holds them or not.
   it and opens the conversation again
   ([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
 - The open handshake is one step: nothing can happen to the session between
-  `opened` and `pending_calls`, so the snapshot frames agree with each other.
+  `opened` and the handshake's last frame, so the snapshot frames agree with
+  each other.
 - Each `transcript_patch` carries the revision one past the previous frame's.
   The client applies a patch whose revision is one past its own, ignores one
   whose revision is not greater than its own, and sends `sync_transcript` when

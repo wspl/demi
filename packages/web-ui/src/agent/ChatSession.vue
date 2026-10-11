@@ -414,6 +414,7 @@ watch(
             :latest="shownLatest"
             :summaries="conversation.summaries"
             :pending-calls="conversation.pendingCalls"
+            :waiting-since="conversation.waitingSince"
             :queue="conversation.queue"
             :pending-steers="conversation.pendingSteers"
             :phase="conversation.phase"
