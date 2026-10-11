@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, ref } from 'vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import SidebarAccount from '@demicodes/web-ui/sidebar/SidebarAccount.vue'
@@ -19,26 +19,6 @@ import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow } from '../turn-flow'
 
 const props = withDefaults(defineProps<{ showActivity?: boolean }>(), { showActivity: true })
-// The product asks the backend for a title and disables Detect Title until the
-// user's next message; here a timer stands in for the model. As in the
-// backend, a rename made while the model writes wins over its title.
-const retitle = ref<'available' | 'running' | null>('available')
-let retitleTimer: ReturnType<typeof setTimeout> | undefined
-function updateTitle(): void {
-  retitle.value = 'running'
-  const asked = session.title
-  clearTimeout(retitleTimer)
-  retitleTimer = setTimeout(() => {
-    if (session.title === asked) {
-      session.title = asked === 'Login test fix' ? 'Session cookie rename' : 'Login test fix'
-    }
-    retitle.value = null
-    // A message sent now would offer Detect Title again; the specimen does it after a pause.
-    retitleTimer = setTimeout(() => { retitle.value = 'available' }, 3000)
-  }, 1500)
-}
-onBeforeUnmount(() => clearTimeout(retitleTimer))
-
 // The session runs on the gallery's scripted runtime: a message sent here gets a turn, as in the product.
 const flow = useTurnFlow({
   id: 'shared-product-session',
@@ -125,8 +105,6 @@ function detach(id: string): void {
         :conversation="session"
         :files="messageFiles()"
         @rename="session.title = $event"
-        :retitle="retitle"
-        @retitle="updateTitle"
         has-provider
         @save-scroll="(_id, state) => (session.scroll = state)"
         :pending-submissions="flow.pendingSubmissions.value"

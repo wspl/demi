@@ -25,13 +25,12 @@ use demi_backend_database::search::{IndexedConversation, IndexedMessage};
 use demi_backend_database::tree;
 use demi_backend_page_sync::{Part, Registration};
 use demi_shared_gates::KeyedSerialGate;
-use demi_shared_types::Block;
+use demi_shared_types::{Block, UserContentBlock};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::search::{
     LINE_MAX, RESULTS_MAX, SearchMatch, SearchResult, SearchText,
 };
 
-use super::titles::message_text;
 use crate::services::Services;
 use crate::shard::{Shard, Shards};
 
@@ -419,6 +418,25 @@ fn occurrences(characters: &[char], words: &[String]) -> Vec<(usize, usize)> {
 /// Whether two characters are the same letter, case ignored.
 fn same_letter(a: char, b: char) -> bool {
     a == b || a.to_lowercase().eq(b.to_lowercase())
+}
+
+/// The text of a message the user sent, without its files; none for any
+/// other block, or a message without text.
+fn message_text(block: &Block) -> Option<String> {
+    let content = match block {
+        Block::User(user) => &user.content,
+        Block::Steer(steer) => &steer.content,
+        _ => return None,
+    };
+    let texts: Vec<&str> = content
+        .iter()
+        .filter_map(|part| match part {
+            UserContentBlock::Text { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    let text = texts.join("\n");
+    (!text.trim().is_empty()).then_some(text)
 }
 
 #[cfg(test)]

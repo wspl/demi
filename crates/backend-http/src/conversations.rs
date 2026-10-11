@@ -33,7 +33,6 @@ use super::hosts;
 use super::page_client::PageClient;
 use super::query::QueryParams;
 use demi_backend_user_shard::shard::page_socket::{PageSocketKind, PageSocketOrigin};
-use demi_backend_user_shard::conversation::titles::TitleRefusal;
 use demi_backend_user_shard::conversation::ForkRefusal;
 use demi_backend_user_shard::services::Services;
 
@@ -305,46 +304,6 @@ fn fork_refused(refusal: ForkRefusal) -> ApiError {
             ErrorCode::InternalError,
             message,
         ),
-    }
-}
-
-/// `POST /conversations/:id/title`: asks the conversation's model for a new
-/// title from every message the user sent, 202; the title reaches the page
-/// with the conversation's summary once it is written.
-pub(super) async fn title(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-) -> Result<StatusCode, ApiError> {
-    let id = ConversationId::try_from(id).map_err(|_| not_found())?;
-    state
-        .shards
-        .of(&user.id)
-        .call(move |shard, _| async move { shard.ask_title(&id).await })
-        .await?
-        .map_err(title_refused)?;
-    Ok(StatusCode::ACCEPTED)
-}
-
-fn title_refused(refusal: TitleRefusal) -> ApiError {
-    let message = refusal.to_string();
-    match refusal {
-        TitleRefusal::NotFound => not_found(),
-        TitleRefusal::Archived => ApiError::new(
-            StatusCode::CONFLICT,
-            ErrorCode::ConversationArchived,
-            message,
-        ),
-        TitleRefusal::ProviderNotFound => {
-            ApiError::new(StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound, message)
-        }
-        TitleRefusal::ModelNotSelected => {
-            ApiError::new(StatusCode::CONFLICT, ErrorCode::ModelNotSelected, message)
-        }
-        TitleRefusal::NoMessages => {
-            ApiError::new(StatusCode::CONFLICT, ErrorCode::NoMessages, message)
-        }
-        TitleRefusal::Storage(error) => error.into(),
     }
 }
 
