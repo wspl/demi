@@ -1863,6 +1863,7 @@ dependencies = [
  "mime",
  "object_store",
  "percent-encoding",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",

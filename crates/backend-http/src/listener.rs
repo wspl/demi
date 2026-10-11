@@ -77,6 +77,33 @@ pub(super) fn without_delay(stream: &mut tokio::net::TcpStream) {
     }
 }
 
+/// Keeps a runner socket connection from queueing more than a Cloud's
+/// sandbox reads at once (`managed-hosts.md` § Backend socket). gVisor reads
+/// at most the host socket's default send buffer per call, however much is
+/// queued, and the runner takes a short read for an empty socket, so bytes
+/// left behind after a sender finished were never read
+/// (google/gvisor#15639). A quarter of the default, which Linux doubles,
+/// stays under one read. Remove this once the pinned gVisor reads a stream
+/// socket up to the reader's buffer.
+///
+/// Only Linux: on a Mac the sandbox reads the socket Lima forwards inside
+/// its VM, whose queue this connection's buffer does not bound.
+pub(super) fn within_one_sandbox_read(stream: &mut tokio::net::UnixStream) {
+    #[cfg(target_os = "linux")]
+    {
+        use rustix::net::sockopt;
+        let stream = &*stream;
+        let shrunk = sockopt::socket_send_buffer_size(stream)
+            .and_then(|default| sockopt::set_socket_send_buffer_size(stream, default / 4));
+        // The connection still serves; only a large answer may stall on it.
+        if let Err(error) = shrunk {
+            tracing::warn!("a runner connection keeps its send buffer: {error}");
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = stream;
+}
+
 /// Serves each connection `listener` accepts, answering each request with
 /// `respond`, until `stop` is cancelled: then no connection is accepted,
 /// the open ones finish the requests they serve, and this resolves once

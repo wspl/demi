@@ -838,6 +838,21 @@ backend ── listens on /run/demi-backend/runners.sock
   the socket. An artifact URL on that origin, a local store's download, goes
   through the socket too; any other URL, such as an S3 store's, goes over the
   network.
+- Each connection the backend accepts on the socket gets a send buffer of a
+  quarter of its default size, which Linux doubles: half the default. gVisor
+  reads at most the host socket's `SO_SNDBUF` per call, which is that default,
+  even when more is queued and the reader's buffer is larger
+  ([google/gvisor#15639](https://github.com/google/gvisor/issues/15639)). A
+  connection's queue can hold more than that: 233,152 bytes against a
+  212,992-byte `SO_SNDBUF`. A reader that takes a short read for an empty
+  socket, as the runner's Tokio does, then waits forever for the bytes the
+  read left behind, since a sender that has finished sends nothing that
+  would wake it. For example, a Claude Code session file of 1.3 MB stopped
+  840 bytes before its end, and its subagent waited all night. With half the
+  default, a connection never queues more than one read takes. This is a
+  workaround: remove it once the pinned gVisor reads a stream socket up to
+  the reader's buffer and the Cloud suite's large attachments arrive without
+  it.
 
 ### Managed boot credential
 
@@ -888,7 +903,7 @@ how the suite runs; a run must show the following:
 
 | Area | Required observation |
 | --- | --- |
-| Identity and files | Jobs and Host file operations run as UID 1000; every conversation of a user reaches the same device; sudo works. |
+| Identity and files | Jobs and Host file operations run as UID 1000; every conversation of a user reaches the same device; sudo works; files larger than the sandbox reads at once arrive whole, many in a row. |
 | Persistence | A system package and home files survive stop and wake; a stop leaves no job directory in the generation it saves; home survives a reset; reset succeeds with a broken runner and with a broken system, such as disabled bash. |
 | Tools | Installers run in the login shell (rustup, nvm), and later jobs find the tools they installed (cargo, node). |
 | Browser | Chrome opens with its own sandbox, and closes at the release of its conversation while the Cloud runs on; the live view receives frames and delivers input. |
@@ -896,7 +911,7 @@ how the suite runs; a run must show the following:
 | Growth and space | Online growth records the actual capacity; it needs `CAP_SYS_RESOURCE` ([Linux requirements](setup.md#linux-requirements)). A full disk fails the operation and keeps working data. |
 | Recovery | A restart at each publication boundary loses neither published nor newer working data; runtime and out-of-memory loss report a death. |
 | Manager recovery | After the manager is killed while a filesystem is frozen, the next start recovers through the saved namespace, and the backend reads the Cloud's files and wakes it without restarting itself. A service stop whose drain fails is completed by the stop-post recovery. |
-| Network | Public HTTPS works; private, metadata, and cross-user destinations are refused; the backend and DNS paths are permitted; IPv6 is off. |
+| Network | Public HTTPS works; private, metadata, and cross-user destinations are refused, and so is the backend's address, which a Cloud reaches through its runner socket; the DNS path is permitted; IPv6 is off. |
 | Cleanup | No processes, mounts, loop devices, network rules, credentials, or listeners remain after success, failure, cancellation, or an injected fault. |
 | Copies | On XFS with reflinks, btrfs, and ext4, a copied image has the source's content and allocates no more blocks than `cp --reflink=auto --sparse=always` does. |
 | Load | Several users' Clouds run on one manager at the same time. |

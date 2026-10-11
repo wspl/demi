@@ -40,6 +40,7 @@ use serde_json::json;
 use crate::cloud::{idle_after, reset, status};
 use crate::conversations::{anthropic_at, create};
 use crate::support::{Harness, Session, TestBackend, answer};
+use crate::uploads::{upload, with_upload};
 use crate::work::{Driven, say, shell};
 
 /// The conversation ids the tests create.
@@ -626,6 +627,84 @@ async fn a_cloud_runs_as_uid_1000_for_every_conversation_and_keeps_a_system_pack
     assert_eq!(saved.home_bytes.get(), superblock_capacity(&home));
 }
 
+/// How many attachments the large-write test sends, and the range of their
+/// sizes. Whether a write's last bytes stayed queued where gVisor's per-read
+/// limit left them depended on where the connection's reads fell against the
+/// end of the answer: about one write in twenty of sizes like these did,
+/// until the runner socket kept its connections within one read
+/// (`managed-hosts.md` § Backend socket; google/gvisor#15639). An
+/// attachment is written whole, as a Claude Code session file is, which is
+/// what fills the connection; a file uploaded through the file routes goes
+/// as its request's body arrives.
+const LARGE_WRITES: usize = 40;
+const LARGE_WRITE_SIZES: std::ops::Range<usize> = 300_000..3_000_000;
+
+/// `size` bytes of numbered lines, so a file cut short or reordered shows.
+fn numbered_lines(size: usize) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(size + 64);
+    let mut line = 0u64;
+    while bytes.len() < size {
+        bytes.extend_from_slice(format!("line {line:08}\n").as_bytes());
+        line += 1;
+    }
+    bytes.truncate(size);
+    bytes
+}
+
+// Tens of seconds, the Cloud's boot and a message with 40 attachments of up
+// to 3 MB. Without the runner socket's workaround one of the writes never
+// ends, the message never reaches the model, and the test fails at its hang
+// guard.
+#[tokio::test]
+#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
+async fn attachments_larger_than_the_sandbox_reads_at_once_arrive_whole() {
+    const TEST: &str = "large file write";
+    let _one = one_at_a_time().await;
+    let environment = Environment::read();
+    let vendor = MockVendor::start().await;
+    let harness = environment.harness();
+    let backend = harness.start_at(environment.address()).await;
+    let master = backend.setup().await;
+    let mut first = on_cloud(&backend, &master, &master, &vendor, FIRST, "/a").await;
+    let working = backend
+        .file_gate(&master, FIRST)
+        .await
+        .enter(Purpose::Demand)
+        .await;
+    // Sizes spread over the range, the same ones every run.
+    let span = LARGE_WRITE_SIZES.end - LARGE_WRITE_SIZES.start;
+    let mut files = Vec::new();
+    for index in 0..LARGE_WRITES {
+        let size = LARGE_WRITE_SIZES.start + (index * 7_919_993) % span;
+        let content = numbered_lines(size);
+        let digest = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(&content));
+        let name = format!("large-{index:02}.bin");
+        let uploaded = upload(&backend, &master, &name, "application/octet-stream", &content).await;
+        files.push((name, digest, uploaded));
+    }
+
+    let started = Instant::now();
+    first.script(vec![say("Seen.")]);
+    let named: Vec<_> = files.iter().map(|(name, _, uploaded)| (uploaded, name.as_str())).collect();
+    first.socket.send(&with_upload("large", "Look", &named)).await;
+    tokio::time::timeout(PATIENCE, first.socket.until_idle())
+        .await
+        .expect("every attachment was written and the turn ended");
+    measured(TEST, "a message with every attachment", started.elapsed());
+
+    let written = run(
+        &mut first,
+        "written",
+        &format!("cd ~/.demi/attachments/{FIRST} && sha256sum large-*.bin"),
+    )
+    .await;
+    for (name, digest, _) in &files {
+        assert!(written.contains(&format!("{digest}  {name}")), "{name}: {written}");
+    }
+    drop(working);
+    backend.close().await;
+}
+
 // Tens of seconds: the Cloud boots, stops when idle, wakes, grows its home
 // and is saved; the runner asks for growth as it connects. It needs a
 // manager that holds CAP_SYS_RESOURCE (`scenarios.md` § Cloud suite).
@@ -1088,7 +1167,7 @@ for line in sys.stdin:
 // each refused connection waits for its three-second timeout.
 #[tokio::test]
 #[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
-async fn two_users_clouds_run_at_once_and_reach_the_backend_but_nothing_else_private() {
+async fn two_users_clouds_run_at_once_and_reach_nothing_private_over_the_network_not_even_the_backend() {
     const TEST: &str = "network";
     let _one = one_at_a_time().await;
     let environment = Environment::read();
@@ -1165,8 +1244,10 @@ async fn two_users_clouds_run_at_once_and_reach_the_backend_but_nothing_else_pri
         ),
     )
     .await;
+    // A Cloud reaches its backend through the runner socket, never over the
+    // network (`managed-hosts.md` § Networking).
     for expected in [
-        "backend reached",
+        "backend refused",
         "host-service refused",
         "private refused",
         "metadata refused",

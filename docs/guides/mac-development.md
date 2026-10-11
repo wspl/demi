@@ -168,6 +168,11 @@ limactl shell demi-machine-manager -- sudo <test executable> --include-ignored
 
 - A Lima Cloud is not an acceptance environment: results on it do not certify
   a Linux execution host, and its performance says nothing about one.
+- A backend on the Mac cannot keep its runner socket's connections within
+  one sandbox read ([Backend socket](../cloud/managed-hosts.md#backend-socket)):
+  the sandbox reads the socket Lima forwards inside the VM. A large file
+  written to a Lima Cloud can then stall before its end. The Cloud suite
+  runs its backend inside the VM, where the workaround applies.
 - Lima's `vz` VMs do not pass SME through, so the live view captures on Apple
   M4 and later. A VM that passes SME without SVE through cannot capture
   ([Live view](../browser/live-view.md)).
