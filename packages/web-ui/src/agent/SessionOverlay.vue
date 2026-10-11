@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Ellipsis, X } from '@lucide/vue'
-import { onDismissOutside } from '../overlay/dismissOutside'
+import { floatingWindowInFront } from '../ui/floating-window'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { useContextMenuOwner } from '../composables/useContextMenuOwner'
 import Dropdown from '../ui/Dropdown.vue'
@@ -22,19 +22,20 @@ import TabStrip from './TabStrip.vue'
  * at the strip's end and a right-click on the strip's empty area open; a
  * window with no such action has neither. The window is a region
  * (`ui/region.ts`): its menus grow toward its inside.
+ *
+ * It stays open while the user works elsewhere (`product.md`, the dock's
+ * chips under § Recovering an unfinished turn): a click outside it, and
+ * whatever it opens itself, such as the media viewer, leave it open. It
+ * closes by its chip, its close control, or Escape while the focus is in
+ * it; the panel takes the focus from a click in it. Escape leaves it open
+ * when something in it used the key, a menu is open, or a floating window,
+ * such as the media viewer, stands in front of it and takes the key first.
  */
-const props = withDefaults(
-  defineProps<{
-    open: boolean
-    /** False for a pinned catalog specimen: the window does not steal page clicks. */
-    dismissOutside?: boolean
-    /** The tabs change at once, with no motion, as `TabStrip`'s `still` says. */
-    stillTabs?: boolean
-  }>(),
-  {
-    dismissOutside: true,
-  },
-)
+defineProps<{
+  open: boolean
+  /** The tabs change at once, with no motion, as `TabStrip`'s `still` says. */
+  stillTabs?: boolean
+}>()
 
 const emit = defineEmits<{
   close: []
@@ -52,7 +53,6 @@ const slots = defineSlots<{
   default?(props: Record<string, never>): unknown
 }>()
 
-const panelRef = ref<HTMLElement | null>(null)
 /** The tab whose menu is open. */
 const menuTabId = ref<string | null>(null)
 const tabMenu = useContextMenuOwner(() => {
@@ -60,11 +60,12 @@ const tabMenu = useContextMenuOwner(() => {
 })
 const stripMenu = useContextMenuOwner()
 
-onDismissOutside(
-  () => (props.open && props.dismissOutside ? panelRef.value : null),
-  () => emit('close'),
-  { ignore: ['[data-overlay-panel]', '[data-session-overlay-toggle]'] },
-)
+function closeOnEscape(event: KeyboardEvent): void {
+  if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || appOverlayStore.hasExclusive() || floatingWindowInFront())
+    return
+  event.preventDefault()
+  emit('close')
+}
 
 function openTabMenu(event: MouseEvent, id: string): void {
   if (!slots.tabMenu) {
@@ -93,9 +94,10 @@ function openStripMenu(event: MouseEvent): void {
   >
     <div
       v-if="open"
-      ref="panelRef"
       data-region
-      class="overlay-window pointer-events-auto absolute inset-0 z-10 flex min-h-0 origin-bottom flex-col overflow-hidden rounded-xl bg-surface"
+      tabindex="-1"
+      class="overlay-window pointer-events-auto absolute inset-0 z-10 flex min-h-0 origin-bottom flex-col overflow-hidden rounded-xl bg-surface outline-none"
+      @keydown="closeOnEscape"
     >
       <div class="flex h-10 shrink-0 items-center gap-1 bg-surface-base px-1.5" @contextmenu="openStripMenu">
         <TabStrip class="flex-1" :still="stillTabs">

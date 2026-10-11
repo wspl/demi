@@ -10,6 +10,9 @@ import UpdateFailedScreen from '@demicodes/web-ui/ui/UpdateFailedScreen.vue'
 import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
+import FloatingWindow from '@demicodes/web-ui/ui/FloatingWindow.vue'
+import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
+import type { WindowRect } from '@demicodes/web-ui/ui/floating-window'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import DropdownTrigger from '@demicodes/web-ui/ui/DropdownTrigger.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -93,6 +96,10 @@ const tallOptions = Array.from({ length: 24 }, (_, i): MenuChoice => ({
   label: `Option ${String(i + 1).padStart(2, '0')}`,
 }))
 const dialogOpen = ref(false)
+/** The live window specimen: open or not, where it stands, and the note typed in its field. */
+const windowOpen = ref(false)
+const windowRect = ref<WindowRect>({ x: 320, y: 160, width: 420, height: 260 })
+const windowNote = ref('')
 const inlineDialogOpen = ref(true)
 // Layers: a dialog, the model menu opened from it, and that menu's submenu, all pinned open.
 const layersDialogOpen = ref(true)
@@ -1097,6 +1104,31 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             <Button variant="primary" @click="dialogOpen = false">Keep</Button>
           </template>
         </Dialog>
+      </GallerySection>
+
+      <GallerySection
+        title="FloatingWindow"
+        note="A small window over the page that blocks nothing, as Quick Look’s does: the page beside it stays usable, with no scrim. Drag the title bar to move it and any edge or corner to resize it; it stays at least 240 × 180, no larger than the page, with its title bar on the page, also when the browser window shrinks. Opening moves the focus into it and closing gives the focus back. Escape closes it, unless the focus is in a text field, such as the one inside, or a menu or a dialog is open. It opens again where it was left. The media viewer is this window: open a screenshot in Session to see it."
+      >
+        <div class="specimen-row specimen-row-wide items-start">
+          <GallerySpecimen variant="live">
+            <Button size="md" @click="windowOpen = !windowOpen">{{ windowOpen ? 'Close' : 'Open' }}</Button>
+          </GallerySpecimen>
+        </div>
+        <FloatingWindow
+          v-model:rect="windowRect"
+          :open="windowOpen"
+          label="Window"
+          :overlay-store="appOverlayStore"
+          @close="windowOpen = false"
+        >
+          <template #title>Window</template>
+          <template #trailing>{{ windowRect.width }} × {{ windowRect.height }}</template>
+          <div class="flex h-full flex-col gap-3 p-4 text-[13px] leading-5 text-fg-muted">
+            <p>Drag the title bar to move this window, or an edge or a corner to resize it. Escape closes it from anywhere but the field below.</p>
+            <TextInput v-model="windowNote" placeholder="Type here; Escape stays in the field" aria-label="Note" />
+          </div>
+        </FloatingWindow>
       </GallerySection>
     </template>
   </div>

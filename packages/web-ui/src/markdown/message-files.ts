@@ -32,13 +32,13 @@ export function openMessageLink(
   const image = target?.closest('a[data-attachment-image]')
   if (image) {
     event.preventDefault()
-    viewer.show({ kind: 'image', src: image.getAttribute('href') ?? '', name: image.getAttribute('data-attachment-image') ?? '' })
+    viewer.show({ kind: 'image', src: image.getAttribute('href') ?? '', name: image.getAttribute('data-attachment-image') ?? '', from: image })
     return
   }
   const video = target?.closest('a[data-attachment-video]')
   if (video) {
     event.preventDefault()
-    viewer.show({ kind: 'video', src: video.getAttribute('href') ?? '', name: video.getAttribute('data-attachment-video') ?? '' })
+    viewer.show({ kind: 'video', src: video.getAttribute('href') ?? '', name: video.getAttribute('data-attachment-video') ?? '', from: video })
     return
   }
   const link = target?.closest('a[data-file-link]')
