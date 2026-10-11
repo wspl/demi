@@ -1288,6 +1288,27 @@ test('a message sent while its file uploads leaves the composer at once and is d
   })
 })
 
+// Two screenshots pasted one after the other are both `image.png`; a name
+// says nothing about a file's contents (`product.md` § Attachments).
+test('two files of one name both join the message, upload, and go as two files', async () => {
+  await withSession(async (current, sent) => {
+    const taken = useConversations().addFiles(current, [
+      new File(['first shot'], 'image.png', { type: 'image/png' }),
+      new File(['second shot'], 'image.png', { type: 'image/png' }),
+    ])
+    expect(taken.map((file) => file.name)).toEqual(['image.png', 'image.png'])
+    useConversations().arrangeFiles(current, taken.map((file) => file.id))
+    current.draft = `Before ${ATTACHMENT_MARK} and after ${ATTACHMENT_MARK}`
+    await useConversations().send(current)
+    const uploads = sent[0]!.filter((part) => part.type === 'upload')
+    expect(uploads).toEqual([
+      { type: 'upload', ref: expect.stringMatching(/^att-/), fileName: 'image.png' },
+      { type: 'upload', ref: expect.stringMatching(/^att-/), fileName: 'image.png' },
+    ])
+    expect(new Set(uploads.map((part) => part.ref)).size).toBe(2)
+  })
+})
+
 test('a message whose upload fails is not delivered and keeps its file, and Retry uploads it again and delivers it', async () => {
   await withSession(async (current, sent) => {
     const gate = deferred()

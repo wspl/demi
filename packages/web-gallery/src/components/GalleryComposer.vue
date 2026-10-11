@@ -25,12 +25,10 @@ import {
   attachmentFileError,
   composerAttachment,
   composerAttachmentFromFile,
-  composerFileNames,
   composerRemoteAttachment,
   encodeRemoteReference,
   filePreviewUrl,
   isComposerFile,
-  remoteAttachmentError,
   type AttachmentUploadUpdate,
   type ComposerAttachment,
   type ComposerAttachmentInput,
@@ -449,9 +447,6 @@ const paste: PasteHost = {
     return { capsule: composerCapsule(item), kept }
   },
   remote: (file) => {
-    if (remoteAttachmentError(file.path, file.host, attached.value)) {
-      return null
-    }
     const item = composerRemoteAttachment({ host: file.host, path: file.path })
     attached.value.push(item)
     return composerCapsule(item)
@@ -462,7 +457,7 @@ const paste: PasteHost = {
 function takeFiles(files: File[]): ComposerAttachment[] {
   const taken: ComposerAttachment[] = []
   for (const file of files) {
-    if (attachmentFileError(file, composerFileNames(attached.value))) {
+    if (attachmentFileError(file)) {
       continue
     }
     const item = composerAttachmentFromFile(file)
@@ -485,12 +480,9 @@ function retry(id: string) {
 const remoteHosts = createGalleryRemoteFileHosts()
 const remotePicker = ref<InstanceType<typeof RemoteFilePicker>>()
 function attachRemote(file: { host: string; path: string }) {
-  const error = remoteAttachmentError(file.path, file.host, attached.value)
-  if (!error) {
-    const item = composerRemoteAttachment(file)
-    attached.value.push(item)
-    composer.value?.insertCapsules([composerCapsule(item)])
-  }
+  const item = composerRemoteAttachment(file)
+  attached.value.push(item)
+  composer.value?.insertCapsules([composerCapsule(item)])
 }
 /**
  * Exchanges the replaced version with the draft, as the product's restore
