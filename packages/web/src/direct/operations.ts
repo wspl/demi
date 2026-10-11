@@ -7,11 +7,13 @@
  * operation's answer, as the relay's route would give it, unless it sends
  * the operation to the relay (`busy`, `too_large`).
  */
+import type { Read } from '@demicodes/web-ui/files/file-cache'
 import type { FileReads } from '@demicodes/web-ui/files/kept-source'
-import type { FileUploadOptions } from '@demicodes/web-ui/files/types'
+import type { FileText, FileUploadOptions } from '@demicodes/web-ui/files/types'
 import type { OpenUserStream, UserStream } from '@demicodes/web-ui/plugins/streams'
+import type { WatchLink } from '@demicodes/web-ui/files/watch-channel'
 import { reconnectNow } from '@demicodes/web-ui/transport/liveness'
-import { relayWatchLink, type OpenWatchLink, type WatchLink } from '../conversation/file-watch'
+import { relayWatchLink, watchReceiver, watchText, type OpenConversationWatchLink } from '../conversation/file-watch'
 import { ApiError } from '../api/client'
 import { fileBrowserError } from '../api/files'
 import {
@@ -27,10 +29,20 @@ import {
 import type { DirectRoute } from '.'
 import { ChannelFailed, ChannelRefused, relayAnswers, type DirectPeer, type OperationChannel } from './peer'
 
-/** The relay's answer to a refusal of the runner's: the same code, status and words. */
+/**
+ * The relay's answer to a refusal of the runner's: the same code, status
+ * and words, and the ETag and `X-Demi-Read-At` the relay's answer carries
+ * for a file that is not text or too large to read as text.
+ */
 export function relayError(refused: ChannelRefused): ApiError {
   const code = errorCodeSchema.safeParse(refused.code)
-  return new ApiError(refused.status, code.success ? code.data : null, refused.message)
+  const headers = new Headers()
+  const { version, readAt } = refused.facts
+  if (version)
+    headers.set('etag', version)
+  if (readAt)
+    headers.set('x-demi-read-at', `${readAt.epoch}.${readAt.number}`)
+  return new ApiError(refused.status, code.success ? code.data : null, refused.message, null, null, headers)
 }
 
 /** The direct route of an operation as it starts; none while the conversation has none. */
@@ -106,12 +118,13 @@ export function directFileReads(routeOf: RouteOf, relay: FileReads): FileReads {
       either(async (peer, route) => {
         const channel = await peer.open({ ...route.scope, op: 'list', path }, listedSchema)
         const listed = await channel.answer()
-        return listed.entries.map((entry) => ({
+        const entries = listed.entries.map((entry) => ({
           name: entry.name,
           isDirectory: entry.isDirectory,
           size: entry.size,
           modifiedAt: entry.modifiedAt,
         }))
+        return { value: entries, readAt: listed.readAt }
       }, () => relay.list(path)),
     ...(relay.contents
       ? {
@@ -122,9 +135,9 @@ export function directFileReads(routeOf: RouteOf, relay: FileReads): FileReads {
             describe: (path: string) =>
               either(async (peer, route) => {
                 const channel = await peer.open({ ...route.scope, op: 'read', path, length: 0 }, readOpenedSchema)
-                const { size, modifiedAt, version } = await channel.answer()
+                const { size, modifiedAt, version, readAt } = await channel.answer()
                 channel.close()
-                return { size, modifiedAt, version }
+                return { value: { size, modifiedAt, version }, readAt }
               }, () => relay.contents!.describe(path)),
           },
         }
@@ -132,16 +145,16 @@ export function directFileReads(routeOf: RouteOf, relay: FileReads): FileReads {
     ...(relay.readText
       ? {
           readText: (path: string, held: string | null) =>
-            either(async (peer, route) => {
+            either<Read<FileText>>(async (peer, route) => {
               const text: ChannelHeader = held === null
                 ? { ...route.scope, op: 'text', path }
                 : { ...route.scope, op: 'text', path, version: held }
               const channel = await peer.open(text, textOpenedSchema)
               const opened = await channel.answer()
               if (opened.unchanged)
-                return null
+                return { unchanged: true, readAt: opened.readAt }
               const bytes = await bytesToEnd(() => channel.next())
-              return { text: new TextDecoder().decode(bytes), version: opened.version }
+              return { value: { text: new TextDecoder().decode(bytes), version: opened.version }, readAt: opened.readAt }
             }, () => relay.readText!(path, held)),
         }
       : {}),
@@ -337,19 +350,20 @@ function openDirect(
  * the relay's socket otherwise or when the runner refuses it. The watch
  * moves when the choice changes (`ConversationWatch.move`).
  */
-export const directWatchLink = (routeOf: RouteOf): OpenWatchLink => (conversationId, handlers) => {
+export const directWatchLink = (routeOf: RouteOf): OpenConversationWatchLink => (conversationId, handlers) => {
   const route = routeOf()
   const peer = route?.device.current()
   if (!route || !peer)
     return relayWatchLink(conversationId, handlers)
   let closed = false
   let link: WatchLink | null = null
-  const queued: string[] = []
+  const queued: Parameters<WatchLink['send']>[0][] = []
   void (async () => {
     try {
       const channel = await peer.open({ ...route.scope, op: 'watch' }, openedSchema)
       link = {
-        send: (text) => void channel.sendText(text).catch(() => {}),
+        // A message lost with a failing channel is sent again on the next connection.
+        send: (request) => void channel.sendText(watchText(request)).catch(() => {}),
         close: () => channel.close(),
       }
       if (closed) {
@@ -358,14 +372,18 @@ export const directWatchLink = (routeOf: RouteOf): OpenWatchLink => (conversatio
       }
       await channel.answer()
       handlers.opened()
-      for (const text of queued.splice(0))
-        link.send(text)
+      for (const request of queued.splice(0))
+        link.send(request)
+      const receive = watchReceiver(handlers, () => {
+        closed = true
+        channel.close()
+      })
       for (;;) {
         const message = await channel.next()
-        if (message === null)
+        if (message === null || closed)
           break
         if (message.kind === 'text')
-          handlers.message(message.text)
+          receive(message.text)
       }
     } catch (error) {
       if (error instanceof ChannelRefused && !closed) {
@@ -380,11 +398,11 @@ export const directWatchLink = (routeOf: RouteOf): OpenWatchLink => (conversatio
       handlers.closed()
   })()
   return {
-    send(text) {
+    send(request) {
       if (link)
-        link.send(text)
+        link.send(request)
       else
-        queued.push(text)
+        queued.push(request)
     },
     close() {
       closed = true

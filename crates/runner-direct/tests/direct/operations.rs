@@ -100,6 +100,7 @@ impl Operations for Fake {
                 size: bytes.len() as u64,
                 version: version(number),
                 modified: demi_runner_protocol::wire::Timestamp(1_790_000_000_123),
+                read_at: read_at(number.into()),
                 body: Box::pin(futures_util::stream::iter(chunks)),
             })
         })

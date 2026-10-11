@@ -33,6 +33,7 @@ import {
   type RequestEdit,
   type RequestEditRef,
 } from './request-changes'
+import { GONE_MESSAGE } from './file-cache'
 import { TREE_WIDTH } from './file-view'
 import { baseName } from '@demicodes/utils'
 import { relativePath, resolveHostPath } from './paths'
@@ -257,21 +258,27 @@ const workingState = computed<State>(() => {
   const entry = workingSides.entry.value
   if (!entry)
     return { phase: 'loading' }
-  if (entry.value !== undefined)
-    return { phase: 'ready', sides: entry.value }
-  const failure = entry.failure
-  if (!failure)
-    return { phase: 'loading' }
-  // A side that is not text: each version as a card of its own.
-  if (failure.kind === 'binary' || failure.kind === 'too-large')
-    return { phase: 'binary' }
-  return { phase: 'failed', message: failure.message ?? 'The change could not be read.' }
+  // Each answer is drawn as itself, and stays while it is checked.
+  switch (entry.answer) {
+    case 'value':
+      return entry.value === undefined ? { phase: 'loading' } : { phase: 'ready', sides: entry.value }
+    case 'binary':
+    case 'too-large':
+      // A side that is not text: each version as a card of its own.
+      return { phase: 'binary' }
+    case 'gone':
+      return { phase: 'failed', message: GONE_MESSAGE }
+    case null:
+      return entry.failure
+        ? { phase: 'failed', message: entry.failure.message ?? 'The change could not be read.' }
+        : { phase: 'loading' }
+  }
 })
 
-/** Why the last read of the sides shown failed, while the sides it had stay. */
+/** Why the last read of the sides shown could not be made, while what it answered before stays. */
 const staleBecause = computed(() => {
   const entry = mode.value === 'uncommitted' ? workingSides.entry.value : null
-  return entry?.value !== undefined && entry.failure ? entry.failure.message ?? 'The read failed.' : null
+  return entry?.answer && entry.failure ? entry.failure.message ?? 'The read failed.' : null
 })
 
 /** All Changes of a file the request removed ends with nothing: the diff is its start against an empty file. */
@@ -287,6 +294,18 @@ const readRequest = computed<ReadCallChange | null>(() => {
       }
     : read
 })
+
+/** Why the Host does not watch the list or the change shown, while it says so. */
+const unwatched = computed(() => mode.value === 'uncommitted'
+  ? workingTree.value.unwatched ?? (workingSides.entry.value?.answer ? workingSides.entry.value.unwatched : null)
+  : null)
+
+/** Reads the list and the change shown again, as Refresh does. */
+function refreshUnwatched(): void {
+  workingTree.value.refresh?.()
+  workingSides.retry()
+}
+
 // A request's file, read from the copies the selection names.
 const callSides = useRequestSides(
   () => request.value && requestFile.value ? shownKey.value : null,
@@ -401,12 +420,12 @@ function pick(path: string): void {
         <span v-if="editAt !== null" class="ml-auto min-w-0 truncate pl-2 text-fg-subtle" :title="edits[editAt]?.title">{{ edits[editAt]?.title }}</span>
       </div>
       <RegionNote
-        v-if="mode === 'uncommitted' && workingTree.watch?.unavailable"
+        v-if="unwatched"
         :icon="History"
-        label="Showing files as they were last read."
-        :detail="workingTree.watch.unavailable"
+        label="Showing changes as they were last read."
+        :detail="unwatched"
         action="Refresh"
-        @action="workingTree.watch.refresh()"
+        @action="refreshUnwatched"
       />
       <RegionNote
         v-if="staleBecause"
