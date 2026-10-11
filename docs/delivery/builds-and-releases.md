@@ -611,14 +611,11 @@ leaving them halves the size. The manager runs `runsc` with
 being downloaded by `runsc` itself or replaced by its deprecated embedded
 copy ([Isolation and joining](../cloud/managed-hosts.md#isolation-and-joining)).
 
-The amd64 archive is upstream's release. The arm64 archive carries Demi's
-patch, so it is built from the pinned source once per pin, not in every
-release: `.github/workflows/runtime.yml`, which pushing the tag
-`runsc-<arm64Version>` starts, runs
-`crates/machine-manager/scripts/build-runsc-arm64.sh` and the regression
-probe on `ubuntu-26.04-arm` and publishes the archive as the GitHub release
-of that tag. The change that adopts a new pin records that archive's
-SHA-512 in the manifest beside the version.
+Both archives are upstream's release of the pinned version,
+`https://storage.googleapis.com/gvisor/releases/release/<version>/<arch>/gvisor.tar.bz2`
+with `x86_64` or `aarch64`. The change that adopts a new pin records each
+archive's SHA-512 in the manifest beside the version, after the checks
+`crates/machine-manager/runtime/README.md` lists.
 
 A developer's Linux host gets the pinned version the same way, with
 `demi-server runtime`, which fetches it into `/opt/demi/gvisor/<version>/`

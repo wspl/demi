@@ -265,8 +265,8 @@ mod tests {
             &version
         ));
         assert!(!reports_version(
-            "runsc version release-20260914.0-demi.1\n",
-            "release-20260914.0"
+            &format!("runsc version {version}-patched.1\n"),
+            &version
         ));
         assert!(!reports_version(
             &format!("spec: 1.1.0\nrunsc version {version}\n"),
