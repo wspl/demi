@@ -740,7 +740,11 @@ one of another account or since deleted, comes in from the image the copy
 carried when there is one, uploaded as any pasted image is, and otherwise
 as its name in the text, with a toast that says which file could not be
 added. Copying never puts a file's bytes on the clipboard for the composer's
-sake; the reference is the file.
+sake; the reference is the file. A paste lands at once, its text and its
+capsules, and each capsule attaches its stored file beside it as an upload
+does, showing that it is under way, so the message can be sent at once and
+waits for them as for an upload. A picture pasted in place of a reference
+keeps the copied file's name.
 
 Enter sends and Shift+Enter breaks the line; in a code block Enter breaks the
 line and ⌘/Ctrl+Enter sends. While the agent works, ⌘/Ctrl+Enter outside a
