@@ -335,7 +335,7 @@ provideOriginRevealer(({ node, blockId }) => {
   }
 })
 // A message's link to an agent opens the Agents window on its tab, and
-// closes it when it shows that tab already; agent 0's brings this
+// leaves it as it is when it shows that tab already; agent 0's brings this
 // transcript into view (`subagents.md` § Linking an agent).
 provideMessageAgents(() => ({
   find: (number) => findAgent(props.conversation.subagents, number),

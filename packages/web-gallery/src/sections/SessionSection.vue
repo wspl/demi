@@ -562,9 +562,9 @@ function agentOpens(show: boolean) {
   void panelWork.agentOpens(show ? 'https://example.test/orders' : 'https://example.test/docs', show)
 }
 /** The session's messages reach the gallery workspace: images from its fixtures, files opened in the frame's panel. */
-const sessionFiles = galleryConversationFiles(workspace.source, ({ path, line }, clicks) => {
-  // From the session page, which shows no panel, a click only opens the frame's.
-  panelWork.openIn({ intent: 'file', payload: line === null ? { path } : { path, line } }, view.value === 'panel' ? clicks : undefined)
+const sessionFiles = galleryConversationFiles(workspace.source, ({ path, line }) => {
+  // From the session page, which shows no panel, a click opens the frame's.
+  panelWork.openIn({ intent: 'file', payload: line === null ? { path } : { path, line } })
   view.value = 'panel'
 })
 // The tabs specimen starts on an empty strip, with the globe-plus add control.
@@ -1778,7 +1778,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Agents in a Message"
-        note="A reply links a subagent as agent:4, the number spawn printed: its mark, the robot with the dot of its state as its tab in the Agents window wears it, then the text. It is drawn in the text's own colors, not a web link's accent, as a mention in Slack or Linear reads as part of the sentence: the text in the prose's color at medium weight over a dotted underline in the faintest text color, 1px, 3px below the text, and the mark in the secondary text color. It starts with an icon, so, as a file's link, it keeps 0.2em of space on each side, inside its hover fill and outside its underline: in the Chinese sentence the character before the mark and the colon after the name do not touch it. It flows as words do: a long name wraps at the line's end like any text, its first line starting where the text before it ends, the mark staying with the first word, and the hover fill and the underline following each line it spans, in a narrow column and a table's cell alike. It is reached with Tab and opened with Return or Space, as a button is. Pointed at, it shows the hover fill behind both and names the agent, Subagent 4 · Finished, and its description. A click opens the Agents window on that agent's tab, a finished one as Completed picks it, and a click when the window shows that tab closes it; stopping an agent there takes the dot off its mark, as a stopped conversation's row is settled. agent:0, the main agent, brings the main transcript into view. A number the conversation does not have is its text alone, which says so when pointed at."
+        note="A reply links a subagent as agent:4, the number spawn printed: its mark, the robot with the dot of its state as its tab in the Agents window wears it, then the text. It is drawn in the text's own colors, not a web link's accent, as a mention in Slack or Linear reads as part of the sentence: the text in the prose's color at medium weight over a dotted underline in the faintest text color, 1px, 3px below the text, and the mark in the secondary text color. It starts with an icon, so, as a file's link, it keeps 0.2em of space on each side, inside its hover fill and outside its underline: in the Chinese sentence the character before the mark and the colon after the name do not touch it. It flows as words do: a long name wraps at the line's end like any text, its first line starting where the text before it ends, the mark staying with the first word, and the hover fill and the underline following each line it spans, in a narrow column and a table's cell alike. It is reached with Tab and opened with Return or Space, as a button is. Pointed at, it shows the hover fill behind both and names the agent, Subagent 4 · Finished, and its description. A click opens the Agents window on that agent's tab, a finished one as Completed picks it, and a click when the window shows that tab leaves it as it is; stopping an agent there takes the dot off its mark, as a stopped conversation's row is settled. agent:0, the main agent, brings the main transcript into view. A number the conversation does not have is its text alone, which says so when pointed at."
       >
         <GallerySpecimen variant="running, finished, failed, stopped, main, unknown" wide>
           <GalleryAgentLinks />
@@ -2313,7 +2313,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Request’s Changes"
-        note="A request runs from the user’s message to their next one, through command reports, receipts and steers. The pills under each call name its files, and a work group’s pills each file once; a pill opens the Change view below on its file at that call’s first edit. A subagent’s changes show only in its own transcript. With the changes plugin off, the pills are no controls."
+        note="A request runs from the user’s message to their next one, through command reports, receipts and steers. The pills under each call name its files, and a work group’s pills each file once; a pill opens the Change view below on its file at that call’s first edit, and a pill whose edit it already shows leaves it as it is; only the panel’s own control closes it. A subagent’s changes show only in its own transcript. With the changes plugin off, the pills are no controls."
       >
         <GallerySpecimen variant="two files, login.ts edited three times across a command report" wide>
           <div class="gallery-frame h-[30rem] bg-surface">
@@ -2439,7 +2439,7 @@ onBeforeUnmount(() => {
           </GalleryEditSelection>
         </GallerySpecimen>
       </GallerySection>
-      <!-- The panel the pills above open; a click on what it already shows closes it, as in the product. -->
+      <!-- The panel the pills above open; a click on what it already shows leaves it as it is, as in the product. -->
       <div v-if="editWork.open.value" class="h-[480px] overflow-hidden rounded-lg border border-line">
         <GalleryWorkPanel :work="editWork" @close="editWork.open.value = false" />
       </div>

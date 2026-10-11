@@ -48,87 +48,66 @@ export function shownSelection(state: PanelState, kinds: readonly Pick<PanelTabK
   return activeTab([...pinned, ...state.tabs.map((tab) => tab.id)], state.history)
 }
 
-/** A conversation's work panel as a page shows it: whether it is open, its tabs and selection, and its pinned tabs' data. */
+/** A conversation's work panel as a page shows it: its tabs and selection, and its pinned tabs' data. */
 export interface ShownPanel {
-  open: boolean
   panel: PanelState
   pinned: PinnedTabs
 }
 
 /**
- * What opening an intent does: close the panel, or open it on the kind's
- * tab, which takes the selection, its data `pinned` then holds for a
- * pinned kind, or a tab `created` for it.
+ * What opening an intent does: the panel opens on the kind's tab, which
+ * takes the selection, its data `pinned` then holds for a pinned kind, or a
+ * tab `created` for it.
  */
-export type IntentOutcome =
-  | { action: 'close' }
-  | { action: 'open'; selection: string; pinned: PinnedTabs; created: PanelTab | null }
+export interface IntentOutcome {
+  selection: string
+  pinned: PinnedTabs
+  created: PanelTab | null
+}
 
 /**
- * What opening `request` does (`plugin-pages.md` § Intents), from a
- * control's click when `clicks`, the click's `detail`, is given. The first
- * kind of a page the user has on that opens it shows the data it returns,
- * in its pinned tab or in a tab it creates. But when the panel is open and
- * its selected tab is that kind's, showing what the kind would show for the
- * request already, the click closes the panel instead
- * (`web-application.md` § Work panel), unless it is the second click of a
- * double-click. An open no click asks for never closes. Null when no kind
- * opens the intent.
+ * What opening `request` does (`plugin-pages.md` § Intents): the first kind
+ * of a page the user has on that opens it shows the data it returns, in its
+ * pinned tab or in a tab it creates. When the panel's selected tab is that
+ * kind's and the kind, which alone knows what its data means, would show
+ * the same data for the request, the tab stays as it is, its data the same
+ * value, so a second click on a pill or a link leaves the panel showing it
+ * (`web-application.md` § Work panel). Null when no kind opens the intent.
  */
 export function openIntent(
   shown: ShownPanel,
   pages: readonly AnyPluginPage[],
   enabled: (plugin: string) => boolean,
   request: IntentRequest,
-  clicks?: number,
 ): IntentOutcome | null {
   const kind = intentKind(pages, enabled, request.intent)
   if (!kind) {
     return null
   }
-  if (clicks !== undefined && clicks < 2 && alreadyShows(shown, pages, enabled, kind, request)) {
-    return { action: 'close' }
-  }
   const { pinned } = shown
-  if (!kind.pinned) {
-    const created = { id: crypto.randomUUID(), kind: kind.kind, data: opened(kind, request, null) }
-    return { action: 'open', selection: created.id, pinned, created }
-  }
-  const current = Object.hasOwn(pinned, kind.kind) ? kind.schema.safeParse(pinned[kind.kind]) : null
-  return {
-    action: 'open',
-    selection: kind.kind,
-    pinned: { ...pinned, [kind.kind]: opened(kind, request, current?.success ? current.data : null) },
-    created: null,
-  }
-}
-
-/**
- * Whether the open panel's selected tab is `kind`'s and already shows what
- * `request` names: the kind, which alone knows what its data means, would
- * show the same data for it.
- */
-function alreadyShows(
-  shown: ShownPanel,
-  pages: readonly AnyPluginPage[],
-  enabled: (plugin: string) => boolean,
-  kind: PanelKind<unknown, PanelSession | undefined>,
-  request: IntentRequest,
-): boolean {
-  if (!shown.open) {
-    return false
-  }
   const kinds = pages.filter((page) => enabled(page.plugin)).flatMap((page) => page.kinds ?? [])
   const selection = shownSelection(shown.panel, kinds)
-  const data = kind.pinned
-    ? (selection === kind.kind ? pinnedData(shown.pinned, kind) : undefined)
-    : shown.panel.tabs.find((tab) => tab.id === selection && tab.kind === kind.kind)?.data
-  const current = data === undefined ? null : kind.schema.safeParse(data)
-  if (!current?.success) {
-    return false
+  if (!kind.pinned) {
+    const tab = shown.panel.tabs.find((candidate) => candidate.id === selection && candidate.kind === kind.kind)
+    const parsed = tab ? kind.schema.safeParse(tab.data) : null
+    if (tab && parsed?.success && sameData(parsed.data, opened(kind, request, parsed.data))) {
+      return { selection: tab.id, pinned, created: null }
+    }
+    const created = { id: crypto.randomUUID(), kind: kind.kind, data: opened(kind, request, null) }
+    return { selection: created.id, pinned, created }
   }
-  const next = opened(kind, request, current.data)
-  return next !== null && typeof next === 'object' && Object.keys(dataChanges(current.data, { ...next })).length === 0
+  const stored = Object.hasOwn(pinned, kind.kind) ? kind.schema.safeParse(pinned[kind.kind]) : null
+  const current = stored?.success ? stored.data : null
+  const data = opened(kind, request, current)
+  if (selection === kind.kind && current !== null && sameData(current, data)) {
+    return { selection, pinned, created: null }
+  }
+  return { selection: kind.kind, pinned: { ...pinned, [kind.kind]: data }, created: null }
+}
+
+/** Whether a kind's data `next` changes nothing of `current`, field by field. */
+function sameData(current: unknown, next: unknown): boolean {
+  return next !== null && typeof next === 'object' && Object.keys(dataChanges(current, { ...next })).length === 0
 }
 
 /** The data `kind`'s tab shows for `request`, from what it shows now. */

@@ -43,10 +43,10 @@ export interface AgentsWindow {
 
 /**
  * The Agents window after a click on the link of agent `number`: on that
- * agent's tab, a finished one as Completed picks it; closed when it showed
- * that tab already, as a control that opens what is shown closes it; closed
- * for agent 0, which brings the conversation's own transcript into view.
- * Null when the conversation has no such agent, which changes nothing.
+ * agent's tab, a finished one as Completed picks it, and as it is when it
+ * shows that tab already; closed for agent 0, which brings the
+ * conversation's own transcript into view. Null when the conversation has
+ * no such agent, which changes nothing.
  */
 export function agentLinkWindow(
   shown: AgentsWindow,
@@ -58,8 +58,6 @@ export function agentLinkWindow(
   const agent = agents.find((candidate) => candidate.number === number)
   if (!agent)
     return null
-  if (shown.open && shown.activeId === agent.id)
-    return { open: false, activeId: shown.activeId }
   return { open: true, activeId: agent.id }
 }
 
