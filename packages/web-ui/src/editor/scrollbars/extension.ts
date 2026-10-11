@@ -1,6 +1,6 @@
 import type { EditorState, Text } from '@codemirror/state'
 import { ViewPlugin, type EditorView, type PluginValue, type ViewUpdate } from '@codemirror/view'
-import { getChunks, getOriginalDoc } from '@codemirror/merge'
+import { diffOf } from '../unifiedDiff'
 import { searchMatches } from '../searchMatches'
 import type { OverlayScrollbars } from 'overlayscrollbars'
 import { attachScrollbars } from '../../ui/scrollbars'
@@ -22,10 +22,10 @@ function countLinesInRange(doc: Text, from: number, to: number) {
  * current text. Null when the view is not a diff.
  */
 function unifiedLayout(state: EditorState) {
-  const chunkState = getChunks(state)
+  const chunkState = diffOf(state)
   if (!chunkState) return null
 
-  const originalDoc = getOriginalDoc(state)
+  const originalDoc = chunkState.original
   const modifiedDoc = state.doc
   let deletedLinesBefore = 0
   const offsets: Array<{ startLine: number; deletedLines: number }> = []
@@ -100,7 +100,7 @@ class CustomScrollbarPlugin implements PluginValue {
 
   constructor(view: EditorView) {
     this.ruler = mountScrollbarRuler(view, {
-      splitDiffLanes: getChunks(view.state) !== null,
+      splitDiffLanes: diffOf(view.state) !== null,
     })
     // After the ruler, so the bars lie over its marks.
     this.scrollbars = attachScrollbars(view.scrollDOM, 'both', view.dom)
