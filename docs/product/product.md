@@ -288,14 +288,20 @@ turn or waits in the queue, one or the other, and stays what it was sent as:
 
 A message shows what it was sent as from the moment it is sent, since the
 page chose the way: a steer shows at once with *Will be sent to the agent at
-its next step*, Send Now and Remove, and a queued message with its own
+its next step*, Send Now and Undo Send, and a queued message with its own
 line, while the backend has not confirmed it yet, in the same row and at the
-same height it keeps once confirmed. Send Now or Remove pressed before the
+same height it keeps once confirmed. Send Now or Undo Send pressed before the
 confirmation is kept as the user's wish and carried out once the message is
 confirmed ([Responding to the user](web-application.md#responding-to-the-user)).
-Remove takes the message away at once, confirmed or not, and its request
-follows; a refusal, as when the agent read the steer meanwhile, brings it
-back where it was with a toast. A message can be sent while the one before
+Undo Send takes the message back, as iMessage's does: it leaves the row at
+once, confirmed or not, and its request follows. When the composer is empty,
+the message goes back into it, its text and its files, the caret at its
+end, ready to change and send again; when the composer holds a draft, the
+draft is kept as it is and the message is not put back, and a toast,
+*Message Unsent*, offers Undo, which sends it again the way it was sent. A
+refusal, as when the agent read the steer meanwhile, brings the row back
+where it was with a toast, and takes back out of the composer what it had put
+there. A message can be sent while the one before
 it is still on its way: it goes the way the composer chooses, steer or
 queue, after the one before, never ahead of it.
 
