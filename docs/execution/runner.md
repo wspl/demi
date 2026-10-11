@@ -1099,9 +1099,12 @@ also goes to every process that still carries the job's `DEMI_JOB_ID` in its
 environment, which every process the job starts inherits, as GitHub's
 runner finds a job's processes by `RUNNER_TRACKING_ID`: the runner reads the
 environments of its user's processes (`/proc/<pid>/environ` on Linux,
-`KERN_PROCARGS2` on macOS) at each signal. A process that cleared its
-environment escapes, and none of the runner's own resident services carries
-a job's id. The job ends once every process of those groups has exited.
+`KERN_PROCARGS2` on macOS) at each signal. macOS shows a process's environment
+only for programs that are not Apple's own, so each signal also goes to the
+descendants, by parent process id, of every process it reaches: a `setsid`
+child of `/bin/sh` whose parent still runs is found that way. A process
+that cleared its environment, or an Apple program orphaned by a double fork,
+escapes, and none of the runner's own resident services carries a job's id. The job ends once every process of those groups has exited.
 `KILL` kills whatever remains, and is what a
 stop sends when the job has not ended 5 seconds after `TERM`
 ([Stopping a command](../agent/runtime.md#stopping-a-command)). Before, a
