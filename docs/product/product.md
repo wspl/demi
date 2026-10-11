@@ -283,6 +283,8 @@ turn or waits in the queue, one or the other, and stays what it was sent as:
 - **Steer**: the agent reads the message within the running turn, as soon as
   the call it is waiting on returns. Until then the message shows as pending
   above the composer.
+- **Queue**: the message waits for the turn to end and then starts a turn of
+  its own.
 
 A message shows what it was sent as from the moment it is sent, since the
 page chose the way: a steer shows at once with *Will be sent to the agent at
@@ -291,8 +293,6 @@ line, while the backend has not confirmed it yet, in the same row and at the
 same height it keeps once confirmed. Send Now or Remove pressed before the
 confirmation is kept as the user's wish and carried out once the message is
 confirmed ([Responding to the user](web-application.md#responding-to-the-user)).
-- **Queue**: the message waits for the turn to end and then starts a turn of
-  its own.
 
 For example, the agent is running the test suite. The user types "skip the
 e2e tests" and presses Enter: with Steer chosen, the agent reads it when the
