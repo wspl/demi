@@ -155,7 +155,7 @@ the same failure. Bytes travel as binary messages of at most 64 KiB.
 | `op` | The page sends | The runner answers |
 | --- | --- | --- |
 | `stream` | `{ stream, args? }`, then the stream's input bytes | `{ ok }`, then the stream's output bytes: the same bytes the relay's pipes carry |
-| `read` | `{ path, offset?, length?, version? }` | `{ ok, size, version, modifiedAt }`, then the bytes; a `version` the file no longer has answers `file_changed` |
+| `read` | `{ path, offset?, length?, version? }` | `{ ok, size, version, modifiedAt, readAt }`, then the bytes; a `version` the file no longer has answers `file_changed` |
 | `write` | `{ path, replace }`, the bytes, then `{ end: true }` | `{ ok }` once the file is in place |
 | `text` | `{ path, version? }` | `{ ok, version, unchanged, readAt }`, then the text unless it is unchanged; `readAt` is the Host's number before it read, as the relay's `X-Demi-Read-At` |
 | `list` | `{ path? }` | `{ ok, path, home, entries, readAt }` |

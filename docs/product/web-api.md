@@ -1606,7 +1606,7 @@ The backend sends:
 | `live` | `key`, `since` and `epoch` | The Host's watch behind the subscription runs ([Numbers](../execution/runner.md#watching-files)) |
 | `changed` | `changes`, each `[key, at]` | The Host reported them, at most every 100 ms, each key once per message |
 | `unavailable` | `key` and the Host's `reason` | The Host cannot watch it; the subscription is over |
-| `refused` | `key` and `reason`, `limit` | The page holds 4,096 subscriptions, or 64 outside the conversation's working tree |
+| `refused` | `key` and `reason: "limit"` | The page holds 4,096 subscriptions, or 64 outside the conversation's working tree |
 | `renewed` | `keys` | A `renew` reached the backend; the page counts each lease from when it sent the `renew` this answers |
 | `offline` | Nothing | The Host is out of reach or a stopped Cloud; no subscription is live until the next `live` |
 | `heartbeat` | Nothing | 30 seconds pass without another message, so the page tells a quiet watch from a dead one ([Liveness and reconnection](web-application.md#liveness-and-reconnection)) |
