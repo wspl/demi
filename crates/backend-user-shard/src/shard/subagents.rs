@@ -1,5 +1,5 @@
-//! The user's subagent settings (`web-api.md` § Subagents): the Subagent
-//! switch and the profiles, written here once the edge checked a body's name
+//! The user's subagent settings (`web-api.md` § Subagents): the Subagents
+//! switch, the limits and the profiles, written here once the edge checked a body's name
 //! and texts. A profile's model is checked against its entry's catalog as a
 //! conversation's model settings are, and is stored with its effort
 //! explicit. Each change reaches the user's pages as the `subagents` part,
@@ -13,7 +13,7 @@ use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::ProfileId;
-use demi_web_api_protocol::subagents::{NewProfile, ProfilePatch, SubagentProfile};
+use demi_web_api_protocol::subagents::{NewProfile, ProfilePatch, SubagentProfile, SubagentsPatch};
 
 use super::Shard;
 
@@ -31,11 +31,11 @@ pub enum ProfileRefusal {
 }
 
 impl Shard {
-    /// Turns subagents on or off for the user.
-    pub async fn switch_subagents(&self, enabled: bool) -> Result<(), StorageError> {
+    /// Sets what `patch` names of the user's Subagents switch and limits.
+    pub async fn patch_subagents(&self, patch: SubagentsPatch) -> Result<(), StorageError> {
         self.services()
             .control
-            .set_subagents(self.user().clone(), enabled)
+            .set_subagents(self.user().clone(), patch)
             .await?;
         self.mark_subagents();
         Ok(())

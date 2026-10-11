@@ -1,5 +1,5 @@
-//! The caller's subagent settings (`web-api.md` § Subagents): the Subagent
-//! switch and the profiles. The edge checks a body's name and texts; the
+//! The caller's subagent settings (`web-api.md` § Subagents): the Subagents
+//! switch, the limits and the profiles. The edge checks a body's name and texts; the
 //! caller's shard checks a profile's model against its entry's catalog and
 //! writes, and the change reaches the caller's pages as the `subagents`
 //! part.
@@ -13,23 +13,24 @@ use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_user_shard::shard::subagents::ProfileRefusal;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ProfileId;
-use demi_web_api_protocol::subagents::{NewProfile, ProfileAnswer, ProfilePatch, SubagentSwitch};
+use demi_web_api_protocol::subagents::{NewProfile, ProfileAnswer, ProfilePatch, SubagentsPatch};
 
 use super::AppState;
 use super::body::JsonBody;
 use super::error::{ApiError, status_of};
 use super::gate::AuthUser;
 
-/// `PUT /subagents { enabled }`.
+/// `PUT /subagents`: any of `{ enabled, maxLive, maxDepth }`; a limit
+/// that is neither a whole number from 1 nor null fails the body's decoding.
 pub(super) async fn switch(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    JsonBody(SubagentSwitch { enabled }): JsonBody<SubagentSwitch>,
+    JsonBody(patch): JsonBody<SubagentsPatch>,
 ) -> Result<StatusCode, ApiError> {
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.switch_subagents(enabled).await })
+        .call(move |shard, _| async move { shard.patch_subagents(patch).await })
         .await??;
     Ok(StatusCode::NO_CONTENT)
 }

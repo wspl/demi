@@ -1,6 +1,8 @@
 //! The instance's settings, each user's preferences and each user's
 //! subagent settings (`web-api.md` § User preferences, § Subagents).
 
+use std::num::NonZeroU32;
+
 use demi_provider_common::testing::MockVendor;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
@@ -333,6 +335,27 @@ async fn a_users_subagent_profiles_are_checked_written_and_reach_every_page_of_t
         .await;
     assert!(!settings.is_empty());
 
+    // The limits: a body names any of them, null for Unlimited, and the
+    // rest stay; a limit that is not a whole number from 1 is refused.
+    let limits = backend
+        .put("/api/subagents", &master, json!({ "maxLive": null, "maxDepth": 3 }))
+        .await;
+    assert_eq!(limits.status, StatusCode::NO_CONTENT);
+    let limited = synced(&mut page).await;
+    assert_eq!(
+        (limited.enabled, limited.max_live, limited.max_depth),
+        (false, None, NonZeroU32::new(3))
+    );
+    for body in [
+        json!({ "maxLive": 0 }),
+        json!({ "maxDepth": 1.5 }),
+        json!({ "maxLive": -1 }),
+        json!({ "maxDepth": "2" }),
+    ] {
+        let refused = backend.put("/api/subagents", &master, body.clone()).await;
+        assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody), "{body}");
+    }
+
     // Another user sees and reaches none of them.
     harness.add_user("ana@example.test", "correct horse battery", Role::User);
     let ana = backend.login("ana@example.test", "correct horse battery").await;
@@ -344,6 +367,8 @@ async fn a_users_subagent_profiles_are_checked_written_and_reach_every_page_of_t
         state.subagents,
         SubagentSettings {
             enabled: true,
+            max_live: NonZeroU32::new(10),
+            max_depth: NonZeroU32::new(1),
             profiles: Vec::new()
         }
     );
@@ -355,6 +380,10 @@ async fn a_users_subagent_profiles_are_checked_written_and_reach_every_page_of_t
     let mut fresh = backend.sync(&master).await;
     let state = fresh.snapshot().await;
     assert!(!state.subagents.enabled);
+    assert_eq!(
+        (state.subagents.max_live, state.subagents.max_depth),
+        (None, NonZeroU32::new(3))
+    );
     assert_eq!(state.subagents.profiles.len(), 1);
     assert_eq!(state.subagents.profiles[0].name, "reviewer");
     backend.close().await;
