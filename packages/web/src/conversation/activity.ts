@@ -91,8 +91,15 @@ export function applyConversationEvent(
     const blocks = latestBlocks(subagentId === undefined
       ? conversation.history
       : conversation.subagents.find((agent) => agent.id === subagentId)?.history ?? EMPTY_TRANSCRIPT)
-    // The call that started it names it; the command's id stands in until the transcript has the call.
-    const call = current ?? findShellCall(blocks, status.toolUseId)
+    // The call that started it names it; the command's id stands in until the
+    // transcript has the call. Until the record has the call's script, each
+    // frame looks for the call again: the transcript may not have held it
+    // yet, or held it light, without a long script (`web-api.md` § Light
+    // form). A record with its script keeps its call, which a later call
+    // that reuses the id does not rename.
+    const call = current?.script !== undefined
+      ? current
+      : findShellCall(blocks, status.toolUseId) ?? current
     const record: TerminalRecord = {
       id: status.commandId,
       title: call?.title ?? status.commandId,
