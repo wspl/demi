@@ -1780,8 +1780,10 @@ commands*, and a click opens it to every step.
   shows](../execution/edit-tracking.md#what-the-conversation-shows)); open,
   each call shows its own.
 - A block brought into view inside a run, as a notice's call or a search
-  result, marks its own row when the run is open, and the run's row when it
-  is folded, which stays folded.
+  result, marks its own row: a folded run opens for it and stays open
+  ([Command reports](#command-reports)). Which runs are open is the
+  transcript's, not each row's, so a run the reader opened is still open
+  after it scrolls away and back.
 - A reader who opens or folds a row keeps it where it is: the rows after it
   move, and the transcript neither follows its end nor corrects for the new
   height until the fold has ended.
