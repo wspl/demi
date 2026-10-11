@@ -1995,7 +1995,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Command Ends"
-        note="Every shell row, a run or a look, marks a command that went wrong with a tag after its title: red Failed, with its exit code in the tooltip, or grey Stopped; one that succeeded shows nothing, and one that runs shimmers. An open row that failed or was stopped says so above its output. A look is a shell call whose script runs demi shell status; its tag is its own command’s. A call that ran nothing, refused by the repeat guard or for its input, is red Failed and shows why once opened. A title too long for its row is cut at the end; the tag stays. Calls of tools the runtime no longer has, such as shell_status and yield in a conversation from before they were removed, are generic tool cards."
+        note="Every shell row, a run or a look, marks a command that went wrong with a tag after its title: red Failed, with its exit code in the tooltip, grey Stopped, or grey Lost, with why in the tooltip, the same tag its notice carries; one that succeeded shows nothing, and one that runs shimmers. An open row that failed, was stopped or was lost says so above its output. A look is a shell call whose script runs demi shell status; its tag is its own command’s. A call that ran nothing, refused by the repeat guard or for its input, is red Failed and shows why once opened. A title too long for its row is cut at the end; the tag stays. Calls of tools the runtime no longer has, such as shell_status and yield in a conversation from before they were removed, are generic tool cards."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">

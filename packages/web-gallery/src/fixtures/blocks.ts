@@ -973,19 +973,22 @@ export const errorTool = toolCall({
 
 /**
  * The calls the end specimens show: commands that succeeded, failed, were
- * stopped or still run, one with a title too long for a narrow row, looks
- * at them, and calls that ran nothing: the repeat guard's and a refused
- * input's.
+ * stopped, were lost or still run, one with a title too long for a narrow
+ * row, looks at them, and calls that ran nothing: the repeat guard's and a
+ * refused input's.
  */
 export function commandEndBlocks(): ToolCallBlock[] {
-  type End = { status: 'exited', exitCode: number } | { status: 'running' | 'aborted' }
-  const failed = (end: End) => end.status === 'aborted' || (end.status === 'exited' && end.exitCode !== 0)
+  type End =
+    | { status: 'exited', exitCode: number }
+    | { status: 'running' | 'aborted' }
+    | { status: 'lost', lostReason: string }
+  const failed = (end: End) => end.status === 'aborted' || end.status === 'lost' || (end.status === 'exited' && end.exitCode !== 0)
   const run = (id: string, commandId: string, description: string, end: End) => toolCall({
     id,
     toolName: 'shell',
     status: failed(end) ? 'error' : 'completed',
     input: JSON.stringify({ script: 'bun test', description, intervalMs: 15_000 }),
-    output: [{ type: 'text', text: `status: ${end.status}\ncommandId: ${commandId}\noutput:\n` }],
+    output: [{ type: 'text', text: `status: ${end.status === 'lost' ? `lost: ${end.lostReason}` : end.status}\ncommandId: ${commandId}\noutput:\n` }],
     view: shellView({ commandId, ...end, chunks: [] }),
   })
   return [
@@ -993,6 +996,7 @@ export function commandEndBlocks(): ToolCallBlock[] {
     run('end-long', '32', 'Run the whole test suite and collect coverage for every package in the workspace', { status: 'running' }),
     run('end-failed', '33', 'Run the login test', { status: 'exited', exitCode: 1 }),
     run('end-stopped', '34', 'Start the dev server', { status: 'aborted' }),
+    run('end-lost', '37', 'Run the deploy', { status: 'lost', lostReason: 'Demi was upgraded and the Host\'s runner replaced itself' }),
     lookCall('end-look', 'Check the first short sleep', '31', '35', statusText('31', 'exited', 'slept 2 s\n')),
     lookCall('end-look-several', 'Check the test suite and the dev server', '32 34', '36', statusText('32', 'running', '[412/980] packages/web\n')),
     toolCall({

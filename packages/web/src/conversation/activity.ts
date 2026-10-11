@@ -107,6 +107,7 @@ export function applyConversationEvent(
       chars: status.chars,
       // How it ended, which its row marks also when its call returned before.
       exitCode: status.status === 'exited' ? status.exitCode : undefined,
+      lostReason: status.status === 'lost' ? status.reason : undefined,
       toolUseId: status.toolUseId,
       ...(subagentId === undefined ? {} : { subagentId }),
     }
