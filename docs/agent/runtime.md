@@ -1739,7 +1739,8 @@ commands*, and a click opens it to every step.
   and checks command 17 twice reads *Checked 1 command*. Notices and
   receipts add to the row only when the run holds no call, by how each
   ended: *2 commands finished*, *1 command failed*, *1 command stopped*,
-  *1 agent finished*, *1 agent failed*, *1 agent stopped*, *heard from 2
+  *1 command lost* for one whose end the Host could not tell, *1 agent
+  finished*, *1 agent failed*, *1 agent stopped*, *heard from 2
   agents* for updates, joined in the order the run first had them, the first
   word capitalized; a run of thinking and notices alone reads the same. A lone notice or receipt is its own row,
   as a lone call is. The row never reads a bare count of steps,

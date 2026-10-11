@@ -850,6 +850,7 @@ A job describes one child:
 | Field | Meaning |
 | --- | --- |
 | `subagentId` | The child's node ID |
+| `number` | The child's number in the conversation, the one `demi agent spawn` printed and `agent:<number>` links ([Linking an agent](#linking-an-agent)) |
 | `parentSessionId` | The node that spawned it |
 | `description` | The spawn's `--description`, or empty |
 | `profile` | The profile name, or null for the inherit profile |
@@ -969,7 +970,8 @@ description. A click opens the Agents window on that agent's tab, a finished
 one as its Completed menu picks it; a click when the window already shows
 that tab closes the window, as a control that opens what the work panel
 already shows closes it. `agent:0` in a subagent's transcript brings the
-conversation's own transcript into view. A number the conversation does not
+conversation's own transcript into view; its mark is the robot alone, which
+names *Main agent* when pointed at. A number the conversation does not
 have shows the link's text alone, and pointed at, *No agent 9 in this
 conversation*. The product's instructions tell the model to link the agents
 it names this way ([System prompt](system-prompt.md)).
