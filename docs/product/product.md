@@ -82,13 +82,17 @@ an agent's tab and link wear, so one state has one look everywhere:
 | State | Dot |
 | --- | --- |
 | Running | Blue, the accent, breathing |
-| Finished, its answer read or not | Green |
+| Finished, its answer not read yet | Green |
+| Finished, its answer read | The faint ring of a settled row |
 | Failed | Red |
 | A request waits for the user | Yellow, the same size as every other dot and with nothing around it, over every other dot ([Permissions](../agent/permissions.md)) |
 | Stopped by the user, or nothing run yet | The faint ring of a settled row |
 
-A Stop is the user's own decision, neither finished nor failed, and leaves
-the row settled ([Recovering an unfinished turn](#recovering-an-unfinished-turn)).
+Green says there is a new answer to read, so the row settles once the user
+opens the conversation and reads it, as an unread mark does in Mail. An
+agent's tab and link have no read state of their own and stay green once
+the agent finished. A Stop is the user's own decision, neither finished nor
+failed, and leaves the row settled ([Recovering an unfinished turn](#recovering-an-unfinished-turn)).
 
 The sidebar's two groups, Conversations and Projects, each fold under its
 label, as Finder's sidebar sections and Slack's do. A chevron after the
