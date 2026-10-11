@@ -15,6 +15,7 @@ import Popover from '../ui/Popover.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import FileUploadList from './FileUploadList.vue'
+import { failureShown } from './file-cache'
 import { followOnScreen } from './on-screen'
 import Tree from './Tree.vue'
 import UploadConflictDialog from './UploadConflictDialog.vue'
@@ -218,16 +219,17 @@ const rows = computed<TreeRow[]>(() => {
 
 const selectedPath = computed(() => (props.selected ? normalizePath(props.selected) : null))
 const rootListing = computed(() => listings.get(normalizePath(props.root)))
+const rootFailure = computed(() => failureShown(rootListing.value?.showing?.entry))
 const rootName = computed(() => props.rootName ?? (baseName(props.root) || '/'))
 
 function failureOf(row: TreeRow): FileBrowserFailure | null {
-  return row.isDirectory ? (listings.get(row.path)?.showing?.entry.failure ?? null) : null
+  return row.isDirectory ? failureShown(listings.get(row.path)?.showing?.entry) : null
 }
 
 /** A directory listed the first time; one listed again keeps its rows without a spinner. */
 function firstListing(entry: Listing | undefined): boolean {
   const shown = entry?.showing?.entry
-  return shown?.reading === true && shown.value === undefined
+  return shown?.reading === true && shown.answer === null
 }
 
 function isLoading(row: TreeRow): boolean {
@@ -512,11 +514,11 @@ defineExpose({
           <IndeterminateSpinner :size="16" />
         </div>
         <div
-          v-else-if="rootListing?.showing?.entry.failure"
+          v-else-if="rootFailure"
           class="flex flex-1 select-none flex-col items-center justify-center gap-1 px-4 py-10 text-center text-[13px] text-fg-subtle"
         >
           <span>Could not list the workspace.</span>
-          <span class="text-[11px] text-fg-faint">{{ rootListing.showing.entry.failure.message }}</span>
+          <span class="text-[11px] text-fg-faint">{{ rootFailure.message }}</span>
         </div>
       </template>
     </Tree>

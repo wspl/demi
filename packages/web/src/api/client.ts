@@ -12,6 +12,12 @@ export class ApiError extends Error {
   readonly reason: string | null
   /** How many seconds the answer's `Retry-After` asks to wait, as a locked sign-in's does. */
   readonly retryAfterSeconds: number | null
+  /**
+   * The answer's headers, such as the ETag and `X-Demi-Read-At` a refusal
+   * that is a file's answer carries (`web-api.md` § File text and working
+   * tree changes); empty for an error no answer gave.
+   */
+  readonly headers: Headers
 
   constructor(
     status: number,
@@ -19,6 +25,7 @@ export class ApiError extends Error {
     message: string,
     reason: string | null = null,
     retryAfterSeconds: number | null = null,
+    headers: Headers = new Headers(),
   ) {
     super(message)
     this.name = 'ApiError'
@@ -26,6 +33,7 @@ export class ApiError extends Error {
     this.code = code
     this.reason = reason
     this.retryAfterSeconds = retryAfterSeconds
+    this.headers = headers
   }
 }
 
@@ -207,7 +215,7 @@ async function send(path: string, options: Omit<ApiRequestOptions, 'waits'>): Pr
     return response
   }
 
-  throw apiError(response.status, await response.text(), response.headers.get('Retry-After'))
+  throw apiError(response.status, await response.text(), response.headers)
 }
 
 /**
@@ -218,7 +226,8 @@ async function send(path: string, options: Omit<ApiRequestOptions, 'waits'>): Pr
 /** `Retry-After` in seconds; its date form is not one the backend sends. */
 const retryAfterSchema = z.coerce.number().int().nonnegative()
 
-export function apiError(status: number, text: string, retryAfter: string | null = null): ApiError {
+export function apiError(status: number, text: string, headers: Headers = new Headers()): ApiError {
+  const retryAfter = headers.get('Retry-After')
   let body: unknown
   try {
     body = JSON.parse(text)
@@ -236,6 +245,7 @@ export function apiError(status: number, text: string, retryAfter: string | null
     parsed.success ? parsed.data.message : `Request failed (${status}).`,
     parsed.success ? parsed.data.reason ?? null : null,
     retryAfter === null ? null : retryAfterSchema.safeParse(retryAfter).data ?? null,
+    headers,
   )
 }
 

@@ -418,7 +418,8 @@ impl Default for Opened {
 }
 
 /// A `read`'s answer: the file's size, version and modification time,
-/// which the relay's raw route answers in `Last-Modified`; its bytes follow.
+/// which the relay's raw route answers in `Last-Modified`, and the Host's
+/// number before it read, as the relay's `X-Demi-Read-At`; its bytes follow.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[garde(allow_unvalidated)]
@@ -428,17 +429,19 @@ pub struct ReadOpened {
     pub size: u64,
     pub version: String,
     pub modified_at: demi_shared_types::Timestamp,
+    pub read_at: ReadAt,
 }
 
 impl ReadOpened {
     /// The answer for a file of `size` bytes at `version`, modified at
-    /// `modified`; none for a time out of range.
-    pub fn new(size: u64, version: String, modified: crate::wire::Timestamp) -> Option<Self> {
+    /// `modified` and read at `read_at`; none for a time out of range.
+    pub fn new(size: u64, version: String, modified: crate::wire::Timestamp, read_at: ReadAt) -> Option<Self> {
         Some(Self {
             ok: true,
             size,
             version,
             modified_at: demi_shared_types::Timestamp::from_millisecond(modified.0).ok()?,
+            read_at,
         })
     }
 }

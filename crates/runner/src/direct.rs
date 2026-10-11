@@ -116,6 +116,8 @@ impl Operations for HostOperations {
         let cancel = self.closed.clone();
         Box::pin(async move {
             let target = resolve(&scope.cwd, &path);
+            // Taken before the read, as every read of what a subscription covers.
+            let read_at = demi_runner_host::numbers::read_at();
             let read = open_read(target, offset, length, None, &cancel)
                 .await
                 .map_err(|error| match error.kind() {
@@ -129,6 +131,7 @@ impl Operations for HostOperations {
                 size: read.opened.stat.size,
                 version: read.opened.version,
                 modified: read.opened.stat.mtime,
+                read_at,
                 body: read.body.unwrap_or_else(|| Box::pin(futures_util::stream::empty())),
             })
         })

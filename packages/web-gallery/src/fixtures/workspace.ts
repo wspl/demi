@@ -7,11 +7,13 @@ import {
   assetFile,
   createMemoryFileSource,
   dir,
+  SimulatedWatch,
   textFile,
   type MemoryDirectory,
   type MemoryFileSource,
 } from '@demicodes/web-ui/files/memory-source'
 import { FileBrowserError } from '@demicodes/web-ui/files/types'
+import { WatchChannel } from '@demicodes/web-ui/files/watch-channel'
 
 /**
  * The demo workspace behind the work panel: the project the login-test
@@ -517,7 +519,7 @@ const committedContents: ContentReads = {
       throw new FileBrowserError('too-large', 'The file is over 8 MiB')
     if (!committed)
       throw new FileBrowserError('not-found', `The last commit has no ${path}`)
-    return { size: committed.size, modifiedAt: null, version: null }
+    return { value: { size: committed.size, modifiedAt: null, version: null }, readAt: null }
   },
 }
 
@@ -552,30 +554,34 @@ export async function gallerySides(path: string): Promise<ChangeSides> {
  */
 export function createGalleryChangeSet(latencyMs: number, listing: GalleryChangeListing = {}) {
   const files = new HostFiles()
-  files.cover({ covers: () => true })
+  // A simulated Host's watch answers the change set's subscriptions, and
+  // each read carries its number, so what was read stays current.
+  const host = new SimulatedWatch()
   let lists = 0
   const set = keptChangeSet({
     async list() {
+      const readAt = host.readAt()
       await delay(latencyMs)
       lists += 1
       if (listing.failure && lists > 1)
         throw new FileBrowserError('offline', listing.failure)
       if (listing.failure)
         setTimeout(() => set.refresh(), 0)
-      return {
+      const list = {
         files: listing.unavailable ? [] : changedFiles,
         truncated: listing.truncated ?? false,
         repository: !listing.unavailable,
-        gitDir: listing.unavailable ? null : `${WORKSPACE_ROOT}/.git`,
         version: null,
       }
+      return { value: list, readAt }
     },
     async sides(path) {
+      const readAt = host.readAt()
       await delay(latencyMs)
-      return { ...await gallerySides(path), version: null }
+      return { value: { ...await gallerySides(path), version: null }, readAt }
     },
     committed: committedContents,
-  }, WORKSPACE_ROOT, { files })
+  }, WORKSPACE_ROOT, { files, watch: new WatchChannel(files, host.open, 'simulated file watch') })
   // The gallery's working tree shows for the page's lifetime.
   set.show()
   return set

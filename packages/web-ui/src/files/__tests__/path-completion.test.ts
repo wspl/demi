@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { nextTick } from 'vue'
-import { HostFiles } from '../file-cache'
+import { HostFiles, type Answered } from '../file-cache'
+import { SimulatedWatch } from '../memory-source'
+import { WatchChannel } from '../watch-channel'
 import { keptSource } from '../kept-source'
 import { completionSpot, rankCompletions, usePathCompletion, type PathCompletionKind } from '../path-completion'
 import type { FileBrowserEntry } from '../types'
@@ -74,23 +76,24 @@ function fakeSource(tree: Record<string, FileBrowserEntry[]>) {
   const calls: { path: string }[] = []
   const pending: (() => void)[] = []
   const files = new HostFiles()
-  files.cover({ covers: () => true })
+  const watched = new SimulatedWatch()
   const source = keptSource({
     platform: 'macos',
     home,
-    list(path: string): Promise<FileBrowserEntry[]> {
+    list(path: string): Promise<Answered<FileBrowserEntry[]>> {
+      const readAt = watched.readAt()
       calls.push({ path })
       return new Promise((resolve, reject) => {
         pending.push(() => {
           const entries = tree[path]
           if (entries)
-            resolve(entries)
+            resolve({ value: entries, readAt })
           else
             reject(new Error('not found'))
         })
       })
     },
-  }, { files })
+  }, { files, watch: new WatchChannel(files, watched.open) })
   /** Answers every listing asked for so far, and lets their results land. */
   async function answer(): Promise<void> {
     // The field shows the directory once its watcher has run.

@@ -96,7 +96,13 @@ async fn a_read_answers_the_range_and_refuses_a_version_the_file_no_longer_has()
     let answer = whole.next().await.json();
     assert_eq!(
         answer,
-        json!({ "ok": true, "size": 300_000, "version": "W/\"1\"", "modifiedAt": "2026-09-21T14:13:20.123Z" })
+        json!({
+            "ok": true,
+            "size": 300_000,
+            "version": "W/\"1\"",
+            "modifiedAt": "2026-09-21T14:13:20.123Z",
+            "readAt": { "epoch": "e", "number": 1 }
+        })
     );
     assert_eq!(whole.bytes_to_end().await, file, "the whole file, then the channel's end");
 
