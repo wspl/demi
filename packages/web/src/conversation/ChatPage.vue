@@ -228,20 +228,19 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :permission-requests="permissions.stateFor(conversation.id).requests"
     :deciding-permission="permissions.stateFor(conversation.id).deciding"
     @decide-permission="(id, decision) => permissions.decide(conversation!.id, id, decision)"
-    :pending-submission="
-      conversation.pendingSend
-        ? {
-            id: conversation.pendingSend.id,
-            way: conversation.pendingSend.way,
-            text: conversation.pendingSend.text,
-            attachments: conversation.pendingSend.fileIds.flatMap((id) =>
-              conversation?.files.filter((file) => file.id === id) ?? [],
-            ),
-            error: conversation.pendingSend.error,
-          }
-        : null
+    :pending-submissions="
+      conversation.pendingSends.map((pending) => ({
+        id: pending.id,
+        way: pending.way,
+        text: pending.text,
+        attachments: pending.fileIds.flatMap((id) =>
+          conversation?.files.filter((file) => file.id === id) ?? [],
+        ),
+        error: pending.error,
+      }))
     "
-    @retry-submission="store.send(conversation)"
+    :removing="conversation.removing"
+    @retry-submission="store.retrySend(conversation, $event)"
     @retry="store.start(conversation)"
     @rename="store.rename(conversation.id, $event)"
     :retitle="retitle"

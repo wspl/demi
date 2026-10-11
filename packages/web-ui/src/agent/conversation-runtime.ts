@@ -13,7 +13,7 @@ import { asError, createId, deferred } from '@demicodes/utils'
 import type { ClientContent, EditRequest, TranscriptVersion } from '@demicodes/protocol'
 import { ConversationSocketError } from '../transport/conversation-socket'
 import { waitToReconnect } from '../transport/liveness'
-import { hasAcceptedSubmission } from './submission'
+import { hasAcceptedSubmission, isWritten } from './submission'
 import type { ConversationState } from './types'
 
 /**
@@ -24,6 +24,13 @@ import type { ConversationState } from './types'
 export function isRecordedTurnFailure(error: unknown): boolean {
   return error instanceof SessionError
 }
+
+/**
+ * A Remove the session could not carry out, since the message went on
+ * first: the agent read the steer, or the queued message's turn began. The
+ * transcript holds the message.
+ */
+export class RemovalRefusedError extends Error {}
 
 export type RuntimeState = Pick<
   ConversationState,
@@ -207,9 +214,93 @@ export class ConversationRuntime {
     }
   }
 
-  async dequeueMessage(id: string): Promise<void> {
-    const client = await this.ensureOpen()
-    client.dequeueMessage(id)
+  /**
+   * Removes a steer or a queued message that waits for the agent
+   * (`product.md` § Steer or queue); resolves once the session holds it no
+   * more. A connection lost before then sends the request again once the
+   * conversation is open again and still lists the message. Rejects with
+   * `RemovalRefusedError` when the message went on instead.
+   */
+  async removeWaiting(id: string): Promise<void> {
+    for (;;) {
+      const client = await this.ensureOpen()
+      try {
+        await this.steersListed(client)
+        await this.removeOn(client, id)
+        return
+      } catch (error) {
+        if (!(error instanceof ConversationSocketError)) {
+          throw error
+        }
+      }
+    }
+  }
+
+  /**
+   * Asks `client`'s session to remove the message `id` and follows what
+   * becomes of it. The session does not answer the request
+   * (`runtime.md` § Pending steers), so the lists it sends tell: a steer
+   * that leaves its list without reaching the transcript was removed. The
+   * client tells the list that lost a steer just before the transcript
+   * that holds it, from the same frame, so the steer's fate is read once
+   * that frame is through. A queued message that leaves the queue may have
+   * begun its turn instead, whose first block is that message: the
+   * transcript's next change says which, or the agent stopping with nothing
+   * running. Rejects with a `ConversationSocketError` when the connection
+   * ends first.
+   */
+  private removeOn(client: ConversationClient, id: string): Promise<void> {
+    const state = this.options.state
+    if (this.client.value !== client) {
+      return Promise.reject(new ConversationSocketError('The connection ended before the message was removed'))
+    }
+    const steer = state.pendingSteers.some((each) => each.id === id)
+    const listed = () => steer
+      ? state.pendingSteers.some((each) => each.id === id)
+      : state.queue.some((message) => message.id === id)
+    if (steer) {
+      client.cancelPendingSteer(id)
+    } else if (listed()) {
+      client.dequeueMessage(id)
+    }
+    // The queue no longer lists the message, and its turn may have begun.
+    let left = false
+    return new Promise((resolve, reject) => {
+      let settled = false
+      const finish = (error?: Error) => {
+        if (settled) {
+          return
+        }
+        settled = true
+        unsubscribe()
+        if (error) {
+          reject(error)
+        } else {
+          resolve()
+        }
+      }
+      const refusal = () => new RemovalRefusedError(steer
+        ? 'The agent read it before it was removed.'
+        : 'Its turn began before it was removed.')
+      const settle = (event?: ClientSessionEvent) => {
+        if (event?.type === 'disconnected' || event?.type === 'closed') {
+          finish(new ConversationSocketError('The connection ended before the message was removed'))
+        } else if (isWritten(state, id)) {
+          finish(refusal())
+        } else if (listed()) {
+          left = false
+        } else if (steer) {
+          queueMicrotask(() => finish(isWritten(state, id) ? refusal() : undefined))
+        } else if (state.phase === 'idle' ||
+          (left && (event?.type === 'transcript_patch' || event?.type === 'transcript_reset'))) {
+          finish()
+        } else {
+          left = true
+        }
+      }
+      const unsubscribe = client.subscribe(settle)
+      settle()
+    })
   }
 
   /**
@@ -220,11 +311,6 @@ export class ConversationRuntime {
   async sendQueuedNow(id: string): Promise<void> {
     const client = await this.ensureOpen()
     client.sendQueuedMessage(id)
-  }
-
-  async deletePendingSteer(id: string): Promise<void> {
-    const client = await this.ensureOpen()
-    client.cancelPendingSteer(id)
   }
 
   /**
