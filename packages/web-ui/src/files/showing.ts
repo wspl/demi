@@ -6,8 +6,8 @@ import { followOnScreen } from './on-screen'
 export interface ShownState<T> {
   /** The entry shown now; null while there is nothing to show. */
   readonly entry: ComputedRef<ShownEntry<T> | null>
-  /** Reads the shown entry again now, as Retry does. */
-  retry(): void
+  /** Reads the shown entry again now, as Retry does; it settles when that read ends, at once with nothing shown. */
+  retry(): Promise<void>
 }
 
 /**
@@ -32,6 +32,6 @@ export function useShowing<O, T>(
   followOnScreen(() => [current.value])
   return {
     entry: computed(() => current.value?.entry ?? null),
-    retry: () => current.value?.retry(),
+    retry: () => current.value?.retry() ?? Promise.resolve(),
   }
 }

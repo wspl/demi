@@ -7,8 +7,7 @@ import MediaPreview from './MediaPreview.vue'
 import { baseName } from '@demicodes/utils'
 import { formatBytes } from './format'
 import { formatZoom } from './image-zoom'
-import { TOO_LARGE_NOTE } from './preview'
-import { failureShown } from './file-cache'
+import { MISSING_FILE, TOO_LARGE_NOTE } from './preview'
 import { useShowing } from './showing'
 import type { FileContents, FileDescription } from './types'
 
@@ -34,6 +33,8 @@ type State =
   | { phase: 'ready'; description: FileDescription }
   | { phase: 'undecodable'; description: FileDescription }
   | { phase: 'too-large' }
+  /** Nothing is at the path. */
+  | { phase: 'missing' }
   | { phase: 'failed'; message: string }
 
 const dimensions = ref<{ width: number; height: number } | null>(null)
@@ -51,8 +52,10 @@ const state = computed<State>(() => {
     return { phase: 'loading' }
   if (entry.answer === 'too-large')
     return { phase: 'too-large' }
+  if (entry.answer === 'gone')
+    return { phase: 'missing' }
   if (entry.answer !== 'value' || description === undefined)
-    return { phase: 'failed', message: failureShown(entry)?.message ?? 'The file could not be read.' }
+    return { phase: 'failed', message: entry.failure?.message ?? 'The file could not be read.' }
   const failed = undecodable.value
   return failed?.path === props.path && failed.version === description.version
     ? { phase: 'undecodable', description }
@@ -130,8 +133,9 @@ const caption = computed(() => {
     <RegionStatus
       v-else
       class="h-full"
-      :status="state.phase"
-      :label="state.phase === 'loading' ? 'Reading…' : 'Could not read this file.'"
+      :status="state.phase === 'loading' ? 'loading' : 'failed'"
+      :icon="state.phase === 'missing' ? MISSING_FILE.icon : undefined"
+      :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'missing' ? MISSING_FILE.label : 'Could not read this file.'"
       loading-label="Reading…"
       :detail="state.phase === 'failed' ? state.message : null"
       :on-retry="shown.retry"

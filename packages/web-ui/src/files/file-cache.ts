@@ -98,8 +98,13 @@ export function failureShown(entry: ShownEntry<unknown> | null | undefined): Fil
 /** A view's hold on an entry it shows. */
 export interface Showing<T> {
   readonly entry: ShownEntry<T>
-  /** Reads the entry again now, as Retry and Refresh do. */
-  retry(): void
+  /**
+   * Reads the entry again now, as Retry and Refresh do, or joins the read on
+   * its way. It settles when that read ends, whatever it answered, so a
+   * region's Retry stops loading even when the answer is the one it showed
+   * before, such as a file that is still not there (`RegionStatus`).
+   */
+  retry(): Promise<void>
   /** The view no longer shows it; a second release does nothing. */
   release(): void
   /**
@@ -546,9 +551,7 @@ export class HostFiles implements WatchListener {
     let released = false
     return {
       entry: entry.state,
-      retry: () => {
-        void this.read(entry, spec.read)
-      },
+      retry: () => this.read(entry, spec.read),
       release: () => {
         if (released)
           return
@@ -597,11 +600,11 @@ export class HostFiles implements WatchListener {
     this.measure(entry as Entry<unknown>, spec.size(edited))
   }
 
-  /** Reads the entry `spec` names again now, as a Refresh does. */
-  retry<T>(spec: KeptSpec<T>): void {
+  /** Reads the entry `spec` names again now, as a Refresh does; it settles when that read ends. */
+  retry<T>(spec: KeptSpec<T>): Promise<void> {
     const entry = this.entry(spec)
     this.follow(entry as Entry<unknown>, spec.watch ?? null)
-    void this.read(entry, spec.read)
+    return this.read(entry, spec.read)
   }
 
   /** What is kept of the entry `spec` names, as a view would show it, without showing or reading it. */
