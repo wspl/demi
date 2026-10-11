@@ -7,18 +7,15 @@ import {
   type ResizeOrientation,
   type ResizeSide,
 } from './resize-handle'
+import { startPointerDrag } from './pointer-drag'
 
 /**
  * The divider between two panes that sizes one of them. It owns nothing but
  * the gesture: the host keeps the size (v-model) and lays the panes out.
  *
- * Pointer: the handle captures the pointer on press, so the drag survives
- * leaving the handle, the window and iframes; while it lasts the document
- * wears `is-resizing-x`/`-y`, which fixes the cursor and stops text selection
- * everywhere. Moves are coalesced to one update per frame, and the last one
- * is flushed on release so the pane ends exactly under the pointer. Release,
- * cancel, lost capture and the window losing focus all end the drag the same
- * way; Escape ends it by putting the size back where it started.
+ * Pointer: a press starts a pointer drag (`startPointerDrag`), which keeps
+ * the resize cursor on the whole page and reports one size a frame; Escape
+ * ends it by putting the size back where it started.
  *
  * Keyboard: the handle is a focusable separator. The arrows along its axis
  * move the edge by `step` (four steps with Shift), Home and End go to the
@@ -66,29 +63,13 @@ const focused = ref(false)
 const focusByPointer = ref(false)
 const root = ref<HTMLElement | null>(null)
 
-interface Drag {
-  pointerId: number
-  startPointer: number
-  startValue: number
-  /** The size the next frame will emit, when it differs from the last one emitted. */
-  pending: number | null
-  frame: number | null
-  emitted: number
-}
-let drag: Drag | null = null
-
-function documentClass(): string {
-  return vertical.value ? 'is-resizing-x' : 'is-resizing-y'
-}
+/** The drag under way: the last size it reached, and what ends it early. */
+let drag: { value: number; stop: () => void } | null = null
 
 function update(value: number): void {
   if (value !== props.modelValue) {
     emit('update:modelValue', value)
   }
-}
-
-function pointerPosition(event: PointerEvent): number {
-  return vertical.value ? event.clientX : event.clientY
 }
 
 function onPointerDown(event: PointerEvent): void {
@@ -98,95 +79,27 @@ function onPointerDown(event: PointerEvent): void {
   // No text selection starts under the press; the handle takes focus itself so
   // the arrows work right after a drag, without the keyboard focus line.
   event.preventDefault()
-  const target = event.currentTarget as HTMLElement
   focusByPointer.value = true
-  target.focus({ preventScroll: true })
-  target.setPointerCapture(event.pointerId)
-  drag = {
-    pointerId: event.pointerId,
-    startPointer: pointerPosition(event),
-    startValue: clampSize(props.modelValue, bounds.value),
-    pending: null,
-    frame: null,
-    emitted: props.modelValue,
-  }
+  root.value?.focus({ preventScroll: true })
+  const startValue = clampSize(props.modelValue, bounds.value)
   dragging.value = true
-  document.documentElement.classList.add(documentClass())
-  window.addEventListener('blur', onWindowBlur)
-  window.addEventListener('keydown', onWindowKeydown, true)
-}
-
-function onPointerMove(event: PointerEvent): void {
-  if (!drag || event.pointerId !== drag.pointerId) {
-    return
-  }
-  const next = sizeFromDrag(
-    drag.startValue,
-    pointerPosition(event) - drag.startPointer,
-    props.side,
-    bounds.value,
-  )
-  if (next === drag.emitted) {
-    drag.pending = null
-    return
-  }
-  drag.pending = next
-  if (drag.frame === null) {
-    drag.frame = requestAnimationFrame(flush)
-  }
-}
-
-function flush(): void {
-  if (!drag) {
-    return
-  }
-  drag.frame = null
-  if (drag.pending !== null) {
-    drag.emitted = drag.pending
-    drag.pending = null
-    update(drag.emitted)
-  }
-}
-
-function onPointerEnd(event: PointerEvent): void {
-  if (drag && event.pointerId === drag.pointerId) {
-    finish(drag.pending ?? drag.emitted)
-  }
-}
-
-function onWindowBlur(): void {
-  if (drag) {
-    finish(drag.pending ?? drag.emitted)
-  }
-}
-
-function onWindowKeydown(event: KeyboardEvent): void {
-  if (drag && event.key === 'Escape') {
-    event.preventDefault()
-    finish(drag.startValue)
-  }
-}
-
-/** Ends the drag at `value`: the frame is dropped, the value applied, the document restored. */
-function finish(value: number): void {
-  const current = drag
-  if (!current) {
-    return
-  }
-  drag = null
-  if (current.frame !== null) {
-    cancelAnimationFrame(current.frame)
-  }
-  dragging.value = false
-  document.documentElement.classList.remove(documentClass())
-  window.removeEventListener('blur', onWindowBlur)
-  window.removeEventListener('keydown', onWindowKeydown, true)
-  const element = root.value
-  if (element?.hasPointerCapture(current.pointerId)) {
-    element.releasePointerCapture(current.pointerId)
-  }
-  update(value)
-  emit('commit', value)
+  const stop = startPointerDrag(event, {
+    cursor: vertical.value ? 'col-resize' : 'row-resize',
+    move(dx, dy) {
+      if (!drag)
+        return
+      drag.value = sizeFromDrag(startValue, vertical.value ? dx : dy, props.side, bounds.value)
+      update(drag.value)
+    },
+    end(cancelled) {
+      const value = cancelled ? startValue : drag?.value ?? startValue
+      drag = null
+      dragging.value = false
+      update(value)
+      emit('commit', value)
+    },
+  })
+  drag = { value: startValue, stop }
 }
 
 function onKeydown(event: KeyboardEvent): void {
@@ -223,9 +136,7 @@ function onDoubleClick(): void {
 }
 
 onBeforeUnmount(() => {
-  if (drag) {
-    finish(drag.emitted)
-  }
+  drag?.stop()
 })
 </script>
 
@@ -246,10 +157,6 @@ onBeforeUnmount(() => {
       disabled ? '' : vertical ? 'cursor-col-resize' : 'cursor-row-resize',
     ]"
     @pointerdown="onPointerDown"
-    @pointermove="onPointerMove"
-    @pointerup="onPointerEnd"
-    @pointercancel="onPointerEnd"
-    @lostpointercapture="onPointerEnd"
     @keydown="onKeydown"
     @dblclick="onDoubleClick"
     @focus="focused = true"

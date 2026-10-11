@@ -7,7 +7,14 @@ import { dropSource } from './preview'
  * when `autoplay` says so, as a video opened large does. Leaving the page
  * stops it.
  */
-defineProps<{ src: string; kind: 'video' | 'audio'; name: string; autoplay?: boolean }>()
+defineProps<{
+  src: string
+  kind: 'video' | 'audio'
+  name: string
+  autoplay?: boolean
+  /** Edge to edge, with no margin around the player, as a window that is sized to it shows it. */
+  flush?: boolean
+}>()
 const emit = defineEmits<{ size: [width: number, height: number]; failed: [] }>()
 
 const media = ref<HTMLMediaElement | null>(null)
@@ -25,7 +32,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 w-full items-center justify-center p-4">
+  <div class="flex h-full min-h-0 w-full items-center justify-center" :class="{ 'p-4': !flush }">
     <video
       v-if="kind === 'video'"
       ref="media"
