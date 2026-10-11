@@ -30,7 +30,7 @@ import { storedShellView } from './block-helpers'
 import { distanceFromBottom } from '../composables/scroll-bottom'
 import { highlightFound } from '../ui/found-highlight'
 import { provideTranscript } from './edit-selection'
-import { transcriptRequests } from '../files/request-changes'
+import { storedRequests } from '../files/request-changes'
 
 const props = withDefaults(defineProps<{
   conversationId: string
@@ -161,8 +161,8 @@ const paneStatus = computed(() =>
 )
 const mutedIds = computed(() => messageEditSuffixIds(renderBlocks.value, props.editTargetId))
 // Every streamed delta re-renders the visible rows; the lookup must not rescan the transcript per row.
-// The transcript's requests, which its rows' file pills read: what each opens, and which files they leave out.
-const requests = computed(() => transcriptRequests(props.blocks))
+// The transcript's requests, which its rows' file pills read for what each opens.
+const requests = computed(() => storedRequests(props.blocks))
 provideTranscript({
   get node() {
     return props.node ?? null

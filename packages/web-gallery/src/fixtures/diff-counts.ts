@@ -1,11 +1,10 @@
 import { Text } from '@codemirror/state'
-import { diffChunks } from '../editor/unifiedDiff'
+import { diffChunks } from '@demicodes/web-ui/editor/unifiedDiff'
 
 /**
- * The lines a diff from `original` to `modified` adds and removes, as the
- * diff editor's own chunks cover them (`diffChunks`), so the counts a header
- * shows are those of the diff under it, and git's: a created file counts
- * only its added lines.
+ * The lines a diff from `original` to `modified` adds and removes, for the
+ * gallery's working tree, which plays the Host's git status: the page
+ * counts no line itself, and shows the counts its sources give.
  */
 export function diffLineCounts(original: string, modified: string): { added: number; removed: number } {
   const a = Text.of(original.split('\n'))

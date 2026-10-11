@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, reactive, shallowRef, watch } from 'vue'
-import type { AgentMessage, Block, ContextUsage, UserContentBlock } from '@demicodes/protocol'
+import type { AgentMessage, Block, ChangedFile, ContextUsage, UserContentBlock } from '@demicodes/protocol'
 import { CHROME_ROLL_MS } from '@demicodes/web-ui/ui/chrome-roll'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
@@ -7,7 +7,7 @@ import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { ChatSessionState, ConversationState, PendingSubmissionState } from '@demicodes/web-ui/agent/types'
 import type { SendWay } from '@demicodes/web-ui/agent/send-way'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
-import { demoModel, editedFile, shellView, type ShellView } from './fixtures/blocks'
+import { demoModel, editedFile, inRun, listedFiles, shellView, withLists, type ShellView } from './fixtures/blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { usageAt } from './fixtures/catalog'
 import { suitePathsUpdate } from './fixtures/subagents'
@@ -226,8 +226,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     return `${state.id}-${kind}-${sequence}`
   }
 
+  /** A block written again keeps the run it was stored in. */
   function replace(id: string, next: Block): void {
-    state.blocks = state.blocks.map((block) => (block.id === id ? next : block))
+    state.blocks = state.blocks.map((block) => (block.id === id ? ({ ...next, ...('run' in block ? { run: block.run } : {}) }) as Block : block))
   }
 
   /**
@@ -245,11 +246,26 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
   })
 
+  /**
+   * The run the steps the flow writes join, as the backend stores them
+   * (`runtime.md` § Work groups): the id of its first step, until the flow
+   * writes anything else.
+   */
+  let stepsRun: string | null = null
+
   function append(block: Block): void {
     if (block.type === 'thinking' || block.type === 'text' || block.type === 'tool_call') {
       state.waitingSince = null
     }
+    stepsRun = null
     state.blocks = [...state.blocks, block]
+  }
+
+  /** Writes a step of the agent's work, in the run the steps before it opened, or a run of its own. */
+  function appendStep(block: Block): void {
+    const run = stepsRun ?? block.id
+    append({ ...block, run } as Block)
+    stepsRun = run
   }
 
   /** A message's block; `turnId` is the id the message was sent with, which the server keeps as its turn's. */
@@ -350,7 +366,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     let createdAt = ''
     at(run, startMs, () => {
       createdAt = now()
-      append(thinkingBlock(id, createdAt, ''))
+      appendStep(thinkingBlock(id, createdAt, ''))
     })
     return streamTextInto(run, startMs + CHROME_ROLL_MS, text, (partial) => {
       replace(id, thinkingBlock(id, createdAt, partial))
@@ -430,7 +446,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     let toolStartedAt = ''
     at(run, thought1 + 200, () => {
       toolStartedAt = now()
-      append(tool(toolId, toolStartedAt, 'executing'))
+      appendStep(tool(toolId, toolStartedAt, 'executing'))
       runningTool = toolId
       state.terminals.push({
         id: `cmd-${toolId}`,
@@ -520,6 +536,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     state.pendingCalls = []
     waitForModel()
     let t = FIRST_OUTPUT_MS
+    // The files the run changed so far, as each call's lists store them.
+    let listed: ChangedFile[] = []
     for (const step of WORK_STEPS) {
       if (step.kind === 'think') {
         t = think(run, t, step.text) + (step.text ? 300 : 700)
@@ -534,7 +552,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
           printLive(terminal, '[1268/1268] Linking d8\n')
           endTerminal(terminal, 'exited')
           terminal.exitCode = 0
-          append(workNotice(nextId('notice'), now(), terminal.id, step.of))
+          appendStep(workNotice(nextId('notice'), now(), terminal.id, step.of))
           waitForModel()
         })
         t += STEP_ANSWER_MS
@@ -542,7 +560,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       }
       if (step.kind === 'receipt') {
         at(run, t, () => {
-          append(workReceipt(now(), step.message))
+          appendStep(workReceipt(now(), step.message))
           waitForModel()
         })
         t += STEP_ANSWER_MS
@@ -563,7 +581,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       at(run, t, () => {
         startedAt = now()
         state.pendingCalls = []
-        append(workCall(id, startedAt, step, 'executing'))
+        appendStep(workCall(id, startedAt, step, 'executing'))
         state.terminals.push({
           id: `cmd-${id}`,
           title: step.description,
@@ -590,7 +608,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
         // A background command runs on after its call returned, until its notice.
         if (!step.background)
           endTerminal(terminal, 'exited')
-        replace(id, workCall(id, startedAt, step, 'completed'))
+        const done = workCall(id, startedAt, step, 'completed')
+        listed = [...listed, ...listedFiles(done)]
+        replace(id, withLists(done, listed))
         writeSteers()
         waitForModel()
       })
@@ -607,9 +627,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     state.phase = 'idle'
     const at = now()
     const calls = new Map<string, string>()
+    let listed: ChangedFile[] = []
     state.blocks = [
       userBlock([{ type: 'text', text: WORK_TEXT }]),
-      ...WORK_STEPS.map((step): Block => {
+      ...inRun(...WORK_STEPS.map((step): Block => {
         switch (step.kind) {
           case 'think':
             return thinkingBlock(nextId('think'), at, step.text)
@@ -620,10 +641,12 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
           case 'call': {
             const id = nextId('tool')
             calls.set(step.description, `cmd-${id}`)
-            return workCall(id, at, step, 'completed')
+            const done = workCall(id, at, step, 'completed')
+            listed = [...listed, ...listedFiles(done)]
+            return withLists(done, listed)
           }
         }
-      }),
+      })),
       textBlock(nextId('text'), at, WORK_REPLY),
     ]
   }
@@ -1081,12 +1104,14 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     // A play starts over: what waited for the last one goes with it.
     state.pendingSteers = []
     state.queue = []
+    stepsRun = null
 
     if (kind === 'stream') {
       // Thinking is the tail from the first running frame, so nothing is waited for.
       const id = nextId('think')
       const createdAt = now()
-      state.blocks = [thinkingBlock(id, createdAt, '')]
+      state.blocks = inRun(thinkingBlock(id, createdAt, ''))
+      stepsRun = id
       state.phase = 'running'
       const thought = streamTextInto(run, FEED_MS, THINK_1, (partial) => {
         replace(id, thinkingBlock(id, createdAt, partial))
@@ -1100,7 +1125,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       // the queue, which shows as one from the send, its line and controls
       // in view while it is delivered.
       const toolId = nextId('tool')
-      state.blocks = [userBlock([{ type: 'text', text: USER_TEXT }]), tool(toolId, now(), 'executing')]
+      state.blocks = [userBlock([{ type: 'text', text: USER_TEXT }]), ...inRun(tool(toolId, now(), 'executing'))]
+      stepsRun = toolId
       state.phase = 'running'
       runningTool = toolId
       at(run, ACK_MS, () => {
