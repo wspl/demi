@@ -108,7 +108,9 @@ pub(crate) const CONTROL: Schema = Schema {
 /// published release before the one that ships the current schema, and of
 /// each development build a server keeps data of (`upgrades.md` § A
 /// development build on a server); 0.1.22-dev.20261011T123543Z shipped the
-/// last one in it.
+/// last of those. The schema of transcript block format 4 after it no
+/// server keeps, but development databases do, and the server's migrate
+/// through it.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -132,8 +134,49 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql"),
             migration: Migration::Code(from_0_1_22_dev_20261011t123543z),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.block-format-4.sql"),
+            migration: Migration::Code(boundaries_with_kept_messages),
+        },
     ],
 };
+
+/// From the conversation schema of transcript block format 4 to format 5,
+/// where a `compaction_boundary` holds the user's messages its pass kept
+/// (`compaction.md` § One pass): no pass before kept any, so each stored
+/// boundary keeps none. The tables are as they were.
+fn boundaries_with_kept_messages(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    let rows = transaction
+        .prepare("SELECT node_id, idx, block FROM blocks WHERE json_extract(block, '$.type') = 'compaction_boundary'")?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
+    for (node, index, text) in rows {
+        let mut block: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
+        if with_no_kept_messages(&mut block) {
+            let block: demi_shared_types::Block = demi_shared_types::decode_value(block).map_err(corrupt)?;
+            update.execute(rusqlite::params![node, index, super::columns::to_json(&block)])?;
+        }
+    }
+    Ok(())
+}
+
+/// A stored `compaction_boundary` of transcript block format 4 or before
+/// as format 5 holds it, with no kept messages; true when it changed. The
+/// migrations before that format's decode the blocks they relist as the
+/// current format, so they read a boundary through this too.
+fn with_no_kept_messages(block: &mut serde_json::Value) -> bool {
+    let Some(fields) = block.as_object_mut() else {
+        return false;
+    };
+    if fields.get("type").and_then(serde_json::Value::as_str) != Some("compaction_boundary")
+        || fields.contains_key("kept")
+    {
+        return false;
+    }
+    fields.insert("kept".to_owned(), serde_json::Value::Array(Vec::new()));
+    true
+}
 
 /// From the conversation schema of the development build
 /// 0.1.22-dev.20261011T123543Z, which a server keeps data of
@@ -584,9 +627,9 @@ fn relist_blocks(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlit
         let stored = rows
             .iter()
             .map(|(_, text)| {
-                serde_json::from_str::<serde_json::Value>(text)
-                    .map_err(corrupt)
-                    .and_then(|value| demi_shared_types::decode_value::<demi_shared_types::Block>(value).map_err(corrupt))
+                let mut value = serde_json::from_str::<serde_json::Value>(text).map_err(corrupt)?;
+                with_no_kept_messages(&mut value);
+                demi_shared_types::decode_value::<demi_shared_types::Block>(value).map_err(corrupt)
             })
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let mut blocks = stored.clone();
@@ -1383,11 +1426,11 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
--- blocks.block: transcript block format 4.
+-- blocks.block: transcript block format 5.
 CREATE TABLE blocks (
   node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx     INTEGER NOT NULL CHECK (idx >= 0),
-  -- blocks.block: transcript block format 4
+  -- blocks.block: transcript block format 5
   block   TEXT NOT NULL,
   PRIMARY KEY (node_id, idx)
 ) STRICT;
@@ -2345,13 +2388,101 @@ mod tests {
         );
     }
 
+    /// A compaction stored before boundaries kept the user's messages, by
+    /// the build the server runs (format 3) and by a development build of
+    /// format 4, keeps none once migrated, and its conversation opens.
+    // Cost: two databases on disk, a few milliseconds.
+    #[test]
+    fn a_boundary_stored_before_kept_messages_keeps_none() {
+        use demi_shared_types::Block;
+
+        let model = serde_json::json!({
+            "providerId": "anthropic",
+            "model": {
+                "id": "claude-sonnet-4-5",
+                "name": "Claude Sonnet 4.5",
+                "contextWindow": 200000,
+                "outputLimit": 64000,
+                "thinking": [{"type": "disabled"}],
+                "acceptedExtensions": ["png"]
+            },
+            "thinking": {"type": "disabled"},
+            "serviceTierId": null
+        });
+        let blocks = [
+            serde_json::json!({
+                "type": "compaction_boundary",
+                "id": "b1",
+                "createdAt": "2026-10-11T12:40:00.000Z",
+                "model": model,
+                "summary": "The user asked for notes.",
+                "summaryTokens": 7
+            }),
+            serde_json::json!({
+                "type": "user",
+                "id": "u1",
+                "turnId": "t1",
+                "createdAt": "2026-10-11T12:41:00.000Z",
+                "model": model,
+                "content": [{"type": "text", "text": "Go on"}],
+                "preamble": null
+            }),
+            serde_json::json!({
+                "type": "compaction_marker",
+                "id": "m1",
+                "createdAt": "2026-10-11T12:41:00.000Z",
+                "model": model,
+                "boundaryId": "b1",
+                "compactedTokens": 900
+            }),
+        ];
+        for sql in [
+            include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql"),
+            include_str!("schema/conversation-0.1.22-dev.block-format-4.sql"),
+        ] {
+            let (_directory, path, mut connection) = database(sql);
+            connection
+                .execute(
+                    "INSERT INTO nodes
+                       (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
+                     VALUES ('root', 0, '', 1, 0, 1, 0, ?1, ?2, 0)",
+                    rusqlite::params![state_of_development(), i64::try_from(blocks.len()).unwrap()],
+                )
+                .unwrap();
+            for (index, block) in blocks.iter().enumerate() {
+                connection
+                    .execute(
+                        "INSERT INTO blocks (node_id, idx, block) VALUES ('root', ?1, ?2)",
+                        rusqlite::params![i64::try_from(index).unwrap(), block.to_string()],
+                    )
+                    .unwrap();
+            }
+
+            CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+            let stored: Vec<Block> = connection
+                .prepare("SELECT block FROM blocks WHERE node_id = 'root' ORDER BY idx")
+                .unwrap()
+                .query_map([], |row| row.get::<_, String>(0))
+                .unwrap()
+                .map(|text| demi_shared_types::decode::<Block>(&text.unwrap()).unwrap())
+                .collect();
+            let Block::CompactionBoundary(boundary) = &stored[0] else {
+                panic!("{stored:?}");
+            };
+            assert_eq!(boundary.summary, "The user asked for notes.");
+            assert!(boundary.kept.is_empty());
+        }
+    }
+
     /// The development builds' schemas are the ones their server's
-    /// databases record.
+    /// databases record, and format 4's the one development databases
+    /// record.
     #[test]
     fn the_development_builds_in_the_history_are_the_ones_their_server_records() {
         for (schema, development, version) in [
             (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql"), 1_563_671_332),
             (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql"), 845_924_528),
+            (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.block-format-4.sql"), 2_090_642_600),
             (&CONTROL, include_str!("schema/control-0.1.22-dev.20261011T123543Z.sql"), 388_363_661),
         ] {
             assert_eq!(version_of(development), version);

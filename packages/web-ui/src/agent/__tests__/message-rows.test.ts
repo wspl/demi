@@ -318,7 +318,7 @@ const transitions: { name: string; blocks: Block[]; phase?: MessageRowsSource['p
       ['compacting', phase('compacting')],
       ['divider', (state) => {
         state.blocks = [
-          { type: 'compaction_boundary', id: 'b-1', createdAt, model, summary: 'The user said hello.', summaryTokens: 12 },
+          { type: 'compaction_boundary', id: 'b-1', createdAt, model, summary: 'The user said hello.', summaryTokens: 12, kept: [] },
           ...state.blocks,
           { type: 'compaction_marker', id: 'cm-1', createdAt, model, boundaryId: 'b-1', compactedTokens: 400 },
         ]

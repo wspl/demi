@@ -55,7 +55,7 @@ use serde::Serialize;
 use tokio::sync::{Notify, oneshot, watch};
 use tokio_util::task::AbortOnDropHandle;
 
-pub use compaction::{CompactionConfig, compaction_refusal};
+pub use compaction::{CompactionConfig, compaction_refusal, token_threshold};
 pub use editing::ForkError;
 pub use editing::{
     EditCheck, EditContent, EditError, EditSubmission, accepted, edit_digest, fork_seed,
@@ -63,7 +63,7 @@ pub use editing::{
 pub use retry::RetryPolicy;
 pub use worker::left_by_offline_host;
 pub use runtime::{
-    CallCommand, CommandLook, InputArrival, NewContext, SeenContext, SessionRuntime, StartedCommand,
+    CallCommand, CommandLook, InputArrival, NewContext, RunningWork, SeenContext, SessionRuntime, StartedCommand,
     StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome, WindowEnd,
 };
 
@@ -530,6 +530,7 @@ impl AgentSession {
             watched: Watched::default(),
             edits: Vec::new(),
             held: false,
+            one_request: false,
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
             runtime: deps.runtime.clone(),
@@ -609,6 +610,7 @@ impl AgentSession {
             watched,
             edits: state.edits,
             held,
+            one_request: false,
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
             runtime: deps.runtime.clone(),

@@ -38,7 +38,7 @@ pub use agent_message::{
 };
 pub use block::{
     AbortBlock, AgentMessageBlock, Block, CommandEnd, CommandReport, CompactionBoundaryBlock, CompactionMarkerBlock,
-    ContextBlock, ErrorBlock, ErrorDevice, HOST_OFFLINE, INSTRUCTIONS_SOURCE, InstructionEntry, RedactedThinkingBlock, ReportEvent, ResponseBlock, ResumeBlock, SteerBlock, StoppedBy,
+    ContextBlock, ErrorBlock, ErrorDevice, EXECUTION_SOURCE, HOST_OFFLINE, INSTRUCTIONS_SOURCE, InstructionEntry, KeptMessage, RedactedThinkingBlock, ReportEvent, ResponseBlock, ResumeBlock, SteerBlock, StoppedBy,
     TextBlock, ThinkingBlock, ToolCallBlock, ToolCallStatus, UserBlock, WakeupBlock, client_block,
     client_blocks, WakeupPlacement,
 };

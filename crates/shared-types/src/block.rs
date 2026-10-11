@@ -290,6 +290,12 @@ pub struct ContextBlock {
 /// sends whole.
 pub const INSTRUCTIONS_SOURCE: &str = "instructions";
 
+/// The context source of the conversation's execution context
+/// (`runtime.md` § Context), which also names what still runs after a
+/// compaction (`compaction.md` § What the model receives afterward); no
+/// plugin may be named so.
+pub const EXECUTION_SOURCE: &str = "execution";
+
 /// One part of an instructions block's text (`instructions.md` § What the
 /// card lists).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -856,6 +862,10 @@ pub struct CompactionBoundaryBlock {
     pub summary: String,
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub summary_tokens: u64,
+    /// The user's own messages the pass kept, oldest first, each as the
+    /// content its user message replays (`compaction.md` § One pass).
+    #[garde(dive)]
+    pub kept: Vec<KeptMessage>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
     /// a process resumes); omitted when there are none. They never leave
@@ -865,6 +875,17 @@ pub struct CompactionBoundaryBlock {
     #[schemars(skip)]
     #[garde(skip)]
     pub entries: Vec<serde_json::Value>,
+}
+
+/// A message of the user's that a compaction kept beside its summary: a
+/// `user` block's preamble and content, or a `steer` block's content, the
+/// one that crossed the pass's budget cut to its text
+/// (`compaction.md` § One pass).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct KeptMessage {
+    #[garde(dive)]
+    pub content: Vec<UserContentBlock>,
 }
 
 /// Compaction's estimate of the size of what it summarized.

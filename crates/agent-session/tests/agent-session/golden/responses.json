@@ -1,0 +1,116 @@
+{
+  "model": "model-a",
+  "input": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Continue the work from where it stands; do not mention or restate the summary."
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "The release build fails; here is the screen."
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Use the release profile."
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Fix it, and don't touch the migration files."
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "<summary>\n## Goal\n- Fix the release build.\n## Constraints and preferences\n- \"don't touch the migration files\"\n## Progress\n- `libssl` added to the link line; tests pass.\n## Next step\n- Ship it.\n</summary>"
+        }
+      ]
+    },
+    {
+      "type": "reasoning",
+      "id": "rs_the fix",
+      "summary": [],
+      "encrypted_content": "enc-the fix"
+    },
+    {
+      "type": "function_call",
+      "call_id": "call-test",
+      "name": "test",
+      "arguments": "{\"suite\":\"release\"}"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "call-test",
+      "output": "running 40 tests\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest result: ok"
+    },
+    {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "I added `libssl` to the link line; the tests pass.",
+          "annotations": []
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Ship it."
+        }
+      ]
+    }
+  ],
+  "stream": true,
+  "store": false,
+  "include": [
+    "reasoning.encrypted_content"
+  ],
+  "prompt_cache_key": "root",
+  "instructions": "system prompt",
+  "tools": [
+    {
+      "type": "function",
+      "name": "look",
+      "description": "",
+      "parameters": {}
+    },
+    {
+      "type": "function",
+      "name": "note",
+      "description": "",
+      "parameters": {}
+    },
+    {
+      "type": "function",
+      "name": "test",
+      "description": "",
+      "parameters": {}
+    }
+  ],
+  "tool_choice": "auto",
+  "parallel_tool_calls": true
+}
