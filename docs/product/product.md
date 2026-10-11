@@ -545,13 +545,13 @@ The request:
 | When | At the first send, concurrently with the first turn: it neither waits for the turn nor delays it. A first message without text starts none, and the title stays the placeholder until renamed. There is no other request. |
 | Model | The provider and model selected for the conversation at that moment. No separate title model is configured. The messages therefore go only where the user already chose to send them. |
 | Effort | The lowest thinking effort the model offers, the default service tier, and an output limit of 4,096 tokens, room for that effort's thinking and one line, or the model's own [output limit](../providers/models.md#output-limit) when it is lower. At 1,024 the baseline model's lowest effort left about one title in ten empty, its thinking spending the whole limit. |
-| Input | A fixed title instruction as the system prompt, and one user message holding the text of every message the user has sent, oldest first and numbered. Each is cut to its first 400 characters, and the whole to 4,000: when they do not fit, the first message and the most recent ones stay and the middle is left out, since the first says what the conversation set out to do and the last what it has become. No agent system prompt, no tools, no assistant output, no attachments or images, no file references. The input stays short so that the title arrives quickly. At the first send the input is that one message. |
+| Input | A fixed title instruction as the system prompt, and one user message holding the text of the user's first message, as the user reads it, cut to its first 4,000 characters. |
 | Path | The same metered provider runtime a turn uses, so the request counts in the user's usage ledger and obeys the same limits. It is not a session turn: nothing is added to the transcript and no session event is emitted. |
 | Output | The first non-empty line of the text response, without surrounding quotes, cut to 80 characters. Thinking output is ignored. An empty result writes nothing. |
 | Failure | A refused, failed or empty request is logged and ends there; the title in place stays, and is already usable. Nothing retries it. |
 | Release | The request is aborted when the conversation is archived or the backend closes. |
 
-The limits of 80, 400 and 4,000 characters count Unicode scalar values, and a
+The limits of 80 and 4,000 characters count Unicode scalar values, and a
 cut never splits one.
 
 ### Finding a conversation
