@@ -607,12 +607,15 @@ async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_
     );
     // The command woke the Cloud, whose runner reported its home, a
     // temporary directory here: the model's next request names the
-    // directory its shells really start in.
+    // directory its shells really start in, as the Host now is, with no
+    // label of a change.
     let home = harness.manager.home(&the_cloud(&harness));
     let reported = wrote.requests.last().unwrap()["messages"].to_string();
     assert!(
         reported.contains("[Execution context 1]\\nPrimary host: Cloud, ")
-            && reported.contains(&format!("Shells start in {home}/sessions/{FIRST}.")),
+            && reported.contains(&format!(
+                "Shells start in {home}/sessions/{FIRST}. {GNU_UTILITIES}\\nAttached hosts: none."
+            )),
         "{reported}"
     );
     let before = status(&backend, &master)
