@@ -11,13 +11,59 @@ use std::{
 
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
 use demi_shared_gates::{GateLease, Reservation};
+use demi_host_interface::CapabilityIndex;
 use demi_shared_types::{
-    CommandId, CommandReport, ErrorDevice, InstructionEntry, ModelSelection, ShellToolView,
-    ToolView, TurnId,
+    CommandId, CommandReport, ErrorDevice, InstructionEntry, ModelSelection, PromptLayerKind,
+    ShellToolView, ToolView, TurnId,
 };
 use futures_util::{future::LocalBoxFuture, stream::LocalBoxStream};
 use serde_json::Value;
 use tokio::sync::watch;
+
+/// A system prompt by its layers (`system-prompt.md` § The layers): a
+/// request carries their texts joined, and the context card weighs each
+/// (`compaction.md` § What fills the context).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SystemPrompt {
+    /// The layers in their order.
+    pub layers: Vec<PromptLayer>,
+}
+
+/// One layer of a system prompt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PromptLayer {
+    Text { kind: PromptLayerKind, text: String },
+    /// The capability index: its text as the prompt holds it, with its
+    /// heading, and its groups.
+    Commands { text: String, index: CapabilityIndex },
+}
+
+impl PromptLayer {
+    /// The layer's text as the prompt holds it.
+    pub fn text(&self) -> &str {
+        match self {
+            Self::Text { text, .. } | Self::Commands { text, .. } => text,
+        }
+    }
+}
+
+impl SystemPrompt {
+    /// A prompt of one layer, as a test's runtime gives.
+    pub fn identity(text: impl Into<String>) -> Self {
+        Self {
+            layers: vec![PromptLayer::Text {
+                kind: PromptLayerKind::Identity,
+                text: text.into(),
+            }],
+        }
+    }
+
+    /// The text a request carries: the layers, a blank line between two.
+    pub fn text(&self) -> String {
+        let texts: Vec<&str> = self.layers.iter().map(PromptLayer::text).collect();
+        texts.join("\n\n")
+    }
+}
 
 pub trait SessionRuntime {
     /// Waits for the tree's admission and holds it while one action runs.
@@ -35,7 +81,7 @@ pub trait SessionRuntime {
     fn system_prompt<'a>(
         &'a self,
         model: &'a ModelSelection,
-    ) -> LocalBoxFuture<'a, Result<String, String>>;
+    ) -> LocalBoxFuture<'a, Result<SystemPrompt, String>>;
 
     /// The window the session's token thresholds use for `model`: the
     /// model's context window, or the limit the user set on it

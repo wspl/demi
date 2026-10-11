@@ -22,6 +22,7 @@ import {
   type MockProvider,
   type SettingsState,
 } from '../fixtures/settings'
+import { DAY, HOUR, MINUTE, ahead } from '../fixtures/time'
 
 /**
  * The shared providers page over the mock state. Everything the page emits is
@@ -412,14 +413,14 @@ function closeLogin() {
           label: '5-hour',
           used: 4,
           max: 100,
-          resets: 'in 4 h 58 min',
+          resetsAt: ahead(298 * MINUTE),
         },
         {
           id: 'week',
           label: 'Weekly',
           used: 4,
           max: 100,
-          resets: 'Monday',
+          resetsAt: ahead(3 * DAY + 4 * HOUR),
         },
       ],
     })

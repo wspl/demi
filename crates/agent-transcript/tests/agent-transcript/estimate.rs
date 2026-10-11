@@ -6,9 +6,9 @@ use demi_agent_store::{
 };
 use demi_agent_transcript::{
     RequestView,
-    estimate::{block_tokens, context_tokens, text_tokens},
+    estimate::{block_tokens, context_tokens, text_tokens, tool_tokens},
 };
-use demi_provider_common::RequestLimits;
+use demi_provider_common::{RequestLimits, ToolDefinition};
 use demi_shared_types::{
     B64Bytes, BlobRef, Block, CompactionBoundaryBlock, CompactionMarkerBlock, DocumentSource,
     FileExtension, MediaSource, Model, ResponseBlock, TextBlock, Timestamp, TokenUsage,
@@ -45,6 +45,17 @@ fn response(id: &str, input_tokens: u64) -> Block {
 /// The estimate of the next request over `blocks`, which hold no media,
 /// to a model whose context window is `window`.
 fn estimate(blocks: &[Block], window: u32) -> u64 {
+    estimate_with(blocks, window, "", &[])
+}
+
+/// The estimate of the next request over `blocks`, with `system_prompt`
+/// and `tools`.
+fn estimate_with(
+    blocks: &[Block],
+    window: u32,
+    system_prompt: &str,
+    tools: &[ToolDefinition],
+) -> u64 {
     let view = ModelView::of(0, blocks, &HeldMedia::default()).expect("no media to hold");
     let mut model = test_model().model;
     model.context_window = window;
@@ -52,7 +63,7 @@ fn estimate(blocks: &[Block], window: u32) -> u64 {
         tool_results: demi_provider_common::ToolResultKinds::ALL,
         ..RequestLimits::default()
     };
-    context_tokens(&RequestView::new(&view, &model, limits, &[]))
+    context_tokens(&RequestView::new(&view, &model, limits, tools), system_prompt)
 }
 
 #[test]
@@ -66,7 +77,7 @@ fn the_latest_usage_anchors_the_estimate_unless_it_exceeds_the_window() {
         forkable: true,
     });
     let mut blocks = vec![
-        user("u1", &"x".repeat(40_000)),
+        user("u1", &"x".repeat(15_000)),
         answer,
         response("r1", 1_234),
     ];
@@ -78,7 +89,7 @@ fn the_latest_usage_anchors_the_estimate_unless_it_exceeds_the_window() {
     // A usage above the window is a provider reporting something else.
     blocks.push(response("r2", 2_000_000));
     let unanchored = estimate(&blocks, 1_000_000);
-    assert!(unanchored > 10_000 && unanchored < 20_000, "{unanchored}");
+    assert!((4_750..5_000).contains(&unanchored), "{unanchored}");
 }
 
 #[test]
@@ -230,4 +241,45 @@ fn a_medium_weighs_what_the_request_to_its_model_carries() {
             text_tokens("shoot\n{}\nimage/png") + 1_800
         ]
     );
+}
+
+/// Rule 5 of the context estimate: without an anchor, the system prompt and
+/// the tools count, so a request just after a compaction is not read as
+/// the history alone; with one, the provider's usage holds them already.
+#[test]
+fn without_an_anchor_the_system_prompt_and_the_tools_count() {
+    let prompt = "p".repeat(12_000);
+    let shell = ToolDefinition {
+        name: "shell".into(),
+        description: "Runs a script.".into(),
+        input_schema: serde_json::json!({"type": "object"})
+            .as_object()
+            .cloned()
+            .unwrap(),
+    };
+    let tools = [shell];
+    let history = [user("u1", &"x".repeat(400))];
+    assert_eq!(
+        estimate_with(&history, 1_000_000, &prompt, &tools),
+        3_000 + tool_tokens(&tools[0]) + 100
+    );
+    let answered = [history[0].clone(), response("r1", 1_234)];
+    assert_eq!(estimate_with(&answered, 1_000_000, &prompt, &tools), 1_384);
+}
+
+/// A text weighs what replay carries of it: a pasted log of 50,000
+/// characters weighs its first and last 8,000 and the truncation line.
+#[test]
+fn a_long_text_weighs_what_the_replay_bound_keeps() {
+    let log = format!("{}{}", "a".repeat(8_000), "b".repeat(42_000));
+    let block = user("u1", &log);
+    let view = ModelView::of(0, std::slice::from_ref(&block), &HeldMedia::default()).unwrap();
+    let model = test_model().model;
+    let request = RequestView::new(&view, &model, RequestLimits::default(), &[]);
+    let replayed = format!(
+        "{}\n\n[... truncated 34000 characters ...]\n\n{}",
+        "a".repeat(8_000),
+        "b".repeat(8_000)
+    );
+    assert_eq!(block_tokens(&block, &request), text_tokens(&replayed));
 }

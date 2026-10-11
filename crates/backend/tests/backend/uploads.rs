@@ -860,10 +860,17 @@ async fn a_restored_conversation_reads_each_replayed_blob_once_and_none_before_i
     // from which the user may compact (`compaction.md` § When compaction
     // runs).
     vendor.respond(answer(&["An old shot."], 600_000, 1));
-    // A message longer than the user's words a pass keeps, 20,000 tokens.
-    let long = format!("Look {}", "l".repeat(80_000));
+    // A message longer than the user's words a pass keeps, 20,000 tokens,
+    // as replay carries it: two texts of 16,000 wide characters, 16,000
+    // tokens each, which the replay bound keeps whole.
+    let wide = "😀".repeat(16_000);
+    let mut long = naming(&wide, &[(&old, "old.png")]);
+    long.insert(1, ClientContent::Text { text: wide });
     socket
-        .send(&with_upload("m1", &long, &[(&old, "old.png")]))
+        .send(&ClientFrame::Send {
+            message_id: TurnId::try_from("m1").unwrap(),
+            content: long,
+        })
         .await;
     socket.until_idle().await;
     // The vendor refuses the nine shots' request, so the latest answered

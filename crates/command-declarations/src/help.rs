@@ -14,31 +14,69 @@ pub const HELP_DEFAULTS: &str = "Unless a command states otherwise: success prin
 /// entries (`system-prompt.md` § Capability index).
 pub const INDEX_OPENER: &str = "Demi's own capabilities are `demi` commands you run in the shell. Each group below says what it is for; read its `--help` before you first use it, and an operation's `--help` for its arguments.";
 
+/// The model's capability index (`system-prompt.md` § Capability index):
+/// the defaults and the opener, then each group's section, sorted by the
+/// group's path. The context card weighs each group's section apart
+/// (`compaction.md` § What fills the context).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CapabilityIndex {
+    /// The groups, sorted by their paths.
+    pub groups: Vec<IndexGroup>,
+}
+
+/// One command group's section of the capability index.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexGroup {
+    /// The group's command line, such as `demi browser`.
+    pub path: String,
+    /// Its section: its path, its entry, its operations' names and where its
+    /// details are.
+    pub section: String,
+}
+
+impl CapabilityIndex {
+    /// Whether it lists no group.
+    pub fn is_empty(&self) -> bool {
+        self.groups.is_empty()
+    }
+
+    /// The index as the system prompt holds it; nothing when it lists no
+    /// group.
+    pub fn text(&self) -> String {
+        if self.groups.is_empty() {
+            return String::new();
+        }
+        let mut sections = vec![HELP_DEFAULTS, INDEX_OPENER];
+        sections.extend(self.groups.iter().map(|group| group.section.as_str()));
+        sections.join("\n\n")
+    }
+}
+
 /// The model's capability index of `groups`, each a top-level group with
 /// its path and its entry: the defaults and the opener, then each group,
 /// sorted by its path, with its entry, its operations' names and where its
-/// details are. Nothing when there is no group.
+/// details are.
 pub fn render_index<'a, B: 'a>(
     groups: impl IntoIterator<Item = (Vec<&'a str>, &'a str, &'a Group<B>)>,
-) -> String {
+) -> CapabilityIndex {
     let mut groups: Vec<_> = groups.into_iter().collect();
-    if groups.is_empty() {
-        return String::new();
-    }
     groups.sort_by(|(left, _, _), (right, _, _)| left.cmp(right));
-    let mut sections = vec![HELP_DEFAULTS.to_owned(), INDEX_OPENER.to_owned()];
-    for (path, entry, group) in groups {
-        let path = path.join(" ");
-        let mut operations = Vec::new();
-        for child in &group.subcommands {
-            operation_names(child, &mut Vec::new(), &mut operations);
-        }
-        sections.push(format!(
-            "{path}\n{entry}\nOperations: {}\nDetails: {path} --help; one operation: {path} <operation> --help",
-            operations.join(", ")
-        ));
-    }
-    sections.join("\n\n")
+    let groups = groups
+        .into_iter()
+        .map(|(path, entry, group)| {
+            let path = path.join(" ");
+            let mut operations = Vec::new();
+            for child in &group.subcommands {
+                operation_names(child, &mut Vec::new(), &mut operations);
+            }
+            let section = format!(
+                "{path}\n{entry}\nOperations: {}\nDetails: {path} --help; one operation: {path} <operation> --help",
+                operations.join(", ")
+            );
+            IndexGroup { path, section }
+        })
+        .collect();
+    CapabilityIndex { groups }
 }
 
 /// The path of each leaf at or below `node` from the group whose operations
