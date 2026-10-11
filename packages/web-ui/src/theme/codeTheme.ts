@@ -1,8 +1,7 @@
-import type { BundledTheme } from 'shiki'
-
-/** What the code editor draws in: its text, selection and gutter, and each kind of token. */
+/** What code draws in: its text, caret, selection and gutter, and each kind of token. */
 export interface CodeThemePalette {
   foreground: string
+  caret: string
   selection: string
   lineNumber: string
   activeLineNumber: string
@@ -24,15 +23,15 @@ export interface CodeThemePalette {
 }
 
 /**
- * The colors code shows in, One Dark Pro and One Light by the page's mode:
- * the editor's palette, and the Shiki theme for code in messages and
- * documents.
+ * The colors all code shows in, One Dark Pro and One Light by the page's
+ * mode (`file-previews.md` § Code): the editor's, and through its highlight
+ * style (`codeHighlightStyle`) every code block's and script's.
  */
-export const codeTheme: Record<'dark' | 'light', { palette: CodeThemePalette; shikiTheme: BundledTheme }> = {
+export const codeTheme: Record<'dark' | 'light', { palette: CodeThemePalette }> = {
   dark: {
-    shikiTheme: 'one-dark-pro',
     palette: {
       foreground: '#abb2bf',
+      caret: '#528bff',
       selection: '#67769660',
       lineNumber: '#495162',
       activeLineNumber: '#abb2bf',
@@ -54,9 +53,9 @@ export const codeTheme: Record<'dark' | 'light', { palette: CodeThemePalette; sh
     },
   },
   light: {
-    shikiTheme: 'one-light',
     palette: {
       foreground: '#383a42',
+      caret: '#526fff',
       selection: '#e5e5e6',
       lineNumber: '#9d9d9f',
       activeLineNumber: '#383a42',

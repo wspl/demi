@@ -15,7 +15,7 @@ import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import { keepComposition } from '@demicodes/utils'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import { isHttpUrl, isLikelyFilePath } from '../../markdown/filePath'
-import { codeStyles } from '../../markdown/highlight'
+import { codeRuns, codeTextColor } from '../../markdown/highlight'
 import { bareUrls, closesFence, closingFormat, fenceInfo } from '../../markdown/user-markdown'
 import AttachmentNodeView from './AttachmentNodeView.vue'
 import { readCapsule } from './capsules'
@@ -387,8 +387,11 @@ function decorate(doc: ProseMirrorNode): DecorationSet {
   doc.descendants((node, pos) => {
     if (node.type.spec.code) {
       const language = String(node.attrs['language'] ?? '').split(/\s/)[0] ?? ''
-      for (const run of codeStyles(node.textContent, language) ?? []) {
-        decorations.push(Decoration.inline(pos + 1 + run.from, pos + 1 + run.to, { style: run.style }))
+      // In the colors all code shows in (`file-previews.md` § Code): the
+      // theme's text color, and its tokens' where the language colors them.
+      decorations.push(Decoration.node(pos, pos + node.nodeSize, { style: `color: ${codeTextColor()}` }))
+      for (const run of codeRuns(node.textContent, language)) {
+        decorations.push(Decoration.inline(pos + 1 + run.from, pos + 1 + run.to, { class: run.classes }))
       }
       return false
     }
