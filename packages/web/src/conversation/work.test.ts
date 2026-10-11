@@ -99,7 +99,7 @@ test('the changes of a request open in the Change view with the panel, only whil
   expect(state.open).toBe(true)
 })
 
-test('a click on what the open panel already shows closes it, and a click on anything else shows that', () => {
+test('a pill or a file link opens what it names, and on what the panel already shows leaves it as it is', () => {
   signIn('one')
   const plugin = (id: string) => ({ id, name: id, description: 'A plugin.', enabled: true, packages: [] })
   useProduct().read = productState({ plugins: [plugin('changes'), plugin('file-browser')] })
@@ -108,49 +108,46 @@ test('a click on what the open panel already shows closes it, and a click on any
   const edit = (segment: number) => ({ node: null, request: 'user', file: 'login.ts', edit: { call: 'call', path: 'login.ts', segment } })
   const first = { intent: 'edit', payload: edit(0) } as const
 
-  // The login.ts pill shows its first edit; a second click closes the panel and keeps what it showed.
-  work.openIn('a', first, 1)
-  expect(state.open).toBe(true)
-  const shown = state.pinned.change
-  work.openIn('a', first, 1)
-  expect(state.open).toBe(false)
-  expect(state.panel.history).toEqual(['change'])
-  expect(state.pinned.change).toEqual(shown)
-  // The next click shows it as it was; the second click of a double-click never closes it.
-  work.openIn('a', first, 1)
-  work.openIn('a', first, 2)
-  expect(state.open).toBe(true)
-  // The user stepped to another edit: the pill shows its edit again, and the panel stays.
-  work.openIn('a', { intent: 'edit', payload: edit(1) }, 1)
-  work.openIn('a', first, 1)
-  expect(state.open).toBe(true)
-  expect(state.pinned.change).toMatchObject({ mode: 'conversation', request: { edit: { segment: 0 } } })
-
-  // A file link: the File view at the same file closes the panel, another file shows instead.
-  work.openIn('a', { intent: 'file', payload: { path: '/work/a.md' } }, 1)
-  expect(state.panel.history.at(-1)).toBe('file')
-  work.openIn('a', { intent: 'file', payload: { path: '/work/b.md' } }, 1)
-  expect(state.open).toBe(true)
-  expect(state.pinned.file).toMatchObject({ path: '/work/b.md' })
-  work.openIn('a', { intent: 'file', payload: { path: '/work/b.md' } }, 1)
-  expect(state.open).toBe(false)
-  // A link to a line: another line of the file shown moves to it, the same line closes the panel.
-  work.openIn('a', { intent: 'file', payload: { path: '/work/b.md', line: 42 } }, 1)
-  expect(state.open).toBe(true)
-  expect(state.pinned.file).toMatchObject({ path: '/work/b.md', line: 42 })
-  work.openIn('a', { intent: 'file', payload: { path: '/work/b.md', line: 7 } }, 1)
-  expect(state.open).toBe(true)
-  expect(state.pinned.file).toMatchObject({ path: '/work/b.md', line: 7 })
-  work.openIn('a', { intent: 'file', payload: { path: '/work/b.md', line: 7 } }, 1)
-  expect(state.open).toBe(false)
-  // Shown in the Change view while the File view is selected, the edit is selected, not closed.
-  work.openIn('a', { intent: 'file', payload: { path: '/work/b.md' } }, 1)
-  work.openIn('a', first, 1)
-  expect(state.open).toBe(true)
-  expect(state.panel.history.at(-1)).toBe('change')
-  // An open no click asks for, such as a plugin's, never closes.
+  // The login.ts pill shows its first edit; a second click leaves the panel
+  // showing it, its data the same object, so the Change view does not redraw.
   work.openIn('a', first)
   expect(state.open).toBe(true)
+  const shown = state.pinned.change
+  work.openIn('a', first)
+  expect(state.open).toBe(true)
+  expect(state.panel.history).toEqual(['change'])
+  expect(state.pinned.change).toBe(shown)
+  // The user stepped to another edit: the pill shows its edit again.
+  work.openIn('a', { intent: 'edit', payload: edit(1) })
+  work.openIn('a', first)
+  expect(state.pinned.change).toMatchObject({ mode: 'conversation', request: { edit: { segment: 0 } } })
+  // Closed by its own control, the panel opens again on the pill as it was.
+  const again = state.pinned.change
+  work.setOpen(state, false)
+  work.openIn('a', first)
+  expect(state.open).toBe(true)
+  expect(state.pinned.change).toBe(again)
+
+  // A file link: another file shows instead, and the file shown again stays.
+  work.openIn('a', { intent: 'file', payload: { path: '/work/a.md' } })
+  work.openIn('a', { intent: 'file', payload: { path: '/work/b.md' } })
+  expect(state.panel.history.at(-1)).toBe('file')
+  expect(state.pinned.file).toMatchObject({ path: '/work/b.md' })
+  const file = state.pinned.file
+  work.openIn('a', { intent: 'file', payload: { path: '/work/b.md' } })
+  expect(state.open).toBe(true)
+  expect(state.pinned.file).toBe(file)
+  // A link to a line: another line of the file shown moves to it, the same line stays.
+  work.openIn('a', { intent: 'file', payload: { path: '/work/b.md', line: 7 } })
+  expect(state.pinned.file).toMatchObject({ path: '/work/b.md', line: 7 })
+  const line = state.pinned.file
+  work.openIn('a', { intent: 'file', payload: { path: '/work/b.md', line: 7 } })
+  expect(state.open).toBe(true)
+  expect(state.pinned.file).toBe(line)
+  // Shown in the Change view while the File view is selected, the edit is selected.
+  work.openIn('a', first)
+  expect(state.open).toBe(true)
+  expect(state.panel.history.at(-1)).toBe('change')
 })
 
 /**

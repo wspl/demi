@@ -539,8 +539,7 @@ function click(event: MouseEvent): void {
   const current = files()
   const file = kind === 'file' && current ? messageFileTarget(target, current) : null
   if (current?.open && file !== null) {
-    // Only the transcript's message closes the panel on what it already shows, not the composer.
-    current.open(file, editable.value ? undefined : event.detail)
+    current.open(file)
   }
 }
 
