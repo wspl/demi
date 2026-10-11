@@ -97,7 +97,7 @@ export const emptyChangeSet: ChangeSetSource = {
   files: [],
   showSides: () => ({
     entry: { value: undefined, answer: 'gone', failure: null, reading: false, unwatched: null },
-    retry: () => {},
+    retry: () => Promise.resolve(),
     release: () => {},
     away: () => {},
     back: () => {},

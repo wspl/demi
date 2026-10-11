@@ -19,6 +19,24 @@ export function joinPath(base: string, name: string): string {
   return normalizePath(`${base}/${name}`)
 }
 
+/** A typed path with a leading `~` or `~/` read from `home`, as a shell reads it; any other path as it is. */
+export function expandHome(path: string, home: string): string {
+  if (path === '~')
+    return home
+  return path.startsWith('~/') ? `${home}${path.slice(1)}` : path
+}
+
+/**
+ * The absolute path a person typed into a path field: `~` and `~/…` name
+ * the home, an absolute path is itself, and a relative one starts from
+ * `root`, or from the filesystem root without one (`file-previews.md` § The
+ * File view's bars).
+ */
+export function typedPath(text: string, places: { home: string; root?: string }): string {
+  const expanded = expandHome(text, places.home)
+  return normalizePath(places.root === undefined ? expanded : resolveHostPath(places.root, expanded))
+}
+
 /**
  * A path as a Host names it: absolute on either path syntax (`/…` or
  * `C:/…`) as it is, relative resolved against `base`. Backslashes count as
