@@ -81,7 +81,9 @@ export interface DrawnRow extends ListRow {
  * order, so the new state takes the old one's place, its height and its
  * entrance, and rolls over it rather than one row going while another
  * appears: Stopped and the Requesting row of the Continue, Requesting and
- * the step it waited for, a call being written and its call. `fixed` rows,
+ * the step it waited for, a call being written and its call. A row gone
+ * with no new row in its place goes, as the Requesting row of a Continue
+ * when the step it waited for joins the run above it. `fixed` rows,
  * such as the edges of a window of history, neither give nor take a key. A
  * new row whose own key another row is drawn under takes a key of its own.
  */

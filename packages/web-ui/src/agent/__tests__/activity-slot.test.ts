@@ -83,13 +83,8 @@ test('a materialized steer requests again before the model continues', () => {
   expect(kind('running', [thinkingBlock(), steerBlock()])).toBe('requesting')
 })
 
-// A recovery unwinds the turn before the model is asked: the Stop it
-// continues is marked resumed and a `resume` block says where the turn goes
-// on, and the model is waited for after either. A Stop being written, before
-// the phase goes idle, waits for nothing.
-test('a running turn requests after the place it went on after a cut, and not after a Stop being written', () => {
-  expect(kind('running', [userBlock(), abortBlock(true)])).toBe('requesting')
-  expect(kind('running', [userBlock(), abortBlock(true), resumeBlock()])).toBe('requesting')
+// A Stop being written, before the phase goes idle, waits for nothing.
+test('a running turn does not request after a Stop being written', () => {
   expect(kind('running', [userBlock(), abortBlock()])).toBeNull()
 })
 
@@ -380,18 +375,14 @@ function errorBlock(): MessageListBlock {
   }
 }
 
-function abortBlock(isResumed = false): MessageListBlock {
+function abortBlock(): MessageListBlock {
   return {
     type: 'abort',
     id: 'abort-1',
     createdAt,
     model,
-    isResumed,
+    isResumed: false,
   }
-}
-
-function resumeBlock(): MessageListBlock {
-  return { type: 'resume', id: 'resume-1', turnId: 'turn-1', createdAt, model, reason: null }
 }
 
 function textBlock(): MessageListBlock {

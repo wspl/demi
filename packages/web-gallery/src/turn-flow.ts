@@ -260,26 +260,23 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
   })
 
-  /**
-   * The run the steps the flow writes join, as the backend stores them
-   * (`runtime.md` § Work groups): the id of its first step, until the flow
-   * writes anything else.
-   */
-  let stepsRun: string | null = null
-
   function append(block: Block): void {
     if (block.type === 'thinking' || block.type === 'text' || block.type === 'tool_call') {
       state.waitingSince = null
     }
-    stepsRun = null
     state.blocks = [...state.blocks, block]
   }
 
-  /** Writes a step of the agent's work, in the run the steps before it opened, or a run of its own. */
+  /**
+   * Writes a step of the agent's work in its run, as the backend stores it
+   * (`runtime.md` § Work groups): the run of the step before it, past a
+   * `resume` and a Stop the user continued, which end no run; a run of its
+   * own after anything else the flow writes.
+   */
   function appendStep(block: Block): void {
-    const run = stepsRun ?? block.id
+    const before = state.blocks.findLast((each) => each.type !== 'resume' && !(each.type === 'abort' && each.isResumed))
+    const run = before && 'run' in before && before.run !== undefined ? before.run : block.id
     append({ ...block, run } as Block)
-    stepsRun = run
   }
 
   /** A message's block; `turnId` is the id the message was sent with, which the server keeps as its turn's. */
@@ -1161,14 +1158,12 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     // A play starts over: what waited for the last one goes with it.
     state.pendingSteers = []
     state.queue = []
-    stepsRun = null
 
     if (kind === 'stream') {
       // Thinking is the tail from the first running frame, so nothing is waited for.
       const id = nextId('think')
       const createdAt = now()
       state.blocks = inRun(thinkingBlock(id, createdAt, ''))
-      stepsRun = id
       state.phase = 'running'
       const thought = streamTextInto(run, FEED_MS, THINK_1, (partial) => {
         replace(id, thinkingBlock(id, createdAt, partial))
@@ -1183,7 +1178,6 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       // in view while it is delivered.
       const toolId = nextId('tool')
       state.blocks = [userBlock([{ type: 'text', text: USER_TEXT }]), ...inRun(tool(toolId, now(), 'executing'))]
-      stepsRun = toolId
       state.phase = 'running'
       runningTool = toolId
       at(run, ACK_MS, () => {
