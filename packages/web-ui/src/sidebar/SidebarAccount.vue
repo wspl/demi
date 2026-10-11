@@ -47,15 +47,15 @@ const initials = computed(() =>
       <div
         role="button"
         aria-label="Account"
-        class="flex h-9 w-full cursor-default select-none items-center gap-2 rounded-md pl-2 pr-1.5 transition-colors duration-200 ease-out"
+        class="flex h-9 w-full cursor-default select-none items-center gap-2 rounded-md pl-2 pr-1.5 transition-colors duration-200 ease-out phone:h-11 phone:gap-3"
         :class="isOpen ? 'bg-hover' : 'hover:bg-hover'"
       >
         <span
-          class="flex size-6 shrink-0 items-center justify-center rounded-full bg-tint-accent text-[11px] font-medium text-on-accent"
+          class="flex size-6 shrink-0 items-center justify-center rounded-full bg-tint-accent text-[11px] font-medium text-on-accent phone:size-8 phone:text-[13px]"
         >
           {{ initials }}
         </span>
-        <span class="min-w-0 truncate text-chrome text-fg">{{ displayName }}</span>
+        <span class="min-w-0 truncate text-chrome text-fg phone:text-[16px]">{{ displayName }}</span>
       </div>
     </template>
     <template #content="{ close }">

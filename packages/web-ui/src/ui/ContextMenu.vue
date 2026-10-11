@@ -27,7 +27,7 @@ function handleContextMenu(event: MouseEvent) {
 </script>
 
 <template>
-  <div @contextmenu="handleContextMenu">
+  <div data-touch-menu @contextmenu="handleContextMenu">
     <slot name="trigger" />
     <Popover
       :key="menuKey"
@@ -37,6 +37,7 @@ function handleContextMenu(event: MouseEvent) {
       :anchor-y="anchorY"
       :anchor-context-el="anchorContextEl"
       :offset="0"
+      sheet
       @close="close"
     >
       <Menu @click="close">
