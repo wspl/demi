@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
-import { agentReceiptMessages, callBeingWrittenBlocks, commandLookBlocks, editedFile, viewedMediaBlocks, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
+import { callBeingWrittenBlocks, commandLookBlocks, editedFile, viewedMediaBlocks, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
 import {
   HELPER,
   helperBlocks,
@@ -139,7 +139,8 @@ import {
 } from '../fixtures/catalog'
 import { setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
 import { galleryBlobs } from '../fixtures/blobs'
-import { gallerySubagents } from '../fixtures/subagents'
+import { agentReceiptMessages, gallerySubagents } from '../fixtures/subagents'
+import GalleryReceipts from '../components/GalleryReceipts.vue'
 import { galleryTerminals } from '../fixtures/terminals'
 import { demoDeviceStart } from '../fixtures/device-installation'
 import { useLiveGalleryCommand } from '../live-command'
@@ -345,6 +346,8 @@ const panelActiveConversationId = ref<string | null>('c-login')
 const frameSearchOpen = ref(false)
 /** The message a search result opened the session at, until the session has shown it. */
 const frameReveal = ref<TranscriptReveal | null>(null)
+/** The block a receipt's name in the Session view asked to bring into view, until the session has shown it. */
+const sessionReveal = ref<TranscriptReveal | null>(null)
 const frameSearchable = computed(() =>
   panelConversations.value.map((conversation) => ({
     conversationId: conversation.id,
@@ -1700,18 +1703,20 @@ onBeforeUnmount(() => {
         </div>
       </GallerySection>
 
-      <GallerySection title="AgentReceiptBlock" note="Agent updates, completion receipts, the user’s decisions on permission requests as the agent that asked received them, a move the user told the agent of, and Demi’s notice that a move the agent asked for failed. Expand to read the message; these rows have no human message controls.">
+      <GallerySection title="AgentReceiptBlock" note="Agent updates and completion receipts read as a command’s notice: what happened, then the agent by its description, underlined with dots, with Failed or Stopped after it when it went wrong. A click on the agent’s name opens the Agents window over the specimens on that agent’s tab, a finished one as Completed picks it, and marks the block the receipt came from: the call that sent the update, the finished agent’s last answer; the stopped agent gave none, so its tab opens at its latest. Close (×) closes the window. The user’s decisions on permission requests, a move the user told the agent of, and Demi’s notice that a move the agent asked for failed name no agent and keep their wording. Expand any row to read the message; these rows have no human message controls.">
         <div class="gallery-frame gallery-block-frame bg-surface">
-          <div class="specimen-stack [--agent-pad-x:0px]">
-            <GallerySpecimen
-              v-for="(message, index) in [...agentReceiptMessages, ...permissionReceiptMessages, movedReceiptMessage, ...organizeReceiptMessages]"
-              :key="message.id"
-              :variant="receiptVariant(message)"
-              wide
-            >
-              <AgentReceiptBlock :message="message" :open="index === 1" />
-            </GallerySpecimen>
-          </div>
+          <GalleryReceipts :agents="agents" @abort="sessionFlow.abortSubagents" @abort-agent="sessionFlow.abortSubagent">
+            <div class="specimen-stack [--agent-pad-x:0px]">
+              <GallerySpecimen
+                v-for="(message, index) in [...agentReceiptMessages, ...permissionReceiptMessages, movedReceiptMessage, ...organizeReceiptMessages]"
+                :key="message.id"
+                :variant="receiptVariant(message)"
+                wide
+              >
+                <AgentReceiptBlock :message="message" :open="index === 1" />
+              </GallerySpecimen>
+            </div>
+          </GalleryReceipts>
         </div>
       </GallerySection>
 
@@ -2722,6 +2727,7 @@ onBeforeUnmount(() => {
                 has-provider
                 :reveal="frameReveal"
                 @revealed="frameReveal = null"
+                @reveal="(at) => (frameReveal = at)"
                 :aside-open="panelAsideOpen"
                 :select-edit="panelWork.selectEdit"
                 :files="sessionFiles"
@@ -3018,6 +3024,9 @@ onBeforeUnmount(() => {
         @retry="sessionFlow.resume()"
         @rename="session.title = $event"
         @save-scroll="(_id, state) => (session.scroll = state)"
+        :reveal="sessionReveal"
+        @revealed="sessionReveal = null"
+        @reveal="(at) => (sessionReveal = at)"
         @abort-subagents="sessionFlow.abortSubagents"
         @abort-subagent="sessionFlow.abortSubagent"
         @abort-terminal="sessionFlow.abortTerminal"
