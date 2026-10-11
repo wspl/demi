@@ -371,9 +371,12 @@ The list never contains command reports or agent messages.
   the transcript, or discarded.
 - `steer_result` answers a `steer` frame with its outcome: accepted, or
   rejected with a reason. It does not replace the list notification.
-- `cancel_pending_steer` removes a steer that is still pending. It has no
-  reply; the client observes the resulting list and transcript. An id that is
-  not pending changes nothing.
+- `cancel_pending_steer` removes a steer that is still pending, and
+  `dequeue_message` a queued message; each is answered by `remove_result`
+  with its id and whether it was removed or had already gone on: a steer the
+  turn took into its transcript, a message whose turn started, or an id the
+  session never held. The answer follows the list's own frame, so the page
+  never infers the outcome from what comes next.
 - Human pending steers are not part of the checkpoint. A backend restart loses
   them; they never reached the transcript. The backend keeps no second copy of
   them for reconnecting clients.
@@ -1862,9 +1865,9 @@ open { from: 2999, edge: b_2999 } -> attach to the live tree
 | `send { messageId, content }` | Submit a message ([Input](#input)) | Transcript, phase and queue frames |
 | `edit_and_send { request }` | Replace a user message and its suffix ([Message editing](message-editing.md)) | `edit_result` at durable acceptance |
 | `steer { steerId, content }` | Add input to the running turn | `steer_result` |
-| `cancel_pending_steer { steerId }` | Withdraw a pending steer | None; the `pending_steers` list |
+| `cancel_pending_steer { steerId }` | Withdraw a pending steer | `remove_result`, after the `pending_steers` list |
 | `steer_now { steerId }` | Deliver a pending steer now ([Send now](#send-now)) | None; the transcript and the `pending_steers` list |
-| `dequeue_message { messageId }` | Remove a queued message | `queue` |
+| `dequeue_message { messageId }` | Remove a queued message | `remove_result`, after `queue` |
 | `send_queued_message { messageId }` | Send a queued message now ([Send now](#send-now)) | `queue` |
 | `clear_message_queue` | Remove every queued message | `queue` |
 | `abort` | Stop one thing ([Stop](#stop)) | `abort_result`, in request order |
@@ -1912,6 +1915,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | `abort_result` | What was stopped, and whether another `abort` would stop more |
 | `shell_output` | A command's live view ([Live output](#live-output)): `subagentId` when the command is a subagent's, and its `status`: `running`, `exited` with the `exitCode`, or `aborted`, each with the `commandId`, the `toolUseId` of the `shell` call that started it, the `tail` and `chars` of the pages' view, and `runningMs` |
 | `shell_write_result` | The command id |
+| `remove_result` | The steer's or queued message's id and an `outcome`: `removed`, or `gone_on` when the turn had already taken it or the session never held it |
 | `pending_calls` | The calls the model is writing, each `{ toolUseId, toolName, description }`, `description` null until written, and `subagentId` when they are a subagent's ([Calls being written](#calls-being-written)) |
 | `retry_scheduled` | The attempt, the delay in milliseconds, the code and the diagnostics of a failure being retried ([Retries](failures-and-recovery.md#retries)) |
 | `waiting` | `waitedMs`, how long a node had waited for the model's answer when the frame left, or null when it waits for none, and `subagentId` when the node is a subagent: when a wait starts or ends, and on open for each node ([Waiting for the model](#waiting-for-the-model)) |
