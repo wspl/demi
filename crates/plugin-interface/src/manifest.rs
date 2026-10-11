@@ -201,6 +201,13 @@ pub struct Page {
     /// (`plugins.md` § Topics).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub told: Vec<Topic>,
+    /// The reasons the page may be told a failure with, one closed set of
+    /// snake_case words: its methods' and states' refusals, and what else
+    /// reaches the page, so the page's types name each one and the page
+    /// says every one in words of its own (`live-view.md` § The tab
+    /// methods).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasons: Option<Schema>,
 }
 
 impl Page {
@@ -213,7 +220,15 @@ impl Page {
             methods: Vec::new(),
             panel_kinds: Vec::new(),
             told: Vec::new(),
+            reasons: None,
         }
+    }
+
+    /// The page may be told a failure with each of the words of `R`, a
+    /// closed set of strings.
+    pub fn reasons<R: JsonSchema>(mut self) -> Self {
+        self.reasons = Some(schema_of::<R>(Direction::Serializes));
+        self
     }
 
     /// The backend keeps the tabs of the work panel kind `kind`, which the

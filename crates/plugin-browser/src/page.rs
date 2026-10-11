@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::panel::{KIND, Work};
+use crate::reason::PanelReason;
 
 /// The most characters of a URL a method takes.
 pub const URL_MAX: usize = 4096;
@@ -148,6 +149,7 @@ pub(crate) fn page() -> Page {
             Method::new::<StopTab, TabMoved>("stop", Scope::Conversation)
                 .calls(operation("stop")),
         )
+        .reasons::<PanelReason>()
 }
 
 /// The browser's tabs, and the latest ones closed on purpose; none while it
@@ -363,7 +365,12 @@ fn moved(navigated: Result<NavigationResult, PortFailure>) -> Result<TabMoved, P
 /// The tab a call names; one that is no tab's id is a tab the browser does
 /// not have.
 fn tab_id(tab: String) -> Result<TabId, PluginError> {
-    TabId::try_from(tab).map_err(|_| PluginError::refused("tab_not_found", "No such tab"))
+    TabId::try_from(tab).map_err(|_| refusal(PanelReason::TabNotFound, "No such tab".to_owned()))
+}
+
+/// A refusal the page says in its words for `reason`.
+fn refusal(reason: PanelReason, message: String) -> PluginError {
+    PluginError::refused(reason.to_string(), message)
 }
 
 fn stopped(failure: &PortFailure) -> bool {
@@ -391,13 +398,18 @@ fn browser_failure(failure: &PortFailure) -> Option<FailureDocument> {
 }
 
 /// A failed call as the page sees it: the browser's refusal under its own
-/// code, or the host access's, which passes on.
+/// code; a browser whose service did not start on the Host as
+/// `browser_unavailable`, with the runner's words; or the host access's
+/// refusal, which passes on.
 fn refused(failure: PortFailure) -> PluginError {
-    match browser_failure(&failure) {
-        Some(document) => {
-            PluginError::refused(document.error.code.to_string(), document.error.message)
+    if let Some(document) = browser_failure(&failure) {
+        return refusal(document.error.code.into(), document.error.message);
+    }
+    match failure {
+        PortFailure::Refused(PortRefusal::Service { message }) => {
+            refusal(PanelReason::BrowserUnavailable, message)
         }
-        None => failure.into(),
+        failure => failure.into(),
     }
 }
 

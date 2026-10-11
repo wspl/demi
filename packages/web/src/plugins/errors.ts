@@ -1,9 +1,10 @@
 import { PluginCallError } from '@demicodes/web-ui/plugins/page'
 import { ApiError } from '../api/client'
 
-/** A refusal the backend answered, as a page sees it: the plugin's reason, or the backend's code. */
+/** A refusal the backend answered, as a page sees it: the plugin's reason, or the backend's code, and the answer's status. */
 function refusal(error: ApiError): PluginCallError {
-  return new PluginCallError(error.reason ?? error.code ?? `status_${error.status}`, error.message)
+  const status = `${error.status} ${error.statusText}`.trim()
+  return new PluginCallError(error.reason ?? error.code ?? `status_${error.status}`, error.message, status)
 }
 
 /**

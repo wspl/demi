@@ -43,6 +43,12 @@ export class PluginCallError extends Error {
     /** The plugin's snake_case reason, or the host's code when the plugin did not answer. */
     readonly reason: string,
     message: SentenceText,
+    /**
+     * The status of the backend's answer, such as `500 Internal Server
+     * Error`, which a page says for a reason it has no words for; null when
+     * no answer came, or what came did not read.
+     */
+    readonly status: string | null = null,
   ) {
     super(message)
   }

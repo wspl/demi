@@ -7,6 +7,8 @@ import { errorBodySchema, type ErrorCode } from './generated/web-api'
  */
 export class ApiError extends Error {
   readonly status: number
+  /** The answer's status text, such as `Internal Server Error`; empty where the protocol carries none, as HTTP/2's does. */
+  readonly statusText: string
   readonly code: ErrorCode | null
   /** A plugin's own word for its refusal, with `plugin_refused`. */
   readonly reason: string | null
@@ -26,10 +28,12 @@ export class ApiError extends Error {
     reason: string | null = null,
     retryAfterSeconds: number | null = null,
     headers: Headers = new Headers(),
+    statusText = '',
   ) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.statusText = statusText
     this.code = code
     this.reason = reason
     this.retryAfterSeconds = retryAfterSeconds
@@ -215,7 +219,7 @@ async function send(path: string, options: Omit<ApiRequestOptions, 'waits'>): Pr
     return response
   }
 
-  throw apiError(response.status, await response.text(), response.headers)
+  throw apiError(response.status, await response.text(), response.headers, response.statusText)
 }
 
 /**
@@ -226,7 +230,7 @@ async function send(path: string, options: Omit<ApiRequestOptions, 'waits'>): Pr
 /** `Retry-After` in seconds; its date form is not one the backend sends. */
 const retryAfterSchema = z.coerce.number().int().nonnegative()
 
-export function apiError(status: number, text: string, headers: Headers = new Headers()): ApiError {
+export function apiError(status: number, text: string, headers: Headers = new Headers(), statusText = ''): ApiError {
   const retryAfter = headers.get('Retry-After')
   let body: unknown
   try {
@@ -246,6 +250,7 @@ export function apiError(status: number, text: string, headers: Headers = new He
     parsed.success ? parsed.data.reason ?? null : null,
     retryAfter === null ? null : retryAfterSchema.safeParse(retryAfter).data ?? null,
     headers,
+    statusText,
   )
 }
 

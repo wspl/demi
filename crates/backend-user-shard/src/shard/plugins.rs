@@ -134,15 +134,19 @@ fn access_refusal(error: HostAccessError) -> PortFailure {
 }
 
 /// A package call that did not answer: the host access's refusal when the
-/// Host cannot be reached or takes no operations, as its routes answer it,
-/// and otherwise the call's own failure, such as a service that did not
-/// start, which a page call answers as the plugin's failure (`web-api.md`
-/// § Plugin calls), not as a broken connection to the device.
+/// Host cannot be reached or takes no operations, as its routes answer it;
+/// a service that did not start, which the plugin names in its own words;
+/// and otherwise the call's own failure, which a page call answers as the
+/// plugin's failure (`web-api.md` § Plugin calls), not as a broken
+/// connection to the device.
 fn call_failure(error: UserCallError) -> PortFailure {
     match error {
         UserCallError::Access(error) => access_refusal(error),
         UserCallError::Call(ServiceCallError::Exited { stderr, .. }) => {
             PortFailure::Refused(PortRefusal::Operation { stderr })
+        }
+        UserCallError::Call(ServiceCallError::NotOpened(message)) => {
+            PortFailure::Refused(PortRefusal::Service { message })
         }
         UserCallError::Call(ServiceCallError::Host(error))
             if matches!(error.kind, HostErrorKind::Offline | HostErrorKind::Unavailable) =>
