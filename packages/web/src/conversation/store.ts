@@ -331,8 +331,6 @@ export const useConversations = defineStore('conversations', () => {
       | 'readRevision'
       | 'unread'
       | 'cwd'
-      | 'titleCurrent'
-      | 'titleGenerating'
       | 'pluginsChanged'
       | 'permissionRequests'
       | 'createdAt'
@@ -351,8 +349,6 @@ export const useConversations = defineStore('conversations', () => {
       revision: record.revision,
       readRevision: record.readRevision,
       unread: record.unread,
-      titleCurrent: record.titleCurrent,
-      titleGenerating: record.titleGenerating,
       pluginsChanged: record.pluginsChanged,
       needsYou: record.permissionRequests > 0,
       createdAt: record.createdAt,
@@ -710,9 +706,6 @@ export const useConversations = defineStore('conversations', () => {
         const conversation = newConversation({
           ...draft.local.conversation,
           model: null,
-          // A conversation the backend has not seen has no message to title.
-          titleCurrent: true,
-          titleGenerating: false,
           pluginsChanged: false,
           draftRevision: 0,
           panelRevision: 0,
@@ -1571,8 +1564,6 @@ export const useConversations = defineStore('conversations', () => {
       revision: 0,
       readRevision: 0,
       unread: false,
-      titleCurrent: true,
-      titleGenerating: false,
       pluginsChanged: false,
       draftRevision: 0,
       panelRevision: 0,
@@ -1669,30 +1660,6 @@ export const useConversations = defineStore('conversations', () => {
         change.drop()
         report('Could Not Rename the Conversation', error)
       })
-  }
-
-  /** Asks for a title from the conversation as it stands (`product.md` § Conversation titles). */
-  async function retitle(conversation: Conversation): Promise<void> {
-    if (conversation.titleGenerating || conversation.persistence !== 'synced') {
-      return
-    }
-    const id = conversation.id
-    // The conversation says at once that it finds its title; from the
-    // answer on, its summary says whether the request still runs.
-    const change = product.change(`conversation:${id}`, (state) =>
-      withConversation(state, id, (record) => ({ ...record, titleGenerating: true })))
-    change.send()
-    try {
-      // The backend asks the model the conversation's record holds.
-      await apiRequest(
-        `/conversations/${encodeURIComponent(id)}/title`,
-        { method: 'POST', signal: lifetime.signal },
-      )
-      change.land()
-    } catch (error) {
-      change.drop()
-      report('Could Not Update the Title', error)
-    }
   }
 
   /**
@@ -2304,7 +2271,6 @@ export const useConversations = defineStore('conversations', () => {
     fork,
     reorder,
     rename,
-    retitle,
     markRead,
     reloadList: () => product.reconnect(),
     reloadSession,

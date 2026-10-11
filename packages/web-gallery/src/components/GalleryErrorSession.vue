@@ -243,7 +243,6 @@ const cases: SessionCase[] = [
                 @retry="productWould('Resume the Turn')"
                 @retry-load="productWould('Load the Conversation Again')"
                 @rename="item.session.title = $event"
-                @retitle="productWould('Detect a Title for the Conversation')"
                 @save-scroll="(_id, value) => (item.session.scroll = value)"
               >
                 <template #workspace
