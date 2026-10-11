@@ -25,20 +25,22 @@ const diffTheme = EditorView.theme({
   '.cm-lineNumbers .cm-gutterElement': {
     paddingRight: '8px',
   },
-  '&.cm-merge-b .cm-changedLine': { backgroundColor: 'color-mix(in srgb, var(--color-on-success) 15%, transparent)' },
-  // A real background on inserted text, in place of the merge view's green
-  // underline, so it matches the deleted stretches.
-  '&.cm-merge-b .cm-changedText': {
+  // The note after an added last line without a newline belongs to the added
+  // lines. An added line keeps its color as the active line, whose own the
+  // editor's theme gives it after this.
+  '&.cm-diff .cm-line.cm-changedLine, &.cm-diff .cm-content > .cm-noNewline': {
+    backgroundColor: 'color-mix(in srgb, var(--color-on-success) 15%, transparent)',
+  },
+  // A real background on inserted text, so it matches the deleted stretches.
+  '&.cm-diff .cm-changedText': {
     background: 'color-mix(in srgb, var(--color-on-success) 22%, transparent)',
     borderRadius: '2px',
     padding: '1px 0',
     boxDecorationBreak: 'clone',
     WebkitBoxDecorationBreak: 'clone',
   },
-  '&.cm-merge-b .cm-insertedLine, &.cm-merge-b ins.cm-insertedLine': {
-    textDecoration: 'none !important',
-  },
-  '.cm-deletedChunk': { backgroundColor: 'color-mix(in srgb, var(--color-on-danger) 12%, transparent)', opacity: '0.6' },
+  '&.cm-diff .cm-deletedText': { background: '#ff000033' },
+  '&.cm-diff .cm-deletedChunk': { backgroundColor: 'color-mix(in srgb, var(--color-on-danger) 12%, transparent)', opacity: '0.6' },
 })
 
 const container = ref<HTMLDivElement>()

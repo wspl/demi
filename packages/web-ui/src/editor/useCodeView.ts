@@ -1,17 +1,17 @@
 import { onBeforeUnmount, onMounted, watch, type Ref } from 'vue'
-import { ChangeSet, EditorState, type Extension, type StateEffect, type Text, type TransactionSpec } from '@codemirror/state'
+import { EditorState, type Extension, type StateEffect, type Text, type TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { getOriginalDoc, originalDocChangeEffect } from '@codemirror/merge'
 import { baseName } from '@demicodes/utils'
 import { loadFileLanguage } from './language'
 import { editorTheme, trackEditorView, untrackEditorView } from './theme/cmTheme'
+import { diffOf, setDiffOriginal } from './unifiedDiff'
 
 /** What a code view shows, read reactively: its text, and a diff's original. */
 export interface CodeViewFile {
   /** The file's path, which selects its language; read once. */
   path: string
   text: string
-  /** A unified diff's other side, which its merge view compares against. */
+  /** A unified diff's other side, which it compares against (`unifiedDiff`). */
   original?: string
 }
 
@@ -47,15 +47,13 @@ function replacement(doc: Text, next: string): { from: number; to: number; inser
  */
 export function codeViewUpdate(state: EditorState, file: CodeViewFile): TransactionSpec | null {
   const change = replacement(state.doc, file.text)
-  const original = file.original === undefined ? null : getOriginalDoc(state)
-  const originalChange = original && replacement(original, file.original!)
-  if (!change && !originalChange)
+  const original = file.original === undefined ? undefined : diffOf(state)?.original
+  const newOriginal = original && original.toString() !== file.original ? state.toText(file.original!) : null
+  if (!change && !newOriginal)
     return null
   return {
     ...(change ? { changes: change } : {}),
-    ...(original && originalChange
-      ? { effects: originalDocChangeEffect(state, ChangeSet.of(originalChange, original.length)) }
-      : {}),
+    ...(newOriginal ? { effects: setDiffOriginal.of(newOriginal) } : {}),
   }
 }
 

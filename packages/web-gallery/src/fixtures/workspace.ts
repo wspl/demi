@@ -1,5 +1,6 @@
 import { baseName, delay } from '@demicodes/utils'
 import type { ChangeFile, ChangeSetSource, ChangeSides, WorkingTreeChange } from '@demicodes/web-ui/files/changes'
+import { diffLineCounts } from '@demicodes/web-ui/files/diff-counts'
 import { HostFiles } from '@demicodes/web-ui/files/file-cache'
 import { keptChangeSet, type ContentReads } from '@demicodes/web-ui/files/kept-source'
 import {
@@ -20,6 +21,9 @@ import { FileBrowserError } from '@demicodes/web-ui/files/types'
 export const WORKSPACE_ROOT = '/Users/alex/Projects/demi'
 
 const at = new Date(Date.UTC(2026, 8, 12, 9, 30)).toISOString()
+
+/** Written without a final newline, as `printf` writes one. */
+const robotsTxt = 'User-agent: *\nDisallow: /admin'
 
 const cookieTs = `import { parse, serialize } from 'cookie'
 
@@ -203,6 +207,7 @@ function tree(): MemoryDirectory {
     }),
     '.vscode': dir(files('.vscode', ['settings.json', 'extensions.json'])),
     '.gitignore': textFile('node_modules\ndist\n', at),
+    public: dir({ 'robots.txt': textFile(robotsTxt, at) }),
     // Files the work panel previews rather than reads as text (`file-previews.md`).
     assets: dir({
       'logo.svg': textFile(logoSvg, at),
@@ -307,20 +312,6 @@ function tree(): MemoryDirectory {
       fixtures: dir(files('tests/fixtures', ['users.json', 'sessions.json'])),
     }),
   })
-}
-
-/** Lines added and removed between two texts, by a longest common subsequence of lines. */
-function lineCounts(original: string, modified: string): { added: number; removed: number } {
-  const a = original === '' ? [] : original.split('\n')
-  const b = modified === '' ? [] : modified.split('\n')
-  const table: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0))
-  for (let i = a.length - 1; i >= 0; i--) {
-    for (let j = b.length - 1; j >= 0; j--) {
-      table[i]![j] = a[i] === b[j] ? table[i + 1]![j + 1]! + 1 : Math.max(table[i + 1]![j]!, table[i]![j + 1]!)
-    }
-  }
-  const common = table[0]![0]!
-  return { added: b.length - common, removed: a.length - common }
 }
 
 /** A generated file of about `lines` lines in the language its extension names, so a diff has room for several hunks. */
@@ -484,6 +475,9 @@ const changeSides: Record<string, ChangedSides> = {
   '.github/workflows/ci.yml': generatedChange('.github/workflows/ci.yml', 24, 15),
   'package.json': { status: 'UU', kind: 'modified', original: packageJson.replace('"typecheck": "tsgo --noEmit"', '"typecheck": "tsc --noEmit"'), modified: packageJson },
   'assets/logo.svg': { status: ' M', kind: 'modified', original: logoSvgBefore, modified: logoSvg },
+  'public/robots.txt': { status: '??', kind: 'added', original: '', modified: robotsTxt },
+  // Its last line, which had no newline after it, deleted.
+  '.gitignore': { status: ' M', kind: 'modified', original: 'node_modules\ndist\n.env', modified: 'node_modules\ndist\n' },
 }
 
 /**
@@ -500,7 +494,7 @@ const binaryChanges: Record<string, { status: string; kind: ChangeFile['kind']; 
 
 const changedFiles: WorkingTreeChange[] = [
   ...Object.entries(changeSides).map(([path, sides]) => {
-    const counts = lineCounts(sides.original, sides.modified)
+    const counts = diffLineCounts(sides.original, sides.modified)
     const change: WorkingTreeChange = { path, status: sides.status, kind: sides.kind, ...counts }
     if (sides.from) {
       change.from = sides.from
