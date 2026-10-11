@@ -542,6 +542,30 @@ export const smallImageTool = viewedCall(
 )
 
 /**
+ * Eight frames of a progress strip, each 171 × 40, shorter than a
+ * thumbnail: they stand in rows 40 pixels tall, with no empty band under
+ * each row before the next.
+ */
+export const shortFramesTool = (() => {
+  const frames = Array.from({ length: 8 }, (_, index) => index + 1)
+  const lines = frames.map((n) => imageLine(n, 171, 40, 337)).join('\n')
+  return toolCall({
+    id: 'tool-short-frames',
+    toolName: 'shell',
+    input: JSON.stringify({
+      script: 'for f in out/progress-*.png; do demi file view "$f"; done',
+      description: 'Show the frames of the progress strip',
+    }),
+    status: 'completed',
+    output: [
+      { type: 'text', text: `status: exited\nexitCode: 0\ncommandId: 19\noutput:\n${lines}\n` },
+      ...frames.map(() => blobImage(galleryBlobs.frame)),
+    ],
+    view: shellView({ commandId: '19', chunks: [{ stream: 'stdout', text: `${lines}\n` }] }),
+  })
+})()
+
+/**
  * A recording the agent viewed: its first frame with a play mark, which a
  * click plays in the viewer.
  */
