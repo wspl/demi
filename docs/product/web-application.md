@@ -726,7 +726,15 @@ what the backend does not have yet or does not keep: draft edits the backend
 has not confirmed, with the bytes of their files not yet uploaded;
 unconfirmed submissions; new conversations, with their model settings, until
 their first send writes them to the record; edits of sent messages in
-progress; and each conversation's scroll position. A conversation with a
+progress; and each conversation's scroll position. Its records follow the
+same rule as the backend's stores between published releases
+([Schemas and migrations](../backend/storage.md#schemas-and-migrations)): a
+change of a record's shape raises the database's version, and its upgrade
+turns the previous release's records into the new shape, as a message on its
+way, one per conversation in 0.1.21, becomes a list of one. A record that
+still does not read is reported once, in words and without its raw contents,
+and set aside; every other record is restored, so one bad record never costs
+the user their other drafts. A conversation with a
 record keeps its model settings only there
 ([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)).
 The tabs open in one of the user's browsers share this storage, and a page
