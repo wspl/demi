@@ -33,7 +33,7 @@ current side.
 
 | Kind | Extensions | File view | Change view |
 | --- | --- | --- | --- |
-| Image | `png`, `jpg`, `jpeg`, `gif`, `webp`, `avif`, `bmp`, `ico`, `svg` | The picture, fitted, zoomed and moved as in the [media viewer](#the-media-viewer), by the same component. Transparency shows over a checkerboard, with the pixel size, the zoom and the file size beside it. | Committed and current side by side, each with its pixel size and file size |
+| Image | `png`, `jpg`, `jpeg`, `gif`, `webp`, `avif`, `bmp`, `ico`, `svg` | The picture, fitted, zoomed and moved as in the [media viewer](#the-media-viewer), by the same component. Transparency shows over a checkerboard, with the pixel size, the zoom and the file size beside it. | Committed and current side by side, each zoomed and moved as in the File view, with its pixel size, zoom and file size |
 | Video | `mp4`, `m4v`, `webm`, `mov` | The player in the user's browser | Side by side |
 | Audio | `mp3`, `wav`, `ogg`, `oga`, `opus`, `m4a`, `aac`, `flac` | The player in the user's browser | Side by side |
 | PDF | `pdf` | The PDF viewer in the user's browser | Side by side |
@@ -156,8 +156,8 @@ icon before its name, the icon the file tree shows for it, so a file reads as
 a file and not as a page on the web. A link that starts with an icon, a
 file's icon or an agent's mark ([Linking an agent](../agent/subagents.md#linking-an-agent)),
 is a small object in the sentence, as a mention is in Slack or Notion, so it
-keeps 0.2 em of space on each side, inside its hover fill and outside its
-underline: in "已经告诉[负责的 Agent](agent:57)：", the character before the
+keeps 0.2 em of space on each side, inside its hover fill where it has one
+and outside its underline: in "已经告诉[负责的 Agent](agent:57)：", the character before the
 mark and the colon after the name no longer touch it. A link without an
 icon is words and is spaced as words.
 
