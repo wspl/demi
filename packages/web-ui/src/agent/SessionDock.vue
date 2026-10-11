@@ -5,6 +5,7 @@ import { ChevronDown } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import { sessionCoverKey } from './session-cover'
 import { dockCardsKey } from './dock-cards'
+import { KEEPS_WINDOWS } from '../ui/window-stack'
 
 withDefaults(defineProps<{
   showScrollToBottom?: boolean
@@ -55,8 +56,9 @@ const scrollBottom = computed(() =>
   <!-- What stands over the composer stacks at one 8px step: the cards, the chips, the composer.
        The chips sit directly on the composer and nothing comes between them; a card stands
        above the chips. A part that is not there takes no room, so the next one moves up by the
-       same step. -->
-  <div class="relative">
+       same step. The user types and decides here while watching an open window, so a press
+       anywhere in the dock keeps the session's windows open (`window-stack.ts`). -->
+  <div class="relative" v-bind="{ [KEEPS_WINDOWS]: '' }">
     <!-- The scroll control is the chips row's control at its right end, so it takes no room in
          the dock; it shows only away from the scroll bottom, where it covers nothing the user
          reads last. -->

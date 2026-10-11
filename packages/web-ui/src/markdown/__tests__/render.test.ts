@@ -14,7 +14,7 @@ const files: MessageFiles = {
 /** A link of text to a Host file, as a message shows it: the file's icon, then the text. */
 function fileLink(path: string, text: string, line?: number): string {
   const name = path.split('/').at(-1)
-  return `<a href="${path}" data-file-link${line ? ` data-line="${line}"` : ''}><span class="message-file-icon" data-file-icon="${name}" aria-hidden="true"></span>${text}</a>`
+  return `<a href="${path}" class="icon-link" data-file-link${line ? ` data-line="${line}"` : ''}><span class="message-file-icon" data-file-icon="${name}" aria-hidden="true"></span>${text}</a>`
 }
 
 test('a link opens a Host file or a web page, and anything else stays text', () => {
@@ -49,13 +49,13 @@ test('an image loads from the web, as a data URL, or from the Host; anything els
   // A click shows the image whole: a Host file in the File view, a web image in a new tab.
   expect(html).toContain(`<a href="/work/out/chart.png" data-file-link><img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" /></a>`)
   expect(html).toContain('<a href="https://example.com/l.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/l.png" alt="logo" /></a>')
-  expect(html).toContain(' <img src="data:image/png;base64,AAAA" alt="dot" /> ')
-  expect(html).toContain(' mail</p>')
+  // Each stands on its own line, the words between them on theirs.
+  expect(html).toContain('<p>and</p>\n<p class="media-lone"><img src="data:image/png;base64,AAAA" alt="dot" /></p>\n<p>and mail</p>')
 })
 
 test('an image inside a link follows the link', () => {
   expect(renderMarkdown('[![build](https://example.com/badge.svg)](https://example.com/ci)', { files }))
-    .toBe('<p><a href="https://example.com/ci" target="_blank" rel="noopener noreferrer"><img src="https://example.com/badge.svg" alt="build" /></a></p>\n')
+    .toBe('<p class="media-lone"><a href="https://example.com/ci" target="_blank" rel="noopener noreferrer"><img src="https://example.com/badge.svg" alt="build" /></a></p>\n')
   expect(renderMarkdown('[![chart](out/chart.png)](docs/charts.md)', { files }))
     .toContain(`<a href="/work/docs/charts.md" data-file-link><img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" /></a>`)
 })
@@ -63,7 +63,8 @@ test('an image inside a link follows the link', () => {
 test('without a Host, paths stay text and Host images show their alt text', () => {
   const html = renderMarkdown('[plot](scripts/plot.py) ![chart](out/chart.png) ![logo](https://example.com/l.png)')
   expect(html).not.toContain('data-file-link')
-  expect(html).toContain('<p>plot chart <a href="https://example.com/l.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/l.png" alt="logo" /></a></p>')
+  // A Host image's alt text is words; the web image stands on its own line.
+  expect(html).toBe('<p>plot chart</p>\n<p class="media-lone"><a href="https://example.com/l.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/l.png" alt="logo" /></a></p>\n')
 })
 
 test('emphasis beside CJK text formats as a CJK writer means it', () => {
@@ -94,7 +95,7 @@ test('a link to an agent shows its mark and opens it; a number the conversation 
     open: () => {},
   }
   expect(renderMarkdown('I gave the icons to [File icons](agent:4) and the rest to [Fonts](agent:9).', { files, agents }))
-    .toBe('<p>I gave the icons to <button type="button" class="agent-link" data-agent-link="4"><span class="agent-link-mark" data-agent-mark="4"></span>File icons</button> and the rest to <span class="agent-link-missing" data-agent-link="9">Fonts</span>.</p>\n')
+    .toBe('<p>I gave the icons to <button type="button" class="agent-link icon-link" data-agent-link="4" data-keeps-windows><span class="agent-link-mark" data-agent-mark="4"></span>File icons</button> and the rest to <span class="agent-link-missing" data-agent-link="9">Fonts</span>.</p>\n')
   // Outside a conversation, the text alone.
   expect(renderMarkdown('[File icons](agent:4)')).toBe('<p>File icons</p>\n')
 })
@@ -117,6 +118,9 @@ const attachments: Record<string, AttachmentLookup> = {
   a5: { state: 'failed' },
   a6: { state: 'found', attachment: { name: 'clip.webm', mediaType: 'video/webm', url: '/blobs/6?type=video%2Fwebm' } },
   a7: { state: 'found', attachment: { name: 'frame.png', mediaType: 'image/png', url: '/blobs/7?type=image%2Fpng', width: 171, height: 40 } },
+  a45: { state: 'found', attachment: { name: 'words.png', mediaType: 'image/png', url: '/blobs/45?type=image%2Fpng', width: 2560, height: 1720 } },
+  a46: { state: 'found', attachment: { name: 'words-2.png', mediaType: 'image/png', url: '/blobs/46?type=image%2Fpng', width: 1280, height: 720 } },
+  a48: { state: 'found', attachment: { name: 'text.png', mediaType: 'image/png', url: '/blobs/48?type=image%2Fpng', width: 2560, height: 1720 } },
 }
 const withAttachments: MessageFiles = {
   ...files,
@@ -125,23 +129,23 @@ const withAttachments: MessageFiles = {
 
 test('an attachment image shows, and a click on it shows it large', () => {
   expect(renderMarkdown('![The fixed sign-in page](attachment:a1)', { files: withAttachments }))
-    .toBe('<p><a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png"><img src="/blobs/1?type=image%2Fpng" alt="The fixed sign-in page" data-width="480" data-height="300" /></a></p>\n')
+    .toBe('<p class="media-lone"><a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png" data-keeps-windows><img src="/blobs/1?type=image%2Fpng" alt="The fixed sign-in page" data-width="480" data-height="300" /></a></p>\n')
 })
 
 const mark = '<span class="media-play-mark" aria-hidden="true"></span>'
 
 test('an attachment video shows its first frame with a play mark, as large as its record says, and a click plays it large', () => {
   expect(renderMarkdown('![The flow](attachment:a2)', { files: withAttachments }))
-    .toBe(`<p><a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4" class="message-video" style="--media-ratio: ${1280 / 720}; --media-width: 1280px"><video src="/blobs/2?type=video%2Fmp4" muted playsinline preload="metadata" aria-label="The flow" data-width="1280" data-height="720"></video>${mark}</a></p>\n`)
+    .toBe(`<p class="media-lone"><a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4" data-keeps-windows class="message-video" style="--media-ratio: ${1280 / 720}; --media-width: 1280px"><video src="/blobs/2?type=video%2Fmp4" muted playsinline preload="metadata" aria-label="The flow" data-width="1280" data-height="720"></video>${mark}</a></p>\n`)
   // A record without a size leaves the frame 16:9 until it arrives.
   expect(renderMarkdown('![The clip](attachment:a6)', { files: withAttachments }))
-    .toBe(`<p><a href="/blobs/6?type=video%2Fwebm" data-attachment-video="clip.webm" class="message-video"><video src="/blobs/6?type=video%2Fwebm" muted playsinline preload="metadata" aria-label="The clip"></video>${mark}</a></p>\n`)
+    .toBe(`<p class="media-lone"><a href="/blobs/6?type=video%2Fwebm" data-attachment-video="clip.webm" data-keeps-windows class="message-video"><video src="/blobs/6?type=video%2Fwebm" muted playsinline preload="metadata" aria-label="The clip"></video>${mark}</a></p>\n`)
 })
 
 test('a link opens an attachment: an image or a video large, any other file as a download', () => {
   const html = renderMarkdown('[shot](attachment:a1) [flow](attachment:a2) [report](attachment:a3) ![report](attachment:a3)', { files: withAttachments })
-  expect(html).toContain('<a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png">shot</a>')
-  expect(html).toContain('<a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4">flow</a>')
+  expect(html).toContain('<a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png" data-keeps-windows>shot</a>')
+  expect(html).toContain('<a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4" data-keeps-windows>flow</a>')
   expect(html).toContain('<a href="/blobs/3?type=application%2Fpdf" download="report.pdf">report</a> <a href="/blobs/3?type=application%2Fpdf" download="report.pdf">report</a>')
 })
 
@@ -152,7 +156,7 @@ test('an attachment number the conversation does not have says so beside its tex
 
 test('an attachment shows its text while the page asks for it, when asking failed, and outside a conversation', () => {
   expect(renderMarkdown('![shot](attachment:a4) [flow](attachment:a5)', { files: withAttachments }))
-    .toBe('<p>shot flow</p>\n')
+    .toBe('<p class="media-lone">shot</p>\n<p>flow</p>\n')
   expect(renderMarkdown('![shot](attachment:a1)', { files })).toBe('<p>shot</p>\n')
   expect(renderMarkdown('![shot](attachment:a1)')).toBe('<p>shot</p>\n')
 })
@@ -170,7 +174,7 @@ test('images with only white space between them in one paragraph are one run', (
 
 test('paragraphs of images that follow each other are one run, a video among them', () => {
   expect(renderMarkdown(`${shot(1)}\n\n![The flow](attachment:a2)\n\n\n${shot(2)}`, { files: withAttachments }))
-    .toBe(`<p class="media-run">${item(1)}<span style="height: 80px"><a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4" class="message-video"><video src="/blobs/2?type=video%2Fmp4" muted playsinline preload="metadata" aria-label="The flow" data-width="1280" data-height="720" style="width: 142px; height: 80px"></video>${mark}</a></span>${item(2)}</p>\n`)
+    .toBe(`<p class="media-run">${item(1)}<span style="height: 80px"><a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4" data-keeps-windows class="message-video"><video src="/blobs/2?type=video%2Fmp4" muted playsinline preload="metadata" aria-label="The flow" data-width="1280" data-height="720" style="width: 142px; height: 80px"></video>${mark}</a></span>${item(2)}</p>\n`)
 })
 
 // Before a byte of it loads, a medium whose record carries its size takes the
@@ -206,9 +210,29 @@ test('text, a list or a heading between images ends the run', () => {
   expect(html).not.toContain(`<span style="height: 80px"><a href="https://example.com/7.png"`)
 })
 
-test('a lone image keeps its paragraph', () => {
+const lone = (n: number) => `<p class="media-lone"><a href="https://example.com/${n}.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/${n}.png" alt="shot ${n}" /></a></p>\n`
+
+test('a lone image stands on a line of its own, even in a paragraph of words', () => {
   expect(renderMarkdown(`Here it is:\n\n${shot(1)}\n\nThat is all.`, { files }))
-    .toContain('<p><a href="https://example.com/1.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/1.png" alt="shot 1" /></a></p>')
+    .toBe(`<p>Here it is:</p>\n${lone(1)}<p>That is all.</p>\n`)
+  expect(renderMarkdown(`Here it is:\n${shot(1)}\nThat is all.`, { files }))
+    .toBe(`<p>Here it is:</p>\n${lone(1)}<p>That is all.</p>\n`)
+})
+
+// The reply the user saw: a list item's words, then a screenshot on the next
+// line, showed it in the item's line at the message's full width.
+test('an image on the line after a list item’s words stands on its own line under them', () => {
+  expect(renderMarkdown('- **Text** ... (this one is 17 px).\n![shot](attachment:a48)\n- Next', { files: withAttachments }))
+    .toBe('<ul>\n<li><strong>Text</strong> ... (this one is 17 px).<p class="media-lone"><a href="/blobs/48?type=image%2Fpng" data-attachment-image="text.png" data-keeps-windows><img src="/blobs/48?type=image%2Fpng" alt="shot" data-width="2560" data-height="1720" /></a></p>\n</li>\n<li>Next</li>\n</ul>\n')
+})
+
+// The reply the user saw: a list item's words, then two screenshots one per
+// line, showed each at full width under the other instead of side by side.
+test('images after a list item’s words stand side by side under them', () => {
+  const html = renderMarkdown('- **Words** ... text.\n  ![a](attachment:a45)\n  ![b](attachment:a46)', { files: withAttachments })
+  expect(html).toStartWith('<ul>\n<li><strong>Words</strong> ... text.<p class="media-run"><span style="height: 80px"><a href="/blobs/45?type=image%2Fpng"')
+  expect(html.match(/<span style="height: 80px">/g)).toHaveLength(2)
+  expect(html).toContain('alt="b" data-width="1280" data-height="720" style="width: 142px; height: 80px" /></a></span></p>\n</li>')
 })
 
 test('an image inside a link counts as an image of a run, and follows its link', () => {
@@ -226,6 +250,10 @@ test('while a message streams, a lone image at its end waits for what follows', 
   expect(holdUndecidedMedium(`${intro}${shot(1)}\n${shot(2)}`)).toBe(`${intro}${shot(1)}\n${shot(2)}`)
   // Text after it makes it a lone image, which shows.
   expect(holdUndecidedMedium(`${intro}${shot(1)}\n\nDone`)).toBe(`${intro}${shot(1)}\n\nDone`)
+  // After a list item's words it waits too, and shows once a second one joins it.
+  const item = '- **Words** ... text.\n  '
+  expect(holdUndecidedMedium(`${item}${shot(1)}`)).toBe(item)
+  expect(holdUndecidedMedium(`${item}${shot(1)}\n  ${shot(2)}`)).toBe(`${item}${shot(1)}\n  ${shot(2)}`)
 })
 
 // Dollar signs follow Pandoc's rule (`file-previews.md` § Markdown); a file
