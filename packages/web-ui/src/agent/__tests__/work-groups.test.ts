@@ -192,6 +192,15 @@ describe('what a group says it did', () => {
     expect(workRunning(steps(plan, check('s', 17), writing('r', 'read_file')))).toBe('Checking 1 command, using read_file')
     expect(workRunning(steps(plan))).toBe('Thinking')
   })
+
+  // `runtime.md` § Work groups: an open running run says for how long once
+  // past 3 seconds, counting up as Thinking for 9s does.
+  test('a running group says for how long it has run once past 3 seconds', () => {
+    const run = steps(call('a'), call('b'), call('c'), call('d'))
+    expect(workRunning(run, 2_000)).toBe('Running 4 commands')
+    expect(workRunning(run, 92_000)).toBe('Running 4 commands for 1m32s')
+    expect(workRunning(steps(plan, check('s', 17)), 9_000)).toBe('Checking 1 command for 9s')
+  })
 })
 
 // The run at the end of a running turn is one row from its first step: a

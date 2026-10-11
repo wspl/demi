@@ -6,19 +6,21 @@ import {
   callTerminal,
   dockTerminals,
   firstRunningTerminalId,
+  followFrame,
   followLiveOutput,
   liveOutputDelta,
   promptLine,
   runningTerminals,
   shellRowEnd,
   shellRowRunning,
+  shellRowTime,
   terminalPanelTabs,
   terminalStatus,
   terminalWrite,
   type TerminalRecord,
 } from '../terminals'
-import { commandEndMark } from '../command-end'
-import type { ToolCallBlock } from '../block-types'
+import { commandEndMark, runningTime } from '../command-end'
+import type { ShellToolView, ToolCallBlock } from '../block-types'
 
 function terminal(
   partial: Pick<TerminalRecord, 'id' | 'title' | 'phase'> & Partial<TerminalRecord>,
@@ -234,4 +236,32 @@ test('a returned call marks its command\'s end once the end arrives, and not fro
   expect(commandEndMark(shellRowEnd(ended, undefined))).toEqual({ kind: 'failed', exitCode: 2 })
   // While the call runs there is no end.
   expect(shellRowEnd({ ...ended, status: 'executing' }, undefined)).toBeNull()
+})
+
+// `runtime.md` § Rendering boundary and § Live output: a page that attaches
+// after a reload receives each live command's view in its handshake, and
+// its row times the command from the start the server reports, not from
+// when the page loaded; the tag goes when the command's end arrives.
+test('a reloaded page times a running command from the start the server reported, and its tag goes at the end', () => {
+  const call: ToolCallBlock = {
+    type: 'tool_call', id: 'call', createdAt, model, toolUseId: 'call-1', toolName: 'shell',
+    input: '{"script":"sleep 600","description":"Wait"}', status: 'executing', output: [], view: null,
+  }
+  const loadedAt = Date.parse('2026-09-24T12:05:00.000Z')
+  const frame = { status: 'running', commandId: '17', toolUseId: 'call-1', tail: '', chars: 0, runningMs: 92_000 } as const
+  const command = followFrame(undefined, frame, { title: 'Wait' }, undefined, loadedAt)
+  const time = shellRowTime(call, command)
+  expect(time).toEqual({ kind: 'running', since: loadedAt - 92_000 })
+  // The page's clock reads the time it has run since that start.
+  expect(runningTime(loadedAt - (time?.kind === 'running' ? time.since : 0))).toBe('1m32s')
+  // A later frame keeps the start; the end frame says how long it ran in all.
+  const later = followFrame(command, { ...frame, runningMs: 95_000 }, undefined, undefined, loadedAt + 3_500)
+  expect(later.startedAt).toBe(command.startedAt)
+  const ended = followFrame(later, { ...frame, status: 'exited', exitCode: 0, runningMs: 100_000 }, undefined, undefined, loadedAt + 8_200)
+  expect(shellRowTime({ ...call, status: 'completed' }, ended)).toEqual({ kind: 'ran', ms: 100_000 })
+  // A call that returned with its command ended, after a reload with no frame, times it by its stored view.
+  const view: ShellToolView = { kind: 'shell', status: 'exited', exitCode: 1, commandId: '17', runningMs: 47_000, idleMs: 0, chunks: [], viewTruncated: false }
+  expect(shellRowTime({ ...call, status: 'completed', view }, undefined)).toEqual({ kind: 'ran', ms: 47_000 })
+  // One whose stored view saw it still running, and whose end the page never saw, has no time to tell.
+  expect(shellRowTime({ ...call, status: 'completed', view: { ...view, status: 'running' } }, undefined)).toBeNull()
 })

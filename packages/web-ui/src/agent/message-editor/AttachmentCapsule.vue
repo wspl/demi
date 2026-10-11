@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { CircleAlert, RotateCw } from '@lucide/vue'
 import FileIcon from '../../files/FileIcon.vue'
+import { declaredSize, type PixelSize } from '../../files/thumbnail'
+import PicturePreview from '../../ui/PicturePreview.vue'
 import Tooltip from '../../ui/Tooltip.vue'
 import { useMediaUrl } from '../media-source'
 import type { MessageCapsule, MessageTransfer } from './capsules'
 
 /**
  * One file in a message's text: its picture or its kind's icon, then its
- * name, and the device a file on another device is on. Pointed at, it shows
- * the picture larger or a text file's opening lines. An upload in progress
+ * name, and the device a file on another device is on. Pointed at, an image
+ * or a video shows large in its preview card (`file-previews.md` § A
+ * picture's preview on hover), and a text file its opening lines. An upload in progress
  * shows how far it has come; a failed one offers Retry.
  *
  * The capsule stands on the line by its name, which keeps the baseline of the
@@ -38,6 +41,20 @@ const circumference = 2 * Math.PI * radius
 
 const loaded = useMediaUrl(() => typeof props.capsule.image === 'object' ? props.capsule.image : undefined)
 const image = computed(() => typeof props.capsule.image === 'string' ? props.capsule.image : loaded.value)
+const video = useMediaUrl(() => props.capsule.video)
+const pill = ref<HTMLElement | null>(null)
+/** The picture's size from its media block, known before its bytes arrive, else from the capsule's own thumbnail once loaded. */
+const thumbSize = ref<PixelSize | null>(null)
+const pictureSize = computed(() => {
+  const source = props.capsule.image ?? props.capsule.video
+  const declared = typeof source === 'object' && 'width' in source ? declaredSize(source) : null
+  return declared ?? thumbSize.value
+})
+function onThumbLoad(event: Event): void {
+  const thumb = event.target
+  if (thumb instanceof HTMLImageElement && thumb.naturalWidth > 0)
+    thumbSize.value = { width: thumb.naturalWidth, height: thumb.naturalHeight }
+}
 const uploading = computed(() => props.transfer?.phase === 'uploading' ? props.transfer : null)
 const attaching = computed(() => props.transfer?.phase === 'attaching')
 /** On its way: an upload, which tells how far it has come, or an attaching, which goes round. */
@@ -59,13 +76,16 @@ const caption = computed(() => {
 
 /** What the capsule shows when pointed at; a file still on its way shows its caption alone. */
 const preview = computed<
-  { kind: 'picture'; src: string } | { kind: 'lines'; text: string } | { kind: 'caption' }
+  { kind: 'image' | 'video'; src: string } | { kind: 'lines'; text: string } | { kind: 'caption' }
 >(() => {
   if (busy.value || failed.value) {
     return { kind: 'caption' }
   }
   if (image.value) {
-    return { kind: 'picture', src: image.value }
+    return { kind: 'image', src: image.value }
+  }
+  if (video.value) {
+    return { kind: 'video', src: video.value }
   }
   return props.capsule.snippet ? { kind: 'lines', text: props.capsule.snippet } : { kind: 'caption' }
 })
@@ -75,9 +95,10 @@ const preview = computed<
   <Tooltip
     tag="span"
     class="inline-flex max-w-full items-baseline align-baseline"
-    :picture="preview.kind === 'picture'"
+    :disabled="preview.kind === 'image' || preview.kind === 'video'"
   >
     <span
+      ref="pill"
       class="message-capsule mx-1 inline-flex h-5 min-w-0 max-w-full select-none items-baseline gap-1 pl-[var(--capsule-inset)] pr-1.5 align-baseline text-[13px] font-normal not-italic leading-5 no-underline shadow-[var(--shadow-btn)]"
       :class="[
         failed ? 'bg-tint-danger text-on-danger' : 'bg-btn text-fg-body',
@@ -132,6 +153,7 @@ const preview = computed<
         :src="image"
         alt=""
         class="message-capsule-thumb size-4 shrink-0 self-center object-cover"
+        @load="onThumbLoad"
       />
       <FileIcon
         v-else
@@ -159,14 +181,8 @@ const preview = computed<
       </button>
     </span>
     <template #overlay>
-      <img
-        v-if="preview.kind === 'picture'"
-        :src="preview.src"
-        :alt="capsule.name"
-        class="block max-h-48 max-w-full rounded object-contain"
-      />
       <pre
-        v-else-if="preview.kind === 'lines'"
+        v-if="preview.kind === 'lines'"
         class="max-h-40 overflow-hidden whitespace-pre-wrap break-all font-mono text-[11px] leading-4"
       >{{ preview.text }}</pre>
       <span
@@ -175,4 +191,12 @@ const preview = computed<
       >{{ caption }}</span>
     </template>
   </Tooltip>
+  <PicturePreview
+    v-if="preview.kind === 'image' || preview.kind === 'video'"
+    :trigger="pill"
+    :kind="preview.kind"
+    :src="preview.src"
+    :size="pictureSize"
+    :caption="capsule.name"
+  />
 </template>

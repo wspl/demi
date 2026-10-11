@@ -1,4 +1,5 @@
 import type { Block, ShellViewStatus } from '@demicodes/protocol'
+import type { ClientSessionEvent } from '../transport/protocol'
 import type { ConversationStatus } from './conversation-status'
 import type { ToolCallBlock } from './block-types'
 import type { CommandEnd } from './command-end'
@@ -168,6 +169,44 @@ export function followLiveOutput(
     : next
 }
 
+/** A command's live view, as a `shell_output` frame carries it (`runtime.md` § Live output). */
+export type CommandFrame = Extract<ClientSessionEvent, { type: 'shell_output' }>['status']
+
+/**
+ * The command a page shows after its frame `status` at `now`, given the
+ * record it showed before, if any, and the `shell` call that started it,
+ * when the transcript has it. Its start is the server's, how long it has
+ * run as the frame says, so a page that attached late, after a reload or
+ * in a new tab, times it from when it truly started; its end is that start
+ * and how long its last frame says it ran.
+ */
+export function followFrame(
+  current: TerminalRecord | undefined,
+  status: CommandFrame,
+  call: { title: string; script?: string } | undefined,
+  subagentId: string | undefined,
+  now: number,
+): TerminalRecord {
+  const startedAt = current?.startedAt ?? new Date(now - status.runningMs).toISOString()
+  return {
+    id: status.commandId,
+    title: call?.title ?? status.commandId,
+    script: call?.script,
+    phase: status.status,
+    startedAt,
+    ...(status.status !== 'running'
+      ? { endedAt: current?.endedAt ?? new Date(Date.parse(startedAt) + status.runningMs).toISOString() }
+      : {}),
+    output: followLiveOutput(current?.output ?? '', current?.chars, status.tail, status.chars),
+    chars: status.chars,
+    // How it ended, which its row marks also when its call returned before.
+    exitCode: status.status === 'exited' ? status.exitCode : undefined,
+    lostReason: status.status === 'lost' ? status.reason : undefined,
+    toolUseId: status.toolUseId,
+    ...(subagentId === undefined ? {} : { subagentId }),
+  }
+}
+
 /**
  * The command the `shell` call `toolUseId` of the subagent
  * `subagentId`, or of the root when none, started, when the page has seen
@@ -242,6 +281,32 @@ export function shellRowEnd(call: ToolCallBlock, command: TerminalRecord | undef
   }
   const stored = storedShellView(call)
   return stored?.status === 'running' ? null : stored
+}
+
+/**
+ * How long a `shell` row's command has run or ran (`runtime.md` § Rendering
+ * boundary): while it runs, from the start the server reported for it;
+ * once it ended, how long it ran, by its live frames or by the view its
+ * call stored. None while that is unknown, as for a command whose call
+ * returned while it ran and whose end the page never saw.
+ */
+export type CommandTime =
+  | { kind: 'running'; since: number }
+  | { kind: 'ran'; ms: number }
+
+export function shellRowTime(call: ToolCallBlock, command: TerminalRecord | undefined): CommandTime | null {
+  if (command !== undefined) {
+    const since = Date.parse(command.startedAt)
+    if (isTerminalRunning(command.phase))
+      return { kind: 'running', since }
+    if (command.endedAt !== undefined)
+      return { kind: 'ran', ms: Math.max(0, Date.parse(command.endedAt) - since) }
+  }
+  if (call.status === 'executing') {
+    return null
+  }
+  const stored = storedShellView(call)
+  return stored && stored.status !== 'running' ? { kind: 'ran', ms: stored.runningMs } : null
 }
 
 export function runningTerminals(

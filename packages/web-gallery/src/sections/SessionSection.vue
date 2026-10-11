@@ -121,6 +121,9 @@ import {
   runningShellTool,
   screenshotTool,
   screenshotsTool,
+  fourScreenshotsTool,
+  twelveScreenshotsTool,
+  screenshotRunBlocks,
   shellTool,
   returnedShellTool,
   returnedFailingShellTool,
@@ -338,6 +341,7 @@ function toggleReturnedCommand(command: TerminalRecord | undefined, end: Pick<Te
     return
   }
   command.phase = 'running'
+  command.startedAt = new Date().toISOString()
   delete command.exitCode
   delete command.endedAt
 }
@@ -780,6 +784,7 @@ const writingBlocks = callBeingWrittenBlocks()
 const lookBlocks = commandLookBlocks()
 // A run that viewed screenshots, folded with them under its row, and a report that carried some.
 const viewedBlocks = viewedMediaBlocks()
+const screenshotRun = screenshotRunBlocks()
 const writingSpecimens = [
   { variant: 'being written, with its description', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: 'Write the categorizer' }] },
   { variant: 'without a description yet', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: null }] },
@@ -864,7 +869,7 @@ const attachmentBubble: UserContentBlock[] = [
     sha256: 'demo-pdf',
   },
   { type: 'text', text: ', the screenshot from CI is ' },
-  { type: 'image', source: { type: 'url', url: demoImageUrl } },
+  { type: 'image', source: { type: 'ref', ref: galleryBlobs.screenshot, mediaType: 'image/png', width: 480, height: 300 } },
   {
     type: 'attachment',
     name: 'login-fail.png',
@@ -872,6 +877,16 @@ const attachmentBubble: UserContentBlock[] = [
     mediaType: 'image/png',
     sizeBytes: 48211,
     sha256: 'demo-png',
+  },
+  { type: 'text', text: ', the recording of it is ' },
+  { type: 'video', source: { type: 'ref', ref: galleryBlobs.recording, mediaType: 'video/webm', width: 320, height: 180 } },
+  {
+    type: 'attachment',
+    name: 'login-fail.webm',
+    path: '/home/demi/.demi/attachments/demo/login-fail.webm',
+    mediaType: 'video/webm',
+    sizeBytes: 23336,
+    sha256: 'demo-webm',
   },
   { type: 'text', text: ' and its log is ' },
   {
@@ -957,7 +972,9 @@ const functionalShellBash = ref(true)
 const functionalShellLongLine = ref(true)
 /** Calls whose results carry media, as the transcript shows them. */
 const toolMediaSpecimens = [
-  { variant: 'shell · image', block: screenshotTool },
+  { variant: 'shell · one screenshot', block: screenshotTool },
+  { variant: 'shell · four screenshots', block: fourScreenshotsTool },
+  { variant: 'shell · twelve screenshots, the rest counted', block: twelveScreenshotsTool },
   { variant: 'shell · several images', block: screenshotsTool },
   { variant: 'shell · tall image', block: fullPageTool },
   { variant: 'shell · wide image', block: wideImageTool },
@@ -1711,7 +1728,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Attachments in a Message"
-        note="What the agent gave the user with demi attachment upload, named as attachment:a3: an image shows and a click shows it large, a video shows its first frame with a play mark at an image’s bounds and a click plays it in the viewer, a link opens the attachment, an image or a video in the viewer and any other file as a download, and a number the conversation does not have says so. Images and videos that follow each other, with nothing but white space between them, stand side by side 8px apart and wrap: each is a thumbnail, as a tool’s are, the tall page cropped to its top and the wide timeline to its middle, whose box its record’s pixel size gives before its bytes arrive. A lone image, and a lone video’s first frame, are a picture in the message: at most 480 × 320 and the message’s width, never enlarged, on a line of their own 12px from the text above and below; the demo’s record carries no size, so its frame is 16:9 at 480px wide until it arrives. In a list, a screenshot on the line after an item’s words stands on its own line under them, and two screenshots after an item’s words stand side by side under them, apart from the text as a lone image is."
+        note="What the agent gave the user with demi attachment upload, named as attachment:a3: an image shows and a click shows it large, a video shows its first frame with a play mark at an image’s bounds and a click plays it in the viewer, a link opens the attachment, an image or a video in the viewer and any other file as a download, and a number the conversation does not have says so. Images and videos that follow each other, with nothing but white space between them, stand side by side 8px apart and wrap: each is a thumbnail 80px tall, the tall page cropped to its top and the wide timeline to its middle, whose box its record’s pixel size gives before its bytes arrive. Resting the pointer on a thumbnail for 300 ms shows it large in a card above it, with its alt text and pixel size under it; a lone image already shows at that size and has none. A lone image, and a lone video’s first frame, are a picture in the message: at most 480 × 320 and the message’s width, never enlarged, on a line of their own 12px from the text above and below; the demo’s record carries no size, so its frame is 16:9 at 480px wide until it arrives. In a list, a screenshot on the line after an item’s words stands on its own line under them, and two screenshots after an item’s words stand side by side under them, apart from the text as a lone image is."
       >
         <GallerySpecimen variant="attachments" wide>
           <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="attachmentMarkdown" />
@@ -1741,7 +1758,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="UserBlock"
-        note="User; files as capsules where they were put, a picture or a text file’s opening lines shown when pointed at; formatting; pending steer, queued, and stuck. Long messages have a view of their own: Lengths."
+        note="User; files as capsules where they were put: pointed at, an image or a video shows large in its preview card after 300 ms, with the file’s name and pixel size under it, and a text file its opening lines; formatting; pending steer, queued, and stuck. Long messages have a view of their own: Lengths."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen
@@ -1851,7 +1868,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="FunctionalBlock"
-        note="Thinking, shell (collapsed and expanded), loading, and error. Thinking that streams is one folded row, Thinking with how long it has lasted; the reader opens it to read along, and it never opens or folds by itself, also when it ends (Replay). A shell call shows its command and output in one box: the command stays at the top, highlighted as Bash in the colors all code shows in after a muted $, and only the output under it scrolls once it fills the box. The command wraps at its spaces, as an editor’s word wrap does: a word moves to the next line whole, never split at a hyphen or inside, and only a word longer than the line breaks, at any character, as the long line’s signed address shows. The output wraps as a terminal wraps: each line fills to the box’s edge and breaks at any character. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. A shell row shimmers while its command runs, also after its call returned with the command running on as one of the conversation’s running commands, until the command’s end arrives, and then marks how it ended as any shell row does: Stopped, or Failed for an exit code other than 0 (End Command). While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
+        note="Thinking, shell (collapsed and expanded), loading, and error. Thinking that streams is one folded row, Thinking with how long it has lasted; the reader opens it to read along, and it never opens or folds by itself, also when it ends (Replay). A shell call shows its command and output in one box: the command stays at the top, highlighted as Bash in the colors all code shows in after a muted $, and only the output under it scrolls once it fills the box. The command wraps at its spaces, as an editor’s word wrap does: a word moves to the next line whole, never split at a hyphen or inside, and only a word longer than the line breaks, at any character, as the long line’s signed address shows. The output wraps as a terminal wraps: each line fills to the box’s edge and breaks at any character. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. A shell row shimmers while its command runs, also after its call returned with the command running on as one of the conversation’s running commands, until the command’s end arrives, and then marks how it ended as any shell row does: Stopped, or Failed for an exit code other than 0 (End Command). A command that has run more than 3 seconds wears how long, counting up, as a grey tag where Failed or Stopped would stand: Run Again starts it anew, and the tag shows from 3 seconds on, so a quick command never flashes one; the tag goes when the command ends. The time counts from the command’s start as the server reports it, so a reload shows the true time. Opened, the line above the output says how long it has run, Running for 1m28s, then Exited with 0 after 2m13s, Failed with exit code 1 after 47s or Stopped after 5s; a command that ended within a second says no time, Exited with 0. While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -2025,7 +2042,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Command Ends"
-        note="Every shell row, a run or a look, marks a command that went wrong with a tag after its title: red Failed, with its exit code in the tooltip, grey Stopped, or grey Lost, with why in the tooltip, the same tag its notice carries; one that succeeded shows nothing, and one that runs shimmers. An open row that failed, was stopped or was lost says so above its output. A look is a shell call whose script runs demi shell status; its tag is its own command’s. A call that ran nothing, refused by the repeat guard or for its input, is red Failed and shows why once opened. A title too long for its row is cut at the end; the tag stays. Calls of tools the runtime no longer has, such as shell_status and yield in a conversation from before they were removed, are generic tool cards."
+        note="Every shell row, a run or a look, marks a command that went wrong with a tag after its title: red Failed, with its exit code in the tooltip, grey Stopped, or grey Lost, with why in the tooltip, the same tag its notice carries; one that succeeded shows nothing, and one that runs shimmers. An open row says above its output how long its command ran and how it ended: Exited with 0 after 2m13s, Failed with exit code 1 after 47s, Stopped after 5s; a lost one says why. A look is a shell call whose script runs demi shell status; its tag is its own command’s. A call that ran nothing, refused by the repeat guard or for its input, is red Failed and shows why once opened. A title too long for its row is cut at the end; the tag stays. Calls of tools the runtime no longer has, such as shell_status and yield in a conversation from before they were removed, are generic tool cards."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -2071,7 +2088,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Tool Media"
-        note="The images and videos a call’s result carries show under its row, folded or open, side by side in the order of the result. Each is a thumbnail: 80px tall and 64 to 200px wide by its proportions, cropped beyond them (the tall page keeps its top, the wide timeline its middle), never enlarged (the icon keeps its size). A row is as tall as its tallest thumbnail, so short frames leave no empty band under their row; only a medium whose size is unknown until it loads keeps 80px, so the row never shrinks when it arrives. Its reference carries its pixel size, so its box is final before its bytes arrive and nothing moves when they load; a video of unknown size is 16:9 until its first frame arrives. A video’s thumbnail is its first frame with a play mark; it never plays in place. A click opens the medium whole and large over the dimmed page: fitted and never enlarged; a click on an image toggles actual size, a video plays at once with the browser’s controls, whose full-screen control shows it larger, and closing stops it. Escape, the close control or a click on the dimmed page closes the viewer, and the picture stays until it has faded out. A medium that is gone shows one line where it was: that it was not stored, with the store’s reason, or the day it was removed. A medium the page cannot show says so at the same height. At a phone’s width a preview fits the column, an image opened large fills the screen, where a tap toggles actual size, and an iPhone plays a video full screen."
+        note="The images and videos a call’s result carries stand small in the call’s own line, 8px after its face’s last part, the chevron or a tag, 4px apart, folded or open, in the order of the result: each 20px tall and 16 to 48px wide by its proportions, cropped as a thumbnail is (the tall page keeps its top, the wide timeline its middle), never enlarged, with 4px corners. The line never wraps: as many show as fit in the width the title leaves, the title truncating only down to half the row, and the rest are counted after the last one shown, +5, in the row’s faint text, which is not a control; the narrow specimen shows the title giving way to half the row, then the pictures. A command’s notice and a folded run show theirs the same way (Work Groups). Each reference carries its pixel size, so a box is final before its bytes arrive and nothing moves when they load; a video of unknown size is 16:9. A video shows its first frame with a play mark; it never plays in place. Resting the pointer on a picture for 300 ms shows it large in a card above it, with the call’s title and its pixel size under it; moving to the next picture shows that one’s at once, and leaving closes it. A click opens the medium in the viewer and closes the card. A medium that is gone shows one line under the row: that it was not stored, with the store’s reason. A medium the page cannot show is a small box that says so when pointed at."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -2084,6 +2101,26 @@ onBeforeUnmount(() => {
               <ToolCallBlock
                 :block="specimen.block"
               />
+            </GallerySpecimen>
+            <GallerySpecimen variant="shell · twelve screenshots · narrow" wide>
+              <div class="w-[420px]">
+                <ToolCallBlock :block="twelveScreenshotsTool" />
+              </div>
+            </GallerySpecimen>
+            <GallerySpecimen variant="a run, folded, with twelve screenshots" wide>
+              <div class="h-[11rem]">
+                <AgentMessageList
+                  class="h-full"
+                  conversation-id="gallery-tool-media-run"
+                  :blocks="screenshotRun"
+                  :pending-steers="[]"
+                  :queue="[]"
+                  phase="idle"
+                  :bottom-offset="0"
+                  :persisted-scroll-state="undefined"
+                  read-only
+                />
+              </div>
             </GallerySpecimen>
           </div>
         </div>
@@ -2143,7 +2180,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'changes'">
       <GallerySection
         title="Work Groups"
-        note="Consecutive steps show as one row, the same row from the first step to the turn's end. While they run, each new step rolls over the one before: Requesting, thinking, a call being written, from its description, the call. The row shimmers until the turn moves past it, also after a command ended, while the model's next output is waited for; no Requesting row shows under it. Thinking without text is covered by the step after it. A command's notice and an agent's receipt between the steps are steps of the run too: the replay's background build reports its end and a child sends an update between two calls, and the row stays one row, its face their notice row while they are the newest step; the agent's text, the user's messages and steers, and the receipts of the user's decisions end a run. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did, each kind of call once, in the order the run first made it, such as Ran 2 commands, checked 1 command, never a count of steps; a run without a call reads what its notices and receipts told, such as 2 commands finished, heard from 1 agent. A failure shows on its own call inside. Opened, the notice and the receipt are rows of their own among the calls: the notice's title brings the build's call into view and marks the call's own row, or the run's row while it is folded, which stays folded; and the agent's name opens the Agents window at the call that sent the update. Folded, the media the calls returned show under it, in order, and the files the steps changed, each once; open, each call shows its own."
+        note="Consecutive steps show as one row, the same row from the first step to the turn's end. While they run, each new step rolls over the one before: Requesting, thinking, a call being written, from its description, the call. The row shimmers until the turn moves past it, also after a command ended, while the model's next output is waited for; no Requesting row shows under it. Thinking without text is covered by the step after it. A command's notice and an agent's receipt between the steps are steps of the run too: the replay's background build reports its end and a child sends an update between two calls, and the row stays one row, its face their notice row while they are the newest step; the agent's text, the user's messages and steers, and the receipts of the user's decisions end a run. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did, each kind of call once, in the order the run first made it, such as Ran 2 commands, checked 1 command, never a count of steps; a run without a call reads what its notices and receipts told, such as 2 commands finished, heard from 1 agent. A failure shows on its own call inside. Opened, the notice and the receipt are rows of their own among the calls: the notice's title brings the build's call into view and marks the call's own row, or the run's row while it is folded, which stays folded; and the agent's name opens the Agents window at the call that sent the update. Opened while it runs, past 3 seconds, its title says for how long, Running 3 commands for 1m32s, counting up from its first step; an ended run's title names no time. Folded, the pictures the calls and notices returned stand in its own line, in order, as a call's do, and the files the steps changed under it, each once; open, each call shows its own."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="workFlow.play('work')">Replay</Button>
