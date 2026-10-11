@@ -42,6 +42,21 @@ function findLanguage(name: string): (() => Promise<Extension>) | null {
 }
 
 /**
+ * The language a code fence names (`file-previews.md` § Code), by its name
+ * or one of its short names (`typescript`, `ts`) or else by its files'
+ * extension (`rs`); null for one the highlighter does not know, which shows
+ * as plain text.
+ */
+export function fenceLanguage(fence: string): LanguageDescription | null {
+  // A fence of plain text names no language, as on GitHub, though LaTeX
+  // counts `.text` among its files' extensions.
+  if (!fence || /^(text|txt|plain|plaintext)$/i.test(fence))
+    return null
+  return LanguageDescription.matchLanguageName(languages, fence, false)
+    ?? LanguageDescription.matchFilename(languages, `code.${fence.toLowerCase()}`)
+}
+
+/**
  * Syntax colors for a file's text, by its name: empty when no language
  * matches it or its language fails to load.
  */
