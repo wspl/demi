@@ -54,12 +54,26 @@ impl Shard {
             .agent()
             .tree(&root_of(&record.id))
             .map(|tree| (tree.works(), tree.root().session().phase()));
-        let facts = self
+        // A conversation whose database cannot be opened, as one a build
+        // that does not know its schema made, is listed without its facts:
+        // it alone fails to open, and the user's other conversations and
+        // pages work on (`storage.md` § Schemas and migrations).
+        let facts = match self
             .services()
             .conversations
             .read(&record.id, tree::summary)
-            .await?
-            .unwrap_or(SummaryFacts::EMPTY);
+            .await
+        {
+            Ok(facts) => facts.unwrap_or(SummaryFacts::EMPTY),
+            Err(error) => {
+                tracing::error!(
+                    conversation = %record.id,
+                    error = &error as &dyn std::error::Error,
+                    "a conversation's database could not be read for its summary"
+                );
+                SummaryFacts::EMPTY
+            }
+        };
         let status = status(live, &facts);
         let cwd = self
             .host_shard()
