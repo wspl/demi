@@ -77,7 +77,10 @@ pub fn finish(recorder: Option<&Recorder>) -> EditReport {
                     from,
                     to,
                 },
-                PathChange::Removed { path } => wire::JobPathChange::Removed { path },
+                PathChange::Removed { path } => wire::JobPathChange::Removed {
+                    temporary: is_temporary(Path::new(&path)),
+                    path,
+                },
             })
             .collect(),
         truncated: journal.files_truncated,

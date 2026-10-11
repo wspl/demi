@@ -251,8 +251,9 @@ async fn a_move_carries_the_jobs_edits_to_the_new_name() {
 /// request can follow its earlier calls' files (`edit-tracking.md`
 /// § A request): a move of a file the job did not change, a replacement
 /// from outside the workspace, and a removed folder named once by its own
-/// path; an `rm` that removed nothing lists nothing. A file removed and
-/// made again starts anew.
+/// path; an `rm` that removed nothing lists nothing, and neither does one
+/// of a file the job made itself. A file removed and made again starts
+/// anew.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_job_lists_its_renames_and_removals_in_order() {
     let root = tempfile::tempdir().unwrap();
@@ -290,9 +291,6 @@ async fn a_job_lists_its_renames_and_removals_in_order() {
             },
             PathChange::Removed {
                 path: at("scratch"),
-            },
-            PathChange::Removed {
-                path: at("again.txt"),
             },
         ]
     );

@@ -47,6 +47,7 @@ fn shell_tool(release: oneshot::Receiver<()>) -> (String, Invoke) {
             .flatten()
             .map(|path| PathChange::Removed {
                 path: path.as_str().unwrap().into(),
+                temporary: false,
             })
             .collect();
         let view = ToolView::Shell(ShellToolView {

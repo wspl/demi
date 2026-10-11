@@ -113,7 +113,10 @@ fn shell(command: &str, files: Vec<EditedFile>, changes: Vec<PathChange>) -> Blo
 }
 
 fn removed(path: &str) -> PathChange {
-    PathChange::Removed { path: path.into() }
+    PathChange::Removed {
+        path: path.into(),
+        temporary: path.starts_with("/tmp/"),
+    }
 }
 
 fn renamed(from: &str, to: &str) -> PathChange {

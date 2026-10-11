@@ -168,7 +168,7 @@ impl Tracking {
         let mut arrived = HashSet::new();
         for change in changes {
             match change {
-                PathChange::Removed { path } => self.remove(path),
+                PathChange::Removed { path, temporary } => self.remove(path, *temporary),
                 PathChange::Renamed {
                     from,
                     to,
@@ -214,8 +214,9 @@ impl Tracking {
 
     /// A removed path, or a folder with all in it: a file the list created
     /// leaves it, one that was there before is deleted where it was before
-    /// the list renamed it, and a path the list did not hold is deleted.
-    fn remove(&mut self, path: &str) {
+    /// the list renamed it, and a path the list did not hold is deleted, in
+    /// a temporary directory or not as the job said.
+    fn remove(&mut self, path: &str, temporary: bool) {
         let mut within = false;
         self.files.retain_mut(|tracked| {
             if !is_within(&tracked.path, path) {
@@ -237,7 +238,7 @@ impl Tracking {
                 existed: true,
                 removed: true,
                 from: None,
-                temporary: false,
+                temporary,
                 edits: Vec::new(),
             });
         }
@@ -367,9 +368,9 @@ fn call_files(view: &ShellToolView) -> Vec<EditedFile> {
     let written = files.len();
     for change in &view.path_changes {
         let (path, kind, from, temporary) = match change {
-            PathChange::Removed { path } => {
+            PathChange::Removed { path, temporary } => {
                 let path = path.strip_suffix('/').unwrap_or(path).to_owned();
-                (path, EditKind::Deleted, None, false)
+                (path, EditKind::Deleted, None, *temporary)
             }
             PathChange::Renamed {
                 from,
