@@ -138,22 +138,24 @@ pub trait PageFeed {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecRequest {
     pub script: String,
-    /// The agent node the job's `rpc` calls act for.
+    /// The agent node the job's `rpc` calls act for, and its `shell` call
+    /// that runs the script, which the pages' view of the command names.
     pub caller: JobCaller,
-    /// The `shell` call that runs the script, which the pages' view of the
-    /// command names.
-    pub tool_use_id: String,
     /// The media types the call's model reads in a tool result, which the
     /// job may show it (`runtime.md` § What `demi file view` shows).
     pub viewable: Viewable,
 }
 
 /// The agent node a job runs for, whose commands its `rpc` calls reach
-/// (`sessions-and-targets.md` § Bind jobs to their caller).
+/// (`sessions-and-targets.md` § Bind jobs to their caller), and the call of
+/// it that started the job, which a message the job sends comes from
+/// (`subagents.md` § Product rendering).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct JobCaller {
     pub node: NodeId,
+    /// The provider's id of the `shell` call.
+    pub tool_use_id: String,
 }
 
 /// How long a running command's Host has been unreachable, as far as Demi
@@ -165,14 +167,13 @@ pub struct Unreachable {
     pub grace_ms: u64,
 }
 
-/// A command an environment takes up again: the call `tool_use_id`
-/// started it as the job `job` on the environment's Host for the node
-/// `caller`, it has run for `running` since, and the node had seen `seen`
-/// of its output (`storage.md` § Command outputs).
+/// A command an environment takes up again: the call `caller` names
+/// started it as the job `job` on the environment's Host for its node, it
+/// has run for `running` since, and the node had seen `seen` of its output
+/// (`storage.md` § Command outputs).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TakenUp {
     pub command: CommandId,
-    pub tool_use_id: String,
     pub job: String,
     pub caller: JobCaller,
     pub running: Duration,

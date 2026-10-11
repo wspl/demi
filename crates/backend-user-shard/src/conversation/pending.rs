@@ -204,6 +204,7 @@ impl Shard {
             timestamp: at,
             content: content.clone(),
             event: AgentMessageEvent::MoveFailed {},
+            origin: None,
         };
         let root = root_of(&record.id);
         if let Err(error) = PermissionShard::admit(self, &record.id, &root, &message).await {
