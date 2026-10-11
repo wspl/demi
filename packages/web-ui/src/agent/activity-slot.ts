@@ -1,7 +1,6 @@
 import type { SessionPhase } from '@demicodes/protocol'
 import type { MessageListBlock } from './pending-steers'
 import type { SessionLoad } from './session-status'
-import { isRunCut } from './visible-blocks'
 
 /**
  * Why the transcript's tail row is waiting. `connecting` is the socket;
@@ -18,7 +17,7 @@ export type ActivityKind = 'connecting' | 'requesting'
  */
 export type PendingAction = 'resume' | null
 
-/** Tail blocks after which a running turn is waiting for the model; so is a place it went on after a cut (`isRunCut`). */
+/** Tail blocks after which a running turn is waiting for the model. */
 const WAITING_TAIL_TYPES: ReadonlySet<MessageListBlock['type']> = new Set([
   'user',
   'steer',
@@ -48,7 +47,7 @@ export interface ActivitySlotInput {
    * the turn yet.
    */
   startingTurn: boolean
-  /** The visible transcript, with the places a turn went on after a cut (`isRunCut`). */
+  /** The visible transcript. */
   transcriptBlocks: readonly MessageListBlock[]
   /**
    * The transcript's rows as the list draws them, the runs of steps grouped,
@@ -103,7 +102,7 @@ function isWaitingForProvider(input: ActivitySlotInput): boolean {
   if (last.type === 'work_group') {
     return !last.live
   }
-  return isRunCut(last) || WAITING_TAIL_TYPES.has(last.type)
+  return WAITING_TAIL_TYPES.has(last.type)
 }
 
 function hasActiveOutput(blocks: readonly MessageListBlock[]): boolean {
