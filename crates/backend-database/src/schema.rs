@@ -58,8 +58,10 @@ impl ReadBlob for NoBlobs {
 }
 
 /// The control database's. Its history holds the schema of each published
-/// release before the one that ships the current schema; 0.1.21 shipped the
-/// last one in it.
+/// release before the one that ships the current schema, and of each
+/// development build a server keeps data of (`upgrades.md` § A development
+/// build on a server); 0.1.22-dev.20261011T123543Z shipped the last one in
+/// it.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
     history: &[
@@ -94,6 +96,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.21.sql"),
             migration: Migration::Code(control_from_0_1_21),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.20261011T123543Z.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_22_DEV_20261011T123543Z),
         },
     ],
 };
@@ -149,6 +155,16 @@ ALTER TABLE running_commands ADD COLUMN title TEXT NOT NULL DEFAULT '';
     )?;
     relist_blocks(transaction, blobs)
 }
+
+/// From the control schema of the development build
+/// 0.1.22-dev.20261011T123543Z, which a server keeps data of: each user's
+/// subagent settings hold the two limits (`subagents.md` § Limits), which a
+/// user who turned the Subagents switch has at their defaults, as a user
+/// with no row has.
+const CONTROL_FROM_0_1_22_DEV_20261011T123543Z: &str = "
+ALTER TABLE user_subagents ADD COLUMN max_live INTEGER DEFAULT 10 CHECK (max_live >= 1);
+ALTER TABLE user_subagents ADD COLUMN max_depth INTEGER DEFAULT 1 CHECK (max_depth >= 1);
+";
 
 /// From 0.1.11's control schema: the retention pass, which read when each
 /// conversation was last live, is gone, and the column with it.
@@ -983,11 +999,14 @@ CREATE TABLE user_instructions (
   text    TEXT NOT NULL
 ) STRICT;
 
--- Each user's Subagent switch (`subagents.md` § Profiles): a user with no
--- row has subagents on.
+-- Each user's Subagents switch and limits (`subagents.md` § Profiles,
+-- § Limits): a user with no row has subagents on, at most 10 live and 1
+-- level deep, the defaults the columns hold too. A null limit is Unlimited.
 CREATE TABLE user_subagents (
-  user_id TEXT PRIMARY KEY REFERENCES users (id),
-  enabled INTEGER NOT NULL CHECK (enabled IN (0, 1))
+  user_id   TEXT PRIMARY KEY REFERENCES users (id),
+  enabled   INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+  max_live  INTEGER DEFAULT 10 CHECK (max_live >= 1),
+  max_depth INTEGER DEFAULT 1 CHECK (max_depth >= 1)
 ) STRICT;
 
 -- Each user's subagent profiles: the model settings as JSON, null for the
@@ -1727,7 +1746,7 @@ mod tests {
     /// as corrupt until its source answers again.
     #[test]
     fn a_catalog_of_0_1_21_keeps_its_models_without_their_attachment_flags() {
-        let shipped = CONTROL.history.last().unwrap().sql;
+        let shipped = include_str!("schema/control-0.1.21.sql");
         let (_directory, path, mut connection) = database(shipped);
         connection.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
         let model = serde_json::json!({
@@ -2326,16 +2345,17 @@ mod tests {
         );
     }
 
-    /// The development builds' conversation schemas are the ones their
-    /// server's databases record.
+    /// The development builds' schemas are the ones their server's
+    /// databases record.
     #[test]
     fn the_development_builds_in_the_history_are_the_ones_their_server_records() {
-        for (development, version) in [
-            (include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql"), 1_563_671_332),
-            (include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql"), 845_924_528),
+        for (schema, development, version) in [
+            (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql"), 1_563_671_332),
+            (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql"), 845_924_528),
+            (&CONTROL, include_str!("schema/control-0.1.22-dev.20261011T123543Z.sql"), 388_363_661),
         ] {
             assert_eq!(version_of(development), version);
-            assert!(CONVERSATION.history.iter().any(|shipped| shipped.sql == development));
+            assert!(schema.history.iter().any(|shipped| shipped.sql == development));
         }
     }
 }

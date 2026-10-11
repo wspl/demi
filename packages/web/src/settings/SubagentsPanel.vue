@@ -12,7 +12,7 @@ const product = useProduct()
 const resources = useResources()
 const subagents = useSubagentSettings()
 const { settings } = storeToRefs(subagents)
-const { switchSubagents, switchProfile, saveProfile, deleteProfile } = subagents
+const { switchSubagents, setLimit, switchProfile, saveProfile, deleteProfile } = subagents
 
 /**
  * Every model each entry's catalog lists, the ones this browser hides
@@ -28,6 +28,8 @@ const catalogModels = computed(() =>
   <SettingsSubagents
     v-if="settings"
     :enabled="settings.enabled"
+    :max-live="settings.maxLive"
+    :max-depth="settings.maxDepth"
     :profiles="settings.profiles"
     :providers="resources.providerInfos"
     :models="catalogModels"
@@ -36,6 +38,7 @@ const catalogModels = computed(() =>
     :save-profile="saveProfile"
     :delete-profile="deleteProfile"
     @switch="switchSubagents"
+    @set-limit="setLimit"
     @switch-profile="switchProfile"
   />
 </template>

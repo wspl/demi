@@ -66,9 +66,10 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
     items: [
       {
         id: 'models',
-        label: 'Models & Providers',
+        label: 'Providers',
         icon: Sparkles,
         keywords: [
+          'models',
           'api key',
           'anthropic',
           'openai',
@@ -87,7 +88,7 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
       },
       {
         id: 'subagents',
-        label: 'Subagent',
+        label: 'Subagents',
         icon: Bot,
         keywords: [
           'profile',
@@ -95,7 +96,11 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
           'delegate',
           'child agent'
         ],
-        settings: [{ label: 'Subagents' }],
+        settings: [
+          { label: 'Subagents' },
+          { label: 'Maximum subagents', keywords: ['limit', 'live', 'unlimited'] },
+          { label: 'Maximum depth', keywords: ['limit', 'level', 'grandchild', 'unlimited'] },
+        ],
       },
       {
         id: 'plugins',
