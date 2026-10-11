@@ -19,7 +19,7 @@ defineProps<{
   label: string
   folded: boolean
   /** The conversation whose dot the label carries; none while nothing in the folded group waits. */
-  waiting: Pick<SidebarConversation, 'status' | 'needsYou'> | null
+  waiting: Pick<SidebarConversation, 'status' | 'needsYou' | 'unread'> | null
 }>()
 
 const emit = defineEmits<{
