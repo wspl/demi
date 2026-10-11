@@ -12,7 +12,7 @@
 use axum::body::Body;
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::{Path, State};
+use axum::extract::{ConnectInfo, Path, State};
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, UPGRADE};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -32,6 +32,7 @@ use demi_web_api_protocol::devices::DeviceKind;
 use super::AppState;
 use super::error::ApiError;
 use super::install::current_runner_release;
+use super::listener::Peer;
 use super::runner_socket::accept;
 
 /// `WS /api/runner`: the socket carries MessagePack frames of at most the
@@ -152,6 +153,7 @@ pub(super) async fn put(
 /// goes out once the source is there; a pipe that fails first answers 409.
 pub(super) async fn get(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<Peer>,
     Path(id): Path<String>,
     authorization: Option<TypedHeader<Authorization<Bearer>>>,
     headers: HeaderMap,
@@ -180,6 +182,9 @@ pub(super) async fn get(
         Ok(Err(refusal)) => return refused(refusal),
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
+    // A write whose reply is overdue closes this connection, which ends the
+    // device's read of what it still queues (`runner.md` § File contents).
+    sink.closes_with(peer.control.closer());
     if let Err(failure) = sink.source_arrived().await {
         return (StatusCode::CONFLICT, failure.reason().to_owned()).into_response();
     }

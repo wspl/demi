@@ -262,6 +262,12 @@ impl ConnectionControl {
         self.0.closed.cancel();
     }
 
+    /// A token that closes the connection when cancelled, for what outlives
+    /// the request, such as a pipe whose device reads it on this connection.
+    pub(crate) fn closer(&self) -> CancellationToken {
+        self.0.closed.clone()
+    }
+
     /// Closes the connection once no byte moved on it for `limit`, counted
     /// from now, or once `ended` is cancelled, until the answer is dropped.
     pub(crate) fn watch(&self, limit: Duration, ended: CancellationToken) -> ConnectionWatch {
