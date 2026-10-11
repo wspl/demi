@@ -50,7 +50,6 @@ const { agentsOpen, activeSubagentId, toggleAgents } = useSessionPanels(
           v-model:active-id="activeSubagentId"
           :agents="agents"
           :terminals="terminals"
-          :dismiss-outside="false"
           @abort="emit('abort')"
           @abort-agent="(id) => emit('abortAgent', id)"
         />

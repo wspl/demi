@@ -30,10 +30,9 @@ const failed = ref(false)
 const element = ref<HTMLImageElement | HTMLVideoElement | null>(null)
 /** The medium's size once its bytes have loaded. */
 const loaded = ref<PixelSize | null>(null)
-const box = computed(() => thumbnailBox(
-  loaded.value ?? (props.source.type === 'ref' ? declaredSize(props.source) : null),
-  props.kind,
-))
+/** The medium's size as far as the page knows it: loaded, else what its reference declares. */
+const known = computed(() => loaded.value ?? (props.source.type === 'ref' ? declaredSize(props.source) : null))
+const box = computed(() => thumbnailBox(known.value, props.kind))
 watch(src, () => {
   failed.value = false
   loaded.value = null
@@ -42,6 +41,12 @@ watch(src, () => {
 function onLoaded(): void {
   if (element.value)
     loaded.value = loadedSize(element.value)
+}
+
+/** Opens the medium in the page's viewer, whose window first opens over this thumbnail's pane. */
+function openLarge(event: MouseEvent): void {
+  const from = event.currentTarget instanceof Element ? event.currentTarget : null
+  viewer.show({ kind: props.kind, src: src.value, name: props.name, size: known.value, from })
 }
 
 onBeforeUnmount(() => {
@@ -64,7 +69,7 @@ onBeforeUnmount(() => {
       class="relative max-w-full rounded-md outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-line-focus"
       :class="kind === 'image' ? 'cursor-zoom-in' : 'cursor-pointer'"
       :aria-label="kind === 'image' ? `Open ${name} large` : `Play ${name}`"
-      @click="viewer.show({ kind, src, name })"
+      @click="openLarge"
     >
       <img
         v-if="kind === 'image'"
