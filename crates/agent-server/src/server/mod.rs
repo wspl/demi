@@ -149,8 +149,8 @@ pub struct ServerDeps<H: HostResolver> {
     /// What a tree opens with: the commands every node starts from, on
     /// which the server grafts its own groups per node.
     pub toolsets: Rc<dyn ToolsetSource>,
-    /// The user's Subagent switch and profiles, read at each spawn and each
-    /// `demi agent profiles`.
+    /// The user's Subagents switch, limits and profiles, read at each spawn
+    /// and each `demi agent profiles`.
     pub subagents: Rc<dyn SubagentSource>,
     /// The instructions of every node's system prompt, its identity, which a
     /// profile's replace.

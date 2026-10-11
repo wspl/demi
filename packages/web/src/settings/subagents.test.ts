@@ -69,7 +69,7 @@ beforeEach(() => {
   }) as typeof fetch
   channels = playChannels()
   useProduct().start()
-  channels.last().connect(productState({ subagents: { enabled: true, profiles: [reviewer] } }))
+  channels.last().connect(productState({ subagents: { enabled: true, maxLive: 10, maxDepth: 1, profiles: [reviewer] } }))
 })
 
 afterEach(() => {
@@ -114,6 +114,14 @@ test('each write of the subagent settings shows at once as its answer left them,
   await subagents.switchSubagents(false)
   expect(sent.at(-1)).toEqual({ method: 'PUT', path: '/api/subagents', body: { enabled: false } })
   expect(product.snapshot?.subagents.enabled).toBe(false)
+
+  // A limit is sent alone, null for Unlimited, and the others stay.
+  await subagents.setLimit('maxLive', null)
+  expect(sent.at(-1)).toEqual({ method: 'PUT', path: '/api/subagents', body: { maxLive: null } })
+  await subagents.setLimit('maxDepth', 3)
+  expect(sent.at(-1)?.body).toEqual({ maxDepth: 3 })
+  const { enabled, maxLive, maxDepth } = product.snapshot?.subagents ?? {}
+  expect({ enabled, maxLive, maxDepth }).toEqual({ enabled: false, maxLive: null, maxDepth: 3 })
 
   // A refusal reaches the editor and changes nothing.
   const refused = subagents.saveProfile(null, {

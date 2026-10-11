@@ -1,9 +1,9 @@
 //! The user's subagent settings at the tree's boundary (`subagents.md`
-//! § Profiles, Acceptance 7, 14 to 17): what a spawn checks and in which
-//! order, that each spawn and each `demi agent profiles` reads the settings
+//! § Profiles, § Limits, Acceptance 3, 7, 14 to 17): what a spawn checks and
+//! in which order, that each spawn and each `demi agent profiles` reads the settings
 //! as they are then, and the provider runtime a profile's child runs on.
 
-use std::{cell::Cell, rc::Rc};
+use std::{cell::Cell, num::NonZeroU32, rc::Rc};
 
 use demi_agent_store::ClosePhase;
 use demi_agent_tools::{Profile, ProfileModel, SubagentSettings};
@@ -107,7 +107,7 @@ async fn a_spawn_checks_the_switch_the_name_the_profile_switch_and_the_model_in_
     let _client = fixture.opened().await;
 
     // Off comes first, whatever the profile.
-    let off = "demi agent spawn: subagents are turned off in settings; do this work in this session, or ask the user to turn subagents on in Settings > Subagent.\n";
+    let off = "demi agent spawn: subagents are turned off in settings; do this work in this session, or ask the user to turn subagents on in Settings > Subagents.\n";
     for args in [
         json!({ "prompt": "task x", "profile": "nope" }),
         json!({ "prompt": "task x" }),
@@ -128,7 +128,7 @@ async fn a_spawn_checks_the_switch_the_name_the_profile_switch_and_the_model_in_
     // learns.
     assert_eq!(
         refused_spawn(&fixture, json!({ "prompt": "task x", "profile": "reviewer" })).await,
-        "demi agent spawn: profile \"reviewer\" is disabled in settings; omit --profile to inherit the parent, or ask the user to enable it in Settings > Subagent.\n"
+        "demi agent spawn: profile \"reviewer\" is disabled in settings; omit --profile to inherit the parent, or ask the user to enable it in Settings > Subagents.\n"
     );
     // Its effort is gone: no other effort and not the parent's model.
     assert_eq!(
@@ -366,7 +366,7 @@ async fn turning_subagents_off_stops_spawns_at_every_depth_and_leaves_running_ch
     until(|| model.requests_of("task outer").len() == 1).await;
 
     change(&fixture, |settings| settings.enabled = false);
-    let off = "subagents are turned off in settings; do this work in this session, or ask the user to turn subagents on in Settings > Subagent.";
+    let off = "subagents are turned off in settings; do this work in this session, or ask the user to turn subagents on in Settings > Subagents.";
     let nested = agent(
         &fixture.server,
         &outer,
@@ -590,4 +590,93 @@ async fn a_restored_child_whose_entry_is_gone_closes_as_an_error_with_its_subtre
             .map(|tree| tree.is_quiescent()),
         Some(true)
     );
+}
+
+#[tokio::test(flavor = "local")]
+async fn at_the_depth_limit_a_childs_spawn_fails_and_unlimited_lets_it_through() {
+    let model = Model::default();
+    let gate = Gate::new();
+    let other_gate = Gate::new();
+    model.root([said("noted"), said("noted")]);
+    model.child("task parent", [held_said(&gate, "delegating")]);
+    model.child(
+        "task other parent",
+        [held_said(&other_gate, "delegating"), said("other done")],
+    );
+    model.child("task grandchild", [said("grandchild done")]);
+    let product = TestProduct::default();
+    product.subagents.borrow_mut().max_depth = NonZeroU32::new(1);
+    let fixture = fixture(&model, product);
+    let mut client = fixture.opened().await;
+
+    // The root's children are at level 1, which the limit allows; their
+    // own children are not. The spawn runs during the parent's turn, as a
+    // model's call does.
+    let parent = spawn(&fixture, &root(), json!({ "prompt": "task parent" })).await;
+    let deep = tokio::task::spawn_local({
+        let server = fixture.server.clone();
+        let parent = parent.clone();
+        async move { agent(&server, &parent, "spawn", json!({ "prompt": "task grandchild" })).await }
+    });
+    gate.open();
+    let deep = deep.await.unwrap();
+    assert_eq!(
+        refused(&deep),
+        "demi agent spawn: this agent is at the deepest level of subagents Settings > Subagents allows (1); do this work in this session.\n"
+    );
+    client.next_until(is_closed(&parent)).await;
+
+    // Read at the next spawn, Unlimited lets the same spawn through.
+    change(&fixture, |settings| settings.max_depth = None);
+    let other = spawn(&fixture, &root(), json!({ "prompt": "task other parent" })).await;
+    let grandchild_start =
+        spawn_during_turn(&fixture, &other, json!({ "prompt": "task grandchild" }));
+    other_gate.open();
+    let grandchild = grandchild_start.await.unwrap();
+    client.next_until(is_closed(&other)).await;
+    until(|| root_receipts(&fixture).len() == 2).await;
+    assert_eq!(fixture.store.record(&grandchild).unwrap().parent, Some(other));
+}
+
+#[tokio::test(flavor = "local")]
+async fn at_the_live_limit_a_spawn_at_any_depth_and_a_resume_fail_and_unlimited_lets_them_through()
+{
+    let model = Model::default();
+    let gate = Gate::new();
+    // Each completion may wake the root once.
+    model.root((0..5).map(|_| said("noted")));
+    model.child("task first", [said("first done"), said("again done")]);
+    model.child("task held a", [held_said(&gate, "a done")]);
+    model.child("task held b", [held_said(&gate, "b done")]);
+    model.child("task third", [said("third done")]);
+    let product = TestProduct::default();
+    product.subagents.borrow_mut().max_live = NonZeroU32::new(2);
+    let fixture = fixture(&model, product);
+    let mut client = fixture.opened().await;
+
+    let first = spawn(&fixture, &root(), json!({ "prompt": "task first" })).await;
+    client.next_until(is_closed(&first)).await;
+    until(|| fixture.store.record(&first).unwrap().delivered).await;
+    let held_a = spawn(&fixture, &root(), json!({ "prompt": "task held a" })).await;
+    spawn(&fixture, &root(), json!({ "prompt": "task held b" })).await;
+
+    // Two live subagents, the limit: the root's third spawn, a child's
+    // spawn one level down, and the resume of the closed first all fail.
+    let full = "this conversation already has 2 live subagents, the most Settings > Subagents allows; wait for one to finish (`demi agent list`), or do this work in this session.\n";
+    let third = agent(&fixture.server, &root(), "spawn", json!({ "prompt": "task third" })).await;
+    assert_eq!(refused(&third), format!("demi agent spawn: {full}"));
+    let below = agent(&fixture.server, &held_a, "spawn", json!({ "prompt": "task third" })).await;
+    assert_eq!(refused(&below), format!("demi agent spawn: {full}"));
+    let resume = json!({ "id": fixture.number(&first), "message": "again" });
+    let resumed = agent(&fixture.server, &root(), "resume", resume.clone()).await;
+    assert_eq!(refused(&resumed), format!("demi agent resume: {full}"));
+
+    change(&fixture, |settings| settings.max_live = None);
+    let resumed = agent(&fixture.server, &root(), "resume", resume).await;
+    assert_eq!(resumed.code, 0, "{resumed:?}");
+    spawn(&fixture, &root(), json!({ "prompt": "task third" })).await;
+    gate.open();
+    let tree = fixture.server.tree(&root()).unwrap();
+    until(|| tree.is_quiescent()).await;
+    assert_eq!(root_receipts(&fixture).len(), 5);
 }

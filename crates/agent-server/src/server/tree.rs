@@ -54,6 +54,9 @@ pub struct Tree<H: HostResolver> {
     /// The starts under way past their owner's check, by owner: a node
     /// with one is not quiescent, as if the child were live already.
     starting: RefCell<HashMap<NodeId, usize>>,
+    /// The starts past the check of the live limit whose child is not yet
+    /// in `children`, which that check counts as live.
+    admitted: Cell<usize>,
     /// Starts past their reservation, and closes: what dispose waits for.
     lifecycle: TaskTracker,
     /// Every action of the tree holds a lease on it, and so does a child's
@@ -314,6 +317,7 @@ impl<H: HostResolver> Tree<H> {
                 changes,
                 starts: KeyedSerialGate::new(),
                 starting: RefCell::new(HashMap::new()),
+                admitted: Cell::new(0),
                 lifecycle: TaskTracker::new(),
                 admission,
                 toolset: toolset.revision,

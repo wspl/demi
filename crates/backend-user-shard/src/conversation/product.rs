@@ -107,6 +107,8 @@ impl SubagentSource for ShardSubagents {
                 .collect();
             Ok(SubagentSettings {
                 enabled: settings.enabled,
+                max_live: settings.max_live,
+                max_depth: settings.max_depth,
                 profiles,
             })
         })

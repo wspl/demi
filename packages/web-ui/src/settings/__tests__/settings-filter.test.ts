@@ -18,6 +18,8 @@ test('the filter finds a setting by its label or what people call it, under its 
 test('a section found by its own name lists none of its settings', () => {
   expect(found('keyboard')).toEqual([['keyboard']])
   expect(found('api key')).toEqual([['models']])
+  // Providers is still found by the word its old name had.
+  expect(found('models')).toEqual([['models']])
 })
 
 test('Enter opens the first setting found, skipping a section still in development', () => {

@@ -6,7 +6,7 @@ import type { SettingsSubagentDraft } from '@demicodes/web-ui/settings/types'
 import { subagentModels, subagentProviders, type SubagentState } from '../fixtures/subagent-profiles'
 
 /**
- * The Subagent section over a specimen's state. Each write waits a beat, as
+ * The Subagents section over a specimen's state. Each write waits a beat, as
  * the product's does; a save with the reserved name or a name another
  * profile has is refused with the backend's message, so the editor shows
  * its error.
@@ -36,6 +36,11 @@ onBeforeUnmount(() => {
 // A switch shows at once, as the product's does while its write is on its way.
 function switchSubagents(enabled: boolean) {
   props.state.enabled = enabled
+}
+
+// A limit shows at once too; Unlimited comes here only once the page's dialog confirmed it.
+function setLimit(limit: 'maxLive' | 'maxDepth', value: number | null) {
+  props.state[limit] = value
 }
 
 function switchProfile(id: string, enabled: boolean) {
@@ -71,6 +76,8 @@ async function deleteProfile(id: string) {
 <template>
   <SettingsSubagents
     :enabled="state.enabled"
+    :max-live="state.maxLive"
+    :max-depth="state.maxDepth"
     :profiles="state.profiles"
     :providers="subagentProviders"
     :models="subagentModels"
@@ -79,6 +86,7 @@ async function deleteProfile(id: string) {
     :save-profile="saveProfile"
     :delete-profile="deleteProfile"
     @switch="switchSubagents"
+    @set-limit="setLimit"
     @switch-profile="switchProfile"
   />
 </template>
