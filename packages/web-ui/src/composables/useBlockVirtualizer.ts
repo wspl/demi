@@ -100,8 +100,13 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
    * start, which only `reveal` asks for.
    */
   let revealRoom = 0
-  /** The row `reveal` placed at a guess of its height, until the list measures it. */
-  let revealing: { key: string, coveredBottom: number } | null = null
+  /**
+   * The row `reveal` placed at a guess of its height, until the list
+   * measures it; or the row a part of which it placed, such as a step of a
+   * run that opens to show it, placed again as each measurement of the row
+   * comes until `until`, while the row grows over its fold.
+   */
+  let revealing: { key: string, coveredBottom: number, part: { selector: string, until: number } | null } | null = null
   const isRestored = ref(false)
 
   const virtualizer = useVirtualizer<HTMLElement, HTMLElement>(
@@ -237,9 +242,11 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
    * stops following the end, as a search result opened at a message asks;
    * false while the list has no such block, such as before its history
    * arrives. A row not measured yet is placed by its estimated height, and
-   * placed again by its real one once it is measured.
+   * placed again by its real one once it is measured. With `part`, a
+   * selector of an element inside the row, such as a step of an open run,
+   * that element is what `revealOffset` places, once the row draws it.
    */
-  function reveal(id: string, coveredBottom = 0): boolean {
+  function reveal(id: string, coveredBottom = 0, part?: string): boolean {
     const index = blocks.value.findIndex((block) => block.id === id)
     if (index < 0)
       return false
@@ -247,16 +254,37 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     isRestored.value = true
     shouldAutoScroll.value = false
     const key = keyOf(blocks.value[index]!)
-    revealing = virtualizer.value.itemSizeCache.has(key) ? null : { key, coveredBottom }
-    placeRevealed(index, virtualizer.value.measurementsCache[index]?.size ?? estimateSize(index), coveredBottom)
+    if (part !== undefined)
+      revealing = { key, coveredBottom, part: { selector: part, until: performance.now() + READER_LAYOUT_MS } }
+    else
+      revealing = virtualizer.value.itemSizeCache.has(key) ? null : { key, coveredBottom, part: null }
+    placeRevealed(index, virtualizer.value.measurementsCache[index]?.size ?? estimateSize(index), coveredBottom, part)
     return true
   }
 
-  function placeRevealed(index: number, size: number, coveredBottom: number): void {
+  /** A reveal places a part of a row whose fold may still be opening. */
+  function placingPart(): boolean {
+    return !!revealing?.part && performance.now() <= revealing.part.until
+  }
+
+  /** Where the element `part` names stands inside the row at `index` as drawn; null while the row does not draw it. */
+  function partBox(index: number, part: string): { top: number, height: number } | null {
+    const row = scrollContainer.value?.querySelector(`[data-index="${index}"]`)
+    const found = row?.querySelector(part)
+    if (!row || !found)
+      return null
+    const box = found.getBoundingClientRect()
+    return { top: box.top - row.getBoundingClientRect().top, height: box.height }
+  }
+
+  function placeRevealed(index: number, size: number, coveredBottom: number, part?: string): void {
     const el = scrollContainer.value
     if (!el)
       return
-    revealRoom = revealOffset(size, el.clientHeight - coveredBottom)
+    const view = el.clientHeight - coveredBottom
+    const box = part === undefined ? null : partBox(index, part)
+    // A part stands where the rule places it, its row starting above it by as much.
+    revealRoom = box ? revealOffset(box.height, view) - box.top : revealOffset(size, view)
     // The room applies at once, to this scroll and to the virtualizer's
     // corrections of it while the rows around it are measured.
     virtualizer.value.setOptions({ ...virtualizer.value.options, scrollPaddingStart: revealRoom })
@@ -265,12 +293,26 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     isProgrammaticScroll = false
   }
 
-  /** The row `reveal` placed at a guess measured `size`: placed again when its real height places it elsewhere. */
+  /**
+   * The row `reveal` placed at a guess measured `size`: placed again when
+   * its real height places it elsewhere. A row whose part it placed is
+   * placed again at each measurement until its fold has had time to end,
+   * as the list's room below grows with it.
+   */
   function revealMeasured(index: number, size: number): void {
     const block = blocks.value[index]
     if (!revealing || !block || keyOf(block) !== revealing.key)
       return
-    const { coveredBottom } = revealing
+    const { coveredBottom, part } = revealing
+    if (part) {
+      if (performance.now() > part.until) {
+        revealing = null
+        return
+      }
+      // After the measure returns, as below.
+      queueMicrotask(() => placeRevealed(index, size, coveredBottom, part.selector))
+      return
+    }
     revealing = null
     const el = scrollContainer.value
     if (el && revealOffset(size, el.clientHeight - coveredBottom) !== revealRoom)
@@ -287,7 +329,10 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     if (pendingIntent === 'up' || !shouldAutoScroll.value) {
       furthestDistanceSinceDisengage = Math.max(furthestDistanceSinceDisengage, dist)
     }
-    if (isProgrammaticScroll)
+    // A part placed while its row opens can land at the list's end before
+    // the row has grown below it: the reveal ended following, and the list
+    // does not take that end for the reader's.
+    if (isProgrammaticScroll || placingPart())
       return
     if (pendingIntent === 'up') {
       shouldAutoScroll.value = false
@@ -377,6 +422,10 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         // top of the list is where it starts, which is what its own private
         // getter also falls back to.
         if (holdsView())
+          return false
+        // The row whose part a reveal placed grows below that part, as its
+        // fold opens: the reveal places the part again instead.
+        if (placingPart() && item.key === revealing?.key)
           return false
         const offset = currentInstance.scrollOffset ?? 0
         const isStreamingTail = item.index === blocks.value.length - 1

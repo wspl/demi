@@ -48,6 +48,9 @@ const props = defineProps<{
   summaryTokens?: number
 }>()
 
+/** A run's row is open, as the list keeps it (`useOpenRuns`); other rows ignore it. */
+const runOpen = defineModel<boolean>('open', { default: false })
+
 const emit = defineEmits<{
   recallSteer: [id: string]
   interruptPendingSteer: [id: string]
@@ -195,7 +198,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         v-else-if="block.type === 'work_group'"
         class="overflow-hidden px-[var(--agent-pad-x,2rem)]"
       >
-        <WorkGroupBlock :group="block" />
+        <WorkGroupBlock v-model:open="runOpen" :group="block" />
       </div>
       <div
         v-else-if="block.type === 'error'"
