@@ -1,5 +1,6 @@
 import { computed, ref, watch, type ComputedRef } from 'vue'
 import { activitySlotKind, type ActivityKind, type ActivitySlotInput } from './activity-slot'
+import { turnStartingMessage } from './send-way'
 import type { PendingSubmissionState } from './types'
 
 export interface ActivitySlotState {
@@ -25,12 +26,11 @@ export interface ActivitySlotSources {
  * A message sent while the conversation is idle starts a turn, so the row
  * says Requesting from the send, through its delivery and the server's
  * confirmation, until the answer begins: one wait, one word and one clock
- * (`product.md` § Recovering an unfinished turn). A message sent during an
- * action joins the queue instead, so whether a message starts a turn is read
- * from the phase at the moment it is sent, and again when Retry sends it anew.
- * A failed delivery ends that wait. What follows the wait, a step, the
- * answer or a Stop, takes the row's place and rolls over it
- * (`succeedKeys`, `RowRoll`).
+ * (`product.md` § Recovering an unfinished turn). Which message on its way
+ * starts a turn is `turnStartingMessage`'s, which the composer's Stop reads
+ * too, so the two show together. A failed delivery ends that wait. What
+ * follows the wait, a step, the answer or a Stop, takes the row's place and
+ * rolls over it (`succeedKeys`, `RowRoll`).
  */
 export function useActivitySlot(sources: ActivitySlotSources): {
   slot: ComputedRef<ActivitySlotState | null>
@@ -39,17 +39,11 @@ export function useActivitySlot(sources: ActivitySlotSources): {
 } {
   const { input, pendingSubmissions, waitingSince, scope } = sources
 
-  // The message on its way that starts a turn; null when none is. Read when
-  // the message is sent, before the server's phase can answer it.
-  const startingTurnId = ref<string | null>(null)
-  watch(
-    () => deliveringId(pendingSubmissions()),
-    (id) => {
-      startingTurnId.value = id !== null && input().phase === 'idle' ? id : null
-    },
-    { immediate: true, flush: 'sync' },
-  )
-  const startingTurn = computed(() => startingTurnId.value !== null)
+  // A message on its way that waits for the backend to be reachable again
+  // still starts its turn: the row says Connecting meanwhile, or the
+  // connection banner says the backend is away, and Requesting once the
+  // socket is back.
+  const startingTurn = computed(() => turnStartingMessage(input().phase, pendingSubmissions()) !== undefined)
   const kind = computed(() =>
     activitySlotKind({ ...input(), startingTurn: startingTurn.value }),
   )
@@ -69,7 +63,7 @@ export function useActivitySlot(sources: ActivitySlotSources): {
     ([isRequesting, currentScope], [wasRequesting, previousScope]) => {
       if (isRequesting && (!wasRequesting || currentScope !== previousScope)) {
         shownSince.value = Date.now()
-        startedHere.value = startingTurnId.value !== null || input().recovering
+        startedHere.value = startingTurn.value || input().recovering
       }
     },
   )
@@ -86,16 +80,4 @@ export function useActivitySlot(sources: ActivitySlotSources): {
   )
 
   return { slot, startingTurn }
-}
-
-/**
- * The id of the first message on its way sent as the next message, which
- * is the one that can start a turn; a steer or a queued message starts
- * none, and a failed delivery is not on its way. One that waits for the
- * backend to be reachable again is: the row says Connecting meanwhile, or
- * the connection banner says the backend is away, and Requesting once the
- * socket is back.
- */
-function deliveringId(submissions: readonly PendingSubmissionState[]): string | null {
-  return submissions.find((submission) => submission.way === 'send' && submission.error === null)?.id ?? null
 }
