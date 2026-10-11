@@ -12,7 +12,10 @@ import { toolMedia } from '../tool-media'
 const props = defineProps<{
   block: ToolCallBlock
   input: Record<string, unknown>
+  /** The row is a run's that the running turn has not moved past: it shimmers also after the call returned. */
+  working?: boolean
 }>()
+const isOpen = defineModel<boolean>('open', { default: false })
 
 const summary = computed(() => {
   const entries = Object.entries(props.input)
@@ -39,9 +42,10 @@ const detail = computed(() => {
 
 <template>
   <FunctionalBlock
+    v-model:open="isOpen"
     :label="block.toolName"
     :detail="detail"
-    :loading="block.status === 'executing'"
+    :loading="block.status === 'executing' || working"
     :tone="block.status === 'error' ? 'danger' : undefined"
   >
     <template

@@ -54,8 +54,9 @@ describe('the steps the transcript shows as one row', () => {
       .toEqual([['a', 'b'], 'r1', ['c', 'd']])
   })
 
-  test('once the run ended, a lone call is its own row and a call with another step is a group', () => {
-    expect(rows(groupWork([call('a'), text('r')], false))).toEqual(['a', 'r'])
+  test('once the run ended, a lone call stays the row it was, and a call with another step is a group', () => {
+    // A group of a lone call shows as the call's own row.
+    expect(rows(groupWork([call('a'), text('r')], false))).toEqual([['a'], 'r'])
     expect(rows(groupWork([thinking('t', 'Plan the fix.'), call('a'), text('r')], false))).toEqual([['t', 'a'], 'r'])
   })
 
@@ -98,13 +99,19 @@ describe('what a group says it did', () => {
   })
 })
 
-// A running turn's lone call is its own row, which opens to the call; the
-// second step makes the run a group, whose row then shows its newest step.
-test('a running lone call is its own row until a second step joins it', () => {
-  expect(rows(groupWork([text('t'), call('c1')], true))).toEqual(['t', 'c1'])
-  expect(rows(groupWork([text('t'), writing('c1')], true))).toEqual(['t', 'pending-call:c1-use'])
-  expect(rows(groupWork([text('t'), call('c1'), thinking('k', 'Next')], true))).toEqual(['t', ['c1', 'k']])
-  expect(rows(groupWork([text('t'), call('c1'), writing('c2')], true))).toEqual(['t', ['c1', 'pending-call:c2-use']])
-  // A lone thinking stays a group, so the first call rolls over it in place.
-  expect(rows(groupWork([text('t'), thinking('k', 'Plan')], true))).toEqual(['t', ['k']])
+// The run at the end of a running turn is one row from its first step: a
+// step that joins never adds a row that then merges into it, and the row
+// keeps its name as a call being written becomes its block and as the run
+// ends, so the list keeps the row it measured (`runtime.md` § Work groups).
+test('a run is one row under one name from its first step to its end', () => {
+  const ids = (list: readonly MessageListBlock[]) => list.map((row) => (row.type === 'work_group' ? `${row.id}:${row.steps.length}` : row.id))
+  expect(ids(groupWork([text('t'), writing('c1')], true))).toEqual(['t', 'work:c1-use:1'])
+  expect(ids(groupWork([text('t'), call('c1')], true))).toEqual(['t', 'work:c1-use:1'])
+  expect(ids(groupWork([text('t'), call('c1'), thinking('k', 'Next')], true))).toEqual(['t', 'work:c1-use:2'])
+  expect(ids(groupWork([text('t'), call('c1'), writing('c2')], true))).toEqual(['t', 'work:c1-use:2'])
+  expect(ids(groupWork([text('t'), call('c1'), text('r')], false))).toEqual(['t', 'work:c1-use:1', 'r'])
+  // A thinking first names the row, also once it has nothing to show and goes.
+  expect(ids(groupWork([text('t'), thinking('k')], true))).toEqual(['t', 'work:k:1'])
+  expect(ids(groupWork([text('t'), thinking('k'), call('c1')], true))).toEqual(['t', 'work:k:1'])
+  expect(ids(groupWork([text('t'), thinking('k'), call('c1'), text('r')], true))).toEqual(['t', 'work:k:1', 'r'])
 })

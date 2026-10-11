@@ -59,6 +59,8 @@ interface Hold {
 export function useActivitySlot(sources: ActivitySlotSources): {
   heldId: ComputedRef<string | null>
   slot: ComputedRef<ActivitySlotState | null>
+  /** A message on its way starts a turn: it is the user's next message already. */
+  startingTurn: ComputedRef<boolean>
 } {
   const { input, pendingSubmission, waitingSince, tail, scope } = sources
 
@@ -72,8 +74,9 @@ export function useActivitySlot(sources: ActivitySlotSources): {
     },
     { immediate: true, flush: 'sync' },
   )
+  const startingTurn = computed(() => startingTurnId.value !== null)
   const baseKind = computed(() =>
-    activitySlotKind({ ...input(), startingTurn: startingTurnId.value !== null }),
+    activitySlotKind({ ...input(), startingTurn: startingTurn.value }),
   )
 
   const hold: Ref<Hold | null> = ref(null)
@@ -158,13 +161,15 @@ export function useActivitySlot(sources: ActivitySlotSources): {
     face.value ? { ...face.value, since: since.value } : null,
   )
 
-  return { heldId, slot }
+  return { heldId, slot, startingTurn }
 }
 
 /**
- * The id of a message on its way; a failed delivery is not on its way, nor
- * one that waits for the backend to be reachable again.
+ * The id of a message on its way; a failed delivery is not on its way. One
+ * that waits for the backend to be reachable again is: the row says
+ * Connecting meanwhile, or the connection banner says the backend is away,
+ * and Requesting once the socket is back.
  */
 function deliveringId(submission: PendingSubmissionState | null): string | null {
-  return submission && submission.error === null && !submission.waiting ? submission.id : null
+  return submission && submission.error === null ? submission.id : null
 }

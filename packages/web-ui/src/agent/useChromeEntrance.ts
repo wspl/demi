@@ -1,23 +1,24 @@
 import { onScopeDispose, ref, watch } from 'vue'
 import { CHROME_ENTER_MS } from '../ui/chrome-enter'
-import type { MessageListBlock } from './pending-steers'
 import type { SessionLoad } from './session-status'
 
 /**
- * Which transcript blocks are arriving right now. Blocks present when the
- * list opens or finishes loading are history and do not move. A block that
- * joins afterwards enters once, then is settled, so a virtual row remounted by
- * scrolling stays still. A block handed off through the activity slot is
- * settled before it becomes a row: the slot already carried it into place.
- * A new conversation in the same list starts over from its own history.
+ * Which rows of the transcript are arriving right now, by the keys that name
+ * them across their forms (`row-key.ts`). Rows present when the list opens
+ * or finishes loading are history and do not move. A row that joins
+ * afterwards enters once, then is settled, so a virtual row remounted by
+ * scrolling stays still, and a row that changes form stays still too. A
+ * block handed off through the activity slot is settled before it becomes a
+ * row, `heldKey` naming that row: the slot already carried it into place. A
+ * new conversation in the same list starts over from its own history.
  */
 export function useChromeEntrance(
-  blocks: () => readonly MessageListBlock[],
-  heldId: () => string | null,
+  keys: () => readonly string[],
+  heldKey: () => string | null,
   scope: () => string,
   load: () => SessionLoad,
-): { isEntering: (id: string) => boolean } {
-  let settled = new Set(blocks().map((block) => block.id))
+): { isEntering: (key: string) => boolean } {
+  let settled = new Set(keys())
   const entering = ref(new Set<string>())
   const timers = new Set<ReturnType<typeof setTimeout>>()
 
@@ -45,14 +46,14 @@ export function useChromeEntrance(
     timers.clear()
   }
 
-  watch(heldId, (id) => {
-    if (id !== null) {
-      settled.add(id)
+  watch(heldKey, (key) => {
+    if (key !== null) {
+      settled.add(key)
     }
   }, { flush: 'sync' })
 
   watch(
-    () => [scope(), load(), blocks().map((block) => block.id)] as const,
+    () => [scope(), load(), keys()] as const,
     ([currentScope, currentLoad, current], [previousScope, previousLoad]) => {
       if (
         currentScope !== previousScope
@@ -76,6 +77,6 @@ export function useChromeEntrance(
   onScopeDispose(clearTimers)
 
   return {
-    isEntering: (id) => entering.value.has(id),
+    isEntering: (key) => entering.value.has(key),
   }
 }
