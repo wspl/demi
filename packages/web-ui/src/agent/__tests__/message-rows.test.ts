@@ -442,6 +442,29 @@ test('a steer on its way has its line from the send, and keeps its row and its l
   scope.stop()
 })
 
+// A steer that will start the turn is drawn as the message it becomes
+// (`product.md` § Following the agent's work): the message before it was not
+// delivered, nothing runs, and the steer goes as the user's next message.
+test('a steer on its way that comes to start the turn reads as the next message from then, in the row it keeps', async () => {
+  const state = answered()
+  const { list, step, stop } = follow(state)
+  const shown = () => list.rows.value.flatMap((row) => row.type === 'activity_slot'
+    ? [`tail:${row.slot.kind}`]
+    : rowKey(row) === 'message:m-3' ? [`m-3:${waitingAs(row) ?? 'message'}`] : [])
+  await step('sent', () => {
+    state.pendingSubmissions = [{ id: 'm-2', way: 'send', text: 'Rename the folder.', attachments: [], error: null }]
+  })
+  await step('steered', () => {
+    state.pendingSubmissions = [...state.pendingSubmissions!, { id: 'm-3', way: 'steer', text: 'Then list it.', attachments: [], error: null }]
+  })
+  expect(shown()).toEqual(['tail:requesting', 'm-3:steer'])
+  await step('not delivered', () => {
+    state.pendingSubmissions = state.pendingSubmissions!.map((each) => each.id === 'm-2' ? { ...each, error: 'The connection was lost.' } : each)
+  })
+  expect(shown()).toEqual(['m-3:message', 'tail:requesting'])
+  stop()
+})
+
 test('a queued message on its way is counted under the queue divider from the send, in the row it keeps', async () => {
   const state = running()
   const scope = effectScope()
