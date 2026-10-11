@@ -660,7 +660,7 @@ fn page_message(kind: Kind, binary: bool, data: Bytes) -> Option<PageInput> {
         (Kind::Watch, false) => serde_json::from_slice::<FileWatchRequest>(&data)
             .ok()
             .filter(|request| request.validate().is_ok())
-            .map(|FileWatchRequest::Paths { paths }| PageInput::Paths(paths)),
+            .map(PageInput::Watch),
         _ => None,
     }
 }

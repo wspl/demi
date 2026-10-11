@@ -34,7 +34,7 @@ mod stream_pipe;
 pub mod testing;
 
 pub use device_jobs::{CLOUD_RESTARTED, DeviceJobs, Hello, NEVER_RECEIVED, RUNNER_RESTARTED, UNREACHED, UPGRADED};
-pub use file_watch::{HostWatch, WatchUpdate};
+pub use file_watch::{HostEvent, HostSubscriber};
 pub use link::{
     DirectAdmission, DirectAnswer, PeerEvent, JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions,
     LinkPolicy, SocketEnd,

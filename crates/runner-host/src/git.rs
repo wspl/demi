@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, Instant, SystemTime},
 };
@@ -25,8 +25,8 @@ use demi_command_sdk::paths::resolve;
 use demi_runner_process::file_diff::line_counts;
 use demi_runner_protocol::wire::{self, ChangeKind, Frame, Inbound};
 
-use crate::tree_watch::{Depth, WatchEvent};
-use crate::watches::{Status, Subscription, Watches};
+use crate::tree_watch::{Change as Seen, Event, Reach};
+use crate::watches::{Follower, Key, Status, Watches};
 
 /// The list stops here and reports `truncated`.
 pub const MAX_FILES: usize = 5_000;
@@ -151,6 +151,8 @@ fn internal<E: std::error::Error + Send + Sync + 'static>(error: E) -> GitError 
 #[derive(Clone)]
 pub struct GitService {
     requests: mpsc::Sender<ChangesRequest>,
+    /// How many whole walks the service made.
+    walks: Arc<AtomicU64>,
     /// The owner ends with the last handle.
     _owner: Arc<AbortOnDropHandle<()>>,
 }
@@ -169,6 +171,7 @@ struct Owner {
     watches: Watches,
     computations: Arc<Semaphore>,
     max_files: usize,
+    walks: Arc<AtomicU64>,
     /// Each computation hands back its root's state with the answer.
     running: JoinSet<(PathBuf, RootState, Result<Changes, GitError>)>,
 }
@@ -199,8 +202,8 @@ struct RootState {
 }
 
 /// A root's watch, from its start to its end: the connection's watch of the
-/// tree, which a backend's `fs_watch` of it shares (`runner.md` § Watching
-/// files).
+/// tree, which the subscriptions of the same tree share (`runner.md`
+/// § Watching files).
 enum Watch {
     /// Not started: the directory has not been found in a repository yet.
     Unstarted,
@@ -208,7 +211,7 @@ enum Watch {
     /// waits for it to start: on macOS, FSEvents can take seconds to start a
     /// stream when the system is busy.
     Followed {
-        subscription: Subscription,
+        follower: Follower,
         adopted: bool,
     },
     /// It could not be set up, or it failed: every request walks the whole
@@ -220,7 +223,7 @@ impl Watch {
     /// Whether something besides this root follows its watch.
     fn shared(&self) -> bool {
         match self {
-            Watch::Followed { subscription, .. } => subscription.shared(),
+            Watch::Followed { follower, .. } => follower.shared(),
             Watch::Unstarted | Watch::Unavailable => false,
         }
     }
@@ -297,17 +300,27 @@ impl GitService {
     /// The service of a connection whose watches are `watches`.
     pub fn new(watches: Watches, max_files: usize) -> Self {
         let (requests, received) = mpsc::channel(REQUESTS);
+        let walks = Arc::new(AtomicU64::new(0));
         let owner = Owner {
             roots: HashMap::new(),
             watches,
             computations: Arc::new(Semaphore::new(CONCURRENT_COMPUTATIONS)),
             max_files,
+            walks: walks.clone(),
             running: JoinSet::new(),
         };
         GitService {
             requests,
+            walks,
             _owner: Arc::new(AbortOnDropHandle::new(tokio::spawn(owner.run(received)))),
         }
+    }
+
+    /// How many times the service walked a whole tree: what a build's
+    /// thousands of ignored files must not cost (`runner.md` § Working
+    /// tree).
+    pub fn whole_walks(&self) -> u64 {
+        self.walks.load(Ordering::Relaxed)
     }
 
     /// The uncommitted changes under `root`.
@@ -451,6 +464,7 @@ impl Owner {
         let computations = self.computations.clone();
         let max_files = self.max_files;
         let watches = self.watches.clone();
+        let walks = self.walks.clone();
         self.running.spawn(async move {
             let mut state = state;
             let result = changes(
@@ -460,6 +474,7 @@ impl Owner {
                 &watches,
                 &computations,
                 max_files,
+                &walks,
                 &cancel,
             )
             .await;
@@ -491,7 +506,7 @@ impl Owner {
     }
 
     /// Drops directories without a request for fifteen minutes, unless a
-    /// watch of the backend still uses theirs.
+    /// subscription still uses their watch.
     fn expire(&mut self) {
         let now = Instant::now();
         self.roots.retain(|_, root| {
@@ -511,6 +526,7 @@ async fn changes(
     watches: &Watches,
     computations: &Arc<Semaphore>,
     max_files: usize,
+    walks: &AtomicU64,
     cancel: &CancellationToken,
 ) -> Result<Changes, GitError> {
     let root_path = path.to_owned();
@@ -535,16 +551,20 @@ async fn changes(
         Watch::Unstarted => {
             let git_dir = located.git_dir.clone();
             let touched = touched_paths.clone();
-            let listener = Box::new(move |event: &WatchEvent| lock(&touched).record(event, &git_dir));
+            let listener = Box::new(move |event: &Event| lock(&touched).record(event, &git_dir));
+            let key = Key {
+                path: path.to_owned(),
+                reach: Reach::Tree,
+            };
             state.watch = Watch::Followed {
-                subscription: watches.subscribe(path.to_owned(), Depth::Recursive, listener),
+                follower: watches.follow(key, listener),
                 adopted: false,
             };
         }
         Watch::Followed {
-            subscription,
+            follower,
             adopted: found,
-        } => match subscription.status() {
+        } => match follower.status() {
             Status::Running if !*found => {
                 *found = true;
                 adopted = true;
@@ -584,6 +604,9 @@ async fn changes(
         }
         _ => Scope::Whole,
     };
+    if matches!(scope, Scope::Whole) {
+        walks.fetch_add(1, Ordering::Relaxed);
+    }
     // Past the computation limit a request waits its turn (`runner.md` § Load).
     let _permit = tokio::select! {
         permit = computations.clone().acquire_owned() => {
@@ -846,15 +869,27 @@ impl Touched {
     /// can change what git lists anywhere, so the next walk is whole; a
     /// written index may, which its entries tell; anything else there, such
     /// as an object, a log or a lock, changes nothing listed. A `.gitignore`
-    /// or `.gitattributes` makes the next walk whole too.
-    fn record(&mut self, event: &WatchEvent, git_dir: &Path) {
-        let (path, metadata) = match event {
-            WatchEvent::Changed { path, metadata, .. } => (path, *metadata),
-            WatchEvent::Lost => {
+    /// or `.gitattributes` makes the next walk whole too. A path git ignores
+    /// changes nothing listed and is not noted, so a build that writes
+    /// thousands of files under `target/` leaves nothing to re-examine;
+    /// events lost below a folder have it re-examined.
+    fn record(&mut self, event: &Event, git_dir: &Path) {
+        let (path, metadata) = match &event.change {
+            Seen::Changed { ignored: true, .. } | Seen::Lost { ignored: true, .. } => return,
+            Seen::Changed { path, metadata, .. } => (path, *metadata),
+            Seen::Lost { under: None, .. } => {
                 self.whole = true;
                 return;
             }
-            WatchEvent::Failed(_) => {
+            Seen::Lost { under: Some(under), .. } => {
+                if under.starts_with(git_dir) || git_dir.starts_with(under) {
+                    self.whole = true;
+                } else {
+                    self.touch(under);
+                }
+                return;
+            }
+            Seen::Failed(_) => {
                 self.broken = true;
                 return;
             }
@@ -869,12 +904,21 @@ impl Touched {
             }
         } else if !metadata && rules_file(path) {
             self.whole = true;
-        } else if !self.whole {
-            self.paths.insert(path.clone());
-            if self.paths.len() > MAX_TOUCHED {
-                self.whole = true;
-                self.paths.clear();
-            }
+        } else {
+            self.touch(path);
+        }
+    }
+
+    /// Notes a path to re-examine; past [`MAX_TOUCHED`] of them the next
+    /// walk is whole instead.
+    fn touch(&mut self, path: &Path) {
+        if self.whole {
+            return;
+        }
+        self.paths.insert(path.to_path_buf());
+        if self.paths.len() > MAX_TOUCHED {
+            self.whole = true;
+            self.paths.clear();
         }
     }
 }
@@ -929,78 +973,6 @@ fn rules_file(path: &Path) -> bool {
 /// a watch below the root also covers.
 pub(crate) fn git_dir(root: &Path) -> Option<PathBuf> {
     locate(root).ok().flatten().map(|located| located.git_dir)
-}
-
-/// What git ignores in the repository a watched path lies in (`runner.md`
-/// § Watching files). The repository is found once per watch; the index and
-/// the rules are read at each report, so a change to them counts from the
-/// next one.
-pub(crate) struct IgnoreRules {
-    repo: gix::ThreadSafeRepository,
-    /// Canonical, as the platform reports paths.
-    workdir: PathBuf,
-    git_dir: PathBuf,
-}
-
-impl IgnoreRules {
-    /// The rules of the repository the canonical `path` lies in; none outside
-    /// a repository with a work tree.
-    pub(crate) fn of(path: &Path) -> Option<Self> {
-        let repo = match discover(path) {
-            Ok(Some(repo)) => repo,
-            Ok(None) => return None,
-            Err(error) => {
-                // Without the rules every path counts as not ignored, as before
-                // they existed: the page lists the changes once too often.
-                tracing::warn!("the repository of a watch could not be opened: {}", error.message());
-                return None;
-            }
-        };
-        let workdir = std::fs::canonicalize(repo.workdir()?).ok()?;
-        let git_dir = std::fs::canonicalize(repo.git_dir()).ok()?;
-        Some(Self {
-            repo: repo.into_sync(),
-            workdir,
-            git_dir,
-        })
-    }
-
-    /// Which of the canonical `paths` git ignores: untracked, and matched by
-    /// an exclude rule of their own or of a folder above them. A path in the
-    /// repository's `.git` or outside its work tree is not ignored.
-    pub(crate) fn ignored(&self, paths: &[PathBuf]) -> Result<Vec<PathBuf>, GitError> {
-        let repo = self.repo.to_thread_local();
-        let index = repo.index_or_empty().map_err(internal)?;
-        let mut excludes = repo
-            .excludes(
-                &index,
-                None,
-                gix::worktree::stack::state::ignore::Source::WorktreeThenIdMappingIfNotSkipped,
-            )
-            .map_err(internal)?;
-        let mut ignored = Vec::new();
-        for path in paths {
-            if path.starts_with(&self.git_dir) {
-                continue;
-            }
-            let Ok(relative) = path.strip_prefix(&self.workdir) else {
-                continue;
-            };
-            if relative.as_os_str().is_empty() {
-                continue;
-            }
-            let rela = gix::path::to_unix_separators_on_windows(gix::path::into_bstr(relative));
-            if index.entry_by_path(rela.as_ref()).is_some() || index.path_is_directory(rela.as_ref()) {
-                continue;
-            }
-            let directory = std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir());
-            let mode = directory.then_some(gix::index::entry::Mode::DIR);
-            if excludes.at_path(relative, mode).map_err(GitError::Io)?.is_excluded() {
-                ignored.push(path.clone());
-            }
-        }
-        Ok(ignored)
-    }
 }
 
 /// The `.gitignore` and `.gitattributes` of each directory above the root,
@@ -1423,21 +1395,25 @@ pub async fn handle(
     cancel: &CancellationToken,
 ) -> Option<Result<Frame, wire::WireError>> {
     let id = message.git_request_id()?;
+    // Before anything is read (`runner.md` § Watching files).
+    let read_at = crate::numbers::read_at();
     // Out of open files, the request waits for one (`runner.md` § Load).
     let result = demi_command_sdk::descriptors::retry(cancel, || {
-        call(service, message, default_cwd, cancel)
+        call(service, message, default_cwd, &read_at, cancel)
     })
     .await;
     Some(match result {
         Ok(reply) => wire::within_limit(reply, |reason| {
             wire::encode(&wire::Outbound::GitError {
                 id: id.to_owned(),
+                read_at: read_at.clone(),
                 code: GitError::TooLarge.code().to_owned(),
                 message: reason,
             })
         }),
         Err(error) => wire::encode(&wire::Outbound::GitError {
             id: id.to_owned(),
+            read_at: read_at.clone(),
             code: error.code().to_owned(),
             message: error.message(),
         }),
@@ -1448,6 +1424,7 @@ async fn call(
     service: &GitService,
     message: &Inbound,
     default_cwd: &Path,
+    read_at: &wire::ReadAt,
     cancel: &CancellationToken,
 ) -> Result<Frame, GitError> {
     match message {
@@ -1456,6 +1433,7 @@ async fn call(
             let changes = service.changes(&root, cancel).await?;
             wire::encode(&wire::Outbound::GitOk(wire::GitOk {
                 id: id.clone(),
+                read_at: read_at.clone(),
                 result: wire::GitResult::Changes(to_wire(changes)),
             }))
             .map_err(internal)

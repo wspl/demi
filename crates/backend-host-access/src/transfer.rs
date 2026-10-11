@@ -17,6 +17,7 @@ use demi_backend_remote_host::{OpenedRead, PipeReader, PipeWriter};
 use demi_host_interface::{
     ByteRange, FileStat, HostError, WhenExists, WriteOptions,
 };
+use demi_runner_protocol::wire::ReadAt;
 use demi_web_api_protocol::ids::ConversationId;
 use http::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE};
 use http::{HeaderMap, HeaderValue, StatusCode};
@@ -46,13 +47,14 @@ pub enum Download {
     /// The file is no longer the version the request named.
     Changed,
     /// The request's condition names the file's version.
-    NotModified { version: String },
+    NotModified { version: String, read_at: ReadAt },
     /// The part's head alone: for a `HEAD`, a range past the end, or an
     /// empty part.
     Head {
         stat: FileStat,
         version: String,
         part: RangeAnswer,
+        read_at: ReadAt,
     },
     /// The part's bytes as the Host reads them; the edge holds the lease
     /// until it sent the last one.
@@ -62,6 +64,7 @@ pub enum Download {
         part: RangeAnswer,
         body: PipeReader,
         lease: Lease,
+        read_at: ReadAt,
     },
 }
 
@@ -114,10 +117,13 @@ impl dyn HostShard + '_ {
             Err(error) if error.code() == Some("EISDIR") => return Ok(Download::NotAFile),
             Err(error) => return Err(error.into()),
         };
+        // A description of the file is read at the first read's number
+        // (`web-api.md` § File text and working tree changes).
         let OpenedRead {
             stat,
             version,
             body,
+            read_at,
         } = opened;
         let mut body = body;
         if request
@@ -128,7 +134,7 @@ impl dyn HostShard + '_ {
             return Ok(Download::Changed);
         }
         if not_modified(request.if_none_match.as_deref(), &version) {
-            return Ok(Download::NotModified { version });
+            return Ok(Download::NotModified { version, read_at });
         }
         let part = RangeAnswer::of(header, stat.size);
         let range = match part.range() {
@@ -138,6 +144,7 @@ impl dyn HostShard + '_ {
                     stat,
                     version,
                     part,
+                    read_at,
                 });
             }
         };
@@ -154,6 +161,7 @@ impl dyn HostShard + '_ {
             part,
             body,
             lease,
+            read_at,
         })
     }
 

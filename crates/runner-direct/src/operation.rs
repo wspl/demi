@@ -12,7 +12,8 @@ use demi_runner_protocol::direct::{
     ChannelError, ChannelErrorCode, ChannelHeader, ChannelRefusal, Introduction, Listed,
     MESSAGE_BYTES, Opened, QUEUE_BYTES, ReadOpened, ServiceBinding, TextOpened, WATCH_HEARTBEAT,
 };
-use demi_runner_protocol::files::{DirectoryEntry, FileWatchMessage, FileWatchState};
+use demi_runner_protocol::files::{DirectoryEntry, FileWatchMessage, FileWatchRequest};
+use demi_runner_protocol::wire::ReadAt;
 use futures_util::{Stream, StreamExt, future::BoxFuture};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -48,18 +49,20 @@ pub struct FileRange {
     pub body: ByteStream,
 }
 
-/// A file's text and its version; none when the file still has the version
-/// the read named.
+/// A file's text and its version, none when the file still has the version
+/// the read named, with the Host's number before it read.
 pub struct FileText {
     pub version: String,
     pub text: Option<String>,
+    pub read_at: ReadAt,
 }
 
-/// A directory's listing.
+/// A directory's listing, with the Host's number before it listed.
 pub struct Listing {
     pub path: String,
     pub home: Option<String>,
     pub entries: Vec<DirectoryEntry>,
+    pub read_at: ReadAt,
 }
 
 /// A user stream to open: the operation its name binds, with the arguments
@@ -86,15 +89,17 @@ pub trait Operations: Send + Sync + 'static {
     /// Writes `body` to `path`, in place whole once `body` ends cleanly, and
     /// not at all when it fails.
     fn write(&self, scope: Scope, path: String, replace: bool, body: ByteStream) -> Answer<()>;
-    /// A file's text, unless it still has version `held`.
+    /// A file's text, unless it still has version `held`; a file that is
+    /// binary or too large refuses with its version and number.
     fn text(&self, scope: Scope, path: String, held: Option<String>) -> Answer<FileText>;
     /// A directory's entries; the conversation's directory without a path.
     fn list(&self, scope: Scope, path: Option<String>) -> Answer<Listing>;
     fn mkdir(&self, scope: Scope, path: String) -> Answer<()>;
     fn delete(&self, scope: Scope, path: String) -> Answer<()>;
-    /// The page's file watch: the paths of each `paths` message come
-    /// through `paths`, and the watch says what the relay's would.
-    fn watch(&self, scope: Scope, paths: mpsc::UnboundedReceiver<Vec<String>>) -> WatchStream;
+    /// The page's file watch: its `subscribe`, `unsubscribe` and `renew`
+    /// messages come through `requests`, and the watch says what the
+    /// relay's would.
+    fn watch(&self, scope: Scope, requests: mpsc::UnboundedReceiver<FileWatchRequest>) -> WatchStream;
     /// Opens a user stream: its output bytes, once it opened.
     fn stream(&self, scope: Scope, request: StreamRequest) -> Answer<ByteStream>;
     /// A `stream` channel of `conversation` opened the user stream `name`:
@@ -112,8 +117,8 @@ pub(crate) enum Input {
     Bytes(Bytes),
     /// A `write`'s bytes are complete.
     End,
-    /// A `watch`'s `paths` message.
-    Paths(Vec<String>),
+    /// A `watch`'s message.
+    Watch(FileWatchRequest),
 }
 
 /// A message for the page.
@@ -276,6 +281,7 @@ async fn carry_out(
                 ok: true,
                 version: read.version,
                 unchanged: read.text.is_none(),
+                read_at: read.read_at,
             };
             if out.answer(&opened).await
                 && let Some(text) = read.text
@@ -291,6 +297,7 @@ async fn carry_out(
                     path: listing.path,
                     home: listing.home,
                     entries: listing.entries,
+                    read_at: listing.read_at,
                 };
                 out.answer(&listed).await;
             }
@@ -314,9 +321,9 @@ async fn carry_out(
             if !out.answer(&Opened::new()).await {
                 return;
             }
-            let (paths, requested) = mpsc::unbounded_channel();
+            let (requests, requested) = mpsc::unbounded_channel();
             let watch = operations.watch(scope, requested);
-            watch_messages(watch, input, paths, out).await;
+            watch_messages(watch, input, requests, out).await;
         }
         ChannelHeader::Stream { stream, args, .. } => {
             let Some(binding) = introduction.streams.get(&stream).cloned() else {
@@ -356,7 +363,7 @@ fn write_body(input: mpsc::UnboundedReceiver<Input>) -> ByteStream {
         match input.recv().await {
             Some(Input::Bytes(bytes)) => Some((Ok(bytes), Some(input))),
             Some(Input::End) => None,
-            Some(Input::Paths(_)) | None => {
+            Some(Input::Watch(_)) | None => {
                 let cut = io::Error::new(
                     io::ErrorKind::UnexpectedEof,
                     "the page ended the write before its last byte",
@@ -373,19 +380,20 @@ fn stream_input(input: mpsc::UnboundedReceiver<Input>) -> ByteStream {
         loop {
             match input.recv().await? {
                 Input::Bytes(bytes) => return Some((Ok(bytes), input)),
-                Input::End | Input::Paths(_) => {}
+                Input::End | Input::Watch(_) => {}
             }
         }
     }))
 }
 
-/// Carries a watch's messages to the page, and the page's `paths` to the
+/// Carries a watch's messages to the page, and the page's requests to the
 /// watch; after [`WATCH_HEARTBEAT`] without another message it says
-/// `heartbeat`, as the relay's watch does.
+/// `heartbeat`, as the relay's watch does. A `changed` too large for one
+/// message goes in as many as it takes.
 async fn watch_messages(
     mut watch: WatchStream,
     mut input: mpsc::UnboundedReceiver<Input>,
-    paths: mpsc::UnboundedSender<Vec<String>>,
+    requests: mpsc::UnboundedSender<FileWatchRequest>,
     out: &Out,
 ) {
     let mut quiet = Box::pin(tokio::time::sleep(WATCH_HEARTBEAT));
@@ -399,9 +407,9 @@ async fn watch_messages(
                 match requested {
                     // The watch ends with its channel.
                     None => return,
-                    Some(Input::Paths(requested)) => {
+                    Some(Input::Watch(request)) => {
                         // The watch ended first; its end follows.
-                        let _ = paths.send(requested);
+                        let _ = requests.send(request);
                     }
                     Some(Input::Bytes(_) | Input::End) => {}
                 }
@@ -409,18 +417,10 @@ async fn watch_messages(
             }
             () = &mut quiet => FileWatchMessage::Heartbeat,
         };
-        let mut text = serde_json::to_string(&message).expect("a watch message serializes");
-        // Paths too many for one message are reported as lost, as a
-        // runner's watch reports them to the backend.
-        if text.len() > QUEUE_BYTES {
-            let lost = FileWatchMessage::State {
-                state: FileWatchState::Lost,
-                reason: None,
-            };
-            text = serde_json::to_string(&lost).expect("a watch message serializes");
-        }
-        if !out.send(Output::Text(text)).await {
-            return;
+        for text in message.into_texts(QUEUE_BYTES) {
+            if !out.send(Output::Text(text)).await {
+                return;
+            }
         }
         quiet
             .as_mut()

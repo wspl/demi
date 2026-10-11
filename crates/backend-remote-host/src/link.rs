@@ -25,7 +25,7 @@ use demi_host_interface::{
 use demi_runner_protocol::direct::{Introduction, OfferRefusal, StunUrl};
 use demi_runner_protocol::wire::{
     self, ArtifactOwner, FileRead, FsResult, GitResult, HostArtifact, Inbound, LogLine, Outbound,
-    VolumeName,
+    ReadAt, VolumeName,
 };
 use demi_shared_gates::{GateLease, SerialGate};
 use demi_shared_types::{BlobRef, StreamKind};
@@ -35,7 +35,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     device_jobs::{DeviceJobs, Hello},
-    file_watch::LinkWatches,
+    file_watch::LinkSubscriptions,
     output_records::{decode_output, stream_kind},
     pipes::Pipes,
     relay::{CallEntry, Stop},
@@ -269,8 +269,8 @@ struct State {
     manifest: Option<String>,
     /// The runner's own count of its jobs, from its last pong.
     pong_jobs: u64,
-    /// The file watches the connection's Hosts follow.
-    watches: LinkWatches,
+    /// The subscriptions the connection's pages hold.
+    subscriptions: LinkSubscriptions,
     /// The direct streams open on the device, by the id the runner gave
     /// each.
     direct_streams: HashMap<String, DirectStream>,
@@ -322,8 +322,10 @@ pub(crate) enum Expected {
 }
 
 pub(crate) enum Answer {
-    Fs(FsResult),
-    Git(GitResult),
+    /// An fs call's result, with the Host's number as the runner received
+    /// the call.
+    Fs(FsResult, ReadAt),
+    Git(GitResult, ReadAt),
     Log { lines: Vec<LogLine>, next: u64 },
     /// Which files of a read of several were read.
     Read(Vec<FileRead>),
@@ -959,8 +961,8 @@ impl Link {
         })
     }
 
-    pub(crate) fn with_watches<T>(&self, f: impl FnOnce(&mut LinkWatches) -> T) -> T {
-        f(&mut self.0.state.borrow_mut().watches)
+    pub(crate) fn with_subscriptions<T>(&self, f: impl FnOnce(&mut LinkSubscriptions) -> T) -> T {
+        f(&mut self.0.state.borrow_mut().subscriptions)
     }
 
     pub(crate) fn with_state<T>(&self, f: impl FnOnce(&mut StateView<'_>) -> T) -> T {
@@ -1063,23 +1065,36 @@ impl Link {
             }
             Outbound::FsOk(reply) => {
                 let op = reply.result.op();
-                self.answer(&reply.id, Expected::Fs(op), Answer::Fs(reply.result));
+                let answer = Answer::Fs(reply.result, reply.read_at);
+                self.answer(&reply.id, Expected::Fs(op), answer);
             }
-            Outbound::FsError { id, code, message } => self.refuse(&id, fs_error(code, message)),
+            Outbound::FsError {
+                id,
+                read_at,
+                code,
+                message,
+            } => self.refuse(&id, fs_error(code, message).with_read_at(read_at)),
             Outbound::GitOk(reply) => {
                 let op = reply.result.op();
-                self.answer(&reply.id, Expected::Git(op), Answer::Git(reply.result));
+                let answer = Answer::Git(reply.result, reply.read_at);
+                self.answer(&reply.id, Expected::Git(op), answer);
             }
-            Outbound::GitError { id, code, message } => {
-                self.refuse(&id, HostError::failed(Some(code), message));
+            Outbound::GitError {
+                id,
+                read_at,
+                code,
+                message,
+            } => {
+                self.refuse(&id, HostError::failed(Some(code), message).with_read_at(read_at));
             }
-            Outbound::FsWatchReady { id } => self.with_watches(|watches| watches.ready(&id)),
-            Outbound::FsWatchChanged { id, paths, entries, ignored } => {
-                self.with_watches(|watches| watches.changed(&id, paths, entries, ignored));
+            Outbound::FsLive { id, since, epoch } => {
+                self.with_subscriptions(|subscriptions| subscriptions.live(&id, since, epoch));
             }
-            Outbound::FsWatchLost { id } => self.with_watches(|watches| watches.lost(&id)),
-            Outbound::FsWatchFailed { id, reason } => {
-                self.with_watches(|watches| watches.failed(&id, reason));
+            Outbound::FsChanged { changes } => {
+                self.with_subscriptions(|subscriptions| subscriptions.changed(changes));
+            }
+            Outbound::FsFailed { id, reason } => {
+                self.with_subscriptions(|subscriptions| subscriptions.failed(&id, reason));
             }
             Outbound::LogLines { id, lines, next } => {
                 self.answer(&id, Expected::Log, Answer::Log { lines, next });
@@ -1585,7 +1600,7 @@ impl Link {
         *self.0.end.borrow_mut() = Some(reason.into());
         self.0.closed.cancel();
         let mut state = std::mem::take(&mut *self.0.state.borrow_mut());
-        state.watches.end();
+        state.subscriptions.end();
         for (_, waiting) in state.waiting {
             // A requester that gave up waits for nothing.
             let _ = waiting.answer.send(Err(HostError::offline(reason)));
