@@ -69,15 +69,17 @@ pub trait HostAccess {
 /// its whole output (`runtime.md` § The whole output). A failure to keep
 /// them is the keeper's to record.
 pub trait CommandKeeper {
-    /// Records that `command`, which the call `tool_use_id` started, runs
-    /// as the job `job` on the environment's Host, before the job starts,
-    /// so that a backend that starts again takes it up (`storage.md`
-    /// § Command outputs). A failure to record it is the keeper's to log:
-    /// the command runs all the same.
+    /// Records that `command`, which the call `tool_use_id` titled `title`
+    /// started, runs as the job `job` on the environment's Host, before the
+    /// job starts, so that a backend that starts again takes it up and its
+    /// reports name it by its title (`storage.md` § Command outputs). A
+    /// failure to record it is the keeper's to log: the command runs all the
+    /// same.
     fn started<'a>(
         &'a self,
         command: &'a CommandId,
         tool_use_id: &'a str,
+        title: &'a str,
         job: &'a str,
     ) -> LocalBoxFuture<'a, ()>;
 
@@ -99,11 +101,13 @@ pub trait CommandKeeper {
     /// to record it is the keeper's to log.
     fn looked<'a>(&'a self, command: &'a CommandId, seen: Seen) -> LocalBoxFuture<'a, ()>;
 
-    /// Records the command's end, `end`, with its whole output, in place of
-    /// its record as running.
+    /// Records the command's end, `end`, with its whole output and the
+    /// title of the call that started it, in place of its record as
+    /// running.
     fn keep_output<'a>(
         &'a self,
         command: &'a CommandId,
+        title: &'a str,
         end: CommandEnd,
         output: &'a WholeOutput,
     ) -> LocalBoxFuture<'a, ()>;
@@ -295,7 +299,11 @@ impl RemoteShellEnvironment {
         cancel: CancellationToken,
     ) -> Result<CommandId, ShellError> {
         let command = numbered(self.0.options.numbers.next(Sequence::Command).await?);
-        let record = CommandRecord::new(command.clone(), request.caller.tool_use_id.clone());
+        let record = CommandRecord::new(
+            command.clone(),
+            request.caller.tool_use_id.clone(),
+            request.title.clone(),
+        );
         let (running, record) = self.hold(&command, record, cancel.child_token());
         let environment = self.clone();
         let task_command = command.clone();
@@ -319,14 +327,20 @@ impl RemoteShellEnvironment {
             command,
             job,
             caller,
+            title,
             running,
             seen,
         } = taken;
         if self.0.state.borrow().records.contains_key(&command) {
             return;
         }
-        let record =
-            CommandRecord::taken_up(command.clone(), caller.tool_use_id.clone(), running, seen);
+        let record = CommandRecord::taken_up(
+            command.clone(),
+            caller.tool_use_id.clone(),
+            title,
+            running,
+            seen,
+        );
         let (running, record) = self.hold(&command, record, CancellationToken::new());
         let environment = self.clone();
         self.0.tasks.spawn_local(async move {
@@ -475,7 +489,9 @@ impl RemoteShellEnvironment {
         env.insert("PWD".into(), cwd.clone());
         let id = RemoteHost::job_id();
         if let Some(keeper) = &self.0.options.keeper {
-            keeper.started(command, &request.caller.tool_use_id, &id).await;
+            keeper
+                .started(command, &request.caller.tool_use_id, &request.title, &id)
+                .await;
         }
         let job = self
             .0
@@ -813,7 +829,8 @@ impl RemoteShellEnvironment {
             page,
         } = settlement;
         if let Some(keeper) = &self.0.options.keeper {
-            keeper.keep_output(command, end.clone(), &output).await;
+            let title = record.borrow().title().to_owned();
+            keeper.keep_output(command, &title, end.clone(), &output).await;
         }
         if let Some(job) = job {
             job.release().await;
@@ -939,6 +956,10 @@ impl ShellEnvironment for RemoteShellEnvironment {
 
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
         self.view(command)
+    }
+
+    fn title(&self, command: &CommandId) -> Option<String> {
+        Some(self.record(command).ok()?.borrow().title().to_owned())
     }
 
     fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError> {

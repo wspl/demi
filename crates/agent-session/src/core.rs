@@ -31,7 +31,8 @@ use demi_provider_common::{
 use demi_shared_types::{
     AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, CommandReport, ErrorDevice, FailureSource, ReportEvent,
     ModelSelection, NodeId, PendingCall, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
-    Timestamp, ToolResultContentBlock, ToolView, TurnId, UserContentBlock, WakeupPlacement,
+    ShellToolView, ShellViewStatus, Timestamp, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
+    WakeupPlacement,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -43,7 +44,7 @@ use super::{
     input::{Input, InputQueue, Take},
     persist::PersistMarks,
     reports::Watched,
-    runtime::{Arrivals, CallCommand, SessionRuntime},
+    runtime::{Arrivals, CallCommand, CommandLook, SessionRuntime},
 };
 
 pub(crate) struct SessionCore {
@@ -868,7 +869,9 @@ impl SessionCore {
     }
 
     /// Completes each running call as an error that says what ended it and
-    /// what became of its command (`runtime.md` § Interrupted calls); a
+    /// what became of its command (`runtime.md` § Interrupted calls),
+    /// keeping in its view the command it started, so that the command's
+    /// later report and notice find their call (`runtime.md` § Stop); a
     /// command the backend's shutdown leaves running reports to the node
     /// from its next start, as one a call left running does.
     fn abort_executing_calls(&mut self, end: &CallEnd<'_>) {
@@ -878,27 +881,36 @@ impl SessionCore {
                 .remove(&call.tool_use_id)
                 .and_then(|handle| handle.command());
             let mut text = interrupted_text(end, started.as_ref().map(|started| &started.command));
-            // The call shows how far its command got, as a result does; a
-            // crash found at restore has no command's output at hand.
-            if let (CallEnd::Stopped | CallEnd::Held(_) | CallEnd::Shutdown, Some(started)) =
-                (end, &started)
-            {
+            let view = started.as_ref().map(|started| {
+                // The call shows how far its command got, as a result does.
                 let others = text.chars().count() + "\noutput:\n".len();
                 let budget = REPLAY_CHARS.saturating_sub(others);
-                if let Some(output) = self.runtime.unseen_output(&started.command, budget) {
-                    text.push('\n');
-                    text.push_str(&labelled_output(&output));
+                let look = self.runtime.look(&started.command, budget);
+                let mut view = match look {
+                    Some(CommandLook { output, view }) => {
+                        text.push('\n');
+                        text.push_str(&labelled_output(&output));
+                        view
+                    }
+                    None => ShellToolView::named(started.command.clone(), ShellViewStatus::Running),
+                };
+                // A Stop or a hold stops the command with the call, whose
+                // end may not have arrived yet.
+                if matches!(end, CallEnd::Stopped | CallEnd::Held(_))
+                    && view.status == ShellViewStatus::Running
+                {
+                    view.status = ShellViewStatus::Aborted;
                 }
-            }
+                ToolView::Shell(view)
+            });
             if let (CallEnd::Shutdown, Some(started)) = (end, started) {
-                self.watched
-                    .add(started.command, started.interval_ms, started.title);
+                self.watched.add(started.command, started.interval_ms);
             }
             self.transcript.complete_tool_call(
                 &call.tool_use_id,
                 vec![ToolResultContentBlock::Text { text }],
                 true,
-                None,
+                view,
             );
         }
     }
@@ -1225,16 +1237,11 @@ impl SessionCore {
 
     // Command reports.
 
-    /// Watches `command`, which a call titled `title` left running, so that
-    /// it reports every `interval_ms`, or only its end when none. A Stop of
-    /// the action leaves it running (`runtime.md` § Stop).
-    pub(super) fn watch_command(
-        &mut self,
-        command: CommandId,
-        interval_ms: Option<u32>,
-        title: String,
-    ) {
-        self.watched.add(command, interval_ms, title);
+    /// Watches `command`, which a call left running, so that it reports
+    /// every `interval_ms`, or only its end when none. A Stop of the action
+    /// leaves it running (`runtime.md` § Stop).
+    pub(super) fn watch_command(&mut self, command: CommandId, interval_ms: Option<u32>) {
+        self.watched.add(command, interval_ms);
     }
 
     /// Admits a command's report for the next boundary: it joins the running

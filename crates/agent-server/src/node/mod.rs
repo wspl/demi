@@ -13,17 +13,17 @@ use std::{
 
 
 use demi_agent_session::{
-    AgentSession, Continuation, NewContext, RestoreError, SeenContext, SessionConfig, SessionDeps,
-    SessionInit, SessionRuntime, StepOutcomes, ToolInvocation,
+    AgentSession, CommandLook, Continuation, NewContext, RestoreError, SeenContext, SessionConfig,
+    SessionDeps, SessionInit, SessionRuntime, StepOutcomes, ToolInvocation,
 };
 use demi_agent_store::{
-    AgentTreeStore, Checkpoint, NodeRecord, RunningCommand, StoreError, StoredOutput,
+    AgentTreeStore, Checkpoint, NodeRecord, RunningCommand, StoreError, StoredCommand, StoredOutput,
     media::store_result,
 };
 use demi_agent_tools::{
     CallError, ContextSource, EndOf, Environments, HostResolver, Looking, ModelIdentity, NodeContext,
     ShellAccess, ShellEnvironmentFactory, Stopper, StoreNumbers, definitions, end_report,
-    fill_output, progress_report, report_media, report_output, runs_together, stored_running_commands,
+    fill_output, interrupted_look, progress_report, report_media, runs_together, stored_running_commands,
     system_prompt, whole_status,
 };
 use demi_agent_transcript::IdSource;
@@ -404,15 +404,20 @@ impl<H: HostResolver> NodeRuntime<H> {
         }
     }
 
-    /// What `command`, which ended and no environment holds any more, shows
-    /// of its output since the node's last look, from the output the
-    /// conversation stored; reading it moves no place. None when the
-    /// conversation keeps no output of it.
-    async fn stored_status(&self, command: &CommandId) -> Option<CommandStatus> {
-        let stored = self.store.command_output(command).await.unwrap_or_else(|error| {
+    /// What the conversation stored of `command`, which ended and no
+    /// environment holds any more; none when it stored nothing of it.
+    async fn stored(&self, command: &CommandId) -> Option<StoredCommand> {
+        self.store.command_output(command).await.unwrap_or_else(|error| {
             tracing::warn!(%command, %error, "the output of an ended command could not be read");
             None
-        })?;
+        })
+    }
+
+    /// What `command`, which ended and no environment holds any more, shows
+    /// of its output since the node's last look, from `stored`, the output
+    /// the conversation stored; reading it moves no place. None when the
+    /// conversation keeps no output of it.
+    fn stored_status(&self, command: &CommandId, stored: StoredCommand) -> Option<CommandStatus> {
         let StoredOutput::Stored { output, .. } = stored.output else {
             return None;
         };
@@ -586,7 +591,6 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     fn report<'a>(
         &'a self,
         command: &'a CommandId,
-        title: &'a str,
         interval_ms: Option<u32>,
         model: &'a ModelSelection,
         limits: RequestLimits,
@@ -621,17 +625,23 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                 let idle_ms = environment
                     .quiet(command)
                     .map_or(0, |quiet| u64::try_from(quiet.as_millis()).unwrap_or(u64::MAX));
-                return Some(progress_report(command, title, running_ms, idle_ms, interval));
+                let title = environment.title(command).unwrap_or_default();
+                return Some(progress_report(command, &title, running_ms, idle_ms, interval));
             }
             if self.environments.stopper(command) == Some(Stopper::Itself) {
                 return None;
             }
             let end = self.end_of(command).await;
-            let status = match self.environments.owning(command) {
-                Some(_) => None,
-                None => self.stored_status(command).await,
+            // Its record names it by the title of the call that started it,
+            // whatever became of that call (`runtime.md` § Command reports).
+            let (title, status) = match self.environments.owning(command) {
+                Some(environment) => (environment.title(command).unwrap_or_default(), None),
+                None => match self.stored(command).await {
+                    Some(stored) => (stored.title.clone(), self.stored_status(command, stored)),
+                    None => (String::new(), None),
+                },
             };
-            let mut report = end_report(command, title, end, status.as_ref());
+            let mut report = end_report(command, &title, end, status.as_ref());
             if !media.is_empty() {
                 let parts = report_media(&media, &model.model, limits).await;
                 let session = self.store.session_store(&self.node);
@@ -648,11 +658,12 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         self.environments.end_seen(command)
     }
 
-    /// Reads the output of a command an environment holds as a result
-    /// shows it, which moves the node's place in it.
-    fn unseen_output(&self, command: &CommandId, budget: usize) -> Option<String> {
+    /// Looks at a command an environment holds as a result shows it,
+    /// which moves the node's place in its output.
+    fn look(&self, command: &CommandId, budget: usize) -> Option<CommandLook> {
         let status = self.environments.owning(command)?.status(command).ok()?;
-        Some(report_output(&status, budget))
+        let (output, view) = interrupted_look(&status, budget);
+        Some(CommandLook { output, view })
     }
 
     fn looks_at(&self, command: &CommandId) -> bool {
@@ -862,7 +873,8 @@ pub(crate) async fn assemble<H: HostResolver>(
                 let ended = !matches!(report.event, ReportEvent::Running { .. });
                 let recorded = running.iter().any(|running| running.command == report.command_id);
                 if ended && report.output.is_empty() && !recorded
-                    && let Some(status) = node_runtime.stored_status(&report.command_id).await
+                    && let Some(stored) = node_runtime.stored(&report.command_id).await
+                    && let Some(status) = node_runtime.stored_status(&report.command_id, stored)
                 {
                     fill_output(report, &status);
                 }

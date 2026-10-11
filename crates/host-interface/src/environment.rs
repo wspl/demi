@@ -50,6 +50,11 @@ pub trait ShellEnvironment {
     /// The command's status, with its output since the model last looked.
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError>;
 
+    /// The title of the call that started the command, which its record
+    /// keeps from its start and its reports name (`runtime.md` § Command
+    /// reports); none for a command the environment does not hold.
+    fn title(&self, command: &CommandId) -> Option<String>;
+
     /// The media the command's job viewed, once it exited, which moves no
     /// place in its output (`runtime.md` § What a result attaches).
     fn media(&self, command: &CommandId) -> Result<Vec<CommandMedium>, ShellError>;
@@ -141,6 +146,9 @@ pub struct ExecRequest {
     /// The agent node the job's `rpc` calls act for, and its `shell` call
     /// that runs the script, which the pages' view of the command names.
     pub caller: JobCaller,
+    /// The title of that call, its `description`, which the command's
+    /// record keeps and its reports name (`runtime.md` § Command reports).
+    pub title: String,
     /// The media types the call's model reads in a tool result, which the
     /// job may show it (`runtime.md` § What `demi file view` shows).
     pub viewable: Viewable,
@@ -167,15 +175,16 @@ pub struct Unreachable {
     pub grace_ms: u64,
 }
 
-/// A command an environment takes up again: the call `caller` names
-/// started it as the job `job` on the environment's Host for its node, it
-/// has run for `running` since, and the node had seen `seen` of its output
-/// (`storage.md` § Command outputs).
+/// A command an environment takes up again: the call `caller` names,
+/// titled `title`, started it as the job `job` on the environment's Host
+/// for its node, it has run for `running` since, and the node had seen
+/// `seen` of its output (`storage.md` § Command outputs).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TakenUp {
     pub command: CommandId,
     pub job: String,
     pub caller: JobCaller,
+    pub title: String,
     pub running: Duration,
     pub seen: Seen,
 }

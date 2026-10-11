@@ -159,20 +159,26 @@ pub trait AgentTreeStore {
 }
 
 /// A command the conversation records running: its job on its Host, the
-/// `shell` call that started it, when it started, and how far the node
-/// that ran it has looked in its output.
+/// `shell` call that started it and that call's title, when it started,
+/// and how far the node that ran it has looked in its output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunningCommand {
     pub command: CommandId,
     pub job: String,
     pub tool_use_id: String,
+    /// The title its reports name (`runtime.md` § Command reports); empty
+    /// for a command recorded before records kept it.
+    pub title: String,
     pub started: Timestamp,
     pub place: Seen,
 }
 
-/// What a conversation holds of an ended command.
+/// What a conversation holds of an ended command: the title of the call
+/// that started it, which its reports name, empty for one recorded before
+/// records kept it; how it ended; and its output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredCommand {
+    pub title: String,
     pub end: CommandEnd,
     pub output: StoredOutput,
 }
