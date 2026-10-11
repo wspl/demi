@@ -27,6 +27,7 @@ import { useSessionPanels } from './useSessionPanels'
 import { provideLiveCalls } from './live-calls'
 import { callTerminal, dockTerminals } from './terminals'
 import { provideCommandRevealer } from './command-reports'
+import { provideOriginRevealer } from './agent-receipts'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import type { ChatSessionState, PendingSubmissionState } from './types'
 import type { HostMenuHost } from '../hosts/types'
@@ -129,6 +130,12 @@ const emit = defineEmits<{
   decidePermission: [id: string, decision: PermissionDecision]
   /** The block `reveal` names is in view. */
   revealed: []
+  /**
+   * Bring this block into view and mark it, as a receipt's name asks
+   * (`subagents.md` § Product rendering): the host reads the window around
+   * it and sets `reveal`.
+   */
+  reveal: [at: TranscriptReveal]
   /** The reader nears the start of the window shown, which does not reach the transcript's (`web-application.md` § Transcript windows). */
   readBefore: []
   /** The reader nears the end of the window shown, which does not reach the transcript's. */
@@ -306,6 +313,22 @@ const { agentsOpen, activeSubagentId, activeTerminalId, toggleAgents, toggleTerm
     () => terminals.value,
   )
 watch(() => props.conversation.id, close)
+// A receipt's name opens the Agents window on its sender's tab, a finished
+// sender as Completed picks it, and the host brings the block it names into
+// view there; the root's block, in the transcript.
+provideOriginRevealer(({ node, blockId }) => {
+  if (node === null && blockId === null) {
+    return undefined
+  }
+  return () => {
+    if (node !== null) {
+      activeSubagentId.value = node
+    }
+    if (blockId !== null) {
+      emit('reveal', { node, blockId })
+    }
+  }
+})
 // A block in a subagent's transcript shows in the panel, on that subagent's tab.
 watch(
   () => props.reveal?.node,

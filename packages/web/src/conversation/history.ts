@@ -26,11 +26,12 @@ type PageAt =
  * The reads of conversations' history (`web-api.md` § Conversation
  * history), each held where the page shows it
  * (`web-application.md` § Transcript windows). A page that one read is
- * already fetching is not fetched twice; `live` says whether the
- * conversation's stream keeps its root's end, whose length then stands.
+ * already fetching is not fetched twice: a second read waits for the first;
+ * `live` says whether the conversation's stream keeps its root's end, whose
+ * length then stands.
  */
 export function createHistoryReads(signal: () => AbortSignal, live: (conversation: Conversation) => boolean) {
-  const fetching = new Set<string>()
+  const fetching = new Map<string, Promise<void>>()
 
   function path(conversation: Conversation): string {
     return `/conversations/${encodeURIComponent(conversation.id)}/transcript`
@@ -79,17 +80,21 @@ export function createHistoryReads(signal: () => AbortSignal, live: (conversatio
   }
 
   /** Reads a page once at a time, and takes it. */
-  async function read(conversation: Conversation, node: string | null, at: PageAt): Promise<void> {
+  function read(conversation: Conversation, node: string | null, at: PageAt): Promise<void> {
     const key = `${conversation.id}:${node ?? ''}:${JSON.stringify(at)}`
-    if (fetching.has(key)) {
-      return
+    const pending = fetching.get(key)
+    if (pending) {
+      return pending
     }
-    fetching.add(key)
-    try {
-      take(conversation, node, await readPage(conversation, node, at))
-    } finally {
-      fetching.delete(key)
-    }
+    const reading = (async () => {
+      try {
+        take(conversation, node, await readPage(conversation, node, at))
+      } finally {
+        fetching.delete(key)
+      }
+    })()
+    fetching.set(key, reading)
+    return reading
   }
 
   /**
@@ -143,8 +148,8 @@ export function createHistoryReads(signal: () => AbortSignal, live: (conversatio
   /**
    * Shows the window around the block `block`, reading it first when the
    * page does not hold it. A subagent's panel shows one window, from its
-   * latest back, so there the pages before it are read until one holds the
-   * block.
+   * latest back, so there its latest page is read first, as the panel reads
+   * it, and the pages before it until one holds the block.
    */
   async function readAround(conversation: Conversation, node: string | null, block: string): Promise<void> {
     const held = () => historyOf(conversation, node).windows.some((window) => window.blocks.some((candidate) => candidate.id === block))
@@ -155,12 +160,14 @@ export function createHistoryReads(signal: () => AbortSignal, live: (conversatio
       conversation.shownAt = block
       return
     }
+    if (historyOf(conversation, node).windows.length === 0) {
+      await read(conversation, node, { kind: 'latest' })
+    }
     let start = shownWindow(historyOf(conversation, node), null).start
     while (!held() && start > 0) {
       await readBeside(conversation, node, 'before')
       const reached = shownWindow(historyOf(conversation, node), null).start
-      // A read already under way for the same page took it instead, or a
-      // rewrite moved the window: either way the next scroll there reads on.
+      // A rewrite moved the window: the next scroll there reads on.
       if (reached >= start) {
         return
       }
