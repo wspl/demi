@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
 import { effectScope, nextTick, reactive } from 'vue'
 import type { Block } from '@demicodes/protocol'
+import { addPage, EMPTY_TRANSCRIPT, heldBlocks } from '@demicodes/conversation-client'
 import { useMessageRows, type MessageRows, type MessageRowsSource } from '../message-rows'
 import { waitingAs, type MessageListBlock } from '../pending-steers'
 import { rowKey } from '../row-key'
@@ -626,4 +627,43 @@ test('a notice and a receipt join the running run, which stays one row under one
   expect(run?.type === 'work_group' && run.live && run.steps.map((step) => step.id)).toEqual(['c-1', 'n-1', 'm-2'])
   expect(list.slot.value).toBeNull()
   scope.stop()
+})
+
+/**
+ * The rows a list draws of a finished turn, by key, a run with the ids of
+ * the steps it shows.
+ */
+function finishedRows(blocks: Block[]): string[] {
+  const scope = effectScope()
+  const list = scope.run(() => useMessageRows(() => ({ ...answered(), blocks })))!
+  const rows = list.rows.value.map((row) =>
+    row.type === 'work_group' ? `${list.keyOf(row)} [${row.steps.map((step) => step.id).join(' ')}]` : list.keyOf(row))
+  scope.stop()
+  return rows
+}
+
+/** `blocks` as a page read after a reload holds them: each in its light form (`web-api.md` § Light form). */
+function reopened(blocks: Block[]): Block[] {
+  const light = blocks.map((block): Block =>
+    block.type === 'thinking' ? { ...block, text: '', signature: null, textLength: [...block.text.trim()].length } : block)
+  return heldBlocks(addPage(EMPTY_TRANSCRIPT, { start: 0, length: light.length, blocks: light }, false))
+}
+
+const thought = (id: string, body: string, run = id): Block => ({ type: 'thinking', id, run, createdAt, model, text: body, signature: 'sig' })
+
+// A page reopened reads the transcript in pages, whose thinking comes
+// without its text until its row is opened: the turn shows the same rows as
+// it did live, each thinking with text among them, and a thinking without
+// text, as Gemini signs before each call, or of white space only, nowhere.
+test.each([
+  ['thinking before the answer', [thought('k-1', 'The folder is the workspace.'), text('a-2', 'Three files.')], 'work:k-1 [k-1]'],
+  ['thinking before a call', [thought('k-1', 'List the folder first.'), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'work:k-1 [k-1 c-1]'],
+  ['two thoughts before the answer', [thought('k-1', 'The folder is the workspace.'), thought('k-2', 'Count its files.', 'k-1'), text('a-2', 'Three files.')], 'work:k-2'],
+  ['textless thinking before a call', [thought('k-1', ''), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'work:k-1 [c-1]'],
+  ['white-space-only thinking before a call', [thought('k-1', ' \n'), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'work:k-1 [c-1]'],
+] as const)('a turn with %s shows the same rows after the page is reopened', (_name, turn, run) => {
+  const blocks = [userBlock('u-2', 'm-2', 'What is in the folder?'), ...turn]
+  const live = finishedRows(blocks)
+  expect(live).toContain(run)
+  expect(finishedRows(reopened(blocks))).toEqual(live)
 })

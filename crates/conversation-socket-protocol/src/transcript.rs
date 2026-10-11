@@ -137,6 +137,9 @@ fn light_block(block: &Block) -> Block {
             }
         }
         Block::Thinking(thinking) => {
+            // Without the white space around it, as the page tests a thinking for
+            // text (`web-api.md` § Light form).
+            thinking.text_length = Some(thinking.text.trim().chars().count() as u64);
             thinking.text.clear();
             thinking.signature = None;
         }
