@@ -43,7 +43,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id, ... }`, `PATCH /conversations/:id`, `DELETE /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
 | Search | `GET /search?q=<query>` finds the caller's conversations ([Search](#search)) |
 | Conversation history | `GET /conversations/:id/transcript?node=&before=\|after=\|around=` reads one page of an agent's transcript, `GET /conversations/:id/transcript/blocks/:blockId?node=` one block whole, `GET /conversations/:id/subagents` the conversation's subagents and `GET /conversations/:id/commands/:commandId` where the call that started a command lies ([Conversation history](#conversation-history)); `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
-| Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `WS /conversations/:id/fs/watch`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
+| Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `POST /conversations/:id/fs/exists`, `WS /conversations/:id/fs/watch`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
 | User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams) |
 | Work panel | `GET /conversations/:id/panel` reads the [work panel's tabs](#work-panel-state); `POST /conversations/:id/panel/changes { changes }` changes them |
@@ -1460,6 +1460,16 @@ page then reads its first 8 MiB from the raw route with a byte range
 ([File previews](file-previews.md#getting-the-bytes)); one that
 is binary, by the one rule ([What `demi file view` shows](../agent/runtime.md#what-demi-file-view-shows)), answers 415 `not_text`,
 and any other file is text, a byte that is no UTF-8 shown as U+FFFD.
+
+`POST /api/conversations/:id/fs/exists` takes `{ paths }`, 1 to 200 absolute
+Host paths, and answers `{ files }`, the ones that are regular files, symbolic
+links followed, in the order asked; a missing path, a folder and one the Host
+could not look at are left out, and any other body answers 400
+`invalid_body`. It is how a page learns which code spans of a reply name files
+([Files named in messages](file-previews.md#files-named-in-messages)), and it
+is admitted as a user stream is: a stopped Cloud answers 409 `host_stopped`
+and is not woken, an offline device answers 409 `device_offline`, and it
+counts as no activity.
 
 `GET /api/conversations/:id/fs/raw?path=...` streams a file's bytes for
 [file previews](file-previews.md) and downloads, through the same Host access
