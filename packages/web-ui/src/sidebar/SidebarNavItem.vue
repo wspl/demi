@@ -4,6 +4,7 @@ import type { Component } from 'vue'
 import { disabledTooltip } from '@demicodes/web-ui/ui/disabled'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import { usePhone } from '@demicodes/web-ui/ui/phone'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 
 /**
@@ -15,7 +16,7 @@ const props = defineProps<{
   label: TitleText
   shortcut?: string
   pressed?: boolean
-  /** lg takes a finger's height, for a list that is a phone's page of its own. */
+  /** lg is a list that is a page of its own, as narrow settings are; on a phone either is a finger's height. */
   size?: 'md' | 'lg'
 
   disabled?: boolean
@@ -23,6 +24,7 @@ const props = defineProps<{
   disabledReason?: SentenceText
 }>()
 
+const phone = usePhone()
 const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
 
 const emit = defineEmits<{
@@ -44,7 +46,8 @@ const emit = defineEmits<{
       class="flex cursor-default select-none items-center gap-2 rounded-md transition-colors duration-200 ease-out"
       :class="[
         'pl-2.5 pr-2',
-        size === 'lg' ? 'h-10 text-[15px]' : 'h-7 text-chrome',
+        size === 'lg' ? 'h-10 text-[15px] phone:h-11 phone:text-[17px]' : 'h-7 text-chrome phone:h-11 phone:text-[16px]',
+        'phone:gap-3 phone:pl-3',
         disabled
           ? 'cursor-not-allowed text-fg-faint'
           : pressed
@@ -56,13 +59,13 @@ const emit = defineEmits<{
       <component
         :is="icon"
         v-if="icon"
-        :size="ICON_PX.in28"
+        :size="phone ? ICON_PX.phoneRow : ICON_PX.in28"
         class="shrink-0"
       />
       <span class="min-w-0 flex-1 truncate">{{ label }}</span>
       <span
         v-if="shortcut"
-        class="text-[11px] text-fg-faint [@media(hover:none)]:hidden"
+        class="text-[11px] text-fg-faint phone:hidden"
       >{{ shortcut }}</span>
     </div>
   </Tooltip>

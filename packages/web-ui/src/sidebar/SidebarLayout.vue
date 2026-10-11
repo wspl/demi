@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, provide, ref, watch } from 'vue'
-import { useElementSize, useEventListener } from '@vueuse/core'
+import { onKeyStroke, useElementSize, useEventListener } from '@vueuse/core'
 import { PanelLeft } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
@@ -8,6 +8,7 @@ import { clampSize } from '../ui/resize-handle'
 import { usePhone } from '../ui/phone'
 import { dragCloses, dragVelocity } from '../ui/drag-close'
 import { useBackClose } from '../overlay/back-close'
+import { appOverlayStore } from '../overlay/appOverlay'
 import { ASIDE_SHARE, SIDEBAR_WIDTH, asideBounds, asideShareFor, asideWidthFor } from './sidebar-width'
 import { sidebarDrawerKey } from './sidebar-drawer'
 
@@ -25,9 +26,9 @@ import { sidebarDrawerKey } from './sidebar-drawer'
  *
  * On a phone (`ui/phone.ts`) one pane shows at a time. The sidebar is a
  * drawer from the left, 85% of the screen and at most 320 px, over a scrim
- * that a tap closes it by, as does a swipe left on it; the work panel opens
- * full screen over the conversation, sliding in from the right, and Back
- * closes it (`useBackClose`). Opening one closes the other. The frame shows
+ * that a tap closes it by, as do a swipe left on it, Escape and Back; the
+ * work panel opens full screen over the conversation, sliding in from the
+ * right, and Back closes it too (`useBackClose`). Opening one closes the other. The frame shows
  * one top bar there: a page with its own puts the sidebar's button in it
  * (`useSidebarDrawer`), and the frame's own, the button and `label`, shows
  * only while none does.
@@ -81,10 +82,21 @@ provide(sidebarDrawerKey, {
   },
 })
 
-// The full-screen panel is a place Back leaves, as a pushed page is.
+// The full-screen panel is a place Back leaves, as a pushed page is, and the drawer a layer Back closes.
 useBackClose(() => asideOpen.value, () => {
   asideOpen.value = false
 }, () => phone.value)
+useBackClose(() => open.value, () => {
+  open.value = false
+}, () => phone.value)
+
+// Escape closes the drawer once no menu or dialog over it takes the key first.
+onKeyStroke('Escape', (event) => {
+  if (!open.value || !phone.value || event.defaultPrevented || appOverlayStore.hasExclusive())
+    return
+  event.preventDefault()
+  open.value = false
+})
 
 /** The drawer's width on a phone: 85% of the screen, at most 320 px. */
 const DRAWER_WIDTH = 'min(85vw, 320px)'

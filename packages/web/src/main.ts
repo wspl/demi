@@ -12,7 +12,7 @@ import {
   setThemeChoice,
 } from '@demicodes/web-ui/theme/appTheme'
 import { installPhonePage } from '@demicodes/web-ui/ui/phone-page'
-import { historySettled } from '@demicodes/web-ui/overlay/back-close'
+import { historySettled, setHistoryTraversal } from '@demicodes/web-ui/overlay/back-close'
 import { useConversations } from './conversation/store'
 import { closeDraftStorage } from './conversation/drafts'
 import { useResources } from './state/resources'
@@ -66,6 +66,7 @@ const router = createRouter({
 })
 // A navigation waits while a closed phone sheet takes its entry off the history (`back-close.ts`).
 router.beforeEach(() => historySettled())
+setHistoryTraversal((delta) => router.options.history.go(delta, false))
 const resources = useResources(pinia)
 const conversations = useConversations(pinia)
 const session = useSession(pinia)

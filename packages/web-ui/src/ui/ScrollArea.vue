@@ -49,12 +49,12 @@ function start(): void {
   initialize(scrollbarsTarget(viewport.value, root.value))
 }
 
-// On a touch device a scroller keeps its scrolling to itself along its axis:
-// at its end it pulls nothing behind it (`base.css`, the page stays put).
+// On a phone a scroller keeps its scrolling to itself along its axis: at its
+// end it pulls nothing behind it (`base.css`, the page stays put).
 const OVERSCROLL: Record<ScrollAxis, string> = {
-  x: 'touch:overscroll-x-contain',
-  y: 'touch:overscroll-y-contain',
-  both: 'touch:overscroll-contain',
+  x: 'phone:overscroll-x-contain',
+  y: 'phone:overscroll-y-contain',
+  both: 'phone:overscroll-contain',
 }
 
 // Before the bar is set up, the viewport clips the axis it does not scroll

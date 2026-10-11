@@ -13,4 +13,6 @@ export const ICON_PX = {
   in28: 14,
   markIn28: 16,
   in32: 16,
+  /** A phone's 44px row (`phone.ts`), beside its 16px text. */
+  phoneRow: 18,
 } as const

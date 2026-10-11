@@ -289,7 +289,7 @@ const toneClass = computed(() => {
           </span>
           <span
             v-else-if="shortcut"
-            class="shrink-0 text-right text-[11px] text-fg-subtle"
+            class="shrink-0 text-right text-[11px] text-fg-subtle phone:hidden"
           >
             {{ shortcut }}
           </span>

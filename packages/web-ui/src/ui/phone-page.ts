@@ -1,5 +1,8 @@
+import { PHONE_QUERY } from './phone'
+
 /**
- * What a touch phone's page needs, set up once by the app (`installPhonePage`):
+ * What the phone layout's page needs (`phone.ts`), set up once by the app
+ * (`installPhonePage`), in effect while the page is a phone's width:
  *
  * - The page never zooms. A pinch zooms nothing but what zooms itself, such
  *   as a picture (`ImagePreview`): `touch-action` keeps it from the page
@@ -16,9 +19,6 @@
  *   gives its own, and then none is added.
  */
 
-/** The query of a device without a hover, whose pointer is a finger (`touch-only.ts`). */
-const TOUCH_QUERY = '(hover: none) and (pointer: coarse)'
-
 /** A press held this long, without moving, is a long press. */
 const LONG_PRESS_MS = 550
 /** A finger that moves farther than this scrolls or drags, and is no long press. */
@@ -27,14 +27,14 @@ const LONG_PRESS_SLOP_PX = 10
 const KEYBOARD_MIN_PX = 80
 
 export function installPhonePage(): () => void {
-  const touch = window.matchMedia(TOUCH_QUERY)
+  const phone = window.matchMedia(PHONE_QUERY)
   const root = document.documentElement
   const listeners = new AbortController()
   const { signal } = listeners
 
   // iOS's pinch, which `touch-action` does not reach.
   const stopGesture = (event: Event): void => {
-    if (touch.matches)
+    if (phone.matches)
       event.preventDefault()
   }
   document.addEventListener('gesturestart', stopGesture, { passive: false, signal })
@@ -44,7 +44,7 @@ export function installPhonePage(): () => void {
   const fit = (): void => {
     if (!viewport)
       return
-    const keyboard = touch.matches && root.clientHeight - viewport.height > KEYBOARD_MIN_PX
+    const keyboard = phone.matches && root.clientHeight - viewport.height > KEYBOARD_MIN_PX
     if (keyboard) {
       root.style.setProperty('--app-height', `${viewport.height}px`)
       root.style.setProperty('--app-top', `${viewport.offsetTop}px`)
@@ -68,7 +68,7 @@ export function installPhonePage(): () => void {
     endPress()
     const finger = event.touches[0]
     const target = event.target instanceof Element ? event.target : null
-    if (!touch.matches || event.touches.length !== 1 || !finger || !target?.closest('[data-touch-menu]'))
+    if (!phone.matches || event.touches.length !== 1 || !finger || !target?.closest('[data-touch-menu]'))
       return
     const x = finger.clientX
     const y = finger.clientY
