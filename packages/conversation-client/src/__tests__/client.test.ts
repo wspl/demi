@@ -62,7 +62,7 @@ test('a detached client fails every wait at once and sends nothing', async () =>
   await expect(h.client.submit([{ type: 'text', text: 'kept' }])).rejects.toThrow('closed')
   await expect(h.client.steer([{ type: 'text', text: 'kept' }])).rejects.toThrow('closed')
   await expect(h.client.abort()).rejects.toThrow('closed')
-  h.client.cancelPendingSteer('s1')
+  await expect(h.client.cancelPendingSteer('s1')).rejects.toThrow('closed')
   expect(h.sent).toEqual([])
   expect(h.closes()).toBe(1)
 })
@@ -131,7 +131,10 @@ test('a queued send ends when the next message runs or the session is idle, and 
   h.receive({ type: 'phase', phase: 'running' })
   h.receive({ type: 'transcript_reset', start: 0, length: 1, blocks: [user('u1', firstSend.messageId, 'first')], version: { epoch: 'e', revision: 1 } })
   h.receive({ type: 'queue', queue: [{ id: secondSend.messageId, content: [] }, { id: thirdSend.messageId, content: [] }] })
-  h.client.dequeueMessage(secondSend.messageId)
+  const dequeued = h.client.dequeueMessage(secondSend.messageId)
+  h.receive({ type: 'queue', queue: [{ id: thirdSend.messageId, content: [] }] })
+  h.receive({ type: 'remove_result', id: secondSend.messageId, outcome: 'removed' })
+  expect(await dequeued).toBe('removed')
   await second
   expect(settled).toEqual(['second'])
   // The third message runs right after the first, with no idle between them.
@@ -166,13 +169,25 @@ test('the pending steers leave by id, even when the history arrives before the l
   expect(h.events.filter((event) => event.type === 'pending_steers').at(-1)).toEqual({ type: 'pending_steers', pendingSteers: [] })
 })
 
-test('a cancelled steer leaves with the list the server answers', () => {
+// The session answers a removal after the list it changed
+// (`runtime.md` § Pending steers); a turn that fails meanwhile is no answer.
+test('a cancelled steer leaves with the list the server answers, and the removal resolves with the answer', async () => {
   const h = harness()
   h.receive({ type: 'pending_steers', pendingSteers: [pendingSteer('first'), pendingSteer('second')] })
-  h.client.cancelPendingSteer('first')
+  let outcome: string | undefined
+  const removal = h.client.cancelPendingSteer('first').then((answer) => {
+    outcome = answer
+  })
   expect(h.sent).toEqual([{ type: 'cancel_pending_steer', steerId: 'first' }])
+  h.receive({ type: 'error', code: 'generation_failed', message: 'The model failed' })
   h.receive({ type: 'pending_steers', pendingSteers: [pendingSteer('second')] })
+  h.receive({ type: 'remove_result', id: 'other', outcome: 'removed' })
+  await Promise.resolve()
+  expect(outcome).toBeUndefined()
   expect(h.client.pendingSteers()).toEqual([pendingSteer('second')])
+  h.receive({ type: 'remove_result', id: 'first', outcome: 'gone_on' })
+  await removal
+  expect(outcome).toBe('gone_on')
 })
 
 test('the pending steers the client answers are its own copies', () => {

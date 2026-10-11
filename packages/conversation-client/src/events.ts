@@ -28,6 +28,7 @@ export type ClientSessionEvent =
   | ServerFrameOf<'context_usage'>
   | ServerFrameOf<'queue'>
   | ServerFrameOf<'steer_result'>
+  | ServerFrameOf<'remove_result'>
   | ServerFrameOf<'abort_result'>
   | ServerFrameOf<'shell_output'>
   | ServerFrameOf<'shell_write_result'>
