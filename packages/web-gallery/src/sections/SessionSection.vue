@@ -2395,7 +2395,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'windows'">
       <GallerySection
         title="Agents"
-        note="Half-session inspect. Tabs are running children; a click only selects one, and nothing on a tab stops it. A right-click on a tab, or the Menu key or Shift+F10 on a focused one, opens its menu: Stop Agent for a running child, Close Tab for a finished one, the other disabled. The More button at the strip’s end, and a right-click on the strip’s empty area, open the strip’s menu: Stop All, disabled once nothing runs. Completed opens the searchable finished list; the child picked there shows as a tab after the running ones, and picking another replaces it in place, without motion. With no child running the window opens empty, never on a child the user did not pick; closing the last finished tab leaves it empty. Close (×) closes the window, and Run Them Again opens it again."
+        note="Half-session inspect. Tabs are running children; a click only selects one, and nothing on a tab stops it. A right-click on a tab, or the Menu key or Shift+F10 on a focused one, opens its menu: Stop Agent for a running child, Close Tab for a finished one, the other disabled. The More button at the strip’s end, and a right-click on the strip’s empty area, open the strip’s menu: Stop All, disabled once nothing runs. Completed opens the searchable finished list; the child picked there shows as a tab after the running ones, and picking another replaces it in place, without motion. With no child running the window opens empty, never on a child the user did not pick; closing the last finished tab leaves it empty. It stays open on a click outside it and under the media viewer a screenshot in a child’s transcript opens; Close (×), or Escape with the focus in it, closes it, and Run Them Again opens it again. With the viewer in front, Escape closes the viewer first."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
@@ -2407,7 +2407,6 @@ onBeforeUnmount(() => {
             :agents="agents"
             @abort="sessionFlow.abortSubagents"
             @abort-agent="sessionFlow.abortSubagent"
-            :dismiss-outside="false"
           />
         </div>
       </GallerySection>
@@ -2444,7 +2443,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Terminals"
-        note="The same window. Tabs are running jobs, each titled by its call’s description, cut at the end and whole in its tooltip; the body is a read-only xterm with ANSI color from bun, rg and git. The terminal opens with the script as a terminal shows what was typed: a muted $ and the first line, a muted > before each further line (Show the auth test changes), long lines wrapped at the terminal’s width (Find where the old cookie name is still used), the script in the emphasized text color, then the output. The watch tab’s output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame’s tail anew. A click on a tab only selects it; its menu, from a right-click or the Menu key or Shift+F10, ends a running command (End Command) or closes an ended one’s tab (Close Tab). Close (×) closes the window."
+        note="The same window. Tabs are running jobs, each titled by its call’s description, cut at the end and whole in its tooltip; the body is a read-only xterm with ANSI color from bun, rg and git. The terminal opens with the script as a terminal shows what was typed: a muted $ and the first line, a muted > before each further line (Show the auth test changes), long lines wrapped at the terminal’s width (Find where the old cookie name is still used), the script in the emphasized text color, then the output. The watch tab’s output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame’s tail anew. A click on a tab only selects it; its menu, from a right-click or the Menu key or Shift+F10, ends a running command (End Command) or closes an ended one’s tab (Close Tab). A click outside leaves the window open; Close (×), or Escape with the focus on its strip, closes it, while the terminal keeps the Escape typed into it."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
@@ -2454,7 +2453,6 @@ onBeforeUnmount(() => {
             v-model:active-id="exhibitTerminalId"
             :terminals="terminals"
             @abort="sessionFlow.abortTerminal"
-            :dismiss-outside="false"
           />
         </div>
       </GallerySection>
@@ -2504,7 +2502,6 @@ onBeforeUnmount(() => {
                 v-model:active-id="coverAgentId"
                 :agents="agents"
                 :terminals="terminals"
-                :dismiss-outside="false"
                 @abort="sessionFlow.abortSubagents"
                 @abort-agent="sessionFlow.abortSubagent"
               />

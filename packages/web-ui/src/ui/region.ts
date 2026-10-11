@@ -25,11 +25,37 @@ export function inwardAlignment(trigger: Span, region: Span): Alignment {
   return centre > region.left + region.width / 2 ? 'end' : 'start'
 }
 
+/** A box in viewport pixels. */
+export interface Box {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** The box of `region`, or the viewport's without one. */
+function boxOf(region: Element | null | undefined): Box {
+  if (!region) {
+    const root = document.documentElement
+    return { x: 0, y: 0, width: root.clientWidth, height: root.clientHeight }
+  }
+  const rect = region.getBoundingClientRect()
+  return { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
+}
+
+/**
+ * The box of the page's pane around `el`: the outermost marked region, such
+ * as the conversation for a trigger in a window over it, else the viewport.
+ */
+export function paneBox(el: Element | null): Box {
+  let pane = el?.closest(REGION_SELECTOR)
+  for (let outer = pane?.parentElement?.closest(REGION_SELECTOR); outer; outer = outer.parentElement?.closest(REGION_SELECTOR))
+    pane = outer
+  return boxOf(pane)
+}
+
 /** The extent of the region around `el`: its nearest marked region, else the viewport. */
 export function regionSpan(el: Element): Span {
-  const region = el.closest(REGION_SELECTOR)
-  if (!region)
-    return { left: 0, width: document.documentElement.clientWidth }
-  const rect = region.getBoundingClientRect()
-  return { left: rect.left, width: rect.width }
+  const box = boxOf(el.closest(REGION_SELECTOR))
+  return { left: box.x, width: box.width }
 }

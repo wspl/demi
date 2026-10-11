@@ -8,15 +8,9 @@ import TabItem from './TabItem.vue'
 import XtermView from './XtermView.vue'
 import { terminalPanelTabs, terminalStatus, type TerminalRecord } from './terminals'
 
-const props = withDefaults(
-  defineProps<{
-    terminals: readonly TerminalRecord[]
-    dismissOutside?: boolean
-  }>(),
-  {
-    dismissOutside: true,
-  },
-)
+const props = defineProps<{
+  terminals: readonly TerminalRecord[]
+}>()
 
 const emit = defineEmits<{
   /** End Command in a running tab's menu: stop that command. */
@@ -51,7 +45,6 @@ function closeTab(id: string): void {
 <template>
   <SessionOverlay
     :open="tabs.length > 0"
-    :dismiss-outside="dismissOutside"
     @close="closePanel"
   >
     <template #tabs="{ openTabMenu }">

@@ -18,7 +18,6 @@ const running = computed(() => runningTerminals(props.terminals))
 <template>
   <SessionDockChip
     v-if="running.length"
-    data-session-overlay-toggle
     dot="accent"
     :aria-expanded="open === true"
     aria-haspopup="dialog"

@@ -8,7 +8,12 @@ import ScrollArea from '../ui/ScrollArea.vue'
  * actual size and another fits it again. Transparency shows over a
  * checkerboard.
  */
-const props = defineProps<{ src: string; name: string }>()
+const props = defineProps<{
+  src: string
+  name: string
+  /** Edge to edge, with no margin around the picture, as a window that is sized to it shows it. */
+  flush?: boolean
+}>()
 const emit = defineEmits<{ size: [width: number, height: number]; failed: [] }>()
 
 const image = ref<HTMLImageElement | null>(null)
@@ -31,7 +36,7 @@ onBeforeUnmount(() => {
 
 <template>
   <!-- Auto margins center a picture that fits and start one that overflows at its corner. -->
-  <ScrollArea class="h-full w-full" axis="both" viewport-class="flex p-4">
+  <ScrollArea class="h-full w-full" axis="both" :viewport-class="flush ? 'flex' : 'flex p-4'">
     <img
       ref="image"
       :src="src"
