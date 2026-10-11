@@ -36,10 +36,6 @@ pub struct ConversationRecord {
     /// The conversation's model selection; none until its first model is
     /// chosen.
     pub model: Option<ModelSelection>,
-    /// How many messages the user has sent, and how many of them the title
-    /// has read (`product.md` § Conversation titles).
-    pub user_messages: u64,
-    pub titled_messages: u64,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
     /// The revision of the conversation's draft, 0 before its first save.
@@ -211,8 +207,7 @@ const PLACEHOLDER_TITLE: &str = "New conversation";
 const SIDEBAR_ORDER: &str = "pinned DESC, sort_order, id";
 
 const CONVERSATION_COLUMNS: &str = "id, user_id, title, archived, pinned, read_revision, target_kind, target_device_id,
-     target_path, target_workspace_id, context_version, model, user_messages, titled_messages,
-     created_at, updated_at, hosts_revision,
+     target_path, target_workspace_id, context_version, model, created_at, updated_at, hosts_revision,
      COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision,
      COALESCE((SELECT revision FROM conversation_panels WHERE conversation_id = conversations.id), 0) AS panel_revision,
      (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL) AS permission_requests";
@@ -499,23 +494,9 @@ impl ControlService {
         .await
     }
 
-    /// Counts one more message the user sent, which makes a generated title
-    /// older than the conversation; answers how many there are now.
-    pub async fn count_user_message(&self, id: ConversationId) -> Result<u64, StorageError> {
-        self.call(move |connection, _| {
-            let count: i64 = connection.query_row(
-                "UPDATE conversations SET user_messages = user_messages + 1 WHERE id = ?1 RETURNING user_messages",
-                [id.as_str()],
-                |row| row.get(0),
-            )?;
-            decode("conversations", "user_messages", u64::try_from(count))
-        })
-        .await
-    }
-
     /// Makes `title`, from the first message, the conversation's while its
     /// title is still the placeholder; answers whether it did, which makes
-    /// this send the one a generated title may follow.
+    /// this send the one a generated title follows.
     pub async fn title_from_first_message(
         &self,
         id: ConversationId,
@@ -534,26 +515,18 @@ impl ControlService {
 
     /// Writes the generated `title` while the title is still `from`, the one
     /// its request began from, in the statement that checks it, so a rename
-    /// that landed meanwhile stays. Either way the title is current for the
-    /// `seen` messages the request read. Answers whether it was written.
+    /// that landed meanwhile stays. Answers whether it was written.
     pub async fn generated_title(
         &self,
         id: ConversationId,
         title: String,
         from: String,
-        seen: u64,
     ) -> Result<bool, StorageError> {
         self.call(move |connection, _| {
-            let transaction = connection.transaction()?;
-            let written = transaction.execute(
+            let written = connection.execute(
                 "UPDATE conversations SET title = ?2, title_origin = 'generated' WHERE id = ?1 AND title = ?3",
                 params![id.as_str(), title, from],
             )?;
-            transaction.execute(
-                "UPDATE conversations SET titled_messages = MAX(titled_messages, ?2) WHERE id = ?1",
-                params![id.as_str(), i64::try_from(seen).expect("a count the column held fits it")],
-            )?;
-            transaction.commit()?;
             Ok(written == 1)
         })
         .await
@@ -631,10 +604,10 @@ pub fn insert_conversation(
     let inserted = connection.execute(
         "INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
            read_revision, target_kind, target_device_id, target_path, target_workspace_id, context_version,
-           model, user_messages, titled_messages, created_at, updated_at)
+           model, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, 0, ?11,
            (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?2),
-           0, ?5, ?6, ?7, ?8, 0, ?9, 0, 0, ?10, ?10)
+           0, ?5, ?6, ?7, ?8, 0, ?9, ?10, ?10)
          ON CONFLICT (id) DO NOTHING",
         params![
             new.id.as_str(),
@@ -703,16 +676,6 @@ fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
             u64::try_from(row.get::<_, i64>("context_version")?),
         )?,
         model,
-        user_messages: decode(
-            TABLE,
-            "user_messages",
-            u64::try_from(row.get::<_, i64>("user_messages")?),
-        )?,
-        titled_messages: decode(
-            TABLE,
-            "titled_messages",
-            u64::try_from(row.get::<_, i64>("titled_messages")?),
-        )?,
         created_at: instant(row, TABLE, "created_at")?,
         updated_at: instant(row, TABLE, "updated_at")?,
         draft_revision: decode(

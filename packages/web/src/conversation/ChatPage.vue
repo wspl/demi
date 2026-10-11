@@ -124,19 +124,6 @@ const hasProvider = computed(() =>
   ),
 )
 
-// Detect Title (`product.md` § Conversation titles): offered while a message is
-// newer than the last generated title, disabled while the model writes one.
-const retitle = computed(() => {
-  const current = conversation.value
-  if (!current || current.archived) {
-    return null
-  }
-  if (current.titleGenerating) {
-    return 'running'
-  }
-  return !current.titleCurrent && hasProvider.value ? 'available' : null
-})
-
 /**
  * A read of history the reader's scroll asked for: a failure shows as the
  * window's edge staying a loading row, which the next scroll there tries
@@ -248,8 +235,6 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @retry-submission="store.retrySend(conversation, $event)"
     @retry="store.start(conversation)"
     @rename="store.rename(conversation.id, $event)"
-    :retitle="retitle"
-    @retitle="store.retitle(conversation)"
     @retry-load="store.reloadSession(conversation.id)"
     @abort-subagents="store.abortSubagents(conversation)"
     @abort-subagent="store.abortSubagent(conversation, $event)"

@@ -44,28 +44,14 @@ fn the_first_message_titles_the_conversation_at_once_as_plain_text_on_one_line()
 }
 
 #[test]
-fn the_input_keeps_the_first_and_the_latest_messages_within_its_bounds() {
+fn the_input_is_the_first_message_as_plain_text_within_its_bound() {
     assert_eq!(
-        title_input(&["  hello \n world ", "", "second"]),
-        "1. hello world\n2. second"
+        title_input("  why does **`pnpm build`**\n fail "),
+        "why does pnpm build fail"
     );
-    assert_eq!(title_input::<&str>(&[]), "");
-    let long = "字".repeat(500);
-    assert_eq!(
-        title_input(&[long.as_str()]),
-        format!("1. {}", "字".repeat(400))
-    );
-    // Twenty messages of 400 do not fit in 4,000: the first and the
-    // latest that fit stay, and one line stands for the middle.
-    let messages: Vec<String> = (1..=20).map(|index| format!("{index:0>400}")).collect();
-    let input = title_input(&messages);
-    let lines: Vec<&str> = input.lines().collect();
-    assert!(lines[0].starts_with("1. "));
-    assert_eq!(lines[1], "…");
-    assert!(lines.last().unwrap().starts_with("20. "));
-    let kept = lines.len() - 2;
-    assert!(input.chars().count() <= INPUT_MAX_CHARS + 2);
-    assert!(lines[2].starts_with(&format!("{}. ", 21 - kept)));
+    assert_eq!(title_input(" \n "), "");
+    let long = "字".repeat(INPUT_MAX_CHARS + 100);
+    assert_eq!(title_input(&long), "字".repeat(INPUT_MAX_CHARS));
 }
 
 #[test]
@@ -118,10 +104,10 @@ async fn a_request_reads_the_instruction_at_the_lowest_effort_and_ignores_thinki
     let mut runtime = script.clone();
     let mut titles = Vec::new();
     // The title's own limit, unless the model's is lower.
-    for (messages, model_limit) in [
-        (["@src/auth.ts add refresh tokens"], Some(32_000)),
-        (["again"], Some(256)),
-        (["  "], None),
+    for (message, model_limit) in [
+        ("@src/auth.ts add refresh tokens", Some(32_000)),
+        ("again", Some(256)),
+        ("  ", None),
     ] {
         selection.model.output_limit = model_limit;
         let title = request_title(
@@ -129,7 +115,7 @@ async fn a_request_reads_the_instruction_at_the_lowest_effort_and_ignores_thinki
             "c1",
             "r1".into(),
             &selection,
-            &messages,
+            message,
             CancellationToken::new(),
         )
         .await;
@@ -141,13 +127,13 @@ async fn a_request_reads_the_instruction_at_the_lowest_effort_and_ignores_thinki
     assert_eq!(failed, Err(TitleError::Failed("quota exhausted".into())));
     assert_eq!(empty, Ok(None));
     let requests = script.requests();
-    assert_eq!(requests.len(), 2, "text-less messages ask nothing");
+    assert_eq!(requests.len(), 2, "a message without text asks nothing");
     let request = &requests[0];
     assert_eq!(request.system_prompt, TITLE_INSTRUCTION);
     assert_eq!(
         *request.items,
         [InferenceItem::UserMessage {
-            content: vec![UserPart::Text("1. @src/auth.ts add refresh tokens".into())]
+            content: vec![UserPart::Text("@src/auth.ts add refresh tokens".into())]
         }]
     );
     assert!(request.tools.is_empty());
