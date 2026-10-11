@@ -1737,9 +1737,11 @@ commands*, and a click opens it to every step.
   looked at; a tool of
   another kind reads *used* and its name. For example, a run that thinks
   and checks command 17 twice reads *Checked 1 command*. Notices and
-  receipts add to the row only when the run holds no call: *2 commands
-  finished*, *1 agent finished*, *heard from 2 agents* for updates, joined in
-  the order the run first had them. A lone notice or receipt is its own row,
+  receipts add to the row only when the run holds no call, by how each
+  ended: *2 commands finished*, *1 command failed*, *1 command stopped*,
+  *1 agent finished*, *1 agent failed*, *1 agent stopped*, *heard from 2
+  agents* for updates, joined in the order the run first had them, the first
+  word capitalized; a run of thinking and notices alone reads the same. A lone notice or receipt is its own row,
   as a lone call is. The row never reads a bare count of steps,
   which says nothing of what happened. A failed command shows its tag on its
   own row inside, not on the group's.
@@ -1747,6 +1749,9 @@ commands*, and a click opens it to every step.
   counted from its two ends within the run ([What the conversation
   shows](../execution/edit-tracking.md#what-the-conversation-shows)); open,
   each call shows its own.
+- A block brought into view inside a run, as a notice's call or a search
+  result, marks its own row when the run is open, and the run's row when it
+  is folded, which stays folded.
 - A reader who opens or folds a row keeps it where it is: the rows after it
   move, and the transcript neither follows its end nor corrects for the new
   height until the fold has ended.

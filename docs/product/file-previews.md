@@ -217,6 +217,7 @@ open, and a click opens it in the [media viewer](#the-media-viewer):
 ```
 
 - **Which calls.** A call shows the images and videos its own result carries,
+  and a command's notice those its report carries;
   so a picture shows where the model saw it. A `shell` call whose command
   exits within the call's window carries the media the job viewed, several
   of them when it viewed several. When the command exits after the
