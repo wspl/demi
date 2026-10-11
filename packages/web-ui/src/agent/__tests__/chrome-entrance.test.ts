@@ -23,7 +23,7 @@ test('async history stays still, live blocks enter once, and changing conversati
   const timers = spyOn(globalThis, 'setTimeout')
   const clear = spyOn(globalThis, 'clearTimeout')
   const entrance = scope.run(() => useChromeEntrance(
-    () => blocks.value,
+    () => blocks.value.map((row) => row.id),
     () => held.value,
     () => conversation.value,
     () => load.value,

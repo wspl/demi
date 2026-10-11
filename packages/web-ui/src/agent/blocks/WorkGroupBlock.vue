@@ -26,14 +26,18 @@ import { useElapsedTime } from '../../composables/useElapsedTime'
 import BlockScope from './BlockScope.vue'
 
 /**
- * Consecutive steps as one row. While they run, the folded row's face is the
- * newest step, which rolls over the one before, and the open row's a stack
- * and what runs; once they end, a stack and what they did. A lone thinking is
- * the thinking's own row, so the first call rolls over it in place. Opening
- * the row shows every step as its own row; a step that joins while it is open
- * enters as a row joining the transcript does. Folded, the media the calls
- * returned show under it, and below them the files the steps changed; open,
- * each under its own call.
+ * Consecutive steps as one row (`runtime.md` § Work groups). While they are
+ * the end of a running turn, the row is the turn's activity and shimmers
+ * until the turn moves past it, also while the model is waited for after its
+ * newest step ended; the folded face is the newest step, which rolls over the
+ * one before, and the open row's a stack and what runs. Once they end, a
+ * stack and what they did. A lone thinking is the thinking's own row, so the
+ * first call rolls over it in place; a lone call is the call's own row, which
+ * opens to the call, and a step that joins it turns the same row into the
+ * stack, open if the reader opened the call. Opening the row shows every step
+ * as its own row; a step that joins while it is open enters as a row joining
+ * the transcript does. Folded, the media the calls returned show under it,
+ * and below them the files the steps changed; open, each under its own call.
  */
 const props = defineProps<{ group: WorkGroupBlock }>()
 const isOpen = defineModel<boolean>('open', { default: false })
@@ -42,6 +46,10 @@ const newest = computed(() => props.group.steps.at(-1)!)
 const lone = computed(() => {
   const steps = props.group.steps
   return steps.length === 1 && steps[0]!.type === 'thinking' ? steps[0]! : null
+})
+const loneCall = computed(() => {
+  const steps = props.group.steps
+  return steps.length === 1 && steps[0]!.type === 'tool_call' ? steps[0]! : null
 })
 /** The newest step is thinking that still streams. */
 const thinkingLive = computed(() => props.group.live && newest.value.type === 'thinking')
@@ -77,7 +85,6 @@ interface Face {
   icon: Component
   iconKey: string
   label: string
-  loading: boolean
   rollKey: string
 }
 
@@ -87,26 +94,24 @@ const face = computed<Face>(() => {
       icon: Brain,
       iconKey: 'thinking',
       label: thinkingFaceLabel(thinkingLive.value, loneElapsed.value),
-      loading: thinkingLive.value,
       rollKey: thinkingLive.value ? `${lone.value.id}:live` : `${lone.value.id}:done`,
     }
   }
   if (!props.group.live) {
-    return { icon: Layers, iconKey: 'stack', label: workSummary(props.group.steps), loading: false, rollKey: 'done' }
+    return { icon: Layers, iconKey: 'stack', label: workSummary(props.group.steps), rollKey: 'done' }
   }
   // Open, the steps show under the row, so it stands still as the stack of
   // what runs; folded again, it shows the newest step. Opening and folding
   // change what the row shows, not how far the work got, so the face cuts
   // over at once rather than rolling.
   if (isOpen.value) {
-    return { icon: Layers, iconKey: 'stack', label: workRunning(props.group.steps), loading: true, rollKey: 'running' }
+    return { icon: Layers, iconKey: 'stack', label: workRunning(props.group.steps), rollKey: 'running' }
   }
   const step = newest.value
   return {
     icon: step.type === 'thinking' ? Brain : toolRowIcon(step.type === 'tool_call' ? step.toolName : step.call.toolName),
     iconKey: step.type === 'thinking' ? 'thinking' : toolRenderKind(step.type === 'tool_call' ? step.toolName : step.call.toolName),
     label: stepTitle(step),
-    loading: step.type !== 'tool_call' || step.status === 'executing',
     // A call's placeholder title rolls over to its description once written;
     // the call's block keeps that face, so it does not roll again.
     rollKey: step.type === 'pending_call' && step.call.description === null ? `${stepKey(step)}:writing` : stepKey(step),
@@ -173,66 +178,71 @@ function pick(path: string, clicks: number): void {
 </script>
 
 <template>
-  <FunctionalBlock
-    v-model:open="isOpen"
-    :expandable="!lone || loneText !== ''"
-    :flow="!lone"
-    :open-while="lone ? thinkingLive && loneText !== '' : undefined"
-    :stick-bottom="lone ? thinkingLive : false"
-    :roll-key="face.rollKey"
-    :icon-key="face.iconKey"
-    :cut-key="isOpen && !lone ? 'open' : 'folded'"
-    :loading="face.loading"
-  >
-    <template #icon>
-      <component :is="face.icon" :size="ICON_PX.in28" />
-    </template>
-    <span class="min-w-0 truncate">{{ face.label }}</span>
-    <!-- A thinking with no text has nothing to open: no body, so no chevron. -->
-    <template v-if="!lone || loneText !== ''" #body>
-      <StreamedMarkdown
-        v-if="lone"
-        :content="lone.text"
-        :streaming="thinkingLive"
-        class="px-3 py-1 text-[13px] leading-4.5 text-fg-subtle [--markdown-block-gap:--spacing(1)]"
-      />
-      <div v-else class="[--agent-pad-x:0px]">
-        <div
-          v-for="(step, index) in group.steps"
-          :key="stepKey(step)"
-          v-bind="chromeEntrance(entering.has(stepKey(step)))"
-        >
-          <BlockScope v-if="step.type === 'thinking'" :block="step">
-            <ThinkingBlock
-              :thinking="step.text"
-              :is-streaming="thinkingLive && index === group.steps.length - 1"
-              :created-at="step.createdAt"
-              :ended-at="endedAt(index)"
-            />
-          </BlockScope>
-          <BlockScope v-else-if="step.type === 'tool_call'" :block="step">
-            <ToolCallBlock :block="step" />
-          </BlockScope>
-          <PendingCallBlock v-else :call="step.call" />
+  <BlockScope v-if="loneCall" :block="loneCall">
+    <ToolCallBlock v-model:open="isOpen" :block="loneCall" :working="group.live" />
+  </BlockScope>
+  <template v-else>
+    <FunctionalBlock
+      v-model:open="isOpen"
+      :expandable="!lone || loneText !== ''"
+      :flow="!lone"
+      :open-while="lone ? thinkingLive && loneText !== '' : undefined"
+      :stick-bottom="lone ? thinkingLive : false"
+      :roll-key="face.rollKey"
+      :icon-key="face.iconKey"
+      :cut-key="isOpen && !lone ? 'open' : 'folded'"
+      :loading="group.live"
+    >
+      <template #icon>
+        <component :is="face.icon" :size="ICON_PX.in28" />
+      </template>
+      <span class="min-w-0 truncate">{{ face.label }}</span>
+      <!-- A thinking with no text has nothing to open: no body, so no chevron. -->
+      <template v-if="!lone || loneText !== ''" #body>
+        <StreamedMarkdown
+          v-if="lone"
+          :content="lone.text"
+          :streaming="thinkingLive"
+          class="px-3 py-1 text-[13px] leading-4.5 text-fg-subtle [--markdown-block-gap:--spacing(1)]"
+        />
+        <div v-else class="[--agent-pad-x:0px]">
+          <div
+            v-for="(step, index) in group.steps"
+            :key="stepKey(step)"
+            v-bind="chromeEntrance(entering.has(stepKey(step)))"
+          >
+            <BlockScope v-if="step.type === 'thinking'" :block="step">
+              <ThinkingBlock
+                :thinking="step.text"
+                :is-streaming="thinkingLive && index === group.steps.length - 1"
+                :created-at="step.createdAt"
+                :ended-at="endedAt(index)"
+              />
+            </BlockScope>
+            <BlockScope v-else-if="step.type === 'tool_call'" :block="step">
+              <ToolCallBlock :block="step" />
+            </BlockScope>
+            <PendingCallBlock v-else :call="step.call" />
+          </div>
         </div>
+      </template>
+    </FunctionalBlock>
+    <!-- The calls' media fold away as the group opens to show each under its own call, so none shows twice. -->
+    <Fold :open="!isOpen && media.length > 0">
+      <ToolMedia :media="media" />
+    </Fold>
+    <!-- The summed pills fold in as the first file changes, and away as the group opens to show each call's own. -->
+    <Fold :open="!isOpen && files.length > 0">
+      <div ref="pills">
+        <FileChangePills
+          v-if="files.length > 0"
+          class="py-1"
+          :style="{ paddingLeft: `${ICON_PX.in28 + 8}px` }"
+          :files="files"
+          :selectable="selectable"
+          @select="pick"
+        />
       </div>
-    </template>
-  </FunctionalBlock>
-  <!-- The calls' media fold away as the group opens to show each under its own call, so none shows twice. -->
-  <Fold :open="!isOpen && media.length > 0">
-    <ToolMedia :media="media" />
-  </Fold>
-  <!-- The summed pills fold in as the first file changes, and away as the group opens to show each call's own. -->
-  <Fold :open="!isOpen && files.length > 0">
-    <div ref="pills">
-      <FileChangePills
-        v-if="files.length > 0"
-        class="py-1"
-        :style="{ paddingLeft: `${ICON_PX.in28 + 8}px` }"
-        :files="files"
-        :selectable="selectable"
-        @select="pick"
-      />
-    </div>
-  </Fold>
+    </Fold>
+  </template>
 </template>

@@ -18,18 +18,20 @@ const READER_BLOCK_TYPES: ReadonlySet<MessageListBlock['type']> = new Set([
  * this one, so a send reads the same in the product and the gallery. A
  * message read from a page of history, in its light form, was not just
  * sent, wherever the page puts it (`web-application.md` § Transcript
- * windows).
+ * windows). A message is named by `keyOf` across its stages, so the server
+ * confirming a message sent is not another send.
  */
 export function useFollowSentMessages(
   blocks: () => readonly MessageListBlock[],
+  keyOf: (block: MessageListBlock) => string,
   scrollToBottom: () => void,
 ): void {
-  const readerBlockIds = computed(() => new Set(blocks()
+  const readerKeys = computed(() => new Set(blocks()
     .filter((block) => READER_BLOCK_TYPES.has(block.type) && !('light' in block && block.light))
-    .map((block) => block.id)))
-  watch(readerBlockIds, (ids, previous) => {
-    for (const id of ids) {
-      if (!previous.has(id)) {
+    .map(keyOf)))
+  watch(readerKeys, (keys, previous) => {
+    for (const key of keys) {
+      if (!previous.has(key)) {
         void nextTick(scrollToBottom)
         return
       }

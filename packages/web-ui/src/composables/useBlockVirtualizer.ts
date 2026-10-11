@@ -1,4 +1,5 @@
 import { computed, nextTick, onScopeDispose, ref, type Ref, watch } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
 import { measureElement as measureRow, useVirtualizer } from '@tanstack/vue-virtual'
 import { BOTTOM_THRESHOLD_PX, distanceFromBottom } from './scroll-bottom'
 import { FOLD_MS } from '../ui/fold'
@@ -12,7 +13,14 @@ interface VirtualizedBlock {
 const OVERSCAN = 8
 /** Space between transcript rows; a row placed after the list keeps it too. */
 export const BLOCK_GAP = 4
-const AUTO_SCROLL_REENGAGE_THRESHOLD = 1
+/**
+ * The reader is at the end while the end of the list is in view or less than
+ * this far below it (`product.md` § Following the agent's work): the list
+ * follows its end from there.
+ */
+const AT_END_PX = 16
+/** A row the reader acted on changed its height by more than rounding. */
+const RESIZED_PX = 1
 /**
  * How long a click or key press in the list holds the view still: a row the
  * reader opens or folds changes its height over a fold, and what they acted
@@ -33,6 +41,9 @@ const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   text: 40,
   response: 24,
   tool_call: 28,
+  pending_call: 28,
+  // A run's row folded is its 28px face, as the tail row it takes over from is.
+  work_group: 28,
   error: 28,
   abort: 28,
   compaction_boundary: 36,
@@ -58,12 +69,29 @@ export interface PersistedScrollState {
   heightCache: Map<string, number>
 }
 
-export function useBlockVirtualizer(
+export interface BlockVirtualizerOptions<Block extends VirtualizedBlock> {
+  /**
+   * What names a row across the forms its block takes; the block's id by
+   * default. A row named the same is kept, with its measured height, rather
+   * than built anew and laid out at a guess for a frame.
+   */
+  keyOf?: (block: Block) => string
+  /**
+   * What the list shows after its rows, outside the virtualizer, such as
+   * the tail row and a failure notice: its growth is the list's growth too,
+   * which the view follows in the frame that draws it.
+   */
+  tail?: Readonly<Ref<HTMLElement | undefined>>
+}
+
+export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   scrollContainer: Readonly<Ref<HTMLElement | undefined>>,
-  blocks: Ref<VirtualizedBlock[]>,
+  blocks: Ref<Block[]>,
   persistedState: PersistedScrollState | undefined,
+  options: BlockVirtualizerOptions<Block> = {},
 ) {
-  /** The heights the list measured when it was last shown, until it measures them again. */
+  const keyOf = options.keyOf ?? ((block: Block) => block.id)
+  /** The heights the list measured when it was last shown, by row key, until it measures them again. */
   const heightCache = new Map<string, number>(persistedState?.heightCache ?? [])
 
   const scrollOffset = ref(0)
@@ -94,7 +122,7 @@ export function useBlockVirtualizer(
       gap: BLOCK_GAP,
       getItemKey: (index: number) => {
         const block = blocks.value[index]
-        return block ? block.id : index
+        return block ? keyOf(block) : index
       },
     })),
   )
@@ -104,7 +132,7 @@ export function useBlockVirtualizer(
     const block = blocks.value[index]
     if (!block)
       return 40
-    return heightCache.get(block.id) ?? (BLOCK_HEIGHT_ESTIMATES[block.type] ?? 40)
+    return heightCache.get(keyOf(block)) ?? (BLOCK_HEIGHT_ESTIMATES[block.type] ?? 40)
   }
 
   /**
@@ -135,7 +163,7 @@ export function useBlockVirtualizer(
    * offered the way back to it. One rule for every way of leaving the end,
    * a small scroll up as much as a row opened at the end.
    */
-  const isAtBottom = computed(() => shouldAutoScroll.value || endDistance.value <= AUTO_SCROLL_REENGAGE_THRESHOLD)
+  const isAtBottom = computed(() => shouldAutoScroll.value || endDistance.value < AT_END_PX)
   let isProgrammaticScroll = false
   let pendingIntent: ScrollIntent = null
   let touchStartY = 0
@@ -169,14 +197,14 @@ export function useBlockVirtualizer(
       readerLayoutTimer = undefined
       const el = scrollContainer.value
       const resized = [...readerRows].some(([row, height]) =>
-        Math.abs(row.getBoundingClientRect().height - height) > AUTO_SCROLL_REENGAGE_THRESHOLD)
+        Math.abs(row.getBoundingClientRect().height - height) > RESIZED_PX)
       readerRows.clear()
       if (!el)
         return
       const dist = distanceFromBottom(el)
       endDistance.value = dist
       if (resized || !shouldAutoScroll.value)
-        shouldAutoScroll.value = dist <= AUTO_SCROLL_REENGAGE_THRESHOLD
+        shouldAutoScroll.value = dist < AT_END_PX
       else
         scrollToBottom()
     }, READER_LAYOUT_MS)
@@ -229,7 +257,7 @@ export function useBlockVirtualizer(
       furthestDistanceSinceDisengage > threshold) {
       shouldAutoScroll.value = true
       furthestDistanceSinceDisengage = 0
-    } else if (dist <= AUTO_SCROLL_REENGAGE_THRESHOLD) {
+    } else if (dist < AT_END_PX) {
       shouldAutoScroll.value = true
       furthestDistanceSinceDisengage = 0
     } else if (dist > threshold) {
@@ -279,20 +307,29 @@ export function useBlockVirtualizer(
     { immediate: true },
   )
 
-  watch(
-    () => virtualizer.value.getTotalSize(),
-    () => {
-      if (!isRestored.value || !shouldAutoScroll.value || holdsView()) {
-        // The list grew or shrank without following: its end moved off or
-        // into the view with no scroll to say so.
-        if (scrollContainer.value)
-          endDistance.value = distanceFromBottom(scrollContainer.value)
-        return
-      }
-      scrollToBottom()
-    },
-    { flush: 'post' },
-  )
+  /**
+   * The list grew or shrank at its end: a reader who follows it sees its end
+   * in the frame that draws the change. Rows the virtualizer measures change
+   * its total size, which it reports in the same frame; what follows the
+   * rows reports its own size, as a resize observer does after layout and
+   * before paint.
+   */
+  function followEnd(): void {
+    if (!isRestored.value || !shouldAutoScroll.value || holdsView()) {
+      // The list grew or shrank without following: its end moved off or
+      // into the view with no scroll to say so.
+      if (scrollContainer.value)
+        endDistance.value = distanceFromBottom(scrollContainer.value)
+      return
+    }
+    scrollToBottom()
+  }
+  watch(() => virtualizer.value.getTotalSize(), followEnd, { flush: 'post' })
+  // The element after the rows, not the content around them: an observer
+  // reports an element enclosing the rows only a frame after the rows'
+  // own report, which the total size already answers.
+  if (options.tail)
+    useResizeObserver(options.tail, followEnd)
 
   watch(
     virtualizer,

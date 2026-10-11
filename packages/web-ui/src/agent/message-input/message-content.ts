@@ -6,6 +6,9 @@ import { ATTACHMENT_MARK } from '../../markdown/user-markdown'
 
 type TextBlock = { type: 'text'; text: string }
 
+/** A file of a message whose kind does not matter to where it stands. */
+const FILE: { type: 'file' } = { type: 'file' }
+
 function isMedia(block: { type: string } | undefined): boolean {
   return block?.type === 'image' || block?.type === 'video' || block?.type === 'document'
 }
@@ -64,4 +67,17 @@ export function joinMessageContent<Block>(
   // Files without a mark follow the text.
   content.push(...files.slice(parts.length - 1).flat())
   return content
+}
+
+/**
+ * The Markdown, with a mark where each of its `fileCount` files stands, that
+ * a message written as `markdown` shows once the server holds it: what it
+ * sends, `joinMessageContent`, read back as `splitMessageContent` reads the
+ * message's blocks. A message being sent shows this, so it is drawn as the
+ * message it becomes, without a space or a line break the send drops, such
+ * as the newline an input method's Enter can leave
+ * (`product.md` § Following the agent's work).
+ */
+export function sentMarkdown(markdown: string, fileCount: number): string {
+  return splitMessageContent(joinMessageContent(markdown, Array.from({ length: fileCount }, () => [FILE]))).markdown
 }

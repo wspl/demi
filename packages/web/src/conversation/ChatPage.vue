@@ -237,7 +237,6 @@ async function fork(request: MessageForkRequest): Promise<void> {
               conversation?.files.filter((file) => file.id === id) ?? [],
             ),
             error: conversation.pendingSend.error,
-            waiting: product.connection !== null || conversation.load === 'reconnecting',
           }
         : null
     "
