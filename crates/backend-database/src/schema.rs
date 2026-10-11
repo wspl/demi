@@ -60,8 +60,9 @@ impl ReadBlob for NoBlobs {
 /// The control database's. Its history holds the schema of each published
 /// release before the one that ships the current schema, and of each
 /// development build a server keeps data of (`upgrades.md` § A development
-/// build on a server); 0.1.22-dev.20261011T123543Z shipped the last one in
-/// it.
+/// build on a server); 0.1.22-dev.20261011T123543Z shipped the last of
+/// those. The schema with the subagent limits after it no server keeps, but
+/// development databases do, and the server's migrate through it.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
     history: &[
@@ -100,6 +101,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.22-dev.20261011T123543Z.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_22_DEV_20261011T123543Z),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.subagent-limits.sql"),
+            migration: Migration::Sql(CONTROL_FROM_SUBAGENT_LIMITS),
         },
     ],
 };
@@ -207,6 +212,15 @@ ALTER TABLE running_commands ADD COLUMN title TEXT NOT NULL DEFAULT '';
 const CONTROL_FROM_0_1_22_DEV_20261011T123543Z: &str = "
 ALTER TABLE user_subagents ADD COLUMN max_live INTEGER DEFAULT 10 CHECK (max_live >= 1);
 ALTER TABLE user_subagents ADD COLUMN max_depth INTEGER DEFAULT 1 CHECK (max_depth >= 1);
+";
+
+/// From the control schema with the subagent limits: Detect Title is gone
+/// (`product.md` § Conversation titles), and with it the counts of the
+/// messages the user sent and the last generated title had seen, which
+/// only it read.
+const CONTROL_FROM_SUBAGENT_LIMITS: &str = "
+ALTER TABLE conversations DROP COLUMN user_messages;
+ALTER TABLE conversations DROP COLUMN titled_messages;
 ";
 
 /// From 0.1.11's control schema: the retention pass, which read when each
@@ -1168,8 +1182,6 @@ CREATE TABLE conversations (
   cloud_reset_id      TEXT,
   context_version     INTEGER NOT NULL,
   model               TEXT,
-  user_messages       INTEGER NOT NULL,
-  titled_messages     INTEGER NOT NULL,
   created_at          INTEGER NOT NULL,
   updated_at          INTEGER NOT NULL,
   -- The revision of its attached hosts, raised by each change of them; 0
@@ -2475,8 +2487,8 @@ mod tests {
     }
 
     /// The development builds' schemas are the ones their server's
-    /// databases record, and format 4's the one development databases
-    /// record.
+    /// databases record, and format 4's and the subagent limits' the ones
+    /// development databases record.
     #[test]
     fn the_development_builds_in_the_history_are_the_ones_their_server_records() {
         for (schema, development, version) in [
@@ -2484,6 +2496,7 @@ mod tests {
             (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql"), 845_924_528),
             (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.block-format-4.sql"), 2_090_642_600),
             (&CONTROL, include_str!("schema/control-0.1.22-dev.20261011T123543Z.sql"), 388_363_661),
+            (&CONTROL, include_str!("schema/control-0.1.22-dev.subagent-limits.sql"), 491_070_162),
         ] {
             assert_eq!(version_of(development), version);
             assert!(schema.history.iter().any(|shipped| shipped.sql == development));

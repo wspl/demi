@@ -23,7 +23,7 @@ pub mod search;
 pub mod settings;
 mod socket;
 mod summary;
-pub mod titles;
+pub(crate) mod titles;
 pub mod transition;
 
 use std::cell::RefCell;
