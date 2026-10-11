@@ -3,14 +3,13 @@ import { computed } from 'vue'
 import { Archive, Pin, PinOff } from '@lucide/vue'
 import DeviceIcon from '@demicodes/web-ui/devices/DeviceIcon.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
-import StatusDot from '@demicodes/web-ui/ui/StatusDot.vue'
-import { statusTone } from '@demicodes/web-ui/agent/conversation-status'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { isTextCut } from '@demicodes/web-ui/ui/truncation'
 import { DEVICE_STATE_LABEL } from '@demicodes/web-ui/devices/state'
 import type { SidebarConversation } from './types'
+import ConversationDot from './ConversationDot.vue'
 
 const props = defineProps<{
   conversation: SidebarConversation
@@ -36,14 +35,7 @@ const emit = defineEmits<{
   unpin: []
 }>()
 
-// One quiet mark (`product.md` § Conversations and projects): yellow with a halo while a
-// permission request waits for the user, over every other mark and whether the row is open or
-// read; otherwise the tone the conversation's state wears on its tab too, the accent breathing
-// while it runs, green once finished and red once failed, read or not. A turn the user stopped is
-// their own decision, and like a conversation that ran nothing it leaves the row settled: a faint
-// ring in the dot's place, so the column under a project's icon is never empty. An unread answer
-// shows in the title's emphasis, not in the dot.
-const tone = computed(() => statusTone(props.conversation.status))
+// The dot's look is `ConversationDot`'s. An unread answer shows in the title's emphasis, not in the dot.
 
 // The device a conversation outside a project runs on, named with its state as a row names an
 // item and its state (the Writing page's "A screen says a thing once").
@@ -97,17 +89,7 @@ const rowClass = computed(() => [
     @click="emit('click', $event)"
     @contextmenu.prevent="emit('contextmenu', $event)"
   >
-    <span class="flex size-3.5 shrink-0 items-center justify-center">
-      <!-- The halo keeps it apart from the failed mark in dark mode. -->
-      <span
-        v-if="conversation.needsYou"
-        class="size-1.5 rounded-full bg-on-attention ring-2 ring-on-attention/35"
-        role="img"
-        aria-label="Needs your decision"
-      />
-      <StatusDot v-else-if="tone" :tone="tone" :class="{ 'sidebar-breath': conversation.status === 'active' }" />
-      <span v-else class="size-1.5 rounded-full border border-fg-faint/60" />
-    </span>
+    <ConversationDot :conversation="conversation" />
     <TitleInput
       v-if="renaming"
       class="flex-1"
@@ -176,21 +158,3 @@ const rowClass = computed(() => [
     </span>
   </div>
 </template>
-
-<style scoped>
-.sidebar-breath {
-  animation: sidebar-breath 2.4s ease-in-out infinite;
-}
-
-@keyframes sidebar-breath {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scale(0.8);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.15);
-  }
-}
-</style>
