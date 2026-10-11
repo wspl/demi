@@ -193,19 +193,11 @@ history     the tabs' and pinned kinds' ids this page selected, newest last
   content is told it is not shown and stops what costs while nobody sees it,
   as the browser's live view does
   ([Live browser view](../browser/live-view.md#ending-a-view)).
-- **Opening what is shown closes the panel.** A control in the transcript
+- **Opening what is already shown keeps it.** A control in the transcript
   that opens something in the panel, such as a changed file's pill or a link
-  to a file, closes the panel when the panel is open and its selected tab
-  already shows exactly that: the Change view at the same request, file and
-  edit, or the File view at the same file. Anywhere else it opens what it
-  names. For example, the user clicks the `login.ts` pill: the Change view
-  shows its first edit; a second click closes the panel. Had the user
-  stepped to Edit 2 of 3 in between, the click would show Edit 1 again
-  instead. Closing only hides the panel, as the panel's own control does:
-  its tabs, their selection and Back and Forward stay, and the next click
-  shows it as it was. The second click of a double-click does not close it.
-  The control shows no pressed state. Claude's artifact cards and Quick Look
-  in Finder close the same way.
+  to a file, opens the panel on it, and when the panel already shows exactly
+  that, leaves it as it is; it never closes the panel. The panel closes by
+  its own control.
 - **Before the first send.** A new conversation has no backend record yet,
   and so no working directory on a Host
   ([Persistence and adapters](#persistence-and-adapters)). Its panel binds no
