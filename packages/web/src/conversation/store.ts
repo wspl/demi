@@ -16,7 +16,7 @@ import {
 } from '@demicodes/web-ui/agent/message-editing'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { dismissToast } from '@demicodes/web-ui/infra/toast'
-import { showArchived } from '@demicodes/web-ui/sidebar/archived-toast'
+import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { forkConversation } from '../api/message-fork'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import {
@@ -120,7 +120,8 @@ export const useConversations = defineStore('conversations', () => {
   const pendingChanges = ref<string[]>([])
   /**
    * The archive or restore of each conversation on its way, which its
-   * opening waits for: the backend refuses an archived conversation's socket.
+   * opening and its socket's connections wait for: the backend refuses an
+   * archived conversation's socket.
    */
   const archiving = new Map<string, Promise<void>>()
   /**
@@ -138,6 +139,12 @@ export const useConversations = defineStore('conversations', () => {
    */
   const listed = computed(() => items.value.filter((item) =>
     !item.archived && (!isEmptyDraft(item) || item.id === product.activeConversationId)))
+  /**
+   * The writes on their way, by the conversation they change, or by
+   * `conversation_order` for a move: each conversation's go one at a time in
+   * order, and a write of several waits for each of them
+   * (`web-application.md` § Responding to the user).
+   */
   const writes = new SerialQueue()
   const restored = new Set<string>()
   /** Each conversation's draft as this page last saved or restored it, in the shape `changedDraft` compares. */
@@ -319,6 +326,51 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
+  /**
+   * Keeps everything the conversation shows as its archive flag changes
+   * (`product.md` § Conversations and projects): archived, it lets its
+   * socket go, which the backend would close; brought back, it connects
+   * again from the blocks it holds once the restore lands, or, opened while
+   * archived, starts its session then. Nothing is read again; a change of
+   * its draft held back while it was archived is saved once the restore
+   * lands.
+   */
+  function followArchive(conversation: Conversation): void {
+    if (!conversation.archived) {
+      void Promise.resolve(archiving.get(conversation.id)).then(() => {
+        if (!conversation.archived) {
+          draftSync.changed(conversation)
+        }
+      })
+    }
+    const entry = cache.get(conversation.id)
+    if (!entry) {
+      return
+    }
+    if (conversation.archived) {
+      entry.runtime?.suspend()
+      return
+    }
+    if (entry.runtime) {
+      void entry.runtime.connect().catch(() => {
+        // A refused connection is the conversation's load state, which the
+        // page shows with Retry; a suspend meanwhile ends it with nothing to say.
+      })
+      return
+    }
+    void entry.opening.then(async () => {
+      if (cache.get(conversation.id) === entry && !entry.runtime && !conversation.archived) {
+        await startSession(conversation, entry, null)
+      }
+    }).catch((error: unknown) => {
+      // A failed opening already says so; a session that did not start says
+      // so as an opening does.
+      if (cache.get(conversation.id) === entry && !entry.controller.signal.aborted) {
+        failOpening(conversation, error)
+      }
+    })
+  }
+
   // Each part the channel or a write's answer changes reaches the list at
   // once, in the same step, so what follows a write sees it.
   watch(
@@ -371,8 +423,7 @@ export const useConversations = defineStore('conversations', () => {
           }
         }
         if (archiveChanged) {
-          cache.delete(current.id)
-          current.load = 'loading'
+          followArchive(current)
         }
         return current
       })
@@ -791,8 +842,11 @@ export const useConversations = defineStore('conversations', () => {
     try {
       await cache.open(conversation.id, (entry) => loadConversation(conversation, entry))
       // Navigation retries a connection whose opening failed, without
-      // refetching REST history; an open one is kept as it is.
-      await cache.get(conversation.id)?.runtime?.connect()
+      // refetching REST history; an open one is kept as it is, and an
+      // archived one has none.
+      if (!conversation.archived) {
+        await cache.get(conversation.id)?.runtime?.connect()
+      }
     } catch {
       // The failure is the conversation's load state: the pane or the
       // transcript's tail notice tells it, with Retry.
@@ -887,37 +941,73 @@ export const useConversations = defineStore('conversations', () => {
       }
       await modelsLoaded
       signal.throwIfAborted()
-      const pick = composerModel(
-        resources.providerInfos,
-        resources.modelsFor(),
-        conversation.model.providerId,
-        conversation.model.modelId,
-      )
-      if (conversation.archived || pick.kind !== 'ready') {
-        discardEarly()
-        return
-      }
-      const runtime = new ConversationRuntime({
-        state: conversation,
-        // The first connection is the one made beside the reads.
-        connect: (attempt) => {
-          const made = early
-          early = null
-          return made ? takeConnection(made, attempt) : connectConversationClient(streamUrl(conversation.id), attempt)
-        },
-        onEvent: (next) => {
-          applyConversationEvent(conversation, next)
-          reconcileSubmission(conversation)
-        },
-      })
-      entry.runtime = runtime
-      await runtime.connect()
+      const made = early
+      early = null
+      await startSession(conversation, entry, made)
     } catch (error) {
       discardEarly()
       if (!signal.aborted) {
-        conversation.load = 'failed'
-        conversation.lastError =
-          error instanceof Error ? error.message : String(error)
+        failOpening(conversation, error)
+      }
+      throw error
+    }
+  }
+
+  /** The conversation did not open: the pane or the transcript's tail says why, with Retry. */
+  function failOpening(conversation: Conversation, error: unknown): void {
+    conversation.load = 'failed'
+    conversation.lastError = error instanceof Error ? error.message : String(error)
+  }
+
+  /**
+   * Starts the session of a conversation whose transcript the page holds,
+   * with a model it can use and unless it is archived, and connects it;
+   * `made` is a connection made beside the opening's reads, which the first
+   * attempt takes.
+   */
+  async function startSession(
+    conversation: Conversation,
+    entry: CachedConversation,
+    made: ReturnType<typeof connectConversationClient> | null,
+  ): Promise<void> {
+    const { signal } = entry.controller
+    const pick = composerModel(
+      resources.providerInfos,
+      resources.modelsFor(),
+      conversation.model.providerId,
+      conversation.model.modelId,
+    )
+    if (conversation.archived || pick.kind !== 'ready') {
+      void made?.then((client) => client.disconnect(), () => {})
+      return
+    }
+    let first = made
+    const runtime = new ConversationRuntime({
+      state: conversation,
+      connect: async (attempt) => {
+        const taken = first
+        first = null
+        if (taken) {
+          return takeConnection(taken, attempt)
+        }
+        // A restore on its way lands first: the backend refuses an archived
+        // conversation's socket.
+        await archiving.get(conversation.id)
+        attempt.throwIfAborted()
+        return connectConversationClient(streamUrl(conversation.id), attempt)
+      },
+      onEvent: (next) => {
+        applyConversationEvent(conversation, next)
+        reconcileSubmission(conversation)
+      },
+    })
+    entry.runtime = runtime
+    try {
+      await runtime.connect()
+    } catch (error) {
+      // Archived meanwhile, the session waits for Restore with all it shows.
+      if (conversation.archived && !signal.aborted) {
+        return
       }
       throw error
     }
@@ -1098,21 +1188,21 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Changes the conversations' `changes`: a draft's at once, and a
-   * conversation's with a record by a write, one at a time after the page's
-   * earlier writes. With `shown`, the change shows at once and the write
-   * lands it (`web-application.md` § Responding to the user); without, it
-   * shows once answered, as a move to another Host does. A refused item is
-   * reported with why, under `failed`'s title for one conversation or for
-   * several, and only its own change leaves. Answers whether every one
-   * changed.
+   * Changes the conversations' `changes`: a draft's at once, and those with
+   * a record by a write, after the earlier writes of each of them. With
+   * `shown`, the change shows at once and the write lands it
+   * (`web-application.md` § Responding to the user); without, it shows once
+   * answered, as a move to another Host does. A refused item is reported
+   * with why, under `failed`'s title for one conversation or for several,
+   * and only its own change leaves. Answers whether every one changed, and
+   * the ones that did.
    */
   async function applyBatch(
     ids: string[],
     changes: Pick<ConversationPatch, 'pinned' | 'archived' | 'target' | 'notifyAgent'>,
     shown: boolean,
     failed: { one: HeadlineText; many: HeadlineText },
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; changed: string[] }> {
     // A draft has no agent to tell: the first send creates what the user sees.
     const { notifyAgent: _told, ...fields } = changes
     for (const conversation of items.value) {
@@ -1127,13 +1217,14 @@ export const useConversations = defineStore('conversations', () => {
             : null
       }
     }
+    const changed = ids.filter((id) => items.value.some((item) => item.id === id && item.persistence !== 'synced'))
     ids = ids.filter(
       (id) =>
         items.value.find((item) => item.id === id)?.persistence === 'synced',
     )
     saveDrafts()
     if (!ids.length) {
-      return true
+      return { success: true, changed }
     }
     // The titles a refusal names, as they are now.
     const titles = new Map(ids.map((id) => [id, items.value.find((item) => item.id === id)?.title ?? id]))
@@ -1151,7 +1242,7 @@ export const useConversations = defineStore('conversations', () => {
       : [])
     const signal = lifetime.signal
     try {
-      return await writes.run(async () => {
+      return await writes.run(ids, async () => {
         signal.throwIfAborted()
         let success = true
         for (let offset = 0; offset < ids.length; offset += 100) {
@@ -1186,6 +1277,9 @@ export const useConversations = defineStore('conversations', () => {
             } else {
               change.land(answer)
             }
+            if (!failed.length) {
+              changed.push(item.id)
+            }
             failures.push(...failed.map((field) => `${titles.get(item.id) ?? item.id}: ${field.message}`))
           }
           if (failures.length) {
@@ -1196,11 +1290,11 @@ export const useConversations = defineStore('conversations', () => {
             })
           }
         }
-        return success
+        return { success, changed }
       })
     } catch (error) {
       report('Could Not Update Conversations', error)
-      return false
+      return { success: false, changed }
     } finally {
       // A change the answer did not name, or one whose write failed, leaves.
       for (const change of shownChanges.values()) {
@@ -1218,23 +1312,26 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * Archives the conversations, which leave the list at once, and says so in
    * a toast whose Undo restores them (`product.md` § Conversations and
-   * projects). Answers whether every one was archived.
+   * projects). Once the backend answered, the toast counts, and its Undo
+   * restores, only those it archived; the refusal's own toast says why of
+   * the others. Answers whether every one was archived.
    */
   async function archive(ids: string[]): Promise<boolean> {
-    const archived = ids.filter((id) => items.value.some((item) => item.id === id && !item.archived))
+    const shown = ids.filter((id) => items.value.some((item) => item.id === id && !item.archived))
     const done = applyBatch(ids, { archived: true }, true, {
       one: 'Could Not Archive the Conversation',
       many: 'Some conversations were not archived.',
     })
-    if (!archived.length) {
-      return done
+    if (!shown.length) {
+      return (await done).success
     }
-    const toast = showArchived(archived.length, () => void restore(archived))
-    const success = await done
-    // An archive the backend refused for every one archived nothing: the
-    // toast that says it did goes, and the refusal's says why.
-    if (!archived.some((id) => items.value.find((item) => item.id === id)?.archived)) {
+    const toast = showArchived(shown.length, () => void restore(shown))
+    const { success, changed } = await done
+    const archived = shown.filter((id) => changed.includes(id))
+    if (!archived.length) {
       dismissToast(toast)
+    } else if (archived.length < shown.length) {
+      updateArchived(toast, archived.length, () => void restore(archived))
     }
     return success
   }
@@ -1267,7 +1364,7 @@ export const useConversations = defineStore('conversations', () => {
     }))]))
     const signal = lifetime.signal
     try {
-      return await writes.run(async () => {
+      return await writes.run(synced, async () => {
         const failures: string[] = []
         for (const [id, removal] of removals) {
           signal.throwIfAborted()
@@ -1307,11 +1404,12 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /** Brings archived conversations back at once; answers whether every one came back. */
-  function restore(ids: string[]): Promise<boolean> {
-    return applyBatch(ids, { archived: false }, true, {
+  async function restore(ids: string[]): Promise<boolean> {
+    const { success } = await applyBatch(ids, { archived: false }, true, {
       one: 'Could Not Restore the Conversation',
       many: 'Some conversations were not restored.',
     })
+    return success
   }
 
   function create(projectId: string | null = null): string {
@@ -1424,7 +1522,7 @@ export const useConversations = defineStore('conversations', () => {
       withConversation(state, id, (record) => ({ ...record, title })))
     const signal = lifetime.signal
     void writes
-      .run(() => {
+      .run(id, () => {
         signal.throwIfAborted()
         return patch(id, { title }, change)
       })
@@ -1460,7 +1558,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Moves the conversation before `beforeId`, or to the end of its part of
-   * the list, at once; the write follows the page's earlier ones.
+   * the list, at once; the write follows the earlier moves.
    */
   function reorder(id: string, beforeId: string | null): Promise<void> {
     const conversation = items.value.find((item) => item.id === id)
@@ -1493,7 +1591,7 @@ export const useConversations = defineStore('conversations', () => {
     })
     const signal = lifetime.signal
     return writes
-      .run(async () => {
+      .run('conversation_order', async () => {
         signal.throwIfAborted()
         change.send()
         await apiRequest('/sidebar/reorder', {
@@ -1513,7 +1611,7 @@ export const useConversations = defineStore('conversations', () => {
       })
   }
 
-  /** Marks what the conversation shows as read, at once; the write follows the page's earlier ones. */
+  /** Marks what the conversation shows as read, at once; the write follows the conversation's earlier ones. */
   function markRead(id: string): Promise<void> {
     const conversation = items.value.find((item) => item.id === id)
     if (
@@ -1532,7 +1630,7 @@ export const useConversations = defineStore('conversations', () => {
       }))
     const signal = lifetime.signal
     return writes
-      .run(async () => {
+      .run(id, async () => {
         signal.throwIfAborted()
         change.send()
         await apiRequest(`/conversations/${encodeURIComponent(id)}/read`, {
@@ -1619,20 +1717,22 @@ export const useConversations = defineStore('conversations', () => {
     const settings = recorded ? null : applyModelChange(shownSettings(conversation), change)
     const signal = lifetime.signal
     try {
-      await writes.run(async () => {
+      const changed = await writes.run(conversation.id, async () => {
         signal.throwIfAborted()
-        const body = settings ? settingsPatch(settings) : change
-        if (!(await patch(conversation.id, body))) {
-          return
-        }
-        signal.throwIfAborted()
-        rememberModel(conversation.model)
-        // A conversation opened without a usable model opens now with this one.
-        const cached = cache.get(conversation.id)
-        if (cached && !cached.runtime) {
-          await reloadSession(conversation.id)
-        }
+        return patch(conversation.id, settings ? settingsPatch(settings) : change)
       })
+      if (!changed) {
+        return
+      }
+      signal.throwIfAborted()
+      rememberModel(conversation.model)
+      // A conversation opened without a usable model opens now with this
+      // one, outside the queue: its opening waits for an archive or a
+      // restore of it that may stand behind this write.
+      const cached = cache.get(conversation.id)
+      if (cached && !cached.runtime) {
+        await reloadSession(conversation.id)
+      }
     } catch (error) {
       report('Could Not Change the Model', error)
     }
@@ -1831,9 +1931,9 @@ export const useConversations = defineStore('conversations', () => {
     markRead,
     reloadList: () => product.reconnect(),
     reloadSession,
-    pin: (ids: string[], pinned: boolean) => applyBatch(ids, { pinned }, true, pinned
+    pin: async (ids: string[], pinned: boolean) => (await applyBatch(ids, { pinned }, true, pinned
       ? { one: 'Could Not Pin the Conversation', many: 'Some conversations were not pinned.' }
-      : { one: 'Could Not Unpin the Conversation', many: 'Some conversations were not unpinned.' }),
+      : { one: 'Could Not Unpin the Conversation', many: 'Some conversations were not unpinned.' })).success,
     archive,
     restore,
     remove,
@@ -1844,10 +1944,10 @@ export const useConversations = defineStore('conversations', () => {
     switchTarget: (id: string, target: ConversationSummary['target'], notifyAgent = false) =>
       changeConversations(
         [id],
-        () => applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, false, {
+        async () => (await applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, false, {
           one: 'Could Not Move the Conversation',
           many: 'Some conversations were not moved.',
-        }),
+        })).success,
         false,
       ),
     pendingChanges,
