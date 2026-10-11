@@ -65,13 +65,15 @@ test('a capsule names its file, shows its picture or opening lines, and its uplo
   if (image.type !== 'image' || record.type !== 'attachment') {
     throw new Error('The fixtures are an image and its attachment record')
   }
-  // A sent image shows as its thumbnail, from the picture the model read.
+  // A sent image shows as its thumbnail, from the picture the model read, and
+  // holds the original file, which a copy of the message carries.
   expect(contentCapsule('0', [image, record])).toEqual({
     id: '0',
     name: 'before.png',
     image: image.source,
     path: record.path,
     snippet: undefined,
+    reference: { type: 'stored', sha256: record.sha256, mediaType: record.mediaType, size: record.sizeBytes },
   })
   // An image the model could not read natively shows its own bytes.
   expect(contentCapsule('3', [{

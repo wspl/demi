@@ -26,8 +26,15 @@ import { printLive } from './live-command'
  */
 export type TurnFlowKind = 'turn' | 'undelivered' | 'offline' | 'resume' | 'retry' | 'connect' | 'stream' | 'work' | 'steer' | 'queue'
 
-/** A sent message as the composer showed it: what the page holds until the server confirms it. */
-export type SentMessage = Pick<PendingSubmissionState, 'text' | 'attachments'>
+/**
+ * A sent message as the composer showed it: what the page holds until the
+ * server confirms it. `ready` is its content once every file of it has
+ * uploaded, for a message sent while one still uploads; it rejects when an
+ * upload fails, which leaves the message undelivered.
+ */
+export type SentMessage = Pick<PendingSubmissionState, 'text' | 'attachments'> & {
+  ready?: Promise<UserContentBlock[]>
+}
 
 /** The state `ChatSession` reads, over the full live conversation state the runtime keeps. */
 /** The gallery's conversation: its whole transcript as `blocks`, which its history holds as one window. */
@@ -634,8 +641,32 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   /** Send a message on the current transcript; its turn runs once the server confirms it. */
   function turn(content: UserContentBlock[], message: SentMessage): void {
     cancel()
-    holdMessage(content, message, null)
-    deliver(token, false)
+    const id = holdMessage(content, message, null)
+    afterUploads(id, message.ready, () => deliver(token, false))
+  }
+
+  /**
+   * Goes on with the message `id` once its files have uploaded, as the
+   * product's delivery waits for them, with the content `ready` answers; an
+   * upload that fails leaves the message undelivered.
+   */
+  function afterUploads(id: string, ready: Promise<UserContentBlock[]> | undefined, go: () => void): void {
+    if (!ready) {
+      go()
+      return
+    }
+    const run = token
+    const current = () => run === token && pendingSubmissions.value.some((pending) => pending.id === id && pending.error === null)
+    ready.then((content) => {
+      if (current()) {
+        contents.set(id, content)
+        go()
+      }
+    }, (error: unknown) => {
+      if (current()) {
+        changeSubmission(id, { error: error instanceof Error ? error.message : String(error) })
+      }
+    })
   }
 
   /**
@@ -645,7 +676,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    */
   function holdMessage(content: UserContentBlock[], message: SentMessage, error: string | null, way: SendWay = 'send'): string {
     const id = nextId('message')
-    pendingSubmissions.value = [...pendingSubmissions.value, { id, way, ...message, error }]
+    pendingSubmissions.value = [...pendingSubmissions.value, { id, way, text: message.text, attachments: message.attachments, error }]
     contents.set(id, content)
     return id
   }
@@ -796,22 +827,23 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
   /**
    * Retry sends the undelivered message again with its id, as a message, as
-   * the product's does; this time it arrives: it starts a turn while nothing
-   * runs, and waits in the queue otherwise.
+   * the product's does, once `ready`, the upload it tries again, has its
+   * files; this time it arrives: it starts a turn while nothing runs, and
+   * waits in the queue otherwise.
    */
-  function retrySubmission(id: string): void {
+  function retrySubmission(id: string, ready?: Promise<UserContentBlock[]>): void {
     const pending = pendingSubmissions.value.find((each) => each.id === id)
     if (!pending?.error) {
       return
     }
     if (state.phase !== 'idle') {
       changeSubmission(id, { error: null, way: 'queue' })
-      deliveries.set(id, window.setTimeout(() => arrive(id), nextDelivery()))
+      afterUploads(id, ready, () => deliveries.set(id, window.setTimeout(() => arrive(id), nextDelivery())))
       return
     }
     cancel()
     changeSubmission(id, { error: null, way: 'send' })
-    deliver(token, false)
+    afterUploads(id, ready, () => deliver(token, false))
   }
 
   /** Resume or retry from the current tail, the way Resume and Retry do in the product. */

@@ -1,4 +1,4 @@
-import type { UploadFile } from '@demicodes/web-ui/agent/message-input/attachments'
+import type { ClaimFile, UploadedFile, UploadFile } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { BlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { ApiError, apiError, apiRequest, apiUrl, invalidResponse, untilReached } from './client'
 import { attachmentAnswerSchema } from './generated/web-api'
@@ -127,11 +127,11 @@ async function fileSha256(file: File): Promise<string> {
  * Asks for an upload of the blob the user holds already, which sends no
  * bytes; null when the user's blobs do not hold it and the bytes must go.
  */
-async function uploadHeld(query: URLSearchParams, file: File, signal: AbortSignal): Promise<unknown> {
+async function uploadHeld(query: URLSearchParams, mediaType: string, signal: AbortSignal): Promise<unknown> {
   try {
     const response = await apiRequest(`/attachments?${query}`, {
       method: 'POST',
-      headers: { 'Content-Type': sentMediaType(file) },
+      headers: { 'Content-Type': mediaType },
       signal,
     })
     return await response.json()
@@ -141,6 +141,32 @@ async function uploadHeld(query: URLSearchParams, file: File, signal: AbortSigna
     }
     throw error
   }
+}
+
+/** The upload an answer names, with what the backend read of the file. */
+function uploadedFile(answer: unknown): UploadedFile {
+  const parsed = attachmentAnswerSchema.safeParse(answer)
+  if (!parsed.success) {
+    throw invalidResponse(parsed.error)
+  }
+  const { attachment } = parsed.data
+  return {
+    id: attachment.id,
+    mediaType: attachment.mediaType,
+    sha256: attachment.sha256,
+    ...(attachment.snippet ? { snippet: attachment.snippet } : {}),
+  }
+}
+
+/**
+ * Makes an upload of a file a pasted message names by its blob, which sends
+ * no bytes (`web-api.md` § Uploads and media); null when the user's blobs do
+ * not hold it, as one of another account or one since deleted.
+ */
+export const claimStoredFile: ClaimFile = async (file, signal) => {
+  const query = new URLSearchParams({ name: file.name, sha256: file.sha256 })
+  const held = await uploadHeld(query, file.mediaType, signal)
+  return held === null ? null : uploadedFile(held)
 }
 
 /**
@@ -155,20 +181,9 @@ async function uploadHeld(query: URLSearchParams, file: File, signal: AbortSigna
 export const uploadAttachment: UploadFile = async (file, options) => {
   const sha256 = await fileSha256(file)
   const query = new URLSearchParams({ name: file.name, sha256 })
-  const held = await uploadHeld(query, file, options.signal)
-  const answer = held ?? await uploadBytes(`/attachments?${query}`, file, {
+  const held = await uploadHeld(query, sentMediaType(file), options.signal)
+  return uploadedFile(held ?? await uploadBytes(`/attachments?${query}`, file, {
     signal: options.signal,
     progress: (sent) => options.progress(file.size ? sent / file.size : 1),
-  })
-  const parsed = attachmentAnswerSchema.safeParse(answer)
-  if (!parsed.success) {
-    throw invalidResponse(parsed.error)
-  }
-  const { attachment } = parsed.data
-  return {
-    id: attachment.id,
-    mediaType: attachment.mediaType,
-    sha256: attachment.sha256,
-    ...(attachment.snippet ? { snippet: attachment.snippet } : {}),
-  }
+  }))
 }

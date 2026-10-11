@@ -45,6 +45,7 @@ function fixture(upload: UploadFile = uploads().upload) {
     state: () => state.value,
     update: (value) => { state.value = value },
     upload,
+    claim: async () => null,
   }))!
   return { state, editor, close: () => scope.stop() }
 }

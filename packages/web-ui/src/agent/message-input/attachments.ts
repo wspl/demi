@@ -1,7 +1,11 @@
 import { baseName } from '@demicodes/utils'
 
-/** A failed upload keeps its capsule, which offers Retry; the toast says why it failed. */
-export type AttachmentPhase = 'uploading' | 'ready' | 'failed'
+/**
+ * A failed upload keeps its capsule, which offers Retry; the toast says why it
+ * failed. `attaching` is a file a pasted message names, which the backend
+ * makes an upload of from the user's own stored file, sending no bytes.
+ */
+export type AttachmentPhase = 'attaching' | 'uploading' | 'ready' | 'failed'
 
 /**
  * A local file on its way to the message. It is uploaded as it is added, and
@@ -71,6 +75,16 @@ export type UploadFile = (
   options: { signal: AbortSignal; progress: (fraction: number) => void },
 ) => Promise<UploadedFile>
 
+/**
+ * The product's upload of a file the user's blobs hold already, such as one a
+ * pasted message names: no bytes go, and the answer is an upload as any
+ * file's is; null when the user's blobs do not hold it.
+ */
+export type ClaimFile = (
+  file: { name: string; sha256: string; mediaType: string },
+  signal: AbortSignal,
+) => Promise<UploadedFile | null>
+
 export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
 
 /**
@@ -115,6 +129,11 @@ export function clampUnit(value: number): number {
     return 1
   }
   return value
+}
+
+/** How a transfer's update shows on a file: the progress of a file without bytes to send is its attaching. */
+export function attachingUpdate(update: AttachmentUploadUpdate, hasBytes: boolean): AttachmentUploadUpdate {
+  return update.phase === 'uploading' && !hasBytes ? { phase: 'attaching' } : update
 }
 
 export function attachmentProgress(
@@ -201,15 +220,24 @@ export function attachmentsReady(items: readonly ComposerAttachment[]): boolean 
   return items.every((item) => item.kind === 'reference' || item.phase === 'ready')
 }
 
-export function encodeRemoteReference(host: string, path: string): string {
+/** A file on a paired device as the backend names it in a message, for a specimen or a test. */
+export function encodeRemoteReference(host: string, path: string, deviceId?: string): string {
   const url = new URL('file:///')
   url.pathname = path.startsWith('/') ? path : `/${path}`
   url.searchParams.set('host', host)
+  if (deviceId) {
+    url.searchParams.set('deviceId', deviceId)
+  }
   return url.href
 }
 
+/**
+ * A file on a paired device as a message names it: a `file:` URL of its path
+ * with the device's name and, as the backend writes it, the device's id.
+ */
 export function decodeRemoteReference(reference: string): {
   host?: string
+  deviceId?: string
   path: string
   name: string
 } {
@@ -218,8 +246,10 @@ export function decodeRemoteReference(reference: string): {
       const url = new URL(reference)
       const path = decodeURIComponent(url.pathname)
       const host = url.searchParams.get('host') ?? undefined
+      const deviceId = url.searchParams.get('deviceId') ?? undefined
       return {
         host,
+        deviceId,
         path,
         name: baseName(path),
       }
@@ -240,7 +270,7 @@ export function attachmentSendBlockReason(
   if (phases.includes('failed')) {
     return 'Retry or remove the attachments that did not upload'
   }
-  if (phases.includes('uploading')) {
+  if (phases.includes('uploading') || phases.includes('attaching')) {
     return 'Wait for attachments to finish uploading'
   }
 }

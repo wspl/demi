@@ -32,12 +32,25 @@ export const editUploadSchema = z.object({
 export type EditUpload = z.infer<typeof editUploadSchema>
 
 /**
+ * A file on a paired device the edit added, such as one a pasted message
+ * held: the frame names it by its device and path, and the capsule shows the
+ * device's name.
+ */
+export const editRemoteFileSchema = z.object({
+  type: z.literal('remote_file'),
+  deviceId: z.string().min(1),
+  path: z.string().min(1),
+  host: z.string(),
+})
+
+/**
  * One part of an edit: what the edited message holds, as the transcript shows
  * it, or a file the edit added.
  */
 export const messageEditContentSchema = z.discriminatedUnion('type', [
   ...userContentBlockSchema.options,
   editUploadSchema,
+  editRemoteFileSchema,
 ])
 export type MessageEditContent = z.infer<typeof messageEditContentSchema>
 
@@ -148,6 +161,8 @@ function sentEditContent(part: MessageEditContent): ClientContent {
       return { type: 'attachment', path: part.path }
     case 'upload':
       return { type: 'upload', ref: part.ref, fileName: part.fileName }
+    case 'remote_file':
+      return { type: 'remote_file', deviceId: part.deviceId, path: part.path }
     case 'image':
     case 'video':
       if (part.source.type !== 'ref') {

@@ -853,6 +853,7 @@ const formattedBubble: UserContentBlock[] = [
 const composerDrafts = {
   ready: `The spec is ${ATTACHMENT_MARK}, the screenshot from CI is ${ATTACHMENT_MARK} and the manifest on my laptop is ${ATTACHMENT_MARK}.`,
   uploading: `Wait for ${ATTACHMENT_MARK} and ${ATTACHMENT_MARK} to arrive.`,
+  attaching: `Compare ${ATTACHMENT_MARK} with ${ATTACHMENT_MARK}, pasted from another conversation.`,
   failed: `The capture ${ATTACHMENT_MARK} did not upload; the log ${ATTACHMENT_MARK} did.`,
   pasted: `Summarize ${ATTACHMENT_MARK}, then check it against ${ATTACHMENT_MARK}.`,
   long: 'The login test in packages/web/src/auth.test.ts is failing after the session cookie rename, and the fixture it reads has the old name.',
@@ -1210,6 +1211,19 @@ onBeforeUnmount(() => {
                   phase: 'uploading',
                   progress: 0.68,
                 },
+              ]"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="attachments · a pasted message attaching"
+            wide
+          >
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              :draft="composerDrafts.attaching"
+              :attachments="[
+                { id: 'before', name: 'before.png', src: demoImageUrl, phase: 'attaching' },
+                { id: 'after', name: 'after.png', src: demoImageUrl, phase: 'attaching' },
               ]"
             />
           </GallerySpecimen>

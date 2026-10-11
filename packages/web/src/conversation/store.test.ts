@@ -58,9 +58,15 @@ function stubCatalog() {
   }] }
 }
 
-/** The upload transport is XHR; this one answers every POST with a fresh attachment id. */
+/**
+ * The upload transport is XHR; this one answers every POST with a fresh
+ * attachment id, once `gate` opens when a test holds the uploads, and with the
+ * backend's failure for the next `failures` uploads.
+ */
 class FakeXhr {
   static nextId = 1
+  static gate: Promise<void> | null = null
+  static failures = 0
   upload = { onprogress: null as ((event: { lengthComputable: boolean; loaded: number; total: number }) => void) | null }
   status = 201
   responseText = ''
@@ -74,11 +80,20 @@ class FakeXhr {
   setRequestHeader(): void {}
   abort(): void {}
   send(): void {
-    this.responseText = JSON.stringify({ attachment: {
-      id: `att-${FakeXhr.nextId++}`, mediaType: 'text/plain', sizeBytes: 5, sha256: SHA,
-      createdAt: '2026-09-09T00:00:00.000Z', snippet: 'Local notes',
-    } })
-    queueMicrotask(() => this.onload?.())
+    void (FakeXhr.gate ?? Promise.resolve()).then(() => {
+      if (FakeXhr.failures > 0) {
+        FakeXhr.failures -= 1
+        this.status = 500
+        this.responseText = JSON.stringify({ code: 'internal_error', message: 'The blob store failed.' })
+      } else {
+        this.status = 201
+        this.responseText = JSON.stringify({ attachment: {
+          id: `att-${FakeXhr.nextId++}`, mediaType: 'text/plain', sizeBytes: 5, sha256: SHA,
+          createdAt: '2026-09-09T00:00:00.000Z', snippet: 'Local notes',
+        } })
+      }
+      this.onload?.()
+    })
   }
 }
 globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest
@@ -140,6 +155,8 @@ beforeEach(async () => {
   records = [record(FIRST, 'first'), record(SECOND, 'second')]
   savedPreferences = { appearance: {}, shortcuts: {} }
   serverDrafts = new Map()
+  FakeXhr.gate = null
+  FakeXhr.failures = 0
   rejectCreate = false
   rejectFork = false
   requests = []
@@ -1078,6 +1095,169 @@ test('a message sends its text and files in the order the composer shows them', 
     submit.mockRestore()
     connect.mockRestore()
     globalThis.fetch = originalFetch
+  }
+})
+
+/**
+ * Runs `check` on the first conversation with its session opened over stubs,
+ * the content its messages deliver collected in `sent`.
+ */
+async function withSession(check: (current: ReturnType<typeof useConversations>['items'][number], sent: ClientContent[][]) => Promise<void>): Promise<void> {
+  const store = useConversations()
+  const current = store.items[0]!
+  useProduct().snapshot!.providers.push(stubProvider)
+  const restore = answerOpening(current.id)
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const sent: ClientContent[][] = []
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(async (content) => {
+    sent.push(content)
+  })
+  try {
+    await useProduct().loadModels(true)
+    await check(current, sent)
+  } finally {
+    submit.mockRestore()
+    connect.mockRestore()
+    restore()
+  }
+}
+
+/** Puts a picture into the conversation's message after `text`, as the composer does with a pasted one. */
+function pastePicture(current: ReturnType<typeof useConversations>['items'][number], text: string) {
+  const [file] = useConversations().addFiles(current, [new File(['shot'], 'shot.png', { type: 'image/png' })])
+  useConversations().arrangeFiles(current, [file!.id])
+  current.draft = `${text}${ATTACHMENT_MARK}`
+  return file!
+}
+
+// A message whose file still uploads is sent like any other, and goes once
+// the upload is done (`product.md` § Writing a message).
+test('a message sent while its file uploads leaves the composer at once and is delivered with the file once the upload finishes', async () => {
+  await withSession(async (current, sent) => {
+    const gate = deferred()
+    FakeXhr.gate = gate.promise
+    const file = pastePicture(current, 'What is wrong here? ')
+    const sending = useConversations().send(current)
+    expect(current.draft).toBe('')
+    expect(current.pendingSends.map((pending) => toRaw(pending))).toMatchObject([{ fileIds: [file.id], error: null }])
+    expect(useConversations().waitingForUploads).toBe(true)
+    // The message waits for its file: nothing goes while the upload runs.
+    await waitFor(() => requests.some((request) => request.path.startsWith('/api/attachments?')))
+    expect(sent).toEqual([])
+    gate.resolve()
+    await sending
+    expect(sent).toEqual([[
+      { type: 'text', text: 'What is wrong here? ' },
+      { type: 'upload', ref: expect.stringMatching(/^att-/), fileName: 'shot.png' },
+    ]])
+    expect(current.pendingSends).toEqual([])
+    expect(useConversations().waitingForUploads).toBe(false)
+  })
+})
+
+test('a message whose upload fails is not delivered and keeps its file, and Retry uploads it again and delivers it', async () => {
+  await withSession(async (current, sent) => {
+    const gate = deferred()
+    FakeXhr.gate = gate.promise
+    FakeXhr.failures = 1
+    const file = pastePicture(current, 'What is wrong here? ')
+    const sending = useConversations().send(current)
+    gate.resolve()
+    await sending
+    expect(sent).toEqual([])
+    expect(current.pendingSends[0]?.error).toMatch(/^shot\.png did not upload\./)
+    expect(current.files.map((each) => each.id)).toEqual([file.id])
+    // Retry: the upload goes again, then the message.
+    await useConversations().retrySend(current, current.pendingSends[0]!.id)
+    expect(sent).toEqual([[
+      { type: 'text', text: 'What is wrong here? ' },
+      { type: 'upload', ref: expect.stringMatching(/^att-/), fileName: 'shot.png' },
+    ]])
+    expect(current.pendingSends).toEqual([])
+  })
+})
+
+test('a message never goes without a file its text holds a place for', async () => {
+  await withSession(async (current, sent) => {
+    // The text holds a capsule's mark, but the message names no file for it.
+    current.draft = `Compare ${ATTACHMENT_MARK} with the old one`
+    await useConversations().send(current)
+    expect(sent).toEqual([])
+    expect(current.pendingSends[0]?.error).toMatch(/file of this message/)
+    expect(current.pendingSends[0]?.text).toBe(`Compare ${ATTACHMENT_MARK} with the old one`)
+  })
+})
+
+/** Answers claims of stored files, once `gate` opens, with an upload of the blob `SHA` names; any other the user's blobs do not hold. */
+function answerClaims(gate: Promise<void>): () => void {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/attachments?')) {
+      requests.push({ path, body: null })
+      await gate
+      if (new URLSearchParams(path.split('?')[1]).get('sha256') === SHA) {
+        return Response.json({ attachment: {
+          id: 'att-held', mediaType: 'image/png', sizeBytes: 4, sha256: SHA, createdAt: '2026-09-09T00:00:00.000Z',
+        } }, { status: 201 })
+      }
+    }
+    return originalFetch(input, init)
+  }) as typeof fetch
+  return () => {
+    globalThis.fetch = originalFetch
+  }
+}
+
+// A pasted message's stored file is a capsule at once, attaching beside it
+// as an upload does; a message sent meanwhile waits for it
+// (`product.md` § Writing a message).
+test('a pasted message\'s stored file is the message\'s at once, and a send waits for its attaching, which sends no bytes', async () => {
+  await withSession(async (current, sent) => {
+    const gate = deferred()
+    const restore = answerClaims(gate.promise)
+    const sendBytes = spyOn(FakeXhr.prototype, 'send')
+    try {
+      const store = useConversations()
+      const { item, kept } = store.claimFile(current, { type: 'stored', name: 'before.png', sha256: SHA, mediaType: 'image/png' }, null)
+      // Before the backend answers, the composer carries it, attaching.
+      expect(item).toMatchObject({ name: 'before.png', phase: 'attaching', upload: null })
+      store.arrangeFiles(current, [item.id])
+      current.draft = `Compare ${ATTACHMENT_MARK}`
+      const sending = store.send(current)
+      expect(current.draft).toBe('')
+      expect(sent).toEqual([])
+      gate.resolve()
+      await sending
+      expect(await kept).toBe(true)
+      expect(sent).toEqual([[
+        { type: 'text', text: 'Compare ' },
+        { type: 'upload', ref: 'att-held', fileName: 'before.png' },
+      ]])
+      expect(sendBytes).not.toHaveBeenCalled()
+    } finally {
+      sendBytes.mockRestore()
+      restore()
+    }
+  })
+})
+
+test('a pasted file the user\'s blobs do not hold uploads the copy\'s picture in its place, or else is not kept', async () => {
+  const gate = deferred()
+  gate.resolve()
+  const restore = answerClaims(gate.promise)
+  try {
+    const store = useConversations()
+    const current = store.items[0]!
+    const gone = { type: 'stored' as const, name: 'gone.png', sha256: 'c'.repeat(64), mediaType: 'image/png' }
+    const withPicture = store.claimFile(current, gone, new File(['png'], 'gone.png', { type: 'image/png' }))
+    expect(await withPicture.kept).toBe(true)
+    expect(withPicture.item).toMatchObject({ phase: 'ready', upload: { id: expect.stringMatching(/^att-/) } })
+    const without = store.claimFile(current, { ...gone, name: 'other.png' }, null)
+    expect(await without.kept).toBe(false)
+    expect(without.item).toMatchObject({ phase: 'failed', upload: null })
+  } finally {
+    restore()
   }
 })
 
@@ -2195,6 +2375,60 @@ test('a send empties the draft everywhere once the backend accepts it, and a cha
     submit.mockRestore()
     connect.mockRestore()
     globalThis.fetch = originalFetch
+    signOut()
+  }
+})
+
+// A pasted file whose attaching the page did not see end is saved with the
+// draft as its stored file, and attaches again when the draft is restored,
+// or falls back as a paste does (`product.md` § Writing a message).
+test('a draft saved while its pasted files attach restores them attaching, and their claims finish or fall back', async () => {
+  let signOut = signIn()
+  const saved = new Map<string, draftStorage.SavedDraft>()
+  const writes = spyOn(draftStorage, 'writeDraft').mockImplementation(async (_user, id, draft) => {
+    saved.set(id, structuredClone(draft))
+  })
+  // The first page's claims never answer: it closes while they are under way.
+  let restoreFetch = answerClaims(new Promise(() => {}))
+  try {
+    serverDrafts.set(FIRST, { revision: 1, text: '', files: [], replaced: null })
+    records[0]!.draftRevision = 1
+    let store = useConversations()
+    let current = store.items.find((item) => item.id === FIRST)!
+    await store.activate(FIRST)
+    const held = store.claimFile(current, { type: 'stored', name: 'before.png', sha256: SHA, mediaType: 'image/png' }, null)
+    const gone = store.claimFile(current, { type: 'stored', name: 'gone.png', sha256: 'c'.repeat(64), mediaType: 'image/png' }, null)
+    store.arrangeFiles(current, [held.item.id, gone.item.id])
+    current.draft = `Compare ${ATTACHMENT_MARK} with ${ATTACHMENT_MARK}`
+    store.saveDrafts()
+    expect(saved.get(FIRST)?.files).toMatchObject([
+      { name: 'before.png', upload: null, claim: { file: { sha256: SHA }, picture: null } },
+      { name: 'gone.png', upload: null, claim: { file: { sha256: 'c'.repeat(64) } } },
+    ])
+    signOut()
+    store.stopAll()
+    useProduct().stop()
+    disposePinia(pinia)
+    restoreFetch()
+
+    // The next page restores the draft; the backend answers its claims now.
+    restoreFetch = answerClaims(Promise.resolve())
+    pinia = createPinia()
+    setActivePinia(pinia)
+    signOut = signIn(saved.get(FIRST)!)
+    store = useConversations()
+    await connect()
+    current = store.items.find((item) => item.id === FIRST)!
+    await store.activate(FIRST)
+    const restored = current.files.find((file) => file.name === 'before.png')
+    await until(() => restored?.kind === 'file' && restored.phase === 'ready', 'the restored claim finishes')
+    expect(restored).toMatchObject({ upload: { id: 'att-held', sha256: SHA } })
+    // The file the user's blobs do not hold, without a picture, is its name in the text.
+    await until(() => current.draft === `Compare ${ATTACHMENT_MARK} with gone.png`, `the draft is ${current.draft}`)
+    expect(current.attachmentIds).toEqual([restored!.id])
+  } finally {
+    restoreFetch()
+    writes.mockRestore()
     signOut()
   }
 })
