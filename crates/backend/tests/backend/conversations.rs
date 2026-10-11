@@ -48,7 +48,7 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::{self, Message};
 
-use crate::support::{Harness, MASTER_EMAIL, PATIENCE, Paired, Session, TestBackend};
+use crate::support::{Harness, MASTER_EMAIL, PATIENCE, Paired, Session, TestBackend, eventually};
 
 /// The conversation ids the tests create.
 pub(crate) const FIRST: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b";
@@ -1519,6 +1519,94 @@ async fn the_conversation_socket_opens_only_from_a_page_of_the_product() {
     }
     // The product's own page opens it.
     Socket::connect(&backend, &master, FIRST).await;
+    backend.close().await;
+}
+
+/// The backend logs each conversation socket as it opens, with where it
+/// came from as a proxy in front of it passes that, and as it ends, with
+/// why, under one id (`web-application.md` § Liveness and reconnection):
+/// here one the page closed, and one whose connection broke without a close.
+#[tokio::test]
+async fn a_conversation_sockets_open_and_end_are_logged_with_why_it_ended() {
+    let logs = tempfile::tempdir().unwrap();
+    let path = logs.path().join("backend.log");
+    let file = Arc::new(std::fs::File::create(&path).unwrap());
+    // The backend's log as `main` writes it; here it serves this test's
+    // thread and the shard threads its backend starts.
+    let _log =
+        tracing::subscriber::set_default(tracing_subscriber::fmt().with_writer(file).finish());
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    create(&backend, &master, FIRST).await;
+    let connect = || async {
+        let url = backend.ws_url(&format!("/api/conversations/{FIRST}/stream"));
+        let mut request = url.into_client_request().unwrap();
+        let headers = request.headers_mut();
+        headers.insert("cookie", master.cookie.parse().unwrap());
+        headers.insert("origin", backend.url.parse().unwrap());
+        headers.insert("cf-ray", "8c1f2a3b4d5e6f70-AMS".parse().unwrap());
+        headers.insert("cf-connecting-ip", "203.0.113.7".parse().unwrap());
+        headers.insert("user-agent", "Mozilla/5.0 (a test page)".parse().unwrap());
+        tokio_tungstenite::connect_async(request).await.unwrap().0
+    };
+    let log = || std::fs::read_to_string(&path).unwrap();
+    // The ids of the sockets opened so far, in the order they opened.
+    let opened = || {
+        log()
+            .lines()
+            .filter(|line| line.contains("a page socket opened"))
+            .map(|line| {
+                for wanted in [
+                    "kind=\"conversation\"",
+                    &format!("conversation={FIRST}"),
+                    "ray=\"8c1f2a3b4d5e6f70-AMS\"",
+                    "client=203.0.113.7",
+                    "user_agent=\"Mozilla/5.0 (a test page)\"",
+                ] {
+                    assert!(line.contains(wanted), "{wanted} in {line}");
+                }
+                let id = line.split("socket=").nth(1).unwrap();
+                id.split(' ').next().unwrap().to_owned()
+            })
+            .collect::<Vec<_>>()
+    };
+    let ended = |id: &str| {
+        log()
+            .lines()
+            .find(|line| {
+                line.contains("a page socket ended") && line.contains(&format!("socket={id} "))
+            })
+            .map(str::to_owned)
+    };
+
+    let mut left = connect().await;
+    let frame = tungstenite::protocol::CloseFrame {
+        code: CloseCode::Away,
+        reason: "page_left".into(),
+    };
+    left.close(Some(frame)).await.unwrap();
+    let broken = connect().await;
+    // The connection goes without a close frame, as a laptop's network does.
+    drop(broken);
+    eventually("both sockets ended", || async {
+        opened().iter().all(|id| ended(id).is_some()) && opened().len() == 2
+    })
+    .await;
+    let ids = opened();
+    let left = ended(&ids[0]).unwrap();
+    for wanted in [
+        "INFO",
+        "reason=\"page closed\"",
+        "close_code=1001",
+        "close_reason=\"page_left\"",
+    ] {
+        assert!(left.contains(wanted), "{wanted} in {left}");
+    }
+    let broken = ended(&ids[1]).unwrap();
+    for wanted in ["INFO", "reason=\"no close frame\""] {
+        assert!(broken.contains(wanted), "{wanted} in {broken}");
+    }
+    assert!(!broken.contains("close_code"), "{broken}");
     backend.close().await;
 }
 

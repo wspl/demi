@@ -3,8 +3,10 @@
 //! messages to the shard, which follows the Host's watches.
 
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
-use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
-use demi_backend_user_shard::shard::page_socket::PageSocket;
+use axum::extract::ws::{CloseFrame, Message, WebSocketUpgrade};
+use demi_backend_user_shard::shard::page_socket::{
+    PageEnd, PageSocket, PageSocketKind, PageSocketOrigin, PageStream, open_page_socket,
+};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
@@ -12,7 +14,6 @@ use demi_backend_host_access::file_watch::{FileWatchChannel, OpenedWatch};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{FileWatchMessage, FileWatchRequest, FileWatchState};
 use futures_util::StreamExt as _;
-use futures_util::stream::SplitStream;
 use garde::Validate as _;
 
 use super::AppState;
@@ -20,6 +21,7 @@ use super::body::page_socket;
 use super::conversations::owned;
 use super::error::ApiError;
 use super::gate::AuthUser;
+use super::page_client::PageClient;
 
 /// `WS /conversations/:id/fs/watch`: a conversation that is not the user's,
 /// or is archived or changing, answers before the upgrade; a Host out of
@@ -28,6 +30,7 @@ pub(super) async fn open(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    client: PageClient,
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Result<Response, ApiError> {
     let record = owned(&state.services, &user.id, &id).await?;
@@ -38,6 +41,10 @@ pub(super) async fn open(
             "The file watch is a WebSocket",
         )
     })?;
+    let origin = PageSocketOrigin {
+        conversation: Some(record.id.clone()),
+        ..client.origin(PageSocketKind::FileWatch, user.id.clone())
+    };
     let opened = state
         .shards
         .of(&user.id)
@@ -52,11 +59,10 @@ pub(super) async fn open(
     // An upgrade that never completes drops the channel, which ends the
     // watch.
     Ok(page_socket(upgrade).on_upgrade(move |socket| async move {
-        let (sink, from_page) = socket.split();
-        let to_page = PageSocket::new(sink, tuning);
+        let (to_page, from_page) = open_page_socket(socket, tuning, origin);
         match opened {
             OpenedWatch::Watching(channel) => relay(to_page, from_page, channel).await,
-            OpenedWatch::Offline => offline(to_page).await,
+            OpenedWatch::Offline => offline(to_page, from_page).await,
         }
     }))
 }
@@ -75,31 +81,41 @@ enum End {
 }
 
 impl End {
-    fn close(self) -> Option<(u16, &'static str)> {
+    /// How the socket ends: with the close frame the page hears, or as the
+    /// page left it.
+    fn page_end(self) -> PageEnd {
+        let frame = |code, reason: &'static str| {
+            PageEnd::Close(CloseFrame {
+                code,
+                reason: reason.into(),
+            })
+        };
         match self {
-            Self::HostUnreachable => Some((1011, "host_unreachable")),
-            Self::Refused => Some((1003, "invalid_message")),
-            Self::Changed => Some((4000, "conversation_changed")),
-            Self::PageClosed => None,
+            Self::HostUnreachable => frame(1011, "host_unreachable"),
+            Self::Refused => frame(1003, "invalid_message"),
+            Self::Changed => frame(4000, "conversation_changed"),
+            Self::PageClosed => PageEnd::Gone,
         }
     }
 }
 
 /// Tells the page that the Host is out of reach, and closes.
-async fn offline(mut page: PageSocket) {
+async fn offline(mut page: PageSocket, page_in: PageStream) {
     let message = FileWatchMessage::State {
         state: FileWatchState::Offline,
         reason: None,
     };
-    if page.send(text(&message)).await.is_ok() {
-        page.close(close_frame(End::HostUnreachable)).await;
-    }
+    let end = match page.send(text(&message)).await {
+        Ok(()) => End::HostUnreachable,
+        Err(_) => End::PageClosed,
+    };
+    page.end(page_in, end.page_end()).await;
 }
 
 /// Relays an open watch until either side ends it or a transition does,
 /// with a `heartbeat` after 30 seconds without another message; dropping
 /// the lease then ends it in the shard.
-async fn relay(mut page: PageSocket, mut page_in: SplitStream<WebSocket>, channel: FileWatchChannel) {
+async fn relay(mut page: PageSocket, mut page_in: PageStream, channel: FileWatchChannel) {
     let FileWatchChannel {
         mut to_page,
         from_page,
@@ -144,9 +160,7 @@ async fn relay(mut page: PageSocket, mut page_in: SplitStream<WebSocket>, channe
             end = forward => end,
         }
     };
-    if end.close().is_some() {
-        page.close(close_frame(end)).await;
-    }
+    page.end(page_in, end.page_end()).await;
     drop(lease);
 }
 
@@ -160,12 +174,4 @@ fn paths_of(message: &str) -> Option<Vec<String>> {
 
 fn text(message: &FileWatchMessage) -> String {
     serde_json::to_string(message).expect("a watch message serializes")
-}
-
-fn close_frame(end: End) -> CloseFrame {
-    let (code, reason) = end.close().expect("an end the page hears");
-    CloseFrame {
-        code,
-        reason: reason.into(),
-    }
 }

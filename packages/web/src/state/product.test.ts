@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, jest, spyOn, test } from 'bun:test'
 import { waitFor } from '@demicodes/utils'
-import { pageReturned, waitToReconnect } from '@demicodes/web-ui/transport/liveness'
+import { browserCameOnline, browserWentOffline, pageReturned, waitToReconnect } from '@demicodes/web-ui/transport/liveness'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { onSessionExpired } from '../api/client'
 import { conversationSummary as summary, productState } from '../__tests__/product-state'
@@ -381,6 +381,8 @@ test('a channel that brings nothing for 75 seconds is taken as broken and replac
     jest.advanceTimersByTime(74_999)
     expect(broken.closed).toBe(false)
     jest.advanceTimersByTime(1)
+    // The judgement waits for the messages already queued.
+    jest.advanceTimersByTime(0)
     expect(broken.closed).toBe(true)
     jest.advanceTimersByTime(1_000)
     expect(channels.last()).not.toBe(broken)
@@ -440,11 +442,14 @@ test('a page that returns connects its closed channel at once instead of waiting
     const count = channels.opened.length
     channels.last().end(1006)
     pageReturned()
+    jest.advanceTimersByTime(0)
     expect(channels.opened.length).toBe(count + 1)
     // A channel that connects, or one heard from lately, stays as it is.
     pageReturned()
+    jest.advanceTimersByTime(0)
     channels.last().connect(productState())
     pageReturned()
+    jest.advanceTimersByTime(0)
     expect(channels.opened.length).toBe(count + 1)
   } finally {
     random.mockRestore()
@@ -459,17 +464,79 @@ test('a page back from sleep replaces a channel silent for 75 seconds at once, a
   // no close reaches the page.
   jest.setSystemTime(Date.now() + 75_000)
   pageReturned()
+  jest.advanceTimersByTime(0)
   expect(slept.closed).toBe(true)
   const next = channels.last()
   expect(next).not.toBe(slept)
   next.connect(productState())
-  jest.setSystemTime(Date.now() + 74_000)
+  const heard = Date.now()
+  jest.setSystemTime(heard + 74_000)
   pageReturned()
+  jest.advanceTimersByTime(0)
   expect(next.closed).toBe(false)
-  jest.advanceTimersByTime(999)
+  // Its 75 seconds since the snapshot are up a moment later by the clock.
+  jest.advanceTimersByTime(heard + 75_000 - Date.now() - 1)
   expect(next.closed).toBe(false)
   jest.advanceTimersByTime(1)
+  // The judgement waits for the messages already queued.
+  jest.advanceTimersByTime(0)
   expect(next.closed).toBe(true)
+})
+
+// `web-application.md` § Liveness and reconnection: the browser's word that
+// it went offline counts once it has held for a second, as a network that
+// macOS re-evaluates reports offline for a moment; one that holds shows the
+// banner and closes no socket, which may still work through a VPN's tunnel,
+// and coming back online checks each socket as at a return. Cost: fake
+// timers, a few milliseconds.
+test('a moment offline under a second shows no banner; one that holds shows it and keeps the channel, and back online the return keeps a live channel', () => {
+  jest.useFakeTimers()
+  try {
+    const product = started()
+    const channel = channels.last()
+    browserWentOffline()
+    jest.advanceTimersByTime(500)
+    browserCameOnline()
+    jest.advanceTimersByTime(5_000)
+    expect(product.connection).toBeNull()
+
+    browserWentOffline()
+    jest.advanceTimersByTime(999)
+    expect(product.connection).toBeNull()
+    jest.advanceTimersByTime(1)
+    expect(product.connection).toBe('offline')
+    expect(channel.closed).toBe(false)
+    // The channel goes on working through the tunnel while the browser says offline.
+    channel.send({ type: 'heartbeat' })
+    jest.advanceTimersByTime(30_000)
+    browserCameOnline()
+    jest.advanceTimersByTime(0)
+    expect(product.connection).toBeNull()
+    expect(channel.closed).toBe(false)
+    expect(channels.last()).toBe(channel)
+  } finally {
+    // The page is online again for the tests that follow.
+    browserCameOnline()
+  }
+})
+
+test('back online after an offline that held, the return replaces a channel silent past the limit by the clock', () => {
+  jest.useFakeTimers()
+  try {
+    started()
+    const silent = channels.last()
+    browserWentOffline()
+    jest.advanceTimersByTime(1_000)
+    // The laptop slept while offline: the clock went on, the watch's timer did not.
+    jest.setSystemTime(Date.now() + 80_000)
+    expect(silent.closed).toBe(false)
+    browserCameOnline()
+    jest.advanceTimersByTime(0)
+    expect(silent.closed).toBe(true)
+    expect(channels.last()).not.toBe(silent)
+  } finally {
+    browserCameOnline()
+  }
 })
 
 test('vendor readers share one request and reopening uses cached data', async () => {

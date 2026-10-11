@@ -416,6 +416,8 @@ test('a view whose stream brings nothing for 75 seconds is broken and opens agai
     jest.advanceTimersByTime(74_999)
     expect(ended).toEqual([])
     jest.advanceTimersByTime(1)
+    // The judgement waits for the messages already queued.
+    jest.advanceTimersByTime(0)
     expect(ended).toEqual([SILENT_STREAM])
     expect(view.live.state).toMatchObject({ connection: 'opening', ended: SILENT_STREAM })
     jest.advanceTimersByTime(1_000)
@@ -425,6 +427,7 @@ test('a view whose stream brings nothing for 75 seconds is broken and opens agai
     // on, the watch's timer does not, and the page comes back online.
     jest.setSystemTime(Date.now() + 80_000)
     pageReturned()
+    jest.advanceTimersByTime(0)
     expect(ended).toEqual([SILENT_STREAM, SILENT_STREAM])
     expect(hellos()).toBe(3)
     view.live.close()
