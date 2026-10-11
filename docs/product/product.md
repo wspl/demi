@@ -409,14 +409,19 @@ or a notice, stands above the chips, so the control the user reaches for
 next stays where the hand already is.
 
 The Agents and Running chips each open a window over the session, as an
-editor's bottom panel opens, and it stays open while the user works
-elsewhere: a click outside it, on the transcript, the composer or nothing,
-leaves it open, and so does what it opens itself, such as the media viewer
-over a screenshot in a subagent's transcript. It closes by its chip, its
-close control, or Escape while the focus is in it; Escape closes the media
-viewer first when that window is in front. For example, the user opens
-*2 Agents*, clicks a screenshot in the child's transcript, closes the viewer,
-and reads on in the same window.
+editor's bottom panel opens. Its windows, and the windows they open, such as
+the media viewer over a screenshot in a subagent's transcript or the
+terminal of a running command, stand in the order they opened, the newest in
+front. A press outside every window, on the transcript, the sidebar or empty
+space, closes the newest window alone, as Escape does, and still does what it
+does there, so a click on a link closes the window and follows the link. A
+second press closes the next one. A press in a window closes nothing, and
+neither does one in the composer or on its chips, where the user types to
+the agent while watching the window. A window also closes by its chip or its
+close control. For example, the user opens *2 Agents* and clicks a
+screenshot in the child's transcript: the viewer opens over the Agents
+window; a click on the transcript closes the viewer and leaves the Agents
+window open on the child; another click closes it.
 
 The recovery control's label follows the cause, because the user's expectation differs:
 
