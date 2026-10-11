@@ -232,7 +232,7 @@ is empty, and every other field means what it means in the block whole
 | Block | Left out | Carried instead |
 | --- | --- | --- |
 | `tool_call` | An `input` past 512 bytes, but its `description`; the text of `output`; the output text of `view` (its chunks) | Such an `input` as JSON holding only the `description`, a shorter one whole, as a script that only looks at a command must be to name the look on its row ([Work groups](../agent/runtime.md#work-groups)); the media of `output`; the rest of `view`: the command, its status, exit code and times, the files it changed and their renames |
-| `thinking` | The text and its signature | `textLength`, the text's length in characters: the row tells how long the agent thought, and a thinking whose length is 0, such as the signed one Gemini writes before each call or an OpenAI reasoning item with no summary, has no row, as it has none live |
+| `thinking` | The text and its signature | `textLength`, the length in characters of its text without the white space around it: the row tells how long the agent thought, and a thinking whose length is 0, such as the signed one Gemini writes before each call or an OpenAI reasoning item with no summary, has no row, as it has none live |
 | `redacted_thinking` | The data | Nothing |
 | `agent_message` | The message | Its sender and what it reports |
 | `wakeup` | Each report's output | Each report's command, title, event and media |
