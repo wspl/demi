@@ -365,7 +365,7 @@ it, as a link preview does, so a glance needs no window:
 ```text
         ┌──────────────────────────┐
         │                          │
-        │      the screenshot      │   fitted within 480 × 360
+        │      the screenshot      │   at its own size, up to 70% of the page
         │                          │
         ├──────────────────────────┤
         │ Interacted with page     │   what the picture belongs to
@@ -377,7 +377,14 @@ it, as a link preview does, so a glance needs no window:
   would: a call's, a notice's and a run's in their rows, a picture in a message,
   and an image or video capsule in a sent message. Every picture in a message is a tile smaller than the card, so
   each has one.
-- **The card.** The picture fitted within 480 × 360 pixels, never enlarged,
+- **The card.** The picture at its own size on the screen, its pixels shown
+  one to one: its pixel size divided by the screen's pixel ratio, as a
+  browser shows an image at 100%. A picture larger than 70% of the page's
+  width or 70% of its height is scaled down to fit them, so the card never
+  covers the page. For example, a 2000 × 295 screenshot taken on a Retina
+  screen shows at 1000 × 148 on one; a 2560 × 1600 one shows at 1280 × 800 on
+  a large enough window and scales down on a smaller one. It is never
+  enlarged past that size,
   over the checkerboard where it is transparent; a video shows its first
   frame and does not play. Under it, one line: the call's or notice's
   title for a step's picture, the alt text for a message's, a capsule's
