@@ -185,7 +185,9 @@ A stopped action records the stop itself. It writes all the input waiting
 for its next boundary: the human steers still pending, the agent messages and
 the command reports. It completes each running tool call as an error
 that says why and what became of its command
-([Interrupted calls](#interrupted-calls)), and appends an `abort` block, the
+([Interrupted calls](#interrupted-calls)), keeping in the call's `view` the
+command it started, so the command's later report and notice find their call,
+ and appends an `abort` block, the
 stopped marker. An action that has written nothing into the transcript, with the
 input its stop writes counted, appends no marker: it began no turn, so
 nothing is left to continue
@@ -499,7 +501,9 @@ or a subagent ends, the work it waits for wakes it.
   `steer`; otherwise it starts a continuation whose input is a `wakeup` block
   with the placement `new_turn`. Each report names the command by its
   number and its call's title, as Claude Code's notice names a background
-  command by its description, since a model may have several running:
+  command by its description, which the command's record keeps from its start,
+  so a report has its title whatever became of the call or the process that
+  watched it, a lost command's too, since a model may have several running:
   `Command 17 (Run the test suite) ended with exit code 1.`, followed by its
   output as a result shows it. Reports that arrive together are one block,
   one paragraph each: `Command 18 was stopped by the user.`,
