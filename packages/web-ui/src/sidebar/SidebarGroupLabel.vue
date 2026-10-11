@@ -10,9 +10,10 @@ import type { SidebarConversation } from './types'
  * sidebar sections do (`product.md` § Conversations and projects): the label and the chevron
  * after it are one button. The chevron, in the label's faint color, shows while the pointer is
  * over the label or the keyboard is on the button, and always on a touch screen, which has no
- * hover. While the group is folded, a conversation in it that waits for the user puts its dot
- * after the chevron. The `action` slot holds the group's button at the label's end, such as New
- * conversation, which shows on hover.
+ * hover. While the group is folded, a conversation the fold hides that waits for the user puts
+ * its dot between the label and the chevron, so the chevron, hidden at rest, leaves no gap.
+ * The `action` slot holds the group's button at the label's end, such as New conversation,
+ * which shows on hover.
  */
 defineProps<{
   label: string
@@ -40,13 +41,13 @@ const touchOnly = useTouchOnly()
       @click="emit('toggle')"
     >
       <span class="truncate">{{ label }}</span>
+      <ConversationDot v-if="waiting" :conversation="waiting" />
       <span
         class="flex items-center transition-opacity duration-150 motion-reduce:transition-none"
         :class="touchOnly ? '' : 'opacity-0 group-hover/heading:opacity-100 group-focus-visible/fold:opacity-100'"
       >
         <FoldChevron :open="!folded" :size="ICON_PX.in20" />
       </span>
-      <ConversationDot v-if="waiting" :conversation="waiting" />
     </button>
     <span class="flex-1" />
     <span
