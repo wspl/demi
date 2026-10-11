@@ -1062,11 +1062,15 @@ a switch that turns subagents on or off for the user, on for a new user; the
 two [limits](../agent/subagents.md#limits), Maximum subagents and Maximum
 depth, each a number with Unlimited as a choice, which asks first in a
 dialog warning that it can make conversations unstable, the dialog's
-default button keeping the limit; and the user's subagent profiles, which the user creates, edits and deletes
+default button keeping the limit, and which keeps the number, so choosing
+Limited again shows the limit as it was; and the user's subagent profiles, which the user creates, edits and deletes
 there, each with a switch of its own that enables or disables it; a new
 profile starts enabled. The next spawn of every conversation uses a change.
-A profile whose provider entry, model, effort or tier is gone is marked as
-unavailable, with the part that is missing, until the user fixes it.
+A profile's model is chosen with the composer's own model menu, the same
+control with the same items, providers, models, Reasoning and the rest, plus
+*Parent's model* at its top. A profile whose provider entry, model, effort
+or tier is gone is marked as unavailable, with the part that is missing,
+until the user fixes it.
 Settings have an Instructions section, after Providers: one text
 field for the user's [personal instructions](../agent/instructions.md#personal-instructions),
 which every conversation's agents follow, with Save, available while the

@@ -40,7 +40,7 @@ five layers in this order, and holds no time, Host or other state
 
 | Layer | Written by | Holds |
 | --- | --- | --- |
-| Identity | The product; a [subagent profile](subagents.md#profiles)'s instructions replace it | What Demi is and how it works for the user |
+| Identity | The product | What Demi is and how it works for the user |
 | Harness guide | The product | The facts of Demi's world the model cannot infer and that hold in every turn |
 | Tool rules | The agent runtime | How the `shell` tool behaves |
 | Capability index | Each command group's declaration | One entry per command group of the node, sorted by group |
@@ -68,9 +68,11 @@ kind of that work. Guidance that only holds for software, such as running
 the project's tests before calling a change done, is written as working
 habits that apply to any work: check the result the way the user would.
 
-The product's instructions are the identity layer. A subagent profile's
-instructions replace only this layer; the other four stay, so a profile's
-node knows the same harness, tools, capabilities and model.
+The product's instructions are the identity layer, in every node. A subagent
+profile's instructions never replace it: they follow the model identity as a
+section of their own, *Instructions for this subagent*, so a profile's node is
+Demi with the same harness, tools, capabilities and model, told what its kind
+of work is.
 
 ## Harness guide
 
