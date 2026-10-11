@@ -95,8 +95,10 @@ const SUMMARY_ROOM: u64 = 13_000;
 const KEPT_WORK: u64 = 20_000;
 const KEPT_WORK_PERCENT: u8 = 15;
 
-/// The user's own words a pass keeps, in estimated tokens.
+/// The user's own words a pass keeps: at most this many estimated tokens,
+/// or this share of the window in use when that is less.
 const KEPT_WORDS: u64 = 20_000;
+const KEPT_WORDS_PERCENT: u8 = 10;
 
 /// The window in use for `model`, in tokens: the model's context window, or
 /// the limit the user set on it, as the node answers it (`models.md`
@@ -322,11 +324,12 @@ pub(super) async fn compact_to_fit(
 }
 
 /// One pass (`compaction.md` § One pass): the window, from the last
-/// boundary to the end of the latest answered request that leaves the recent
-/// work after it, is summarized by a session copy, whose request is that
-/// request with the instruction after it; a boundary holding the summary and
-/// the user's messages it keeps is inserted where the window ends, with a
-/// marker at the end and a `context` block naming what still runs after it.
+/// boundary to the end of the latest request the current model answered
+/// that leaves the recent work after it, is summarized by a session copy,
+/// whose request is that request with the instruction after it; a boundary
+/// holding the summary and the user's messages it keeps is inserted where
+/// the window ends, with a marker at the end and a `context` block naming
+/// what still runs after it.
 /// Returns whether it compacted anything. A summary request that exceeds the
 /// context is asked again for the first half of the window, down to one
 /// block after the previous boundary; when that one exceeds it too, the pass
@@ -340,6 +343,9 @@ pub(super) async fn run_pass(
     let budget = window_tokens.map_or(KEPT_WORK, |window| {
         KEPT_WORK.min(share(window, KEPT_WORK_PERCENT))
     });
+    let words = window_tokens.map_or(KEPT_WORDS, |window| {
+        KEPT_WORDS.min(share(window, KEPT_WORDS_PERCENT))
+    });
     // The window is read from the replayed blocks as the model receives
     // them; its indices are the view's, which starts at `view.start` in the
     // transcript.
@@ -348,7 +354,7 @@ pub(super) async fn run_pass(
         if !core.transcript.pending_tool_calls().is_empty() {
             return None;
         }
-        let window = compaction_window(&core.request_view(&view), budget);
+        let window = compaction_window(&core.request_view(&view), &core.model, budget);
         // A window of a boundary and its marker alone would only summarize a
         // summary again.
         let first = view.blocks[window.start..window.cut]
@@ -375,7 +381,7 @@ pub(super) async fn run_pass(
                 .iter()
                 .map(|block| block_tokens(block, &request))
                 .sum::<u64>();
-            (tokens, kept_messages(window, &request, KEPT_WORDS))
+            (tokens, kept_messages(window, &request, words))
         });
         // The copy holds the window by reference, with the bytes the session
         // holds for it.

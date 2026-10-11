@@ -3,15 +3,16 @@
 //! reasoning of several vendors, parallel and sequential calls with text
 //! and image results, steers and agent messages that arrive during a call,
 //! a Stop and Continue, a resume after a restart, messages with images and
-//! model switches, and compacts it after every step, besides the passes its
-//! thresholds start. After every step the test checks:
+//! model switches, some answered by the new model before the pass, and
+//! compacts it after every step, besides the passes its thresholds start. After every step the test checks:
 //!
 //! - every request, encoded by every provider's request builder, is one its
 //!   vendor takes: roles in order, every result after its call, no call
 //!   without its result, signed reasoning only where its vendor accepts it;
-//! - every summary request is a request the session sent before, encoded
-//!   byte for byte the same by every builder, with the instruction after
-//!   it;
+//! - every summary request is a request the session sent before to the
+//!   same model, encoded byte for byte the same by every builder, with the
+//!   instruction after it, unless the model has answered none since the
+//!   pass before;
 //! - each new boundary stands at the cut point the recent work's budget
 //!   gives, and keeps the user's words within theirs;
 //! - the estimate after each pass is under the threshold, or the pass freed
@@ -56,9 +57,10 @@ const STEPS: usize = 24;
 const MODELS: [(&str, u32); 2] = [("gen-a", 20_000), ("gen-b", 40_000)];
 
 /// The user's words a pass keeps, and the most recent work it keeps, in
-/// estimated tokens (`compaction.md` § One pass).
-const KEPT_WORDS: u64 = 20_000;
-const KEPT_WORK: u64 = 20_000;
+/// estimated tokens, or the share of the window in use, in percent, when
+/// that is less (`compaction.md` § One pass).
+const KEPT_WORDS: (u64, u64) = (20_000, 10);
+const KEPT_WORK: (u64, u64) = (20_000, 15);
 
 /// Each provider's request builder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -520,12 +522,26 @@ impl Driver {
                 let _ = self.session.accept_agent_message(agent_message(&format!("idle-{n}"))).await;
                 self.session.settled().await;
             }
+            // Messages the model answers, then a switch, which lands at the
+            // next request; half the time the new model answers a message
+            // too before the step's pass, which then cuts only where it
+            // answered, and otherwise where the model before it did.
             7 => {
+                for _ in 0..self.draw(1..3) {
+                    let n = self.shared.next();
+                    let message = self.message().await;
+                    self.finish(self.session.send(message, turn(&format!("t{n}")))).await;
+                }
                 let next = if self.session.model().model.id == "gen-a" { "gen-b" } else { "gen-a" };
                 let _ = self.session.update_model(ModelSwitch {
                     model: Box::new(model(next)),
                     runtime: None,
                 });
+                if self.draw(0..2) == 0 {
+                    let n = self.shared.next();
+                    let message = self.message().await;
+                    self.finish(self.session.send(message, turn(&format!("t{n}")))).await;
+                }
             }
             8 => self.restart().await,
             _ => {}
@@ -617,7 +633,8 @@ impl Driver {
         };
         let model = &boundary.model.model;
         let window = u64::from(model.context_window);
-        let budget = KEPT_WORK.min(window * 15 / 100);
+        let budget = KEPT_WORK.0.min(window * KEPT_WORK.1 / 100);
+        let words_budget = KEPT_WORDS.0.min(window * KEPT_WORDS.1 / 100);
         // The history as the pass found it: without the boundary, up to the
         // marker.
         let before: Vec<Block> = blocks[..marker]
@@ -646,11 +663,15 @@ impl Driver {
                 matches!(block, Block::CompactionBoundary(_) | Block::CompactionMarker(_))
             })
             .map_or(0, |at| at + 1);
-        let mut ends: Vec<usize> = Vec::new();
+        // Each answered request's end, with whether the pass's model
+        // answered it.
+        let mut ends: Vec<(usize, bool)> = Vec::new();
         for (at, block) in before.iter().enumerate().skip(floor) {
-            if !matches!(block, Block::Response(_)) {
+            let Block::Response(response) = block else {
                 continue;
-            }
+            };
+            let current = response.model.provider_id == boundary.model.provider_id
+                && response.model.model.id == boundary.model.model.id;
             let mut answer = at;
             while answer > floor
                 && matches!(
@@ -660,24 +681,33 @@ impl Driver {
             {
                 answer -= 1;
             }
-            if ends.last() != Some(&answer) {
-                ends.push(answer);
+            if ends.last().map(|(end, _)| *end) != Some(answer) {
+                ends.push((answer, current));
             }
         }
-        if let Some(&latest) = ends.last() {
-            let expected = ends
-                .iter()
-                .rev()
-                .copied()
-                .find(|end| weigh(*end) >= budget)
-                .unwrap_or(latest);
+        // The latest end of a request the pass's model answered that leaves
+        // the budget after it, or the latest such end; without one, the
+        // latest end of any.
+        let current: Vec<usize> = ends.iter().filter(|(_, current)| *current).map(|(end, _)| *end).collect();
+        let expected = match current.last() {
+            Some(&latest) => Some(
+                current
+                    .iter()
+                    .rev()
+                    .copied()
+                    .find(|end| weigh(*end) >= budget)
+                    .unwrap_or(latest),
+            ),
+            None => ends.last().map(|(end, _)| *end),
+        };
+        if let Some(expected) = expected {
             assert_eq!(index, expected, "{context}: the cut of {:?} (ends {ends:?})", boundary.summary);
         }
         // The user's words: within their budget, each as the user wrote it
         // but for the oldest, which may be cut to its text.
         let kept = &boundary.kept;
         let words: u64 = kept.iter().map(|kept| content_tokens(&kept.content, &request)).sum();
-        assert!(words <= KEPT_WORDS, "{context}: {words} tokens of kept words");
+        assert!(words <= words_budget, "{context}: {words} tokens of kept words");
         let written: Vec<Vec<UserContentBlock>> = before[start..index]
             .iter()
             .flat_map(|block| match block {
@@ -722,11 +752,12 @@ impl Driver {
     }
 }
 
-/// Every summary request is an earlier request of the session, the same for
-/// every builder, with the instruction after it; but when no request was
-/// answered since the pass before, whose window then ends where the input
-/// no request answered begins (`compaction.md` § One pass), and which
-/// repeats no request.
+/// Every summary request is an earlier request of the session to the same
+/// model, the same for every builder, with the instruction after it; but
+/// when that model answered no request since the pass before. Its window
+/// then ends where the input no request answered begins, or where another
+/// model's latest answered request ended (`compaction.md` § One pass), and
+/// it repeats no request of its model.
 fn check_summary(
     earlier: &[InferenceRequest],
     answered: &[bool],
@@ -745,7 +776,9 @@ fn check_summary(
         let answered_since = earlier[previous..]
             .iter()
             .zip(&answered[previous..])
-            .any(|(request, answered)| !is_summary(request) && *answered);
+            .any(|(request, answered)| {
+                !is_summary(request) && *answered && request.model_id == summary.model_id
+            });
         assert!(
             !answered_since,
             "{context}: the summary request repeats no request sent before: {prefix:?}"
@@ -813,7 +846,7 @@ pub(super) fn valid(builder: Builder, request: &InferenceRequest) -> Result<(), 
     let body = builder.json(request);
     match builder {
         Builder::Anthropic => messages_valid(&body["messages"], &signatures(request, "anthropic:", true)),
-        Builder::ClaudeCode => entries_valid(&body),
+        Builder::ClaudeCode => entries_valid(&body, request),
         Builder::Responses => input_valid(&body["input"], &signatures(request, "openai:", false)),
         Builder::Codex => input_valid(&body["input"], &signatures(request, "codex:", false)),
         Builder::ChatCompletions | Builder::Grok => chat_valid(&body["messages"]),
@@ -876,9 +909,31 @@ fn messages_valid(messages: &Value, signed: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// Claude Code's session: every result after its call, no call without a
-/// result, and no reasoning, which only the CLI's own entries carry.
-fn entries_valid(entries: &Value) -> Result<(), String> {
+/// Claude Code's session: an entry for each user message, every result
+/// after its call, no call without a result, and no reasoning, which only
+/// the CLI's own entries carry.
+fn entries_valid(entries: &Value, request: &InferenceRequest) -> Result<(), String> {
+    let messages = request
+        .items
+        .iter()
+        .filter(|item| {
+            matches!(item, InferenceItem::UserMessage { .. } | InferenceItem::UserSteer { .. })
+        })
+        .count();
+    let written = array(entries)?
+        .iter()
+        .filter(|entry| {
+            entry["type"] == "user"
+                && !entry["message"]["content"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .any(|block| block["type"] == "tool_result")
+        })
+        .count();
+    if written != messages {
+        return Err(format!("{written} user entries for {messages} user messages"));
+    }
     let mut calls: Vec<String> = Vec::new();
     for entry in array(entries)? {
         for block in entry["message"]["content"].as_array().into_iter().flatten() {
@@ -1032,8 +1087,8 @@ async fn drive(seed: u64) {
     let _ = driver.session.dispose().await;
 }
 
-// Four seeds of 24 steps take every kind of step, about 350 requests and 120
-// passes, each request encoded by seven builders and checked: about 4 s in a
+// Four seeds of 24 steps take every kind of step, about 400 requests and 120
+// passes, each request encoded by seven builders and checked: about 5 s in a
 // debug build. It is the one test that meets passes at moments no scripted
 // scenario reaches, such as right after a Stop, a restart or a switch.
 #[tokio::test(flavor = "local", start_paused = true)]

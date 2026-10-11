@@ -11,19 +11,7 @@
     },
     {
       "role": "user",
-      "content": [
-        {
-          "type": "text",
-          "text": "The release build fails; here is the screen."
-        },
-        {
-          "type": "image_url",
-          "image_url": {
-            "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAYAAACddGYaAAAAJUlEQVR4AQEaAOX/AAAAB/8BAAf/AgAH/wAAAQf/AQEH/wIBB/9HPgYu4Em3zwAAAABJRU5ErkJggg==",
-            "detail": "auto"
-          }
-        }
-      ]
+      "content": "The release build fails; here is the screen."
     },
     {
       "role": "user",
