@@ -18,7 +18,8 @@ use demi_host_interface::{
     WhenExists, WholeOutput, WriteOptions,
 };
 use demi_runner_protocol::wire::{
-    self, FsResult, GitChanges, GitResult, Inbound, LogLine, PipeRef, STDIN_CHUNK_BYTES, WireBytes,
+    self, FsResult, GitChanges, GitResult, Inbound, LogLine, PipeRef, ReadAt, STDIN_CHUNK_BYTES,
+    WireBytes,
 };
 use demi_shared_gates::GateLease;
 use demi_shared_types::Timestamp;
@@ -28,7 +29,7 @@ use tokio::sync::{oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    ArtifactResolver, HostWatch, Link,
+    ArtifactResolver, HostSubscriber, Link,
     device_jobs::{Claimed, DeviceJobs, NewJob},
     link::{
         Answer, Expected, JobEnd, JobMedium, JobOrigin, JobOutput, ServiceEntry, Shared,
@@ -59,11 +60,13 @@ pub enum Admission {
     Leased(Rc<dyn Fn() -> Result<GateLease, HostError>>),
 }
 
-/// A file a read opened: its metadata and version then, and its bytes.
+/// A file a read opened: its metadata and version then, its bytes, and the
+/// Host's number before it read (`runner.md` § Watching files).
 pub struct OpenedRead {
     pub stat: FileStat,
     pub version: String,
     pub body: PipeReader,
+    pub read_at: ReadAt,
 }
 
 /// A pipe's bytes as a Host's byte stream: a pipe that fails interrupts it.
@@ -77,7 +80,11 @@ pub fn byte_stream(reader: PipeReader) -> ByteStream {
 /// What a read that holds a version answers.
 pub enum ConditionalRead {
     /// The file still has the version held: no bytes move.
-    Unchanged { stat: FileStat, version: String },
+    Unchanged {
+        stat: FileStat,
+        version: String,
+        read_at: ReadAt,
+    },
     Opened(OpenedRead),
 }
 
@@ -299,7 +306,7 @@ impl RemoteHost {
             })
             .await?;
         match hashed {
-            Answer::Fs(FsResult::HashFile(hash)) => Ok(hash),
+            Answer::Fs(FsResult::HashFile(hash), _) => Ok(hash),
             _ => Err(mismatch()),
         }
     }
@@ -336,7 +343,7 @@ impl RemoteHost {
             }
         })
         .await?;
-        let Answer::Fs(FsResult::ReadFile(opened)) = answer else {
+        let Answer::Fs(FsResult::ReadFile(opened), read_at) = answer else {
             return Err(mismatch());
         };
         let stat = file_stat(opened.stat)?;
@@ -345,21 +352,42 @@ impl RemoteHost {
             return Ok(ConditionalRead::Unchanged {
                 stat,
                 version: opened.version,
+                read_at,
             });
         }
         Ok(ConditionalRead::Opened(OpenedRead {
             stat,
             version: opened.version,
             body: reader,
+            read_at,
         }))
     }
 
-    /// Follows the Host's watch of `path`, and of what lies below it when
-    /// `recursive` (`runner.md` § Watching files): pages that watch the
-    /// same path share one. It holds no admission, so it keeps no Cloud
-    /// awake.
-    pub fn watch(&self, path: &str, recursive: bool) -> Result<HostWatch, HostError> {
-        Ok(self.link()?.watch_files(path, recursive))
+    /// A holder of the Host's subscriptions (`runner.md` § Watching
+    /// files): pages that hold the same subject share one subscription. It
+    /// holds no admission, so it keeps no Cloud awake.
+    pub fn subscriber(&self) -> Result<HostSubscriber, HostError> {
+        Ok(self.link()?.subscriber())
+    }
+
+    /// A directory's entries with their metadata, in one request
+    /// (`runner.md` § Host operations), and the Host's number before it
+    /// listed.
+    pub async fn list_directory(&self, path: &str) -> Result<(Vec<DirEntry>, ReadAt), HostError> {
+        let link = self.link()?;
+        let _lease = self.admit()?;
+        let answer = link
+            .call(Expected::Fs("readdir"), |id| Inbound::FsReaddir {
+                id,
+                path: path.into(),
+                cwd: self.cwd(),
+            })
+            .await?;
+        let Answer::Fs(FsResult::Readdir(entries), read_at) = answer else {
+            return Err(mismatch());
+        };
+        let entries = entries.into_iter().map(dir_entry).collect::<Result<_, _>>()?;
+        Ok((entries, read_at))
     }
 
     /// A pipe to the device's runner that this process fills.
@@ -394,7 +422,7 @@ impl RemoteHost {
         });
         let written = reply_after_input(input, path, written).await?;
         match written {
-            Answer::Fs(FsResult::WriteFile(name)) => Ok(name),
+            Answer::Fs(FsResult::WriteFile(name), _) => Ok(name),
             _ => Err(mismatch()),
         }
     }
@@ -480,7 +508,7 @@ impl RemoteHost {
             }
         })
         .await?;
-        let Answer::Fs(FsResult::ReadFiles(reads)) = answer else {
+        let Answer::Fs(FsResult::ReadFiles(reads), _) = answer else {
             return Err(mismatch());
         };
         split_reads(reader, reads, paths.len(), limit).await
@@ -525,7 +553,7 @@ impl RemoteHost {
                 .await?;
             (answer, Bytes::new())
         };
-        let Answer::Fs(FsResult::Look(looked)) = answer else {
+        let Answer::Fs(FsResult::Look(looked), _) = answer else {
             return Err(mismatch());
         };
         if looked.len() != paths.len() {
@@ -562,8 +590,9 @@ impl RemoteHost {
             .collect()
     }
 
-    /// The uncommitted changes under `root` (`runner.md` § Working tree).
-    pub async fn git_changes(&self, root: &str) -> Result<GitChanges, HostError> {
+    /// The uncommitted changes under `root` (`runner.md` § Working tree),
+    /// and the Host's number before it read them.
+    pub async fn git_changes(&self, root: &str) -> Result<(GitChanges, ReadAt), HostError> {
         let link = self.link()?;
         let reply = link
             .call(Expected::Git("changes"), |id| Inbound::GitChanges {
@@ -572,17 +601,18 @@ impl RemoteHost {
             })
             .await?;
         match reply {
-            Answer::Git(GitResult::Changes(changes)) => Ok(changes),
+            Answer::Git(GitResult::Changes(changes), read_at) => Ok((changes, read_at)),
             _ => Err(protocol(
                 "the runner answered another working-tree operation",
             )),
         }
     }
 
-    /// `path`, relative to `root`, as the last commit has it.
-    pub async fn git_show(&self, root: &str, path: &str) -> Result<Bytes, HostError> {
+    /// `path`, relative to `root`, as the last commit has it, and the
+    /// Host's number before it read it.
+    pub async fn git_show(&self, root: &str, path: &str) -> Result<(Bytes, ReadAt), HostError> {
         let link = self.link()?;
-        let reader = filled(&link, Expected::Git("show"), |id, output| {
+        let (answer, reader) = answered(&link, Expected::Git("show"), |id, output| {
             Inbound::GitShow {
                 id,
                 root: root.into(),
@@ -591,7 +621,10 @@ impl RemoteHost {
             }
         })
         .await?;
-        collect_pipe(reader, usize::MAX).await
+        let Answer::Git(GitResult::Show, read_at) = answer else {
+            return Err(mismatch());
+        };
+        Ok((collect_pipe(reader, usize::MAX).await?, read_at))
     }
 
     /// Up to `limit` lines of the Host's log after `since`, oldest first, of
@@ -741,7 +774,7 @@ impl RemoteHost {
             .call(Expected::Fs(op), |id| message(id, self.cwd()))
             .await?
         {
-            Answer::Fs(result) => Ok(result),
+            Answer::Fs(result, _) => Ok(result),
             _ => Err(protocol("the runner answered another request")),
         }
     }

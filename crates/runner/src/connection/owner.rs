@@ -515,7 +515,9 @@ impl Owner<'_> {
             } => self.volumes.grown(&id, volume, bytes, error)?,
             message if message.fs_request_id().is_some() => self.host.handle_filesystem(message)?,
             message if message.git_request_id().is_some() => self.host.handle_git(message)?,
-            Inbound::FsWatch { .. } | Inbound::FsUnwatch { .. } => self.host.handle_watch(message)?,
+            Inbound::FsSubscribe { .. } | Inbound::FsUnsubscribe { .. } | Inbound::FsRenew { .. } => {
+                self.host.handle_watch(message)?
+            }
             Inbound::ServiceOpen { .. } => self.streams.handle_open(message)?,
             Inbound::DirectOffer {
                 id,

@@ -8,7 +8,9 @@
 use bytes::BytesMut;
 use demi_command_protocol::EDIT_FILE_BYTES;
 pub use demi_command_protocol::{TextRefusal, text_of};
+use demi_backend_remote_host::RemoteHost;
 use demi_host_interface::{ByteRange, ByteStream, FileKind, HostError, HostFs};
+use demi_runner_protocol::wire::ReadAt;
 use futures_util::StreamExt as _;
 use demi_web_api_protocol::files::DirectoryEntry;
 
@@ -48,13 +50,13 @@ pub async fn text_of_stream(mut stream: ByteStream) -> Result<String, TextError>
 
 /// A directory's entries with their metadata, which the listing carries,
 /// so the whole answer is one request to the Host (`runner.md` § Host
-/// operations).
+/// operations), and the Host's number before it listed.
 pub async fn browse_directory(
-    fs: &dyn HostFs,
+    host: &RemoteHost,
     path: &str,
-) -> Result<Vec<DirectoryEntry>, HostError> {
-    let entries = fs.read_dir(path).await?;
-    Ok(entries
+) -> Result<(Vec<DirectoryEntry>, ReadAt), HostError> {
+    let (entries, read_at) = host.list_directory(path).await?;
+    let entries = entries
         .into_iter()
         .map(|entry| DirectoryEntry {
             name: entry.name,
@@ -63,7 +65,8 @@ pub async fn browse_directory(
             size: entry.size,
             modified_at: entry.modified,
         })
-        .collect())
+        .collect();
+    Ok((entries, read_at))
 }
 
 #[cfg(test)]
@@ -109,7 +112,7 @@ mod tests {
 
         let host = fixture.host();
         let path = format!("{}/listed", fixture.home());
-        let entries = browse_directory(&host, &path).await.unwrap();
+        let (entries, _) = browse_directory(&host, &path).await.unwrap();
 
         assert_eq!(
             answered_requests(&mut replies),

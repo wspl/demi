@@ -13,6 +13,8 @@ use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use demi_shared_types::ReadAt;
+
 use crate::files::{DirectoryEntry, FileWatchRequest};
 
 /// The most bytes of one binary message on a channel.
@@ -280,7 +282,8 @@ pub enum ChannelHeader {
         #[garde(length(min = 1), custom(without_nul))]
         path: String,
     },
-    /// The file watch; `paths` messages follow, as on the relay.
+    /// The file watch; `subscribe`, `unsubscribe` and `renew` messages
+    /// follow, as on the relay.
     Watch {
         #[garde(custom(conversation_name))]
         conversation: String,
@@ -335,13 +338,21 @@ pub struct ChannelRefusal {
 }
 
 /// Why an operation failed: the code and HTTP status the relay's route
-/// answers for the same failure, and the runner's words.
+/// answers for the same failure, and the runner's words. A `text` of a file
+/// that is binary or too large also carries the file's version and the
+/// Host's number before it read, as the relay's 415 and 413 carry its ETag
+/// and `X-Demi-Read-At`, since such a file is an answer like any other
+/// (`web-api.md` § File text and working tree changes).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChannelError {
     pub code: ChannelErrorCode,
     pub status: u16,
     pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_at: Option<ReadAt>,
 }
 
 impl ChannelError {
@@ -350,7 +361,16 @@ impl ChannelError {
             code,
             status,
             message: message.into(),
+            version: None,
+            read_at: None,
         }
+    }
+
+    /// The failure as an answer of the file at `version`, read at `read_at`.
+    pub fn of_file(mut self, version: String, read_at: ReadAt) -> Self {
+        self.version = Some(version);
+        self.read_at = Some(read_at);
+        self
     }
 }
 
@@ -423,19 +443,22 @@ impl ReadOpened {
     }
 }
 
-/// A `text`'s answer: the file's version, and whether it is the one the
-/// header named, in which case no text follows.
+/// A `text`'s answer: the file's version, whether it is the one the header
+/// named, in which case no text follows, and the Host's number before it
+/// read, as the relay's `X-Demi-Read-At`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextOpened {
     pub ok: bool,
     pub version: String,
     pub unchanged: bool,
+    pub read_at: ReadAt,
 }
 
-/// A `list`'s answer, the relay's `{ path, home, entries }`.
+/// A `list`'s answer, the relay's `{ path, home, entries }`, with the
+/// Host's number before it listed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Listed {
     pub ok: bool,
     pub path: String,
@@ -443,6 +466,7 @@ pub struct Listed {
     #[schemars(with = "demi_shared_types::Nullable<String>")]
     pub home: Option<String>,
     pub entries: Vec<DirectoryEntry>,
+    pub read_at: ReadAt,
 }
 
 serde_plain::derive_display_from_serialize!(OfferRefusal);

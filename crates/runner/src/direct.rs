@@ -12,7 +12,9 @@ use std::{
     collections::HashMap,
     io,
     path::{Path, PathBuf},
+    time::Instant,
 };
+
 
 use bytes::Bytes;
 use demi_command_protocol::{CommandCaller, CommandContext, EDIT_FILE_BYTES, TextRefusal, text_of};
@@ -24,12 +26,16 @@ use demi_runner_direct::{
 use demi_runner_host::{
     files::{open_read, write_file},
     fs,
-    watches::{Watched, Watches},
+    subscriptions::{Report, Subscriptions},
+    watches::Watches,
 };
 use demi_runner_jobs::commands::streams::{StreamOpener, StreamRefusal, StreamStart};
 use demi_runner_protocol::{
     direct::{ChannelError, ChannelErrorCode},
-    files::{DirectoryEntry, FileWatchMessage, FsFailure, PageWatch, WatchReport, protected_path},
+    files::{
+        DirectoryEntry, Effect, FileWatchMessage, FileWatchRequest, FsFailure, PageSubscriptions,
+        Subject, protected_path,
+    },
     wire::{self, FsResult, Inbound, Outbound, ServiceErrorCode},
 };
 use futures_util::{StreamExt, future::BoxFuture};
@@ -160,6 +166,8 @@ impl Operations for HostOperations {
     fn text(&self, scope: Scope, path: String, held: Option<String>) -> Answer<FileText> {
         let cancel = self.closed.clone();
         Box::pin(async move {
+            // Before anything is read (`runner.md` § Watching files).
+            let read_at = demi_runner_host::numbers::read_at();
             let target = resolve(&scope.cwd, &path);
             // One byte more than the limit, so a file past it is refused
             // once that byte arrives.
@@ -172,23 +180,29 @@ impl Operations for HostOperations {
                 return Ok(FileText {
                     version,
                     text: None,
+                    read_at,
                 });
             };
             let mut bytes = Vec::new();
             while let Some(chunk) = body.next().await {
                 bytes.extend_from_slice(&chunk.map_err(failed)?);
             }
-            let text = text_of(bytes).map_err(|refusal| match refusal {
-                TextRefusal::TooLarge => {
-                    ChannelError::new(ChannelErrorCode::FileTooLarge, 413, refusal.to_string())
-                }
-                TextRefusal::NotText => {
-                    ChannelError::new(ChannelErrorCode::NotText, 415, refusal.to_string())
-                }
+            let text = text_of(bytes).map_err(|refusal| {
+                let error = match refusal {
+                    TextRefusal::TooLarge => {
+                        ChannelError::new(ChannelErrorCode::FileTooLarge, 413, refusal.to_string())
+                    }
+                    TextRefusal::NotText => {
+                        ChannelError::new(ChannelErrorCode::NotText, 415, refusal.to_string())
+                    }
+                };
+                // Such a file is an answer like any other.
+                error.of_file(version.clone(), read_at.clone())
             })?;
             Ok(FileText {
                 version,
                 text: Some(text),
+                read_at,
             })
         })
     }
@@ -197,6 +211,8 @@ impl Operations for HostOperations {
         let cancel = self.closed.clone();
         let home = self.home.clone();
         Box::pin(async move {
+            // Before anything is read (`runner.md` § Watching files).
+            let read_at = demi_runner_host::numbers::read_at();
             let path = path.unwrap_or_else(|| scope.cwd.clone());
             let request = Inbound::FsReaddir {
                 id: String::new(),
@@ -213,6 +229,7 @@ impl Operations for HostOperations {
                 path,
                 home: Some(home),
                 entries: entries.into_iter().filter_map(DirectoryEntry::from_wire).collect(),
+                read_at,
             })
         })
     }
@@ -258,7 +275,7 @@ impl Operations for HostOperations {
         })
     }
 
-    fn watch(&self, scope: Scope, paths: mpsc::UnboundedReceiver<Vec<String>>) -> WatchStream {
+    fn watch(&self, scope: Scope, requests: mpsc::UnboundedReceiver<FileWatchRequest>) -> WatchStream {
         let (messages, said) = mpsc::unbounded_channel();
         let watch = PageWatchTask {
             watches: self.watches.clone(),
@@ -267,7 +284,7 @@ impl Operations for HostOperations {
             messages,
         };
         // The watch ends when the page's stream of it is dropped.
-        let task = AbortOnDropHandle::new(tokio::spawn(watch.run(paths)));
+        let task = AbortOnDropHandle::new(tokio::spawn(watch.run(requests)));
         Box::pin(futures_util::stream::unfold(
             (said, task),
             |(mut said, task)| async move { said.recv().await.map(|message| (message, (said, task))) },
@@ -394,9 +411,9 @@ impl InputSource for PageSource {
 }
 
 /// A page's file watch on the runner (`web-api.md` § File watch): the
-/// working tree's watch and one of each path the page names, followed
-/// through the connection's watches the backend's watches share, with the
-/// order of states the relay's watch keeps.
+/// page's subscriptions as the relay's watch keeps them, held as
+/// subscriptions of the runner's own through the connection's watches,
+/// which the backend's subscriptions share, with the same numbers.
 struct PageWatchTask {
     watches: Watches,
     cwd: PathBuf,
@@ -404,69 +421,123 @@ struct PageWatchTask {
     messages: mpsc::UnboundedSender<FileWatchMessage>,
 }
 
-/// Which watch a report comes from: the working tree's, or a path's.
-type Source = Option<String>;
-
 impl PageWatchTask {
-    async fn run(self, mut requested: mpsc::UnboundedReceiver<Vec<String>>) {
-        let (reports, mut reported) = mpsc::unbounded_channel::<(Source, WatchReport)>();
-        let mut watch = PageWatch::new();
-        let _tree = self.follow(None, self.cwd.clone(), true, &reports);
-        let mut followed: HashMap<String, AbortOnDropHandle<()>> = HashMap::new();
+    async fn run(self, mut requests: mpsc::UnboundedReceiver<FileWatchRequest>) {
+        let (subscriptions, mut reports) = Subscriptions::new(self.watches.clone(), self.cwd.clone());
+        let mut page = PageSubscriptions::new(Some(self.cwd.to_string_lossy().into_owned()));
+        let mut held = Held::default();
         loop {
-            let said = tokio::select! {
+            let expiry = page.next_expiry();
+            let effects = tokio::select! {
                 () = self.cancel.cancelled() => return,
-                paths = requested.recv() => {
-                    let Some(paths) = paths else {
+                request = requests.recv() => {
+                    let Some(request) = request else {
                         return;
                     };
-                    let changed = watch.paths(paths);
-                    for path in changed.stop {
-                        followed.remove(&path);
+                    // On the runtime's clock, which a test may hold still.
+                    let now = tokio::time::Instant::now().into_std();
+                    match request {
+                        FileWatchRequest::Subscribe { subscriptions } => page.subscribe(subscriptions, now),
+                        FileWatchRequest::Unsubscribe { keys } => page.unsubscribe(&keys),
+                        FileWatchRequest::Renew { keys } => page.renew(&keys, now),
                     }
-                    for path in changed.start {
-                        let task = self.follow(Some(path.clone()), PathBuf::from(&path), false, &reports);
-                        followed.insert(path, task);
-                    }
-                    Vec::new()
                 }
-                Some((source, report)) = reported.recv() => watch.report(source.as_deref(), report),
+                report = reports.recv() => {
+                    let Some(report) = report else {
+                        return;
+                    };
+                    match report {
+                        Report::Live { id, since } => match held.subject(&id) {
+                            Some(subject) => page.live(&subject, since, demi_runner_host::numbers::epoch()),
+                            None => Vec::new(),
+                        },
+                        Report::Failed { id, reason } => match held.forget(&id) {
+                            Some(subject) => page.failed(&subject, &reason),
+                            None => Vec::new(),
+                        },
+                        Report::Changed(changes) => {
+                            let changes: Vec<(Subject, u64)> = changes
+                                .into_iter()
+                                .filter_map(|(id, at)| held.subject(&id).map(|subject| (subject, at)))
+                                .collect();
+                            page.changed(&changes)
+                        }
+                    }
+                }
+                () = sleep_until(expiry), if expiry.is_some() => {
+                    page.expire(tokio::time::Instant::now().into_std())
+                }
             };
-            for message in said.into_iter().chain(watch.settle()) {
-                if self.messages.send(message).is_err() {
-                    return;
+            for effect in effects {
+                match effect {
+                    Effect::Page(message) => {
+                        if self.messages.send(message).is_err() {
+                            return;
+                        }
+                    }
+                    Effect::Hold(subject) => {
+                        let id = held.hold(subject.clone());
+                        subscriptions.subscribe(id, subject.kind, subject.path);
+                    }
+                    Effect::Release(subject) => {
+                        if let Some(id) = held.release(&subject) {
+                            subscriptions.unsubscribe(id);
+                        }
+                    }
+                    Effect::Renew(subjects) => {
+                        subscriptions.renew(subjects.iter().filter_map(|subject| held.id(subject)).collect());
+                    }
                 }
             }
         }
     }
+}
 
-    /// Follows the watch of `path`, below it when `recursive`, handing its
-    /// reports on until the task is dropped.
-    fn follow(
-        &self,
-        source: Source,
-        path: PathBuf,
-        recursive: bool,
-        reports: &mpsc::UnboundedSender<(Source, WatchReport)>,
-    ) -> AbortOnDropHandle<()> {
-        let watches = self.watches.clone();
-        let cancel = self.cancel.clone();
-        let reports = reports.clone();
-        let requested = resolve(&self.cwd, &path.to_string_lossy());
-        AbortOnDropHandle::new(tokio::spawn(async move {
-            let watched = Watched {
-                watches: &watches,
-                requested,
-                recursive,
-                cancel: &cancel,
-            };
-            watched
-                .follow(|report| {
-                    let sent = reports.send((source.clone(), report)).is_ok();
-                    std::future::ready(sent)
-                })
-                .await;
-        }))
+/// The runner's subscriptions a page's watch holds, by the subject each
+/// is of and the id it was given.
+#[derive(Default)]
+struct Held {
+    ids: HashMap<Subject, String>,
+    subjects: HashMap<String, Subject>,
+    next: u64,
+}
+
+impl Held {
+    fn hold(&mut self, subject: Subject) -> String {
+        self.next += 1;
+        let id = self.next.to_string();
+        self.ids.insert(subject.clone(), id.clone());
+        self.subjects.insert(id.clone(), subject);
+        id
+    }
+
+    fn release(&mut self, subject: &Subject) -> Option<String> {
+        let id = self.ids.remove(subject)?;
+        self.subjects.remove(&id);
+        Some(id)
+    }
+
+    /// The subscription is over on the runner's side.
+    fn forget(&mut self, id: &str) -> Option<Subject> {
+        let subject = self.subjects.remove(id)?;
+        self.ids.remove(&subject);
+        Some(subject)
+    }
+
+    fn subject(&self, id: &str) -> Option<Subject> {
+        self.subjects.get(id).cloned()
+    }
+
+    fn id(&self, subject: &Subject) -> Option<String> {
+        self.ids.get(subject).cloned()
+    }
+}
+
+/// Waits until `deadline`, or forever without one.
+async fn sleep_until(deadline: Option<Instant>) {
+    match deadline {
+        Some(deadline) => tokio::time::sleep_until(deadline.into()).await,
+        None => std::future::pending().await,
     }
 }
 

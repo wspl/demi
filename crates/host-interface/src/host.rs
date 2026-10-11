@@ -6,7 +6,7 @@
 use std::{collections::BTreeMap, fmt, sync::Arc};
 
 use bytes::Bytes;
-use demi_shared_types::{StreamKind, Timestamp};
+use demi_shared_types::{ReadAt, StreamKind, Timestamp};
 use futures_util::{
     future::LocalBoxFuture,
     stream::{BoxStream, LocalBoxStream},
@@ -63,13 +63,25 @@ pub trait Host {
     fn process(&self) -> &dyn HostProcess;
 }
 
-/// Why a Host operation failed.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+/// Why a Host operation failed. A failed read the Host answered also
+/// carries the Host's number taken before it read (`runner.md` § Watching
+/// files): a file that is not there is an answer like any other.
+#[derive(Debug, Clone, thiserror::Error)]
 #[error("{message}")]
 pub struct HostError {
     pub kind: HostErrorKind,
     pub message: String,
+    pub read_at: Option<ReadAt>,
 }
+
+/// Two failures are the same failure whenever the Host read them.
+impl PartialEq for HostError {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.message == other.message
+    }
+}
+
+impl Eq for HostError {}
 
 /// What kind of failure a [`HostError`] is.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,7 +110,14 @@ impl HostError {
         Self {
             kind,
             message: message.into(),
+            read_at: None,
         }
+    }
+
+    /// The failure as the Host answered a read it took at `read_at`.
+    pub fn with_read_at(mut self, read_at: ReadAt) -> Self {
+        self.read_at = Some(read_at);
+        self
     }
 
     /// A failure on the Host, with its cause's code when there is one.
