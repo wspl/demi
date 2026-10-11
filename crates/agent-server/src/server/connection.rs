@@ -14,7 +14,7 @@ use demi_agent_session::{
 };
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{
-    ClientFrame, ClientFrameKind, EditOutcome, EditRequest, ServerFrame, SteerOutcome,
+    ClientFrame, ClientFrameKind, EditOutcome, EditRequest, RemoveOutcome, ServerFrame, SteerOutcome,
 };
 use demi_shared_types::{BlockId, NodeId, SessionPhase, TurnId};
 use tokio::sync::mpsc::{self, error::TrySendError};
@@ -233,6 +233,15 @@ impl<H: HostResolver> Connection<H> {
         self.send(ServerFrame::SteerResult { steer_id, outcome });
     }
 
+    fn remove_result(&self, id: String, removed: bool) {
+        let outcome = if removed {
+            RemoveOutcome::Removed
+        } else {
+            RemoveOutcome::GoneOn
+        };
+        self.send(ServerFrame::RemoveResult { id, outcome });
+    }
+
     /// Attaches the connection to the conversation's tree beside any other,
     /// restoring the tree when it is not live; a live tree already follows
     /// the conversation's model selection. A second `open` on one connection
@@ -332,12 +341,16 @@ impl<H: HostResolver> Connection<H> {
                 };
                 self.steer_result(steer_id, outcome);
             }
+            // The session tells the list's change as it happens, so the
+            // answer follows the list's frame.
             ClientFrame::CancelPendingSteer { steer_id } => {
-                session.cancel_pending_steer(&steer_id);
+                let removed = session.cancel_pending_steer(&steer_id);
+                self.remove_result(steer_id.into_string(), removed);
             }
             ClientFrame::SteerNow { steer_id } => session.steer_now(&steer_id),
             ClientFrame::DequeueMessage { message_id } => {
-                session.dequeue_message(&message_id);
+                let removed = session.dequeue_message(&message_id);
+                self.remove_result(message_id.into_string(), removed);
             }
             ClientFrame::SendQueuedMessage { message_id } => {
                 session.send_queued_message(&message_id);

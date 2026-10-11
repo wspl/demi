@@ -1769,7 +1769,7 @@ test('the list waits for the new conversations this web browser keeps, so a relo
   const signOut = signIn()
   // A new conversation, typed in and never sent: only this web browser's storage has it.
   const draftId = '00000000-0000-4000-8000-000000000003'
-  const listed = deferred<draftStorage.SavedDraft[]>()
+  const listed = deferred<Awaited<ReturnType<typeof draftStorage.readLocalDrafts>>>()
   const read = spyOn(draftStorage, 'readLocalDrafts').mockReturnValue(listed.promise)
   try {
     const store = useConversations()
@@ -1778,14 +1778,14 @@ test('the list waits for the new conversations this web browser keeps, so a relo
     await connect()
     expect(store.listStatus).toBe('loading')
     const now = '2026-09-09T00:00:00.000Z'
-    listed.resolve([{
+    listed.resolve({ drafts: [{
       messageEdit: null, pendingSends: [], base: null, model: null, files: [], scroll: null,
       text: 'Fix the login bug',
       local: {
         phase: 'draft',
         conversation: { id: draftId, title: 'New conversation', pinned: false, archived: false, target: { kind: 'cloud' }, createdAt: now, updatedAt: now },
       },
-    }])
+    }], unreadable: [] })
     await initialized
     expect(store.listStatus).toBe('ready')
     expect(store.items.find((item) => item.id === draftId)?.draft).toBe('Fix the login bug')
@@ -1830,19 +1830,19 @@ test('unsent drafts lead the list, newest first, live and after a reload whether
     pinia = createPinia()
     setActivePinia(pinia)
     const signOut = signIn()
-    const listed = deferred<draftStorage.SavedDraft[]>()
+    const listed = deferred<Awaited<ReturnType<typeof draftStorage.readLocalDrafts>>>()
     const read = spyOn(draftStorage, 'readLocalDrafts').mockReturnValue(listed.promise)
     try {
       store = useConversations()
       const initialized = store.initialize()
       if (storageFirst) {
-        listed.resolve(kept)
+        listed.resolve({ drafts: kept, unreadable: [] })
         await initialized
         channels.last().connect(backendState())
         await nextTick()
       } else {
         await connect()
-        listed.resolve(kept)
+        listed.resolve({ drafts: kept, unreadable: [] })
         await initialized
       }
       expect(store.items.map((item) => item.id)).toEqual(expected)
