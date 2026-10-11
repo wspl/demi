@@ -20,6 +20,7 @@ import { DRAFT_SAVE_DELAY_MS } from './draft-sync'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { EMPTY_TRANSCRIPT } from '@demicodes/web-ui/transport/protocol'
 import { latestBlocks, wholeHistory } from '@demicodes/web-ui/agent/history'
+import { TestSocket } from '@demicodes/web-ui/transport/__tests__/test-socket'
 
 /** The latest page of an empty transcript, as the backend answers it. */
 const EMPTY_PAGE = { start: 0, length: 0, blocks: [], instructions: [], summaries: [] }
@@ -1180,6 +1181,177 @@ test('a summary the channel brings before the archive is answered does not bring
   expect(archivedOf(FIRST)).toBe(false)
 })
 
+const THIRD = '00000000-0000-4000-8000-000000000003'
+
+test('archiving three of which the backend refuses one ends with the toast saying two, and its Undo restores those two', async () => {
+  records.push(record(THIRD, 'third'))
+  await changed(THIRD)
+  const store = useConversations()
+  const backend = holdAnswers((path) => path === '/api/conversations/batch')
+  // The stub's backend refuses to archive the second conversation, as one that runs.
+  const archived = store.archive([FIRST, SECOND, THIRD])
+  const toast = toasts.at(-1)!
+  expect(toast.title).toBe('3 Conversations Archived')
+  await backend.arrived(1)
+  backend.release()
+  expect(await archived).toBe(false)
+  // The same toast says it, in place; the refusal's own toast says why.
+  expect(toasts.find((item) => item.id === toast.id)?.title).toBe('2 Conversations Archived')
+  expect(archivedOf(SECOND)).toBe(false)
+  toasts.find((item) => item.id === toast.id)!.action!.run()
+  await backend.arrived(1)
+  backend.release()
+  await waitFor(() => batchBodies().length === 2, () => 'the restore was not sent')
+  expect(batchBodies()[1]).toEqual({ items: [FIRST, THIRD].map((id) => ({ id, patch: { archived: false } })) })
+})
+
+// Cost: no timer; the held answer is released by the test.
+test('a change of one conversation goes out beside another\'s archive, and one of the same conversation, or of a selection with it, after it', async () => {
+  const original = globalThis.document
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: { visibilityState: 'visible' } })
+  try {
+    const store = useConversations()
+    const arrivals: string[] = []
+    const archiveAnswer = deferred<void>()
+    const answering = globalThis.fetch
+    globalThis.fetch = (async (input, init) => {
+      const path = String(input)
+      if (path === '/api/conversations/batch') {
+        const { items } = JSON.parse(String(init?.body)) as { items: { id: string; patch: object }[] }
+        const label = `${JSON.stringify(items[0]!.patch)} ${items.map((item) => item.id === FIRST ? 'A' : 'B').join('+')}`
+        arrivals.push(label)
+        if (label === '{"archived":true} A') {
+          await archiveAnswer.promise
+        }
+      } else if (path.endsWith('/read')) {
+        arrivals.push('read B')
+      }
+      return answering(input, init)
+    }) as typeof fetch
+    Object.assign(records.find((item) => item.id === SECOND)!, { unread: true, revision: 3 })
+    await changed(SECOND)
+    store.items.find((item) => item.id === SECOND)!.load = 'ready'
+    const archived = store.archive([FIRST])
+    // Marking B read does not wait behind A's archive.
+    const read = store.markRead(SECOND)
+    await waitFor(() => arrivals.includes('read B'), () => 'the read waits behind the archive')
+    // Undo of A's archive, and a pin of A and B, wait for it, in order.
+    const undo = store.restore([FIRST])
+    const pinned = store.pin([FIRST, SECOND], true)
+    arrivals.push('archive answered')
+    archiveAnswer.resolve()
+    await Promise.all([archived, read, undo, pinned])
+    expect(arrivals).toEqual([
+      '{"archived":true} A',
+      'read B',
+      'archive answered',
+      '{"archived":false} A',
+      '{"pinned":true} A+B',
+    ])
+  } finally {
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: original })
+  }
+})
+
+/** The block the open conversation's transcript holds. */
+const shownBlock = { type: 'text' as const, id: 'shown', createdAt: '2026-09-09T00:00:00.000Z', model, text: 'Shown' }
+
+/**
+ * Opens the conversation `id` with a session: its transcript holds one
+ * block, and its socket opens at once and answers `open` as the backend
+ * does. Answers the conversation, its sockets in the order the page opened
+ * them, and every `load` it had since it opened.
+ */
+async function openWithSession(id: string) {
+  records.find((item) => item.id === id)!.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
+  await changed(id)
+  useProduct().snapshot!.providers.push(stubProvider)
+  const answering = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
+    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
+    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
+    if (path.endsWith('/transcript')) {
+      requests.push({ path, body: null })
+      return Response.json({ start: 0, length: 1, blocks: [shownBlock], instructions: [], summaries: [] })
+    }
+    return answering(input, init)
+  }) as typeof fetch
+  const sockets: TestSocket[] = []
+  // The page's conversation sockets open at once and answer `open`; its
+  // synchronization channel stays the test's.
+  const channel = globalThis.WebSocket
+  function PageSocket(url: string | URL) {
+    if (!new URL(url).pathname.endsWith('/stream')) {
+      return new channel(url)
+    }
+    const socket = new TestSocket(String(url))
+    const send = socket.send.bind(socket)
+    socket.send = (data) => {
+      send(data)
+      if (socket.sent.at(-1)?.type === 'open') {
+        queueMicrotask(() => socket.receive({ type: 'opened' }))
+      }
+    }
+    sockets.push(socket)
+    queueMicrotask(() => socket.open())
+    return socket
+  }
+  Object.assign(PageSocket, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 })
+  Reflect.set(globalThis, 'WebSocket', PageSocket)
+  await useProduct().loadModels(true)
+  const store = useConversations()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  expect(conversation.load).toBe('ready')
+  expect(sockets).toHaveLength(1)
+  const loads: string[] = []
+  watch(() => conversation.load, (load) => loads.push(load), { flush: 'sync' })
+  return { conversation, sockets, loads }
+}
+
+const transcriptReads = () => requests.filter((request) => request.path.endsWith('/transcript')).length
+
+test('archiving the open conversation keeps its transcript, and Undo connects it again from the blocks it holds, never loading', async () => {
+  const store = useConversations()
+  const { conversation, sockets, loads } = await openWithSession(FIRST)
+  const backend = holdAnswers((path) => path === '/api/conversations/batch')
+  const archived = store.archive([FIRST])
+  // In the same turn it is read-only, with its blocks, and its socket goes.
+  expect(conversation.archived).toBe(true)
+  expect(latestBlocks(conversation.history).map((block) => block.id)).toEqual(['shown'])
+  expect(sockets[0]!.closed).toBe(true)
+  await backend.arrived(1)
+  backend.release()
+  expect(await archived).toBe(true)
+  toasts.findLast((toast) => toast.title === 'Conversation Archived')!.action!.run()
+  expect(conversation.archived).toBe(false)
+  await backend.arrived(1)
+  // The backend refuses an archived conversation's socket: it connects once the restore lands.
+  expect(sockets).toHaveLength(1)
+  backend.release()
+  await waitFor(() => sockets[1]?.sent.length === 1, () => `it did not connect again: ${sockets.length} sockets`)
+  // Its `open` names the blocks it holds, as the first did.
+  expect(sockets[1]!.sent[0]).toEqual(sockets[0]!.sent[0]!)
+  expect(latestBlocks(conversation.history).map((block) => block.id)).toEqual(['shown'])
+  expect(transcriptReads()).toBe(1)
+  expect(loads).toEqual([])
+})
+
+test('an archive the backend refuses keeps the open conversation\'s transcript and connects it again, never loading', async () => {
+  const store = useConversations()
+  // The stub's backend refuses to archive the second conversation, as one that runs.
+  const { conversation, sockets, loads } = await openWithSession(SECOND)
+  expect(await store.archive([SECOND])).toBe(false)
+  expect(conversation.archived).toBe(false)
+  await waitFor(() => sockets[1]?.sent.length === 1, () => `it did not connect again: ${sockets.length} sockets`)
+  expect(sockets[1]!.sent[0]).toEqual(sockets[0]!.sent[0]!)
+  expect(latestBlocks(conversation.history).map((block) => block.id)).toEqual(['shown'])
+  expect(transcriptReads()).toBe(1)
+  expect(loads).toEqual([])
+})
+
 test('deleted rows leave at once, and a deletion that fails brings its row back and says why', async () => {
   const store = useConversations()
   const fetch = globalThis.fetch
@@ -1615,22 +1787,17 @@ test('a raised hosts revision reads the hosts of a conversation opened before an
   expect(hostReads(third.id)).toBe(0)
 })
 
-test('archive changes and removal invalidate cached history', async () => {
+test('a conversation removed and brought back reads its history again', async () => {
   serveHistory()
   const store = useConversations()
   await store.activate(FIRST)
-  await store.activate(null)
-  records[0]!.archived = true
-  await changed(FIRST)
-  await store.activate(FIRST)
-  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(2)
   await store.activate(null)
   const removed = records.shift()!
   await reconnected()
   records.unshift(removed)
   await reconnected()
   await store.activate(FIRST)
-  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(3)
+  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(2)
 })
 
 test('logout cancels pending history and prevents late state restoration', async () => {
