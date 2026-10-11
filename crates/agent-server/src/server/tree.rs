@@ -250,6 +250,7 @@ impl<H: HostResolver> Tree<H> {
             origin,
             role: NodeRole::Root,
             root: root.clone(),
+            server: Rc::downgrade(server),
             runtime,
             providers: deps.providers.clone(),
             hosts: deps.hosts.clone(),

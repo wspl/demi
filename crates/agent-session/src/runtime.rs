@@ -59,6 +59,13 @@ pub trait SessionRuntime {
     /// The tools the model may call.
     fn tools(&self) -> Arc<[ToolDefinition]>;
 
+    /// What the node has running now, which a compaction pass names after
+    /// its marker (`compaction.md` § What the model receives afterward): its
+    /// commands that run and its live subagents. Nothing by default.
+    fn running_work(&self) -> LocalBoxFuture<'_, RunningWork> {
+        Box::pin(async { RunningWork::default() })
+    }
+
     /// Whether a turn left undone because a call's Host was offline ends
     /// unfinished, with an error block that offers Resume: a root's does;
     /// a child's result says what it could not do, and its parent decides
@@ -160,6 +167,18 @@ pub trait SessionRuntime {
 /// The outcomes of a step's calls as they return, each by the call's index
 /// in the step.
 pub type StepOutcomes<'a> = LocalBoxStream<'a, (usize, Result<ToolOutcome, ToolFailure>)>;
+
+/// What a node has running (`compaction.md` § What the model receives
+/// afterward).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RunningWork {
+    /// Each command of the node that runs, by its number, with the title of
+    /// the call that started it, in the order the commands started.
+    pub commands: Vec<(CommandId, String)>,
+    /// Each live subagent the node spawned, by its agent number, with its
+    /// description, in spawn order.
+    pub subagents: Vec<(u64, String)>,
+}
 
 /// A context block the model receives, as its source sees it.
 #[derive(Debug, Clone, Copy)]

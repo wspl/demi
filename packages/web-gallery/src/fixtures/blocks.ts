@@ -1237,6 +1237,7 @@ export function transcriptDemoBlocks(): Block[] {
       model: demoModel,
       summary: 'Kept the cookie helper and the new session assertion.',
       summaryTokens: 2400,
+      kept: [],
     },
     {
       type: 'text',

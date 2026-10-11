@@ -172,12 +172,17 @@ fn content_sources(content: &[UserContentBlock]) -> impl Iterator<Item = Source<
     })
 }
 
-/// The media of a block: a message's or a steer's, a tool result's, or
-/// those command reports carry.
+/// The media of a block: a message's or a steer's, a tool result's, those
+/// command reports carry, or those of the messages a compaction kept.
 fn sources(block: &Block) -> Vec<Source<'_>> {
     match block {
         Block::User(user) => content_sources(&user.content).collect(),
         Block::Steer(steer) => content_sources(&steer.content).collect(),
+        Block::CompactionBoundary(boundary) => boundary
+            .kept
+            .iter()
+            .flat_map(|kept| content_sources(&kept.content))
+            .collect(),
         Block::ToolCall(call) => call.output.iter().filter_map(result_source).collect(),
         Block::Wakeup(wakeup) => wakeup
             .reports
