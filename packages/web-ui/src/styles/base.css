@@ -1588,81 +1588,47 @@ html[data-theme="light"] .file-pill {
 }
 
 /* A message's image, and an attachment's video's first frame, is a picture
-   in the message, not the message: scaled down, its proportions kept, to at
-   most 480 × 320 and the message's width, never enlarged. */
+   in the message, not the message: a tile, which `markdown/media-run.ts`
+   sizes from the message's width (`files/thumbnail.ts`). One the Markdown
+   puts elsewhere, such as in a table's cell, stays within its column. */
 .markdown-body :is(img, video) {
-  max-width: min(100%, 480px);
-  max-height: 320px;
+  max-width: 100%;
   border-radius: 0.375rem;
 }
 
 /* A lone medium and a run of them stand on lines of their own, 12px from the
    text above and below, even where the Markdown put them in a paragraph of
-   words (`markdown/render.ts`). The picture sits on the line's top, so the
-   line adds no space under it. */
+   words (`markdown/render.ts`). A run's tiles stand in a row that wraps, 8px
+   apart both ways; each is as large as its picture, and the space beside it
+   opens nothing. */
 .markdown-body :where(.media-lone, .media-run) {
-  margin-block: 12px;
-}
-
-.markdown-body .media-lone img {
-  vertical-align: top;
-}
-
-/* An attachment's video shows its first frame with a play mark, and a click
-   plays it in the viewer (`markdown/render.ts`). A lone one is as large as
-   its frame, within a lone image's bounds: its proportions and its width
-   come from its record, or from its first frame, and are 16:9 at 480px wide
-   until either says. */
-.markdown-body .message-video {
-  position: relative;
-  display: block;
-  width: min(
-    100%,
-    480px,
-    var(--media-width, 480px),
-    calc(320px * var(--media-ratio, 16 / 9))
-  );
-  aspect-ratio: var(--media-ratio, 16 / 9);
-}
-
-.markdown-body .message-video video {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top;
-  background: black;
-}
-
-/* A run of a message's images and videos (`markdown/render.ts`) stands in a
-   row that wraps, 8px apart both ways. Each is a thumbnail: its box, which
-   the render gives it from its record's size and `StreamedMarkdown` from its
-   own once loaded (`files/thumbnail.ts`), crops it to its top when tall and
-   to its middle when wide (`object-position: top` is `center top`). */
-.markdown-body .media-run {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 8px;
+  margin-block: 12px;
 }
 
-.markdown-body .media-run > span {
-  max-width: 100%;
-}
-
-.markdown-body .media-run a {
+.markdown-body :where(.media-lone, .media-run) a {
   display: block;
 }
 
-.markdown-body .media-run :is(img, video) {
+/* A tile's box keeps its picture's proportions; the cover only takes up the
+   rounding of its pixels. */
+.markdown-body :where(.media-lone, .media-run) :is(img, video) {
   display: block;
   object-fit: cover;
-  object-position: top;
 }
 
-.markdown-body .media-run .message-video {
-  width: auto;
-  aspect-ratio: auto;
+/* An attachment's video shows its first frame with a play mark, and a click
+   plays it in the viewer (`markdown/render.ts`). */
+.markdown-body .message-video {
+  position: relative;
+  display: block;
+}
+
+.markdown-body .message-video video {
+  background: black;
 }
 
 /* The mark over a video's first frame that says a click plays it, in a
