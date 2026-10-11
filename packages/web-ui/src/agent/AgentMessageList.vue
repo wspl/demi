@@ -13,7 +13,6 @@ import { useChromeEntrance } from './useChromeEntrance'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import AgentMessageVirtualBlock from './blocks/AgentMessageVirtualBlock.vue'
 import SessionStatus from './SessionStatus.vue'
-import ErrorNotice from '../ui/ErrorNotice.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import {
   sessionPaneStatus,
@@ -118,8 +117,8 @@ const {
   visibleBlocks,
   transcriptRows: visibleTranscriptBlocks,
   rows: renderBlocks,
+  keyOf,
   footerIds,
-  heldKey,
 } = useMessageRows(() => props)
 const editableUserId = computed(() => props.readOnly || !props.latest ? null : offeredEditId(props))
 /**
@@ -147,19 +146,18 @@ const summaryTokens = computed(() => new Map([
   ...Object.entries(props.summaries ?? {}),
   ...compactionSummaryTokens(props.blocks),
 ]))
-// A row enters once, as it first appears, under the key it keeps across its
-// forms: a run's row does not enter again as its first step becomes a block,
-// nor does the row the tail row carried into place.
+// A row enters once, as it first appears, under the key the list draws it
+// under: a run's row does not enter again as its first step becomes a
+// block, nor does a row that takes another's place.
 const { isEntering } = useChromeEntrance(
-  () => renderBlocks.value.map(rowKey),
-  () => heldKey.value,
+  () => renderBlocks.value.map(keyOf),
   () => props.conversationId,
   () => props.load ?? 'ready',
 )
 
-// The tail row alone is no transcript: it waits for one.
+// The tail row alone is no transcript: it waits for one; nor is a failure told at the tail.
 const paneStatus = computed(() =>
-  props.pendingSubmissions?.length ? null : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.some((row) => row.type !== 'activity_slot')),
+  props.pendingSubmissions?.length ? null : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.some((row) => row.type !== 'activity_slot' && row.type !== 'session_failure')),
 )
 const mutedIds = computed(() => messageEditSuffixIds(renderBlocks.value, props.editTargetId))
 // Every streamed delta re-renders the visible rows; the lookup must not rescan the transcript per row.
@@ -209,8 +207,6 @@ function thinkingEndedAt(index: number): string | null {
 
 const scrollArea = ref<InstanceType<typeof ScrollArea>>()
 const scrollContainer = computed(() => scrollArea.value?.el)
-/** What the list shows after its rows: a failure notice. */
-const listTail = ref<HTMLElement>()
 
 const {
   virtualItems,
@@ -223,7 +219,7 @@ const {
   onScroll,
   getPersistedState
 } =
-  useBlockVirtualizer(scrollContainer, renderBlocks, props.persistedScrollState, { keyOf: rowKey, tail: listTail })
+  useBlockVirtualizer(scrollContainer, renderBlocks, props.persistedScrollState, { keyOf })
 
 onBeforeUnmount(() => {
   emit('saveScrollState', props.conversationId, getPersistedState())
@@ -389,18 +385,10 @@ defineExpose({
                 @send-queued="(id) => emit('sendQueued', id)"
                 @edit-user="(id) => emit('editUser', id)"
                 @retry-submission="(id) => emit('retrySubmission', id)"
+                @retry-load="emit('retryLoad')"
               >
               </AgentMessageVirtualBlock>
             </MessageEditRegion>
-          </div>
-        </div>
-        <div ref="listTail">
-          <div v-if="failure" class="px-[var(--agent-pad-x,2rem)] py-1.5">
-            <ErrorNotice
-              :label="failure.label"
-              :action="failure.retry ? 'Retry' : undefined"
-              @action="emit('retryLoad')"
-            />
           </div>
         </div>
       </div>

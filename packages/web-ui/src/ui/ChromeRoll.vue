@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, useSlots, watch } from 'vue'
-import { CHROME_ROLL_MS } from './chrome-roll'
+import { CHROME_ROLL_EASING, CHROME_ROLL_MS } from './chrome-roll'
 
 const props = defineProps<{
   faceKey: string
@@ -114,7 +114,7 @@ onBeforeUnmount(clearRollTimer)
 <template>
   <div
     class="chrome-roll flex min-w-0 items-center gap-2"
-    :style="{ '--chrome-roll-ms': `${CHROME_ROLL_MS}ms` }"
+    :style="{ '--chrome-roll-ms': `${CHROME_ROLL_MS}ms`, '--chrome-roll-easing': CHROME_ROLL_EASING }"
   >
     <template v-if="iconPresent && rollMode === 'label'">
       <div ref="iconRef" class="flex h-7 shrink-0 items-center">
@@ -181,7 +181,7 @@ onBeforeUnmount(clearRollTimer)
 }
 
 .chrome-roll-track.is-rolling {
-  transition: transform var(--chrome-roll-ms) cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform var(--chrome-roll-ms) var(--chrome-roll-easing);
   transform: translateY(-50%);
 }
 </style>

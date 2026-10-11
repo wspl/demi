@@ -4,6 +4,7 @@ import type { CompactionProgressBlock } from './list-tail'
 import type { QueueDividerBlock, QueuedRenderBlock } from './queued-messages'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import type { ActivitySlotState } from './useActivitySlot'
+import type { SessionFailureNotice } from './session-status'
 
 export interface PendingSteerRenderBlock {
   type: 'pending_steer'
@@ -30,9 +31,27 @@ export interface ActivitySlotRow {
   slot: ActivitySlotState
 }
 
+/**
+ * A message whose delivery failed, told under it with Retry: for a message
+ * sent to start a turn, in the place of the Requesting row it replaces, which
+ * Retry rolls it back into (`product.md` § Recovering an unfinished turn).
+ */
+export interface DeliveryFailureRow {
+  type: 'delivery_failure'
+  id: `delivery-failure:${string}`
+  submission: PendingSubmissionState
+}
+
+/** A session-level failure, told at the tail of the transcript, in the tail row's place. */
+export interface SessionFailureRow {
+  type: 'session_failure'
+  id: 'session-failure'
+  failure: SessionFailureNotice
+}
+
 export type MessageListBlock =
   Block | PendingSteerRenderBlock | QueueDividerBlock | QueuedRenderBlock | CompactionProgressBlock |
-  PendingCallRenderBlock | WorkGroupBlock | ActivitySlotRow |
+  PendingCallRenderBlock | WorkGroupBlock | ActivitySlotRow | DeliveryFailureRow | SessionFailureRow |
   { type: 'pending_submission'; id: string; submission: PendingSubmissionState } |
   /** The edge of a window that does not reach its transcript's start or end, which shows its next page coming. */
   { type: 'history_edge'; id: 'history-before' | 'history-after' }
