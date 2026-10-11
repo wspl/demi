@@ -418,6 +418,29 @@ the page shows again, and replaces the channel and each conversation socket
 at once rather than after up to 75 seconds more of a watch that did not count
 the hour.
 
+The return reads what came in while the page was away before it judges a
+socket. A browser that froze a hidden tab holds the messages that arrived
+meanwhile and delivers them only once the tab runs again, so a heartbeat may
+be waiting to be read when the page becomes visible: the check runs after the
+page has read what its sockets hold, and a socket that brought anything is
+not broken. Likewise, the browser's word that it went offline counts only
+once it has held for a second: a network the system re-evaluates, as macOS
+does when it changes its primary interface, may report offline for a moment
+while every socket stays open, and the page neither shows the connection
+banner nor closes a socket for that moment.
+
+Each socket's end is recorded on both sides, so a drop the user saw can be
+traced afterwards. The backend logs, at `info`, each page socket it opens
+and each it ends: the socket's kind and conversation, an id that ties the
+two lines, the edge's request id and the client's address when a proxy such
+as Cloudflare passes them, and, at the end, why it ended (the page closed it
+with a code and reason, the connection broke without a close, the page fell
+a whole outbox behind, the backend shut down), how long it lived and how
+long since it last sent and last received. A socket that fell behind, an
+internal error and a close the page did not complete in time are warnings.
+The page reports through its error reports why it replaced a socket: its
+silence, a close code, the browser going offline, or its return.
+
 ### Page synchronization
 
 One module of `web`, the product state, holds the page's copy of the user's
