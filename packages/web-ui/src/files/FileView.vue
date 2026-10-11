@@ -17,12 +17,11 @@ import FileTree from './FileTree.vue'
 import MarkdownDocument from './MarkdownDocument.vue'
 import TreeFrame from './TreeFrame.vue'
 import { downloadUrl } from './download'
-import { GONE_MESSAGE } from './file-cache'
 import { TREE_WIDTH } from './file-view'
 import { formatBytes } from './format'
 import { baseName } from '@demicodes/utils'
 import { normalizePath, parentPath } from './paths'
-import { hasSourceView, previewKind, TOO_LARGE_NOTE } from './preview'
+import { hasSourceView, MISSING_FILE, previewKind, TOO_LARGE_NOTE } from './preview'
 import { useShowing } from './showing'
 import { useTextStart } from './text-start'
 import type { FileBrowserSource } from './types'
@@ -122,6 +121,8 @@ type TextState =
   | { phase: 'ready'; text: string }
   /** A file the text read cannot show; a text file too large for it shows its start instead. */
   | { phase: 'card'; tooLarge: boolean }
+  /** Nothing is at the path. */
+  | { phase: 'missing' }
   | { phase: 'failed'; message: string }
 
 const shown = useShowing(
@@ -146,7 +147,7 @@ const state = computed<TextState>(() => {
     case 'too-large':
       return { phase: 'card', tooLarge: entry.answer === 'too-large' }
     case 'gone':
-      return { phase: 'failed', message: GONE_MESSAGE }
+      return { phase: 'missing' }
     case null:
       return entry.failure
         ? { phase: 'failed', message: entry.failure.message ?? 'The file could not be read.' }
@@ -177,14 +178,20 @@ const startNote = computed(() => start.value?.phase === 'ready'
   ? `Showing the first ${formatBytes(start.value.shown)} of ${formatBytes(start.value.size)}.`
   : null)
 
-/** What the region says while it shows no file: none chosen, a read on its way, or why the read failed. */
+/**
+ * What the region says while it shows no file: none chosen, a read on its
+ * way, that nothing is at the path, or why the read failed. Retry stands
+ * under the last two, and the region loads until its read ends.
+ */
 const placeholder = computed(() => {
   const current = state.value
+  if (current.phase === 'missing')
+    return { status: 'failed' as const, icon: MISSING_FILE.icon, label: MISSING_FILE.label, detail: null }
   if (current.phase === 'failed')
-    return { status: 'failed' as const, label: 'Could not read this file.', detail: current.message }
+    return { status: 'failed' as const, icon: undefined, label: 'Could not read this file.', detail: current.message }
   if (current.phase === 'idle')
-    return { status: 'note' as const, label: 'Select a file.', detail: null }
-  return { status: 'loading' as const, label: 'Reading…', detail: null }
+    return { status: 'note' as const, icon: undefined, label: 'Select a file.', detail: null }
+  return { status: 'loading' as const, icon: undefined, label: 'Reading…', detail: null }
 })
 
 /** Where each file this view showed was scrolled to, to open there again. */
@@ -232,7 +239,7 @@ async function isDirectory(path: string): Promise<boolean> {
 /**
  * Where a path typed into the crumb row goes: a directory is found in the
  * tree, unfolded to and selected; anything else opens as a file, and one that
- * is not there says so the way any failed read does.
+ * is not there says that it does not exist.
  */
 async function go(target: string): Promise<void> {
   going?.abort()
@@ -366,6 +373,7 @@ onBeforeUnmount(() => {
           <RegionStatus
             class="h-full"
             :status="placeholder.status"
+            :icon="placeholder.icon"
             :label="placeholder.label"
             loading-label="Reading…"
             :detail="placeholder.detail"

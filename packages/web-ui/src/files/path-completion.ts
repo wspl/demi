@@ -7,7 +7,7 @@
 import { computed, ref, watch, type ComputedRef } from 'vue'
 import fuzzysort from 'fuzzysort'
 import { compareFileNames } from './file-browser-state'
-import { isHiddenName, normalizePath, resolveHostPath } from './paths'
+import { expandHome, isHiddenName, normalizePath, resolveHostPath } from './paths'
 import { useShowing } from './showing'
 import type { FileBrowserEntry, FileBrowserSource } from './types'
 
@@ -50,7 +50,7 @@ export function completionSpot(
   const before = text.slice(0, caret)
   const start = before.lastIndexOf('/') + 1
   const typed = before.slice(0, start)
-  const expanded = typed.startsWith('~/') ? `${places.home}${typed.slice(1)}` : typed
+  const expanded = expandHome(typed, places.home)
   if (places.base === undefined && !expanded.startsWith('/'))
     return null
   const absolute = places.base === undefined ? expanded : resolveHostPath(places.base, expanded)

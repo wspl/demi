@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
 import { deferred, type Deferred } from '@demicodes/utils'
-import { HostFiles, SUMMARY_REREAD_MS, type KeptSpec, type Read } from '../file-cache'
+import { effectScope } from 'vue'
+import { regionRetry } from '../../ui/region-retry'
+import { HostFiles, SUMMARY_REREAD_MS, type KeptSpec, type Read, type Showing } from '../file-cache'
 import { FileBrowserError, type FileBrowserFailure } from '../types'
 import {
   LEASE_MS,
@@ -443,4 +445,35 @@ test('a change reads a shared entry through the route of the view that came on s
   dialog.away()
   await h.event(['file', '/w/a.ts'])
   expect(routes).toEqual(['conversation', 'device', 'conversation'])
+})
+
+test('a Retry ends when its read does, though the file is still not there or the Host still out of reach', async () => {
+  const h = host()
+  const scope = effectScope()
+  // What a view's Retry runs: its region loads from the click until the read ends (`RegionStatus`).
+  const retried = (shown: Showing<string>) => {
+    const region = scope.run(() => regionRetry(() => [shown.entry.answer, shown.entry.failure?.kind]))!
+    region.retry(() => shown.retry())
+    return region.retrying
+  }
+
+  // `~` typed as a file of the workspace: nothing is there, and nothing is there again.
+  const missing = h.files.show(h.spec('text', '/w/~'))
+  await h.refuse('not-found')
+  expect(missing.entry).toMatchObject({ answer: 'gone', failure: null })
+  const loading = retried(missing)
+  expect(loading.value).toBe(true)
+  await h.refuse('not-found')
+  expect(loading.value).toBe(false)
+  expect(missing.entry).toMatchObject({ answer: 'gone', reading: false })
+
+  // A read that could not be made, then could not be made again.
+  const offline = h.files.show(h.spec('text', '/w/a.ts'))
+  await h.refuse('offline')
+  const again = retried(offline)
+  expect(again.value).toBe(true)
+  await h.refuse('offline')
+  expect(again.value).toBe(false)
+  expect(offline.entry).toMatchObject({ answer: null, failure: { kind: 'offline' }, reading: false })
+  scope.stop()
 })

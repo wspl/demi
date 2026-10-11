@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { homePath, isValidEntryName, joinPath, normalizePath, parentPath, pathSegments, relativePath } from '../paths'
+import { homePath, isValidEntryName, joinPath, normalizePath, parentPath, pathSegments, relativePath, typedPath } from '../paths'
 
 test('normalizePath collapses slashes and resolves dot segments from the root', () => {
   expect(normalizePath('/Users//zan/./Projects/')).toBe('/Users/alex/Projects')
@@ -47,4 +47,15 @@ test('homePath reads a path under the home from ~, and leaves one outside it or 
   expect(homePath('/Users/alex', '/Users/alex/')).toBe('~')
   expect(homePath('/Users/alex2/notes', '/Users/alex')).toBe('/Users/alex2/notes')
   expect(homePath('/srv/app', null)).toBe('/srv/app')
+})
+
+test('a typed path names the home with ~, starts a relative one from the workspace, and keeps an absolute one', () => {
+  const places = { home: '/Users/alex', root: '/Users/alex/Projects/demi' }
+  expect(typedPath('~', places)).toBe('/Users/alex')
+  expect(typedPath('~/notes/todo.md', places)).toBe('/Users/alex/notes/todo.md')
+  expect(typedPath('docs/guide.md', places)).toBe('/Users/alex/Projects/demi/docs/guide.md')
+  expect(typedPath('/etc/hosts', places)).toBe('/etc/hosts')
+  // Only a leading `~` alone or before a slash is the home, as in a shell.
+  expect(typedPath('~notes', places)).toBe('/Users/alex/Projects/demi/~notes')
+  expect(typedPath('~', { home: '/Users/alex' })).toBe('/Users/alex')
 })
