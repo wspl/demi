@@ -4,8 +4,6 @@
 html[data-density="regular"] {
   --spacing: 0.25rem;
   --agent-pad-x: 2rem;
-  --agent-text: 14px;
-  --agent-leading: 1.5;
 }
 
 html[data-radius="medium"] {

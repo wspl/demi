@@ -102,7 +102,7 @@ export function messageClipboard(doc: JSONContent): MessageClipboard {
 
 /**
  * A message the session holds, from its content, as Demi's own form of a
- * copy of it: what Undo Send pastes back into the composer, each file a
+ * copy of it: what Recall pastes back into the composer, each file a
  * capsule again without its bytes (`product.md` § Steer or queue).
  */
 export function contentCopy(content: readonly MessageEditContent[]): CopiedMessage {
