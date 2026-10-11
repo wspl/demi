@@ -4,7 +4,7 @@ import { LIVE_CAPTURE_STOPPED, type LiveTab } from '../generated/plugin'
 import LiveControls from './LiveControls.vue'
 import LiveDialog from './LiveDialog.vue'
 import { Menu, MenuDivider, MenuItem, Popover, RegionStatus, usePage } from '@demicodes/plugin-sdk'
-import { refusalSentence } from './tabs'
+import { reasonSentence } from './tabs'
 import { CanvasPictures } from './pictures'
 import type { LiveSession, LiveStream } from './session'
 import { viewerClipboard } from './clipboard'
@@ -399,7 +399,7 @@ onBeforeUnmount(() => {
       class="absolute inset-0 bg-surface"
       status="failed"
       label="Couldn’t show this page."
-      :detail="refusalSentence(state.pictureless)"
+      :detail="reasonSentence(state.pictureless)"
       :on-retry="state.pictureless === LIVE_CAPTURE_STOPPED ? () => session?.recapture() : undefined"
     />
     <input

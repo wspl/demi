@@ -7,6 +7,7 @@
 mod browser;
 pub mod page;
 mod panel;
+pub mod reason;
 
 use std::rc::Rc;
 

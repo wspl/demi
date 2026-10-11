@@ -1,6 +1,6 @@
 import { expect, jest, test } from 'bun:test'
 import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, type LiveModuleMessage, type LiveTab, type LiveViewerMessage } from '../../generated/plugin'
-import type { ConversationPlugin, UserStreamHandlers } from '@demicodes/plugin-sdk'
+import { PluginCallError, type ConversationPlugin, type UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { until } from '@vueuse/core'
 import { waitFor } from '@demicodes/utils'
 import { computed, effectScope, nextTick, ref, shallowRef } from 'vue'
@@ -8,7 +8,6 @@ import {
   NO_BROWSER,
   BrowserTabsController,
   BrowserTabsError,
-  refusalSentence,
   type BrowserTabList,
   type BrowserTabsApi,
   type BrowserTabsOptions,
@@ -118,12 +117,12 @@ test('a notice the picture shows through is a toast in the page’s words, once;
   await until(controller.pictures).toBe('supported')
   controller.resize(PANEL)
   controller.show('p-t1', 't1')
-  views[0]!.handlers.data(framed({ type: 'notice', code: 'input_failed', message: 'Input.dispatchKeyEvent: target closed' }))
+  views[0]!.handlers.data(framed({ type: 'notice', code: 'driver_error', message: 'Input.dispatchKeyEvent: target closed' }))
   views[0]!.handlers.data(framed({ type: 'notice', code: 'capture_unavailable', message: 'this CPU reports SME without SVE' }))
   expect(reported).toHaveLength(1)
   const [title, error] = reported[0]!
   expect(title).toBe('Could Not Operate the Browser')
-  expect(error).toMatchObject({ code: 'input_failed', message: 'The page didn’t receive your input.' })
+  expect(error).toMatchObject({ reason: 'driver_error', message: 'The browser on the device ran into a problem.' })
   expect(controller.session.value?.state.pictureless).toBe('capture_unavailable')
   end()
 })
@@ -357,31 +356,48 @@ test('the agent’s navigation shows the tab loading while the tab list says it 
   end()
 })
 
-test('a tab that could not open says what happened on the Host, never the generic sentence when the cause is known', () => {
-  // The codes the plugin records in a tab's failure when the Host refused or broke off the open.
-  const said = {
-    device_offline: refusalSentence('device_offline'),
-    host_stopped: refusalSentence('host_stopped'),
-    cloud_unavailable: refusalSentence('cloud_unavailable'),
-    cloud_capacity: refusalSentence('cloud_capacity'),
-    cloud_resetting: refusalSentence('cloud_resetting'),
-    cloud_crash_loop: refusalSentence('cloud_crash_loop'),
-    device_not_found: refusalSentence('device_not_found'),
-    host_operation_failed: refusalSentence('host_operation_failed'),
-    browser_unavailable: refusalSentence('browser_unavailable'),
-    browser_lost: refusalSentence('browser_lost'),
+// `live-view.md` § The tab methods: the panel says every failure in its own
+// words. The user saw "The browser couldn't do that." where the browser did
+// not start on the device; a failure that carries no reason of the plugin's
+// says whether the server answered, and with what, or that its answer could
+// not be read.
+test('a failed call says its reason’s sentence, or how the server answered, or that it did not or could not be read', async () => {
+  const failures: unknown[] = [
+    new PluginCallError('browser_unavailable', 'native artifact: the artifact has 60 bytes', { type: 'status', status: '409 Conflict' }),
+    new PluginCallError('plugin_failed', 'the browser answered what the plugin cannot read', { type: 'status', status: '500 Internal Server Error' }),
+    new PluginCallError('unreadable_answer', 'Invalid server response: not JSON', { type: 'unreadable' }),
+    new PluginCallError('failed', 'Failed to fetch'),
+    new TypeError('Failed to fetch'),
+  ]
+  const plugin: ConversationPlugin = {
+    state: () => ({ value: computed(() => null), error: computed(() => null), read: () => {} }),
+    call: async () => {
+      throw failures.shift()
+    },
+    stream: () => recordingStream([]),
+    installed: computed(() => []),
+    hostStarting: computed(() => false),
   }
-  const generic = refusalSentence('failed')
-  expect(Object.values(said).filter((sentence) => sentence === generic)).toEqual([])
-  // Each cause has words of its own.
-  expect(new Set(Object.values(said)).size).toBe(Object.keys(said).length)
-  expect(said.device_offline).toBe('The device is offline.')
+  const session = effectScope()
+  const api = session.run(() => browserTabsApi(plugin, () => {}))!
+  const said: Array<[string | null, string]> = []
+  for (let call = 0; call < 5; call += 1) {
+    await api.navigate('t1', 'https://example.test/').catch((error: BrowserTabsError) => void said.push([error.reason, error.message]))
+  }
+  expect(said).toEqual([
+    ['browser_unavailable', 'The browser couldn’t start on the device.'],
+    [null, 'The server couldn’t do that: 500 Internal Server Error.'],
+    [null, 'The server’s answer could not be read.'],
+    [null, 'The server didn’t answer.'],
+    [null, 'The server didn’t answer.'],
+  ])
+  session.stop()
 })
 
 test('Retry of a tab that could not open loads in the same call, and a failure that comes back ends it', async () => {
   let answer = (_tab: string | null) => {}
   const { controller, end } = harness({ bind: () => new Promise<string | null>((resolve) => (answer = resolve)) })
-  const failed = { url: 'https://example.test/', failure: { code: 'device_offline', message: 'Offline' } }
+  const failed = { url: 'https://example.test/', failure: { code: 'device_offline' as const, message: 'Offline' } }
   expect(controller.busy('p1', failed)).toBe(false)
   const retried = controller.bind('p1')
   // The failure gives way before the plugin heard of the Retry.
@@ -504,12 +520,12 @@ test('a refused Back ends the loading at once and rejects with why, and a replac
   const url = 'https://example.test/orders'
   const back = controller.history('t1', 'back')
   expect(controller.loading('t1', url)).toBe(true)
-  answers[0]!.reject(new BrowserTabsError('history_boundary', 'The tab has no page to go to in that direction.'))
-  expect(await back.catch((error: BrowserTabsError) => error.code)).toBe('history_boundary')
+  answers[0]!.reject(BrowserTabsError.of('history_boundary'))
+  expect(await back.catch((error: BrowserTabsError) => error.reason)).toBe('history_boundary')
   expect(controller.loading('t1', url)).toBe(false)
   const forward = controller.history('t1', 'forward')
   void controller.history('t1', 'reload')
-  answers[1]!.reject(new BrowserTabsError('history_boundary', 'The tab has no page to go to in that direction.'))
+  answers[1]!.reject(BrowserTabsError.of('history_boundary'))
   await forward.catch(() => {})
   expect(controller.loading('t1', url)).toBe(true)
   end()
@@ -533,12 +549,12 @@ test('a request on a tab the browser lost says nothing and asks the plugin to re
   controller.resize(PANEL)
   controller.show('p-t1', 't1')
   const reload = controller.history('t1', 'reload')
-  answers[0]!.reject(new BrowserTabsError('tab_not_found', 'This page is no longer open on the device.'))
+  answers[0]!.reject(BrowserTabsError.of('tab_not_found'))
   await reload
   expect(syncs()).toBe(1)
   // The tab menu's Reload of a tab not shown.
   controller.reload({ url: 'https://example.test/b', tab: 't2' })
-  answers[1]!.reject(new BrowserTabsError('tab_not_found', 'This page is no longer open on the device.'))
+  answers[1]!.reject(BrowserTabsError.of('tab_not_found'))
   await waitFor(() => syncs() === 2, () => `syncs: ${syncs()}`)
   expect(reported).toEqual([])
   expect(defects).toEqual([])
@@ -685,7 +701,7 @@ test('before the browser has a tab, the content says what Demi does: connecting,
   expect(views[0]!.sent.at(-1)).toEqual({ type: 'watch', tab: 't2' })
   // A tab lost with the browser waits for it again; one that could not open does not, until its Retry.
   expect(controller.startingPhase('p1', { ...bound, closed: true })).toBe('page')
-  expect(controller.startingPhase('p1', { ...opening, failure: { code: 'device_offline', message: 'Offline' } })).toBeNull()
+  expect(controller.startingPhase('p1', { ...opening, failure: { code: 'device_offline' as const, message: 'Offline' } })).toBeNull()
   end()
 })
 
@@ -747,7 +763,7 @@ test('a tab shown again shows no page until the browser’s list names its tab, 
 test('a view that finds its tab gone while the device is offline reports nothing; another refusal is a defect', async () => {
   const opened: UserStreamHandlers[] = []
   const defects: Array<[string, unknown]> = []
-  let refusal = new BrowserTabsError('device_offline', 'The device is offline')
+  let refusal = BrowserTabsError.of('device_offline')
   const { controller, end } = harness(
     {
       sync: async () => {
@@ -768,7 +784,7 @@ test('a view that finds its tab gone while the device is offline reports nothing
   opened[0]!.closed('device_offline')
   await Promise.resolve()
   expect(defects).toEqual([])
-  refusal = new BrowserTabsError('conversation_busy', 'Busy')
+  refusal = BrowserTabsError.of('conversation_busy')
   controller.hide('p-t1')
   controller.show('p-t2', 't2')
   opened.at(-1)!.closed('browser_lost')

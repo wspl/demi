@@ -7,7 +7,7 @@
  * opens again after the page's reconnect waits (`web-application.md`
  * § Liveness and reconnection).
  */
-import { liveViewerMessageSchema, type BrowserViewport, type CursorRegion, type LiveControl, type LiveDialog, type LiveDownload, type LiveMenu, type LiveTab, type LiveViewerMessage } from '../generated/plugin'
+import { liveViewerMessageSchema, panelReasonSchema, type BrowserViewport, type CursorRegion, type LiveControl, type LiveDialog, type LiveDownload, type LiveMenu, type LiveTab, type LiveViewerMessage, type PanelReason } from '../generated/plugin'
 import { LIVE_CAPTURE_FAILED, LIVE_CAPTURE_STOPPED, LIVE_CAPTURE_UNAVAILABLE, LIVE_FILE_CHUNK_BYTES, LIVE_STALL_MS } from '../generated/plugin'
 import { reactive } from 'vue'
 import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/plugin-sdk'
@@ -47,11 +47,18 @@ export const SILENT_STREAM = 'silent'
 export type LiveConnection = 'opening' | 'live' | 'stalled' | 'ended'
 
 /**
- * The notices that leave the watched tab without a picture, which the view
- * shows in place of the picture; every other notice the picture still shows
- * through (`live-view.md` § Opening a view).
+ * The reasons of the notices that leave the watched tab without a picture,
+ * which the view shows in place of the picture; every other notice the
+ * picture still shows through (`live-view.md` § Opening a view). Each is a
+ * reason of the plugin's set, which the page has words for.
  */
-const PICTURELESS: ReadonlySet<string> = new Set([LIVE_CAPTURE_UNAVAILABLE, LIVE_CAPTURE_FAILED, LIVE_CAPTURE_STOPPED])
+export type PicturelessReason = typeof LIVE_CAPTURE_UNAVAILABLE | typeof LIVE_CAPTURE_FAILED | typeof LIVE_CAPTURE_STOPPED
+
+const PICTURELESS: readonly PicturelessReason[] = [LIVE_CAPTURE_UNAVAILABLE, LIVE_CAPTURE_FAILED, LIVE_CAPTURE_STOPPED]
+
+function isPictureless(reason: PanelReason): reason is PicturelessReason {
+  return PICTURELESS.some((pictureless) => pictureless === reason)
+}
 
 export interface LiveState {
   connection: LiveConnection
@@ -72,7 +79,7 @@ export interface LiveState {
    * none, until a picture of the tab or another watched tab ends it
    * (`live-view.md` § Opening a view).
    */
-  pictureless: string | null
+  pictureless: PicturelessReason | null
   /** Why the view ended, once it did. */
   ended: string | null
 }
@@ -96,7 +103,7 @@ export interface LiveSessionOptions {
    * something the module could not do for the viewer. Its message is the
    * Host's, which the Host's log keeps.
    */
-  onNotice?: (code: string) => void
+  onNotice?: (reason: PanelReason) => void
   /** The conversation browser's tabs, each time the view reports them, with the list's number in the Host's sequence. */
   onTabs?: (tabs: LiveTab[], list: number) => void
   /**
@@ -362,13 +369,18 @@ export class LiveSession {
           break
         case 'choice':
           break
-        case 'notice':
-          if (PICTURELESS.has(message.code)) {
-            this.state.pictureless = message.code
+        case 'notice': {
+          const reason = panelReasonSchema.safeParse(message.code)
+          if (!reason.success) {
+            // The module ships with this page, so a notice of a reason the page has no words for is its defect.
+            this.options.defect('The live view sent a notice of a reason the page does not know', reason.error)
+          } else if (isPictureless(reason.data)) {
+            this.state.pictureless = reason.data
           } else {
-            this.options.onNotice?.(message.code)
+            this.options.onNotice?.(reason.data)
           }
           break
+        }
         case 'ended':
           this.end(message.reason)
           break

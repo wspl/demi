@@ -1,3 +1,4 @@
+import { httpStatusLine } from '@demicodes/utils'
 import { BrowserTabsError } from '@demicodes/plugin-browser/live/tabs'
 import type { OpenUserStream } from '@demicodes/web-ui/plugins/streams'
 import type { HostArtifact } from '@demicodes/web-ui/devices/installed'
@@ -104,6 +105,9 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
   }
 }
 
+/** The status the backend answers a plugin's failure with, which a specimen's failure without a reason stands for. */
+export const SERVER_FAILED = httpStatusLine(500)
+
 function unknownMethod(method: string): never {
   throw new PluginCallError('unknown_method', `No method "${method}"`)
 }
@@ -156,8 +160,12 @@ export function browserPlugin(browser: GalleryBrowser, panel: GalleryBrowserPlug
       try {
         return await call(method, params)
       } catch (error) {
+        // A refusal with its reason, as the backend answers one with 409; one without, as it answers the
+        // plugin's own failure.
         if (error instanceof BrowserTabsError) {
-          throw new PluginCallError(error.code ?? 'failed', error.message)
+          throw error.reason === null
+            ? new PluginCallError('plugin_failed', error.message, { type: 'status', status: SERVER_FAILED })
+            : new PluginCallError(error.reason, error.message, { type: 'status', status: '409 Conflict' })
         }
         throw error
       }
