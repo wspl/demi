@@ -13,7 +13,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  /** End Command in a running tab's menu: stop that command. */
+  /** End Command in a running tab's menu: stop that command; a stopping one's tab shows a spinner until it ends. */
   abort: [id: string]
 }>()
 const activeId = defineModel<string | null>('activeId', { required: true })
@@ -55,6 +55,7 @@ function closeTab(id: string): void {
         :is-active="terminal.id === active?.id"
         :status="terminalStatus(terminal.phase)"
         mark="terminal"
+        :busy="terminal.stopping === true"
         :closable="false"
         @select="activate(terminal.id)"
         @contextmenu="openTabMenu($event, terminal.id)"
@@ -64,7 +65,7 @@ function closeTab(id: string): void {
       <MenuItem
         :icon="CircleStop"
         label="End Command"
-        :disabled="terminalOf(id)?.phase !== 'running'"
+        :disabled="terminalOf(id)?.phase !== 'running' || terminalOf(id)?.stopping === true"
         @select="emit('abort', id)"
       />
       <MenuDivider />

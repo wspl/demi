@@ -33,6 +33,11 @@ export interface TerminalRecord {
   exitCode?: number
   /** Why its runner lost it, once a live frame said so. */
   lostReason?: string
+  /**
+   * While it runs: a stop waits for its runner to say that it ended
+   * (`runner.md` § Cancellation and completion), as a live frame said.
+   */
+  stopping?: boolean
   /** The `shell` call that started it, known from its live frames. */
   toolUseId?: string
   /** The subagent that runs it; absent for the root's commands. */
@@ -202,6 +207,7 @@ export function followFrame(
     // How it ended, which its row marks also when its call returned before.
     exitCode: status.status === 'exited' ? status.exitCode : undefined,
     lostReason: status.status === 'lost' ? status.reason : undefined,
+    stopping: status.status === 'running' && status.stopping ? true : undefined,
     toolUseId: status.toolUseId,
     ...(subagentId === undefined ? {} : { subagentId }),
   }
@@ -263,12 +269,16 @@ export function shellRowRunning(
 
 /**
  * How a `shell` row's command ended (`runtime.md` § Rendering
- * boundary): none while its call runs; after, the end the command's record
- * has, from its live frames or a stored view, and otherwise the view the
- * call stored, unless that view saw the command still running, which says
- * nothing of its end.
+ * boundary): that a stop waits for its end, while its runner has not said
+ * so; none while its call runs otherwise; after, the end the command's
+ * record has, from its live frames or a stored view, and otherwise the view
+ * the call stored, unless that view saw the command still running, which
+ * says nothing of its end.
  */
 export function shellRowEnd(call: ToolCallBlock, command: TerminalRecord | undefined): CommandEnd | null {
+  if (command?.stopping && isTerminalRunning(command.phase)) {
+    return { status: command.phase, stopping: true }
+  }
   if (call.status === 'executing') {
     return null
   }

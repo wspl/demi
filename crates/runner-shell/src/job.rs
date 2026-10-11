@@ -6,11 +6,15 @@ use crate::{
     scope::Scope,
 };
 use bytes::Bytes;
+#[cfg(unix)]
+use demi_runner_process::process::{JOB_ID_ENV, Stray};
 use demi_runner_process::{
     job_shell::ShellJob,
     process::{OutputChunk, ProcessExit, ProcessInput},
     stdio::{LIVE_INPUT_ENV, reference},
 };
+#[cfg(unix)]
+use tokio_util::task::AbortOnDropHandle;
 use demi_runner_protocol::wire::{OutputStream, Signal};
 use futures_util::future::BoxFuture;
 use std::{
@@ -38,6 +42,11 @@ pub struct Job {
     /// Asks the stdout pump to read what the pipe holds now, and answers
     /// once it is in [`Job::output`].
     drains: mpsc::UnboundedSender<oneshot::Sender<()>>,
+    /// Takes each signal that stops the job to its process groups and its
+    /// processes outside them ([`stop_strays`]); none for a job without an
+    /// id, whose groups take the signals at once.
+    #[cfg(unix)]
+    strays: Option<mpsc::UnboundedSender<i32>>,
 }
 
 /// The most one read of a job's output takes.
@@ -110,6 +119,20 @@ impl Job {
         let (input, receiver) = mpsc::channel(4);
         let (sender, output) = mpsc::channel(4);
         let cancel = scope.work.cancellation.clone();
+        #[cfg(unix)]
+        let (strays, stray_stop) = match env.get(JOB_ID_ENV) {
+            Some(id) => {
+                let (signals, received) = mpsc::unbounded_channel();
+                let stop = tokio::spawn(stop_strays(
+                    scope.clone(),
+                    id.clone(),
+                    received,
+                    cancel.clone(),
+                ));
+                (Some(signals), Some(AbortOnDropHandle::new(stop)))
+            }
+            None => (None, None),
+        };
         let owner_cancel = cancel.clone();
         let stop_signal = Arc::new(Mutex::new(None::<Signal>));
         let owner_signal = stop_signal.clone();
@@ -190,6 +213,16 @@ impl Job {
                     _ => {}
                 }
             }
+            // A killed job ends once what it killed outside its groups has
+            // ended; a job that ended otherwise leaves them alone, and the
+            // handle's drop ends their watch.
+            #[cfg(unix)]
+            if let Some(stray_stop) = stray_stop
+                && owner_cancel.is_cancelled()
+                && let Err(failure) = stray_stop.await
+            {
+                error = Some(failure.to_string());
+            }
             let code = match outcome {
                 Ok(Ok(Ok(result))) => Some(i32::from(result.code)),
                 Ok(Ok(Err(failure))) => {
@@ -239,6 +272,8 @@ impl Job {
             scope: job_scope,
             stop_signal,
             drains,
+            #[cfg(unix)]
+            strays,
         })
     }
 }
@@ -276,6 +311,7 @@ impl ShellJob for Job {
     /// it the first way (`runner.md` § Cancellation and completion): its
     /// shell work ends at its next step, every process group it started
     /// takes the signal, and the job ends once every process of them has.
+    /// Its processes that left its groups take each signal too.
     fn signal(&self, signal: Signal) -> io::Result<()> {
         match signal {
             Signal::Kill => {
@@ -287,6 +323,12 @@ impl ShellJob for Job {
                     return Ok(());
                 }
                 *self.stop_signal.lock().expect("the stop signal is intact") = Some(signal);
+                #[cfg(unix)]
+                if let Some(strays) = &self.strays {
+                    // The task ends only with the job, which still runs.
+                    let _ = strays.send(number(signal));
+                    return Ok(());
+                }
                 self.scope.signal(number(signal), false)
             }
             Signal::User1 | Signal::User2 | Signal::Stop | Signal::Continue => Err(io::Error::new(
@@ -308,6 +350,70 @@ impl ShellJob for Job {
             self.exited.clone().expect("the owner left the exit")
         })
     }
+}
+
+/// Takes the signals that stop job `job` to its process groups and to its
+/// processes outside them, as a daemon that calls `setsid` is (`runner.md`
+/// § Cancellation and completion): for each signal, it finds those
+/// processes while the tree is whole, then signals the groups, through
+/// `scope`, and each of them. Once `killed` is cancelled, which kills the
+/// groups, it kills them too, with those the last signal reached that still
+/// run, and ends when they have ended.
+#[cfg(unix)]
+async fn stop_strays(
+    scope: Scope,
+    job: String,
+    mut signals: mpsc::UnboundedReceiver<i32>,
+    killed: CancellationToken,
+) {
+    let find = |known: Vec<Stray>| {
+        let work = scope.work.clone();
+        let job = job.clone();
+        async move {
+            tokio::task::spawn_blocking(move || work.strays(&job, &known))
+                .await
+                .unwrap_or_else(|failure| {
+                    tracing::warn!("finding the job's processes outside its groups failed: {failure}");
+                    Vec::new()
+                })
+        }
+    };
+    let mut known = Vec::new();
+    loop {
+        tokio::select! {
+            biased;
+            () = killed.cancelled() => break,
+            signal = signals.recv() => {
+                // The job is gone, which cancels `killed`.
+                let Some(signal) = signal else {
+                    killed.cancelled().await;
+                    break;
+                };
+                let strays = find(known).await;
+                if let Err(failure) = scope.signal(signal, false) {
+                    tracing::warn!("signalling the job's process groups failed: {failure}");
+                }
+                known = reach(strays, signal);
+            }
+        }
+    }
+    let strays = find(known).await;
+    demi_runner_process::process::strays_ended(reach(strays, number(Signal::Kill))).await;
+}
+
+/// Sends `signal` to each of `strays`; answers those it was sent to.
+#[cfg(unix)]
+fn reach(strays: Vec<Stray>, signal: i32) -> Vec<Stray> {
+    strays
+        .into_iter()
+        .filter(|stray| match demi_runner_process::process::signal_process(stray.pid, signal) {
+            Ok(()) => true,
+            Err(failure) => {
+                tracing::warn!("signalling process {}, outside the job's groups, failed: {failure}", stray.pid);
+                false
+            }
+        })
+        .collect()
 }
 
 /// The number of a signal that ends a job.
