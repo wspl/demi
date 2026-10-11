@@ -78,22 +78,22 @@ struct Interrupt {
 
 #[cfg(unix)]
 impl Interrupt {
-    /// Made on a shell thread, inside the shell runtime, from a new pipe.
+    /// Made from a new pipe, its closer on `runtime`: the thread whose IO
+    /// first needs it may be a utility's own worker, outside any runtime.
     fn new(
+        runtime: &tokio::runtime::Handle,
         cancellation: &CancellationToken,
         (reader, writer): (std::io::PipeReader, std::io::PipeWriter),
-    ) -> io::Result<Self> {
+    ) -> Self {
         let cancelled = cancellation.clone();
-        let closer = tokio::runtime::Handle::try_current()
-            .map_err(io::Error::other)?
-            .spawn(async move {
-                cancelled.cancelled().await;
-                drop(writer);
-            });
-        Ok(Self {
+        let closer = runtime.spawn(async move {
+            cancelled.cancelled().await;
+            drop(writer);
+        });
+        Self {
             reader,
             _closer: tokio_util::task::AbortOnDropHandle::new(closer),
-        })
+        }
     }
 }
 
@@ -109,6 +109,10 @@ pub struct Scope {
     /// The job's background tasks and process groups.
     pub(crate) work: Arc<Work>,
     pub tasks: TaskTracker,
+    /// The runtime the scope was made in, which runs the tasks its blocking
+    /// IO starts. That IO may run on a utility's own worker thread, such as
+    /// `du`'s printer, which is outside every runtime.
+    runtime: tokio::runtime::Handle,
     pub commands: Option<JobCommands>,
     pub edits: Option<demi_command_sdk::edits::Recorder>,
     /// Readable once `cancellation` is, so blocking IO polls it with its
@@ -126,7 +130,7 @@ pub struct Scope {
 
 impl Scope {
     /// A job's scope, which `cancellation` ends with everything the job
-    /// runs.
+    /// runs. Made inside a Tokio runtime, which it keeps.
     pub fn new(cancellation: CancellationToken, commands: Option<JobCommands>) -> Self {
         let stop = Stop::job(&cancellation);
         Self {
@@ -134,6 +138,7 @@ impl Scope {
             stop,
             work: Arc::new(Work::new(cancellation)),
             tasks: TaskTracker::new(),
+            runtime: tokio::runtime::Handle::current(),
             commands,
             edits: None,
             files: Arc::new(Mutex::new(HashMap::new())),
@@ -231,9 +236,10 @@ impl Scope {
             return Ok(interrupt.clone());
         }
         let interrupt = Arc::new(Interrupt::new(
+            &self.runtime,
             &self.cancellation,
             self.descriptors(std::io::pipe)?,
-        )?);
+        ));
         *slot = Some(interrupt.clone());
         Ok(interrupt)
     }
@@ -400,7 +406,7 @@ impl Scope {
         let finished = CancellationToken::new();
         let guard = finished.clone().drop_guard();
         let cancellation = self.cancellation.clone();
-        self.tasks.spawn(async move {
+        self.tasks.spawn_on(async move {
             tokio::select! {
                 biased;
                 _ = finished.cancelled() => return,
@@ -424,7 +430,7 @@ impl Scope {
                     _ = tokio::time::sleep(Duration::from_millis(10)) => {},
                 }
             }
-        });
+        }, &self.runtime);
         Ok(guard)
     }
 

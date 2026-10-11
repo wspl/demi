@@ -137,7 +137,8 @@ pub(super) async fn attachment(
         .read(&record.id, move |connection| {
             conversation_attachments::read(connection, number)
         })
-        .await?
+        .await
+        .map_err(ApiError::conversation_unreadable)?
         .flatten()
         .ok_or_else(no_attachment)?;
     Ok(Json(ConversationAttachment {
@@ -361,7 +362,8 @@ pub(super) async fn read(
     let facts = services
         .conversations
         .read(&record.id, tree::summary)
-        .await?
+        .await
+        .map_err(ApiError::conversation_unreadable)?
         .unwrap_or(tree::SummaryFacts::EMPTY);
     if revision > facts.revision {
         return Err(ApiError::new(
