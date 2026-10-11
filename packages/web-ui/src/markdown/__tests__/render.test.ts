@@ -119,42 +119,51 @@ test('task boxes are read-only, and HTML shows as text', () => {
 // `attachment:a3` names one of the conversation's, whatever its file became.
 
 const attachments: Record<string, AttachmentLookup> = {
-  a1: { state: 'found', attachment: { name: 'login.png', mediaType: 'image/png', url: '/blobs/1?type=image%2Fpng', width: 480, height: 300 } },
-  a2: { state: 'found', attachment: { name: 'flow.mp4', mediaType: 'video/mp4', url: '/blobs/2?type=video%2Fmp4', width: 1280, height: 720 } },
-  a3: { state: 'found', attachment: { name: 'report.pdf', mediaType: 'application/pdf', url: '/blobs/3?type=application%2Fpdf' } },
+  a1: { state: 'found', attachment: { name: 'login.png', mediaType: 'image/png', sha256: '1'.repeat(64), url: '/blobs/1?type=image%2Fpng', width: 480, height: 300 } },
+  a2: { state: 'found', attachment: { name: 'flow.mp4', mediaType: 'video/mp4', sha256: '2'.repeat(64), url: '/blobs/2?type=video%2Fmp4', width: 1280, height: 720 } },
+  a3: { state: 'found', attachment: { name: 'report.pdf', mediaType: 'application/pdf', sha256: '3'.repeat(64), url: '/blobs/3?type=application%2Fpdf' } },
   a4: { state: 'loading' },
   a5: { state: 'failed' },
-  a6: { state: 'found', attachment: { name: 'clip.webm', mediaType: 'video/webm', url: '/blobs/6?type=video%2Fwebm' } },
-  a7: { state: 'found', attachment: { name: 'frame.png', mediaType: 'image/png', url: '/blobs/7?type=image%2Fpng', width: 171, height: 40 } },
-  a45: { state: 'found', attachment: { name: 'words.png', mediaType: 'image/png', url: '/blobs/45?type=image%2Fpng', width: 2560, height: 1720 } },
-  a46: { state: 'found', attachment: { name: 'words-2.png', mediaType: 'image/png', url: '/blobs/46?type=image%2Fpng', width: 1280, height: 720 } },
-  a48: { state: 'found', attachment: { name: 'text.png', mediaType: 'image/png', url: '/blobs/48?type=image%2Fpng', width: 2560, height: 1720 } },
+  a6: { state: 'found', attachment: { name: 'clip.webm', mediaType: 'video/webm', sha256: '6'.repeat(64), url: '/blobs/6?type=video%2Fwebm' } },
+  a7: { state: 'found', attachment: { name: 'frame.png', mediaType: 'image/png', sha256: '7'.repeat(64), url: '/blobs/7?type=image%2Fpng', width: 171, height: 40 } },
+  a45: { state: 'found', attachment: { name: 'words.png', mediaType: 'image/png', sha256: '45'.repeat(32), url: '/blobs/45?type=image%2Fpng', width: 2560, height: 1720 } },
+  a46: { state: 'found', attachment: { name: 'words-2.png', mediaType: 'image/png', sha256: '46'.repeat(32), url: '/blobs/46?type=image%2Fpng', width: 1280, height: 720 } },
+  a48: { state: 'found', attachment: { name: 'text.png', mediaType: 'image/png', sha256: '48'.repeat(32), url: '/blobs/48?type=image%2Fpng', width: 2560, height: 1720 } },
 }
 const withAttachments: MessageFiles = {
   ...files,
   attachment: (id) => attachments[id] ?? { state: 'missing' },
 }
 
+/** The stored file an attachment's link carries for a drag into a composer. */
+function file(id: string): string {
+  const lookup = attachments[id]
+  if (lookup?.state !== 'found')
+    throw new Error(`No attachment ${id}`)
+  const { name, sha256, mediaType } = lookup.attachment
+  return ` data-attachment-file="${JSON.stringify({ type: 'stored', name, sha256, mediaType }).replaceAll('"', '&quot;')}"`
+}
+
 test('an attachment image shows, and a click on it shows it large', () => {
   expect(renderMarkdown('![The fixed sign-in page](attachment:a1)', { files: withAttachments }))
-    .toBe('<p class="media-lone"><a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png" data-keeps-windows><img src="/blobs/1?type=image%2Fpng" alt="The fixed sign-in page" data-width="480" data-height="300" /></a></p>\n')
+    .toBe(`<p class="media-lone"><a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png"${file('a1')} data-keeps-windows><img src="/blobs/1?type=image%2Fpng" alt="The fixed sign-in page" data-width="480" data-height="300" /></a></p>\n`)
 })
 
 const mark = '<span class="media-play-mark" aria-hidden="true"></span>'
 
 test('an attachment video shows its first frame with a play mark, with the size its record says, and a click plays it large', () => {
   expect(renderMarkdown('![The flow](attachment:a2)', { files: withAttachments }))
-    .toBe(`<p class="media-lone"><a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4" data-keeps-windows class="message-video"><video src="/blobs/2?type=video%2Fmp4" muted playsinline preload="metadata" aria-label="The flow" data-width="1280" data-height="720"></video>${mark}</a></p>\n`)
+    .toBe(`<p class="media-lone"><a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4"${file('a2')} data-keeps-windows class="message-video"><video src="/blobs/2?type=video%2Fmp4" muted playsinline preload="metadata" aria-label="The flow" data-width="1280" data-height="720"></video>${mark}</a></p>\n`)
   // A record without a size leaves it to the first frame.
   expect(renderMarkdown('![The clip](attachment:a6)', { files: withAttachments }))
-    .toBe(`<p class="media-lone"><a href="/blobs/6?type=video%2Fwebm" data-attachment-video="clip.webm" data-keeps-windows class="message-video"><video src="/blobs/6?type=video%2Fwebm" muted playsinline preload="metadata" aria-label="The clip"></video>${mark}</a></p>\n`)
+    .toBe(`<p class="media-lone"><a href="/blobs/6?type=video%2Fwebm" data-attachment-video="clip.webm"${file('a6')} data-keeps-windows class="message-video"><video src="/blobs/6?type=video%2Fwebm" muted playsinline preload="metadata" aria-label="The clip"></video>${mark}</a></p>\n`)
 })
 
 test('a link opens an attachment: an image or a video large, any other file as a download', () => {
   const html = renderMarkdown('[shot](attachment:a1) [flow](attachment:a2) [report](attachment:a3) ![report](attachment:a3)', { files: withAttachments })
-  expect(html).toContain('<a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png" data-keeps-windows>shot</a>')
-  expect(html).toContain('<a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4" data-keeps-windows>flow</a>')
-  expect(html).toContain('<a href="/blobs/3?type=application%2Fpdf" download="report.pdf">report</a> <a href="/blobs/3?type=application%2Fpdf" download="report.pdf">report</a>')
+  expect(html).toContain(`<a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png"${file('a1')} data-keeps-windows>shot</a>`)
+  expect(html).toContain(`<a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4"${file('a2')} data-keeps-windows>flow</a>`)
+  expect(html).toContain(`<a href="/blobs/3?type=application%2Fpdf" download="report.pdf"${file('a3')}>report</a> <a href="/blobs/3?type=application%2Fpdf" download="report.pdf"${file('a3')}>report</a>`)
 })
 
 test('an attachment number the conversation does not have says so beside its text', () => {
@@ -182,7 +191,7 @@ test('images with only white space between them in one paragraph are one run', (
 
 test('paragraphs of images that follow each other are one run, a video among them', () => {
   expect(renderMarkdown(`${shot(1)}\n\n![The flow](attachment:a2)\n\n\n${shot(2)}`, { files: withAttachments }))
-    .toBe(`<p class="media-run">${item(1)}<a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4" data-keeps-windows class="message-video"><video src="/blobs/2?type=video%2Fmp4" muted playsinline preload="metadata" aria-label="The flow" data-width="1280" data-height="720"></video>${mark}</a>${item(2)}</p>\n`)
+    .toBe(`<p class="media-run">${item(1)}<a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4"${file('a2')} data-keeps-windows class="message-video"><video src="/blobs/2?type=video%2Fmp4" muted playsinline preload="metadata" aria-label="The flow" data-width="1280" data-height="720"></video>${mark}</a>${item(2)}</p>\n`)
 })
 
 test('text, a list or a heading between images ends the run', () => {
@@ -210,7 +219,7 @@ test('a lone image stands on a line of its own, even in a paragraph of words', (
 // line, showed it in the item's line at the message's full width.
 test('an image on the line after a list item’s words stands on its own line under them', () => {
   expect(renderMarkdown('- **Text** ... (this one is 17 px).\n![shot](attachment:a48)\n- Next', { files: withAttachments }))
-    .toBe('<ul>\n<li><strong>Text</strong> ... (this one is 17 px).<p class="media-lone"><a href="/blobs/48?type=image%2Fpng" data-attachment-image="text.png" data-keeps-windows><img src="/blobs/48?type=image%2Fpng" alt="shot" data-width="2560" data-height="1720" /></a></p>\n</li>\n<li>Next</li>\n</ul>\n')
+    .toBe(`<ul>\n<li><strong>Text</strong> ... (this one is 17 px).<p class="media-lone"><a href="/blobs/48?type=image%2Fpng" data-attachment-image="text.png"${file('a48')} data-keeps-windows><img src="/blobs/48?type=image%2Fpng" alt="shot" data-width="2560" data-height="1720" /></a></p>\n</li>\n<li>Next</li>\n</ul>\n`)
 })
 
 // The reply the user saw: a list item's words, then two screenshots one per

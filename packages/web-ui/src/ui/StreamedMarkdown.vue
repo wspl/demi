@@ -9,6 +9,7 @@ import { openMessageLink, pressMessageLink, useMessageFiles } from '@demicodes/w
 import { replyCodeFiles } from '@demicodes/web-ui/markdown/code-files'
 import { useMessageAgents } from '@demicodes/web-ui/agent/agent-links'
 import AgentLinkTip from '@demicodes/web-ui/agent/AgentLinkTip.vue'
+import { attachmentDrag } from '@demicodes/web-ui/agent/message-input/copied-message'
 import PicturePreview from '@demicodes/web-ui/ui/PicturePreview.vue'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -204,6 +205,7 @@ watch(
     :aria-busy="streaming || undefined"
     v-html="renderedMarkdown"
     @click="openMessageLink($event, files(), viewer, agents())"
+    @dragstart="attachmentDrag"
     @keydown="pressMessageLink"
     @load.capture="onMediumLoad"
     @loadedmetadata.capture="onMediumLoad"

@@ -956,6 +956,7 @@ const composerDrafts = {
   attaching: `Compare ${ATTACHMENT_MARK} with ${ATTACHMENT_MARK}, pasted from another conversation.`,
   failed: `The capture ${ATTACHMENT_MARK} did not upload; the log ${ATTACHMENT_MARK} did.`,
   pasted: `Summarize ${ATTACHMENT_MARK}, then check it against ${ATTACHMENT_MARK}.`,
+  lines: `Before: ${ATTACHMENT_MARK}\nAfter: ${ATTACHMENT_MARK}\nThe log ${ATTACHMENT_MARK} shows the padding change landing after the layout pass, which is why the modal jumps by one column on the first frame.`,
   long: 'The login test in packages/web/src/auth.test.ts is failing after the session cookie rename, and the fixture it reads has the old name.',
   formatted: [
     'The **modal** `padding` is off by *one* column, ~~not two~~. See [the layout notes](docs/layout.md) and https://example.com/issues/42.',
@@ -964,6 +965,21 @@ const composerDrafts = {
     '```',
   ].join('\n'),
 }
+/**
+ * A file on each of three lines, the last line long enough to wrap: no
+ * capsule makes its line taller or reaches into the line under it.
+ */
+const lineCapsulesBubble: UserContentBlock[] = [
+  { type: 'text', text: 'Before: ' },
+  { type: 'image', source: { type: 'ref', ref: galleryBlobs.screenshot, mediaType: 'image/png', width: 480, height: 300 } },
+  { type: 'attachment', name: 'before.png', path: '/home/demi/.demi/attachments/demo/before.png', mediaType: 'image/png', sizeBytes: 48211, sha256: 'demo-before' },
+  { type: 'text', text: '\nAfter: ' },
+  { type: 'image', source: { type: 'ref', ref: galleryBlobs.screenshot, mediaType: 'image/png', width: 480, height: 300 } },
+  { type: 'attachment', name: 'after.png', path: '/home/demi/.demi/attachments/demo/after.png', mediaType: 'image/png', sizeBytes: 48011, sha256: 'demo-after' },
+  { type: 'text', text: '\nThe log ' },
+  { type: 'attachment', name: 'ci.log', path: '/home/demi/.demi/attachments/demo/ci.log', mediaType: 'text/plain', sizeBytes: 2048, sha256: 'demo-log', snippet: pastedSnippet },
+  { type: 'text', text: ' shows the padding change landing after the layout pass, which is why the modal jumps by one column on the first frame.' },
+]
 const userBubble = [
   {
     type: 'text' as const,
@@ -1322,6 +1338,20 @@ onBeforeUnmount(() => {
                   host: 'alex-mbp',
                   path: '/Users/alex/Projects/demi/package.json',
                 },
+              ]"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="attachments · on consecutive lines"
+            wide
+          >
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              :draft="composerDrafts.lines"
+              :attachments="[
+                { id: 'before', name: 'before.png', src: demoImageUrl, phase: 'ready' },
+                { id: 'after', name: 'after.png', src: demoImageUrl, phase: 'ready' },
+                { id: 'log', name: 'ci.log', phase: 'ready' },
               ]"
             />
           </GallerySpecimen>
@@ -1828,6 +1858,14 @@ onBeforeUnmount(() => {
           >
             <div class="gallery-frame gallery-user-frame bg-surface">
               <UserBlock :content="attachmentBubble" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="files on consecutive lines"
+            wide
+          >
+            <div class="gallery-frame gallery-user-frame bg-surface">
+              <UserBlock :content="lineCapsulesBubble" />
             </div>
           </GallerySpecimen>
           <GallerySpecimen
