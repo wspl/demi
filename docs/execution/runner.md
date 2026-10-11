@@ -1093,8 +1093,16 @@ A job is stopped in two steps, as a program in a terminal is. `TERM` stops
 its shell work at its next step, so the script runs no further command and
 its builtins and utilities end, and sends `SIGTERM` to every process group
 the job started, so a dev server can close its connections, stop the
-programs it started and remove its socket. The job ends once every process
-of those groups has exited. `KILL` kills whatever remains, and is what a
+programs it started and remove its socket. A program can leave the job's
+groups, as one that calls `setsid` to run as a daemon does, so each signal
+also goes to every process that still carries the job's `DEMI_JOB_ID` in its
+environment, which every process the job starts inherits, as GitHub's
+runner finds a job's processes by `RUNNER_TRACKING_ID`: the runner reads the
+environments of its user's processes (`/proc/<pid>/environ` on Linux,
+`KERN_PROCARGS2` on macOS) at each signal. A process that cleared its
+environment escapes, and none of the runner's own resident services carries
+a job's id. The job ends once every process of those groups has exited.
+`KILL` kills whatever remains, and is what a
 stop sends when the job has not ended 5 seconds after `TERM`
 ([Stopping a command](../agent/runtime.md#stopping-a-command)). Before, a
 stop went straight to `SIGKILL`, and a dev server killed that way left its
@@ -1108,8 +1116,16 @@ could not start, or the runner failed it before its end was known, in the
 runner's own words. A failure of the runner's beside a known status goes to
 the Host log.
 
-A cancellation request alone does not establish that execution stopped. If the
-backend cannot confirm remote termination, it reports an unknown outcome.
+A cancellation request alone does not establish that execution stopped: a
+command is stopped only when its runner says its job ended. For example, the
+user stops a build while the Mac running it is reconnecting: the command's
+tab says *Stopping* and the command still counts as running; the backend
+sends the stop again as soon as the runner's link is back, `TERM` and then
+`KILL` 5 seconds later if the job has not ended, and the command turns
+stopped when the runner reports the job's end. A runner that does not come
+back within the time it keeps jobs while away ends them itself, and the
+command then ends as lost, with that reason, as any command of an absent
+runner does.
 Cancellation does not undo completed file changes or other side effects.
 
 ## Command lifetime
