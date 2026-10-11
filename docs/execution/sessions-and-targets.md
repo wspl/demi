@@ -175,7 +175,8 @@ project no longer exists. The conversation still runs on Cloud
 
 The notice names no project: the agent's own transcript holds the command it
 ran, and a deleted project's name is gone with it. The transcript shows the
-notice as a receipt row, *Move failed*, which expands to the message, for a
+notice as a receipt row, *Move failed*, followed by why in the row's own
+text, for a
 move into a project and out of one alike. A move that succeeds sends nothing: the agent
 asked for it, and its next block names the new place.
 

@@ -287,7 +287,8 @@ conversation that failed ([Conversations and projects](../product/product.md#con
 **The decision in the transcript.** The message an agent receives shows as a
 receipt row, as an agent message does ([Product
 rendering](subagents.md#product-rendering)): "You allowed this conversation to
-manage skills", which expands to the message.
+manage skills"; it does not open, as no notice row does, since it says
+all there is.
 
 `web-ui` owns the card, the mark and the receipt row as components over a
 request's and a message's data; the gallery shows each state. `web` supplies
