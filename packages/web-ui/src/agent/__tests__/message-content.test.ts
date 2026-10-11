@@ -7,7 +7,7 @@ import {
   composerRemoteAttachment,
   encodeRemoteReference,
 } from '../message-input/attachments'
-import { joinMessageContent, splitMessageContent } from '../message-input/message-content'
+import { joinMessageContent, sentMarkdown, splitMessageContent } from '../message-input/message-content'
 
 // A message's content blocks and the editor's Markdown, with a mark where
 // each file stands (`product.md` § Attachments).
@@ -94,4 +94,16 @@ test('a capsule names its file, shows its picture or opening lines, and its uplo
     .toBeUndefined()
   expect(composerCapsule(composerRemoteAttachment({ id: 'r', host: 'alex-mbp', path: '/a/b.txt' })))
     .toEqual({ id: 'r', name: 'b.txt', host: 'alex-mbp', path: '/a/b.txt' })
+})
+
+// A message being sent is drawn as the message it becomes: a bubble one line
+// taller until the server confirms it, for a newline an input method's Enter
+// left in the draft, shrinks the list (`product.md` § Following the agent's
+// work).
+test('a message being sent shows the text its send carries, without the line breaks and spaces the send drops', () => {
+  expect(sentMarkdown('2b: 按现在的规则。\n', 0)).toBe('2b: 按现在的规则。')
+  expect(sentMarkdown(`\n  Compare ${MARK} \n${MARK}\n\n`, 2)).toBe(`Compare ${MARK}${MARK}`)
+  // What it shows is what the confirmed message's blocks read as.
+  const draft = `Look at ${MARK} please\n`
+  expect(sentMarkdown(draft, 1)).toBe(splitMessageContent(joinMessageContent(draft, [[log]])).markdown)
 })

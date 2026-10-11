@@ -19,6 +19,8 @@ import { toolMedia } from '../tool-media'
 const props = defineProps<{
   block: ToolCallBlock
   input: Record<string, unknown>
+  /** The row is a run's that the running turn has not moved past: it shimmers also after its command ended. */
+  working?: boolean
 }>()
 
 const command = computed(() => (props.input['script'] as string) ?? '')
@@ -86,7 +88,7 @@ function toggleCommand(): void {
 <template>
   <FunctionalBlock
     v-model:open="isOpen"
-    :loading="running"
+    :loading="running || working"
     :tone="block.status === 'error' && !endMark ? 'danger' : undefined"
     :error-text="errorText"
     :stick-bottom="block.status === 'executing'"

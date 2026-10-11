@@ -8,17 +8,21 @@ import { isCompactionDivider } from './visible-blocks'
  * none and the session is idle. Anything else that follows (a call, a
  * steer, a wakeup, another agent's message, a resume) continues the work.
  * A compaction's divider after a block leaves it the end: the user
- * compacted after it, and nothing of the turn followed.
+ * compacted after it, and nothing of the turn followed. A message being
+ * sent, `sending`, is the user's next message from the moment it is sent,
+ * so the last block stays the end while the message is delivered and its
+ * turn starts (`product.md` § Following the agent's work).
  */
 export function replyEndIds(
   visibleBlocks: readonly Pick<Block, 'id' | 'type'>[],
   phase: SessionPhase,
+  sending = false,
 ): Set<string> {
   const turnBlocks = visibleBlocks.filter((block) => !isCompactionDivider(block))
   const ids = new Set<string>()
   turnBlocks.forEach((block, index) => {
     const next = turnBlocks[index + 1]
-    if (next?.type === 'user' || next?.type === 'abort' || (!next && phase === 'idle')) {
+    if (next?.type === 'user' || next?.type === 'abort' || (!next && (phase === 'idle' || sending))) {
       ids.add(block.id)
     }
   })
