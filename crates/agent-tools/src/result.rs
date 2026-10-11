@@ -9,7 +9,7 @@ use demi_agent_session::ToolOutcome;
 use demi_agent_store::images;
 use demi_agent_transcript::REPLAY_CHARS;
 use demi_host_interface::{
-    BinaryOutput, CommandMedium, CommandState, CommandStatus, LOST_EXIT_CODE, Newest, OutputText,
+    BinaryOutput, CommandMedium, CommandState, CommandStatus, Newest, OutputText,
     Piece, Seen, Streams, Unreachable, WholeOutput, WholeView,
 };
 use demi_provider_common::{MediaBytes, RequestLimits, ResultPart, ToolResultKinds};
@@ -719,13 +719,14 @@ fn document_name(number: u32) -> String {
     format!("document-{number}.pdf")
 }
 
-/// Where the command is, as the user's view of the call shows it: a loss
-/// shows as the failure it is, as the pages show it ([`LOST_EXIT_CODE`]).
+/// Where the command is, as the user's view of the call shows it: a loss is
+/// its own end, which the call's row tags as its notice does.
 fn view_status(state: &CommandState) -> ShellViewStatus {
     match state {
         CommandState::Running { .. } => ShellViewStatus::Running,
-        CommandState::Exited { .. } | CommandState::Lost { .. } => ShellViewStatus::Exited,
+        CommandState::Exited { .. } => ShellViewStatus::Exited,
         CommandState::Aborted => ShellViewStatus::Aborted,
+        CommandState::Lost { .. } => ShellViewStatus::Lost,
     }
 }
 
@@ -752,8 +753,11 @@ fn shell_view(status: &CommandStatus, text: &OutputText) -> ShellToolView {
         command_id: status.command_id.clone(),
         exit_code: match status.state {
             CommandState::Exited { exit_code, .. } => Some(exit_code),
-            CommandState::Lost { .. } => Some(LOST_EXIT_CODE),
-            CommandState::Running { .. } | CommandState::Aborted => None,
+            CommandState::Running { .. } | CommandState::Aborted | CommandState::Lost { .. } => None,
+        },
+        lost_reason: match &status.state {
+            CommandState::Lost { reason, .. } => Some(reason.clone()),
+            _ => None,
         },
         running_ms: status.running_ms,
         idle_ms: status.idle_ms,

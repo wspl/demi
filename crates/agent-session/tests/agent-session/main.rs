@@ -328,6 +328,7 @@ fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
             status: ShellViewStatus::Running,
             command_id: command.clone(),
             exit_code: None,
+            lost_reason: None,
             running_ms: 0,
             idle_ms: 0,
             chunks: Vec::new(),

@@ -4,7 +4,7 @@ import type { ToolCallBlock } from './block-types'
 import type { CommandEnd } from './command-end'
 import { storedShellView } from './block-helpers'
 
-/** Where a command is, as its frames and stored views say: running, exited, or stopped (`aborted`). */
+/** Where a command is, as its frames and stored views say: running, exited, stopped (`aborted`), or lost. */
 export type TerminalPhase = ShellViewStatus
 
 /**
@@ -30,6 +30,8 @@ export interface TerminalRecord {
   chars?: number
   /** Its exit code, once it exited and a live frame or a stored view said so. */
   exitCode?: number
+  /** Why its runner lost it, once a live frame said so. */
+  lostReason?: string
   /** The `shell` call that started it, known from its live frames. */
   toolUseId?: string
   /** The subagent that runs it; absent for the root's commands. */
@@ -205,9 +207,11 @@ export function shellRowEnd(call: ToolCallBlock, command: TerminalRecord | undef
     return null
   }
   if (command !== undefined && !isTerminalRunning(command.phase)) {
-    return command.exitCode === undefined
-      ? { status: command.phase }
-      : { status: command.phase, exitCode: command.exitCode }
+    return {
+      status: command.phase,
+      ...(command.exitCode === undefined ? {} : { exitCode: command.exitCode }),
+      ...(command.lostReason === undefined ? {} : { lostReason: command.lostReason }),
+    }
   }
   const stored = storedShellView(call)
   return stored?.status === 'running' ? null : stored
@@ -221,12 +225,16 @@ export function runningTerminals(
     .toSorted((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))
 }
 
-/** A command's mark: running, done, or stopped; a stopped command is never shown as done. */
+/**
+ * A command's mark: running, done, or stopped; a stopped command is never
+ * shown as done, and neither is a lost one, which its row tags grey as a
+ * stopped one.
+ */
 export function terminalStatus(phase: TerminalPhase): ConversationStatus {
   if (phase === 'running') {
     return 'active'
   }
-  if (phase === 'aborted') {
+  if (phase === 'aborted' || phase === 'lost') {
     return 'aborted'
   }
   return 'done'
