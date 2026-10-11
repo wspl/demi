@@ -27,28 +27,33 @@ test('a URL names the file, and a version and download only when asked for', () 
     .toBe('/api/conversations/c1/fs/raw?path=%2Fwork%2Fa.png&version=W%2F%221-2%22&download=true')
 })
 
-test('a HEAD answer describes the file: its size, time and version', async () => {
+test("a HEAD answer describes the file: its size, time and version, with the Host's number before it read", async () => {
   const requests: Array<{ url: string; method?: string }> = []
   answer(new Response(null, {
-    headers: { 'content-length': '15822', 'last-modified': 'Sat, 12 Sep 2026 09:30:00 GMT', etag: 'W/"3dce-19"' },
+    headers: {
+      'content-length': '15822',
+      'last-modified': 'Sat, 12 Sep 2026 09:30:00 GMT',
+      etag: 'W/"3dce-19"',
+      'x-demi-read-at': 'run.1.40',
+    },
   }), requests)
   expect(await contents.describe('/work/a.png')).toEqual({
-    size: 15822,
-    modifiedAt: '2026-09-12T09:30:00.000Z',
-    version: 'W/"3dce-19"',
+    value: { size: 15822, modifiedAt: '2026-09-12T09:30:00.000Z', version: 'W/"3dce-19"' },
+    readAt: { epoch: 'run.1', number: 40 },
   })
   expect(requests).toEqual([{ url: '/api/conversations/c1/fs/raw?path=%2Fwork%2Fa.png', method: 'HEAD' }])
 
   // The committed route knows neither the time nor a version.
   answer(new Response(null, { headers: { 'content-length': '124' } }))
-  expect(await contents.describe('dist/app.zip')).toEqual({ size: 124, modifiedAt: null, version: null })
+  expect(await contents.describe('dist/app.zip')).toEqual({ value: { size: 124, modifiedAt: null, version: null }, readAt: null })
 })
 
 test('a failed HEAD says what it can by its status, and malformed headers are refused', async () => {
-  answer(new Response(null, { status: 413 }))
+  // A file too large is the Host's answer, with its version and number.
+  answer(new Response(null, { status: 413, headers: { etag: 'W/"9"', 'x-demi-read-at': 'run.41' } }))
   const tooLarge = await contents.describe('poster.png').catch((error: unknown) => error)
   expect(tooLarge).toBeInstanceOf(FileBrowserError)
-  expect(tooLarge).toMatchObject({ kind: 'too-large' })
+  expect(tooLarge).toMatchObject({ kind: 'too-large', version: 'W/"9"', readAt: { epoch: 'run', number: 41 } })
   answer(new Response(null, { status: 404 }))
   expect(await contents.describe('missing.png').catch((error: unknown) => error)).toMatchObject({ kind: 'not-found' })
 

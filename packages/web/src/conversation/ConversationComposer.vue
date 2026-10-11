@@ -27,6 +27,8 @@ import { useResources } from '../state/resources'
 import { usePreferences } from '../state/preferences'
 import { placesFor } from '../devices/files'
 import { fileSource } from '../api/files'
+import { conversationWatch } from './files'
+import { deviceWatch } from './file-watch'
 import { claimStoredFile, uploadAttachment } from '../api/uploads'
 import type { Conversation } from '../state/types'
 import { cliPackageOf } from '../state/catalog'
@@ -170,9 +172,17 @@ const remoteHosts = computed(() => {
       ...host,
       canWake: device?.kind === 'managed',
       icon: device?.kind === 'managed' ? Cloud : undefined,
+      // The picker shows sizes and times, which its listings follow on the
+      // watch of the Host they are on: the conversation's own for its Host,
+      // the device's for an attached paired device.
       source: fileSource({
         directory: `/conversations/${encodeURIComponent(props.conversation.id)}/hosts/${encodeURIComponent(host.id)}/fs`,
-      }, device),
+      }, device, {
+        details: true,
+        watch: (files) => host.id === primary.deviceId
+          ? conversationWatch(props.conversation.id).channel(host.id, files)
+          : device?.kind === 'user' ? deviceWatch(host.id, files) : null,
+      }),
       places: placesFor(device, resources.projects),
       cwd: cwd ?? undefined,
     }

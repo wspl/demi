@@ -2,182 +2,244 @@
  * What a page keeps of one Host's files (`plugin-pages.md` § What the
  * service keeps): listings, texts, descriptions, the changes list and each
  * changed file's sides, each the last answer read, by the absolute path on
- * the Host. An entry read while a live watch covered its path is confirmed:
- * showing it again asks nothing until a report of that watch names its path.
- * Any other entry is unconfirmed: showing it shows it at once and reads it
- * again. An entry holds no way to read it: each view reads through its own
- * route, and a report reads a shown entry through the route of the view
- * that came on screen last. Reads of one entry share one request, and a
- * report that names an entry being read reads it once more after. A report
- * reads a shown entry
- * again at once, a folder's listing and a changes list at most once a
- * second. At most `budget`
- * of text stay, the entries shown longest ago leaving first.
+ * the Host. Every entry kept holds the subscriptions it depends on, carried
+ * by the watch of the view that brought it, until it leaves the cache; only
+ * what a view shows on screen is read.
+ *
+ * Whether an entry is current is worked out each time from numbers, never
+ * stored: its answer's number against each subscription's `since`, the
+ * `at` of its last change, its epoch and its lease. A view that shows an
+ * entry that is not current shows what is kept at once and reads it again
+ * in the background; a change of an entry on screen reads it again, a
+ * folder's listing and a changes list at most once a second; a change of
+ * one off screen is only noted. An entry holds no way to read it: each view
+ * reads through its own route, and a read nobody asked for goes through the
+ * route of the view that came on screen last. Reads of one entry share one
+ * request. At most `budget` of text and `MAX_ENTRIES` entries stay, the
+ * entries shown longest ago leaving first.
  */
-import { reactive } from 'vue'
-import { parentPath } from './paths'
+import { reactive, shallowRef } from 'vue'
 import { FileBrowserError, type FileBrowserFailure } from './types'
+import {
+  Subscription,
+  type ReadAt,
+  type Subject,
+  type WatchChannel,
+  type WatchListener,
+} from './watch-channel'
 
 /** The most text a page keeps of the Hosts' files, counted in characters. */
 export const KEPT_TEXT = 64 * 1024 * 1024
 
+/** The most entries a page keeps of one Host's files, as many as the subscriptions it may hold (`web-api.md` § File watch). */
+export const MAX_ENTRIES = 4096
+
 /**
  * The least time between two reads of a folder's listing or a working
- * tree's changes list that reports ask for, in milliseconds: a log appended
+ * tree's changes list that changes ask for, in milliseconds: a log appended
  * many times a second updates its size once a second, as Finder does, and a
  * build that writes files all the time lists the repository's changes once
  * a second, as an editor's source control view refreshes, rather than after
- * every batch of reports, each a status over the whole repository.
+ * every batch of changes, each a status over the whole repository.
  */
 export const SUMMARY_REREAD_MS = 1000
 
+/** What a view says of an answer that nothing is at the path. */
+export const GONE_MESSAGE = 'It is no longer there.'
+
 /**
- * What an entry is, which decides which reports concern it
- * (`plugin-pages.md` § What the service keeps): a listing is its folder's
- * entries, and a file's entries are the file's; the changes list follows
- * its repository's index, `HEAD` and refs too, a changed file's sides and
- * its committed contents its `HEAD` and refs, and a changes list outside
- * any repository only a `.git` that appears in it.
+ * What an entry is, which decides what it subscribes to (`plugin-pages.md`
+ * § What the service keeps): a file's text or description its `file`, a
+ * listing its folder's names or details, the changes list its working tree,
+ * a changed file's sides its `file` and its repository's `head`, and its
+ * committed contents the `head` alone.
  */
 export type KeptKind = 'listing' | 'text' | 'description' | 'changes' | 'sides' | 'committed'
 
+/**
+ * What the last answer was: a value; nothing at the path; a file that is
+ * not text; or one too large to read as text. Each is kept, carries its
+ * version and number, and is current or not alike.
+ */
+export type KeptAnswer = 'value' | 'gone' | 'binary' | 'too-large'
+
 /** One kept answer as a view shows it; reactive. */
 export interface ShownEntry<T> {
-  /** The last answer read; undefined before the first, and once a read found the path gone. */
+  /** The last answer's value; undefined before the first answer, and while the last holds none. */
   readonly value: T | undefined
+  /** What the last answer was; null before the first. A view draws each as itself, never as a failure. */
+  readonly answer: KeptAnswer | null
   /**
-   * Why the last read failed. Without a value it is what the view shows, as
-   * a first read would; beside a value the view keeps the value and says
-   * quietly that it could not refresh.
+   * Why the last read could not be made, a Host out of reach or a refusal.
+   * Without an answer it is what the view shows, as a first read would;
+   * beside one the view keeps the answer and says quietly that it could not
+   * refresh.
    */
   readonly failure: FileBrowserFailure | null
   /** A read is on its way: the first, which a view shows as loading, or a check, which it does not. */
   readonly reading: boolean
+  /**
+   * Why the Host does not watch it, while a subscription it depends on is
+   * refused or unavailable: the view says quietly that it shows what was
+   * last read, with Refresh, and it is read each time it is shown.
+   */
+  readonly unwatched: string | null
+}
+
+/** What a view without a value shows in its place: that the path is gone, or why the read could not be made. */
+export function failureShown(entry: ShownEntry<unknown> | null | undefined): FileBrowserFailure | null {
+  if (!entry || entry.answer === 'value')
+    return null
+  if (entry.answer === 'gone')
+    return { kind: 'not-found', message: GONE_MESSAGE }
+  return entry.failure
 }
 
 /** A view's hold on an entry it shows. */
 export interface Showing<T> {
   readonly entry: ShownEntry<T>
-  /** Reads the entry again now, as Retry does. */
+  /** Reads the entry again now, as Retry and Refresh do. */
   retry(): void
   /** The view no longer shows it; a second release does nothing. */
   release(): void
   /**
    * The view holds it but is not on screen, as a work panel tab the user
-   * switched away from: reports leave it unconfirmed and read nothing
-   * (`plugin-pages.md` § What the service keeps). A second call does nothing.
+   * switched away from: changes are only noted (`plugin-pages.md` § What
+   * the service keeps). A second call does nothing.
    */
   away(): void
-  /** The view is on screen again: an entry a report left unconfirmed is read once. */
+  /** The view is on screen again: an entry that is not current is read once. */
   back(): void
 }
 
-/** What a live watch of the Host covers: a report of it names every change at such a path. */
-export interface Coverage {
-  covers(path: string): boolean
-}
-
-/** How an entry is read and measured. */
-export interface KeptSpec<T> {
-  kind: KeptKind
-  /** The absolute path on the Host whose reports concern it: a listing's folder, a file, the changes list's root. */
-  path: string
-  /** Tells the entries of one path and kind apart, such as a changed file's sides from its working tree root. */
-  key?: string
-  /** For the changes list, a changed file's sides and its committed contents: the working tree's root, whose repository's git directory concerns them. */
-  root?: string
-  /** Reads it; `held` is the last answer kept, which a read may answer unchanged with. */
-  read(held: T | undefined): Promise<T>
-  /** The characters of text it holds. */
-  size(value: T): number
-  /**
-   * Whether `value` is a changes list that found its path outside any git
-   * repository: it changes only once a `.git` appears there, so no other
-   * report concerns it, however often the files there change.
-   */
-  outsideRepository?(value: T): boolean
-  /** The absolute path of the git directory a changes list `value` found its repository's in. */
-  gitDir?(value: T): string | null
+/**
+ * What a read answered, with the Host's number before it read; null for a
+ * source without numbers, whose answers are never current.
+ */
+export interface Answered<T> {
+  value: T
+  readAt: ReadAt | null
 }
 
 /**
- * What a path in a git directory is to the entries kept: the index, which
- * the changes list reads; what moves `HEAD` (`HEAD`, a ref, `packed-refs`),
- * which every entry of the repository reads; what decides what git ignores
- * (`config`, `info/exclude`), which the changes list reads; or anything
- * else, such as an object, a log or a lock, which no entry reads. Null for
- * a path in no git directory. `gitDir` names the repository's when known;
- * otherwise the path's own `.git` is taken as it.
+ * What a read that names the version kept answered: a value, or that the
+ * version is still the Host's, so what is kept is.
  */
-export function gitPath(path: string, gitDir: string | null): { dir: string; kind: 'index' | 'head' | 'rules' | 'other' } | null {
-  const normal = path.replaceAll('\\', '/')
-  let dir = gitDir
-  if (dir === null) {
-    const at = normal.search(/(^|\/)\.git(\/|$)/)
-    if (at < 0)
-      return null
-    dir = normal.slice(0, normal.indexOf('.git', at) + 4)
-  } else if (!within(normal, dir)) {
-    return null
-  }
-  const inside = normal.slice(dir.length).replace(/^\//, '')
-  const [first = '', second] = inside.split('/')
-  const kind = first === 'index' && second === undefined
-    ? 'index'
-    : first === 'HEAD' || first === 'packed-refs' || first === 'refs'
-      ? 'head'
-      : first === 'config' || (first === 'info' && second === 'exclude')
-        ? 'rules'
-        : 'other'
-  return { dir, kind }
-}
+export type Read<T> = Answered<T> | { unchanged: true; readAt: ReadAt | null }
 
-/** Whether `path` is `ancestor` or lies below it. */
-function within(path: string, ancestor: string): boolean {
-  const prefix = ancestor.endsWith('/') ? ancestor : `${ancestor}/`
-  return path === ancestor || path.startsWith(prefix)
+/** How an entry is read, measured and watched. */
+export interface KeptSpec<T> {
+  kind: KeptKind
+  /** The absolute path on the Host: a listing's folder, a file, the changes list's root. */
+  path: string
+  /** Tells the entries of one path and kind apart, such as a changed file's sides from its working tree root. */
+  key?: string
+  /** For a changed file's sides and its committed contents: the working tree's root, whose `head` they depend on. */
+  root?: string
+  /** For a listing: the view shows its entries' sizes and times, so it follows them too. */
+  details?: boolean
+  /** Reads it; `held` is the version kept, which a read may answer unchanged with. */
+  read(held: string | null): Promise<Read<T>>
+  /** The characters of text it holds. */
+  size(value: T): number
+  /** The version of `value`, which the next read names; none without versions. */
+  version?(value: T): string | null
+  /** The watch of the view's route, which carries the subscriptions the entry takes; none without one. */
+  watch?: WatchChannel | null
 }
 
 /** How a view reads an entry: through the route of the place that shows it. */
 type ReadEntry<T> = KeptSpec<T>['read']
 
-/** A view's hold on an entry, with the way that view reads it. */
+/** A view's hold on an entry, with the way that view reads and watches it. */
 interface Holder<T> {
   read: ReadEntry<T>
+  watch: WatchChannel | null
+  details: boolean
   /** The view holds it but is not on screen. */
   away: boolean
 }
 
 /**
+ * Whether a kept answer holds now: `current`; `stale` when the numbers say
+ * it changed after the read; `restarted` when the answer and the watch are
+ * of different runs of the runner, which one more read settles once both
+ * are of the same; or `unknown` when no watch says.
+ */
+type Freshness = 'current' | 'stale' | 'restarted' | 'unknown'
+
+/** The answers a read refused with that are answers, not failures. */
+function answerOf(failure: FileBrowserFailure['kind']): KeptAnswer | null {
+  switch (failure) {
+    case 'not-found':
+      return 'gone'
+    case 'binary':
+      return 'binary'
+    case 'too-large':
+      return 'too-large'
+    default:
+      return null
+  }
+}
+
+function failureOf(error: unknown): FileBrowserFailure {
+  if (error instanceof FileBrowserError)
+    return { kind: error.kind, message: error.message === error.kind ? undefined : error.message }
+  return { kind: 'other', message: error instanceof Error ? error.message : String(error) }
+}
+
+/** The subscription key of `subject`, by which the kept files share it. */
+function subjectKey({ kind, path }: Subject): string {
+  return `${kind}\u0000${path}`
+}
+
+/**
  * One kept answer, shared by every view of its Host and path: data alone,
- * what was read and whether a report left it unconfirmed, never a way to
+ * what was read, its number and the subscriptions it holds, never a way to
  * read it. Each view reads it through its own route, as a conversation's
  * views through the conversation's and a device's folder dialog through the
  * device's (`sessions-and-targets.md` § Every way to a Host), and every view
  * sees what one of them read.
  */
 class Entry<T> {
-  /** What it is, which decides which reports concern it; how to read it is each view's. */
-  readonly spec: Omit<KeptSpec<T>, 'read'>
-  readonly state: ShownEntry<T> & { value: T | undefined; failure: FileBrowserFailure | null; reading: boolean }
+  readonly spec: Omit<KeptSpec<T>, 'read' | 'watch' | 'details'>
+  /** The subscriptions it holds while kept; none until a view shows or reads it. */
+  readonly subscriptions = shallowRef<readonly Subscription[]>([])
+  readonly state: { value: T | undefined; answer: KeptAnswer | null; failure: FileBrowserFailure | null; reading: boolean; readonly unwatched: string | null }
   /** The views that hold it, the one that came on screen last at the end. */
   readonly holders = new Set<Holder<T>>()
-  confirmed = false
+  /** The last answer's version and number. */
+  version: string | null = null
+  readAt: ReadAt | null = null
+  /** A listing follows its entries' sizes and times. */
+  details = false
   /** When it was last shown, by the cache's clock. */
   lastShown = 0
   size = 0
-  /** Rises with each report that names it: a read that began before one cannot confirm it. */
-  stamp = 0
   reading: Promise<void> | null = null
   /** When its last read began, by `performance.now()`. */
   readStart = Number.NEGATIVE_INFINITY
-  /** The read a report asked for that waits for the listing's second to end. */
+  /** The read a change asked for that waits for the listing's second to end. */
   rereadTimer: ReturnType<typeof setTimeout> | null = null
 
-  // The way to read belongs to the view that brought the spec; the entry keeps none.
-  constructor({ read: _read, ...spec }: KeptSpec<T>) {
+  // The way to read and watch belongs to the view that brought the spec; the entry keeps none.
+  constructor({ read: _read, watch: _watch, details: _details, ...spec }: KeptSpec<T>) {
     this.spec = spec
-    this.state = reactive({ value: undefined, failure: null, reading: false }) as Entry<T>['state']
+    const subscriptions = this.subscriptions
+    this.state = reactive({
+      value: undefined,
+      answer: null,
+      failure: null,
+      reading: false,
+      get unwatched() {
+        for (const subscription of subscriptions.value) {
+          const { status, reason } = subscription.state
+          if (status === 'unavailable' || status === 'refused')
+            return reason
+        }
+        return null
+      },
+    }) as Entry<T>['state']
   }
 
   /** How many views show it on screen. */
@@ -190,65 +252,76 @@ class Entry<T> {
     return count
   }
 
-  /** The way the view that came on screen last reads it; null while none shows it. */
-  reader(): ReadEntry<T> | null {
-    let read: ReadEntry<T> | null = null
+  /** The view that came on screen last; null while none shows it. */
+  latest(): Holder<T> | null {
+    let latest: Holder<T> | null = null
     for (const holder of this.holders) {
       if (!holder.away)
-        read = holder.read
+        latest = holder
     }
-    return read
+    return latest
+  }
+
+  /** How many times its subscriptions went live, all told. */
+  lives(): number {
+    return this.subscriptions.value.reduce((sum, subscription) => sum + subscription.lives, 0)
+  }
+
+  /** What it subscribes to: the subjects its answer depends on. */
+  subjects(): Subject[] {
+    const { kind, path, root } = this.spec
+    switch (kind) {
+      case 'text':
+      case 'description':
+        return [{ kind: 'file', path }]
+      case 'listing':
+        return [{ kind: this.details ? 'folder_details' : 'folder_names', path }]
+      case 'changes':
+        return [{ kind: 'worktree', path }]
+      case 'sides':
+        return root === undefined ? [{ kind: 'file', path }] : [{ kind: 'file', path }, { kind: 'head', path: root }]
+      case 'committed':
+        return root === undefined ? [] : [{ kind: 'head', path: root }]
+    }
   }
 
   /**
-   * Whether a report of a change at `path` concerns it: `ignored` when git
-   * ignores the path, which then changes no working tree's changes; `entry`
-   * when the path came, went or was renamed, which alone changes a folder's
-   * listing; `gitDir`, the git directory of the repository it belongs to
-   * when known.
+   * Whether its answer holds now (`plugin-pages.md` § What the service
+   * keeps): current when every subscription it holds is live within its
+   * lease as the page counts it, of the answer's epoch, started at or before
+   * the answer's number and changed last at or before it; stale when the
+   * subscriptions are live but the numbers say a change came after the
+   * read; restarted when they are live in another run than the answer's;
+   * unknown otherwise, which no change will settle.
    */
-  concerns(path: string, ignored: boolean, entry: boolean, gitDir: string | null): boolean {
-    const own = this.spec.path
-    const git = gitPath(path, gitDir)
-    switch (this.spec.kind) {
-      case 'listing':
-        // Its own folder or a folder above it, or an entry of it came, went or was renamed.
-        return within(own, path) || (entry && parentPath(path) === own)
-      case 'text':
-      case 'description':
-        return within(own, path)
-      case 'sides':
-        return git !== null ? git.kind === 'head' : within(own, path)
-      case 'committed':
-        return git?.kind === 'head'
-      case 'changes': {
-        const value = this.state.value
-        if (value !== undefined && this.spec.outsideRepository?.(value))
-          return within(path, `${own.replace(/\/$/, '')}/.git`)
-        if (git !== null)
-          return git.kind !== 'other'
-        return within(path, own) && !ignored
-      }
+  freshness(now: number): Freshness {
+    const readAt = this.readAt
+    const subscriptions = this.subscriptions.value
+    if (this.state.answer === null || readAt === null || subscriptions.length === 0)
+      return 'unknown'
+    let freshness: Freshness = 'current'
+    for (const subscription of subscriptions) {
+      if (!subscription.watching(now))
+        return 'unknown'
+      if (subscription.epoch !== readAt.epoch)
+        freshness = 'restarted'
+      else if (freshness === 'current' && (subscription.since > readAt.number || subscription.changedAt > readAt.number))
+        freshness = 'stale'
     }
+    return freshness
   }
 }
 
-function failureOf(error: unknown): FileBrowserFailure {
-  if (error instanceof FileBrowserError)
-    return { kind: error.kind, message: error.message === error.kind ? undefined : error.message }
-  return { kind: 'other', message: error instanceof Error ? error.message : String(error) }
-}
-
 /** The kept files of one Host, which every conversation and page on it shares. */
-export class HostFiles {
+export class HostFiles implements WatchListener {
   private readonly entries = new Map<string, Entry<unknown>>()
-  private readonly coverages = new Set<Coverage>()
-  /** Each working tree's repository's git directory, as its changes list last found it. */
-  private readonly gitDirs = new Map<string, string>()
+  /** The subscriptions the kept entries hold, each subject once. */
+  private readonly subscriptions = new Map<string, Subscription>()
   private clock = 0
   private kept = 0
+  private keys = 0
 
-  constructor(private readonly budget = KEPT_TEXT) {}
+  constructor(private readonly budget = KEPT_TEXT, private readonly maxEntries = MAX_ENTRIES) {}
 
   private entry<T>(spec: KeptSpec<T>): Entry<T> {
     const key = `${spec.kind}\u0000${spec.path}\u0000${spec.key ?? ''}`
@@ -260,66 +333,117 @@ export class HostFiles {
     return entry
   }
 
-  /** The live coverage of `path`, if any. */
-  private coverageOf(path: string): Coverage | null {
-    for (const coverage of this.coverages) {
-      if (coverage.covers(path))
-        return coverage
+  /**
+   * Has `entry` hold the subscriptions it depends on now: a listing that a
+   * view of sizes and times holds follows its details, else what it
+   * followed. A subscription not watched where it is, such as after its
+   * watch closed, moves to the watch of the view that came last.
+   */
+  private subscribe(entry: Entry<unknown>, given: WatchChannel | null): void {
+    if (entry.spec.kind === 'listing' && entry.holders.size > 0)
+      entry.details = [...entry.holders].some((holder) => holder.details)
+    // Without a view's watch of its own, as when a view lets go, the one of
+    // the view that came last carries what the entry takes up.
+    const watch = given ?? [...entry.holders].reverse().find((holder) => holder.watch)?.watch ?? null
+    const held = entry.subscriptions.value
+    const subjects = entry.subjects()
+    const wanted = subjects.map((subject) => subjectKey(subject))
+    const same = held.length === wanted.length &&
+      held.every((subscription, index) => subjectKey(subscription.subject) === wanted[index])
+    if (!same) {
+      entry.subscriptions.value = subjects.map((subject, index) => {
+        let subscription = this.subscriptions.get(wanted[index]!)
+        if (!subscription) {
+          this.keys += 1
+          subscription = new Subscription(`s${this.keys}`, subject)
+          this.subscriptions.set(wanted[index]!, subscription)
+        }
+        subscription.holders += 1
+        return subscription
+      })
+      this.unsubscribe(held)
     }
-    return null
+    if (!watch)
+      return
+    for (const subscription of entry.subscriptions.value) {
+      if (subscription.channel !== watch && subscription.state.status !== 'live') {
+        subscription.channel?.drop(subscription)
+        watch.carry(subscription)
+      }
+    }
+  }
+
+  /** Lets go of `subscriptions` for an entry: each that no other entry holds is unsubscribed at once. */
+  private unsubscribe(subscriptions: readonly Subscription[]): void {
+    for (const subscription of subscriptions) {
+      subscription.holders -= 1
+      if (subscription.holders > 0)
+        continue
+      this.subscriptions.delete(subjectKey(subscription.subject))
+      subscription.channel?.drop(subscription)
+    }
   }
 
   /**
    * Reads `entry` through `read`, or joins the read on its way, whatever
-   * route that one took: what it answers is the Host's. The answer confirms it
-   * when a live watch covered its path from the read's start to its end and
-   * no report named it meanwhile; a report that did reads it once more for
-   * the views that show it.
+   * route that one took: what it answers is the Host's. An answer that
+   * the numbers already show changed reads once more for the views that
+   * show it.
    */
   private read<T>(entry: Entry<T>, read: ReadEntry<T>): Promise<void> {
     if (entry.reading)
       return entry.reading
-    const stamp = entry.stamp
-    const coverage = this.coverageOf(entry.spec.path)
-    // This read sees every report so far, so a reread still waiting is not needed.
+    // This read sees every change so far, so a reread still waiting is not needed.
     this.cancelReread(entry)
     entry.readStart = performance.now()
+    const lives = entry.lives()
     entry.state.reading = true
-    // A view with nothing to show but the failure shows the read instead, as
-    // a region's Retry returns it to loading (`RegionStatus`).
-    if (entry.state.value === undefined) {
+    // A view with nothing to show but a failure shows the read instead, as
+    // a region's Retry returns it to loading (`RegionStatus`); an answer
+    // stays shown while it is checked.
+    if (entry.state.answer === null)
       entry.state.failure = null
-    }
     const reading = (async () => {
+      let answered = false
       try {
-        const value = await read(entry.state.value)
-        // An answer that is what the entry holds, as a read the Host
-        // answered unchanged, changes nothing a view shows.
-        if (value !== entry.state.value)
-          entry.state.value = value
-        const gitDir = entry.spec.gitDir?.(value)
-        if (gitDir && entry.spec.root)
-          this.gitDirs.set(entry.spec.root, gitDir)
+        const answer = await read(entry.version)
+        entry.readAt = answer.readAt
+        // Unchanged: the answer kept is the Host's, and nothing a view shows changes.
+        if (!('unchanged' in answer)) {
+          const value = answer.value
+          if (value !== entry.state.value)
+            entry.state.value = value
+          entry.state.answer = 'value'
+          entry.version = entry.spec.version?.(value) ?? null
+          this.measure(entry, entry.spec.size(value))
+        }
         entry.state.failure = null
-        this.measure(entry, entry.spec.size(value))
-        entry.confirmed = this.confirms(coverage, entry, stamp)
+        answered = true
       } catch (error) {
         const failure = failureOf(error)
-        entry.state.failure = failure
-        // A path that is gone is an answer, as a first read's would be; any
-        // other failure keeps what the view shows.
-        if (failure.kind === 'not-found') {
+        const kind = answerOf(failure.kind)
+        if (kind !== null && error instanceof FileBrowserError) {
+          // An answer like any other, as a first read's would be.
           entry.state.value = undefined
+          entry.state.answer = kind
+          entry.state.failure = null
+          entry.version = error.version
+          entry.readAt = error.readAt
           this.measure(entry, 0)
-          entry.confirmed = this.confirms(coverage, entry, stamp)
+          answered = true
         } else {
-          entry.confirmed = false
+          // A read that could not be made keeps what the view shows.
+          entry.state.failure = failure
         }
       } finally {
         entry.reading = null
         entry.state.reading = false
       }
-      if (entry.stamp !== stamp && entry.shown > 0)
+      // The numbers say a change came after this read, or a watch of another
+      // run went live while it was on its way: it is read once more. An
+      // answer of a run the watch has not gone live in yet waits for that.
+      const freshness = answered && entry.shown > 0 ? entry.freshness(Date.now()) : 'unknown'
+      if (freshness === 'stale' || (freshness === 'restarted' && entry.lives() !== lives))
         this.reread(entry)
       this.evict()
     })()
@@ -328,10 +452,10 @@ export class HostFiles {
   }
 
   /**
-   * Reads again an entry a view shows, for a report that named it: at once,
-   * but a folder's listing or a changes list at most once a second. A report
+   * Reads again an entry a view shows, for a change that named it: at once,
+   * but a folder's listing or a changes list at most once a second. A change
    * within a second of its last read waits for that second to end and is
-   * then read with any that came meanwhile, so the last report is never
+   * then read with any that came meanwhile, so the last change is never
    * dropped.
    */
   private reread(entry: Entry<unknown>): void {
@@ -348,16 +472,16 @@ export class HostFiles {
     }
     entry.rereadTimer = setTimeout(() => {
       entry.rereadTimer = null
-      // A view that let go meanwhile reads it when it shows it next, as it is unconfirmed.
+      // A view that let go meanwhile reads it when it shows it next, as it is out of date.
       this.readShown(entry)
     }, wait)
   }
 
   /** Reads an entry a view shows on screen again, through that view's route; one none shows is left for the next view to show it. */
   private readShown(entry: Entry<unknown>): void {
-    const read = entry.reader()
-    if (read)
-      void this.read(entry, read)
+    const holder = entry.latest()
+    if (holder)
+      void this.read(entry, holder.read)
   }
 
   private cancelReread(entry: Entry<unknown>): void {
@@ -367,47 +491,58 @@ export class HostFiles {
     entry.rereadTimer = null
   }
 
-  private confirms(coverage: Coverage | null, entry: Entry<unknown>, stamp: number): boolean {
-    return coverage !== null && this.coverages.has(coverage) && entry.stamp === stamp
-  }
-
   private measure(entry: Entry<unknown>, size: number): void {
     this.kept += size - entry.size
     entry.size = size
   }
 
-  /** Lets go of the entries shown longest ago, none shown now or being read, until the text kept fits the budget. */
+  /**
+   * Lets go of the entries shown longest ago, none a view holds or being
+   * read, until what is kept fits the budget and the count, each giving up
+   * its subscriptions at once.
+   */
   private evict(): void {
-    if (this.kept <= this.budget)
+    if (this.kept <= this.budget && this.entries.size <= this.maxEntries)
       return
     const idle = [...this.entries.entries()]
-      .filter(([, entry]) => entry.shown === 0 && !entry.reading)
+      .filter(([, entry]) => entry.holders.size === 0 && !entry.reading)
       .sort(([, a], [, b]) => a.lastShown - b.lastShown)
     for (const [key, entry] of idle) {
-      if (this.kept <= this.budget)
+      if (this.kept <= this.budget && this.entries.size <= this.maxEntries)
         return
       this.kept -= entry.size
       this.cancelReread(entry)
       this.entries.delete(key)
+      this.unsubscribe(entry.subscriptions.value)
+      entry.subscriptions.value = []
     }
   }
 
-  private unconfirm(entry: Entry<unknown>): void {
-    entry.confirmed = false
-    entry.stamp += 1
+  /**
+   * Makes sure `entry` holds what it depends on through `watch`, and
+   * subscribes again to what the page counts as lapsed: a view that shows
+   * or reads it holds it current from now on.
+   */
+  private follow(entry: Entry<unknown>, watch: WatchChannel | null): void {
+    this.subscribe(entry, watch)
+    const now = Date.now()
+    for (const subscription of entry.subscriptions.value)
+      subscription.channel?.renewLapsed(subscription, now)
   }
 
   /**
    * A view shows the entry `spec` names until it releases it: what is kept
-   * shows at once, and an entry not kept or not confirmed is read.
+   * shows at once, and an entry that is not current is read.
    */
   show<T>(spec: KeptSpec<T>): Showing<T> {
     const entry = this.entry(spec)
-    const holder: Holder<T> = { read: spec.read, away: false }
+    const holder: Holder<T> = { read: spec.read, watch: spec.watch ?? null, details: spec.details ?? false, away: false }
     entry.holders.add(holder)
     entry.lastShown = ++this.clock
-    if (!entry.confirmed)
+    this.follow(entry as Entry<unknown>, holder.watch)
+    if (entry.freshness(Date.now()) !== 'current')
       void this.read(entry, spec.read)
+    this.evict()
     let released = false
     return {
       entry: entry.state,
@@ -420,6 +555,9 @@ export class HostFiles {
         released = true
         entry.holders.delete(holder)
         entry.lastShown = ++this.clock
+        // A listing the views that remain show without sizes follows the names again.
+        if (entry.holders.size > 0)
+          this.subscribe(entry as Entry<unknown>, null)
         this.evict()
       },
       away: () => {
@@ -432,11 +570,12 @@ export class HostFiles {
         if (released || !holder.away)
           return
         holder.away = false
-        // Last on screen: its route reads the entry again for reports.
+        // Last on screen: its route reads the entry again for changes.
         entry.holders.delete(holder)
         entry.holders.add(holder)
         entry.lastShown = ++this.clock
-        if (!entry.confirmed)
+        this.follow(entry as Entry<unknown>, holder.watch)
+        if (entry.freshness(Date.now()) !== 'current')
           void this.read(entry, spec.read)
       },
     }
@@ -445,22 +584,24 @@ export class HostFiles {
   /**
    * Edits what is kept of the entry `spec` names, as the page's own write
    * tells it, without a read: an upload's new file in its folder's listing.
-   * Nothing kept, nothing to edit; whether it is confirmed stays as it was,
+   * Nothing kept, nothing to edit; whether it is current stays as it was,
    * since the Host's watch reports the write too.
    */
   amend<T>(spec: KeptSpec<T>, edit: (value: T) => T): void {
-    const entry = this.entry(spec)
-    const { value } = entry.state
-    if (value === undefined)
+    const entry = this.entries.get(`${spec.kind}\u0000${spec.path}\u0000${spec.key ?? ''}`) as Entry<T> | undefined
+    const value = entry?.state.value
+    if (!entry || value === undefined)
       return
     const edited = edit(value)
     entry.state.value = edited
-    this.measure(entry, spec.size(edited))
+    this.measure(entry as Entry<unknown>, spec.size(edited))
   }
 
   /** Reads the entry `spec` names again now, as a Refresh does. */
   retry<T>(spec: KeptSpec<T>): void {
-    void this.read(this.entry(spec), spec.read)
+    const entry = this.entry(spec)
+    this.follow(entry as Entry<unknown>, spec.watch ?? null)
+    void this.read(entry, spec.read)
   }
 
   /** What is kept of the entry `spec` names, as a view would show it, without showing or reading it. */
@@ -468,78 +609,39 @@ export class HostFiles {
     return this.entry(spec).state
   }
 
-  /** The entry once, for work that shows nothing: the confirmed answer kept, or a read's. */
+  /** The entry once, for work that shows nothing: the current answer kept, or a read's. */
   async get<T>(spec: KeptSpec<T>): Promise<T> {
     const entry = this.entry(spec)
     entry.lastShown = ++this.clock
-    if (!entry.confirmed)
+    this.follow(entry as Entry<unknown>, spec.watch ?? null)
+    if (entry.freshness(Date.now()) !== 'current')
       await this.read(entry, spec.read)
-    const { value, failure } = entry.state
-    if (value === undefined)
-      throw new FileBrowserError(failure?.kind ?? 'other', failure?.message)
-    return value
+    const { value, answer, failure } = entry.state
+    if (answer === 'value' && value !== undefined)
+      return value
+    if (answer === 'gone')
+      throw new FileBrowserError('not-found', GONE_MESSAGE)
+    if (answer === 'binary' || answer === 'too-large')
+      throw new FileBrowserError(answer)
+    throw new FileBrowserError(failure?.kind ?? 'other', failure?.message)
   }
 
   /**
-   * Something changed at each of `paths`, of which `entries` came, went or
-   * were renamed and git ignores `ignored`: every entry they concern is
-   * unconfirmed, and read again while a view shows it, at once but a
-   * listing and a changes list at most once a second. An ignored path, such
-   * as a log a process appends to, concerns its file but not the working
-   * tree's changes (`web-api.md` § File text and working tree changes). A
-   * report without `entries` names every path as one, so no listing is
-   * left stale.
+   * The Host said something of `subscriptions`: each entry on screen that
+   * depends on one and whose answer the numbers now show changed is read
+   * again, at once but a listing and a changes list at most once a second.
+   * An entry off screen is only noted, by the numbers its subscriptions now
+   * hold, and read when it comes on screen.
    */
-  changed(paths: readonly string[], ignored: readonly string[] = [], entries: readonly string[] = paths): void {
-    const ignoredPaths = new Set(ignored)
-    const entryPaths = new Set(entries)
+  heard(subscriptions: readonly Subscription[]): void {
+    const heard = new Set(subscriptions)
+    const now = Date.now()
     for (const entry of this.entries.values()) {
-      const gitDir = entry.spec.root === undefined ? null : this.gitDirs.get(entry.spec.root) ?? null
-      if (!paths.some((path) => entry.concerns(path, ignoredPaths.has(path), entryPaths.has(path), gitDir)))
+      if (entry.shown === 0 || entry.reading || !entry.subscriptions.value.some((subscription) => heard.has(subscription)))
         continue
-      this.unconfirm(entry)
-      if (entry.shown > 0)
+      const freshness = entry.freshness(now)
+      if (freshness === 'stale' || freshness === 'restarted')
         this.reread(entry)
-    }
-  }
-
-  /**
-   * A watch is live: what it covers, read from now on, is confirmed. Each
-   * entry it covers that a view shows and no live watch confirmed is read
-   * again now: it may have changed unreported, or its last read failed while
-   * the Host was away, which a watch going live says it is no longer.
-   */
-  cover(coverage: Coverage): void {
-    this.coverages.add(coverage)
-    for (const entry of this.entries.values()) {
-      if (!entry.confirmed && coverage.covers(entry.spec.path))
-        this.readShown(entry)
-    }
-  }
-
-  /**
-   * A watch stopped covering: it ended, or lost reports. What it covered
-   * may have changed unreported, so it is unconfirmed; with `reread`, as
-   * after lost reports on a watch that goes on, the entries shown are read
-   * again at once.
-   */
-  uncover(coverage: Coverage, reread = false): void {
-    if (!this.coverages.delete(coverage))
-      return
-    for (const entry of this.entries.values()) {
-      if (!coverage.covers(entry.spec.path))
-        continue
-      this.unconfirm(entry)
-      if (reread)
-        this.readShown(entry)
-    }
-  }
-
-  /** Reads every shown entry `where` picks again now, as a Refresh does. */
-  refresh(where: (path: string) => boolean = () => true): void {
-    for (const entry of this.entries.values()) {
-      if (where(entry.spec.path))
-        this.readShown(entry)
     }
   }
 }

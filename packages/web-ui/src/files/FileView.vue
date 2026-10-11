@@ -17,6 +17,7 @@ import FileTree from './FileTree.vue'
 import MarkdownDocument from './MarkdownDocument.vue'
 import TreeFrame from './TreeFrame.vue'
 import { downloadUrl } from './download'
+import { GONE_MESSAGE } from './file-cache'
 import { TREE_WIDTH } from './file-view'
 import { formatBytes } from './format'
 import { baseName } from '@demicodes/utils'
@@ -49,9 +50,10 @@ import type { FileBrowserSource } from './types'
  *
  * The file shows as its source keeps it (`plugin-pages.md` § What the
  * service keeps): a file seen a moment ago shows at once, scrolled where it
- * was, and a new text replaces the old in place. A read that fails keeps
- * what shows and says so quietly, with Retry; a Host that cannot watch its
- * files has the view say that it shows them as last read, with Refresh.
+ * was, and a new text replaces the old in place; a file that is not text
+ * keeps its card while it is checked. A read that fails keeps what shows and
+ * says so quietly, with Retry; a file the Host cannot watch has the view say
+ * that it shows it as last read, with Refresh.
  */
 const props = defineProps<{
   source: FileBrowserSource
@@ -136,14 +138,20 @@ const state = computed<TextState>(() => {
   const entry = shown.entry.value
   if (!entry)
     return { phase: 'loading' }
-  if (entry.value !== undefined)
-    return { phase: 'ready', text: entry.value.text }
-  const failure = entry.failure
-  if (!failure)
-    return { phase: 'loading' }
-  if (failure.kind === 'binary' || failure.kind === 'too-large')
-    return { phase: 'card', tooLarge: failure.kind === 'too-large' }
-  return { phase: 'failed', message: failure.message ?? 'The file could not be read.' }
+  // Each answer is drawn as itself, and stays while it is checked.
+  switch (entry.answer) {
+    case 'value':
+      return entry.value === undefined ? { phase: 'loading' } : { phase: 'ready', text: entry.value.text }
+    case 'binary':
+    case 'too-large':
+      return { phase: 'card', tooLarge: entry.answer === 'too-large' }
+    case 'gone':
+      return { phase: 'failed', message: GONE_MESSAGE }
+    case null:
+      return entry.failure
+        ? { phase: 'failed', message: entry.failure.message ?? 'The file could not be read.' }
+        : { phase: 'loading' }
+  }
 })
 
 /** How many times the text shown was read again successfully: a document's images that did not load try again then. */
@@ -153,10 +161,10 @@ watch(() => shown.entry.value?.reading, (reading, wasReading) => {
     reloads.value += 1
 })
 
-/** Why the last read of the text shown failed, while the text it had stays. */
+/** Why the last read of the file shown could not be made, while what it answered before stays. */
 const staleBecause = computed(() => {
   const entry = shown.entry.value
-  return entry?.value !== undefined ? entry.failure?.message ?? (entry.failure ? 'The read failed.' : null) : null
+  return entry?.answer && entry.failure ? entry.failure.message ?? 'The read failed.' : null
 })
 
 /** The start of a text file too large for the text read, while one is shown. */
@@ -305,12 +313,12 @@ onBeforeUnmount(() => {
     <template #default="{ overlap }">
     <div class="flex h-full min-h-0 flex-col">
       <RegionNote
-        v-if="source.watch?.unavailable"
+        v-if="shown.entry.value?.answer && shown.entry.value.unwatched"
         :icon="History"
-        label="Showing files as they were last read."
-        :detail="source.watch.unavailable"
+        label="Showing this file as it was last read."
+        :detail="shown.entry.value.unwatched"
         action="Refresh"
-        @action="source.watch.refresh()"
+        @action="shown.retry"
       />
       <RegionNote
         v-if="staleBecause"

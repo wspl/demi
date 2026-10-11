@@ -22,7 +22,7 @@ const props = defineProps<{
 
 const shown = useShowing(() => props.contents, () => props.path, (contents, path) => contents.showDescription(path))
 // Any failure but size leaves the card without the facts; its name and Download still hold.
-const tooLarge = computed(() => shown.entry.value?.failure?.kind === 'too-large')
+const tooLarge = computed(() => shown.entry.value?.answer === 'too-large')
 const description = computed(() => tooLarge.value ? null : shown.entry.value?.value ?? null)
 
 const download = computed(() => tooLarge.value

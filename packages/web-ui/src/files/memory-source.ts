@@ -6,17 +6,18 @@
  * file of its size; without one it takes no uploads. Directories are made
  * and entries deleted at once.
  *
- * The source keeps what it read as the product's does (`keptSource`), under a
- * simulated watch of the tree: a live watch confirms what is read, so a file
- * shown again shows at once, and a change made with `change` is reported, so
- * the views that show it read it again; an unavailable one says so, as a Host
- * that cannot watch does.
+ * The source keeps what it read as the product's does (`keptSource`), with
+ * the subscriptions a simulated Host's watch answers (`SimulatedWatch`):
+ * each read carries the simulated Host's number, so a file shown again
+ * shows at once without a read, and a change made with `change` is
+ * reported, so the views that show it read it again; a watch that is
+ * unavailable says so for each subscription, as a Host that cannot watch
+ * does.
  */
-import { reactive } from 'vue'
 import { previewMediaType, TEXT_FILE_BYTES } from '@demicodes/protocol'
 import { baseName, delay } from '@demicodes/utils'
-import { HostFiles, type Coverage } from './file-cache'
-import { keptSource, type FileFollower, type FileReads } from './kept-source'
+import { HostFiles } from './file-cache'
+import { keptSource, type FileReads } from './kept-source'
 import {
   FileBrowserError,
   type FileBrowserEntry,
@@ -24,9 +25,9 @@ import {
   type FileBrowserSource,
   type FileBrowserPlatform,
   type FileContents,
-  type FileWatchNote,
 } from './types'
 import { joinPath, normalizePath, parentPath } from './paths'
+import { WatchChannel, type OpenWatchLink, type ReadAt, type Subject, type WatchLinkHandlers } from './watch-channel'
 
 export interface MemoryFile {
   kind: 'file'
@@ -59,15 +60,122 @@ export interface MemoryFileSourceOptions {
   /** Bytes a second an upload moves at; without it the source takes no uploads. */
   uploadRate?: number
   /**
-   * The simulated watch of the tree: `live`, the default, confirms what is
-   * read and reports each `change`; `unavailable` is a Host that cannot
-   * watch, whose views say they show files as last read.
+   * The simulated watch of the tree: `live`, the default, answers each
+   * subscription and reports each `change`; `unavailable` is a Host that
+   * cannot watch, whose views say they show files as last read.
    */
   watch?: 'live' | 'unavailable'
 }
 
 /** What a simulated Host says when it cannot watch its files. */
 export const UNWATCHED_REASON = 'The file system reports no changes.'
+
+/** Whether `path` is `ancestor` or lies below it. */
+function within(path: string, ancestor: string): boolean {
+  const prefix = ancestor.endsWith('/') ? ancestor : `${ancestor}/`
+  return path === ancestor || path.startsWith(prefix)
+}
+
+/**
+ * A Host's file watch as a page sees it, simulated over a memory tree, for
+ * gallery specimens and tests (`runner.md` § Watching files): it counts its
+ * changes with one number, answers each subscription `live` from the number
+ * now, or `unavailable`, reports a `change` to each subscription it
+ * concerns with the change's number, acknowledges each renew, and sends a
+ * heartbeat every 30 seconds, as the backend does. A read takes `readAt()`
+ * before it reads, as the Host's does.
+ */
+export class SimulatedWatch {
+  private number = 0
+  private readonly links = new Set<{ handlers: WatchLinkHandlers; held: Map<string, Subject> }>()
+
+  constructor(private readonly mode: 'live' | 'unavailable' = 'live', private readonly epoch = 'memory') {}
+
+  /** The number now, which a read answers with. */
+  readAt(): ReadAt {
+    return { epoch: this.epoch, number: this.number }
+  }
+
+  /** Opens a connection, which opens in a moment as a socket does. */
+  readonly open: OpenWatchLink = (handlers) => {
+    const link = { handlers, held: new Map<string, Subject>() }
+    let closed = false
+    const tell = (message: Parameters<WatchLinkHandlers['message']>[0]) => queueMicrotask(() => {
+      if (!closed)
+        handlers.message(message)
+    })
+    // Nothing else may come for long: the watch stays known to be alive.
+    const heartbeat = setInterval(() => tell({ type: 'heartbeat' }), 30_000)
+    queueMicrotask(() => {
+      if (closed)
+        return
+      this.links.add(link)
+      handlers.opened()
+    })
+    return {
+      send: (request) => {
+        switch (request.type) {
+          case 'subscribe':
+            for (const { key, kind, path } of request.subscriptions) {
+              if (this.mode === 'unavailable') {
+                tell({ type: 'unavailable', key, reason: UNWATCHED_REASON })
+                continue
+              }
+              link.held.set(key, { kind, path })
+              tell({ type: 'live', key, since: this.number, epoch: this.epoch })
+            }
+            return
+          case 'unsubscribe':
+            for (const key of request.keys)
+              link.held.delete(key)
+            return
+          case 'renew':
+            tell({ type: 'renewed', keys: request.keys.filter((key) => link.held.has(key)) })
+        }
+      },
+      close: () => {
+        closed = true
+        clearInterval(heartbeat)
+        this.links.delete(link)
+      },
+    }
+  }
+
+  /**
+   * Something outside the page changed `path`: a file written, or with
+   * `entry` one that came or went in its folder. Each subscription it
+   * concerns hears of it with the change's number.
+   */
+  change(path: string, { entry = false }: { entry?: boolean } = {}): void {
+    this.number += 1
+    const at = this.number
+    for (const link of this.links) {
+      const changes: [string, number][] = []
+      for (const [key, subject] of link.held) {
+        if (concerns(subject, path, entry))
+          changes.push([key, at])
+      }
+      if (changes.length > 0)
+        queueMicrotask(() => link.handlers.message({ type: 'changed', changes }))
+    }
+  }
+}
+
+/** Whether a change of `path` changes a subscription to `subject`; `entry` when an entry came or went. */
+function concerns({ kind, path: subject }: Subject, path: string, entry: boolean): boolean {
+  switch (kind) {
+    case 'file':
+      return within(subject, path)
+    case 'folder_names':
+      return within(subject, path) || (entry && parentPath(path) === subject)
+    case 'folder_details':
+      return within(subject, path) || parentPath(path) === subject
+    case 'worktree':
+      return within(path, subject)
+    case 'head':
+      return false
+  }
+}
 
 /** A memory source, with its tree and what simulates the world changing it. */
 export interface MemoryFileSource extends FileBrowserSource {
@@ -119,12 +227,16 @@ interface MemoryHost {
   failing: Map<string, FileBrowserFailure>
 }
 
-/** The reads and writes of a memory tree, each a simulated request, without keeping what they answer. */
-export function memoryFileReads(options: MemoryFileSourceOptions): FileReads {
-  return memoryHost(options).reads
+/**
+ * The reads and writes of a memory tree, each a simulated request, without
+ * keeping what they answer; each read carries `watch`'s number, and none
+ * without one.
+ */
+export function memoryFileReads(options: MemoryFileSourceOptions, watch?: SimulatedWatch): FileReads {
+  return memoryHost(options, watch).reads
 }
 
-function memoryHost(options: MemoryFileSourceOptions): MemoryHost {
+function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): MemoryHost {
   const { root, latencyMs = 0, uploadRate } = options
   const failing = new Map<string, FileBrowserFailure>()
 
@@ -153,12 +265,15 @@ function memoryHost(options: MemoryFileSourceOptions): MemoryHost {
     }
   }
 
-  function fileAt(path: string): MemoryFile {
+  /** The simulated Host's number before a read. */
+  const readAt = () => watch?.readAt() ?? null
+
+  function fileAt(path: string, at: ReadAt | null): MemoryFile {
     if (options.offline)
       throw new FileBrowserError('offline')
     const node = lookup(path)
     if (!node || node.kind !== 'file')
-      throw new FileBrowserError('not-found', `No such file: ${normalizePath(path)}`)
+      throw new FileBrowserError('not-found', `No such file: ${normalizePath(path)}`, { readAt: at })
     return node
   }
 
@@ -216,12 +331,13 @@ function memoryHost(options: MemoryFileSourceOptions): MemoryHost {
     platform: options.platform,
     home: normalizePath(options.home),
     async list(path) {
+      const at = readAt()
       await wait(path)
       if (options.offline)
         throw new FileBrowserError('offline')
       const node = lookup(path)
       if (!node || node.kind !== 'directory')
-        throw new FileBrowserError('not-found', `No such directory: ${normalizePath(path)}`)
+        throw new FileBrowserError('not-found', `No such directory: ${normalizePath(path)}`, { readAt: at })
       if (node.failure)
         throw new FileBrowserError(node.failure.kind, node.failure.message)
       const entries: FileBrowserEntry[] = Object.entries(node.children).map(([
@@ -237,18 +353,22 @@ function memoryHost(options: MemoryFileSourceOptions): MemoryHost {
             modifiedAt: child.modifiedAt
           },
       )
-      return entries
+      return { value: entries, readAt: at }
     },
     async readText(path, held) {
+      const at = readAt()
       await wait(path)
-      const node = fileAt(path)
+      const node = fileAt(path, at)
+      // A file's version is when it was written.
+      const version = node.modifiedAt
       if (node.url !== undefined && node.content === undefined)
-        throw new FileBrowserError('binary', 'The file is not UTF-8 text')
+        throw new FileBrowserError('binary', 'The file is not UTF-8 text', { version, readAt: at })
       // The text route's limit, as a Host's text route answers a larger file.
       if (node.size > TEXT_FILE_BYTES)
-        throw new FileBrowserError('too-large')
-      // A file's version is when it was written.
-      return held === node.modifiedAt ? null : { text: node.content ?? '', version: node.modifiedAt }
+        throw new FileBrowserError('too-large', undefined, { version, readAt: at })
+      return held === version
+        ? { unchanged: true, readAt: at }
+        : { value: { text: node.content ?? '', version }, readAt: at }
     },
     /** An asset's own URL, or a text file's content as a `data:` URL typed by its extension. */
     contents: {
@@ -259,13 +379,14 @@ function memoryHost(options: MemoryFileSourceOptions): MemoryHost {
         return node.url ?? `data:${previewMediaType(path) ?? 'text/plain'};charset=utf-8,${encodeURIComponent(node.content ?? '')}`
       },
       async describe(path) {
+        const at = readAt()
         await wait(path)
-        const node = fileAt(path)
-        return { size: node.size, modifiedAt: node.modifiedAt, version: node.modifiedAt }
+        const node = fileAt(path, at)
+        return { value: { size: node.size, modifiedAt: node.modifiedAt, version: node.modifiedAt }, readAt: at }
       },
       async readStart(path, length) {
         await wait(path)
-        const node = fileAt(path)
+        const node = fileAt(path, null)
         if (node.content === undefined)
           throw new FileBrowserError('binary', 'The file is not UTF-8 text')
         return new TextEncoder().encode(node.content).subarray(0, length)
@@ -296,19 +417,11 @@ function memoryHost(options: MemoryFileSourceOptions): MemoryHost {
 }
 
 export function createMemoryFileSource(options: MemoryFileSourceOptions): MemoryFileSource {
-  const { root, watch = 'live' } = options
-  const { reads, makeDirectories, failing } = memoryHost(options)
-  // The simulated watch covers the whole tree while it is live.
+  const { root } = options
+  const host = new SimulatedWatch(options.watch)
+  const { reads, makeDirectories, failing } = memoryHost(options, host)
   const files = new HostFiles()
-  const everything: Coverage = { covers: () => true }
-  if (watch === 'live')
-    files.cover(everything)
-  const note: FileWatchNote = reactive({
-    unavailable: watch === 'unavailable' ? UNWATCHED_REASON : null,
-    refresh: () => files.refresh(),
-  })
-  const follower: FileFollower = { show: () => () => {}, note }
-  const source = keptSource(reads, { files, follower })
+  const source = keptSource(reads, { files, watch: new WatchChannel(files, host.open, 'simulated file watch') })
   const { contents, read } = source
   if (!contents || !read)
     throw new Error('A memory source reads its files and serves their bytes.')
@@ -319,9 +432,9 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): Memory
     change(path: string, content: string) {
       const target = normalizePath(path)
       const parent = makeDirectories(parentPath(target))
+      const entry = parent.children[baseName(target)] === undefined
       parent.children[baseName(target)] = textFile(content, new Date().toISOString())
-      if (watch === 'live')
-        files.changed([target])
+      host.change(target, { entry })
     },
     failNext(path: string, failure: FileBrowserFailure) {
       failing.set(normalizePath(path), failure)

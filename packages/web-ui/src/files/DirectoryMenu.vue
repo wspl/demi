@@ -7,6 +7,7 @@ import FileIcon from './FileIcon.vue'
 import type { FileBrowserEntry, FileBrowserSource } from './types'
 import { isHiddenName, joinPath } from './paths'
 import { DEFAULT_SORT, sortEntries } from './file-browser-state'
+import { failureShown } from './file-cache'
 import { useShowing } from './showing'
 
 /**
@@ -31,8 +32,8 @@ const emit = defineEmits<{
 const shown = useShowing(() => props.source, () => props.path, (source, path) => source.showListing(path))
 // A menu has no sort controls: folders first, then names.
 const entries = computed(() => sortEntries(shown.entry.value?.value ?? [], DEFAULT_SORT))
-const loading = computed(() => shown.entry.value?.value === undefined && shown.entry.value?.failure == null)
-const failure = computed(() => shown.entry.value?.value === undefined ? shown.entry.value?.failure ?? null : null)
+const loading = computed(() => shown.entry.value?.answer == null && shown.entry.value?.failure == null)
+const failure = computed(() => failureShown(shown.entry.value))
 
 function iconFor(entry: FileBrowserEntry) {
   return () => h(FileIcon, { name: entry.name, isDirectory: entry.isDirectory, size: 16 })

@@ -16,13 +16,30 @@ import { useConversations } from './store'
 /** Each conversation's service, made once for the page's lifetime. */
 const services = new Map<string, ConversationFileService>()
 
+/** Each conversation's file watch, made once for the page's lifetime. */
+const watches = new Map<string, ConversationWatch>()
+
+/**
+ * The file watch of a conversation's Host, on the relay or its direct
+ * channel (`web-api.md` § File watch): what the conversation's views keep
+ * of its Host's files is subscribed on it.
+ */
+export function conversationWatch(conversationId: string): ConversationWatch {
+  let watcher = watches.get(conversationId)
+  if (!watcher) {
+    watcher = new ConversationWatch(conversationId, directWatchLink(() => directRoute(conversationId)))
+    watches.set(conversationId, watcher)
+  }
+  return watcher
+}
+
 /**
  * A conversation's files (`plugin-pages.md` § The conversation files
  * service): the Host's tree and contents while its device and directory are
  * known, the working tree's changes, and a request's changes from the
  * transcripts the page holds. What it reads it keeps with the
- * Host's other files, and while a component shows any of them its file
- * watch is open, whose reports have what they name read again
+ * Host's other files, each entry subscribed on the conversation's file
+ * watch while it is kept, and a change of one on screen reads it again
  * (`plugin-pages.md` § What the service keeps).
  */
 export function conversationFiles(conversationId: string): ConversationFileService {
@@ -38,10 +55,7 @@ export function conversationFiles(conversationId: string): ConversationFileServi
     const target = execution.value
     return target ? resources.deviceById(target.deviceId) : null
   })
-  const watcher = new ConversationWatch(conversationId, () => {
-    const target = execution.value
-    return target?.path && device.value ? { files: hostFiles(device.value.id), root: target.path } : null
-  }, directWatchLink(() => directRoute(conversationId)))
+  const watcher = conversationWatch(conversationId)
   // For the page's lifetime: a Host that comes back online has the watch
   // connect at once, and the watch moves whenever the path to its device
   // changes (`direct-channel.md` § Choosing the path).
@@ -58,13 +72,18 @@ export function conversationFiles(conversationId: string): ConversationFileServi
   // source the device's files keep: a product state that leaves the Host
   // and the directory as they are, as each frame of a turn does, keeps them
   // as they are, so the views that show them have nothing to render, and the
-  // change set is not shown again, which would read an unconfirmed list anew.
+  // change set is not shown again, which would read a list that is not current anew.
   const deviceId = computed(() => device.value?.id ?? null)
   const root = computed(() => execution.value?.path ?? null)
-  const source = computed(() => device.value
-    ? fileSource(conversationFileRoutes(conversationId), device.value, watcher, (reads) =>
-      directFileReads(() => directRoute(conversationId), reads))
-    : null)
+  const source = computed(() => {
+    const host = device.value
+    return host
+      ? fileSource(conversationFileRoutes(conversationId), host, {
+          watch: (files) => watcher.channel(host.id, files),
+          through: (reads) => directFileReads(() => directRoute(conversationId), reads),
+        })
+      : null
+  })
   // The Cloud's own session directory has no name worth showing; it is the workspace.
   const name = computed(() => execution.value?.directory === null ? 'Workspace' : undefined)
   const workspace = computed(() => source.value && root.value
@@ -74,9 +93,10 @@ export function conversationFiles(conversationId: string): ConversationFileServi
     if (!root.value || deviceId.value === null) {
       return null
     }
+    const files = hostFiles(deviceId.value)
     return keptChangeSet(workingTreeReads(conversationId), root.value, {
-      files: hostFiles(deviceId.value),
-      follower: watcher,
+      files,
+      watch: watcher.channel(deviceId.value, files),
     })
   })
 
