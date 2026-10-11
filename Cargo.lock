@@ -1760,6 +1760,7 @@ dependencies = [
 name = "demi-backend-database"
 version = "0.1.21"
 dependencies = [
+ "bytes",
  "demi-agent-store",
  "demi-backend-remote-host",
  "demi-conversation-socket-protocol",
@@ -2244,6 +2245,7 @@ version = "0.1.21"
 dependencies = [
  "bytes",
  "garde",
+ "gix-imara-diff",
  "schemars",
  "serde",
  "serde_json",
@@ -2701,6 +2703,7 @@ name = "demi-runner-host"
 version = "0.1.21"
 dependencies = [
  "bytes",
+ "demi-command-protocol",
  "demi-command-sdk",
  "demi-runner-process",
  "demi-runner-protocol",
@@ -2760,7 +2763,6 @@ dependencies = [
  "demi-runner-protocol",
  "demi-shared-artifacts",
  "futures-util",
- "gix-imara-diff",
  "libc",
  "process-wrap",
  "procfs",

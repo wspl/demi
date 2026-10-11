@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { Block } from '@demicodes/protocol'
 import { provideTranscript } from '@demicodes/web-ui/agent/edit-selection'
-import { transcriptRequests } from '@demicodes/web-ui/files/request-changes'
+import { storedRequests } from '@demicodes/web-ui/files/request-changes'
 import { useGalleryTranscripts } from '../fixtures/transcripts'
 
 /**
@@ -11,7 +11,7 @@ import { useGalleryTranscripts } from '../fixtures/transcripts'
  * in the gallery's panel.
  */
 const props = defineProps<{ blocks: Block[] }>()
-const requests = computed(() => transcriptRequests(props.blocks))
+const requests = computed(() => storedRequests(props.blocks))
 provideTranscript({ node: null, requests: () => requests.value })
 useGalleryTranscripts(() => ({ blocks: props.blocks, subagents: [] }))
 </script>

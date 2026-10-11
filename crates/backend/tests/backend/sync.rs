@@ -28,7 +28,7 @@ use serde_json::json;
 
 use crate::accounts::{device_entry, scripts};
 use crate::conversations::{
-    FIRST, Socket, anthropic, choose, create, events, message_start, send, text_block,
+    FIRST, SECOND, Socket, anthropic, choose, create, events, message_start, send, text_block,
 };
 use crate::support::{
     Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, SyncChannel, TestBackend, answer,
@@ -209,6 +209,45 @@ async fn the_snapshot_is_the_users_product_state() {
         .unwrap();
     let installer = reqwest::get(installer).await.unwrap();
     assert_eq!(installer.status(), StatusCode::SERVICE_UNAVAILABLE);
+    backend.close().await;
+}
+
+/// A conversation whose database cannot be opened, as one a build that
+/// does not know its schema made, takes nothing else down: the page's
+/// channel sends the product state with every conversation, the others
+/// open, and only that one's history fails.
+// About a second: one backend with two conversations.
+#[tokio::test]
+async fn a_conversation_database_that_cannot_be_opened_fails_only_that_conversation() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    create(&backend, &master, FIRST).await;
+    create(&backend, &master, SECOND).await;
+    let file = harness
+        .data_dir()
+        .join("conversations")
+        .join(format!("{SECOND}.sqlite"));
+    let foreign = rusqlite::Connection::open(&file).unwrap();
+    foreign
+        .execute_batch("CREATE TABLE later (id INTEGER); PRAGMA user_version = 77;")
+        .unwrap();
+    drop(foreign);
+
+    let mut page = backend.sync(&master).await;
+    let state = page.snapshot().await;
+    let mut listed: Vec<&str> = state.conversations.iter().map(|summary| summary.id.as_str()).collect();
+    listed.sort_unstable();
+    let mut expected = [FIRST, SECOND];
+    expected.sort_unstable();
+    assert_eq!(listed, expected);
+    let history = |id: &str| format!("/api/conversations/{id}/transcript");
+    assert_eq!(backend.get(&history(FIRST), Some(&master)).await.status, StatusCode::OK);
+    assert_ne!(backend.get(&history(SECOND), Some(&master)).await.status, StatusCode::OK);
+    // A change of the broken one reaches the page as its summary, and the
+    // channel stays open.
+    rename(&backend, &master, SECOND, "Broken").await;
+    page.until(|event| matches!(event, SyncEvent::Conversation { conversation } if conversation.title == "Broken"))
+        .await;
     backend.close().await;
 }
 

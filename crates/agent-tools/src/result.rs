@@ -738,6 +738,8 @@ fn shell_view(status: &CommandStatus, text: &OutputText) -> ShellToolView {
         }
     };
     ShellToolView {
+        request_files: None,
+        run_files: None,
         status: view_status(&status.state),
         command_id: status.command_id.clone(),
         exit_code: match status.state {

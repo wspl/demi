@@ -1,6 +1,6 @@
 import type { AgentMessage, Block } from '@demicodes/protocol'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
-import { demoModel, shellView, thinkingText } from './blocks'
+import { demoModel, inRun, shellView, thinkingText } from './blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { ago } from './time'
 
@@ -175,7 +175,7 @@ export function workSubagent(): SubagentRecord {
     waitingSince: null,
     history: wholeHistory([
       user('ag-suite-user', ago(60_000), 'Find the suite paths test/mjsunit/mjsunit.status still names that no longer exist.'),
-      shell(
+      ...inRun(shell(
         'ag-suite-tool',
         ago(50_000),
         'Find the suite paths the status file names',
@@ -190,7 +190,7 @@ export function workSubagent(): SubagentRecord {
         'sent to 0\n',
         'completed',
         `demi agent send parent <<'EOF'\n${SUITE_PATHS_UPDATE}\nEOF`,
-      ),
+      )),
     ]),
   }
 }
@@ -212,14 +212,13 @@ export function gallerySubagents(): SubagentRecord[] {
           ago(134_000),
           'Find the expect that still looks for sid in auth.test.ts. Do not edit yet.',
         ),
-        thinking('ag-cookie-think', ago(120_000), thinkingText),
-        shell(
+        ...inRun(thinking('ag-cookie-think', ago(120_000), thinkingText), shell(
           'ag-cookie-tool',
           ago(90_000),
           'Find the old cookie name in the login test',
           'packages/web/src/auth.test.ts:18:    expect(cookie.name).toBe("sid")\n',
           'executing',
-        ),
+        )),
       ]),
     },
     {
@@ -245,7 +244,7 @@ export function gallerySubagents(): SubagentRecord[] {
           ago(40_000),
           'Logout should drop the session cookie. I will look for where the helper clears it.',
         ),
-        shell(
+        ...inRun(shell(
           'ag-logout-tool',
           ago(36_000),
           'Find where logout clears the session cookie',
@@ -259,7 +258,7 @@ export function gallerySubagents(): SubagentRecord[] {
           'sent to 0\n',
           'completed',
           `demi agent send parent <<'EOF'\n${LOGOUT_UPDATE}\nEOF`,
-        ),
+        )),
       ]),
     },
     {
@@ -295,18 +294,17 @@ export function gallerySubagents(): SubagentRecord[] {
           ago(420_000),
           'Update comments on the cookie helper to say session, not sid. Leave the code alone.',
         ),
-        thinking(
+        ...inRun(thinking(
           'ag-comments-think',
           ago(400_000),
           'Comments only. The helper already writes the new header.',
-        ),
-        shell(
+        ), shell(
           'ag-comments-tool',
           ago(360_000),
           'Open the cookie helper',
           'packages/web/src/cookie.ts\n',
           'completed',
-        ),
+        )),
         text(
           'ag-comments-text',
           ago(240_000),
@@ -335,13 +333,13 @@ export function gallerySubagents(): SubagentRecord[] {
           ago(290_000),
           'I will start the fixture server on port 3271, then run the login test.',
         ),
-        shell(
+        ...inRun(shell(
           'ag-fixture-tool',
           ago(285_000),
           'Start the fixture server',
           'Error: connect ECONNREFUSED 127.0.0.1:3271\n',
           'completed',
-        ),
+        )),
         {
           type: 'error',
           id: 'ag-fixture-error',
@@ -368,11 +366,11 @@ export function gallerySubagents(): SubagentRecord[] {
           ago(180_000),
           'Describe what the CI screenshot shows about the login failure.',
         ),
-        thinking(
+        ...inRun(thinking(
           'ag-ci-think',
           ago(160_000),
           'The screenshot is an attachment on the parent turn.',
-        ),
+        )),
         {
           type: 'abort',
           id: 'ag-ci-abort',

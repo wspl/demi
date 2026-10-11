@@ -62,7 +62,7 @@ pub(super) async fn transcript(
             Ok(Json(TranscriptPage {
                 start: index_u32(start),
                 length: index_u32(length),
-                blocks: blocks.iter().map(light).collect(),
+                blocks: light(&blocks),
                 failures,
                 instructions,
                 summaries,

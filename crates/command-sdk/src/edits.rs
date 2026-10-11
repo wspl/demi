@@ -85,9 +85,10 @@ impl Recorder {
 
     /// Records the removal of `path`, a file or a folder with all in it,
     /// that runs while the returned guard lives: once it is gone, the
-    /// removal is listed, and what this job recorded at or within it goes,
-    /// so a file made again there starts anew (`edit-tracking.md`
-    /// § A request). Nothing is locked meanwhile, so a prompt or a large
+    /// removal is listed, but of a file the job itself created, which was
+    /// neither there before nor is after, and what this job recorded at or
+    /// within it goes, so a file made again there starts anew
+    /// (`edit-tracking.md` § The report). Nothing is locked meanwhile, so a prompt or a large
     /// folder blocks no other job's writes.
     pub fn remove(&self, path: &Path) -> Removing {
         Removing {
@@ -460,10 +461,16 @@ impl Drop for Removing {
             return;
         }
         if let Some(mut recording) = self.recorder.begin() {
+            let path = self.path.to_string_lossy().into_owned();
+            let created = recording
+                .journal
+                .files
+                .iter()
+                .any(|file| file.path == path && file.kind == EditKind::Added);
             recording.forget(&self.path);
-            recording.list(PathChange::Removed {
-                path: self.path.to_string_lossy().into_owned(),
-            });
+            if !created {
+                recording.list(PathChange::Removed { path });
+            }
         }
     }
 }

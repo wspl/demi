@@ -1126,6 +1126,7 @@ pub fn edited_file(
     mut copies: impl FnMut(usize) -> Option<EditCopies>,
 ) -> EditedFile {
     EditedFile {
+        from: None,
         path: file.path.clone(),
         kind: match file.kind {
             JobEditKind::Added => EditKind::Added,
@@ -1154,8 +1155,9 @@ fn path_change(change: &wire::JobPathChange) -> PathChange {
             to: to.clone(),
             temporary: *temporary,
         },
-        wire::JobPathChange::Removed { path } => PathChange::Removed {
+        wire::JobPathChange::Removed { path, temporary } => PathChange::Removed {
             path: path.clone(),
+            temporary: *temporary,
         },
     }
 }

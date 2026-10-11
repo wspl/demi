@@ -14,6 +14,7 @@
 //! (`attachments`) (`crates-and-packages.md` § agent-store).
 
 pub mod attachments;
+pub mod changes;
 pub mod images;
 pub mod media;
 pub mod pixels;

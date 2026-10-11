@@ -1,4 +1,4 @@
-import type { AgentMessage, Block, CommandReport, EditedFile, ModelSelection, ToolResultContentBlock, UserContentBlock } from '@demicodes/protocol'
+import type { AgentMessage, Block, ChangedFile, CommandReport, EditedFile, ModelSelection, ToolResultContentBlock, UserContentBlock } from '@demicodes/protocol'
 import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { ShellToolView as ShellView, ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import { editCopies, galleryBlobSize, galleryBlobs, missingBlob } from './blobs'
@@ -45,6 +45,59 @@ export function editedFile(file: Omit<EditedFile, 'edits'>, segments = 1): Edite
 /** A file a fixture command edited without copies, such as a binary one. */
 export function uncopiedFile(file: Omit<EditedFile, 'edits'>): EditedFile {
   return { ...file, edits: [{}] }
+}
+
+/**
+ * `blocks` as one run of steps, as the backend stores it (`runtime.md`
+ * § Work groups): each carries the id of the run's first block, which the
+ * fixture names by putting the run's blocks together.
+ */
+export function inRun(...blocks: Block[]): Block[] {
+  const run = blocks[0]!.id
+  return blocks.map((block) => ({ ...block, run }) as Block)
+}
+
+/**
+ * The entry of a run's or a request's list for `file`, which the call of
+ * `commandId` alone changed, as the backend stores it: its lines those of
+ * the call, none when a side of it was not kept.
+ */
+export function listedFile(commandId: string, file: EditedFile): ChangedFile {
+  const kept = file.edits.length > 0 && file.edits.every((edit) => edit.copies)
+  return {
+    path: file.path,
+    kind: file.kind,
+    ...(file.from ? { from: file.from } : {}),
+    ...(kept ? { lines: { added: file.added, removed: file.removed } } : {}),
+    edits: file.edits.map((edit, segment) => ({
+      call: commandId,
+      path: file.path,
+      segment,
+      ...(file.kind === 'added' && segment === 0 ? { created: true } : {}),
+      ...(edit.copies ? { copies: edit.copies } : {}),
+    })),
+  }
+}
+
+/** The files `block`, a shell call, changed, but in a temporary directory, as entries of its lists. */
+export function listedFiles(block: Block): ChangedFile[] {
+  const view = block.type === 'tool_call' && block.view?.kind === 'shell' ? block.view : null
+  return (view?.files ?? []).filter((file) => !file.temporary).map((file) => listedFile(view!.commandId, file))
+}
+
+/**
+ * `block`, a shell call, with its run's and its request's files as the
+ * backend stored them; the request's are the run's unless named.
+ */
+export function withLists<T extends Block>(block: T, run: ChangedFile[], request: ChangedFile[] = run): T {
+  if (block.type !== 'tool_call' || block.view?.kind !== 'shell')
+    return block
+  return { ...block, view: { ...block.view, runFiles: run, requestFiles: request } }
+}
+
+/** A shell call alone in its run and its request, with its files as both lists. */
+export function ownLists<T extends Block>(block: T): T {
+  return withLists(block, listedFiles(block))
 }
 
 export const demoModel: ModelSelection = {
@@ -750,6 +803,42 @@ export function changesDemoBlocks(): Block[] {
     model: demoModel,
     text: body,
   })
+  const snapshotDiff = viewedCall(
+    {
+      id: 'changes-snapshot-diff',
+      toolName: 'shell',
+      input: JSON.stringify({
+        script: 'bun scripts/snapshot-diff.ts login && demi file view out/login-diff.png',
+        description: 'Compare the login snapshot before and after',
+      }),
+    },
+    'cmd-snapshot-diff',
+    imageLine(1, 480, 300, 16_078),
+    blobImage(galleryBlobs.chart),
+    [
+      uncopiedFile({ path: 'out/login-diff.png', kind: 'added', added: 0, removed: 0 }),
+      editedFile({ path: 'scripts/snapshot-diff.ts', kind: 'modified', added: 4, removed: 1 }),
+    ],
+  )
+  // The lists the latest call of each run stored: each file once, with its
+  // lines from before the run, or the request, to after the call.
+  const listed = (variant: string) => listedFiles(caseBlock(variant))
+  const [loginTest] = listed('one edit')
+  const [twice] = listed('two edits to one file')
+  const [session] = listed('new file')
+  const loginInRun = { ...loginTest!, lines: { added: 3, removed: 3 }, edits: [...loginTest!.edits, ...twice!.edits] }
+  const firstRun = [loginInRun, session!, ...listed('contents unavailable')]
+  const [mixedTest, mixedSession, ...mixedRest] = listed('a few, mixed')
+  const secondRun = [...listed('more than three rows'), mixedTest!, mixedSession!, ...mixedRest, ...listed('long names'), ...listed('append only, not new')]
+  const thirdRun = listedFiles(snapshotDiff)
+  // The request lists the login test and the session helper once, where
+  // its first run put them, with the second run's edits of them.
+  const request = [
+    { ...loginInRun, lines: { added: 15, removed: 6 }, edits: [...loginInRun.edits, ...mixedTest!.edits] },
+    { ...session!, edits: [...session!.edits, ...mixedSession!.edits] },
+    ...firstRun.slice(2),
+    ...secondRun.filter((file) => file !== mixedTest && file !== mixedSession),
+  ]
   return [
     {
       type: 'user',
@@ -763,44 +852,31 @@ export function changesDemoBlocks(): Block[] {
       }],
       preamble: null,
     },
-    {
-      type: 'thinking',
-      id: 'changes-thinking',
-      createdAt: iso(190_000),
-      model: demoModel,
-      text: 'The name lives in cookie.ts, the login test, the snapshots and a prop on every widget. Start from the helper, then sweep the widgets with a codemod.',
-      signature: null,
-    },
-    shellTool as Block,
-    caseBlock('one edit'),
-    caseBlock('new file'),
-    caseBlock('contents unavailable'),
-    caseBlock('two edits to one file'),
-    text('changes-text-1', 150_000, 'The helper now writes `session`. Sweeping the widgets next; each one reads the cookie name from a prop.'),
-    caseBlock('more than three rows'),
-    caseBlock('a few, mixed'),
-    caseBlock('no files'),
-    caseBlock('long names'),
-    caseBlock('append only, not new'),
-    text('changes-text-2', 60_000, 'Every widget compiles and the snapshots match. Applying the same codemod to the docs examples.'),
-    viewedCall(
+    ...inRun(
       {
-        id: 'changes-snapshot-diff',
-        toolName: 'shell',
-        input: JSON.stringify({
-          script: 'bun scripts/snapshot-diff.ts login && demi file view out/login-diff.png',
-          description: 'Compare the login snapshot before and after',
-        }),
+        type: 'thinking',
+        id: 'changes-thinking',
+        createdAt: iso(190_000),
+        model: demoModel,
+        text: 'The name lives in cookie.ts, the login test, the snapshots and a prop on every widget. Start from the helper, then sweep the widgets with a codemod.',
+        signature: null,
       },
-      'cmd-snapshot-diff',
-      imageLine(1, 480, 300, 16_078),
-      blobImage(galleryBlobs.chart),
-      [
-        uncopiedFile({ path: 'out/login-diff.png', kind: 'added', added: 0, removed: 0 }),
-        editedFile({ path: 'scripts/snapshot-diff.ts', kind: 'modified', added: 4, removed: 1 }),
-      ],
+      shellTool as Block,
+      caseBlock('one edit'),
+      caseBlock('new file'),
+      caseBlock('contents unavailable'),
+      withLists(caseBlock('two edits to one file'), firstRun, firstRun),
     ),
-    caseBlock('still running'),
+    text('changes-text-1', 150_000, 'The helper now writes `session`. Sweeping the widgets next; each one reads the cookie name from a prop.'),
+    ...inRun(
+      caseBlock('more than three rows'),
+      caseBlock('a few, mixed'),
+      caseBlock('no files'),
+      caseBlock('long names'),
+      withLists(caseBlock('append only, not new'), secondRun, request),
+    ),
+    text('changes-text-2', 60_000, 'Every widget compiles and the snapshots match. Applying the same codemod to the docs examples.'),
+    ...inRun(withLists(snapshotDiff, thirdRun, [...request, ...thirdRun]), caseBlock('still running')),
   ]
 }
 
@@ -1081,28 +1157,30 @@ export function transcriptDemoBlocks(): Block[] {
       content: userPrompt,
       preamble: null,
     },
-    {
-      type: 'thinking',
-      id: 'thinking-streaming',
-      createdAt: thinkingStartedAt,
-      model: demoModel,
-      text: thinkingText,
-      signature: null,
-    },
-    {
-      type: 'thinking',
-      id: 'thinking-done',
-      createdAt: thinkingStartedAt,
-      model: demoModel,
-      text: thinkingText,
-      signature: null,
-    },
-    shellTool as Block,
-    screenshotTool as Block,
-    ...agentReceiptMessages.slice(0, 2).map((message): Block => ({
-      type: 'agent_message', id: message.id, turnId: 'turn-1',
-      createdAt: message.timestamp, model: demoModel, message,
-    })),
+    ...inRun(
+      {
+        type: 'thinking',
+        id: 'thinking-streaming',
+        createdAt: thinkingStartedAt,
+        model: demoModel,
+        text: thinkingText,
+        signature: null,
+      },
+      {
+        type: 'thinking',
+        id: 'thinking-done',
+        createdAt: thinkingStartedAt,
+        model: demoModel,
+        text: thinkingText,
+        signature: null,
+      },
+      shellTool as Block,
+      screenshotTool as Block,
+      ...agentReceiptMessages.slice(0, 2).map((message): Block => ({
+        type: 'agent_message', id: message.id, turnId: 'turn-1',
+        createdAt: message.timestamp, model: demoModel, message,
+      })),
+    ),
     {
       type: 'steer',
       id: 'steer-1',
@@ -1116,12 +1194,14 @@ export function transcriptDemoBlocks(): Block[] {
         }
       ],
     },
-    runningShellTool as Block,
-    editingShellTool as Block,
-    lookTool as Block,
-    inputTool as Block,
-    stopTool as Block,
-    errorTool as Block,
+    ...inRun(
+      runningShellTool as Block,
+      editingShellTool as Block,
+      lookTool as Block,
+      inputTool as Block,
+      stopTool as Block,
+      withLists(errorTool as Block, listedFiles(editingShellTool)),
+    ),
     {
       type: 'compaction_boundary',
       id: 'compaction-done',
@@ -1222,19 +1302,23 @@ export function commandLookBlocks(): Block[] {
   }
   return [
     user('look-start', 900_000, 'Run the end-to-end suite.'),
-    run('look-suite', 890_000, '51'),
+    ...inRun(run('look-suite', 890_000, '51')),
     reply('look-started', 880_000, 'The suite is running; it takes a few minutes. I will tell you when it ends.'),
     user('look-ask', 700_000, 'Is it done?'),
-    think('look-think', 690_000, 'Look at how far the suite got.'),
-    look('look-first', 685_000, 'Check the end-to-end suite', '53', statusText('51', 'running', '[84/140] checkout.spec.ts\n')),
-    think('look-think-again', 680_000, 'It is on the checkout specs. Look once more before answering.'),
-    look('look-second', 675_000, 'Check the end-to-end suite again', '54', statusText('51', 'running', '[86/140] checkout.spec.ts\n')),
+    ...inRun(
+      think('look-think', 690_000, 'Look at how far the suite got.'),
+      look('look-first', 685_000, 'Check the end-to-end suite', '53', statusText('51', 'running', '[84/140] checkout.spec.ts\n')),
+      think('look-think-again', 680_000, 'It is on the checkout specs. Look once more before answering.'),
+      look('look-second', 675_000, 'Check the end-to-end suite again', '54', statusText('51', 'running', '[86/140] checkout.spec.ts\n')),
+    ),
     reply('look-answer', 670_000, 'Not yet: 86 of 140 specs passed so far, and none failed. I will tell you when it ends.'),
-    report,
+    ...inRun(report),
     reply('report-answer', 295_000, 'The suite ended: all 140 specs passed in 4 minutes 12 seconds.'),
     user('again-ask', 200_000, 'Run it once more, and show me how long the first run took.'),
-    run('again-suite', 195_000, '52'),
-    look('again-look', 190_000, 'Read the first run’s timing', '56', statusText('51', 'exited', '140 passed (4m 12s)\n')),
+    ...inRun(
+      run('again-suite', 195_000, '52'),
+      look('again-look', 190_000, 'Read the first run’s timing', '56', statusText('51', 'exited', '140 passed (4m 12s)\n')),
+    ),
     reply('again-answer', 185_000, 'The first run took 4 minutes 12 seconds. The second one is running; I will tell you when it ends.'),
   ]
 }
@@ -1289,10 +1373,9 @@ export function viewedMediaBlocks(): Block[] {
   }
   return [
     user('viewed-ask', 600_000, 'Open example.com and take two screenshots of it.'),
-    open,
-    shots,
+    ...inRun(open, shots),
     reply('viewed-answer', 580_000, 'Both screenshots show the same page: a heading and one link. I am capturing the checkout screens too and will tell you when that ends.'),
-    report,
+    ...inRun(report),
     reply('viewed-report-answer', 295_000, 'The checkout screens are captured: the cart and the payment step.'),
   ]
 }
@@ -1362,20 +1445,25 @@ export function busyRequestBlocks(working = false): Block[] {
       content: [{ type: 'text', text: 'The checkout page times out on slow networks. Find out why and fix it.' }],
       preamble: null,
     },
-    think('think-1', 'Start where the checkout request sets its timeout, then see what retries it.'),
+    ...inRun(think('think-1', 'Start where the checkout request sets its timeout, then see what retries it.')),
     say('say-1', 'I will start with where the checkout request sets its timeout.'),
-    run('find', 'Find the checkout timeout', 'rg -n "timeout" packages/web/src/checkout', 'packages/web/src/checkout/api.ts:14:  timeout: 5_000,\n'),
+    ...inRun(run('find', 'Find the checkout timeout', 'rg -n "timeout" packages/web/src/checkout', 'packages/web/src/checkout/api.ts:14:  timeout: 5_000,\n')),
     say('say-2', 'The request gives up after 5 seconds, in `checkout/api.ts`. Next, how the retries interact with it.'),
-    think('think-2', 'If the retry helper retries a timed-out request with the same budget, a slow network never gets past the first attempt.'),
-    run('read-retry', 'Read the retry helper', 'sed -n 1,60p packages/web/src/net/retry.ts', 'export async function withRetry(request, { attempts = 3 }) {\n'),
-    run('read-client', 'Read the checkout client', 'sed -n 1,80p packages/web/src/checkout/api.ts', 'export const checkout = (cart) => withRetry(() => post("/checkout", cart, { timeout: 5_000 }))\n'),
+    ...inRun(
+      think('think-2', 'If the retry helper retries a timed-out request with the same budget, a slow network never gets past the first attempt.'),
+      run('read-retry', 'Read the retry helper', 'sed -n 1,60p packages/web/src/net/retry.ts', 'export async function withRetry(request, { attempts = 3 }) {\n'),
+      run('read-client', 'Read the checkout client', 'sed -n 1,80p packages/web/src/checkout/api.ts', 'export const checkout = (cart) => withRetry(() => post("/checkout", cart, { timeout: 5_000 }))\n'),
+    ),
     say('say-3', `Found it. Each retry starts a fresh 5-second timeout, but the server answers a slow checkout with **504** after 8 seconds, and \`withRetry\` does not retry a 504, only a timeout.
 
 So on a slow network every attempt times out before the server can answer, and the page shows the timeout error after three tries.`),
-    think('think-3', 'Confirm with the tests before changing anything.'),
-    run('test', 'Run the checkout tests', 'bun test packages/web/src/checkout', ' 11 pass\n 1 fail\n✗ checkout > survives a slow network\n', { exitCode: 1 }),
+    ...inRun(
+      think('think-3', 'Confirm with the tests before changing anything.'),
+      run('test', 'Run the checkout tests', 'bun test packages/web/src/checkout', ' 11 pass\n 1 fail\n✗ checkout > survives a slow network\n', { exitCode: 1 }),
+    ),
     say('say-4', 'One test already covers this, and it fails the same way. I will raise the timeout above the server\'s 8 seconds and retry a 504.'),
-    toolCall({
+  ]
+  const edit = ownLists(toolCall({
       id: 'busy-edit',
       createdAt: iso(next()),
       toolName: 'shell',
@@ -1389,18 +1477,17 @@ So on a slow network every attempt times out before the server can answer, and t
           editedFile({ path: 'packages/web/src/net/retry.ts', kind: 'modified', added: 4, removed: 1 }),
         ],
       }),
-    }),
-  ]
-  const finalTests = run('test-again', 'Run the checkout tests again', 'bun test packages/web/src/checkout', ' 12 pass\n 0 fail\n')
+    }))
+  const finalTests = withLists(run('test-again', 'Run the checkout tests again', 'bun test packages/web/src/checkout', ' 12 pass\n 0 fail\n'), listedFiles(edit))
   if (working) {
     return [
       ...blocks,
-      { ...finalTests, status: 'executing', output: [], view: shellView({ commandId: 'busy-test-again', status: 'running', chunks: [{ stream: 'stdout', text: ' 7 pass\n' }] }) },
+      ...inRun(edit, { ...finalTests, status: 'executing', output: [], view: shellView({ commandId: 'busy-test-again', status: 'running', chunks: [{ stream: 'stdout', text: ' 7 pass\n' }] }) }),
     ]
   }
   return [
     ...blocks,
-    finalTests,
+    ...inRun(edit, finalTests),
     say('say-5', `Fixed. The checkout page now waits through a slow network:
 
 - The request's timeout is 10 seconds, above the 8 seconds after which the server answers a slow checkout.

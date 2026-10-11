@@ -1371,6 +1371,7 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
     let mut link = device.connect(None);
     let host = device.host("/work", Admission::Free);
     let file = EditedFile {
+        from: None,
         path: "/work/file".into(),
         kind: EditKind::Modified,
         added: 1,

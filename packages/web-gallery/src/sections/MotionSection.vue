@@ -43,6 +43,7 @@ const entranceThinkingEndedAt = new Date().toISOString()
 const entranceThinking: Block = {
   type: 'thinking',
   id: 'entrance-thinking',
+  run: 'entrance-thinking',
   createdAt: entranceThinkingStartedAt,
   model: demoModel,
   text: 'The helper is fine. Update the assertion and leave cookie.ts alone.',

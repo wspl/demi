@@ -1562,6 +1562,13 @@ impl SessionCore {
         self.commit();
     }
 
+    /// Gives the call `id` the view `view`, as its lists change while the
+    /// calls before it in its step return.
+    pub(super) fn replace_view(&mut self, id: &BlockId, view: ToolView) {
+        self.transcript.replace_view(id, view);
+        self.commit();
+    }
+
     /// The next request, whose items replay `view`, the model's view of the
     /// replayed blocks ([`Self::model_view`]).
     pub(super) fn inference_request(
