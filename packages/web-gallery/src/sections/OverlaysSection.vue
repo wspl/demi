@@ -115,7 +115,8 @@ const mediaViewer = useMediaViewer()
 /** The pictures the PicturePreview specimens show large on hover, and open in the viewer on a click. */
 const previewPictures = [
   { name: 'login.png', caption: 'Take a screenshot of the login page', variant: 'a screenshot, 480 × 300', kind: 'image', blob: galleryBlobs.screenshot },
-  { name: 'dashboard-full.png', caption: 'Capture the whole dashboard page, with every panel open and the long table scrolled to its end', variant: 'a whole page, cut caption', kind: 'image', blob: galleryBlobs.fullPage },
+  { name: 'timeline.png', caption: 'The timeline of the steps', variant: 'a wide screenshot, 1600 × 300', kind: 'image', blob: galleryBlobs.timeline },
+  { name: 'dashboard-full.png', caption: 'Capture the whole dashboard page, with every panel open and the long table scrolled to its end', variant: 'a tall page, scaled down, cut caption', kind: 'image', blob: galleryBlobs.fullPage },
   { name: 'favicon.png', caption: 'favicon.png', variant: 'an icon, never enlarged', kind: 'image', blob: galleryBlobs.icon },
   { name: 'checkout.webm', caption: 'Record the checkout flow', variant: 'a video’s first frame', kind: 'video', blob: galleryBlobs.recording },
 ] as const
@@ -271,7 +272,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="PicturePreview"
-        note="A picture shown smaller than 480 × 360 shows large in a card after the pointer rests on it for 300 ms: above it, centered, or below it when the page has no room above, kept within the page. The picture is fitted within 480 × 360 and never enlarged (the icon keeps its 48 × 48), over the checkerboard where it is transparent; a video shows its first frame and does not play. Under it, one line: what the picture belongs to, cut at its end, then its pixel size, faint. The card's box comes from the picture's size, known before its bytes arrive. It takes no pointer: leaving the picture closes it at once, and moving to the next picture shows that one's without the delay. A click opens the picture in the viewer and closes the card. A phone shows none. A row's pictures, every picture in a message and a sent message's capsules all show this card: the Session page shows each.">
+        note="A picture shown smaller than its own size shows large in a card after the pointer rests on it for 300 ms: above it, centered, or below it when the page has no room above, kept within the page. The picture shows at its own size, its pixels one to one as a browser shows an image at 100%: its pixel size divided by the screen's pixel ratio, so on a Retina screen the timeline shows at 800 × 150 and the icon at 24 × 24. One larger than 70% of the page's width or height, such as the tall page, is scaled down to fit them; none is enlarged. Resizing the window or moving it to another screen resizes the card. The picture shows over the checkerboard where it is transparent; a video shows its first frame and does not play. Under it, one line: what the picture belongs to, cut at its end, then its pixel size, faint. The card's box comes from the picture's size, known before its bytes arrive. It takes no pointer: leaving the picture closes it at once, and moving to the next picture shows that one's without the delay. A click opens the picture in the viewer and closes the card. A phone shows none. A row's pictures, every picture in a message and a sent message's capsules all show this card: the Session page shows each.">
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen v-for="picture in previewPictures" :key="picture.name" :variant="picture.variant">
             <PicturePreview

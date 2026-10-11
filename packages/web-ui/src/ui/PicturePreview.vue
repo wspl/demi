@@ -11,8 +11,6 @@ let closedAt = Number.NEGATIVE_INFINITY
 const OPEN_DELAY_MS = 300
 /** How soon after a card closed the next picture's shows without the delay. */
 const WARM_MS = 300
-/** The most a card's picture takes; a smaller one keeps its size. */
-const PREVIEW_FRAME = { width: 480, height: 360 }
 /** The narrowest a card is, so a small picture's line still reads. */
 const CARD_MIN_WIDTH = 240
 </script>
@@ -20,10 +18,10 @@ const CARD_MIN_WIDTH = 240
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { autoUpdate, flip, getOverflowAncestors, offset, shift, useFloating } from '@floating-ui/vue'
-import { fitScale } from '../files/image-zoom'
 import { loadedSize, type PixelSize } from '../files/thumbnail'
 import { useLayerElevation } from '../overlay/layerElevation'
 import { usePhone } from './phone'
+import { previewBox, previewLimit, usePreviewPage } from './picture-preview'
 
 defineOptions({ inheritAttrs: false })
 
@@ -33,11 +31,14 @@ defineOptions({ inheritAttrs: false })
  * row's pictures, a message's pictures, a sent message's image capsule.
  * Resting the pointer on the picture for 300 ms shows a card above it, or
  * below it when the page has no room above, kept within the page: the
- * picture fitted within 480 × 360 and never enlarged, over a checkerboard
- * where it is transparent, a video's first frame, and under it one line,
- * what the picture belongs to, cut at its end, then its pixel size. Its box
- * comes from `size`, known before the bytes arrive, so it never grows as
- * they load. The card takes no pointer: leaving the picture closes it at
+ * picture at its own size on the screen, its pixels one to one, scaled down
+ * to fit 70% of the page's width and height and never enlarged
+ * (`previewBox`), over a checkerboard where it is transparent, a video's
+ * first frame, and under it one line, what the picture belongs to, cut at
+ * its end, then its pixel size. Its box comes from `size` and the screen's
+ * pixel ratio, known before the bytes arrive, so it never grows as they
+ * load, and follows the window's resizing and its move to another screen.
+ * The card takes no pointer: leaving the picture closes it at
  * once, and a press on the picture, which opens the viewer, closes it. A
  * touch shows none.
  *
@@ -65,13 +66,13 @@ const loaded = ref<PixelSize | null>(null)
 /** The card's copy has loaded: the checkerboard shows only under a picture, never in an empty box. */
 const ready = ref(false)
 const known = computed(() => props.size ?? loaded.value)
-const box = computed(() => {
-  const size = known.value
-  if (!size)
-    return null
-  const scale = fitScale(size, PREVIEW_FRAME)
-  return { width: Math.round(size.width * scale), height: Math.round(size.height * scale) }
-})
+const page = usePreviewPage()
+const box = computed(() => known.value ? previewBox(known.value, page.value.pixelRatio, page.value.size) : null)
+/** The most a picture whose size is still unknown takes, so it never covers the page as it loads. */
+const limit = computed(() => previewLimit(page.value.size))
+const pictureStyle = computed(() => box.value
+  ? { width: `${box.value.width}px`, height: `${box.value.height}px` }
+  : { maxWidth: `${limit.value.width}px`, maxHeight: `${limit.value.height}px` })
 watch(() => props.src, () => {
   loaded.value = null
 })
@@ -79,7 +80,8 @@ watch(() => props.src, () => {
 const { floatingStyles } = useFloating(anchor, card, {
   placement: 'top',
   strategy: 'fixed',
-  middleware: [offset(8), flip({ fallbackPlacements: ['bottom'] }), shift({ padding: 8 })],
+  // Kept within the page on both axes: a card too tall for either side of its picture moves over the picture, which it takes no pointer from.
+  middleware: [offset(8), flip({ fallbackPlacements: ['bottom'] }), shift({ padding: 8, crossAxis: true })],
   whileElementsMounted: autoUpdate,
   transform: false,
 })
@@ -212,7 +214,7 @@ onBeforeUnmount(() => {
           ...floatingStyles,
           '--elevation': elevation,
           width: box ? `${Math.max(box.width, CARD_MIN_WIDTH) + 12}px` : undefined,
-          maxWidth: box ? undefined : `${PREVIEW_FRAME.width + 12}px`,
+          maxWidth: box ? undefined : `${limit.width + 12}px`,
         }"
         aria-hidden="true"
         data-picture-preview
@@ -224,9 +226,7 @@ onBeforeUnmount(() => {
             alt=""
             class="block rounded-md object-contain"
             :class="ready ? 'checkerboard' : ''"
-            :style="box
-              ? { width: `${box.width}px`, height: `${box.height}px` }
-              : { maxWidth: `${PREVIEW_FRAME.width}px`, maxHeight: `${PREVIEW_FRAME.height}px` }"
+            :style="pictureStyle"
             @load="onLoaded"
           >
           <video
@@ -236,9 +236,7 @@ onBeforeUnmount(() => {
             playsinline
             preload="metadata"
             class="block rounded-md bg-black object-contain"
-            :style="box
-              ? { width: `${box.width}px`, height: `${box.height}px` }
-              : { maxWidth: `${PREVIEW_FRAME.width}px`, maxHeight: `${PREVIEW_FRAME.height}px` }"
+            :style="pictureStyle"
             @loadedmetadata="onLoaded"
           />
         </div>
