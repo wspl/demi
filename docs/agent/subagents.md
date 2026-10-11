@@ -932,8 +932,11 @@ fixes and logging completed*.
 | `completion`, `aborted` | *Agent stopped: Fix the socket liveness*, with the grey *Stopped* tag |
 | A message from the parent, in the child's transcript | *Main agent sent a message*, *Main agent* the name |
 
-The row carries the agent's mark where a command's carries its bell, and it
-opens, as today, to the message or the result. A click on the agent's name
+The row carries the agent's mark where a command's carries its bell. A
+notice row, a receipt as a command's notice, does not open: what it would
+show is where its name leads, the call that sent the update or the answer
+that is the result, so the row says what happened and goes there, with
+no chevron and no body of its own. A click on the agent's name
 opens the Agents window on that agent's tab, a finished one as the
 Completed menu picks it, and brings into view and marks for a moment, as a
 search result does, the block of the agent's transcript the receipt came
