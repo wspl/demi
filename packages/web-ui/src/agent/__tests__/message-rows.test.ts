@@ -128,10 +128,12 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
       state.pendingCalls = writing(null)
     }
   })
-  expect(run()).toBeDefined()
+  // A call shows from its title: without it, the tail row stays.
+  expect(run() !== undefined).toBe(first === 'thinking')
   await step('call being written', () => {
     state.pendingCalls = writing('Wait two seconds')
   })
+  expect(run()).toBeDefined()
   // The call's block comes before the page drops the call being written.
   // The run starts at its first block: the thinking, or the call's own.
   const runOf = first === 'thinking' ? 'k-1' : 'c-1'
@@ -424,6 +426,52 @@ function running(): MessageRowsSource {
     latest: true,
   })
 }
+
+// A call being written shows from its title (`runtime.md` § Calls being
+// written): until the model has written its description, the tail row goes
+// on saying Requesting, counting from the wait's start, and a run goes on
+// showing its newest step; then the face rolls to the call's row, in the
+// same row.
+test('a call being written without its description leaves the face as it was, then rolls to its title', async () => {
+  const opened = (description: string | null) => [{ toolUseId: 'c-2-use', toolName: 'shell', description }]
+
+  const asked = answered()
+  asked.blocks = [...asked.blocks, userBlock('u-2', 'm-2', 'Sort the downloads into folders.')]
+  asked.phase = 'running'
+  asked.waitingSince = Date.now() - 480_000
+  const first = follow(asked)
+  const requesting = first.list.keyOf(first.list.rows.value.at(-1)!)
+  // The call's first output ends the wait the server counts.
+  await first.step('call opened', () => {
+    asked.pendingCalls = opened(null)
+    asked.waitingSince = null
+  })
+  expect(first.list.rows.value.at(-1)?.type).toBe('activity_slot')
+  expect(first.list.slot.value).toEqual({ kind: 'requesting', since: Date.now() - 480_000 })
+  await first.step('title written', () => {
+    asked.pendingCalls = opened('Write the categorizer')
+  })
+  const call = first.list.rows.value.at(-1)!
+  expect(call.type === 'work_group' && call.steps.map((each) => each.id)).toEqual(['pending-call:c-2-use'])
+  expect(first.list.keyOf(call)).toBe(requesting)
+  expect(first.list.slot.value).toBeNull()
+  first.stop()
+
+  const busy = running()
+  busy.pendingCalls = opened(null)
+  const next = follow(busy)
+  const run = () => next.list.rows.value.find((row) => row.type === 'work_group')
+  const before = run()!
+  expect(before.type === 'work_group' && before.steps.map((each) => each.id)).toEqual(['c-1'])
+  expect(next.list.slot.value).toBeNull()
+  await next.step('title written', () => {
+    busy.pendingCalls = opened('Run the login test')
+  })
+  const after = run()!
+  expect(after.type === 'work_group' && after.steps.map((each) => each.id)).toEqual(['c-1', 'pending-call:c-2-use'])
+  expect(next.list.keyOf(after)).toBe(next.list.keyOf(before))
+  next.stop()
+})
 
 // A steer shows what it is from the moment it is sent (`product.md` § Steer
 // or queue): its line under it, in the row the steer the session holds

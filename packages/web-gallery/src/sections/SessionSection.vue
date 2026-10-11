@@ -753,17 +753,17 @@ const signInBlocks = signInRequestBlocks('sign-in')
 const signInOffBlocks = signInRequestBlocks('sign-in-off')
 /** The same request still working, its last call ended and no reply yet. */
 const signInRunningBlocks = signInRequestBlocks('sign-in-running').slice(0, -1)
-// The calls being written: a finished sentence, then a call without its title
-// yet, one with it, and none, where Requesting follows the text.
+// The calls being written: a finished sentence, then a call with its title,
+// and one without it yet, where Requesting follows the text as when no call
+// is being written.
 const writingBlocks = callBeingWrittenBlocks()
 // Runs that only check a command, and ones that run one too: their rows name what they did, never a count of steps.
 const lookBlocks = commandLookBlocks()
 // A run that viewed screenshots, folded with them under its row, and a report that carried some.
 const viewedBlocks = viewedMediaBlocks()
 const writingSpecimens = [
-  { variant: 'being written, no description yet', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: null }] },
   { variant: 'being written, with its description', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: 'Write the categorizer' }] },
-  { variant: 'finished text, then Requesting', calls: [] },
+  { variant: 'without a description yet', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: null }] },
 ]
 const uncopiedBlocks = uncopiedRequestBlocks()
 const movedBlocks = movedRequestBlocks()
@@ -2072,7 +2072,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Calls Being Written"
-        note="A call the model is still writing shows from its start as its tool’s row, shimmering, after the transcript’s last block: titled by its description once the model has written it, and by its tool until then, Preparing a command… for a shell run. The call’s own block takes its place once the call is whole. A vendor that sends its calls only whole has nothing to show meanwhile: the finished text is followed by Requesting, counting from the text’s end, so a running turn never looks finished."
+        note="A call the model is still writing shows as its tool’s row, shimmering, after the transcript’s last block, from the moment its description is written, which every tool’s input lists first. Until then the transcript goes on showing what it showed, Requesting or the step before, so no placeholder title flashes. The call’s own block takes its place once the call is whole. A vendor that sends its calls only whole has nothing to show meanwhile either: the finished text is followed by Requesting, counting from the text’s end, so a running turn never looks finished."
       >
         <div class="specimen-stack">
           <GallerySpecimen
@@ -2107,7 +2107,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'changes'">
       <GallerySection
         title="Work Groups"
-        note="Consecutive steps show as one row, the same row from the first step to the turn's end. While they run, each new step rolls over the one before: Requesting, thinking, a call being written and its description, the call. The row shimmers until the turn moves past it, also after a command ended, while the model's next output is waited for; no Requesting row shows under it. Thinking without text is covered by the step after it. A command's notice and an agent's receipt between the steps are steps of the run too: the replay's background build reports its end and a child sends an update between two calls, and the row stays one row, its face their notice row while they are the newest step; the agent's text, the user's messages and steers, and the receipts of the user's decisions end a run. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did, each kind of call once, in the order the run first made it, such as Ran 2 commands, checked 1 command, never a count of steps; a run without a call reads what its notices and receipts told, such as 2 commands finished, heard from 1 agent. A failure shows on its own call inside. Opened, the notice and the receipt are rows of their own among the calls: the notice's title brings the build's call into view and marks the call's own row, or the run's row while it is folded, which stays folded; and the agent's name opens the Agents window at the call that sent the update. Folded, the media the calls returned show under it, in order, and the files the steps changed, each once; open, each call shows its own."
+        note="Consecutive steps show as one row, the same row from the first step to the turn's end. While they run, each new step rolls over the one before: Requesting, thinking, a call being written, from its description, the call. The row shimmers until the turn moves past it, also after a command ended, while the model's next output is waited for; no Requesting row shows under it. Thinking without text is covered by the step after it. A command's notice and an agent's receipt between the steps are steps of the run too: the replay's background build reports its end and a child sends an update between two calls, and the row stays one row, its face their notice row while they are the newest step; the agent's text, the user's messages and steers, and the receipts of the user's decisions end a run. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did, each kind of call once, in the order the run first made it, such as Ran 2 commands, checked 1 command, never a count of steps; a run without a call reads what its notices and receipts told, such as 2 commands finished, heard from 1 agent. A failure shows on its own call inside. Opened, the notice and the receipt are rows of their own among the calls: the notice's title brings the build's call into view and marks the call's own row, or the run's row while it is folded, which stays folded; and the agent's name opens the Agents window at the call that sent the update. Folded, the media the calls returned show under it, in order, and the files the steps changed, each once; open, each call shows its own."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="workFlow.play('work')">Replay</Button>

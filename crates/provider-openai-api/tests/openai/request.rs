@@ -7,7 +7,9 @@ use demi_provider_common::VendorPolicy;
 use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, Medium, Provider, ProviderEvent, ResultPart,
     RuntimeEnv, ToolDefinition, UserPart,
-    testing::{MockResponse, MockVendor, inference_request, sse_body},
+    testing::{
+        MockResponse, MockVendor, inference_request, property_order, sse_body, titled_tool,
+    },
 };
 use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, TokenUsage, WireApi};
 use serde_json::{Value, json};
@@ -466,6 +468,23 @@ async fn media_a_tool_returned_follows_its_output_in_a_user_message() {
             { "type": "file", "file": { "filename": "document-3.pdf", "file_data": "data:application/pdf;base64,JVBERg==" } },
         ] })
     );
+}
+
+#[tokio::test]
+async fn a_tools_fields_reach_the_vendor_in_the_order_its_schema_lists_them() {
+    for (wire, at) in [
+        (WireApi::Responses, "/tools/0/parameters"),
+        (WireApi::ChatCompletions, "/tools/0/function/parameters"),
+    ] {
+        let mut request = inference_request();
+        request.tools = Arc::new([titled_tool()]);
+        let body = body_of(wire, NO_POLICY, request).await;
+        assert_eq!(
+            property_order(body.pointer(at).unwrap()),
+            ["description", "script", "intervalMs"],
+            "{wire:?}"
+        );
+    }
 }
 
 #[tokio::test]

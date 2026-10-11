@@ -3,12 +3,12 @@ import { computed, onBeforeUnmount, ref, watch, type Component } from 'vue'
 import { Brain, Layers } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Fold from '@demicodes/web-ui/ui/Fold.vue'
-import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import { CHROME_ENTER_MS, chromeEntrance } from '@demicodes/web-ui/ui/chrome-enter'
 import FunctionalBlock from './FunctionalBlock.vue'
 import ThinkingBlock from './ThinkingBlock.vue'
 import ToolCallBlock from './ToolCallBlock.vue'
 import PendingCallBlock from './PendingCallBlock.vue'
+import ThinkingText from './ThinkingText.vue'
 import CommandReportBlock from './CommandReportBlock.vue'
 import AgentReceiptBlock from './AgentReceiptBlock.vue'
 import NoticeStepFace from './NoticeStepFace.vue'
@@ -16,7 +16,6 @@ import FileChangePills from './FileChangePills.vue'
 import ToolMedia from './ToolMedia.vue'
 import { stepIcon } from './tool-row-icon'
 import { toolCallTitle } from '../block-helpers'
-import { pendingCallTitle } from '../tool-rendering'
 import { thinkingFaceLabel } from '../thinking-label'
 import { isNoticeStep, stepKey, workRunning, workSummary, type NoticeStep, type WorkGroupBlock, type WorkStep } from '../work-groups'
 import { useEditSelection, useTranscript } from '../edit-selection'
@@ -83,7 +82,7 @@ function stepTitle(step: Exclude<WorkStep, NoticeStep>): string {
     case 'tool_call':
       return toolCallTitle(step)
     case 'pending_call':
-      return pendingCallTitle(step.call)
+      return step.call.description
   }
 }
 
@@ -126,9 +125,9 @@ const face = computed<Face>(() => {
     iconKey: key,
     label: stepTitle(step),
     notice: null,
-    // A call's placeholder title rolls over to its description once written;
-    // the call's block keeps that face, so it does not roll again.
-    rollKey: step.type === 'pending_call' && step.call.description === null ? `${stepKey(step)}:writing` : stepKey(step),
+    // A call being written and its block are one step by its tool-use id:
+    // the block keeps the face the call showed, so it does not roll again.
+    rollKey: stepKey(step),
   }
 })
 const calls = computed(() => props.group.steps.filter((step) => step.type === 'tool_call'))
@@ -211,12 +210,7 @@ function pick(path: string, clicks: number): void {
       <span v-else class="min-w-0 truncate">{{ face.label }}</span>
       <!-- A thinking with no text has nothing to open: no body, so no chevron. -->
       <template v-if="!lone || loneText !== ''" #body>
-        <StreamedMarkdown
-          v-if="lone"
-          :content="lone.text"
-          :streaming="thinkingLive"
-          class="px-3 py-1 text-[13px] leading-4.5 text-fg-subtle [--markdown-block-gap:--spacing(1)]"
-        />
+        <ThinkingText v-if="lone" :content="lone.text" :streaming="thinkingLive" />
         <div v-else class="[--agent-pad-x:0px]">
           <!-- Open, each step's row is named, so a block brought into view inside the run marks its own row. -->
           <div

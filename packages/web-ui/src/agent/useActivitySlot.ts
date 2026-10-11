@@ -55,20 +55,31 @@ export function useActivitySlot(sources: ActivitySlotSources): {
   // this page started, by sending a message or a recovery, counts from that
   // action, before the server has it. Until the server tells a start, the row
   // counts from when it began to say Requesting.
+  // A call being written ends the wait the server counts, while the row goes
+  // on saying Requesting until the call's description is written
+  // (`runtime.md` § Calls being written): the row keeps the start it was
+  // told, rather than counting again from when it began to show.
   const requesting = computed(() => kind.value === 'requesting')
   const shownSince = ref(Date.now())
   const startedHere = ref(false)
+  const toldSince = ref<number | null>(waitingSince())
   watch(
     () => [requesting.value, scope()] as const,
     ([isRequesting, currentScope], [wasRequesting, previousScope]) => {
       if (isRequesting && (!wasRequesting || currentScope !== previousScope)) {
         shownSince.value = Date.now()
         startedHere.value = startingTurn.value || input().recovering
+        toldSince.value = waitingSince()
       }
     },
   )
+  watch(waitingSince, (told) => {
+    if (told !== null) {
+      toldSince.value = told
+    }
+  }, { flush: 'sync' })
   const since = computed(() => {
-    const told = waitingSince()
+    const told = toldSince.value
     if (told === null) {
       return shownSince.value
     }

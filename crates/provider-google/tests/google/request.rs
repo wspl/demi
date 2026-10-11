@@ -6,7 +6,7 @@ use std::{num::NonZeroU32, sync::Arc};
 use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, Medium, Provider, ProviderEvent, ResultPart,
     RuntimeEnv, ToolDefinition, UserPart,
-    testing::{MockVendor, inference_request},
+    testing::{MockVendor, inference_request, property_order, titled_tool},
 };
 use demi_shared_types::{B64Bytes, ThinkingConfig, TokenUsage};
 use serde_json::{Value, json};
@@ -193,6 +193,17 @@ async fn tool_schemas_are_reduced_to_the_keywords_gemini_accepts() {
                 "mode": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
             },
         })
+    );
+}
+
+#[tokio::test]
+async fn a_tools_fields_reach_the_vendor_in_the_order_its_schema_lists_them() {
+    let mut request = inference_request();
+    request.tools = Arc::new([titled_tool()]);
+    let body = body_of(request).await;
+    assert_eq!(
+        property_order(&body["tools"][0]["functionDeclarations"][0]["parameters"]),
+        ["description", "script", "intervalMs"]
     );
 }
 

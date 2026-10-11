@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { pendingCallTitle, shellStatusLooks, shellTitle, toolRenderKind, trimToolSummary } from '../tool-rendering'
+import { shellStatusLooks, shellTitle, toolRenderKind, trimToolSummary } from '../tool-rendering'
 
 // Cost: pure, a few milliseconds for the file.
 
@@ -15,12 +15,6 @@ test('only shell has its own rendering; a call of a removed or unknown tool is a
   for (const removed of ['shell_exec', 'shell_status', 'yield', 'shell_write', 'shell_abort'])
     expect(toolRenderKind(removed)).toBe('generic')
   expect(toolRenderKind('unknown_tool')).toBe('generic')
-})
-
-test('a call being written is titled by its description once written, and by its tool until then', () => {
-  expect(pendingCallTitle({ toolName: 'shell', description: 'Write the categorizer' })).toBe('Write the categorizer')
-  expect(pendingCallTitle({ toolName: 'shell', description: null })).toBe('Preparing a command…')
-  expect(pendingCallTitle({ toolName: 'read_file', description: null })).toBe('read_file')
 })
 
 test('a script that only runs demi shell status looks at the commands it names, each once', () => {
