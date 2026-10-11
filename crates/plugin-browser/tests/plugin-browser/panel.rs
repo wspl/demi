@@ -7,7 +7,6 @@ use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 use demi_command_declarations::NativeOperation;
-use demi_host_interface::PortError;
 use demi_plugin_browser::Browser;
 use demi_plugin_interface::{
     CallKind, PanelTabChange, Plugin, PluginFactory, PortFailure, PortRefusal, Reply, Request, Topic,
@@ -222,10 +221,12 @@ async fn a_tab_whose_address_could_not_load_once_it_opened_says_why_and_loads_it
         "browser.goto" => {
             counted.set(counted.get() + 1);
             if counted.get() == 1 {
-                return Err(PortFailure::Port(PortError::Failed(
-                    "pipe failed: WebSocket protocol error: Connection reset without closing handshake"
+                return Err(PortFailure::Refused(PortRefusal::Host {
+                    code: ErrorCode::HostOperationFailed,
+                    status: 409,
+                    message: "pipe failed: WebSocket protocol error: Connection reset without closing handshake"
                         .into(),
-                )));
+                }));
             }
             Ok(json!({ "tab": "t1", "url": "https://example.test/", "list": 4 }))
         }
@@ -239,7 +240,7 @@ async fn a_tab_whose_address_could_not_load_once_it_opened_says_why_and_loads_it
             "url": "https://example.test/",
             "tab": "t1",
             "failure": {
-                "code": "failed",
+                "code": "host_operation_failed",
                 "message": "pipe failed: WebSocket protocol error: Connection reset without closing handshake",
             },
         })

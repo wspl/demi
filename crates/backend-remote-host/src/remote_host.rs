@@ -723,7 +723,12 @@ impl RemoteHost {
             Ok(stream) => stream,
             Err(error) => {
                 abandon("service call failed");
-                return Err(error.into());
+                return Err(match error.kind {
+                    // The runner's `service_error`: the service did not
+                    // start, or the runner refused it.
+                    HostErrorKind::Failed { .. } => ServiceCallError::NotOpened(error.message),
+                    _ => error.into(),
+                });
             }
         };
         let sent = writer.write(input).await;
@@ -1238,6 +1243,10 @@ impl Drop for ServiceStream {
 pub enum ServiceCallError {
     #[error(transparent)]
     Host(#[from] HostError),
+    /// The Host could not open the call: its package's service did not
+    /// start, or the runner refused it, in the runner's words.
+    #[error("{0}")]
+    NotOpened(String),
     /// The invocation exited nonzero; `stderr` is the tail of what it wrote
     /// there, `stdout` its whole output.
     #[error("Service call exited with {exit_code}: {}", .stderr.trim())]

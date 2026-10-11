@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { httpStatusLine } from '@demicodes/utils'
 import { errorBodySchema, type ErrorCode } from './generated/web-api'
 
 /**
@@ -7,6 +8,8 @@ import { errorBodySchema, type ErrorCode } from './generated/web-api'
  */
 export class ApiError extends Error {
   readonly status: number
+  /** The answer's status line, such as `500 Internal Server Error`, with the code's standard phrase where the answer carried none, as HTTP/2's do. */
+  readonly statusLine: string
   readonly code: ErrorCode | null
   /** A plugin's own word for its refusal, with `plugin_refused`. */
   readonly reason: string | null
@@ -26,10 +29,12 @@ export class ApiError extends Error {
     reason: string | null = null,
     retryAfterSeconds: number | null = null,
     headers: Headers = new Headers(),
+    statusText = '',
   ) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.statusLine = httpStatusLine(status, statusText)
     this.code = code
     this.reason = reason
     this.retryAfterSeconds = retryAfterSeconds
@@ -63,16 +68,31 @@ export async function readResponse<T>(
   response: Response,
   schema: z.ZodType<T>,
 ): Promise<T> {
-  const parsed = schema.safeParse(await response.json())
+  let body: unknown
+  try {
+    body = await response.json()
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new UnreadableResponse('Invalid server response: not JSON')
+    }
+    // The body could not be read whole, as when the connection broke.
+    throw error
+  }
+  const parsed = schema.safeParse(body)
   if (!parsed.success) {
     throw invalidResponse(parsed.error)
   }
   return parsed.data
 }
 
+/** An answer of the backend's that the page could not read: a body that is not JSON, or does not match its schema. */
+export class UnreadableResponse extends Error {
+  override readonly name = 'UnreadableResponse'
+}
+
 /** An answer, body or headers, that does not match its schema. */
-export function invalidResponse(error: z.ZodError): Error {
-  return new Error(`Invalid server response: ${error.issues[0]?.message ?? 'unknown shape'}`)
+export function invalidResponse(error: z.ZodError): UnreadableResponse {
+  return new UnreadableResponse(`Invalid server response: ${error.issues[0]?.message ?? 'unknown shape'}`)
 }
 
 /** What a proxy in front of the backend answers while no backend runs behind it, as while it restarts. */
@@ -215,7 +235,7 @@ async function send(path: string, options: Omit<ApiRequestOptions, 'waits'>): Pr
     return response
   }
 
-  throw apiError(response.status, await response.text(), response.headers)
+  throw apiError(response.status, await response.text(), response.headers, response.statusText)
 }
 
 /**
@@ -226,7 +246,7 @@ async function send(path: string, options: Omit<ApiRequestOptions, 'waits'>): Pr
 /** `Retry-After` in seconds; its date form is not one the backend sends. */
 const retryAfterSchema = z.coerce.number().int().nonnegative()
 
-export function apiError(status: number, text: string, headers: Headers = new Headers()): ApiError {
+export function apiError(status: number, text: string, headers: Headers = new Headers(), statusText = ''): ApiError {
   const retryAfter = headers.get('Retry-After')
   let body: unknown
   try {
@@ -246,6 +266,7 @@ export function apiError(status: number, text: string, headers: Headers = new He
     parsed.success ? parsed.data.reason ?? null : null,
     retryAfter === null ? null : retryAfterSchema.safeParse(retryAfter).data ?? null,
     headers,
+    statusText,
   )
 }
 

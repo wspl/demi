@@ -23,6 +23,7 @@ use demi_provider_common::testing::MockVendor;
 use demi_web_api_protocol::conversations::{ConversationSummary, PluginRevision};
 
 use crate::cloud::{idle_after, the_cloud};
+use crate::holding_edge::HoldingEdge;
 use crate::conversations::{anthropic_at, create, on_device, summaries};
 use crate::support::{Harness, PATIENCE, Session, TestBackend};
 use crate::work::{Driven, say, shell};
@@ -185,14 +186,17 @@ async fn the_tab_methods_run_the_browsers_operations_as_the_user_on_the_conversa
     backend.close().await;
 }
 
-/// A tab list the Host's browser service cannot give, because the service
-/// does not start, answers that the plugin failed and why (`web-api.md`
-/// § Plugin calls), not that the connection to the device broke: on prod
-/// the first listing after an upgrade waited for the new release's browser
-/// service, which did not start in time, and answered
-/// `host_operation_failed`. A paired device's real runner, about a second.
+/// A browser whose service does not start on the Host is unavailable, in
+/// the browser's own reason, wherever the panel meets it (`live-view.md`
+/// § The tab methods): the tab list, a tab method, and a panel tab the
+/// plugin could not open a browser tab for, whose content says the browser
+/// couldn't start on the device. Before, the list answered `plugin_failed`
+/// and the tab kept a reason the page had no words for, so it said "The
+/// browser couldn't do that." On prod the first listing after an upgrade
+/// waited for the new release's browser service, which did not start in
+/// time. A paired device's real runner, about a second.
 #[tokio::test]
-async fn a_tab_list_whose_browser_service_does_not_start_answers_that_the_plugin_failed() {
+async fn a_browser_whose_service_does_not_start_is_unavailable_to_the_list_the_methods_and_a_new_tab() {
     let harness = Harness::new().with_browser_package_that_does_not_start();
     let (backend, master) = harness.start_set_up().await;
     let laptop = backend.pair(&master, "laptop").await;
@@ -208,11 +212,16 @@ async fn a_tab_list_whose_browser_service_does_not_start_answers_that_the_plugin
         "{}",
         String::from_utf8_lossy(&moved.body)
     );
+    let unavailable = (
+        StatusCode::CONFLICT,
+        ErrorCode::PluginRefused,
+        Some("browser_unavailable".to_owned()),
+    );
 
     let listed = tabs(&backend, &master, &id).await;
     assert_eq!(
-        listed.refusal(),
-        (StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::PluginFailed),
+        plugin_refusal(&listed),
+        unavailable,
         "{}",
         String::from_utf8_lossy(&listed.body)
     );
@@ -221,6 +230,89 @@ async fn a_tab_list_whose_browser_service_does_not_start_answers_that_the_plugin
         message.contains("the browser service cannot start here"),
         "{message}"
     );
+    let synced = call(&backend, &master, &id, "sync", json!({})).await;
+    assert_eq!(plugin_refusal(&synced), unavailable);
+
+    // The work panel's New Tab: the plugin's attempt to open a browser tab
+    // for it fails, and the tab keeps why. `bind` runs after that attempt,
+    // one piece of the conversation's work at a time, and fails the same way.
+    let created = backend
+        .post(
+            &format!("/api/conversations/{id}/panel/changes"),
+            Some(&master),
+            json!({ "changes": [{ "op": "create", "id": "new", "kind": "browser", "data": { "url": "about:blank" } }] }),
+        )
+        .await;
+    assert!(
+        created.status.is_success(),
+        "{}",
+        String::from_utf8_lossy(&created.body)
+    );
+    let bound = call(&backend, &master, &id, "bind", json!({ "panelTab": "new" })).await;
+    assert_eq!(bound.status, StatusCode::OK);
+    assert_eq!(bound.json::<Value>(), json!({ "tab": null }));
+    let panel = backend
+        .get(&format!("/api/conversations/{id}/panel"), Some(&master))
+        .await
+        .json::<Value>();
+    let failure = panel["tabs"]
+        .as_array()
+        .and_then(|tabs| tabs.iter().find(|tab| tab["id"] == "new"))
+        .map(|tab| tab["data"]["failure"].clone());
+    assert_eq!(
+        failure.as_ref().map(|failure| &failure["code"]),
+        Some(&json!("browser_unavailable")),
+        "{panel}"
+    );
+    backend.close().await;
+}
+
+/// A tab call whose connection to the Host breaks partway says so, 409
+/// `host_operation_failed`, which the page words as a broken connection to
+/// the device (`web-api.md` § Plugin calls), not 500 `plugin_failed`, the
+/// plugin's own defect. The runner reaches the backend through an edge that
+/// drops every pipe WebSocket once cut, while the runner's own connection
+/// stays. A paired device's real runner, about a second.
+#[tokio::test]
+async fn a_tab_call_whose_connection_to_the_host_breaks_partway_says_the_connection_broke() {
+    let harness = Harness::new().with_browser_package();
+    let (backend, master) = harness.start_set_up().await;
+    let edge = HoldingEdge::start(backend.address()).await;
+    let laptop = backend.pair_through(&master, "laptop", &edge.url).await;
+    let id = conversation(&backend, &master).await;
+    let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
+    let target = json!({ "target": { "kind": "device", "deviceId": laptop.id(), "path": home } });
+    let moved = backend
+        .patch(&format!("/api/conversations/{id}"), &master, target)
+        .await;
+    assert_eq!(
+        moved.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&moved.body)
+    );
+    let listed = tabs(&backend, &master, &id).await;
+    assert_eq!(
+        listed.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&listed.body)
+    );
+
+    edge.cut_pipe_sockets();
+    let broken = tabs(&backend, &master, &id).await;
+    assert_eq!(
+        broken.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::HostOperationFailed),
+        "{}",
+        String::from_utf8_lossy(&broken.body)
+    );
+    let synced = call(&backend, &master, &id, "sync", json!({})).await;
+    assert_eq!(
+        synced.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::HostOperationFailed)
+    );
+    assert!(backend.online(&master, laptop.id()).await);
     backend.close().await;
 }
 

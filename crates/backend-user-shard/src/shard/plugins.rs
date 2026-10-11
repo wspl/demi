@@ -16,6 +16,7 @@ use demi_command_declarations::NativeOperation;
 use demi_host_interface::{HostErrorKind, PortError};
 use demi_plugin_interface::{CallKind, HostFile, HostRead, PortFailure, PortRefusal};
 use demi_shared_types::{B64Bytes, BlobRef};
+use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ConversationId;
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
@@ -133,21 +134,35 @@ fn access_refusal(error: HostAccessError) -> PortFailure {
     })
 }
 
-/// A package call that did not answer: the host access's refusal when the
-/// Host cannot be reached or takes no operations, as its routes answer it,
-/// and otherwise the call's own failure, such as a service that did not
-/// start, which a page call answers as the plugin's failure (`web-api.md`
-/// § Plugin calls), not as a broken connection to the device.
+/// A package call that did not answer (`web-api.md` § Plugin calls): the
+/// host access's refusal when the Host cannot be reached or takes no
+/// operations, as its routes answer it; a service that did not start, which
+/// the plugin names in its own words; a call whose connection to the Host
+/// broke partway, 409 `host_operation_failed`; and otherwise the call's own
+/// failure, such as an answer over its bound, which a page call answers as
+/// the plugin's failure.
 fn call_failure(error: UserCallError) -> PortFailure {
     match error {
         UserCallError::Access(error) => access_refusal(error),
         UserCallError::Call(ServiceCallError::Exited { stderr, .. }) => {
             PortFailure::Refused(PortRefusal::Operation { stderr })
         }
+        UserCallError::Call(ServiceCallError::NotOpened(message)) => {
+            PortFailure::Refused(PortRefusal::Service { message })
+        }
         UserCallError::Call(ServiceCallError::Host(error))
             if matches!(error.kind, HostErrorKind::Offline | HostErrorKind::Unavailable) =>
         {
             access_refusal(HostAccessError::Host(error))
+        }
+        UserCallError::Call(ServiceCallError::Host(error))
+            if matches!(error.kind, HostErrorKind::Interrupted | HostErrorKind::Protocol) =>
+        {
+            PortFailure::Refused(PortRefusal::Host {
+                code: ErrorCode::HostOperationFailed,
+                status: 409,
+                message: error.to_string(),
+            })
         }
         UserCallError::Call(error) => failed(error),
     }
