@@ -195,7 +195,9 @@ async fn reported(host: &mut Host, job: &str) -> (Vec<JobFileChange>, Vec<JobPat
 /// A job's report marks what it wrote in a temporary directory, so the
 /// conversation leaves it out, and a later move out of it carries the
 /// file's edits to a name that is not temporary (`edit-tracking.md`
-/// § Temporary files). About a second: two jobs start a login shell.
+/// § Temporary files); a removal there is marked temporary too, and a file
+/// a job made and removed is not listed at all (§ The report). About a
+/// second: three jobs start a login shell.
 #[tokio::test]
 async fn a_file_in_a_temporary_directory_is_reported_temporary_and_a_move_out_of_it_is_not() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -240,6 +242,20 @@ async fn a_file_in_a_temporary_directory_is_reported_temporary_and_a_move_out_of
                 from: written.clone(),
                 to: moved.clone(),
                 temporary: false,
+            }]
+        );
+
+        let old = scratch.path().join("old").to_string_lossy().into_owned();
+        std::fs::write(&old, "old\n").unwrap();
+        let made = scratch.path().join("made").to_string_lossy().into_owned();
+        start_job(&mut host, "remove", &format!("rm {old}; printf 'x\n' > {made}; rm {made}")).await;
+        let (files, path_changes) = reported(&mut host, "remove").await;
+        assert_eq!(files, []);
+        assert_eq!(
+            path_changes,
+            [JobPathChange::Removed {
+                path: old.clone(),
+                temporary: true,
             }]
         );
         host.close().await;

@@ -302,6 +302,11 @@ pub enum PathChange {
     Removed {
         #[garde(length(chars, min = 1))]
         path: String,
+        /// Whether `path` is in one of its Host's temporary directories;
+        /// absent means false.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[garde(skip)]
+        temporary: bool,
     },
 }
 
