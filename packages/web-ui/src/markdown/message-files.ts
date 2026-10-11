@@ -1,5 +1,6 @@
 import { inject, provide, type InjectionKey } from 'vue'
 import type { MediaViewerState } from '../files/media-viewer'
+import type { MessageAgents } from '../agent/agent-links'
 import type { MessageFiles } from './types'
 
 const messageFilesKey: InjectionKey<() => MessageFiles | undefined> = Symbol('message-files')
@@ -19,16 +20,24 @@ export function useMessageFiles(): () => MessageFiles | undefined {
 }
 
 /**
- * A click on a message's file link opens the file, and one on an attachment's
- * image or video, or its link, shows it large in `viewer`, where a video
- * plays; any other click is the page's.
+ * A click on a message's file link opens the file, at its line when it
+ * names one; one on an attachment's image or video, or its link, shows it
+ * large in `viewer`, where a video plays; one on an agent's link opens the
+ * agent in the Agents window; any other click is the page's.
  */
 export function openMessageLink(
   event: MouseEvent,
   files: MessageFiles | undefined,
   viewer: MediaViewerState,
+  agents: MessageAgents | undefined,
 ): void {
   const target = event.target instanceof Element ? event.target : null
+  const agent = target?.closest('button[data-agent-link]')
+  if (agent && agents) {
+    event.preventDefault()
+    agents.open(Number(agent.getAttribute('data-agent-link')))
+    return
+  }
   const image = target?.closest('a[data-attachment-image]')
   if (image) {
     event.preventDefault()
@@ -45,5 +54,6 @@ export function openMessageLink(
   if (!link || !files?.open)
     return
   event.preventDefault()
-  files.open(link.getAttribute('href') ?? '', event.detail)
+  const line = Number(link.getAttribute('data-line'))
+  files.open({ path: link.getAttribute('href') ?? '', line: line > 0 ? line : null }, event.detail)
 }

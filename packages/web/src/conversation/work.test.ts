@@ -134,6 +134,15 @@ test('a click on what the open panel already shows closes it, and a click on any
   expect(state.pinned.file).toMatchObject({ path: '/work/b.md' })
   work.openIn('a', { intent: 'file', payload: { path: '/work/b.md' } }, 1)
   expect(state.open).toBe(false)
+  // A link to a line: another line of the file shown moves to it, the same line closes the panel.
+  work.openIn('a', { intent: 'file', payload: { path: '/work/b.md', line: 42 } }, 1)
+  expect(state.open).toBe(true)
+  expect(state.pinned.file).toMatchObject({ path: '/work/b.md', line: 42 })
+  work.openIn('a', { intent: 'file', payload: { path: '/work/b.md', line: 7 } }, 1)
+  expect(state.open).toBe(true)
+  expect(state.pinned.file).toMatchObject({ path: '/work/b.md', line: 7 })
+  work.openIn('a', { intent: 'file', payload: { path: '/work/b.md', line: 7 } }, 1)
+  expect(state.open).toBe(false)
   // Shown in the Change view while the File view is selected, the edit is selected, not closed.
   work.openIn('a', { intent: 'file', payload: { path: '/work/b.md' } }, 1)
   work.openIn('a', first, 1)

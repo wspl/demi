@@ -40,8 +40,10 @@ import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
 import { createGalleryChangeSet, createGalleryWorkspace, gallerySides } from '../fixtures/workspace'
 import { galleryBrowser, type GalleryBrowser } from '../fixtures/live-browser'
-import { galleryConversationFiles } from '../fixtures/message-files'
-import GalleryAttachmentMessage from '../components/GalleryAttachmentMessage.vue'
+import { galleryConversationFiles, namedFilesMarkdown } from '../fixtures/message-files'
+import GalleryMessageFiles from '../components/GalleryMessageFiles.vue'
+import GalleryAgentLinks from '../components/GalleryAgentLinks.vue'
+import { attachmentMarkdown } from '../fixtures/attachments'
 import { productWould } from '../product-would'
 import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
@@ -503,9 +505,9 @@ function agentOpens(show: boolean) {
   void panelWork.agentOpens(show ? 'https://example.test/orders' : 'https://example.test/docs', show)
 }
 /** The session's messages reach the gallery workspace: images from its fixtures, files opened in the frame's panel. */
-const sessionFiles = galleryConversationFiles(workspace.source, (path, clicks) => {
+const sessionFiles = galleryConversationFiles(workspace.source, ({ path, line }, clicks) => {
   // From the session page, which shows no panel, a click only opens the frame's.
-  panelWork.openIn({ intent: 'file', payload: { path } }, view.value === 'panel' ? clicks : undefined)
+  panelWork.openIn({ intent: 'file', payload: line === null ? { path } : { path, line } }, view.value === 'panel' ? clicks : undefined)
   view.value = 'panel'
 })
 // The tabs specimen starts on an empty strip, with the globe-plus add control.
@@ -1630,7 +1632,23 @@ onBeforeUnmount(() => {
         note="What the agent gave the user with demi attachment upload, named as attachment:a3: an image shows and a click shows it large, a video shows its first frame with a play mark at an image’s bounds and a click plays it in the viewer, a link opens the attachment, an image or a video in the viewer and any other file as a download, and a number the conversation does not have says so. Images and videos that follow each other, with nothing but white space between them, stand side by side 8px apart and wrap: each is a thumbnail, as a tool’s are, the tall page cropped to its top and the wide timeline to its middle, whose box its record’s pixel size gives before its bytes arrive. A lone image after text, and a lone video’s first frame, keep the message’s width and 60% of the visible height; the demo’s record carries no size, so its frame is 16:9 until it arrives."
       >
         <GallerySpecimen variant="attachments" wide>
-          <GalleryAttachmentMessage :files="sessionFiles" :cwd="workspace.root" />
+          <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="attachmentMarkdown" />
+        </GallerySpecimen>
+      </GallerySection>
+      <GallerySection
+        title="Files in a Message"
+        note="A file of the Host a reply names is a link with the file's icon before its name, the icon the file tree shows; a click opens it in the File view of the frame's panel, and a #L42 after the path opens it at line 42, scrolled there and marked for a moment as a search result is. Inline code that reads as a path, one with a slash or a name with an extension and an optional :line, opens too when the Host has the file: the page asks the Host once for the reply's paths together, after the reply is complete. Here the gallery answers for the Host from its demo workspace, so src/auth/token.ts, which it lacks, stays code; a bare name such as cookie is never asked about."
+      >
+        <GallerySpecimen variant="links, a line, code paths the Host has and lacks" wide>
+          <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="namedFilesMarkdown" />
+        </GallerySpecimen>
+      </GallerySection>
+      <GallerySection
+        title="Agents in a Message"
+        note="A reply links a subagent as agent:4, the number spawn printed: its mark, the robot with the dot of its state as its tab in the Agents window wears it, then the text. Pointed at, it names the agent, Subagent 4 · Finished, and its description. A click opens the Agents window on that agent's tab, a finished one as Completed picks it, and a click when the window shows that tab closes it; stopping an agent there turns its mark red. agent:0, the main agent, brings the main transcript into view. A number the conversation does not have is its text alone, which says so when pointed at."
+      >
+        <GallerySpecimen variant="running, finished, failed, stopped, main, unknown" wide>
+          <GalleryAgentLinks />
         </GallerySpecimen>
       </GallerySection>
       <GallerySection
@@ -2038,7 +2056,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'changes'">
       <GallerySection
         title="Work Groups"
-        note="Consecutive steps show as one row, the same row from the first step to the turn's end. While they run, each new step rolls over the one before: Requesting, thinking, a call being written and its description, the call. The row shimmers until the turn moves past it, also after a command ended, while the model's next output is waited for; no Requesting row shows under it. Thinking without text is covered by the step after it. A command's notice and an agent's receipt between the steps are steps of the run too: the replay's background build reports its end and a child sends an update between two calls, and the row stays one row, its face their notice row while they are the newest step; the agent's text, the user's messages and steers, and the receipts of the user's decisions end a run. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did, each kind of call once, in the order the run first made it, such as Ran 2 commands, checked 1 command, never a count of steps; a run without a call reads what its notices and receipts told, such as 2 commands finished, heard from 1 agent. A failure shows on its own call inside. Opened, the notice and the receipt are rows of their own among the calls: the notice's title brings the build's call into view, marking the group that holds it, and the agent's name opens the Agents window at the call that sent the update. Folded, the media the calls returned show under it, in order, and the files the steps changed, each once; open, each call shows its own."
+        note="Consecutive steps show as one row, the same row from the first step to the turn's end. While they run, each new step rolls over the one before: Requesting, thinking, a call being written and its description, the call. The row shimmers until the turn moves past it, also after a command ended, while the model's next output is waited for; no Requesting row shows under it. Thinking without text is covered by the step after it. A command's notice and an agent's receipt between the steps are steps of the run too: the replay's background build reports its end and a child sends an update between two calls, and the row stays one row, its face their notice row while they are the newest step; the agent's text, the user's messages and steers, and the receipts of the user's decisions end a run. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did, each kind of call once, in the order the run first made it, such as Ran 2 commands, checked 1 command, never a count of steps; a run without a call reads what its notices and receipts told, such as 2 commands finished, heard from 1 agent. A failure shows on its own call inside. Opened, the notice and the receipt are rows of their own among the calls: the notice's title brings the build's call into view and marks the call's own row, or the run's row while it is folded, which stays folded; and the agent's name opens the Agents window at the call that sent the update. Folded, the media the calls returned show under it, in order, and the files the steps changed, each once; open, each call shows its own."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="workFlow.play('work')">Replay</Button>

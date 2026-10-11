@@ -25,7 +25,7 @@ export const fileKind: PanelKind<FileData> = {
   content: FileTab,
   pinned: { data: firstFileData },
   intents: {
-    file: (payload, current) => showFile(current ?? firstFileData(), payload.path),
+    file: (payload, current) => showFile(current ?? firstFileData(), payload.path, payload.line),
   },
 }
 

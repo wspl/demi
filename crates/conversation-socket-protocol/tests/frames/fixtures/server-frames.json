@@ -354,6 +354,7 @@
     "event": "started",
     "job": {
       "subagentId": "child-1",
+      "number": 1,
       "parentSessionId": "root",
       "description": "Runs the tests",
       "profile": null,
@@ -367,6 +368,7 @@
     "event": "closed",
     "job": {
       "subagentId": "child-1",
+      "number": 1,
       "parentSessionId": "root",
       "description": "Runs the tests",
       "profile": null,

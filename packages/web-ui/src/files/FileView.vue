@@ -61,6 +61,13 @@ const props = defineProps<{
   rootName?: string
   /** The file, by absolute path. */
   path: string | null
+  /**
+   * The line the file was opened at, 1-based, which the view scrolls to and
+   * marks for a moment as a search result is, in the file's text: Markdown
+   * and SVG show their source for it, as GitHub shows a file's plain text
+   * for a link to a line of it, until Preview is chosen.
+   */
+  line?: number | null
   /** Whether the host has a file to go back or forward to in this view. */
   canBack?: boolean
   canForward?: boolean
@@ -86,12 +93,25 @@ const modeOptions: readonly SegmentedOption<'preview' | 'source'>[] = [
 
 const kind = computed(() => props.path === null ? 'text' : previewKind(props.path))
 const sourceView = computed(() => props.path !== null && hasSourceView(props.path))
-/** An image, video, audio file or PDF shown from its bytes, SVG only while Preview is chosen. */
+/** The source shows for the line the file was opened at, over the Preview chosen, until another choice. */
+const sourceForLine = ref(false)
+watch(() => [props.path, props.line], () => {
+  sourceForLine.value = props.line != null
+}, { immediate: true })
+/** What Markdown and SVG show: the choice, or their source for a line. */
+const shownMode = computed<'preview' | 'source'>({
+  get: () => sourceForLine.value ? 'source' : mode.value,
+  set: (chosen) => {
+    sourceForLine.value = false
+    mode.value = chosen
+  },
+})
+/** An image, video, audio file or PDF shown from its bytes, SVG only while Preview shows. */
 const media = computed(() => {
   const shown = kind.value
   if (shown === 'text' || shown === 'markdown' || !props.source.contents)
     return null
-  return sourceView.value && mode.value === 'source' ? null : shown
+  return sourceView.value && shownMode.value === 'source' ? null : shown
 })
 
 type TextState =
@@ -164,7 +184,7 @@ const scrolls = new Map<string, StateEffect<unknown>>()
 
 /** Rendered Markdown, unless Source is chosen or the document is too large to render. */
 const markdown = computed(() => kind.value === 'markdown' &&
-  mode.value === 'preview' &&
+  shownMode.value === 'preview' &&
   state.value.phase === 'ready' &&
   renderable(state.value.text))
 const tooLargeToRender = computed(() => kind.value === 'markdown' &&
@@ -270,7 +290,7 @@ onBeforeUnmount(() => {
       />
       <Segmented
         v-if="sourceView"
-        v-model="mode"
+        v-model="shownMode"
         :options="modeOptions"
         size="sm"
         icon-only
@@ -324,6 +344,7 @@ onBeforeUnmount(() => {
           :path="path"
           :text="state.phase === 'ready' ? state.text : start?.phase === 'ready' ? start.text : ''"
           :scroll-to="scrolls.get(path)"
+          :line="line"
           @left="(left, snapshot) => scrolls.set(left, snapshot)"
         />
         <FileSummary

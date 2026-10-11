@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getCurrentInstance, ref } from 'vue'
+import { getCurrentInstance, ref, watch } from 'vue'
 import type { StateEffect } from '@codemirror/state'
 import { drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view'
 import { bracketMatching, foldGutter, foldKeymap } from '@codemirror/language'
@@ -8,6 +8,7 @@ import { highlightSelectionMatches } from '@codemirror/search'
 import { indentationMarkers } from '@replit/codemirror-indentation-markers'
 import { activeLineVisibilityExtension } from '../activeLineVisibility'
 import { foldMarker } from '../foldMarker'
+import { foundLineExtension, revealLine } from '../foundLine'
 import { customScrollbarExtension } from '../scrollbars/extension'
 import { searchExtension } from '../searchPanel'
 import { useCodeView } from '../useCodeView'
@@ -16,7 +17,8 @@ import { useCodeView } from '../useCodeView'
  * One file's text, read-only: syntax colors by the file's name, folding, and
  * Mod-f to find. A new text of the file replaces the old in place; another
  * file needs another editor, which can open where an earlier one of it was
- * scrolled to (`scrollTo`, from `left`).
+ * scrolled to (`scrollTo`, from `left`), or at a line (`line`), scrolled
+ * there and marked for a moment.
  */
 const props = defineProps<{
   /** The file's path, which selects its language. */
@@ -24,6 +26,8 @@ const props = defineProps<{
   text: string
   /** Where it opens scrolled to: what an earlier editor of the file said as it went. */
   scrollTo?: StateEffect<unknown> | null
+  /** The line to show, 1-based: as the editor is built, and again each time it changes. */
+  line?: number | null
 }>()
 
 const emit = defineEmits<{
@@ -33,7 +37,7 @@ const emit = defineEmits<{
 
 const container = ref<HTMLDivElement>()
 
-useCodeView(container, props, [
+const view = useCodeView(container, props, [
   drawSelection(),
   lineNumbers(),
   foldGutter({ markerDOM: foldMarker }),
@@ -46,7 +50,13 @@ useCodeView(container, props, [
   customScrollbarExtension(),
   searchExtension(getCurrentInstance()?.appContext ?? null),
   keymap.of([...defaultKeymap, ...foldKeymap]),
+  foundLineExtension(),
 ], { scrollTo: props.scrollTo, left: (snapshot) => emit('left', props.path, snapshot) })
+
+watch([view, () => props.line], ([built, line]) => {
+  if (built && line)
+    revealLine(built, line)
+})
 </script>
 
 <template>

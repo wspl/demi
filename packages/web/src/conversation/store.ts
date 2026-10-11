@@ -1132,6 +1132,7 @@ export const useConversations = defineStore('conversations', () => {
       pendingCalls: [],
       waitingSince: null,
       id: subagent.subagentId,
+      number: subagent.number,
       name: subagent.description,
       phase: subagent.phase,
       startedAt: subagent.startedAt,

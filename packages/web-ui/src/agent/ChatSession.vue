@@ -28,6 +28,7 @@ import { provideLiveCalls } from './live-calls'
 import { callTerminal, dockTerminals } from './terminals'
 import { provideCommandRevealer } from './command-reports'
 import { provideOriginRevealer } from './agent-receipts'
+import { agentLinkWindow, findAgent, provideMessageAgents } from './agent-links'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import type { ChatSessionState, PendingSubmissionState } from './types'
 import type { HostMenuHost } from '../hosts/types'
@@ -337,6 +338,27 @@ provideOriginRevealer(({ node, blockId }) => {
     }
   }
 })
+// A message's link to an agent opens the Agents window on its tab, and
+// closes it when it shows that tab already; agent 0's brings this
+// transcript into view (`subagents.md` § Linking an agent).
+provideMessageAgents(() => ({
+  find: (number) => findAgent(props.conversation.subagents, number),
+  open: (number) => {
+    const next = agentLinkWindow(
+      { open: agentsOpen.value, activeId: activeSubagentId.value },
+      props.conversation.subagents,
+      number,
+    )
+    if (!next) {
+      return
+    }
+    if (next.open) {
+      activeSubagentId.value = next.activeId
+    } else {
+      close()
+    }
+  },
+}))
 // A block in a subagent's transcript shows in the panel, on that subagent's tab.
 watch(
   () => props.reveal?.node,

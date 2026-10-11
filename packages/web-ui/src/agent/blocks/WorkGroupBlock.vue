@@ -232,9 +232,11 @@ function pick(path: string, clicks: number): void {
           class="px-3 py-1 text-[13px] leading-4.5 text-fg-subtle [--markdown-block-gap:--spacing(1)]"
         />
         <div v-else class="[--agent-pad-x:0px]">
+          <!-- Open, each step's row is named, so a block brought into view inside the run marks its own row. -->
           <div
             v-for="(step, index) in group.steps"
             :key="stepKey(step)"
+            :data-step-id="isOpen ? step.id : undefined"
             v-bind="chromeEntrance(entering.has(stepKey(step)))"
           >
             <BlockScope v-if="step.type === 'thinking'" :block="step">

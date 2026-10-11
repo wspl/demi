@@ -47,6 +47,7 @@ function open(root: string, path: string): void {
     :root="workspace.root"
     :root-name="workspace.name"
     :path="data.path ? absolute(workspace.root, data.path) : null"
+    :line="data.line ?? null"
     :can-back="data.back.length > 0"
     :can-forward="data.forward.length > 0"
     @open="open(workspace.root, $event)"
