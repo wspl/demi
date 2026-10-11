@@ -698,6 +698,7 @@ mod tests {
                 ],
                 added: 2,
                 removed: 1,
+                temporary: false,
             },
             JobFileChange {
                 path: "new.txt".into(),
@@ -705,6 +706,7 @@ mod tests {
                 edits: vec![segment(None, path("3")), segment(path("binary"), path("gone"))],
                 added: 1,
                 removed: 0,
+                temporary: false,
             },
         ];
 

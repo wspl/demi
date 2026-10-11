@@ -33,16 +33,19 @@ const PAGE = [
   'export function Page() {\n  return (\n    <main className="page">\n      <Header />\n      <Content />\n    </main>\n  )\n}\n',
 ]
 const NOTES = 'Check the header on mobile.\nCheck the footer links.\n'
+const CHECK = 'import re, sys\n\npage = open(\'src/page.ts\').read()\nsys.exit(0 if re.search(r\'<Header />\', page) else 1)\n'
 
 /**
  * A file a call changed, one segment per step between `versions`: of the
- * gallery workspace, or anywhere when `path` is absolute.
+ * gallery workspace, or anywhere when `path` is absolute, in which case a
+ * path in /tmp is in a temporary directory.
  */
 function file(path: string, kind: EditedFile['kind'], versions: readonly string[], counts: { added: number; removed: number }): EditedFile {
   return {
     path: path.startsWith('/') ? path : `${WORKSPACE_ROOT}/${path}`,
     kind,
     ...counts,
+    ...(path.startsWith('/tmp/') ? { temporary: true } : {}),
     edits: versions.slice(1).map((modified, n) => ({ copies: editCopies(versions[n]!, modified) })),
   }
 }
@@ -127,8 +130,9 @@ export function uncopiedRequestBlocks(): Block[] {
 /**
  * A request whose files are listed as they stand after its last call: the
  * new page, written in /tmp and moved over src/page.ts, is src/page.ts with
- * both edits; the scratch notes a later call removed are not listed, though
- * their call's own pill still names them.
+ * both edits. What the agent wrote on its way shows nowhere, neither in the
+ * list nor as a pill: the check script it left in /tmp, and the scratch
+ * notes a later call removed (`edit-tracking.md` § Temporary files).
  */
 export function movedRequestBlocks(): Block[] {
   return [
@@ -139,6 +143,9 @@ export function movedRequestBlocks(): Block[] {
     shell('moved-place', 240_000, 'mv /tmp/page.ts.new src/page.ts', 'Put the new page in place', [
       file('src/page.ts', 'modified', PAGE, { added: 6, removed: 1 }),
     ], [{ kind: 'renamed', from: '/tmp/page.ts.new', to: `${WORKSPACE_ROOT}/src/page.ts` }]),
+    shell('moved-check', 235_000, 'cat > /tmp/check-layout.py <<\'EOF\'\n…\nEOF\npython3 /tmp/check-layout.py', 'Check the new layout', [
+      file('/tmp/check-layout.py', 'added', ['', CHECK], { added: 4, removed: 0 }),
+    ]),
     shell('moved-notes', 230_000, 'printf … > notes.tmp', 'Note what to check', [
       file('notes.tmp', 'added', ['', NOTES], { added: 2, removed: 0 }),
     ]),
