@@ -501,7 +501,9 @@ nothing. It walks it again too when a `.gitignore` or
 `.gitattributes` changed, since those decide what git lists for other paths,
 or when more than 100 paths changed: a walk over some paths checks every index
 entry against each of them, so past about a hundred it costs more than a whole
-walk. The watch covers only the directory, so each request also compares the
+walk. Paths git ignores are not recorded and do not count, by the same filter
+[subscriptions](#watching-files) use, so a build that writes 20,000 files
+under `target/` leaves nothing to re-examine. The watch covers only the directory, so each request also compares the
 `.gitignore` and `.gitattributes` files in the directories above it, up to the
 work tree, with what the last walk found. Settings outside the repository, such
 as the user's global ignore file, apply from the next whole walk. When the
@@ -513,8 +515,9 @@ since that computation had already taken the paths the watch recorded.
 `watched` reports whether a watch is running.
 
 The runner keeps at most eight watched directories per connection and drops one
-after fifteen minutes without a request, unless a [watch](#watching-files)
-of the backend still uses it; closing the connection drops them all.
+after fifteen minutes without a request, unless a
+[subscription](#watching-files) still uses it; closing the connection drops
+them all.
 
 Working-tree work runs on blocking threads off the connection's control thread.
 At most two computations run at a time; a request beyond that waits for one to
@@ -525,45 +528,92 @@ library answers `internal` for that request and affects nothing else.
 
 ### Watching files
 
-The backend asks the runner to watch paths and report what changes under
-them, so a page shows a Host's files as they are without asking again
-([File watch](../product/web-api.md#file-watch)). `fs_watch` names a watch id,
-a path and whether to watch what lies below it; `fs_unwatch` ends it. The
-runner reports, as messages of that watch:
+The backend subscribes, for the pages it serves, to what they keep of a
+Host's files, and the runner says when a subscription's subject changed, by
+its id alone; it never sends a path or content
+([File watch](../product/web-api.md#file-watch)). For example, a page keeps
+`src/app.ts`'s text and the working tree's changes list. The agent edits
+`src/app.ts` and runs `cargo check`, which writes 20,000 files under the
+ignored `target/`: the runner reports two subscriptions changed, the file and
+the working tree, once each, and nothing for `target/`.
 
-- `ready` once the file system watch runs: a change after it is reported.
-  FSEvents can take seconds to start a stream, so the request does not wait
-  for it.
-- `changed` with the paths something changed at: created, written, removed
-  or renamed, both names of a rename. A file opened or read reports nothing,
-  and neither does metadata alone under `.git`, as for the
-  [working tree](#working-tree). Among them it names `entries`, the paths
-  that came, went or were renamed, by the platform's event kinds. FSEvents
-  can leave that in doubt: it merges a creation and the writes after it into
-  one event, and keeps the creation flag on each further write while writes
-  keep coming, so a build log created once and appended to all the time
-  looks created again on every write. The runner settles the doubt by the
-  file's identity, its device and inode: a path that still holds the file it
-  held when last seen did not come again, and any other is named among
-  `entries`, so a folder's listing is never left stale and is not read again
-  for a file written in place. The runner gathers paths for 100 ms and sends
-  each once; more than 1,000 at once it sends as `lost`. It names among them
-  `ignored`, the paths git ignores in the working tree's repository by its own
-  rules (untracked and matched by an ignore rule, or under an ignored folder),
-  so the page's Change list re-reads only for the others; when the rules cannot
-  be read, it names none.
-- `lost` when the watch lost events or the platform asks for a rescan: what it
-  reported no longer tells what changed. It keeps running.
-- `failed` when the watch cannot be created or stops, with the reason: an
-  inotify limit, permissions, a file system that reports nothing. It reports
-  nothing more.
+**Subscriptions.** `fs_subscribe` names an id, a kind and a path; the
+runner answers `live` once the file system watch behind it runs, or `failed`
+with the reason when it cannot (an inotify limit, permissions, a file system
+that reports nothing). Each subscription stands alone: one that fails
+affects no other. The kinds, and when each changes:
 
-A watch below a path is the same file system watch the working tree's
-changes use, one per tree: a working tree whose changes are listed and whose
-files a page shows is watched once, and both learn from it. A watch of one
-folder alone reports its entries, not what lies below them. The runner keeps
-the watches of a connection until the backend ends them or the connection
-closes.
+| Kind | Changes when |
+| --- | --- |
+| `file(path)` | The file is created, written, removed or renamed, or its metadata changes; or a folder above it is removed or renamed |
+| `folder(path, names)` | An entry of it comes, goes or is renamed, by the entry's identity, its device and inode, so a file written in place is no new entry; or the folder or one above it is removed or renamed |
+| `folder(path, details)` | As `names`, or an entry's content or metadata changes, which moves its size or its time |
+| `worktree(root)` | A path under `root` that git does not ignore changes, metadata included, since a changed executable bit changes `git status`; in the repository's git directory the index, `HEAD`, a ref under `refs/`, `packed-refs`, `config` or `info/exclude` changes; or a `.gitignore` or `.gitattributes` changes. Outside a repository it changes only when a `.git` appears under `root` |
+| `head(root)` | `HEAD`, a ref under `refs/` or `packed-refs` of `root`'s repository changes |
+
+A git directory concerns only its own repository: in a checkout with nested
+repositories, such as Chromium's, a commit in `src/v8` changes `src/v8`'s
+subscriptions and none of `src`'s.
+
+**Numbers.** The runner counts the file system events it receives with one
+number per process that only grows, and names the process's run with an
+epoch that changes when the runner starts again. `live` carries `since`, the
+number at which the subscription started to watch, and the epoch. A change
+is reported as `changed` with the subscription's id and `at`, the number of
+the event that changed it. Every read of what a subscription covers, a
+file's text or description, a folder's listing, the working tree's changes,
+a changed file's sides, a committed file, takes the number before it reads
+and answers it with the epoch, through the backend and through a
+[direct channel](#direct-channels) alike, since the number is the process's.
+So an answer read at 40 is out of date when a change at 41 arrives, in
+whichever order the two reach the page, and an answer read at 41 already
+holds the change an event at 41 reported: a change made after a read always
+has a higher number than the read, since the number was taken before it.
+
+**Batches.** The runner gathers changes for 100 ms and sends each
+subscription at most once per batch, with the highest `at` it saw. There is no
+limit on how many subscriptions one batch names, since a batch names no
+paths.
+
+**Lost events.** When the platform says it dropped events, the subscriptions
+the drop concerns changed, reported as any change, with the number of the
+drop: FSEvents' `MustScanSubDirs` names a folder, and only the subscriptions
+under it changed; `UserDropped`, `KernelDropped`, `RootChanged`, `Mount` and
+`Unmount`, inotify's queue overflow and notify's `need_rescan` concern every
+subscription on that stream. A drop on a stream outside the working tree
+changes nothing inside it.
+
+**What git ignores is filtered out here.** The runner decides whether a
+changed path is ignored by the working tree's repository's rules, with a
+cache of the ignored folders, so a path under `target/` costs one prefix
+comparison. An ignored path changes no `worktree` subscription and is not
+counted among the [working tree](#working-tree)'s changed paths; a `file` or
+`folder` subscription inside an ignored folder, such as a log under `target/`
+a page shows, changes as any other.
+
+**Leases.** A subscription is a lease of 10 minutes from when the runner
+received its `fs_subscribe` or its last `fs_renew`, which names many ids at
+once. The runner ends a subscription whose lease ran out and releases what it
+held; `fs_unsubscribe` ends one at once. Closing the connection ends them
+all. The backend renews a subscription while a page still renews it
+([File watch](../product/web-api.md#file-watch)).
+
+**How the platforms watch.** One subscription costs nothing of its own when
+the file system watch behind it already runs:
+
+- On macOS a working tree is one FSEvents stream, which covers a tree of any
+  size with one subscription, excluding up to eight large ignored folders with
+  `FSEventStreamSetExclusionPaths`; notify's kqueue backend would hold a file
+  descriptor per file, more than a repository and the usual limit of 256
+  allow. A file or folder outside the working tree is watched alone with
+  kqueue, never through a stream over its parent's whole tree, at most 64 of
+  them, and a file replaced by a rename is watched again under its name. A
+  subscription inside an excluded folder gets a watch of its own.
+- On Linux inotify watches the working tree's folders except the ignored
+  ones; a subscription inside an ignored folder adds a watch of that folder.
+- FSEvents can take seconds to start a stream when the system is busy, so
+  `fs_subscribe` does not wait for it: `live`, with its `since`, says when
+  changes from then on are covered.
 
 ### Service streams
 
