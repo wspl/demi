@@ -113,6 +113,7 @@ import {
   fullPageTool,
   longLineShellTool,
   longScriptShellTool,
+  bashScriptShellTool,
   missingImageTool,
   notStoredVideoTool,
   recordingTool,
@@ -144,7 +145,7 @@ import {
 } from '../fixtures/catalog'
 import { setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
 import { galleryBlobs } from '../fixtures/blobs'
-import { agentReceiptMessages, briefSubagent, gallerySubagents, mainAgentMessage, workSubagent } from '../fixtures/subagents'
+import { agentLinksWrapMarkdown, agentReceiptMessages, briefSubagent, gallerySubagents, mainAgentMessage, workSubagent } from '../fixtures/subagents'
 import GalleryReceipts from '../components/GalleryReceipts.vue'
 import { galleryTerminals } from '../fixtures/terminals'
 import { demoDeviceStart } from '../fixtures/device-installation'
@@ -934,6 +935,7 @@ const functionalTool = ref(false)
 const functionalShellExpanded = ref(true)
 const functionalShellLive = ref(true)
 const functionalShellScript = ref(true)
+const functionalShellBash = ref(true)
 const functionalShellLongLine = ref(true)
 /** Calls whose results carry media, as the transcript shows them. */
 const toolMediaSpecimens = [
@@ -1710,10 +1712,13 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Agents in a Message"
-        note="A reply links a subagent as agent:4, the number spawn printed: its mark, the robot with the dot of its state as its tab in the Agents window wears it, then the text. It is drawn in the text's own colors, not a web link's accent, as a mention in Slack or Linear reads as part of the sentence: the text in the prose's color at medium weight over a dotted underline and the mark in the secondary text color. It starts with an icon, so, as a file's link, it keeps 0.2em of space on each side, inside its hover fill and outside its underline: in the Chinese sentence the character before the mark and the colon after the name do not touch it. Pointed at, it shows the hover fill behind both and names the agent, Subagent 4 · Finished, and its description. A click opens the Agents window on that agent's tab, a finished one as Completed picks it, and a click when the window shows that tab closes it; stopping an agent there turns its mark red. agent:0, the main agent, brings the main transcript into view. A number the conversation does not have is its text alone, which says so when pointed at."
+        note="A reply links a subagent as agent:4, the number spawn printed: its mark, the robot with the dot of its state as its tab in the Agents window wears it, then the text. It is drawn in the text's own colors, not a web link's accent, as a mention in Slack or Linear reads as part of the sentence: the text in the prose's color at medium weight over a dotted underline in the faintest text color, 1px, 3px below the text, and the mark in the secondary text color. It starts with an icon, so, as a file's link, it keeps 0.2em of space on each side, inside its hover fill and outside its underline: in the Chinese sentence the character before the mark and the colon after the name do not touch it. It flows as words do: a long name wraps at the line's end like any text, its first line starting where the text before it ends, the mark staying with the first word, and the hover fill and the underline following each line it spans, in a narrow column and a table's cell alike. It is reached with Tab and opened with Return or Space, as a button is. Pointed at, it shows the hover fill behind both and names the agent, Subagent 4 · Finished, and its description. A click opens the Agents window on that agent's tab, a finished one as Completed picks it, and a click when the window shows that tab closes it; stopping an agent there takes the dot off its mark, as a stopped conversation's row is settled. agent:0, the main agent, brings the main transcript into view. A number the conversation does not have is its text alone, which says so when pointed at."
       >
         <GallerySpecimen variant="running, finished, failed, stopped, main, unknown" wide>
           <GalleryAgentLinks />
+        </GallerySpecimen>
+        <GallerySpecimen variant="long names in a narrow column and a table's cell" wide>
+          <GalleryAgentLinks :markdown="agentLinksWrapMarkdown" narrow />
         </GallerySpecimen>
       </GallerySection>
       <GallerySection
@@ -1804,17 +1809,17 @@ onBeforeUnmount(() => {
         </div>
       </GallerySection>
 
-      <GallerySection title="AgentReceiptBlock" note="Agent updates and completion receipts read as a command’s notice: what happened, then the agent by its description, underlined with dots, with Failed or Stopped after it when it went wrong. A click on the agent’s name opens the Agents window over the specimens on that agent’s tab, a finished one as Completed picks it, and marks the block the receipt came from: the call that sent the update, the finished agent’s last answer, the failed agent’s failure record; the stopped agent gave none, so its tab opens at its latest. Close (×) closes the window. In a child’s transcript, a message from the main agent reads Main agent sent a message, the main agent its subject, and its name brings the call that sent it into view in the main transcript. A row that opens has two controls side by side, each reached with Tab: the row, which opens and folds it, and the agent’s name. On a narrow row the name gives way first, down to a few characters, then the words. The user’s decisions on permission requests, a move the user told the agent of, and Demi’s notice that a move the agent asked for failed name no agent and keep their wording. Expand any row to read the message; these rows have no human message controls.">
+      <GallerySection title="AgentReceiptBlock" note="Agent updates and completion receipts read as a command’s notice: what happened, then the agent by its description, underlined with dots, with Failed or Stopped after it when it went wrong. A click on the agent’s name opens the Agents window over the specimens on that agent’s tab, a finished one as Completed picks it, and marks the block the receipt came from: the call that sent the update, the finished agent’s last answer, the failed agent’s failure record; the stopped agent gave none, so its tab opens at its latest. Close (×) closes the window. In a child’s transcript, a message from the main agent reads Main agent sent a message, the main agent its subject, and its name brings the call that sent it into view in the main transcript. A notice row does not open, as no notice row does: no chevron, no body; what it would show is where the agent’s name leads, so the name is its one control, reached with Tab. On a narrow row the name gives way first, down to a few characters, then the words. The user’s decisions on permission requests, a move the user told the agent of, and Demi’s notice that a move the agent asked for failed name no agent and say all there is in their words, the failed move why: Move failed: the project no longer exists. These rows have no human message controls.">
         <div class="gallery-frame gallery-block-frame bg-surface">
           <GalleryReceipts :agents="agents" @abort="sessionFlow.abortSubagents" @abort-agent="sessionFlow.abortSubagent">
             <div class="specimen-stack [--agent-pad-x:0px]">
               <GallerySpecimen
-                v-for="(message, index) in [...agentReceiptMessages, mainAgentMessage, ...permissionReceiptMessages, movedReceiptMessage, ...organizeReceiptMessages]"
+                v-for="message in [...agentReceiptMessages, mainAgentMessage, ...permissionReceiptMessages, movedReceiptMessage, ...organizeReceiptMessages]"
                 :key="message.id"
                 :variant="receiptVariant(message)"
                 wide
               >
-                <AgentReceiptBlock :message="message" :open="index === 1" />
+                <AgentReceiptBlock :message="message" />
               </GallerySpecimen>
               <GallerySpecimen variant="update, failed and the main agent’s message · narrow" wide>
                 <div class="flex w-[300px] flex-col">
@@ -1828,7 +1833,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="FunctionalBlock"
-        note="Thinking, shell (collapsed and expanded), loading, and error. Thinking that streams is one folded row, Thinking with how long it has lasted; the reader opens it to read along, and it never opens or folds by itself, also when it ends (Replay). A shell call shows its command and output in one box: the command stays at the top and only the output under it scrolls once it fills the box. The command wraps at its spaces, as an editor’s word wrap does: a word moves to the next line whole, never split at a hyphen or inside, and only a word longer than the line breaks, at any character, as the long line’s signed address shows. The output wraps as a terminal wraps: each line fills to the box’s edge and breaks at any character. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. A shell row shimmers while its command runs, also after its call returned with the command running on as one of the conversation’s running commands, until the command’s end arrives, and then marks how it ended as any shell row does: Stopped, or Failed for an exit code other than 0 (End Command). While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
+        note="Thinking, shell (collapsed and expanded), loading, and error. Thinking that streams is one folded row, Thinking with how long it has lasted; the reader opens it to read along, and it never opens or folds by itself, also when it ends (Replay). A shell call shows its command and output in one box: the command stays at the top, highlighted as Bash in the colors of the conversation’s code blocks after a muted $, and only the output under it scrolls once it fills the box. The command wraps at its spaces, as an editor’s word wrap does: a word moves to the next line whole, never split at a hyphen or inside, and only a word longer than the line breaks, at any character, as the long line’s signed address shows. The output wraps as a terminal wraps: each line fills to the box’s edge and breaks at any character. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. A shell row shimmers while its command runs, also after its call returned with the command running on as one of the conversation’s running commands, until the command’s end arrives, and then marks how it ended as any shell row does: Stopped, or Failed for an exit code other than 0 (End Command). While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -1955,6 +1960,16 @@ onBeforeUnmount(() => {
               />
             </GallerySpecimen>
             <GallerySpecimen
+              variant="shell · a script, highlighted as Bash"
+              wide
+            >
+              <ToolShellBlock
+                v-model:open="functionalShellBash"
+                :block="bashScriptShellTool"
+                :input="parseToolInput(bashScriptShellTool.input)"
+              />
+            </GallerySpecimen>
+            <GallerySpecimen
               variant="shell · long line"
               wide
             >
@@ -1992,7 +2007,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Command Ends"
-        note="Every shell row, a run or a look, marks a command that went wrong with a tag after its title: red Failed, with its exit code in the tooltip, or grey Stopped; one that succeeded shows nothing, and one that runs shimmers. An open row that failed or was stopped says so above its output. A look is a shell call whose script runs demi shell status; its tag is its own command’s. A call that ran nothing, refused by the repeat guard or for its input, is red Failed and shows why once opened. A title too long for its row is cut at the end; the tag stays. Calls of tools the runtime no longer has, such as shell_status and yield in a conversation from before they were removed, are generic tool cards."
+        note="Every shell row, a run or a look, marks a command that went wrong with a tag after its title: red Failed, with its exit code in the tooltip, grey Stopped, or grey Lost, with why in the tooltip, the same tag its notice carries; one that succeeded shows nothing, and one that runs shimmers. An open row that failed, was stopped or was lost says so above its output. A look is a shell call whose script runs demi shell status; its tag is its own command’s. A call that ran nothing, refused by the repeat guard or for its input, is red Failed and shows why once opened. A title too long for its row is cut at the end; the tag stays. Calls of tools the runtime no longer has, such as shell_status and yield in a conversation from before they were removed, are generic tool cards."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -2600,7 +2615,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Terminals"
-        note="The same window. Tabs are running jobs, each titled by its call’s description, cut at the end and whole in its tooltip; the body is a read-only xterm with ANSI color from bun, rg and git. The terminal opens with the script as a terminal shows what was typed: a muted $ and the first line, a muted > before each further line (Show the auth test changes), long lines wrapped at the terminal’s width (Find where the old cookie name is still used), the script in the emphasized text color, then the output. The watch tab’s output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame’s tail anew. A click on a tab only selects it; its menu, from a right-click or the Menu key or Shift+F10, ends a running command (End Command) or closes an ended one’s tab (Close Tab). A press outside every window closes it while it is the newest; Close (×), or Escape with the focus on its strip, closes it too, while the terminal keeps the Escape typed into it."
+        note="The same window. Tabs are running jobs, each titled by its call’s description, cut at the end and whole in its tooltip; the body is a read-only xterm with ANSI color from bun, rg and git. The terminal opens with the script as a terminal shows what was typed: a muted $ and the first line, a muted > before each further line (Show the auth test changes), long lines wrapped at the terminal’s width (Find where the old cookie name is still used), the script highlighted as Bash in the colors of the conversation’s code blocks (Count the old cookie name and list the changed files), then the output. The watch tab’s output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame’s tail anew. A click on a tab only selects it; its menu, from a right-click or the Menu key or Shift+F10, ends a running command (End Command) or closes an ended one’s tab (Close Tab). A press outside every window closes it while it is the newest; Close (×), or Escape with the focus on its strip, closes it too, while the terminal keeps the Escape typed into it."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>

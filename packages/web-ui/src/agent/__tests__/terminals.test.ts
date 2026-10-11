@@ -166,6 +166,20 @@ test('the prompt line shows the script after $, and each further line after >', 
   expect(promptLine(undefined, COLORS)).toBe('')
 })
 
+test('the script is drawn in its highlighted runs, the prompt staying muted, each line cut where its runs start and end', () => {
+  // `cat <<EOF` then `$HOME`: a run per word, one spanning the line break.
+  const script = 'cat <<EOF\n$HOME\nEOF'
+  const runs = [
+    { from: 0, to: 3, ansi: '<cmd>' },
+    { from: 4, to: 15, ansi: '<doc>' },
+  ]
+  expect(promptLine(script, COLORS, runs)).toBe(
+    `<p>$${R} ${R}<cmd>cat${R}<s> ${R}<doc><<EOF${R}${R}\n`
+      + `<p>>${R} ${R}<doc>$HOME${R}${R}\n`
+      + `<p>>${R} <s>EOF${R}\n`,
+  )
+})
+
 test('the prompt line opens the terminal once, and again only when it starts anew', () => {
   const prompt = promptLine('npm test', COLORS)
   // The first frame opens with the prompt, then the output.

@@ -19,10 +19,6 @@ use crate::{
 /// How much of a stream's end a view carries.
 pub const TAIL_CHARS: usize = 4096;
 
-/// The exit code a lost command shows the user, in the pages and in its
-/// call's view: the failure it is, as for a command that could not run.
-pub const LOST_EXIT_CODE: i32 = 127;
-
 /// A command's output and state, the cursors of the model's view, and the
 /// pages' view.
 #[derive(Debug)]
@@ -97,11 +93,14 @@ pub struct PageView {
 }
 
 /// Where a command is, as the pages see it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PageState {
     Running,
     Exited { exit_code: i32 },
     Aborted,
+    /// Its runner lost it, for `reason` (`runtime.md` § Lost commands): the
+    /// pages tag it *Lost*, as its notice does, not as a failure.
+    Lost { reason: String },
 }
 
 #[derive(Debug)]
@@ -434,8 +433,8 @@ impl CommandRecord {
                     exit_code: *exit_code,
                 },
                 Phase::Aborted => PageState::Aborted,
-                Phase::Lost { .. } => PageState::Exited {
-                    exit_code: LOST_EXIT_CODE,
+                Phase::Lost { reason, .. } => PageState::Lost {
+                    reason: reason.clone(),
                 },
             },
             tail: self.page.tail.clone(),

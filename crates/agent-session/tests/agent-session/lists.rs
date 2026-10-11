@@ -54,6 +54,7 @@ fn shell_tool(release: oneshot::Receiver<()>) -> (String, Invoke) {
             status: ShellViewStatus::Exited,
             command_id: CommandId::try_from(input["command"].as_str().unwrap()).unwrap(),
             exit_code: Some(0),
+            lost_reason: None,
             running_ms: 1,
             idle_ms: 0,
             chunks: Vec::new(),

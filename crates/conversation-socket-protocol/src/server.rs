@@ -419,7 +419,7 @@ serde_plain::derive_display_from_serialize!(JobPhase);
 serde_plain::derive_fromstr_from_deserialize!(JobPhase);
 
 /// Where a command is, with the pages' view of it: running, exited with its
-/// code, or stopped.
+/// code, stopped, or lost with why.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
     tag = "status",
@@ -444,6 +444,14 @@ pub enum ShellStatus {
         #[garde(dive)]
         command: CommandView,
     },
+    /// Its runner lost it (`runtime.md` § Lost commands).
+    Lost {
+        #[serde(flatten)]
+        #[garde(dive)]
+        command: CommandView,
+        #[garde(skip)]
+        reason: String,
+    },
 }
 
 impl ShellStatus {
@@ -452,7 +460,8 @@ impl ShellStatus {
         match self {
             Self::Running { command }
             | Self::Exited { command, .. }
-            | Self::Aborted { command } => command,
+            | Self::Aborted { command }
+            | Self::Lost { command, .. } => command,
         }
     }
 }

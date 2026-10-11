@@ -102,7 +102,7 @@ export function demoConversations(): SidebarConversation[] {
       projectId: null,
       pinned: false,
       unread: true,
-      // A permission request waits: the yellow mark wins over the unread one.
+      // A permission request waits: the yellow mark wins over the finished one.
       needsYou: true,
     },
     {

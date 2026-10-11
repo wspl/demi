@@ -1,5 +1,6 @@
 import { StateEffect, StateField, type Extension } from '@codemirror/state'
 import { Decoration, EditorView, type DecorationSet } from '@codemirror/view'
+import { revealOffset } from '../ui/reveal'
 
 /** Marks the line that starts at a position, or ends the mark (null). */
 const markLine = StateEffect.define<number | null>()
@@ -35,15 +36,17 @@ export function foundLineExtension(): Extension {
 }
 
 /**
- * Scrolls line `line` (1-based, held to the text's lines) to the middle of
- * the view, puts the cursor at its start, and marks it for a moment, as a
- * search result is (`file-previews.md` § Files named in messages).
+ * Brings line `line` (1-based, held to the text's lines) into view as every
+ * reveal places its block (`revealOffset`), puts the cursor at its start,
+ * and marks it for a moment, as a search result is (`file-previews.md` §
+ * Files named in messages).
  */
 export function revealLine(view: EditorView, line: number): void {
   const doc = view.state.doc
   const at = doc.line(Math.min(Math.max(line, 1), doc.lines))
+  const yMargin = revealOffset(view.lineBlockAt(at.from).height, view.scrollDOM.clientHeight)
   view.dispatch({
     selection: { anchor: at.from },
-    effects: [EditorView.scrollIntoView(at.from, { y: 'center' }), markLine.of(at.from)],
+    effects: [EditorView.scrollIntoView(at.from, { y: 'start', yMargin }), markLine.of(at.from)],
   })
 }

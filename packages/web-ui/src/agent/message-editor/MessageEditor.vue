@@ -22,6 +22,7 @@ import {
 } from '../message-input/copied-message'
 import { useTransfers, type MessageCapsule } from './capsules'
 import { composerExtensions, readOnlyExtensions, redrawDecorations } from './extensions'
+import { markdownSlice, trimmedSlice } from './clipboard-slices'
 import type { PlaceholderText } from '../../ui/ui-text'
 
 /**
@@ -142,7 +143,13 @@ const editor = new Editor({
     // A sent message copies with its files (`product.md` § Writing a message);
     // the composer's own copy keeps ProseMirror's, which a paste in it reads.
     handleDOMEvents: props.composer ? {} : { copy: (view, event) => copySelection(view, event) },
-    transformPasted: (slice, view) => new Slice(keepCapsules(slice.content, view), slice.openStart, slice.openEnd),
+    // A paste or a drop brings no blank lines at its ends.
+    transformPasted: (slice, view) =>
+      trimmedSlice(new Slice(keepCapsules(slice.content, view), slice.openStart, slice.openEnd), view.state.schema),
+    // A copy, a cut or a drag holds no blank line before its first line or
+    // after its last, in its HTML as in its text; ProseMirror drags the
+    // copied slice, so text moved within a composer leaves such lines behind.
+    transformCopied: (slice, view) => trimmedSlice(slice, view.state.schema),
     // Copied text is the Markdown, each file by its name, wherever it is
     // copied from; code copied from inside a code block is the code.
     clipboardTextSerializer: (slice) => slice.openStart > 0 && slice.content.childCount === 1 && slice.content.firstChild?.type.spec.code
@@ -282,13 +289,6 @@ function inCode(view: EditorView): boolean {
   return !!view.state.selection.$from.parent.type.spec.code
 }
 
-/** Pasted text read as the dialect: a single line joins the line at the cursor, code blocks stand on their own. */
-function markdownSlice(schema: Schema, text: string, capsules: readonly MessageCapsule[] = []): Slice {
-  const doc = schema.nodeFromJSON(parseUserMarkdown(text, capsules))
-  const opens = (node: ProseMirrorNode | null) => node?.type.name === 'paragraph' ? 1 : 0
-  return new Slice(doc.content, opens(doc.firstChild), opens(doc.lastChild))
-}
-
 /** Where files land: here, with the selection they replace gone. */
 function landAtSelection(view: EditorView): void {
   if (!view.state.selection.empty) {
@@ -362,12 +362,16 @@ function copiedMessage(html: string): CopiedMessage | null {
   return readCopiedMessage(page.querySelector(`[${COPIED_MESSAGE_ATTRIBUTE}]`)?.getAttribute(COPIED_MESSAGE_ATTRIBUTE) ?? null)
 }
 
-/** A copy's forms: Demi's own and plain text, and its HTML, Demi's own form an attribute of its outermost element. */
+/**
+ * A copy's forms: Demi's own and plain text, and its HTML, Demi's own form an
+ * attribute of its outermost element; all three hold the same lines, without
+ * blank ones at the ends.
+ */
 function clipboardForms(content: Fragment): { clipboard: MessageClipboard; html: string } {
   const clipboard = messageClipboard({ type: 'doc', content: content.toJSON() ?? [] })
   const wrapper = document.createElement('div')
   wrapper.setAttribute(COPIED_MESSAGE_ATTRIBUTE, JSON.stringify(clipboard.message))
-  wrapper.append(htmlSerializer(editor.schema).serializeFragment(content))
+  wrapper.append(htmlSerializer(editor.schema).serializeFragment(Fragment.fromJSON(editor.schema, clipboard.doc.content ?? [])))
   return { clipboard, html: wrapper.outerHTML }
 }
 
