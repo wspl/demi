@@ -295,8 +295,7 @@ impl RemoteShellEnvironment {
         cancel: CancellationToken,
     ) -> Result<CommandId, ShellError> {
         let command = numbered(self.0.options.numbers.next(Sequence::Command).await?);
-        let tool_use_id = request.tool_use_id.clone();
-        let record = CommandRecord::new(command.clone(), tool_use_id);
+        let record = CommandRecord::new(command.clone(), request.caller.tool_use_id.clone());
         let (running, record) = self.hold(&command, record, cancel.child_token());
         let environment = self.clone();
         let task_command = command.clone();
@@ -318,7 +317,6 @@ impl RemoteShellEnvironment {
     pub fn adopt(&self, taken: TakenUp) {
         let TakenUp {
             command,
-            tool_use_id,
             job,
             caller,
             running,
@@ -327,7 +325,8 @@ impl RemoteShellEnvironment {
         if self.0.state.borrow().records.contains_key(&command) {
             return;
         }
-        let record = CommandRecord::taken_up(command.clone(), tool_use_id, running, seen);
+        let record =
+            CommandRecord::taken_up(command.clone(), caller.tool_use_id.clone(), running, seen);
         let (running, record) = self.hold(&command, record, CancellationToken::new());
         let environment = self.clone();
         self.0.tasks.spawn_local(async move {
@@ -476,7 +475,7 @@ impl RemoteShellEnvironment {
         env.insert("PWD".into(), cwd.clone());
         let id = RemoteHost::job_id();
         if let Some(keeper) = &self.0.options.keeper {
-            keeper.started(command, &request.tool_use_id, &id).await;
+            keeper.started(command, &request.caller.tool_use_id, &id).await;
         }
         let job = self
             .0

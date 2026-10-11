@@ -4,7 +4,7 @@
 //! (`conversation-fork.md`) and the window compaction summarizes
 //! (`compaction.md` § One pass). Each is a pure reading of the blocks.
 
-use demi_shared_types::{Block, BlockId, ToolCallStatus, TurnId, is_blank};
+use demi_shared_types::{Block, BlockId, TextBlock, ToolCallStatus, TurnId, is_blank};
 
 use super::{is_compaction, latest_answer, opens_input_turn, replay_start};
 
@@ -197,17 +197,21 @@ fn unanswered_input(blocks: &[Block]) -> usize {
         .map_or(answered, |user| answered + user)
 }
 
-/// The text of the last `text` block from `since` on; empty when there is
-/// none.
-pub fn last_assistant_text(blocks: &[Block], since: usize) -> &str {
+/// The last `text` block from `since` on, the agent's last answer.
+pub fn last_answer(blocks: &[Block], since: usize) -> Option<&TextBlock> {
     blocks
         .get(since..)
         .unwrap_or_default()
         .iter()
         .rev()
         .find_map(|block| match block {
-            Block::Text(text) => Some(text.text.as_str()),
+            Block::Text(text) => Some(text),
             _ => None,
         })
-        .unwrap_or_default()
+}
+
+/// The text of the last `text` block from `since` on; empty when there is
+/// none.
+pub fn last_assistant_text(blocks: &[Block], since: usize) -> &str {
+    last_answer(blocks, since).map_or("", |text| text.text.as_str())
 }

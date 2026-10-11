@@ -2,6 +2,7 @@ import type { AgentMessage, Block, CommandReport, EditedFile, ModelSelection, To
 import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { ShellToolView as ShellView, ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import { editCopies, galleryBlobSize, galleryBlobs, missingBlob } from './blobs'
+import { agentReceiptMessages } from './subagents'
 
 export type { ShellView }
 
@@ -59,26 +60,6 @@ export const demoModel: ModelSelection = {
   thinking: null,
   serviceTierId: null,
 }
-
-export const agentReceiptMessages: AgentMessage[] = [
-  { type: 'message' as const },
-  { type: 'completion' as const, outcome: 'completed' as const },
-  { type: 'completion' as const, outcome: 'failed' as const },
-  { type: 'completion' as const, outcome: 'aborted' as const },
-].map((event, index) => ({
-  id: event.type === 'completion' ? `subagent:agent-ui-${index}:1` : `receipt-${index}`,
-  sender: { id: `agent-ui-${index}`, number: index + 1, description: 'UI implementation', round: 1 },
-  recipientId: 'gallery-parent',
-  timestamp: '2026-09-12T12:00:00.000Z',
-  content: index === 0
-    ? 'The shared receipt component is ready. I am checking **keyboard expansion** and reconnect behavior.'
-    : index === 1
-      ? ['Implemented the shared component and verified the product and gallery.', '', '## Validation', ...Array.from({ length: 12 }, (_, i) => `- Check ${i + 1}: source identity, content, and message order remain intact.`)].join('\n')
-      : index === 2
-        ? 'The fixture could not reach the test server. No files were changed.\n\n`ECONNREFUSED 127.0.0.1:3271`'
-        : 'The parent stopped this round before validation finished.',
-  event,
-}))
 
 /** The user's decisions on permission requests, as the agent that asked received them. */
 export const permissionReceiptMessages: AgentMessage[] = [

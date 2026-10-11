@@ -396,8 +396,12 @@ impl PortTransport for NodePort {
     }
 }
 
-/// Runs `demi agent <verb>` with `args` as a job of `node` would, through
-/// the node's commands; `cancel` is the call's cancellation.
+/// The `shell` call whose job runs every `demi agent` command a test runs.
+pub const AGENT_CALL: &str = "call";
+
+/// Runs `demi agent <verb>` with `args` as a job of `node`'s call
+/// [`AGENT_CALL`] would, through the node's commands; `cancel` is the
+/// call's cancellation.
 pub async fn agent_call(
     server: &Rc<AgentServer<TestProduct>>,
     node: &NodeId,
@@ -426,8 +430,8 @@ pub async fn agent_call(
         "stdin": true,
     }))
     .expect("the invocation is well formed");
-    // The backend's record of the job names the node that started it.
-    invocation.caller = Some(live.job_caller());
+    // The backend's record of the job names the node and call that started it.
+    invocation.caller = Some(live.job_caller(AGENT_CALL));
     let port = Rc::new(NodePort {
         stdout: RefCell::new(Vec::new()),
         stderr: RefCell::new(Vec::new()),

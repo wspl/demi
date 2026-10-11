@@ -41,6 +41,14 @@ pub struct AgentMessage {
     pub content: String,
     #[garde(dive)]
     pub event: AgentMessageEvent,
+    /// The block of the sender's transcript the message came from, which
+    /// the receipt row's name brings into view (`subagents.md` § Product
+    /// rendering): for an explicit message, the call that ran `demi agent
+    /// send`; for a completion, the child's last answer. None for a round
+    /// that ended without an answer and for a message no agent sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(custom(comes_from_its_sender(&self.sender)))]
+    pub origin: Option<BlockId>,
 }
 
 /// Who sent an agent message.
@@ -198,6 +206,18 @@ fn sent_by_an_agent_unless_the_products(
             (None, false) => Err(garde::Error::new("an agent message names its sender")),
             _ => Ok(()),
         }
+    }
+}
+
+/// Only an agent's message comes from a block of its transcript.
+fn comes_from_its_sender(
+    sender: &Option<Sender>,
+) -> impl FnOnce(&Option<BlockId>, &()) -> garde::Result + '_ {
+    move |origin, _| match (origin, sender) {
+        (Some(_), None) => Err(garde::Error::new(
+            "a message no agent sent comes from no block",
+        )),
+        _ => Ok(()),
     }
 }
 
