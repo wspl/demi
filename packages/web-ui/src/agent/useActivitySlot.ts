@@ -1,19 +1,9 @@
-import { computed, onScopeDispose, ref, watch, type ComputedRef, type Ref } from 'vue'
-import {
-  ACTIVITY_HANDOFF_MS,
-  activitySlotKind,
-  isHandoffBlock,
-  type ActivityKind,
-  type ActivitySlotInput,
-  type HandoffBlock,
-} from './activity-slot'
-import type { MessageListBlock } from './pending-steers'
+import { computed, ref, watch, type ComputedRef } from 'vue'
+import { activitySlotKind, type ActivityKind, type ActivitySlotInput } from './activity-slot'
 import type { PendingSubmissionState } from './types'
 
 export interface ActivitySlotState {
   kind: ActivityKind
-  /** The block rolling into the row; the row shows its face until the transcript takes it. */
-  incoming: HandoffBlock | null
   /** When the row's current wait began, as `Date.now()`; the Requesting clock counts from it. */
   since: number
 }
@@ -25,21 +15,12 @@ export interface ActivitySlotSources {
   pendingSubmissions: () => readonly PendingSubmissionState[]
   /** When the agent began to wait for the model's answer, as the server tells it; null when it waits for none. */
   waitingSince: () => number | null
-  /** The last block the list shows of the transcript: the one that may roll into the row. */
-  tail: () => MessageListBlock | undefined
   /** The conversation the list shows; another one starts over. */
   scope: () => string
 }
 
-interface Hold {
-  id: string
-  /** The face the row showed when the block arrived; it stays the row's kind until the handoff ends. */
-  kind: ActivityKind
-}
-
 /**
- * The transcript's tail row: why it waits, since when, and the block rolling
- * into it.
+ * The transcript's tail row: why it waits, and since when.
  *
  * A message sent while the conversation is idle starts a turn, so the row
  * says Requesting from the send, through its delivery and the server's
@@ -47,22 +28,16 @@ interface Hold {
  * (`product.md` § Recovering an unfinished turn). A message sent during an
  * action joins the queue instead, so whether a message starts a turn is read
  * from the phase at the moment it is sent, and again when Retry sends it anew.
- * A failed delivery ends that wait.
- *
- * A thinking or tool block that arrives while the row is waiting does not
- * replace the row: it rolls in as the row's face, and after the roll the
- * transcript row takes over in the same place. `heldId` is the block the list
- * leaves out meanwhile. The hold ends on its timer, when the block leaves the
- * tail (withdrawn or followed by another), when the scope changes, and on
- * unmount; every path releases through one function.
+ * A failed delivery ends that wait. What follows the wait, a step, the
+ * answer or a Stop, takes the row's place and rolls over it
+ * (`succeedKeys`, `RowRoll`).
  */
 export function useActivitySlot(sources: ActivitySlotSources): {
-  heldId: ComputedRef<string | null>
   slot: ComputedRef<ActivitySlotState | null>
   /** A message on its way starts a turn: it is the user's next message already. */
   startingTurn: ComputedRef<boolean>
 } {
-  const { input, pendingSubmissions, waitingSince, tail, scope } = sources
+  const { input, pendingSubmissions, waitingSince, scope } = sources
 
   // The message on its way that starts a turn; null when none is. Read when
   // the message is sent, before the server's phase can answer it.
@@ -75,60 +50,9 @@ export function useActivitySlot(sources: ActivitySlotSources): {
     { immediate: true, flush: 'sync' },
   )
   const startingTurn = computed(() => startingTurnId.value !== null)
-  const baseKind = computed(() =>
+  const kind = computed(() =>
     activitySlotKind({ ...input(), startingTurn: startingTurn.value }),
   )
-
-  const hold: Ref<Hold | null> = ref(null)
-  let timer: ReturnType<typeof setTimeout> | undefined
-
-  function release(): void {
-    if (timer !== undefined) {
-      clearTimeout(timer)
-      timer = undefined
-    }
-    hold.value = null
-  }
-
-  function start(id: string, kind: ActivityKind): void {
-    release()
-    hold.value = { id, kind }
-    timer = setTimeout(() => {
-      timer = undefined
-      hold.value = null
-    }, ACTIVITY_HANDOFF_MS)
-  }
-
-  watch(
-    () => [tail()?.id, baseKind.value] as const,
-    ([tailId], [previousTailId, previousKind]) => {
-      if (hold.value && hold.value.id !== tailId) {
-        release()
-      }
-      if (tailId === previousTailId || !previousKind) {
-        return
-      }
-      const block = tail()
-      if (isHandoffBlock(block)) {
-        start(block.id, previousKind)
-      }
-    },
-  )
-
-  watch(scope, release)
-  onScopeDispose(release)
-
-  const heldId = computed(() => hold.value?.id ?? null)
-  const face = computed(() => {
-    const current = hold.value
-    if (current) {
-      const block = tail()
-      const incoming = isHandoffBlock(block) && block.id === current.id ? block : null
-      return { kind: current.kind, incoming }
-    }
-    const kind = baseKind.value
-    return kind ? { kind, incoming: null } : null
-  })
 
   // The clock counts from when the wait began, which is the session's fact,
   // not this view's (`runtime.md` § Waiting for the model): a view shown
@@ -137,7 +61,7 @@ export function useActivitySlot(sources: ActivitySlotSources): {
   // this page started, by sending a message or a recovery, counts from that
   // action, before the server has it. Until the server tells a start, the row
   // counts from when it began to say Requesting.
-  const requesting = computed(() => face.value?.kind === 'requesting' && !face.value.incoming)
+  const requesting = computed(() => kind.value === 'requesting')
   const shownSince = ref(Date.now())
   const startedHere = ref(false)
   watch(
@@ -145,7 +69,7 @@ export function useActivitySlot(sources: ActivitySlotSources): {
     ([isRequesting, currentScope], [wasRequesting, previousScope]) => {
       if (isRequesting && (!wasRequesting || currentScope !== previousScope)) {
         shownSince.value = Date.now()
-        startedHere.value = startingTurnId.value !== null || input().pendingAction === 'resume'
+        startedHere.value = startingTurnId.value !== null || input().recovering
       }
     },
   )
@@ -158,10 +82,10 @@ export function useActivitySlot(sources: ActivitySlotSources): {
   })
 
   const slot = computed<ActivitySlotState | null>(() =>
-    face.value ? { ...face.value, since: since.value } : null,
+    kind.value ? { kind: kind.value, since: since.value } : null,
   )
 
-  return { heldId, slot, startingTurn }
+  return { slot, startingTurn }
 }
 
 /**

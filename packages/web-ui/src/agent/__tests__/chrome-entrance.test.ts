@@ -19,12 +19,10 @@ test('async history stays still, live blocks enter once, and changing conversati
   const blocks = ref<Block[]>([])
   const load = ref<SessionLoad>('loading')
   const conversation = ref('first')
-  const held = ref<string | null>(null)
   const timers = spyOn(globalThis, 'setTimeout')
   const clear = spyOn(globalThis, 'clearTimeout')
   const entrance = scope.run(() => useChromeEntrance(
     () => blocks.value.map((row) => row.id),
-    () => held.value,
     () => conversation.value,
     () => load.value,
   ))!
@@ -46,10 +44,6 @@ test('async history stays still, live blocks enter once, and changing conversati
     blocks.value.push(block('live'))
     await nextTick()
     expect(entrance.isEntering('live')).toBe(false)
-    held.value = 'handoff'
-    blocks.value.push(block('handoff'))
-    await nextTick()
-    expect(entrance.isEntering('handoff')).toBe(false)
     blocks.value.push(block('pending'))
     await nextTick()
     conversation.value = 'second'
