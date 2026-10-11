@@ -989,13 +989,14 @@ blocks are for nested UI, such as cards and inspection, not a second
 user-facing reply.
 
 The dock's agents chip counts live children only: *2 Agents* while two run,
-beside the terminal chip's *N Running*. Once none runs, a conversation that
-has had children keeps the chip, which then reads *Agents* with no count, so
-the children's history stays one click away; a conversation that never had
-one shows no chip. The panel's tabs are the live children: the chip opens it
-on the first of them, and with none live it opens empty, saying no agent is
-running, as an editor with no file open shows an empty area, never a child the
-user did not pick. Its Completed menu lists the finished children; the one
+beside the terminal chip's *N Running*, and shows only while one runs, as
+the Running chip shows only while a command runs. A finished child stays one
+click away where the transcript names it: its receipt's name and a link to it
+open the Agents window on its tab ([Linking an agent](#linking-an-agent)). The panel's tabs are the live children: the chip opens it
+on the first of them. A window opened on a finished child, or left open when
+the last child ends, shows that child's tab, and once it holds no tab it
+says no agent is running, as an editor with no file open shows an empty area,
+never a child the user did not pick. Its Completed menu lists the finished children; the one
 picked there shows as a tab after the live ones, and picking another replaces
 it in place, without the motion of a tab opening and another closing, since
 nothing opened or closed. Closing that tab, or the last one, leaves the panel
