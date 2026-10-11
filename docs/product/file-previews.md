@@ -392,7 +392,9 @@ it, as a link preview does, so a glance needs no window:
   card's box is known before the bytes arrive, from the medium's pixel
   size, so it never grows as it loads.
 - **Where.** Above the picture, centered on it, moved to stay within the
-  page and below it when the page has no room above; it covers what is
+  page and below it when the page has no room above. When neither side has
+  room for it, it goes on the side with more room and is scaled down to fit
+  there, so it never covers the picture it shows. It covers what is
   under it and takes no pointer, so the pointer moving off the picture
   closes it at once, and moving onto another picture shows that one's
   without the delay, as tooltips after the first do.
