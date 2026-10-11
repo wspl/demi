@@ -66,7 +66,7 @@ const props = withDefaults(defineProps<{
   failure?: SessionFailureNotice | null
   /** The messages sent and not yet confirmed, in the order they were sent. */
   pendingSubmissions?: readonly PendingSubmissionState[]
-  /** The waiting messages whose Undo Send is on its way, by id, which show nowhere. */
+  /** The waiting messages whose Recall is on its way, by id, which show nowhere. */
   removing?: readonly string[]
   /** A block to bring into view and mark for a moment, as a search result opened at it asks; once shown, `revealed` says so. */
   revealBlockId?: string | null
@@ -94,9 +94,9 @@ const emit = defineEmits<{
     conversationId: string,
     state: PersistedScrollState | undefined
   ]
-  undoSendSteer: [id: string]
+  recallSteer: [id: string]
   interruptPendingSteer: [id: string]
-  undoSendQueued: [id: string]
+  recallQueued: [id: string]
   sendQueued: [id: string]
   editUser: [blockId: string]
   /** Regenerate on the last answer: a new answer to the message `blockId`. */
@@ -387,9 +387,9 @@ defineExpose({
                 :entering="isEntering(String(item.key))"
                 :editable="renderBlocks[item.index]!.id === editableUserId"
                 :regenerate="renderBlocks[item.index]!.id === regenerateId ? regenerate : undefined"
-                @undo-send-steer="(id) => emit('undoSendSteer', id)"
+                @recall-steer="(id) => emit('recallSteer', id)"
                 @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
-                @undo-send-queued="(id) => emit('undoSendQueued', id)"
+                @recall-queued="(id) => emit('recallQueued', id)"
                 @send-queued="(id) => emit('sendQueued', id)"
                 @edit-user="(id) => emit('editUser', id)"
                 @retry-submission="(id) => emit('retrySubmission', id)"

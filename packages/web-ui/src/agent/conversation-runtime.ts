@@ -26,7 +26,7 @@ export function isRecordedTurnFailure(error: unknown): boolean {
 }
 
 /**
- * An Undo Send the session could not carry out, since the message went on
+ * A Recall the session could not carry out, since the message went on
  * first: the agent read the steer, or the queued message's turn began. The
  * transcript holds the message.
  */
