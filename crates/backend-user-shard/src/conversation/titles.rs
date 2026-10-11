@@ -134,7 +134,7 @@ async fn generate(
         id.as_str(),
         request_id,
         selection,
-        std::slice::from_ref(&request.message),
+        &request.message,
         cancel.clone(),
     )
     .await;

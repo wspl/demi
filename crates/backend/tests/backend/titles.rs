@@ -264,7 +264,7 @@ async fn the_first_message_titles_the_conversation_once_and_an_archive_ends_the_
     .await;
     {
         let asked = script.asked.lock().unwrap();
-        assert_eq!(input(&asked[0]), format!("1. {message}"));
+        assert_eq!(input(&asked[0]), message);
         // The request's own cap, although the configured model allows more
         // (`models.md` § Output limit).
         assert_eq!(
