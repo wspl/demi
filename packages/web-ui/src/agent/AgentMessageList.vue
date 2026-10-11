@@ -160,7 +160,7 @@ const paneStatus = computed(() =>
 )
 const mutedIds = computed(() => messageEditSuffixIds(renderBlocks.value, props.editTargetId))
 // Every streamed delta re-renders the visible rows; the lookup must not rescan the transcript per row.
-// The transcript's requests, and the line at the end of each that changed files: under the last of its rows.
+// The transcript's requests, which its rows' file pills read: what each opens, and which files they leave out.
 const requests = computed(() => transcriptRequests(props.blocks))
 provideTranscript({
   get node() {

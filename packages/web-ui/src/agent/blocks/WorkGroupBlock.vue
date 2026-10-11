@@ -118,7 +118,11 @@ const face = computed<Face>(() => {
   }
 })
 const calls = computed(() => props.group.steps.filter((step) => step.type === 'tool_call'))
-const changed = computed(() => callFiles(calls.value))
+const select = useEditSelection()
+const transcript = useTranscript()
+// What the request does not show, such as a file in a temporary directory,
+// the summed pills leave out too.
+const changed = computed(() => callFiles(calls.value, transcript?.requests() ?? null))
 const media = computed(() => foldedMedia(props.group.steps))
 // Folded, each file the steps changed shows once, with the lines of its
 // changes across them counted from its two ends, as the Change view's All
@@ -154,8 +158,6 @@ onBeforeUnmount(() => {
   timers.clear()
 })
 
-const select = useEditSelection()
-const transcript = useTranscript()
 /**
  * A summed pill opens its file at the first of the group's calls that
  * changed it, under the name the file had in that call.
