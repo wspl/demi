@@ -2,7 +2,7 @@
 //! mapping of each domain error to it.
 
 use axum::Json;
-use axum::http::{Method, StatusCode};
+use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
 
@@ -16,10 +16,21 @@ use demi_backend_providers::vault::accounts::AccountRefusal;
 use demi_backend_providers::vault::logins::LoginRefusal;
 use demi_backend_runners::files::{TextError, TextRefusal};
 use demi_host_interface::HostError;
+use demi_shared_types::ReadAt;
 
 use demi_backend_host_access::access::{HostAccessError, host_error_code};
 use demi_backend_host_access::stream::StreamError;
 use demi_backend_user_shard::shard::ShardUnavailable;
+
+/// The header that carries the Host's number a read answer was read at
+/// (`web-api.md` § File text and working tree changes).
+pub(crate) const READ_AT: HeaderName = HeaderName::from_static("x-demi-read-at");
+
+/// `<epoch>.<number>`, as [`READ_AT`] carries it; none for an epoch a
+/// header cannot carry, which no runner sends.
+pub(crate) fn read_at_value(read_at: &ReadAt) -> Option<HeaderValue> {
+    HeaderValue::from_str(&read_at.to_string()).ok()
+}
 
 #[derive(Debug)]
 pub(crate) struct ApiError {
@@ -27,6 +38,12 @@ pub(crate) struct ApiError {
     body: ErrorBody,
     /// The `Retry-After` the answer carries, in whole seconds.
     retry_after: Option<u64>,
+    /// The ETag of the file a refused read is an answer of, such as one
+    /// that is binary (`web-api.md` § File text and working tree changes).
+    etag: Option<String>,
+    /// The Host's number before the read the failure answers, which the
+    /// answer carries as `X-Demi-Read-At`.
+    read_at: Option<ReadAt>,
 }
 
 impl ApiError {
@@ -48,7 +65,21 @@ impl ApiError {
                 reason: None,
             },
             retry_after: None,
+            etag: None,
+            read_at: None,
         }
+    }
+
+    /// The error as the answer of a read the Host took at `read_at`.
+    pub(crate) fn with_read_at(mut self, read_at: ReadAt) -> Self {
+        self.read_at = Some(read_at);
+        self
+    }
+
+    /// The error as the answer of the file at version `etag`.
+    pub(crate) fn with_etag(mut self, etag: String) -> Self {
+        self.etag = Some(etag);
+        self
     }
 
     /// The error with how long, at least, the client waits before trying
@@ -140,14 +171,19 @@ impl ApiError {
     /// A Host's failure of a file operation (`host_error_code`).
     pub(crate) fn host_operation(error: HostError) -> Self {
         let (code, status) = host_error_code(&error);
-        Self::new(status_of(status), code, error.message)
+        let answered = Self::new(status_of(status), code, error.message);
+        match error.read_at {
+            Some(read_at) => answered.with_read_at(read_at),
+            None => answered,
+        }
     }
 
     /// A Host's failure of a working-tree operation: the runner's git codes,
     /// and otherwise as a file operation's.
     pub(crate) fn working_tree(error: HostError) -> Self {
         let message = error.message.clone();
-        match error.code() {
+        let read_at = error.read_at.clone();
+        let answered = match error.code() {
             Some("timeout") => Self::new(
                 StatusCode::SERVICE_UNAVAILABLE,
                 ErrorCode::ChangesTimeout,
@@ -167,6 +203,10 @@ impl ApiError {
                 ErrorCode::ChangesFailed,
                 message,
             ),
+        };
+        match read_at {
+            Some(read_at) => answered.with_read_at(read_at),
+            None => answered,
         }
     }
 
@@ -197,10 +237,15 @@ impl ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let mut response = (self.status, Json(self.body)).into_response();
+        let headers = response.headers_mut();
         if let Some(seconds) = self.retry_after {
-            response
-                .headers_mut()
-                .insert(axum::http::header::RETRY_AFTER, seconds.into());
+            headers.insert(axum::http::header::RETRY_AFTER, seconds.into());
+        }
+        if let Some(etag) = self.etag.and_then(|etag| HeaderValue::from_str(&etag).ok()) {
+            headers.insert(axum::http::header::ETAG, etag);
+        }
+        if let Some(read_at) = self.read_at.as_ref().and_then(read_at_value) {
+            headers.insert(READ_AT, read_at);
         }
         response
     }

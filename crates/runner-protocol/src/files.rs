@@ -2,10 +2,11 @@
 //! files, so that the relay's routes and a direct channel answer alike
 //! (`direct-channel.md` § Operations on the channel): a listing's entries,
 //! the paths a delete keeps, how a failed file operation reads to the page,
-//! and the page's file watch with the order of its states (`web-api.md`
-//! § File watch).
+//! and the page's file watch: its messages, its limits and the
+//! subscriptions it holds on the Host for them (`web-api.md` § File watch).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::time::Instant;
 
 use demi_shared_types::{MAX_SAFE_INTEGER, Timestamp};
 use garde::Validate;
@@ -77,249 +78,491 @@ impl FsFailure {
     }
 }
 
-/// The most folders and files outside the working tree a page's file watch
-/// names (`web-api.md` § File watch).
-pub const MAX_WATCHED_PATHS: usize = 64;
+/// What a subscription watches, and so when it changes (`runner.md`
+/// § Watching files).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum SubscriptionKind {
+    /// A file: it is created, written, removed or renamed, its metadata
+    /// changes, or a folder above it is removed or renamed.
+    File,
+    /// A folder's names: an entry comes, goes or is renamed, or the folder
+    /// or one above it is removed or renamed.
+    FolderNames,
+    /// A folder's names and its entries' sizes and times: as `folder_names`,
+    /// or an entry's content or metadata changes.
+    FolderDetails,
+    /// A working tree's changes list: a path git does not ignore changes,
+    /// or what the repository's git directory says of it.
+    Worktree,
+    /// The last commit of a working tree's repository: `HEAD`, a ref or
+    /// `packed-refs` changes.
+    Head,
+}
+
+/// What a subscription is of: its kind and its absolute path. Subscriptions
+/// of one subject share one on the Host.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Subject {
+    pub kind: SubscriptionKind,
+    pub path: String,
+}
+
+/// The most subscriptions one page's file watch holds, and the most of them
+/// outside the conversation's working tree (`web-api.md` § File watch).
+pub const MAX_PAGE_SUBSCRIPTIONS: usize = 4096;
+pub const MAX_OUTSIDE_SUBSCRIPTIONS: usize = 64;
+
+/// One subscription a page asks for, under a key of its own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct PageSubscription {
+    #[garde(length(chars, min = 1, max = 1024))]
+    pub key: String,
+    #[garde(skip)]
+    pub kind: SubscriptionKind,
+    #[garde(length(chars, min = 1), custom(demi_command_protocol::without_nul))]
+    pub path: String,
+}
 
 /// A message the page sends on its file watch, `WS .../fs/watch` or a
 /// direct `watch` channel (`web-api.md` § File watch).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum FileWatchRequest {
-    /// The folders and files outside the working tree the page shows now,
-    /// each absolute; each message replaces the last.
-    Paths {
-        #[garde(length(max = MAX_WATCHED_PATHS), inner(length(chars, min = 1)))]
-        paths: Vec<String>,
+    /// Subscriptions the page holds from now on.
+    Subscribe {
+        #[garde(length(max = MAX_PAGE_SUBSCRIPTIONS), dive)]
+        subscriptions: Vec<PageSubscription>,
+    },
+    /// Subscriptions the page no longer holds.
+    Unsubscribe {
+        #[garde(length(max = MAX_PAGE_SUBSCRIPTIONS))]
+        keys: Vec<String>,
+    },
+    /// Every subscription the page still holds, whose leases run again.
+    Renew {
+        #[garde(length(max = MAX_PAGE_SUBSCRIPTIONS))]
+        keys: Vec<String>,
     },
 }
 
-/// A message a page's file watch carries to the page.
+/// Why a page's subscription was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RefusedReason {
+    /// The page holds [`MAX_PAGE_SUBSCRIPTIONS`] subscriptions, or
+    /// [`MAX_OUTSIDE_SUBSCRIPTIONS`] outside the conversation's working
+    /// tree.
+    Limit,
+}
+
+/// A Host's number as the page reads it, which stays within JavaScript's
+/// safe range: the schema of a subscription's `since` and of a change's
+/// `at`.
+pub struct HostNumber;
+
+impl JsonSchema for HostNumber {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "HostNumber".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({ "type": "integer", "minimum": 0, "maximum": MAX_SAFE_INTEGER })
+    }
+}
+
+/// A message a page's file watch carries to the page (`web-api.md` § File
+/// watch).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FileWatchMessage {
-    /// Where the Host's watch is; `reason` says why the Host cannot watch.
-    State {
-        state: FileWatchState,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        reason: Option<String>,
+    /// The Host watches the subscription: a change at a number above
+    /// `since` is reported, numbers of `epoch`.
+    Live {
+        key: String,
+        #[schemars(with = "HostNumber")]
+        since: u64,
+        epoch: String,
     },
-    /// Absolute paths on the Host that something changed at, each once;
-    /// `entries`, those of them that came, went or were renamed, which a
-    /// folder's listing reads again for; and `ignored`, those git ignores in
-    /// the working tree's repository: they change what the File view shows,
-    /// not the working tree's changes.
+    /// Subscriptions whose subjects changed, each once, as `[key, at]`, `at`
+    /// the number of the latest event that changed it.
     Changed {
-        paths: Vec<String>,
-        entries: Vec<String>,
-        ignored: Vec<String>,
+        #[schemars(with = "Vec<(String, HostNumber)>")]
+        changes: Vec<(String, u64)>,
     },
+    /// The Host cannot watch the subscription, for this reason; it is over.
+    Unavailable { key: String, reason: String },
+    /// The subscription is past the page's limits; it is not held.
+    Refused { key: String, reason: RefusedReason },
+    /// A `renew` arrived; the leases of `keys` run again from it.
+    Renewed { keys: Vec<String> },
+    /// The Host is out of reach or a stopped Cloud: no subscription is live
+    /// until the next `live`.
+    Offline,
     /// Nothing else was sent for 30 seconds: the watch is quiet, not dead.
     Heartbeat,
 }
 
 impl FileWatchMessage {
-    fn state(state: FileWatchState) -> Self {
-        Self::State {
-            state,
-            reason: None,
-        }
-    }
-}
-
-/// Where a page's file watch is (`web-api.md` § File watch).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum FileWatchState {
-    /// The Host's watch runs: what is read from now on is covered.
-    Live,
-    /// The Host's watch lost reports: nothing read before is confirmed.
-    Lost,
-    /// The Host cannot watch.
-    Unavailable,
-    /// The Host is out of reach, or a stopped Cloud.
-    Offline,
-}
-
-/// What one of the Host's watches reports to a page's watch that follows
-/// it (`runner.md` § Watching files).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WatchReport {
-    /// The watch runs: a change from now on is reported.
-    Ready,
-    /// Absolute paths something changed at, those of them that came, went
-    /// or were renamed, and those git ignores in the watched path's
-    /// repository.
-    Changed {
-        paths: Vec<String>,
-        entries: Vec<String>,
-        ignored: Vec<String>,
-    },
-    /// The watch lost reports; it keeps running.
-    Lost,
-    /// The Host cannot watch the path, for this reason; nothing more comes.
-    Failed(String),
-}
-
-/// Where one of the Host's watches is.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Coverage {
-    Starting,
-    Running,
-    Failed(String),
-}
-
-/// The page's file watch as either end keeps it (`web-api.md` § File
-/// watch): the working tree's watch and one watch of each path outside it
-/// the page names, and the states it owes the page. The page learns which
-/// of its paths are covered from the order of the states: the first `live`
-/// covers the working tree; each `paths` message is answered by one `live`
-/// once every watch it names runs; a `lost` is followed by a `live` of its
-/// own once the watches run again. A Host that cannot watch a path says
-/// `unavailable` once, and the watch says no state after it.
-///
-/// It holds no watch itself: its owner starts and stops the Host's watches
-/// it names and hands it their reports.
-#[derive(Debug)]
-pub struct PageWatch {
-    tree: Coverage,
-    followed: BTreeMap<String, Coverage>,
-    /// The first `live` went out.
-    initial: bool,
-    /// A `lost` went out whose `live` is owed.
-    rescan: bool,
-    /// `paths` messages taken whose `live` is owed.
-    answers: usize,
-    /// The page heard that the Host cannot watch; no state follows.
-    unavailable: bool,
-}
-
-/// The Host's watches a `paths` message starts and stops.
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct WatchedPaths {
-    pub start: Vec<String>,
-    pub stop: Vec<String>,
-}
-
-impl Default for PageWatch {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl PageWatch {
-    /// A watch whose working tree's watch is starting.
-    pub fn new() -> Self {
-        Self {
-            tree: Coverage::Starting,
-            followed: BTreeMap::new(),
-            initial: false,
-            rescan: false,
-            answers: 0,
-            unavailable: false,
-        }
-    }
-
-    /// Follows the paths of a `paths` message, and only them: the watches to
-    /// start and to stop. A path its owner could not start a watch for, as
-    /// on a connection that ended, it drops with `forget`.
-    pub fn paths(&mut self, paths: Vec<String>) -> WatchedPaths {
-        let mut changed = WatchedPaths::default();
-        let named: std::collections::BTreeSet<&String> = paths.iter().collect();
-        self.followed.retain(|path, _| {
-            let kept = named.contains(path);
-            if !kept {
-                changed.stop.push(path.clone());
-            }
-            kept
-        });
-        for path in &paths {
-            if !self.followed.contains_key(path) {
-                self.followed.insert(path.clone(), Coverage::Starting);
-                changed.start.push(path.clone());
-            }
-        }
-        self.answers += 1;
-        changed
-    }
-
-    /// Stops following `path`, whose watch could not start.
-    pub fn forget(&mut self, path: &str) {
-        self.followed.remove(path);
-    }
-
-    /// Takes one watch's report, `path` naming the watch of a path outside
-    /// the working tree and none the working tree's: the messages the page
-    /// hears of it at once.
-    pub fn report(&mut self, path: Option<&str>, report: WatchReport) -> Vec<FileWatchMessage> {
-        let coverage = match path {
-            None => &mut self.tree,
-            Some(path) => match self.followed.get_mut(path) {
-                Some(coverage) => coverage,
-                // A path the page no longer names.
-                None => return Vec::new(),
-            },
+    /// The message as JSON texts of at most `limit` bytes each, as a page's
+    /// socket or channel carries them: a `changed` naming more keys than
+    /// one carries goes in as many as it takes.
+    pub fn into_texts(self, limit: usize) -> Vec<String> {
+        let text = serde_json::to_string(&self).expect("a watch message serializes");
+        let FileWatchMessage::Changed { changes } = self else {
+            return vec![text];
         };
-        match report {
-            WatchReport::Ready => {
-                if *coverage == Coverage::Starting {
-                    *coverage = Coverage::Running;
+        if text.len() <= limit || changes.len() < 2 {
+            return vec![text];
+        }
+        let (first, second) = changes.split_at(changes.len() / 2);
+        [first, second]
+            .into_iter()
+            .flat_map(|half| FileWatchMessage::Changed { changes: half.to_vec() }.into_texts(limit))
+            .collect()
+    }
+}
+
+/// What the page's subscriptions ask of the Host's, and tell the page, as
+/// [`PageSubscriptions`] works them out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Effect {
+    /// A message for the page.
+    Page(FileWatchMessage),
+    /// The page holds a subject the Host must watch from now on.
+    Hold(Subject),
+    /// Nothing the page holds needs the subject any more.
+    Release(Subject),
+    /// The subjects whose leases the page renewed.
+    Renew(Vec<Subject>),
+}
+
+/// Where the Host's subscription of a subject is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum HostState {
+    Starting,
+    Live { since: u64, epoch: String },
+}
+
+/// One subject the page holds, under its keys, or for the subscriptions
+/// inside the working tree it anchors.
+#[derive(Debug)]
+struct Held {
+    host: HostState,
+    keys: BTreeSet<String>,
+    /// The working tree's own subscription, held while anything the page
+    /// holds lies inside it.
+    anchor: bool,
+}
+
+/// One key the page holds: its subject, and when the page's lease of it
+/// ends, as the backend counts it.
+#[derive(Debug)]
+struct Key {
+    subject: Subject,
+    lease: Instant,
+}
+
+/// The subscriptions of one page's file watch, as the backend's relay and a
+/// runner's direct `watch` both keep them (`web-api.md` § File watch): the
+/// page's keys and their leases, the limits, and the subjects they hold on
+/// the Host, each once however many keys hold it. A subject inside the
+/// conversation's working tree also holds the working tree's own
+/// subscription, so that the Host watches it through the tree's one watch
+/// (`runner.md` § Watching files); the page hears of that one only under a
+/// key of its own.
+///
+/// It holds no subscription itself: its owner holds and releases the
+/// Host's as the [`Effect`]s say, and hands it their reports.
+#[derive(Debug)]
+pub struct PageSubscriptions {
+    root: Option<String>,
+    keys: BTreeMap<String, Key>,
+    subjects: HashMap<Subject, Held>,
+    /// Keys held outside the working tree.
+    outside: usize,
+    /// Keys held inside it, which the anchor serves.
+    inside: usize,
+}
+
+impl PageSubscriptions {
+    /// The subscriptions of a page whose conversation works in `root`;
+    /// none for a device's folder dialog, all of whose subscriptions are
+    /// outside a working tree.
+    pub fn new(root: Option<String>) -> Self {
+        Self {
+            root,
+            keys: BTreeMap::new(),
+            subjects: HashMap::new(),
+            outside: 0,
+            inside: 0,
+        }
+    }
+
+    fn inside(&self, path: &str) -> bool {
+        self.root.as_deref().is_some_and(|root| {
+            let root = root.trim_end_matches('/');
+            path == root || path.strip_prefix(root).is_some_and(|rest| rest.starts_with('/'))
+        })
+    }
+
+    fn anchor(&self) -> Option<Subject> {
+        self.root.as_ref().map(|root| Subject {
+            kind: SubscriptionKind::Worktree,
+            path: root.clone(),
+        })
+    }
+
+    /// The page subscribes, its leases running from `now`.
+    pub fn subscribe(&mut self, subscriptions: Vec<PageSubscription>, now: Instant) -> Vec<Effect> {
+        let mut effects = Vec::new();
+        for PageSubscription { key, kind, path } in subscriptions {
+            let subject = Subject { kind, path };
+            if let Some(held) = self.keys.get_mut(&key) {
+                if held.subject == subject {
+                    held.lease = now + crate::wire::SUBSCRIPTION_LEASE;
+                    if let Some(Held {
+                        host: HostState::Live { since, epoch },
+                        ..
+                    }) = self.subjects.get(&subject)
+                    {
+                        effects.push(Effect::Page(FileWatchMessage::Live {
+                            key,
+                            since: *since,
+                            epoch: epoch.clone(),
+                        }));
+                    }
+                    continue;
                 }
-                Vec::new()
+                self.drop_key(&key, &mut effects);
             }
-            WatchReport::Failed(reason) => {
-                *coverage = Coverage::Failed(reason);
-                Vec::new()
+            let inside = self.inside(&subject.path);
+            if self.keys.len() >= MAX_PAGE_SUBSCRIPTIONS
+                || (!inside && self.outside >= MAX_OUTSIDE_SUBSCRIPTIONS)
+            {
+                effects.push(Effect::Page(FileWatchMessage::Refused {
+                    key,
+                    reason: RefusedReason::Limit,
+                }));
+                continue;
             }
-            WatchReport::Changed { paths, entries, ignored } => {
-                vec![FileWatchMessage::Changed { paths, entries, ignored }]
+            if inside {
+                self.inside += 1;
+                if self.inside == 1 {
+                    self.hold_anchor(&mut effects);
+                }
+            } else {
+                self.outside += 1;
             }
-            // Before the first `live` nothing was covered.
-            WatchReport::Lost if self.initial && !self.unavailable => {
-                self.rescan = true;
-                vec![FileWatchMessage::state(FileWatchState::Lost)]
+            let held = self.subjects.entry(subject.clone()).or_insert_with(|| {
+                effects.push(Effect::Hold(subject.clone()));
+                Held {
+                    host: HostState::Starting,
+                    keys: BTreeSet::new(),
+                    anchor: false,
+                }
+            });
+            held.keys.insert(key.clone());
+            if let HostState::Live { since, epoch } = &held.host {
+                effects.push(Effect::Page(FileWatchMessage::Live {
+                    key: key.clone(),
+                    since: *since,
+                    epoch: epoch.clone(),
+                }));
             }
-            WatchReport::Lost => Vec::new(),
+            self.keys.insert(
+                key,
+                Key {
+                    subject,
+                    lease: now + crate::wire::SUBSCRIPTION_LEASE,
+                },
+            );
+        }
+        effects
+    }
+
+    fn hold_anchor(&mut self, effects: &mut Vec<Effect>) {
+        let Some(anchor) = self.anchor() else {
+            return;
+        };
+        let held = self.subjects.entry(anchor.clone()).or_insert_with(|| {
+            effects.push(Effect::Hold(anchor));
+            Held {
+                host: HostState::Starting,
+                keys: BTreeSet::new(),
+                anchor: false,
+            }
+        });
+        held.anchor = true;
+    }
+
+    /// The page no longer holds `keys`.
+    pub fn unsubscribe(&mut self, keys: &[String]) -> Vec<Effect> {
+        let mut effects = Vec::new();
+        for key in keys {
+            self.drop_key(key, &mut effects);
+        }
+        effects
+    }
+
+    /// Lets `key` go, and its subject once nothing holds it.
+    fn drop_key(&mut self, key: &str, effects: &mut Vec<Effect>) {
+        let Some(Key { subject, .. }) = self.keys.remove(key) else {
+            return;
+        };
+        if self.inside(&subject.path) {
+            self.inside -= 1;
+            if self.inside == 0
+                && let Some(anchor) = self.anchor()
+                && let Some(held) = self.subjects.get_mut(&anchor)
+            {
+                held.anchor = false;
+                self.release_unheld(&anchor, effects);
+            }
+        } else {
+            self.outside -= 1;
+        }
+        if let Some(held) = self.subjects.get_mut(&subject) {
+            held.keys.remove(key);
+            self.release_unheld(&subject, effects);
         }
     }
 
-    /// The states the watches owe the page now: `unavailable` once a watch
-    /// failed, and otherwise, once every watch runs, one `live` for the
-    /// first, for a `lost` and for each `paths` message not yet answered.
-    pub fn settle(&mut self) -> Vec<FileWatchMessage> {
-        if self.unavailable {
-            return Vec::new();
+    fn release_unheld(&mut self, subject: &Subject, effects: &mut Vec<Effect>) {
+        if self
+            .subjects
+            .get(subject)
+            .is_some_and(|held| held.keys.is_empty() && !held.anchor)
+        {
+            self.subjects.remove(subject);
+            effects.push(Effect::Release(subject.clone()));
         }
-        let coverages = std::iter::once(&self.tree).chain(self.followed.values());
-        let mut starting = false;
-        let mut failed = None;
-        for coverage in coverages {
-            match coverage {
-                Coverage::Starting => starting = true,
-                Coverage::Failed(reason) => failed = failed.or(Some(reason.clone())),
-                Coverage::Running => {}
-            }
-        }
-        if let Some(reason) = failed {
-            self.unavailable = true;
-            return vec![FileWatchMessage::State {
-                state: FileWatchState::Unavailable,
-                reason: Some(reason),
-            }];
-        }
-        if starting {
-            return Vec::new();
-        }
-        let owed = usize::from(!self.initial) + usize::from(self.rescan) + self.answers;
-        self.initial = true;
-        self.rescan = false;
-        self.answers = 0;
-        vec![FileWatchMessage::state(FileWatchState::Live); owed]
     }
 
-    /// Whether the page heard that the Host cannot watch, after which the
-    /// watch says no state.
-    pub fn unavailable(&self) -> bool {
-        self.unavailable
+    /// The page renews `keys` at `now`: those it holds are renewed, which
+    /// the page hears, with their subjects on the Host, the working tree's
+    /// own among them while anything inside it is.
+    pub fn renew(&mut self, keys: &[String], now: Instant) -> Vec<Effect> {
+        let mut renewed = Vec::new();
+        let mut subjects = BTreeSet::new();
+        for key in keys {
+            if let Some(held) = self.keys.get_mut(key) {
+                held.lease = now + crate::wire::SUBSCRIPTION_LEASE;
+                renewed.push(key.clone());
+                subjects.insert(held.subject.clone());
+            }
+        }
+        if self.inside > 0
+            && let Some(anchor) = self.anchor()
+            && self.subjects.contains_key(&anchor)
+        {
+            subjects.insert(anchor);
+        }
+        let mut effects = vec![Effect::Page(FileWatchMessage::Renewed { keys: renewed })];
+        if !subjects.is_empty() {
+            effects.push(Effect::Renew(subjects.into_iter().collect()));
+        }
+        effects
+    }
+
+    /// When the earliest lease the page holds ends.
+    pub fn next_expiry(&self) -> Option<Instant> {
+        self.keys.values().map(|key| key.lease).min()
+    }
+
+    /// Lets go of the keys whose leases ended by `now`: the page stopped
+    /// renewing them, and believes them over already.
+    pub fn expire(&mut self, now: Instant) -> Vec<Effect> {
+        let ended: Vec<String> = self
+            .keys
+            .iter()
+            .filter(|(_, key)| key.lease <= now)
+            .map(|(key, _)| key.clone())
+            .collect();
+        self.unsubscribe(&ended)
+    }
+
+    /// The Host watches `subject` from `since`.
+    pub fn live(&mut self, subject: &Subject, since: u64, epoch: &str) -> Vec<Effect> {
+        let Some(held) = self.subjects.get_mut(subject) else {
+            return Vec::new();
+        };
+        held.host = HostState::Live {
+            since,
+            epoch: epoch.to_owned(),
+        };
+        held.keys
+            .iter()
+            .map(|key| {
+                Effect::Page(FileWatchMessage::Live {
+                    key: key.clone(),
+                    since,
+                    epoch: epoch.to_owned(),
+                })
+            })
+            .collect()
+    }
+
+    /// The Host cannot watch `subject`: each key of it hears so and is
+    /// over. When the working tree's own subscription fails, what lies
+    /// inside it is watched alone, as the Host decides, and the tree's is
+    /// held again once nothing is inside it and something comes.
+    pub fn failed(&mut self, subject: &Subject, reason: &str) -> Vec<Effect> {
+        let Some(held) = self.subjects.remove(subject) else {
+            return Vec::new();
+        };
+        let mut effects = Vec::new();
+        for key in &held.keys {
+            effects.push(Effect::Page(FileWatchMessage::Unavailable {
+                key: key.clone(),
+                reason: reason.to_owned(),
+            }));
+            if self.keys.remove(key).is_some() {
+                if self.inside(&subject.path) {
+                    self.inside -= 1;
+                } else {
+                    self.outside -= 1;
+                }
+            }
+        }
+        if self.inside == 0
+            && let Some(anchor) = self.anchor()
+            && let Some(held) = self.subjects.get_mut(&anchor)
+        {
+            held.anchor = false;
+            self.release_unheld(&anchor, &mut effects);
+        }
+        effects
+    }
+
+    /// Subjects that changed, each with the number of its latest change:
+    /// one message naming each key of them once.
+    pub fn changed(&self, changes: &[(Subject, u64)]) -> Vec<Effect> {
+        let mut by_key: BTreeMap<&str, u64> = BTreeMap::new();
+        for (subject, at) in changes {
+            let Some(held) = self.subjects.get(subject) else {
+                continue;
+            };
+            for key in &held.keys {
+                let latest = by_key.entry(key).or_insert(*at);
+                *latest = (*latest).max(*at);
+            }
+        }
+        if by_key.is_empty() {
+            return Vec::new();
+        }
+        let changes = by_key
+            .into_iter()
+            .map(|(key, at)| (key.to_owned(), at))
+            .collect();
+        vec![Effect::Page(FileWatchMessage::Changed { changes })]
+    }
+
+    /// Every subject the page holds on the Host.
+    pub fn subjects(&self) -> impl Iterator<Item = &Subject> {
+        self.subjects.keys()
     }
 }

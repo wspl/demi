@@ -355,6 +355,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route("/devices/{id}/log", get(devices::log))
         .route("/devices/{id}/direct", get(direct::open))
+        .route("/devices/{id}/fs/watch", get(file_watch::open_device))
         .route(
             "/conversations/{id}/fs",
             get(files::list)

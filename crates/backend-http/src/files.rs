@@ -15,9 +15,10 @@ use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use demi_backend_remote_host::{ConditionalRead, byte_stream};
 use demi_backend_runners::files::{
-    TEXT_RANGE, TextError, browse_directory, read_text_file, text_of, text_of_stream,
+    TEXT_RANGE, TextError, TextRefusal, browse_directory, text_of, text_of_stream,
 };
-use demi_host_interface::{FileKind, FileStat, HostFs, MkdirOptions, RmOptions};
+use demi_host_interface::{FileKind, FileStat, HostError, HostFs, MkdirOptions, RmOptions};
+use demi_shared_types::ReadAt;
 use demi_runner_protocol::files::protected_path;
 use demi_shared_types::preview_media_type;
 use demi_web_api_protocol::error::ErrorCode;
@@ -33,7 +34,7 @@ use typed_path::Utf8TypedPath;
 use super::AppState;
 use super::body::JsonBody;
 use super::content::content_headers;
-use super::error::ApiError;
+use super::error::{ApiError, READ_AT, read_at_value};
 use super::gate::AuthUser;
 use super::listener::Peer;
 use super::query::QueryParams;
@@ -46,7 +47,7 @@ pub(super) async fn list(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
     QueryParams(query): QueryParams<DirectoryQuery>,
-) -> Result<Json<Directory>, ApiError> {
+) -> Result<Response, ApiError> {
     list_on(&state, &user.id, &id, None, query).await
 }
 
@@ -56,33 +57,45 @@ pub(super) async fn list_on_host(
     AuthUser(user): AuthUser,
     Path((id, device)): Path<(String, String)>,
     QueryParams(query): QueryParams<DirectoryQuery>,
-) -> Result<Json<Directory>, ApiError> {
+) -> Result<Response, ApiError> {
     list_on(&state, &user.id, &id, Some(&device), query).await
 }
 
 /// A directory's entries, the Host's starting directory when the query
-/// names none.
+/// names none, read at the Host's number it answers.
 async fn list_on(
     state: &AppState,
     user: &UserId,
     id: &str,
     device: Option<&str>,
     query: DirectoryQuery,
-) -> Result<Json<Directory>, ApiError> {
+) -> Result<Response, ApiError> {
     let requested = query.path.map(|path| path.as_str().to_owned());
-    let directory = on_host(state, user, id, device, async move |host| {
+    let (directory, read_at) = on_host(state, user, id, device, async move |host| {
         let path = requested.unwrap_or_else(|| host.root.clone());
-        let entries = browse_directory(&host.host, &path)
+        let (entries, read_at) = browse_directory(&host.host, &path)
             .await
             .map_err(ApiError::host_operation)?;
-        Ok(Directory {
+        let directory = Directory {
             path,
             home: host.home.clone(),
             entries,
-        })
+        };
+        Ok((directory, read_at))
     })
     .await?;
-    Ok(Json(directory))
+    Ok(read_answer(&read_at, Json(directory)))
+}
+
+/// `answer` with the Host's number before it was read, as every answer of
+/// what a subscription covers carries it (`web-api.md` § File text and
+/// working tree changes).
+pub(super) fn read_answer(read_at: &ReadAt, answer: impl IntoResponse) -> Response {
+    let mut response = answer.into_response();
+    if let Some(value) = read_at_value(read_at) {
+        response.headers_mut().insert(READ_AT, value);
+    }
+    response
 }
 
 pub(super) async fn make_directory(
@@ -188,7 +201,7 @@ pub(super) async fn exists(
 }
 
 /// What a text read answers: the text with its version, or that the file
-/// still has the version the request named.
+/// still has the version the request named, each read at a number.
 enum TextRead {
     Text { version: String, file: FileText },
     NotModified { version: String },
@@ -197,7 +210,8 @@ enum TextRead {
 /// A file's text: UTF-8 without a NUL byte, up to the size an edit keeps,
 /// with its version as the ETag. A request whose `If-None-Match` names the
 /// file's version answers 304, and its text never leaves the Host
-/// (`runner.md` § File contents).
+/// (`runner.md` § File contents). A file that is binary or too large is an
+/// answer like any other, with its ETag and number.
 pub(super) async fn text(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -206,7 +220,7 @@ pub(super) async fn text(
     QueryParams(FileQuery { path }): QueryParams<FileQuery>,
 ) -> Result<Response, ApiError> {
     let held = header(&headers, IF_NONE_MATCH).map(|held| held.trim().to_owned());
-    let read = on_host(&state, &user.id, &id, None, async move |host| {
+    let (read, read_at) = on_host(&state, &user.id, &id, None, async move |host| {
         let path = path.as_str().to_owned();
         let read = match held.as_deref() {
             Some(held) => host.host.read_pipe_unless(&path, TEXT_RANGE, held).await,
@@ -216,25 +230,37 @@ pub(super) async fn text(
                 .await
                 .map(ConditionalRead::Opened),
         };
-        match read.map_err(TextError::Host)? {
-            ConditionalRead::Unchanged { version, .. } => Ok(TextRead::NotModified { version }),
+        match read.map_err(ApiError::host_operation)? {
+            ConditionalRead::Unchanged {
+                version, read_at, ..
+            } => Ok((TextRead::NotModified { version }, read_at)),
             ConditionalRead::Opened(opened) => {
-                let text = text_of_stream(byte_stream(opened.body)).await?;
-                Ok(TextRead::Text {
+                let text = match text_of_stream(byte_stream(opened.body)).await {
+                    Ok(text) => text,
+                    Err(TextError::Refused(refusal)) => {
+                        return Err(ApiError::from(refusal)
+                            .with_etag(opened.version)
+                            .with_read_at(opened.read_at));
+                    }
+                    Err(TextError::Host(error)) => return Err(ApiError::host_operation(error)),
+                };
+                let read = TextRead::Text {
                     version: opened.version,
                     file: FileText { path, text },
-                })
+                };
+                Ok((read, opened.read_at))
             }
         }
     })
     .await?;
     Ok(match read {
         TextRead::Text { version, file } => {
-            ([(ETAG, header_value(&version))], Json(file)).into_response()
+            read_answer(&read_at, ([(ETAG, header_value(&version))], Json(file)))
         }
-        TextRead::NotModified { version } => {
-            (StatusCode::NOT_MODIFIED, [(ETAG, header_value(&version))]).into_response()
-        }
+        TextRead::NotModified { version } => read_answer(
+            &read_at,
+            (StatusCode::NOT_MODIFIED, [(ETAG, header_value(&version))]),
+        ),
     })
 }
 
@@ -283,15 +309,16 @@ pub(super) async fn raw(
             ErrorCode::FileChanged,
             "The file is no longer the version asked for",
         )),
-        Download::NotModified { version } => {
+        Download::NotModified { version, read_at } => {
             let mut headers = raw_file_headers(versioned);
             headers.insert(ETAG, header_value(&version));
-            Ok((StatusCode::NOT_MODIFIED, headers).into_response())
+            Ok(read_answer(&read_at, (StatusCode::NOT_MODIFIED, headers)))
         }
         Download::Head {
             stat,
             version,
             part,
+            read_at,
         } => {
             let file = FileAnswer {
                 path: &path,
@@ -300,7 +327,7 @@ pub(super) async fn raw(
                 version: &version,
                 versioned,
             };
-            Ok((part.status(), file.headers(&part)).into_response())
+            Ok(read_answer(&read_at, (part.status(), file.headers(&part))))
         }
         Download::Stream {
             stat,
@@ -308,6 +335,7 @@ pub(super) async fn raw(
             part,
             body,
             lease,
+            read_at,
         } => {
             let file = FileAnswer {
                 path: &path,
@@ -322,7 +350,8 @@ pub(super) async fn raw(
             // From here a connection nothing moves on is closed; a Cloud that
             // woke for the admission did not count.
             let watch = peer.control.watch(TRANSFER_IDLE, lease.ending());
-            Ok((part.status(), headers, paced_body(body, lease, watch)).into_response())
+            let body = paced_body(body, lease, watch);
+            Ok(read_answer(&read_at, (part.status(), headers, body)))
         }
     }
 }
@@ -386,19 +415,20 @@ pub(super) async fn changes(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
-    let changes = on_host(&state, &user.id, &id, None, async move |host| {
-        let changes = host
+    let (changes, read_at) = on_host(&state, &user.id, &id, None, async move |host| {
+        let (changes, read_at) = host
             .host
             .git_changes(&host.root)
             .await
             .map_err(ApiError::working_tree)?;
-        Ok(WorkingTreeChanges {
+        let changes = WorkingTreeChanges {
             root: host.root.clone(),
             changes,
-        })
+        };
+        Ok((changes, read_at))
     })
     .await?;
-    Ok(unless_held(&headers, &changes))
+    Ok(read_answer(&read_at, unless_held(&headers, &changes)))
 }
 
 /// One changed file's two sides as text: the last commit's, empty for a
@@ -410,28 +440,60 @@ pub(super) async fn changed_file(
     Path(id): Path<String>,
     QueryParams(TreeFileQuery { path }): QueryParams<TreeFileQuery>,
 ) -> Result<Response, ApiError> {
-    let sides = on_host(&state, &user.id, &id, None, async move |host| {
+    let (sides, read_at) = on_host(&state, &user.id, &id, None, async move |host| {
         // The two sides do not wait for each other (`runner.md` § Host
         // operations).
         let working = format!("{}/{}", host.root, path.as_str());
         let (committed, working) = tokio::join!(
             host.host.git_show(&host.root, path.as_str()),
-            read_text_file(&host.host, &working),
+            read_working_side(&host.host, &working),
         );
+        // The answer holds what both reads hold from the earlier one on.
+        let committed_at = match &committed {
+            Ok((_, read_at)) => Some(read_at.clone()),
+            Err(error) => error.read_at.clone(),
+        };
+        let working_at = match &working {
+            Ok((_, read_at)) => Some(read_at.clone()),
+            Err(error) => error.read_at.clone(),
+        };
+        let read_at = committed_at.into_iter().chain(working_at).reduce(ReadAt::earlier);
+        let answered = |error: ApiError| match &read_at {
+            Some(read_at) => error.with_read_at(read_at.clone()),
+            None => error,
+        };
         let original = match committed {
-            Ok(bytes) => text_of(Vec::from(bytes))?,
+            Ok((bytes, _)) => text_of(Vec::from(bytes)).map_err(|refusal| answered(refusal.into()))?,
             Err(error) if error.code() == Some("ENOENT") => String::new(),
-            Err(error) => return Err(ApiError::working_tree(error)),
+            Err(error) => return Err(answered(ApiError::working_tree(error))),
         };
         let modified = match working {
-            Ok(text) => text,
-            Err(TextError::Host(error)) if error.code() == Some("ENOENT") => String::new(),
-            Err(error) => return Err(error.into()),
+            Ok((text, _)) => text.map_err(|refusal| answered(refusal.into()))?,
+            Err(error) if error.code() == Some("ENOENT") => String::new(),
+            Err(error) => return Err(answered(ApiError::host_operation(error))),
         };
-        Ok(ChangeSides { original, modified })
+        Ok((ChangeSides { original, modified }, read_at))
     })
     .await?;
-    Ok(unless_held(&headers, &sides))
+    let answer = unless_held(&headers, &sides);
+    Ok(match read_at {
+        Some(read_at) => read_answer(&read_at, answer),
+        None => answer,
+    })
+}
+
+/// The working tree's side of a changed file as text, or why it is not
+/// text, with the Host's number before it read.
+async fn read_working_side(
+    host: &demi_backend_remote_host::RemoteHost,
+    path: &str,
+) -> Result<(Result<String, TextRefusal>, ReadAt), HostError> {
+    let opened = host.read_pipe(path, TEXT_RANGE).await?;
+    match text_of_stream(byte_stream(opened.body)).await {
+        Ok(text) => Ok((Ok(text), opened.read_at)),
+        Err(TextError::Refused(refusal)) => Ok((Err(refusal), opened.read_at)),
+        Err(TextError::Host(error)) => Err(error.with_read_at(opened.read_at)),
+    }
 }
 
 /// `value` as JSON with an ETag of its content, or 304 when the request's
@@ -467,7 +529,7 @@ pub(super) async fn committed(
     QueryParams(CommittedFileQuery { path, download }): QueryParams<CommittedFileQuery>,
 ) -> Result<Response, ApiError> {
     let tree_path = path.as_str().to_owned();
-    let bytes = on_host(&state, &user.id, &id, None, async move |host| {
+    let (bytes, read_at) = on_host(&state, &user.id, &id, None, async move |host| {
         host.host
             .git_show(&host.root, &tree_path)
             .await
@@ -484,8 +546,8 @@ pub(super) async fn committed(
     ));
     answer.extend(part.headers());
     match part.part_of(&bytes) {
-        Some(body) if method != Method::HEAD => Ok((part.status(), answer, body).into_response()),
-        _ => Ok((part.status(), answer).into_response()),
+        Some(body) if method != Method::HEAD => Ok(read_answer(&read_at, (part.status(), answer, body))),
+        _ => Ok(read_answer(&read_at, (part.status(), answer))),
     }
 }
 
