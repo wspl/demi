@@ -13,6 +13,7 @@ use demi_backend_host_access::target::cloud_home;
 use demi_backend_page_sync::Part;
 use demi_backend_remote_host::{Hello, Link, LinkOptions, host_identity};
 use demi_backend_runners::devices::{DeviceRecorder, Serving, Updating, send};
+use demi_backend_runners::native::system_targets;
 use demi_runner_protocol::wire::{HelloErrorCode, Inbound, KeptJob, RunnerInfo};
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::ConversationId;
@@ -193,6 +194,14 @@ impl Shard {
             before
         };
         let home_changed = named.as_deref() != Some(runner.identity.home_dir.as_str());
+        // A Host of a target not stored for yet has its package executables
+        // stored ahead of its first command (`native-runtime.md` § Publish
+        // packages, then source artifacts on demand).
+        let native = &self.services().native;
+        match &runner.native_target {
+            Some(target) => native.foresee([target.as_str()]),
+            None => native.foresee(system_targets(runner.platform, Some(&runner.os.arch))),
+        }
         let (link, driver) = Link::new(LinkOptions {
             device: device.to_string(),
             identity: host_identity(&runner.identity),

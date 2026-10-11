@@ -8,7 +8,8 @@
 //! promises: a runner installs a package from the backend's route and runs
 //! it, and the route serves only what the catalog names; the device then
 //! lists what its runner's cache holds, even while it is offline
-//! (§ Installed artifacts).
+//! (§ Installed artifacts). The backend stores the executables ahead for
+//! the targets of its Hosts, before a command needs them.
 
 use demi_command_protocol::host_target;
 use demi_runner_protocol::wire::HostArtifact;
@@ -85,5 +86,36 @@ async fn a_runner_installs_a_development_release_from_the_backend_which_serves_n
             "{unknown}"
         );
     }
+    backend.close().await;
+}
+
+/// The first command on a device after an upgrade finds its executable in
+/// the store: the backend stores it for the device's target as the device
+/// pairs, before any command, and again for the targets of the Hosts it
+/// knows as it starts (`native-runtime.md` § Publish packages, then source
+/// artifacts on demand).
+// A few seconds: a runner pairs.
+#[tokio::test]
+async fn a_backend_stores_its_hosts_executables_ahead_as_a_device_pairs_and_as_it_starts() {
+    let harness = Harness::new().with_native_fixture();
+    let (backend, master) = harness.start_set_up().await;
+    let stored = harness
+        .data_dir()
+        .join("native/blobs")
+        .join(&FIXTURE.descriptor.targets[host_target()].sha256);
+    let is_stored = || {
+        let held = stored.exists();
+        async move { held }
+    };
+    let laptop = backend.pair(&master, "Laptop").await;
+    eventually("the paired device's executable is stored", is_stored).await;
+    drop(laptop.runner);
+    backend.until_online(&master, laptop.device.id.as_str(), false).await;
+    backend.close().await;
+
+    // An upgrade's new store lacks it; no runner connects.
+    std::fs::remove_file(&stored).unwrap();
+    let backend = harness.start().await;
+    eventually("the paired device's executable is stored again", is_stored).await;
     backend.close().await;
 }
