@@ -252,7 +252,7 @@ they stand in a row, left to right in their order, as many as the message's
 width holds, and the rest wrap onto the next row. A run is two or more
 images or videos with nothing but white space between them, in one
 paragraph or in paragraphs that follow each other; any text, list or heading
-ends it. In a run, each image and each video is a thumbnail, as a tool's are
+ends it. In a run, each image and each video is a thumbnail, 80 pixels tall, as the next section sizes it
 ([Media a tool returned](#media-a-tool-returned)); they stand 8 pixels apart
 in both directions, and the run stands apart from the text as a lone image
 does. Text before the first image in the same paragraph does not stop the
@@ -275,16 +275,14 @@ so it wakes a stopped Cloud like any other
 For example, the agent runs `demi browser screenshot t1 | demi file view`.
 The call's result attaches the PNG as an image the model reads
 ([Media the model views](../agent/runtime.md#media-the-model-views)). The page
-shows the same picture under the call's row, whether the call is folded or
-open, and a click opens it in the [media viewer](#the-media-viewer):
+shows the same picture small in the call's row, after its title, whether
+the call is folded or open, and a click opens it in the
+[media viewer](#the-media-viewer):
 
 ```text
-▸ Take a screenshot of the login page    the call's row; its fold holds the
-                                         script and [image 1: ...]
-  ┌──────────────────────┐
-  │    the screenshot    │               what the model read; a click
-  │                      │               opens it large
-  └──────────────────────┘
+▣ Take screenshots of the login page ›  [▭][▭][▭][▭] +5
+  the call's row: its title, then what the model read, in one line;
+  a click on a picture opens it large; +5 counts those that do not fit
 ```
 
 - **Which calls.** A call shows the images and videos its own result carries,
@@ -295,16 +293,24 @@ open, and a click opens it in the [media viewer](#the-media-viewer):
   call returned, the end report
   carries them instead. The generic tool card shows its result's media the
   same way.
-- **Where.** Under the call's row, above the files the call changed, side
-  by side in the order of the result and wrapping onto the next row when the
-  transcript's width runs out, as a run of images in a message does
-  ([Files named in messages](#files-named-in-messages)). Every medium takes its box, a thumbnail's or a player's, before its
-  bytes arrive, so the transcript does not move when they load. The fold
+- **Where.** In the row's own line, 8 pixels after the last part of its
+  face, the chevron or a tag, side by side 4 pixels apart in the order of
+  the result. Each is 20 pixels tall, as wide as its proportions make it
+  within 16 and 48 pixels, cropped as a thumbnail is (below), with 4-pixel
+  corners. They never wrap and the row stays one line: as many show as fit
+  in the width the title leaves, and the title gives way, truncating, only
+  down to half the row; the rest are counted after the last one shown, *+5*,
+  in the row's faint text, which is not a control. A run's row folded shows
+  those of its steps the same way. A row's pictures are a glance at what the
+  step saw, not the place to look at them, which the viewer is. Every medium
+  takes its box before its bytes arrive, so the row does not move when they
+  load. The fold
   still shows the command's own output, whose lines
   `[image 1: image/png, 1280 × 720 px, 412000 bytes]` stands for the
   original file the job viewed, and `<binary stdout: 412000 bytes>` for bytes
   the model did not see.
-- **An image** is a thumbnail: 80 pixels tall, as wide as its proportions
+- **An image** in a message's run of pictures
+  ([Files named in messages](#files-named-in-messages)) is a thumbnail: 80 pixels tall, as wide as its proportions
   make it within 64 and 200 pixels, never enlarged. An image whose
   proportions fall outside that range is cropped to it: a tall one, such as
   a whole page's screenshot, keeps its top, and a wide one its middle. For
@@ -318,11 +324,10 @@ open, and a click opens it in the [media viewer](#the-media-viewer):
   stand in a row 40 pixels tall, with no empty band under them before the
   next row. Only a medium whose size is unknown until it loads, such as a
   video before its first frame, keeps the 80-pixel box, so the transcript
-  never shrinks when it arrives. It is small because it is a step of the
-  work, not something the agent chose to show. A click opens it in the
+  never shrinks when it arrives. A click opens it in the
   [media viewer](#the-media-viewer).
 - **A video** never plays in place. Its thumbnail is its first frame, sized
-  as an image's, with a play mark over its middle. A click opens it in the
+  as an image's, in a row or in a message,, with a play mark over its middle. A click opens it in the
   [media viewer](#the-media-viewer), scaled down to fit and never enlarged, where it
   plays at once in the player built into the user's browser, whose controls
   and full-screen control it keeps; closing the viewer stops it. A video's
