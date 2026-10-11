@@ -301,7 +301,11 @@ draft is kept as it is and the message is not put back, and a toast,
 *Message Unsent*, offers Undo, which sends it again the way it was sent. A
 refusal, as when the agent read the steer meanwhile, brings the row back
 where it was with a toast, and takes back out of the composer what it had put
-there. A message can be sent while the one before
+there, unless the user changed it since. A message taken back before it was
+delivered, as one whose files are still uploading, goes back into an empty
+composer with its files as they were; beside a draft it stays as an
+undelivered message with Retry, since files that never finished uploading
+have nothing stored to send again. A message can be sent while the one before
 it is still on its way: it goes the way the composer chooses, steer or
 queue, after the one before, never ahead of it.
 
@@ -883,7 +887,11 @@ Composer file -> backend upload/blob -> selected Host attachment directory
 Files remain staged in the draft until send, each as its upload, so another
 device shows the file and can send it. The backend writes the file under the Host
 user's `~/.demi/attachments/<conversation>/`, adding a numeric suffix to avoid
-an existing name. It does not put attachment files in the project directory.
+an existing name of other contents; a file of the same name and the same
+contents already there is the same file, and is not written again. The suffix
+belongs to the Host path alone: the attachment keeps the name the user gave
+it, so a file sent again, pasted or put back by Undo Send keeps its name,
+`login-before.png`, and never grows `-2-2`. It does not put attachment files in the project directory.
 A Cloud target may need to wake before this write.
 
 The agent message contains one `attachment` record with name, path, media type,
