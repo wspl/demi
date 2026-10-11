@@ -15,6 +15,7 @@ pub mod testing;
 
 pub use cut::{
     CompactionWindow, CutError, ResumePoint, Rewind, before_user, compaction_window, last_answer,
+    last_failure,
     last_assistant_text, resume_point, rewind, through_assistant, unwind,
 };
 pub use ids::{IdSource, RandomIds};

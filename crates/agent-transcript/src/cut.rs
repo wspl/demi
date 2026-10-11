@@ -4,7 +4,7 @@
 //! (`conversation-fork.md`) and the window compaction summarizes
 //! (`compaction.md` § One pass). Each is a pure reading of the blocks.
 
-use demi_shared_types::{Block, BlockId, TextBlock, ToolCallStatus, TurnId, is_blank};
+use demi_shared_types::{Block, BlockId, ErrorBlock, TextBlock, ToolCallStatus, TurnId, is_blank};
 
 use super::{is_compaction, latest_answer, opens_input_turn, replay_start};
 
@@ -208,6 +208,14 @@ pub fn last_answer(blocks: &[Block], since: usize) -> Option<&TextBlock> {
             Block::Text(text) => Some(text),
             _ => None,
         })
+}
+
+/// The last `error` block, the record of the agent's last failure.
+pub fn last_failure(blocks: &[Block]) -> Option<&ErrorBlock> {
+    blocks.iter().rev().find_map(|block| match block {
+        Block::Error(error) => Some(error),
+        _ => None,
+    })
 }
 
 /// The text of the last `text` block from `since` on; empty when there is

@@ -41,7 +41,7 @@ use std::{
 use demi_agent_store::{
     Checkpoint, CheckpointUpdate, RunningCommand, SessionStore, StoreError, media::HeldMedia,
 };
-use demi_agent_transcript::{IdSource, TranscriptLog, last_answer};
+use demi_agent_transcript::{IdSource, TranscriptLog, last_answer, last_failure};
 use demi_conversation_socket_protocol::{AbortResult, TranscriptPatch, TranscriptVersion};
 use demi_provider_common::{ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
@@ -709,6 +709,13 @@ impl AgentSession {
         self.shared.read(|core| {
             last_answer(core.transcript.blocks(), 0).map(|text| (text.id.clone(), text.text.clone()))
         })
+    }
+
+    /// The last `error` block, the record of the failure a failed child
+    /// closes with, which its completion names.
+    pub fn last_failure(&self) -> Option<BlockId> {
+        self.shared
+            .read(|core| last_failure(core.transcript.blocks()).map(|error| error.id.clone()))
     }
 
     /// The block of the call `tool_use_id`, which a message its command

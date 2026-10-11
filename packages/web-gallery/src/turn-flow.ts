@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, reactive, shallowRef, watch } from 'vue'
-import type { Block, ContextUsage, UserContentBlock } from '@demicodes/protocol'
+import type { AgentMessage, Block, ContextUsage, UserContentBlock } from '@demicodes/protocol'
 import { ACTIVITY_HANDOFF_MS } from '@demicodes/web-ui/agent/activity-slot'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
@@ -10,6 +10,7 @@ import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
 import { demoModel, editedFile, shellView, type ShellView } from './fixtures/blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { usageAt } from './fixtures/catalog'
+import { suitePathsUpdate } from './fixtures/subagents'
 import { printLive } from './live-command'
 
 /**
@@ -69,15 +70,22 @@ const COMPACT_MS = 1200
 const FEED_CHARS = 4
 const FEED_MS = 90
 
-/** A step of the `work` turn: thinking, without text or with it, or a command. */
+/**
+ * A step of the `work` turn: thinking, without text or with it, a command,
+ * which a `background` one leaves running when its call returns, the
+ * notice of a background command's end, or an agent's update.
+ */
 type WorkStep =
   | { kind: 'think', text: string }
-  | { kind: 'call', description: string, script: string, lines: string[], exitCode?: number, files?: ShellView['files'] }
+  | { kind: 'call', description: string, script: string, lines: string[], exitCode?: number, files?: ShellView['files'], background?: true }
+  | { kind: 'notice', of: string }
+  | { kind: 'receipt', message: AgentMessage }
 
 const WORK_TEXT = 'The wasm mjsunit tests fail on d8. Fix them.'
 const WORK_STEPS: WorkStep[] = [
   { kind: 'think', text: '' },
   { kind: 'call', description: 'Check the tests directory contents', script: 'ls test/mjsunit | head -3', lines: ['array-sort.js', 'array-splice.js', 'regress'] },
+  { kind: 'call', description: 'Build d8 for wasm', script: 'tools/build.sh d8 --target=wasm', lines: ['[1/1268] Compiling src/api/api.cc'], background: true },
   { kind: 'think', text: '' },
   { kind: 'call', description: 'Trial-run three mjsunit tests on d8.wasm', script: 'tools/run-tests.sh mjsunit/array-sort', lines: ['tools/run-tests.sh: Permission denied'], exitCode: 126 },
   { kind: 'think', text: 'The runner script has no execute bit. Set it, then point the status file at the new suite paths.' },
@@ -88,6 +96,8 @@ const WORK_STEPS: WorkStep[] = [
     lines: ['edited tools/run-tests.sh'],
     files: [editedFile({ path: 'tools/run-tests.sh', kind: 'modified', added: 1, removed: 1 })],
   },
+  { kind: 'notice', of: 'Build d8 for wasm' },
+  { kind: 'receipt', message: suitePathsUpdate },
   {
     kind: 'call',
     description: 'Patch the test status file',
@@ -443,6 +453,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     thinkThenReply(run, toolDone + WAIT_MS, THINK_2)
   }
 
+  /** A call of the `work` turn; a background one returned while its command still ran. */
   function workCall(id: string, createdAt: string, step: Extract<WorkStep, { kind: 'call' }>, status: ToolCallBlock['status']): ToolCallBlock {
     const text = `${step.lines.join('\n')}\n`
     return {
@@ -457,8 +468,37 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       output: status === 'completed' ? [{ type: 'text', text }] : [],
       view: status === 'executing'
         ? null
-        : shellView({ commandId: `cmd-${id}`, chunks: [{ stream: 'stdout', text }], exitCode: step.exitCode, files: step.files }),
+        : shellView({
+            commandId: `cmd-${id}`,
+            chunks: [{ stream: 'stdout', text }],
+            exitCode: step.exitCode,
+            files: step.files,
+            ...(step.background ? { status: 'running' } : {}),
+          }),
     }
+  }
+
+  /** The notice of the end of the background command `id` started, titled `title`, which the call that started it names. */
+  function workNotice(id: string, createdAt: string, commandId: string, title: string): Block {
+    return {
+      type: 'wakeup',
+      id,
+      turnId: `${id}-turn`,
+      createdAt,
+      model: demoModel,
+      placement: 'steer',
+      reports: [{ commandId, title, event: { kind: 'ended', exitCode: 0 }, output: '' }],
+    }
+  }
+
+  /** An agent's update as its receipt in the turn. */
+  function workReceipt(createdAt: string, message: AgentMessage): Block {
+    return { type: 'agent_message', id: message.id, turnId: `${message.id}-turn`, createdAt, model: demoModel, message }
+  }
+
+  /** The command of the `work` turn's call titled `description`: the one a notice reports the end of. */
+  function workCommand(description: string): TerminalRecord | undefined {
+    return state.terminals.find((terminal) => terminal.title === description)
   }
 
   /**
@@ -474,6 +514,29 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     for (const step of WORK_STEPS) {
       if (step.kind === 'think') {
         t = think(run, t, step.text) + (step.text ? 300 : 700)
+        continue
+      }
+      // A notice and a receipt enter at the agent's next step, and the model is asked again.
+      if (step.kind === 'notice') {
+        at(run, t, () => {
+          const terminal = workCommand(step.of)
+          if (!terminal)
+            return
+          printLive(terminal, '[1268/1268] Linking d8\n')
+          endTerminal(terminal, 'exited')
+          terminal.exitCode = 0
+          append(workNotice(nextId('notice'), now(), terminal.id, step.of))
+          waitForModel()
+        })
+        t += STEP_ANSWER_MS
+        continue
+      }
+      if (step.kind === 'receipt') {
+        at(run, t, () => {
+          append(workReceipt(now(), step.message))
+          waitForModel()
+        })
+        t += STEP_ANSWER_MS
         continue
       }
       const id = nextId('tool')
@@ -515,7 +578,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
         const terminal = command(id)
         if (terminal && step.exitCode !== undefined)
           terminal.exitCode = step.exitCode
-        endTerminal(terminal, 'exited')
+        // A background command runs on after its call returned, until its notice.
+        if (!step.background)
+          endTerminal(terminal, 'exited')
         replace(id, workCall(id, startedAt, step, 'completed'))
         writeSteers()
         waitForModel()
@@ -532,11 +597,24 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     state.pendingCalls = []
     state.phase = 'idle'
     const at = now()
+    const calls = new Map<string, string>()
     state.blocks = [
       userBlock([{ type: 'text', text: WORK_TEXT }]),
-      ...WORK_STEPS.map((step): Block => step.kind === 'think'
-        ? thinkingBlock(nextId('think'), at, step.text)
-        : workCall(nextId('tool'), at, step, 'completed')),
+      ...WORK_STEPS.map((step): Block => {
+        switch (step.kind) {
+          case 'think':
+            return thinkingBlock(nextId('think'), at, step.text)
+          case 'notice':
+            return workNotice(nextId('notice'), at, calls.get(step.of) ?? '', step.of)
+          case 'receipt':
+            return workReceipt(at, step.message)
+          case 'call': {
+            const id = nextId('tool')
+            calls.set(step.description, `cmd-${id}`)
+            return workCall(id, at, step, 'completed')
+          }
+        }
+      }),
       textBlock(nextId('text'), at, WORK_REPLY),
     ]
   }

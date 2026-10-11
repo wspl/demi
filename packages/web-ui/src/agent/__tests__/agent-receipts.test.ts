@@ -18,22 +18,29 @@ test('a receipt says what happened and names the agent as its object, tagged whe
   // A description is an imperative title: as the subject it read wrongly,
   // "Socket liveness fixes and logging completed", so it stands as the object.
   expect(receiptRow(fromAgent({ type: 'message' })))
-    .toEqual({ notice: 'Agent sent an update', title: 'Fix the socket liveness', tag: null })
+    .toEqual({ notice: 'Agent sent an update', title: 'Fix the socket liveness', subject: false, tag: null })
   expect(receiptRow(fromAgent({ type: 'completion', outcome: 'completed' })))
-    .toEqual({ notice: 'Agent finished', title: 'Fix the socket liveness', tag: null })
+    .toEqual({ notice: 'Agent finished', title: 'Fix the socket liveness', subject: false, tag: null })
   expect(receiptRow(fromAgent({ type: 'completion', outcome: 'failed' })))
-    .toEqual({ notice: 'Agent failed', title: 'Fix the socket liveness', tag: 'failed' })
+    .toEqual({ notice: 'Agent failed', title: 'Fix the socket liveness', subject: false, tag: 'failed' })
   expect(receiptRow(fromAgent({ type: 'completion', outcome: 'aborted' })))
-    .toEqual({ notice: 'Agent stopped', title: 'Fix the socket liveness', tag: 'stopped' })
+    .toEqual({ notice: 'Agent stopped', title: 'Fix the socket liveness', subject: false, tag: 'stopped' })
+})
+
+test('a message from the main agent, in its child’s transcript, names it as its subject and opens the call that sent it', () => {
+  // The root has no description of its own: as the object, "Agent sent an update: root session" read wrongly.
+  const fromMain = fromAgent({ type: 'message' }, 'root-call', 0)
+  expect(receiptRow(fromMain)).toEqual({ notice: 'sent a message', title: 'Main agent', subject: true, tag: null })
+  expect(receiptOrigin(fromMain)).toEqual({ node: null, blockId: 'root-call' })
 })
 
 test('the rows the user’s decisions and Demi make keep their wording and name no agent', () => {
   const plain = (event: AgentMessage['event']): AgentMessage =>
     ({ id: 'p1', recipientId: 'conversation-1', timestamp: '2026-10-11T12:00:00.000Z', content: 'Body.', event })
   expect(receiptRow(plain({ type: 'permission', outcome: 'allowed', action: 'manage skills' })))
-    .toEqual({ notice: 'You allowed this conversation to manage skills', title: null, tag: null })
+    .toEqual({ notice: 'You allowed this conversation to manage skills', title: null, subject: false, tag: null })
   expect(receiptRow(plain({ type: 'moved', host: 'MacBook Pro', path: '/Users/alex/app', home: '/Users/zan' })))
-    .toEqual({ notice: 'You moved this conversation to MacBook Pro · ~/app', title: null, tag: null })
+    .toEqual({ notice: 'You moved this conversation to MacBook Pro · ~/app', title: null, subject: false, tag: null })
   expect(receiptOrigin(plain({ type: 'move_failed' }))).toBeNull()
 })
 

@@ -5,12 +5,16 @@ import { homePath } from '../files/paths'
 /**
  * A receipt's row (`subagents.md` § Product rendering): what happened, in
  * the user's words, and the agent it names by its description, which is
- * an imperative title and so the notice's object, never its subject.
+ * an imperative title and so the notice's object, never its subject. The
+ * main agent, which has no description of its own, is named as such, and
+ * leads the row as its subject: *Main agent sent a message*.
  */
 export interface ReceiptRow {
   notice: string
   /** The agent the row names; none for a row the user's own decision or Demi makes. */
   title: string | null
+  /** The title is the notice's subject and leads it. */
+  subject: boolean
   /** The tag after the title: only what went wrong. */
   tag: 'failed' | 'stopped' | null
 }
@@ -18,7 +22,9 @@ export interface ReceiptRow {
 /** The row an agent message shows as in the transcript. */
 export function receiptRow(message: AgentMessage): ReceiptRow {
   const event = message.event
-  const plain = (notice: string): ReceiptRow => ({ notice, title: null, tag: null })
+  const plain = (notice: string): ReceiptRow => ({ notice, title: null, subject: false, tag: null })
+  const named = (notice: string, tag: ReceiptRow['tag'] = null): ReceiptRow =>
+    ({ notice, title: senderName(message), subject: false, tag })
   switch (event.type) {
     // The user's decision on a permission request, which reached the agent as this message.
     case 'permission':
@@ -31,16 +37,19 @@ export function receiptRow(message: AgentMessage): ReceiptRow {
     // Demi's notice that a move the agent asked for failed; the message says why.
     case 'move_failed':
       return plain('Move failed')
+    // A message from the main agent reaches one of its children.
     case 'message':
-      return { notice: 'Agent sent an update', title: senderName(message), tag: null }
+      return message.sender?.number === 0
+        ? { notice: 'sent a message', title: 'Main agent', subject: true, tag: null }
+        : named('Agent sent an update')
     case 'completion':
       switch (event.outcome) {
         case 'completed':
-          return { notice: 'Agent finished', title: senderName(message), tag: null }
+          return named('Agent finished')
         case 'failed':
-          return { notice: 'Agent failed', title: senderName(message), tag: 'failed' }
+          return named('Agent failed', 'failed')
         case 'aborted':
-          return { notice: 'Agent stopped', title: senderName(message), tag: 'stopped' }
+          return named('Agent stopped', 'stopped')
       }
   }
 }
@@ -54,7 +63,8 @@ function senderName(message: AgentMessage): string {
 /**
  * Where a receipt came from: the sender's transcript, null for the
  * conversation's own (the root, agent 0), and the block of it the receipt
- * names, if any: an update's call that sent it, a completion's last answer.
+ * names, if any: an update's call that sent it; a completion's last
+ * answer, or a failed child's failure record.
  */
 export interface ReceiptOrigin {
   node: string | null
