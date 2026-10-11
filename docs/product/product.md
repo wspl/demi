@@ -807,6 +807,12 @@ line's indentation. For example, the user copies a sent message and pastes it
 back into the empty composer: the composer holds exactly the message, with no
 line under it.
 
+A selection that runs past one message, from the user's message into the
+answer, copies as a web page does: the text of everything selected, in
+order, as it reads on screen, with none of a message's own forms. For
+example, the user drags from their question into the answer and copies: the
+clipboard holds both, the question as shown rather than its Markdown.
+
 Copying a sent message, by its Copy control or by selecting part of it,
 copies its files with its text, and pasting that into a composer brings the
 files back as capsules, where they stood, without uploading them again. For
