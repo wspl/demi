@@ -137,7 +137,7 @@ const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?:
               :pending="specimen.pending"
               :actions-pinned="specimen.actions"
               @send-now="productWould('Send the Queued Message Now')"
-              @remove="productWould('Remove the Queued Message')"
+              @undo-send="productWould('Unsend the Queued Message')"
             />
           </div>
         </div>
