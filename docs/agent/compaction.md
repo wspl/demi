@@ -397,8 +397,8 @@ tokens:
 Context window                      285.1k / 1M (29%)
 [███████████████▌▌▌········································]
 ■ Messages                          ~242.3k   24.2%   ›
-■ System prompt                       ~4.1k    0.4%   ›
-■ Tool definitions                    ~0.9k    0.1%
+■ System prompt                       ~3.6k    0.4%   ›
+■ Commands                            ~1.4k    0.1%   ›
 ■ Instructions                        ~6.3k    0.6%   ›
 ■ Skills                              ~6.0k    0.6%   ›
 ■ Other context                       ~0.5k    0.1%
@@ -409,8 +409,8 @@ Context window                      285.1k / 1M (29%)
 
 | Row | What it covers | How it is counted |
 | --- | --- | --- |
-| System prompt | The product's system prompt and a profile's added instructions; opens into its layers ([System prompt](system-prompt.md)) | Each layer's text estimate |
-| Tool definitions | The tools' schemas the request carries | Their JSON's estimate |
+| System prompt | The product's system prompt but its capability index, a profile's added instructions, and the definition of the `shell` tool, the one tool the model calls; opens into those parts ([System prompt](system-prompt.md)) | Each part's text estimate, the tool's as its JSON |
+| Commands | The capability index: the command groups the agent can run, as the system prompt lists them; opens into its groups, such as `demi browser` and `demi file`, so the user sees what each plugin's commands cost | Each group's text estimate |
 | Instructions | The `instructions` context blocks replayed; opens into their files | Block estimates, split per file |
 | Skills | The skills catalog's context block; opens into its skills | Its block estimate, split per entry |
 | Other context | Every other context block replayed, such as the execution context | Block estimates |
