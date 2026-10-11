@@ -946,34 +946,23 @@ async fn a_start_under_way_outlives_a_cancelled_call() {
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_node_has_at_most_eight_live_children_and_the_web_app_aborts_them_all() {
+async fn the_web_app_aborts_every_live_child() {
     let model = Model::default();
     let gate = Gate::new();
     let fixture = fixture(&model, TestProduct::default());
     let mut client = fixture.opened().await;
-    for index in 1..=8 {
-        model.child(&format!("limit {index}:"), [held_said(&gate, "waits")]);
+    for index in 1..=3 {
+        model.child(&format!("hold {index}:"), [held_said(&gate, "waits")]);
         spawn(
             &fixture,
             &root(),
-            json!({ "prompt": format!("limit {index}: hold") }),
+            json!({ "prompt": format!("hold {index}: hold") }),
         )
         .await;
     }
-    let ninth = agent(
-        &fixture.server,
-        &root(),
-        "spawn",
-        json!({ "prompt": "limit 9: hold" }),
-    )
-    .await;
-    assert_eq!(
-        refused(&ninth),
-        "demi agent spawn: at most 8 running subagents per session; abort one or wait for a result\n"
-    );
 
     // Each completion may wake the root once.
-    model.root((0..8).map(|_| said("stopped")));
+    model.root((0..3).map(|_| said("stopped")));
     client.send(ClientFrame::AbortSubagents {}).await;
     let tree = fixture.server.tree(&root()).unwrap();
     until(|| tree.is_quiescent()).await;
@@ -982,8 +971,8 @@ async fn a_node_has_at_most_eight_live_children_and_the_web_app_aborts_them_all(
         .into_iter()
         .filter(|(event, _, phase)| *event == SubagentEvent::Closed && *phase == JobPhase::Aborted)
         .count();
-    assert_eq!(closes, 8);
-    assert_eq!(root_receipts(&fixture).len(), 8);
+    assert_eq!(closes, 3);
+    assert_eq!(root_receipts(&fixture).len(), 3);
 }
 
 #[tokio::test(flavor = "local", start_paused = true)]
@@ -1274,6 +1263,8 @@ async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_exec
     let product = TestProduct {
         subagents: RefCell::new(SubagentSettings {
             enabled: true,
+            max_live: None,
+            max_depth: None,
             profiles: vec![worker],
         }),
         context: RefCell::new(Some(ON_THE_CLOUD.into())),

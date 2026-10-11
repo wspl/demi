@@ -5,11 +5,14 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import Button from '../ui/Button.vue'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
+import InlineError from '../ui/InlineError.vue'
+import LimitField from '../ui/LimitField.vue'
 import Switch from '../ui/Switch.vue'
 import Tag from '../ui/Tag.vue'
 import TagLine from '../ui/TagLine.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import { ICON_PX } from '../ui/icon-metrics'
+import type { SentenceText } from '../ui/ui-text'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
@@ -18,16 +21,21 @@ import { profileMissing, profileModelLabel } from './subagent-profiles'
 import type { SettingsSubagentDraft, SettingsSubagentProfile } from './types'
 
 /**
- * The Subagent section (`subagents.md` § Profiles): the switch that turns
- * subagents on or off for the user, and the user's profiles, each with a
+ * The Subagents section (`subagents.md` § Profiles, § Limits): the switch
+ * that turns subagents on or off for the user, the two limits, each a
+ * number or Unlimited after a warning, and the user's profiles, each with a
  * switch of its own and an editor. A profile whose model settings name
  * something the catalog no longer offers is marked unavailable with the part
  * that is missing, which the page derives from the catalog it holds. The
  * host saves; the next spawn of every conversation uses a change.
  */
 const props = defineProps<{
-  /** The Subagent switch. */
+  /** The Subagents switch. */
   enabled: boolean
+  /** Maximum subagents: how many of a conversation are live at once; null for Unlimited. */
+  maxLive: number | null
+  /** Maximum depth: how many levels below the main agent; null for Unlimited. */
+  maxDepth: number | null
   profiles: SettingsSubagentProfile[]
   /** The providers and models the model menu offers. */
   providers: ProviderInfo[]
@@ -45,8 +53,13 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   switch: [enabled: boolean]
+  /** A new limit; null for Unlimited, which the page confirmed first. */
+  setLimit: [limit: 'maxLive' | 'maxDepth', value: number | null]
   switchProfile: [id: string, enabled: boolean]
 }>()
+
+/** What each limit's field says of text that is no limit. */
+const limitProblems = ref<Record<'maxLive' | 'maxDepth', SentenceText | null>>({ maxLive: null, maxDepth: null })
 
 interface Editor {
   /** The profile edited; null for a new one. */
@@ -140,7 +153,7 @@ const empty = computed(() => props.profiles.length === 0)
 
 <template>
   <SettingsPage
-    title="Subagent"
+    title="Subagents"
     description="Child agents an agent starts for parts of its work. A change reaches the next spawn of every conversation, an open one included."
   >
     <SettingsGroup>
@@ -157,6 +170,44 @@ const empty = computed(() => props.profiles.length === 0)
           :aria-label="`Subagents ${enabled ? 'on' : 'off'}`"
           @update:model-value="emit('switch', $event)"
         />
+      </SettingsRow>
+      <SettingsRow
+        label="Maximum subagents"
+        description="The most subagents one conversation runs at once."
+      >
+        <template v-if="limitProblems.maxLive" #detail>
+          <InlineError :message="limitProblems.maxLive" />
+        </template>
+        <LimitField
+          :model-value="maxLive"
+          label="Maximum subagents"
+          :overlay-store="overlayStore"
+          confirm-title="Allow unlimited subagents?"
+          confirm-action="Allow Unlimited"
+          @commit="emit('setLimit', 'maxLive', $event)"
+          @problem="limitProblems.maxLive = $event"
+        >
+          <p>Agents may then start subagents without bound, which can make conversations unstable and spend many tokens.</p>
+        </LimitField>
+      </SettingsRow>
+      <SettingsRow
+        label="Maximum depth"
+        description="At 1, only the main agent starts subagents."
+      >
+        <template v-if="limitProblems.maxDepth" #detail>
+          <InlineError :message="limitProblems.maxDepth" />
+        </template>
+        <LimitField
+          :model-value="maxDepth"
+          label="Maximum depth"
+          :overlay-store="overlayStore"
+          confirm-title="Allow unlimited depth?"
+          confirm-action="Allow Unlimited"
+          @commit="emit('setLimit', 'maxDepth', $event)"
+          @problem="limitProblems.maxDepth = $event"
+        >
+          <p>Subagents may then start subagents of their own without bound, which can make conversations unstable and spend many tokens.</p>
+        </LimitField>
       </SettingsRow>
     </SettingsGroup>
 

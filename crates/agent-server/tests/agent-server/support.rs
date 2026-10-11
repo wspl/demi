@@ -40,7 +40,7 @@ use tokio_util::sync::CancellationToken;
 /// settings, which the test can change between two spawns, and a context
 /// source, the conversation's execution context, which the test can set.
 pub struct TestProduct {
-    /// Subagents on and no profile until the test sets them.
+    /// Subagents on, Unlimited, and no profile until the test sets them.
     pub subagents: RefCell<SubagentSettings>,
     /// The execution context: each node whose transcript does not hold it
     /// yet is given it before its next request.
@@ -83,6 +83,8 @@ impl Default for TestProduct {
         Self {
             subagents: RefCell::new(SubagentSettings {
                 enabled: true,
+                max_live: None,
+                max_depth: None,
                 profiles: Vec::new(),
             }),
             context: RefCell::default(),

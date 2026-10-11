@@ -60,7 +60,7 @@ import { formatTokens } from '../ui/token-count'
 import type { TitleText } from '../ui/ui-text'
 
 /**
- * Models & Providers: a rail of providers beside the selected one. Every supported
+ * Providers: a rail of providers beside the selected one. Every supported
  * subscription is always listed and manages its accounts; an API key is added from
  * the rail and edits its endpoint, key and model list on its page. Adding opens the
  * new entry's form, and the entry joins the list once the host saved it. Removing
@@ -444,7 +444,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
 </script>
 
 <template>
-  <SettingsPage wide fill title="Models & Providers">
+  <SettingsPage wide fill title="Providers">
     <AsyncRegion
       :state="load"
       label="Loading providers…"

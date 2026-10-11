@@ -90,7 +90,7 @@ pub fn web() -> Vec<Root> {
         sends::<settings::PreferencesPatch>(),
         sends::<plugins::PluginSwitch>(),
         sends::<instructions::InstructionsBody>(),
-        sends::<subagents::SubagentSwitch>(),
+        sends::<subagents::SubagentsPatch>(),
         sends::<subagents::NewProfile>(),
         sends::<subagents::ProfilePatch>(),
         receives::<subagents::ProfileAnswer>(),

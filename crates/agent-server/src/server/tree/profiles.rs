@@ -1,9 +1,10 @@
 //! The user's subagent settings as a tree reads them (`subagents.md`
-//! § Profiles): the checks a spawn makes against the settings as they are at
-//! that moment, and `demi agent profiles`. Nothing here is kept between two
-//! reads, so a change in settings reaches the next spawn of every tree.
+//! § Profiles, § Limits): the checks a spawn makes against the settings as
+//! they are at that moment, and `demi agent profiles`. Nothing here is kept
+//! between two reads, so a change in settings reaches the next spawn of
+//! every tree.
 
-use std::rc::Rc;
+use std::{num::NonZeroU32, rc::Rc};
 
 use demi_agent_tools::{HostResolver, Profile, SubagentSettings, Unavailable};
 use demi_shared_types::ModelSelection;
@@ -15,7 +16,7 @@ use super::Tree;
 use crate::{Node, server::AgentServer};
 
 /// Why a spawn fails while the user has subagents off.
-const SUBAGENTS_OFF: &str = "subagents are turned off in settings; do this work in this session, or ask the user to turn subagents on in Settings > Subagent.";
+const SUBAGENTS_OFF: &str = "subagents are turned off in settings; do this work in this session, or ask the user to turn subagents on in Settings > Subagents.";
 
 /// What a spawn makes its child of: the profile's settings, or the
 /// parent's for the inherit profile.
@@ -24,9 +25,29 @@ pub(super) struct Setup {
     /// The instructions that replace the parent's; none for the parent's.
     pub(super) instructions: Option<String>,
     pub(super) can_spawn: bool,
+    /// The limits the settings set at that moment, which the spawn checks
+    /// next ([`Limits`]).
+    pub(super) limits: Limits,
 }
 
-/// `demi agent profiles --json`: the Subagent switch, and each enabled
+/// The user's two limits on a conversation's subagents (`subagents.md`
+/// § Limits), each none for Unlimited.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Limits {
+    pub(super) max_live: Option<NonZeroU32>,
+    pub(super) max_depth: Option<NonZeroU32>,
+}
+
+impl Limits {
+    fn of(settings: &SubagentSettings) -> Self {
+        Self {
+            max_live: settings.max_live,
+            max_depth: settings.max_depth,
+        }
+    }
+}
+
+/// `demi agent profiles --json`: the Subagents switch, and each enabled
 /// profile while it is on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub(crate) struct ProfileListing {
@@ -48,7 +69,8 @@ impl<H: HostResolver> Tree<H> {
     /// profile, makes its child of. The checks run in their order against
     /// the user's current settings, and the first that fails ends the spawn
     /// before anything is created: subagents are on, the name is known, the
-    /// profile is enabled, and its model settings make a selection.
+    /// profile is enabled, and its model settings make a selection. The
+    /// limits the spawn checks next come with the answer.
     pub(super) async fn spawn_setup(
         &self,
         server: &AgentServer<H>,
@@ -59,11 +81,13 @@ impl<H: HostResolver> Tree<H> {
         if !settings.enabled {
             return Err(SUBAGENTS_OFF.to_owned());
         }
+        let limits = Limits::of(&settings);
         let Some(name) = name else {
             return Ok(Setup {
                 model: owner.session().model(),
                 instructions: None,
                 can_spawn: true,
+                limits,
             });
         };
         let profile = settings
@@ -73,7 +97,7 @@ impl<H: HostResolver> Tree<H> {
             .ok_or_else(|| unknown(name, &settings))?;
         if !profile.enabled {
             return Err(format!(
-                "profile \"{name}\" is disabled in settings; omit --profile to inherit the parent, or ask the user to enable it in Settings > Subagent."
+                "profile \"{name}\" is disabled in settings; omit --profile to inherit the parent, or ask the user to enable it in Settings > Subagents."
             ));
         }
         let model = match &profile.model {
@@ -89,7 +113,13 @@ impl<H: HostResolver> Tree<H> {
             model,
             instructions: profile.instructions.clone(),
             can_spawn: profile.can_spawn,
+            limits,
         })
+    }
+
+    /// The limits the user's settings set now, which a resume checks.
+    pub(super) async fn limits(&self, server: &AgentServer<H>) -> Result<Limits, String> {
+        Ok(Limits::of(&read(server).await?))
     }
 
     /// `demi agent profiles`, from the user's settings now: while subagents

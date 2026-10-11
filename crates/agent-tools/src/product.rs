@@ -4,6 +4,7 @@
 //! node's shell tools reach, and the context sources asked before each
 //! request.
 
+use std::num::NonZeroU32;
 use std::rc::Rc;
 
 use demi_host_interface::{CommandSet, Host, HostError, HostErrorKind};
@@ -33,12 +34,19 @@ impl ToolsetSource for Toolset {
     }
 }
 
-/// The user's subagent settings at one moment (`subagents.md` § Profiles):
-/// the Subagent switch and the user's profiles, in name order.
+/// The user's subagent settings at one moment (`subagents.md` § Profiles,
+/// § Limits): the Subagents switch, the limits and the user's profiles, in
+/// name order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubagentSettings {
     /// Whether the user has subagents on.
     pub enabled: bool,
+    /// How many subagents of a conversation may be live at once, at every
+    /// depth together; none for Unlimited.
+    pub max_live: Option<NonZeroU32>,
+    /// How many levels of subagents a tree may have below its root: at 1,
+    /// only the root spawns. None for Unlimited.
+    pub max_depth: Option<NonZeroU32>,
     pub profiles: Vec<Profile>,
 }
 
