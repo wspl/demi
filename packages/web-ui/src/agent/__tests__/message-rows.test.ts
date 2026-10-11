@@ -68,18 +68,20 @@ function answered(): MessageRowsSource {
  * the order it receives them. Whatever replaces a row takes its key, so a
  * row drawn before is drawn still after any change the user did not make
  * (`product.md` § Following the agent's work: what replaces a row takes its
- * place), and no key is drawn twice.
+ * place), and no key is drawn twice. `gives` names the keys a change the
+ * user asked for lets go, as the Requesting row of a Continue gives way to
+ * a step that joins the run above it.
  */
 function follow(state: MessageRowsSource) {
   const scope = effectScope()
   const list = scope.run(() => useMessageRows(() => state))!
   let previous = drawnRows(list)
-  const step = async (name: string, change: () => void): Promise<string[]> => {
+  const step = async (name: string, change: () => void, gives: string[] = []): Promise<string[]> => {
     change()
     await nextTick()
     const now = drawnRows(list)
     expect({ name, twice: now.filter((key, index) => now.indexOf(key) !== index) }).toEqual({ name, twice: [] })
-    expect({ name, lost: previous.filter((key) => !now.includes(key)) }).toEqual({ name, lost: [] })
+    expect({ name, lost: previous.filter((key) => !now.includes(key)) }).toEqual({ name, lost: gives })
     previous = now
     return now
   }
@@ -202,7 +204,7 @@ const workedOn = (...end: Block[]): Block[] => [userBlock('u-1', 'm-1', 'Fix the
 // at the end keeps its key from `from` on.
 const transitions: { name: string; blocks: Block[]; phase?: MessageRowsSource['phase']; from: string; changes: Change[] }[] = [
   {
-    name: 'Stop, then Continue, then the next step',
+    name: 'Stop, then Continue',
     blocks: workedOn(),
     phase: 'running',
     from: 'stopped',
@@ -213,13 +215,10 @@ const transitions: { name: string; blocks: Block[]; phase?: MessageRowsSource['p
       acknowledged,
       ['marked resumed', replace('x-1', abort('x-1', true))],
       ['resume written', append(resumed('r-1'))],
-      ['thinking', append(thinking('k-2'))],
-      ['answer', append(text('a-2', 'Fixed.'))],
-      ['ended', phase('idle')],
     ],
   },
   {
-    name: 'an error at the end, then Resume, then the next step',
+    name: 'an error at the end, then Resume',
     blocks: workedOn(failure('e-1')),
     from: 'start',
     changes: [
@@ -227,7 +226,18 @@ const transitions: { name: string; blocks: Block[]; phase?: MessageRowsSource['p
       acknowledged,
       ['error dropped', drop('e-1')],
       ['resume written', append(resumed('r-1'))],
-      ['call', append(call('c-2', 'executing'))],
+    ],
+  },
+  {
+    name: 'Stop after the agent\'s words, then Continue, then the next step',
+    blocks: [userBlock('u-1', 'm-1', 'Fix the login test.'), text('a-1', 'Looking.'), abort('x-1')],
+    from: 'start',
+    changes: [
+      recover,
+      acknowledged,
+      ['marked resumed', replace('x-1', abort('x-1', true))],
+      ['resume written', append(resumed('r-1'))],
+      ['call', append(call('c-1', 'executing'))],
     ],
   },
   {
@@ -364,23 +374,38 @@ test.each(transitions)('$name: no row goes while another takes its place, and th
   stop()
 })
 
-// Continue after a Stop: the run before the Stop is done, so the resumed
-// turn's steps are a run of their own in the Stopped row's place, never
-// steps that join the run above it while the row under it goes.
-test('a continued turn\'s steps are a run of their own, in the place of the Stopped row', async () => {
+// Continue after a Stop and Resume after an error: the Stopped row or the
+// error record rolls into Requesting, and the turn's first step joins the
+// run above, as the backend stores it (`runtime.md` § Work groups): the
+// run's row keeps its key and shows the step as its newest, and the
+// Requesting row goes, once, the one shrink the user asked for.
+test.each([
+  { name: 'Continue after a Stop', record: abort('x-1'), unwind: replace('x-1', abort('x-1', true)) },
+  { name: 'Resume after an error', record: failure('e-1'), unwind: drop('e-1') },
+])('$name: the next step joins the run above, and the Requesting row goes once', async ({ record, unwind }) => {
   const state = answered()
-  state.blocks = workedOn(abort('x-1'))
+  state.blocks = workedOn(record)
   const { list, step, stop } = follow(state)
-  const stopped = list.keyOf(list.rows.value.at(-1)!)
-  await step('Continue', recover[1].bind(null, state))
+  const runRow = () => list.rows.value.filter((row) => row.type === 'work_group')
+  const run = list.keyOf(runRow()[0]!)
+  const tail = list.keyOf(list.rows.value.at(-1)!)
+  await step('pressed', recover[1].bind(null, state))
   expect(list.rows.value.at(-1)?.type).toBe('activity_slot')
+  expect(list.keyOf(list.rows.value.at(-1)!)).toBe(tail)
   await step('acknowledged', acknowledged[1].bind(null, state))
-  await step('marked resumed', () => replace('x-1', abort('x-1', true))(state))
+  await step('unwound', () => unwind(state))
   await step('resume written', () => append(resumed('r-1'))(state))
-  await step('call', () => append(call('c-2', 'executing'))(state))
-  const runs = list.rows.value.filter((row) => row.type === 'work_group')
-  expect(runs.map((row) => row.type === 'work_group' && row.steps.map((each) => each.id))).toEqual([['c-1'], ['c-2']])
-  expect(list.keyOf(runs[1]!)).toBe(stopped)
+  expect(list.rows.value.at(-1)?.type).toBe('activity_slot')
+  await step('call', () => append(call('c-2', 'executing', 'c-1'))(state), [tail])
+  const runs = runRow()
+  expect(runs.map((row) => row.type === 'work_group' && [row.live, row.steps.map((each) => each.id)])).toEqual([[true, ['c-1', 'c-2']]])
+  expect(list.keyOf(runs[0]!)).toBe(run)
+  expect(list.rows.value.at(-1)).toBe(runs[0])
+  await step('answer', () => {
+    replace('c-2', call('c-2', 'completed', 'c-1'))(state)
+    append(text('a-2', 'Fixed.'))(state)
+  })
+  await step('ended', phase('idle').bind(null, state))
   stop()
 })
 
