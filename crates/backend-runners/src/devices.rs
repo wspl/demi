@@ -613,16 +613,26 @@ impl DeviceRecorder {
 
     /// Records what `device`'s runner said in its hello: its operating
     /// system, its release and its instance, and that it was connected just
-    /// now.
-    pub async fn hello(&self, device: DeviceId, os: OperatingSystem, version: String, instance: u64) {
+    /// now; advances the execution contexts the report changes, of which
+    /// `home_changed` says whether the home they named did.
+    pub async fn hello(
+        &self,
+        device: DeviceId,
+        os: OperatingSystem,
+        version: String,
+        instance: u64,
+        home_changed: bool,
+    ) {
         if let Err(error) = self
             .control
-            .set_device_runner(device.clone(), os, version, instance)
+            .set_device_runner(device.clone(), os, version, instance, home_changed)
             .await
         {
             // The agent's context block names the Host without its system,
-            // and Settings shows the device without them, until the next
-            // hello records them.
+            // or with the one recorded before, and Settings shows the device
+            // without them, until the next hello records them; a node that
+            // read the context before reads no new block until another
+            // change advances it.
             tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "operating system and runner release not recorded");
         }
         self.touch(device).await;

@@ -2,10 +2,11 @@
 //! `sessions-and-targets.md` § Resolve a target, § How a conversation uses a
 //! device, `resource-lifecycle.md`): the first uses of two conversations
 //! boot one Cloud, which keeps nothing of an ended command, an idle Cloud
-//! stops, and the next operation wakes it, a conversation that idles on a
-//! Cloud another keeps running hears its release there, one archived while
-//! the Cloud is stopped does not wake it, a Cloud the manager stopped
-//! without a word boots again, a conversation that left the Cloud still
+//! stops, and the next operation wakes it, the model learns the home the
+//! Cloud's runner reports once and not again at each wake, a conversation
+//! that idles on a Cloud another keeps running hears its release there, one
+//! archived while the Cloud is stopped does not wake it, a Cloud the manager
+//! stopped without a word boots again, a conversation that left the Cloud still
 //! reaches it, a reset keeps home and identity and tells the model, a failed
 //! reset resumes, a reset holds the conversations that need the Cloud and
 //! leaves the ones that only have it attached, capacity counts across users,
@@ -288,6 +289,15 @@ async fn the_first_uses_of_two_conversations_boot_one_cloud_which_stops_when_idl
         .await;
     assert!(next.received[0].contains("0\n"), "{}", next.received[0]);
     assert_eq!(harness.manager.count(&format!("wake:{device}")), 2);
+    // The runner woke with the home and the system it reported before,
+    // which changes no execution context: the model read no new block.
+    let blocks = |turn: &crate::work::Turn| {
+        turn.requests.last().unwrap()["messages"]
+            .to_string()
+            .matches("[Execution context ")
+            .count()
+    };
+    assert_eq!(blocks(&next), blocks(&first));
     backend.close().await;
 }
 
@@ -595,6 +605,16 @@ async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_
         "{}",
         wrote.first_request()
     );
+    // The command woke the Cloud, whose runner reported its home, a
+    // temporary directory here: the model's next request names the
+    // directory its shells really start in.
+    let home = harness.manager.home(&the_cloud(&harness));
+    let reported = wrote.requests.last().unwrap()["messages"].to_string();
+    assert!(
+        reported.contains("[Execution context 1]\\nPrimary host: Cloud, ")
+            && reported.contains(&format!("Shells start in {home}/sessions/{FIRST}.")),
+        "{reported}"
+    );
     let before = status(&backend, &master)
         .await
         .device
@@ -642,7 +662,6 @@ async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_
         next.first_request()
     );
     // The block names the Cloud with the system its runner reported now.
-    let home = harness.manager.home(&the_cloud(&harness));
     let named = format!(
         " ({}). Shells start in {home}/sessions/{FIRST}. {GNU_UTILITIES}\\n[Cloud reset {RESET}]",
         std::env::consts::ARCH
@@ -1506,6 +1525,8 @@ async fn a_backend_that_stopped_in_the_middle_of_a_reset_finishes_its_disk_step_
 
     // A retry of the same reset starts the Cloud, and its announcement,
     // made at the recovery, advances the conversation's context no further.
+    // The runner's report does, once: the restarted backend forgot the
+    // home, a temporary directory here, and named `/home/demi` until then.
     reset(&backend, &master, RESET).await;
     until_status(&backend, &master, "the retried reset is ready", |status| {
         status
@@ -1515,7 +1536,7 @@ async fn a_backend_that_stopped_in_the_middle_of_a_reset_finishes_its_disk_step_
     })
     .await;
     assert_eq!(harness.manager.count(&format!("wake:{device}")), 2);
-    assert_eq!(context(), context_before + 1);
+    assert_eq!(context(), context_before + 2);
     backend.close().await;
 }
 
