@@ -10,6 +10,8 @@ import Menu from '../ui/Menu.vue'
 import Popover from '../ui/Popover.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TabStrip from './TabStrip.vue'
+import { usePhone } from '../ui/phone'
+import { useBackClose } from '../overlay/back-close'
 
 /**
  * The window over a session the dock opens, such as Agents and Running: a
@@ -32,6 +34,10 @@ import TabStrip from './TabStrip.vue'
  * leaves it open when something in it used the key, a menu is open, or a
  * newer window, such as the media viewer, stands in front of it and takes
  * the key first.
+ *
+ * On a phone it takes the whole screen, rising from the bottom, under a bar
+ * of the strip, its controls and Close; Back closes it there, as a page the
+ * phone pushed (`useBackClose`).
  */
 const props = defineProps<{
   open: boolean
@@ -70,6 +76,9 @@ const stacked = useStackedWindow({
   close: () => emit('close'),
 })
 
+const phone = usePhone()
+useBackClose(() => props.open, () => emit('close'), () => phone.value)
+
 function closeOnEscape(event: KeyboardEvent): void {
   if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || appOverlayStore.hasExclusive() || !stacked.isNewest())
     return
@@ -95,11 +104,13 @@ function openStripMenu(event: MouseEvent): void {
 </script>
 
 <template>
+  <!-- On a phone the window leaves the dock's column for the whole screen. -->
+  <Teleport to="body" :disabled="!phone">
   <Transition
-    enter-active-class="origin-bottom transition-[opacity,scale] duration-150 ease-out motion-reduce:transition-none"
-    leave-active-class="origin-bottom transition-[opacity,scale] duration-150 ease-out motion-reduce:transition-none"
-    enter-from-class="opacity-0 scale-95"
-    leave-to-class="opacity-0 scale-95"
+    :enter-active-class="phone ? 'transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none' : 'origin-bottom transition-[opacity,scale] duration-150 ease-out motion-reduce:transition-none'"
+    :leave-active-class="phone ? 'transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none' : 'origin-bottom transition-[opacity,scale] duration-150 ease-out motion-reduce:transition-none'"
+    :enter-from-class="phone ? 'translate-y-full' : 'opacity-0 scale-95'"
+    :leave-to-class="phone ? 'translate-y-full' : 'opacity-0 scale-95'"
     appear
   >
     <div
@@ -107,10 +118,16 @@ function openStripMenu(event: MouseEvent): void {
       ref="root"
       data-region
       tabindex="-1"
-      class="overlay-window pointer-events-auto absolute inset-0 z-10 flex min-h-0 origin-bottom flex-col overflow-hidden rounded-xl bg-surface outline-none"
+      class="pointer-events-auto flex min-h-0 flex-col overflow-hidden bg-surface outline-none"
+      :class="phone ? 'fixed inset-0 z-40 pb-[var(--safe-bottom)]' : 'overlay-window absolute inset-0 z-10 origin-bottom rounded-xl'"
       @keydown="closeOnEscape"
     >
-      <div class="flex h-10 shrink-0 items-center gap-1 bg-surface-base px-1.5" @contextmenu="openStripMenu">
+      <div
+        class="flex shrink-0 items-center gap-1 bg-surface-base px-1.5"
+        :class="phone ? 'h-[calc(2.75rem+var(--safe-top))] pt-[var(--safe-top)]' : 'h-10'"
+        data-touch-menu
+        @contextmenu="openStripMenu"
+      >
         <TabStrip class="flex-1" :still="stillTabs">
           <slot name="tabs" :open-tab-menu="openTabMenu" />
         </TabStrip>
@@ -154,6 +171,7 @@ function openStripMenu(event: MouseEvent): void {
         :anchor-y="tabMenu.anchorY.value"
         :anchor-context-el="tabMenu.anchorContextEl.value"
         :offset="0"
+        sheet
         @close="tabMenu.close()"
       >
         <Menu v-if="menuTabId !== null" @click="tabMenu.close()">
@@ -168,6 +186,7 @@ function openStripMenu(event: MouseEvent): void {
         :anchor-y="stripMenu.anchorY.value"
         :anchor-context-el="stripMenu.anchorContextEl.value"
         :offset="0"
+        sheet
         @close="stripMenu.close()"
       >
         <Menu @click="stripMenu.close()">
@@ -176,4 +195,5 @@ function openStripMenu(event: MouseEvent): void {
       </Popover>
     </div>
   </Transition>
+  </Teleport>
 </template>

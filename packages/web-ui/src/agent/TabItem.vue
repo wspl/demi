@@ -129,7 +129,7 @@ function onMenuKey(event: KeyboardEvent): void {
     <span class="min-w-0 flex-1 pl-1.5" :class="closable ? 'pr-1' : 'pr-2'">
       <span
         class="block w-max truncate whitespace-nowrap"
-        :class="isActive || !closable ? 'max-w-full' : 'max-w-[calc(100%_+_var(--spacing-hit-xs))] group-hover:max-w-full'"
+        :class="isActive || !closable ? 'max-w-full' : 'max-w-[calc(100%_+_var(--spacing-hit-xs))] group-hover:max-w-full touch:max-w-full'"
       >{{ title }}</span>
     </span>
     <!-- The close control's own slot: the title ends before it, and it sits as far from the
@@ -141,7 +141,7 @@ function onMenuKey(event: KeyboardEvent): void {
         variant="ghost"
         aria-label="Close"
         class="transition-opacity"
-        :class="isActive ? '' : 'opacity-0 group-hover:opacity-100'"
+        :class="isActive ? '' : 'opacity-0 group-hover:opacity-100 touch:opacity-100'"
         @pointerdown.stop
         @click.stop="emit('close')"
       />

@@ -586,6 +586,7 @@ function selectProjectConversations(project: SidebarProject): void {
                 :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
                 @toggle="list.onProjectClick(entry.id)"
                 @create="emit('create', entry.id)"
+                data-touch-menu
                 @contextmenu="(event) => openProjectMenu(projectById.get(entry.id)!, event)"
               />
               <SidebarRow
@@ -597,6 +598,7 @@ function selectProjectConversations(project: SidebarProject): void {
                 :menu-open="rowMenuOpenFor(entry.id)"
                 :renaming="renamingId === entry.id"
                 @click="(event) => list.onRowClick(entry.id, event)"
+                data-touch-menu
                 @contextmenu="(event) => openRowMenu(entry.id, event)"
                 @archive="emit('archive', [entry.id])"
                 @rename-start="renamingId = entry.id"
@@ -647,6 +649,7 @@ function selectProjectConversations(project: SidebarProject): void {
       :anchor-y="rowMenu.anchorY.value"
       :anchor-context-el="rowMenu.anchorContextEl.value"
       :offset="0"
+      sheet
       @close="rowMenu.close()"
     >
       <SidebarSelectionMenu
@@ -692,6 +695,7 @@ function selectProjectConversations(project: SidebarProject): void {
       :anchor-y="projectMenu.anchorY.value"
       :anchor-context-el="projectMenu.anchorContextEl.value"
       :offset="0"
+      sheet
       @close="projectMenu.close()"
     >
       <SidebarProjectMenu

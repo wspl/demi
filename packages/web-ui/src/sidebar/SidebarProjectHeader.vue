@@ -49,7 +49,7 @@ const emit = defineEmits<{
           <ChevronRight
             :size="ICON_PX.in20"
             aria-hidden="true"
-            class="shrink-0 text-fg-subtle opacity-0 transition-[opacity,rotate] duration-150 ease-out motion-reduce:transition-none group-hover/project:opacity-100"
+            class="shrink-0 text-fg-subtle opacity-0 transition-[opacity,rotate] duration-150 ease-out motion-reduce:transition-none group-hover/project:opacity-100 touch:opacity-100"
             :class="collapsed ? 'rotate-0' : 'rotate-90'"
           />
         </span>
@@ -62,7 +62,7 @@ const emit = defineEmits<{
       <!-- The host's mark stands where New conversation appears, so it keeps the button's inset from the row's edges. -->
       <span class="grid shrink-0 items-center">
         <span
-          class="pointer-events-none col-start-1 row-start-1 flex size-hit-sm items-center justify-center text-fg-subtle transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0"
+          class="pointer-events-none col-start-1 row-start-1 flex size-hit-sm items-center justify-center text-fg-subtle transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0 touch:opacity-0"
         >
           <Cloud
             v-if="project.hostKind === 'cloud'"
@@ -77,7 +77,7 @@ const emit = defineEmits<{
           />
         </span>
         <span
-          class="col-start-1 row-start-1 flex items-center justify-self-end opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto"
+          class="col-start-1 row-start-1 flex items-center justify-self-end opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto touch:opacity-100 touch:pointer-events-auto"
         >
           <Tooltip content="New conversation" class="flex items-center">
             <IconButton
