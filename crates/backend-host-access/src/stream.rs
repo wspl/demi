@@ -242,6 +242,22 @@ impl dyn HostShard + '_ {
         Ok(answer)
     }
 
+    /// Runs `operation`, a look of the user's at the conversation's primary
+    /// Host such as which paths a message names are files: admitted as a
+    /// user stream is, so a stopped Cloud is refused rather than woken and
+    /// the look is no activity, and a transition ends it instead of waiting
+    /// for it (`sessions-and-targets.md` § Host operations).
+    pub async fn look_at_host<T>(
+        &self,
+        id: &ConversationId,
+        cancel: &CancellationToken,
+        operation: impl AsyncFnOnce(&ConversationHost) -> T,
+    ) -> Result<T, HostAccessError> {
+        let access = self.admit_stream(id, Attention::Looks, cancel).await?;
+        let waits = Waits::until_ended(cancel, &access.open.ended);
+        waits.wait(operation(&access.host)).await
+    }
+
     /// What the runner invokes for the user: the operation in the package
     /// the conversation's jobs use, with a `user` caller, in the
     /// conversation's directory, with `args` for a one-shot call, which

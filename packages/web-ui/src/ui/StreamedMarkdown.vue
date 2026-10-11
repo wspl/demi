@@ -6,6 +6,11 @@ import { fitMessageMedia, fitMessageMedium } from '@demicodes/web-ui/markdown/me
 import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/highlight'
 import CodeBlockCopy from '@demicodes/web-ui/markdown/CodeBlockCopy.vue'
 import { openMessageLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
+import { replyCodeFiles } from '@demicodes/web-ui/markdown/code-files'
+import { useMessageAgents } from '@demicodes/web-ui/agent/agent-links'
+import AgentLinkTip from '@demicodes/web-ui/agent/AgentLinkTip.vue'
+import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
+import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import { useContentScrollers } from '@demicodes/web-ui/composables/useContentScrollers'
 import { useStreamReveal, type RevealStep } from '@demicodes/web-ui/composables/useStreamReveal'
@@ -42,13 +47,20 @@ const visible = computed(() => (props.streaming ? settled(shown.value) : shown.v
 
 const renderVersion = useMarkdownRenderVersion()
 const files = useMessageFiles()
+const agents = useMessageAgents()
 const viewer = useMediaViewer()
+// The files the reply's inline code names, asked about once it is complete.
+const codeFiles = computed(() => replyCodeFiles(props.content, props.streaming, files()))
 
 // Closers apply to finished text too: an aborted stream leaves the same half-open markers.
 // The render also follows the highlighter: its arrival and the document's theme.
 const renderedMarkdown = computed(() => {
   void renderVersion.value
-  return md.render(visible.value + closeOpenInlineMarkdown(visible.value), { files: files() })
+  return md.render(visible.value + closeOpenInlineMarkdown(visible.value), {
+    files: files(),
+    codeFiles: codeFiles.value,
+    agents: agents(),
+  })
 })
 
 /** How a step's text fades in. */
@@ -123,14 +135,19 @@ function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly RevealSte
 }
 
 /**
- * The code blocks of the current render, each of which gets its Copy. A
- * render replaces them; the Copy of each place moves into the new one and
- * keeps its Copied.
+ * The places of the current render that components fill: each code block
+ * gets its Copy, each file link its file's icon, and each agent link its
+ * agent's mark and tip. A render replaces them; the component of each place
+ * moves into the new one and keeps its state, as a code block's Copied.
  */
 const codeBlocks = shallowRef<HTMLElement[]>([])
+const fileIcons = shallowRef<HTMLElement[]>([])
+const agentLinks = shallowRef<HTMLElement[]>([])
 
-function findCodeBlocks(el: HTMLElement): void {
+function findPlaces(el: HTMLElement): void {
   codeBlocks.value = [...el.querySelectorAll<HTMLElement>('.code-block')]
+  fileIcons.value = [...el.querySelectorAll<HTMLElement>('[data-file-icon]')]
+  agentLinks.value = [...el.querySelectorAll<HTMLElement>('[data-agent-link]')]
 }
 
 // A render replaces the images and videos, which take their box before they
@@ -138,7 +155,7 @@ function findCodeBlocks(el: HTMLElement): void {
 onMounted(() => {
   if (root.value) {
     fitMessageMedia(root.value)
-    findCodeBlocks(root.value)
+    findPlaces(root.value)
   }
 })
 
@@ -155,7 +172,7 @@ watch(
     if (!el)
       return
     fitMessageMedia(el)
-    findCodeBlocks(el)
+    findPlaces(el)
     wrapSteps(el, visible.value, steps.value)
   },
   { flush: 'post' },
@@ -170,11 +187,20 @@ watch(
     :class="streaming ? 'is-streaming' : ''"
     :aria-busy="streaming || undefined"
     v-html="renderedMarkdown"
-    @click="openMessageLink($event, files(), viewer)"
+    @click="openMessageLink($event, files(), viewer, agents())"
     @load.capture="onMediumLoad"
     @loadedmetadata.capture="onMediumLoad"
   />
   <Teleport v-for="(block, index) in codeBlocks" :key="index" :to="block">
     <CodeBlockCopy :block="block" />
   </Teleport>
+  <Teleport v-for="(place, index) in fileIcons" :key="index" :to="place">
+    <FileIcon :name="place.dataset.fileIcon ?? ''" :is-directory="false" :size="ICON_PX.in28" />
+  </Teleport>
+  <AgentLinkTip
+    v-for="(link, index) in agentLinks"
+    :key="index"
+    :element="link"
+    :number="Number(link.dataset.agentLink)"
+  />
 </template>

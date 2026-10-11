@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
 import { provideOriginRevealer } from '@demicodes/web-ui/agent/agent-receipts'
+import { agentLinkWindow, findAgent, provideMessageAgents } from '@demicodes/web-ui/agent/agent-links'
 import type { TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import { productWould } from '../product-would'
@@ -11,9 +12,11 @@ import { productWould } from '../product-would'
  * a click on an agent's name opens the Agents window over them on that
  * agent's tab, a finished one as Completed picks it, at the block the
  * receipt came from, as the product's session does; the main agent's name
- * says what the product would show in the main transcript.
+ * says what the product would show in the main transcript. A message's
+ * link to an agent opens the window on its tab and closes it when it shows
+ * that tab, as the product's session does.
  */
-defineProps<{ agents: readonly SubagentRecord[] }>()
+const props = defineProps<{ agents: readonly SubagentRecord[] }>()
 const emit = defineEmits<{
   abort: []
   abortAgent: [id: string]
@@ -33,6 +36,19 @@ provideOriginRevealer(({ node, blockId }) => {
     reveal.value = blockId === null ? null : { node, blockId }
   }
 })
+provideMessageAgents(() => ({
+  find: (number) => findAgent(props.agents, number),
+  open: (number) => {
+    const next = agentLinkWindow({ open: open.value, activeId: activeId.value }, props.agents, number)
+    if (number === 0 && !open.value) {
+      productWould('The Main Transcript Comes into View')
+    }
+    if (next) {
+      open.value = next.open
+      activeId.value = next.activeId
+    }
+  },
+}))
 </script>
 
 <template>

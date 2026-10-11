@@ -26,7 +26,7 @@ const opens = computed(() => {
 
 function open(event: MouseEvent): void {
   if (opens.value) {
-    files()?.open?.(opens.value, event.detail)
+    files()?.open?.({ path: opens.value, line: null }, event.detail)
   }
 }
 // The wrapper breaks as the line around it does: tiptap's own `white-space:

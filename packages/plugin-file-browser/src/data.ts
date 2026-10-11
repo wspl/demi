@@ -8,6 +8,8 @@ import { z } from 'zod'
 export const fileDataSchema = z.object({
   /** Empty while it shows no file. */
   path: z.string(),
+  /** The line the file was opened at, which the view scrolls to and marks for a moment; absent for none. */
+  line: z.number().int().positive().optional(),
   /** The files shown before, latest last. */
   back: z.array(z.string()),
   /** The files left by Back, latest last. */
@@ -20,13 +22,21 @@ export function firstFileData(): FileData {
   return { path: '', back: [], forward: [] }
 }
 
-/** The view showing `path`, the file it showed kept for Back. */
-export function showFile(data: FileData, path: string): FileData {
-  if (data.path === path) {
+/**
+ * The view showing `path`, at `line` when one is named, the file it showed
+ * kept for Back; another line of the file shown moves within it.
+ */
+export function showFile(data: FileData, path: string, line?: number): FileData {
+  if (data.path === path && data.line === line) {
     return data
+  }
+  const at = line === undefined ? {} : { line }
+  if (data.path === path) {
+    return { path, ...at, back: data.back, forward: data.forward }
   }
   return {
     path,
+    ...at,
     back: data.path ? [...data.back, data.path] : data.back,
     forward: [],
   }
