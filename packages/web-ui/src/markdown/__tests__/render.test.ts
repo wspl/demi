@@ -89,6 +89,7 @@ const attachments: Record<string, AttachmentLookup> = {
   a4: { state: 'loading' },
   a5: { state: 'failed' },
   a6: { state: 'found', attachment: { name: 'clip.webm', mediaType: 'video/webm', url: '/blobs/6?type=video%2Fwebm' } },
+  a7: { state: 'found', attachment: { name: 'frame.png', mediaType: 'image/png', url: '/blobs/7?type=image%2Fpng', width: 171, height: 40 } },
 }
 const withAttachments: MessageFiles = {
   ...files,
@@ -153,6 +154,17 @@ test('in a run, an attachment takes its final thumbnail box from its record befo
   expect(html).toContain('alt="sign-in" data-width="480" data-height="300" style="width: 128px; height: 80px" />')
   expect(html).toContain('aria-label="flow" data-width="1280" data-height="720" style="width: 142px; height: 80px"></video>')
   expect(html).toContain('aria-label="clip" style="width: 142px; height: 80px"></video>')
+})
+
+// A run's row is as tall as its tallest place (`file-previews.md` § Media a
+// tool returned): a short frame whose size its record carries takes a place
+// as tall as its box, so frames of 40 pixels leave no empty band under them;
+// a video whose size is unknown until its first frame keeps 80, and so does
+// an attachment still asked for, so the row never shrinks when they arrive.
+test('in a run, each medium takes a place as tall as its box when its size is known, and 80 pixels when it is not', () => {
+  const places = (markdown: string) => [...renderMarkdown(markdown, { files: withAttachments }).matchAll(/<span style="height: (\d+)px">/g)].map((match) => Number(match[1]))
+  expect(places('![a](attachment:a7) ![b](attachment:a7) ![c](attachment:a7) ![d](attachment:a7)')).toEqual([40, 40, 40, 40])
+  expect(places('![frame](attachment:a7) ![clip](attachment:a6) ![shot](attachment:a4)')).toEqual([40, 80, 80])
 })
 
 test('text, a list or a heading between images ends the run', () => {
