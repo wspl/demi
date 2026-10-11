@@ -6,7 +6,7 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import { provideBlockReader } from '@demicodes/web-ui/agent/whole-blocks'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
-import { commandLookBlocks } from '../fixtures/blocks'
+import { commandLookBlocks, thoughtAnswerBlocks } from '../fixtures/blocks'
 
 /**
  * How a long conversation reads (`web-application.md` § Transcript
@@ -50,8 +50,9 @@ function resetWindow(): void {
   earlierRead.value = false
 }
 
-// The same request read from a page: its calls and thinking in their light
-// form, without their script, output and text, until a row is opened.
+// The same requests read from a page, and a question answered after a
+// thinking: their calls and thinking in their light form, without their
+// script, output and text, until a row is opened.
 function lightened(block: HeldBlock): HeldBlock {
   if (block.type === 'tool_call') {
     // A short input stays whole, as the backend keeps it.
@@ -65,24 +66,25 @@ function lightened(block: HeldBlock): HeldBlock {
     }
   }
   if (block.type === 'thinking') {
-    return { ...block, text: '', signature: null, light: true }
+    return { ...block, text: '', signature: null, textLength: [...block.text.trim()].length, light: true }
   }
   return block
 }
-const lightBlocks = ref<HeldBlock[]>(whole.map(lightened))
+const wholeRead = [...whole, ...thoughtAnswerBlocks()]
+const lightBlocks = ref<HeldBlock[]>(wholeRead.map(lightened))
 provideBlockReader(() => async (_node, id) => {
   await new Promise<void>((resolve) => later(resolve))
-  lightBlocks.value = lightBlocks.value.map((block) => (block.id === id ? whole.find((item) => item.id === id) ?? block : block))
+  lightBlocks.value = lightBlocks.value.map((block) => (block.id === id ? wholeRead.find((item) => item.id === id) ?? block : block))
 })
 function resetLight(): void {
-  lightBlocks.value = whole.map(lightened)
+  lightBlocks.value = wholeRead.map(lightened)
 }
 </script>
 
 <template>
   <GallerySection
     title="A Long Conversation"
-    note="The transcript holds the parts the reader has been to. Near the top of a window that does not reach the start, a loading row stands while the page before it is read, and its requests appear above without moving the rows in view. A step that came in its light form opens to read its script and output, its row shimmering until they arrive."
+    note="The transcript holds the parts the reader has been to. Near the top of a window that does not reach the start, a loading row stands while the page before it is read, and its requests appear above without moving the rows in view. A step that came in its light form opens to read its script and output, and a thinking its text, its row shimmering until they arrive."
   >
     <GallerySpecimen variant="earlier requests read as the reader nears the top" wide>
       <div class="flex flex-col gap-2">
