@@ -16,7 +16,7 @@ import {
   remoteAttachmentError,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
-import type { SendWay } from '@demicodes/web-ui/agent/send-way'
+import { turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
 import { executionFor, hostDeviceOptions, moveLocked, primaryHostOf } from '../targets/execution'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
 import type { HostChoice } from '@demicodes/web-ui/hosts/types'
@@ -58,7 +58,7 @@ watch(() => store.composerFocusRequests, () => composer.value?.focusDraft())
  * a message sent meanwhile steers it or waits in the queue.
  */
 const startingTurn = computed(() =>
-  props.conversation.phase === 'idle' && props.conversation.pendingSends.some((pending) => pending.error === null),
+  turnStartingMessage(props.conversation.phase, props.conversation.pendingSends) !== undefined,
 )
 
 /** The store takes the files; their capsules go into the message where the composer said they would land. */

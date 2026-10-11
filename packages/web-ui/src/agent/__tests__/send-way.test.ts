@@ -3,7 +3,8 @@ import { Editor, isMacOS, type JSONContent } from '@tiptap/core'
 import type { EditorView } from '@tiptap/pm/view'
 import { composerExtensions } from '../message-editor/extensions'
 import { effectScope, nextTick, ref } from 'vue'
-import { chooseSendWay, useSendOnceLoaded, type SendWay, type SendWhileRunning } from '../send-way'
+import type { SessionPhase } from '@demicodes/protocol'
+import { chooseSendWay, turnStartingMessage, useSendOnceLoaded, type SendWay, type SendWhileRunning } from '../send-way'
 
 // The composer's keys reach its real keymap, and what they ask goes through
 // the composer's choice of way (`product.md` § Steer or queue); an input
@@ -102,6 +103,41 @@ test("an input method's Enter sends nothing and its Escape ends no edit, in Chro
   // The next Enter is the user's own.
   expect(press(PARAGRAPH, ENTER)).toEqual({ sent: [false], cancelled: 0, reachesPage: true })
   expect(press(PARAGRAPH, { key: 'Escape', keyCode: 27 })).toEqual({ sent: [], cancelled: 1, reachesPage: true })
+})
+
+/** A message on its way, or not delivered when `error` says why. */
+function onItsWay(id: string, way: SendWay, error: string | null = null) {
+  return { id, way, error }
+}
+
+const FAILED = 'Connection closed before confirmation'
+
+// The one rule the composer's Stop and the transcript's Requesting read
+// (`product.md` § Recovering an unfinished turn, § Steer or queue). Before
+// it, the composer counted any message on its way while idle and the list
+// only one sent as the next message, read at its send: the cases marked
+// split each answered differently. About 1 ms.
+test.each<{ name: string; phase: SessionPhase; sent: ReturnType<typeof onItsWay>[]; starts: string | null }>([
+  { name: 'nothing on its way', phase: 'idle', sent: [], starts: null },
+  { name: 'a send while idle', phase: 'idle', sent: [onItsWay('a', 'send')], starts: 'a' },
+  { name: 'a steer during a run', phase: 'running', sent: [onItsWay('a', 'steer')], starts: null },
+  { name: 'a queued message during a compaction', phase: 'compacting', sent: [onItsWay('a', 'queue')], starts: null },
+  { name: 'back-to-back sends: the second steers the first one\'s turn', phase: 'idle', sent: [onItsWay('a', 'send'), onItsWay('b', 'steer')], starts: 'a' },
+  // Split: the backend starts the turn before it writes the message, and the composer counted the phase alone.
+  { name: 'back-to-back sends once the backend runs the first one\'s turn', phase: 'running', sent: [onItsWay('a', 'send'), onItsWay('b', 'steer')], starts: 'a' },
+  // Split: the session refuses the steer, as nothing runs, and answers it as the next message.
+  { name: 'back-to-back sends whose first was not delivered', phase: 'idle', sent: [onItsWay('a', 'send', FAILED), onItsWay('b', 'steer')], starts: 'b' },
+  { name: 'a message not delivered', phase: 'idle', sent: [onItsWay('a', 'send', FAILED)], starts: null },
+  // Split: a queued message whose turn ended goes as the next message.
+  { name: 'a queued message whose turn ended on its way', phase: 'idle', sent: [onItsWay('a', 'queue')], starts: 'a' },
+  // Sent while the socket reconnected, the page last knowing a running
+  // turn; the conversation, back, says the turn ended meanwhile. Split.
+  { name: 'a steer sent while reconnecting to a turn that ended meanwhile', phase: 'idle', sent: [onItsWay('a', 'steer')], starts: 'a' },
+  // Sent while the socket reconnected, the page last knowing the
+  // conversation idle; back, it runs the turn the message started.
+  { name: 'a send while reconnecting, whose turn the conversation runs once back', phase: 'running', sent: [onItsWay('a', 'send')], starts: 'a' },
+])('the message on its way that starts a turn: $name', ({ phase, sent, starts }) => {
+  expect(turnStartingMessage(phase, sent)?.id ?? null).toBe(starts)
 })
 
 // Seen at 400 ms latency: Enter on a new conversation's first message right
