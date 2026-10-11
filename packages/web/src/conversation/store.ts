@@ -15,7 +15,7 @@ import {
   type MessageEditRequest,
 } from '@demicodes/web-ui/agent/message-editing'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import { dismissToast } from '@demicodes/web-ui/infra/toast'
+import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { showRefused, type Refusal } from '@demicodes/web-ui/sidebar/refused-toast'
 import { forkConversation } from '../api/message-fork'
@@ -37,8 +37,8 @@ import {
   isComposerFile,
   remoteAttachmentError,
 } from '@demicodes/web-ui/agent/message-input/attachments'
-import type { CopiedDeviceFile, CopiedStoredFile } from '@demicodes/web-ui/agent/message-input/copied-message'
-import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
+import { missingFilesToast, type CopiedDeviceFile, type CopiedStoredFile } from '@demicodes/web-ui/agent/message-input/copied-message'
+import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '@demicodes/web-ui/markdown/user-markdown'
 import { connectConversationClient, takeConnection } from '@demicodes/web-ui/transport/conversation-socket'
 import { loadDraft } from '../api/drafts'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
@@ -529,6 +529,9 @@ export const useConversations = defineStore('conversations', () => {
               name: file.name,
               file: file.file ? toRaw(file.file) : null,
               upload: file.upload ? { ...file.upload } : null,
+              ...(file.claim
+                ? { claim: { file: { ...file.claim.file }, picture: file.claim.picture ? toRaw(file.claim.picture) : null } }
+                : {}),
               ...(file.snippet ? { snippet: file.snippet } : {}),
             }
           : { ...file },
@@ -777,8 +780,42 @@ export const useConversations = defineStore('conversations', () => {
     changedDraft(conversation.id, persisted(conversation))
     for (const file of conversation.files) {
       if (isComposerFile(file) && !file.upload) {
-        void uploadFile(file).catch((error) => report('Could Not Upload the Attachment', error))
+        // A pasted file whose attaching the page did not see end attaches
+        // again, and falls back as a paste does (`product.md` § Writing a message).
+        const claimed = !!file.claim
+        void uploadFile(file).catch((error) => {
+          if (claimed && !file.file) {
+            unattached(conversation, file)
+          } else {
+            report('Could Not Upload the Attachment', error)
+          }
+        })
       }
+    }
+  }
+
+  /**
+   * A pasted file the paste could not use, with no picture to upload in its
+   * place: its name stands where its capsule stood in the composer, and a
+   * toast says so. A file of a message sent meanwhile stays; its bubble says
+   * it was not delivered.
+   */
+  function unattached(conversation: Conversation, file: ProductAttachment): void {
+    const index = conversation.attachmentIds.indexOf(file.id)
+    if (index < 0) {
+      return
+    }
+    const doc = parseUserMarkdown(conversation.draft, conversation.attachmentIds.map((id) => ({ id })))
+    for (const block of doc.content ?? []) {
+      block.content = block.content?.map((node) =>
+        node.type === 'attachment' && node.attrs?.['capsule']?.id === file.id ? { type: 'text', text: file.name } : node)
+    }
+    conversation.draft = serializeUserMarkdown(doc).markdown
+    arrangeFiles(conversation, conversation.attachmentIds.filter((id) => id !== file.id))
+    conversation.draftShown += 1
+    const toast = missingFilesToast([file.name])
+    if (toast) {
+      showToast({ ...toast, tone: 'danger' })
     }
   }
 
@@ -788,9 +825,11 @@ export const useConversations = defineStore('conversations', () => {
       return file
     }
     return {
-      ...(file.file ? composerAttachmentFromFile(file.file) : { src: file.upload ? blobPicture(file.upload) : undefined }),
+      ...(file.file
+        ? composerAttachmentFromFile(file.file)
+        : { src: file.upload ? blobPicture(file.upload) : file.claim ? blobPicture(file.claim.file) : undefined }),
       ...file,
-      phase: file.upload ? 'ready' : 'uploading',
+      phase: file.upload ? 'ready' : file.claim ? 'attaching' : 'uploading',
     }
   }
 

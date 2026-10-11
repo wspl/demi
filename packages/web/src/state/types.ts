@@ -23,7 +23,7 @@ import type { SavedDraft, SavedFile } from '../conversation/drafts'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 
 export type ProductAttachment =
-  | (ComposerFileAttachment & Pick<SavedFile, 'file' | 'upload'>)
+  | (ComposerFileAttachment & Pick<SavedFile, 'file' | 'upload' | 'claim'>)
   | (ComposerRemoteAttachment & { deviceId: string })
 
 /** A message sent and not yet confirmed, with the way it was sent. */

@@ -2379,6 +2379,60 @@ test('a send empties the draft everywhere once the backend accepts it, and a cha
   }
 })
 
+// A pasted file whose attaching the page did not see end is saved with the
+// draft as its stored file, and attaches again when the draft is restored,
+// or falls back as a paste does (`product.md` § Writing a message).
+test('a draft saved while its pasted files attach restores them attaching, and their claims finish or fall back', async () => {
+  let signOut = signIn()
+  const saved = new Map<string, draftStorage.SavedDraft>()
+  const writes = spyOn(draftStorage, 'writeDraft').mockImplementation(async (_user, id, draft) => {
+    saved.set(id, structuredClone(draft))
+  })
+  // The first page's claims never answer: it closes while they are under way.
+  let restoreFetch = answerClaims(new Promise(() => {}))
+  try {
+    serverDrafts.set(FIRST, { revision: 1, text: '', files: [], replaced: null })
+    records[0]!.draftRevision = 1
+    let store = useConversations()
+    let current = store.items.find((item) => item.id === FIRST)!
+    await store.activate(FIRST)
+    const held = store.claimFile(current, { type: 'stored', name: 'before.png', sha256: SHA, mediaType: 'image/png' }, null)
+    const gone = store.claimFile(current, { type: 'stored', name: 'gone.png', sha256: 'c'.repeat(64), mediaType: 'image/png' }, null)
+    store.arrangeFiles(current, [held.item.id, gone.item.id])
+    current.draft = `Compare ${ATTACHMENT_MARK} with ${ATTACHMENT_MARK}`
+    store.saveDrafts()
+    expect(saved.get(FIRST)?.files).toMatchObject([
+      { name: 'before.png', upload: null, claim: { file: { sha256: SHA }, picture: null } },
+      { name: 'gone.png', upload: null, claim: { file: { sha256: 'c'.repeat(64) } } },
+    ])
+    signOut()
+    store.stopAll()
+    useProduct().stop()
+    disposePinia(pinia)
+    restoreFetch()
+
+    // The next page restores the draft; the backend answers its claims now.
+    restoreFetch = answerClaims(Promise.resolve())
+    pinia = createPinia()
+    setActivePinia(pinia)
+    signOut = signIn(saved.get(FIRST)!)
+    store = useConversations()
+    await connect()
+    current = store.items.find((item) => item.id === FIRST)!
+    await store.activate(FIRST)
+    const restored = current.files.find((file) => file.name === 'before.png')
+    await until(() => restored?.kind === 'file' && restored.phase === 'ready', 'the restored claim finishes')
+    expect(restored).toMatchObject({ upload: { id: 'att-held', sha256: SHA } })
+    // The file the user's blobs do not hold, without a picture, is its name in the text.
+    await until(() => current.draft === `Compare ${ATTACHMENT_MARK} with gone.png`, `the draft is ${current.draft}`)
+    expect(current.attachmentIds).toEqual([restored!.id])
+  } finally {
+    restoreFetch()
+    writes.mockRestore()
+    signOut()
+  }
+})
+
 test('a page that closes while typing leaves its text to the next page, which takes the backend\'s revision without saving it again', async () => {
   // The first page types, and closes before its save and its IndexedDB write land.
   let signOut = signIn()
