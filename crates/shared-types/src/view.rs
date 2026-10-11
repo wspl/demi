@@ -132,6 +132,12 @@ pub struct EditedFile {
     pub added: u32,
     #[garde(skip)]
     pub removed: u32,
+    /// Whether `path` is in one of its Host's temporary directories
+    /// (`edit-tracking.md` § Temporary files). Absent means false, as in
+    /// every view stored before the field.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[garde(skip)]
+    pub temporary: bool,
     #[garde(length(min = 1), dive)]
     pub edits: Vec<EditSegment>,
 }
@@ -158,6 +164,11 @@ pub enum PathChange {
         from: String,
         #[garde(length(chars, min = 1))]
         to: String,
+        /// Whether `to` is in one of its Host's temporary directories;
+        /// absent means false.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[garde(skip)]
+        temporary: bool,
     },
     Removed {
         #[garde(length(chars, min = 1))]
