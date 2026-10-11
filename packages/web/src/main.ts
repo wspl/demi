@@ -158,17 +158,23 @@ router.beforeEach(async (to) => {
 for (const [axis, value] of Object.entries(productAppearance)) {
   document.documentElement.setAttribute(`data-${axis}`, value)
 }
+// Each value is put on the document when it changes, not each time the
+// product's state does: the appearance is made anew for every message of
+// the sync channel, and an attribute written again, even unchanged, tells
+// what watches the document's appearance to draw again.
 const stopAppearance = watch(
-  () => resources.appearance,
-  (appearance) => {
-    applyProductAppearance(appearance)
-    applyTranscriptTextSize(appearance.fontSize)
-    setThemeChoice(appearance.theme)
+  [
+    () => resources.appearance.tone,
+    () => resources.appearance.accent,
+    () => resources.appearance.fontSize,
+    () => resources.appearance.theme,
+  ],
+  ([tone, accent, fontSize, theme]) => {
+    applyProductAppearance({ tone, accent })
+    applyTranscriptTextSize(fontSize)
+    setThemeChoice(theme)
   },
-  {
-    immediate: true,
-    deep: true,
-  },
+  { immediate: true },
 )
 const stopTheme = applyThemeToDocument()
 // The page reports its own facts when they may have changed: once the
