@@ -672,7 +672,7 @@ fn frame_of(event: &SessionEvent) -> Option<ServerFrame> {
             failures: None,
         },
         SessionEvent::PhaseChanged { phase } => ServerFrame::Phase { phase: *phase },
-        SessionEvent::ContextUsageChanged { usage } => ServerFrame::ContextUsage { usage: *usage },
+        SessionEvent::ContextUsageChanged { usage } => ServerFrame::ContextUsage { usage: usage.clone() },
         SessionEvent::QueueChanged { queue } => ServerFrame::Queue {
             queue: queue.clone(),
         },

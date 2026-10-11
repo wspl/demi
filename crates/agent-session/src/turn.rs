@@ -32,7 +32,10 @@ use super::{
     input::Take,
     media::model_view,
     persist, reports,
-    runtime::{CallCommand, InputArrival, SeenContext, ToolEffect, ToolInvocation, ToolOutcome},
+    runtime::{
+        CallCommand, InputArrival, SeenContext, SystemPrompt, ToolEffect, ToolInvocation,
+        ToolOutcome,
+    },
 };
 
 /// How many compactions one turn runs after responses over the threshold.
@@ -150,8 +153,10 @@ async fn end_offline_turn(s: &SessionShared) -> Result<(), TurnError> {
 /// The estimate of the next request of the current model over the replayed
 /// blocks, as the model receives them.
 async fn estimate(s: &SessionShared, cancel: &TurnCancel) -> Result<u64, TurnError> {
+    let model = s.read(|core| core.model.clone());
+    let system_prompt = system_prompt(s, &model, cancel).await?.text();
     let view = model_view(s, cancel).await?;
-    Ok(s.read(|core| context_tokens(&core.request_view(&view))))
+    Ok(s.read(|core| context_tokens(&core.request_view(&view), &system_prompt)))
 }
 
 /// Lands the recorded model switch: the history is first compacted to fit
@@ -371,7 +376,7 @@ async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequ
         cancel.check()?;
     }
     let model = s.read(|core| core.model.clone());
-    let system_prompt = system_prompt(s, &model, cancel).await?;
+    let system_prompt = system_prompt(s, &model, cancel).await?.text();
     let request_id = s.ids.next_id();
     let view = model_view(s, cancel).await?;
     Ok(s.update(|core| {
@@ -391,7 +396,7 @@ pub(super) async fn system_prompt(
     s: &SessionShared,
     model: &ModelSelection,
     cancel: &TurnCancel,
-) -> Result<String, TurnError> {
+) -> Result<SystemPrompt, TurnError> {
     match cancel.guard(s.runtime.system_prompt(model)).await? {
         Ok(prompt) => Ok(prompt),
         Err(message) => {

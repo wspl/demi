@@ -56,6 +56,17 @@
   --color-on-accent: var(--on-accent);
   --color-on-highlight: var(--on-highlight);
   --color-accent-fill: var(--accent-fill);
+  /* The series of a stacked bar, such as the context card's rows, each told
+     apart from its neighbours in both schemes; the last, a gray, is a share
+     that is set aside rather than filled. */
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-series-4: var(--series-4);
+  --color-series-5: var(--series-5);
+  --color-series-6: var(--series-6);
+  --color-series-7: var(--series-7);
+  --color-series-reserved: var(--series-reserved);
   --shadow-sm: var(--th-shadow-sm);
   --shadow-md: var(--th-shadow-md);
   --shadow-lg: var(--th-shadow-lg);
@@ -129,6 +140,14 @@
   --on-highlight: #fde68a;
   /* Solid accent fill for primary controls; --on-accent stays a text color. */
   --accent-fill: #2b74dc;
+  --series-1: #60a5fa;
+  --series-2: #a78bfa;
+  --series-3: #2dd4bf;
+  --series-4: #fbbf24;
+  --series-5: #f472b6;
+  --series-6: #a3e635;
+  --series-7: #fb923c;
+  --series-reserved: #5c5c5c;
   /* The shadows here are the gallery's carved look; the product's hairline look
      (product-appearance.css) and the gallery's soft one (paradigms.css) replace them. */
   --th-shadow-sm:
@@ -228,6 +247,14 @@
   --on-accent: #2563eb;
   --on-highlight: #92400e;
   --accent-fill: var(--on-accent);
+  --series-1: #3b82f6;
+  --series-2: #8b5cf6;
+  --series-3: #14b8a6;
+  --series-4: #f59e0b;
+  --series-5: #ec4899;
+  --series-6: #65a30d;
+  --series-7: #f97316;
+  --series-reserved: #b4b9c2;
   --th-shadow-sm: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
   --th-shadow-md:
     inset 0 0.5px 0 rgba(255, 255, 255, 0.8),
@@ -715,6 +742,18 @@ html[data-theme="light"] .file-pill {
 }
 
 .sheet .overlay-menu::after {
+  display: none;
+}
+
+/* A hover card a phone shows as a sheet (HoverCard's `sheet`) is the
+   sheet's content, with no card of its own around it. */
+.sheet .hover-card-shell {
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.sheet .hover-card-shell::after {
   display: none;
 }
 

@@ -303,6 +303,11 @@ impl<'a> RequestView<'a> {
         self.model
     }
 
+    /// The tools the request declares.
+    pub fn tools(&self) -> &'a [ToolDefinition] {
+        self.tools
+    }
+
     /// A message's part as the model receives it: a long text bounded, a
     /// reference as its text, an attachment record as its tag, and a medium
     /// with its bytes or as its text.

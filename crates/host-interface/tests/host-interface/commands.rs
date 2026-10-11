@@ -229,7 +229,7 @@ fn read(name: &str) -> LeafBuilder {
 
 #[test]
 fn the_index_opens_with_the_defaults_and_lists_each_group_with_an_entry_by_path() {
-    assert_eq!(CommandSet::new().render_index(), "");
+    assert_eq!(CommandSet::new().render_index().text(), "");
     // Registered out of order: `zeta` under `demi`, then a root of its own
     // between them, then `alpha` grafted after. `demi` and `content`, which
     // declare no entry, are reached through the groups that list them.
@@ -258,7 +258,7 @@ fn the_index_opens_with_the_defaults_and_lists_each_group_with_an_entry_by_path(
     )
     .unwrap();
 
-    let index = set.render_index();
+    let index = set.render_index().text();
 
     let defaults = demi_command_declarations::HELP_DEFAULTS;
     let opener = demi_command_declarations::INDEX_OPENER;

@@ -742,8 +742,8 @@ impl Driver {
         // freed nothing.
         let after_blocks = &blocks[index..=marker];
         let after_view = self.model_view(index, after_blocks);
-        let after = context_tokens(&self.view(&after_view, model));
-        let before_tokens = context_tokens(&request);
+        let after = context_tokens(&self.view(&after_view, model), SYSTEM_PROMPT);
+        let before_tokens = context_tokens(&request, SYSTEM_PROMPT);
         let threshold = token_threshold(window, model.output_limit);
         assert!(
             after < threshold || after >= before_tokens,

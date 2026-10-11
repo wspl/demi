@@ -30,8 +30,10 @@ use super::{
     reports::Watched,
     media::{held, model_view},
     persist,
+    breakdown,
     runtime::{
-        NewContext, RunningWork, SeenContext, SessionRuntime, StepOutcomes, ToolInvocation,
+        NewContext, RunningWork, SeenContext, SessionRuntime, StepOutcomes, SystemPrompt,
+        ToolInvocation,
     },
     turn,
 };
@@ -182,11 +184,16 @@ impl CompactionConfig {
 
 /// Whether the estimate of `request` is at or over the token threshold of
 /// its model, whose window in use is `window`.
-fn over_token_threshold(s: &SessionShared, request: &RequestView, window: Option<u64>) -> bool {
+fn over_token_threshold(
+    s: &SessionShared,
+    request: &RequestView,
+    system_prompt: &str,
+    window: Option<u64>,
+) -> bool {
     s.config
         .compaction
         .threshold(window, request.model())
-        .is_some_and(|threshold| context_tokens(request) >= threshold)
+        .is_some_and(|threshold| context_tokens(request, system_prompt) >= threshold)
 }
 
 /// Whether the history is at or over a threshold of `model`, whose vendor
@@ -202,10 +209,10 @@ async fn over_a_threshold(
     let view = model_view(s, cancel).await?;
     let tools = s.runtime.tools();
     let request = RequestView::new(&view, &model.model, limits, &tools);
-    if over_token_threshold(s, &request, window) {
+    let system_prompt = turn::system_prompt(s, model, cancel).await?.text();
+    if over_token_threshold(s, &request, &system_prompt, window) {
         return Ok(true);
     }
-    let system_prompt = turn::system_prompt(s, model, cancel).await?;
     let replayed = replay(&request);
     let size = request_size(&system_prompt, &replayed.items);
     Ok(s.config.compaction.size_reached(limits, size))
@@ -236,8 +243,19 @@ pub(super) async fn context_usage(
 ) -> Result<ContextUsage, TurnError> {
     let model = s.read(|core| core.model.clone());
     let window = cancel.guard(window_in_use(s, &model)).await?;
-    let tokens = held(s, cancel, SessionCore::context_estimate).await?;
-    Ok(usage_at(tokens, window))
+    // The usage is only read: a prompt that cannot be rendered fails the
+    // read, and the request that needs it records the failure.
+    let prompt = cancel
+        .guard(s.runtime.system_prompt(&model))
+        .await?
+        .map_err(|message| {
+            TurnError::Failed(Box::new(ErrorReport {
+                message,
+                code: None,
+                diagnostics: None,
+            }))
+        })?;
+    held(s, cancel, |core| usage_at(core, &prompt, window)).await
 }
 
 /// The usage as [`context_usage`] says it, without reading a blob, as
@@ -247,19 +265,27 @@ pub(super) async fn context_usage(
 pub(super) async fn held_context_usage(s: &SessionShared) -> Option<ContextUsage> {
     let model = s.read(|core| core.model.clone());
     let window = window_in_use(s, &model).await;
-    let tokens = s.read(|core| core.context_estimate().ok())?;
-    Some(usage_at(tokens, window))
+    let prompt = s.runtime.system_prompt(&model).await.ok()?;
+    s.read(|core| usage_at(core, &prompt, window).ok())
 }
 
-/// The usage at an estimate of `tokens` in `window`, the window in use. A
-/// model without a window has no share from which the user may compact: no
-/// threshold relieves it, so the user may always compact.
-fn usage_at(tokens: u64, window: Option<u64>) -> ContextUsage {
-    ContextUsage {
+/// The usage of `core`'s next request with `prompt` in `window`, the window
+/// in use, with what fills it; or the blobs to read first. A model without a
+/// window has no share from which the user may compact: no threshold
+/// relieves it, so the user may always compact.
+fn usage_at(
+    core: &SessionCore,
+    prompt: &SystemPrompt,
+    window: Option<u64>,
+) -> Result<ContextUsage, Vec<BlobRef>> {
+    let text = prompt.text();
+    let tokens = core.context_estimate(&text)?;
+    Ok(ContextUsage {
         tokens,
         window,
         compact_from: window.map(|window| share(window, MANUAL_COMPACTION_PERCENT)),
-    }
+        rows: breakdown::rows(core, prompt, &text, tokens, window),
+    })
 }
 
 /// Tells the clients the usage after a response, a pass or an action
@@ -289,8 +315,11 @@ pub fn compaction_refusal(usage: &ContextUsage) -> Option<String> {
 pub(super) async fn preflight(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     let model = s.read(|core| core.model.clone());
     let window = cancel.guard(window_in_use(s, &model)).await?;
+    let system_prompt = turn::system_prompt(s, &model, cancel).await?.text();
     let view = model_view(s, cancel).await?;
-    let over = s.read(|core| over_token_threshold(s, &core.request_view(&view), window));
+    let over = s.read(|core| {
+        over_token_threshold(s, &core.request_view(&view), &system_prompt, window)
+    });
     if over {
         compacting(s, run_pass(s, cancel)).await?;
     }
@@ -656,7 +685,7 @@ impl SessionRuntime for CopyRuntime {
     fn system_prompt<'a>(
         &'a self,
         model: &'a ModelSelection,
-    ) -> LocalBoxFuture<'a, Result<String, String>> {
+    ) -> LocalBoxFuture<'a, Result<SystemPrompt, String>> {
         self.session.system_prompt(model)
     }
 
