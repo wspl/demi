@@ -74,7 +74,7 @@ tool's own frames.
 
 **Waiting.** Playwright's actions and `expect` wait for what they need, so a
 script never sleeps for a fixed time; `demi.turn()` waits until the open
-conversation no longer runs, its helper agents and background jobs included.
+conversation no longer runs, its subagents and background jobs included.
 
 ## What `demi` adds
 
@@ -133,7 +133,7 @@ conversation no longer runs, its helper agents and background jobs included.
   page of the slot's gallery.
 - **The product's other parts.** `demi.message(text)` replaces any draft,
   sends the text in the open conversation and waits for its turn to end, not
-  for the helper agents and background jobs it started (`demi.turn()` after it
+  for the subagents and background jobs it started (`demi.turn()` after it
   waits for those too); it fails at once, with the page's words, when the
   page marks the message not delivered or the turn ends with an error. `demi.runner()` starts the slot's built runner with its
   own installation folder under `.cache/browse/` and pairs it through Add
