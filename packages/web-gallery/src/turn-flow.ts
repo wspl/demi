@@ -5,7 +5,7 @@ import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { ChatSessionState, ConversationState, PendingSubmissionState } from '@demicodes/web-ui/agent/types'
-import type { SendWay } from '@demicodes/web-ui/agent/send-way'
+import { agentWorks, turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
 import { contentCopy, type CopiedMessage } from '@demicodes/web-ui/agent/message-input/copied-message'
 import { showUnsent } from '@demicodes/web-ui/agent/unsent-toast'
@@ -192,8 +192,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    * running, so the composer shows Stop, and a message sent meanwhile
    * steers it or waits in the queue, as the product's does.
    */
-  const startingTurn = computed(() =>
-    state.phase === 'idle' && pendingSubmissions.value.some((pending) => pending.error === null))
+  const startingTurn = computed(() => turnStartingMessage(state.phase, pendingSubmissions.value) !== undefined)
   /**
    * The simulated server's answers to the steers and queued messages on
    * their way, by id, which a turn cut short or stopped does not cancel, as
@@ -878,14 +877,14 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    * Retry sends the undelivered message again with its id, as a message, as
    * the product's does, once `ready`, the upload it tries again, has its
    * files; this time it arrives: it starts a turn while nothing runs, and
-   * waits in the queue otherwise.
+   * waits in the queue while a turn runs or a message on its way starts one.
    */
   function retrySubmission(id: string, ready?: Promise<UserContentBlock[]>): void {
     const pending = pendingSubmissions.value.find((each) => each.id === id)
     if (!pending?.error) {
       return
     }
-    if (state.phase !== 'idle') {
+    if (agentWorks(state.phase, pendingSubmissions.value)) {
       changeSubmission(id, { error: null, way: 'queue' })
       afterUploads(id, ready, () => deliveries.set(id, window.setTimeout(() => arrive(id), nextDelivery())))
       return
@@ -984,7 +983,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    * running.
    */
   function steer(content: UserContentBlock[], message: SentMessage): void {
-    if (state.phase === 'idle' && !startingTurn.value) {
+    if (!agentWorks(state.phase, pendingSubmissions.value)) {
       turn(content, message)
       return
     }
