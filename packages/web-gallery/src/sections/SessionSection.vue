@@ -2261,7 +2261,7 @@ onBeforeUnmount(() => {
       <GalleryCommandWakeup />
       <GallerySection
         title="Turn"
-        note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the message says so with Retry, which sends it again with the same ID and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay, the tail row says Connecting, never that it failed, and the message goes with its ID once the socket is back. Resume, Retry and Connect wait for the server first."
+        note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the message says so with Retry, which sends it again with the same ID and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay, the tail row says Connecting, never that it failed, and the message goes with its ID once the socket is back. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Send Now and Remove in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it; Send Now or Remove pressed before then is carried out once it is held. Resume, Retry and Connect wait for the server first."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button
@@ -2294,6 +2294,16 @@ onBeforeUnmount(() => {
             size="sm"
             @click="playTurn('connect')"
           >Connect</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            @click="playTurn('steer')"
+          >Steer</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            @click="playTurn('queue')"
+          >Queue</Button>
         </div>
         <div class="gallery-frame h-[20rem] bg-surface">
           <SessionSurface ref="turnSurface">
@@ -2303,8 +2313,8 @@ onBeforeUnmount(() => {
                 class="min-h-0 flex-1"
                 :conversation-id="turnFlow.state.id"
                 :blocks="turnFlow.state.blocks"
-                :pending-steers="[]"
-                :queue="[]"
+                :pending-steers="turnFlow.state.pendingSteers"
+                :queue="turnFlow.state.queue"
                 :phase="turnFlow.state.phase"
                 :load="turnFlow.state.load"
                 :pending-action="turnFlow.state.pendingAction"
@@ -2313,6 +2323,10 @@ onBeforeUnmount(() => {
                 :persisted-scroll-state="undefined"
                 read-only
                 @retry-submission="turnFlow.retrySubmission"
+                @delete-pending-steer="turnFlow.removePendingSteer"
+                @interrupt-pending-steer="turnFlow.interruptPendingSteer"
+                @delete-queued="turnFlow.removeQueued"
+                @send-queued="turnFlow.sendQueued"
               />
             </div>
             <template #dock>

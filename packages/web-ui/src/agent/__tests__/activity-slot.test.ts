@@ -3,7 +3,6 @@ import { effectScope, nextTick, reactive } from 'vue'
 import type { Block, SessionPhase, ToolCallStatus } from '@demicodes/protocol'
 import type { MessageListBlock } from '../pending-steers'
 import { activitySlotKind, type PendingAction } from '../activity-slot'
-import { listTailBlocks } from '../list-tail'
 import { groupWork } from '../work-groups'
 import type { SessionLoad } from '../session-status'
 import type { PendingSubmissionState } from '../types'
@@ -12,7 +11,7 @@ import { useActivitySlot } from '../useActivitySlot'
 function kind(
   phase: SessionPhase,
   transcriptBlocks: readonly MessageListBlock[],
-  renderBlocks: readonly MessageListBlock[] = transcriptBlocks,
+  turnRows: readonly MessageListBlock[] = transcriptBlocks,
   options: { load?: SessionLoad; backendAway?: boolean; pendingAction?: PendingAction } = {},
 ) {
   return activitySlotKind({
@@ -22,7 +21,7 @@ function kind(
     pendingAction: options.pendingAction ?? null,
     startingTurn: false,
     transcriptBlocks,
-    renderBlocks,
+    turnRows,
   })
 }
 
@@ -33,7 +32,6 @@ test('a running turn requests while it waits for the first model output', () => 
 test('a running turn requests after user-like blocks', () => {
   expect(kind('running', [userBlock()])).toBe('requesting')
   expect(kind('running', [steerBlock()])).toBe('requesting')
-  expect(kind('running', [pendingSteerBlock()])).toBe('requesting')
   expect(kind('running', [compactionMarkerBlock()])).toBe('requesting')
 })
 
@@ -80,21 +78,8 @@ test('finished text with nothing after it is followed by Requesting, and a call 
   expect(kind('idle', [finished])).toBeNull()
 })
 
-test('a pending steer does not add the slot while active thinking is already the tail', () => {
-  const transcriptBlocks = [thinkingBlock()]
-  const renderBlocks = [...transcriptBlocks, pendingSteerBlock()]
-  expect(kind('running', transcriptBlocks, renderBlocks)).toBeNull()
-})
-
 test('a materialized steer requests again before the model continues', () => {
   expect(kind('running', [thinkingBlock(), steerBlock()])).toBe('requesting')
-})
-
-test('a queued tail neither hides nor adds the slot', () => {
-  const waiting = [userBlock()]
-  expect(kind('running', waiting, [...waiting, ...queuedTail()])).toBe('requesting')
-  const thinking = [thinkingBlock()]
-  expect(kind('running', thinking, [...thinking, ...queuedTail()])).toBeNull()
 })
 
 test('a recovery in flight requests: the hidden record is the transcript tail, the list ends before it', () => {
@@ -144,17 +129,7 @@ function slotOver(phase: SessionPhase, blocks: MessageListBlock[], opened = 0) {
       phase: conversation.phase,
       pendingAction: null,
       transcriptBlocks: conversation.blocks,
-      renderBlocks: [
-        ...conversation.blocks,
-        ...listTailBlocks({
-          phase: conversation.phase,
-          blocks: [],
-          pendingCalls: [],
-          pendingSteers: [],
-          queue: [],
-          pendingSubmission: conversation.pendingSubmission,
-        }),
-      ],
+      turnRows: conversation.blocks,
     }),
     pendingSubmission: () => conversation.pendingSubmission,
     waitingSince: () => conversation.waitingSince,
@@ -173,7 +148,7 @@ function slotOver(phase: SessionPhase, blocks: MessageListBlock[], opened = 0) {
 }
 
 function sent(error: string | null = null): PendingSubmissionState {
-  return { id: 'turn-1', text: 'hello', attachments: [], error }
+  return { id: 'turn-1', way: 'send', text: 'hello', attachments: [], error }
 }
 
 test('a message sent to an idle conversation says Requesting from the send, through its confirmation, on one clock', async () => {
@@ -294,15 +269,6 @@ function userBlock(): MessageListBlock {
   }
 }
 
-function pendingSteerBlock(): MessageListBlock {
-  return {
-    type: 'pending_steer',
-    id: 'pending-steer-1',
-    pendingSteerId: 'pending-1',
-    content: [{ type: 'text', text: 'steer' }],
-  }
-}
-
 function steerBlock(): MessageListBlock {
   return {
     type: 'steer',
@@ -339,18 +305,6 @@ function toolCallBlock(status: ToolCallStatus): MessageListBlock {
     output: [],
     view: null,
   }
-}
-
-function queuedTail(): MessageListBlock[] {
-  return [
-    { type: 'queue_divider', id: 'queue-divider', count: 1 },
-    {
-      type: 'queued_message',
-      id: 'queued:q1',
-      queueId: 'q1',
-      content: [{ type: 'text', text: 'follow-up' }],
-    },
-  ]
 }
 
 function thinkingBlock(): MessageListBlock {
