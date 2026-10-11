@@ -262,6 +262,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @save-scroll="saveScroll"
     :reveal="store.reveal?.conversationId === conversation.id ? store.reveal : null"
     @revealed="store.reveal = null"
+    @reveal="(at) => (store.reveal = { conversationId: conversation!.id, ...at })"
     :read-block="(node, id) => store.history.readWhole(conversation!, node, id)"
     :reveal-command="(id) => revealCommand(conversation!, id)"
     @read-before="readHistory(store.history.readBefore(conversation!, null))"

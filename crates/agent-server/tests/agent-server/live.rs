@@ -118,7 +118,7 @@ impl ShellEnvironment for ScriptedShell {
         let command = CommandId::try_from("1").unwrap();
         let record = Rc::new(RefCell::new(CommandRecord::new(
             command.clone(),
-            request.tool_use_id,
+            request.caller.tool_use_id,
         )));
         self.command.replace(Some(record.clone()));
         self.feed.changed(&record);

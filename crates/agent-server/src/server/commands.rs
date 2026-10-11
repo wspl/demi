@@ -241,6 +241,8 @@ pub(super) struct Invoked<H: HostResolver, A> {
     pub(super) tree: Rc<Tree<H>>,
     /// The node whose job runs the command.
     pub(super) caller: NodeId,
+    /// The node's `shell` call that started the job.
+    pub(super) call: String,
     /// The command's path, which a failure of one of several values
     /// begins with (`commands.md` § Handle an rpc call).
     pub(super) command: String,
@@ -269,21 +271,17 @@ where
             let context = &call.invocation.context;
             let root = NodeId::try_from(context.conversation.as_str())
                 .map_err(|error| RpcError::Failed(error.to_string()))?;
-            // The backend's record of the job names its node.
-            let caller = call
-                .invocation
-                .caller
-                .as_ref()
-                .map(|caller| caller.node.clone())
-                .ok_or_else(|| {
-                    RpcError::Failed("the command runs only in an agent's job".into())
-                })?;
+            // The backend's record of the job names its node and call.
+            let job = call.invocation.caller.clone().ok_or_else(|| {
+                RpcError::Failed("the command runs only in an agent's job".into())
+            })?;
             let tree = server
                 .tree(&root)
                 .ok_or_else(|| RpcError::Failed(format!("the conversation {root} is not open")))?;
             let invoked = Invoked {
                 tree,
-                caller,
+                caller: job.node,
+                call: job.tool_use_id,
                 command: call.invocation.path.join(" "),
                 json: call.invocation.json,
                 args: call.args,
@@ -346,7 +344,7 @@ async fn send<H: HostResolver>(call: Invoked<H, SendArgs>, port: RpcPort) -> Res
     let message = trim(&call.args.message).to_owned();
     match call
         .tree
-        .send_message(&call.caller, &call.args.id, message)
+        .send_message(&call.caller, &call.call, &call.args.id, message)
         .await
     {
         Ok(target) if call.json => {
