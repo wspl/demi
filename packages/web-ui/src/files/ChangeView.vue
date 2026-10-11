@@ -327,11 +327,9 @@ const counts = computed(() => {
   return (at === null ? requestFile.value?.lines : edits.value[at]?.lines) ?? null
 })
 
-function retry(): void {
-  if (mode.value === 'conversation')
-    callSides.retry()
-  else
-    workingSides.retry()
+/** Reads the change shown again; the region loads until the read ends, whatever it answers. */
+function retry(): Promise<void> {
+  return mode.value === 'conversation' ? callSides.retry() : workingSides.retry()
 }
 
 const frame = ref<InstanceType<typeof TreeFrame> | null>(null)
