@@ -52,7 +52,8 @@ export interface ListTail {
  * message the session holds already shows there alone, in the transcript, as
  * a steer or in the queue: the row it was waiting in becomes that one
  * (`row-key.ts`), so it never shows twice, whichever of the two the server
- * tells first. A message whose Remove is on its way shows nowhere.
+ * tells first. A message whose Remove is on its way shows nowhere. A message
+ * whose delivery failed is followed by the row that tells it.
  */
 export function listTailBlocks(input: ListTailInput): ListTail {
   const written = new Set(input.blocks.flatMap((block) =>
@@ -63,9 +64,16 @@ export function listTailBlocks(input: ListTailInput): ListTail {
   const held = new Set([...written, ...input.pendingSteers.map((steer) => steer.id), ...input.queue.map((message) => message.id)])
   const sending = (input.pendingSubmissions ?? []).filter((submission) =>
     !held.has(submission.id) && !removing.has(submission.id))
+  // A message whose delivery failed is told under it, as a row of its own:
+  // the row Requesting gives way to, and which Retry rolls back into it.
   const rows = (way: PendingSubmissionState['way']): MessageListBlock[] => sending
     .filter((submission) => submission.way === way)
-    .map((submission) => ({ type: 'pending_submission', id: `pending-submission:${submission.id}`, submission }))
+    .flatMap((submission): MessageListBlock[] => [
+      { type: 'pending_submission', id: `pending-submission:${submission.id}`, submission },
+      ...(submission.error !== null
+        ? [{ type: 'delivery_failure', id: `delivery-failure:${submission.id}`, submission } as const]
+        : []),
+    ])
   const queued = [...queuedMessagesToRenderBlocks(queue), ...rows('queue')]
   return {
     turn: [
@@ -79,7 +87,7 @@ export function listTailBlocks(input: ListTailInput): ListTail {
       ...pendingSteersToRenderBlocks(steers),
       ...rows('steer'),
       ...(queued.length > 0
-        ? [{ type: 'queue_divider', id: 'queue-divider', count: queued.length } as const, ...queued]
+        ? [{ type: 'queue_divider', id: 'queue-divider', count: queued.filter((row) => row.type !== 'delivery_failure').length } as const, ...queued]
         : []),
     ],
   }

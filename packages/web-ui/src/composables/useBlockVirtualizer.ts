@@ -1,5 +1,4 @@
 import { computed, nextTick, onScopeDispose, ref, type Ref, watch } from 'vue'
-import { useResizeObserver } from '@vueuse/core'
 import { measureElement as measureRow, useVirtualizer } from '@tanstack/vue-virtual'
 import { BOTTOM_THRESHOLD_PX, distanceFromBottom } from './scroll-bottom'
 import { FOLD_MS } from '../ui/fold'
@@ -51,6 +50,8 @@ const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   compaction_marker: 36,
   compaction_progress: 36,
   history_edge: 36,
+  delivery_failure: 64,
+  session_failure: 52,
 }
 
 export interface ScrollAnchor {
@@ -77,12 +78,6 @@ export interface BlockVirtualizerOptions<Block extends VirtualizedBlock> {
    * than built anew and laid out at a guess for a frame.
    */
   keyOf?: (block: Block) => string
-  /**
-   * What the list shows after its rows, outside the virtualizer, such as
-   * a failure notice: its growth is the list's growth too,
-   * which the view follows in the frame that draws it.
-   */
-  tail?: Readonly<Ref<HTMLElement | undefined>>
 }
 
 export function useBlockVirtualizer<Block extends VirtualizedBlock>(
@@ -326,11 +321,6 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     scrollToBottom()
   }
   watch(() => virtualizer.value.getTotalSize(), followEnd, { flush: 'post' })
-  // The element after the rows, not the content around them: an observer
-  // reports an element enclosing the rows only a frame after the rows'
-  // own report, which the total size already answers.
-  if (options.tail)
-    useResizeObserver(options.tail, followEnd)
 
   watch(
     virtualizer,
