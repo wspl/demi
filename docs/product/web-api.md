@@ -755,11 +755,14 @@ writes these overrides through its preference state adapter.
 
 ## Subagents
 
-The caller's subagent settings, which the settings page's Subagent section
+The caller's subagent settings, which the settings page's Subagents section
 shows, are part of the product state, as `subagents`:
-`{ enabled, profiles }`. `enabled` is the
+`{ enabled, maxLive, maxDepth, profiles }`. `enabled` is the
 [Subagent switch](../agent/subagents.md#profiles), true for a user who never
-turned it off. `profiles` holds the caller's
+turned it off. `maxLive` and `maxDepth` are the
+[limits](../agent/subagents.md#limits), Maximum subagents and Maximum depth,
+each a whole number from 1 or null for Unlimited; 10 and 1 for a user who
+never set them. `profiles` holds the caller's
 [subagent profiles](../agent/subagents.md#profiles), in name order, each
 `{ id, name, description, model, instructions, canSpawn, enabled }`:
 
@@ -772,8 +775,10 @@ turned it off. `profiles` holds the caller's
 | `canSpawn` | Whether the profile's children may spawn children of their own |
 | `enabled` | Whether agents may use the profile |
 
-`PUT /api/subagents { enabled }` turns subagents on or off for the caller
-and answers 204.
+`PUT /api/subagents` takes any subset of `{ enabled, maxLive, maxDepth }`,
+sets those for the caller and answers 204; a limit that is neither a whole
+number from 1 nor null answers 400 `invalid_body`. The dialog that confirms
+Unlimited is the page's: the API takes null as it takes a number.
 
 `POST /api/subagents/profiles` takes `{ name, description, model,
 instructions, canSpawn }`, creates the profile enabled, and answers 201 with

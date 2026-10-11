@@ -28,10 +28,11 @@ the child's tool history into the parent's inference transcript.
 The shell runs the `demi agent` commands. Creation, communication, and abort
 are short command calls; the parent's supervisor runs each child independently.
 
-Depth is not capped. A child delegating a slice of its own task spawns exactly
-like the root does; there is no per-depth command stripping. What bounds the
-tree is fan-out (the live-children limit in [Runtime](#runtime)) and the real
-turns each spawn costs. A spawner can still forbid one specific child from
+Two limits the user sets bound the tree ([Limits](#limits)): how many
+subagents of a conversation are live at once, and how deep the tree goes. A
+child delegating a slice of its own task spawns exactly like the root does,
+while the depth limit allows; there is no per-depth command stripping. A
+spawner can still forbid one specific child from
 delegating further, by spawning it with a [profile](#profiles) that forbids
 spawning. That is an explicit per-child restriction, never derived from depth:
 the child loses `spawn`, `abort`, and `resume`, and keeps `send`, `list`,
@@ -482,7 +483,7 @@ with the `demi agent` group grafted per node
 Profiles are the user's own. One list serves all of the user's conversations,
 in both instance modes; it is stored in the control store with the user's
 other settings ([Control records](../backend/storage.md#control-records)), and
-the settings page's Subagent section creates, edits, enables, disables and
+the settings page's Subagents section creates, edits, enables, disables and
 deletes its profiles ([Subagents](../product/web-api.md#subagents)). No
 plugin declares a profile, and with no profile configured, every child
 inherits.
@@ -502,8 +503,28 @@ the user has profiles, and it cannot be configured or replaced. Profiles apply
 to a session's own children; a subagent spawning grandchildren resolves names
 against the same list.
 
-**Each spawn reads the current settings.** A spawn reads the Subagent switch
-and the user's profiles as they are at that moment, not as they were when
+### Limits
+
+The user's Subagents settings hold two limits, which apply to every
+conversation of the user:
+
+| Limit | Meaning | Default |
+| --- | --- | --- |
+| Maximum subagents | How many subagents of one conversation may be live at once, at every depth together; the root is not one | 10 |
+| Maximum depth | How many levels of subagents the tree may have below the root. At 1, only the root spawns: its children cannot. At 2, its children spawn too, and their children cannot | 1 |
+
+For example, with the defaults, the root spawns ten children; an eleventh
+spawn fails until one of them closes, and a child's own spawn fails at
+once. Either limit may be a whole number from 1, or Unlimited, which
+Settings confirms first with a warning that agents may then start subagents
+without bound, which can make a conversation unstable and spend many tokens.
+Codex bounds its agent threads the same two ways (`agents.max_threads`,
+`agents.max_depth`); it is the user's to loosen, not the model's. A limit
+lowered under what a conversation has live ends nothing: the live
+subagents go on, and spawns fail until the count is under the new limit.
+
+**Each spawn reads the current settings.** A spawn reads the Subagents switch,
+its limits and the user's profiles as they are at that moment, not as they were when
 the tree opened. So a change in settings, to the switch or to a profile,
 applies to the next spawn of every conversation, an open one included, with
 no reload. A child already spawned keeps what it was spawned with, across
@@ -516,7 +537,7 @@ any child is created, with a message that says which:
 1. **Subagents are on.** Otherwise:
 
    ```text
-   subagents are turned off in settings; do this work in this session, or ask the user to turn subagents on in Settings > Subagent.
+   subagents are turned off in settings; do this work in this session, or ask the user to turn subagents on in Settings > Subagents.
    ```
 
 2. **The name is known.** `--profile` names one of the user's profiles, or is
@@ -533,10 +554,24 @@ any child is created, with a message that says which:
    fault, and the message says so:
 
    ```text
-   profile "reviewer" is disabled in settings; omit --profile to inherit the parent, or ask the user to enable it in Settings > Subagent.
+   profile "reviewer" is disabled in settings; omit --profile to inherit the parent, or ask the user to enable it in Settings > Subagents.
    ```
 
 4. **The profile is available**, as below.
+5. **The depth limit allows a child here.** A spawner at the deepest level
+   the limit allows gets:
+
+   ```text
+   this agent is at the deepest level of subagents Settings > Subagents allows (1); do this work in this session.
+   ```
+
+6. **The conversation is under its limit of live subagents.** Otherwise:
+
+   ```text
+   this conversation already has 10 live subagents, the most Settings > Subagents allows; wait for one to finish (`demi agent list`), or do this work in this session.
+   ```
+
+   A `resume` makes a closed child live again, so it fails the same way.
 
 **An unavailable profile.** At spawn, the backend builds the child's model
 selection from the profile's model settings and the entry's current catalog,
@@ -811,9 +846,8 @@ The role is a node option, not a depth. Every child has its parent's commands.
   node's do ([Running shell tools](runtime.md#running-shell-tools)). Every node reaches its Host through the
   conversation's host access, because the execution target belongs to the
   conversation ([Resolve a target](../execution/sessions-and-targets.md#resolve-a-target)).
-- Each node has at most 8 live children. The limit is the same for every node
-  in the tree, and no command changes it. `spawn` and `resume` fail when it is
-  reached.
+- The user's two [limits](#limits) bound the tree: the live subagents of
+  the conversation and its depth. No command changes them.
 - A shell result is cut by the same rule in every node, whatever its model
   ([Results and previews](runtime.md#results-and-previews)), and every node
   reads any command's whole output of the conversation
@@ -1040,7 +1074,7 @@ each part.
 - New model-facing tools.
 - A runtime `--model` option or provider picker.
 - A session copy as spawn.
-- Depth caps or per-depth command stripping.
+- Per-depth command stripping: the depth limit fails a spawn, it removes no command.
 - Resident actor children. Accepted messages defer a child's close until they
   are consumed; they do not turn subagents into daemons that idle waiting for
   mail.
@@ -1087,7 +1121,7 @@ The tree and its commands:
    assistant text completes with an empty result.
 2. A grandchild spawns, is aborted with its parent's subtree, and is restored
    with the tree.
-3. `spawn` and `resume` fail at the live-children limit.
+3. `spawn` and `resume` fail at the live-subagents limit, and `spawn` at the depth limit, with the messages of [Profiles](#profiles); Unlimited lets them through.
 4. `send` and `show` reach siblings across branches; `abort` and `resume` of a
    node that is not the caller's child are refused; a send to an archived agent
    is refused; a child with unread messages does not close.
@@ -1152,7 +1186,7 @@ Product:
    sender IDs, and reconnect.
 2. With no profile configured, children inherit, the model sees the spawn
    prompt field's help, and `demi agent profiles` says that the user has none.
-3. The settings page's Subagent section turns subagents on and off, creates,
+3. The settings page's Subagents section turns subagents on and off, creates,
    edits, enables, disables and deletes profiles, refuses a reserved or taken
    name, and shows a profile whose entry, model, effort or tier is gone as
    unavailable with the missing part; the product and the gallery show the
