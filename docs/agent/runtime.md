@@ -1678,9 +1678,18 @@ thinking between. While it works, one row shows the newest step, each new one
 rolling over the one before; once the answer comes, the row reads *Ran 5
 commands*, and a click opens it to every step.
 
-- A step is a `thinking` block, a `tool_call` block or a call being written
-  ([Calls being written](#calls-being-written)). A run is the steps between
-  two other blocks, such as the user's message and the answer's text.
+- A step is a `thinking` block, a `tool_call` block, a call being written
+  ([Calls being written](#calls-being-written)), a command's notice (a
+  `wakeup` that shows, [Command reports](#command-reports)), or an agent's
+  receipt (an `agent_message` from another agent: an update or a child's
+  end, [Product rendering](subagents.md#product-rendering)). A run is the
+  steps between two other blocks. What ends a run is what the reader reads:
+  the agent's text, never folded, and the user's own words and decisions,
+  never folded either: a message, a steer, and the receipts of the user's
+  permission decision or move. For example, the agent runs three commands,
+  a command it started earlier reports its end, a child reports that it
+  finished, and the agent runs two more: one row, *Ran 5 commands*, which
+  opens to the five calls, the notice and the receipt in their order.
 - Thinking without text shows only while it is the newest block of a
   running turn, as what the agent does now; once anything follows it or the
   turn ends, it has nothing to show and goes, from the transcript and from
@@ -1710,7 +1719,11 @@ commands*, and a click opens it to every step.
   whose script only runs `demi shell status`, counting the commands they
   looked at; a tool of
   another kind reads *used* and its name. For example, a run that thinks
-  and checks command 17 twice reads *Checked 1 command*. The row never reads a bare count of steps,
+  and checks command 17 twice reads *Checked 1 command*. Notices and
+  receipts add to the row only when the run holds no call: *2 commands
+  finished*, *1 agent finished*, *heard from 2 agents* for updates, joined in
+  the order the run first had them. A lone notice or receipt is its own row,
+  as a lone call is. The row never reads a bare count of steps,
   which says nothing of what happened. A failed command shows its tag on its
   own row inside, not on the group's.
 - Folded, the files the run's calls changed show under the row, each once,
