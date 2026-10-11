@@ -1,4 +1,5 @@
 import type { Block, PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import { nonEmptyString } from '@demicodes/utils'
 import { pendingSteersToRenderBlocks, type MessageListBlock, type PendingCallRenderBlock } from './pending-steers'
 import { queuedMessagesToRenderBlocks } from './queued-messages'
 import { turnStartingMessage } from './send-way'
@@ -102,9 +103,12 @@ export function listTailBlocks(input: ListTailInput): ListTail {
 }
 
 /**
- * The calls the model is writing, each as its row, without a call whose
- * block the transcript holds already: the block takes its place, so the
- * call never shows twice (`runtime.md` § Calls being written).
+ * The calls the model is writing, each as its row from the moment its
+ * description is written, without a call whose block the transcript holds
+ * already: the block takes its place, so the call never shows twice
+ * (`runtime.md` § Calls being written). A call without its description yet
+ * adds nothing, so the list goes on showing what it showed, Requesting or
+ * the step before, rather than a placeholder title.
  */
 export function pendingCallsToRenderBlocks(
   calls: readonly PendingCall[],
@@ -114,7 +118,10 @@ export function pendingCallsToRenderBlocks(
     return []
   }
   const held = new Set(blocks.flatMap((block) => (block.type === 'tool_call' ? [block.toolUseId] : [])))
-  return calls
-    .filter((call) => !held.has(call.toolUseId))
-    .map((call) => ({ type: 'pending_call', id: `pending-call:${call.toolUseId}`, call }))
+  return calls.flatMap((call) => {
+    const description = nonEmptyString(call.description)
+    return description === undefined || held.has(call.toolUseId)
+      ? []
+      : [{ type: 'pending_call', id: `pending-call:${call.toolUseId}`, call: { ...call, description } }]
+  })
 }

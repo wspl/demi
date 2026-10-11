@@ -105,21 +105,6 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
     },
     { immediate: true },
   )
-  // Until the turn shows something it did not show at the press, the
-  // record's place is the turn's tail, and the tail row stands there: the
-  // record marked resumed or unwound, with the leftovers before it, leaves
-  // only what was shown before.
-  const atCut = computed(() => {
-    const current = recovery.value
-    if (current === null || (source().pendingCalls?.length ?? 0) > 0) {
-      return false
-    }
-    const end = visibleBlocks.value.at(-1)
-    return end === undefined || current.shown.has(end.id)
-  })
-  const hiddenId = computed(() => atCut.value ? recovery.value?.record ?? null : null)
-  const transcriptRows = computed(() => visibleBlocks.value.filter((block) => block.id !== hiddenId.value))
-
   const tail = computed(() => {
     const input = source()
     return !input.latest ? { turn: [], waiting: [] } : listTailBlocks({
@@ -135,6 +120,21 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
   // The calls the model is writing are the newest steps of the work: they join its group.
   const pendingCallRows = computed(() => tail.value.turn.filter((block) => block.type === 'pending_call'))
   const otherTurnBlocks = computed(() => tail.value.turn.filter((block) => block.type !== 'pending_call'))
+  // Until the turn shows something it did not show at the press, the
+  // record's place is the turn's tail, and the tail row stands there: the
+  // record marked resumed or unwound, with the leftovers before it, leaves
+  // only what was shown before. A call being written shows only from its
+  // description, so only such a call is something new.
+  const atCut = computed(() => {
+    const current = recovery.value
+    if (current === null || pendingCallRows.value.length > 0) {
+      return false
+    }
+    const end = visibleBlocks.value.at(-1)
+    return end === undefined || current.shown.has(end.id)
+  })
+  const hiddenId = computed(() => atCut.value ? recovery.value?.record ?? null : null)
+  const transcriptRows = computed(() => visibleBlocks.value.filter((block) => block.id !== hiddenId.value))
   const turnRows = computed(() => groupWork(
     [...visibleBlocks.value, ...pendingCallRows.value],
     source().phase === 'running' && !atCut.value,
