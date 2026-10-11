@@ -24,7 +24,7 @@ pub use self::plugins::ReloadRefusal;
 mod policy;
 pub mod subagents;
 
-pub(crate) use self::page_socket::{PageGone, PageSocket};
+pub(crate) use self::page_socket::{PageEnd, PageGone, PageSocket, PageStream};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -618,6 +618,9 @@ async fn spawn_thread(
     services: Arc<Services>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
     let (started, running) = oneshot::channel();
+    // The thread logs where the thread that starts the pool logs: the
+    // process's log, or a test's own.
+    let log = tracing::dispatcher::get_default(Clone::clone);
     let thread = std::thread::Builder::new()
         .name(format!("shard-{index}"))
         .spawn(move || {
@@ -628,7 +631,9 @@ async fn spawn_thread(
                 Ok(runtime) => {
                     // The starter waits for this answer; it cannot have gone.
                     let _ = started.send(Ok(()));
-                    runtime.block_on(serve(receiver, services));
+                    tracing::dispatcher::with_default(&log, || {
+                        runtime.block_on(serve(receiver, services));
+                    });
                 }
                 Err(error) => {
                     let _ = started.send(Err(error));

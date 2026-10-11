@@ -8,8 +8,12 @@ use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
+use demi_backend_user_shard::shard::page_socket::{
+    PageEnd, PageSocketKind, PageSocketOrigin, open_page_socket,
+};
+use demi_backend_user_shard::tuning::PageTuning;
 use demi_web_api_protocol::error::ErrorCode;
-use futures_util::{SinkExt as _, StreamExt as _};
+use futures_util::StreamExt as _;
 use tokio_util::sync::CancellationToken;
 
 use super::AppState;
@@ -17,6 +21,7 @@ use super::body::page_socket;
 use super::conversations::owned;
 use super::error::ApiError;
 use super::gate::AuthUser;
+use super::page_client::PageClient;
 use demi_backend_host_access::stream::UserStream;
 
 /// `WS /conversations/:id/streams/:name`: everything that can refuse the
@@ -25,6 +30,7 @@ pub(super) async fn open(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, name)): Path<(String, String)>,
+    client: PageClient,
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Result<Response, ApiError> {
     let unknown = || {
@@ -45,6 +51,12 @@ pub(super) async fn open(
             "A user stream is a WebSocket",
         )
     })?;
+    let origin = PageSocketOrigin {
+        conversation: Some(record.id.clone()),
+        stream: Some(name.clone()),
+        ..client.origin(PageSocketKind::UserStream, user.id.clone())
+    };
+    let tuning = state.services.pages;
     // A stream of a plugin the user has off does not exist; one whose
     // plugin is turned off while it is open ends.
     let opened = state
@@ -63,7 +75,9 @@ pub(super) async fn open(
         .await??;
     let (stream, plugin_off) = opened.ok_or_else(unknown)?;
     // An upgrade that never completes drops the stream, which ends it.
-    Ok(page_socket(upgrade).on_upgrade(move |socket| relay(socket, stream, plugin_off)))
+    Ok(page_socket(upgrade).on_upgrade(move |socket| {
+        relay(socket, tuning, origin, stream, plugin_off)
+    }))
 }
 
 /// How a stream ended, which the page's socket closes with.
@@ -84,16 +98,22 @@ enum End {
 }
 
 impl End {
-    /// The close code and reason, when the page is still there to hear
-    /// them.
-    fn close(self) -> Option<(u16, &'static str)> {
+    /// How the socket ends: with the close frame the page hears, or as the
+    /// page left it.
+    fn page_end(self) -> PageEnd {
+        let frame = |code, reason: &'static str| {
+            PageEnd::Close(CloseFrame {
+                code,
+                reason: reason.into(),
+            })
+        };
         match self {
-            Self::Completed => Some((1000, "completed")),
-            Self::BinaryOnly => Some((1003, "binary_only")),
-            Self::HostUnreachable => Some((1011, "host_unreachable")),
-            Self::Changed => Some((4000, "conversation_changed")),
-            Self::PluginDisabled => Some((4001, "plugin_disabled")),
-            Self::PageClosed => None,
+            Self::Completed => frame(1000, "completed"),
+            Self::BinaryOnly => frame(1003, "binary_only"),
+            Self::HostUnreachable => frame(1011, "host_unreachable"),
+            Self::Changed => frame(4000, "conversation_changed"),
+            Self::PluginDisabled => frame(4001, "plugin_disabled"),
+            Self::PageClosed => PageEnd::Gone,
         }
     }
 }
@@ -104,19 +124,25 @@ impl End {
 /// boundaries mean nothing. Whichever side ends first ends the stream, and
 /// so does `plugin_off`, once the user turns its plugin off; dropping the
 /// lease then ends it in the shard.
-async fn relay(socket: WebSocket, stream: UserStream, plugin_off: CancellationToken) {
+async fn relay(
+    socket: WebSocket,
+    tuning: PageTuning,
+    origin: PageSocketOrigin,
+    stream: UserStream,
+    plugin_off: CancellationToken,
+) {
     let UserStream {
         mut to_host,
         mut from_host,
         lease,
     } = stream;
-    let (mut to_page, mut from_page) = socket.split();
+    let (mut to_page, mut from_page) = open_page_socket(socket, tuning, origin);
     let end = {
         let deliver = async {
             loop {
                 match from_host.next().await {
                     Some(Ok(bytes)) => {
-                        if to_page.send(Message::Binary(bytes)).await.is_err() {
+                        if to_page.send_bytes(bytes).await.is_err() {
                             return End::PageClosed;
                         }
                     }
@@ -149,14 +175,6 @@ async fn relay(socket: WebSocket, stream: UserStream, plugin_off: CancellationTo
             end = forward => end,
         }
     };
-    if let Some((code, reason)) = end.close() {
-        let frame = CloseFrame {
-            code,
-            reason: reason.into(),
-        };
-        // A page that went meanwhile hears nothing, which is what closing
-        // tells it.
-        let _ = to_page.send(Message::Close(Some(frame))).await;
-    }
+    to_page.end(from_page, end.page_end()).await;
     drop(lease);
 }
