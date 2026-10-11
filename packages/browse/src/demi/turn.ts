@@ -1,9 +1,13 @@
 // `demi.turn({ timeout })`: waits until the open conversation no longer
-// runs, as the backend reports it: a conversation runs while its tree works
-// without the user (`web-api.md` § Sidebar mutations and read state), so
-// this waits for its turn and for the subagents and background jobs the
-// turn started. `demi.message` waits only for the turn its message starts,
-// which the root's latest ended turn names once it ends.
+// runs, as the page and the backend both tell it. The page counts a turn
+// from the send of the message that starts it (`product.md` § Following
+// the agent's work): its composer offers Stop and its transcript ends in
+// Requesting while the message is on its way, before the backend has it.
+// The backend counts a conversation running while its tree works without
+// the user (`web-api.md` § Sidebar mutations and read state), so this also
+// waits for the subagents and background jobs the turn started.
+// `demi.message` waits only for the turn its message starts, which the
+// root's latest ended turn names once it ends.
 import type { Page } from 'playwright'
 import { conversationsSchema, type TurnOutcome } from '@demicodes/web/src/api/generated/web-api'
 import type { Slot } from '../slot'
@@ -55,8 +59,9 @@ function running(status: string): boolean {
  * Asks the backend about the conversation `id` until `ended` holds for its
  * summary, and answers the summary then; `what` names what is waited for
  * when it does not come within `timeoutMs`. `check` runs before each look
- * at the backend and throws to end the wait, as when the page shows the
- * turn can never come.
+ * at the backend: it reads from the page what `ended` needs besides the
+ * summary, or throws to end the wait, as when the page shows the turn can
+ * never come.
  */
 export async function waitSummary(
   slot: Slot,
@@ -81,23 +86,76 @@ export async function waitSummary(
   return last
 }
 
+/** How long a new conversation may take to get its address once its first message is sent. */
+const CREATE_MS = 30_000
+
+/** Waits until the page shows a conversation's address, as a new one gets once its first message is sent. */
+export async function conversationAddress(page: Page): Promise<void> {
+  await page.waitForURL((url) => /\/chat\/[^/?#]+/.test(url.pathname), { timeout: CREATE_MS })
+}
+
 /**
- * Waits until the open conversation no longer runs: its turn and every
- * subagent and background job it started have ended. Answers its
- * summary then.
+ * The transcript's tail row while the conversation waits (`ActivitySlot.vue`):
+ * Requesting, with how long once past a second, or Connecting.
+ */
+const WAITING_ROW = /^(Requesting( for .+)?|Connecting)$/
+
+/**
+ * What the page shows of a turn that runs or is about to: the composer's
+ * Stop, which stays from the send of the message that starts the turn to
+ * its end, or the transcript's Requesting or Connecting row, which also
+ * stands for a recovery the backend has not taken up yet; null when it
+ * shows neither.
+ */
+export async function pageActivity(page: Page): Promise<string | null> {
+  // The composer's own Stop, not the one of the agent's browser address bar.
+  const stop = page.locator('.composer-shell').getByRole('button', { name: 'Stop', exact: true })
+  if (await stop.filter({ visible: true }).count() > 0) {
+    return 'Stop'
+  }
+  const row = page.getByText(WAITING_ROW).filter({ visible: true })
+  return await row.count() > 0 ? await row.first().innerText() : null
+}
+
+/**
+ * Waits until the open conversation no longer runs: no message is on its
+ * way, and its turn and every subagent and background job it started have
+ * ended. Answers its summary then.
  */
 export async function turn(tool: Tool, options: { timeout?: number } = {}): Promise<Summary> {
-  const page = await tool.browser.page()
+  return turnOn(tool.slot, await tool.browser.page(), options)
+}
+
+/** `demi.turn` on `page`, which shows the web app of `slot`. */
+export async function turnOn(slot: Slot, page: Page, options: { timeout?: number } = {}): Promise<Summary> {
+  let shown = await pageActivity(page)
+  if (shown !== null && conversationId(page) === null) {
+    // A new conversation's first message is on its way; the address follows.
+    await conversationAddress(page)
+  }
   const id = conversationId(page)
   if (!id) {
     throw new Failure(`The page shows no conversation: ${page.url()}`)
   }
-  if (await summary(tool.slot, page, id) === null) {
-    throw new Failure(`Conversation ${id} has no message yet, so it has no turn`)
+  try {
+    return await waitSummary(slot, page, id, {
+      // The page is asked first: a message it has on its way reaches the
+      // backend before it leaves the page, so the backend runs by then.
+      check: async () => {
+        shown = await pageActivity(page)
+        // Nothing on its way and nothing at the backend, as when the
+        // message was not delivered: no turn will come.
+        if (shown === null && await summary(slot, page, id) === null) {
+          throw new Failure(`Conversation ${id} has no message yet, so it has no turn`)
+        }
+      },
+      ended: (summary) => shown === null && !running(summary.status),
+      what: 'the conversation to stop running',
+      timeoutMs: options.timeout ?? TURN_MS,
+    })
+  } catch (error) {
+    throw error instanceof Failure && shown !== null
+      ? new Failure(`${error.message.replace(/\.$/, '')}, and the page still shows ${shown}.`)
+      : error
   }
-  return waitSummary(tool.slot, page, id, {
-    ended: (summary) => !running(summary.status),
-    what: 'the conversation to stop running',
-    timeoutMs: options.timeout ?? TURN_MS,
-  })
 }
