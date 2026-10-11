@@ -355,6 +355,7 @@ impl TranscriptLog {
             model: model.clone(),
             text,
             signature: None,
+            text_length: None,
             entries: Vec::new(),
         }));
     }

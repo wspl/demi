@@ -23,6 +23,7 @@ import { changeFile, pillSelection, runFiles } from '../../files/request-changes
 import { foldedMedia } from '../tool-media'
 import { useElapsedTime } from '../../composables/useElapsedTime'
 import BlockScope from './BlockScope.vue'
+import { provideBlockScope } from '../whole-blocks'
 
 /**
  * Consecutive steps as one row (`runtime.md` § Work groups). While they are
@@ -48,6 +49,8 @@ const lone = computed(() => {
   const steps = props.group.steps
   return steps.length === 1 && steps[0]!.type === 'thinking' ? steps[0]! : null
 })
+// A lone thinking's row is the thinking's own: held light, it opens to read it whole.
+provideBlockScope(() => lone.value ?? undefined)
 const loneCall = computed(() => {
   const steps = props.group.steps
   return steps.length === 1 && steps[0]!.type === 'tool_call' ? steps[0]! : null
