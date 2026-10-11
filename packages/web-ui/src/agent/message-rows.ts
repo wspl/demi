@@ -8,7 +8,7 @@ import { rowKey, succeedKeys, type DrawnRow } from './row-key'
 import type { SessionFailureNotice, SessionLoad } from './session-status'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import { useActivitySlot, type ActivitySlotState } from './useActivitySlot'
-import { getVisibleBlocks, isRunCut } from './visible-blocks'
+import { getVisibleBlocks } from './visible-blocks'
 import { groupWork } from './work-groups'
 
 /** What a transcript list shows its rows from, as `AgentMessageList` takes it. */
@@ -56,10 +56,10 @@ export interface MessageRows {
   footerIds: ComputedRef<Set<string>>
 }
 
-/** A recovery this page asked for: the record it continues from, and the block before it, where the turn goes on. */
+/** A recovery this page asked for: the record it continues from, and the blocks the transcript showed at the press. */
 interface Recovery {
   record: string
-  before: string | null
+  shown: ReadonlySet<string>
 }
 
 /**
@@ -80,12 +80,12 @@ interface Recovery {
  * Continue after a Stop and Resume after an error take the place of the
  * record they continue from: from the press, the record's row is the
  * Requesting row, until the turn shows what comes after it, or the request
- * is refused and the record shows again.
+ * is refused and the record shows again. A step that comes after it joins
+ * the run above, as the backend stores it, and the Requesting row gives
+ * way: the one change that shrinks the list, which the user asked for.
  */
 export function useMessageRows(source: () => MessageRowsSource): MessageRows {
   const visibleBlocks = computed(() => getVisibleBlocks(source().blocks))
-  // The places a turn went on after a cut end the run before them.
-  const runBlocks = computed(() => getVisibleBlocks(source().blocks, { cuts: true }))
 
   // A recovery this page asked for lasts from the press until the session
   // is idle again with nothing pending: the turn it ran ended, or the server
@@ -98,22 +98,24 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
         recovery.value = null
       }
       if (action === 'resume') {
-        recovery.value ??= recoveryFrom(runBlocks.value)
+        recovery.value ??= recoveryFrom(visibleBlocks.value)
       } else if (phase === 'idle') {
         recovery.value = null
       }
     },
     { immediate: true },
   )
-  // Until the turn shows something after the cut, the record's place is the
-  // turn's tail: the run before it is done, and the tail row stands there.
+  // Until the turn shows something it did not show at the press, the
+  // record's place is the turn's tail, and the tail row stands there: the
+  // record marked resumed or unwound, with the leftovers before it, leaves
+  // only what was shown before.
   const atCut = computed(() => {
     const current = recovery.value
     if (current === null || (source().pendingCalls?.length ?? 0) > 0) {
       return false
     }
-    const end = runBlocks.value.at(-1)
-    return end === undefined ? current.before === null : end.id === current.record || end.id === current.before
+    const end = visibleBlocks.value.at(-1)
+    return end === undefined || current.shown.has(end.id)
   })
   const hiddenId = computed(() => atCut.value ? recovery.value?.record ?? null : null)
   const transcriptRows = computed(() => visibleBlocks.value.filter((block) => block.id !== hiddenId.value))
@@ -134,7 +136,7 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
   const pendingCallRows = computed(() => tail.value.turn.filter((block) => block.type === 'pending_call'))
   const otherTurnBlocks = computed(() => tail.value.turn.filter((block) => block.type !== 'pending_call'))
   const turnRows = computed(() => groupWork(
-    [...runBlocks.value, ...pendingCallRows.value],
+    [...visibleBlocks.value, ...pendingCallRows.value],
     source().phase === 'running' && !atCut.value,
   ))
 
@@ -146,7 +148,7 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
         backendAway: input.backendAway ?? false,
         phase: input.phase,
         recovering: input.pendingAction === 'resume' || atCut.value,
-        transcriptBlocks: runBlocks.value,
+        transcriptBlocks: visibleBlocks.value,
         turnRows: turnRows.value,
       }
     },
@@ -170,7 +172,7 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
     const failure = source().failure
     return [
       ...(source().atStart ? [] : [{ type: 'history_edge', id: 'history-before' } as const]),
-      ...turnRows.value.filter((row) => !isRunCut(row) && row.id !== hiddenId.value),
+      ...turnRows.value.filter((row) => row.id !== hiddenId.value),
       ...otherTurnBlocks.value,
       ...slotRow.value,
       ...(failure ? [{ type: 'session_failure', id: 'session-failure', failure } as const] : []),
@@ -209,14 +211,14 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
 }
 
 /**
- * What a recovery continues from: the record that ends the transcript, a
- * Stop or an error, and the block before it, where the turn goes on; null
- * when the transcript ends otherwise.
+ * What a recovery continues from: the record that ends the visible
+ * transcript, a Stop or an error, and the blocks shown with it; null when
+ * the transcript ends otherwise.
  */
 function recoveryFrom(blocks: readonly Block[]): Recovery | null {
   const end = blocks.at(-1)
-  if (end?.type !== 'error' && !(end?.type === 'abort' && !end.isResumed)) {
+  if (end?.type !== 'error' && end?.type !== 'abort') {
     return null
   }
-  return { record: end.id, before: blocks.at(-2)?.id ?? null }
+  return { record: end.id, shown: new Set(blocks.map((block) => block.id)) }
 }
