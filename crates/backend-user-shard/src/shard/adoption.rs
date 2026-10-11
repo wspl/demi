@@ -9,6 +9,7 @@ use std::rc::Rc;
 use axum::extract::ws::{Message, WebSocket};
 use demi_backend_database::StorageError;
 use demi_backend_database::devices::{DeviceChange, DeviceRecord, DeviceRemoval};
+use demi_backend_host_access::target::cloud_home;
 use demi_backend_page_sync::Part;
 use demi_backend_remote_host::{Hello, Link, LinkOptions, host_identity};
 use demi_backend_runners::devices::{DeviceRecorder, Serving, Updating, send};
@@ -117,10 +118,15 @@ impl Shard {
             recorded: recorded.iter().map(|(job, _)| job.clone()).collect(),
         };
         // A closing shard takes no runner; dropping the socket closes it.
-        let Some(serving) = self.bind(&device.id, runner, hello) else {
+        let Some((serving, reported)) = self.bind(&device.id, runner, hello) else {
             return;
         };
         self.take_up(recorded.into_iter().map(|(_, conversation)| conversation));
+        // The report is recorded before the welcome: the work the
+        // connection queued runs after it, so no answer of that work reaches
+        // an agent whose next context block still names what the runner no
+        // longer reports.
+        reported.await;
         // A runner that went away before its welcome ends its connection at
         // once, as the connection reads its socket. What the connection
         // queued meanwhile leaves after the welcome.
@@ -150,9 +156,10 @@ impl Shard {
             managed: false,
             recorded: Default::default(),
         };
-        let Some(serving) = self.bind(&device.id, runner, hello) else {
+        let Some((serving, reported)) = self.bind(&device.id, runner, hello) else {
             return;
         };
+        reported.await;
         // The claim that waits for this answer may have gone; the runner is
         // paired all the same.
         let _ = bound.send(
@@ -163,18 +170,29 @@ impl Shard {
     }
 
     /// Publishes a new connection of the device under the shard's policy,
-    /// and records what its runner's hello says. None once the shard is
-    /// closing, whose close ends every connection it published before.
+    /// with what records its runner's hello: its system and release, and
+    /// the advance of each execution context the report changes
+    /// (`sessions-and-targets.md` § Resolve a target). None once the shard
+    /// is closing, whose close ends every connection it published before.
     fn bind(
         self: &Rc<Self>,
         device: &DeviceId,
         runner: RunnerInfo,
         hello: Hello,
-    ) -> Option<Serving> {
+    ) -> Option<(Serving, impl Future<Output = ()> + 'static)> {
         if self.is_closing() {
             return None;
         }
         let hello_instance = hello.instance;
+        // The home the device's execution contexts named until this report:
+        // the Cloud's is `/home/demi` before its runner reported one.
+        let before = self.devices().home(device);
+        let named = if hello.managed {
+            Some(cloud_home(before.as_deref()).to_owned())
+        } else {
+            before
+        };
+        let home_changed = named.as_deref() != Some(runner.identity.home_dir.as_str());
         let (link, driver) = Link::new(LinkOptions {
             device: device.to_string(),
             identity: host_identity(&runner.identity),
@@ -192,11 +210,11 @@ impl Shard {
             .devices()
             .bind(device, link, driver, seen.clone(), runner.installation);
         let device = device.clone();
-        let instance = hello_instance;
-        self.tasks().spawn_local(async move {
-            seen.hello(device, runner.os, runner.version, instance).await
-        });
-        Some(serving)
+        let reported = async move {
+            seen.hello(device, runner.os, runner.version, hello_instance, home_changed)
+                .await;
+        };
+        Some((serving, reported))
     }
 
     /// Restores the trees of the conversations whose commands ran on the
@@ -363,9 +381,9 @@ impl Shard {
             managed: false,
             recorded: Default::default(),
         };
-        self.bind(device, runner, hello)
-            .expect("an open shard binds")
-            .into_driver()
+        let (serving, reported) = self.bind(device, runner, hello).expect("an open shard binds");
+        self.tasks().spawn_local(reported);
+        serving.into_driver()
     }
 
     /// Connects `device` through a runner the test plays, working in `home`:

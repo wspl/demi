@@ -12,9 +12,15 @@ use crate::HostShard;
 /// The Cloud's home directory, before its runner reports one.
 const CLOUD_HOME: &str = "/home/demi";
 
+/// The Cloud's home as execution contexts name it: the one its runner
+/// reported, `reported`, or `/home/demi` before it did.
+pub fn cloud_home(reported: Option<&str>) -> &str {
+    reported.unwrap_or(CLOUD_HOME)
+}
+
 /// Where a conversation on the Cloud works unless it names a directory.
 pub(crate) fn cloud_session_directory(id: &ConversationId, home: Option<&str>) -> String {
-    format!("{}/sessions/{id}", home.unwrap_or(CLOUD_HOME))
+    format!("{}/sessions/{id}", cloud_home(home))
 }
 
 impl dyn HostShard + '_ {
