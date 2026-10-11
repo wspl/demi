@@ -362,6 +362,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
                 .delete(files::remove),
         )
         .route("/conversations/{id}/fs/file", get(files::text))
+        .route("/conversations/{id}/fs/exists", post(files::exists))
         .route(
             "/conversations/{id}/fs/raw",
             get(files::raw).put(files::upload),

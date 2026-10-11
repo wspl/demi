@@ -6,8 +6,12 @@ import type { RequestEditSelection } from '../files/request-changes'
  * payload of each.
  */
 export interface IntentPayloads {
-  /** A file on the conversation's Host, by its absolute path. */
-  file: { path: string }
+  /**
+   * A file on the conversation's Host, by its absolute path, and the line to
+   * open it at, scrolled there and marked for a moment, when one is named
+   * (`file-previews.md` § Files named in messages).
+   */
+  file: { path: string; line?: number }
   /**
    * A request's changes, as its line or a file pill under one of its calls
    * names them: the request, its file, and the edit of it or All Changes.

@@ -368,6 +368,10 @@ serde_plain::derive_fromstr_from_deserialize!(SubagentEvent);
 pub struct SubagentJob {
     #[garde(skip)]
     pub subagent_id: NodeId,
+    /// The number the model knows it by, which `demi agent spawn` printed
+    /// and a message links it with as `agent:<number>`.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub number: u64,
     /// The node that spawned it: the web app keys nested views by it.
     #[garde(skip)]
     pub parent_session_id: NodeId,

@@ -44,6 +44,7 @@ export function applyConversationEvent(
     } else {
       conversation.subagents.push({
         id: job.subagentId,
+        number: job.number,
         name: job.description,
         phase: job.phase,
         startedAt: job.startedAt,

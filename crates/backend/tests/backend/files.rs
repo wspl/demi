@@ -747,6 +747,58 @@ async fn a_delete_takes_a_file_or_a_directory_and_refuses_the_directories_the_ho
 }
 
 #[tokio::test]
+async fn one_question_names_which_paths_a_message_names_are_files() {
+    let device = OnDevice::start().await;
+    std::fs::create_dir_all(device.root.join("src")).unwrap();
+    std::fs::write(device.root.join("src/app.ts"), "export {}\n").unwrap();
+    std::fs::write(device.root.join("README.md"), "# Read me\n").unwrap();
+    let exists = |paths: Vec<String>| {
+        let device = &device;
+        async move {
+            device
+                .backend
+                .post(
+                    &format!("/api/conversations/{CONVERSATION}/fs/exists"),
+                    Some(&device.master),
+                    json!({ "paths": paths }),
+                )
+                .await
+        }
+    };
+
+    // A file answers; a directory, a missing path and a file under a file
+    // do not.
+    let answered = exists(vec![
+        device.path("src/app.ts"),
+        device.path("src"),
+        device.path("missing.ts"),
+        device.path("README.md/x"),
+        device.path("README.md"),
+    ])
+    .await;
+    assert_eq!(
+        answered.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&answered.body)
+    );
+    assert_eq!(
+        answered.json::<Value>(),
+        json!({ "files": [device.path("src/app.ts"), device.path("README.md")] })
+    );
+    // A relative path, or more than one question holds, is refused whole.
+    assert_eq!(
+        exists(vec!["src/app.ts".to_owned()]).await.status,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        exists(vec![device.path("README.md"); 201]).await.status,
+        StatusCode::BAD_REQUEST
+    );
+    device.backend.close().await;
+}
+
+#[tokio::test]
 async fn the_host_access_reaches_only_the_callers_conversation_and_the_hosts_bound_to_it() {
     let device = OnDevice::start().await;
     let backend = &device.backend;

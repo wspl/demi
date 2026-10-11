@@ -20,6 +20,7 @@ import type { SendWay } from '@demicodes/web-ui/agent/send-way'
 import { executionFor, hostDeviceOptions, moveLocked, primaryHostOf } from '../targets/execution'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
 import type { HostChoice } from '@demicodes/web-ui/hosts/types'
+import type { MessageFileTarget } from '@demicodes/web-ui/markdown/types'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
@@ -34,7 +35,7 @@ import { useSettingsAddress } from '../settings/address'
 const props = defineProps<{
   conversation: Conversation
   /** Shows a Host file in the work panel; absent while no plugin shows files. */
-  openFile?: (path: string) => void
+  openFile?: (target: MessageFileTarget) => void
 }>()
 const emit = defineEmits<{
   /** A Host the offline primary Host's card chose to move the conversation to. */
@@ -92,7 +93,7 @@ function openInstruction(entry: InstructionEntry): void {
   if (entry.kind === 'personal') {
     void settings.open('instructions')
   } else {
-    props.openFile?.(entry.path)
+    props.openFile?.({ path: entry.path, line: null })
   }
 }
 
