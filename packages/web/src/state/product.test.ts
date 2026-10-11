@@ -485,9 +485,11 @@ test('a page back from sleep replaces a channel silent for 75 seconds at once, a
 
 // `web-application.md` § Liveness and reconnection: the browser's word that
 // it went offline counts once it has held for a second, as a network that
-// macOS re-evaluates reports offline for a moment. Cost: fake timers, a few
-// milliseconds.
-test('a moment offline under a second neither shows the banner nor closes the channel; one that holds a second does both, and coming back online connects at once', () => {
+// macOS re-evaluates reports offline for a moment; one that holds shows the
+// banner and closes no socket, which may still work through a VPN's tunnel,
+// and coming back online checks each socket as at a return. Cost: fake
+// timers, a few milliseconds.
+test('a moment offline under a second shows no banner; one that holds shows it and keeps the channel, and back online the return keeps a live channel', () => {
   jest.useFakeTimers()
   try {
     const product = started()
@@ -497,23 +499,42 @@ test('a moment offline under a second neither shows the banner nor closes the ch
     browserCameOnline()
     jest.advanceTimersByTime(5_000)
     expect(product.connection).toBeNull()
-    expect(channel.closed).toBe(false)
 
     browserWentOffline()
     jest.advanceTimersByTime(999)
     expect(product.connection).toBeNull()
-    expect(channel.closed).toBe(false)
     jest.advanceTimersByTime(1)
     expect(product.connection).toBe('offline')
-    expect(channel.closed).toBe(true)
-    const count = channels.opened.length
+    expect(channel.closed).toBe(false)
+    // The channel goes on working through the tunnel while the browser says offline.
+    channel.send({ type: 'heartbeat' })
+    jest.advanceTimersByTime(30_000)
     browserCameOnline()
     jest.advanceTimersByTime(0)
-    expect(channels.opened.length).toBe(count + 1)
-    channels.last().connect(productState())
     expect(product.connection).toBeNull()
+    expect(channel.closed).toBe(false)
+    expect(channels.last()).toBe(channel)
   } finally {
     // The page is online again for the tests that follow.
+    browserCameOnline()
+  }
+})
+
+test('back online after an offline that held, the return replaces a channel silent past the limit by the clock', () => {
+  jest.useFakeTimers()
+  try {
+    started()
+    const silent = channels.last()
+    browserWentOffline()
+    jest.advanceTimersByTime(1_000)
+    // The laptop slept while offline: the clock went on, the watch's timer did not.
+    jest.setSystemTime(Date.now() + 80_000)
+    expect(silent.closed).toBe(false)
+    browserCameOnline()
+    jest.advanceTimersByTime(0)
+    expect(silent.closed).toBe(true)
+    expect(channels.last()).not.toBe(silent)
+  } finally {
     browserCameOnline()
   }
 })
