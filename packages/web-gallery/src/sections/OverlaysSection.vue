@@ -13,6 +13,9 @@ import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import FloatingWindow from '@demicodes/web-ui/ui/FloatingWindow.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import type { WindowRect } from '@demicodes/web-ui/ui/floating-window'
+import { KEEPS_WINDOWS } from '@demicodes/web-ui/ui/window-stack'
+import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
+import { galleryBlobSize, galleryBlobUrl, galleryBlobs } from '../fixtures/blobs'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import DropdownTrigger from '@demicodes/web-ui/ui/DropdownTrigger.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -100,6 +103,25 @@ const dialogOpen = ref(false)
 const windowOpen = ref(false)
 const windowRect = ref<WindowRect>({ x: 320, y: 160, width: 420, height: 260 })
 const windowNote = ref('')
+
+/** Pictures of the gallery's blobs that the Media Viewer specimen opens in the page's viewer. */
+const viewerPictures = [
+  { name: 'login.png', variant: 'a screenshot, 480 × 300', blob: galleryBlobs.screenshot },
+  { name: 'timeline.png', variant: 'wider than the window, 1600 × 300', blob: galleryBlobs.timeline },
+  { name: 'dashboard-full.png', variant: 'a whole page, 360 × 2400', blob: galleryBlobs.fullPage },
+]
+const mediaViewer = useMediaViewer()
+
+function showPicture(picture: (typeof viewerPictures)[number], event: MouseEvent): void {
+  const size = galleryBlobSize(picture.blob)
+  mediaViewer.show({
+    kind: 'image',
+    src: galleryBlobUrl(picture.blob, 'image/png'),
+    name: picture.name,
+    size: size.width && size.height ? { width: size.width, height: size.height } : null,
+    from: event.currentTarget instanceof Element ? event.currentTarget : null,
+  })
+}
 const inlineDialogOpen = ref(true)
 // Layers: a dialog, the model menu opened from it, and that menu's submenu, all pinned open.
 const layersDialogOpen = ref(true)
@@ -1108,11 +1130,12 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="FloatingWindow"
-        note="A small window over the page that blocks nothing, as Quick Look’s does: the page beside it stays usable, with no scrim. Drag the title bar to move it and any edge or corner to resize it; it stays at least 240 × 180, no larger than the page, with its title bar on the page, also when the browser window shrinks. Opening moves the focus into it and closing gives the focus back. Escape closes it, unless the focus is in a text field, such as the one inside, or a menu or a dialog is open. It opens again where it was left. The media viewer is this window: open a screenshot in Session to see it."
+        note="A small window over the page that blocks nothing, as Quick Look’s does: the page beside it stays usable, with no scrim. Drag the title bar to move it and any edge or corner to resize it; it stays at least 240 × 180, no larger than the page, with its title bar on the page, also when the browser window shrinks. Opening moves the focus into it and closing gives the focus back. The windows of a page stand in the order they opened, the newest in front: a press outside every window closes the newest alone, and so does Escape, unless the focus is in a text field, such as the one inside, or a menu or a dialog is open; a press on the Open button, the window’s own control, does not count as outside. It opens again where it was left. The media viewer is this window: see Media Viewer below."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="live">
-            <Button size="md" @click="windowOpen = !windowOpen">{{ windowOpen ? 'Close' : 'Open' }}</Button>
+            <!-- The button is the window's control, as a chip is: a press on it is not one outside the window. -->
+            <Button size="md" v-bind="{ [KEEPS_WINDOWS]: '' }" @click="windowOpen = !windowOpen">{{ windowOpen ? 'Close' : 'Open' }}</Button>
           </GallerySpecimen>
         </div>
         <FloatingWindow
@@ -1129,6 +1152,17 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             <TextInput v-model="windowNote" placeholder="Type here; Escape stays in the field" aria-label="Note" />
           </div>
         </FloatingWindow>
+      </GallerySection>
+
+      <GallerySection
+        title="Media Viewer"
+        note="The page’s one viewer, the floating window above showing a picture (file-previews.md § The media viewer). A picture opens fitted, scaled down and never enlarged, and the title bar gives its pixel size and zoom, 480 × 300 · 100%. The wheel, and a pinch on a trackpad, zoom it about the pointer, so the spot under it stays under it, from the fitted size, or the actual size when smaller, up to 800%. While it is larger than the window, a drag moves it with the grab hand, and it never leaves an empty band on a side that still has pixels. A click without a drag toggles the fitted and the actual size about the clicked spot. Resizing the window keeps a fitted picture fitted and a zoomed one at its zoom. Each button shows its picture in the same window, fitted; the buttons are the viewer’s controls, so a press on one does not close it, while a press anywhere else outside the window does."
+      >
+        <div class="specimen-row specimen-row-wide items-start">
+          <GallerySpecimen v-for="picture in viewerPictures" :key="picture.name" :variant="picture.variant">
+            <Button size="md" v-bind="{ [KEEPS_WINDOWS]: '' }" @click="showPicture(picture, $event)">Open {{ picture.name }}</Button>
+          </GallerySpecimen>
+        </div>
       </GallerySection>
     </template>
   </div>

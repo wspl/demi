@@ -288,13 +288,7 @@ provideOriginRevealer((origin) => {
     : openOrigin(origin)
 })
 
-// The part of the transcript the composer leaves visible, which caps a
-// message's image height (`file-previews.md` § Files named in messages). Until
-// the first measurement the stylesheet falls back to the window's height.
 const { height: viewportHeight } = useElementSize(scrollContainer)
-const visibleHeightStyle = computed(() => viewportHeight.value > 0
-  ? { '--conversation-visible-height': `${Math.max(0, viewportHeight.value - props.bottomOffset)}px` }
-  : {})
 
 useFollowSentMessages(() => renderBlocks.value, rowKey, scrollToBottom)
 
@@ -348,7 +342,6 @@ defineExpose({
       ref="scrollArea"
       class="h-full"
       :viewport-class="paneStatus ? '[overflow-anchor:none] flex flex-col' : '[overflow-anchor:none]'"
-      :style="visibleHeightStyle"
       @scroll="onScroll"
     >
       <SessionStatus
