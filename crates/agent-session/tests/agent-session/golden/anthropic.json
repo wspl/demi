@@ -1,0 +1,109 @@
+{
+  "model": "model-a",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Continue the work from where it stands; do not mention or restate the summary."
+        },
+        {
+          "type": "text",
+          "text": "The release build fails; here is the screen."
+        },
+        {
+          "type": "text",
+          "text": "Use the release profile."
+        },
+        {
+          "type": "text",
+          "text": "Fix it, and don't touch the migration files."
+        },
+        {
+          "type": "text",
+          "text": "<summary>\n## Goal\n- Fix the release build.\n## Constraints and preferences\n- \"don't touch the migration files\"\n## Progress\n- `libssl` added to the link line; tests pass.\n## Next step\n- Ship it.\n</summary>"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "call-test",
+          "name": "test",
+          "input": {
+            "suite": "release"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "call-test",
+          "content": [
+            {
+              "type": "text",
+              "text": "running 40 tests\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest result: ok"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "I added `libssl` to the link line; the tests pass."
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Ship it.",
+          "cache_control": {
+            "type": "ephemeral",
+            "ttl": "1h"
+          }
+        }
+      ]
+    }
+  ],
+  "max_tokens": 32000,
+  "stream": true,
+  "system": [
+    {
+      "type": "text",
+      "text": "system prompt",
+      "cache_control": {
+        "type": "ephemeral",
+        "ttl": "1h"
+      }
+    }
+  ],
+  "tools": [
+    {
+      "name": "look",
+      "description": "",
+      "input_schema": {}
+    },
+    {
+      "name": "note",
+      "description": "",
+      "input_schema": {}
+    },
+    {
+      "name": "test",
+      "description": "",
+      "input_schema": {}
+    }
+  ]
+}

@@ -951,6 +951,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
           model: demoModel,
           summary: 'The login test expects the renamed session cookie.',
           summaryTokens: 2400,
+          kept: [],
         },
         ...state.blocks.slice(cut),
         {

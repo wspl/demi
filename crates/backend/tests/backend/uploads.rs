@@ -860,13 +860,16 @@ async fn a_restored_conversation_reads_each_replayed_blob_once_and_none_before_i
     // from which the user may compact (`compaction.md` § When compaction
     // runs).
     vendor.respond(answer(&["An old shot."], 600_000, 1));
+    // A message longer than the user's words a pass keeps, 20,000 tokens.
+    let long = format!("Look {}", "l".repeat(80_000));
     socket
-        .send(&with_upload("m1", "Look", &[(&old, "old.png")]))
+        .send(&with_upload("m1", &long, &[(&old, "old.png")]))
         .await;
     socket.until_idle().await;
     // The vendor refuses the nine shots' request, so the latest answered
     // request is the first: the pass summarizes what it carried, the old
-    // shot, and keeps what came after it, the nine shots
+    // shot's message, whose text the boundary keeps up to the budget and
+    // without the shot, and keeps what came after it, the nine shots
     // (`compaction.md` § One pass).
     let refusal = json!({ "type": "error", "error": { "type": "invalid_request_error", "message": "try later" } });
     vendor.respond(

@@ -51,6 +51,7 @@ export function compactionTranscript(state: CompactionCase): Block[] {
       model: demoModel,
       summary: 'The login test expected the old cookie name; the assertion was to be updated.',
       summaryTokens: 2_400,
+      kept: [],
     },
     ...SECOND_ANSWER,
     {
@@ -103,6 +104,7 @@ export function compactedAfterFailedTurnTranscript(): Block[] {
       model: demoModel,
       summary: 'The login test expected the old cookie name.',
       summaryTokens: 1_900,
+      kept: [],
     },
     ...FIRST_ANSWER,
     SECOND,

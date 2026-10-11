@@ -3,6 +3,7 @@
 //! and turns, the points it is cut at, the model's replay of them, the token
 //! estimates compaction decides by.
 
+mod compaction;
 mod cut;
 pub mod estimate;
 mod ids;
@@ -13,10 +14,13 @@ mod reports;
 #[cfg(feature = "testing")]
 pub mod testing;
 
+pub use compaction::{
+    COMPACTION_NOTE, CompactionWindow, answered_ends, compaction_window, kept_messages,
+    summary_text,
+};
 pub use cut::{
-    CompactionWindow, CutError, ResumePoint, Rewind, before_user, compaction_window, last_answer,
-    last_failure,
-    last_assistant_text, resume_point, rewind, through_assistant, unwind,
+    CutError, ResumePoint, Rewind, before_user, last_answer, last_failure, last_assistant_text,
+    resume_point, rewind, through_assistant, unwind,
 };
 pub use ids::{IdSource, RandomIds};
 pub use journal::{DirtyRows, PatchBatch};
@@ -65,18 +69,7 @@ pub fn replay_start(blocks: &[Block]) -> usize {
 /// carried. None when no request was answered since the last compaction.
 /// A boundary whose marker an edit cut counts as the last compaction.
 pub(crate) fn latest_answer(blocks: &[Block]) -> Option<usize> {
-    let floor = blocks
-        .iter()
-        .rposition(is_compaction)
-        .map_or(0, |compaction| compaction + 1);
-    let response = floor
-        + blocks[floor..]
-            .iter()
-            .rposition(|block| matches!(block, Block::Response(_)))?;
-    let before_answer = blocks[floor..response]
-        .iter()
-        .rposition(|block| !is_answer(block));
-    Some(before_answer.map_or(floor, |index| floor + index + 1))
+    answered_ends(blocks).last().copied()
 }
 
 /// Whether a block is a compaction's boundary or marker.
@@ -88,7 +81,7 @@ pub(crate) fn is_compaction(block: &Block) -> bool {
 }
 
 /// Whether a block is part of a model's answer.
-fn is_answer(block: &Block) -> bool {
+pub(crate) fn is_answer(block: &Block) -> bool {
     matches!(
         block,
         Block::Thinking(_) | Block::RedactedThinking(_) | Block::Text(_) | Block::ToolCall(_)

@@ -158,3 +158,20 @@ impl ProviderRuntime for OpenAiRuntime {
         }
     }
 }
+
+/// Test support (feature `testing`): the bodies this provider sends for a
+/// request, for the tests of what sends its requests.
+#[cfg(feature = "testing")]
+pub mod testing {
+    use demi_provider_common::{InferenceRequest, VendorPolicy};
+
+    /// The Responses API body of `request` for a vendor of `policy`.
+    pub fn responses_body(request: &InferenceRequest, policy: VendorPolicy) -> Vec<u8> {
+        crate::request::responses(request, policy)
+    }
+
+    /// The Chat Completions body of `request` for a vendor of `policy`.
+    pub fn chat_completions_body(request: &InferenceRequest, policy: VendorPolicy) -> Vec<u8> {
+        crate::request::chat_completions(request, policy)
+    }
+}

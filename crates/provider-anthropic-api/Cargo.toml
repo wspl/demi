@@ -12,6 +12,11 @@ doctest = false
 test = false
 bench = false
 
+[features]
+# The body of a request (`testing`), for the tests of what sends this
+# provider's requests.
+testing = []
+
 [dependencies]
 demi-shared-types = { path = "../shared-types" }
 demi-provider-common = { path = "../provider-common" }

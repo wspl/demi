@@ -20,7 +20,7 @@ use demi_agent_transcript::{
 use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
 };
-use demi_shared_types::{Block, BlockId, ModelSelection, ShellToolView, ToolView};
+use demi_shared_types::{Block, BlockId, Model, ModelSelection, ShellToolView, ToolView};
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
@@ -81,6 +81,12 @@ async fn run_turn(
         let recover = stream(s, cancel, continues).await?;
         continues = true;
         cancel.check()?;
+        // A session copy's answer is its summary: a call in it never runs
+        // (`compaction.md` § The summary request).
+        if s.read(|core| core.one_request) {
+            s.release_events();
+            return Ok(());
+        }
         let arrived = s.update(|core| core.arrived_since(before));
         // A response that requested no tool held its events for the turn's
         // end (`read`); a turn that goes on to compact or to the input that
@@ -246,12 +252,13 @@ async fn stream(
         let start = s.read(|core| core.transcript.blocks().len());
         let model = s.read(|core| core.model.clone());
         let window = cancel.guard(compaction::window_in_use(s, &model)).await?;
+        let model = model.model;
         let mut runtime = s
             .update(|core| core.take_runtime())
             .expect("the provider runtime is in its slot between runs");
         let request_cancel = request.cancel.clone();
         s.update(|core| core.start_waiting(attempt > 1));
-        let read = read(s, cancel, window, runtime.run(request), &request_cancel).await;
+        let read = read(s, cancel, window, &model, runtime.run(request), &request_cancel).await;
         // However the request ended, no call of it is being written.
         s.update(|core| core.end_writing());
         s.return_runtime(runtime);
@@ -404,13 +411,14 @@ pub(super) async fn system_prompt(
 /// open answer text completes when anything but more text follows it. The
 /// run's failure is handed back unrecorded, for the retry to decide on; the
 /// inner result says whether a response's usage reached the compaction
-/// threshold of `window`, the window in use for the run's model. A message
+/// threshold of the run's `model`, whose window in use is `window`. A message
 /// the user sent now ends it where it is, cancelling the request through
 /// `request_cancel`, as a Stop would, and what streamed stays.
 async fn read(
     s: &SessionShared,
     cancel: &TurnCancel,
     window: Option<u64>,
+    model: &Model,
     mut events: ProviderRun<'_>,
     request_cancel: &CancellationToken,
 ) -> Result<Result<bool, ProviderFailure>, TurnError> {
@@ -464,7 +472,7 @@ async fn read(
                     complete_text(s);
                 }
                 if let ProviderEvent::Response(usage) = &event {
-                    recover |= s.config.compaction.reached(window, usage);
+                    recover |= s.config.compaction.reached(window, model, usage);
                 }
                 s.update(|core| {
                     core.stop_waiting();
