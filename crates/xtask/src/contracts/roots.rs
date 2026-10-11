@@ -152,6 +152,7 @@ pub fn web() -> Vec<Root> {
         receives::<files::FileText>(),
         receives::<files::FileWatchMessage>(),
         sends::<files::FileWatchRequest>(),
+        sends::<files::ConversationWatchRequest>(),
         receives::<files::WorkingTreeChanges>(),
         receives::<files::ChangeSides>(),
         receives::<usage::UsageTotals>(),
