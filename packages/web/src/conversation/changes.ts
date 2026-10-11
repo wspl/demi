@@ -2,7 +2,7 @@ import type { ReadCallChange } from '@demicodes/web-ui/files/changes'
 import type { ChangeReads } from '@demicodes/web-ui/files/kept-source'
 import { ApiError, apiRequest, readResponse } from '../api/client'
 import { changeSidesSchema, workingTreeChangesSchema } from '../api/generated/web-api'
-import { fileBrowserError, rawFileContents } from '../api/files'
+import { fileBrowserError, rawFileContents, readAtOf } from '../api/files'
 
 /**
  * How the page reads the uncommitted changes of a conversation's execution
@@ -21,16 +21,17 @@ export function workingTreeReads(conversationId: string): ChangeReads {
     async list(version) {
       try {
         const response = await apiRequest(`/conversations/${id}/changes`, held(version))
+        const readAt = readAtOf(response.headers)
         if (response.status === 304)
-          return null
+          return { unchanged: true, readAt }
         const changes = await readResponse(response, workingTreeChangesSchema)
-        return {
+        const list = {
           files: changes.files,
           truncated: changes.truncated,
           repository: changes.repository,
-          gitDir: changes.gitDir,
           version: response.headers.get('etag'),
         }
+        return { value: list, readAt }
       } catch (error) {
         throw fileBrowserError(error)
       }
@@ -38,11 +39,13 @@ export function workingTreeReads(conversationId: string): ChangeReads {
     async sides(path, version) {
       try {
         const response = await apiRequest(`/conversations/${id}/changes/file?${new URLSearchParams({ path })}`, held(version))
+        const readAt = readAtOf(response.headers)
         if (response.status === 304)
-          return null
-        return { ...await readResponse(response, changeSidesSchema), version: response.headers.get('etag') }
+          return { unchanged: true, readAt }
+        const sides = await readResponse(response, changeSidesSchema)
+        return { value: { ...sides, version: response.headers.get('etag') }, readAt }
       } catch (error) {
-        // A side that is not text is the views' to show another way.
+        // A side that is not text is an answer, which the views show another way.
         throw fileBrowserError(error)
       }
     },

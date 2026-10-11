@@ -1,5 +1,6 @@
 import { HostFiles } from '@demicodes/web-ui/files/file-cache'
-import { keptSource, type ContentReads, type FileFollower, type FileReads } from '@demicodes/web-ui/files/kept-source'
+import { keptSource, type ContentReads, type FileReads } from '@demicodes/web-ui/files/kept-source'
+import type { ReadAt, WatchChannel } from '@demicodes/web-ui/files/watch-channel'
 import {
   FileBrowserError,
   type FileBrowserFailure,
@@ -32,6 +33,26 @@ const fileHeadersSchema = z.object({
   }),
   version: z.string().nullable(),
 })
+
+/**
+ * `X-Demi-Read-At: <epoch>.<number>`, the Host's number before it read
+ * (`web-api.md` § File text and working tree changes).
+ */
+const readAtSchema = z.string().regex(/^.+\.\d+$/).transform((value): ReadAt => {
+  const dot = value.lastIndexOf('.')
+  return { epoch: value.slice(0, dot), number: Number(value.slice(dot + 1)) }
+})
+
+/** The Host's number an answer carries; null for one that names none, which is never current. */
+export function readAtOf(headers: Headers): ReadAt | null {
+  const value = headers.get('x-demi-read-at')
+  if (value === null)
+    return null
+  const parsed = readAtSchema.safeParse(value)
+  if (!parsed.success)
+    throw invalidResponse(parsed.error)
+  return parsed.data
+}
 
 /** What an API failure means to the file views; a `HEAD` answer has only its status to say it. */
 function failureKind(error: ApiError): FileBrowserFailure['kind'] {
@@ -91,12 +112,19 @@ function failureSentence(error: ApiError, kind: FileBrowserFailure['kind']): Sen
   }
 }
 
-/** An API failure as the file views read it, in the page's words; anything else as it is. */
+/**
+ * An API failure as the file views read it, in the page's words, with the
+ * file's version and the Host's number a refusal that is the Host's answer
+ * carries; anything else as it is.
+ */
 export function fileBrowserError(error: unknown): unknown {
   if (!(error instanceof ApiError))
     return error
   const kind = failureKind(error)
-  return new FileBrowserError(kind, failureSentence(error, kind))
+  return new FileBrowserError(kind, failureSentence(error, kind), {
+    version: error.headers.get('etag'),
+    readAt: readAtOf(error.headers),
+  })
 }
 
 function browserError(error: unknown): never {
@@ -129,7 +157,7 @@ export function rawFileContents(endpoint: string): ContentReads {
       })
       if (!headers.success)
         throw invalidResponse(headers.error)
-      return headers.data
+      return { value: headers.data, readAt: readAtOf(response.headers) }
     },
     // One byte range, which the route answers with exactly those bytes.
     async readStart(path, length, options = {}) {
@@ -207,12 +235,13 @@ export function fileReads(
       try {
         const response = await apiRequest(`${endpoint}?${new URLSearchParams({ path })}`)
         const directory = await readResponse(response, directorySchema)
-        return directory.entries.map((entry) => ({
+        const entries = directory.entries.map((entry) => ({
           name: entry.name,
           isDirectory: entry.isDirectory,
           size: entry.size,
           modifiedAt: entry.modifiedAt,
         }))
+        return { value: entries, readAt: readAtOf(response.headers) }
       } catch (error) {
         browserError(error)
       }
@@ -237,17 +266,18 @@ export function fileReads(
       ? {
           // The text the page holds is read again with its version: an
           // unchanged file answers 304 without it.
-          async readText(path: string, held: string | null) {
+          async readText(path: string, held: string | null): ReturnType<NonNullable<FileReads['readText']>> {
             try {
               const response = await apiRequest(`${textEndpoint}?${new URLSearchParams({ path })}`, {
                 headers: held === null ? {} : { 'if-none-match': held },
                 allowNotModified: true,
               })
+              const readAt = readAtOf(response.headers)
               if (response.status === 304) {
-                return null
+                return { unchanged: true, readAt }
               }
               const { text } = await readResponse(response, fileTextSchema)
-              return { text, version: response.headers.get('etag') }
+              return { value: { text, version: response.headers.get('etag') }, readAt }
             } catch (error) {
               browserError(error)
             }
@@ -286,26 +316,42 @@ export function fileReads(
 
 const sources = new Map<string, FileBrowserSource>()
 
+/** How a file source keeps what it reads current. */
+export interface FileSourceOptions {
+  /**
+   * The watch of the source's route, which carries the subscriptions of
+   * what it keeps: a conversation's, or a device's for its folder dialog.
+   * A route has one watch, so a source is made once per route.
+   */
+  watch?: (files: HostFiles) => WatchChannel | null
+  /** Its views show sizes and times, as the folder dialogs do, which its listings then follow. */
+  details?: boolean
+  /** Stands other reads in for the requests, as a conversation's direct channel does. */
+  through?: (reads: FileReads) => FileReads
+}
+
 /**
  * The shared file browser handles paths and selection; this adapter handles
- * HTTP, over the kept files of the device's Host. A conversation's source
- * names its `follower`, the conversation's file watch.
+ * HTTP, over the kept files of the device's Host, which the route's watch
+ * keeps current.
  */
 export function fileSource(
   endpoints: FileRoutes,
   device: Pick<Device, 'id' | 'platform' | 'home'> | null,
-  follower?: FileFollower,
-  /** Stands other reads in for the requests, as a conversation's direct channel does. */
-  through: (reads: FileReads) => FileReads = (reads) => reads,
+  { watch, details = false, through = (reads) => reads }: FileSourceOptions = {},
 ): FileBrowserSource {
-  const key = JSON.stringify([endpoints, device?.id, device?.platform, device?.home])
+  const key = JSON.stringify([endpoints, device?.id, device?.platform, device?.home, details])
   const cached = sources.get(key)
   if (cached) {
     return cached
   }
   // Without a device nothing is listed, so nothing is kept.
   const files = hostFiles(device?.id ?? '')
-  const source = keptSource(through(fileReads(endpoints, device)), { files, follower })
+  const source = keptSource(through(fileReads(endpoints, device)), {
+    files,
+    watch: device ? watch?.(files) ?? null : null,
+    details,
+  })
   sources.set(key, source)
   return source
 }

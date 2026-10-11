@@ -7,6 +7,7 @@ import MediaPreview from './MediaPreview.vue'
 import { baseName } from '@demicodes/utils'
 import { formatBytes } from './format'
 import { TOO_LARGE_NOTE } from './preview'
+import { failureShown } from './file-cache'
 import { useShowing } from './showing'
 import type { FileContents, FileDescription } from './types'
 
@@ -43,13 +44,12 @@ const undecodable = ref<{ path: string; version: string | null } | null>(null)
 const state = computed<State>(() => {
   const entry = shown.entry.value
   const description = entry?.value
-  if (!entry || (description === undefined && entry.failure === null))
+  if (!entry || (entry.answer === null && entry.failure === null))
     return { phase: 'loading' }
-  if (description === undefined) {
-    return entry.failure?.kind === 'too-large'
-      ? { phase: 'too-large' }
-      : { phase: 'failed', message: entry.failure?.message ?? 'The file could not be read.' }
-  }
+  if (entry.answer === 'too-large')
+    return { phase: 'too-large' }
+  if (entry.answer !== 'value' || description === undefined)
+    return { phase: 'failed', message: failureShown(entry)?.message ?? 'The file could not be read.' }
   const failed = undecodable.value
   return failed?.path === props.path && failed.version === description.version
     ? { phase: 'undecodable', description }

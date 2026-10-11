@@ -47,7 +47,7 @@ export function useTextStart(
   /** The file could not be described, as while its Host is away: the card shows until it can be. */
   const undescribed = computed(() => {
     const entry = description.entry.value
-    return entry !== null && entry.value === undefined && entry.failure !== null
+    return entry !== null && entry.answer !== 'value' && (entry.answer !== null || entry.failure !== null)
   })
   watch([contents, path, version, undescribed], ([shown, at, file, failed], _previous, onCleanup) => {
     if (!shown?.readStart || at === null || file === null) {

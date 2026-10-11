@@ -95,10 +95,12 @@ test('an upload lands as a file, writes over one only when told, and never over 
       root: dir({ w: dir({ 'a.txt': file(1, '2026-09-01T10:00:00Z'), docs: dir({}) }) }),
       uploadRate: 1024 * 1024,
     })
-    // At this rate a file of a few bytes moves in one tick of the clock, which passes at once.
+    // At this rate a file of a few bytes moves in one tick of the clock,
+    // which passes at once; the source's watch runs timers of its own, so
+    // the clock moves by a tick rather than through every timer.
     const upload = (path: string, content: File, replace: boolean) => {
       const landing = s.upload!(path, content, { replace, signal: new AbortController().signal, progress: () => {} })
-      jest.runAllTimers()
+      jest.advanceTimersByTime(100)
       return landing
     }
     await upload('/w/b.txt', new File(['bb'], 'b.txt'), false)

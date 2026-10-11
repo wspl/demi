@@ -97,11 +97,11 @@ function relayReads(calls: string[]): FileReads {
     home: '/home/ana',
     list: async (path) => {
       calls.push(`list ${path}`)
-      return []
+      return { value: [], readAt: null }
     },
     readText: async (path) => {
       calls.push(`text ${path}`)
-      return { text: 'from the relay', version: 'W/"r"' }
+      return { value: { text: 'from the relay', version: 'W/"r"' }, readAt: { epoch: 'e', number: 9 } }
     },
     upload: async (path) => {
       calls.push(`upload ${path}`)
@@ -121,11 +121,17 @@ test('a read runs on the direct channel while it is the choice, and again on the
   const calls: string[] = []
   const reads = directFileReads(() => route, relayReads(calls))
 
-  expect(await reads.readText!('/work/notes.md', null)).toEqual({ text: 'héllo', version: 'W/"1"' })
+  expect(await reads.readText!('/work/notes.md', null)).toEqual({
+    value: { text: 'héllo', version: 'W/"1"' },
+    readAt: { epoch: 'e', number: 3 },
+  })
   expect(peer.headers[0]).toEqual({ conversation: 'c1', cwd: '/work', op: 'text', path: '/work/notes.md' })
   expect(calls).toEqual([])
 
-  expect(await reads.readText!('/work/notes.md', 'W/"1"')).toEqual({ text: 'from the relay', version: 'W/"r"' })
+  expect(await reads.readText!('/work/notes.md', 'W/"1"')).toEqual({
+    value: { text: 'from the relay', version: 'W/"r"' },
+    readAt: { epoch: 'e', number: 9 },
+  })
   expect(calls).toEqual(['text /work/notes.md'])
   expect(route.device.choice).toBe('relay')
   // The next read starts on the relay.

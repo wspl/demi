@@ -40,12 +40,13 @@ pub struct Scope {
     pub cwd: String,
 }
 
-/// A file's opened range: its size, version and modification time; its
-/// bytes follow.
+/// A file's opened range: its size, version and modification time, with
+/// the Host's number before it opened; its bytes follow.
 pub struct FileRange {
     pub size: u64,
     pub version: String,
     pub modified: demi_runner_protocol::wire::Timestamp,
+    pub read_at: ReadAt,
     pub body: ByteStream,
 }
 
@@ -249,7 +250,7 @@ async fn carry_out(
                 out.refuse(error).await;
                 return;
             }
-            let Some(opened) = ReadOpened::new(range.size, range.version, range.modified) else {
+            let Some(opened) = ReadOpened::new(range.size, range.version, range.modified, range.read_at) else {
                 let error = ChannelError::new(
                     ChannelErrorCode::HostOperationFailed,
                     500,

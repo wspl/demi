@@ -11,7 +11,7 @@
 import { z } from 'zod'
 import { DIRECT_CONNECT_MS, DIRECT_MESSAGE_BYTES, DIRECT_PROBE_LABEL, DIRECT_QUEUE_BYTES } from '@demicodes/protocol'
 import type { DirectAddresses, DirectAttempt, DirectPermission, DirectStage } from '@demicodes/web-ui/devices/direct'
-import { channelRefusalSchema, type ChannelErrorCode, type ChannelHeader } from '../api/generated/web-api'
+import { channelRefusalSchema, type ChannelErrorCode, type ChannelHeader, type ReadAt } from '../api/generated/web-api'
 
 /**
  * The channel or the peer failed under an operation: the operation runs
@@ -30,6 +30,8 @@ export class ChannelRefused extends Error {
     readonly code: ChannelErrorCode,
     readonly status: number,
     message: string,
+    /** What a refusal that is a file's answer carries: its version and the Host's number before it read. */
+    readonly facts: { version?: string | null; readAt?: ReadAt | null } = {},
   ) {
     super(message)
     this.name = 'ChannelRefused'
@@ -496,8 +498,8 @@ function parseAnswer<T>(text: string, schema: z.ZodType<T>): T {
   }
   const refusal = channelRefusalSchema.safeParse(value)
   if (refusal.success) {
-    const { code, status, message } = refusal.data.error
-    throw new ChannelRefused(code, status, message)
+    const { code, status, message, version, readAt } = refusal.data.error
+    throw new ChannelRefused(code, status, message, { version, readAt })
   }
   const answer = schema.safeParse(value)
   if (!answer.success)
