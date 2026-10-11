@@ -22,7 +22,7 @@ use tokio::{
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use demi_command_sdk::paths::resolve;
-use demi_runner_process::file_diff::line_counts;
+use demi_command_protocol::line_counts;
 use demi_runner_protocol::wire::{self, ChangeKind, Frame, Inbound};
 
 use crate::tree_watch::{Change as Seen, Event, Reach};

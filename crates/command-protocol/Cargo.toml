@@ -19,6 +19,7 @@ testing = []
 [dependencies]
 bytes.workspace = true
 garde.workspace = true
+gix-imara-diff = "0.2.5"
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true

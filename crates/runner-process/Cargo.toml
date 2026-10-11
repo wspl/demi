@@ -19,7 +19,6 @@ demi-runner-protocol = { path = "../runner-protocol" }
 bytes.workspace = true
 futures-util.workspace = true
 # The line counts of a change, the diff gix's blob diff is.
-gix-imara-diff = "0.2.5"
 process-wrap.workspace = true
 # HTTP/2 where the backend's edge offers it over TLS, so concurrent pipes
 # share one connection (`runner.md` § Host operations); plain HTTP stays
