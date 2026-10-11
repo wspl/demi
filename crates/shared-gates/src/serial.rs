@@ -90,6 +90,25 @@ impl<K: Eq + Hash + Clone> KeyedSerialGate<K> {
         }
     }
 
+    /// Holds `key`'s turn now, or none while another caller holds or waits
+    /// for it.
+    pub fn try_acquire(&self, key: K) -> Option<KeyedPermit<K>> {
+        let mut gates = self.gates.lock().unwrap_or_else(PoisonError::into_inner);
+        let semaphore = gates
+            .entry(key.clone())
+            .or_insert_with(|| Arc::new(Semaphore::new(1)))
+            .clone();
+        // Tried under the map's lock, where a permit is released: a refused
+        // caller drops its handle before a holder's release looks at the
+        // entry, which goes once nobody holds or waits for the key.
+        let permit = semaphore.try_acquire_owned().ok()?;
+        Some(KeyedPermit {
+            gates: self.gates.clone(),
+            key,
+            permit: Some(permit),
+        })
+    }
+
     /// How many keys have a holder or a waiter.
     pub fn len(&self) -> usize {
         self.gates

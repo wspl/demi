@@ -314,9 +314,16 @@ impl ConversationDb {
         // migration, however long it takes, instead of migrating beside it
         // and giving up on its write lock after the busy timeout, which left
         // the conversation listed without its facts (prod, 0.1.22).
+        // Only a read that finds the turn taken waits for it, which a test's
+        // hold counts (`MigrationHold::until_reads_wait`).
         let point = self.stores.migration_point();
-        point.read_waits();
-        let _turn = self.stores.opening.acquire(self.file.clone()).await;
+        let _turn = match self.stores.opening.try_acquire(self.file.clone()) {
+            Some(turn) => turn,
+            None => {
+                point.read_waits();
+                self.stores.opening.acquire(self.file.clone()).await
+            }
+        };
         let (blobs, conversation) = (self.stores.blobs.clone(), self.conversation.clone());
         tokio::task::spawn_blocking(move || {
             let blobs = BlobsOf {
@@ -435,7 +442,8 @@ impl MigrationHold {
     }
 
     /// Waits until `count` reads have found their database of an earlier
-    /// schema and wait to migrate it, counting those that have done so since.
+    /// schema and wait for the file's opening turn, which another holds, to
+    /// migrate it, counting those that have done so since.
     pub async fn until_reads_wait(&self, count: usize) {
         let mut reading = self.reading.clone();
         reading
@@ -486,7 +494,7 @@ impl MigrationPoint {
     }
 
     /// Counts a read that found its database of an earlier schema and now
-    /// waits to migrate it.
+    /// waits for the file's opening turn, which another holds, to migrate it.
     fn read_waits(&self) {
         #[cfg(feature = "testing")]
         {
