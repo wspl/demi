@@ -28,14 +28,15 @@ const remoteSchema = z.object({
 })
 export const draftSchema = z.object({
   messageEdit: messageEditStateSchema.nullable().optional(),
-  pendingSend: z
-    .object({
+  /** The messages sent and not yet confirmed, in the order they were sent. */
+  pendingSends: z.array(
+    z.object({
       id: z.uuid(),
       text: z.string(),
       fileIds: z.array(z.string()),
       error: z.string().nullable(),
-    })
-    .nullable(),
+    }),
+  ),
   /**
    * The revision of the backend's draft the composer's text was built on,
    * while the backend has not confirmed a change of it; null when the
@@ -78,6 +79,59 @@ export const draftSchema = z.object({
 export type SavedDraft = z.infer<typeof draftSchema>
 export type SavedFile = z.infer<typeof fileSchema>
 
+/**
+ * The version of the page's draft database: raised with each change of a
+ * record's shape, whose upgrade turns the previous release's records into
+ * the new one (`web-application.md` § Persistence and adapters).
+ */
+const DRAFTS_VERSION = 2
+
+/** A message on its way as release 0.1.21 stored it: one per conversation, or none. */
+const pendingSendV1Schema = z.looseObject({
+  pendingSend: draftSchema.shape.pendingSends.element.nullable(),
+})
+
+/**
+ * Upgrades the draft database from `oldVersion`: a new one gets its store;
+ * one of 0.1.21 (version 1) turns each record's `pendingSend` into the list
+ * `pendingSends`. A record of another shape stays as it was, and its read
+ * reports it.
+ */
+function upgradeDrafts(request: IDBOpenDBRequest, oldVersion: number): void {
+  if (oldVersion < 1) {
+    request.result.createObjectStore('drafts')
+    return
+  }
+  if (oldVersion < 2) {
+    const cursors = request.transaction!.objectStore('drafts').openCursor()
+    cursors.onsuccess = () => {
+      const cursor = cursors.result
+      if (!cursor) {
+        return
+      }
+      const old = pendingSendV1Schema.safeParse(cursor.value)
+      if (old.success) {
+        const { pendingSend, ...rest } = old.data
+        cursor.update({ ...rest, pendingSends: pendingSend ? [pendingSend] : [] })
+      }
+      cursor.continue()
+    }
+  }
+}
+
+/** A record a read could not decode: it is set aside, and every other is read. */
+export class UnreadableDraftError extends Error {
+  constructor(readonly detail: string) {
+    super('A draft stored in this web browser could not be read.')
+  }
+}
+
+/** The record `value` as a draft, or why it is unreadable. */
+function decodeDraft(value: unknown): SavedDraft | UnreadableDraftError {
+  const draft = draftSchema.safeParse(value)
+  return draft.success ? draft.data : new UnreadableDraftError(z.prettifyError(draft.error))
+}
+
 let database: IDBDatabase | null = null
 let opening: Promise<IDBDatabase> | null = null
 let generation = 0
@@ -89,8 +143,8 @@ function openStorage(): Promise<IDBDatabase> {
   const current = generation
   opening = new Promise<IDBDatabase>((resolve, reject) => {
     let failed = false
-    const request = indexedDB.open('demi-drafts', 1)
-    request.onupgradeneeded = () => request.result.createObjectStore('drafts')
+    const request = indexedDB.open('demi-drafts', DRAFTS_VERSION)
+    request.onupgradeneeded = (event) => upgradeDrafts(request, event.oldVersion)
     request.onsuccess = () => {
       const db = request.result
       if (failed || current !== generation) {
@@ -139,6 +193,7 @@ export async function draftStorage<T>(
   })
 }
 
+/** The conversation's draft; rejects with `UnreadableDraftError` when its record does not decode. */
 export async function readDraft(
   userId: string,
   conversationId: string,
@@ -146,7 +201,14 @@ export async function readDraft(
   const value = await draftStorage('readonly', (store) =>
     store.get([userId, conversationId]),
   )
-  return value === undefined ? null : draftSchema.parse(value)
+  if (value === undefined) {
+    return null
+  }
+  const draft = decodeDraft(value)
+  if (draft instanceof UnreadableDraftError) {
+    throw draft
+  }
+  return draft
 }
 
 export async function writeDraft(
@@ -159,13 +221,19 @@ export async function writeDraft(
   )
 }
 
-export async function readLocalDrafts(userId: string): Promise<SavedDraft[]> {
+/**
+ * The drafts of the user's new conversations, and the records that did not
+ * decode, which are set aside: one never keeps the others from being read.
+ */
+export async function readLocalDrafts(userId: string): Promise<{ drafts: SavedDraft[]; unreadable: UnreadableDraftError[] }> {
   const values = await draftStorage('readonly', (store) =>
     store.getAll(IDBKeyRange.bound([userId], [userId, []])),
   )
-  return values
-    .map((value) => draftSchema.parse(value))
-    .filter((draft) => draft.local !== null)
+  const decoded = values.map(decodeDraft)
+  return {
+    drafts: decoded.filter((draft): draft is SavedDraft => !(draft instanceof UnreadableDraftError) && draft.local !== null),
+    unreadable: decoded.filter((draft) => draft instanceof UnreadableDraftError),
+  }
 }
 
 export async function deleteDraft(

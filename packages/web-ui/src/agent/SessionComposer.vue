@@ -45,6 +45,7 @@ import {
   clickAsksOtherWay,
   otherWay,
   otherWayKeys,
+  useSendOnceLoaded,
   type SendWay,
   type SendWhileRunning,
 } from './send-way'
@@ -253,6 +254,8 @@ const modelState = computed(() =>
     props.modelSettings?.modelId,
   ),
 )
+/** The models are still loading: the page cannot tell yet whether the message can go. */
+const modelsLoading = computed(() => props.modelLoad === 'loading' && modelState.value.kind !== 'ready')
 const sendDisabled = computed(
   () =>
     props.disabled ||
@@ -265,6 +268,9 @@ const sendDisabled = computed(
 const sendBlockReason = computed(() => {
   if (modelState.value.kind === 'unavailable') {
     return 'This model is unavailable. Choose another to send.'
+  }
+  if (modelsLoading.value) {
+    return 'The models are still loading.'
   }
   if (props.disabled) {
     return undefined
@@ -309,9 +315,23 @@ const submitTip = computed(() => !shownEdit.value && working.value
   : submitLabel.value,
 )
 
+/** Enter pressed on the draft while the models load: the message goes once they have, if it still holds one. */
+const waitingSend = useSendOnceLoaded({
+  blocked: () => sendDisabled.value,
+  loading: () => modelsLoading.value,
+  send: (asksOtherWay) => {
+    if (hasDraft.value && !shownEdit.value) {
+      emit('submit', chooseSendWay(working.value, props.sendWhileRunning, asksOtherWay))
+    }
+  },
+})
+
 /** Sends the message; `asksOtherWay` for ⌘/Ctrl+Enter outside a code block, or a ⌘/Ctrl-click on the send button. */
 function submit(asksOtherWay: boolean) {
   if (sendDisabled.value) {
+    if (hasDraft.value && !shownEdit.value) {
+      waitingSend.keep(asksOtherWay)
+    }
     // Enter on a message that cannot go: the send button says why, unpointed.
     sendButton.value?.showReason()
     return

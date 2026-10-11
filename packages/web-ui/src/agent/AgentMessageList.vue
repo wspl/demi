@@ -65,7 +65,10 @@ const props = withDefaults(defineProps<{
   loadError?: string | null
   /** A session-level failure told at the tail of the transcript, in flow. */
   failure?: SessionFailureNotice | null
-  pendingSubmission?: PendingSubmissionState | null
+  /** The messages sent and not yet confirmed, in the order they were sent. */
+  pendingSubmissions?: readonly PendingSubmissionState[]
+  /** The waiting messages whose Remove is on its way, by id, which show nowhere. */
+  removing?: readonly string[]
   /** A block to bring into view and mark for a moment, as a search result opened at it asks; once shown, `revealed` says so. */
   revealBlockId?: string | null
   /**
@@ -100,7 +103,8 @@ const emit = defineEmits<{
   /** Regenerate on the last answer: a new answer to the message `blockId`. */
   regenerate: [blockId: string]
   retryLoad: []
-  retrySubmission: []
+  /** Retry on the message `id`, whose delivery failed. */
+  retrySubmission: [id: string]
   revealed: []
   /** The reader nears the start of the window, which does not reach the transcript's. */
   readBefore: []
@@ -155,7 +159,7 @@ const { isEntering } = useChromeEntrance(
 
 // The tail row alone is no transcript: it waits for one.
 const paneStatus = computed(() =>
-  props.pendingSubmission ? null : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.some((row) => row.type !== 'activity_slot')),
+  props.pendingSubmissions?.length ? null : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.some((row) => row.type !== 'activity_slot')),
 )
 const mutedIds = computed(() => messageEditSuffixIds(renderBlocks.value, props.editTargetId))
 // Every streamed delta re-renders the visible rows; the lookup must not rescan the transcript per row.
@@ -384,7 +388,7 @@ defineExpose({
                 @delete-queued="(id) => emit('deleteQueued', id)"
                 @send-queued="(id) => emit('sendQueued', id)"
                 @edit-user="(id) => emit('editUser', id)"
-                @retry-submission="emit('retrySubmission')"
+                @retry-submission="(id) => emit('retrySubmission', id)"
               >
               </AgentMessageVirtualBlock>
             </MessageEditRegion>

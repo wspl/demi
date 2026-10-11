@@ -54,7 +54,7 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
     pendingSteers: [],
     queue: [],
     phase: 'idle',
-    pendingSubmission: null,
+    pendingSubmissions: [],
     atStart: true,
     atEnd: true,
     latest: true,
@@ -87,7 +87,7 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
   }
 
   await step('sent', () => {
-    state.pendingSubmission = { id: 'm-2', way: 'send', text: 'Run the command, then reply.', attachments: [], error: null }
+    state.pendingSubmissions = [{ id: 'm-2', way: 'send', text: 'Run the command, then reply.', attachments: [], error: null }]
   })
   expect(drawn().at(-1)).toBe(TAIL_ROW)
   await step('running', () => {
@@ -97,7 +97,7 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
     state.blocks = [...state.blocks, userBlock('u-2', 'm-2', 'Run the command, then reply.')]
   })
   await step('confirmed', () => {
-    state.pendingSubmission = null
+    state.pendingSubmissions = []
   })
   const writing = (description: string | null) => [{ toolUseId: 'c-1-use', toolName: 'shell', description }]
   await step(first, () => {
@@ -148,7 +148,7 @@ function running(): MessageRowsSource {
     pendingSteers: [],
     queue: [],
     phase: 'running',
-    pendingSubmission: null,
+    pendingSubmissions: [],
     atStart: true,
     atEnd: true,
     latest: true,
@@ -173,14 +173,14 @@ test('a steer on its way has its line from the send, and keeps its row and its l
   }
   const content = [{ type: 'text' as const, text: 'Also check the sign-up page.' }]
   await step('sent', () => {
-    state.pendingSubmission = { id: 's-1', way: 'steer', text: 'Also check the sign-up page.', attachments: [], error: null }
+    state.pendingSubmissions = [{ id: 's-1', way: 'steer', text: 'Also check the sign-up page.', attachments: [], error: null }]
   })
   // The session lists the steer before the page lets the message go.
   await step('listed', () => {
     state.pendingSteers = [{ id: 's-1', content }]
   })
   await step('confirmed', () => {
-    state.pendingSubmission = null
+    state.pendingSubmissions = []
   })
   expect(seen).toEqual([
     { name: 'sent', index: 2, line: 'steer' },
@@ -201,13 +201,13 @@ test('a queued message on its way is counted under the queue divider from the se
   const state = running()
   const scope = effectScope()
   const list = scope.run(() => useMessageRows(() => state))!
-  state.pendingSubmission = { id: 'q-1', way: 'queue', text: 'Then deploy it.', attachments: [], error: null }
+  state.pendingSubmissions = [{ id: 'q-1', way: 'queue', text: 'Then deploy it.', attachments: [], error: null }]
   await nextTick()
   const shown = () => list.rows.value.map((block) => block.type === 'queue_divider' ? `divider:${block.count}` : `${rowKey(block)}:${waitingAs(block) ?? ''}`)
   const before = shown()
   expect(before.slice(-2)).toEqual(['divider:1', 'message:q-1:queued'])
   state.queue = [{ id: 'q-1', content: [{ type: 'text', text: 'Then deploy it.' }] }]
-  state.pendingSubmission = null
+  state.pendingSubmissions = []
   await nextTick()
   expect(shown()).toEqual(before)
   scope.stop()

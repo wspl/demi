@@ -13,7 +13,7 @@ import { asError, createId, deferred } from '@demicodes/utils'
 import type { ClientContent, EditRequest, TranscriptVersion } from '@demicodes/protocol'
 import { ConversationSocketError } from '../transport/conversation-socket'
 import { waitToReconnect } from '../transport/liveness'
-import { hasAcceptedSubmission } from './submission'
+import { hasAcceptedSubmission, isWritten } from './submission'
 import type { ConversationState } from './types'
 
 /**
@@ -23,6 +23,20 @@ import type { ConversationState } from './types'
  */
 export function isRecordedTurnFailure(error: unknown): boolean {
   return error instanceof SessionError
+}
+
+/**
+ * A Remove the session could not carry out, since the message went on
+ * first: the agent read the steer, or the queued message's turn began. The
+ * transcript holds the message.
+ */
+export class RemovalRefusedError extends Error {}
+
+/** The refusal of a removal whose message went on: a steer the agent read, or a queued message whose turn began. */
+function refusedRemoval(steer: boolean): RemovalRefusedError {
+  return new RemovalRefusedError(steer
+    ? 'The agent read it before it was removed.'
+    : 'Its turn began before it was removed.')
 }
 
 export type RuntimeState = Pick<
@@ -207,9 +221,48 @@ export class ConversationRuntime {
     }
   }
 
-  async dequeueMessage(id: string): Promise<void> {
-    const client = await this.ensureOpen()
-    client.dequeueMessage(id)
+  /**
+   * Removes a steer or a queued message that waits for the agent
+   * (`product.md` § Steer or queue); resolves once the session answers it
+   * removed, and rejects with `RemovalRefusedError` when the session answers
+   * that the message had gone on (`runtime.md` § Pending steers). A
+   * connection lost before the answer fails nothing: once the conversation
+   * is open again and has listed what waits, a message still listed is
+   * asked for again; one the transcript holds went on, and one held
+   * nowhere was removed.
+   */
+  async removeWaiting(id: string): Promise<void> {
+    const state = this.options.state
+    const steer = state.pendingSteers.some((each) => each.id === id)
+    let asked = false
+    for (;;) {
+      const client = await this.ensureOpen()
+      try {
+        if (asked) {
+          await this.steersListed(client)
+          const listed = state.pendingSteers.some((each) => each.id === id) ||
+            state.queue.some((message) => message.id === id)
+          if (!listed) {
+            if (isWritten(state, id)) {
+              throw refusedRemoval(steer)
+            }
+            return
+          }
+        }
+        asked = true
+        const outcome = state.pendingSteers.some((each) => each.id === id)
+          ? await client.cancelPendingSteer(id)
+          : await client.dequeueMessage(id)
+        if (outcome === 'gone_on') {
+          throw refusedRemoval(steer)
+        }
+        return
+      } catch (error) {
+        if (!(error instanceof ConversationSocketError)) {
+          throw error
+        }
+      }
+    }
   }
 
   /**
@@ -220,11 +273,6 @@ export class ConversationRuntime {
   async sendQueuedNow(id: string): Promise<void> {
     const client = await this.ensureOpen()
     client.sendQueuedMessage(id)
-  }
-
-  async deletePendingSteer(id: string): Promise<void> {
-    const client = await this.ensureOpen()
-    client.cancelPendingSteer(id)
   }
 
   /**

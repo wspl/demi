@@ -26,6 +26,9 @@ export type ProductAttachment =
   | (ComposerFileAttachment & Pick<SavedFile, 'file' | 'upload'>)
   | (ComposerRemoteAttachment & { deviceId: string })
 
+/** A message sent and not yet confirmed, with the way it was sent. */
+export type PendingSend = SavedDraft['pendingSends'][number] & { way: SendWay }
+
 /** The sidebar's `device` is derived from `target` and the devices for the row (`App.vue`), never kept. */
 export interface Conversation extends Omit<SidebarConversation, 'device'> {
   persistence: 'draft' | 'pending' | 'synced'
@@ -70,11 +73,18 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   /** The files the message has, in the order of its capsules; the composer's document says so. */
   attachmentIds: string[]
   /**
-   * The message sent and not yet confirmed, with the way it was sent, which
-   * says what it will be while it is delivered; a page that restores one
-   * after it closed holds it as a message whose delivery was interrupted.
+   * The messages sent and not yet confirmed, in the order they were sent,
+   * each with the way it was sent, which says what it will be while it is
+   * delivered (`product.md` § Steer or queue); a page that restores them
+   * after it closed holds them as messages whose delivery was interrupted.
    */
-  pendingSend: (NonNullable<SavedDraft['pendingSend']> & { way: SendWay }) | null
+  pendingSends: PendingSend[]
+  /**
+   * The waiting messages whose Remove is on its way, by id: a steer, a
+   * queued message, or a message on its way that will be one. The list
+   * shows none of them from the press (`product.md` § Steer or queue).
+   */
+  removing: string[]
   messageEdit: MessageEditState | null
   scroll: PersistedScrollState | null
   attachedHosts: {

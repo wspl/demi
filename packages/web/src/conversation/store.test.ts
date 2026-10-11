@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, expect, jest, spyOn, test } from 'bun:test'
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ClientContent } from '@demicodes/protocol'
-import { ConversationRuntime } from '@demicodes/web-ui/agent/conversation-runtime'
+import { ConversationRuntime, RemovalRefusedError } from '@demicodes/web-ui/agent/conversation-runtime'
+import { listTailBlocks } from '@demicodes/web-ui/agent/list-tail'
+import { rowKey } from '@demicodes/web-ui/agent/row-key'
 import { toasts } from '@demicodes/web-ui/infra/toast'
 import { pageReturned } from '@demicodes/web-ui/transport/liveness'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
@@ -557,14 +559,13 @@ test('first send failure preserves the conversation and retries its UUID and mes
   rejectCreate = true
   await store.send(conversation)
   expect(conversation.persistence).toBe('pending')
-  expect(conversation.pendingSend?.text).toBe('First message')
-  expect(conversation.pendingSend?.error).toBe('Not saved')
+  expect(conversation.pendingSends.map(({ text, error }) => ({ text, error }))).toEqual([{ text: 'First message', error: 'Not saved' }])
   expect(conversation.draft).toBe('')
-  const messageId = conversation.pendingSend!.id
+  const messageId = conversation.pendingSends[0]!.id
   await reconnected()
   expect(store.items[0]?.id).toBe(conversation.id)
-  await store.send(conversation)
-  expect(conversation.pendingSend?.id).toBe(messageId)
+  await store.retrySend(conversation, messageId)
+  expect(conversation.pendingSends.map((pending) => pending.id)).toEqual([messageId])
   expect(requests.filter((request) => request.path === '/api/conversations').map((request) => (request.body as { id: string }).id)).toEqual([
     conversation.id,
     conversation.id,
@@ -628,8 +629,8 @@ test('a first send while the backend is away waits without failing and goes once
     expect(useProduct().connection).toBe('restarting')
     const sending = store.send(conversation)
     await waitFor(() => refused === 1, () => 'no create request')
-    const messageId = conversation.pendingSend?.id
-    expect(conversation.pendingSend?.error).toBeNull()
+    const messageId = conversation.pendingSends[0]?.id
+    expect(conversation.pendingSends[0]?.error).toBeNull()
     expect(submit).not.toHaveBeenCalled()
     away = false
     // The page connects again at once rather than after its wait, and the channel's snapshot ends the banner.
@@ -638,7 +639,7 @@ test('a first send while the backend is away waits without failing and goes once
     await sending
     expect(submit).toHaveBeenCalledTimes(1)
     expect(submit.mock.calls[0]?.[1]).toBe(messageId)
-    expect(conversation.pendingSend).toBeNull()
+    expect(conversation.pendingSends).toEqual([])
   } finally {
     submit.mockRestore()
     connect.mockRestore()
@@ -682,14 +683,36 @@ test('Stop pressed while the first message is on its way stops the turn it start
   }
 })
 
+/**
+ * The keys of the rows the list shows below the turn, as `ChatSession` builds
+ * them from what the page passes it (`ChatPage.vue`), and of the turn's own
+ * message row on its way.
+ */
+function shownRows(conversation: ReturnType<typeof useConversations>['items'][number]): { turn: string[]; waiting: string[] } {
+  const tail = listTailBlocks({
+    phase: conversation.phase,
+    blocks: latestBlocks(conversation.history),
+    pendingCalls: [],
+    pendingSteers: conversation.pendingSteers,
+    queue: conversation.queue,
+    pendingSubmissions: conversation.pendingSends.map((pending) => ({ ...pending, attachments: [] })),
+    removing: conversation.removing,
+  })
+  return {
+    turn: tail.turn.map(rowKey),
+    waiting: tail.waiting.filter((row) => row.type !== 'queue_divider').map(rowKey),
+  }
+}
+
 // Remove or Send Now pressed on a steer still on its way is the user's
 // latest wish, carried out once the session holds the steer, on what it
 // became: the steer, or the queued message a refused steer went as
 // (`web-application.md` § Responding to the user, `product.md` § Steer or queue).
+// Remove takes the row away at once all the same.
 test.each([
-  { held: 'steer', press: 'Remove', request: 'deletePendingSteer' },
+  { held: 'steer', press: 'Remove', request: 'removeWaiting' },
   { held: 'steer', press: 'Send Now', request: 'interruptPendingSteer' },
-  { held: 'queue', press: 'Remove', request: 'dequeueMessage' },
+  { held: 'queue', press: 'Remove', request: 'removeWaiting' },
 ] as const)('$press pressed on a steer on its way is carried out once the session holds it as a $held', async ({ held, press, request }) => {
   const store = useConversations()
   const id = store.create()
@@ -712,11 +735,12 @@ test.each([
     conversation.draft = 'Also check the sign-up page'
     const sending = store.send(conversation, 'steer')
     await waitFor(() => steer.mock.calls.length === 1, () => 'the steer was not sent')
-    const messageId = conversation.pendingSend!.id
+    const messageId = conversation.pendingSends[0]!.id
     // It shows as the steer it will be from the send.
-    expect(conversation.pendingSend?.way).toBe('steer')
+    expect(shownRows(conversation).waiting).toEqual([`message:${messageId}`])
     if (press === 'Remove') {
       store.removePendingSteer(conversation, messageId)
+      expect(shownRows(conversation).waiting).toEqual([])
     } else {
       store.interruptWithSteer(conversation, messageId)
     }
@@ -733,10 +757,99 @@ test.each([
     await waitFor(() => carried.mock.calls.length === 1, () => `${request} was not called`)
     expect(carried.mock.calls[0]?.[0]).toBe(messageId)
     expect(heldAtRequest).toEqual([true])
-    expect(conversation.pendingSend).toBeNull()
+    expect(conversation.pendingSends).toEqual([])
   } finally {
     carried.mockRestore()
     steer.mockRestore()
+    connect.mockRestore()
+    restoreFetch()
+  }
+})
+
+// Remove takes a waiting message away at once and its request follows; a
+// refusal, as when the agent read the steer meanwhile, brings the row back
+// where it was with a toast (`product.md` § Steer or queue). Before, the row
+// stayed until the session's list lost it, a round trip later.
+test('Remove takes a steer away at once, and a refusal brings it back where it was with a toast', async () => {
+  const store = useConversations()
+  const restoreFetch = answerOpening(FIRST)
+  await store.activate(FIRST)
+  const conversation = store.items.find((item) => item.id === FIRST)!
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const answer = deferred<void>()
+  const remove = spyOn(ConversationRuntime.prototype, 'removeWaiting').mockImplementation(() => answer.promise)
+  try {
+    await chooseStubModel(conversation)
+    conversation.phase = 'running'
+    const steer = (text: string) => ({ id: text, content: [{ type: 'text' as const, text }] })
+    conversation.pendingSteers = [steer('first'), steer('second'), steer('third')]
+    store.removePendingSteer(conversation, 'second')
+    expect(shownRows(conversation).waiting).toEqual(['message:first', 'message:third'])
+    await waitFor(() => remove.mock.calls.length === 1, () => 'the removal was not sent')
+    answer.reject(new RemovalRefusedError('The agent read it before it was removed.'))
+    await waitFor(() => shownRows(conversation).waiting.length === 3, () => 'the row did not come back')
+    expect(shownRows(conversation).waiting).toEqual(['message:first', 'message:second', 'message:third'])
+    expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Remove the Message', message: 'The agent read it before it was removed.' })
+  } finally {
+    remove.mockRestore()
+    connect.mockRestore()
+    restoreFetch()
+  }
+})
+
+// A message can be sent while the one before it is on its way
+// (`product.md` § Steer or queue): before, Enter did nothing until the first
+// was confirmed. Both show at once, as what they will be, and go in order.
+test('two messages sent in a row while the first is unconfirmed both show at once, go in order, and each becomes its row in place', async () => {
+  const store = useConversations()
+  const id = store.create()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  const restoreFetch = answerOpening(id)
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const order: string[] = []
+  const submitted = deferred<void>()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(async (_content, messageId) => {
+    order.push(`submit ${messageId}`)
+    await submitted.promise
+  })
+  const steered = deferred<void>()
+  const steer = spyOn(ConversationRuntime.prototype, 'steer').mockImplementation(async (_content, messageId) => {
+    order.push(`steer ${messageId}`)
+    await steered.promise
+  })
+  try {
+    await chooseStubModel(conversation)
+    conversation.draft = 'Run the tests'
+    const first = store.send(conversation)
+    // The composer sends the next one as a steer: the turn is as good as running.
+    conversation.draft = 'Skip the e2e tests'
+    const second = store.send(conversation, 'steer')
+    expect(conversation.draft).toBe('')
+    const [one, two] = conversation.pendingSends.map((pending) => pending.id)
+    expect(shownRows(conversation)).toEqual({ turn: [`message:${one}`], waiting: [`message:${two}`] })
+    await waitFor(() => order.length === 1, () => 'nothing was sent')
+    expect(order).toEqual([`submit ${one}`])
+    // The session holds the first: its turn's message is written under its id.
+    conversation.history = wholeHistory([{
+      type: 'user', id: 'u-1', turnId: one!, createdAt: '2026-10-11T00:00:00.000Z', model,
+      content: [{ type: 'text', text: 'Run the tests' }], preamble: null,
+    }])
+    conversation.phase = 'running'
+    submitted.resolve()
+    await first
+    await waitFor(() => order.length === 2, () => 'the second was not sent')
+    expect(order).toEqual([`submit ${one}`, `steer ${two}`])
+    expect(shownRows(conversation)).toEqual({ turn: [], waiting: [`message:${two}`] })
+    // The session holds the second as a steer: the same row.
+    conversation.pendingSteers = [{ id: two!, content: [{ type: 'text', text: 'Skip the e2e tests' }] }]
+    steered.resolve()
+    await second
+    expect(conversation.pendingSends).toEqual([])
+    expect(shownRows(conversation)).toEqual({ turn: [], waiting: [`message:${two}`] })
+  } finally {
+    steer.mockRestore()
+    submit.mockRestore()
     connect.mockRestore()
     restoreFetch()
   }
@@ -889,7 +1002,7 @@ test('a draft keeps its files; the conversation itself is created on first send'
   expect(requests.some((request) => request.path === '/api/conversations')).toBe(false)
   rejectCreate = true
   await store.send(conversation)
-  expect(conversation.pendingSend?.fileIds).toEqual([conversation.files[0]!.id])
+  expect(conversation.pendingSends[0]?.fileIds).toEqual([conversation.files[0]!.id])
 })
 
 test('a file whose capsule was deleted comes back when undo brings the capsule back', async () => {
@@ -1656,7 +1769,7 @@ test('the list waits for the new conversations this web browser keeps, so a relo
   const signOut = signIn()
   // A new conversation, typed in and never sent: only this web browser's storage has it.
   const draftId = '00000000-0000-4000-8000-000000000003'
-  const listed = deferred<draftStorage.SavedDraft[]>()
+  const listed = deferred<Awaited<ReturnType<typeof draftStorage.readLocalDrafts>>>()
   const read = spyOn(draftStorage, 'readLocalDrafts').mockReturnValue(listed.promise)
   try {
     const store = useConversations()
@@ -1665,14 +1778,14 @@ test('the list waits for the new conversations this web browser keeps, so a relo
     await connect()
     expect(store.listStatus).toBe('loading')
     const now = '2026-09-09T00:00:00.000Z'
-    listed.resolve([{
-      messageEdit: null, pendingSend: null, base: null, model: null, files: [], scroll: null,
+    listed.resolve({ drafts: [{
+      messageEdit: null, pendingSends: [], base: null, model: null, files: [], scroll: null,
       text: 'Fix the login bug',
       local: {
         phase: 'draft',
         conversation: { id: draftId, title: 'New conversation', pinned: false, archived: false, target: { kind: 'cloud' }, createdAt: now, updatedAt: now },
       },
-    }])
+    }], unreadable: [] })
     await initialized
     expect(store.listStatus).toBe('ready')
     expect(store.items.find((item) => item.id === draftId)?.draft).toBe('Fix the login bug')
@@ -1699,7 +1812,7 @@ test('unsent drafts lead the list, newest first, live and after a reload whether
 
   // The drafts as this web browser's storage gives them back, in no particular order.
   const kept = [older, newer].map((id): draftStorage.SavedDraft => ({
-    messageEdit: null, pendingSend: null, base: null, model: null, files: [], scroll: null,
+    messageEdit: null, pendingSends: [], base: null, model: null, files: [], scroll: null,
     text: id === older ? 'Older draft' : 'Newer draft',
     local: {
       phase: 'draft',
@@ -1717,19 +1830,19 @@ test('unsent drafts lead the list, newest first, live and after a reload whether
     pinia = createPinia()
     setActivePinia(pinia)
     const signOut = signIn()
-    const listed = deferred<draftStorage.SavedDraft[]>()
+    const listed = deferred<Awaited<ReturnType<typeof draftStorage.readLocalDrafts>>>()
     const read = spyOn(draftStorage, 'readLocalDrafts').mockReturnValue(listed.promise)
     try {
       store = useConversations()
       const initialized = store.initialize()
       if (storageFirst) {
-        listed.resolve(kept)
+        listed.resolve({ drafts: kept, unreadable: [] })
         await initialized
         channels.last().connect(backendState())
         await nextTick()
       } else {
         await connect()
-        listed.resolve(kept)
+        listed.resolve({ drafts: kept, unreadable: [] })
         await initialized
       }
       expect(store.items.map((item) => item.id)).toEqual(expected)
@@ -2112,7 +2225,7 @@ test('a page that closes while typing leaves its text to the next page, which ta
     pinia = createPinia()
     setActivePinia(pinia)
     signOut = signIn({
-      messageEdit: null, pendingSend: null, local: null, base: 1, text: 'Fix the lo',
+      messageEdit: null, pendingSends: [], local: null, base: 1, text: 'Fix the lo',
       model: null, files: [], scroll: null,
     })
     const taken = spyOn(draftStorage, 'takeLastWords').mockReturnValue(words ?? null)

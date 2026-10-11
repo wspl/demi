@@ -143,6 +143,16 @@ pub enum ServerFrame {
         #[garde(dive)]
         outcome: SteerOutcome,
     },
+    /// Answers `cancel_pending_steer` and `dequeue_message`, after the list
+    /// frame the removal changed (`runtime.md` § Pending steers).
+    RemoveResult {
+        /// The steer's or the queued message's id, as the request named it.
+        #[schemars(length(min = 1))]
+        #[garde(length(min = 1))]
+        id: String,
+        #[garde(skip)]
+        outcome: RemoveOutcome,
+    },
     /// Answers `abort`, in request order.
     AbortResult {
         #[garde(dive)]
@@ -281,6 +291,18 @@ pub enum EditOutcome {
         #[garde(skip)]
         reason: String,
     },
+}
+
+/// What became of a steer or a queued message the client asked to remove.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum RemoveOutcome {
+    /// The session held it, and holds it no more.
+    Removed,
+    /// The turn had taken it already, or the session never held it.
+    GoneOn,
 }
 
 /// How a steer ended.

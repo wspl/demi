@@ -20,7 +20,6 @@ import type { SendWay } from '@demicodes/web-ui/agent/send-way'
 import { executionFor, hostDeviceOptions, moveLocked, primaryHostOf } from '../targets/execution'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
 import type { HostChoice } from '@demicodes/web-ui/hosts/types'
-import { composerModel } from '@demicodes/web-ui/agent/model-selection'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
@@ -47,26 +46,16 @@ const preferences = usePreferences()
 const product = useProduct()
 const settings = useSettingsAddress()
 
-const modelState = computed(() =>
-  composerModel(
-    resources.providerInfos,
-    resources.models,
-    props.conversation.model.providerId,
-    props.conversation.model.modelId,
-  ),
-)
-const selectedModel = computed(() => modelState.value.selected?.model)
-const canSend = computed(() => modelState.value.kind === 'ready')
-
 const composer = ref<InstanceType<typeof SessionComposer>>()
 // New pressed on this very draft: the message takes the focus again.
 watch(() => store.composerFocusRequests, () => composer.value?.focusDraft())
 /**
  * The message that starts a turn is on its way: the turn is as good as
- * running, so Stop shows from the send on, never a disabled Send first.
+ * running, so Stop shows from the send on, never a disabled Send first, and
+ * a message sent meanwhile steers it or waits in the queue.
  */
 const startingTurn = computed(() =>
-  props.conversation.phase === 'idle' && props.conversation.pendingSend?.error === null,
+  props.conversation.phase === 'idle' && props.conversation.pendingSends.some((pending) => pending.error === null),
 )
 
 /** The store takes the files; their capsules go into the message where the composer said they would land. */
@@ -90,10 +79,9 @@ const replaced = computed(() => {
 function openProviders() {
   void settings.open('models')
 }
+/** The composer sends only what can go: a message that waits for the models goes once they load. */
 function send(way: SendWay) {
-  if (canSend.value) {
-    void store.send(props.conversation, way)
-  }
+  void store.send(props.conversation, way)
 }
 
 /** What the model holds of the user's and the project's instructions, which the context card lists. */
@@ -218,11 +206,10 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :running="conversation.phase === 'running' || startingTurn"
       :compacting="conversation.phase === 'compacting'"
       :send-while-running="preferences.sendWhileRunning"
-      :disabled="!!conversation.pendingSend"
       :can-configure="resources.canConfigure"
       :attachments="
         conversation.files.filter(
-          (file) => !conversation.pendingSend?.fileIds.includes(file.id),
+          (file) => !conversation.pendingSends.some((pending) => pending.fileIds.includes(file.id)),
         )
       "
       :providers="resources.providerInfos"
