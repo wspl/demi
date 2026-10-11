@@ -77,6 +77,29 @@ test('frames travel as JSON text messages both ways', async () => {
   expect(events.at(-1)).toEqual({ type: 'transcript_patch', patches: [{ op: 'add', index: 1, value: text('t1', 'hi') }], failures: {} })
 })
 
+// The backend sends the frames it has ready at once in one message, as a
+// turn's end: its last text, the usage and the idle phase
+// (`product.md` § Following the agent's work).
+test('the frames of one message reach the client in their order, within the message\'s event', async () => {
+  const socket = new FakeSocket()
+  const client = new ConversationClient(createWebSocketTransport(socket))
+  const opening = client.open()
+  socket.message(JSON.stringify([
+    { type: 'opened' },
+    { type: 'transcript_reset', start: 0, length: 1, blocks: [user('u1', 'm1', 'hello')], version: { epoch: 'e', revision: 1 } },
+    { type: 'phase', phase: 'running' },
+  ]))
+  await opening
+  const events: ClientSessionEvent[] = []
+  client.subscribe((event) => events.push(event))
+  socket.message(JSON.stringify([
+    { type: 'transcript_patch', patches: [{ op: 'add', index: 1, value: text('t1', 'hi') }], revision: 2 },
+    { type: 'phase', phase: 'idle' },
+  ]))
+  expect(events.map((event) => event.type)).toEqual(['transcript_patch', 'phase'])
+  expect(socket.closed).toBe(false)
+})
+
 test('a message that is not JSON text closes the socket and disconnects the client', () => {
   for (const data of ['not json', new Uint8Array([123, 125])]) {
     const socket = new FakeSocket()
