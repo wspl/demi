@@ -802,6 +802,12 @@ impl TestBackend {
         self.backend.hold_commits()
     }
 
+    /// Holds every migration of a conversation's database from now on,
+    /// until the hold is released or dropped.
+    pub fn hold_migrations(&self) -> demi_backend_database::conversations::MigrationHold {
+        self.backend.hold_migrations()
+    }
+
     /// Holds every runner's hello at `step` from now on, until the hold is
     /// released or dropped.
     pub fn hold_hellos(
