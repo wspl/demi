@@ -172,6 +172,12 @@ pub fn carry_out(layout: &Layout, services: &dyn Services, mut journal: Journal)
                     if journal.to < journal.from {
                         return Err(Failure::Failed(reason));
                     }
+                    // The return undoes step 4, so the journal goes back to
+                    // it: a return that does not finish leaves the next run
+                    // to switch to the release again, never to start the
+                    // one the return pointed `current` at
+                    // (`upgrades.md` § Interruptions).
+                    journal.record(&path, Step::Switching)?;
                     return_to_from(layout, services, &backend, &journal)?;
                     Journal::remove(&path)?;
                     return Err(Failure::Returned {
@@ -214,7 +220,10 @@ fn return_to_from(
     layout.install_units(&journal.from)?;
     services.reload()?;
     start_all(services).map_err(|(unit, error)| {
-        io::Error::other(format!("{} did not start again either: {unit}: {error}", journal.from))
+        io::Error::other(format!(
+            "{} did not start again either: {unit}: {error}; the next demi-server command switches to {} again",
+            journal.from, journal.to
+        ))
     })
 }
 

@@ -288,6 +288,30 @@ fn a_move_interrupted_at_any_step_is_finished_by_the_next_run() {
     }
 }
 
+#[test]
+fn a_return_that_does_not_finish_leaves_the_upgrade_for_the_next_run_to_finish() {
+    let server = Server::new();
+    // The new release does not start, and the old one does not start again
+    // either.
+    let services = server.services(&[OLD, NEW]);
+    let failed = moving::start(&server.layout, &services, &NEW);
+    assert!(
+        matches!(&failed, Err(Failure::Failed(error)) if error.to_string().contains("did not start again either")),
+        "{failed:?}"
+    );
+    assert_eq!(server.layout.current_version().unwrap(), OLD);
+
+    // Once the services start, the next run ends at the release it reports:
+    // the one the journal's move goes to.
+    let journal = Journal::read(&server.layout.journal()).unwrap().unwrap();
+    let to = journal.to.clone();
+    let services = server.services(&[]);
+    moving::carry_out(&server.layout, &services, journal).unwrap();
+    assert_eq!(server.layout.current_version().unwrap(), to);
+    assert_eq!(server.unit(UNITS[1]), format!("{} of {to}\n", UNITS[1]));
+    assert!(!server.layout.journal().exists());
+}
+
 /// A release's assets as the release workflow publishes them, in a
 /// directory.
 fn assets(directory: &Path, version: &Version, tamper: bool) {
