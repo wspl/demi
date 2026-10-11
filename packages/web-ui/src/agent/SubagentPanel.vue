@@ -156,6 +156,7 @@ function closeTab(id: string): void {
       :at-start="shownEdges?.atStart ?? true"
       :at-end="true"
       :pending-calls="active.pendingCalls"
+      :waiting-since="active.waitingSince"
       :failures="active.failures"
       :pending-steers="[]"
       :queue="[]"

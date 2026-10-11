@@ -312,6 +312,11 @@ pub enum SessionEvent {
     PendingCallsChanged {
         pending_calls: Vec<PendingCall>,
     },
+    /// The node began to wait for the model's answer, with how long it has
+    /// waited, or its wait ended (`runtime.md` § Waiting for the model).
+    WaitingChanged {
+        waited_ms: Option<u64>,
+    },
     /// A transient provider failure is retried after `delay_ms`.
     RetryScheduled {
         attempt: u32,
@@ -650,6 +655,12 @@ impl AgentSession {
 
     pub fn phase(&self) -> SessionPhase {
         self.shared.read(SessionCore::phase)
+    }
+
+    /// How long the node has waited for the model's answer, while it waits
+    /// (`runtime.md` § Waiting for the model).
+    pub fn waited_ms(&self) -> Option<u64> {
+        self.shared.read(SessionCore::waited_ms)
     }
 
     /// Whether no action runs or waits.

@@ -44,6 +44,11 @@ const props = withDefaults(defineProps<{
   blocks: Block[]
   /** The calls the model is writing, shown after the transcript. */
   pendingCalls?: PendingCall[]
+  /**
+   * When the agent began to wait for the model's answer, as the server tells
+   * it, which the Requesting clock counts from; null when it waits for none.
+   */
+  waitingSince?: number | null
   pendingSteers: PendingSteerMessage[]
   queue: QueuedMessage[]
   phase: SessionPhase
@@ -172,6 +177,7 @@ const slotInput = computed(() => ({
 const { heldId, slot } = useActivitySlot({
   input: () => slotInput.value,
   pendingSubmission: () => props.pendingSubmission ?? null,
+  waitingSince: () => props.waitingSince ?? null,
   tail: () => workBlocks.value.at(-1),
   scope: () => props.conversationId,
 })

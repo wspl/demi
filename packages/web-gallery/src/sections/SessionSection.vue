@@ -2031,6 +2031,7 @@ onBeforeUnmount(() => {
                 :pending-action="workFlow.state.pendingAction"
                 :pending-submission="workFlow.pendingSubmission.value"
                 :pending-calls="workFlow.state.pendingCalls"
+                :waiting-since="workFlow.state.waitingSince"
                 :bottom-offset="workSurface?.dockHeight ?? 0"
                 :persisted-scroll-state="undefined"
                 read-only

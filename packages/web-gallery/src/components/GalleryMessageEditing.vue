@@ -26,7 +26,7 @@ const session = reactive<ChatSessionState & { blocks: Block[] }>({
     return wholeHistory(this.blocks)
   },
   shownAt: null, summaries: {}, queue: [],
-  pendingSteers: [], pendingCalls: [], phase: 'idle', load: 'ready', lastError: null, pendingAction: null, failures: {},
+  pendingSteers: [], pendingCalls: [], waitingSince: null, phase: 'idle', load: 'ready', lastError: null, pendingAction: null, failures: {},
   archived: false, scroll: null, subagents: [], terminals: [],
 })
 const revision = ref(0)

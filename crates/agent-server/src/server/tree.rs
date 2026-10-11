@@ -525,6 +525,10 @@ impl<H: HostResolver> Tree<H> {
                 subagent_id: None,
                 pending_calls: session.pending_calls(),
             },
+            ServerFrame::Waiting {
+                subagent_id: None,
+                waited_ms: session.waited_ms(),
+            },
         ];
         for frame in root
             .into_iter()
@@ -670,6 +674,10 @@ fn frame_of(event: &SessionEvent) -> Option<ServerFrame> {
         SessionEvent::PendingCallsChanged { pending_calls } => ServerFrame::PendingCalls {
             subagent_id: None,
             pending_calls: pending_calls.clone(),
+        },
+        SessionEvent::WaitingChanged { waited_ms } => ServerFrame::Waiting {
+            subagent_id: None,
+            waited_ms: *waited_ms,
         },
         SessionEvent::RetryScheduled {
             attempt,

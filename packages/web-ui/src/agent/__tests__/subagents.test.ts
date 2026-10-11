@@ -19,6 +19,7 @@ function agent(
     startedAt: '2026-09-09T00:00:00.000Z',
     history: EMPTY_TRANSCRIPT,
     pendingCalls: [],
+    waitingSince: null,
     failures: {},
     ...partial,
   }

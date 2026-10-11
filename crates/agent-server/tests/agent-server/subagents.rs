@@ -124,6 +124,43 @@ pub(crate) fn closed_phase(fixture: &Fixture, child: &NodeId) -> Option<ClosePha
         .map(|close| close.phase)
 }
 
+// A page that opens while a child waits for its model's answer is told how
+// long the child has waited, which its view of the child counts from instead
+// of a clock of its own (`runtime.md` § Waiting for the model).
+#[tokio::test(flavor = "local")]
+async fn a_page_that_opens_while_a_child_waits_for_its_model_is_told_the_wait() {
+    let gate = Gate::new();
+    let model = Model::default();
+    model.root([said("working"), said("got it")]);
+    model.child("Read notes.md", [held_said(&gate, "the file says 42")]);
+    let fixture = fixture(&model, TestProduct::default());
+    let mut client = fixture.opened().await;
+    client.send(send("m1", "start")).await;
+    client.next_until(is_idle).await;
+    let spawned = agent(
+        &fixture.server,
+        &root(),
+        "spawn",
+        json!({ "prompt": "Read notes.md and report its content", "description": "reader" }),
+    )
+    .await;
+    let child = named_node(&fixture.store, &spawned);
+    let waits = |frame: &ServerFrame, waiting: bool| {
+        matches!(frame, ServerFrame::Waiting { subagent_id: Some(id), waited_ms }
+            if id == &child && waited_ms.is_some() == waiting)
+    };
+    client.next_until(|frame| waits(frame, true)).await;
+
+    let mut second = fixture.client();
+    second.send(open()).await;
+    let handshake = second.received();
+    assert!(handshake.iter().any(|frame| waits(frame, true)), "{handshake:?}");
+
+    gate.open();
+    let frames = client.next_until(is_closed(&child)).await;
+    assert!(frames.iter().any(|frame| waits(frame, false)), "{frames:?}");
+}
+
 #[tokio::test(flavor = "local")]
 async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_idle_parent() {
     let model = Model::default();

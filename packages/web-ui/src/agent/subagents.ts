@@ -14,6 +14,11 @@ export interface SubagentRecord {
   history: HeldTranscript
   /** The calls this agent's model is writing (`runtime.md` § Calls being written). */
   pendingCalls: PendingCall[]
+  /**
+   * When this agent began to wait for the model's answer, as `Date.now()`;
+   * null when it waits for none (`runtime.md` § Waiting for the model).
+   */
+  waitingSince: number | null
   /** The failure facts of this agent's error blocks, by block id. */
   failures: Record<string, ProviderFailureFacts>
 }

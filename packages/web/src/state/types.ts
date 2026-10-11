@@ -52,6 +52,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   pendingSteers: PendingSteerMessage[]
   /** The calls the model is writing (`runtime.md` § Calls being written). */
   pendingCalls: PendingCall[]
+  /** When the root began to wait for the model's answer, as `Date.now()`; null when it waits for none (`runtime.md` § Waiting for the model). */
+  waitingSince: number | null
   model: ModelSettings
   lastError: string | null
   /** The composer's Markdown, a mark where each file's capsule stands. */

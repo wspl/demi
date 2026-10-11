@@ -498,6 +498,7 @@ test('restored running children keep an idle parent active in the sidebar', () =
     id: 'restored-child',
     name: 'Restored child',
     phase: 'running',
+    waitingSince: null,
     startedAt: '2026-09-13T00:00:00.000Z',
     pendingCalls: [],
     history: EMPTY_TRANSCRIPT,

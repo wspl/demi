@@ -216,6 +216,7 @@ async fn stream(
     continues: bool,
 ) -> Result<bool, TurnError> {
     s.update(|core| core.set_stage(TurnStage::Streaming));
+    let _waiting = Waiting(s);
     let policy = s.config.retry;
     let mut attempt = 1;
     let mut size_checked = false;
@@ -242,6 +243,7 @@ async fn stream(
             .update(|core| core.take_runtime())
             .expect("the provider runtime is in its slot between runs");
         let request_cancel = request.cancel.clone();
+        s.update(|core| core.start_waiting(attempt > 1));
         let read = read(s, cancel, window, runtime.run(request), &request_cancel).await;
         // However the request ended, no call of it is being written.
         s.update(|core| core.end_writing());
@@ -288,6 +290,16 @@ async fn stream(
             slept = cancel.guard(tokio::time::sleep(delay)) => slept?,
         }
         attempt += 1;
+    }
+}
+
+/// Ends the node's wait for the model when its request ends, however it
+/// ends; a retry keeps the wait (`runtime.md` § Waiting for the model).
+struct Waiting<'a>(&'a SessionShared);
+
+impl Drop for Waiting<'_> {
+    fn drop(&mut self) {
+        self.0.update(|core| core.stop_waiting());
     }
 }
 
@@ -431,7 +443,10 @@ async fn read(
                 if let ProviderEvent::Response(usage) = &event {
                     recover |= s.config.compaction.reached(window, usage);
                 }
-                s.update(|core| core.apply_event(event, thinking_started));
+                s.update(|core| {
+                    core.stop_waiting();
+                    core.apply_event(event, thinking_started);
+                });
                 thinking_started = false;
             }
         }

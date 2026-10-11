@@ -50,6 +50,7 @@ export function applyConversationEvent(
         endedAt: job.endedAt ?? undefined,
         history: EMPTY_TRANSCRIPT,
         pendingCalls: [],
+        waitingSince: null,
         failures: {},
       })
     }
@@ -72,6 +73,11 @@ export function applyConversationEvent(
     const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
     if (child) {
       child.pendingCalls = event.pendingCalls
+    }
+  } else if (event.type === 'waiting' && event.subagentId !== undefined) {
+    const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
+    if (child) {
+      child.waitingSince = event.since
     }
   } else if (event.type === 'shell_output') {
     // A command's live view, the same for every page (`runtime.md` § Live

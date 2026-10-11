@@ -295,6 +295,7 @@ export const useConversations = defineStore('conversations', () => {
       queue: [],
       pendingSteers: [],
       pendingCalls: [],
+      waitingSince: null,
       model: record.model ? { ...record.model } : initialModelSettings(),
       lastError: null,
       draft: '',
@@ -958,6 +959,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.terminals = []
     conversation.subagents = listed.subagents.map((subagent) => ({
       pendingCalls: [],
+      waitingSince: null,
       id: subagent.subagentId,
       name: subagent.description,
       phase: subagent.phase,
