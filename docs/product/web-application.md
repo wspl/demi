@@ -240,6 +240,57 @@ The kinds:
 | `file` | `file-browser` | Pinned: one file of the conversation's Host, with its tree ([File previews](file-previews.md)) | The `file` intent |
 | `browser` | `browser` | One tab of the [conversation browser](../browser/browser.md), live; [Live browser view](../browser/live-view.md) owns its content | The strip's new-tab control; the plugin, for a tab the agent or a page opened |
 
+## The phone layout
+
+A window narrower than 768 pixels is a phone, and that width is the one
+switch: everything below holds there and nowhere else, so a narrow desktop
+window looks as a phone does, and a touch laptop or a tablet wider than that
+is a desktop. One web-ui composable owns the switch, and CSS reads it as a
+`phone:` variant. The desktop layout does not change.
+
+For example, on an iPhone the user sees one bar over the conversation, the
+sidebar button, the title and the panel button, and nothing else above the
+transcript; a tap on the title opens a sheet of what can be done with the
+conversation; the panel button covers the screen with the work panel, and
+*‹ Conversation* comes back.
+
+- **The page stays put.** It never zooms, drifts or bounces: the viewport
+  forbids zoom, the page blocks pinches and overscroll, the app is the
+  visible viewport's height, and only inner lists scroll, each keeping its
+  overscroll to itself. A picture zooms by its own pinch, in the media viewer
+  and the File view. Every text field is 16 pixels, so iOS never zooms on
+  focus. The bars and the composer stand inside the safe areas, and with
+  the keyboard open the composer sits on it and the transcript keeps its
+  end in view.
+- **Sized for a finger.** Every row a finger picks, in the sidebar, sheets,
+  Settings and the file tree, is at least 44 pixels tall, with 16-pixel
+  titles; a group label is 36, the sidebar's footer 52, a tab 36. No tap
+  highlight shows, a control's long press selects nothing and opens no
+  callout, a message's long press still selects its text, and a long press
+  opens the menu a right-click opens on the desktop. Controls the desktop
+  shows on hover show at rest, a sidebar row's on the open row.
+- **One bar.** The sidebar button; the conversation's title, centered, one
+  line, with a chevron, and a status dot before it while the Host is not
+  online; the panel button. A tap on the title opens a sheet with the
+  sidebar row's own menu, without Open, and *Runs On*, the Host and the
+  working directory. Rename asks in a dialog.
+- **Whole-screen panels.** The work panel slides over the whole screen, its
+  bar *‹ Conversation*, its tabs in a strip that scrolls sideways, and the
+  strip's controls; the Agents and Running windows rise as whole-screen
+  sheets. The sidebar is a drawer over a scrim, 85% of the width and at most
+  320 pixels, so the conversation shows beside it; a tap on the scrim or a
+  swipe left closes it. In the File view the tree covers the file's whole
+  width and slides away when a file is picked.
+- **Menus are sheets.** Every menu rises from the bottom as a sheet, one
+  web-ui primitive: it closes on a tap outside it, a pull down past 30% of
+  its height or a flick, Escape and Back, and springs back from a shorter
+  pull; a pull down at the top of its scrolled content becomes the close;
+  it stops at 90% of the screen and scrolls; focus moves in and returns to
+  the control that opened it; the page behind does not scroll.
+- **Back closes before it leaves.** The browser's Back closes the sheet,
+  window, panel or drawer on top before it leaves the page, so a phone's
+  back gesture undoes what the last tap opened.
+
 ## Backend communication
 
 A request asks for something and an answer says what happened. Every control
