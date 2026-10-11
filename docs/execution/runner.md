@@ -641,7 +641,9 @@ them, and `output`, into which it writes the invocation's standard output. Its
 standard error goes to the [Host's log](#host-log). The runner
 starts the invocation in the resident service that holds the conversation's
 state, starting the service when needed, and answers `service_opened`, or
-`service_error` with `unknown_operation`, `service_failed`, or `refused`; no
+`service_error` with `unknown_operation`, `service_failed` (the backend passes
+this on to the plugin as a refusal of its own, so the page can name the
+service that did not start), or `refused`; no
 bytes move before that answer. The request may also attach artifacts with
 their locations, which the stream may install beside its package's own. Starting
 the service may need its executable, and the invocation may ask for other
