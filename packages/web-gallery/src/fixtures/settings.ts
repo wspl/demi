@@ -2,6 +2,7 @@ import { DEMO_PERSONAL_INSTRUCTIONS } from './instructions'
 import { reactive } from 'vue'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
+import { providerLogo, vendorLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import { DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/theme/productAppearance'
 import type {
   SettingsArchivedConversation,
@@ -171,7 +172,7 @@ export function provider(
     models: [],
     accounts: [],
     autoRefreshUsage: partial.kind === 'subscription',
-    logo: null,
+    logo: providerLogo({ kind: partial.kind, providerType: partial.family, vendorId: partial.vendorId ?? null }),
     ...partial,
   }
 }
@@ -188,7 +189,7 @@ export const mockVendors: MockVendor[] = [
     family: 'anthropic',
     wireApi: 'anthropic-messages',
     baseUrl: 'https://api.anthropic.com/v1',
-    logo: '/logos/anthropic.svg'
+    logo: vendorLogo('anthropic')
   },
   {
     id: 'openai',
@@ -196,7 +197,7 @@ export const mockVendors: MockVendor[] = [
     family: 'openai',
     wireApi: 'openai-responses',
     baseUrl: 'https://api.openai.com/v1',
-    logo: '/logos/openai.svg'
+    logo: vendorLogo('openai')
   },
   {
     id: 'google',
@@ -204,7 +205,7 @@ export const mockVendors: MockVendor[] = [
     family: 'google',
     wireApi: 'openai-chat',
     baseUrl: null,
-    logo: '/logos/google.svg'
+    logo: vendorLogo('google')
   },
   {
     id: 'google-vertex',
@@ -212,7 +213,7 @@ export const mockVendors: MockVendor[] = [
     family: 'google',
     wireApi: 'openai-chat',
     baseUrl: null,
-    logo: '/logos/google-vertex.svg'
+    logo: vendorLogo('google-vertex')
   },
   {
     id: 'deepseek',
@@ -220,7 +221,7 @@ export const mockVendors: MockVendor[] = [
     family: 'openai',
     wireApi: 'openai-chat',
     baseUrl: 'https://api.deepseek.com',
-    logo: '/logos/deepseek.svg'
+    logo: vendorLogo('deepseek')
   },
   {
     id: 'moonshotai',
@@ -228,7 +229,7 @@ export const mockVendors: MockVendor[] = [
     family: 'openai',
     wireApi: 'openai-chat',
     baseUrl: 'https://api.moonshot.ai/v1',
-    logo: '/logos/moonshotai.svg'
+    logo: vendorLogo('moonshotai')
   },
   {
     id: 'zhipuai',
@@ -236,7 +237,7 @@ export const mockVendors: MockVendor[] = [
     family: 'openai',
     wireApi: 'openai-chat',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    logo: '/logos/zhipuai.svg'
+    logo: vendorLogo('zhipuai')
   },
   {
     id: 'minimax',
@@ -244,7 +245,7 @@ export const mockVendors: MockVendor[] = [
     family: 'anthropic',
     wireApi: 'anthropic-messages',
     baseUrl: 'https://api.minimax.io/anthropic/v1',
-    logo: '/logos/minimax.svg'
+    logo: vendorLogo('minimax')
   },
   {
     id: 'fireworks-ai',
@@ -252,7 +253,7 @@ export const mockVendors: MockVendor[] = [
     family: 'openai',
     wireApi: 'openai-chat',
     baseUrl: 'https://api.fireworks.ai/inference/v1',
-    logo: '/logos/fireworks-ai.svg'
+    logo: vendorLogo('fireworks-ai')
   },
   {
     id: 'alibaba',
@@ -260,7 +261,7 @@ export const mockVendors: MockVendor[] = [
     family: 'openai',
     wireApi: 'openai-chat',
     baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
-    logo: '/logos/alibaba.svg'
+    logo: vendorLogo('alibaba')
   },
   {
     id: 'openrouter',
@@ -268,14 +269,14 @@ export const mockVendors: MockVendor[] = [
     family: 'openai',
     wireApi: 'openai-chat',
     baseUrl: 'https://openrouter.ai/api/v1',
-    logo: '/logos/openrouter.svg'
+    logo: vendorLogo('openrouter')
   },
 ]
 
 export function mockProviders(): MockProvider[] {
   return [
     provider({
-      id: 'claude-code', name: 'Claude Code', kind: 'subscription', family: 'claude-code', logo: '/logos/claude.svg',
+      id: 'claude-code', name: 'Claude Code', kind: 'subscription', family: 'claude-code',
       // Two machines answered; the Cloud install after the last account failed, which is the one
       // state here that asks the user for anything.
       cli: {
@@ -405,7 +406,7 @@ export function mockProviders(): MockProvider[] {
       ],
     }),
     provider({
-      id: 'codex', name: 'Codex', kind: 'subscription', family: 'codex', state: 'signed-out', logo: '/logos/openai.svg',
+      id: 'codex', name: 'Codex', kind: 'subscription', family: 'codex', state: 'signed-out',
       catalogFetched: null,
       models: [
         model(
@@ -434,7 +435,6 @@ export function mockProviders(): MockProvider[] {
         name: 'Grok Build',
         kind: 'subscription',
         family: 'grok-build',
-        logo: '/logos/xai.svg',
         // Signed in and reachable from the backend: its active account can be tested.
         accounts: [
           { id: 'g1', label: 'zan@example.com', plan: 'XPremium', active: true, quota: [] },
@@ -446,7 +446,7 @@ export function mockProviders(): MockProvider[] {
       }
     ),
     provider({
-      id: 'anthropic', name: 'Anthropic', kind: 'api_key', family: 'anthropic', vendorId: 'anthropic', logo: '/logos/anthropic.svg',
+      id: 'anthropic', name: 'Anthropic', kind: 'api_key', family: 'anthropic', vendorId: 'anthropic',
       baseUrl: 'https://api.anthropic.com', wireApi: 'anthropic-messages', apiKey: '', keyConfigured: true, testedIn: '412 ms',
       catalogFetched: '14 min ago',
       models: [
@@ -526,7 +526,7 @@ export function mockProviders(): MockProvider[] {
       ],
     }),
     provider({
-      id: 'openai', name: 'OpenAI', kind: 'api_key', family: 'openai', vendorId: 'openai', logo: '/logos/openai.svg',
+      id: 'openai', name: 'OpenAI', kind: 'api_key', family: 'openai', vendorId: 'openai',
       baseUrl: 'https://api.openai.com/v1', wireApi: 'openai-responses', apiKey: 'sk-proj-91ce4a7b2d8f6e1c3a5b9d7f',
       state: 'error', detail: '401 · Incorrect API key provided', catalogFetched: '3 days ago',
       models: [
@@ -570,7 +570,7 @@ export function mockProviders(): MockProvider[] {
       ],
     }),
     provider({
-      id: 'kimi', name: 'Kimi', kind: 'api_key', family: 'anthropic', vendorId: 'moonshotai', logo: '/logos/moonshotai.svg',
+      id: 'kimi', name: 'Kimi', kind: 'api_key', family: 'anthropic', vendorId: 'moonshotai',
       baseUrl: 'https://api.moonshot.cn/anthropic', wireApi: 'anthropic-messages', apiKey: 'example-not-a-real-key', testedIn: '412 ms',
       modelSource: 'manual',
       models: [
@@ -602,7 +602,7 @@ export function mockProviders(): MockProvider[] {
       ],
     }),
     provider({
-      id: 'vertex', name: 'Google Vertex', kind: 'api_key', family: 'google', vendorId: 'google-vertex', logo: '/logos/google-vertex.svg',
+      id: 'vertex', name: 'Google Vertex', kind: 'api_key', family: 'google', vendorId: 'google-vertex',
       baseUrl: 'https://us-central1-aiplatform.googleapis.com', wireApi: 'openai-chat', apiKey: 'ya29.a0AfB_byC1d2E3f4G5h6', state: 'disabled', enabled: false,
       catalogFetched: '1 h ago',
       models: [
