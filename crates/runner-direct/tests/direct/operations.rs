@@ -11,7 +11,8 @@ use demi_runner_direct::{
     StreamRequest, WatchStream,
 };
 use demi_runner_protocol::direct::{ChannelError, ChannelErrorCode};
-use demi_runner_protocol::files::{DirectoryEntry, FileWatchMessage};
+use demi_runner_protocol::files::{DirectoryEntry, FileWatchMessage, FileWatchRequest};
+use demi_runner_protocol::wire::ReadAt;
 use futures_util::{StreamExt, future::BoxFuture};
 use tokio::sync::mpsc;
 
@@ -22,8 +23,8 @@ pub struct Held {
     pub files: BTreeMap<String, (Vec<u8>, u32)>,
     /// The scopes the operations acted in.
     pub scopes: Vec<Scope>,
-    /// The paths of each watch's `paths` messages.
-    pub watched: Vec<Vec<String>>,
+    /// Each watch's messages.
+    pub watched: Vec<FileWatchRequest>,
     /// The streams opened: the operation each one's name binds, and the
     /// id its request carries.
     pub streams: Vec<(String, String)>,
@@ -140,6 +141,7 @@ impl Operations for Fake {
             Ok(FileText {
                 version: current,
                 text,
+                read_at: read_at(number.into()),
             })
         })
     }
@@ -168,6 +170,7 @@ impl Operations for Fake {
                 path: listed,
                 home: Some("/home/ana".into()),
                 entries,
+                read_at: read_at(7),
             })
         })
     }
@@ -183,25 +186,29 @@ impl Operations for Fake {
         Box::pin(async { Ok(()) })
     }
 
-    fn watch(&self, scope: Scope, paths: mpsc::UnboundedReceiver<Vec<String>>) -> WatchStream {
+    fn watch(&self, scope: Scope, requests: mpsc::UnboundedReceiver<FileWatchRequest>) -> WatchStream {
         self.saw(scope);
         let says = self.watch_says.lock().unwrap().take();
         let held = self.held.clone();
-        // A `paths` message is recorded and answered with `changed` for
-        // its paths.
-        let named = futures_util::stream::unfold(paths, move |mut paths| {
+        // A message is recorded, and a `subscribe` answered with `live`
+        // for its first key.
+        let named = futures_util::stream::unfold(requests, move |mut requests| {
             let held = held.clone();
             async move {
-                let named = paths.recv().await?;
-                held.lock().unwrap().watched.push(named.clone());
-                Some((
-                    FileWatchMessage::Changed {
-                        paths: named,
-                        entries: Vec::new(),
-                        ignored: Vec::new(),
-                    },
-                    paths,
-                ))
+                loop {
+                    let request = requests.recv().await?;
+                    held.lock().unwrap().watched.push(request.clone());
+                    if let FileWatchRequest::Subscribe { subscriptions } = request
+                        && let Some(first) = subscriptions.into_iter().next()
+                    {
+                        let live = FileWatchMessage::Live {
+                            key: first.key,
+                            since: 1,
+                            epoch: "e".into(),
+                        };
+                        return Some((live, requests));
+                    }
+                }
             }
         });
         let said = futures_util::stream::unfold(says, |says| async move {
@@ -269,5 +276,13 @@ impl<F: FnOnce()> Drop for Guard<F> {
         if let Some(action) = self.0.take() {
             action();
         }
+    }
+}
+
+/// The fake Host's number `number`, of its one epoch.
+fn read_at(number: u64) -> ReadAt {
+    ReadAt {
+        epoch: "e".into(),
+        number,
     }
 }

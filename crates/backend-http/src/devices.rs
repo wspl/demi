@@ -146,13 +146,15 @@ pub(super) async fn revoke(
     Ok(Json(RevokedDevice { removed }))
 }
 
-/// A directory of a paired device, its home when the query names none.
+/// A directory of a paired device, its home when the query names none,
+/// with the Host's number before it listed, as the folder dialog's watch
+/// compares it (`web-api.md` § File watch).
 pub(super) async fn browse(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
     QueryParams(query): QueryParams<DeviceDirectoryQuery>,
-) -> Result<Json<Directory>, ApiError> {
+) -> Result<axum::response::Response, ApiError> {
     let device = owned_device(&state, &user.id, &id, Some(DeviceKind::User)).await?;
     let requested = query.path.map(|path| path.as_str().to_owned());
     let listed = state
@@ -167,17 +169,19 @@ pub(super) async fn browse(
             let path = requested
                 .or_else(|| home.clone())
                 .ok_or_else(|| ApiError::invalid_query("Missing path query parameter"))?;
-            let entries = browse_directory(&host, &path)
+            let (entries, read_at) = browse_directory(&host, &path)
                 .await
                 .map_err(device_fs_error)?;
-            Ok::<_, ApiError>(Directory {
+            let directory = Directory {
                 path,
                 home,
                 entries,
-            })
+            };
+            Ok::<_, ApiError>((directory, read_at))
         })
         .await??;
-    Ok(Json(listed))
+    let (directory, read_at) = listed;
+    Ok(super::files::read_answer(&read_at, Json(directory)))
 }
 
 /// Makes a directory, with its parents, on a paired device.
@@ -297,7 +301,12 @@ fn device_fs_error(error: HostError) -> ApiError {
     match error.kind {
         HostErrorKind::Offline => ApiError::device_offline(),
         _ if error.code() == Some("ENOENT") => {
-            ApiError::new(StatusCode::NOT_FOUND, ErrorCode::FsError, error.message)
+            let gone = ApiError::new(StatusCode::NOT_FOUND, ErrorCode::FsError, error.message);
+            // Nothing there is an answer, read at a number like any other.
+            match error.read_at {
+                Some(read_at) => gone.with_read_at(read_at),
+                None => gone,
+            }
         }
         _ => ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::FsError, error.message),
     }

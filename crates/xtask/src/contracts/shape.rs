@@ -53,6 +53,9 @@ pub enum Shape {
         min: Option<u64>,
         max: Option<u64>,
     },
+    /// An array of a fixed length, each place of its own shape, such as a
+    /// change's `[key, at]`.
+    Tuple(Vec<Shape>),
     /// An object whose keys are data, such as failure facts by block id.
     Record(Box<Shape>),
     Object(Object),
@@ -535,6 +538,9 @@ fn read_number(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsupport
 }
 
 fn read_array(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsupported> {
+    if let Some(places) = schema.get("prefixItems") {
+        return read_tuple(schema, places, at);
+    }
     only(schema, at, &["type", "items", "minItems", "maxItems"])?;
     let items = schema
         .get("items")
@@ -544,6 +550,24 @@ fn read_array(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsupporte
         min: count(schema, "minItems", at)?,
         max: count(schema, "maxItems", at)?,
     })
+}
+
+/// A tuple, as schemars writes one: its places, exactly that many.
+fn read_tuple(schema: &Map<String, Value>, places: &Value, at: &str) -> Result<Shape, Unsupported> {
+    only(schema, at, &["type", "prefixItems", "minItems", "maxItems"])?;
+    let Value::Array(places) = places else {
+        return Err(unsupported(at, format!("the places {places}")));
+    };
+    let length = Some(places.len() as u64);
+    if count(schema, "minItems", at)? != length || count(schema, "maxItems", at)? != length {
+        return Err(unsupported(at, "a tuple of another length than its places"));
+    }
+    let shapes = places
+        .iter()
+        .enumerate()
+        .map(|(index, place)| read(place, &format!("{at}[{index}]")))
+        .collect::<Result<_, _>>()?;
+    Ok(Shape::Tuple(shapes))
 }
 
 fn read_object(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsupported> {

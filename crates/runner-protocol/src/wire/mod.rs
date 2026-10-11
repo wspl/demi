@@ -18,6 +18,7 @@ pub use messages::{
     RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind,
     StreamArtifactOwner, VolumeName, WriteExists,
 };
+pub use demi_shared_types::ReadAt;
 pub use replies::{FsOk, FsResult, GitOk, GitResult};
 
 use std::time::Duration;
@@ -26,7 +27,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names.
-pub const VERSION: u32 = 41;
+pub const VERSION: u32 = 42;
 /// How long a runner keeps its jobs and services without a connection
 /// before it stops them (`runner.md` § Command lifetime).
 pub const UNREACHED_GRACE: Duration = Duration::from_secs(10 * 60);
@@ -62,11 +63,16 @@ pub const STREAM_PIPE_MESSAGE_BYTES: usize = 64 * 1024;
 const CLOSE_REASON_BYTES: usize = 123;
 /// The most bytes of one live stdin frame.
 pub const STDIN_CHUNK_BYTES: usize = 64 * 1024;
-/// The most paths one `fs_watch_changed` carries: more changed at once
-/// are reported as lost (`runner.md` § Watching files).
-pub const MAX_WATCH_PATHS: usize = 1000;
-/// How long a watch gathers changed paths before it reports them, each once.
+/// How long the runner gathers the subscriptions that changed before it
+/// reports them, each once (`runner.md` § Watching files).
 pub const WATCH_GATHER: Duration = Duration::from_millis(100);
+/// How long a subscription's lease runs from the `fs_subscribe` or the
+/// `fs_renew` that started it, as each end counts it (`runner.md`
+/// § Watching files, `web-api.md` § File watch).
+pub const SUBSCRIPTION_LEASE: Duration = Duration::from_secs(10 * 60);
+/// The most subscriptions one `fs_changed` names; more changed at once go
+/// in as many messages as they take, within the frame limit.
+pub const CHANGES_PER_MESSAGE: usize = 16 * 1024;
 /// The most lines one `log_read` returns.
 pub const LOG_READ_LINES: usize = 1000;
 /// The most of an invocation's standard error a `service_done` carries, in

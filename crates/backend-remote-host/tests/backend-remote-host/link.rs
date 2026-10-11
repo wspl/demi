@@ -158,6 +158,7 @@ async fn an_fs_reply_is_read_as_the_operation_the_caller_asked_for() {
     // the stat this caller waits for.
     link.send(Outbound::FsOk(FsOk {
         id,
+        read_at: read_at(),
         result: FsResult::Readlink("/work/elsewhere".into()),
     }))
     .await;
@@ -241,6 +242,7 @@ async fn admission_holds_calls_and_process_lifetimes_and_a_refusal_sends_nothing
     assert_eq!(gate.state().demand, 1);
     link.send(Outbound::FsOk(FsOk {
         id,
+        read_at: read_at(),
         result: FsResult::Exists(true),
     }))
     .await;
@@ -472,6 +474,7 @@ async fn a_lost_connection_fails_what_it_carried_and_the_next_one_serves_the_sam
     };
     link.send(Outbound::FsOk(FsOk {
         id,
+        read_at: read_at(),
         result: FsResult::Exists(true),
     }))
     .await;
@@ -2015,60 +2018,97 @@ async fn input_written_while_a_command_acquires_its_host_reaches_it_once_it_star
     );
 }
 
+/// Pages that hold one subject share one subscription on the runner: the
+/// first subscribes, a later one hears `live` at once, a page's renew
+/// renews it, a batch reaches each page that holds what changed, with what
+/// it holds, and the last to let go ends it (`web-api.md` § File watch).
+/// The connection's end ends every holder.
 #[tokio::test(flavor = "local")]
-async fn pages_that_watch_one_path_share_the_runners_watch_which_the_last_one_ends() {
-    use demi_backend_remote_host::WatchUpdate;
+async fn pages_that_hold_one_subject_share_its_subscription_which_the_last_one_ends() {
+    use demi_backend_remote_host::HostEvent;
+    use demi_runner_protocol::files::{Subject, SubscriptionKind};
     let device = device();
     let mut link = device.connect(None);
     let host = device.host("/work", Admission::Free);
-    let mut first = host.watch("/work", true).unwrap();
-    let mut second = host.watch("/work", true).unwrap();
+    let file = Subject {
+        kind: SubscriptionKind::File,
+        path: "/work/a.txt".into(),
+    };
+    let folder = Subject {
+        kind: SubscriptionKind::FolderNames,
+        path: "/work".into(),
+    };
+    let mut first = host.subscriber().unwrap();
+    let mut second = host.subscriber().unwrap();
+    first.hold(file.clone());
+    second.hold(file.clone());
     let id = match link.next().await {
-        Inbound::FsWatch {
-            id,
-            path,
-            recursive,
-        } => {
-            assert_eq!((path.as_str(), recursive), ("/work", true));
+        Inbound::FsSubscribe { id, kind, path } => {
+            assert_eq!((kind, path.as_str()), (SubscriptionKind::File, "/work/a.txt"));
             id
         }
-        other => panic!("expected the watch, got {other:?}"),
+        other => panic!("expected the subscription, got {other:?}"),
     };
-    // One watch on the runner for both.
+    // One subscription on the runner for both.
     assert!(link.try_next().is_none());
 
-    link.send(Outbound::FsWatchReady { id: id.clone() }).await;
-    assert_eq!(first.next().await, WatchUpdate::Ready);
-    assert_eq!(second.next().await, WatchUpdate::Ready);
-    let paths = vec!["/work/a.txt".to_owned(), "/work/server.log".to_owned()];
-    let ignored = vec!["/work/server.log".to_owned()];
-    let entries = vec!["/work/a.txt".to_owned()];
-    link.send(Outbound::FsWatchChanged {
+    link.send(Outbound::FsLive {
         id: id.clone(),
-        paths: paths.clone(),
-        entries: entries.clone(),
-        ignored: ignored.clone(),
+        since: 4,
+        epoch: "e".into(),
     })
     .await;
-    let changed = WatchUpdate::Changed { paths, entries, ignored };
-    assert_eq!(first.next().await, changed);
-    assert_eq!(second.next().await, changed);
+    let live = HostEvent::Live {
+        subject: file.clone(),
+        since: 4,
+        epoch: "e".into(),
+    };
+    assert_eq!(first.next().await, live);
+    assert_eq!(second.next().await, live);
+    second.renew(std::slice::from_ref(&file));
+    assert_eq!(link.next().await, Inbound::FsRenew { ids: vec![id.clone()] });
 
-    // A page that comes later hears that the watch runs, without asking
-    // the runner again.
-    let mut third = host.watch("/work", true).unwrap();
-    assert_eq!(third.next().await, WatchUpdate::Ready);
+    first.hold(folder.clone());
+    let folder_id = match link.next().await {
+        Inbound::FsSubscribe { id, .. } => id,
+        other => panic!("expected the subscription, got {other:?}"),
+    };
+    link.send(Outbound::FsChanged {
+        changes: vec![(id.clone(), 7), (folder_id.clone(), 8)],
+    })
+    .await;
+    assert_eq!(
+        first.next().await,
+        HostEvent::Changed(vec![(file.clone(), 7), (folder.clone(), 8)])
+    );
+    assert_eq!(second.next().await, HostEvent::Changed(vec![(file.clone(), 7)]));
+
+    // A page that comes later hears that the subscription runs, without
+    // asking the runner again.
+    let mut third = host.subscriber().unwrap();
+    third.hold(file.clone());
+    assert_eq!(third.next().await, live);
     drop(first);
+    assert_eq!(link.next().await, Inbound::FsUnsubscribe { id: folder_id });
     drop(third);
     assert!(link.try_next().is_none());
-    drop(second);
-    assert_eq!(link.next().await, Inbound::FsUnwatch { id });
+    second.release(&file);
+    assert_eq!(link.next().await, Inbound::FsUnsubscribe { id });
 
-    // The connection's end ends a watch.
-    let mut last = host.watch("/work", false).unwrap();
-    assert!(matches!(link.next().await, Inbound::FsWatch { recursive: false, .. }));
+    // The connection's end ends a holder.
+    let mut last = host.subscriber().unwrap();
+    last.hold(folder);
+    assert!(matches!(link.next().await, Inbound::FsSubscribe { .. }));
     link.close().await;
-    assert_eq!(last.next().await, WatchUpdate::Ended);
+    assert_eq!(last.next().await, HostEvent::Ended);
+}
+
+/// A Host's number, as every fs reply carries one.
+fn read_at() -> demi_runner_protocol::wire::ReadAt {
+    demi_runner_protocol::wire::ReadAt {
+        epoch: "e".into(),
+        number: 1,
+    }
 }
 
 /// A job that goes on over a new connection gets the output its runner

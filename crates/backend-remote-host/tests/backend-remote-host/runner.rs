@@ -2097,7 +2097,7 @@ async fn the_working_tree_facet_lists_changes_and_shows_the_last_commit() {
             .expect("git on PATH");
         assert!(status.success(), "git {args:?}");
     };
-    let outside = host.git_changes(&home).await.unwrap();
+    let (outside, _) = host.git_changes(&home).await.unwrap();
     assert!(
         !outside.repository
             && outside.head.is_none()
@@ -2110,7 +2110,7 @@ async fn the_working_tree_facet_lists_changes_and_shows_the_last_commit() {
     git(&["commit", "-q", "-m", "first"]);
     std::fs::write(format!("{home}/a.txt"), "1\n2\n3\n").unwrap();
     std::fs::write(format!("{home}/b.txt"), "new\n").unwrap();
-    let changes = host.git_changes(&home).await.unwrap();
+    let (changes, _) = host.git_changes(&home).await.unwrap();
     assert!(changes.repository);
     let head = changes.head.clone().unwrap();
     assert!(
@@ -2137,7 +2137,7 @@ async fn the_working_tree_facet_lists_changes_and_shows_the_last_commit() {
             ("b.txt", "??", wire::ChangeKind::Added, 1, 0),
         ]
     );
-    assert_eq!(host.git_show(&home, "a.txt").await.unwrap(), "1\n2\n");
+    assert_eq!(host.git_show(&home, "a.txt").await.unwrap().0, "1\n2\n");
     assert_eq!(
         host.git_show(&home, "b.txt").await.unwrap_err().code(),
         Some("ENOENT")

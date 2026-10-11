@@ -26,6 +26,7 @@ mod media;
 mod model;
 mod provider_state;
 mod quota;
+mod read_at;
 mod schema;
 mod session;
 mod time;
@@ -74,6 +75,7 @@ pub use provider_state::{AccountInfo, AuthState, LoginPending, RuntimeState, Wir
 pub use quota::{
     QuotaPlan, QuotaScope, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow, SnapshotSource,
 };
+pub use read_at::ReadAt;
 pub use schema::Nullable;
 pub use session::{ContextUsage, PendingCall, PendingSteer, QueuedMessage, SessionPhase};
 pub use time::{Clock, SystemClock, Timestamp, TimestampError};

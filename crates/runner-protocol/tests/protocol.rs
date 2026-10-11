@@ -2,9 +2,14 @@
 //! kept output records, manifest verification and the runner release record.
 
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use demi_command_declarations::{NativeOperation, Node};
 use demi_command_protocol::PackageDescriptor;
+use demi_runner_protocol::files::{
+    Effect, FileWatchMessage, MAX_OUTSIDE_SUBSCRIPTIONS, MAX_PAGE_SUBSCRIPTIONS, PageSubscription,
+    PageSubscriptions, RefusedReason, Subject, SubscriptionKind,
+};
 use demi_runner_protocol::manifest::Manifest;
 use demi_runner_protocol::wire::{
     self, Inbound, KeptRecord, LogLine, Outbound, OutputStream, Timestamp, WireBytes,
@@ -45,7 +50,7 @@ fn msgpack(value: &Value) -> Vec<u8> {
 #[test]
 fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
     let frames = corpus("backend-to-runner");
-    assert_eq!(frames.len(), 62);
+    assert_eq!(frames.len(), 63);
     for (name, bytes) in frames {
         let message: Inbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -60,7 +65,7 @@ fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
 #[test]
 fn every_runner_frame_decodes_and_encodes_to_the_same_bytes() {
     let frames = corpus("runner-to-backend");
-    assert_eq!(frames.len(), 60);
+    assert_eq!(frames.len(), 59);
     for (name, bytes) in frames {
         let message: Outbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -230,15 +235,22 @@ fn a_numbers_request_asks_for_one_to_sixteen_numbers_of_a_named_sequence() {
     assert!(wire::decode::<Inbound>(&msgpack(&answer(0))).is_err());
 }
 
+/// A Host's number, as every fs and working-tree reply carries one.
+fn read_at() -> Value {
+    json!({ "epoch": "5f1a2b3c4d5e6f70", "number": 42 })
+}
+
 #[test]
 fn replies_name_their_operation_before_its_result() {
     let invalid = [
-        json!({"type": "fs_ok", "id": "fs", "result": true, "op": "exists"}),
-        json!({"type": "fs_ok", "id": "fs", "op": "unlink", "result": null}),
-        json!({"type": "fs_ok", "id": "fs", "op": "mkdir", "result": true}),
-        json!({"type": "fs_ok", "id": "fs", "op": "exists"}),
-        json!({"type": "fs_ok", "id": "fs", "op": "exists", "result": true, "extra": 1}),
-        json!({"type": "git_ok", "id": "git", "op": "show", "result": {}}),
+        json!({"type": "fs_ok", "id": "fs", "readAt": read_at(), "result": true, "op": "exists"}),
+        json!({"type": "fs_ok", "id": "fs", "readAt": read_at(), "op": "unlink", "result": null}),
+        json!({"type": "fs_ok", "id": "fs", "readAt": read_at(), "op": "mkdir", "result": true}),
+        json!({"type": "fs_ok", "id": "fs", "readAt": read_at(), "op": "exists"}),
+        json!({"type": "fs_ok", "id": "fs", "readAt": read_at(), "op": "exists", "result": true, "extra": 1}),
+        json!({"type": "git_ok", "id": "git", "readAt": read_at(), "op": "show", "result": {}}),
+        // Every reply says the Host's number before it read.
+        json!({"type": "fs_ok", "id": "fs", "op": "exists", "result": true}),
     ];
     for message in invalid {
         assert!(
@@ -253,7 +265,7 @@ fn replies_name_their_operation_before_its_result() {
 #[test]
 fn a_working_tree_change_carries_a_pair_git_status_prints() {
     let changes = |status: &str| {
-        json!({"type": "git_ok", "id": "git", "op": "changes", "result": {
+        json!({"type": "git_ok", "id": "git", "readAt": read_at(), "op": "changes", "result": {
             "repository": true, "gitDir": "/work/.git", "head": null, "truncated": false, "watched": false,
             "files": [{"path": "a", "status": status, "kind": "modified", "added": 0, "removed": 0}],
         }})
@@ -567,4 +579,140 @@ fn a_delete_keeps_the_roots_and_every_directory_that_holds_a_kept_one() {
     for path in ["/home/ana/work/notes.md", "/home/ana/other", "/home/anabel"] {
         assert!(!protected_path(path, kept), "{path}");
     }
+}
+
+
+/// One subscription a page asks for.
+fn asked(key: &str, kind: SubscriptionKind, path: &str) -> PageSubscription {
+    PageSubscription {
+        key: key.into(),
+        kind,
+        path: path.into(),
+    }
+}
+
+fn subject(kind: SubscriptionKind, path: &str) -> Subject {
+    Subject {
+        kind,
+        path: path.into(),
+    }
+}
+
+/// The subjects `effects` hold and release on the Host, and the messages
+/// for the page, in order.
+fn split(effects: Vec<Effect>) -> (Vec<Subject>, Vec<Subject>, Vec<FileWatchMessage>) {
+    let (mut held, mut released, mut page) = (Vec::new(), Vec::new(), Vec::new());
+    for effect in effects {
+        match effect {
+            Effect::Hold(subject) => held.push(subject),
+            Effect::Release(subject) => released.push(subject),
+            Effect::Page(message) => page.push(message),
+            Effect::Renew(_) => {}
+        }
+    }
+    (held, released, page)
+}
+
+/// Two keys of one subject share one Host subscription, the second hears
+/// `live` at once once it runs, and the subject is let go with its last
+/// key; a subscription inside the conversation's working tree also holds
+/// the tree's own, which the page hears of only under a key of its own
+/// (`web-api.md` § File watch).
+#[test]
+fn a_pages_keys_share_one_host_subscription_and_hold_the_working_tree_while_inside_it() {
+    use SubscriptionKind::*;
+    let now = Instant::now();
+    let mut page = PageSubscriptions::new(Some("/work".into()));
+    let tree = subject(Worktree, "/work");
+    let file = subject(File, "/work/a.rs");
+    let (held, _, heard) = split(page.subscribe(vec![asked("k1", File, "/work/a.rs")], now));
+    assert_eq!(held, [tree.clone(), file.clone()]);
+    assert!(heard.is_empty());
+    assert!(page.live(&tree, 3, "e").is_empty(), "nothing the page holds is the tree's");
+    let live = page.live(&file, 5, "e");
+    assert_eq!(live, [Effect::Page(FileWatchMessage::Live { key: "k1".into(), since: 5, epoch: "e".into() })]);
+    let (held, _, heard) = split(page.subscribe(vec![asked("k2", File, "/work/a.rs")], now));
+    assert!(held.is_empty(), "one subscription of the subject");
+    assert_eq!(heard, [FileWatchMessage::Live { key: "k2".into(), since: 5, epoch: "e".into() }]);
+    assert_eq!(
+        page.changed(&[(file.clone(), 9), (tree.clone(), 8)]),
+        [Effect::Page(FileWatchMessage::Changed { changes: vec![("k1".into(), 9), ("k2".into(), 9)] })]
+    );
+    let (_, released, _) = split(page.unsubscribe(&["k1".into()]));
+    assert!(released.is_empty());
+    let (_, released, _) = split(page.unsubscribe(&["k2".into()]));
+    assert_eq!(released, [tree, file]);
+}
+
+/// A page holds at most 4,096 subscriptions, 64 of them outside the
+/// working tree; one past either is refused, and one that fails is over
+/// alone.
+#[test]
+fn past_its_limits_a_page_is_refused_and_one_failure_ends_only_its_own() {
+    use SubscriptionKind::*;
+    let now = Instant::now();
+    let mut page = PageSubscriptions::new(Some("/work".into()));
+    let outside: Vec<_> = (0..=MAX_OUTSIDE_SUBSCRIPTIONS)
+        .map(|index| asked(&format!("o{index}"), File, &format!("/tmp/{index}.log")))
+        .collect();
+    let (_, _, heard) = split(page.subscribe(outside, now));
+    let refused = FileWatchMessage::Refused { key: format!("o{MAX_OUTSIDE_SUBSCRIPTIONS}"), reason: RefusedReason::Limit };
+    assert_eq!(heard, [refused]);
+    let inside: Vec<_> = (0..=MAX_PAGE_SUBSCRIPTIONS - MAX_OUTSIDE_SUBSCRIPTIONS)
+        .map(|index| asked(&format!("i{index}"), File, &format!("/work/{index}.rs")))
+        .collect();
+    let (_, _, heard) = split(page.subscribe(inside, now));
+    let last = MAX_PAGE_SUBSCRIPTIONS - MAX_OUTSIDE_SUBSCRIPTIONS;
+    assert_eq!(heard, [FileWatchMessage::Refused { key: format!("i{last}"), reason: RefusedReason::Limit }]);
+    let failed = page.failed(&subject(File, "/tmp/0.log"), "too many watches");
+    assert_eq!(
+        failed,
+        [Effect::Page(FileWatchMessage::Unavailable { key: "o0".into(), reason: "too many watches".into() })]
+    );
+    // Its place is free again.
+    let (held, _, heard) = split(page.subscribe(vec![asked("again", File, "/tmp/again.log")], now));
+    assert_eq!(held, [subject(File, "/tmp/again.log")]);
+    assert!(heard.is_empty());
+}
+
+/// A renew answers the keys the page holds and renews their subjects with
+/// the working tree's own; a key the page stops renewing is let go once its
+/// lease runs out, as the page counts it over already.
+#[test]
+fn a_renew_renews_what_the_page_holds_and_a_key_not_renewed_lapses() {
+    use SubscriptionKind::*;
+    let start = Instant::now();
+    let mut page = PageSubscriptions::new(Some("/work".into()));
+    page.subscribe(vec![asked("kept", File, "/work/a.rs"), asked("left", Head, "/work")], start);
+    let later = start + Duration::from_secs(4 * 60);
+    let renewed = page.renew(&["kept".into(), "unknown".into()], later);
+    assert_eq!(
+        renewed,
+        [
+            Effect::Page(FileWatchMessage::Renewed { keys: vec!["kept".into()] }),
+            Effect::Renew(vec![subject(File, "/work/a.rs"), subject(Worktree, "/work")]),
+        ]
+    );
+    assert_eq!(page.next_expiry(), Some(start + wire::SUBSCRIPTION_LEASE));
+    let (_, released, _) = split(page.expire(start + wire::SUBSCRIPTION_LEASE));
+    assert_eq!(released, [subject(Head, "/work")]);
+    assert_eq!(page.next_expiry(), Some(later + wire::SUBSCRIPTION_LEASE));
+}
+
+/// A `changed` too large for a channel's message goes in as many as it
+/// takes, every key once and in order.
+#[test]
+fn a_changed_too_large_for_one_message_is_split_without_losing_a_key() {
+    let changes: Vec<(String, u64)> = (0..1000).map(|index| (format!("key-{index}"), index)).collect();
+    let texts = FileWatchMessage::Changed { changes: changes.clone() }.into_texts(2048);
+    assert!(texts.len() > 1);
+    let mut heard = Vec::new();
+    for text in texts {
+        assert!(text.len() <= 2048, "{}", text.len());
+        let FileWatchMessage::Changed { changes } = serde_json::from_str(&text).unwrap() else {
+            panic!("{text}");
+        };
+        heard.extend(changes);
+    }
+    assert_eq!(heard, changes);
 }
