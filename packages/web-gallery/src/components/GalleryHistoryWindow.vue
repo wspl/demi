@@ -66,7 +66,7 @@ function lightened(block: HeldBlock): HeldBlock {
     }
   }
   if (block.type === 'thinking') {
-    return { ...block, text: '', signature: null, textLength: [...block.text].length, light: true }
+    return { ...block, text: '', signature: null, textLength: [...block.text.trim()].length, light: true }
   }
   return block
 }
