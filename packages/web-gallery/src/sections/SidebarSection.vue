@@ -82,7 +82,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Row',
-    'A title and one quiet dot: yellow while a permission request waits for the user, over every other mark and whether the row is open or read; otherwise the tone the conversation wears on its tab, the accent breathing while it runs, green once finished and red once failed, read or not, and a faint ring when stopped or nothing has run yet (Status Dots). An answer not yet read shows in a brighter title. A cut title ends in an ellipsis and shows whole in its tooltip. Archive appears on hover, with Unpin before it on a pinned row; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list’s scrollbar floats over that margin and takes no room.'
+    'A title and one quiet dot: yellow while a permission request waits for the user, over every other mark and whether the row is open or read; otherwise the tone the conversation wears on its tab, the accent breathing while it runs, green once finished until its answer is read and red once failed, read or not, and a faint ring once a finished answer is read, when stopped or when nothing has run yet (Status Dots). An answer not yet read also shows in a brighter title. A cut title ends in an ellipsis and shows whole in its tooltip. Archive appears on hover, with Unpin before it on a pinned row; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list’s scrollbar floats over that margin and takes no room.'
   ],
   [
     'Selection',
@@ -303,11 +303,21 @@ function selectFold(id: string): void {
 
 const statusConversations = ref(statusRows())
 const statusActive = ref<string | null>(null)
+/** The finished row Read It reads, as reading it on another device would reach this one. */
+const STATUS_FINISHED = 's-done-unread'
+const finishedUnread = computed(() => statusConversations.value.some((c) => c.id === STATUS_FINISHED && c.unread))
+
+/** Reads a row; a row still named for its unread state is named for the read one. */
+function readStatus(id: string): void {
+  statusConversations.value = statusConversations.value.map((c) => (
+    c.id === id ? { ...c, unread: false, title: c.title.replace(/, unread$/, ', read') } : c
+  ))
+}
 
 /** Opening a row reads it, as the product acknowledges what the open conversation shows. */
 function selectStatus(id: string): void {
   statusActive.value = id
-  statusConversations.value = statusConversations.value.map((c) => (c.id === id ? { ...c, unread: false } : c))
+  readStatus(id)
 }
 
 function archiveStatus(ids: string[]): void {
@@ -533,12 +543,13 @@ onBeforeUnmount(() => {
 
     <GallerySection
       title="Status Dots"
-      note="A row’s dot says what the conversation’s work is doing, in the tones its tab and an agent’s link wear: the accent breathing while it runs, green once finished and red once failed, read or not; yellow while a request waits for the user, the same size as every other dot and with nothing around it, over every other dot. A Stop is the user’s own decision, and a stopped row, like one that has run nothing yet, keeps the faint ring of a settled row. An answer the user has not read shows in the title, brighter, not in the dot: open a row to read it. Reset gives the specimen its rows again."
+      note="A row’s dot says what the conversation’s work is doing, in the tones its tab and an agent’s link wear: the accent breathing while it runs, green once finished and red once failed; yellow while a request waits for the user, the same size as every other dot and with nothing around it, over every other dot. Green says there is a new answer to read: once the user reads it the row settles into the faint ring, as Mail’s unread mark does, while a failed row stays red. An answer not yet read also shows in a brighter title. Open a row to read it, or use Read It to read the finished row as another device of the user’s would. A Stop is the user’s own decision, and a stopped row, like one that has run nothing yet, keeps the faint ring of a settled row. An agent’s tab and link have no read state and stay green once the agent finished. Reset gives the specimen its rows again."
     >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="every state · live">
           <div class="flex flex-col gap-2">
-            <div>
+            <div class="flex gap-1">
+              <Button variant="ghost" size="sm" :disabled="!finishedUnread" @click="readStatus(STATUS_FINISHED)">Read It</Button>
               <Button variant="ghost" size="sm" @click="statusConversations = statusRows(); statusActive = null">Reset</Button>
             </div>
             <div class="gallery-frame flex h-[30rem] overflow-hidden">
