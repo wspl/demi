@@ -85,7 +85,7 @@ const props = withDefaults(
     /** Steers the specimen's running turn; without it, a toast says what the product would do. */
     onSteer?: (content: UserContentBlock[], message: SentMessage) => void
     /** Queues a message behind the specimen's running turn; without it, a toast says what the product would do. */
-    onQueue?: (content: UserContentBlock[]) => void
+    onQueue?: (content: UserContentBlock[], message: SentMessage) => void
   }>(),
   {
     draft: '',
@@ -282,7 +282,7 @@ function submit(way: SendWay) {
     }
   } else if (way === 'queue') {
     if (props.onQueue) {
-      props.onQueue(content)
+      props.onQueue(content, message)
     } else {
       productWould('Queue the Message')
     }

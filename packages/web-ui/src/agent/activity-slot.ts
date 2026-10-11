@@ -1,7 +1,6 @@
 import type { SessionPhase } from '@demicodes/protocol'
 import { CHROME_ROLL_MS } from '../ui/chrome-roll'
 import type { MessageListBlock } from './pending-steers'
-import { isQueueTailBlock } from './queued-messages'
 import type { SessionLoad } from './session-status'
 
 /**
@@ -31,7 +30,6 @@ const WAITING_TAIL_TYPES: ReadonlySet<MessageListBlock['type']> = new Set([
   'steer',
   'agent_message',
   'wakeup',
-  'pending_steer',
   'compaction_marker',
   'abort',
 ])
@@ -54,8 +52,13 @@ export interface ActivitySlotInput {
   startingTurn: boolean
   /** The visible transcript, including a record a pending recovery hides from the list. */
   transcriptBlocks: readonly MessageListBlock[]
-  /** What the list renders: the transcript with pending steers and the queue after it. */
-  renderBlocks?: readonly MessageListBlock[]
+  /**
+   * The transcript's rows as the list draws them, the runs of steps grouped,
+   * with the calls the model is writing; never the messages that wait or
+   * the message being sent, since what the turn is doing is read from the
+   * transcript alone (`product.md` § Following the agent's work).
+   */
+  turnRows?: readonly MessageListBlock[]
 }
 
 /**
@@ -82,7 +85,7 @@ function isWaitingForProvider(input: ActivitySlotInput): boolean {
   if (input.phase !== 'running' || hasActiveOutput(input.transcriptBlocks)) {
     return false
   }
-  const last = lastNonQueueBlock(input.renderBlocks ?? input.transcriptBlocks)
+  const last = (input.turnRows ?? input.transcriptBlocks).at(-1)
   if (!last) {
     return true
   }
@@ -103,15 +106,6 @@ function isWaitingForProvider(input: ActivitySlotInput): boolean {
 
 export function isHandoffBlock(block: MessageListBlock | undefined): block is HandoffBlock {
   return block?.type === 'thinking' || block?.type === 'tool_call' || block?.type === 'pending_call'
-}
-
-function lastNonQueueBlock(blocks: readonly MessageListBlock[]): MessageListBlock | undefined {
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    const block = blocks[i]
-    if (block && !isQueueTailBlock(block) && block.type !== 'pending_submission') {
-      return block
-    }
-  }
 }
 
 function hasActiveOutput(blocks: readonly MessageListBlock[]): boolean {

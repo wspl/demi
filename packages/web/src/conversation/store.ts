@@ -29,6 +29,7 @@ import {
   type ModelSettingsChange,
 } from '@demicodes/web-ui/agent/model-selection'
 import { hasAcceptedSubmission } from '@demicodes/web-ui/agent/submission'
+import type { SendWay } from '@demicodes/web-ui/agent/send-way'
 import {
   attachmentsReady,
   composerAttachmentFromFile,
@@ -170,6 +171,13 @@ export const useConversations = defineStore('conversations', () => {
   const reveal = ref<(TranscriptReveal & { conversationId: string }) | null>(null)
   /** The delivery of each conversation's sent message, while it is on its way. */
   const sending = new Map<string, Promise<void>>()
+  /**
+   * Remove or Send Now pressed on a steer or a queued message still on its
+   * way, by its message id: the user's latest wish, carried out once the
+   * session holds the message (`web-application.md` § Responding to the
+   * user).
+   */
+  const wishes = new Map<string, 'remove' | 'sendNow'>()
   let storageErrorReported = false
 
   // A failed operation is a toast; server state is never replaced by a message.
@@ -632,12 +640,16 @@ export const useConversations = defineStore('conversations', () => {
       const draft = saved ?? (await readDraft(session.user.id, conversation.id))
       signal.throwIfAborted()
       if (draft) {
+        // A delivery the page did not see end is a message to try again,
+        // which Retry sends as a message.
         conversation.pendingSend = draft.pendingSend
+          ? {
+              ...draft.pendingSend,
+              way: 'send',
+              error: draft.pendingSend.error || 'Delivery was interrupted. Retry to confirm it.',
+            }
+          : null
         conversation.messageEdit = restoreMessageEdit(draft.messageEdit ?? null)
-        if (conversation.pendingSend && !conversation.pendingSend.error) {
-          conversation.pendingSend.error =
-            'Delivery was interrupted. Retry to confirm it.'
-        }
         // A draft holds model settings only for a conversation without a
         // record.
         if (draft.model && conversation.persistence !== 'synced') {
@@ -1647,12 +1659,14 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Sends the draft as a message, or as a steer of the running turn with
-   * `steer` (`product.md` § Steer or queue). A delivery tried again, as Retry
-   * does, goes as a message: a steer the session already holds is not sent
-   * again, and one it does not hold is answered next.
+   * Sends the draft the way the composer chose (`product.md` § Steer or
+   * queue): as the next message, as a steer of the running turn, or into the
+   * queue, which is a message sent while a turn runs. The message shows as
+   * what it will be from the send. A delivery tried again, as Retry does,
+   * goes as a message: a steer the session already holds is not sent again,
+   * and one it does not hold is answered next, or queued while a turn runs.
    */
-  async function send(conversation: Conversation, way: 'message' | 'steer' = 'message'): Promise<void> {
+  async function send(conversation: Conversation, way: SendWay = 'send'): Promise<void> {
     if (
       conversation.archived ||
       conversation.pendingSend?.error === null ||
@@ -1669,15 +1683,18 @@ export const useConversations = defineStore('conversations', () => {
     if (!conversation.pendingSend) {
       conversation.pendingSend = {
         id: crypto.randomUUID(),
+        way,
         text: conversation.draft,
         fileIds: messageFiles(conversation).map((file) => file.id),
         error: null,
       }
       conversation.draft = ''
       conversation.attachmentIds = []
+    } else {
+      conversation.pendingSend.way = conversation.phase === 'idle' ? 'send' : 'queue'
     }
     const pending = conversation.pendingSend
-    const delivery = deliver(conversation, pending, way)
+    const delivery = deliver(conversation, pending, pending.way === 'steer' ? 'steer' : 'message')
     sending.set(conversation.id, delivery)
     try {
       await delivery
@@ -1731,6 +1748,8 @@ export const useConversations = defineStore('conversations', () => {
       // The page let the conversations go, as a sign-out does, or the message is no longer the one to send.
       if (!signal.aborted && current()) {
         pending.error = error instanceof Error ? error.message : String(error)
+        // A message not delivered is no steer or queued message to act on.
+        wishes.delete(pending.id)
       }
     }
     if (!signal.aborted) {
@@ -1751,6 +1770,11 @@ export const useConversations = defineStore('conversations', () => {
       return
     }
     conversation.pendingSend = null
+    const wish = wishes.get(id)
+    wishes.delete(id)
+    if (wish) {
+      carryOut(conversation, id, wish)
+    }
     for (const fileId of pending.fileIds) {
       removeFile(conversation, fileId)
     }
@@ -1760,6 +1784,33 @@ export const useConversations = defineStore('conversations', () => {
     // The backend accepted the message: the draft it was written in goes too,
     // everywhere, and a change another page made meanwhile stays to restore.
     void draftSync.save(conversation).catch((error) => report('Could Not Clear the Draft', error))
+  }
+
+  /**
+   * Keeps Remove or Send Now pressed on the message on its way as the user's
+   * wish, when `id` is that message; false for any other.
+   */
+  function keepWish(conversation: Conversation, id: string, wish: 'remove' | 'sendNow'): boolean {
+    const pending = conversation.pendingSend
+    if (pending?.id !== id || pending.error !== null) {
+      return false
+    }
+    wishes.set(id, wish)
+    return true
+  }
+
+  /**
+   * Carries out the wish kept for the message `id`, which the session now
+   * holds: on the steer or the queued message it became, as the controls on
+   * those do. A steer the session refused went as a message, which may have
+   * joined the queue; one already in the transcript is past both.
+   */
+  function carryOut(conversation: Conversation, id: string, wish: 'remove' | 'sendNow'): void {
+    if (conversation.pendingSteers.some((steer) => steer.id === id)) {
+      action(conversation, (runtime) => wish === 'remove' ? runtime.deletePendingSteer(id) : runtime.interruptPendingSteer(id))
+    } else if (conversation.queue.some((message) => message.id === id)) {
+      action(conversation, (runtime) => wish === 'remove' ? runtime.dequeueMessage(id) : runtime.sendQueuedNow(id))
+    }
   }
 
   function reconcileSubmission(conversation: Conversation): void {
@@ -1803,6 +1854,7 @@ export const useConversations = defineStore('conversations', () => {
     restoringLocalDrafts.value = false
     madeHere.clear()
     sending.clear()
+    wishes.clear()
     draftSync.stop()
     lifetime.abort()
     lifetime = new AbortController()
@@ -1894,13 +1946,31 @@ export const useConversations = defineStore('conversations', () => {
     stop,
     compact: (conversation: Conversation) =>
       action(conversation, (runtime) => runtime.compact()),
+    // Remove and Send Now on a steer or a queued message still on its way
+    // wait for the session to hold it; on any other, they go at once.
     removeQueued: (conversation: Conversation, id: string) =>
-      action(conversation, (runtime) => runtime.dequeueMessage(id)),
+      {
+        if (!keepWish(conversation, id, 'remove')) {
+          action(conversation, (runtime) => runtime.dequeueMessage(id))
+        }
+      },
     sendQueued: (conversation: Conversation, id: string) =>
-      action(conversation, (runtime) => runtime.sendQueuedNow(id)),
+      {
+        if (!keepWish(conversation, id, 'sendNow')) {
+          action(conversation, (runtime) => runtime.sendQueuedNow(id))
+        }
+      },
     removePendingSteer: (conversation: Conversation, id: string) =>
-      action(conversation, (runtime) => runtime.deletePendingSteer(id)),
+      {
+        if (!keepWish(conversation, id, 'remove')) {
+          action(conversation, (runtime) => runtime.deletePendingSteer(id))
+        }
+      },
     interruptWithSteer: (conversation: Conversation, id: string) =>
-      action(conversation, (runtime) => runtime.interruptPendingSteer(id)),
+      {
+        if (!keepWish(conversation, id, 'sendNow')) {
+          action(conversation, (runtime) => runtime.interruptPendingSteer(id))
+        }
+      },
   }
 })

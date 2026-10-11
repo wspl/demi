@@ -232,6 +232,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
       conversation.pendingSend
         ? {
             id: conversation.pendingSend.id,
+            way: conversation.pendingSend.way,
             text: conversation.pendingSend.text,
             attachments: conversation.pendingSend.fileIds.flatMap((id) =>
               conversation?.files.filter((file) => file.id === id) ?? [],

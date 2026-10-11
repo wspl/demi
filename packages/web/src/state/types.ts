@@ -13,6 +13,7 @@ import type {
   ComposerRemoteAttachment,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { PendingAction } from '@demicodes/web-ui/agent/activity-slot'
+import type { SendWay } from '@demicodes/web-ui/agent/send-way'
 import type { SessionLoad } from '@demicodes/web-ui/agent/session-status'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
@@ -68,7 +69,12 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   files: ProductAttachment[]
   /** The files the message has, in the order of its capsules; the composer's document says so. */
   attachmentIds: string[]
-  pendingSend: SavedDraft['pendingSend']
+  /**
+   * The message sent and not yet confirmed, with the way it was sent, which
+   * says what it will be while it is delivered; a page that restores one
+   * after it closed holds it as a message whose delivery was interrupted.
+   */
+  pendingSend: (NonNullable<SavedDraft['pendingSend']> & { way: SendWay }) | null
   messageEdit: MessageEditState | null
   scroll: PersistedScrollState | null
   attachedHosts: {
