@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, Code, Download, Eye, FileText, History, RefreshCw } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, FileText, History, RefreshCw } from '@lucide/vue'
 import type { StateEffect } from '@codemirror/state'
 import CodeEditor from '../editor/components/CodeEditor.vue'
 import { showToast } from '../infra/toast'
@@ -8,8 +8,8 @@ import { renderable, type DocumentPlace } from '../markdown/document'
 import IconButton from '../ui/IconButton.vue'
 import RegionNote from '../ui/RegionNote.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
-import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import FileBar from './FileBar.vue'
 import FileBrowserAddressBar from './FileBrowserAddressBar.vue'
 import FilePreview from './FilePreview.vue'
 import FileSummary from './FileSummary.vue'
@@ -17,6 +17,7 @@ import FileTree from './FileTree.vue'
 import MarkdownDocument from './MarkdownDocument.vue'
 import TreeFrame from './TreeFrame.vue'
 import { downloadUrl } from './download'
+import { fileBar, type ShownFile } from './file-bar'
 import { TREE_WIDTH } from './file-view'
 import { formatBytes } from './format'
 import { baseName } from '@demicodes/utils'
@@ -27,13 +28,15 @@ import { useTextStart } from './text-start'
 import type { FileBrowserSource } from './types'
 
 /**
- * One file of a workspace, read through its source: the path as crumbs from
- * the workspace root, the file itself, and beside it the workspace tree with
- * the file selected. Text opens read-only in the code editor. An image, a
- * video, an audio file or a PDF shows in the web browser's own viewer,
- * Markdown renders as a document, and a file the page cannot show is a card
- * (`file-previews.md`). Markdown and SVG offer Preview and Source, and every
- * file can be downloaded.
+ * One file of a Host, read through its source: the whole path as crumbs
+ * from the Host's root, the file itself under a bar that says what it is
+ * and holds what can be done with it, and beside it the workspace tree with
+ * the file selected (`file-previews.md` § The File view's bars). Text opens
+ * read-only in the code editor. An image, a video, an audio file or a PDF
+ * shows in the web browser's own viewer, Markdown renders as a document, and
+ * a file the page cannot show is a card (`file-previews.md`). The file's bar
+ * offers Preview and Source for Markdown and SVG, Copy of a text file's
+ * whole text, and Download.
  *
  * The tree docks, hides and shows over the file as its frame (`TreeFrame`)
  * decides; the host keeps whether it is open, its width, and the Preview or
@@ -43,7 +46,8 @@ import type { FileBrowserSource } from './types'
  * in the tree, a pick from a crumb's menu, or a link in a Markdown document
  * asks the host to show it here; Back and Forward before the crumbs ask for
  * the files shown before and after. A path typed into the crumb row opens
- * that file, or finds that folder in the tree and selects it there. Files
+ * that file, or finds that folder in the tree and selects it there; a
+ * relative one starts from the workspace. Files
  * dropped on the tree, or uploaded from its menu, list under it until
  * cleared (`FileTree`).
  *
@@ -56,9 +60,9 @@ import type { FileBrowserSource } from './types'
  */
 const props = defineProps<{
   source: FileBrowserSource
-  /** The workspace: the tree's root and the first crumb. */
+  /** The workspace: the tree's root, and where a relative path typed into the crumb row starts. */
   root: string
-  /** What the first crumb and the tree's caption say in place of the root directory's name. */
+  /** What the tree's caption says in place of the root directory's name. */
   rootName?: string
   /** The file, by absolute path. */
   path: string | null
@@ -86,11 +90,6 @@ const treeWidth = defineModel<number>('treeWidth', { default: TREE_WIDTH.default
 
 /** Markdown and SVG only: their rendered view, or their text. */
 const mode = defineModel<'preview' | 'source'>('mode', { default: 'preview' })
-
-const modeOptions: readonly SegmentedOption<'preview' | 'source'>[] = [
-  { value: 'preview', label: 'Preview', icon: Eye },
-  { value: 'source', label: 'Source', icon: Code },
-]
 
 const kind = computed(() => props.path === null ? 'text' : previewKind(props.path))
 const sourceView = computed(() => props.path !== null && hasSourceView(props.path))
@@ -192,6 +191,43 @@ const placeholder = computed(() => {
   if (current.phase === 'idle')
     return { status: 'note' as const, icon: undefined, label: 'Select a file.', detail: null }
   return { status: 'loading' as const, icon: undefined, label: 'Reading…', detail: null }
+})
+
+/** What the media preview of a file reports it shows, the image's zoom included. */
+const mediaShown = ref<{ path: string; shown: ShownFile } | null>(null)
+/** A card's file, described for the size its bar says. */
+const card = useShowing(
+  () => props.source.contents,
+  () => state.value.phase === 'card' ? props.path : null,
+  (contents, path) => contents.showDescription(path),
+)
+
+/** What the view shows of its file, which the file's bar names and acts on. */
+const shownFile = computed<ShownFile>(() => {
+  if (media.value !== null)
+    return mediaShown.value?.path === props.path ? mediaShown.value.shown : { as: 'reading' }
+  const current = state.value
+  switch (current.phase) {
+    case 'ready':
+      return { as: 'text', text: current.text }
+    case 'missing':
+      return { as: 'missing' }
+    case 'card':
+      if (start.value?.phase === 'ready')
+        return { as: 'start', size: start.value.size }
+      return start.value?.phase === 'loading'
+        ? { as: 'reading' }
+        : { as: 'card', size: card.entry.value?.value?.size ?? null }
+    default:
+      return { as: 'reading' }
+  }
+})
+/** The file's bar; Download only where the source serves files' bytes. */
+const bar = computed(() => {
+  if (props.path === null)
+    return null
+  const shown = fileBar(props.path, shownFile.value)
+  return { ...shown, download: shown.download && props.source.contents !== undefined }
 })
 
 /** Where each file this view showed was scrolled to, to open there again. */
@@ -296,29 +332,23 @@ onBeforeUnmount(() => {
         class="ml-2 min-w-0 flex-1"
         mode="browse"
         :path="path ?? root"
-        :root="root"
-        :root-name="rootName"
+        :base="root"
         :source="source"
         :leaf="path ? 'file' : 'directory'"
         @navigate="go"
         @open="emit('open', $event)"
       />
-      <Segmented
-        v-if="sourceView"
-        v-model="shownMode"
-        :options="modeOptions"
-        size="sm"
-        icon-only
-        class="shrink-0"
-        :disabled="tooLargeToRender"
-        disabled-reason="Too large to render; showing its source"
-      />
-      <Tooltip v-if="source.contents" content="Download" class="shrink-0">
-        <IconButton :icon="Download" variant="ghost" aria-label="Download" :disabled="path === null" @click="download" />
-      </Tooltip>
     </template>
     <template #default="{ overlap }">
     <div class="flex h-full min-h-0 flex-col">
+      <FileBar
+        v-if="bar"
+        v-model:mode="shownMode"
+        :bar="bar"
+        :too-large-to-render="tooLargeToRender"
+        :overlap="overlap"
+        @download="download"
+      />
       <RegionNote
         v-if="shown.entry.value?.answer && shown.entry.value.unwatched"
         :icon="History"
@@ -343,6 +373,8 @@ onBeforeUnmount(() => {
           :path="path"
           :kind="media"
           :contents="source.contents"
+          :caption="false"
+          @shown="mediaShown = { path, shown: $event }"
         />
         <MarkdownDocument
           v-else-if="markdown && state.phase === 'ready' && place"

@@ -22,12 +22,18 @@ export function formatModified(iso: string | undefined): string {
   return time.isValid() ? time.format('MMM D, YYYY HH:mm') : ''
 }
 
+/** A name's extension in capitals, `TS` for `index.ts`; null for a name without one, such as `Makefile` or `.zshrc`. */
+export function fileExtension(name: string): string | null {
+  const dot = name.lastIndexOf('.')
+  if (dot <= 0 || dot === name.length - 1)
+    return null
+  return name.slice(dot + 1).toUpperCase()
+}
+
 /** The Type column: `Folder`, `TS file`, or `File` when the name has no extension. */
 export function entryKind(name: string, isDirectory: boolean): string {
   if (isDirectory)
     return 'Folder'
-  const dot = name.lastIndexOf('.')
-  if (dot <= 0 || dot === name.length - 1)
-    return 'File'
-  return `${name.slice(dot + 1).toUpperCase()} file`
+  const extension = fileExtension(name)
+  return extension === null ? 'File' : `${extension} file`
 }
