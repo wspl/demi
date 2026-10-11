@@ -1,7 +1,7 @@
 // `demi.turn({ timeout })`: waits until the open conversation no longer
 // runs, as the backend reports it: a conversation runs while its tree works
 // without the user (`web-api.md` § Sidebar mutations and read state), so
-// this waits for its turn and for the helper agents and background jobs the
+// this waits for its turn and for the subagents and background jobs the
 // turn started. `demi.message` waits only for the turn its message starts,
 // which the root's latest ended turn names once it ends.
 import type { Page } from 'playwright'
@@ -83,7 +83,7 @@ export async function waitSummary(
 
 /**
  * Waits until the open conversation no longer runs: its turn and every
- * helper agent and background job it started have ended. Answers its
+ * subagent and background job it started have ended. Answers its
  * summary then.
  */
 export async function turn(tool: Tool, options: { timeout?: number } = {}): Promise<Summary> {

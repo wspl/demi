@@ -1,8 +1,8 @@
 // `demi.message(text, { wait, timeout })`: writes a message in the open
 // conversation's composer, or in a new conversation's, in place of any
 // draft, sends it with Enter, and waits for the turn it starts to end: the
-// root's latest ended turn is another than before the message. Helper
-// agents and background jobs the turn started are not waited for, though
+// root's latest ended turn is another than before the message.
+// Subagents and background jobs the turn started are not waited for, though
 // the conversation runs while they do; `demi.turn()` waits for them too.
 // Answers the conversation and how its turn ended. A message the page marks
 // not delivered, or a turn that fails, fails the call at once with what the

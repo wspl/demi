@@ -59,11 +59,11 @@ const server = Bun.serve({
       return new Response(notice('The provider returned an error.', 'Rate limit exceeded', 'Copy Report'))
     }
     if (path === `/chat/${HELPING}/send`) {
-      // The message's turn ended, and a helper agent it started still runs.
+      // The message's turn ended, and a subagent it started still runs.
       conversations[0] = conversationSummary(HELPING, 'Helping', {
         status: 'running',
         revision: 2,
-        lastTurn: { id: 'block-2', outcome: 'finished', answerStart: 'A helper looks into it' },
+        lastTurn: { id: 'block-2', outcome: 'finished', answerStart: 'A subagent looks into it' },
       })
       return new Response('')
     }
@@ -104,7 +104,7 @@ test.skipIf(!existsSync(chromium.executablePath()))(
 )
 
 test.skipIf(!existsSync(chromium.executablePath()))(
-  'a message ends with its turn, while the helper agents the turn started still run',
+  'a message ends with its turn, while the subagents the turn started still run',
   async () => {
     const page = await browser!.newPage()
     await page.goto(`http://127.0.0.1:${server.port}/chat/${HELPING}`)
