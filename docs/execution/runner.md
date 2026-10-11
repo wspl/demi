@@ -401,6 +401,21 @@ metadata.
   and renames it into place only when the pipe ends cleanly, then replies. A
   pipe that fails or is cancelled removes the temporary file and leaves the
   destination as it was.
+- A write's reply comes within 60 seconds of its last byte leaving the
+  backend, for `fs_writeFile` and `fs_writeDirectory` alike. By then the
+  runner holds what the connection still queues, which it reads in moments,
+  and has only its file to finish. A write whose reply has not come by then
+  fails as interrupted, and the backend closes the connection that carried
+  its pipe, so the runner's read ends with an error and removes its
+  temporary file. Whoever asked for the write decides whether to try again: a
+  Claude Code process that could not be started is a request that got no
+  answer, which the agent retries
+  ([Claude Code](../providers/claude-code.md#how-a-runtime-gets-its-process)).
+  For example, a session file's last bytes once stayed queued where gVisor
+  left them, and the write waited all night
+  ([Backend socket](../cloud/managed-hosts.md#backend-socket)); this deadline
+  turns such a stall into one failed start and a retry. The pipe itself keeps
+  no deadline: only the reply of a write whose bytes have all left does.
 - A pipe that fails, for example because the reader of a preview went away,
   stops the read and closes the file.
 - Every pipe end named to the runner is reported with `pipe_done`, including
