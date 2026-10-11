@@ -169,12 +169,15 @@ relative to the working directory or absolute, and a bare name such as
 never turned into a link. The answer is kept with the reply; a stopped Cloud
 is not woken for it, and its code stays text until the Host runs.
 
-An image is scaled down, its proportions kept, to at most the message's width
-and 60 percent of the conversation's visible height, the part the composer
-does not cover; a smaller image keeps its size. For example, where 800
-pixels of the conversation are visible, a 1000 × 8000 screenshot shows 480
-pixels tall and 60 wide, instead of 5600 pixels tall at a 700-pixel message
-width. A click shows the image whole: a Host image in the File
+An image is a picture in the message, not the message: it is scaled down,
+its proportions kept, to at most 480 pixels wide and 320 tall, and the
+message's width where that is less; a smaller image keeps its size. For
+example, a 2560 × 1720 screenshot shows 476 × 320, a 1280 × 720 one
+480 × 270, and a 1000 × 8000 page 40 × 320, as chat apps show a picture in
+a message and leave the detail to the click. An image always stands on a
+line of its own, with 12 pixels between it and the text above and below it,
+even where the Markdown puts it in the same paragraph as the text, such as
+on the line after a list item's words. A click shows the image whole: a Host image in the File
 view, a web image in a new tab of the user's browser. An image inside a link
 follows the link.
 
@@ -311,10 +314,18 @@ it was, not dimmed, so the user can go on reading and typing beside it.
   size they gave it, for as long as the page is open.
 - **One viewer.** Opening another picture or video shows it in the same
   window, in place of the one it showed.
-- **What it shows.** An image fits the window, scaled down and never
-  enlarged, over a checkerboard where it is transparent; a click toggles
-  actual size, at which the window's content scrolls; its pixel size shows in
-  the title bar. A video plays at once in the player built into the user's
+- **What it shows.** An image opens fitted to the window, scaled down and
+  never enlarged, over a checkerboard where it is transparent; its pixel
+  size and the zoom show in the title bar, *1280 × 720 · 150%*.
+- **Zoom and move.** As in an image viewer, the wheel, and a pinch on a
+  trackpad, zoom the image about the pointer, so the spot under it stays
+  under it: from the fitted size, or the actual size when that is smaller,
+  up to eight times the actual size. While the image is larger than the
+  window, dragging it moves it, with the grab hand as the pointer, and it
+  never leaves an empty band on a side where it still has pixels to show. A
+  click without a drag toggles between the fitted size and the actual size
+  about the clicked spot. Resizing the window keeps a fitted image fitted,
+  and a zoomed one at its zoom; another picture opens fitted. A video plays at once in the player built into the user's
   browser, whose controls and full-screen control it keeps.
 - **Close.** The close control in the title bar closes it, and so does
   Escape, unless the focus is in a text field or in another layer that takes
