@@ -8,7 +8,7 @@ import type { ChatSessionState, ConversationState, PendingSubmissionState } from
 import { agentWorks, turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
 import { contentCopy, type CopiedMessage } from '@demicodes/web-ui/agent/message-input/copied-message'
-import { showUnsent } from '@demicodes/web-ui/agent/unsent-toast'
+import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
 import { demoModel, editedFile, inRun, listedFiles, shellView, withLists, type ShellView } from './fixtures/blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { usageAt } from './fixtures/catalog'
@@ -39,10 +39,10 @@ export type SentMessage = Pick<PendingSubmissionState, 'text' | 'attachments'> &
 }
 
 /**
- * The composer a specimen shows beside its flow, where Undo Send gives a
+ * The composer a specimen shows beside its flow, where Recall gives a
  * message back as the product's does (`product.md` § Steer or queue).
  */
-export interface UndoSendComposer {
+export interface RecallComposer {
   /** Puts the message into the composer when it is empty, the caret at its end; false when it holds a draft, which stays. */
   takeBack(message: CopiedMessage): boolean
   /** Sends the message again the way it was sent, its files attached again without their bytes. */
@@ -183,10 +183,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   const pendingSubmissions = shallowRef<PendingSubmissionState[]>([])
   /** What each pending message sends, by its id, which its block holds once confirmed. */
   const contents = new Map<string, UserContentBlock[]>()
-  /** The waiting messages whose Undo Send is on its way, by id, which the list shows nowhere. */
+  /** The waiting messages whose Recall is on its way, by id, which the list shows nowhere. */
   const removing = shallowRef<string[]>([])
   /** The composer the specimen shows, while it is mounted. */
-  let composer: UndoSendComposer | null = null
+  let composer: RecallComposer | null = null
   /**
    * The message that starts a turn is on its way: the turn is as good as
    * running, so the composer shows Stop, and a message sent meanwhile
@@ -201,8 +201,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   const deliveries = new Map<string, number>()
   /** When the last message on its way is delivered, as `Date.now()`: the next one goes after it, never ahead. */
   let deliveredBy = 0
-  /** Undo Send or Send Now pressed on a steer or queued message on its way, by id, carried out once it is held. */
-  const wishes = new Map<string, 'undoSend' | 'sendNow'>()
+  /** Recall or Send Now pressed on a steer or queued message on its way, by id, carried out once it is held. */
+  const wishes = new Map<string, 'recall' | 'sendNow'>()
   let token = 0
   let sequence = 0
   /** The call of the turn that runs now, whose command a stop ends. */
@@ -766,7 +766,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    * it holds this one, a steer in the running turn's steers and a queued
    * message in the queue, under the id it was sent with; with nothing
    * running, it is refused and goes as a message, which starts a turn, as
-   * the product sends it. Undo Send or Send Now pressed meanwhile is carried
+   * the product sends it. Recall or Send Now pressed meanwhile is carried
    * out then.
    */
   function deliverWaiting(content: UserContentBlock[], message: SentMessage, way: 'steer' | 'queue'): void {
@@ -783,7 +783,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     const wished = wishes.get(id)
     wishes.delete(id)
     if (state.phase === 'idle') {
-      if (wished === 'undoSend') {
+      if (wished === 'recall') {
         // A message taken back before it went goes back to the user instead.
         removing.value = removing.value.filter((each) => each !== id)
         giveBack(dropSubmission(id), pending.way === 'steer' ? 'steer' : 'queue')
@@ -799,10 +799,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     } else {
       state.queue = [...state.queue, held]
     }
-    if (wished === 'undoSend' && pending.way === 'steer') {
-      undoSendSteer(id)
-    } else if (wished === 'undoSend') {
-      undoSendQueued(id)
+    if (wished === 'recall' && pending.way === 'steer') {
+      recallSteer(id)
+    } else if (wished === 'recall') {
+      recallQueued(id)
     } else if (wished === 'sendNow' && pending.way === 'steer') {
       interruptPendingSteer(id)
     } else if (wished === 'sendNow') {
@@ -810,8 +810,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
   }
 
-  /** Keeps Undo Send or Send Now pressed on a message on its way as the wish; false for any other message. */
-  function keepWish(id: string, wished: 'undoSend' | 'sendNow'): boolean {
+  /** Keeps Recall or Send Now pressed on a message on its way as the wish; false for any other message. */
+  function keepWish(id: string, wished: 'recall' | 'sendNow'): boolean {
     if (!deliveries.has(id)) {
       return false
     }
@@ -996,20 +996,20 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   }
 
   /**
-   * Undo Send takes the row away at once, as the product's does, and the
+   * Recall takes the row away at once, as the product's does, and the
    * message goes back to the user; the simulated server holds it no more
    * right after, so it never refuses.
    */
-  function undoSendQueued(id: string): void {
-    undoSend(id, 'queue')
+  function recallQueued(id: string): void {
+    recall(id, 'queue')
   }
 
-  function undoSendSteer(id: string): void {
-    undoSend(id, 'steer')
+  function recallSteer(id: string): void {
+    recall(id, 'steer')
   }
 
-  function undoSend(id: string, way: 'steer' | 'queue'): void {
-    if (keepWish(id, 'undoSend')) {
+  function recall(id: string, way: 'steer' | 'queue'): void {
+    if (keepWish(id, 'recall')) {
       removing.value = [...removing.value, id]
       return
     }
@@ -1028,7 +1028,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   }
 
   /**
-   * Gives a message Undo Send took back to the user, as the product does:
+   * Gives a message Recall took back to the user, as the product does:
    * into the specimen's composer when it is empty; otherwise a toast's Undo
    * sends it again the way it was sent, through the composer when the
    * specimen has one.
@@ -1038,7 +1038,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     if (composer?.takeBack(copy)) {
       return
     }
-    showUnsent(() => {
+    showRecalled(() => {
       if (composer) {
         composer.sendAgain(copy, way)
       } else {
@@ -1047,8 +1047,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     })
   }
 
-  /** The specimen's composer takes back what Undo Send gives; answers the call that lets it go again. */
-  function attachComposer(host: UndoSendComposer): () => void {
+  /** The specimen's composer takes back what Recall gives; answers the call that lets it go again. */
+  function attachComposer(host: RecallComposer): () => void {
     composer = host
     return () => {
       if (composer === host) {
@@ -1287,9 +1287,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     compact,
     steer,
     queue,
-    undoSendQueued,
+    recallQueued,
     sendQueued,
-    undoSendSteer,
+    recallSteer,
     interruptPendingSteer,
     attachComposer,
     abortSubagent,

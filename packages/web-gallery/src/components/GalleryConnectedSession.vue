@@ -136,9 +136,9 @@ function detach(id: string): void {
         @abort-subagents="flow.abortSubagents"
         @abort-subagent="flow.abortSubagent"
         @abort-terminal="flow.abortTerminal"
-        @undo-send-queued="flow.undoSendQueued"
+        @recall-queued="flow.recallQueued"
         @send-queued="flow.sendQueued"
-        @undo-send-steer="flow.undoSendSteer"
+        @recall-steer="flow.recallSteer"
         @interrupt-pending-steer="flow.interruptPendingSteer"
       >
         <template #workspace>

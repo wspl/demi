@@ -15,6 +15,7 @@ import { useProduct, type Answer, type ProductChange } from './product'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import { appThemeStore } from '@demicodes/web-ui/theme/appTheme'
 import { DEFAULT_SEND_WHILE_RUNNING } from '@demicodes/web-ui/agent/send-way'
+import { DEFAULT_ACCENT, DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/theme/productAppearance'
 
 /**
  * `preferences` with what `patch` changes, as the backend applies it
@@ -119,8 +120,8 @@ export const usePreferences = defineStore('preferences', () => {
   const appearance = computed(() => ({
     theme: 'system' as const,
     tone: 'ink' as const,
-    accent: 'blue' as const,
-    fontSize: 15,
+    accent: DEFAULT_ACCENT,
+    fontSize: DEFAULT_TRANSCRIPT_TEXT_SIZE,
     ...product.snapshot?.preferences.appearance,
   }))
   const keys = computed(() =>
