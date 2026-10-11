@@ -1,0 +1,57 @@
+import { sliceHead, upperFirst } from '@demicodes/utils'
+import { showToast } from '../infra/toast'
+import type { HeadlineText, SentenceText, TitleText } from '../ui/ui-text'
+
+/** A conversation the backend refused to change, by its title, and the backend's reasons. */
+export interface Refusal {
+  title: string
+  reasons: readonly string[]
+}
+
+/** How long a conversation's name may be in a refusal, so the headline stays about one line. */
+const NAME_MAX_CHARS = 20
+
+/**
+ * A conversation's title as a refusal quotes it: whole when short, else cut
+ * at a word with one ellipsis at the end, as the Writing page cuts a name.
+ * The backticks a title written as Markdown marks code with, and its closing
+ * period, go, so the quote holds only the name.
+ */
+function quotedName(title: string): string {
+  let name = title.replaceAll('`', '').trim()
+  if (name.length > NAME_MAX_CHARS) {
+    const head = sliceHead(name, NAME_MAX_CHARS - 1)
+    const space = head.lastIndexOf(' ')
+    name = `${(space > 0 ? head.slice(0, space) : head).replace(/[\s,.;:]+$/, '')}…`
+  }
+  return `“${name.replace(/\.+$/, '')}”`
+}
+
+/** The backend's reason as a sentence: its first letter capitalized, ending with its punctuation. */
+function sentence(reason: string): SentenceText {
+  const text = upperFirst(reason.trim())
+  return /[.?!…]$/.test(text) ? text : `${text}.`
+}
+
+/**
+ * What a refusal toast says when the backend refused to `action` the
+ * conversations `refusals` lists, one entry each (`action` in title style:
+ * Archive, Restore, Pin, Delete, Move): for one, a headline naming it and its
+ * reasons as sentences; for several, a headline with their count and each
+ * one's name and reasons on a line of its own.
+ */
+export function refusedText(action: TitleText, refusals: readonly Refusal[]): { title: HeadlineText; message: SentenceText } {
+  const said = (refusal: Refusal) => refusal.reasons.map(sentence).join(' ')
+  if (refusals.length === 1) {
+    return { title: `Could Not ${action} ${quotedName(refusals[0]!.title)}`, message: said(refusals[0]!) }
+  }
+  return {
+    title: `Could Not ${action} ${refusals.length} Conversations`,
+    message: refusals.map((refusal) => `${quotedName(refusal.title)}: ${said(refusal)}`).join('\n'),
+  }
+}
+
+/** Says in a failure toast that the backend refused to `action` the conversations `refusals` lists. */
+export function showRefused(action: TitleText, refusals: readonly Refusal[]): string {
+  return showToast({ ...refusedText(action, refusals), tone: 'danger' })
+}

@@ -1103,7 +1103,7 @@ test('batch partial failure applies only the successful server records', async (
   expect(await store.archive([FIRST, SECOND])).toBe(false)
   expect(store.items.find((item) => item.id === FIRST)?.archived).toBe(true)
   expect(store.items.find((item) => item.id === SECOND)?.archived).toBe(false)
-  expect(toasts.some((toast) => toast.message?.includes('second: Turn is running'))).toBe(true)
+  expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Archive “second”', message: 'Turn is running.' })
 })
 
 test('archiving says so in a toast whose Undo brings the conversation back', async () => {
@@ -1218,7 +1218,7 @@ test('a refused archive brings the row back where it was and says why', async ()
   expect(order()).toEqual(before)
   // The toast that said it was archived goes; the refusal's says why.
   expect(toasts.some((toast) => toast.id === said.id)).toBe(false)
-  expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Archive the Conversation', message: 'second: Turn is running' })
+  expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Archive “second”', message: 'Turn is running.' })
 })
 
 test('a summary the channel brings before the archive is answered does not bring the row back', async () => {
@@ -1435,7 +1435,7 @@ test('deleted rows leave at once, and a deletion that fails brings its row back 
   expect(await removed).toBe(false)
   expect(listed()).not.toContain(FIRST)
   expect(listed()).toContain(SECOND)
-  expect(toasts.some((toast) => toast.message?.includes('second: Storage unavailable'))).toBe(true)
+  expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Delete “second”', message: 'Storage unavailable.' })
 })
 
 test('read acknowledgements use the observed revision and wait for history', async () => {

@@ -15,7 +15,8 @@ import { SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
-import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
+import { showRefused } from '@demicodes/web-ui/sidebar/refused-toast'
+import { dismissToast } from '@demicodes/web-ui/infra/toast'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import type { SettingsTab } from '@demicodes/web-ui/settings/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -196,13 +197,10 @@ function archiveRows(list: Ref<SidebarConversation[]>, ids: string[]): void {
     } else {
       dismissToast(toast)
     }
-    showToast({
-      title: ids.length === 1 ? 'Could Not Archive the Conversation' : 'Some conversations were not archived.',
-      message: refused
-        .map((conversation) => `${conversation.title}: A conversation with running work cannot be archived, restored or moved`)
-        .join('\n'),
-      tone: 'danger',
-    })
+    showRefused('Archive', refused.map((conversation) => ({
+      title: conversation.title,
+      reasons: ['A conversation with running work cannot be archived, restored or moved'],
+    })))
   }, 800)
   answers.add(answer)
 }
