@@ -4,6 +4,7 @@ import { emptyChangeSet, type ChangeSetSource } from '@demicodes/web-ui/files/ch
 import { findRequest } from '@demicodes/web-ui/files/request-changes'
 import { keptChangeSet } from '@demicodes/web-ui/files/kept-source'
 import type { ConversationFileService } from '@demicodes/web-ui/plugins/page'
+import type { FileBrowserSource } from '@demicodes/web-ui/files/types'
 import { conversationFileRoutes, fileSource, hostFiles } from '../api/files'
 import { useResources } from '../state/resources'
 import { executionFor } from '../targets/execution'
@@ -31,6 +32,42 @@ export function conversationWatch(conversationId: string): ConversationWatch {
     watches.set(conversationId, watcher)
   }
   return watcher
+}
+
+/** The attached hosts whose watch follows their device online, by conversation and device. */
+const following = new Set<string>()
+
+/**
+ * The files of a Host the conversation reaches, as its attachment picker
+ * lists them, with sizes and times: its primary Host's on the
+ * conversation's own watch, an attached host's on the conversation's watch
+ * with each subscription naming the host (`web-api.md` § File watch), which
+ * connects at once when the host comes online, as a stopped Cloud that
+ * started.
+ */
+export function conversationHostSource(
+  conversationId: string,
+  deviceId: string,
+  primary: boolean,
+): FileBrowserSource {
+  const resources = useResources()
+  const watcher = conversationWatch(conversationId)
+  if (!primary && !following.has(`${conversationId}/${deviceId}`)) {
+    following.add(`${conversationId}/${deviceId}`)
+    // For the page's lifetime, as the primary Host's watch follows its device.
+    effectScope(true).run(() => {
+      watch(() => resources.deviceById(deviceId)?.state === 'online', (online) => {
+        if (online)
+          watcher.attachedOnline(deviceId)
+      })
+    })
+  }
+  return fileSource({
+    directory: `/conversations/${encodeURIComponent(conversationId)}/hosts/${encodeURIComponent(deviceId)}/fs`,
+  }, resources.deviceById(deviceId), {
+    details: true,
+    watch: (files) => primary ? watcher.channel(deviceId, files) : watcher.attached(deviceId, files),
+  })
 }
 
 /**
