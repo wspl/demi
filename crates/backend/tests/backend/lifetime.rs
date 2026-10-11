@@ -156,9 +156,9 @@ async fn wakeups(backend: &TestBackend, master: &Session) -> Vec<demi_shared_typ
         .collect()
 }
 
-/// How many reports of a loss wait in the root's saved checkpoint for the
-/// turn to take them.
-fn lost_reports_waiting(harness: &Harness) -> usize {
+/// The reports that wait in the root's saved checkpoint for the turn to
+/// take them.
+fn reports_waiting(harness: &Harness) -> Vec<serde_json::Value> {
     let file = harness.data_dir().join("conversations").join(format!("{FIRST}.sqlite"));
     let connection = rusqlite::Connection::open(file).unwrap();
     connection.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
@@ -166,10 +166,14 @@ fn lost_reports_waiting(harness: &Harness) -> usize {
         .query_row("SELECT state FROM nodes WHERE parent_id IS NULL", [], |row| row.get(0))
         .unwrap();
     let state: serde_json::Value = serde_json::from_str(&state).unwrap();
-    state["reports"]
-        .as_array()
-        .into_iter()
-        .flatten()
+    state["reports"].as_array().cloned().unwrap_or_default()
+}
+
+/// How many reports of a loss wait in the root's saved checkpoint for the
+/// turn to take them.
+fn lost_reports_waiting(harness: &Harness) -> usize {
+    reports_waiting(harness)
+        .iter()
         .filter(|report| report["event"]["kind"] == "lost")
         .count()
 }
@@ -349,6 +353,46 @@ async fn a_release_change_loses_running_commands_to_the_upgrade() {
         ),
     )
     .await;
+    backend.close().await;
+}
+
+// Several seconds: a real device pairs, the backend restarts under a call
+// that watches its command, and the device's runner starts anew as another
+// release's would.
+#[tokio::test]
+async fn a_command_lost_after_a_shutdown_interrupted_its_call_is_reported_by_the_calls_title() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let mut alpha = backend.pair(&master, "alpha").await;
+    let mut work = on_device(&backend, &master, &vendor, &alpha).await;
+    let home = alpha.runner.home_dir().to_owned();
+    // The call still watches its command when the upgrade stops the
+    // backend, which completes the call as interrupted.
+    work.start(vec![shell("Deploy the batch", "touch started; sleep 60", 600_000)])
+        .await;
+    until_exists(&home.join("started")).await;
+    let address = backend.address();
+    backend.close().await;
+    alpha.runner.kill().await;
+    harness
+        .control_database()
+        .execute("UPDATE devices SET runner_version = '0.0.1'", [])
+        .unwrap();
+    let backend = harness.start_at(address).await;
+    alpha.runner.start_again();
+    backend.until_online(&master, alpha.id(), true).await;
+
+    // The loss waits for the interrupted turn's next action, named by the
+    // call's title, which the command's record kept from its start.
+    eventually("the loss is reported", || {
+        let waiting = lost_reports_waiting(&harness);
+        async move { waiting == 1 }
+    })
+    .await;
+    let report = &reports_waiting(&harness)[0];
+    assert_eq!(report["title"], "Deploy the batch", "{report}");
+    assert_eq!(report["event"]["reason"], demi_backend_remote_host::UPGRADED, "{report}");
     backend.close().await;
 }
 

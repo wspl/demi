@@ -31,13 +31,16 @@ pub struct RunningCommand {
     pub job: String,
     /// The `shell` call that started it.
     pub tool_use_id: String,
+    /// That call's title, which the command's reports name; empty for a
+    /// command recorded before records kept it.
+    pub title: String,
     pub started: Timestamp,
     /// How far each node that looked at it has seen its output, which a
     /// look or a report moves.
     pub places: BTreeMap<NodeId, Seen>,
 }
 
-const COLUMNS: &str = "command_id, node_id, device_id, job_id, tool_use_id, started_at, places";
+const COLUMNS: &str = "command_id, node_id, device_id, job_id, tool_use_id, started_at, places, title";
 
 /// How far one node has seen a running command's output, as the `places`
 /// column stores it (command places format 1): any count of bytes is one.
@@ -87,7 +90,7 @@ impl StoredPlaces {
 pub fn insert(connection: &Connection, running: &RunningCommand) -> Result<(), StorageError> {
     connection
         .prepare_cached(&format!(
-            "INSERT INTO running_commands ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "INSERT INTO running_commands ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT (command_id) DO NOTHING"
         ))?
         .execute(params![
@@ -98,6 +101,7 @@ pub fn insert(connection: &Connection, running: &RunningCommand) -> Result<(), S
             running.tool_use_id,
             running.started.as_millisecond(),
             to_json(&StoredPlaces::of(&running.places)),
+            running.title,
         ])?;
     Ok(())
 }
@@ -177,6 +181,7 @@ fn decode_row(row: &Row<'_>) -> Result<RunningCommand, StorageError> {
         device: decode(table, "device_id", DeviceId::try_from(row.get::<_, String>(2)?))?,
         job: row.get(3)?,
         tool_use_id: row.get(4)?,
+        title: row.get(7)?,
         started: instant(row, table, "started_at")?,
         places: json::<StoredPlaces>(table, "places", &row.get::<_, String>(6)?)?.places(),
     })

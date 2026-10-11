@@ -101,7 +101,7 @@ pub(crate) const CONTROL: Schema = Schema {
 /// Each conversation's database's. Its history holds the schema of each
 /// published release before the one that ships the current schema, and of
 /// each development build a server keeps data of (`upgrades.md` § A
-/// development build on a server); 0.1.22-dev.20261011T064359Z shipped the
+/// development build on a server); 0.1.22-dev.20261011T123543Z shipped the
 /// last one in it.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
@@ -122,8 +122,24 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql"),
             migration: Migration::Code(blocks_with_lists),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_0_1_22_DEV_20261011T123543Z),
+        },
     ],
 };
+
+/// From the conversation schema of the development build
+/// 0.1.22-dev.20261011T123543Z, which a server keeps data of
+/// (`upgrades.md` § A development build on a server): a command's records
+/// keep the title of the call that started it, which its reports name
+/// (`runtime.md` § Command reports). No record that build wrote kept it,
+/// and none is guessed: theirs stay empty, and their reports name the
+/// command by its number.
+const CONVERSATION_FROM_0_1_22_DEV_20261011T123543Z: &str = "
+ALTER TABLE command_outputs ADD COLUMN title TEXT NOT NULL DEFAULT '';
+ALTER TABLE running_commands ADD COLUMN title TEXT NOT NULL DEFAULT '';
+";
 
 /// From 0.1.11's control schema: the retention pass, which read when each
 /// conversation was last live, is gone, and the column with it.
@@ -1262,7 +1278,9 @@ CREATE INDEX blocks_by_id ON blocks (json_extract(block, '$.id'));
 CREATE INDEX blocks_by_command ON blocks (json_extract(block, '$.view.commandId'));
 
 -- Each ended command's whole output: stored as a blob, with the bytes at
--- its end the backend does not have and why; or not stored, and why.
+-- its end the backend does not have and why; or not stored, and why; and
+-- the title of the call that started it, empty for a row written before
+-- rows kept it.
 CREATE TABLE command_outputs (
   command_id     TEXT PRIMARY KEY,
   ended_at       INTEGER NOT NULL,
@@ -1274,6 +1292,7 @@ CREATE TABLE command_outputs (
   missing_bytes  INTEGER CHECK (missing_bytes >= 0),
   missing_reason TEXT,
   not_stored     TEXT,
+  title          TEXT NOT NULL DEFAULT '',
   CHECK ((blob IS NOT NULL) + (not_stored IS NOT NULL) = 1),
   CHECK ((missing_bytes IS NULL) = (missing_reason IS NULL)),
   CHECK (missing_bytes IS NULL OR blob IS NOT NULL)
@@ -1281,9 +1300,10 @@ CREATE TABLE command_outputs (
 
 -- Each command that runs, until its end writes its command_outputs row in
 -- the same transaction: the node that ran it, its device, its job's id on
--- that device, the call that started it, when it started, and how far each
+-- that device, the call that started it, when it started, how far each
 -- node that looked at it has seen its output, a JSON object of each node's
--- bytes of stdout and stderr by the node's id.
+-- bytes of stdout and stderr by the node's id, and the title of the call
+-- that started it, empty for a command recorded before records kept it.
 CREATE TABLE running_commands (
   command_id  TEXT PRIMARY KEY,
   node_id     TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
@@ -1292,7 +1312,8 @@ CREATE TABLE running_commands (
   tool_use_id TEXT NOT NULL,
   started_at  INTEGER NOT NULL,
   -- running_commands.places: command places format 1
-  places      TEXT NOT NULL
+  places      TEXT NOT NULL,
+  title       TEXT NOT NULL DEFAULT ''
 ) STRICT;
 CREATE INDEX running_commands_of_node ON running_commands (node_id);
 
@@ -1539,6 +1560,7 @@ mod tests {
             stored,
             Some(CommandOutput {
                 command: CommandId::try_from("c1").unwrap(),
+                title: String::new(),
                 ended: Timestamp::from_millisecond(1000).unwrap(),
                 // Its release kept no end, and the migrations invent none.
                 end: CommandEnd::Unrecorded,

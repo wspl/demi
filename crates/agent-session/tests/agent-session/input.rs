@@ -1026,8 +1026,7 @@ async fn waiting_reports_and_running_commands_survive_dispose() {
     commands.end("18");
     until(|| later.requests().len() == 2).await;
     restored.settled().await;
-    // The report names the command by the title of the call that started
-    // it, as the restored transcript holds it.
+    // The command watched before the restore reports its end after it.
     assert_eq!(
         later.requests()[1].items.last(),
         Some(&InferenceItem::UserMessage {
