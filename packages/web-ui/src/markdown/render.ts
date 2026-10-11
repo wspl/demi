@@ -6,6 +6,7 @@ import { codeBlockHtml } from './highlight'
 import { attachmentId, isHttpUrl, messageFileTarget, messageImage } from './filePath'
 import { codeFileTarget } from './code-paths'
 import { linkedAgent } from '../agent/agent-links'
+import type { CopiedStoredFile } from '../agent/message-input/copied-message'
 import { KEEPS_WINDOWS } from '../ui/window-stack'
 import { escapeHtml } from './html'
 import { mathExtensions } from './math'
@@ -88,6 +89,18 @@ function firstWord(html: string): string {
 }
 
 /**
+ * The attribute of an attachment's link that holds the file as Demi's own
+ * form of a copy holds it, which a drag of the link into a composer carries
+ * (`copied-message.ts` § `attachmentDrag`).
+ */
+export const ATTACHMENT_FILE_ATTRIBUTE = 'data-attachment-file'
+
+/** An attachment as Demi's own form of a copy holds a stored file. */
+function attachmentFile(attachment: MessageAttachment): CopiedStoredFile {
+  return { type: 'stored', name: attachment.name, sha256: attachment.sha256, mediaType: attachment.mediaType }
+}
+
+/**
  * A link that opens an attachment: an image or a video large in the page's
  * viewer, where a video plays, and any other file as a download under its
  * name. One that opens the viewer is the viewer's control: a press on it
@@ -97,11 +110,12 @@ function firstWord(html: string): string {
 function attachmentLink(attachment: MessageAttachment, attributes = ''): string {
   const url = escapeHtml(attachment.url)
   const name = escapeHtml(attachment.name)
+  const file = ` ${ATTACHMENT_FILE_ATTRIBUTE}="${escapeHtml(JSON.stringify(attachmentFile(attachment)))}"`
   if (attachment.mediaType.startsWith('image/'))
-    return `<a href="${url}" data-attachment-image="${name}" ${KEEPS_WINDOWS}${attributes}>`
+    return `<a href="${url}" data-attachment-image="${name}"${file} ${KEEPS_WINDOWS}${attributes}>`
   if (attachment.mediaType.startsWith('video/'))
-    return `<a href="${url}" data-attachment-video="${name}" ${KEEPS_WINDOWS}${attributes}>`
-  return `<a href="${url}" download="${name}"${attributes}>`
+    return `<a href="${url}" data-attachment-video="${name}"${file} ${KEEPS_WINDOWS}${attributes}>`
+  return `<a href="${url}" download="${name}"${file}${attributes}>`
 }
 
 /**

@@ -31,6 +31,7 @@ export function galleryAttachment(id: string): AttachmentLookup {
       name: held.name,
       mediaType: held.mediaType,
       url: galleryBlobUrl(held.blob, held.mediaType),
+      sha256: held.blob,
       ...galleryBlobSize(held.blob),
     },
   }

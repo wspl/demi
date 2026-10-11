@@ -1,5 +1,7 @@
 import type { JSONContent } from '@tiptap/core'
 import { z } from 'zod'
+import { jsonOrNull } from '@demicodes/utils'
+import { ATTACHMENT_FILE_ATTRIBUTE } from '../../markdown/render'
 import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '../../markdown/user-markdown'
 import type { MessageEditContent } from '../message-editing'
 import { contentMessage, type MessageCapsule } from '../message-editor/capsules'
@@ -188,15 +190,50 @@ export function readCopiedMessage(value: string | null): CopiedMessage | null {
   if (!value) {
     return null
   }
-  let json: unknown
-  try {
-    json = JSON.parse(value)
-  } catch {
-    // Not JSON: an attribute of the same name some other page wrote.
+  const read = copiedMessageSchema.safeParse(jsonOrNull(value))
+  return read.success ? read.data : null
+}
+
+/**
+ * A copy's HTML: `content`, the copy as other apps read it, inside an
+ * element whose attribute holds Demi's own form.
+ */
+export function copiedMessageHtml(message: CopiedMessage, content: Node): string {
+  const wrapper = document.createElement('div')
+  wrapper.setAttribute(COPIED_MESSAGE_ATTRIBUTE, JSON.stringify(message))
+  wrapper.append(content)
+  return wrapper.outerHTML
+}
+
+/**
+ * A drag of an attachment's link or picture in an agent's message carries
+ * the file in Demi's own form, as a copy of a message holding it alone
+ * would, so a composer it is dropped on makes a capsule of the same file and
+ * uploads nothing (`product.md` § Attachments). The browser's own forms,
+ * the address and the picture, stay for any other place.
+ */
+export function attachmentDrag(event: DragEvent): void {
+  const link = event.target instanceof Element ? event.target.closest(`[${ATTACHMENT_FILE_ATTRIBUTE}]`) : null
+  const transfer = event.dataTransfer
+  if (!link || !transfer) {
+    return
+  }
+  const read = copiedStoredFileSchema.safeParse(jsonOrNull(link.getAttribute(ATTACHMENT_FILE_ATTRIBUTE) ?? ''))
+  if (!read.success) {
+    return
+  }
+  const picture = link.querySelector('img')?.cloneNode() ?? document.createTextNode(read.data.name)
+  transfer.setData('text/html', copiedMessageHtml({ text: ATTACHMENT_MARK, files: [read.data] }, picture))
+}
+
+/** Demi's own form of the message a paste or a drop carries in its HTML; null for HTML from elsewhere. */
+export function transferCopiedMessage(transfer: DataTransfer): CopiedMessage | null {
+  const html = transfer.getData('text/html')
+  if (!html.includes(COPIED_MESSAGE_ATTRIBUTE)) {
     return null
   }
-  const read = copiedMessageSchema.safeParse(json)
-  return read.success ? read.data : null
+  const page = new DOMParser().parseFromString(html, 'text/html')
+  return readCopiedMessage(page.querySelector(`[${COPIED_MESSAGE_ATTRIBUTE}]`)?.getAttribute(COPIED_MESSAGE_ATTRIBUTE) ?? null)
 }
 
 /**
