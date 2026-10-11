@@ -99,8 +99,10 @@ pub(crate) const CONTROL: Schema = Schema {
 };
 
 /// Each conversation's database's. Its history holds the schema of each
-/// published release before the one that ships the current schema; 0.1.21
-/// shipped the last one in it.
+/// published release before the one that ships the current schema, and of
+/// each development build a server keeps data of (`upgrades.md` § A
+/// development build on a server); 0.1.22-dev.20261011T064359Z shipped the
+/// last one in it.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -115,6 +117,10 @@ pub(crate) const CONVERSATION: Schema = Schema {
         Shipped {
             sql: include_str!("schema/conversation-0.1.21.sql"),
             migration: Migration::Code(from_0_1_21),
+        },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql"),
+            migration: Migration::Code(blocks_with_lists),
         },
     ],
 };
@@ -380,18 +386,16 @@ fn without_attachment_flags(value: &mut serde_json::Value) -> bool {
 /// (`runtime.md` § Command reports). A command's output keeps no media: the
 /// model views a file again when it needs it (`runtime.md` § Where media are
 /// kept), so the media column goes, which a CHECK names, and the table is
-/// made anew, as for 0.1.11. Block format 3 also lets a block keep
+/// made anew, as for 0.1.11. Block format 2 also lets a block keep
 /// the entries of a vendor's own record of the session (`claude-code.md`
 /// § The session a process resumes), which no block 0.1.21 stored has, so
-/// leaving the field out writes them as format 3, and gives the blocks of a
-/// run their run and shell calls their lists of changed files, which the
-/// migration computes. Commands outlive their
+/// leaving the field out writes them as format 2. Commands outlive their
 /// connections: a running one is recorded, none of which 0.1.21 kept, and a
 /// lost one says why (command ending format 2), which for 0.1.21's, lost
 /// with their connections, is that. A page of history is read by the
 /// blocks' types and found by a block's id or a command's, which the new
 /// indexes serve.
-fn from_0_1_21(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlite::Result<()> {
+fn from_0_1_21(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch(
         "
 DELETE FROM sequences WHERE name = 'shell';
@@ -442,7 +446,6 @@ CREATE INDEX blocks_by_command ON blocks (json_extract(block, '$.view.commandId'
         [LOST_IN_0_1_21],
     )?;
     blocks_of_one_tool(transaction)?;
-    blocks_with_lists(transaction, blobs)?;
     states_without_wakeups(transaction)
 }
 
@@ -475,7 +478,7 @@ fn states_without_wakeups(transaction: &Transaction<'_>) -> rusqlite::Result<()>
     Ok(())
 }
 
-/// From 0.1.21's transcript blocks (transcript block format 3): a stored
+/// From 0.1.21's transcript blocks (transcript block format 2): a stored
 /// call of `shell_exec` is the `shell` call it became, with its input, and
 /// its repeat guard's view is `repeated_shell`; a call of `yield` keeps its
 /// name, which replays as text (`runtime.md` § Replay), and loses its
@@ -511,12 +514,15 @@ fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     Ok(())
 }
 
-/// Transcript block format 3: each block of a run carries its run, and each
-/// shell call's view its own files with those it removed and renamed, its
-/// run's and its request's (`edit-tracking.md` § What the conversation
-/// shows), computed by walking each agent's transcript in order from the
-/// edit copies in the conversation's blob namespace, by the code that
-/// computes them for a new block. A copy that cannot be read stops the
+/// From the conversation schema of the development build
+/// 0.1.22-dev.20261011T064359Z, which a server keeps data of
+/// (`upgrades.md` § A development build on a server), to transcript block
+/// format 3: each block of a run carries its run, and each shell call's
+/// view its own files with those it removed and renamed, its run's and its
+/// request's (`edit-tracking.md` § What the conversation shows), computed
+/// by walking each agent's transcript in order from the edit copies in the
+/// conversation's blob namespace, by the code that computes them for a new
+/// block. The tables are as they were. A copy that cannot be read stops the
 /// migration, which the next open tries again; one the namespace no longer
 /// holds leaves its file named alone.
 fn blocks_with_lists(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlite::Result<()> {
@@ -1684,11 +1690,7 @@ mod tests {
 
         use crate::sequences;
 
-        let shipped = CONVERSATION
-            .history
-            .last()
-            .expect("a schema has a history")
-            .sql;
+        let shipped = include_str!("schema/conversation-0.1.21.sql");
         let model = serde_json::json!({
             "providerId": "anthropic",
             "model": {
@@ -1855,18 +1857,19 @@ mod tests {
         }
     }
 
-    /// 0.1.21's shell calls each get their run and its files, and the files
-    /// of their request, counted from the edit copies in the owner's
+    /// The shell calls of 0.1.21 and of the development build a server
+    /// keeps data of each get their run and its files, and the files of
+    /// their request, counted from the edit copies in the owner's
     /// namespace: two calls of one run that wrote `a.txt` list it once,
-    /// counted from before the first to after the second. A copy that
-    /// cannot be read stops the migration, which leaves the database as it
-    /// was for the next open to try again.
-    // Cost: two databases on disk, a few milliseconds.
+    /// counted from before the first to after the second, and a file a call
+    /// removed is listed deleted. A copy that cannot be read stops the
+    /// migration, which leaves the database as it was for the next open to
+    /// try again.
+    // Cost: four databases on disk, a few milliseconds.
     #[test]
-    fn a_conversation_of_0_1_21_lists_its_changed_files_from_its_edit_copies() {
+    fn stored_shell_calls_get_their_lists_from_their_edit_copies() {
         use demi_shared_types::{Block, ChangedFile, EditKind, LineCounts, ToolView};
 
-        let shipped = CONVERSATION.history.last().expect("a schema has a history").sql;
         let model = serde_json::json!({
             "providerId": "anthropic",
             "model": {
@@ -1880,23 +1883,20 @@ mod tests {
             "thinking": {"type": "disabled"},
             "serviceTierId": null
         });
-        let texts: HashMap<BlobRef, Bytes> = ["", "one\n", "one\ntwo\n"]
+        let texts: HashMap<BlobRef, Bytes> = ["", "one\n", "one\ntwo\n", "old\nguide\n"]
             .into_iter()
             .map(|text| (BlobRef::of(text.as_bytes()), Bytes::from(text)))
             .collect();
         let blob = |text: &str| BlobRef::of(text.as_bytes()).to_string();
-        let call = |id: &str, command: &str, kind: &str, original: &str, modified: &str| {
-            serde_json::json!({
-                "type": "tool_call",
-                "id": id,
-                "createdAt": "2026-09-21T14:13:20.000Z",
-                "model": model,
-                "toolUseId": format!("toolu_{id}"),
-                "toolName": "shell_exec",
-                "input": r#"{"script":"echo two >> a.txt","description":"Write the notes"}"#,
-                "status": "completed",
-                "output": [{"type": "text", "text": "done"}],
-                "view": {
+        // 0.1.21 named the tool `shell_exec` and its view a shell; the
+        // development build's calls are `shell` calls, which list removals.
+        let sql_of = |name: &str| CONVERSATION.history.iter().position(|shipped| shipped.sql == name).unwrap();
+        let release = sql_of(include_str!("schema/conversation-0.1.21.sql"));
+        let development = sql_of(include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql"));
+        for shipped in [release, development] {
+            let dev = shipped == development;
+            let call = |id: &str, command: &str, files: serde_json::Value, changes: serde_json::Value| {
+                let mut view = serde_json::json!({
                     "kind": "shell",
                     "status": "exited",
                     "commandId": command,
@@ -1905,92 +1905,144 @@ mod tests {
                     "idleMs": 0,
                     "chunks": [],
                     "viewTruncated": false,
-                    "shellId": "3",
-                    "files": [{
-                        "path": "/w/a.txt",
-                        "kind": kind,
-                        "added": 1,
-                        "removed": 0,
-                        "edits": [{"copies": {"original": blob(original), "modified": blob(modified)}}]
-                    }],
+                    "files": files,
                     "filesTruncated": false
+                });
+                if dev {
+                    view["pathChanges"] = changes;
+                } else {
+                    view["shellId"] = "3".into();
                 }
-            })
-        };
-        let blocks = [
-            serde_json::json!({
-                "type": "user",
-                "id": "u1",
-                "turnId": "t1",
-                "createdAt": "2026-09-21T14:13:20.000Z",
-                "model": model,
-                "content": [{"type": "text", "text": "Write the notes"}],
-                "preamble": null
-            }),
-            call("c1", "1", "added", "", "one\n"),
-            call("c2", "2", "modified", "one\n", "one\ntwo\n"),
-        ];
-        let conversation = || {
-            let (directory, path, connection) = database(shipped);
-            connection
-                .execute(
-                    "INSERT INTO nodes
-                       (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
-                     VALUES ('root', 0, '', 1, 0, 1, 0, ?1, 3, 0)",
-                    [state_of_0_1_21(serde_json::json!([]))],
-                )
-                .unwrap();
-            for (index, block) in blocks.iter().enumerate() {
+                serde_json::json!({
+                    "type": "tool_call",
+                    "id": id,
+                    "createdAt": "2026-09-21T14:13:20.000Z",
+                    "model": model,
+                    "toolUseId": format!("toolu_{id}"),
+                    "toolName": if dev { "shell" } else { "shell_exec" },
+                    "input": r#"{"script":"echo two >> a.txt","description":"Write the notes"}"#,
+                    "status": "completed",
+                    "output": [{"type": "text", "text": "done"}],
+                    "view": view
+                })
+            };
+            let wrote = |kind: &str, original: &str, modified: &str| {
+                serde_json::json!([{
+                    "path": "/w/a.txt",
+                    "kind": kind,
+                    "added": 1,
+                    "removed": 0,
+                    "edits": [{"copies": {"original": blob(original), "modified": blob(modified)}}]
+                }])
+            };
+            let mut blocks = vec![
+                serde_json::json!({
+                    "type": "user",
+                    "id": "u1",
+                    "turnId": "t1",
+                    "createdAt": "2026-09-21T14:13:20.000Z",
+                    "model": model,
+                    "content": [{"type": "text", "text": "Write the notes"}],
+                    "preamble": null
+                }),
+                call("c1", "1", wrote("added", "", "one\n"), serde_json::json!([])),
+                call("c2", "2", wrote("modified", "one\n", "one\ntwo\n"), serde_json::json!([])),
+            ];
+            if dev {
+                blocks.push(call(
+                    "c3",
+                    "3",
+                    serde_json::json!([]),
+                    serde_json::json!([{"kind": "removed", "path": "/w/guide.md"}]),
+                ));
+            }
+            let state = if dev {
+                let mut state: serde_json::Value = serde_json::from_str(&state_of_0_1_21(serde_json::json!([]))).unwrap();
+                let fields = state.as_object_mut().unwrap();
+                fields.remove("wakeups");
+                fields.insert("reports".into(), serde_json::json!([]));
+                fields.insert("intervals".into(), serde_json::json!([]));
+                state.to_string()
+            } else {
+                state_of_0_1_21(serde_json::json!([]))
+            };
+            let sql = CONVERSATION.history[shipped].sql;
+            let conversation = || {
+                let (directory, path, connection) = database(sql);
                 connection
                     .execute(
-                        "INSERT INTO blocks (node_id, idx, block) VALUES ('root', ?1, ?2)",
-                        rusqlite::params![i64::try_from(index).unwrap(), block.to_string()],
+                        "INSERT INTO nodes
+                           (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
+                         VALUES ('root', 0, '', 1, 0, 1, 0, ?1, ?2, 0)",
+                        rusqlite::params![state, i64::try_from(blocks.len()).unwrap()],
                     )
                     .unwrap();
+                for (index, block) in blocks.iter().enumerate() {
+                    connection
+                        .execute(
+                            "INSERT INTO blocks (node_id, idx, block) VALUES ('root', ?1, ?2)",
+                            rusqlite::params![i64::try_from(index).unwrap(), block.to_string()],
+                        )
+                        .unwrap();
+                }
+                (directory, path, connection)
+            };
+
+            let (_directory, path, mut connection) = conversation();
+            let copies = Copies { texts: texts.clone(), failing: None };
+            CONVERSATION.apply(&mut connection, &path, &copies).unwrap();
+            let stored: Vec<Block> = connection
+                .prepare("SELECT block FROM blocks WHERE node_id = 'root' ORDER BY idx")
+                .unwrap()
+                .query_map([], |row| row.get::<_, String>(0))
+                .unwrap()
+                .map(|text| demi_shared_types::decode::<Block>(&text.unwrap()).unwrap())
+                .collect();
+            let Block::ToolCall(latest) = stored.last().unwrap() else {
+                panic!("{stored:?}");
+            };
+            assert_eq!(latest.run.as_ref().map(|run| run.as_str()), Some("c1"), "{sql:.40}");
+            let Some(ToolView::Shell(view)) = &latest.view else {
+                panic!("{latest:?}");
+            };
+            let listed = |files: &Option<Vec<ChangedFile>>| {
+                files
+                    .iter()
+                    .flatten()
+                    .map(|file| (file.path.clone(), file.kind, file.lines))
+                    .collect::<Vec<_>>()
+            };
+            let mut expected = vec![(
+                "/w/a.txt".to_owned(),
+                EditKind::Added,
+                Some(LineCounts { added: 2, removed: 0 }),
+            )];
+            if dev {
+                expected.push(("/w/guide.md".to_owned(), EditKind::Deleted, None));
+                let own: Vec<_> = view.files.iter().flatten().map(|file| (file.path.as_str(), file.kind)).collect();
+                assert_eq!(own, [("/w/guide.md", EditKind::Deleted)]);
             }
-            (directory, path, connection)
-        };
+            assert_eq!(listed(&view.run_files), expected, "{sql:.40}");
+            assert_eq!(listed(&view.request_files), expected, "{sql:.40}");
 
-        let (_directory, path, mut connection) = conversation();
-        let copies = Copies { texts: texts.clone(), failing: None };
-        CONVERSATION.apply(&mut connection, &path, &copies).unwrap();
-        let stored: Vec<Block> = connection
-            .prepare("SELECT block FROM blocks WHERE node_id = 'root' ORDER BY idx")
-            .unwrap()
-            .query_map([], |row| row.get::<_, String>(0))
-            .unwrap()
-            .map(|text| demi_shared_types::decode::<Block>(&text.unwrap()).unwrap())
-            .collect();
-        let Block::ToolCall(latest) = &stored[2] else {
-            panic!("{:?}", stored[2]);
-        };
-        assert_eq!(latest.run.as_ref().map(|run| run.as_str()), Some("c1"));
-        let Some(ToolView::Shell(view)) = &latest.view else {
-            panic!("{latest:?}");
-        };
-        let listed = |files: &Option<Vec<ChangedFile>>| {
-            files
-                .iter()
-                .flatten()
-                .map(|file| (file.path.clone(), file.kind, file.lines))
-                .collect::<Vec<_>>()
-        };
-        let notes = vec![(
-            "/w/a.txt".to_owned(),
-            EditKind::Added,
-            Some(LineCounts { added: 2, removed: 0 }),
-        )];
-        assert_eq!(listed(&view.run_files), notes);
-        assert_eq!(listed(&view.request_files), notes);
+            let (_failed_directory, failed_path, mut failed) = conversation();
+            let unreachable = Copies {
+                texts: texts.clone(),
+                failing: Some(BlobRef::of(b"one\ntwo\n")),
+            };
+            let refused = CONVERSATION.apply(&mut failed, &failed_path, &unreachable);
+            assert!(matches!(refused, Err(StorageError::Migration { .. })), "{refused:?}");
+            let version: i32 = failed.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+            assert_eq!(version, version_of(sql));
+        }
+    }
 
-        let (_failed_directory, failed_path, mut failed) = conversation();
-        let unreachable = Copies {
-            texts,
-            failing: Some(BlobRef::of(b"one\ntwo\n")),
-        };
-        let refused = CONVERSATION.apply(&mut failed, &failed_path, &unreachable);
-        assert!(matches!(refused, Err(StorageError::Migration { .. })), "{refused:?}");
-        let version: i32 = failed.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-        assert_eq!(version, version_of(shipped));
+    /// The development build's conversation schema is the one its server's
+    /// databases record.
+    #[test]
+    fn the_development_build_in_the_history_is_the_one_its_server_records() {
+        let development = include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql");
+        assert_eq!(version_of(development), 1_563_671_332);
+        assert!(CONVERSATION.history.iter().any(|shipped| shipped.sql == development));
     }
 }

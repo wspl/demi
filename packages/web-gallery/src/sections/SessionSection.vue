@@ -543,6 +543,25 @@ const changeDocument = useChangeTab('conversation', null, {
     read: () => gallerySides('README.md'),
   },
 }, { node: null, request: 'gallery-readme', file: 'README.md', edit: null })
+/**
+ * A request that removed a file it never changed, so nothing of it was
+ * kept, beside the readme it edited: the removed file is picked.
+ */
+const changeRemoved = useChangeTab('conversation', null, {
+  uncommitted: workspace.changes,
+  conversation: {
+    files: [
+      {
+        path: readmeChange.path,
+        kind: readmeChange.kind,
+        lines: { added: readmeChange.added, removed: readmeChange.removed },
+        edits: [{ call: 'gallery-tidy', title: 'Tidy the docs', path: readmeChange.path, segment: 0, copies: readmeChange.edits[0]!.copies }],
+      },
+      { path: 'docs/old-guide.md', kind: 'deleted', edits: [] },
+    ],
+    read: () => gallerySides('README.md'),
+  },
+}, { node: null, request: 'gallery-tidy', file: 'docs/old-guide.md', edit: null })
 const changeEmpty = useChangeTab('conversation', null, { conversation: null, uncommitted: workspace.changes })
 const changeNoRepository = useChangeTab('uncommitted', null, {
   conversation: null,
@@ -3065,6 +3084,7 @@ onBeforeUnmount(() => {
             { variant: 'conversation · a request, All Changes of its first file', work: changeRequest, rootName: undefined, narrow: false },
             { variant: 'conversation · a pill’s edit, the third of three', work: changeRequestEdit, rootName: undefined, narrow: false },
             { variant: 'conversation · a Markdown file picked', work: changeDocument, rootName: undefined, narrow: false },
+            { variant: 'conversation · a removed file whose contents were not kept', work: changeRemoved, rootName: undefined, narrow: false },
             { variant: 'conversation · nothing picked', work: changeEmpty, rootName: undefined, narrow: false },
           ]"
           :key="specimen.variant"
