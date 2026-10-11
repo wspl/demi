@@ -559,6 +559,15 @@ few milliseconds reads as the list twitching.
   list never draws a frame in which it is shorter, only to grow back. Only
   what the user does shrinks it: folding a row, editing a message, which
   replaces what follows it, or deleting.
+- **Messages that wait stay out of the turn's flow.** A pending steer and a
+  queued message wait below the turn, and what the turn is doing is read from
+  the transcript alone: the tail row, Requesting or Connecting, stands right
+  after the transcript, above the messages that wait, and only when the
+  transcript's end waits for the model. For example, the agent is writing a
+  command, its row shimmering *Preparing a command…*, and the user sends a
+  steer: the steer shows under that row with *Will be sent to the agent at
+  its next step*, and nothing shows under the steer, since the run's row
+  already says the agent works.
 - **The message being sent** is drawn as the message it will become, at its
   height: whether it is still on its way shows in the Requesting row, and a
   lost connection in the Connecting row or the connection banner, never as
