@@ -30,8 +30,6 @@ struct WatchedCommand {
     /// How often it reports while it runs; none for a resident command,
     /// which reports only its end.
     interval_ms: Option<u32>,
-    /// The title of the call that started it, which its reports name.
-    title: String,
     /// The task that watches it, which goes with the entry.
     task: Option<AbortOnDropHandle<()>>,
 }
@@ -39,12 +37,11 @@ struct WatchedCommand {
 impl Watched {
     /// Watches `command` from now on, every `interval_ms`, in place of a
     /// watch of it before.
-    pub(super) fn add(&mut self, command: CommandId, interval_ms: Option<u32>, title: String) {
+    pub(super) fn add(&mut self, command: CommandId, interval_ms: Option<u32>) {
         self.remove(&command);
         self.commands.push(WatchedCommand {
             command,
             interval_ms,
-            title,
             task: None,
         });
     }
@@ -73,12 +70,12 @@ impl Watched {
         self.commands.retain(|watched| &watched.command != command);
     }
 
-    /// The title and the interval of `command`, while it is watched.
-    pub(super) fn get(&self, command: &CommandId) -> Option<(String, Option<u32>)> {
+    /// The interval of `command`, while it is watched.
+    pub(super) fn get(&self, command: &CommandId) -> Option<Option<u32>> {
         self.commands
             .iter()
             .find(|watched| &watched.command == command)
-            .map(|watched| (watched.title.clone(), watched.interval_ms))
+            .map(|watched| watched.interval_ms)
     }
 
     /// Ends every watch and keeps the commands, as a disposed session's
@@ -122,7 +119,7 @@ impl Watched {
 /// Starts the task that watches `command`, which the session watches, and
 /// gives it to the session.
 pub(super) fn start_watch(s: &Rc<SessionShared>, command: &CommandId) {
-    let Some((_, interval_ms)) = s.read(|core| core.watched.get(command)) else {
+    let Some(interval_ms) = s.read(|core| core.watched.get(command)) else {
         return;
     };
     let task = tokio::task::spawn_local(watch(Rc::downgrade(s), command.clone(), interval_ms));
@@ -169,14 +166,14 @@ async fn report(session: &Weak<SessionShared>, command: &CommandId) {
     let Some(s) = session.upgrade() else {
         return;
     };
-    let Some((title, interval_ms)) = s.read(|core| core.watched.get(command)) else {
+    let Some(interval_ms) = s.read(|core| core.watched.get(command)) else {
         return;
     };
     let (model, limits) = s.read(|core| (core.model.clone(), core.request_limits()));
     let runtime = s.runtime.clone();
     drop(s);
     let Some(report) = runtime
-        .report(command, &title, interval_ms, &model, limits)
+        .report(command, interval_ms, &model, limits)
         .await
     else {
         return;

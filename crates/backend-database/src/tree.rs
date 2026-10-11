@@ -325,6 +325,7 @@ impl AgentTreeStore for SqliteTreeStore {
                     command: row.command,
                     job: row.job,
                     tool_use_id: row.tool_use_id,
+                    title: row.title,
                     started: row.started,
                 })
                 .collect())
@@ -384,6 +385,7 @@ impl AgentTreeStore for SqliteTreeStore {
                 OutputRow::Stored { blob, missing } => (blob, missing),
                 OutputRow::NotStored(reason) => {
                     return Ok(Some(StoredCommand {
+                        title: row.title,
                         end: row.end,
                         output: StoredOutput::NotStored(reason),
                     }));
@@ -404,6 +406,7 @@ impl AgentTreeStore for SqliteTreeStore {
                         ))
                     })?;
             Ok(Some(StoredCommand {
+                title: row.title,
                 end: row.end,
                 output: StoredOutput::Stored { output },
             }))

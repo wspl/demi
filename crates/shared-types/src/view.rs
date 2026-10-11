@@ -107,6 +107,29 @@ pub struct ShellToolView {
     pub request_files: Option<Vec<ChangedFile>>,
 }
 
+impl ShellToolView {
+    /// The view of a call that names `command_id`, where `status` says the
+    /// command is, without its output or files: what a call that something
+    /// other than its tool ended shows when no look at the command is at
+    /// hand (`runtime.md` § Interrupted calls).
+    pub fn named(command_id: CommandId, status: ShellViewStatus) -> Self {
+        Self {
+            status,
+            command_id,
+            exit_code: None,
+            running_ms: 0,
+            idle_ms: 0,
+            chunks: Vec::new(),
+            view_truncated: false,
+            files: None,
+            files_truncated: None,
+            path_changes: Vec::new(),
+            run_files: None,
+            request_files: None,
+        }
+    }
+}
+
 /// Where a command is: running, exited, or stopped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

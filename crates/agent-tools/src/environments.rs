@@ -362,6 +362,10 @@ mod tests {
             Err(ShellError::UnknownCommand(command.clone()))
         }
 
+        fn title(&self, _: &CommandId) -> Option<String> {
+            None
+        }
+
         fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError> {
             Err(ShellError::UnknownCommand(command.clone()))
         }

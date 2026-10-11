@@ -12,7 +12,8 @@ use std::{
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
 use demi_shared_gates::{GateLease, Reservation};
 use demi_shared_types::{
-    CommandId, CommandReport, ErrorDevice, InstructionEntry, ModelSelection, ToolView, TurnId,
+    CommandId, CommandReport, ErrorDevice, InstructionEntry, ModelSelection, ShellToolView,
+    ToolView, TurnId,
 };
 use futures_util::{future::LocalBoxFuture, stream::LocalBoxStream};
 use serde_json::Value;
@@ -92,23 +93,23 @@ pub trait SessionRuntime {
         Box::pin(std::future::pending())
     }
 
-    /// What `command`, which a `shell` call titled `title` left running and
-    /// which reports every `interval_ms` while it runs, tells the node now
-    /// (`runtime.md` § Command reports): its progress while it runs, which
-    /// moves the node's place in its output as a look does, or its end,
-    /// with the media its job viewed as a result for `model`, whose vendor
-    /// takes requests within `limits`, attaches them. None when it has
-    /// nothing to tell: the node saw its end in a result already and its
-    /// job viewed no media, or the node stopped it itself.
+    /// What `command`, which a `shell` call left running and which reports
+    /// every `interval_ms` while it runs, tells the node now (`runtime.md`
+    /// § Command reports), named by the title its record keeps: its
+    /// progress while it runs, which moves the node's place in its output
+    /// as a look does, or its end, with the media its job viewed as a
+    /// result for `model`, whose vendor takes requests within `limits`,
+    /// attaches them. None when it has nothing to tell: the node saw its
+    /// end in a result already and its job viewed no media, or the node
+    /// stopped it itself.
     fn report<'a>(
         &'a self,
         command: &'a CommandId,
-        title: &'a str,
         interval_ms: Option<u32>,
         model: &'a ModelSelection,
         limits: RequestLimits,
     ) -> LocalBoxFuture<'a, Option<CommandReport>> {
-        let _ = (command, title, interval_ms, model, limits);
+        let _ = (command, interval_ms, model, limits);
         Box::pin(async { None })
     }
 
@@ -120,12 +121,13 @@ pub trait SessionRuntime {
         false
     }
 
-    /// The output of `command` since the node's last look, as a result shows
-    /// it within `budget` characters, which moves the node's place in it:
-    /// what the result of a call that something other than its tool ended
-    /// shows of the command it watched (`runtime.md` § Interrupted calls).
-    /// None when the node's shells do not hold the command, and by default.
-    fn unseen_output(&self, command: &CommandId, budget: usize) -> Option<String> {
+    /// A look at `command` as the call that watched it shows it when
+    /// something other than its tool ended the call (`runtime.md`
+    /// § Interrupted calls): its output since the node's last look, as a
+    /// result shows it within `budget` characters, which moves the node's
+    /// place in it, and the user's view of the call. None when the node's
+    /// shells do not hold the command, and by default.
+    fn look(&self, command: &CommandId, budget: usize) -> Option<CommandLook> {
         let _ = (command, budget);
         None
     }
@@ -213,13 +215,22 @@ struct CallCommandState {
     keep: Cell<bool>,
 }
 
-/// A command a call started: its number, its interval and its call's
-/// title, which its reports name.
+/// A command a call started: its number and its interval. Its reports
+/// name it by the title its record keeps.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartedCommand {
     pub command: CommandId,
     pub interval_ms: Option<u32>,
-    pub title: String,
+}
+
+/// What a call that something other than its tool ended shows of the
+/// command it watched (`runtime.md` § Interrupted calls).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandLook {
+    /// Its output since the node's last look, as a result shows it.
+    pub output: String,
+    /// The user's view of the call, which names the command.
+    pub view: ShellToolView,
 }
 
 impl CallCommand {
@@ -342,12 +353,10 @@ impl ToolOutcome {
 pub enum ToolEffect {
     /// The call returned while its command still runs: the session watches
     /// it, and the command reports every `interval_ms` until it ends, or
-    /// only its end when none (`runtime.md` § Command reports). Its reports
-    /// name it by `title`, the call's.
+    /// only its end when none (`runtime.md` § Command reports).
     Background {
         command: CommandId,
         interval_ms: Option<u32>,
-        title: String,
     },
     /// The call ran nothing because its Host, `device`, was offline: unless
     /// a later call of the turn runs there, a root's turn that ends after it
