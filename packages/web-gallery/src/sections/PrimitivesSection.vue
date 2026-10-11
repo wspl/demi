@@ -22,7 +22,8 @@ import ConversationStatusDot from '@demicodes/web-ui/agent/ConversationStatusDot
 import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
 import DeviceIcon from '@demicodes/web-ui/devices/DeviceIcon.vue'
 import ContextUsageIndicator from '@demicodes/web-ui/agent/ContextUsageIndicator.vue'
-import ProviderIcon from '@demicodes/web-ui/agent/providers/ProviderIcon.vue'
+import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
+import { providerLogo, vendorLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { IN_DEVELOPMENT } from '@demicodes/web-ui/ui/disabled'
 import { usageAt } from '../fixtures/catalog'
@@ -34,6 +35,13 @@ import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { useGalleryView } from '../gallery-views'
 
 const { view } = useGalleryView()
+/** A subscription, two vendors, and a vendor with no mark, which shows its initial. */
+const vendorMarks = [
+  { label: 'Claude Code', src: providerLogo({ kind: 'subscription', providerType: 'claude-code', vendorId: null }) },
+  { label: 'Anthropic', src: vendorLogo('anthropic') },
+  { label: 'OpenAI', src: vendorLogo('openai') },
+  { label: 'Ollama', src: vendorLogo('ollama') },
+]
 const paneWidth = ref(200)
 const paneHeight = ref(96)
 
@@ -778,13 +786,16 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
         </div>
       </GallerySection>
 
-      <GallerySection title="ProviderIcon" note="Anthropic and OpenAI.">
+      <GallerySection
+        title="VendorMark"
+        note="A vendor’s mark in the text’s color, from the one map of marks (vendor-logos): a subscription wears its vendor’s, Claude Code Claude’s own; a vendor without a mark shows its initial. Small in lists, medium beside a title."
+      >
         <div class="specimen-row">
-          <GallerySpecimen variant="anthropic">
-            <ProviderIcon provider-id="anthropic" :size="ICON_PX.markIn28" />
-          </GallerySpecimen>
-          <GallerySpecimen variant="openai">
-            <ProviderIcon provider-id="openai" :size="ICON_PX.markIn28" />
+          <GallerySpecimen v-for="mark in vendorMarks" :key="mark.label" :variant="mark.label">
+            <div class="flex items-center gap-2">
+              <VendorMark :label="mark.label" :src="mark.src" size="sm" />
+              <VendorMark :label="mark.label" :src="mark.src" />
+            </div>
           </GallerySpecimen>
         </div>
       </GallerySection>

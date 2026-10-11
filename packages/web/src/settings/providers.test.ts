@@ -126,6 +126,25 @@ test('the list holds only saved providers; a vendor added joins it only once sav
   expect(listed()).toEqual(['codex', 'configured'])
 })
 
+test('a provider wears its vendor\'s mark: a subscription by its type, a key by its vendor', async () => {
+  const settings = useProviderSettings()
+  const resources = useResources()
+  const logo = (id: string) => settings.providers.find((provider) => provider.id === id)?.logo
+  // A subscription not yet signed in to, and a bare endpoint, which has no vendor.
+  expect(logo('codex')).toEndWith('/openai.svg')
+  expect(logo('configured')).toBeNull()
+
+  const claude = { ...state.providers[0]!, id: 'claude', kind: 'subscription' as const, providerType: 'claude-code', label: 'Claude Code' }
+  channels.last().send({ type: 'providers', providers: [...state.providers, claude] })
+  await nextTick()
+  expect(logo('claude')).toEndWith('/claude.svg')
+
+  const anthropic = resources.vendors.find((vendor) => vendor.id === 'anthropic')!
+  expect(anthropic.logo).toEndWith('/anthropic.svg')
+  settings.addProvider(anthropic)
+  expect(settings.draft?.logo).toEndWith('/anthropic.svg')
+})
+
 test('an edit or a model made while a test runs shows at once and is saved when the test ends', async () => {
   const settings = useProviderSettings()
   let answerTest!: () => void

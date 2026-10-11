@@ -28,7 +28,7 @@ const initial = computed(() => props.label.trim().slice(0, 1).toUpperCase())
       v-if="src"
       class="block bg-current"
       :class="size === 'sm' ? 'size-3.5' : 'size-4'"
-      :style="{ maskImage: `url(${src})`, maskSize: 'contain', maskRepeat: 'no-repeat', maskPosition: 'center' }"
+      :style="{ maskImage: `url(${JSON.stringify(src)})`, maskSize: 'contain', maskRepeat: 'no-repeat', maskPosition: 'center' }"
     />
     <span
       v-else

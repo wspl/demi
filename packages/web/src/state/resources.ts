@@ -16,6 +16,7 @@ import { modelInfo, providerView, wireApi } from './catalog'
 import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
 import type { PairingDevice } from '@demicodes/web-ui/devices/pairing'
+import { vendorLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import type { SidebarConversationDevice } from '@demicodes/web-ui/sidebar/types'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
@@ -204,7 +205,7 @@ export const useResources = defineStore('resources', () => {
       name: vendor.name,
       baseUrl: vendor.baseUrl,
       wireApi: wireApi(vendor.providerType, vendor.wireApi),
-      logo: '',
+      logo: vendorLogo(vendor.id),
     })),
   )
   const sidebarWidth = computed({
