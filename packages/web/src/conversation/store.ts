@@ -48,7 +48,7 @@ import {
   type PasteHost,
 } from '@demicodes/web-ui/agent/message-input/copied-message'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
-import { showUnsent } from '@demicodes/web-ui/agent/unsent-toast'
+import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
 import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '@demicodes/web-ui/markdown/user-markdown'
 import { connectConversationClient, takeConnection } from '@demicodes/web-ui/transport/conversation-socket'
 import { loadDraft } from '../api/drafts'
@@ -106,13 +106,13 @@ function isEmptyDraft(conversation: Conversation): boolean {
 }
 
 /**
- * What Undo Send did with a message the session held, until the session
+ * What Recall did with a message the session held, until the session
  * answers its removal: the composer it refilled, with what it put there, or
  * the toast whose Undo sends the message again.
  */
 type TakenBack =
   | { kind: 'refilled'; text: string; fileIds: string[] }
-  | { kind: 'unsent'; toast: string }
+  | { kind: 'recalled'; toast: string }
 
 /** `state` with the conversation `id` as `change` makes it; one that is gone stays gone. */
 function withConversation(
@@ -208,12 +208,12 @@ export const useConversations = defineStore('conversations', () => {
    */
   let deliveries = new SerialQueue()
   /**
-   * Undo Send or Send Now pressed on a steer or a queued message still on
+   * Recall or Send Now pressed on a steer or a queued message still on
    * its way, by its message id: the user's latest wish, carried out once the
    * session holds the message (`web-application.md` § Responding to the
    * user).
    */
-  const wishes = new Map<string, 'undoSend' | 'sendNow'>()
+  const wishes = new Map<string, 'recall' | 'sendNow'>()
   /** The draft storage failures this page reported, each once. */
   const storageReported = new Set<'save' | 'restore' | 'unreadable'>()
 
@@ -1946,7 +1946,7 @@ export const useConversations = defineStore('conversations', () => {
         // A message not delivered is no steer or queued message to act on.
         wishes.delete(pending.id)
         stopRemoving(conversation, pending.id)
-        if (wish === 'undoSend' && isEmptyMessage(conversation.draft, conversation.attachmentIds.length)) {
+        if (wish === 'recall' && isEmptyMessage(conversation.draft, conversation.attachmentIds.length)) {
           // One the user took back meanwhile goes back into the empty
           // composer as it was, its files with it.
           conversation.pendingSends = conversation.pendingSends.filter((each) => each.id !== pending.id)
@@ -2057,10 +2057,10 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Keeps Undo Send or Send Now pressed on a message on its way as the
+   * Keeps Recall or Send Now pressed on a message on its way as the
    * user's wish, when `id` is one; false for any other.
    */
-  function keepWish(conversation: Conversation, id: string, wish: 'undoSend' | 'sendNow'): boolean {
+  function keepWish(conversation: Conversation, id: string, wish: 'recall' | 'sendNow'): boolean {
     if (!conversation.pendingSends.some((pending) => pending.id === id && pending.error === null)) {
       return false
     }
@@ -2075,9 +2075,9 @@ export const useConversations = defineStore('conversations', () => {
    * joined the queue; one already in the transcript is past both, which a
    * removal tells.
    */
-  function carryOut(conversation: Conversation, id: string, wish: 'undoSend' | 'sendNow'): void {
-    if (wish === 'undoSend') {
-      carryOutUndoSend(conversation, id)
+  function carryOut(conversation: Conversation, id: string, wish: 'recall' | 'sendNow'): void {
+    if (wish === 'recall') {
+      carryOutRecall(conversation, id)
     } else if (conversation.pendingSteers.some((steer) => steer.id === id)) {
       action(conversation, (runtime) => runtime.interruptPendingSteer(id))
     } else if (conversation.queue.some((message) => message.id === id)) {
@@ -2086,17 +2086,17 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Undo Send on a steer or a queued message, or on a message on its way
+   * Recall on a steer or a queued message, or on a message on its way
    * that will be one (`product.md` § Steer or queue): its row goes at once,
    * and the rest follows once the session holds the message.
    */
-  function undoSend(conversation: Conversation, id: string): void {
+  function recall(conversation: Conversation, id: string): void {
     if (conversation.removing.includes(id)) {
       return
     }
     conversation.removing = [...conversation.removing, id]
-    if (!keepWish(conversation, id, 'undoSend')) {
-      carryOutUndoSend(conversation, id)
+    if (!keepWish(conversation, id, 'recall')) {
+      carryOutRecall(conversation, id)
     }
   }
 
@@ -2107,7 +2107,7 @@ export const useConversations = defineStore('conversations', () => {
    * was, which is the transcript then, takes back what `takeBack` did, and a
    * toast says why.
    */
-  function carryOutUndoSend(conversation: Conversation, id: string): void {
+  function carryOutRecall(conversation: Conversation, id: string): void {
     const steer = conversation.pendingSteers.find((each) => each.id === id)
     const waiting = steer ?? conversation.queue.find((each) => each.id === id)
     const removal = runtimeFor(conversation).then((runtime) => runtime.removeWaiting(id))
@@ -2117,13 +2117,13 @@ export const useConversations = defineStore('conversations', () => {
         if (back) {
           giveBack(conversation, back)
         }
-        report('Could Not Unsend the Message', error)
+        report('Could Not Recall the Message', error)
       })
       .finally(() => stopRemoving(conversation, id))
   }
 
   /**
-   * Gives a message Undo Send took back to the user (`product.md` § Steer or
+   * Gives a message Recall took back to the user (`product.md` § Steer or
    * queue): into the composer when it is empty, its files coming back as a
    * paste brings them, without their bytes; otherwise the draft stays as it
    * is, and a toast's Undo sends the message again the way it was sent, once
@@ -2132,8 +2132,8 @@ export const useConversations = defineStore('conversations', () => {
   function takeBack(conversation: Conversation, copy: CopiedMessage, way: 'steer' | 'queue', removal: Promise<void>): TakenBack {
     if (!isEmptyMessage(conversation.draft, conversation.attachmentIds.length)) {
       // A refused removal has its own toast, and dismisses this one.
-      const toast = showUnsent(() => void removal.then(() => resend(conversation, copy, way), () => {}))
-      return { kind: 'unsent', toast }
+      const toast = showRecalled(() => void removal.then(() => resend(conversation, copy, way), () => {}))
+      return { kind: 'recalled', toast }
     }
     const pasted = pasteMessage(copy, null, pasteHost(conversation))
     const fileIds = pasted.capsules.map((capsule) => capsule.id)
@@ -2172,7 +2172,7 @@ export const useConversations = defineStore('conversations', () => {
    * unless the user changed it since, when it stays as they left it.
    */
   function giveBack(conversation: Conversation, back: TakenBack): void {
-    if (back.kind === 'unsent') {
+    if (back.kind === 'recalled') {
       dismissToast(back.toast)
       return
     }
@@ -2186,7 +2186,7 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Undo on the toast of a message Undo Send took back: it is sent again the
+   * Undo on the toast of a message Recall took back: it is sent again the
    * way it was, its files attached again without their bytes, as one the
    * composer sent.
    */
@@ -2341,9 +2341,9 @@ export const useConversations = defineStore('conversations', () => {
     compact: (conversation: Conversation) =>
       action(conversation, (runtime) => runtime.compact()),
     // Send Now on a steer or a queued message still on its way waits for the
-    // session to hold it; on any other, it goes at once. Undo Send takes the
+    // session to hold it; on any other, it goes at once. Recall takes the
     // row away at once in either case.
-    undoSend,
+    recall,
     pasteHost,
     sendQueued: (conversation: Conversation, id: string) =>
       {
