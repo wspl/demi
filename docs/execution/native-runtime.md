@@ -926,8 +926,8 @@ these steps:
 2. Publish each descriptor and its immutable package/version mapping.
 3. Enable the catalog.
 
-No artifact is stored at startup. An artifact enters the store the first
-time something needs it: a runner asks where to download a package's
+An artifact enters the store when the backend stores it ahead, below, or
+the first time something needs it: a runner asks where to download a package's
 executable, or an installer asks for a runner executable
 ([Runner releases](#runner-releases)). The backend then takes it from the
 first source that holds it:
@@ -948,7 +948,9 @@ and the next need tries again. A need waits as long as that fetch takes: a runne
 `artifact_location` request has no deadline of its own while its connection
 lives, as a download has none ([Install artifacts](#install-artifacts)),
 since a fetch that runs on a small server's slow disk or link is not a
-failure.
+failure. Other questions a runner asks the backend, such as a conversation's
+numbers, are answered from what the backend holds, and the runner gives
+them 15 seconds.
 
 So that a first command does not wait for a fetch at all, the backend
 stores ahead what it can foresee. When it starts, and when a Host of a
