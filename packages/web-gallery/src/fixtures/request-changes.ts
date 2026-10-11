@@ -157,24 +157,24 @@ export function movedRequestBlocks(): Block[] {
 }
 
 /** The subagent the parent below spawns, whose own transcript holds its request and its changes. */
-export const HELPER = 'gallery-helper'
+export const SUBAGENT = 'gallery-subagent'
 
-/** The helper's transcript: its spawn's message starts its request, and its call renames the cookie. */
-export function helperBlocks(): Block[] {
+/** The subagent's transcript: its spawn's message starts its request, and its call renames the cookie. */
+export function subagentBlocks(): Block[] {
   return [
-    user('helper-user', 300_000, 'Rename the sid cookie to session in src/auth/cookie.ts.', 'You are a helper of the conversation’s agent.'),
-    shell('helper-rename', 290_000, 'demi file edit src/auth/cookie.ts', 'Rename the cookie', [
+    user('subagent-user', 300_000, 'Rename the sid cookie to session in src/auth/cookie.ts.', 'You are a subagent of the conversation’s agent.'),
+    shell('subagent-rename', 290_000, 'demi file edit src/auth/cookie.ts', 'Rename the cookie', [
       file('src/auth/cookie.ts', 'modified', COOKIE, { added: 1, removed: 1 }),
     ]),
-    text('helper-reply', 280_000, 'Renamed the cookie to session.'),
+    text('subagent-reply', 280_000, 'Renamed the cookie to session.'),
   ]
 }
 
-/** The parent's transcript: it spawns the helper and reads its receipt, and changes no file itself. */
-export function helperParentBlocks(): Block[] {
+/** The parent's transcript: it spawns the subagent and reads its receipt, and changes no file itself. */
+export function subagentParentBlocks(): Block[] {
   return [
-    user('parent-user', 310_000, 'Have a helper rename the session cookie.'),
-    shell('parent-spawn', 305_000, 'demi agent spawn --description "Rename the cookie"', 'Start a helper'),
+    user('parent-user', 310_000, 'Have a subagent rename the session cookie.'),
+    shell('parent-spawn', 305_000, 'demi agent spawn --description "Rename the cookie"', 'Start a subagent'),
     {
       type: 'agent_message',
       id: 'parent-receipt',
@@ -182,15 +182,15 @@ export function helperParentBlocks(): Block[] {
       createdAt: ago(275_000),
       model: demoModel,
       message: {
-        id: `subagent:${HELPER}:1`,
-        sender: { id: HELPER, number: 1, description: 'Rename the cookie', round: 1 },
+        id: `subagent:${SUBAGENT}:1`,
+        sender: { id: SUBAGENT, number: 1, description: 'Rename the cookie', round: 1 },
         recipientId: 'root',
         timestamp: ago(275_000),
         content: 'Renamed the cookie to session.',
         event: { type: 'completion', outcome: 'completed' },
       },
     },
-    text('parent-reply', 270_000, 'The helper renamed the cookie to session in src/auth/cookie.ts.'),
+    text('parent-reply', 270_000, 'The subagent renamed the cookie to session in src/auth/cookie.ts.'),
   ]
 }
 
