@@ -90,6 +90,20 @@ export function showToast(input: {
   return id
 }
 
+/**
+ * Changes what a toast still shown says, or its action, in place, as a count
+ * that the answer corrected; its countdown goes on where it is. A toast
+ * closed meanwhile stays closed.
+ */
+export function updateToast(id: string, input: { title: HeadlineText; message?: SentenceText; action?: ToastAction }): void {
+  const toast = toasts.find((candidate) => candidate.id === id)
+  if (toast) {
+    toast.title = input.title
+    toast.message = input.message
+    toast.action = input.action
+  }
+}
+
 /** The pointer entered the toasts: every countdown stops where it is. */
 export function holdToasts(): void {
   if (held) {

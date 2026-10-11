@@ -107,20 +107,12 @@ export function createDraftSync(options: {
 }) {
   let lifetime = new AbortController()
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
-  const queues = new Map<string, SerialQueue>()
+  /** Each conversation's draft requests, in order. */
+  let queue = new SerialQueue()
   /** Saves in flight, by conversation: a save on close waits for none. */
   const saving = new Set<string>()
   /** What each conversation's refused save sent: only another draft is tried again. */
   const refused = new Map<string, string>()
-
-  function queue(id: string): SerialQueue {
-    let current = queues.get(id)
-    if (!current) {
-      current = new SerialQueue()
-      queues.set(id, current)
-    }
-    return current
-  }
 
   function clearTimer(id: string): void {
     clearTimeout(timers.get(id))
@@ -153,7 +145,7 @@ export function createDraftSync(options: {
   /** Saves the draft now, after the conversation's requests before it. */
   function save(conversation: Conversation): Promise<void> {
     clearTimer(conversation.id)
-    return queue(conversation.id).run(() => saveNow(conversation))
+    return queue.run(conversation.id, () => saveNow(conversation))
   }
 
   async function saveNow(conversation: Conversation, keepalive = false): Promise<void> {
@@ -222,7 +214,7 @@ export function createDraftSync(options: {
    */
   function read(conversation: Conversation, loaded?: Promise<ConversationDraft>): Promise<void> {
     const signal = lifetime.signal
-    return queue(conversation.id).run(async () => {
+    return queue.run(conversation.id, async () => {
       const draft = await (loaded ?? loadDraft(conversation.id, signal))
       signal.throwIfAborted()
       receive(conversation, draft)
@@ -239,7 +231,7 @@ export function createDraftSync(options: {
   function act(conversation: Conversation, action: ReplacedAction): Promise<void> {
     const signal = lifetime.signal
     clearTimer(conversation.id)
-    return queue(conversation.id).run(async () => {
+    return queue.run(conversation.id, async () => {
       await saveNow(conversation)
       const replaced = conversation.savedDraft?.replaced
       if (!replaced) {
@@ -292,7 +284,7 @@ export function createDraftSync(options: {
     for (const id of [...timers.keys()]) {
       clearTimer(id)
     }
-    queues.clear()
+    queue = new SerialQueue()
     saving.clear()
     refused.clear()
   }
