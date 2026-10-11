@@ -1,4 +1,4 @@
-import type { Block } from '@demicodes/protocol'
+import type { AgentMessage, Block } from '@demicodes/protocol'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import { demoModel, shellView, thinkingText } from './blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
@@ -48,6 +48,7 @@ function shell(
   description: string,
   stdout: string,
   status: 'executing' | 'completed',
+  script = `echo ${description}`,
 ): Block {
   return {
     type: 'tool_call',
@@ -57,7 +58,7 @@ function shell(
     toolUseId: `${id}-use`,
     toolName: 'shell',
     input: JSON.stringify({
-      script: `echo ${description}`,
+      script,
       description,
     }),
     status,
@@ -73,6 +74,62 @@ function shell(
     }),
   }
 }
+
+/** What Check the logout path tells its parent while it works. */
+const LOGOUT_UPDATE = 'Logout clears the renamed cookie in `auth.ts`. I am checking the **redirect** next.'
+/** Update helper comments' last answer, its result. */
+const COMMENTS_RESULT = [
+  'Comments on the cookie helper now say `session`. The helper is unchanged.',
+  '',
+  '## Validation',
+  ...Array.from({ length: 12 }, (_, i) => `- Check ${i + 1}: source identity, content, and message order remain intact.`),
+].join('\n')
+/** Why Run the fixture server failed. */
+const FIXTURE_FAILURE = 'The fixture could not reach the test server. No files were changed.\n\n`ECONNREFUSED 127.0.0.1:3271`'
+
+/**
+ * The receipts the gallery's children sent their parent, one of each kind
+ * (`subagents.md` § Product rendering): each names the block of its
+ * child's transcript it came from, an update the call that sent it, a
+ * completion the last answer; the stopped child gave none.
+ */
+export const agentReceiptMessages: AgentMessage[] = [
+  {
+    id: 'receipt-logout',
+    sender: { id: 'ag-logout', number: 2, description: 'Check the logout path', round: 1 },
+    recipientId: 'gallery-parent',
+    timestamp: '2026-09-12T12:00:00.000Z',
+    content: LOGOUT_UPDATE,
+    event: { type: 'message' },
+    origin: 'ag-logout-send',
+  },
+  {
+    id: 'subagent:ag-comments:1',
+    sender: { id: 'ag-comments', number: 4, description: 'Update helper comments', round: 1 },
+    recipientId: 'gallery-parent',
+    timestamp: '2026-09-12T12:01:00.000Z',
+    content: COMMENTS_RESULT,
+    event: { type: 'completion', outcome: 'completed' },
+    origin: 'ag-comments-text',
+  },
+  {
+    id: 'subagent:ag-fixture:1',
+    sender: { id: 'ag-fixture', number: 6, description: 'Run the fixture server', round: 1 },
+    recipientId: 'gallery-parent',
+    timestamp: '2026-09-12T12:02:00.000Z',
+    content: FIXTURE_FAILURE,
+    event: { type: 'completion', outcome: 'failed' },
+    origin: 'ag-fixture-text',
+  },
+  {
+    id: 'subagent:ag-ci:1',
+    sender: { id: 'ag-ci', number: 5, description: 'CI screenshot review', round: 1 },
+    recipientId: 'gallery-parent',
+    timestamp: '2026-09-12T12:03:00.000Z',
+    content: 'The parent stopped this round before validation finished.',
+    event: { type: 'completion', outcome: 'aborted' },
+  },
+]
 
 export function gallerySubagents(): SubagentRecord[] {
   return [
@@ -129,6 +186,14 @@ export function gallerySubagents(): SubagentRecord[] {
           'packages/web/src/auth.ts:42:  clearCookie(SESSION_COOKIE)\n',
           'completed',
         ),
+        shell(
+          'ag-logout-send',
+          ago(33_000),
+          'Tell the parent where logout clears the cookie',
+          'sent to 0\n',
+          'completed',
+          `demi agent send parent <<'EOF'\n${LOGOUT_UPDATE}\nEOF`,
+        ),
       ]),
     },
     {
@@ -177,7 +242,36 @@ export function gallerySubagents(): SubagentRecord[] {
         text(
           'ag-comments-text',
           ago(240_000),
-          'Comments now say `session`. The helper is unchanged.',
+          COMMENTS_RESULT,
+        ),
+      ]),
+    },
+    {
+      id: 'ag-fixture',
+      name: 'Run the fixture server',
+      phase: 'error',
+      startedAt: ago(300_000),
+      endedAt: ago(270_000),
+      failures: {},
+      pendingCalls: [],
+      waitingSince: null,
+      history: wholeHistory([
+        user(
+          'ag-fixture-user',
+          ago(300_000),
+          'Start the fixture server and run the login test against it.',
+        ),
+        text(
+          'ag-fixture-text',
+          ago(290_000),
+          'I will start the fixture server on port 3271, then run the login test.',
+        ),
+        shell(
+          'ag-fixture-tool',
+          ago(285_000),
+          'Start the fixture server',
+          'Error: connect ECONNREFUSED 127.0.0.1:3271\n',
+          'completed',
         ),
       ]),
     },

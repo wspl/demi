@@ -28,6 +28,7 @@ import { messageEditSuffixIds, offeredEditId } from './message-editing'
 import { useMessageForks, type MessageForkHandler } from './message-fork'
 import { useFollowSentMessages } from './useFollowSentMessages'
 import { provideCommandRevealer, useCommandRevealer } from './command-reports'
+import { provideOriginRevealer, useOriginRevealer } from './agent-receipts'
 import { storedShellView } from './block-helpers'
 import { distanceFromBottom } from '../composables/scroll-bottom'
 import { highlightFound } from '../ui/found-highlight'
@@ -267,6 +268,18 @@ provideCommandRevealer((commandId) => {
         revealAndMark(call.id)
       }
     : findCommand(commandId)
+})
+// A receipt's name opens where it came from: in this transcript, the
+// block when the window holds it; anywhere else, as the host opens it.
+const openOrigin = useOriginRevealer()
+provideOriginRevealer((origin) => {
+  const { blockId } = origin
+  const here = origin.node === (props.node ?? null) && blockId !== null && props.blocks.some((block) => block.id === blockId)
+  return here
+    ? () => {
+        revealAndMark(blockId)
+      }
+    : openOrigin(origin)
 })
 
 // The part of the transcript the composer leaves visible, which caps a
