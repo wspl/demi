@@ -124,11 +124,7 @@ pub(crate) const CONVERSATION: Schema = Schema {
         },
         Shipped {
             sql: include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql"),
-            migration: Migration::Code(relist_blocks),
-        },
-        Shipped {
-            sql: include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql"),
-            migration: Migration::Sql(CONVERSATION_FROM_0_1_22_DEV_20261011T123543Z),
+            migration: Migration::Code(from_0_1_22_dev_20261011t123543z),
         },
     ],
 };
@@ -137,13 +133,22 @@ pub(crate) const CONVERSATION: Schema = Schema {
 /// 0.1.22-dev.20261011T123543Z, which a server keeps data of
 /// (`upgrades.md` § A development build on a server): a command's records
 /// keep the title of the call that started it, which its reports name
-/// (`runtime.md` § Command reports). No record that build wrote kept it,
-/// and none is guessed: theirs stay empty, and their reports name the
-/// command by its number.
-const CONVERSATION_FROM_0_1_22_DEV_20261011T123543Z: &str = "
+/// (`runtime.md` § Command reports), and the blocks move from transcript
+/// block format 3 to format 4 ([`relist_blocks`]). No record that build
+/// wrote kept a title, and none is guessed: theirs stay empty, and their
+/// reports name the command by its number.
+fn from_0_1_22_dev_20261011t123543z(
+    transaction: &Transaction<'_>,
+    blobs: &dyn ReadBlob,
+) -> rusqlite::Result<()> {
+    transaction.execute_batch(
+        "
 ALTER TABLE command_outputs ADD COLUMN title TEXT NOT NULL DEFAULT '';
 ALTER TABLE running_commands ADD COLUMN title TEXT NOT NULL DEFAULT '';
-";
+",
+    )?;
+    relist_blocks(transaction, blobs)
+}
 
 /// From 0.1.11's control schema: the retention pass, which read when each
 /// conversation was last live, is gone, and the column with it.
@@ -755,6 +760,10 @@ fn tables(connection: &Connection) -> rusqlite::Result<i64> {
 /// only a database's version, as an upgrade's preparation does.
 #[cfg(feature = "testing")]
 pub mod testing {
+    use std::path::Path;
+
+    use rusqlite::Connection;
+
     use super::{DatabaseKind, version_of};
 
     /// The version of this build's schema.
@@ -767,6 +776,76 @@ pub mod testing {
     pub fn shipped_version(kind: DatabaseKind) -> i32 {
         let shipped = kind.schema().history.last().expect("a schema has a history");
         version_of(shipped.sql)
+    }
+
+    /// Turns the closed database of `kind` at `path`, of this build's
+    /// schema, into one of the newest schema a published release shipped
+    /// before it, as an upgrade finds it: the tables, columns and indexes of
+    /// that schema, with the rows of this one in the columns both have, and
+    /// that schema's version. Its values stay as this build wrote them.
+    pub fn store_as_shipped(path: &Path, kind: DatabaseKind) {
+        let shipped = kind.schema().history.last().expect("a schema has a history");
+        let earlier = path.with_extension("shipped");
+        let connection = Connection::open(&earlier).expect("a database opens beside it");
+        connection
+            .execute_batch(shipped.sql)
+            .expect("the shipped schema applies");
+        connection
+            .execute(
+                "ATTACH DATABASE ?1 AS current",
+                [path.to_str().expect("a test's path is UTF-8")],
+            )
+            .expect("the database attaches");
+        let tables = connection
+            .prepare("SELECT name FROM main.sqlite_schema WHERE type = 'table'")
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| row.get::<_, String>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .expect("the shipped tables are listed");
+        for table in tables {
+            let columns = connection
+                .prepare(
+                    "SELECT name FROM pragma_table_info(?1, 'main')
+                     WHERE name IN (SELECT name FROM pragma_table_info(?1, 'current'))",
+                )
+                .and_then(|mut statement| {
+                    statement
+                        .query_map([&table], |row| row.get::<_, String>(0))?
+                        .collect::<rusqlite::Result<Vec<_>>>()
+                })
+                .expect("the columns are listed");
+            if columns.is_empty() {
+                continue;
+            }
+            let columns = columns.join(", ");
+            connection
+                .execute_batch(&format!(
+                    "INSERT INTO main.{table} ({columns}) SELECT {columns} FROM current.{table}"
+                ))
+                .expect("the rows are copied");
+        }
+        connection
+            .execute_batch("DETACH DATABASE current")
+            .expect("the database detaches");
+        connection
+            .pragma_update(None, "user_version", version_of(shipped.sql))
+            .expect("the version is recorded");
+        drop(connection);
+        // The copy read the write-ahead log of the database it replaces,
+        // which would otherwise be applied to the copy.
+        for suffix in ["-wal", "-shm"] {
+            let mut log = path.as_os_str().to_owned();
+            log.push(suffix);
+            match std::fs::remove_file(&log) {
+                Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                    panic!("{log:?} is removed: {error}")
+                }
+                _ => {}
+            }
+        }
+        std::fs::rename(&earlier, path).expect("the copy replaces the database");
     }
 }
 

@@ -1895,23 +1895,14 @@ async fn a_summary_read_while_the_conversations_database_migrates_lists_its_fact
     drop(socket);
     backend.close().await;
 
-    // The upgrade left the database at the previous release's schema, whose
-    // last migration changes no table.
-    let database = rusqlite::Connection::open(
-        harness
+    // The upgrade left the database at the previous release's schema.
+    schema_testing::store_as_shipped(
+        &harness
             .data_dir()
             .join("conversations")
             .join(format!("{FIRST}.sqlite")),
-    )
-    .unwrap();
-    database
-        .pragma_update(
-            None,
-            "user_version",
-            schema_testing::shipped_version(DatabaseKind::Conversation),
-        )
-        .unwrap();
-    drop(database);
+        DatabaseKind::Conversation,
+    );
 
     let backend = harness.start().await;
     let hold = backend.hold_migrations();
