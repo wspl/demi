@@ -229,7 +229,7 @@ export function useDirectoryExistence(options: Pick<PathCompletionOptions, 'sour
     if (!at || !shown)
       return null
     if (shown.value === undefined)
-      return shown.failure?.kind === 'not-found' ? false : null
+      return shown.answer === 'gone' ? false : null
     return at.query === '' || shown.value.some((entry) => entry.isDirectory && entry.name === at.query)
   })
 }

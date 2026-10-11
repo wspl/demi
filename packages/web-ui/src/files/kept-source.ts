@@ -1,18 +1,20 @@
 /**
  * A file source that keeps what it read (`plugin-pages.md` § What the
  * service keeps): the reads a host makes, each a request, over the Host's
- * kept files (`HostFiles`). A view shows an entry through the source and
- * sees it replaced in place when it is read again; a one-shot read answers
- * from what is confirmed, and reads otherwise. The source's own writes edit
- * the listings they change as their answers tell, without listing them
- * again: the Host's watch reports the write, and the folder is listed once
- * for its reports (`web-application.md` § Requests for one action).
+ * kept files (`HostFiles`), whose entries the source's watch keeps current.
+ * A view shows an entry through the source and sees it replaced in place
+ * when it is read again; a one-shot read answers from what is current, and
+ * reads otherwise. The source's own writes edit the listings they change as
+ * their answers tell, without listing them again: the Host's watch reports
+ * the write, and the folder is listed once for it (`web-application.md`
+ * § Requests for one action).
  */
 import { reactive } from 'vue'
-import type { HostFiles, KeptSpec, Showing } from './file-cache'
+import type { Answered, HostFiles, KeptSpec, Read, Showing } from './file-cache'
 import { baseName } from '@demicodes/utils'
 import { parentPath } from './paths'
 import type { ChangeSetSource, ChangeSides, WorkingTreeChange } from './changes'
+import type { WatchChannel } from './watch-channel'
 import type {
   FileBrowserEntry,
   FileBrowserSource,
@@ -20,96 +22,66 @@ import type {
   FileDescription,
   FileText,
   FileUploadOptions,
-  FileWatchNote,
 } from './types'
 
 /** A file's bytes as a host serves them: where they load from, and their description, each a request. */
 export interface ContentReads {
   url: FileContents['url']
-  describe(path: string): Promise<FileDescription>
+  describe(path: string): Promise<Answered<FileDescription>>
   readStart?: FileContents['readStart']
 }
 
 /**
  * How a host reads and writes a Host's files, each a request: the source
- * built over them keeps what they answer.
+ * built over them keeps what they answer, each with the Host's number
+ * before it read.
  */
 export interface FileReads extends Pick<FileBrowserSource, 'platform' | 'home' | 'createDirectory' | 'upload' | 'remove'> {
-  list(path: string): Promise<FileBrowserEntry[]>
+  list(path: string): Promise<Answered<FileBrowserEntry[]>>
   /**
-   * A file's text with its version; null when the file still has the
-   * version `held` names, so its text did not travel.
+   * A file's text with its version; unchanged when the file still has the
+   * version `held` names, so its text did not travel. A file that is not
+   * text, or too large to read as text, rejects with that answer.
    */
-  readText?(path: string, held: string | null): Promise<FileText | null>
+  readText?(path: string, held: string | null): Promise<Read<FileText>>
   contents?: ContentReads
-}
-
-/**
- * Whoever follows what a source shows on the Host, such as a conversation's
- * file watch: each path shown is told until its view lets it go.
- */
-export interface FileFollower {
-  /** A view shows an entry at `path`; the answer ends that. */
-  show(path: string): () => void
-  /** What the follower says of its watch, for the views. */
-  readonly note: FileWatchNote | null
 }
 
 export interface KeptSourceOptions {
   files: HostFiles
-  follower?: FileFollower
+  /** The watch of the source's route, which carries the subscriptions of what it keeps; none without one. */
+  watch?: WatchChannel | null
+  /** The source's views show sizes and times, as a folder dialog does, so its listings follow them. */
+  details?: boolean
 }
 
-/** A view's hold that also tells the follower, which watches the path only while the view is on screen. */
-function followed<T>(showing: Showing<T>, path: string, follower: FileFollower | undefined): Showing<T> {
-  let unfollow = follower?.show(path)
-  return {
-    entry: showing.entry,
-    retry: showing.retry,
-    release() {
-      showing.release()
-      unfollow?.()
-      unfollow = undefined
-    },
-    away() {
-      showing.away()
-      unfollow?.()
-      unfollow = undefined
-    },
-    back() {
-      unfollow ??= follower?.show(path)
-      showing.back()
-    },
-  }
-}
-
-function listingSpec(reads: FileReads, path: string): KeptSpec<FileBrowserEntry[]> {
+function listingSpec(reads: FileReads, path: string, { watch, details }: KeptSourceOptions): KeptSpec<FileBrowserEntry[]> {
   return {
     kind: 'listing',
     path,
+    details: details ?? false,
+    watch: watch ?? null,
     read: () => reads.list(path),
     // Its names are its text.
     size: (entries) => entries.reduce((sum, entry) => sum + entry.name.length, 0),
   }
 }
 
-function textSpec(readText: NonNullable<FileReads['readText']>, path: string): KeptSpec<FileText> {
+function textSpec(readText: NonNullable<FileReads['readText']>, path: string, watch: WatchChannel | null): KeptSpec<FileText> {
   return {
     kind: 'text',
     path,
-    async read(held) {
-      const read = await readText(path, held?.version ?? null)
-      // Unchanged: what is kept is the file's text.
-      return read ?? held!
-    },
+    watch,
+    read: (held) => readText(path, held),
     size: (text) => text.text.length,
+    version: (text) => text.version,
   }
 }
 
 /** The contents of `reads` over the kept files, their descriptions kept as `kind`. */
 export function keptContents(
   reads: ContentReads,
-  { files, follower }: KeptSourceOptions,
+  { files, watch }: KeptSourceOptions,
   kind: 'description' | 'committed' = 'description',
   absolute: (path: string) => string = (path) => path,
   root?: string,
@@ -119,13 +91,14 @@ export function keptContents(
     path: absolute(path),
     key: path,
     ...(root === undefined ? {} : { root }),
+    watch: watch ?? null,
     read: () => reads.describe(path),
     size: () => 0,
   })
   return {
     url: reads.url,
     describe: (path) => files.get(spec(path)),
-    showDescription: (path) => followed(files.show(spec(path)), absolute(path), follower),
+    showDescription: (path) => files.show(spec(path)),
     // A part of a file is read for the view that shows it, never kept.
     ...(reads.readStart ? { readStart: reads.readStart } : {}),
   }
@@ -133,8 +106,9 @@ export function keptContents(
 
 /** A file source over `reads` that keeps what it read in `files`. */
 export function keptSource(reads: FileReads, options: KeptSourceOptions): FileBrowserSource {
-  const { files, follower } = options
-  const listing = (path: string) => listingSpec(reads, path)
+  const { files } = options
+  const watch = options.watch ?? null
+  const listing = (path: string) => listingSpec(reads, path, options)
   /**
    * `entry` is in its folder `directory` now, in place of what had its name,
    * and each folder above it is in its own: a write makes the folders it
@@ -156,15 +130,12 @@ export function keptSource(reads: FileReads, options: KeptSourceOptions): FileBr
   return {
     platform: reads.platform,
     home: reads.home,
-    get watch() {
-      return follower?.note ?? null
-    },
-    list: (path) => files.get(listingSpec(reads, path)),
-    showListing: (path) => followed(files.show(listingSpec(reads, path)), path, follower),
+    list: (path) => files.get(listing(path)),
+    showListing: (path) => files.show(listing(path)),
     ...(readText
       ? {
-          read: async (path: string) => (await files.get(textSpec(readText, path))).text,
-          showText: (path: string) => followed(files.show(textSpec(readText, path)), path, follower),
+          read: async (path: string) => (await files.get(textSpec(readText, path, watch))).text,
+          showText: (path: string) => files.show(textSpec(readText, path, watch)),
         }
       : {}),
     ...(reads.contents ? { contents: keptContents(reads.contents, options) } : {}),
@@ -198,14 +169,18 @@ export function keptSource(reads: FileReads, options: KeptSourceOptions): FileBr
 
 /**
  * The working tree's uncommitted changes as a host reads them, each a
- * request. Each read names the version it holds, `held`, and answers null
- * when the Host's answer is still that one.
+ * request with the Host's number before it read. Each read names the
+ * version it holds, `held`, and answers unchanged when the Host's answer is
+ * still that one.
  */
 export interface ChangeReads {
   /** The list of changes, or why there is none. */
-  list(held: string | null): Promise<ChangesList | null>
-  /** Both sides of one changed file, by its path relative to the working tree. */
-  sides(path: string, held: string | null): Promise<KeptSides | null>
+  list(held: string | null): Promise<Read<ChangesList>>
+  /**
+   * Both sides of one changed file, by its path relative to the working
+   * tree; a side that is not text rejects with that answer.
+   */
+  sides(path: string, held: string | null): Promise<Read<KeptSides>>
   /** The committed side's bytes, by path relative to the working tree. */
   committed?: ContentReads
 }
@@ -215,8 +190,6 @@ export interface ChangesList {
   files: WorkingTreeChange[]
   truncated: boolean
   repository: boolean
-  /** The repository's git directory; null outside one. */
-  gitDir: string | null
   version: string | null
 }
 
@@ -233,31 +206,33 @@ export function keptChangeSet(
   root: string,
   options: KeptSourceOptions,
 ): ChangeSetSource & { refresh(): void; show(): Showing<ChangesList> } {
-  const { files, follower } = options
+  const { files } = options
+  const watch = options.watch ?? null
   const absolute = (path: string) => `${root.replace(/\/$/, '')}/${path}`
   // Each is read again with the version held, and an unchanged answer
   // keeps what is held, so a view shows nothing new.
   const listSpec: KeptSpec<ChangesList> = {
     kind: 'changes',
     path: root,
-    root,
-    read: async (held) => (await reads.list(held?.version ?? null)) ?? held!,
+    watch,
+    read: (held) => reads.list(held),
     size: (list) => list.files.reduce((sum, file) => sum + file.path.length, 0),
-    outsideRepository: (list) => !list.repository,
-    gitDir: (list) => list.gitDir,
+    version: (list) => list.version,
   }
   const sidesSpec = (path: string): KeptSpec<KeptSides> => ({
     kind: 'sides',
     path: absolute(path),
     key: root,
     root,
-    read: async (held) => (await reads.sides(path, held?.version ?? null)) ?? held!,
+    watch,
+    read: (held) => reads.sides(path, held),
     size: (sides) => sides.original.length + sides.modified.length,
+    version: (sides) => sides.version,
   })
   const entry = () => files.peek(listSpec)
   const source = reactive({
-    get watch() {
-      return follower?.note ?? null
+    get unwatched() {
+      return entry().unwatched
     },
     get files() {
       return entry().value?.files ?? []
@@ -279,9 +254,9 @@ export function keptChangeSet(
     refresh() {
       files.retry(listSpec)
     },
-    showSides: (path: string) => followed(files.show(sidesSpec(path)), absolute(path), follower),
+    showSides: (path: string) => files.show(sidesSpec(path)),
     ...(reads.committed ? { committed: keptContents(reads.committed, options, 'committed', absolute, root) } : {}),
-    show: () => followed(files.show(listSpec), root, follower),
+    show: () => files.show(listSpec),
   })
   return source
 }

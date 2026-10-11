@@ -46,6 +46,7 @@ import {
 } from './file-browser-state'
 import { baseName } from '@demicodes/utils'
 import { joinPath, normalizePath, parentPath } from './paths'
+import { failureShown } from './file-cache'
 import { useShowing } from './showing'
 import {
   FileBrowserError,
@@ -108,8 +109,8 @@ const canForward = ref(false)
 // ago shows at once, and one read again replaces its rows in place.
 const listing = useShowing(() => props.source, () => path.value, (source, shown) => source.showListing(shown))
 const entries = computed(() => listing.entry.value?.value ?? [])
-const loading = computed(() => listing.entry.value?.value === undefined && listing.entry.value?.failure == null)
-const failure = computed(() => listing.entry.value?.value === undefined ? listing.entry.value?.failure ?? null : null)
+const loading = computed(() => listing.entry.value?.answer == null && listing.entry.value?.failure == null)
+const failure = computed(() => failureShown(listing.entry.value))
 const sort = ref<FileBrowserSort>(DEFAULT_SORT)
 const selected = ref<string | null>(null)
 const error = ref<string | null>(null)
