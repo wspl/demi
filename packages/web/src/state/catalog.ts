@@ -5,6 +5,7 @@ import type {
   SettingsProviderModel,
   SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
+import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import { appliedContextLimit, type AuthState, type RuntimeState } from '@demicodes/protocol'
 import type {
   CatalogModel,
@@ -162,6 +163,6 @@ export function providerView(
       })) ?? [],
     autoRefreshUsage: details?.quotaCapability.type === 'supported'
       && details.quotaCapability.probe === 'free',
-    logo: null,
+    logo: providerLogo(entry),
   }
 }

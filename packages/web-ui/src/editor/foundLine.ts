@@ -20,12 +20,35 @@ const foundLine = StateField.define<DecorationSet>({
 })
 
 /**
+ * Scrolls the code view alone to the line a link opened, and nothing around
+ * it: CodeMirror's own scrolling also moves every scrolling ancestor, up to
+ * the page, so that the line stands at the top of each. Other scrolling, such
+ * as the caret's while typing, keeps CodeMirror's.
+ */
+const revealInView = EditorView.scrollHandler.of((view, range, { y, yMargin }) => {
+  const marked = view.state.field(foundLine)
+  let revealing = false
+  marked.between(range.head, range.head, (from) => {
+    revealing ||= from === range.head
+  })
+  if (!revealing || y !== 'start')
+    return false
+  const scroller = view.scrollDOM
+  const lineTop = view.documentTop + view.lineBlockAt(range.head).top
+  scroller.scrollTop += lineTop - scroller.getBoundingClientRect().top - yMargin
+  // The line opens at its start, at the left edge.
+  scroller.scrollLeft = 0
+  return true
+})
+
+/**
  * What lets a code view open at a line (`revealLine`): the mark goes once
  * its flash has played, so a line drawn again later does not flash again.
  */
 export function foundLineExtension(): Extension {
   return [
     foundLine,
+    revealInView,
     EditorView.domEventHandlers({
       animationend(event, view) {
         if (event.animationName === 'found-highlight' && view.state.field(foundLine).size > 0)
