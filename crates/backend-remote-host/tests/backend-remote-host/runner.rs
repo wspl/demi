@@ -579,6 +579,7 @@ async fn a_job_outliving_its_window_runs_takes_input_and_can_be_aborted() {
     let written = shell.status(&running.command_id).unwrap();
     assert!(matches!(written.state, CommandState::Running { .. }));
     shell.abort(&running.command_id).await.unwrap();
+    shell.ended(&running.command_id).await.unwrap();
     let aborted = shell.status(&running.command_id).unwrap();
     assert!(
         matches!(aborted.state, CommandState::Aborted),
@@ -617,6 +618,7 @@ async fn a_stopped_command_lets_its_programs_end_cleanly() {
     })
     .await;
     shell.abort(&running.command_id).await.unwrap();
+    shell.ended(&running.command_id).await.unwrap();
     let aborted = shell.status(&running.command_id).unwrap();
     assert!(
         matches!(aborted.state, CommandState::Aborted),
@@ -1238,6 +1240,7 @@ async fn declared_commands_call_back_with_arguments_input_and_cancellation() {
     // once the call runs.
     until("the call's start", || started.get().then_some(())).await;
     shell.abort(&holding.command_id).await.unwrap();
+    shell.ended(&holding.command_id).await.unwrap();
     let aborted = shell.status(&holding.command_id).unwrap();
     assert!(
         matches!(aborted.state, CommandState::Aborted),
@@ -1561,6 +1564,7 @@ async fn a_running_command_shows_its_leafs_hint_until_the_leaf_ends() {
             .unwrap();
         until("the hint's end", || shows(&started, None)).await;
         shell.abort(&started.command_id).await.unwrap();
+        shell.ended(&started.command_id).await.unwrap();
         let stopped = shell.status(&started.command_id).unwrap();
         assert!(
             matches!(stopped.state, CommandState::Aborted),
@@ -1600,6 +1604,7 @@ async fn a_running_command_shows_its_leafs_hint_until_the_leaf_ends() {
     assert_eq!(finish(kill).await.1, ProcessEnd::Exited(0));
     until("the child's hint to end", || shows(&child, None)).await;
     shell.abort(&child.command_id).await.unwrap();
+    shell.ended(&child.command_id).await.unwrap();
     let stopped = shell.status(&child.command_id).unwrap();
     assert!(
         matches!(stopped.state, CommandState::Aborted),
@@ -1658,6 +1663,7 @@ async fn a_busy_native_command_blocks_neither_the_runner_nor_its_abort_and_a_sec
         "{second:?}"
     );
     shell.abort(&spinning.command_id).await.unwrap();
+    shell.ended(&spinning.command_id).await.unwrap();
     let aborted = shell.status(&spinning.command_id).unwrap();
     assert!(
         matches!(aborted.state, CommandState::Aborted),

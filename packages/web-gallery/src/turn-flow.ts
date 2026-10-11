@@ -87,6 +87,8 @@ const STEP_ANSWER_MS = 1500
 /** Time the model takes before its first output in a turn. */
 const FIRST_OUTPUT_MS = 1000
 const TOOL_RUN_MS = 1400
+/** How long a stopped command shows Stopping… before its runner says that it ended. */
+const STOPPING_MS = 3000
 /** Time a compaction the user asked for takes. */
 const COMPACT_MS = 1200
 const FEED_CHARS = 4
@@ -214,6 +216,12 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       window.clearTimeout(id)
     }
     timers.length = 0
+    // A stop whose end the cleared timers would have brought ends now.
+    for (const terminal of state.terminals) {
+      if (terminal.stopping) {
+        endTerminal(terminal, 'aborted')
+      }
+    }
     // A stopped action stops the command its running call started.
     if (runningTool) {
       endTerminal(command(runningTool), 'aborted')
@@ -445,6 +453,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     if (terminal?.phase === 'running') {
       terminal.phase = phase
       terminal.endedAt = now()
+      delete terminal.stopping
     }
   }
 
@@ -1144,8 +1153,17 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
   }
 
+  /**
+   * End Command: the command shows Stopping… until its runner, simulated
+   * here, says that it ended (`runner.md` § Cancellation and completion).
+   */
   function abortTerminal(id: string): void {
-    endTerminal(state.terminals.find((entry) => entry.id === id), 'aborted')
+    const terminal = state.terminals.find((entry) => entry.id === id)
+    if (terminal?.phase !== 'running' || terminal.stopping) {
+      return
+    }
+    terminal.stopping = true
+    timers.push(window.setTimeout(() => endTerminal(terminal, 'aborted'), STOPPING_MS))
   }
 
   /** Reset to a fixture and play it. */

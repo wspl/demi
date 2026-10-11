@@ -930,6 +930,7 @@ async fn a_status_shows_the_latest_first_registered_hint_and_none_once_the_job_e
     assert_eq!(signal, Some(demi_runner_protocol::wire::Signal::Terminate));
     link.send(job_exit(&job_id, None, Some("SIGTERM"))).await;
     aborting.await.unwrap().unwrap();
+    shell.ended(&started.command_id).await.unwrap();
     assert!(matches!(
         shell.status(&started.command_id).unwrap().state,
         CommandState::Aborted
@@ -2187,6 +2188,74 @@ async fn a_command_stopped_with_its_call_ends_as_stopped() {
         shell.status(&started.command_id).unwrap().state,
         CommandState::Aborted
     ));
+}
+
+/// A stop while the runner's connection is away reaches the job once the
+/// runner is back (`runner.md` § Cancellation and completion): meanwhile
+/// the command shows stopping and still runs; the new connection carries
+/// `TERM`, and `KILL` once the grace passed without the job's end; and the
+/// command turns stopped only when the runner reports that end. Before, the
+/// stop reached nothing, and the command was marked stopped ten seconds
+/// later while its job ran on. The grace passes on a paused clock.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_stop_while_the_runner_is_away_reaches_the_job_when_it_is_back() {
+    use demi_runner_protocol::wire::Signal;
+    let device = device();
+    let mut link = device.connect(None);
+    let shell = environment(device.host("/work", Admission::Free));
+    let started = shell
+        .exec(exec("sleep 30"), CancellationToken::new())
+        .await
+        .unwrap();
+    let job = loop {
+        if let Inbound::JobStart { job_id, .. } = link.next().await {
+            break job_id;
+        }
+    };
+    let command = &started.command_id;
+    let state = |shell: &RemoteShellEnvironment| {
+        let view = shell
+            .page_views()
+            .into_iter()
+            .find(|view| view.command_id == *command)
+            .expect("the command's view");
+        (view.state, shell.status(command).unwrap().state)
+    };
+    link.close().await;
+
+    shell.abort(command).await.unwrap();
+    assert!(matches!(
+        state(&shell),
+        (PageState::Stopping, CommandState::Running { .. })
+    ));
+
+    let kept = demi_runner_protocol::wire::KeptJob {
+        job_id: job.clone(),
+        ended: None,
+        output: OutputLengths {
+            stdout_bytes: 0,
+            stderr_bytes: 0,
+        },
+        media: 0,
+        outliving: Vec::new(),
+    };
+    let mut link = device.connect_with(None, 1, vec![kept]);
+    let mut signals = Vec::new();
+    while signals.len() < 2 {
+        if let Inbound::JobKill { job_id, signal } = link.next().await {
+            assert_eq!(job_id, job);
+            signals.push(signal);
+        }
+    }
+    assert_eq!(signals, [Some(Signal::Terminate), Some(Signal::Kill)]);
+    assert!(matches!(
+        state(&shell),
+        (PageState::Stopping, CommandState::Running { .. })
+    ));
+
+    link.send(job_exit(&job, None, Some("SIGKILL"))).await;
+    shell.ended(command).await.unwrap();
+    assert!(matches!(state(&shell), (PageState::Aborted, CommandState::Aborted)));
 }
 
 /// After a backend restart, a recorded job the device's runner does not

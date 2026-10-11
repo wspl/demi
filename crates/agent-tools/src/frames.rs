@@ -18,7 +18,14 @@ pub fn shell_output(subagent: Option<NodeId>, view: PageView) -> ServerFrame {
         running_ms: view.running_ms,
     };
     let status = match view.state {
-        PageState::Running => ShellStatus::Running { command },
+        PageState::Running => ShellStatus::Running {
+            command,
+            stopping: false,
+        },
+        PageState::Stopping => ShellStatus::Running {
+            command,
+            stopping: true,
+        },
         PageState::Exited { exit_code } => ShellStatus::Exited { command, exit_code },
         PageState::Aborted => ShellStatus::Aborted { command },
         PageState::Lost { reason } => ShellStatus::Lost { command, reason },

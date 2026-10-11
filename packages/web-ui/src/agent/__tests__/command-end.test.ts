@@ -31,6 +31,10 @@ test('an open row says how long its command has run, or how it ended and after h
   expect(commandStatusLine(view({ status: 'exited', exitCode: 0 }), 133_000)).toBe('Exited with 0 after 2m13s')
   expect(commandStatusLine(view({ status: 'exited', exitCode: 1 }), 47_000)).toBe('Failed with exit code 1 after 47s')
   expect(commandStatusLine(view({ status: 'aborted' }), 5_000)).toBe('Stopped after 5s')
+  // A stop waits for the runner's word of the end (`runner.md` § Cancellation
+  // and completion): the row says so in place of the time it has run.
+  expect(commandStatusLine({ status: 'running', stopping: true }, 88_000)).toBe('Stopping…')
+  expect(commandEndMark({ status: 'running', stopping: true })).toEqual({ kind: 'stopping' })
   // A command whose time the page does not know, as one that ran on after
   // its call returned and ended while no page watched, says nothing.
   expect(commandStatusLine(null, null)).toBeNull()

@@ -47,10 +47,6 @@ use crate::{
     manifest::CommandSelection,
 };
 
-/// How long an abort waits for the runner to report the job's end after
-/// each signal.
-const ABORT_GRACE: Duration = Duration::from_secs(5);
-
 /// The product's host access around one job: it holds what the Host needs,
 /// such as the conversation's file gate and a Cloud's admission, through the
 /// job's start, output and edit publication, and refuses when the
@@ -250,9 +246,6 @@ struct Running {
     /// The output the backend received within the streams' views, in the
     /// order it came: the whole output when neither stream went beyond.
     received: RefCell<Vec<OutputRecord>>,
-    /// Set by an abort: the end that follows is the stop, not the
-    /// command's own.
-    aborted: Cell<bool>,
     settled: watch::Sender<bool>,
 }
 
@@ -272,11 +265,6 @@ impl Running {
             started = job.wait_for(Option::is_some) => started.ok().and_then(|job| job.clone()),
             () = self.settled() => self.job.borrow().clone(),
         }
-    }
-
-    /// Waits for the command to settle, at most `within`; true when it did.
-    async fn settled_within(&self, within: Duration) -> bool {
-        tokio::time::timeout(within, self.settled()).await.is_ok()
     }
 }
 
@@ -362,7 +350,6 @@ impl RemoteShellEnvironment {
             stop,
             job: watch::Sender::new(None),
             received: RefCell::new(Vec::new()),
-            aborted: Cell::new(false),
             settled: watch::Sender::new(false),
         });
         {
@@ -535,9 +522,17 @@ impl RemoteShellEnvironment {
         let mut followed = false;
         // A new connection knows nothing of how the job was followed.
         let mut told = unfollowed;
-        let stopped = running.stop.cancelled();
-        tokio::pin!(stopped);
-        let mut signalled = false;
+        // A stop shows the command stopping until its runner says that the
+        // job ended, which ends the output below.
+        let stop = async {
+            running.stop.cancelled().await;
+            if record.borrow_mut().mark_stopping() {
+                self.report(record);
+            }
+            job.stop().await;
+        };
+        tokio::pin!(stop);
+        let mut stopped = false;
         let mut attachments = job.clone();
         loop {
             let follow = watch_open && *watching.borrow_and_update();
@@ -566,14 +561,7 @@ impl RemoteShellEnvironment {
                     watch_open = changed.is_ok();
                 }
                 () = attachments.reattached() => told = false,
-                () = &mut stopped, if !signalled => {
-                    signalled = true;
-                    if let Err(error) = job.kill(wire::Signal::Terminate).await {
-                        // The job's end or the connection's loss says what
-                        // happened; a signal that could not go is diagnostic.
-                        tracing::debug!(%command, "could not interrupt the job: {error}");
-                    }
-                }
+                () = &mut stop, if !stopped => stopped = true,
                 () = self.0.detached.cancelled() => {
                     job.let_go();
                     return Followed::Detached;
@@ -744,7 +732,7 @@ impl RemoteShellEnvironment {
         }
         // A stop of the command, or of the call that watches it, is a stop
         // (`runtime.md` § Live output), whatever signal ended the job.
-        let stopped = running.aborted.get() || running.stop.is_cancelled();
+        let stopped = running.stop.is_cancelled();
         let end = match lost {
             Some(reason) => CommandEnd::Lost { reason },
             None if stopped => CommandEnd::Stopped,
@@ -901,31 +889,30 @@ impl RemoteShellEnvironment {
         Ok(status)
     }
 
-    /// Stops a running command: asks it to end, and ends it when it does not.
-    async fn stop_command(&self, command: &CommandId) -> Result<(), ShellError> {
+    /// Stops a running command: asks it to end, and its job's task ends it
+    /// when it does not, and settles it once its runner says that the job
+    /// ended, or it is lost (`runner.md` § Cancellation and completion).
+    /// Returns once the stop is asked.
+    fn stop_command(&self, command: &CommandId) -> Result<(), ShellError> {
         let record = self.record(command)?;
         let running = self.0.state.borrow().running.get(command).cloned();
-        let Some(running) = running.filter(|_| record.borrow().is_running()) else {
-            return Ok(());
-        };
-        running.aborted.set(true);
-        // The job's task asks the job to end.
-        running.stop.cancel();
-        if !running.settled_within(ABORT_GRACE).await {
-            let job = running.job.borrow().clone();
-            if let Some(job) = job
-                && let Err(error) = job.kill(wire::Signal::Kill).await
-            {
-                tracing::debug!(%command, "could not kill the job: {error}");
-            }
-            if !running.settled_within(ABORT_GRACE).await {
-                let ended = record.borrow_mut().mark_aborted();
-                if ended {
-                    self.ended_now(&record);
-                }
+        if let Some(running) = running.filter(|_| record.borrow().is_running()) {
+            running.stop.cancel();
+            // The pages show the stop at once, before the job's task takes it.
+            if record.borrow_mut().mark_stopping() {
+                self.report(&record);
             }
         }
         Ok(())
+    }
+
+    /// Waits until `running` has settled, or the environment let go of it,
+    /// which leaves it unsettled.
+    async fn settled_or_let_go(&self, running: &Running) {
+        tokio::select! {
+            () = running.settled() => {}
+            () = self.0.detached.cancelled() => {}
+        }
     }
 }
 
@@ -1032,7 +1019,7 @@ impl ShellEnvironment for RemoteShellEnvironment {
     }
 
     fn abort<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<(), ShellError>> {
-        Box::pin(self.stop_command(command))
+        Box::pin(std::future::ready(self.stop_command(command)))
     }
 
     fn page_views(&self) -> Vec<PageView> {
@@ -1047,12 +1034,13 @@ impl ShellEnvironment for RemoteShellEnvironment {
 
     fn release_command<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, bool> {
         Box::pin(async move {
-            let Ok(record) = self.record(command) else {
+            if self.record(command).is_err() {
                 return false;
-            };
-            let running = record.borrow().is_running();
-            if running && let Err(error) = self.stop_command(command).await {
-                tracing::debug!(%command, "could not abort the released command: {error}");
+            }
+            let running = self.0.state.borrow().running.get(command).cloned();
+            if let Some(running) = running {
+                running.stop.cancel();
+                self.settled_or_let_go(&running).await;
             }
             // A command that ran keeps its output when its job ends, and
             // its Host lets the job's directory go then.
@@ -1075,15 +1063,12 @@ impl ShellEnvironment for RemoteShellEnvironment {
 
     fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async move {
-            let running: Vec<_> = self.0.state.borrow().running.keys().cloned().collect();
-            for command in running {
-                if let Err(error) = self.stop_command(&command).await {
-                    tracing::debug!(%command, "could not abort the command: {error}");
-                }
-            }
             let running: Vec<_> = self.0.state.borrow().running.values().cloned().collect();
-            for running in running {
-                running.settled().await;
+            for running in &running {
+                running.stop.cancel();
+            }
+            for running in &running {
+                self.settled_or_let_go(running).await;
             }
         })
     }

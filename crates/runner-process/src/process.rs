@@ -627,6 +627,141 @@ pub fn signal_process(pid: i32, signal: i32) -> io::Result<()> {
     }
 }
 
+/// The variable that names a job in the environment of every process the job
+/// starts, by which a stop finds the processes that left the job's groups
+/// (`runner.md` § Cancellation and completion).
+pub const JOB_ID_ENV: &str = "DEMI_JOB_ID";
+
+/// A process a stop of its job reaches by its own id, outside the job's
+/// process groups, with when it started, so that a later signal never
+/// reaches another process that took the id after it ended.
+#[cfg(unix)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stray {
+    pub pid: i32,
+    started: u64,
+}
+
+/// The processes a stop of job `job` signals one by one (`runner.md`
+/// § Cancellation and completion): of the runner's user, the runner aside,
+/// and outside the job's process groups, whose ids `grouped` holds, each
+/// one that carries the job's id in its environment, each of `known` that
+/// still runs, and every descendant, by parent process id, of those and of
+/// the groups' members. sysinfo reads each environment, from
+/// `/proc/<pid>/environ` on Linux and with `KERN_PROCARGS2` on macOS, which
+/// shows none for Apple's own programs: such a program that called `setsid`
+/// is found as its parent's descendant while the parent runs. Reading the
+/// whole process table takes milliseconds, so it runs off the runtime's
+/// threads, and before the groups take the signal, while the tree is whole.
+#[cfg(unix)]
+pub fn job_strays(job: &str, grouped: &std::collections::HashSet<i32>, known: &[Stray]) -> Vec<Stray> {
+    use std::collections::{HashMap, HashSet};
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessStatus, ProcessesToUpdate, System, UpdateKind};
+    let marker = std::ffi::OsString::from(format!("{JOB_ID_ENV}={job}"));
+    let user = rustix::process::getuid().as_raw();
+    let runner = std::process::id();
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing()
+            .with_user(UpdateKind::Always)
+            .with_environ(UpdateKind::Always),
+    );
+    // The user's live processes, each with whether it is in one of the
+    // job's groups.
+    let mine: HashMap<Pid, (&sysinfo::Process, bool)> = system
+        .processes()
+        .iter()
+        .filter(|(pid, process)| {
+            pid.as_u32() != runner
+                && process.status() != ProcessStatus::Zombie
+                && process.user_id().is_some_and(|id| **id == user)
+        })
+        .map(|(pid, process)| {
+            let grouped = i32::try_from(pid.as_u32())
+                .ok()
+                .and_then(process_group)
+                .is_some_and(|group| grouped.contains(&group));
+            (*pid, (process, grouped))
+        })
+        .collect();
+    let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
+    for (pid, (process, _)) in &mine {
+        if let Some(parent) = process.parent() {
+            children.entry(parent).or_default().push(*pid);
+        }
+    }
+    let mut reached: HashSet<Pid> = mine
+        .iter()
+        .filter(|(pid, (process, grouped))| {
+            *grouped
+                || process.environ().contains(&marker)
+                || known.iter().any(|stray| {
+                    i64::from(stray.pid) == i64::from(pid.as_u32()) && stray.started == process.start_time()
+                })
+        })
+        .map(|(pid, _)| *pid)
+        .collect();
+    let mut unvisited: Vec<Pid> = reached.iter().copied().collect();
+    while let Some(pid) = unvisited.pop() {
+        for child in children.get(&pid).into_iter().flatten() {
+            if reached.insert(*child) {
+                unvisited.push(*child);
+            }
+        }
+    }
+    reached
+        .into_iter()
+        .filter_map(|pid| {
+            let (process, grouped) = mine.get(&pid)?;
+            (!grouped).then_some(())?;
+            Some(Stray {
+                pid: i32::try_from(pid.as_u32()).ok()?,
+                started: process.start_time(),
+            })
+        })
+        .collect()
+}
+
+/// The process group of the process `pid`; none once it is gone.
+#[cfg(unix)]
+fn process_group(pid: i32) -> Option<i32> {
+    let pid = rustix::process::Pid::from_raw(pid)?;
+    rustix::process::getpgid(Some(pid))
+        .ok()
+        .map(|group| group.as_raw_nonzero().get())
+}
+
+/// Ends once none of `strays` runs: each is gone, a zombie that only waits
+/// for its parent, or its id another process's, as a stop waits for the
+/// processes it killed outside the job's groups (`runner.md` § Cancellation
+/// and completion). They are no children of the runner's, so no wait tells
+/// when they end: this asks the system every 25 ms, as [`group_ended`] does.
+#[cfg(unix)]
+pub async fn strays_ended(mut strays: Vec<Stray>) {
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessStatus, ProcessesToUpdate, System};
+    const POLL: Duration = Duration::from_millis(25);
+    let pid = |stray: &Stray| Pid::from_u32(stray.pid.unsigned_abs());
+    let mut system = System::new();
+    while !strays.is_empty() {
+        let pids: Vec<Pid> = strays.iter().map(pid).collect();
+        system.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&pids),
+            true,
+            ProcessRefreshKind::nothing(),
+        );
+        strays.retain(|stray| {
+            system.process(pid(stray)).is_some_and(|process| {
+                process.status() != ProcessStatus::Zombie && process.start_time() == stray.started
+            })
+        });
+        if !strays.is_empty() {
+            tokio::time::sleep(POLL).await;
+        }
+    }
+}
+
 /// Ends once no process of the group `group` is left, as a stop waits for
 /// every process of a group it signalled (`runner.md` § Cancellation and
 /// completion). No call tells when a group empties: this asks the system

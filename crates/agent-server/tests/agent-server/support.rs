@@ -803,7 +803,13 @@ impl ScriptedShell {
     /// The running command ends.
     pub fn end(&self) {
         let record = self.command.borrow().clone().expect("the command started");
-        record.borrow_mut().mark_aborted();
+        record.borrow_mut().settle(
+            Ending::Aborted,
+            Arc::new(WholeOutput::default()),
+            None,
+            Vec::new(),
+            "",
+        );
         self.feed.changed(&record);
     }
 }

@@ -22,7 +22,7 @@ use demi_runner_command_packages::ServiceHandle;
 use demi_runner_process::{
     job_shell::{JobCommands, JobShell, JobStart, ShellJob},
     pipes::{PipeClient, report_pipe},
-    process::{ChildProcess, OutputChunk, ProcessExit, ProcessInput, SpawnOptions},
+    process::{ChildProcess, JOB_ID_ENV, OutputChunk, ProcessExit, ProcessInput, SpawnOptions},
 };
 use demi_runner_protocol::wire::{self, OutputStream, Signal};
 use futures_util::{FutureExt, StreamExt};
@@ -500,7 +500,7 @@ impl JobConfig {
                     media: announced,
                     running,
                 } = self.directories.create(&id, &cancel).await?;
-                env.insert("DEMI_JOB_ID".into(), id.clone());
+                env.insert(JOB_ID_ENV.into(), id.clone());
                 let edit_context = demi_command_protocol::EditContext {
                     directory: path.join("changes").to_string_lossy().into_owned(),
                     lock: self
