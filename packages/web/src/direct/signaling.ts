@@ -118,14 +118,14 @@ export class DeviceSignaling implements PeerSignaling {
   private connect(): void {
     const url = new URL(apiUrl(`/devices/${encodeURIComponent(this.deviceId)}/direct`), window.location.href)
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-    const socket = openSocket(url)
+    const socket = openSocket(url, 'direct channel signaling socket')
     this.socket = socket
     let opened = false
     socket.addEventListener('open', () => {
       if (this.socket !== socket)
         return
       opened = true
-      this.silence = watchSilence(() => this.lose(socket))
+      this.silence = watchSilence('direct channel signaling socket', () => this.lose(socket))
       this.failures = 0
       this.opened()
     })

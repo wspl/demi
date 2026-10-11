@@ -13,6 +13,7 @@
 use std::convert::Infallible;
 use std::future::Future;
 use std::io;
+use std::net::IpAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -37,7 +38,29 @@ pub(super) struct EdgeListener<L> {
     connections: CancellationToken,
 }
 
-impl<L: axum::serve::Listener> EdgeListener<L> {
+/// The address a connection comes from, as the requests on it see it.
+pub(super) trait RemoteAddress {
+    /// The far end's IP address; none for a local socket.
+    fn remote_ip(&self) -> Option<IpAddr>;
+}
+
+impl RemoteAddress for std::net::SocketAddr {
+    fn remote_ip(&self) -> Option<IpAddr> {
+        Some(std::net::SocketAddr::ip(self))
+    }
+}
+
+impl RemoteAddress for tokio::net::unix::SocketAddr {
+    fn remote_ip(&self) -> Option<IpAddr> {
+        None
+    }
+}
+
+impl<L> EdgeListener<L>
+where
+    L: axum::serve::Listener,
+    L::Addr: RemoteAddress,
+{
     pub(super) fn new(
         listener: L,
         closing: CancellationToken,
@@ -50,16 +73,16 @@ impl<L: axum::serve::Listener> EdgeListener<L> {
         }
     }
 
-    /// The next connection, until shutdown starts; then the socket closes
-    /// and this never resolves.
-    async fn accept(&mut self) -> ConnectionIo<L::Io> {
+    /// The next connection and the address it came from, until shutdown
+    /// starts; then the socket closes and this never resolves.
+    async fn accept(&mut self) -> (ConnectionIo<L::Io>, Option<IpAddr>) {
         if let Some(listener) = self.listener.as_mut() {
             tokio::select! {
                 biased;
                 () = self.closing.cancelled() => {}
                 // axum's own accept, which waits out and logs transient errors.
-                (stream, _) = listener.accept() => {
-                    return ConnectionIo::new(stream, &self.connections);
+                (stream, address) = listener.accept() => {
+                    return (ConnectionIo::new(stream, &self.connections), address.remote_ip());
                 }
             }
             self.listener = None;
@@ -115,17 +138,19 @@ pub(super) async fn serve<L, R, F>(
     respond: R,
 ) where
     L: axum::serve::Listener,
+    L::Addr: RemoteAddress,
     R: Fn(Peer, Request<Incoming>) -> F + Clone + Send + 'static,
     F: Future<Output = Response> + Send + 'static,
 {
     let connections = TaskTracker::new();
     loop {
-        let io = tokio::select! {
+        let (io, address) = tokio::select! {
             () = stop.cancelled() => break,
             accepted = listener.accept() => accepted,
         };
         let peer = Peer {
             control: io.control.clone(),
+            address,
         };
         let respond = respond.clone();
         let service = service_fn(move |request| {
@@ -204,10 +229,13 @@ impl<I> ConnectionIo<I> {
     }
 }
 
-/// A connection as a request sees it: its control.
+/// A connection as a request sees it: its control, and the address it came
+/// from.
 #[derive(Clone)]
 pub(crate) struct Peer {
     pub(crate) control: ConnectionControl,
+    /// None for a local socket, such as the runner socket.
+    pub(crate) address: Option<IpAddr>,
 }
 
 /// Closes a connection from the request it serves: at once, or once no

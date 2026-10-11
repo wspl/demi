@@ -26,7 +26,7 @@ export function connectConversationClient(url: string, signal?: AbortSignal): Pr
   return new Promise((resolve, reject) => {
     signal?.throwIfAborted()
     // A handshake that takes too long ends as a close (`openSocket`).
-    const socket = openSocket(url)
+    const socket = openSocket(url, 'conversation socket')
     const release = () => {
       socket.removeEventListener('open', opened)
       socket.removeEventListener('error', failed)
@@ -50,7 +50,7 @@ export function connectConversationClient(url: string, signal?: AbortSignal): Pr
         ...transport,
         onClose: (handler) => transport.onClose((error) => handler(new ConversationSocketError(error.message))),
       })
-      const silence = watchSilence(() => {
+      const silence = watchSilence('conversation socket', () => {
         client.disconnect(new ConversationSocketError('The agent socket went silent'))
       })
       const heard = () => silence.heard()

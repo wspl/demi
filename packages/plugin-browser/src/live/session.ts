@@ -194,7 +194,7 @@ export class LiveSession {
     this.stream = stream
     // The module speaks at least every quarter second, so the page's rule
     // for a silent socket holds for the view as for the page's other sockets.
-    this.silence = watchSilence(() => this.end(SILENT_STREAM))
+    this.silence = watchSilence('live view', () => this.end(SILENT_STREAM))
     this.send({ type: 'hello', platform: this.options.platform })
     // The panel comes before the tab, so the module sizes the tab before it
     // captures it (`live-view.md` § Delivery); a view that opens again takes
