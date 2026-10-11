@@ -20,11 +20,11 @@ test('a link names an agent by the number spawn printed; the root is 0', () => {
   expect(findAgent(agents, 9)).toBeNull()
 })
 
-test('a click opens the Agents window on the agent’s tab, and on the tab it shows closes it', () => {
+test('a click opens the Agents window on the agent’s tab, and on the tab it shows leaves it open', () => {
   const closed = { open: false, activeId: null }
   const onFinished = agentLinkWindow(closed, agents, 5)
   expect(onFinished).toEqual({ open: true, activeId: 'ag-cjk' })
-  expect(agentLinkWindow(onFinished!, agents, 5)).toEqual({ open: false, activeId: 'ag-cjk' })
+  expect(agentLinkWindow(onFinished!, agents, 5)).toEqual({ open: true, activeId: 'ag-cjk' })
   // Another agent's link moves the open window to its tab.
   expect(agentLinkWindow(onFinished!, agents, 4)).toEqual({ open: true, activeId: 'ag-icons' })
   // The main agent's link brings the conversation's transcript into view.

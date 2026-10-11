@@ -3,10 +3,10 @@ import type { RequestEditSelection, TranscriptRequests } from '../files/request-
 
 /**
  * Opens a request's changes, through the `edit` intent (`plugin-pages.md`
- * § Intents), on a pill's click, whose `detail` is `clicks`: a click on what
- * the panel already shows closes it (`openIntent`).
+ * § Intents), on a pill's click; what the panel already shows stays as it
+ * is (`openIntent`).
  */
-export type EditSelectionHandler = (selection: RequestEditSelection, clicks: number) => void
+export type EditSelectionHandler = (selection: RequestEditSelection) => void
 const editSelectionKey: InjectionKey<() => EditSelectionHandler | undefined> = Symbol('edit-selection')
 
 /**

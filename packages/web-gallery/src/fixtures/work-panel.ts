@@ -144,20 +144,10 @@ export function useGalleryWork(
     }
     closePanelTabs(selection, tabs, ids)
   }
-  /** Opens an intent as the product's work store does: a click on what the open panel already shows closes it. */
-  function openIn(request: IntentRequest, clicks?: number) {
-    const opened = openIntent(
-      { open: open.value, panel: panel.value, pinned: pinned.value },
-      shown,
-      enabled,
-      request,
-      clicks,
-    )
+  /** Opens an intent as the product's work store does: what the panel already shows stays as it is. */
+  function openIn(request: IntentRequest) {
+    const opened = openIntent({ panel: panel.value, pinned: pinned.value }, shown, enabled, request)
     if (!opened) {
-      return
-    }
-    if (opened.action === 'close') {
-      open.value = false
       return
     }
     pinned.value = opened.pinned
@@ -172,7 +162,7 @@ export function useGalleryWork(
     files,
     hostStarting: () => browser.hostStarting.value,
     intents: {
-      open: (_conversation, request, clicks) => openIn(request, clicks),
+      open: (_conversation, request) => openIn(request),
       canOpen: (intent) => intentKind(shown, enabled, intent) !== null,
     },
     panel: {
@@ -192,9 +182,9 @@ export function useGalleryWork(
   /** What the panel shows, as its strip marks it. */
   const selected = computed(() => shownSelection(panel.value, kinds))
 
-  /** A file pill, through the `edit` intent; without `clicks`, from another page, it never closes the panel. */
-  function selectEdit(edit: RequestEditSelection, clicks?: number) {
-    openIn({ intent: 'edit', payload: edit }, clicks)
+  /** A file pill, through the `edit` intent. */
+  function selectEdit(edit: RequestEditSelection) {
+    openIn({ intent: 'edit', payload: edit })
   }
   /** The panel as it started: every tab closed, the first selection again. */
   function reset() {

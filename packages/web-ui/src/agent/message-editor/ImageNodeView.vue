@@ -15,7 +15,7 @@ const alt = computed(() => String(props.node.attrs['alt'] ?? ''))
 const image = computed(() => messageImage(String(props.node.attrs['src'] ?? ''), files()))
 const linked = computed(() => props.node.marks.some((mark) => mark.type.name === 'link'))
 
-function open(event: MouseEvent): void {
+function open(): void {
   const opens = image.value?.opens
   // Editing, a click places the cursor; an image inside a link follows the link.
   if (!opens || props.editor.isEditable || linked.value) {
@@ -24,7 +24,7 @@ function open(event: MouseEvent): void {
   if ('web' in opens) {
     window.open(opens.web, '_blank', 'noopener,noreferrer')
   } else {
-    files()?.open?.({ path: opens.file, line: null }, event.detail)
+    files()?.open?.({ path: opens.file, line: null })
   }
 }
 // The wrapper breaks as the line around it does: tiptap's own `white-space:

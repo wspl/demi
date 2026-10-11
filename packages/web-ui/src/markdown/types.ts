@@ -53,11 +53,10 @@ export interface ConversationFiles {
    * Shows the file at a Host path, at its line when it names one, through
    * the `file` intent; absent while no plugin the user has on opens it, so a
    * link to a file shows as text and a Host image only shows
-   * (`file-previews.md` § Files named in messages). `clicks`, the `detail`
-   * of the click of a control in the transcript that opens it: a click on
-   * what the panel already shows closes it (`openIntent`).
+   * (`file-previews.md` § Files named in messages). What the panel already
+   * shows stays as it is (`openIntent`).
    */
-  open?(target: MessageFileTarget, clicks?: number): void
+  open?(target: MessageFileTarget): void
   /**
    * Which of `paths`, the Host paths a reply's inline code names, are files
    * there, as the Host answered one question about them all: null until it

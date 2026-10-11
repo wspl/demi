@@ -28,7 +28,7 @@ export type ShownFile =
 
 /** What the File view's bar says and offers for a file (`file-previews.md` § The File view's bars). */
 export interface FileBar {
-  /** On its left: the kind's full name and its facts, *TypeScript · 20 lines · 476 B*. */
+  /** On its left: the kind's full name and its facts, *TypeScript · 19 lines · 476 B*. */
   label: string
   /** Preview and Source. */
   modes: boolean
@@ -47,9 +47,12 @@ export function mediaFactParts(facts: MediaFacts): string[] {
   return parts.filter((part) => part !== null)
 }
 
-/** Lines as the editor's gutter numbers them, each of its line breaks counted: a final one starts a last, empty line. */
+/**
+ * Lines as GitHub counts them: the line break that ends the last line
+ * starts no line of its own, so `a⏎b⏎` and `a⏎b` have 2 and an empty file 0.
+ */
 function lineCount(text: string): number {
-  return text.split(/\r\n?|\n/).length
+  return text === '' ? 0 : text.replace(/(\r\n?|\n)$/, '').split(/\r\n?|\n/).length
 }
 
 const MEDIA_NOUNS = { image: 'Image', video: 'Video', audio: 'Audio', pdf: 'Document' } as const
