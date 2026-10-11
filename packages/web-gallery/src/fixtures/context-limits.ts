@@ -1,7 +1,8 @@
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import { appliedContextLimit } from '@demicodes/protocol'
 import type { ContextLimitChange } from '@demicodes/web-ui/agent/context-limit'
 import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
+import { demoModels } from './catalog'
 
 /**
  * The gallery's stand-in for the user's context limits, which the product
@@ -37,6 +38,13 @@ export function withContextLimits(models: Record<string, ModelInfo[]>): Record<s
     ]),
   )
 }
+
+/**
+ * The models every model menu of the gallery offers with `demoProviders`,
+ * the composer's and a subagent profile's alike, as the product's menus
+ * take one list: the demo catalog with the limits the gallery's user set.
+ */
+export const composerModels = computed(() => withContextLimits(demoModels))
 
 export const contextLimitProviders: ProviderInfo[] = [
   { id: 'anthropic', label: 'Anthropic', isAvailable: true },

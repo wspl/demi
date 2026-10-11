@@ -43,12 +43,13 @@ export const demoModels: Record<string, ModelInfo[]> = {
     model({
       id: 'claude-opus',
       name: 'Claude Opus',
-      // Over 500K: its menu offers the Context row.
+      // Over 500K: its menu offers the Context row, beside Fast Mode and Reasoning.
       contextWindow: 1_000_000,
       reasoning: {
         efforts: ['low', 'medium', 'high'],
         canDisable: false,
       },
+      serviceTiers: fastTier,
     }),
   ],
   openai: [
