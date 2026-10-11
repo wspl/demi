@@ -123,6 +123,19 @@ impl Writer<'_> {
                     forward: items.forward,
                 }
             }
+            Shape::Tuple(places) => {
+                let mut forward = false;
+                let mut codes = Vec::new();
+                for (index, place) in places.iter().enumerate() {
+                    let place = self.shape(place, &format!("{at}[{index}]"), indent)?;
+                    forward |= place.forward;
+                    codes.push(place.code);
+                }
+                Rendered {
+                    code: format!("z.tuple([{}])", codes.join(", ")),
+                    forward,
+                }
+            }
             Shape::Record(values) => {
                 let values = self.shape(values, &format!("{at}{{}}"), indent)?;
                 Rendered {

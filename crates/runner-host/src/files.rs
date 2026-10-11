@@ -26,7 +26,7 @@ use demi_runner_process::{
     pipes::{PipeClient, report_pipe},
     private_files::{chmod, io_error},
 };
-use demi_runner_protocol::wire::{self, Inbound};
+use demi_runner_protocol::wire::{self, Inbound, ReadAt};
 
 use crate::{fs::error_code, git::GitService};
 
@@ -72,6 +72,8 @@ impl FileTransfers {
             return Err(io::Error::other("not a file read"));
         };
         self.admit()?;
+        // Before anything is read (`runner.md` § Watching files).
+        let read_at = crate::numbers::read_at();
         let target = resolve(cwd.as_deref().map(Path::new).unwrap_or(default_cwd), &path);
         let reply = self.output.clone();
         let pipes = self.pipes.clone();
@@ -84,13 +86,14 @@ impl FileTransfers {
                 Err(error) => {
                     // Nothing moves; the pipe end is still reported, as every
                     // end named to the runner is.
-                    send(&reply, fs_error(id, &error), &shutdown).await;
+                    send(&reply, fs_error(id, read_at, &error), &shutdown).await;
                     report_pipe(&reply, output.id, Err(error), &shutdown).await;
                     return;
                 }
             };
             let opened = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
                 id,
+                read_at,
                 result: wire::FsResult::ReadFile(read.opened),
             }));
             if !send(&reply, opened, &shutdown).await {
@@ -122,6 +125,8 @@ impl FileTransfers {
             return Err(io::Error::other("not a read of several files"));
         };
         self.admit()?;
+        // Before anything is read (`runner.md` § Watching files).
+        let read_at = crate::numbers::read_at();
         let base = cwd.map_or_else(|| default_cwd.to_owned(), PathBuf::from);
         let targets = paths.iter().map(|path| resolve(&base, path)).collect();
         let reply = self.output.clone();
@@ -132,6 +137,7 @@ impl FileTransfers {
             let opened = open_files(targets, Some(limit), &transfer).await;
             let answer = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
                 id,
+                read_at,
                 result: wire::FsResult::ReadFiles(file_reads(&opened)),
             }));
             if !send(&reply, answer, &shutdown).await {
@@ -158,6 +164,8 @@ impl FileTransfers {
             return Err(io::Error::other("not a directory write"));
         };
         self.admit()?;
+        // Before anything is read (`runner.md` § Watching files).
+        let read_at = crate::numbers::read_at();
         let target = resolve(default_cwd, &path);
         let reply = self.output.clone();
         let pipes = self.pipes.clone();
@@ -183,9 +191,10 @@ impl FileTransfers {
             let message = match result {
                 Ok(()) => wire::encode(&wire::Outbound::FsOk(wire::FsOk {
                     id,
+                    read_at,
                     result: wire::FsResult::WriteDirectory,
                 })),
-                Err(error) => fs_error(id, &error),
+                Err(error) => fs_error(id, read_at, &error),
             };
             send(&reply, message, &shutdown).await;
         });
@@ -205,6 +214,8 @@ impl FileTransfers {
             return Err(io::Error::other("not a look"));
         };
         self.admit()?;
+        // Before anything is read (`runner.md` § Watching files).
+        let read_at = crate::numbers::read_at();
         let base = cwd.map_or_else(|| default_cwd.to_owned(), PathBuf::from);
         let reply = self.output.clone();
         let pipes = self.pipes.clone();
@@ -220,12 +231,14 @@ impl FileTransfers {
             }
             let answer = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
                 id: id.clone(),
+                read_at: read_at.clone(),
                 result: wire::FsResult::Look(looked),
             }))
             .and_then(|answer| {
                 wire::within_limit(answer, |reason| {
                     wire::encode(&wire::Outbound::FsError {
                         id,
+                        read_at,
                         code: Some("too_large".into()),
                         message: reason,
                     })
@@ -257,6 +270,8 @@ impl FileTransfers {
             return Err(io::Error::other("not a file write"));
         };
         self.admit()?;
+        // Before anything is read (`runner.md` § Watching files).
+        let read_at = crate::numbers::read_at();
         let target = resolve(cwd.as_deref().map(Path::new).unwrap_or(default_cwd), &path);
         let reply = self.output.clone();
         let pipes = self.pipes.clone();
@@ -278,9 +293,10 @@ impl FileTransfers {
             let message = match result {
                 Ok(name) => wire::encode(&wire::Outbound::FsOk(wire::FsOk {
                     id,
+                    read_at,
                     result: wire::FsResult::WriteFile(name),
                 })),
-                Err(error) => fs_error(id, &error),
+                Err(error) => fs_error(id, read_at, &error),
             };
             send(&reply, message, &shutdown).await;
         });
@@ -307,6 +323,8 @@ impl FileTransfers {
             return Err(io::Error::other("not a git show"));
         };
         self.admit()?;
+        // Before anything is read (`runner.md` § Watching files).
+        let read_at = crate::numbers::read_at();
         let root = resolve(default_cwd, &root);
         let reply = self.output.clone();
         let pipes = self.pipes.clone();
@@ -333,6 +351,7 @@ impl FileTransfers {
                 Err(error) => {
                     let message = wire::encode(&wire::Outbound::GitError {
                         id,
+                        read_at,
                         code: error.code().to_owned(),
                         message: error.message(),
                     });
@@ -344,6 +363,7 @@ impl FileTransfers {
             };
             let found = wire::encode(&wire::Outbound::GitOk(wire::GitOk {
                 id,
+                read_at,
                 result: wire::GitResult::Show,
             }));
             if !send(&reply, found, &shutdown).await {
@@ -857,9 +877,10 @@ fn file_exists(target: &Path) -> io::Error {
     )
 }
 
-fn fs_error(id: String, error: &io::Error) -> Result<wire::Frame, wire::WireError> {
+fn fs_error(id: String, read_at: ReadAt, error: &io::Error) -> Result<wire::Frame, wire::WireError> {
     wire::encode(&wire::Outbound::FsError {
         id,
+        read_at,
         code: error_code(error).map(String::from),
         message: error.to_string(),
     })

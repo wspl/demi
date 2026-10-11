@@ -112,7 +112,7 @@ function relayReads(calls: string[]): FileReads {
 test('a read runs on the direct channel while it is the choice, and again on the relay when the channel fails', async () => {
   const peer = new ScriptedPeer([
     {
-      answer: { ok: true, version: 'W/"1"', unchanged: false },
+      answer: { ok: true, version: 'W/"1"', unchanged: false, readAt: { epoch: 'e', number: 3 } },
       messages: [{ kind: 'bytes', bytes: new TextEncoder().encode('héllo') }],
     },
     { fails: new ChannelFailed('the peer went') },

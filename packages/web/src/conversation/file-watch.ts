@@ -8,8 +8,14 @@ import { openSocket, waitToReconnect, watchSilence, type ReconnectWait, type Sil
 import { apiUrl } from '../api/client'
 import { fileWatchMessageSchema, type FileWatchMessage, type FileWatchRequest } from '../api/generated/web-api'
 
-/** The most paths outside the working tree a watch names (`web-api.md` § File watch). */
-const MAX_PATHS = 64
+/** The most subscriptions outside the working tree a page holds (`web-api.md` § File watch). */
+const MAX_OUTSIDE = 64
+
+/** The key of the working tree's own subscription. */
+const TREE = 'tree'
+
+/** How often the page renews what it holds; a lease runs 10 minutes (`web-api.md` § File watch). */
+const RENEW_MS = 3 * 60 * 1000
 
 /** What the page says when the Host's watch gives no reason. */
 const NO_REASON = 'The Host cannot watch its files.'
@@ -60,35 +66,41 @@ export const relayWatchLink: OpenWatchLink = (conversationId, handlers) => {
 
 /**
  * One connection of the watch, from its open to its close: what it covers
- * once it is live, and how far its `paths` messages have been answered.
+ * once its subscriptions are live, and what it holds.
+ *
+ * TODO(file-watch page package): the page subscribes here to the working
+ * tree and to each shown path outside it, and a change of the tree reads
+ * again what lies under it. The files service is to hold a subscription of
+ * the right kind for each entry it keeps and to compare numbers
+ * (`plugin-pages.md` § What the service keeps).
  */
 class WatchSocket {
   readonly coverage: Coverage
-  /** The paths outside the working tree the Host's watches run for. */
+  /** The paths outside the working tree whose subscriptions are live. */
   covered = new Set<string>()
-  /** The `paths` messages sent, and how many a `live` answered. */
-  sent = 0
-  answered = 0
-  /** The paths of the last message sent. */
-  last: string[] = []
-  /** The first `live` came: the working tree is covered. */
+  /** The paths outside the working tree it subscribed to, the latest last. */
+  held: string[] = []
+  /** The working tree's subscription is live. */
   live = false
-  /** A `lost` came, whose own `live` follows. */
-  lost = false
-  /** The Host cannot watch: no state follows on this socket. */
-  unavailable = false
   /** Watches the socket's silence from its open; a heartbeat comes after 30 s of nothing else. */
   silence: SilenceWatch | null = null
+  /** Renews what it holds while it is open. */
+  renewal: ReturnType<typeof setInterval> | null = null
 
   /** Set once the connection is made, before anything it says counts. */
   link: WatchLink | null = null
+  /** The connection opened: what it holds may be sent. */
+  opened = false
 
   constructor(readonly target: WatchTarget) {
-    // The working tree's watch, which also follows its repository's `.git`,
-    // and the watch of each folder or file named outside it.
+    // The working tree's subscription, and that of each folder or file named outside it.
     this.coverage = {
-      covers: (path) => within(path, target.root) || this.covered.has(path) || this.covered.has(parentPath(path)),
+      covers: (path) => (this.live && within(path, target.root)) || this.covered.has(path) || this.covered.has(parentPath(path)),
     }
+  }
+
+  send(request: FileWatchRequest): void {
+    this.link?.send(JSON.stringify(request))
   }
 }
 
@@ -96,10 +108,10 @@ class WatchSocket {
  * A conversation's file watch (`web-api.md` § File watch): open while a
  * component shows the conversation's files, so the Host's reports of what
  * changed keep what the page read current (`plugin-pages.md` § What the
- * service keeps). It tells the Host's kept files what each `live` covers,
- * what `changed` names, and that what was covered is unconfirmed when the
- * watch loses reports, cannot watch, or ends; and it names the folders and
- * files shown outside the working tree. A socket that brings nothing, not
+ * service keeps). It subscribes to the working tree and to the folders and
+ * files shown outside it, and tells the Host's kept files what each `live`
+ * covers, what a change concerns, and that what was covered is unconfirmed
+ * when the Host cannot watch it or the watch ends. A socket that brings nothing, not
  * even a heartbeat, for 75 seconds is broken (`web-application.md`
  * § Liveness and reconnection); a closed or broken socket opens again after
  * the reconnect waits, and at once when the Host comes back online.
@@ -190,8 +202,13 @@ export class ConversationWatch implements FileFollower {
     this.current = watch
     watch.link = this.openLink(this.conversationId, {
       opened: () => {
-        if (this.current === watch)
-          watch.silence = watchSilence('file watch', () => this.lose(watch))
+        if (this.current !== watch)
+          return
+        watch.silence = watchSilence('file watch', () => this.lose(watch))
+        watch.opened = true
+        watch.send({ type: 'subscribe', subscriptions: [{ key: TREE, kind: 'worktree', path: target.root }] })
+        this.send(watch)
+        watch.renewal = setInterval(() => watch.send({ type: 'renew', keys: [TREE, ...watch.held] }), RENEW_MS)
       },
       message: (data) => {
         if (this.current !== watch)
@@ -239,40 +256,42 @@ export class ConversationWatch implements FileFollower {
   }
 
   private receive(watch: WatchSocket, message: FileWatchMessage): void {
-    const { files } = watch.target
-    if (message.type === 'heartbeat')
-      return
-    if (message.type === 'changed') {
-      files.changed(message.paths, message.ignored, message.entries)
-      return
-    }
-    switch (message.state) {
+    const { files, root } = watch.target
+    switch (message.type) {
+      case 'heartbeat':
+      case 'renewed':
+        return
       case 'live':
-        if (!watch.live) {
-          // The first: the working tree is covered, and the paths outside it follow.
+        if (message.key === TREE) {
           watch.live = true
           this.failures = 0
           this.note.unavailable = null
           files.cover(watch.coverage)
-          this.pathsChanged()
-        } else if (watch.lost) {
-          watch.lost = false
+        } else if (watch.held.includes(message.key)) {
+          watch.covered.add(message.key)
           files.cover(watch.coverage)
-        } else {
-          watch.answered += 1
-          // Every message answered: each path the last one names runs.
-          if (watch.answered === watch.sent)
-            watch.covered = new Set(watch.last)
         }
         return
-      case 'lost':
-        watch.lost = true
-        files.uncover(watch.coverage, true)
+      case 'changed':
+        // A key outside the tree is its path; the tree's names no path.
+        files.changed(message.changes.map(([key]) => (key === TREE ? root : key)))
         return
       case 'unavailable':
-        watch.unavailable = true
-        this.note.unavailable = message.reason ?? NO_REASON
-        files.uncover(watch.coverage)
+        if (message.key === TREE) {
+          this.note.unavailable = message.reason || NO_REASON
+          // What the tree covered is unconfirmed; the paths outside it stay covered.
+          files.uncover(watch.coverage)
+          watch.live = false
+          if (watch.covered.size > 0)
+            files.cover(watch.coverage)
+        } else {
+          watch.covered.delete(message.key)
+          watch.held = watch.held.filter((path) => path !== message.key)
+          files.changed([message.key])
+        }
+        return
+      case 'refused':
+        watch.held = watch.held.filter((path) => path !== message.key)
         return
       case 'offline':
         // The socket closes after it.
@@ -288,33 +307,37 @@ export class ConversationWatch implements FileFollower {
     queueMicrotask(() => {
       this.sending = false
       const watch = this.current
-      // A socket that brought its first `live` is open.
-      if (watch?.live && !watch.unavailable)
+      if (watch?.opened)
         this.send(watch)
     })
   }
 
+  /** Subscribes to the paths shown outside the working tree, and lets go of those no longer shown. */
   private send(watch: WatchSocket): void {
-    const outside = [...this.shown.keys()].filter((path) => !within(path, watch.target.root))
-    const paths = outside.slice(-MAX_PATHS)
-    if (paths.length === watch.last.length && paths.every((path, index) => watch.last[index] === path))
-      return
-    // A path no longer named is no longer covered, at once; one newly named is once a `live` answers.
-    const dropped = [...watch.covered].filter((path) => !paths.includes(path))
-    for (const path of dropped)
-      watch.covered.delete(path)
-    if (dropped.length > 0)
+    const outside = [...this.shown.keys()].filter((path) => !within(path, watch.target.root)).slice(-MAX_OUTSIDE)
+    const dropped = watch.held.filter((path) => !outside.includes(path))
+    const added = outside.filter((path) => !watch.held.includes(path))
+    watch.held = outside
+    if (dropped.length > 0) {
+      // A path no longer held is no longer covered, at once.
+      for (const path of dropped)
+        watch.covered.delete(path)
       watch.target.files.changed(dropped)
-    const request: FileWatchRequest = { type: 'paths', paths }
-    watch.link?.send(JSON.stringify(request))
-    watch.sent += 1
-    watch.last = paths
+      watch.send({ type: 'unsubscribe', keys: dropped })
+    }
+    if (added.length > 0) {
+      const subscriptions = added.map((path) => ({ key: path, kind: 'file' as const, path }))
+      watch.send({ type: 'subscribe', subscriptions })
+    }
   }
 
   /** What a socket covered is unconfirmed once it ends, and its silence is no longer watched. */
   private end(watch: WatchSocket): void {
     watch.silence?.stop()
     watch.silence = null
+    if (watch.renewal !== null)
+      clearInterval(watch.renewal)
+    watch.renewal = null
     watch.target.files.uncover(watch.coverage)
     this.note.unavailable = null
   }

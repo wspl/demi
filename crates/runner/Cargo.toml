@@ -9,6 +9,7 @@ license.workspace = true
 # turns on: the native fixture program, the registry's decisions, a job's
 # activity and a dispatcher on channels.
 test-fixtures = [
+  "demi-runner-host/testing",
   "demi-runner-jobs/testing",
   "demi-runner-command-packages/testing",
   "demi-runner-shell/testing",

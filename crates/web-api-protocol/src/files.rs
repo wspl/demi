@@ -3,7 +3,8 @@
 //! text and working tree changes).
 
 pub use demi_runner_protocol::files::{
-    DirectoryEntry, FileWatchMessage, FileWatchRequest, FileWatchState, MAX_WATCHED_PATHS,
+    DirectoryEntry, FileWatchMessage, FileWatchRequest, MAX_OUTSIDE_SUBSCRIPTIONS,
+    MAX_PAGE_SUBSCRIPTIONS, PageSubscription, RefusedReason, SubscriptionKind,
 };
 use demi_runner_protocol::wire::GitChanges;
 use demi_shared_types::Nullable;

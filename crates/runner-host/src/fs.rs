@@ -21,9 +21,12 @@ pub async fn handle(
     cancel: &CancellationToken,
 ) -> Option<Result<Frame, wire::WireError>> {
     let id = message.fs_request_id()?;
+    // Before anything is read (`runner.md` § Watching files).
+    let read_at = crate::numbers::read_at();
     let refuse = |code: Option<String>, message: String| {
         wire::encode(&Outbound::FsError {
             id: id.to_owned(),
+            read_at: read_at.clone(),
             code,
             message,
         })
@@ -31,6 +34,7 @@ pub async fn handle(
     Some(match call(message, default_cwd, cancel).await {
         Ok(result) => wire::encode(&Outbound::FsOk(FsOk {
             id: id.to_owned(),
+            read_at: read_at.clone(),
             result,
         }))
         .and_then(|reply| {

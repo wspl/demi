@@ -1,6 +1,8 @@
-//! The file watch at the edge (`web-api.md` § File watch): the upgrade, and
-//! the relay of the Host's reports to the page and of the page's `paths`
-//! messages to the shard, which follows the Host's watches.
+//! The file watch at the edge (`web-api.md` § File watch): the upgrades of
+//! a conversation's watch and of a device's folder dialog's, and the relay
+//! of the Host's reports to the page and of the page's `subscribe`,
+//! `unsubscribe` and `renew` messages to the shard, which holds the Host's
+//! subscriptions.
 
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{CloseFrame, Message, WebSocketUpgrade};
@@ -12,13 +14,15 @@ use axum::http::StatusCode;
 use axum::response::Response;
 use demi_backend_host_access::file_watch::{FileWatchChannel, OpenedWatch};
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::files::{FileWatchMessage, FileWatchRequest, FileWatchState};
+use demi_web_api_protocol::devices::DeviceKind;
+use demi_web_api_protocol::files::{FileWatchMessage, FileWatchRequest};
 use futures_util::StreamExt as _;
 use garde::Validate as _;
 
 use super::AppState;
 use super::body::page_socket;
 use super::conversations::owned;
+use super::devices::owned_device;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use super::page_client::PageClient;
@@ -67,12 +71,56 @@ pub(super) async fn open(
     }))
 }
 
+/// `WS /devices/:deviceId/fs/watch`: a device's folder dialog's watch,
+/// through device access (`sessions-and-targets.md` § Every way to a
+/// Host). A device that is not the caller's paired device answers before
+/// the upgrade; one whose runner is not connected answers after it, with
+/// `offline`.
+pub(super) async fn open_device(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    client: PageClient,
+    upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
+) -> Result<Response, ApiError> {
+    let device = owned_device(&state, &user.id, &id, Some(DeviceKind::User)).await?;
+    let upgrade = upgrade.map_err(|_| {
+        ApiError::new(
+            StatusCode::UPGRADE_REQUIRED,
+            ErrorCode::UpgradeRequired,
+            "The file watch is a WebSocket",
+        )
+    })?;
+    let origin = PageSocketOrigin {
+        device: Some(device.id.clone()),
+        ..client.origin(PageSocketKind::FileWatch, user.id.clone())
+    };
+    let device = device.id;
+    let opened = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.host_shard().open_device_watch(&device) })
+        .await?;
+    let tuning = state.services.pages;
+    Ok(page_socket(upgrade).on_upgrade(move |socket| async move {
+        let (to_page, from_page) = open_page_socket(socket, tuning, origin);
+        match opened {
+            OpenedWatch::Watching(channel) => relay(to_page, from_page, channel).await,
+            OpenedWatch::Offline => offline(to_page, from_page).await,
+        }
+    }))
+}
+
+/// The most bytes of one message to the page: a `changed` naming more keys
+/// goes in as many as it takes.
+const MESSAGE_BYTES: usize = 1024 * 1024;
+
 /// How a watch ended, which the page's socket closes with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum End {
     /// The Host became unreachable, after `offline`.
     HostUnreachable,
-    /// The page sent a message that is not a `paths` message.
+    /// The page sent a message it should not have.
     Refused,
     /// A transition ended the watch.
     Changed,
@@ -101,11 +149,7 @@ impl End {
 
 /// Tells the page that the Host is out of reach, and closes.
 async fn offline(mut page: PageSocket, page_in: PageStream) {
-    let message = FileWatchMessage::State {
-        state: FileWatchState::Offline,
-        reason: None,
-    };
-    let end = match page.send(text(&message)).await {
+    let end = match page.send(text(&FileWatchMessage::Offline)).await {
         Ok(()) => End::HostUnreachable,
         Err(_) => End::PageClosed,
     };
@@ -131,8 +175,10 @@ async fn relay(mut page: PageSocket, mut page_in: PageStream, channel: FileWatch
                     },
                     () = page.silent() => FileWatchMessage::Heartbeat,
                 };
-                if page.send(text(&message)).await.is_err() {
-                    return End::PageClosed;
+                for text in message.into_texts(MESSAGE_BYTES) {
+                    if page.send(text).await.is_err() {
+                        return End::PageClosed;
+                    }
                 }
             }
         };
@@ -140,10 +186,10 @@ async fn relay(mut page: PageSocket, mut page_in: PageStream, channel: FileWatch
             loop {
                 match page_in.next().await {
                     Some(Ok(Message::Text(message))) => {
-                        let Some(paths) = paths_of(message.as_str()) else {
+                        let Some(request) = request_of(message.as_str()) else {
                             return End::Refused;
                         };
-                        if from_page.send(paths).await.is_err() {
+                        if from_page.send(request).await.is_err() {
                             return End::Changed;
                         }
                     }
@@ -164,12 +210,11 @@ async fn relay(mut page: PageSocket, mut page_in: PageStream, channel: FileWatch
     drop(lease);
 }
 
-/// The paths of a valid `paths` message.
-fn paths_of(message: &str) -> Option<Vec<String>> {
+/// A valid message of the page's.
+fn request_of(message: &str) -> Option<FileWatchRequest> {
     let request: FileWatchRequest = serde_json::from_str(message).ok()?;
     request.validate().ok()?;
-    let FileWatchRequest::Paths { paths } = request;
-    Some(paths)
+    Some(request)
 }
 
 fn text(message: &FileWatchMessage) -> String {
