@@ -1594,6 +1594,11 @@ stream does, and is admitted through the conversation's host access without
 waking a stopped Cloud. A device's folder dialog subscribes the same way on
 `WS /api/devices/:deviceId/fs/watch`, through device access
 ([Every way to a Host](../execution/sessions-and-targets.md#every-way-to-a-host)).
+The conversation's socket covers its primary Host; an attached host's files,
+as the attachment picker lists them, are subscribed on the same socket with
+the subscription's `host`, the attached device, admitted through the
+conversation's host access as a file of that host is, an attached Cloud
+included.
 
 The page names each subscription by a key of its own and sends JSON text
 messages:
