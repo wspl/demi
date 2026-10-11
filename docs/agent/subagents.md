@@ -965,7 +965,10 @@ the icons to [File icons, CJK emphasis](agent:4)": the link shows as the
 agent's mark, the one its tab in the Agents window wears, the robot with the
 dot of its state on its corner, then the link's text, so it reads as an agent
 and its state shows without a mark of its own, changing as the agent runs and
-ends. Pointed at, it names the agent, *Subagent 4 · Finished*, and its
+ends. It is drawn in the text's own colors, not a web link's accent: the text
+in the prose's color at medium weight over a dotted underline, the mark in
+the secondary text color, and on hover the hover fill behind both, as a
+mention in Slack or Linear reads as part of the sentence. Pointed at, it names the agent, *Subagent 4 · Finished*, and its
 description. A click opens the Agents window on that agent's tab, a finished
 one as its Completed menu picks it; a click when the window already shows
 that tab closes the window, as a control that opens what the work panel
