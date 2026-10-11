@@ -15,9 +15,10 @@ import type { MessageCapsule, MessageTransfer } from './capsules'
  * picture's preview on hover), and a text file its opening lines. An upload in progress
  * shows how far it has come; a failed one offers Retry.
  *
- * The capsule stands on the line by its name, which keeps the baseline of the
- * text around it; the icon and Retry are centred in the pill. Hanging the
- * pill on its own middle instead would set the name a little below that line.
+ * The capsule fits inside the line it stands in, at every text size: never
+ * taller than the line, never reaching into the next one (`base.css`
+ * § `.message-capsule-line`). Its icon, thumbnail, name and Retry are
+ * centred in the pill.
  *
  * It is a character of the message, so it is deleted as one, by the editor's
  * own keys; it carries no control of its own for that.
@@ -94,12 +95,12 @@ const preview = computed<
 <template>
   <Tooltip
     tag="span"
-    class="inline-flex max-w-full items-baseline align-baseline"
+    class="message-capsule-line inline-flex max-w-full"
     :disabled="preview.kind === 'image' || preview.kind === 'video'"
   >
     <span
       ref="pill"
-      class="message-capsule mx-1 inline-flex h-5 min-w-0 max-w-full select-none items-baseline gap-1 pl-[var(--capsule-inset)] pr-1.5 align-baseline text-[13px] font-normal not-italic leading-5 no-underline shadow-[var(--shadow-btn)]"
+      class="message-capsule mx-1 inline-flex h-full min-w-0 max-w-full select-none items-center gap-1 pl-[var(--capsule-inset)] pr-1.5 font-normal not-italic leading-none no-underline shadow-[var(--shadow-btn)]"
       :class="[
         failed ? 'bg-tint-danger text-on-danger' : 'bg-btn text-fg-body',
         selected ? 'outline outline-2 outline-line-focus' : '',
@@ -115,7 +116,7 @@ const preview = computed<
         :aria-valuemax="100"
         :aria-valuenow="uploading ? Math.round(uploading.progress * 100) : undefined"
         :aria-label="capsule.name"
-        class="mx-px shrink-0 -rotate-90 self-center"
+        class="mx-px shrink-0 -rotate-90"
         :class="attaching ? 'animate-spin' : ''"
         :width="RING"
         :height="RING"
@@ -146,13 +147,13 @@ const preview = computed<
       <CircleAlert
         v-else-if="failed"
         :size="14"
-        class="mx-px shrink-0 self-center"
+        class="mx-px shrink-0"
       />
       <img
         v-else-if="image"
         :src="image"
         alt=""
-        class="message-capsule-thumb size-4 shrink-0 self-center object-cover"
+        class="message-capsule-thumb aspect-square shrink-0 object-cover"
         @load="onThumbLoad"
       />
       <FileIcon
@@ -160,7 +161,7 @@ const preview = computed<
         :name="capsule.name"
         :is-directory="false"
         :size="14"
-        class="mx-px shrink-0 self-center"
+        class="mx-px shrink-0"
       />
       <span
         class="min-w-0 truncate"
@@ -173,7 +174,7 @@ const preview = computed<
       <button
         v-if="failed"
         type="button"
-        class="-mr-1 flex size-4 shrink-0 self-center items-center justify-center rounded text-on-danger hover:bg-tint-danger-strong"
+        class="-mr-1 flex size-4 shrink-0 items-center justify-center rounded text-on-danger hover:bg-tint-danger-strong"
         aria-label="Retry"
         @click.stop="emit('retry')"
       >
