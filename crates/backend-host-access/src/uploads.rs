@@ -45,10 +45,10 @@ impl dyn HostShard + '_ {
         let Some(bytes) = blobs.get(&record.sha256).await? else {
             return not_available();
         };
-        let written = write_attachment(&host.host, id, file_name, bytes.clone()).await?;
+        let path = write_attachment(&host.host, id, file_name, bytes.clone()).await?;
         let upload = Upload {
-            name: &written.name,
-            path: &written.path,
+            name: file_name,
+            path: &path,
             media_type: &record.media_type,
             sha256: &record.sha256,
             bytes: &B64Bytes::from(bytes),
@@ -57,26 +57,21 @@ impl dyn HostShard + '_ {
     }
 }
 
-/// Where an attachment was written.
-struct Written {
-    /// The name it has there: the one it was sent with, or that name with a
-    /// number when a file had it already.
-    name: String,
-    /// Absolute on the Host.
-    path: String,
-}
-
 /// Writes `bytes` into the conversation's attachment directory on `host`,
-/// under `file_name` or, when a file has that name already, the first free
-/// `name-2.ext`, `name-3.ext` and so on, which the write itself takes
-/// (`runner.md` § Host operations); nothing is overwritten, and what is
-/// written stays, so the path a transcript names stays readable.
+/// under `file_name` or, when a file of other bytes has that name already,
+/// the first free `name-2.ext`, `name-3.ext` and so on, which the write
+/// itself takes (`runner.md` § Host operations), and answers the absolute
+/// path. A file of the same bytes under one of those names is the
+/// attachment already there, and is not written again (`product.md`
+/// § Attachments). Nothing is overwritten, and what is written stays, so the
+/// path a transcript names stays readable. The number belongs to the path
+/// alone: the attachment keeps `file_name`.
 async fn write_attachment(
     host: &RemoteHost,
     id: &ConversationId,
     file_name: &str,
     bytes: Bytes,
-) -> Result<Written, HostError> {
+) -> Result<String, HostError> {
     let home = host.identity().home_dir;
     let directory = format!("{}/{ATTACHMENTS_DIR}/{id}", home.trim_end_matches('/'));
     let options = WriteOptions {
@@ -90,8 +85,7 @@ async fn write_attachment(
             options,
         )
         .await?;
-    let path = format!("{directory}/{name}");
-    Ok(Written { name, path })
+    Ok(format!("{directory}/{name}"))
 }
 
 #[cfg(test)]
@@ -103,7 +97,7 @@ mod tests {
 
     // About a tenth of a second: a real runner process writes the files.
     #[tokio::test(flavor = "local")]
-    async fn an_attachment_takes_the_first_free_name_with_one_request() {
+    async fn an_attachment_of_other_bytes_takes_the_first_free_name_and_the_same_one_is_reused() {
         let (tap, mut replies) = mpsc::channel(1 << 10);
         let fixture = RunnerFixture::start(FixtureOptions {
             tap: Some(tap),
@@ -114,16 +108,30 @@ mod tests {
         let id = ConversationId::try_from("0193f1e2-7c4d-7e8f-9a0b-1c2d3e4f5a6b").unwrap();
         answered_requests(&mut replies);
 
-        let mut names = Vec::new();
-        for text in ["one", "two", "three"] {
-            let written = write_attachment(&host, &id, "notes.txt", Bytes::from(text))
+        // Sent again, pasted or put back by Undo Send, the same file is the
+        // one already there: its path, and not a byte written.
+        let mut paths = Vec::new();
+        let mut written = Vec::new();
+        for text in ["one", "two", "one", "two", "three"] {
+            let path = write_attachment(&host, &id, "notes.txt", Bytes::from(text))
                 .await
                 .unwrap();
             assert_eq!(answered_requests(&mut replies), 1, "one request writes {text}");
-            assert_eq!(std::fs::read_to_string(&written.path).unwrap(), text);
-            names.push(written.name);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
+            let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+            if let Some((_, first)) = written.iter().find(|(seen, _)| *seen == path) {
+                assert_eq!(*first, modified, "{text} is written again");
+            } else {
+                written.push((path.clone(), modified));
+            }
+            paths.push(path.rsplit('/').next().unwrap().to_owned());
         }
-        assert_eq!(names, ["notes.txt", "notes-2.txt", "notes-3.txt"]);
+        assert_eq!(
+            paths,
+            ["notes.txt", "notes-2.txt", "notes.txt", "notes-2.txt", "notes-3.txt"]
+        );
+        let directory = std::path::Path::new(&written[0].0).parent().unwrap();
+        assert_eq!(std::fs::read_dir(directory).unwrap().count(), 3);
         fixture.stop().await;
     }
 }
