@@ -174,6 +174,7 @@ there again starts anew. Each entry of `files`:
 | --- | --- |
 | `path` | Absolute, as the target names it. The web app displays it relative to the workspace root when under it, absolute otherwise, with `/` separators. |
 | `kind` | `added` or `modified`. |
+| `temporary` | True when `path` is in one of its Host's temporary directories ([Temporary files](#temporary-files)); a rename's `to` carries it the same way. |
 | `added`, `removed` | Total line additions and removals across this job's retained edit segments. A segment without contents contributes zero. |
 | `edits` | Ordered segments for this file. Each has `original` and `modified` snapshot paths on the target. `original` is absent when that segment created the file. Both are absent when contents were not retained. |
 
