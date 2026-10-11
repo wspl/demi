@@ -13,7 +13,7 @@ use demi_backend_page_sync::Part;
 use demi_backend_plugins::ProductPort;
 use demi_backend_remote_host::ServiceCallError;
 use demi_command_declarations::NativeOperation;
-use demi_host_interface::PortError;
+use demi_host_interface::{HostErrorKind, PortError};
 use demi_plugin_interface::{CallKind, HostFile, HostRead, PortFailure, PortRefusal};
 use demi_shared_types::{B64Bytes, BlobRef};
 use demi_web_api_protocol::ids::ConversationId;
@@ -133,13 +133,20 @@ fn access_refusal(error: HostAccessError) -> PortFailure {
     })
 }
 
+/// A package call that did not answer: the host access's refusal when the
+/// Host cannot be reached or takes no operations, as its routes answer it,
+/// and otherwise the call's own failure, such as a service that did not
+/// start, which a page call answers as the plugin's failure (`web-api.md`
+/// § Plugin calls), not as a broken connection to the device.
 fn call_failure(error: UserCallError) -> PortFailure {
     match error {
         UserCallError::Access(error) => access_refusal(error),
         UserCallError::Call(ServiceCallError::Exited { stderr, .. }) => {
             PortFailure::Refused(PortRefusal::Operation { stderr })
         }
-        UserCallError::Call(ServiceCallError::Host(error)) => {
+        UserCallError::Call(ServiceCallError::Host(error))
+            if matches!(error.kind, HostErrorKind::Offline | HostErrorKind::Unavailable) =>
+        {
             access_refusal(HostAccessError::Host(error))
         }
         UserCallError::Call(error) => failed(error),

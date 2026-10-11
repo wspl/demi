@@ -182,6 +182,18 @@ static BROWSER: LazyLock<Built> = LazyLock::new(|| {
     )
 });
 
+/// `demi.browser` whose program does not start: a script that exits at
+/// once, as a service the Host cannot start fails.
+static BROWSER_THAT_DOES_NOT_START: LazyLock<Built> = LazyLock::new(|| {
+    let program = PathBuf::from(RELEASES).join("browser-that-does-not-start");
+    std::fs::create_dir_all(RELEASES).unwrap();
+    replace(
+        &program,
+        b"#!/bin/sh\necho 'the browser service cannot start here' >&2\nexit 1\n",
+    );
+    Built::new(BROWSER_PACKAGE, program, BrowserOperation::names())
+});
+
 /// `demi.claude-code`, from `demi-claude-code`.
 static CLAUDE: LazyLock<Built> = LazyLock::new(|| {
     Built::new(
@@ -379,6 +391,13 @@ impl Harness {
     /// stream bind to the `demi.browser` package the workspace built.
     pub fn with_browser_package(mut self) -> Self {
         self.release = Some(|| BROWSER.release());
+        self
+    }
+
+    /// Conversations whose `demi browser` commands and `browser` user
+    /// stream bind to a `demi.browser` package whose service does not start.
+    pub fn with_browser_package_that_does_not_start(mut self) -> Self {
+        self.release = Some(|| BROWSER_THAT_DOES_NOT_START.release());
         self
     }
 
