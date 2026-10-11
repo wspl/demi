@@ -11,7 +11,7 @@
 
 use std::rc::Rc;
 
-use demi_agent_store::media;
+use demi_agent_store::{changes, media};
 use demi_agent_transcript::{
     PendingCall,
     estimate::{context_tokens, request_size},
@@ -20,7 +20,7 @@ use demi_agent_transcript::{
 use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
 };
-use demi_shared_types::{Block, ModelSelection, ToolView};
+use demi_shared_types::{Block, BlockId, ModelSelection, ShellToolView, ToolView};
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
@@ -569,6 +569,55 @@ async fn run_tools(
     Ok(true)
 }
 
+/// `view` with the lists the conversation shows of the shell call that
+/// `at` finds in the transcript (`edit-tracking.md` § What the conversation
+/// shows): its own files, its run's and its request's, counted from the
+/// edit copies in the conversation's blob namespace. A call the transcript
+/// no longer holds, as after an edit cut it, keeps `view` as it is.
+async fn with_lists(
+    s: &SessionShared,
+    at: impl Fn(&SessionCore) -> Option<usize>,
+    mut view: ShellToolView,
+) -> ShellToolView {
+    let planned = s.read(|core| {
+        at(core).map(|index| changes::plan(core.transcript.blocks(), index, &view))
+    });
+    let Some(planned) = planned else {
+        return view;
+    };
+    let counted = changes::count(planned.uncounted(), s.store.blobs()).await;
+    planned.finish(&mut view, &counted);
+    view
+}
+
+/// Lists again the shell calls after `tool_use_id` in its request that
+/// completed before it, as the calls of one step can: each call's lists
+/// are of the calls before it in the transcript, whatever order they
+/// returned in, and are final once the calls before it have returned.
+async fn relist_later_calls(s: &SessionShared, tool_use_id: &str) {
+    let later: Vec<(BlockId, ShellToolView)> = s.read(|core| {
+        let blocks = core.transcript.blocks();
+        let Some(index) = core.transcript.completed_call(tool_use_id) else {
+            return Vec::new();
+        };
+        changes::later_in_request(blocks, index)
+            .into_iter()
+            .filter_map(|at| match &blocks[at] {
+                Block::ToolCall(call) => match &call.view {
+                    Some(ToolView::Shell(view)) => Some((call.id.clone(), view.clone())),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect()
+    });
+    for (id, view) in later {
+        let at = |core: &SessionCore| core.transcript.position(&id);
+        let view = with_lists(s, at, view).await;
+        s.update(|core| core.replace_view(&id, ToolView::Shell(view)));
+    }
+}
+
 /// Records the result of `call`, and watches the command it left running;
 /// its media are stored before it enters the transcript, and the session
 /// holds their bytes (`runtime.md` § Media).
@@ -577,13 +626,23 @@ async fn record_result(s: &Rc<SessionShared>, call: &PendingCall, outcome: ToolO
     // A call that ran a command ran on the turn's Host: the Host an earlier
     // call found offline is back.
     let ran = matches!(outcome.view, Some(ToolView::Shell(_)));
+    let view = match outcome.view {
+        Some(ToolView::Shell(view)) => {
+            let at = |core: &SessionCore| core.transcript.executing_call(&call.tool_use_id);
+            Some(ToolView::Shell(with_lists(s, at, view).await))
+        }
+        view => view,
+    };
     s.update(|core| {
         core.media.absorb(held);
-        core.complete_tool_call(&call.tool_use_id, output, outcome.is_error, outcome.view);
+        core.complete_tool_call(&call.tool_use_id, output, outcome.is_error, view);
         if ran {
             core.offline_host = None;
         }
     });
+    if ran {
+        relist_later_calls(s, &call.tool_use_id).await;
+    }
     match outcome.effect {
         Some(ToolEffect::Background {
             command,

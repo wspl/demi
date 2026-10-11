@@ -12,7 +12,9 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use bytes::Bytes;
 use demi_shared_gates::KeyedSerialGate;
+use demi_shared_types::BlobRef;
 use demi_web_api_protocol::ids::ConversationId;
 use hashlink::LruCache;
 use rusqlite::{Connection, OpenFlags, Transaction};
@@ -22,12 +24,40 @@ use super::{StorageError, schema, sqlite};
 /// The most writer connections open at once.
 pub const MAX_WRITERS: NonZeroUsize = NonZeroUsize::new(64).expect("64 is not zero");
 
+/// How a migration of a conversation's database reads a blob its values
+/// name, in the conversation owner's namespace (`storage.md` § Schemas and
+/// migrations); none when the namespace does not hold it. It is called on
+/// the database's thread, which waits for it, never on an async task.
+pub trait ConversationBlobs: Send + Sync {
+    fn read(&self, conversation: &ConversationId, blob: &BlobRef) -> Result<Option<Bytes>, String>;
+}
+
+impl ConversationBlobs for schema::NoBlobs {
+    fn read(&self, _: &ConversationId, blob: &BlobRef) -> Result<Option<Bytes>, String> {
+        schema::ReadBlob::read(self, blob)
+    }
+}
+
+/// One conversation's blobs, as its database's migration reads them.
+struct BlobsOf<'a> {
+    blobs: &'a dyn ConversationBlobs,
+    conversation: ConversationId,
+}
+
+impl schema::ReadBlob for BlobsOf<'_> {
+    fn read(&self, blob: &BlobRef) -> Result<Option<Bytes>, String> {
+        self.blobs.read(&self.conversation, blob)
+    }
+}
+
 /// Every conversation's database. Cloning it is cheap.
 #[derive(Clone)]
 pub struct ConversationStores(Arc<Stores>);
 
 struct Stores {
     directory: PathBuf,
+    /// Where a migration reads the blobs a conversation's values name.
+    blobs: Arc<dyn ConversationBlobs>,
     /// A `std` mutex: the edge and the shard threads share the writers, and
     /// each section looks up, inserts or takes writers without awaiting.
     writers: Mutex<Writers>,
@@ -69,15 +99,21 @@ impl DatabaseFile {
 pub struct ConversationDb {
     stores: Arc<Stores>,
     file: DatabaseFile,
+    conversation: ConversationId,
 }
 
 impl ConversationStores {
     /// The databases in `directory`, which is created if it is missing, with
     /// at most `max_writers` writers open at once.
-    pub async fn open(directory: PathBuf, max_writers: NonZeroUsize) -> Result<Self, StorageError> {
+    pub async fn open(
+        directory: PathBuf,
+        max_writers: NonZeroUsize,
+        blobs: Arc<dyn ConversationBlobs>,
+    ) -> Result<Self, StorageError> {
         tokio::fs::create_dir_all(&directory).await?;
         Ok(Self(Arc::new(Stores {
             directory,
+            blobs,
             writers: Mutex::new(Writers {
                 open: LruCache::new(max_writers.get()),
                 closed: false,
@@ -92,6 +128,7 @@ impl ConversationStores {
         ConversationDb {
             stores: self.0.clone(),
             file: DatabaseFile::of(conversation),
+            conversation: conversation.clone(),
         }
     }
 
@@ -202,7 +239,12 @@ impl ConversationDb {
         if let Some(writer) = self.open_writer()? {
             return Ok(writer);
         }
-        let writer = open_writer(&self.file.path(&self.stores.directory)).await?;
+        let writer = open_writer(
+            &self.file.path(&self.stores.directory),
+            self.stores.blobs.clone(),
+            self.conversation.clone(),
+        )
+        .await?;
         let mut writers = self.stores.lock();
         if writers.closed {
             // Dropping the writer ends its thread, which closes the database.
@@ -227,7 +269,15 @@ impl ConversationDb {
             return Err(StorageError::Closed);
         }
         let path = self.file.path(&self.stores.directory);
-        tokio::task::spawn_blocking(move || read_cold(&path, work)).await?
+        let (blobs, conversation) = (self.stores.blobs.clone(), self.conversation.clone());
+        tokio::task::spawn_blocking(move || {
+            let blobs = BlobsOf {
+                blobs: &*blobs,
+                conversation,
+            };
+            read_cold(&path, &blobs, work)
+        })
+        .await?
     }
 
     /// Where a save's transaction commits.
@@ -342,13 +392,21 @@ impl Hold {
     }
 }
 
-async fn open_writer(path: &Path) -> Result<tokio_rusqlite::Connection, StorageError> {
+async fn open_writer(
+    path: &Path,
+    blobs: Arc<dyn ConversationBlobs>,
+    conversation: ConversationId,
+) -> Result<tokio_rusqlite::Connection, StorageError> {
     let writer = tokio_rusqlite::Connection::open(path).await?;
     let path = path.to_owned();
     writer
         .call(move |connection| {
             sqlite::configure(connection)?;
-            schema::CONVERSATION.apply(connection, &path)
+            let blobs = BlobsOf {
+                blobs: &*blobs,
+                conversation,
+            };
+            schema::CONVERSATION.apply(connection, &path, &blobs)
         })
         .await
         .map_err(sqlite::flatten)?;
@@ -357,6 +415,7 @@ async fn open_writer(path: &Path) -> Result<tokio_rusqlite::Connection, StorageE
 
 fn read_cold<T>(
     path: &Path,
+    blobs: &BlobsOf<'_>,
     work: impl FnOnce(&Connection) -> Result<T, StorageError>,
 ) -> Result<Option<T>, StorageError> {
     if !path.try_exists()? {
@@ -383,9 +442,9 @@ fn read_cold<T>(
             drop(connection);
             let mut writer = Connection::open(path)?;
             sqlite::configure(&mut writer)?;
-            schema::CONVERSATION.apply(&mut writer, path)?;
+            schema::CONVERSATION.apply(&mut writer, path, blobs)?;
             drop(writer);
-            read_cold(path, work)
+            read_cold(path, blobs, work)
         }
         None => Err(StorageError::OtherSchema {
             path: path.to_owned(),
@@ -440,7 +499,7 @@ mod tests {
     async fn writers_stay_bounded_and_cold_reads_take_none_and_create_no_file() {
         let data = tempfile::tempdir().unwrap();
         let directory = data.path().join("conversations");
-        let stores = ConversationStores::open(directory.clone(), NonZeroUsize::new(2).unwrap())
+        let stores = ConversationStores::open(directory.clone(), NonZeroUsize::new(2).unwrap(), Arc::new(schema::NoBlobs))
             .await
             .unwrap();
         let (a, b, c) = (conversation(1), conversation(2), conversation(3));
@@ -490,7 +549,7 @@ mod tests {
         ));
 
         // After a restart, a cold read finds every database as it was left.
-        let reopened = ConversationStores::open(directory, MAX_WRITERS)
+        let reopened = ConversationStores::open(directory, MAX_WRITERS, Arc::new(schema::NoBlobs))
             .await
             .unwrap();
         for (conversation, state) in [(&a, "a2"), (&b, "b"), (&c, "c")] {
@@ -505,7 +564,7 @@ mod tests {
     #[tokio::test]
     async fn first_calls_at_once_open_one_writer_and_both_commit() {
         let data = tempfile::tempdir().unwrap();
-        let stores = ConversationStores::open(data.path().join("conversations"), MAX_WRITERS)
+        let stores = ConversationStores::open(data.path().join("conversations"), MAX_WRITERS, Arc::new(schema::NoBlobs))
             .await
             .unwrap();
         let a = conversation(1);

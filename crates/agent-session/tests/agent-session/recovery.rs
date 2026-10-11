@@ -502,6 +502,8 @@ fn host_tool(outcomes: &[&'static str]) -> (String, Invoke) {
                 },
                 _ => ToolOutcome {
                     view: Some(ToolView::Shell(ShellToolView {
+                        request_files: None,
+                        run_files: None,
                         status: ShellViewStatus::Exited,
                         command_id: CommandId::try_from("1").unwrap(),
                         exit_code: Some(0),
