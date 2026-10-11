@@ -967,7 +967,10 @@ dot of its state on its corner, then the link's text, so it reads as an agent
 and its state shows without a mark of its own, changing as the agent runs and
 ends. It is drawn in the text's own colors, not a web link's accent: the text
 in the prose's color at medium weight over a dotted underline in the faintest
-text color, 1 pixel, 3 pixels below the text, the mark in
+text color, 1 pixel, 3 pixels below the text, and it flows as words do: a long name wraps
+at the line's end like any text, its first line starting where the text before
+it ends, the mark staying with the first word, and its hover fill following
+each line it spans, the mark in
 the secondary text color, and on hover the hover fill (`bg-hover`) behind both, as a
 mention in Slack or Linear reads as part of the sentence. Pointed at, it names the agent, *Subagent 4 · Finished*, and its
 description. A click opens the Agents window on that agent's tab, a finished
