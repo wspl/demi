@@ -34,3 +34,10 @@ The patch should be removed when a pinned upstream version passes this probe and
 the Cloud acceptance suite. Replacing the runtime still requires conversation
 browser, persistence, network, resource-limit, and failure-recovery checks on
 both Linux architectures.
+
+The backend works around one more gVisor bug: a read of a host-backed Unix
+stream socket returns at most the socket's `SO_SNDBUF`, so the backend keeps
+its runner socket's connections from queueing more
+([google/gvisor#15639](https://github.com/google/gvisor/issues/15639);
+`managed-hosts.md` § Backend socket). A new pin that fixes it lets the
+workaround go, in `crates/backend-http/src/listener.rs`.
