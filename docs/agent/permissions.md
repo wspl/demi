@@ -281,8 +281,8 @@ changes nothing, and the page shows the outcome it receives.
 row in the sidebar, and its status mark wherever the conversation shows one,
 shows a yellow dot: the conversation needs the user. It takes precedence over
 every other mark, the running one included, and shows whether the
-conversation is open, read or not. It is distinct from the orange mark of a
-conversation that failed or was stopped.
+conversation is open, read or not. It is distinct from the red mark of a
+conversation that failed ([Conversations and projects](../product/product.md#conversations-and-projects)).
 
 **The decision in the transcript.** The message an agent receives shows as a
 receipt row, as an agent message does ([Product

@@ -76,6 +76,20 @@ tooltip; its accessible label names the device and its state, *MacBook Pro ·
 Online*, or says *Removed device*. A row in a project
 shows no mark: its project's row already shows where it runs.
 
+A row's status dot says what the conversation's work is doing, in the colors
+an agent's tab and link wear, so one state has one look everywhere:
+
+| State | Dot |
+| --- | --- |
+| Running | Blue, the accent, breathing |
+| Finished, its answer read or not | Green |
+| Failed | Red |
+| A request waits for the user | Yellow with a halo, over every other dot ([Permissions](../agent/permissions.md)) |
+| Stopped by the user, or nothing run yet | The faint ring of a settled row |
+
+A Stop is the user's own decision, neither finished nor failed, and leaves
+the row settled ([Recovering an unfinished turn](#recovering-an-unfinished-turn)).
+
 On hover a row shows Archive at its end, and a pinned row shows Unpin
 before it. Pin is in the row's context menu, beside the other changes of a
 conversation; a row that is not pinned offers no Pin button on hover, as
