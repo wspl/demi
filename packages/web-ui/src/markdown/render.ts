@@ -250,7 +250,7 @@ const messageRenderer: RendererObject = {
       return agentLink(agent, body)
     // A file nobody opens is named as text.
     const files = activeOptions?.files
-    const target = files?.open ? messageFileTarget(token.href, files.cwd) : null
+    const target = files?.open ? messageFileTarget(token.href, files) : null
     if (target === null)
       return body
     // A picture that links a file shows itself, not the file's icon.

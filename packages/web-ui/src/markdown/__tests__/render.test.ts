@@ -53,6 +53,14 @@ test('an image loads from the web, as a data URL, or from the Host; anything els
   expect(html).toContain('<p>and</p>\n<p class="media-lone"><img src="data:image/png;base64,AAAA" alt="dot" /></p>\n<p>and mail</p>')
 })
 
+test('a link or image path starting ~/ names the Host home, and stays text while the home is not known', () => {
+  const markdown = '[todo](~/notes/todo.md) ![chart](~/out/chart.png)'
+  const html = renderMarkdown(markdown, { files: { ...files, home: '/Users/zan' } })
+  expect(html).toContain(fileLink('/Users/alex/notes/todo.md', 'todo'))
+  expect(html).toContain(`<img src="/raw?path=${encodeURIComponent('/Users/alex/out/chart.png')}" alt="chart" />`)
+  expect(renderMarkdown(markdown, { files })).toBe('<p>todo chart</p>\n')
+})
+
 test('an image inside a link follows the link', () => {
   expect(renderMarkdown('[![build](https://example.com/badge.svg)](https://example.com/ci)', { files }))
     .toBe('<p class="media-lone"><a href="https://example.com/ci" target="_blank" rel="noopener noreferrer"><img src="https://example.com/badge.svg" alt="build" /></a></p>\n')
