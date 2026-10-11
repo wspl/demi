@@ -37,6 +37,23 @@ export function galleryAttachment(id: string): AttachmentLookup {
 }
 
 /**
+ * A reply whose list items show what each fix looks like, as agents write
+ * them: a screenshot on the line after an item's words, which stands on its
+ * own line under them, at most 480 × 320, and two screenshots after
+ * another item's words, one per line, which stand side by side under them.
+ */
+export const listAttachmentMarkdown = `Two fixes, each with what it looks like now:
+
+- **Text** in the composer is larger (this one is 17 px).
+![The composer's text at 17 px](attachment:a5)
+- **Words** in the sidebar no longer break mid-word.
+  ![The sidebar before](attachment:a1)
+  ![The sidebar after](attachment:a6)
+
+Both are in the branch.
+`
+
+/**
  * A reply that gives the user what the agent made: four screenshots of
  * different sizes in a run, a recording and a screenshot in a run, links to
  * them and to a file, a number the conversation does not have, a lone image

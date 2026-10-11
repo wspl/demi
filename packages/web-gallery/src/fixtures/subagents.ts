@@ -1,6 +1,6 @@
 import type { AgentMessage, Block } from '@demicodes/protocol'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
-import { demoModel, inRun, shellView, thinkingText } from './blocks'
+import { demoModel, inRun, screenshotTool, shellView, thinkingText } from './blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { ago } from './time'
 
@@ -149,7 +149,9 @@ export const mainAgentMessage: AgentMessage = {
 }
 
 /** A reply that links the agents of `gallerySubagents` by their numbers, and one the conversation does not have. */
-export const agentLinksMarkdown = `I split the login work four ways. [Find the cookie assertion](agent:1) is still looking, [Update helper comments](agent:4) finished, [Run the fixture server](agent:6) failed on its port, and I stopped [CI screenshot review](agent:5) once the cause was clear. Each reports to the [main agent](agent:0); [Snapshot fonts](agent:9) was never started.`
+export const agentLinksMarkdown = `I split the login work four ways. [Find the cookie assertion](agent:1) is still looking, [Update helper comments](agent:4) finished, [Run the fixture server](agent:6) failed on its port, and I stopped [CI screenshot review](agent:5) once the cause was clear. Each reports to the [main agent](agent:0); [Snapshot fonts](agent:9) was never started.
+
+已经告诉[负责的 Agent](agent:4)：注释改完了。`
 
 /** The update Find the old suite paths sent while the `work` turn ran, naming the call that sent it. */
 export const suitePathsUpdate: AgentMessage = {
@@ -212,7 +214,13 @@ export function gallerySubagents(): SubagentRecord[] {
           ago(134_000),
           'Find the expect that still looks for sid in auth.test.ts. Do not edit yet.',
         ),
-        ...inRun(thinking('ag-cookie-think', ago(120_000), thinkingText), shell(
+        // A screenshot the child viewed, which opens in the viewer over the Agents window.
+        ...inRun(thinking('ag-cookie-think', ago(120_000), thinkingText), {
+          ...screenshotTool,
+          id: 'ag-cookie-screenshot',
+          toolUseId: 'ag-cookie-screenshot-use',
+          createdAt: ago(100_000),
+        }, shell(
           'ag-cookie-tool',
           ago(90_000),
           'Find the old cookie name in the login test',
