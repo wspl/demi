@@ -101,7 +101,7 @@ pub(crate) const CONTROL: Schema = Schema {
 /// Each conversation's database's. Its history holds the schema of each
 /// published release before the one that ships the current schema, and of
 /// each development build a server keeps data of (`upgrades.md` § A
-/// development build on a server); 0.1.22-dev.20261011T064359Z shipped the
+/// development build on a server); 0.1.22-dev.20261011T123543Z shipped the
 /// last one in it.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
@@ -120,7 +120,11 @@ pub(crate) const CONVERSATION: Schema = Schema {
         },
         Shipped {
             sql: include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql"),
-            migration: Migration::Code(blocks_with_lists),
+            migration: Migration::Code(relist_blocks),
+        },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql"),
+            migration: Migration::Code(relist_blocks),
         },
     ],
 };
@@ -514,18 +518,22 @@ fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     Ok(())
 }
 
-/// From the conversation schema of the development build
-/// 0.1.22-dev.20261011T064359Z, which a server keeps data of
-/// (`upgrades.md` § A development build on a server), to transcript block
-/// format 3: each block of a run carries its run, and each shell call's
-/// view its own files with those it removed and renamed, its run's and its
-/// request's (`edit-tracking.md` § What the conversation shows), computed
-/// by walking each agent's transcript in order from the edit copies in the
-/// conversation's blob namespace, by the code that computes them for a new
-/// block. The tables are as they were. A copy that cannot be read stops the
-/// migration, which the next open tries again; one the namespace no longer
-/// holds leaves its file named alone.
-fn blocks_with_lists(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlite::Result<()> {
+/// From the conversation schemas of the development builds a server keeps
+/// data of (`upgrades.md` § A development build on a server), each
+/// block's run and each shell call's lists computed anew: from
+/// 0.1.22-dev.20261011T064359Z's, whose blocks have neither, to transcript
+/// block format 3, where each block of a run carries its run, and each
+/// shell call's view its own files with those it removed and renamed, its
+/// run's and its request's (`edit-tracking.md` § What the conversation
+/// shows); from 0.1.22-dev.20261011T123543Z's, format 3, whose runs end at
+/// a `resume` block and at a Stop the user continued, to format 4, where
+/// the steps after them join the run before (`runtime.md` § Work groups),
+/// with the run's files to match. Each agent's transcript is walked in
+/// order from the edit copies in the conversation's blob namespace, by the
+/// code that computes them for a new block. The tables are as they were. A
+/// copy that cannot be read stops the migration, which the next open tries
+/// again; one the namespace no longer holds leaves its file named alone.
+fn relist_blocks(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlite::Result<()> {
     let nodes = transaction
         .prepare("SELECT DISTINCT node_id FROM blocks")?
         .query_map([], |row| row.get::<_, String>(0))?
@@ -1246,11 +1254,11 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
--- blocks.block: transcript block format 3.
+-- blocks.block: transcript block format 4.
 CREATE TABLE blocks (
   node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx     INTEGER NOT NULL CHECK (idx >= 0),
-  -- blocks.block: transcript block format 3
+  -- blocks.block: transcript block format 4
   block   TEXT NOT NULL,
   PRIMARY KEY (node_id, idx)
 ) STRICT;
@@ -1957,12 +1965,7 @@ mod tests {
                 ));
             }
             let state = if dev {
-                let mut state: serde_json::Value = serde_json::from_str(&state_of_0_1_21(serde_json::json!([]))).unwrap();
-                let fields = state.as_object_mut().unwrap();
-                fields.remove("wakeups");
-                fields.insert("reports".into(), serde_json::json!([]));
-                fields.insert("intervals".into(), serde_json::json!([]));
-                state.to_string()
+                state_of_development()
             } else {
                 state_of_0_1_21(serde_json::json!([]))
             };
@@ -2037,12 +2040,186 @@ mod tests {
         }
     }
 
-    /// The development build's conversation schema is the one its server's
-    /// databases record.
+    /// The checkpoint state of an idle agent, as the development builds
+    /// store it: command reports and intervals in place of 0.1.21's wakeups.
+    fn state_of_development() -> String {
+        let mut state: serde_json::Value = serde_json::from_str(&state_of_0_1_21(serde_json::json!([]))).unwrap();
+        let fields = state.as_object_mut().unwrap();
+        fields.remove("wakeups");
+        fields.insert("reports".into(), serde_json::json!([]));
+        fields.insert("intervals".into(), serde_json::json!([]));
+        state.to_string()
+    }
+
+    /// A conversation 0.1.22-dev.20261011T123543Z stored with its runs
+    /// split at a `resume` block, as after a restart: a call wrote `a.txt`
+    /// and was lost, the turn resumed, and the next call wrote it again.
+    /// Migrated, the second call joins the first's run, and its run's files
+    /// list `a.txt` once, counted from before the first call to after the
+    /// second.
+    // Cost: one database on disk, a few milliseconds.
     #[test]
-    fn the_development_build_in_the_history_is_the_one_its_server_records() {
-        let development = include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql");
-        assert_eq!(version_of(development), 1_563_671_332);
-        assert!(CONVERSATION.history.iter().any(|shipped| shipped.sql == development));
+    fn a_run_stored_split_at_a_resume_is_joined() {
+        use demi_shared_types::{Block, ChangedFile, EditKind, LineCounts, ToolView};
+
+        let model = serde_json::json!({
+            "providerId": "anthropic",
+            "model": {
+                "id": "claude-sonnet-4-5",
+                "name": "Claude Sonnet 4.5",
+                "contextWindow": 200000,
+                "outputLimit": 64000,
+                "thinking": [{"type": "disabled"}],
+                "acceptedExtensions": ["png"]
+            },
+            "thinking": {"type": "disabled"},
+            "serviceTierId": null
+        });
+        let texts: HashMap<BlobRef, Bytes> = ["", "one\n", "one\ntwo\n"]
+            .into_iter()
+            .map(|text| (BlobRef::of(text.as_bytes()), Bytes::from(text)))
+            .collect();
+        let copies = |original: &str, modified: &str| {
+            serde_json::json!({
+                "original": BlobRef::of(original.as_bytes()).to_string(),
+                "modified": BlobRef::of(modified.as_bytes()).to_string()
+            })
+        };
+        let own = |kind: &str, original: &str, modified: &str| {
+            serde_json::json!({
+                "path": "/w/a.txt",
+                "kind": kind,
+                "added": 1,
+                "removed": 0,
+                "edits": [{"copies": copies(original, modified)}]
+            })
+        };
+        // As the build listed each call's files: its run and its request
+        // start at the call itself.
+        let listed = |kind: &str, call: &str, original: &str, modified: &str| {
+            serde_json::json!({
+                "path": "/w/a.txt",
+                "kind": kind,
+                "lines": {"added": 1, "removed": 0},
+                "edits": [{
+                    "call": call,
+                    "path": "/w/a.txt",
+                    "segment": 0,
+                    "created": kind == "added",
+                    "copies": copies(original, modified)
+                }]
+            })
+        };
+        let call = |id: &str, command: &str, kind: &str, original: &str, modified: &str| {
+            serde_json::json!({
+                "type": "tool_call",
+                "id": id,
+                "createdAt": "2026-10-11T12:40:00.000Z",
+                "model": model,
+                "run": id,
+                "toolUseId": format!("toolu_{id}"),
+                "toolName": "shell",
+                "input": r#"{"script":"echo more >> a.txt","description":"Write the notes"}"#,
+                "status": "completed",
+                "output": [{"type": "text", "text": "done"}],
+                "view": {
+                    "kind": "shell",
+                    "status": "exited",
+                    "commandId": command,
+                    "exitCode": 0,
+                    "runningMs": 10,
+                    "idleMs": 0,
+                    "chunks": [],
+                    "viewTruncated": false,
+                    "files": [own(kind, original, modified)],
+                    "filesTruncated": false,
+                    "pathChanges": [],
+                    "runFiles": [listed(kind, command, original, modified)],
+                    "requestFiles": [listed(kind, command, original, modified)]
+                }
+            })
+        };
+        let blocks = [
+            serde_json::json!({
+                "type": "user",
+                "id": "u1",
+                "turnId": "t1",
+                "createdAt": "2026-10-11T12:40:00.000Z",
+                "model": model,
+                "content": [{"type": "text", "text": "Write the notes"}],
+                "preamble": null
+            }),
+            call("c1", "1", "added", "", "one\n"),
+            serde_json::json!({
+                "type": "resume",
+                "id": "r1",
+                "turnId": "t1",
+                "createdAt": "2026-10-11T12:41:00.000Z",
+                "model": model,
+                "reason": "The backend restarted."
+            }),
+            call("c2", "2", "modified", "one\n", "one\ntwo\n"),
+        ];
+        let sql = include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql");
+        let (_directory, path, mut connection) = database(sql);
+        connection
+            .execute(
+                "INSERT INTO nodes
+                   (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
+                 VALUES ('root', 0, '', 1, 0, 1, 0, ?1, ?2, 0)",
+                rusqlite::params![state_of_development(), i64::try_from(blocks.len()).unwrap()],
+            )
+            .unwrap();
+        for (index, block) in blocks.iter().enumerate() {
+            // Each is a block of format 3 as the build wrote it.
+            demi_shared_types::decode::<Block>(&block.to_string()).unwrap();
+            connection
+                .execute(
+                    "INSERT INTO blocks (node_id, idx, block) VALUES ('root', ?1, ?2)",
+                    rusqlite::params![i64::try_from(index).unwrap(), block.to_string()],
+                )
+                .unwrap();
+        }
+
+        let copies = Copies { texts, failing: None };
+        CONVERSATION.apply(&mut connection, &path, &copies).unwrap();
+        let stored: Vec<Block> = connection
+            .prepare("SELECT block FROM blocks WHERE node_id = 'root' ORDER BY idx")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .map(|text| demi_shared_types::decode::<Block>(&text.unwrap()).unwrap())
+            .collect();
+        let Block::ToolCall(latest) = stored.last().unwrap() else {
+            panic!("{stored:?}");
+        };
+        assert_eq!(latest.run.as_ref().map(|run| run.as_str()), Some("c1"));
+        let Some(ToolView::Shell(view)) = &latest.view else {
+            panic!("{latest:?}");
+        };
+        let listed = |files: &Option<Vec<ChangedFile>>| {
+            files
+                .iter()
+                .flatten()
+                .map(|file| (file.path.clone(), file.kind, file.lines))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            listed(&view.run_files),
+            [("/w/a.txt".to_owned(), EditKind::Added, Some(LineCounts { added: 2, removed: 0 }))]
+        );
+    }
+
+    /// The development builds' conversation schemas are the ones their
+    /// server's databases record.
+    #[test]
+    fn the_development_builds_in_the_history_are_the_ones_their_server_records() {
+        for (development, version) in [
+            (include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql"), 1_563_671_332),
+            (include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql"), 845_924_528),
+        ] {
+            assert_eq!(version_of(development), version);
+            assert!(CONVERSATION.history.iter().any(|shipped| shipped.sql == development));
+        }
     }
 }
