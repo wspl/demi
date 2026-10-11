@@ -124,6 +124,12 @@ const folded = computed({
     resources.local.foldedProjects = value
   },
 })
+const foldedGroups = computed({
+  get: () => resources.local.foldedGroups ?? [],
+  set: (value) => {
+    resources.local.foldedGroups = value
+  },
+})
 // Add Device, from the host menu or elsewhere, pairs right here rather than in settings;
 // started beside a device menu, it hands that menu the device it pairs.
 const pairing = useDevicePairing(claimDevice)
@@ -250,6 +256,7 @@ useAppShortcuts(
       <template #sidebar>
         <AppSidebar
           v-model:collapsed-projects="folded"
+          v-model:folded-groups="foldedGroups"
           :account="account"
           :projects="resources.projects"
           :conversations="sidebarConversations"

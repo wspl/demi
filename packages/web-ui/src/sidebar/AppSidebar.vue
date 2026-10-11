@@ -8,6 +8,8 @@ import Popover from '@demicodes/web-ui/ui/Popover.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
+import Fold from '@demicodes/web-ui/ui/Fold.vue'
+import { FOLD_MS } from '@demicodes/web-ui/ui/fold'
 import { copyConversationId } from '../agent/copy-conversation-id'
 import type {
   ListLoad,
@@ -20,9 +22,10 @@ import type {
 import { plainConversations, projectGroups } from './group-conversations'
 import { useSidebarDrag } from './useSidebarDrag'
 import { reorderPeers } from './reorder'
-import { visibleEntries } from './list-model'
+import { labelWaiting, listLines, type SidebarGroup } from './list-model'
 import { useSidebarList } from './useSidebarList'
 import SidebarAccountRow from './SidebarAccount.vue'
+import SidebarGroupLabel from './SidebarGroupLabel.vue'
 import SidebarNavItem from './SidebarNavItem.vue'
 import SidebarProjectHeader from './SidebarProjectHeader.vue'
 import SidebarProjectMenu from './SidebarProjectMenu.vue'
@@ -35,7 +38,8 @@ import ConversationDeleteDialog from './ConversationDeleteDialog.vue'
  * Top: the app and its entries: New, Search, then the entries the host gives, such as a
  * plugin's settings section, then Archived; each but New and Search opens its settings section. Middle: plain
  * conversations, then every project as a collapsible group of its conversations, with one
- * selection across all of them. Bottom: the account and settings.
+ * selection across all of them; the Conversations and Projects groups each fold under their label.
+ * Bottom: the account and settings.
  */
 const props = defineProps<{
   account: SidebarAccount
@@ -72,6 +76,8 @@ const emit = defineEmits<{
 }>()
 
 const collapsedProjects = defineModel<string[]>('collapsedProjects', { default: () => [] })
+/** The groups folded under their label; the host keeps them per browser. */
+const foldedGroups = defineModel<SidebarGroup[]>('foldedGroups', { default: () => [] })
 const renamingId = ref<string | null>(null)
 const listRef = ref<HTMLElement>()
 const scrollArea = ref<InstanceType<typeof ScrollArea>>()
@@ -93,23 +99,60 @@ const foldedSet = computed(() => {
   }
   return new Set(collapsedProjects.value)
 })
-const entries = computed(() => visibleEntries(plain.value, groups.value, foldedSet.value))
+const lines = computed(() => listLines(
+  plain.value,
+  groups.value,
+  foldedSet.value,
+  new Set(foldedGroups.value),
+  props.activeId,
+))
+/** The lines the keyboard reaches: those no folded group hides. */
+const entries = computed(() => lines.value.filter((line) => !line.hidden))
 const byId = computed(
   () => new Map(
     props.conversations.map((conversation) => [conversation.id, conversation])
   )
 )
 const projectById = computed(() => new Map(props.projects.map((project) => [project.id, project])))
+/** Each group's label, in list order, with the dot it carries while folded. */
+const groupLabels = computed(() => {
+  const label = (group: SidebarGroup, text: string, conversations: readonly SidebarConversation[]) => {
+    const folded = foldedGroups.value.includes(group)
+    return {
+      kind: 'heading' as const,
+      id: `${group}-heading`,
+      // A label is never hidden; its group's lines are.
+      hidden: false,
+      group,
+      text,
+      folded,
+      waiting: labelWaiting(folded, conversations, props.activeId),
+    }
+  }
+  return {
+    conversations: label('conversations', 'Conversations', plain.value),
+    projects: label('projects', 'Projects', groups.value.flatMap((group) => group.items)),
+  }
+})
 const displayEntries = computed(() => [
-  { kind: 'heading' as const, id: 'conversations-heading' },
-  ...entries.value.filter(
-    (entry) => entry.kind === 'conversation' && entry.projectId === null
+  groupLabels.value.conversations,
+  ...lines.value.filter(
+    (line) => line.kind === 'conversation' && line.projectId === null
   ),
-  { kind: 'heading' as const, id: 'projects-heading' },
-  ...entries.value.filter(
-    (entry) => entry.kind === 'project' || entry.projectId !== null
+  groupLabels.value.projects,
+  ...lines.value.filter(
+    (line) => line.kind === 'project' || line.projectId !== null
   ),
 ])
+
+/** The first project header shown, which sits right under the Projects label without a gap. */
+const firstShownProject = computed(() => lines.value.find((line) => line.kind === 'project' && !line.hidden)?.id)
+
+function toggleGroup(group: SidebarGroup): void {
+  foldedGroups.value = foldedGroups.value.includes(group)
+    ? foldedGroups.value.filter((each) => each !== group)
+    : [...foldedGroups.value, group]
+}
 
 // Folding is transient; reveal the source again after layout has settled on drop or cancellation.
 watch(drag.source, async (source, previous, onCleanup) => {
@@ -274,7 +317,11 @@ function onListPointerDown() {
 }
 
 // A key closes an open menu first: its targets are the selection the key is about to change.
+// A key typed in a control inside the list, a label's fold or a row's action, is the control's:
+// Enter on a focused label folds its group rather than opening the focused row.
 function onListKeydown(event: KeyboardEvent): void {
+  if (event.target !== event.currentTarget)
+    return
   if (event.key === 'Escape' && drag.source.value) {
     event.preventDefault()
     drag.cancel()
@@ -465,6 +512,7 @@ function selectProjectConversations(project: SidebarProject): void {
           name="sidebar-items"
           tag="div"
           class="relative flex flex-col gap-px"
+          :style="{ '--fold-ms': `${FOLD_MS}ms` }"
           @before-enter="beforeEnterEntry"
           @enter="enterEntry"
           @after-enter="afterEnterEntry"
@@ -473,11 +521,12 @@ function selectProjectConversations(project: SidebarProject): void {
           @leave="leaveEntry"
         >
           <div
-            v-for="(entry, index) in displayEntries"
+            v-for="entry in displayEntries"
             :key="entry.id"
             class="sidebar-entry relative"
             :class="[
-              entry.kind === 'project' && displayEntries[index - 1]?.id !== 'projects-heading' ? 'mt-3' : '',
+              // A line its folded group hides gives back the 1px gap above it, so the label stands alone.
+              entry.hidden ? '-mt-px' : entry.kind === 'project' && entry.id !== firstShownProject ? 'mt-3' : '',
               // Headings stick to the top of the list; a project's header sticks just under the 30px Projects heading.
               // The gap above Projects is a margin on the entry, outside the sticky box, so both headings stick the same.
               entry.kind === 'heading' ? 'sticky top-0 z-20 bg-surface-base' : entry.kind === 'project' ? 'sticky top-[30px] z-10 bg-surface-base' : '',
@@ -491,65 +540,71 @@ function selectProjectConversations(project: SidebarProject): void {
             :data-sidebar-kind="entry.kind"
             @pointerdown="entry.kind !== 'heading' && renamingId !== entry.id && drag.start($event, entry)"
           >
-            <div
+            <SidebarGroupLabel
               v-if="entry.kind === 'heading'"
-              class="group/projects mb-1.5 flex h-6 items-center pl-2.5 pr-0.5 text-[11px] uppercase tracking-wide text-fg-subtle"
+              :label="entry.text"
+              :folded="entry.folded"
+              :waiting="entry.waiting"
+              @toggle="toggleGroup(entry.group)"
             >
-              <span class="flex-1">{{ entry.id === 'projects-heading' ? 'Projects' : 'Conversations' }}</span>
-              <Tooltip
-                v-if="entry.id === 'projects-heading'"
-                content="Add project"
-                placement="right"
-              >
-                <IconButton
-                  :icon="FolderPlus"
-                  size="xs"
-                  variant="ghost"
-                  aria-label="Add project"
-                  class="opacity-0 transition-opacity group-hover/projects:opacity-100"
-                  @click="emit('addProject')"
-                />
-              </Tooltip>
-              <Tooltip
+              <template #action>
+                <Tooltip
+                  v-if="entry.group === 'projects'"
+                  content="Add project"
+                  placement="right"
+                >
+                  <IconButton
+                    :icon="FolderPlus"
+                    size="xs"
+                    variant="ghost"
+                    aria-label="Add project"
+                    @click="emit('addProject')"
+                  />
+                </Tooltip>
+                <Tooltip
+                  v-else
+                  content="New conversation"
+                  placement="right"
+                >
+                  <IconButton
+                    :icon="SquarePen"
+                    size="xs"
+                    variant="ghost"
+                    aria-label="New conversation"
+                    @click="emit('create', null)"
+                  />
+                </Tooltip>
+              </template>
+            </SidebarGroupLabel>
+            <!-- A line a folded group hides stays listed and folds by height, so the label's
+                 group closes smoothly and the open conversation's row glides up under it. -->
+            <Fold v-else :open="!entry.hidden">
+              <SidebarProjectHeader
+                v-if="entry.kind === 'project'"
+                :project="projectById.get(entry.id)!"
+                :collapsed="isFolded(entry.id)"
+                :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
+                @toggle="list.onProjectClick(entry.id)"
+                @create="emit('create', entry.id)"
+                @contextmenu="(event) => openProjectMenu(projectById.get(entry.id)!, event)"
+              />
+              <SidebarRow
                 v-else
-                content="New conversation"
-                placement="right"
-              >
-                <IconButton
-                  :icon="SquarePen"
-                  size="xs"
-                  variant="ghost"
-                  aria-label="New conversation"
-                  class="opacity-0 transition-opacity group-hover/projects:opacity-100"
-                  @click="emit('create', null)"
-                />
-              </Tooltip>
-            </div>
-            <SidebarProjectHeader
-              v-else-if="entry.kind === 'project'"
-              :project="projectById.get(entry.id)!"
-              :collapsed="isFolded(entry.id)"
-              :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
-              @toggle="list.onProjectClick(entry.id)"
-              @create="emit('create', entry.id)"
-              @contextmenu="(event) => openProjectMenu(projectById.get(entry.id)!, event)"
-            />
-            <SidebarRow
-              v-else
-              :conversation="byId.get(entry.id)!"
-              :open="entry.id === activeId"
-              :selected="list.isSelected(entry.id)"
-              :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
-              :menu-open="rowMenuOpenFor(entry.id)"
-              :renaming="renamingId === entry.id"
-              @click="(event) => list.onRowClick(entry.id, event)"
-              @contextmenu="(event) => openRowMenu(entry.id, event)"
-              @archive="emit('archive', [entry.id])"
-              @rename-start="renamingId = entry.id"
-              @rename-submit="(title) => submitRename(entry.id, title)"
-              @rename-cancel="cancelRename"
-              @unpin="emit('pin', [entry.id], false)"
-            />
+                :conversation="byId.get(entry.id)!"
+                :open="entry.id === activeId"
+                :selected="list.isSelected(entry.id)"
+                :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
+                :menu-open="rowMenuOpenFor(entry.id)"
+                :renaming="renamingId === entry.id"
+                @click="(event) => list.onRowClick(entry.id, event)"
+                @contextmenu="(event) => openRowMenu(entry.id, event)"
+                @archive="emit('archive', [entry.id])"
+                @rename-start="renamingId = entry.id"
+                @rename-submit="(title) => submitRename(entry.id, title)"
+                @rename-cancel="cancelRename"
+                @unpin="emit('pin', [entry.id], false)"
+              />
+            </Fold>
           </div>
         </TransitionGroup>
       </div>
@@ -666,6 +721,11 @@ function selectProjectConversations(project: SidebarProject): void {
 </template>
 
 <style scoped>
+/* A line its folded group hides gives back its margin as its height folds. The list's own
+   transitions below come later, so they win while an entry enters, leaves or moves. */
+.sidebar-entry {
+  transition: margin-top var(--fold-ms) ease;
+}
 .sidebar-items-move,
 .sidebar-items-enter-active,
 .sidebar-items-leave-active {
@@ -698,6 +758,7 @@ function selectProjectConversations(project: SidebarProject): void {
   bottom: -1px;
 }
 @media (prefers-reduced-motion: reduce) {
+  .sidebar-entry,
   .sidebar-items-move,
   .sidebar-items-enter-active,
   .sidebar-items-leave-active {
