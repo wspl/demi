@@ -1007,19 +1007,20 @@ async fn after_a_restart_an_operation_waits_for_the_runner_the_shutdown_disconne
 type Socket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
-/// A page's file watch of the conversation, from the product's origin.
-async fn watch_socket(device: &OnDevice) -> Socket {
+/// A page's file watch at `route`, from the product's origin.
+async fn watch_socket_at(device: &OnDevice, route: &str) -> Socket {
     use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
-    let mut request = device
-        .backend
-        .ws_url(&format!("/api/conversations/{CONVERSATION}/fs/watch"))
-        .into_client_request()
-        .unwrap();
+    let mut request = device.backend.ws_url(route).into_client_request().unwrap();
     let headers = request.headers_mut();
     headers.insert("cookie", device.master.cookie.parse().unwrap());
     headers.insert("origin", device.backend.url.parse().unwrap());
     let (socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
     socket
+}
+
+/// A page's file watch of the conversation.
+async fn watch_socket(device: &OnDevice) -> Socket {
+    watch_socket_at(device, &format!("/api/conversations/{CONVERSATION}/fs/watch")).await
 }
 
 /// The next message the watch sends.
@@ -1034,55 +1035,93 @@ async fn watch_message(socket: &mut Socket) -> Value {
     }
 }
 
-/// Reads `changed` messages until one names `path`.
-async fn reported(socket: &mut Socket, path: &str) {
+async fn send_watch(socket: &mut Socket, message: Value) {
+    use futures_util::SinkExt as _;
+    use tokio_tungstenite::tungstenite::Message;
+    socket.send(Message::Text(message.to_string().into())).await.unwrap();
+}
+
+/// Reads `changed` messages until one names `key`: the number of its change.
+async fn changed_at(socket: &mut Socket, key: &str) -> u64 {
     loop {
         let message = watch_message(socket).await;
         assert_eq!(message["type"], "changed", "{message}");
-        let paths = message["paths"].as_array().unwrap();
-        if paths.iter().any(|reported| reported == path) {
-            return;
+        let found = message["changes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|change| change[0] == key);
+        if let Some(change) = found {
+            return change[1].as_u64().unwrap();
         }
     }
 }
 
-// A second or two: a paired device's real runner starts its watch.
+/// The Host's number an answer was read at, `X-Demi-Read-At`: its epoch and
+/// its number.
+fn read_at(answer: &Answer) -> (String, u64) {
+    let value = header(answer, "x-demi-read-at").expect("the answer says when it was read");
+    let (epoch, number) = value.rsplit_once('.').unwrap();
+    (epoch.to_owned(), number.parse().unwrap())
+}
+
+/// Two pages that subscribe to one file hear it live, from one subscription
+/// on the Host, and changed; every read answers the Host's number, a 304
+/// and a binary file's 415 as much as a text, so a change after a read is
+/// numbered above it and a read after the change not below it
+/// (`web-api.md` § File watch, § File text and working tree changes). A
+/// second or two: a paired device's real runner starts its watch.
 #[tokio::test]
-async fn pages_that_watch_the_files_hear_what_changed_and_a_text_they_hold_answers_not_modified() {
+async fn pages_hear_a_file_live_and_changed_at_numbers_that_order_its_reads() {
     let device = OnDevice::start().await;
-    let mut first = watch_socket(&device).await;
-    let mut second = watch_socket(&device).await;
-    for socket in [&mut first, &mut second] {
-        assert_eq!(
-            watch_message(socket).await,
-            json!({ "type": "state", "state": "live" })
-        );
-    }
     let a = device.path("a.txt");
     std::fs::write(&a, "1\n").unwrap();
-    reported(&mut first, &a).await;
-    reported(&mut second, &a).await;
+    let mut first = watch_socket(&device).await;
+    let mut second = watch_socket(&device).await;
+    for (socket, key) in [(&mut first, "k1"), (&mut second, "k2")] {
+        let subscribe = json!({ "type": "subscribe", "subscriptions": [{ "key": key, "kind": "file", "path": a }] });
+        send_watch(socket, subscribe).await;
+    }
+    let live = watch_message(&mut first).await;
+    assert_eq!((&live["type"], &live["key"]), (&json!("live"), &json!("k1")), "{live}");
+    let other = watch_message(&mut second).await;
+    assert_eq!(other["key"], "k2");
+    // One subscription on the Host serves both: it started once.
+    assert_eq!((&other["since"], &other["epoch"]), (&live["since"], &live["epoch"]));
+    let (since, epoch) = (live["since"].as_u64().unwrap(), live["epoch"].as_str().unwrap());
 
     let route = format!("/fs/file?{}", query(&[("path", &a)]));
     let read = device.get(&route).await;
     assert_eq!(read.status, StatusCode::OK);
+    let (read_epoch, before) = read_at(&read);
+    assert_eq!(read_epoch, epoch);
+    assert!(before >= since, "read at {before}, live since {since}");
     let version = header(&read, "etag").unwrap().to_owned();
-    let held = device
-        .call(Method::GET, &route, &[("if-none-match", &version)], None)
-        .await;
-    assert_eq!(held.status, StatusCode::NOT_MODIFIED);
-    assert_eq!(header(&held, "etag"), Some(version.as_str()));
-    assert!(held.body.is_empty());
 
     std::fs::write(&a, "1\n2\n").unwrap();
-    let changed = device
-        .call(Method::GET, &route, &[("if-none-match", &version)], None)
-        .await;
-    assert_eq!(
-        changed.json::<Value>(),
-        json!({ "path": a, "text": "1\n2\n" })
-    );
-    assert_ne!(header(&changed, "etag"), Some(version.as_str()));
+    let at = changed_at(&mut first, "k1").await;
+    assert_eq!(changed_at(&mut second, "k2").await, at);
+    assert!(at > before, "changed at {at}, read at {before}");
+    let again = device.call(Method::GET, &route, &[("if-none-match", &version)], None).await;
+    assert_eq!(again.json::<Value>(), json!({ "path": a, "text": "1\n2\n" }));
+    assert!(read_at(&again).1 >= at);
+    let version = header(&again, "etag").unwrap().to_owned();
+    let held = device.call(Method::GET, &route, &[("if-none-match", &version)], None).await;
+    assert_eq!(held.status, StatusCode::NOT_MODIFIED);
+    assert!(held.body.is_empty());
+    assert!(read_at(&held).1 >= at);
+
+    let binary = device.path("tool.bin");
+    std::fs::write(&binary, b"\x7fELF\0\0\x01").unwrap();
+    let refused = device.get(&format!("/fs/file?{}", query(&[("path", &binary)]))).await;
+    assert_eq!(refused.refusal(), (StatusCode::UNSUPPORTED_MEDIA_TYPE, ErrorCode::NotText));
+    assert!(header(&refused, "etag").is_some());
+    assert_eq!(read_at(&refused).0, epoch);
+
+    // A renew answers the keys the page holds; a key it never held is not
+    // among them, and the page subscribes it again.
+    send_watch(&mut first, json!({ "type": "renew", "keys": ["k1", "unknown"] })).await;
+    assert_eq!(watch_message(&mut first).await, json!({ "type": "renewed", "keys": ["k1"] }));
     device.backend.close().await;
 }
 
@@ -1095,10 +1134,6 @@ async fn a_quiet_file_watch_sends_a_heartbeat_after_the_interval() {
     harness.pages.heartbeat = Duration::from_millis(200);
     let device = OnDevice::start_with(harness).await;
     let mut socket = watch_socket(&device).await;
-    assert_eq!(
-        watch_message(&mut socket).await,
-        json!({ "type": "state", "state": "live" })
-    );
     let quiet = std::time::Instant::now();
     // A hang guard: without a heartbeat the watch stays silent.
     let heartbeat = tokio::time::timeout(Duration::from_secs(10), watch_message(&mut socket))
@@ -1106,5 +1141,43 @@ async fn a_quiet_file_watch_sends_a_heartbeat_after_the_interval() {
         .expect("a heartbeat comes");
     assert_eq!(heartbeat, json!({ "type": "heartbeat" }));
     assert!(quiet.elapsed() >= Duration::from_millis(200), "no heartbeat before the interval");
+    device.backend.close().await;
+}
+
+/// A device's folder dialog watches its listings through device access
+/// (`sessions-and-targets.md` § Every way to a Host): a folder's details
+/// change when a file in it is written, its listing answers the Host's
+/// number, and a message the page should not send closes the socket.
+#[tokio::test]
+async fn a_devices_folder_dialog_hears_its_folders_change_through_device_access() {
+    let device = OnDevice::start().await;
+    let logs = device.root.join("logs");
+    std::fs::create_dir(&logs).unwrap();
+    std::fs::write(logs.join("server.log"), "1\n").unwrap();
+    let logs = logs.to_str().unwrap().to_owned();
+    let mut socket = watch_socket_at(&device, &format!("/api/devices/{}/fs/watch", device.paired.id())).await;
+    let subscribe = json!({ "type": "subscribe", "subscriptions": [{ "key": "logs", "kind": "folder_details", "path": logs }] });
+    send_watch(&mut socket, subscribe).await;
+    let live = watch_message(&mut socket).await;
+    assert_eq!(live["type"], "live", "{live}");
+
+    let listing = format!("/api/devices/{}/fs?{}", device.paired.id(), query(&[("path", &logs)]));
+    let listed = answer(device.backend.response(Method::GET, &listing, &device.master, &[], None).await).await;
+    assert_eq!(listed.status, StatusCode::OK);
+    let (_, before) = read_at(&listed);
+    use std::io::Write as _;
+    let mut log = std::fs::OpenOptions::new().append(true).open(format!("{logs}/server.log")).unwrap();
+    log.write_all(b"2\n").unwrap();
+    drop(log);
+    assert!(changed_at(&mut socket, "logs").await > before);
+
+    send_watch(&mut socket, json!({ "type": "paths", "paths": [] })).await;
+    match socket.next().await {
+        Some(Ok(tokio_tungstenite::tungstenite::Message::Close(Some(frame)))) => {
+            assert_eq!(u16::from(frame.code), 1003);
+            assert_eq!(frame.reason.as_str(), "invalid_message");
+        }
+        other => panic!("expected the socket to close, got {other:?}"),
+    }
     device.backend.close().await;
 }

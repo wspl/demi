@@ -479,3 +479,62 @@ async fn chrome_connects_to_the_runner_directly_and_reads_a_range_of_a_file() {
     eprintln!("the direct channel connected in {} ms", read["connectedMs"]);
     backend.close().await;
 }
+
+/// A direct channel's watch and text answer the runner's numbers, the same
+/// as the relay's since the runner counts once for its process: a change
+/// after a direct read is numbered above it, a direct read after it not
+/// below it, and the relay's read of the file names the same epoch
+/// (`direct-channel.md` § Operations on the channel). A second or two: the
+/// runner starts its watch.
+#[tokio::test]
+async fn a_direct_watch_and_text_order_reads_and_changes_with_the_relays_numbers() {
+    let harness = Harness::new();
+    let (backend, master, laptop) = conversation(&harness).await;
+    let mut socket = signaling(&backend, &master, &laptop).await;
+    let page = connected_page(&mut socket).await;
+    let cwd = laptop.runner.home_dir().to_str().unwrap().to_owned();
+    let notes = format!("{cwd}/notes.md");
+    std::fs::write(&notes, "1\n").unwrap();
+
+    let mut watch = page
+        .open(json!({ "op": "watch", "conversation": CONVERSATION, "cwd": cwd }))
+        .await;
+    assert_eq!(watch.next().await.json(), json!({ "ok": true }));
+    let subscribe = json!({ "type": "subscribe", "subscriptions": [{ "key": "notes", "kind": "file", "path": notes }] });
+    watch.text(&subscribe.to_string());
+    let live = watch.next().await.json();
+    assert_eq!(live["type"], "live", "{live}");
+    let epoch = live["epoch"].as_str().unwrap().to_owned();
+    let since = live["since"].as_u64().unwrap();
+    let text = async || {
+        let mut channel = page
+            .open(json!({ "op": "text", "conversation": CONVERSATION, "cwd": cwd, "path": notes }))
+            .await;
+        let answer = channel.next().await.json();
+        assert_eq!(answer["readAt"]["epoch"], epoch.as_str(), "{answer}");
+        answer["readAt"]["number"].as_u64().unwrap()
+    };
+    let before = text().await;
+    assert!(before >= since, "read at {before}, live since {since}");
+
+    std::fs::write(&notes, "1\n2\n").unwrap();
+    let at = loop {
+        let message = watch.next().await.json();
+        assert_eq!(message["type"], "changed", "{message}");
+        if let Some(change) = message["changes"].as_array().unwrap().iter().find(|change| change[0] == "notes") {
+            break change[1].as_u64().unwrap();
+        }
+    };
+    assert!(at > before, "changed at {at}, read at {before}");
+    assert!(text().await >= at);
+
+    let relay = backend
+        .get(
+            &format!("/api/conversations/{CONVERSATION}/fs/file?path={}", url::form_urlencoded::byte_serialize(notes.as_bytes()).collect::<String>()),
+            Some(&master),
+        )
+        .await;
+    let read_at = relay.headers.get("x-demi-read-at").unwrap().to_str().unwrap();
+    assert!(read_at.starts_with(&format!("{epoch}.")), "{read_at}");
+    backend.close().await;
+}

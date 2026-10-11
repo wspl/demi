@@ -1,14 +1,17 @@
-//! The replies of fs and working-tree calls: `fs_ok { id, op, result }` and
-//! `git_ok { id, op, result }`, where `op` names the call and decides the
-//! type of `result`. Their serde is written by hand, because the keys follow
-//! the message tag in the order `id`, `op`, `result`, and `op` must be read
-//! before `result` can be decoded.
+//! The replies of fs and working-tree calls: `fs_ok { id, readAt, op,
+//! result }` and `git_ok { id, readAt, op, result }`, where `op` names the
+//! call and decides the type of `result`, and `readAt` is the Host's number
+//! taken as the runner received the call, before it read anything
+//! (`runner.md` § Watching files). Their serde is written by hand, because
+//! the keys follow the message tag in the order `id`, `readAt`, `op`,
+//! `result`, and `op` must be read before `result` can be decoded.
 
 use std::fmt;
 use std::marker::PhantomData;
 
 use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
+use demi_shared_types::ReadAt;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::{DirEntry, FileHash, FileRead, FileStat, GitChanges, Looked, OpenedFile};
@@ -17,6 +20,7 @@ use super::{DirEntry, FileHash, FileRead, FileStat, GitChanges, Looked, OpenedFi
 #[derive(Debug, Clone, PartialEq)]
 pub struct FsOk {
     pub id: String,
+    pub read_at: ReadAt,
     pub result: FsResult,
 }
 
@@ -85,6 +89,8 @@ pub struct GitOk {
     #[garde(skip)]
     pub id: String,
     #[garde(dive)]
+    pub read_at: ReadAt,
+    #[garde(dive)]
     pub result: GitResult,
 }
 
@@ -107,8 +113,9 @@ impl GitResult {
 
 impl Serialize for FsOk {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut reply = serializer.serialize_struct("FsOk", 3)?;
+        let mut reply = serializer.serialize_struct("FsOk", 4)?;
         reply.serialize_field("id", &self.id)?;
+        reply.serialize_field("readAt", &self.read_at)?;
         reply.serialize_field("op", self.result.op())?;
         match &self.result {
             FsResult::Look(looked) => reply.serialize_field("result", looked)?,
@@ -140,8 +147,9 @@ impl Serialize for FsOk {
 
 impl Serialize for GitOk {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut reply = serializer.serialize_struct("GitOk", 3)?;
+        let mut reply = serializer.serialize_struct("GitOk", 4)?;
         reply.serialize_field("id", &self.id)?;
+        reply.serialize_field("readAt", &self.read_at)?;
         reply.serialize_field("op", self.result.op())?;
         match &self.result {
             GitResult::Changes(changes) => reply.serialize_field("result", changes)?,
@@ -153,15 +161,23 @@ impl Serialize for GitOk {
 
 impl<'de> Deserialize<'de> for FsOk {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let (id, result) = deserializer.deserialize_map(ReplyVisitor(PhantomData))?;
-        Ok(Self { id, result })
+        let (id, read_at, result) = deserializer.deserialize_map(ReplyVisitor(PhantomData))?;
+        Ok(Self {
+            id,
+            read_at,
+            result,
+        })
     }
 }
 
 impl<'de> Deserialize<'de> for GitOk {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let (id, result) = deserializer.deserialize_map(ReplyVisitor(PhantomData))?;
-        Ok(Self { id, result })
+        let (id, read_at, result) = deserializer.deserialize_map(ReplyVisitor(PhantomData))?;
+        Ok(Self {
+            id,
+            read_at,
+            result,
+        })
     }
 }
 
@@ -249,11 +265,12 @@ impl<'de> Deserialize<'de> for Nil {
     }
 }
 
-/// Visits a reply's `id`, `op` and `result`; `op` precedes `result`.
+/// Visits a reply's `id`, `readAt`, `op` and `result`; `op` precedes
+/// `result`.
 struct ReplyVisitor<R>(PhantomData<R>);
 
 impl<'de, R: ReplyResult> Visitor<'de> for ReplyVisitor<R> {
-    type Value = (String, R);
+    type Value = (String, ReadAt, R);
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str(R::REPLY)
@@ -261,11 +278,13 @@ impl<'de, R: ReplyResult> Visitor<'de> for ReplyVisitor<R> {
 
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
         let mut id = None;
+        let mut read_at = None;
         let mut op: Option<String> = None;
         let mut result = None;
         while let Some(key) = map.next_key::<String>()? {
             match key.as_str() {
                 "id" if id.is_none() => id = Some(map.next_value()?),
+                "readAt" if read_at.is_none() => read_at = Some(map.next_value()?),
                 "op" if op.is_none() => op = Some(map.next_value()?),
                 "result" if result.is_none() => {
                     let op = op
@@ -273,12 +292,17 @@ impl<'de, R: ReplyResult> Visitor<'de> for ReplyVisitor<R> {
                         .ok_or_else(|| de::Error::custom("op must precede result"))?;
                     result = Some(R::read(op, &mut map)?);
                 }
-                "id" | "op" | "result" => return Err(de::Error::duplicate_field("reply field")),
-                other => return Err(de::Error::unknown_field(other, &["id", "op", "result"])),
+                "id" | "readAt" | "op" | "result" => {
+                    return Err(de::Error::duplicate_field("reply field"));
+                }
+                other => {
+                    return Err(de::Error::unknown_field(other, &["id", "readAt", "op", "result"]));
+                }
             }
         }
         let id = id.ok_or_else(|| de::Error::missing_field("id"))?;
+        let read_at = read_at.ok_or_else(|| de::Error::missing_field("readAt"))?;
         let result = result.ok_or_else(|| de::Error::missing_field("result"))?;
-        Ok((id, result))
+        Ok((id, read_at, result))
     }
 }

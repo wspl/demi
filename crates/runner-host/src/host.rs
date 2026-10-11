@@ -1,16 +1,25 @@
 //! Filesystem and working-tree requests for one backend connection.
 
-use std::{future::Future, io, path::PathBuf, sync::Arc};
+use std::{
+    future::Future,
+    io,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use demi_runner_process::pipes::PipeClient;
-use demi_runner_protocol::wire::{self, Inbound};
+use demi_runner_protocol::wire::{self, Inbound, Outbound};
 use tokio::sync::{Semaphore, mpsc};
-use tokio_util::{sync::CancellationToken, task::TaskTracker};
+use tokio_util::{
+    sync::CancellationToken,
+    task::{AbortOnDropHandle, TaskTracker},
+};
 
 use crate::{
     files::FileTransfers,
     git::{GitService, MAX_FILES},
-    watches::{WatchRequests, Watches},
+    subscriptions::{Report, Subscriptions},
+    watches::Watches,
 };
 
 pub struct HostServer {
@@ -24,7 +33,10 @@ pub struct HostServer {
     git: GitService,
     git_capacity: Arc<Semaphore>,
     files: FileTransfers,
-    watches: WatchRequests,
+    /// The backend's subscriptions, until the connection closes.
+    subscriptions: Mutex<Option<Subscriptions>>,
+    /// Sends their reports as messages.
+    _reports: AbortOnDropHandle<()>,
     cancel: CancellationToken,
 }
 
@@ -38,17 +50,15 @@ impl Drop for HostServer {
 impl HostServer {
     pub fn new(output: mpsc::Sender<wire::Frame>, default_cwd: PathBuf, pipes: PipeClient) -> Self {
         let cancel = CancellationToken::new();
-        // The working tree's changes and the backend's watches share one
-        // watch per tree (`runner.md` § Watching files).
+        // The working tree's changes and the backend's subscriptions share
+        // one watch per tree (`runner.md` § Watching files).
         let watches = Watches::default();
+        let (subscriptions, reports) = Subscriptions::new(watches.clone(), default_cwd.clone());
+        let reporting = AbortOnDropHandle::new(tokio::spawn(report(reports, output.clone(), cancel.clone())));
         Self {
             shared_watches: watches.clone(),
-            watches: WatchRequests::new(
-                watches.clone(),
-                output.clone(),
-                default_cwd.clone(),
-                cancel.clone(),
-            ),
+            subscriptions: Mutex::new(Some(subscriptions)),
+            _reports: reporting,
             default_cwd,
             files: FileTransfers::new(output.clone(), pipes, cancel.clone()),
             output,
@@ -159,25 +169,78 @@ impl HostServer {
         Ok(())
     }
 
-    /// Starts or ends a watch of the backend's (`runner.md` § Watching
-    /// files); it reports as messages of its own until it ends.
+    /// Subscribes, renews or ends a subscription of the backend's
+    /// (`runner.md` § Watching files), which reports as messages of its
+    /// own until it ends.
     pub fn handle_watch(&self, message: Inbound) -> io::Result<()> {
         if self.cancel.is_cancelled() {
             return Err(io::Error::other("host connection closed"));
         }
-        self.watches.handle(message)
+        let held = self.subscriptions.lock().expect("the subscriptions are intact");
+        let Some(subscriptions) = held.as_ref() else {
+            return Err(io::Error::other("host connection closed"));
+        };
+        match message {
+            Inbound::FsSubscribe { id, kind, path } => subscriptions.subscribe(id, kind, path),
+            Inbound::FsUnsubscribe { id } => subscriptions.unsubscribe(id),
+            Inbound::FsRenew { ids } => subscriptions.renew(ids),
+            _ => return Err(io::Error::other("not a subscription request")),
+        }
+        Ok(())
     }
 
-    /// The connection's file system watches, which every watch of a page's
-    /// follows.
+    /// The connection's file system watches, which a direct channel's
+    /// subscriptions follow too.
     pub fn watches(&self) -> &Watches {
         &self.shared_watches
     }
 
+    /// The connection's working-tree service.
+    pub fn git(&self) -> &GitService {
+        &self.git
+    }
+
     pub async fn close(&self) {
         self.cancel.cancel();
-        self.watches.close();
+        let ended = self.subscriptions.lock().expect("the subscriptions are intact").take();
+        drop(ended);
         self.filesystem.close();
         tokio::join!(self.filesystem.wait(), self.files.close());
+    }
+}
+
+/// Sends the backend's subscriptions' reports as messages, until the
+/// connection closes.
+async fn report(mut reports: mpsc::Receiver<Report>, output: mpsc::Sender<wire::Frame>, cancel: CancellationToken) {
+    loop {
+        let report = tokio::select! {
+            () = cancel.cancelled() => return,
+            report = reports.recv() => match report {
+                Some(report) => report,
+                None => return,
+            },
+        };
+        let message = match report {
+            Report::Live { id, since } => Outbound::FsLive {
+                id,
+                since,
+                epoch: crate::numbers::epoch().to_owned(),
+            },
+            Report::Failed { id, reason } => Outbound::FsFailed { id, reason },
+            Report::Changed(changes) => Outbound::FsChanged { changes },
+        };
+        let frame = match wire::encode(&message) {
+            Ok(frame) => frame,
+            Err(error) => {
+                tracing::warn!("a subscription's report could not be encoded: {error}");
+                continue;
+            }
+        };
+        tokio::select! {
+            () = cancel.cancelled() => return,
+            sent = output.send(frame) => if sent.is_err() {
+                return;
+            },
+        }
     }
 }

@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use super::{
-    FsOk, GitOk, JOB_OUTLIVING_TASKS, JOB_TASK_LINE_BYTES, LOG_READ_LINES, MAX_WATCH_PATHS,
+    FsOk, GitOk, JOB_OUTLIVING_TASKS, JOB_TASK_LINE_BYTES, LOG_READ_LINES,
     SERVICE_STDERR_CHARS, Timestamp, WireBytes,
 };
 use crate::values::DeviceToken;
@@ -649,17 +649,26 @@ pub enum Inbound {
         path: String,
         output: PipeRef,
     },
-    /// Watches `path`, and what lies below it when `recursive`, and reports
-    /// what changes there as messages of watch `id` until an `fs_unwatch`
-    /// of it or the connection's end (`runner.md` § Watching files).
-    FsWatch {
+    /// Subscribes `id` to what `kind` says of `path` (`runner.md` § Watching
+    /// files): `fs_live` answers once the watch behind it runs, or
+    /// `fs_failed` when it cannot, and `fs_changed` names it when its
+    /// subject changed. Its lease runs 10 minutes from now; a subscription
+    /// under an id that runs already is replaced.
+    FsSubscribe {
+        #[garde(length(min = 1))]
         id: String,
+        kind: crate::files::SubscriptionKind,
+        #[garde(length(min = 1), custom(without_nul))]
         path: String,
-        recursive: bool,
     },
-    /// Ends watch `id`; one that ended already is ended.
-    FsUnwatch {
+    /// Ends subscription `id` at once; one that ended already is ended.
+    FsUnsubscribe {
         id: String,
+    },
+    /// Renews the leases of `ids` for 10 minutes from now; an id that ended
+    /// renews nothing.
+    FsRenew {
+        ids: Vec<String>,
     },
     /// Introduces a page to the runner (`direct-channel.md` § Making the
     /// channel): `sdp` is the page's offer for peer `peer`, which replaces
@@ -825,9 +834,12 @@ pub enum Outbound {
         bytes: u64,
     },
     FsOk(FsOk),
-    /// A failed fs call; `code` is the errno-style code when there is one.
+    /// A failed fs call; `code` is the errno-style code when there is one,
+    /// and `readAt` the Host's number as the runner received the call.
     FsError {
         id: String,
+        #[garde(dive)]
+        read_at: demi_shared_types::ReadAt,
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",
@@ -840,6 +852,8 @@ pub enum Outbound {
     /// A failed working-tree call.
     GitError {
         id: String,
+        #[garde(dive)]
+        read_at: demi_shared_types::ReadAt,
         code: String,
         message: String,
     },
@@ -1026,31 +1040,22 @@ pub enum Outbound {
         )]
         error: Option<String>,
     },
-    /// Watch `id` runs: a change from now on is reported.
-    FsWatchReady {
+    /// Subscription `id` is watched: a change at a number above `since` is
+    /// reported, numbers of `epoch` (`runner.md` § Watching files).
+    FsLive {
         id: String,
+        since: u64,
+        #[garde(length(min = 1))]
+        epoch: String,
     },
-    /// The paths something changed at under watch `id`, each once: created,
-    /// written, removed or renamed (both names of a rename); `entries` are
-    /// those of them that came, went or were renamed, and `ignored` those
-    /// git ignores in the watched path's repository.
-    FsWatchChanged {
-        id: String,
-        #[garde(length(min = 1, max = MAX_WATCH_PATHS))]
-        paths: Vec<String>,
-        #[garde(length(max = MAX_WATCH_PATHS))]
-        entries: Vec<String>,
-        #[garde(length(max = MAX_WATCH_PATHS))]
-        ignored: Vec<String>,
+    /// The subscriptions whose subjects changed in the last 100 ms, each
+    /// once, with the number of the latest event that changed it.
+    FsChanged {
+        #[garde(length(min = 1))]
+        changes: Vec<(String, u64)>,
     },
-    /// Watch `id` lost events: what it reported no longer tells what
-    /// changed. It keeps running.
-    FsWatchLost {
-        id: String,
-    },
-    /// Watch `id` could not be created or stopped, and reports nothing
-    /// more.
-    FsWatchFailed {
+    /// Subscription `id` cannot be watched, for this reason; it is over.
+    FsFailed {
         id: String,
         reason: String,
     },

@@ -18,7 +18,7 @@ use demi_runner_protocol::direct::{
 };
 use tokio::net::UdpSocket;
 use tokio_util::task::AbortOnDropHandle;
-use demi_runner_protocol::files::{FileWatchMessage, FileWatchState};
+use demi_runner_protocol::files::FileWatchMessage;
 use if_addrs::{IfAddr, IfOperStatus, Ifv4Addr, Interface};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -158,7 +158,7 @@ async fn text_lists_folders_and_deletes_answer_as_the_relay() {
     let mut text = page.open(header("text", json!({ "path": "/work/notes.md" }))).await;
     assert_eq!(
         text.next().await.json(),
-        json!({ "ok": true, "version": "W/\"1\"", "unchanged": false })
+        json!({ "ok": true, "version": "W/\"1\"", "unchanged": false, "readAt": { "epoch": "e", "number": 1 } })
     );
     assert_eq!(text.bytes_to_end().await, "héllo".as_bytes());
     let mut unchanged = page
@@ -173,6 +173,7 @@ async fn text_lists_folders_and_deletes_answer_as_the_relay() {
     assert_eq!(listed["home"], "/home/ana");
     assert_eq!(listed["entries"][0]["name"], "notes.md");
     assert_eq!(listed["entries"][0]["size"], 6);
+    assert_eq!(listed["readAt"], json!({ "epoch": "e", "number": 7 }));
 
     let mut made = page.open(header("mkdir", json!({ "path": "/work/new" }))).await;
     assert_eq!(made.next().await.json(), json!({ "ok": true }));
@@ -225,8 +226,12 @@ async fn until_told(fake: &Fake, count: usize) {
     activity.wait_for(|told| told.len() >= count).await.unwrap();
 }
 
+/// A `watch` channel carries the relay's watch messages both ways, a
+/// `changed` too large for one message in as many as it takes, and says
+/// `heartbeat` when quiet (`direct-channel.md` § Operations on the
+/// channel).
 #[tokio::test]
-async fn a_watch_carries_the_watch_and_its_paths_and_says_heartbeat_when_quiet() {
+async fn a_watch_carries_subscriptions_and_their_changes_and_says_heartbeat_when_quiet() {
     let fake = Fake::default();
     let (says, said) = mpsc::unbounded_channel();
     *fake.watch_says.lock().unwrap() = Some(said);
@@ -235,25 +240,35 @@ async fn a_watch_carries_the_watch_and_its_paths_and_says_heartbeat_when_quiet()
 
     let mut watch = page.open(header("watch", json!({}))).await;
     assert_eq!(watch.next().await.json(), json!({ "ok": true }));
-    let live = FileWatchMessage::State {
-        state: FileWatchState::Live,
-        reason: None,
-    };
-    says.send(live).unwrap();
-    assert_eq!(watch.next().await.json(), json!({ "type": "state", "state": "live" }));
-    watch.text(r#"{"type":"paths","paths":["/etc/hosts"]}"#);
-    // The fake's watch answers a `paths` message with `changed` for them.
-    assert_eq!(watch.next().await.json()["paths"][0], "/etc/hosts");
+    watch.text(r#"{"type":"subscribe","subscriptions":[{"key":"k1","kind":"file","path":"/work/a.rs"}]}"#);
+    // The fake's watch answers a `subscribe` with `live` for its key.
+    assert_eq!(
+        watch.next().await.json(),
+        json!({ "type": "live", "key": "k1", "since": 1, "epoch": "e" })
+    );
+    watch.text(r#"{"type":"renew","keys":["k1"]}"#);
     says.send(FileWatchMessage::Changed {
-        paths: vec!["/work/a.rs".into(), "/work/server.log".into()],
-        entries: vec!["/work/a.rs".into()],
-        ignored: vec!["/work/server.log".into()],
+        changes: vec![("k1".into(), 4)],
     })
     .unwrap();
     assert_eq!(
         watch.next().await.json(),
-        json!({ "type": "changed", "paths": ["/work/a.rs", "/work/server.log"], "entries": ["/work/a.rs"], "ignored": ["/work/server.log"] })
+        json!({ "type": "changed", "changes": [["k1", 4]] })
     );
+
+    // Forty thousand keys of 20 characters are more than one message
+    // carries.
+    let many: Vec<(String, u64)> = (0..40_000).map(|key| (format!("key-{key:016}"), 9)).collect();
+    says.send(FileWatchMessage::Changed { changes: many.clone() }).unwrap();
+    let mut heard = Vec::new();
+    while heard.len() < many.len() {
+        let message = watch.next().await.json();
+        assert_eq!(message["type"], "changed");
+        for change in message["changes"].as_array().unwrap() {
+            heard.push((change[0].as_str().unwrap().to_owned(), change[1].as_u64().unwrap()));
+        }
+    }
+    assert_eq!(heard, many);
 
     // Thirty quiet seconds, on a paused clock: the peer's own checks go on
     // meanwhile.
