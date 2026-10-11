@@ -293,6 +293,11 @@ line, while the backend has not confirmed it yet, in the same row and at the
 same height it keeps once confirmed. Send Now or Remove pressed before the
 confirmation is kept as the user's wish and carried out once the message is
 confirmed ([Responding to the user](web-application.md#responding-to-the-user)).
+Remove takes the message away at once, confirmed or not, and its request
+follows; a refusal, as when the agent read the steer meanwhile, brings it
+back where it was with a toast. A message can be sent while the one before
+it is still on its way: it goes the way the composer chooses, steer or
+queue, after the one before, never ahead of it.
 
 For example, the agent is running the test suite. The user types "skip the
 e2e tests" and presses Enter: with Steer chosen, the agent reads it when the
