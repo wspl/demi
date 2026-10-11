@@ -1134,6 +1134,7 @@ pub fn edited_file(
         },
         added: u32::try_from(file.added).unwrap_or(u32::MAX),
         removed: u32::try_from(file.removed).unwrap_or(u32::MAX),
+        temporary: file.temporary,
         edits: (0..file.edits.len())
             .map(|segment| EditSegment {
                 copies: copies(segment),
@@ -1143,13 +1144,18 @@ pub fn edited_file(
 }
 
 /// A rename or a removal as the view lists it.
-fn path_change(change: &demi_command_protocol::PathChange) -> PathChange {
+fn path_change(change: &wire::JobPathChange) -> PathChange {
     match change {
-        demi_command_protocol::PathChange::Renamed { from, to } => PathChange::Renamed {
+        wire::JobPathChange::Renamed {
+            from,
+            to,
+            temporary,
+        } => PathChange::Renamed {
             from: from.clone(),
             to: to.clone(),
+            temporary: *temporary,
         },
-        demi_command_protocol::PathChange::Removed { path } => PathChange::Removed {
+        wire::JobPathChange::Removed { path } => PathChange::Removed {
             path: path.clone(),
         },
     }
