@@ -1605,7 +1605,7 @@ messages:
 
 | Message | Carries |
 | --- | --- |
-| `subscribe` | `subscriptions`, each `{ key, kind, path }`, `kind` one of `file`, `folder_names`, `folder_details`, `worktree`, `head`, as the runner's kinds |
+| `subscribe` | `subscriptions`, each `{ key, kind, path, host? }`, `kind` one of `file`, `folder_names`, `folder_details`, `worktree`, `head`, as the runner's kinds, and `host` the attached device for a file of an attached host |
 | `unsubscribe` | `keys`, the subscriptions the page no longer holds, as when an entry leaves its cache |
 | `renew` | `keys`, every subscription the page still holds, once every 3 minutes |
 
