@@ -486,6 +486,20 @@ impl SessionShared {
         self.update(|core| core.outbox.push(event));
     }
 
+    /// Holds the events of the changes from now on until `release_events`:
+    /// a response that requested no tool may have ended the turn, whose end
+    /// reaches clients as one change, the response's last text with the
+    /// phase that goes idle after the closing save (`product.md` § Following
+    /// the agent's work).
+    fn hold_events(&self) {
+        self.bus.hold();
+    }
+
+    /// Delivers the events held, then each change's as it completes.
+    fn release_events(&self) {
+        self.bus.release();
+    }
+
     /// Puts a run's runtime back in its slot.
     fn return_runtime(&self, runtime: Box<dyn ProviderRuntime>) {
         self.update(|core| core.provider = ProviderSlot::Held(runtime));

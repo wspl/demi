@@ -45,8 +45,11 @@ export interface WebSocketLike {
 }
 
 /**
- * The conversation socket as a transport: each frame is one JSON text
- * message. A message that is not JSON text is a peer that does not speak the
+ * The conversation socket as a transport: each message is JSON text, one
+ * frame or an array of the frames the backend had ready at once, as a
+ * turn's end, which are handed over in order within the message's event, so
+ * the page applies them as one change (`product.md` § Following the agent's
+ * work). A message that is not JSON text is a peer that does not speak the
  * protocol, and the transport closes rather than skipping it.
  */
 export function createWebSocketTransport(socket: WebSocketLike): ConversationClientTransport {
@@ -74,15 +77,19 @@ export function createWebSocketTransport(socket: WebSocketLike): ConversationCli
       end(new Error('The agent socket sent a binary message'))
       return
     }
-    let frame: unknown
+    let message: unknown
     try {
-      frame = JSON.parse(event.data)
+      message = JSON.parse(event.data)
     } catch {
       end(new Error('The agent socket sent a message that is not JSON'))
       return
     }
-    for (const handler of frameHandlers) {
-      handler(frame)
+    // A handler that ends the connection clears the handlers, so no frame
+    // after it is handed over.
+    for (const frame of Array.isArray(message) ? message : [message]) {
+      for (const handler of frameHandlers) {
+        handler(frame)
+      }
     }
   }
   const onClose = (event: SocketClose) => {
