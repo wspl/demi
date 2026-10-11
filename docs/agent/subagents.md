@@ -974,7 +974,9 @@ text color, 1 pixel, 3 pixels below the text, and it flows as words do: a long n
 at the line's end like any text, its first line starting where the text before
 it ends, the mark staying with the first word, and its hover fill following
 each line it spans, the mark in
-the secondary text color, and on hover the hover fill (`bg-hover`) behind both, as a
+the secondary text color, spaced from the words around it as a file link
+is ([Files named in messages](../product/file-previews.md#files-named-in-messages)),
+and on hover the hover fill (`bg-hover`) behind both, as a
 mention in Slack or Linear reads as part of the sentence. Pointed at, it names the agent, *Subagent 4 · Finished*, and its
 description. A click opens the Agents window on that agent's tab, a finished
 one as its Completed menu picks it; a click when the window already shows

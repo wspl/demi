@@ -135,7 +135,13 @@ Host. For example, the agent's reply contains an image and a link:
 The chart loads from the Host the way a document's image does, and a click on
 `plot.py` opens it in the File view. A link to a Host file shows the file's
 icon before its name, the icon the file tree shows for it, so a file reads as
-a file and not as a page on the web.
+a file and not as a page on the web. A link that starts with an icon, a
+file's here or an agent's mark ([Linking an agent](../agent/subagents.md#linking-an-agent)),
+is a small object in the sentence, as a mention is in Slack or Notion, so it
+keeps 0.2 em of space on each side, inside its hover fill and outside its
+underline: in "已经告诉[负责的 Agent](agent:57)：", the character before the
+mark and the colon after the name no longer touch it. A link without an
+icon is words and is spaced as words.
 
 | Target | A link | An image |
 | --- | --- | --- |
