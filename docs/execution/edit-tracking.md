@@ -254,17 +254,19 @@ asking starts no request and belongs to the request it continues:
 So a request's turns may be several, and its changes are those of all of
 them. The request's files are listed as they stand after its latest call: a
 file that a later call renamed with an embedded `mv` is listed under its new
-name, its earlier edits with it, and a file that a later call renamed away,
-or removed with an embedded `rm`, is no longer listed. For example, one call
+name, its earlier edits with it; a file that was there before the request
+and that a later call removed is listed `deleted`, struck through; and a
+file the request created and a later call removed is not listed. For example, one call
 writes `/tmp/page.ts.new` and the next runs `mv /tmp/page.ts.new
 src/page.ts`: the request lists `src/page.ts`, modified, and never
 `page.ts.new`. A call's report names, beside its edits, the renames and
 removals its embedded utilities made ([The report](#the-report)), and the
 request applies each call's before adding the call's own files:
 
-- A file a rename brought to a name the request had not listed is `added`,
-  unless the renaming call lists that name as `modified`, as when it
-  replaced an existing file. A rename onto a listed file merges into it,
+- A file a rename brought to a name the request had not listed is `renamed`,
+  with its old path, when it was there before the request, and `added` when
+  the request created it, unless the renaming call lists that name as
+  `modified`, as when it replaced an existing file. A rename onto a listed file merges into it,
   which keeps its kind and the earlier of the two places in the list.
 - An edit a later call's rename carried shows as it was made, its two sides
   those of the file it then was, and the view's heading names both paths,
@@ -301,7 +303,9 @@ parent's own commands changed.
   so it reads no blob twice and needs no page of the transcript the page has
   not read. A list once stored never changes: where a run or a request
   starts is decided by the blocks before a call, and later blocks only end
-  it, while an edit or a regenerate removes the later blocks whole. Lines are
+  it, while an edit or a regenerate removes the later blocks whole. Calls of
+  one step may return in any order: a call's lists are final once every call
+  before it has returned, and change at most once before then. Lines are
   counted by one algorithm, gix's blob diff (`imara-diff`), for the runner's
   report and the backend's lists alike.
 - **The pills.** Under a shell call, its files, from the block's view: what
@@ -364,7 +368,9 @@ Uncommitted mode lists the working tree's files and has a refresh.
 | `crates/command-package-file` | Record create, edit, patch publication and rollback using the invocation's recorder. |
 | `crates/runner-jobs`, `crates/runner-shell` | Create job recording contexts, associate descriptors with paths, forward redirected external output, finalize reports and share line counting with the working tree. |
 | `crates/runner-protocol`, `crates/host-interface`, `crates/backend-remote-host` | Carry the report through command completion. |
-| `crates/backend-user-shard` | Store the copies as blobs before tool completion; the blob route serves them. Compute and store, with each shell call's block, its run's `runFiles` and its request's `requestFiles`. |
+| `crates/agent-store` | The run and request rules and the lists of changed files, `runFiles` and `requestFiles`, computed from the copies through a blob reader; the session's completion of a call and the block format 3 migration both call it. |
+| `crates/agent-transcript`, `crates/agent-session` | Set each step block's `run` as it is appended; compute a shell call's lists before completing it. |
+| `crates/backend-user-shard` | Store the copies as blobs before tool completion; the blob route serves them. Supply the blob reader the lists and the migration read through. |
 | `crates/shared-types`, `crates/agent-tools` | Define the shell tool view with its small file and segment list, and carry it in the transcript, exclusively for the user. |
 | `packages/web-ui` | The file pills and the Change view's request list as the stored lists give them, and shared file selection, edit selection and diff behavior; it derives no list and counts no line. |
 | `packages/web`, `packages/web-gallery` | Product data adapters and matching specimens. |
