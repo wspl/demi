@@ -1155,8 +1155,9 @@ fn path_change(change: &wire::JobPathChange) -> PathChange {
             to: to.clone(),
             temporary: *temporary,
         },
-        wire::JobPathChange::Removed { path } => PathChange::Removed {
+        wire::JobPathChange::Removed { path, temporary } => PathChange::Removed {
             path: path.clone(),
+            temporary: *temporary,
         },
     }
 }
