@@ -1588,8 +1588,12 @@ async fn a_conversation_sockets_open_and_end_are_logged_with_why_it_ended() {
     let broken = connect().await;
     // The connection goes without a close frame, as a laptop's network does.
     drop(broken);
+    // One reading of the log for both questions: the second socket's
+    // "opened" line can land after its handshake answers, so two readings
+    // could see one socket opened and ended, then two opened.
     eventually("both sockets ended", || async {
-        opened().iter().all(|id| ended(id).is_some()) && opened().len() == 2
+        let ids = opened();
+        ids.len() == 2 && ids.iter().all(|id| ended(id).is_some())
     })
     .await;
     let ids = opened();
