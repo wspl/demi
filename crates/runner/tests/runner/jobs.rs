@@ -4,7 +4,7 @@
 
 use std::{collections::BTreeMap, time::Duration};
 
-use demi_runner_protocol::wire::{Inbound, Outbound, OutputStream, Signal};
+use demi_runner_protocol::wire::{Inbound, JobFileChange, JobPathChange, Outbound, OutputStream, Signal};
 
 use crate::{Host, start_job};
 
@@ -168,6 +168,79 @@ async fn a_job_kept_past_the_grace_is_stopped_and_listed_as_unreached() {
         assert!(
             job.ended.as_ref().is_some_and(|ended| ended.unreached),
             "{job:?}"
+        );
+        host.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+/// The files and renames of the next job to exit, `job`.
+async fn reported(host: &mut Host, job: &str) -> (Vec<JobFileChange>, Vec<JobPathChange>) {
+    loop {
+        if let Outbound::JobExit {
+            job_id,
+            exit_code,
+            files,
+            path_changes,
+            ..
+        } = host.frame().await
+        {
+            assert_eq!((job_id.as_str(), exit_code), (job, Some(0)));
+            return (files, path_changes);
+        }
+    }
+}
+
+/// A job's report marks what it wrote in a temporary directory, so the
+/// conversation leaves it out, and a later move out of it carries the
+/// file's edits to a name that is not temporary (`edit-tracking.md`
+/// § Temporary files). About a second: two jobs start a login shell.
+#[tokio::test]
+async fn a_file_in_a_temporary_directory_is_reported_temporary_and_a_move_out_of_it_is_not() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let mut host = Host::start(BTreeMap::new()).await.online().await;
+        // `/tmp` itself, which macOS links to `/private/tmp`; the work
+        // folder is in Cargo's own, which is in no temporary directory.
+        let scratch = tempfile::tempdir_in("/tmp").unwrap();
+        let work = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+        let written = scratch.path().join("x").to_string_lossy().into_owned();
+        let moved = std::fs::canonicalize(work.path())
+            .unwrap()
+            .join("y")
+            .to_string_lossy()
+            .into_owned();
+
+        start_job(&mut host, "write", &format!("printf 'one\\n' > {written}")).await;
+        let (files, _) = reported(&mut host, "write").await;
+        let [file] = files.as_slice() else {
+            panic!("{files:?}");
+        };
+        assert_eq!((file.path.as_str(), file.temporary), (written.as_str(), true));
+
+        start_job(
+            &mut host,
+            "move",
+            &format!("printf 'two\\n' >> {written}; mv {written} {moved}"),
+        )
+        .await;
+        let (files, path_changes) = reported(&mut host, "move").await;
+        let [file] = files.as_slice() else {
+            panic!("{files:?}");
+        };
+        assert_eq!((file.path.as_str(), file.temporary), (moved.as_str(), false));
+        let [edit] = file.edits.as_slice() else {
+            panic!("{:?}", file.edits);
+        };
+        let side = |path: &Option<String>| std::fs::read_to_string(path.as_ref().unwrap()).unwrap();
+        assert_eq!((side(&edit.original), side(&edit.modified)), ("one\n".into(), "one\ntwo\n".into()));
+        assert_eq!(
+            path_changes,
+            [JobPathChange::Renamed {
+                from: written.clone(),
+                to: moved.clone(),
+                temporary: false,
+            }]
         );
         host.close().await;
     })
