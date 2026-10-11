@@ -99,6 +99,9 @@ pub(crate) struct SessionCore {
     /// closing child. A restore reads it from the checkpoint again, so it is
     /// not saved.
     pub(super) held: bool,
+    /// The session sends one request per turn and runs no tool, as a
+    /// session copy does (`compaction.md` § The summary request).
+    pub(super) one_request: bool,
     /// Dispose started: every admission is refused.
     pub(super) disposing: bool,
     pub(super) persist: PersistMarks,
@@ -354,6 +357,9 @@ pub(super) struct CoreParts {
     pub(super) watched: Watched,
     pub(super) edits: Vec<EditReceipt>,
     pub(super) held: bool,
+    /// Whether the session sends one request per turn and runs no tool, as
+    /// a session copy does (`compaction.md` § The summary request).
+    pub(super) one_request: bool,
     pub(super) ids: Rc<dyn IdSource>,
     pub(super) clock: Arc<dyn Clock>,
     /// The node's runtime, which knows which commands' ends a look showed it.
@@ -385,6 +391,7 @@ impl SessionCore {
             editing: None,
             activity: Activity::Idle,
             held: parts.held,
+            one_request: parts.one_request,
             disposing: false,
             persist: PersistMarks::default(),
             outbox: Vec::new(),

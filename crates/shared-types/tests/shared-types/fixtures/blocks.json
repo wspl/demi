@@ -1711,7 +1711,17 @@
       "serviceTierId": null
     },
     "summary": "The user asked to fix the tests.",
-    "summaryTokens": 120
+    "summaryTokens": 120,
+    "kept": [
+      {
+        "content": [
+          {
+            "type": "text",
+            "text": "Do not touch the migration files."
+          }
+        ]
+      }
+    ]
   },
   {
     "type": "compaction_marker",

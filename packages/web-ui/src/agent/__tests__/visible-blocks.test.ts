@@ -29,7 +29,7 @@ test('a compaction shows at its marker, where it was triggered, not at its bound
     user('u1'),
     text('a1'),
     user('u2'),
-    { type: 'compaction_boundary', id: 'boundary', createdAt, model, summary: 'summary', summaryTokens: 2_400 },
+    { type: 'compaction_boundary', id: 'boundary', createdAt, model, summary: 'summary', summaryTokens: 2_400, kept: [] },
     text('a2'),
     { type: 'compaction_marker', id: 'marker', createdAt, model, boundaryId: 'boundary', compactedTokens: 90_000 },
   ]
@@ -41,7 +41,7 @@ test('a compaction shows at its marker, where it was triggered, not at its bound
 test('a boundary whose marker an edit removed shows the compaction itself', () => {
   const blocks: Block[] = [
     user('u1'),
-    { type: 'compaction_boundary', id: 'boundary', createdAt, model, summary: 'summary', summaryTokens: 2_400 },
+    { type: 'compaction_boundary', id: 'boundary', createdAt, model, summary: 'summary', summaryTokens: 2_400, kept: [] },
     text('a1'),
   ]
 

@@ -11,7 +11,7 @@ use demi_shared_types::{
 };
 
 use super::{
-    gone_text,
+    COMPACTION_NOTE, gone_text,
     replay::{RequestView, resume_text},
     replay_start,
 };
@@ -252,10 +252,29 @@ fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
         }
         Block::Error(error) => error.message.clone(),
         Block::Abort(_) => "aborted".to_owned(),
-        Block::CompactionBoundary(boundary) => boundary.summary.clone(),
+        // The note, the messages it kept and the summary, as the model
+        // reads them.
+        Block::CompactionBoundary(boundary) => {
+            let mut lines = vec![COMPACTION_NOTE.to_owned()];
+            let mut media = 0;
+            for kept in &boundary.kept {
+                let (text, weight) = content_estimate(&kept.content, request);
+                lines.push(text);
+                media += weight;
+            }
+            lines.push(boundary.summary.clone());
+            return (lines.join("\n"), media);
+        }
         Block::CompactionMarker(marker) => marker.compacted_tokens.to_string(),
     };
     (text, 0)
+}
+
+/// The estimate of a message's content in `request`: one line per part,
+/// and the weight of its media.
+pub fn content_tokens(content: &[UserContentBlock], request: &RequestView) -> u64 {
+    let (text, media) = content_estimate(content, request);
+    text_tokens(&text) + media
 }
 
 /// A message's content: one line per part, and the weight of its media.

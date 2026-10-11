@@ -4,14 +4,11 @@
 use std::fmt;
 
 use demi_command_declarations::{NativeOperation, Node, Schema};
+pub use demi_shared_types::EXECUTION_SOURCE;
 use demi_shared_types::INSTRUCTIONS_SOURCE;
 use schemars::{JsonSchema, generate::SchemaSettings};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
-/// The context source the product's execution context answers as, which no
-/// plugin may be named.
-pub const EXECUTION_SOURCE: &str = "execution";
 
 /// The root the plugins of this repository place their groups under.
 pub use demi_host_interface::DEMI_ROOT;
