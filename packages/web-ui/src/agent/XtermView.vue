@@ -3,10 +3,12 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import {
+  terminalCodeRuns,
   terminalPromptColors,
   useTerminalTheme,
   xtermThemeFromElement,
 } from '../composables/useTerminalTheme'
+import { codeRuns, useMarkdownRenderVersion } from '../markdown/highlight'
 import { promptLine, terminalWrite, type TerminalShown } from './terminals'
 import '@xterm/xterm/css/xterm.css'
 
@@ -55,7 +57,9 @@ function applyPrompt(): void {
   if (!term || !host) {
     return
   }
-  const next = promptLine(props.script, terminalPromptColors(host, terminalTheme.value))
+  // The script highlighted as Bash, as the conversation's code blocks color it.
+  const runs = props.script ? terminalCodeRuns(host, codeRuns(props.script.replace(/(\r?\n)+$/, ''), 'bash') ?? []) : []
+  const next = promptLine(props.script, terminalPromptColors(host, terminalTheme.value), runs)
   if (next === prompt) {
     return
   }
@@ -145,6 +149,8 @@ watch(
 )
 watch(terminalTheme, applyTheme)
 watch(() => props.script, applyPrompt)
+// The highlighter's arrival, and the page's mode, color the script anew.
+watch(useMarkdownRenderVersion(), applyPrompt)
 
 onBeforeUnmount(() => {
   resize?.disconnect()

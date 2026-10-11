@@ -113,6 +113,7 @@ import {
   fullPageTool,
   longLineShellTool,
   longScriptShellTool,
+  bashScriptShellTool,
   missingImageTool,
   notStoredVideoTool,
   recordingTool,
@@ -934,6 +935,7 @@ const functionalTool = ref(false)
 const functionalShellExpanded = ref(true)
 const functionalShellLive = ref(true)
 const functionalShellScript = ref(true)
+const functionalShellBash = ref(true)
 const functionalShellLongLine = ref(true)
 /** Calls whose results carry media, as the transcript shows them. */
 const toolMediaSpecimens = [
@@ -1831,7 +1833,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="FunctionalBlock"
-        note="Thinking, shell (collapsed and expanded), loading, and error. Thinking that streams is one folded row, Thinking with how long it has lasted; the reader opens it to read along, and it never opens or folds by itself, also when it ends (Replay). A shell call shows its command and output in one box: the command stays at the top and only the output under it scrolls once it fills the box. The command wraps at its spaces, as an editor’s word wrap does: a word moves to the next line whole, never split at a hyphen or inside, and only a word longer than the line breaks, at any character, as the long line’s signed address shows. The output wraps as a terminal wraps: each line fills to the box’s edge and breaks at any character. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. A shell row shimmers while its command runs, also after its call returned with the command running on as one of the conversation’s running commands, until the command’s end arrives, and then marks how it ended as any shell row does: Stopped, or Failed for an exit code other than 0 (End Command). While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
+        note="Thinking, shell (collapsed and expanded), loading, and error. Thinking that streams is one folded row, Thinking with how long it has lasted; the reader opens it to read along, and it never opens or folds by itself, also when it ends (Replay). A shell call shows its command and output in one box: the command stays at the top, highlighted as Bash in the colors of the conversation’s code blocks after a muted $, and only the output under it scrolls once it fills the box. The command wraps at its spaces, as an editor’s word wrap does: a word moves to the next line whole, never split at a hyphen or inside, and only a word longer than the line breaks, at any character, as the long line’s signed address shows. The output wraps as a terminal wraps: each line fills to the box’s edge and breaks at any character. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. A shell row shimmers while its command runs, also after its call returned with the command running on as one of the conversation’s running commands, until the command’s end arrives, and then marks how it ended as any shell row does: Stopped, or Failed for an exit code other than 0 (End Command). While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -1955,6 +1957,16 @@ onBeforeUnmount(() => {
                 v-model:open="functionalShellScript"
                 :block="longScriptShellTool"
                 :input="parseToolInput(longScriptShellTool.input)"
+              />
+            </GallerySpecimen>
+            <GallerySpecimen
+              variant="shell · a script, highlighted as Bash"
+              wide
+            >
+              <ToolShellBlock
+                v-model:open="functionalShellBash"
+                :block="bashScriptShellTool"
+                :input="parseToolInput(bashScriptShellTool.input)"
               />
             </GallerySpecimen>
             <GallerySpecimen
@@ -2603,7 +2615,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Terminals"
-        note="The same window. Tabs are running jobs, each titled by its call’s description, cut at the end and whole in its tooltip; the body is a read-only xterm with ANSI color from bun, rg and git. The terminal opens with the script as a terminal shows what was typed: a muted $ and the first line, a muted > before each further line (Show the auth test changes), long lines wrapped at the terminal’s width (Find where the old cookie name is still used), the script in the emphasized text color, then the output. The watch tab’s output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame’s tail anew. A click on a tab only selects it; its menu, from a right-click or the Menu key or Shift+F10, ends a running command (End Command) or closes an ended one’s tab (Close Tab). A press outside every window closes it while it is the newest; Close (×), or Escape with the focus on its strip, closes it too, while the terminal keeps the Escape typed into it."
+        note="The same window. Tabs are running jobs, each titled by its call’s description, cut at the end and whole in its tooltip; the body is a read-only xterm with ANSI color from bun, rg and git. The terminal opens with the script as a terminal shows what was typed: a muted $ and the first line, a muted > before each further line (Show the auth test changes), long lines wrapped at the terminal’s width (Find where the old cookie name is still used), the script highlighted as Bash in the colors of the conversation’s code blocks (Count the old cookie name and list the changed files), then the output. The watch tab’s output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame’s tail anew. A click on a tab only selects it; its menu, from a right-click or the Menu key or Shift+F10, ends a running command (End Command) or closes an ended one’s tab (Close Tab). A press outside every window closes it while it is the newest; Close (×), or Escape with the focus on its strip, closes it too, while the terminal keeps the Escape typed into it."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
