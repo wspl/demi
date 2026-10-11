@@ -95,11 +95,19 @@ export function terminalWrite(
 
 /**
  * The colors of a prompt line, as the escape sequences that set them
- * (`terminalPromptColors`): the prompt's (`$`, `>`) and the script's.
+ * (`terminalPromptColors`): the prompt's (`$`, `>`), and the script's where
+ * no highlighted run colors it.
  */
 export interface PromptColors {
   prompt: string
   script: string
+}
+
+/** A highlighted run of a script, by where it starts and ends in it, as the escape sequences that draw it (`terminalCodeRuns`). */
+export interface PromptRun {
+  from: number
+  to: number
+  ansi: string
 }
 
 const RESET = '\x1b[0m'
@@ -107,18 +115,37 @@ const RESET = '\x1b[0m'
 /**
  * The line a command's terminal opens with, as a terminal shows what was
  * typed (`runtime.md` § Rendering boundary): `$ ` and the script's first
- * line, `> ` before each further line, the prompt and the script each in its
- * color; the terminal wraps what is longer than its width. No script, no line.
+ * line, `> ` before each further line, the prompt muted and the script
+ * highlighted as Bash by `runs`, in its own color where no run colors it;
+ * the terminal wraps what is longer than its width. No script, no line.
  */
-export function promptLine(script: string | undefined, colors: PromptColors): string {
+export function promptLine(script: string | undefined, colors: PromptColors, runs: readonly PromptRun[] = []): string {
   const text = script?.replace(/(\r?\n)+$/, '')
   if (!text) {
     return ''
   }
-  return text
-    .split(/\r?\n/)
-    .map((line, index) => `${colors.prompt}${index === 0 ? '$' : '>'}${RESET} ${colors.script}${line}${RESET}\n`)
-    .join('')
+  let lines = ''
+  let start = 0
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
+    // Where the line starts in the script, past the break before it.
+    start = index === 0 ? 0 : text.indexOf('\n', start) + 1
+    let drawn = ''
+    let at = start
+    const end = start + line.length
+    for (const run of runs) {
+      if (run.to <= at || run.from >= end)
+        continue
+      if (run.from > at)
+        drawn += `${colors.script}${text.slice(at, run.from)}`
+      const to = Math.min(run.to, end)
+      drawn += `${RESET}${run.ansi}${text.slice(Math.max(run.from, at), to)}${RESET}`
+      at = to
+    }
+    if (at < end)
+      drawn += `${colors.script}${text.slice(at, end)}`
+    lines += `${colors.prompt}${index === 0 ? '$' : '>'}${RESET} ${drawn}${RESET}\n`
+  }
+  return lines
 }
 
 /**

@@ -1,6 +1,7 @@
 import { computed, type ComputedRef } from 'vue'
 import { useTheme } from '../theme/appTheme'
-import type { PromptColors } from '../agent/terminals'
+import type { PromptColors, PromptRun } from '../agent/terminals'
+import type { CodeRun } from '../markdown/highlight'
 
 /** 16 ANSI colors plus the xterm chrome (cursor and selection). */
 export interface TerminalTheme {
@@ -167,6 +168,32 @@ export function terminalPromptColors(el: HTMLElement, palette: TerminalTheme): P
     prompt: cssColorToAnsiForeground(tokenColor(el, '--fg-muted', palette.brightBlack)),
     script: cssColorToAnsiForeground(tokenColor(el, '--fg-emphasis', palette.brightWhite)),
   }
+}
+
+/** The theme's font style flags a terminal draws (shiki's `FontStyle`, a const enum its types declare). */
+const ITALIC = 1
+const BOLD = 2
+
+/**
+ * Highlighted runs of code as the escape sequences that draw them in a
+ * terminal: each run's color, read as sRGB under `el`, and its italic and
+ * bold. A run without a color keeps the line's.
+ */
+export function terminalCodeRuns(el: HTMLElement, runs: readonly CodeRun[]): PromptRun[] {
+  const colors = new Map<string, string>()
+  return runs.flatMap((run) => {
+    const style = run.fontStyle ?? 0
+    let ansi = `${style & ITALIC ? '\x1b[3m' : ''}${style & BOLD ? '\x1b[1m' : ''}`
+    if (run.color) {
+      let color = colors.get(run.color)
+      if (color === undefined) {
+        color = cssColorToAnsiForeground(resolveCssColor(el, run.color))
+        colors.set(run.color, color)
+      }
+      ansi += color
+    }
+    return ansi ? [{ from: run.from, to: run.to, ansi }] : []
+  })
 }
 
 let terminalTheme: ComputedRef<TerminalTheme> | undefined
