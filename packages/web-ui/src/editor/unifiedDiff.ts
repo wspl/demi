@@ -3,6 +3,9 @@ import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemir
 import { highlightingFor, language } from '@codemirror/language'
 import { Change, Chunk, uncollapseUnchanged, type DiffConfig } from '@codemirror/merge'
 import { highlightTree } from '@lezer/highlight'
+import { CircleMinus } from '@lucide/vue'
+import { h, render } from 'vue'
+import { ICON_PX } from '../ui/icon-metrics'
 
 /**
  * How long one diff may take, in milliseconds, before the rest of it is
@@ -19,8 +22,8 @@ const MARGIN = 3
 const MIN_FOLDED = 4
 /** Removed text longer than this is not colored by its language, as the merge package's default. */
 const HIGHLIGHT_LIMIT = 3000
-/** What git writes after a line the file ends with no newline after. */
-const NO_NEWLINE = '\\ No newline at end of file'
+/** What the diff says after a line the file ends with no newline after, as GitHub says it. */
+const NO_NEWLINE = 'No newline at end of file'
 
 /** `text`, with a newline after its last line when it has none. */
 function terminated(text: Text): Text {
@@ -36,14 +39,13 @@ function terminated(text: Text): Text {
  * differs from the same line with one, so when only one side has a final
  * newline, the other side's last line changed. Positions are the texts'
  * own; a chunk's `toA` or `toB` past its side's end marks a last line it
- * covers that has no newline after it, where git writes "\ No newline at
- * end of file".
+ * covers that has no newline after it, which the diff follows with "No
+ * newline at end of file".
  *
  * The merge package's diff keeps a side's empty last line as a line, so a
  * created file without a final newline showed an empty removed line above
- * its first; and its unified view takes no chunks from outside. Its diff
- * runs here on the texts each given a final newline, and this puts back
- * the change of the final newline, which that hides.
+ * its first. Its diff runs here on the texts each given a final newline,
+ * and this puts back the change of the final newline, which that hides.
  */
 export function diffChunks(original: Text, modified: Text): readonly Chunk[] {
   const a = terminated(original)
@@ -117,12 +119,25 @@ export function diffOf(state: EditorState): DiffState | null {
   return state.field(diffField, false) ?? null
 }
 
-/** A row in git's words after a last line without a newline. */
+let noNewlineTemplate: HTMLElement | null = null
+
+/**
+ * The row after a last line without a newline: a muted icon and its words,
+ * as GitHub shows it. CodeMirror builds a widget's element when it comes
+ * into view and never says when it drops one, so the row holds no live
+ * component: the icon renders once and every row is a copy.
+ */
 function noNewlineRow(): HTMLElement {
-  const row = document.createElement('div')
-  row.className = 'cm-noNewline'
-  row.textContent = NO_NEWLINE
-  return row
+  if (!noNewlineTemplate) {
+    const row = document.createElement('div')
+    row.className = 'cm-noNewline'
+    render(h(CircleMinus, { size: ICON_PX.in20, 'aria-hidden': 'true' }), row)
+    const copy = document.importNode(row, true)
+    render(null, row)
+    copy.append(NO_NEWLINE)
+    noNewlineTemplate = copy
+  }
+  return document.importNode(noNewlineTemplate, true)
 }
 
 /** The lines a chunk removed, colored by the file's language, shown above what replaced them. */
@@ -372,7 +387,14 @@ const diffBaseTheme = EditorView.baseTheme({
   '.cm-deletedChunk': { paddingLeft: '6px' },
   '.cm-deletedLine del': { textDecoration: 'none' },
   // Under the last line, where its text starts; in a removed stretch, under the removed lines'.
-  '.cm-noNewline': { padding: '0 2px 0 6px', color: 'var(--color-fg-muted)', fontStyle: 'italic' },
+  '.cm-noNewline': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '0 2px 0 6px',
+    color: 'var(--color-fg-muted)',
+  },
+  '.cm-noNewline svg': { flexShrink: '0' },
   '.cm-deletedChunk .cm-noNewline': { padding: '0' },
   '.cm-collapsedLines': {
     padding: '5px 5px 5px 10px',
@@ -393,15 +415,18 @@ const diffBaseTheme = EditorView.baseTheme({
 /**
  * A unified diff of the editor's text against `original`, by git's lines
  * (`diffChunks`): each removed stretch above what replaced it, a last line
- * without a newline followed by git's note of it, and the unchanged lines
+ * without a newline followed by a row that says so, and the unchanged lines
  * between changes folded but for three around each, a stretch of four or
  * more into one row a click unfolds. New texts of either side replace the
  * old in place (`useCodeView`), and the folding follows the chunks they
  * make.
  *
- * The merge package's own unified view draws its chunks, which count a
- * side's empty last line as a line, and takes none from outside; this
- * draws those of `diffChunks` instead, with the merge package's classes.
+ * This is not the merge package's `unifiedMergeView`, which lacks two
+ * things the diff needs: it takes no chunks from outside (its
+ * `diffConfig.override` gives only character changes, which it widens to
+ * lines itself, keeping an empty last line as a line), and it has no
+ * marker for a last line without a newline. So this draws the chunks of
+ * `diffChunks` itself, with the merge package's classes.
  */
 export function unifiedDiff(original: string): Extension {
   return [
