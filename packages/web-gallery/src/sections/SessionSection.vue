@@ -914,6 +914,35 @@ const functionalThinkingStartedAt = new Date().toISOString()
 const functionalThinkingEndedAt = new Date(
   Date.parse(functionalThinkingStartedAt) + 8_000,
 ).toISOString()
+
+/**
+ * Thinking that streams a few words at a time and then ends, as a reply's
+ * thinking does: the row stays folded unless the reader opens it, and stays
+ * as the reader left it when the thinking ends. Replay streams it again.
+ */
+const streamingThinking = reactive({ text: '', startedAt: new Date().toISOString(), endedAt: null as string | null })
+const streamingThinkingOpen = ref(false)
+let streamingThinkingTimer: ReturnType<typeof setInterval> | undefined
+function stopStreamingThinking(): void {
+  clearInterval(streamingThinkingTimer)
+  streamingThinkingTimer = undefined
+}
+function playStreamingThinking(): void {
+  stopStreamingThinking()
+  const words = thinkingText.split(/(?<=\s)/)
+  let shown = 0
+  streamingThinking.text = ''
+  streamingThinking.startedAt = new Date().toISOString()
+  streamingThinking.endedAt = null
+  streamingThinkingTimer = setInterval(() => {
+    shown += 1
+    streamingThinking.text = words.slice(0, shown).join('')
+    if (shown >= words.length) {
+      stopStreamingThinking()
+      streamingThinking.endedAt = new Date().toISOString()
+    }
+  }, 120)
+}
 // Requesting covers a recovery in flight and the agent's own retries: one wait, one word.
 const activityKinds: ActivityKind[] = ['requesting', 'connecting']
 // The wait the slot specimens show began when the page opened.
@@ -1001,11 +1030,13 @@ function breakSession(): void {
 onMounted(() => {
   playStream()
   playTurn('turn')
+  playStreamingThinking()
 })
 
 onBeforeUnmount(() => {
   sessionRestore.stop()
   composerModelRestore.stop()
+  stopStreamingThinking()
 })
 </script>
 
@@ -1755,7 +1786,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="FunctionalBlock"
-        note="Thinking, shell (collapsed and expanded), loading, and error. A shell call shows its command and output in one box: the command stays at the top and only the output under it scrolls once it fills the box. The command wraps at its spaces, as an editor’s word wrap does: a word moves to the next line whole, never split at a hyphen or inside, and only a word longer than the line breaks, at any character, as the long line’s signed address shows. The output wraps as a terminal wraps: each line fills to the box’s edge and breaks at any character. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. A shell row shimmers while its command runs, also after its call returned with the command running on as one of the conversation’s running commands, until the command’s end arrives, and then marks how it ended as any shell row does: Stopped, or Failed for an exit code other than 0 (End Command). While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
+        note="Thinking, shell (collapsed and expanded), loading, and error. Thinking that streams is one folded row, Thinking with how long it has lasted; the reader opens it to read along, and it never opens or folds by itself, also when it ends (Replay). A shell call shows its command and output in one box: the command stays at the top and only the output under it scrolls once it fills the box. The command wraps at its spaces, as an editor’s word wrap does: a word moves to the next line whole, never split at a hyphen or inside, and only a word longer than the line breaks, at any character, as the long line’s signed address shows. The output wraps as a terminal wraps: each line fills to the box’s edge and breaks at any character. A command longer than two lines shows two, the second ending in an ellipsis: a click on it shows it whole and another click clamps it again; one that fits is no control, and a click selects it for copying. A whole command taller than half the box scrolls on its own. A shell row shimmers while its command runs, also after its call returned with the command running on as one of the conversation’s running commands, until the command’s end arrives, and then marks how it ended as any shell row does: Stopped, or Failed for an exit code other than 0 (End Command). While a shell call runs, its command’s output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -1803,6 +1834,19 @@ onBeforeUnmount(() => {
                 :is-streaming="true"
                 :created-at="functionalThinkingStartedAt"
               />
+            </GallerySpecimen>
+            <GallerySpecimen
+              variant="streaming · folded until opened"
+              wide
+            >
+              <ThinkingBlock
+                v-model:open="streamingThinkingOpen"
+                :thinking="streamingThinking.text"
+                :is-streaming="streamingThinking.endedAt === null"
+                :created-at="streamingThinking.startedAt"
+                :ended-at="streamingThinking.endedAt"
+              />
+              <Button size="sm" variant="ghost" class="mt-1" @click="playStreamingThinking">Replay</Button>
             </GallerySpecimen>
             <GallerySpecimen
               variant="shell · collapsed"

@@ -32,7 +32,6 @@ const rollKey = computed(() => (props.isStreaming ? 'live' : 'done'))
     <FunctionalBlock
       v-model:open="isOpen"
       :expandable="hasContent"
-      :open-while="isStreaming && hasContent"
       :stick-bottom="isStreaming"
       :roll-key="rollKey"
       :loading="isStreaming"

@@ -157,7 +157,7 @@ export const useConversations = defineStore('conversations', () => {
   const uploads = createConversationUploads(saveDrafts, (error) =>
     report('Could Not Upload the Attachment', error),
   )
-  const { uploadFile, addFiles, removeFile, releaseSpare, arrangeFiles, retryFile } = uploads
+  const { uploadInComposer, addFiles, removeFile, releaseSpare, arrangeFiles, retryFile } = uploads
   const draftSync = createDraftSync({
     apply: showDraft,
     report,
@@ -782,12 +782,11 @@ export const useConversations = defineStore('conversations', () => {
       if (isComposerFile(file) && !file.upload) {
         // A pasted file whose attaching the page did not see end attaches
         // again, and falls back as a paste does (`product.md` § Writing a message).
+        // Any other failure its capsule shows, with Retry.
         const claimed = !!file.claim
-        void uploadFile(file).catch((error) => {
-          if (claimed && !file.file) {
+        void uploadInComposer(file).then((uploaded) => {
+          if (!uploaded && claimed && !file.file) {
             unattached(conversation, file)
-          } else {
-            report('Could Not Upload the Attachment', error)
           }
         })
       }
