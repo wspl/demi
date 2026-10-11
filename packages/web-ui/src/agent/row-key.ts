@@ -1,5 +1,5 @@
 import type { MessageListBlock } from './pending-steers'
-import { workRowId } from './work-groups'
+import { isWorkStep, workRowId } from './work-groups'
 
 /**
  * What names a row of the list across the forms it takes
@@ -13,6 +13,9 @@ import { workRowId } from './work-groups'
  * building a new one that it lays out at a guess for a frame.
  */
 export function rowKey(block: MessageListBlock): string {
+  if (isWorkStep(block)) {
+    return workRowId(block)
+  }
   switch (block.type) {
     case 'user':
       return `message:${block.turnId}`
@@ -24,10 +27,6 @@ export function rowKey(block: MessageListBlock): string {
       return `message:${block.id}`
     case 'pending_steer':
       return `message:${block.pendingSteerId}`
-    case 'thinking':
-    case 'tool_call':
-    case 'pending_call':
-      return workRowId(block)
     default:
       return block.id
   }
