@@ -224,6 +224,16 @@ so in a toast with Undo, as Gmail and Linear do. Archived history remains
 readable: a conversation in the Archived list opens read-only with a bar that
 offers Restore, and sending and metadata changes require restore.
 
+Archiving the conversation the page shows keeps its transcript in view, at
+the place the reader is: in the same frame it turns read-only with the bar
+that offers Restore, and it never shows a loading state, since nothing in it
+changed. Restore makes it writable again the same way, without reading it
+anew. For example, the user selects three conversations and archives them,
+and one of them has started running in another tab: the backend archives
+two and refuses the third, which comes back to the list where it was, and a
+toast says why. The archive's toast then reads *2 Conversations Archived*,
+and its Undo restores those two.
+
 Delete removes a conversation for good, as deleting a chat in ChatGPT or
 Claude does. It is in a conversation's menu in the sidebar, in the menu of a
 selection of several, and on each row of the Archived list, and it asks
