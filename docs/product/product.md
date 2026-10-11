@@ -728,7 +728,7 @@ clipboard carries the copy in three forms, each for the place it is pasted:
 | Form | What it holds | Who reads it |
 | --- | --- | --- |
 | Demi's own | The message's content: its text, and each file as the reference the message holds (its stored file, name, kind and size, or its device and path) | A composer of the same Demi; it rebuilds each capsule from its reference, so the file is not sent again |
-| HTML | The text formatted, each image as an image | Mail, documents, chat apps, and a composer of another Demi |
+| HTML | The text formatted, each image as an image | Mail, documents, chat apps |
 | Plain text | The Markdown, each file by its name | Terminals, code editors, anything else |
 
 Demi's own form travels inside the HTML, as an attribute of its outermost
