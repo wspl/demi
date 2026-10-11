@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { ToolMediaSource } from '@demicodes/protocol'
-import { declaredSize, thumbnailBox } from '../thumbnail'
+import { declaredSize, thumbnailBox, thumbnailPlaceHeight } from '../thumbnail'
 
 // The box a tool's image or video and one in a run of a message's media take
 // (`file-previews.md` § Media a tool returned): 80 pixels tall, 64 to 200
@@ -34,4 +34,15 @@ test('a reference with its size gives the box before the bytes arrive', () => {
   expect(thumbnailBox(declaredSize(wide), 'image')).toEqual({ width: 200, height: 80 })
   const clip: ToolMediaSource = { type: 'ref', ref: 'b'.repeat(64), mediaType: 'video/webm' }
   expect(declaredSize(clip)).toBeNull()
+})
+
+// A row of a tool's thumbnails is as tall as its tallest place: a 171 × 40
+// frame whose reference carries its size takes 40 pixels, not 80 with an
+// empty band under it; a medium whose size is unknown until it loads keeps
+// 80, so the row never shrinks when it arrives.
+test('a thumbnail takes a place as tall as its box when its size is known, and 80 pixels when it is not', () => {
+  const frame: ToolMediaSource = { type: 'ref', ref: 'c'.repeat(64), mediaType: 'image/png', width: 171, height: 40 }
+  expect(thumbnailPlaceHeight(declaredSize(frame), 'image')).toBe(40)
+  expect(thumbnailPlaceHeight(null, 'video')).toBe(80)
+  expect(thumbnailPlaceHeight(null, 'image')).toBe(80)
 })

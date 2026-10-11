@@ -44,6 +44,7 @@ const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   pending_call: 28,
   // A run's row folded is its 28px face, as the tail row it takes over from is.
   work_group: 28,
+  activity_slot: 28,
   error: 28,
   abort: 28,
   compaction_boundary: 36,
@@ -78,7 +79,7 @@ export interface BlockVirtualizerOptions<Block extends VirtualizedBlock> {
   keyOf?: (block: Block) => string
   /**
    * What the list shows after its rows, outside the virtualizer, such as
-   * the tail row and a failure notice: its growth is the list's growth too,
+   * a failure notice: its growth is the list's growth too,
    * which the view follows in the frame that draws it.
    */
   tail?: Readonly<Ref<HTMLElement | undefined>>

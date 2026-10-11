@@ -10,9 +10,10 @@ export interface PixelSize {
 export type ThumbnailKind = 'image' | 'video'
 
 /**
- * How tall a thumbnail is: a tool's image or video and one in a run of a
- * message's images and videos (`file-previews.md` § Media a tool returned).
- * The row it stands in keeps this height before the medium loads and after.
+ * How tall a thumbnail is at most: a tool's image or video and one in a run
+ * of a message's images and videos (`file-previews.md` § Media a tool
+ * returned). A medium whose size is unknown until it loads keeps a place
+ * this tall before it loads and after (`thumbnailPlaceHeight`).
  */
 export const THUMBNAIL_HEIGHT = 80
 
@@ -48,6 +49,19 @@ export function thumbnailBox(natural: PixelSize | null, kind: ThumbnailKind = 'i
     width: Math.round(Math.min(width, natural.width)),
     height: Math.round(Math.min(THUMBNAIL_HEIGHT, natural.height)),
   }
+}
+
+/**
+ * How tall a thumbnail's place in its row is, a row being as tall as its
+ * tallest place (`file-previews.md` § Media a tool returned), given the size
+ * `declared` known before the medium's bytes arrive, from its reference or
+ * its attachment's record: its box's height when that size is known, so four
+ * 171 × 40 frames stand in a row 40 pixels tall with no empty band under
+ * them; 80 pixels when it is known only once the bytes load, such as a
+ * video's before its first frame, so the row never shrinks when they do.
+ */
+export function thumbnailPlaceHeight(declared: PixelSize | null, kind: ThumbnailKind): number {
+  return thumbnailBox(declared, kind).height
 }
 
 /**
