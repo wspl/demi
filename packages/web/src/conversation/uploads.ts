@@ -12,6 +12,7 @@ import {
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { CopiedStoredFile } from '@demicodes/web-ui/agent/message-input/copied-message'
 import { asError } from '@demicodes/utils'
+import { reportError } from '@demicodes/web-ui/infra/errors'
 import { blobUrl, claimStoredFile, uploadAttachment } from '../api/uploads'
 import type { Conversation, ProductAttachment } from '../state/types'
 
@@ -27,10 +28,13 @@ export function blobPicture(upload: { mediaType: string; sha256: string }): stri
   return upload.mediaType.startsWith('image/') ? blobUrl(upload.sha256, upload.mediaType) : undefined
 }
 
-/** Owns file transfers and preview resources for one product account. */
+/**
+ * Owns file transfers and preview resources for one product account.
+ * `onRefused` tells why a file was not taken, which has no capsule to say it.
+ */
 export function createConversationUploads(
   onChange: () => void,
-  onError: (error: unknown) => void,
+  onRefused: (error: Error) => void,
 ) {
   const uploads = new AttachmentUploadQueue()
   /** Each file's upload under way, by its id, which a message sent meanwhile waits for. */
@@ -57,7 +61,7 @@ export function createConversationUploads(
         },
         (update) => applyAttachmentUpdate(item, attachingUpdate(update, !!item.file)),
       ).catch((error: unknown) => {
-        // A failed upload keeps its capsule, which offers Retry; the caller toasts the reason.
+        // A failed upload keeps its capsule, which says so and offers Retry.
         applyAttachmentUpdate(item, { phase: 'failed' })
         onChange()
         throw error
@@ -73,6 +77,20 @@ export function createConversationUploads(
     }
     upload.then(done, done)
     return upload
+  }
+
+  /**
+   * Uploads a file of the composer's and answers false when it failed. Its failure
+   * is told where it happened, on its capsule, which offers Retry, and on the
+   * bubble of a message that waits for it, never in a toast
+   * (`web-application.md` § Responding to the user); the reason goes to the
+   * console.
+   */
+  function uploadInComposer(item: ComposerFile): Promise<boolean> {
+    return uploadFile(item).then(() => true, (error: unknown) => {
+      reportError('Could Not Upload the Attachment', error)
+      return false
+    })
   }
 
   /** The upload a file's transfer makes: of its bytes, or of the stored file a paste names, else of its picture. */
@@ -150,7 +168,7 @@ export function createConversationUploads(
   function retryFile(conversation: Conversation, id: string): void {
     const item = conversation.files.find((file) => file.id === id)
     if (item && isComposerFile(item) && item.phase === 'failed') {
-      void uploadFile(item).catch(onError)
+      void uploadInComposer(item)
     }
   }
 
@@ -164,7 +182,7 @@ export function createConversationUploads(
     for (const file of files) {
       const error = attachmentFileError(file, composerFileNames(conversation.files))
       if (error) {
-        onError(new Error(error))
+        onRefused(new Error(error))
         continue
       }
       const item: Extract<ProductAttachment, { kind: 'file' }> = {
@@ -177,13 +195,7 @@ export function createConversationUploads(
         (attachment) => attachment.id === item.id,
       )!
       if (isComposerFile(reactiveItem)) {
-        void uploadFile(reactiveItem).catch((error: unknown) => {
-          // A file of a message already sent tells its failure on the
-          // message's bubble, with Retry; only the composer's own needs a toast.
-          if (!sendingFileIds(conversation).has(reactiveItem.id)) {
-            onError(error)
-          }
-        })
+        void uploadInComposer(reactiveItem)
       }
       taken.push(reactiveItem)
     }
@@ -230,7 +242,7 @@ export function createConversationUploads(
     // A file whose upload a deleted capsule stopped starts over; one still uploading goes on.
     for (const item of next.resumed) {
       if (item.kind === 'file' && item.phase !== 'ready' && !uploads.has(item.id)) {
-        void uploadFile(item).catch(onError)
+        void uploadInComposer(item)
       }
     }
     onChange()
@@ -283,7 +295,7 @@ export function createConversationUploads(
     }
   }
   return {
-    uploadFile,
+    uploadInComposer,
     uploaded,
     claimFile,
     addFiles,

@@ -37,7 +37,7 @@ const rules = [
     where: 'The request itself failed, not the input',
     component: 'Toast',
     form: 'Through reportError: title, and a message only when it adds a fact. It stays until it is closed, as Slack and Linear keep theirs; a toast that is not a failure closes after six seconds, or ten when it offers an action such as Undo, counted only while the pointer is not over it. Never inline, never for success, never for a background refresh or a lost connection.',
-    examples: 'Save failed, fork failed, edit refused, upload failed, sign out, revoke device',
+    examples: 'Save failed, fork failed, edit refused, file too large to attach, sign out, revoke device. Never a failed upload: its capsule says so, with Retry',
   },
 ]
 </script>
