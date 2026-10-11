@@ -5,6 +5,7 @@ import { useFileDrop } from '../composables/useFileDrop'
 import DropOutline from '../ui/DropOutline.vue'
 import { provideLabelRoom } from '../ui/label-room'
 import { dataTransferFiles } from './message-input/attachments'
+import { transferCopiedMessage } from './message-input/copied-message'
 
 /**
  * The composer's frame. Files dragged over it can be dropped anywhere on it:
@@ -45,7 +46,12 @@ provideLabelRoom(() => line.value - EDITOR_MIN_PX)
 const shell = ref<HTMLElement | null>(null)
 const { over: dragOver } = useFileDrop(shell, {
   drop(event) {
-    const files = event.dataTransfer ? dataTransferFiles(event.dataTransfer) : []
+    const transfer = event.dataTransfer
+    // A message dragged out of another one brings its files without their
+    // bytes: the editor takes it (`intake.ts`), not its files.
+    if (!transfer || transferCopiedMessage(transfer))
+      return
+    const files = dataTransferFiles(transfer)
     if (files.length > 0)
       emit('dropFiles', files, event)
   },

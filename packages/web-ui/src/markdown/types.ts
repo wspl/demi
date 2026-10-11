@@ -11,6 +11,8 @@ export interface MessageAttachment {
   mediaType: string
   /** Where its bytes load from, shown as its media type. */
   url: string
+  /** Its bytes' SHA-256 in the user's blobs, which a drag of it into a composer names it by. */
+  sha256: string
   /**
    * An image's or a video's size in pixels, which its record carries when
    * the backend read it from its header (`web-api.md`).

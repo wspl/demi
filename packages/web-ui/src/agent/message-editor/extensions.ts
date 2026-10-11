@@ -20,6 +20,7 @@ import { bareUrls, closesFence, closingFormat, fenceInfo } from '../../markdown/
 import AttachmentNodeView from './AttachmentNodeView.vue'
 import { readCapsule } from './capsules'
 import ImageNodeView from './ImageNodeView.vue'
+import { ComposerIntake, MESSAGE_IMAGE_ATTRIBUTE, type IntakeOptions } from './intake'
 
 // The editor a user message is written and shown in (`product.md` § Writing
 // a message): the schema the dialect reads into, formatting applied as a
@@ -53,11 +54,32 @@ const AttachmentNode = Node.create({
     return ['span', HTMLAttributes]
   },
   addNodeView() {
-    return VueNodeViewRenderer(AttachmentNodeView)
+    return VueNodeViewRenderer(AttachmentNodeView, { stopEvent: capsuleStopsEvent })
   },
 })
 
-/** `![alt](target)`: the image, loaded as `file-previews.md` § Files named in messages says. */
+/**
+ * Which events a capsule keeps from the editor. A drag is the editor's, in a
+ * sent message as in the composer, so a capsule can be dragged out of the
+ * conversation into a composer (`product.md` § Attachments): tiptap's own
+ * rule lets a node be dragged only after a press in an editable editor. A
+ * press selects the capsule and the clipboard's events are the editor's;
+ * everything else, Retry's press among it, is the capsule's own.
+ */
+function capsuleStopsEvent({ event }: { event: Event }): boolean {
+  const { type } = event
+  if (type.startsWith('drag') || type === 'drop') {
+    return false
+  }
+  const onButton = event.target instanceof Element && !!event.target.closest('button')
+  return onButton || !['mousedown', 'copy', 'cut', 'paste'].includes(type)
+}
+
+/**
+ * `![alt](target)`: the image, loaded as `file-previews.md` § Files named in
+ * messages says. It is read back only from a message editor's own HTML: an
+ * image from anywhere else enters as a capsule or its link (`intake.ts`).
+ */
 const ImageNode = Node.create({
   name: 'image',
   group: 'inline',
@@ -72,10 +94,10 @@ const ImageNode = Node.create({
     }
   },
   parseHTML() {
-    return [{ tag: 'img[src]' }]
+    return [{ tag: `img[${MESSAGE_IMAGE_ATTRIBUTE}]` }]
   },
   renderHTML({ HTMLAttributes }) {
-    return ['img', HTMLAttributes]
+    return ['img', { ...HTMLAttributes, [MESSAGE_IMAGE_ATTRIBUTE]: '' }]
   },
   addNodeView() {
     return VueNodeViewRenderer(ImageNodeView)
@@ -436,7 +458,12 @@ export function readOnlyExtensions(): AnyExtension[] {
   return messageExtensions()
 }
 
-/** What a message holds and how it looks, sent or written: every file a capsule, a picture's too. */
+/**
+ * What a message holds and how it looks, sent or written: the user dialect
+ * and capsules, every file a capsule, a picture's too. The schema has no
+ * other node or mark, so nothing else can be in a message: foreign HTML
+ * keeps what its parse rules read, and of the rest only the text.
+ */
 function messageExtensions(): AnyExtension[] {
   return [
     Document,
@@ -457,11 +484,17 @@ function messageExtensions(): AnyExtension[] {
   ]
 }
 
-/** The composer: the same message, with formatting as it is typed and the composer's keys. */
-export function composerExtensions(options: MessageKeyOptions & { placeholder: string }): AnyExtension[] {
+/**
+ * The composer: the same message, with formatting as it is typed, the
+ * composer's keys, and what it takes in from pastes and drops.
+ */
+export function composerExtensions(
+  options: MessageKeyOptions & { placeholder: string; intake?: IntakeOptions },
+): AnyExtension[] {
   return [
     ...messageExtensions(),
     MessageFormat,
+    ...(options.intake ? [ComposerIntake.configure(options.intake)] : [ComposerIntake]),
     KeepComposition,
     MessageKeys.configure({ submit: options.submit, cancel: options.cancel, editLast: options.editLast }),
     Placeholder.configure({ placeholder: options.placeholder }),
