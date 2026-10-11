@@ -1146,10 +1146,12 @@ async fn a_request_the_vendor_refuses_as_too_large_compacts_and_goes_again_from_
     );
     assert_eq!(messages(refused).len(), 3);
     let again = messages(again);
+    // The boundary: the note, the message it kept, then the summary, in
+    // one user message.
     assert!(
         again[0]
             .to_string()
-            .contains("Previous conversation summary:\\nThe user asked a first question."),
+            .contains("First question\"},{\"type\":\"text\",\"text\":\"<summary>\\nThe user asked a first question.\\n</summary>"),
         "{again:?}"
     );
     assert!(again[1].to_string().contains("First answer."), "{again:?}");
