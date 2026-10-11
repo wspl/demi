@@ -81,7 +81,14 @@ async fn run_turn(
         let recover = stream(s, cancel, continues).await?;
         continues = true;
         cancel.check()?;
-        if !recover && s.update(|core| core.arrived_since(before)) {
+        let arrived = s.update(|core| core.arrived_since(before));
+        // A response that requested no tool held its events for the turn's
+        // end (`read`); a turn that goes on to compact or to the input that
+        // arrived meanwhile shows them now.
+        if recover || arrived {
+            s.release_events();
+        }
+        if !recover && arrived {
             // The command reports wait until the response's tools have run;
             // the boundary after them writes them.
             if s.update(|core| core.write_inputs(Take::AllButReports)) {
@@ -425,13 +432,29 @@ async fn read(
         cancel.check()?;
         match event {
             ProviderEvent::ThinkingStart => thinking_started = true,
-            ProviderEvent::Error(failure) => return Ok(Err(failure)),
+            // What follows a failure is the retry's to decide: what was
+            // held for the turn's end shows now.
+            ProviderEvent::Error(failure) => {
+                s.release_events();
+                return Ok(Err(failure));
+            }
             // Entries write no block: open text stays open, and a thinking
             // start still waits for what follows it.
             ProviderEvent::Entries { of, entries } => {
                 s.update(|core| core.keep_entries(of, entries));
             }
             event => {
+                // The response's end, without a call to run, ends the turn
+                // unless the turn goes on: its text completes, and the
+                // closing save follows before the phase goes idle. The
+                // events wait for that end, or for the turn to go on
+                // (`run_turn`), so a page never sees the finished text of a
+                // running turn that has nothing more to run.
+                if matches!(event, ProviderEvent::Response(_))
+                    && s.read(|core| core.transcript.pending_tool_calls().is_empty())
+                {
+                    s.hold_events();
+                }
                 let completes_text = thinking_started
                     || !matches!(
                         event,

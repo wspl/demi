@@ -1,7 +1,9 @@
 //! Delivery of a session's events (`runtime.md` § A turn): each event, once
 //! its change is complete, reaches every listener in the order the changes
 //! happened. A listener may call back into the session; what that causes is
-//! delivered after the current event has reached every listener.
+//! delivered after the current event has reached every listener. Events
+//! may be held and then delivered together, as a turn's end is
+//! (`product.md` § Following the agent's work).
 
 use std::{
     cell::{Cell, RefCell},
@@ -24,6 +26,8 @@ pub(crate) struct EventBus {
     slots: RefCell<Vec<Slot>>,
     queue: RefCell<VecDeque<SessionEvent>>,
     delivering: Cell<bool>,
+    /// What `deliver` is given waits in the queue until `release`.
+    held: Cell<bool>,
     next_id: Cell<u64>,
 }
 
@@ -52,12 +56,32 @@ impl EventBus {
 
     /// Delivers `events` after those already waiting. A call made while a
     /// delivery runs only queues its events: the running delivery delivers
-    /// them in order.
+    /// them in order. While the bus holds, they wait.
     pub(crate) fn deliver(&self, events: Vec<SessionEvent>) {
         if events.is_empty() {
             return;
         }
         self.queue.borrow_mut().extend(events);
+        if !self.held.get() {
+            self.drain();
+        }
+    }
+
+    /// Keeps what `deliver` is given from now on until `release`. Called
+    /// outside a delivery, so nothing given before it waits.
+    pub(crate) fn hold(&self) {
+        debug_assert!(!self.delivering.get(), "a hold starts outside a delivery");
+        self.held.set(true);
+    }
+
+    /// Delivers what the bus held, in order, and every later event at once.
+    pub(crate) fn release(&self) {
+        if self.held.replace(false) {
+            self.drain();
+        }
+    }
+
+    fn drain(&self) {
         if self.delivering.replace(true) {
             return;
         }

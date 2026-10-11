@@ -20,6 +20,16 @@ use super::{
     persist, turn,
 };
 
+/// Delivers the events a turn's end held when the action ends, on every
+/// path out of it.
+struct ReleaseEvents<'a>(&'a SessionShared);
+
+impl Drop for ReleaseEvents<'_> {
+    fn drop(&mut self) {
+        self.0.release_events();
+    }
+}
+
 /// How an action's body ended.
 enum Outcome {
     Completed,
@@ -52,6 +62,9 @@ async fn run_action(s: &Rc<SessionShared>, started: StartedAction) {
         cancel,
         reply,
     } = started;
+    // What the turn's end held reaches clients with the action's end, the
+    // phase it leaves included, however the action ends.
+    let _end = ReleaseEvents(s);
     let lease = cancel.guard(s.runtime.enter_action()).await;
     let body = match &lease {
         Ok(_) => execute(s, &kind, &cancel).await,
@@ -96,6 +109,11 @@ async fn run_action(s: &Rc<SessionShared>, started: StartedAction) {
         return;
     }
     let outcome = conclude(s, &cancel, body);
+    if matches!(outcome, Outcome::Aborted) {
+        // A stop is answered once its record reached clients, and the
+        // answer may go before the closing save ends.
+        s.release_events();
+    }
     cancel.acknowledge(s.read(|core| core.can_abort_again()));
     s.update(|core| core.end_action());
     // The closing save records the session idle, so a checkpoint that says
