@@ -157,7 +157,6 @@ import GalleryComposer from '../components/GalleryComposer.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GalleryContextLimit from '../components/GalleryContextLimit.vue'
 import GallerySection from '../components/GallerySection.vue'
-import GalleryRowDurations from '../components/GalleryRowDurations.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import GalleryTabStripDrive from '../components/GalleryTabStripDrive.vue'
 import { useGalleryView } from '../gallery-views'
@@ -1822,12 +1821,6 @@ onBeforeUnmount(() => {
             </div>
           </GalleryReceipts>
         </div>
-      </GallerySection>
-
-      <GallerySection
-        title="Row Durations (Proposal)"
-        note="A proposal for how long work has run. A running run of steps says it in its title, Running 3 commands for 1m32s, as Thinking for 9s does; an ended run, Requesting and Thinking stay as they are. A command’s title is the agent’s own words, so it cannot take a time: A shows a running command’s time as a tag after its title, where Failed or Stopped stands once it ends; B shows it only in the opened row. In both, the opened row’s line above the output says how long it ran: Running for 1m28s, then Exited with 0 after 2m13s.">
-        <GalleryRowDurations />
       </GallerySection>
 
       <GallerySection
