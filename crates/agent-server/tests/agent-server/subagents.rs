@@ -890,7 +890,12 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     }
     assert!(model.requests_of("task quiet").is_empty());
     let restored = &model.requests_of("task lost")[0];
-    assert!(restored.system_prompt.starts_with("retired prompt\n"));
+    assert!(restored.system_prompt.starts_with("system prompt\n"));
+    assert!(
+        restored
+            .system_prompt
+            .ends_with("Instructions for this subagent:\n\nretired prompt")
+    );
     let frames = client.received();
     assert!(frames.iter().any(is_pending_steers));
 }
@@ -1299,9 +1304,15 @@ async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_exec
     client.next_until(is_idle).await;
 
     // Spawned without a profile under the worker, the grandchild runs the
-    // worker's prompt and model, with the commands every node has.
+    // worker's prompt, its added instructions included, and model, with the
+    // commands every node has.
     let inner_asked = &model.requests_of("task inner")[0];
-    assert!(inner_asked.system_prompt.starts_with("worker prompt\n"));
+    assert!(inner_asked.system_prompt.starts_with("system prompt\n"));
+    assert!(
+        inner_asked
+            .system_prompt
+            .ends_with("Instructions for this subagent:\n\nworker prompt")
+    );
     assert!(inner_asked.system_prompt.contains("demi agent\nRuns subagents"));
     assert!(inner_asked.system_prompt.contains("greet\nGreets the caller by name."));
     assert_eq!(inner_asked.model_id, "worker-model");

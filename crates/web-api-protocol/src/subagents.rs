@@ -21,17 +21,33 @@ pub struct SubagentSettings {
     /// The Subagents switch: true for a user who never turned it off.
     pub enabled: bool,
     /// Maximum subagents: how many subagents of one conversation may be
-    /// live at once (`subagents.md` § Limits); null for Unlimited.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<NonZeroU32>")]
-    pub max_live: Option<NonZeroU32>,
+    /// live at once (`subagents.md` § Limits).
+    pub max_live: SubagentLimit,
     /// Maximum depth: how many levels of subagents a tree may have below
-    /// its root; null for Unlimited.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<NonZeroU32>")]
-    pub max_depth: Option<NonZeroU32>,
+    /// its root.
+    pub max_depth: SubagentLimit,
     /// The caller's profiles, in name order.
     pub profiles: Vec<SubagentProfile>,
+}
+
+/// A limit on a conversation's subagents (`subagents.md` § Limits): the
+/// whole number from 1 the user last set, which stays while the limit is
+/// lifted, so that choosing Limited again brings it back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SubagentLimit {
+    #[garde(skip)]
+    pub limit: NonZeroU32,
+    /// Whether the limit is lifted: Unlimited.
+    #[garde(skip)]
+    pub unlimited: bool,
+}
+
+impl SubagentLimit {
+    /// The bound a spawn checks against: none while the limit is lifted.
+    pub fn bound(self) -> Option<NonZeroU32> {
+        (!self.unlimited).then_some(self.limit)
+    }
 }
 
 /// One of the caller's subagent profiles.
@@ -47,7 +63,8 @@ pub struct SubagentProfile {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<ModelSettings>")]
     pub model: Option<ModelSettings>,
-    /// The text that replaces a child's instructions; null for its parent's.
+    /// The text added to a child's system prompt after the product's; null
+    /// for none.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub instructions: Option<String>,
@@ -58,7 +75,7 @@ pub struct SubagentProfile {
 }
 
 /// `PUT /subagents`: the fields it names change, and the others stay. A
-/// limit is a whole number from 1, or null for Unlimited.
+/// limit is a whole value, its number and whether it is lifted.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SubagentsPatch {
@@ -73,19 +90,19 @@ pub struct SubagentsPatch {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        with = "double_option"
+        with = "unwrap_or_skip"
     )]
-    #[schemars(with = "Option<NonZeroU32>")]
-    #[garde(skip)]
-    pub max_live: Option<Option<NonZeroU32>>,
+    #[schemars(with = "SubagentLimit")]
+    #[garde(dive)]
+    pub max_live: Option<SubagentLimit>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        with = "double_option"
+        with = "unwrap_or_skip"
     )]
-    #[schemars(with = "Option<NonZeroU32>")]
-    #[garde(skip)]
-    pub max_depth: Option<Option<NonZeroU32>>,
+    #[schemars(with = "SubagentLimit")]
+    #[garde(dive)]
+    pub max_depth: Option<SubagentLimit>,
 }
 
 /// `POST /subagents/profiles`: a new profile, which starts enabled.
@@ -102,7 +119,7 @@ pub struct NewProfile {
     #[schemars(with = "Nullable<ModelSettings>")]
     #[garde(dive)]
     pub model: Option<ModelSettings>,
-    /// Null for the parent's instructions.
+    /// Null for no instructions added to the product's.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     #[garde(skip)]
@@ -112,8 +129,8 @@ pub struct NewProfile {
 }
 
 /// `PATCH /subagents/profiles/:id`: the fields it names change, and the
-/// others stay. `model` and `instructions` are whole values, and null
-/// returns either to the parent's.
+/// others stay. `model` and `instructions` are whole values: a null model
+/// is the parent's, and null instructions add none.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProfilePatch {

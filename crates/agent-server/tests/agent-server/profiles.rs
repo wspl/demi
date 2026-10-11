@@ -204,22 +204,31 @@ async fn each_spawn_reads_the_settings_as_they_are_and_a_child_keeps_what_it_was
 
     let asked_one = &model.requests_of("task one")[0];
     let asked_two = &model.requests_of("task two")[0];
-    // A profile's instructions replace only the identity: the harness guide
-    // follows, and the index lists what the child may run.
-    assert!(
-        asked_one
-            .system_prompt
-            .starts_with("explore prompt one\n\nharness guide\n\n")
-    );
+    // A profile's child is Demi: the product's identity and harness guide
+    // lead its prompt, the index lists what the child may run, and the
+    // profile's instructions follow the model identity under their own
+    // heading.
+    let added_after_identity = |instructions: &str| {
+        format!(
+            "If asked which model you are, answer with this.\n\nInstructions for this subagent:\n\n{instructions}"
+        )
+    };
+    for (asked, instructions) in [(asked_one, "explore prompt one"), (asked_two, "explore prompt two")] {
+        assert!(
+            asked.system_prompt.starts_with("system prompt\n\nharness guide\n\n"),
+            "{}",
+            asked.system_prompt
+        );
+        assert!(
+            asked.system_prompt.ends_with(&added_after_identity(instructions)),
+            "{}",
+            asked.system_prompt
+        );
+    }
     assert!(
         asked_one
             .system_prompt
             .contains("Operations: send, list, show, profiles\n")
-    );
-    assert!(
-        asked_two
-            .system_prompt
-            .starts_with("explore prompt two\n\nharness guide\n\n")
     );
     assert!(
         asked_two
@@ -252,7 +261,12 @@ async fn each_spawn_reads_the_settings_as_they_are_and_a_child_keeps_what_it_was
     client.next_until(is_closed(&one)).await;
     client.next_until(is_idle).await;
     let asked_again = model.requests_of("task one").pop().unwrap();
-    assert!(asked_again.system_prompt.starts_with("explore prompt one\n"));
+    assert!(asked_again.system_prompt.starts_with("system prompt\n"));
+    assert!(
+        asked_again
+            .system_prompt
+            .ends_with(&added_after_identity("explore prompt one"))
+    );
     assert!(
         matches!(&from_resumed, Ok(run) if run.code == 1 && run.stderr == "demi agent spawn: not an rpc command of this conversation\n"),
         "{from_resumed:?}"

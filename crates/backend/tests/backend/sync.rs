@@ -22,7 +22,7 @@ use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{ProviderDetails, ProviderReading, ProviderState};
 use demi_web_api_protocol::settings::{InstanceMode, Preferences, Theme};
 use demi_web_api_protocol::state::{ProductState, SyncEvent};
-use demi_web_api_protocol::subagents::SubagentSettings;
+use demi_web_api_protocol::subagents::{SubagentLimit, SubagentSettings};
 use jiff::SignedDuration;
 use reqwest::{Method, StatusCode};
 use serde_json::json;
@@ -170,8 +170,14 @@ async fn the_snapshot_is_the_users_product_state() {
             // deep, and no profile.
             subagents: SubagentSettings {
                 enabled: true,
-                max_live: NonZeroU32::new(10),
-                max_depth: NonZeroU32::new(1),
+                max_live: SubagentLimit {
+                    limit: NonZeroU32::new(10).unwrap(),
+                    unlimited: false,
+                },
+                max_depth: SubagentLimit {
+                    limit: NonZeroU32::MIN,
+                    unlimited: false,
+                },
                 profiles: Vec::new(),
             },
             // A new user has no personal instructions.

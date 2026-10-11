@@ -10,6 +10,7 @@ import { overlayInlineKey, useOverlayTarget } from '../overlay/overlayContainer'
 import { dialogNestingKey } from '../overlay/dialogNesting'
 import { DEFAULT_ACTION, useDialogFocus } from '../overlay/dialogFocus'
 import { provideLayerElevation } from '../overlay/layerElevation'
+import { LAYER_Z, provideStacking } from '../overlay/stacking'
 import { useOverlay } from '../composables/useOverlay'
 import type { HeadlineText } from './ui-text'
 
@@ -131,6 +132,8 @@ watch(
   },
   { immediate: true },
 )
+// A menu opened in the dialog stands above it, however high the dialog stands.
+provideStacking(() => LAYER_Z + depth.value)
 
 const panel = ref<HTMLElement>()
 // A dialog in a catalog host is a specimen beside others, not the page's: it leaves the focus alone.
@@ -181,7 +184,7 @@ onKeyStroke('Escape', (event) => {
         :class="inline
           ? 'dialog-scrim relative grid'
           : ['dialog-scrim dialog-host fixed inset-0 z-50 grid bg-black/40', anchor === 'top' ? 'items-start justify-items-center pt-[12vh]' : 'place-items-center']"
-        :style="inline || depth === 0 ? undefined : { zIndex: 50 + depth }"
+        :style="inline || depth === 0 ? undefined : { zIndex: LAYER_Z + depth }"
         @click.self="!inline && emit('close')"
       >
         <!-- The panel is a region (`ui/region.ts`): a menu opened in it grows toward its inside. -->

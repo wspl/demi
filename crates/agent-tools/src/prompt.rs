@@ -1,6 +1,7 @@
 //! A node's system prompt (`system-prompt.md`): the identity, the harness
 //! guide, the rules of the `shell` tool, the capability index of the node's
-//! commands and the model identity, in that order.
+//! commands and the model identity, in that order, then the instructions a
+//! subagent profile added.
 
 use crate::input::DESCRIPTION;
 
@@ -29,15 +30,17 @@ pub struct ModelIdentity<'a> {
     pub id: &'a str,
 }
 
-/// The system prompt of a node: its `identity` (the product's instructions
-/// or a profile's), the product's harness `guide`, the rules of the
-/// `shell` tool, the capability `index` of its commands when it has any,
-/// and the line naming `model`, last.
+/// The system prompt of a node: the product's `identity`, the product's
+/// harness `guide`, the rules of the `shell` tool, the capability `index` of
+/// its commands when it has any, the line naming `model`, and last, under a
+/// heading of their own, the instructions its subagent profile `added`, which
+/// never replace any of the product's layers.
 pub fn system_prompt(
     identity: &str,
     guide: &str,
     index: &str,
     model: ModelIdentity<'_>,
+    added: Option<&str>,
 ) -> String {
     let mut sections = Vec::new();
     for layer in [identity, guide] {
@@ -56,5 +59,8 @@ pub fn system_prompt(
         "This conversation runs on {} ({}, {}). If asked which model you are, answer with this.",
         model.name, model.family, model.id
     ));
+    if let Some(added) = added.filter(|added| !added.trim().is_empty()) {
+        sections.push(format!("Instructions for this subagent:\n\n{added}"));
+    }
     sections.join("\n\n")
 }
