@@ -30,6 +30,35 @@ web app fetches them when a file is opened.
 | Files created or modified by `demi file edit` and `demi file patch`, including when one call changes several files. | Edits prepared by a native command but never written, or successfully rolled back. |
 | Every in-process part of the job: subshells, functions, background tasks, process substitutions. | Reads, and the empty file `mktemp` creates. |
 
+### Temporary files
+
+What the conversation shows as changed is what the user would review: the
+files the work leaves behind, wherever they are, in the project, in `~` or in
+`/etc`. A scratch file the agent writes on its way is not among them. For
+example, the agent writes `/tmp/fix.py`, runs it, and writes
+`build-notes.md` in a later call, then removes it before it answers: the
+call's pills, the run's summed pills and the Change view show neither file.
+An edit of `/etc/nginx/nginx.conf` or `~/.zshrc` shows as any edit does.
+
+- **A file in a temporary directory** of its Host is temporary: `/tmp`,
+  `/var/tmp`, `$TMPDIR`, macOS's per-user `/private/var/folders/…/T`, and
+  `%TEMP%` on Windows, as the operating system defines them, as Time Machine
+  and Spotlight pass them over. The runner records its edits as any others,
+  so a later `mv /tmp/page.ts.new src/page.ts` still carries them to
+  `src/page.ts`, and marks each path it reports, in `files` and as a
+  rename's `to`, `temporary` when it is in one of them. A file whose path
+  as the request lists it, after its renames, is temporary is not shown.
+- **A file the request created and removed** before its latest call is not
+  shown: not in the request's list, as today, and not among the pills of
+  the call that wrote it or of its run, where it was listed as a pill that
+  is no control. A file that was there before the request and that it
+  removed is not a scratch file, and how it shows is not changed here.
+- A file removed by a program the runner does not record, such as `python`
+  deleting it, cannot be told from one that stays, and stays shown.
+- Nothing else is hidden: a file the project's git ignores, such as `.env`
+  or a log, shows when the agent wrote it, since git's ignore list says what
+  is not committed, not what the user does not review.
+
 A file is `added` when it did not exist before this job first changed it,
 `modified` otherwise. A path absent when the job finishes is omitted, whether
 it existed before the job or was created during it. An operation with identical
