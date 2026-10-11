@@ -35,10 +35,9 @@ web app fetches them when a file is opened.
 What the conversation shows as changed is what the user would review: the
 files the work leaves behind, wherever they are, in the project, in `~` or in
 `/etc`. A scratch file the agent writes on its way is not among them. For
-example, the agent writes `/tmp/fix.py`, runs it, and writes
-`build-notes.md` in a later call, then removes it before it answers: the
-call's pills, the run's summed pills and the Change view show neither file.
-An edit of `/etc/nginx/nginx.conf` or `~/.zshrc` shows as any edit does.
+example, the agent writes `/tmp/fix.py` and runs it: no pill and no row of
+the Change view shows it. An edit of `/etc/nginx/nginx.conf` or `~/.zshrc`
+shows as any edit does.
 
 - **A file in a temporary directory** of its Host is temporary: `/tmp`,
   `/var/tmp`, `$TMPDIR`, macOS's per-user `/private/var/folders/…/T`, and
@@ -48,11 +47,18 @@ An edit of `/etc/nginx/nginx.conf` or `~/.zshrc` shows as any edit does.
   `src/page.ts`, and marks each path it reports, in `files` and as a
   rename's `to`, `temporary` when it is in one of them. A file whose path
   as the request lists it, after its renames, is temporary is not shown.
-- **A file the request created and removed** before its latest call is not
-  shown: not in the request's list, as today, and not among the pills of
-  the call that wrote it or of its run, where it was listed as a pill that
-  is no control. A file that was there before the request and that it
-  removed is not a scratch file, and how it shows is not changed here.
+- **A file the request created and removed** is not in the request's list
+  in the Change view, which shows what the request left behind. A call's
+  pills show what that call did and never change after it: the call that
+  wrote the file shows it, and the call that removed it shows it struck
+  through. A run's pills compare the run's start with its end, so a file the
+  run both created and removed is at neither end and shows in none of them;
+  one created in a run and removed in a later run still shows in the first
+  run's pills. For example, a request's first call creates `notes.md` and its
+  fourth removes it: opened, the first call's pills show `notes.md` and the
+  fourth's show it struck through; folded, a run holding both shows neither,
+  and the Change view does not list it. A file that was there before the
+  request and that it removed shows struck through everywhere.
 - A file removed by a program the runner does not record, such as `python`
   deleting it, cannot be told from one that stays, and stays shown.
 - Nothing else is hidden: a file the project's git ignores, such as `.env`
@@ -178,9 +184,11 @@ there again starts anew. Each entry of `files`:
 | `added`, `removed` | Total line additions and removals across this job's retained edit segments. A segment without contents contributes zero. |
 | `edits` | Ordered segments for this file. Each has `original` and `modified` snapshot paths on the target. `original` is absent when that segment created the file. Both are absent when contents were not retained. |
 
-The common file fields are the working tree's
-([Runner](runner.md#working-tree)) without `deleted`, `renamed`, and `from`.
-The edit sequence belongs only to the call's history.
+The call's view keeps these files and adds, from `pathChanges`, each file the
+call removed as `deleted` and each it renamed as `renamed` with the old path
+in `from`, the kinds the working tree uses ([Runner](runner.md#working-tree)),
+so a call's pills show what it removed and moved. The edit sequence belongs
+only to the call's history.
 
 ## Edit copies
 
@@ -267,8 +275,10 @@ request applies each call's before adding the call's own files:
   removed is no control.
 
 A message sent while the agent works waits in the queue and starts
-its own request when it runs. The request is derived from the transcript
-when shown, never stored.
+its own request when it runs. The backend derives the request's list by
+these rules as it stores each call, into the call's `requestFiles`
+([What the conversation shows](#what-the-conversation-shows)); the page
+derives nothing.
 
 ### Each agent its own
 
@@ -280,23 +290,41 @@ parent's own commands changed.
 
 ### What the conversation shows
 
-- **The pills.** Under a shell call, its files, from the block's view
-  ([Rendering boundary](../agent/runtime.md#rendering-boundary)). Under a
-  folded work group ([Work groups](../agent/runtime.md#work-groups)), the
-  files its calls changed, each once in the order first changed, with each
-  file's lines counted as the Change view's All Changes counts them, from its
-  first edit's original to its last edit's result within the group, so a line
-  two calls changed counts once. They are read when the pills come into view, and
-  only a file whose ends a later call changed is counted again; until counted,
-  or when its ends were not kept, a pill names its file alone. A pill opens
-  its file at the first of the group's calls that changed it. A pill whose
+- **What a page receives, it shows; it counts nothing.** Every list of
+  changed files and every line count the conversation shows is computed
+  once by the backend, when it stores a call's block, and stored in the
+  call's view ([Rendering boundary](../agent/runtime.md#rendering-boundary)):
+  the backend holds the edit copies it just stored and the whole transcript,
+  so it reads no blob twice and needs no page of the transcript the page has
+  not read. A list once stored never changes: where a run or a request
+  starts is decided by the blocks before a call, and later blocks only end
+  it, while an edit or a regenerate removes the later blocks whole. Lines are
+  counted by one algorithm, gix's blob diff (`imara-diff`), for the runner's
+  report and the backend's lists alike.
+- **The pills.** Under a shell call, its files, from the block's view: what
+  the call wrote, removed (struck through) and renamed (under its new name,
+  the old one in its tooltip). Under a folded work group
+  ([Work groups](../agent/runtime.md#work-groups)), the run's files as the
+  latest call of the run stored them in `runFiles`: each file once, in the
+  order first changed, its kind, and the lines added and removed between
+  its contents before the run and after that call, so a line two calls
+  changed counts once; a file whose two ends were not kept is named alone,
+  and a file the run created and removed is at neither end and not listed.
+  The pills show with their counts the moment the block does. A pill opens
+  its file at the first of the run's calls that changed it. A pill whose
   edit the panel already shows closes the panel instead
   ([Work panel](../product/web-application.md#work-panel)).
 - **The Change view.** A pill opens the `edit` intent, which the work panel's
   Change view opens in Conversation mode on the request
   ([Intents](../architecture/plugin-pages.md#intents)); with the `changes`
-  plugin off, a pill is no control. The sidebar lists the request's files in
-  the order they were first changed. A file shows **All Changes**, from its
+  plugin off, a pill is no control. The sidebar lists the request's files as
+  the request's latest call stored them in `requestFiles`, in the order they
+  were first changed: each with its kind (added, modified, deleted, or
+  renamed with its old path), All Changes' line counts, and its edits, each
+  naming its call and the two edit copies, so the page reads copies only to
+  draw a diff, never to count. A file in a temporary directory, or one the
+  request created and removed, is not listed
+  ([Temporary files](#temporary-files)). A file shows **All Changes**, from its
   contents before the request's first edit to after its last, and a control
   steps through each edit of the request in order, `Edit 2 of 3`, each named
   by its call's title. All Changes is offered when the first edit's original
@@ -328,14 +356,14 @@ Uncommitted mode lists the working tree's files and has a refresh.
 | Where | Responsibility |
 | --- | --- |
 | `vendor/brush/brush-core`, `vendor/uutils-coreutils/uucore`, `vendor/uutils-sed/sed` | Route writable opens, file writes and temporary-file publication through the execution owner's hooks. |
-| `crates/command-protocol` | Define the recording context, the journal and the test of whether bytes are text. |
+| `crates/command-protocol` | Define the recording context, the journal, the test of whether bytes are text, and the line counts of a change (`imara-diff`), which the runner's report and the backend's lists share. |
 | `crates/command-sdk` | Implement the shared bounded recorder with OS locking. |
 | `crates/command-package-file` | Record create, edit, patch publication and rollback using the invocation's recorder. |
 | `crates/runner-jobs`, `crates/runner-shell` | Create job recording contexts, associate descriptors with paths, forward redirected external output, finalize reports and share line counting with the working tree. |
 | `crates/runner-protocol`, `crates/host-interface`, `crates/backend-remote-host` | Carry the report through command completion. |
-| `crates/backend-user-shard` | Store the copies as blobs before tool completion; the blob route serves them. |
+| `crates/backend-user-shard` | Store the copies as blobs before tool completion; the blob route serves them. Compute and store, with each shell call's block, its run's `runFiles` and its request's `requestFiles`. |
 | `crates/shared-types`, `crates/agent-tools` | Define the shell tool view with its small file and segment list, and carry it in the transcript, exclusively for the user. |
-| `packages/web-ui` | Deriving a request's changes from the transcript, the file pills and their counts, and shared file selection, edit selection and diff behavior. |
+| `packages/web-ui` | The file pills and the Change view's request list as the stored lists give them, and shared file selection, edit selection and diff behavior; it derives no list and counts no line. |
 | `packages/web`, `packages/web-gallery` | Product data adapters and matching specimens. |
 
 ## Rationale

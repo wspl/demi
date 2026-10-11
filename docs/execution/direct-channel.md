@@ -157,10 +157,10 @@ the same failure. Bytes travel as binary messages of at most 64 KiB.
 | `stream` | `{ stream, args? }`, then the stream's input bytes | `{ ok }`, then the stream's output bytes: the same bytes the relay's pipes carry |
 | `read` | `{ path, offset?, length?, version? }` | `{ ok, size, version, modifiedAt }`, then the bytes; a `version` the file no longer has answers `file_changed` |
 | `write` | `{ path, replace }`, the bytes, then `{ end: true }` | `{ ok }` once the file is in place |
-| `text` | `{ path, version? }` | `{ ok, version, unchanged }`, then the text unless it is unchanged |
-| `list` | `{ path? }` | `{ ok, path, home, entries }` |
+| `text` | `{ path, version? }` | `{ ok, version, unchanged, readAt }`, then the text unless it is unchanged; `readAt` is the Host's number before it read, as the relay's `X-Demi-Read-At` |
+| `list` | `{ path? }` | `{ ok, path, home, entries, readAt }` |
 | `mkdir`, `delete` | `{ path }` | `{ ok }` |
-| `watch` | `{ paths }` messages, as on the relay | The relay's `state`, `changed` and `heartbeat` messages |
+| `watch` | The relay's `subscribe`, `unsubscribe` and `renew` messages | The relay's `live`, `changed`, `unavailable`, `refused`, `renewed`, `offline` and `heartbeat` messages ([File watch](../product/web-api.md#file-watch)) |
 
 The `probe` channel is the one exception to one channel per operation: it
 lives as long as the peer, is unordered and never retransmitted, and carries
@@ -189,7 +189,8 @@ knows the stream as it knows a stream it opened:
 The runner carries each one out as it carries out the backend's request for
 the same thing ([Host operations](runner.md#host-operations)): the same
 functions, the same limits, the same atomic writes, the same
-[file watch](runner.md#watching-files) shared with the backend's watches. A
+[subscriptions](runner.md#watching-files), shared with the backend's, and the
+same numbers, since the runner counts its events once per process. A
 `stream` starts the invocation as a `service_open` does
 ([Service streams](runner.md#service-streams)), with a `user` caller in the
 conversation the header names.
@@ -226,8 +227,9 @@ policy makes the attempts unwelcome.
   or file watch reopens on the other path, as it does after a lost
   connection: the view keeps its last picture and resumes over it
   ([A browser tab in the panel](../browser/live-view.md#a-browser-tab-in-the-panel)),
-  and the files service treats what it read as unconfirmed until the new
-  watch says `live` ([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)).
+  and the files service subscribes again to what it keeps on the new path,
+  each entry current again once its subscriptions are `live` and the numbers
+  say so ([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)).
   Moving costs no reconnect wait.
 - **A failure goes back to the relay at once.** A channel that fails, or a
   peer whose connection fails, sets the choice to `relay`. A read, text or
