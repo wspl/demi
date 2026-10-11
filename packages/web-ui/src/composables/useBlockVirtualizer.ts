@@ -2,6 +2,7 @@ import { computed, nextTick, onScopeDispose, ref, type Ref, watch } from 'vue'
 import { measureElement as measureRow, useVirtualizer } from '@tanstack/vue-virtual'
 import { BOTTOM_THRESHOLD_PX, distanceFromBottom } from './scroll-bottom'
 import { FOLD_MS } from '../ui/fold'
+import { revealOffset } from '../ui/reveal'
 
 type ScrollIntent = 'up' | 'down' | null
 interface VirtualizedBlock {
@@ -93,6 +94,14 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   const scrollOffset = ref(0)
   /** How far the list's end lies below the view, as of the last scroll or growth. */
   const endDistance = ref(0)
+  /**
+   * How far below the view's top the last block brought into view starts
+   * (`revealOffset`): the virtualizer's room above a row it scrolls to the
+   * start, which only `reveal` asks for.
+   */
+  let revealRoom = 0
+  /** The row `reveal` placed at a guess of its height, until the list measures it. */
+  let revealing: { key: string, coveredBottom: number } | null = null
   const isRestored = ref(false)
 
   const virtualizer = useVirtualizer<HTMLElement, HTMLElement>(
@@ -111,9 +120,14 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       // anew does so before it is in the document, where every row is 0 px
       // tall. Such a row keeps the height it is known by; the virtualizer
       // measures it once it watches the rows, when the scroller attaches.
-      measureElement: (element, entry, instance) => element.isConnected
-        ? measureRow(element, entry, instance)
-        : estimateSize(instance.indexFromElement(element)),
+      measureElement: (element, entry, instance) => {
+        if (!element.isConnected)
+          return estimateSize(instance.indexFromElement(element))
+        const size = measureRow(element, entry, instance)
+        revealMeasured(instance.indexFromElement(element), size)
+        return size
+      },
+      scrollPaddingStart: revealRoom,
       overscan: OVERSCAN,
       gap: BLOCK_GAP,
       getItemKey: (index: number) => {
@@ -218,21 +232,50 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   }
 
   /**
-   * Scrolls the block `id` to the middle of the view and stops following the
-   * end, as a search result opened at a message asks; false while the list
-   * has no such block, such as before its history arrives.
+   * Brings the block `id` into view where `revealOffset` places it, in the
+   * part of the view `coveredBottom` pixels of the dock leave visible, and
+   * stops following the end, as a search result opened at a message asks;
+   * false while the list has no such block, such as before its history
+   * arrives. A row not measured yet is placed by its estimated height, and
+   * placed again by its real one once it is measured.
    */
-  function reveal(id: string): boolean {
+  function reveal(id: string, coveredBottom = 0): boolean {
     const index = blocks.value.findIndex((block) => block.id === id)
     if (index < 0)
       return false
     // The list is placed: the restore of a saved position no longer applies.
     isRestored.value = true
     shouldAutoScroll.value = false
-    isProgrammaticScroll = true
-    virtualizer.value.scrollToIndex(index, { align: 'center' })
-    isProgrammaticScroll = false
+    const key = keyOf(blocks.value[index]!)
+    revealing = virtualizer.value.itemSizeCache.has(key) ? null : { key, coveredBottom }
+    placeRevealed(index, virtualizer.value.measurementsCache[index]?.size ?? estimateSize(index), coveredBottom)
     return true
+  }
+
+  function placeRevealed(index: number, size: number, coveredBottom: number): void {
+    const el = scrollContainer.value
+    if (!el)
+      return
+    revealRoom = revealOffset(size, el.clientHeight - coveredBottom)
+    // The room applies at once, to this scroll and to the virtualizer's
+    // corrections of it while the rows around it are measured.
+    virtualizer.value.setOptions({ ...virtualizer.value.options, scrollPaddingStart: revealRoom })
+    isProgrammaticScroll = true
+    virtualizer.value.scrollToIndex(index, { align: 'start' })
+    isProgrammaticScroll = false
+  }
+
+  /** The row `reveal` placed at a guess measured `size`: placed again when its real height places it elsewhere. */
+  function revealMeasured(index: number, size: number): void {
+    const block = blocks.value[index]
+    if (!revealing || !block || keyOf(block) !== revealing.key)
+      return
+    const { coveredBottom } = revealing
+    revealing = null
+    const el = scrollContainer.value
+    if (el && revealOffset(size, el.clientHeight - coveredBottom) !== revealRoom)
+      // After the measure returns, so the list holds the height it places by.
+      queueMicrotask(() => placeRevealed(index, size, coveredBottom))
   }
 
   function scrollToBottomExplicit() {

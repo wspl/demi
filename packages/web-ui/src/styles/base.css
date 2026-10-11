@@ -961,15 +961,40 @@ html[data-theme="light"] .file-pill {
   }
 }
 
-/* What a find opened, a settings row or a message a search found, flashed once (`ui/found-highlight.ts`). */
-.found-highlight {
-  animation: found-highlight 1.6s ease-out;
+/* What a find or a link opened, a settings row, a block of the transcript or a line of a file, marked
+   once (`ui/found-highlight.ts`, `product.md` § Finding a conversation): the accent's faint fill over
+   it as a hovered row's fill covers a row, with a row's rounded corners, fading out. An element wider
+   than the column its content stands in, as a transcript row is, says how far in the column starts
+   with --found-inset-x. The fill is translucent and drawn over the element rather than behind it, so a
+   row with a fill of its own, as a user's message has, shows it too, and its text reads through it.
+   In the components layer, so an element's own position utility wins over the relative one here. */
+@layer components {
+  .found-highlight {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .found-highlight::after {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline: var(--found-inset-x, 0px);
+    /* Over whatever the element stacks inside it, a user's message included. */
+    z-index: 100;
+    border-radius: var(--radius-md);
+    background-color: color-mix(in srgb, transparent, var(--tint-accent-mix));
+    pointer-events: none;
+    animation: found-highlight 1.6s ease-out forwards;
+  }
 }
 
 @keyframes found-highlight {
   0%,
   45% {
-    background-color: color-mix(in srgb, var(--surface-current), var(--tint-accent-mix));
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }
 

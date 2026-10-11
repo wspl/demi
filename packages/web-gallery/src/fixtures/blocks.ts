@@ -1515,3 +1515,33 @@ So on a slow network every attempt times out before the server can answer, and t
 All 12 checkout tests pass, including the slow-network one that failed before.`),
   ]
 }
+
+/**
+ * A transcript to bring blocks into view in: a short call, an answer taller
+ * than a session's view, and a short answer after it.
+ */
+export function foundMarkBlocks(): Block[] {
+  const user = (id: string, at: number, text: string): Block => ({
+    type: 'user', id, turnId: `${id}-turn`, createdAt: iso(at), model: demoModel,
+    content: [{ type: 'text', text }], preamble: null,
+  })
+  const reply = (id: string, at: number, text: string): Block => ({
+    type: 'text', id, createdAt: iso(at), model: demoModel, text,
+  })
+  const steps = [
+    'The session cookie was renamed from `sid` to `session` in the cookie helper, and the login test still reads the old name.',
+    'The helper writes the cookie once per sign-in, and every request after it reads the cookie back through `readSessionCookie`.',
+    'The test drives the login page, submits the form, and reads the `Set-Cookie` header of the response.',
+    'Its assertion compares the parsed cookie with a literal that names `sid`, so it fails while the page itself works.',
+    'I changed the literal to `session` and left the helper alone, as you asked.',
+    'The expired-cookie case now has a test of its own: it signs in, moves the clock past the cookie’s age, and expects the sign-in page again.',
+    'Both tests pass, and the whole suite passes in 41 seconds.',
+  ]
+  return [
+    user('found-ask', 600_000, 'Why does the login test fail?'),
+    { ...shellTool, id: 'found-call', createdAt: iso(590_000) },
+    reply('found-long', 580_000, steps.map((step) => `${step} ${'Each step follows from the one before it, and the next one reads its result. '.repeat(3)}`).join('\n\n')),
+    user('found-thanks', 100_000, 'Thanks. Is anything left?'),
+    reply('found-short', 90_000, 'Nothing is left: both tests pass.'),
+  ]
+}
