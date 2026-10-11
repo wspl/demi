@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { reactive, ref, toRef } from 'vue'
-import { EditorView, highlightActiveLine, highlightActiveLineGutter, lineNumbers } from '@codemirror/view'
+import { getCurrentInstance, reactive, ref, toRef } from 'vue'
+import { drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view'
+import { defaultKeymap } from '@codemirror/commands'
 import { activeLineVisibilityExtension } from '../activeLineVisibility'
 import { customScrollbarExtension } from '../scrollbars/extension'
+import { searchExtension } from '../searchPanel'
 import { unifiedDiff } from '../unifiedDiff'
 import { useCodeView } from '../useCodeView'
 
@@ -10,7 +12,9 @@ import { useCodeView } from '../useCodeView'
  * Two versions of one file as a unified diff, read-only: the current text,
  * with each removed stretch shown above what replaced it, and the unchanged
  * stretches between changes folded but for three lines around each change
- * (`file-previews.md` § Changes, `unifiedDiff`). New texts of the file
+ * (`file-previews.md` § Changes, `unifiedDiff`). Focused, it keeps a caret
+ * that the arrows move, Shift extends a selection from and Mod-f finds from
+ * (`file-previews.md` § Code). New texts of the file
  * replace the old in place, keeping the place the user is looking at;
  * another file needs another editor.
  */
@@ -44,6 +48,7 @@ const diffTheme = EditorView.theme({
 })
 
 const container = ref<HTMLDivElement>()
+const appContext = getCurrentInstance()?.appContext ?? null
 
 // The view is built once its language loads: by then the original may have
 // been read again, and the diff compares against the one it has then.
@@ -53,11 +58,14 @@ useCodeView(container, reactive({
   original: toRef(props, 'original'),
 }), () => [
   diffTheme,
+  drawSelection(),
   lineNumbers(),
   highlightActiveLine(),
   highlightActiveLineGutter(),
   activeLineVisibilityExtension(),
   customScrollbarExtension(),
+  searchExtension(appContext),
+  keymap.of(defaultKeymap),
   unifiedDiff(props.original),
 ])
 </script>
