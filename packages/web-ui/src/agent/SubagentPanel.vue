@@ -168,6 +168,6 @@ function closeTab(id: string): void {
       @revealed="emit('revealed')"
       @read-before="emit('read', active.id, 'before')"
     />
-    <RegionStatus v-else status="note" :icon="Bot" label="No agents are running." />
+    <RegionStatus v-else class="h-full" status="note" :icon="Bot" label="No agents are running." />
   </SessionOverlay>
 </template>
