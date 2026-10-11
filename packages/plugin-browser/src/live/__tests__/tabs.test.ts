@@ -359,12 +359,14 @@ test('the agent’s navigation shows the tab loading while the tab list says it 
 // `live-view.md` § The tab methods: the panel says every failure in its own
 // words. The user saw "The browser couldn't do that." where the browser did
 // not start on the device; a failure that carries no reason of the plugin's
-// says whether the server answered, and with what.
-test('a failed call says its reason’s sentence, or that the server did not answer or how it answered', async () => {
+// says whether the server answered, and with what, or that its answer could
+// not be read.
+test('a failed call says its reason’s sentence, or how the server answered, or that it did not or could not be read', async () => {
   const failures: unknown[] = [
-    new PluginCallError('browser_unavailable', 'native artifact: the artifact has 60 bytes', '409 Conflict'),
-    new PluginCallError('plugin_failed', 'the browser answered what the plugin cannot read', '500 Internal Server Error'),
-    new PluginCallError('status_502', 'Request failed (502).', '502'),
+    new PluginCallError('browser_unavailable', 'native artifact: the artifact has 60 bytes', { type: 'status', status: '409 Conflict' }),
+    new PluginCallError('plugin_failed', 'the browser answered what the plugin cannot read', { type: 'status', status: '500 Internal Server Error' }),
+    new PluginCallError('unreadable_answer', 'Invalid server response: not JSON', { type: 'unreadable' }),
+    new PluginCallError('failed', 'Failed to fetch'),
     new TypeError('Failed to fetch'),
   ]
   const plugin: ConversationPlugin = {
@@ -379,13 +381,14 @@ test('a failed call says its reason’s sentence, or that the server did not ans
   const session = effectScope()
   const api = session.run(() => browserTabsApi(plugin, () => {}))!
   const said: Array<[string | null, string]> = []
-  for (let call = 0; call < 4; call += 1) {
+  for (let call = 0; call < 5; call += 1) {
     await api.navigate('t1', 'https://example.test/').catch((error: BrowserTabsError) => void said.push([error.reason, error.message]))
   }
   expect(said).toEqual([
     ['browser_unavailable', 'The browser couldn’t start on the device.'],
     [null, 'The server couldn’t do that: 500 Internal Server Error.'],
-    [null, 'The server couldn’t do that: 502.'],
+    [null, 'The server’s answer could not be read.'],
+    [null, 'The server didn’t answer.'],
     [null, 'The server didn’t answer.'],
   ])
   session.stop()
