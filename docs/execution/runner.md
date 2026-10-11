@@ -1104,10 +1104,10 @@ only for programs that are not Apple's own, so each signal also goes to the
 descendants, by parent process id, of every process it reaches: a `setsid`
 child of `/bin/sh` whose parent still runs is found that way. A process
 that cleared its environment, or an Apple program orphaned by a double fork,
-escapes, and none of the runner's own resident services carries a job's id. The job ends once every process of those groups has exited.
+escapes, and none of the runner's own resident services carries a job's id. The job ends once every process of those groups, and every process a signal of the stop reached, has exited.
 `KILL` kills whatever remains, and is what a
 stop sends when the job has not ended 5 seconds after `TERM`
-([Stopping a command](../agent/runtime.md#stopping-a-command)). Before, a
+([The `demi shell` commands](../agent/runtime.md#the-demi-shell-commands)). Before, a
 stop went straight to `SIGKILL`, and a dev server killed that way left its
 backend running in a group of its own, holding its port.
 

@@ -13,7 +13,7 @@ JSON, image bytes, targeting, and examples, is specified in
 [Browser automation](../browser/browser.md#command-contract). It uses this
 command contract rather than a separate shell or model tool loop. The
 `demi agent` group is specified in [Subagents](../agent/subagents.md), and the
-`demi shell` group in [The whole output](../agent/runtime.md#the-whole-output) and [Stopping a command](../agent/runtime.md#stopping-a-command).
+`demi shell` group in [The whole output](../agent/runtime.md#the-whole-output) and [The `demi shell` commands](../agent/runtime.md#the-demi-shell-commands).
 
 ## Declare a command
 
