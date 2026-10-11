@@ -1700,9 +1700,14 @@ commands*, and a click opens it to every step.
   `wakeup` that shows, [Command reports](#command-reports)), or an agent's
   receipt (an `agent_message` from another agent: an update or a child's
   end, [Product rendering](subagents.md#product-rendering)). A run is the
-  steps between two other blocks. A `resume` block and a Stop the user
-  continued end a run too, so the steps after Continue are a run of their
-  own, standing where *Stopped* stood. What ends a run is what the reader reads:
+  steps between two other blocks. A `resume` block ends no run, as it shows
+  nothing: the work after a Continue, a Resume, or the system's own resume
+  after a backend restart joins the run before it, which shows its steps as
+  one. For example, a deploy command is lost when the backend restarts, the
+  turn resumes, and the agent runs four more commands: one row, *Ran 5
+  commands*. After Continue, the *Stopped* row rolls into *Requesting*, and
+  when the first step arrives it joins the run above and the Requesting row
+  gives way to it, a change the user asked for. What ends a run is what the reader reads:
   the agent's text, never folded, and the user's own words and decisions,
   never folded either: a message, a steer, and the receipts of the user's
   permission decision or move. For example, the agent runs three commands,
