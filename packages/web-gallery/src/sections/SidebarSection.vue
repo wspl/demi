@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 import { moveBefore } from '@demicodes/utils'
 import type { SidebarConversation, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
+import type { SidebarGroup } from '@demicodes/web-ui/sidebar/list-model'
 import { RestoreSweep } from '../fixtures/restore-sweep'
 import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -31,6 +32,8 @@ const projects = ref(demoProjects())
 const conversations = ref(demoConversations())
 const activeId = ref<string | null>('c-login')
 const collapsedProjects = ref<string[]>(['p-dotfiles'])
+/** The groups folded under their label, which the product keeps per browser. */
+const foldedGroups = ref<SidebarGroup[]>([])
 const sidebarWidth = ref<number>(SIDEBAR_WIDTH.default)
 let nextId = 1
 
@@ -71,11 +74,11 @@ const anatomy: [string, string][] = [
   ],
   [
     'Conversations',
-    'Plain conversations that run in no checkout. Manual order, pinned on top. One on a paired device shows that device at its row’s end: the device’s icon with a dot for its state, or without a dot once the device is removed, left of the pin when the row is pinned; a row on the Cloud shows none. On hover Archive takes the row’s end, and a pinned row shows Unpin before it, so the pin moves one place left; a row that is not pinned offers Pin in its menu. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
+    'Plain conversations that run in no checkout. Manual order, pinned on top. The group folds under its label, as Projects does (Folded Groups). One on a paired device shows that device at its row’s end: the device’s icon with a dot for its state, or without a dot once the device is removed, left of the pin when the row is pinned; a row on the Cloud shows none. On hover Archive takes the row’s end, and a pinned row shows Unpin before it, so the pin moves one place left; a row that is not pinned offers Pin in its menu. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
   ],
   [
     'Projects',
-    'Every checkout the agent works in, in manual order, each with the host it lives on: the Cloud icon, or the device’s name and a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. The device’s name takes its own width, at most half of the text’s, and is cut at its end beyond that; the project’s name takes the rest and is cut only when it does not fit there; each cut name shows whole on hover. On hover New conversation takes the dot’s place. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
+    'Every checkout the agent works in, in manual order; the whole group folds under its label (Folded Groups), each with the host it lives on: the Cloud icon, or the device’s name and a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. The device’s name takes its own width, at most half of the text’s, and is cut at its end beyond that; the project’s name takes the rest and is cut only when it does not fit there; each cut name shows whole on hover. On hover New conversation takes the dot’s place. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
   ],
   [
     'Row',
@@ -263,6 +266,41 @@ function statusRows(): SidebarConversation[] {
     row('s-idle', 'Nothing run yet', 'idle', false),
   ]
 }
+/**
+ * The folded specimen's rows: no conversation in a project waits yet, so the
+ * label's dot comes only from Ask for Permission in a Project.
+ */
+function foldRows(): SidebarConversation[] {
+  return demoConversations().map((conversation) => (
+    conversation.projectId === null ? conversation : { ...conversation, needsYou: false }
+  ))
+}
+/** The project conversation Ask for Permission in a Project makes wait, which is not the open one. */
+const FOLD_ASKER = 'c-thumbs'
+const foldConversations = ref(foldRows())
+const foldActive = ref<string | null>('c-cookie')
+const foldGroups = ref<SidebarGroup[]>(['projects'])
+const foldProjects = ref<string[]>(['p-dotfiles'])
+const foldAsking = computed(() => foldConversations.value.some((c) => c.id === FOLD_ASKER && c.needsYou))
+
+/** Asks for a permission in a project conversation, or answers it, as a subagent's request and the user's decision would. */
+function toggleFoldAsk(): void {
+  foldConversations.value = foldConversations.value.map((c) => (c.id === FOLD_ASKER ? { ...c, needsYou: !foldAsking.value } : c))
+}
+
+function resetFold(): void {
+  foldConversations.value = foldRows()
+  foldActive.value = 'c-cookie'
+  foldGroups.value = ['projects']
+  foldProjects.value = ['p-dotfiles']
+}
+
+/** Opening a row reads it and answers nothing: its request still waits for the user's decision. */
+function selectFold(id: string): void {
+  foldActive.value = id
+  foldConversations.value = foldConversations.value.map((c) => (c.id === id ? { ...c, unread: false } : c))
+}
+
 const statusConversations = ref(statusRows())
 const statusActive = ref<string | null>(null)
 
@@ -274,6 +312,10 @@ function selectStatus(id: string): void {
 
 function archiveStatus(ids: string[]): void {
   archiveRows(statusConversations, ids)
+}
+
+function archiveFold(ids: string[]): void {
+  archiveRows(foldConversations, ids)
 }
 
 function archiveHover(ids: string[]): void {
@@ -366,6 +408,7 @@ onBeforeUnmount(() => {
           <template #sidebar>
           <AppSidebar
             v-model:collapsed-projects="collapsedProjects"
+            v-model:folded-groups="foldedGroups"
             :account="demoAccount"
             :projects="projects"
             :conversations="conversations"
@@ -410,6 +453,46 @@ onBeforeUnmount(() => {
         </div>
         </GalleryOverlayWell>
       </GallerySpecimen>
+    </GallerySection>
+
+    <GallerySection
+      title="Folded Groups"
+      note="Conversations and Projects each fold under their label, as Finder’s sidebar sections do. Click a label, or the chevron after it, which shows while the pointer is over the label and always on a touch screen: it points down while the group is open and right while it is folded. A folded group shows its label alone, but keeps the open conversation under it, and while a conversation in it waits for the user, the label carries that conversation’s yellow dot. Here Projects starts folded with Cookie helper refactor open; Ask for Permission in a Project makes Thumbnail pipeline on the new bucket wait until Answer the Request. The product keeps the folded groups per browser, across reloads. Reset gives the specimen its rows and folds again."
+    >
+      <div class="specimen-row specimen-row-wide items-start">
+        <GallerySpecimen variant="projects folded · live">
+          <div class="flex flex-col gap-2">
+            <div class="flex gap-2">
+              <Button variant="ghost" size="sm" @click="toggleFoldAsk">{{ foldAsking ? 'Answer the Request' : 'Ask for Permission in a Project' }}</Button>
+              <Button variant="ghost" size="sm" @click="resetFold">Reset</Button>
+            </div>
+            <div class="gallery-frame flex h-[30rem] overflow-hidden">
+              <AppSidebar
+                v-model:collapsed-projects="foldProjects"
+                v-model:folded-groups="foldGroups"
+                :new-shortcut="newShortcut"
+                :search-shortcut="searchShortcut"
+                :account="demoAccount"
+                :projects="fixedProjects"
+                :conversations="foldConversations"
+                :active-id="foldActive"
+                @search="productWould('Open the Search Window')"
+                @create="productWould('Start a New Conversation')"
+                @add-project="productWould('Add a Project')"
+                @remove-project="productWould('Remove the Project')"
+                @open-settings="wouldOpenSettings"
+                @sign-out="productWould('Sign Out')"
+                @select="selectFold"
+                @reorder="(request) => productWould(request.kind === 'project' ? 'Move the Project' : 'Move the Conversation')"
+                @rename="(id, title) => (foldConversations = foldConversations.map((c) => (c.id === id ? { ...c, title } : c)))"
+                @pin="(ids, pinned) => (foldConversations = foldConversations.map((c) => (ids.includes(c.id) ? { ...c, pinned } : c)))"
+                @archive="archiveFold"
+                @delete="(ids) => (foldConversations = without(foldConversations, ids))"
+              />
+            </div>
+          </div>
+        </GallerySpecimen>
+      </div>
     </GallerySection>
 
     <GallerySection

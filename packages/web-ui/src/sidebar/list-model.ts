@@ -13,34 +13,65 @@ export type ListEntry =
     id: string
   }
 
-/** The lines the keyboard can reach: plain rows, then each project header and, unless folded, its rows. */
-export function visibleEntries(
+/** The sidebar's two groups, each folding under its label (`product.md` § Conversations and projects). */
+export const SIDEBAR_GROUPS = ['conversations', 'projects'] as const
+export type SidebarGroup = (typeof SIDEBAR_GROUPS)[number]
+
+/** A line of the list, and whether its group's fold hides it under the group's label. */
+export type ListLine = ListEntry & { hidden: boolean }
+
+/**
+ * Every line the list holds, in display order: plain rows, then each project header and, unless
+ * the project is folded, its rows. A folded group hides its lines but keeps the conversation open
+ * in the page, which stays under the label even in a folded project; the hidden lines stay listed
+ * so their fold can animate. The keyboard reaches the lines that are not hidden.
+ */
+export function listLines(
   plain: readonly SidebarConversation[],
   groups: readonly ProjectGroup[],
-  folded: ReadonlySet<string>,
-): ListEntry[] {
-  const entries: ListEntry[] = plain.map(
+  foldedProjects: ReadonlySet<string>,
+  foldedGroups: ReadonlySet<SidebarGroup>,
+  openId: string | null,
+): ListLine[] {
+  const conversationsFolded = foldedGroups.has('conversations')
+  const projectsFolded = foldedGroups.has('projects')
+  const lines: ListLine[] = plain.map(
     (conversation) => ({
       kind: 'conversation',
       id: conversation.id,
-      projectId: null
+      projectId: null,
+      hidden: conversationsFolded && conversation.id !== openId,
     })
   )
   for (const group of groups) {
-    entries.push({ kind: 'project', id: group.project.id })
-    if (folded.has(group.project.id))
-      continue
+    lines.push({ kind: 'project', id: group.project.id, hidden: projectsFolded })
+    const projectFolded = foldedProjects.has(group.project.id)
     for (const conversation of group.items) {
-      entries.push(
+      const open = conversation.id === openId
+      if (projectFolded && !(projectsFolded && open))
+        continue
+      lines.push(
         {
           kind: 'conversation',
           id: conversation.id,
-          projectId: group.project.id
+          projectId: group.project.id,
+          hidden: projectsFolded && !open,
         }
       )
     }
   }
-  return entries
+  return lines
+}
+
+/**
+ * The conversation whose yellow dot a group's label carries: while the group is folded, the
+ * first of its conversations that waits for the user, so a request never hides in a fold.
+ */
+export function labelWaiting(
+  folded: boolean,
+  conversations: readonly SidebarConversation[],
+): SidebarConversation | null {
+  return folded ? conversations.find((conversation) => conversation.needsYou) ?? null : null
 }
 
 export function entryIndex(entries: readonly ListEntry[], id: string | null): number {
