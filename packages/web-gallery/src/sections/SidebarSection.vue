@@ -533,7 +533,7 @@ onBeforeUnmount(() => {
 
     <GallerySection
       title="Status Dots"
-      note="A row’s dot says what the conversation’s work is doing, in the tones its tab and an agent’s link wear: the accent breathing while it runs, green once finished and red once failed, read or not; yellow with a halo while a request waits for the user, over every other dot. A Stop is the user’s own decision, and a stopped row, like one that has run nothing yet, keeps the faint ring of a settled row. An answer the user has not read shows in the title, brighter, not in the dot: open a row to read it. Reset gives the specimen its rows again."
+      note="A row’s dot says what the conversation’s work is doing, in the tones its tab and an agent’s link wear: the accent breathing while it runs, green once finished and red once failed, read or not; yellow while a request waits for the user, the same size as every other dot and with nothing around it, over every other dot. A Stop is the user’s own decision, and a stopped row, like one that has run nothing yet, keeps the faint ring of a settled row. An answer the user has not read shows in the title, brighter, not in the dot: open a row to read it. Reset gives the specimen its rows again."
     >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="every state · live">
