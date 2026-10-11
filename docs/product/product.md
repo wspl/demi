@@ -379,6 +379,16 @@ above the composer, such as a device's offline card, a permission request
 or a notice, stands above the chips, so the control the user reaches for
 next stays where the hand already is.
 
+The Agents and Running chips each open a window over the session, as an
+editor's bottom panel opens, and it stays open while the user works
+elsewhere: a click outside it, on the transcript, the composer or nothing,
+leaves it open, and so does what it opens itself, such as the media viewer
+over a screenshot in a subagent's transcript. It closes by its chip, its
+close control, or Escape while the focus is in it; Escape closes the media
+viewer first when that window is in front. For example, the user opens
+*2 Agents*, clicks a screenshot in the child's transcript, closes the viewer,
+and reads on in the same window.
+
 Its label follows the cause, because the user's expectation differs:
 
 | How the turn ended | Control | What the user expects |
