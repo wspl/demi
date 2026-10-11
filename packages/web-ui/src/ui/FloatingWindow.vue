@@ -9,6 +9,7 @@ import {
   escapeClosesWindow,
   moveWindowRect,
   resizeWindowRect,
+  useOpenWindowCount,
   WINDOW_TITLE_BAR_PX,
   type WindowEdges,
   type WindowRect,
@@ -131,6 +132,8 @@ function startMove(event: PointerEvent): void {
 function startResize(event: PointerEvent, zone: ResizeZone): void {
   drag(event, zone.cursor, (start, dx, dy) => resizeWindowRect(start, zone.edges, dx, dy, page.value))
 }
+
+useOpenWindowCount(() => props.open)
 
 const focusReturn = useFocusReturn((active) => panel.value?.contains(active) === true)
 
