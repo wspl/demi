@@ -1024,6 +1024,51 @@ async fn a_vendor_error_fails_the_request_in_the_clis_words_and_the_kept_process
     world.backend.close().await;
 }
 
+// EXPLORE: what the CLI does with a call of a tool the request does not offer.
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
+async fn explore_a_call_of_an_unknown_tool() {
+    let world = World::start().await;
+    let mut socket = world.conversation().await;
+    world.answers(message(
+        vec![tool_use_block(0, "toolu_suite_unknown", "demi agent send parent", &json!({}))],
+        "tool_use",
+        json!({ "input_tokens": 10, "output_tokens": 1 }),
+        3,
+    ));
+    world.answers(message(
+        vec![text_block(0, &["Corrected."])],
+        "end_turn",
+        json!({ "input_tokens": 12, "output_tokens": 1 }),
+        2,
+    ));
+    world.answers(message(
+        vec![text_block(0, &["Third."])],
+        "end_turn",
+        json!({ "input_tokens": 12, "output_tokens": 1 }),
+        2,
+    ));
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a41", "Tell the lead.")
+        .await;
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    let blocks = world.blocks().await;
+    eprintln!("EXPLORE kinds {:?}", kinds(&blocks));
+    for block in &blocks {
+        let text = serde_json::to_string(block).unwrap();
+        eprintln!("EXPLORE block {}", &text[..text.len().min(500)]);
+    }
+    let inferences = world.inferences();
+    eprintln!("EXPLORE {} requests", inferences.len());
+    for (index, request) in inferences.iter().enumerate() {
+        let tail: Vec<Value> = request.json()["messages"].as_array().unwrap().iter().rev().take(2).cloned().collect();
+        let text = Value::Array(tail).to_string();
+        eprintln!("EXPLORE request {index} last messages {}", &text[..text.len().min(1500)]);
+    }
+    drop(socket);
+    world.backend.close().await;
+}
+
 /// The configuration directories of CLI processes on this machine.
 fn config_directories() -> std::collections::BTreeSet<std::path::PathBuf> {
     std::fs::read_dir("/tmp")
