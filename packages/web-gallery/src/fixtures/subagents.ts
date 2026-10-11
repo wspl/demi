@@ -117,10 +117,10 @@ export function gallerySubagents(): SubagentRecord[] {
           ago(48_000),
           'See whether logout still clears the renamed session cookie.',
         ),
-        thinking(
-          'ag-logout-think',
+        text(
+          'ag-logout-text',
           ago(40_000),
-          'Logout should drop the session cookie. The helper writes the new name; the test may still mention sid.',
+          'Logout should drop the session cookie. I will look for where the helper clears it.',
         ),
         shell(
           'ag-logout-tool',
