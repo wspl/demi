@@ -44,3 +44,20 @@ test("the calls being written follow the transcript, before the steers, and leav
   const after = listTailBlocks({ phase: 'running', blocks: [held], pendingCalls: writing, pendingSteers: [], queue: [] })
   expect(after.map((block) => block.id)).toEqual(['pending-call:call-2'])
 })
+
+// The row of a message waiting to be confirmed becomes the confirmed message:
+// whichever the server tells first, the message shows once.
+test('a message the transcript holds shows there alone, not again in the tail', () => {
+  const written: Block = {
+    type: 'user', id: 'u-2', turnId: 'm-2', createdAt, model, content: [{ type: 'text', text: 'next' }], preamble: null,
+  }
+  const tail = listTailBlocks({
+    phase: 'running',
+    blocks: [written],
+    pendingCalls: [],
+    pendingSteers: [],
+    queue: [{ id: 'm-2', content: [{ type: 'text', text: 'next' }] }],
+    pendingSubmission: { id: 'm-2', text: 'next', attachments: [], error: null },
+  })
+  expect(tail).toEqual([])
+})

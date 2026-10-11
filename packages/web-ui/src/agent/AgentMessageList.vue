@@ -4,14 +4,11 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import type { Block, PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { BLOCK_GAP, useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
-import { compactionSummaryTokens, getVisibleBlocks } from './visible-blocks'
-import { assistantFooterIds, replyEndIds } from './assistant-footer'
+import { compactionSummaryTokens } from './visible-blocks'
 import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streaming'
-import type { MessageListBlock } from './pending-steers'
-import { listTailBlocks } from './list-tail'
-import { groupWork } from './work-groups'
+import { rowKey } from './row-key'
 import type { PendingAction } from './activity-slot'
-import { useActivitySlot } from './useActivitySlot'
+import { useMessageRows } from './message-rows'
 import { useChromeEntrance } from './useChromeEntrance'
 import { chromeEntrance } from '../ui/chrome-enter'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
@@ -114,19 +111,14 @@ const emit = defineEmits<{
 
 const { states: forkStates, run: forkMessage } = useMessageForks(() => props.fork, () => props.conversationId)
 
-const visibleBlocks = computed(() => getVisibleBlocks(props.blocks))
-/** The blocks that end their reply, after which its work is done: Copy and Fork wait for one. */
-const replyEnds = computed(() => replyEndIds(visibleBlocks.value, props.phase))
-const footerIds = computed(() => assistantFooterIds(visibleBlocks.value, replyEnds.value))
-// A recovery hides the record it recovers from: the tail row names the recovery, then the turn running.
-const transcriptBlocks = computed(() => {
-  const visible = visibleBlocks.value
-  const recovering = props.phase !== 'idle' || props.pendingAction === 'resume'
-  if (recovering && visible.at(-1)?.type === 'error') {
-    return visible.slice(0, -1)
-  }
-  return visible
-})
+const {
+  visibleBlocks,
+  transcriptRows: visibleTranscriptBlocks,
+  rows: renderBlocks,
+  slot,
+  footerIds,
+  heldKey,
+} = useMessageRows(() => props)
 const editableUserId = computed(() => props.readOnly || !props.latest ? null : offeredEditId(props))
 /**
  * The answer whose footer offers Regenerate: the last one after the message
@@ -148,61 +140,17 @@ function regenerate(): void {
     emit('regenerate', editableUserId.value)
   }
 }
-const tailBlocks = computed(() => !props.latest ? [] : listTailBlocks({
-  phase: props.phase,
-  blocks: props.blocks,
-  pendingCalls: props.pendingCalls ?? [],
-  pendingSteers: props.pendingSteers,
-  queue: props.queue,
-  pendingSubmission: props.pendingSubmission,
-}))
-// The calls the model is writing are the newest steps of the work: they join
-// its group and, as any step, roll into the tail row first.
-const pendingCallRows = computed(() => tailBlocks.value.filter((block) => block.type === 'pending_call'))
-const otherTailBlocks = computed(() => tailBlocks.value.filter((block) => block.type !== 'pending_call'))
-const workBlocks = computed<MessageListBlock[]>(() => [...transcriptBlocks.value, ...pendingCallRows.value])
 // The summary size each compaction divider tells, by the id of the block that shows it.
 const summaryTokens = computed(() => new Map([
   ...Object.entries(props.summaries ?? {}),
   ...compactionSummaryTokens(props.blocks),
 ]))
-const slotInput = computed(() => ({
-  load: props.load ?? 'ready',
-  backendAway: props.backendAway,
-  phase: props.phase,
-  pendingAction: props.pendingAction ?? null,
-  transcriptBlocks: visibleBlocks.value,
-  renderBlocks: [...groupWork(workBlocks.value, props.phase === 'running'), ...otherTailBlocks.value],
-}))
-const { heldId, slot } = useActivitySlot({
-  input: () => slotInput.value,
-  pendingSubmission: () => props.pendingSubmission ?? null,
-  waitingSince: () => props.waitingSince ?? null,
-  tail: () => workBlocks.value.at(-1),
-  scope: () => props.conversationId,
-})
-// The block rolling into the tail row is not a list row yet.
-const visibleTranscriptBlocks = computed(() => {
-  const blocks = transcriptBlocks.value
-  return heldId.value !== null && blocks.at(-1)?.id === heldId.value
-    ? blocks.slice(0, -1)
-    : blocks
-})
-const visibleWorkBlocks = computed(() => {
-  const blocks = workBlocks.value
-  return heldId.value !== null && blocks.at(-1)?.id === heldId.value
-    ? blocks.slice(0, -1)
-    : blocks
-})
-const renderBlocks = computed<MessageListBlock[]>(() => [
-  ...(props.atStart ? [] : [{ type: 'history_edge', id: 'history-before' } as const]),
-  ...groupWork(visibleWorkBlocks.value, props.phase === 'running'),
-  ...otherTailBlocks.value,
-  ...(props.atEnd ? [] : [{ type: 'history_edge', id: 'history-after' } as const]),
-])
+// A row enters once, as it first appears, under the key it keeps across its
+// forms: a run's row does not enter again as its first step becomes a block,
+// nor does the row the tail row carried into place.
 const { isEntering } = useChromeEntrance(
-  () => visibleTranscriptBlocks.value,
-  () => heldId.value,
+  () => renderBlocks.value.map(rowKey),
+  () => heldKey.value,
   () => props.conversationId,
   () => props.load ?? 'ready',
 )
@@ -258,6 +206,8 @@ function thinkingEndedAt(index: number): string | null {
 
 const scrollArea = ref<InstanceType<typeof ScrollArea>>()
 const scrollContainer = computed(() => scrollArea.value?.el)
+/** What the list shows after its rows: the tail row and a failure notice. */
+const listTail = ref<HTMLElement>()
 
 const {
   virtualItems,
@@ -270,7 +220,7 @@ const {
   onScroll,
   getPersistedState
 } =
-  useBlockVirtualizer(scrollContainer, renderBlocks, props.persistedScrollState)
+  useBlockVirtualizer(scrollContainer, renderBlocks, props.persistedScrollState, { keyOf: rowKey, tail: listTail })
 
 onBeforeUnmount(() => {
   emit('saveScrollState', props.conversationId, getPersistedState())
@@ -327,7 +277,7 @@ const visibleHeightStyle = computed(() => viewportHeight.value > 0
   ? { '--conversation-visible-height': `${Math.max(0, viewportHeight.value - props.bottomOffset)}px` }
   : {})
 
-useFollowSentMessages(() => renderBlocks.value, scrollToBottom)
+useFollowSentMessages(() => renderBlocks.value, rowKey, scrollToBottom)
 
 // Within a screen of an edge that is not the transcript's, the next page is
 // read there (`web-application.md` § Transcript windows); the host reads
@@ -399,6 +349,7 @@ defineExpose({
             :key="String(item.key)"
             :data-index="item.index"
             :data-block-id="renderBlocks[item.index]!.id"
+            :data-row-key="String(item.key)"
             :ref="(el) => measureElement(el as Element)"
             class="absolute inset-x-0 top-0"
             :style="{ transform: `translateY(${item.start}px)` }"
@@ -414,7 +365,7 @@ defineExpose({
                 :fork-state="forkStates.get(renderBlocks[item.index]!.id)"
                 :failure="failures?.[renderBlocks[item.index]!.id]"
                 :summary-tokens="summaryTokens.get(renderBlocks[item.index]!.id)"
-                :entering="isEntering(renderBlocks[item.index]!.id)"
+                :entering="isEntering(String(item.key))"
                 :editable="renderBlocks[item.index]!.id === editableUserId"
                 :regenerate="renderBlocks[item.index]!.id === regenerateId ? regenerate : undefined"
                 @delete-pending-steer="(id) => emit('deletePendingSteer', id)"
@@ -428,21 +379,23 @@ defineExpose({
             </MessageEditRegion>
           </div>
         </div>
-        <ActivitySlot
-          v-if="slot"
-          :key="conversationId"
-          v-bind="chromeEntrance(true)"
-          :kind="slot.kind"
-          :incoming="slot.incoming"
-          :since="slot.since"
-          :style="{ marginTop: renderBlocks.length ? `${BLOCK_GAP}px` : '0' }"
-        />
-        <div v-if="failure" class="px-[var(--agent-pad-x,2rem)] py-1.5">
-          <ErrorNotice
-            :label="failure.label"
-            :action="failure.retry ? 'Retry' : undefined"
-            @action="emit('retryLoad')"
+        <div ref="listTail">
+          <ActivitySlot
+            v-if="slot"
+            :key="conversationId"
+            v-bind="chromeEntrance(true)"
+            :kind="slot.kind"
+            :incoming="slot.incoming"
+            :since="slot.since"
+            :style="{ marginTop: renderBlocks.length ? `${BLOCK_GAP}px` : '0' }"
           />
+          <div v-if="failure" class="px-[var(--agent-pad-x,2rem)] py-1.5">
+            <ErrorNotice
+              :label="failure.label"
+              :action="failure.retry ? 'Retry' : undefined"
+              @action="emit('retryLoad')"
+            />
+          </div>
         </div>
       </div>
     </ScrollArea>

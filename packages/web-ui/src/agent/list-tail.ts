@@ -28,16 +28,21 @@ export interface ListTailInput {
  * progress, the calls the model is writing, the steers waiting for the turn,
  * the queue, and a message sent but not yet confirmed. Steers that arrive
  * during a pass wait outside what it summarizes, so they follow its divider.
+ * A message the transcript holds already shows there alone: the row it was
+ * waiting in becomes that message (`row-key.ts`), so it never shows twice,
+ * whichever of the two the server tells first.
  */
 export function listTailBlocks(input: ListTailInput): MessageListBlock[] {
+  const written = new Set(input.blocks.flatMap((block) =>
+    block.type === 'user' ? [block.turnId] : block.type === 'steer' ? [block.id] : []))
   return [
     ...(input.phase === 'compacting'
       ? [{ type: 'compaction_progress', id: 'compaction-progress' } as const]
       : []),
     ...pendingCallsToRenderBlocks(input.pendingCalls, input.blocks),
-    ...pendingSteersToRenderBlocks(input.pendingSteers),
-    ...queuedMessagesToRenderBlocks(input.queue),
-    ...(input.pendingSubmission
+    ...pendingSteersToRenderBlocks(input.pendingSteers.filter((steer) => !written.has(steer.id))),
+    ...queuedMessagesToRenderBlocks(input.queue.filter((message) => !written.has(message.id))),
+    ...(input.pendingSubmission && !written.has(input.pendingSubmission.id)
       ? [{
           type: 'pending_submission' as const,
           id: `pending-submission:${input.pendingSubmission.id}`,

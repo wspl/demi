@@ -14,8 +14,8 @@ import { printLive } from './live-command'
 /**
  * `turn` is a full turn from a sent message, whose delivery the server
  * confirms; `undelivered` is a sent message whose delivery fails, until Retry
- * sends it again; `offline` is a message sent while the backend cannot be
- * reached, which waits and goes once it can; `resume` and `retry` recover an aborted or failed tail;
+ * sends it again; `offline` is a message sent while the socket is lost,
+ * under Connecting, which goes once the socket is back; `resume` and `retry` recover an aborted or failed tail;
  * `connect` opens over a dropped socket; `stream` is thinking then reply with
  * nothing waited for; `work` is a turn of many steps, thinking without text
  * and commands in a row, one failing, two changing files. Every fixture only changes conversation state,
@@ -54,6 +54,11 @@ const DELIVERY_ERROR = 'Connection closed before confirmation'
 /** How long the simulated backend stays out of reach after an offline send. */
 const OFFLINE_MS = 2500
 const WAIT_MS = 80
+/**
+ * How long the model takes to answer a step's result in the work replay: long
+ * enough to see the run's row go on shimmering while it is waited for.
+ */
+const STEP_ANSWER_MS = 1500
 /** Time the model takes before its first output in a turn. */
 const FIRST_OUTPUT_MS = 1000
 const TOOL_RUN_MS = 1400
@@ -207,11 +212,12 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     state.blocks = [...state.blocks, block]
   }
 
-  function userBlock(content: UserContentBlock[]): Block {
+  /** A message's block; `turnId` is the id the message was sent with, which the server keeps as its turn's. */
+  function userBlock(content: UserContentBlock[], turnId = nextId('turn')): Block {
     return {
       type: 'user',
       id: nextId('user'),
-      turnId: nextId('turn'),
+      turnId,
       createdAt: now(),
       model: demoModel,
       content,
@@ -493,7 +499,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
         writeSteers()
         waitForModel()
       })
-      t = done + WAIT_MS
+      t = done + STEP_ANSWER_MS
     }
     reply(run, t, WORK_REPLY)
   }
@@ -533,12 +539,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     deliver(token, false)
   }
 
-  /**
-   * The page holds a sent message until the server confirms it, with why its
-   * delivery failed, or waiting while the backend cannot be reached.
-   */
-  function holdMessage(content: UserContentBlock[], message: SentMessage, error: string | null, waiting = false): void {
-    pendingSubmission.value = { id: nextId('message'), ...message, error, waiting }
+  /** The page holds a sent message until the server confirms it, with why its delivery failed. */
+  function holdMessage(content: UserContentBlock[], message: SentMessage, error: string | null): void {
+    pendingSubmission.value = { id: nextId('message'), ...message, error }
     pendingContent = content
   }
 
@@ -563,13 +566,14 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     })
   }
 
-  /** The pending message's user block is written: the message is no longer pending. */
+  /** The pending message's user block is written, under the id it was sent with: the message is no longer pending. */
   function confirmMessage(): void {
-    if (pendingSubmission.value?.error !== null) {
+    const pending = pendingSubmission.value
+    if (pending?.error !== null) {
       return
     }
     pendingSubmission.value = null
-    append(userBlock(pendingContent))
+    append(userBlock(pendingContent, pending?.id))
   }
 
   function undeliver(error: string): void {
@@ -721,7 +725,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       append(steerBlock(pending.content))
     }
     state.pendingSteers = []
-    append(userBlock(item.content))
+    append(userBlock(item.content, item.id))
     runTurn(token)
   }
 
@@ -864,13 +868,12 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
     state.blocks = []
     if (kind === 'offline') {
-      // The backend is out of reach: the message waits, then goes with its id once it is back.
-      holdMessage([{ type: 'text', text: USER_TEXT }], { text: USER_TEXT, attachments: [] }, null, true)
+      // The socket is lost: the tail row says Connecting under the message,
+      // which goes with its id once the socket is back.
+      state.load = 'reconnecting'
+      holdMessage([{ type: 'text', text: USER_TEXT }], { text: USER_TEXT, attachments: [] }, null)
       at(run, OFFLINE_MS, () => {
-        const pending = pendingSubmission.value
-        if (pending) {
-          pendingSubmission.value = { ...pending, waiting: false }
-        }
+        state.load = 'ready'
         deliver(run, false)
       })
       return
