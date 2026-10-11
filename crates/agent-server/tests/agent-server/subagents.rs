@@ -1293,7 +1293,7 @@ async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_exec
     // worker's prompt and model, with the commands every node has.
     let inner_asked = &model.requests_of("task inner")[0];
     assert!(inner_asked.system_prompt.starts_with("worker prompt\n"));
-    assert!(inner_asked.system_prompt.contains("demi agent\nRuns helper agents"));
+    assert!(inner_asked.system_prompt.contains("demi agent\nRuns subagents"));
     assert!(inner_asked.system_prompt.contains("greet\nGreets the caller by name."));
     assert_eq!(inner_asked.model_id, "worker-model");
     assert_eq!(listed.code, 0, "{listed:?}");
