@@ -1022,14 +1022,17 @@ backend APIs; their dedicated pages in the web app are deferred. Settings
 list the backend's plugins, each with a switch that turns it on or off for
 the user, and an open conversation whose commands a switch changed offers a
 reload ([A user's plugins](../architecture/plugins.md#a-users-plugins)).
-Settings have a Subagent section ([Profiles](../agent/subagents.md#profiles)):
-a switch that turns subagents on or off for the user, on for a new user, and
-the user's subagent profiles, which the user creates, edits and deletes
+Settings have a Subagents section ([Profiles](../agent/subagents.md#profiles)):
+a switch that turns subagents on or off for the user, on for a new user; the
+two [limits](../agent/subagents.md#limits), Maximum subagents and Maximum
+depth, each a number with Unlimited as a choice, which asks first in a
+dialog warning that it can make conversations unstable, the dialog's
+default button keeping the limit; and the user's subagent profiles, which the user creates, edits and deletes
 there, each with a switch of its own that enables or disables it; a new
 profile starts enabled. The next spawn of every conversation uses a change.
 A profile whose provider entry, model, effort or tier is gone is marked as
 unavailable, with the part that is missing, until the user fixes it.
-Settings have an Instructions section, after Models & Providers: one text
+Settings have an Instructions section, after Providers: one text
 field for the user's [personal instructions](../agent/instructions.md#personal-instructions),
 which every conversation's agents follow, with Save, available while the
 text differs from the saved one, and the count of characters against the
