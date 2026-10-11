@@ -1648,7 +1648,7 @@ plugin-changes -> plugin-interface
 plugin-file-browser -> plugin-interface
 backend-remote-host -> command-protocol, command-declarations, shared-types, shared-gates, runner-protocol, host-interface
 runner-process -> shared-artifacts, command-protocol, command-sdk, runner-protocol
-runner-host -> shared-artifacts, command-sdk, runner-process, runner-protocol
+runner-host -> shared-artifacts, command-protocol, command-sdk, runner-process, runner-protocol
 runner-direct -> runner-protocol
 runner-command-packages -> shared-artifacts, command-protocol, command-sdk, runner-process, runner-protocol
 runner-shell -> command-protocol, command-sdk, runner-process, runner-protocol

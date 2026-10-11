@@ -2,7 +2,7 @@
 
 use demi_command_protocol::{EDIT_FILE_BYTES, PathChange};
 use demi_command_sdk::edits::Recorder;
-use demi_runner_process::file_diff::line_counts;
+use demi_command_protocol::line_counts;
 use demi_runner_protocol::wire;
 use std::io::Read;
 use std::path::{Path, PathBuf};
