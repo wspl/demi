@@ -1,4 +1,7 @@
-import { declaredSize, loadedSize, thumbnailBox, type PixelSize } from '../files/thumbnail'
+import { declaredSize, loadedSize, tileBox, tileFrame, type PixelSize } from '../files/thumbnail'
+
+/** A message's images and videos, lone and in runs, which stand in blocks of their own (`render.ts`). */
+const MESSAGE_MEDIA = ':is(.media-lone, .media-run) :is(img, video)'
 
 /**
  * The size a render gave a message's medium from its attachment's record
@@ -11,43 +14,45 @@ function renderedSize(element: HTMLElement): PixelSize | null {
   return declaredSize({ width: Number(width), height: Number(height) })
 }
 
-/**
- * Sizes an image or a video of a message (`file-previews.md` § Files named
- * in messages) by its size once loaded, else by the size its render gave
- * it: in a run, the box of its thumbnail, which the render gave it already
- * when it knew the size, so it moves only when that was unknown; a lone
- * video, the proportions and the width of its first frame, which are 16:9
- * and the message's width until it is known. A lone image keeps the rule
- * for a lone image.
- */
-export function fitMessageMedium(element: HTMLImageElement | HTMLVideoElement): void {
-  const size = loadedSize(element) ?? renderedSize(element)
-  const isVideo = element instanceof HTMLVideoElement
-  if (element.closest('.media-run')) {
-    const box = thumbnailBox(size, isVideo ? 'video' : 'image')
-    element.style.width = `${box.width}px`
-    element.style.height = `${box.height}px`
-    return
-  }
-  const wrapper = isVideo ? element.closest<HTMLElement>('.message-video') : null
-  if (!wrapper || !size)
-    return
-  wrapper.style.setProperty('--media-ratio', String(size.width / size.height))
-  wrapper.style.setProperty('--media-width', `${size.width}px`)
+/** How wide the block a message's medium stands in is: the message's width, or a list item's within it. */
+function blockWidth(element: HTMLElement): number {
+  return element.closest<HTMLElement>('.media-lone, .media-run')?.clientWidth ?? 0
 }
 
 /**
- * Sizes every image of the runs and every video under `root`, after a render
- * replaced them; one whose bytes are not loaded yet is sized again when they
- * are.
+ * Sizes an image or a video of a message as a tile
+ * (`file-previews.md` § Files named in messages), in a block `width`
+ * pixels wide, by its size once loaded, else by the size its render gave it
+ * from its record, which is known before its bytes arrive. An image whose
+ * size neither gives yet is held within its tile's frame, which fits it the
+ * same way once it loads. A block that is not laid out, 0 pixels wide,
+ * leaves it as it is.
+ */
+export function fitMessageMedium(element: HTMLImageElement | HTMLVideoElement, width = blockWidth(element)): void {
+  if (width === 0)
+    return
+  const box = tileBox(loadedSize(element) ?? renderedSize(element), element instanceof HTMLVideoElement ? 'video' : 'image', width)
+  const frame = box ? null : tileFrame(width)
+  element.style.width = box ? `${box.width}px` : ''
+  element.style.height = box ? `${box.height}px` : ''
+  element.style.maxWidth = frame ? `${frame.width}px` : ''
+  element.style.maxHeight = frame ? `${frame.height}px` : ''
+}
+
+/**
+ * Sizes every image and video of the message under `root` as a tile: after
+ * a render replaced them, and when the message's width changed. Every
+ * block's width is read before any medium changes, so the page lays out
+ * once.
  */
 export function fitMessageMedia(root: ParentNode): void {
-  for (const element of root.querySelectorAll<HTMLImageElement | HTMLVideoElement>('.media-run img, video'))
-    fitMessageMedium(element)
+  const media = [...root.querySelectorAll<HTMLImageElement | HTMLVideoElement>(MESSAGE_MEDIA)]
+  const widths = media.map(blockWidth)
+  media.forEach((element, index) => fitMessageMedium(element, widths[index]))
 }
 
-/** A thumbnail of a message's run of pictures, as its preview on hover shows it. */
-export interface RunPicture {
+/** A picture of a message, as its preview on hover shows it. */
+export interface MessagePicture {
   element: HTMLImageElement | HTMLVideoElement
   kind: 'image' | 'video'
   src: string
@@ -57,13 +62,18 @@ export interface RunPicture {
   caption: string
 }
 
+/** The pictures of the message under `root`, each a tile with its preview on hover. */
+export function messagePictures(root: ParentNode): MessagePicture[] {
+  return [...root.querySelectorAll<HTMLImageElement | HTMLVideoElement>(MESSAGE_MEDIA)].map(messagePicture)
+}
+
 /**
- * The preview of a thumbnail `element` of a message's run
+ * The preview of a message's picture `element`
  * (`file-previews.md` § A picture's preview on hover): its picture, its
  * size, known from its attachment's record before its bytes arrive, and its
  * alt text.
  */
-export function runPicture(element: HTMLImageElement | HTMLVideoElement): RunPicture {
+export function messagePicture(element: HTMLImageElement | HTMLVideoElement): MessagePicture {
   const isVideo = element instanceof HTMLVideoElement
   return {
     element,
