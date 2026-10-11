@@ -14,6 +14,7 @@ import {
   wholeBlockSchema,
   type TranscriptPage,
 } from '../api/generated/web-api'
+import type { Block } from '@demicodes/protocol'
 import type { Conversation } from '../state/types'
 
 /** Where a page is read from (`web-api.md` § Pages). */
@@ -183,21 +184,26 @@ export function createHistoryReads(signal: () => AbortSignal, live: (conversatio
     /** The page after the window the reader is in. */
     readAfter: (conversation: Conversation, node: string | null) => readBeside(conversation, node, 'after'),
     readAround,
-    /** Reads a block whole, for a row the page holds light (`web-api.md` § Light form). */
-    async readWhole(conversation: Conversation, node: string | null, id: string): Promise<void> {
+    /**
+     * Reads a block whole, for a row the page holds light or a command's call
+     * (`web-api.md` § Light form): a block the page holds is replaced by it,
+     * and the block is the answer.
+     */
+    async readWhole(conversation: Conversation, node: string | null, id: string): Promise<Block> {
       const query = node === null ? '' : `?node=${encodeURIComponent(node)}`
       const response = await apiRequest(`${path(conversation)}/blocks/${encodeURIComponent(id)}${query}`, { signal: signal() })
       const { block, failures } = await readResponse(response, wholeBlockSchema)
       if (node === null) {
         conversation.history = withWholeBlock(conversation.history, block)
         conversation.failures = { ...conversation.failures, ...failures }
-        return
+        return block
       }
       const agent = conversation.subagents.find((candidate) => candidate.id === node)
       if (agent) {
         agent.history = withWholeBlock(agent.history, block)
         agent.failures = { ...agent.failures, ...failures }
       }
+      return block
     },
     /** Where the call that started the command `commandId` lies (`web-api.md` § Subagents and commands). */
     async findCommand(conversation: Conversation, commandId: string): Promise<TranscriptReveal> {
