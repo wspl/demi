@@ -160,3 +160,19 @@ fn text_the_users_words_and_decisions_end_a_run() {
         [None, Some(1), None, Some(3), Some(3), None, Some(6), None, Some(8), None]
     );
 }
+
+#[test]
+fn the_steps_after_a_continued_stop_or_a_resume_are_a_run_of_their_own() {
+    // The agent runs a command, the user stops it and continues: the next
+    // calls stand where Stopped stood, a run of their own; a resume after a
+    // cut turn starts one too.
+    let mut log = log();
+    log.push_user(turn(), &test_model(), text("Go"), None);
+    call(&mut log, "a");
+    log.push_abort(&test_model());
+    log.mark_latest_abort_resumed();
+    call(&mut log, "b");
+    log.push_resume(turn(), &test_model(), None);
+    call(&mut log, "c");
+    assert_eq!(runs(&log), [None, Some(1), None, Some(3), None, Some(5)]);
+}
