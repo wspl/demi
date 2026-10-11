@@ -35,8 +35,6 @@ export function createConversationUploads(
   const uploads = new AttachmentUploadQueue()
   /** Each file's upload under way, by its id, which a message sent meanwhile waits for. */
   const running = new Map<string, Promise<void>>()
-  /** The stored files pasted messages name, by their files' ids, with the picture each copy carried. */
-  const claims = new Map<string, { file: CopiedStoredFile; picture: File | null }>()
 
   /**
    * Uploads a file's bytes, or attaches the stored file a pasted message
@@ -45,7 +43,7 @@ export function createConversationUploads(
    * none.
    */
   function uploadFile(item: ComposerFile): Promise<void> {
-    if (!item.file && !claims.has(item.id)) {
+    if (!item.file && !item.claim) {
       return Promise.resolve()
     }
     const upload = (async () => {
@@ -79,17 +77,18 @@ export function createConversationUploads(
 
   /** The upload a file's transfer makes: of its bytes, or of the stored file a paste names, else of its picture. */
   async function transfer(item: ComposerFile, signal: AbortSignal, report: (fraction: number) => void): Promise<UploadedFile> {
-    const claim = claims.get(item.id)
+    const claim = item.claim
     if (claim) {
       // A claim that fails for any reason leaves the file one the paste cannot use.
       const claimed = await claimStoredFile(claim.file, signal).catch(() => null)
       if (claimed) {
+        item.claim = undefined
         return claimed
       }
       if (!claim.picture) {
         throw new Error(`It is not among this account's files.`)
       }
-      claims.delete(item.id)
+      item.claim = undefined
       item.file = claim.picture
       item.src = filePreviewUrl(claim.picture) ?? item.src
     }
@@ -138,8 +137,8 @@ export function createConversationUploads(
       phase: 'attaching',
       file: null,
       upload: null,
+      claim: { file, picture },
     })
-    claims.set(id, { file, picture })
     onChange()
     const item = conversation.files.find((each): each is ComposerFile => each.id === id && isComposerFile(each))!
     // A failure is the composer's to tell: it puts the name in place, or the bubble of a message sent meanwhile says it.
@@ -195,7 +194,6 @@ export function createConversationUploads(
   /** Lets a file go for good: its transfer stops and its picture is freed. */
   function releaseFile(item: ProductAttachment): void {
     uploads.cancel(item.id)
-    claims.delete(item.id)
     if (isComposerFile(item) && item.src) {
       URL.revokeObjectURL(item.src)
     }
@@ -276,7 +274,6 @@ export function createConversationUploads(
 
   function dispose(conversations: Conversation[]): void {
     uploads.cancelAll()
-    claims.clear()
     for (const conversation of conversations) {
       for (const item of conversation.files) {
         if (isComposerFile(item) && item.src) {

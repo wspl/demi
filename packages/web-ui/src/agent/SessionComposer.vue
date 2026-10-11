@@ -12,7 +12,7 @@ import {
   type ComposerAttachment,
   type UploadFile,
 } from './message-input/attachments'
-import { pasteMessage, type CopiedMessage, type PasteHost } from './message-input/copied-message'
+import { missingFilesToast, pasteMessage, type CopiedMessage, type PasteHost } from './message-input/copied-message'
 import { useMessageEditComposer } from './message-input/useMessageEditComposer'
 import { draftPreview } from './message-input/draft-preview'
 import { editHasContent, useEditLastMessage, type MessageEditState } from './message-editing'
@@ -424,17 +424,10 @@ function pasteCopied(message: CopiedMessage, image: File | null): void {
 
 /** Tells which pasted files could not be added, their names pasted instead. */
 function missingFiles(names: readonly string[]): void {
-  if (!names.length) {
-    return
+  const toast = missingFilesToast(names)
+  if (toast) {
+    showToast({ ...toast, tone: 'danger' })
   }
-  const list = new Intl.ListFormat('en', { type: 'conjunction' }).format(names)
-  showToast({
-    title: 'Couldn’t Attach',
-    message: names.length === 1
-      ? `${list} couldn’t be added, so its name was pasted instead.`
-      : `${list} couldn’t be added, so their names were pasted instead.`,
-    tone: 'danger',
-  })
 }
 
 defineExpose({
