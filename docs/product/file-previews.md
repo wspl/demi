@@ -140,7 +140,7 @@ The chart loads from the Host the way a document's image does, and a click on
 | Relative path | Resolved against the conversation's working directory, where the agent's commands run; the file opens in the File view | Resolved the same way and loaded from the Host |
 | Absolute path, or a `file://` URL | The file at that path, opened in the File view | Loaded from the Host |
 | `http` or `https` URL | Opens in a new tab of the user's browser | Loaded from that URL |
-| `attachment:a3`, an attachment of the conversation ([Attachment commands](../execution/commands.md#attachment-commands)) | Opens it: an image or a video large, in the viewer, any other file as a download | An image shows; a video shows its first frame with a play mark, at an image's bounds, and a click plays it in the viewer |
+| `attachment:a3`, an attachment of the conversation ([Attachment commands](../execution/commands.md#attachment-commands)) | Opens it: an image or a video in the [media viewer](#the-media-viewer), any other file as a download | An image shows; a video shows its first frame with a play mark, at an image's bounds, and a click plays it in the viewer |
 | `data:` URL | Shown as text | Shown as it is |
 | Anything else | Shown as text | Its alt text |
 
@@ -190,7 +190,7 @@ For example, the agent runs `demi browser screenshot t1 | demi file view`.
 The call's result attaches the PNG as an image the model reads
 ([Media the model views](../agent/runtime.md#media-the-model-views)). The page
 shows the same picture under the call's row, whether the call is folded or
-open, and a click opens it large:
+open, and a click opens it in the [media viewer](#the-media-viewer):
 
 ```text
 ▸ Take a screenshot of the login page    the call's row; its fold holds the
@@ -232,14 +232,11 @@ open, and a click opens it large:
   next row. Only a medium whose size is unknown until it loads, such as a
   video before its first frame, keeps the 80-pixel box, so the transcript
   never shrinks when it arrives. It is small because it is a step of the
-  work, not something the agent chose to show. A click opens it large over the dimmed page, as the File view shows an image:
-  scaled down to fit and never enlarged, a click toggles actual size,
-  transparency shows over a checkerboard, and its pixel size shows beneath
-  it. Escape, the close control or a click on the dimmed page closes it; it
-  stays open while the transcript changes beneath it.
+  work, not something the agent chose to show. A click opens it in the
+  [media viewer](#the-media-viewer).
 - **A video** never plays in place. Its thumbnail is its first frame, sized
   as an image's, with a play mark over its middle. A click opens it in the
-  viewer over the dimmed page, scaled down to fit and never enlarged, where it
+  [media viewer](#the-media-viewer), scaled down to fit and never enlarged, where it
   plays at once in the player built into the user's browser, whose controls
   and full-screen control it keeps; closing the viewer stops it. A video's
   reference carries its pixel size where the backend reads it from the
@@ -270,6 +267,47 @@ open, and a click opens it large:
   original bytes stay in the command's whole output, which the model reads
   with `demi shell output`
   ([The whole output](../agent/runtime.md#the-whole-output)).
+
+### The media viewer
+
+The user clicks a screenshot's thumbnail in the transcript. A small window
+opens over the page, as Quick Look and Preview open a picture on a Mac: the
+screenshot fits in it, its title bar names it, and the page behind stays as
+it was, not dimmed, so the user can go on reading and typing beside it.
+
+```text
+ ┌─ login-page.png ── 1280 × 720 ─────────[×]┐  title bar: drag to move
+ │                                            │
+ │              the screenshot                │  click: actual size
+ │                                            │
+ └────────────────────────────────────────────┘◢ edges and corners resize
+```
+
+- **A window, not a layer.** It does not block the page: the transcript
+  scrolls, the composer takes typing and other controls work while it is
+  open, and it stays open while the transcript changes beneath it.
+- **Move and resize.** Dragging its title bar moves it, and dragging any edge
+  or corner resizes it, as a window on the desktop does; it stays at least
+  240 × 180 and no larger than the page, and its title bar never leaves the
+  page. The first time it opens, it is as large as the picture at its actual
+  size, at most 60% of the page's width and 70% of its height, centred over
+  the conversation; after that it opens where the user last left it, at the
+  size they gave it, for as long as the page is open.
+- **One viewer.** Opening another picture or video shows it in the same
+  window, in place of the one it showed.
+- **What it shows.** An image fits the window, scaled down and never
+  enlarged, over a checkerboard where it is transparent; a click toggles
+  actual size, at which the window's content scrolls; its pixel size shows in
+  the title bar. A video plays at once in the player built into the user's
+  browser, whose controls and full-screen control it keeps.
+- **Close.** The close control in the title bar closes it, and so does
+  Escape, unless the focus is in a text field or in another layer that takes
+  Escape, such as a menu or a dialog. Opening moves the focus into the
+  window, so Escape right after a click closes it; closing returns the focus
+  to the thumbnail that opened it. Closing stops a video.
+
+The window is a primitive of `web-ui` that any floating window of the
+product uses, not the viewer's own code.
 
 The bytes come from the blob route
 ([Media by reference](../backend/backend.md#media-by-reference)). The user's
