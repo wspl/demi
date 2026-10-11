@@ -234,15 +234,13 @@ export function useMessageEditComposer(options: {
       return []
     }
     attachmentError.value = null
-    const names = capsules.value.map((capsule) => capsule.name)
     const taken: MessageCapsule[] = []
     for (const file of picked) {
-      const error = attachmentFileError(file, names)
+      const error = attachmentFileError(file)
       if (error) {
         attachmentError.value = error
         continue
       }
-      names.push(file.name)
       const id = crypto.randomUUID()
       const image = filePreviewUrl(file)
       const capsule: MessageCapsule = { id, name: file.name, ...(image ? { image } : {}) }

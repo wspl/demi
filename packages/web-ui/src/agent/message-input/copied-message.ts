@@ -147,7 +147,7 @@ export function readCopiedMessage(value: string | null): CopiedMessage | null {
  * picture the copy carried, uploads in its place under the file's name;
  * false when neither could, and the composer puts the file's name where the
  * capsule stood. A device file is its reference, or null when the composer
- * has it already.
+ * cannot take files, as an edit that is no longer editable cannot.
  */
 export interface PasteHost {
   claim(file: CopiedStoredFile, picture: File | null): { capsule: MessageCapsule; kept: Promise<boolean> }

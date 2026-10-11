@@ -50,9 +50,9 @@ const copied: CopiedMessage = {
 /**
  * A composer's taking of files: each stored file a capsule at once, whose
  * attaching answers only when the test says, with the picture it was offered
- * recorded; a device file the composer has already is refused.
+ * recorded; a device file in `refused` is one the composer cannot take.
  */
-function composerHost(has: Set<string> = new Set()) {
+function composerHost(refused: Set<string> = new Set()) {
   const claims: { name: string; picture: File | null; answer: (kept: boolean) => void }[] = []
   const host: PasteHost = {
     claim: (file, picture) => {
@@ -60,7 +60,7 @@ function composerHost(has: Set<string> = new Set()) {
       claims.push({ name: file.name, picture, answer: kept.resolve })
       return { capsule: { id: `claimed-${file.name}`, name: file.name }, kept: kept.promise }
     },
-    remote: (file) => has.has(file.path) ? null : { id: `remote-${file.name}`, name: file.name, host: file.host, path: file.path },
+    remote: (file) => refused.has(file.path) ? null : { id: `remote-${file.name}`, name: file.name, host: file.host, path: file.path },
   }
   return { host, claims }
 }
@@ -104,14 +104,14 @@ test('a pasted copy lands at once as the same message, each file a capsule where
   expect(await Promise.all(pasted.attaching.map(({ kept }) => kept))).toEqual([true, false])
 })
 
-test('a copy of a lone file offers its picture under the file\'s name for when the paste cannot use the file; a device file the composer has stands as its name', () => {
+test('a copy of a lone file offers its picture under the file\'s name for when the paste cannot use the file; a device file the composer cannot take stands as its name', () => {
   const picture = new File(['png'], 'image.png', { type: 'image/png' })
   const lone = composerHost()
   pasteMessage({ text: MARK, files: [copied.files[0]!] }, picture, lone.host)
   // Under its own name, not the one a web browser gives every pasted picture.
   expect(lone.claims.map(({ picture }) => [picture?.name, picture?.size])).toEqual([['before.png', picture.size]])
 
-  // A picture belongs to a copy of one file only; a device file already attached is its name.
+  // A picture belongs to a copy of one file only; a device file the composer cannot take is its name.
   const { host, claims } = composerHost(new Set(['/Users/alex/notes.md']))
   const pasted = pasteMessage(copied, picture, host)
   expect(claims.map((claim) => claim.picture)).toEqual([null, null])
