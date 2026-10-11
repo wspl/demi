@@ -20,8 +20,11 @@ defineProps<{
 <template>
   <span class="relative flex shrink-0" :role="label ? 'img' : undefined" :aria-label="label">
     <component :is="DEVICE_ICON" :size="ICON_PX.in28" aria-hidden="true" />
+    <!-- The device's state is a fact about where the work runs, not the work's own state:
+      it is the small dot, so a row's status dot beside it is never mistaken for it. -->
     <CornerDot
       v-if="state"
+      size="xs"
       :tone="DEVICE_STATE_TONE[state]"
       :label="label ? undefined : DEVICE_STATE_LABEL[state]"
     />
