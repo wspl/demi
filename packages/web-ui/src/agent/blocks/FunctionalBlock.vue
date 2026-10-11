@@ -37,8 +37,6 @@ const props = defineProps<{
   cutKey?: string
   /** The body is rows of their own, as a work group's steps: in flow, unbounded, never scrolled. */
   flow?: boolean
-  /** Show the chevron of the row this face hands over to, without being a control itself (the tail row's face). */
-  chevron?: boolean
 }>()
 
 const slots = useSlots()
@@ -156,7 +154,7 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
           <!-- A failed call reads as its row does, marked after its title, as a failed command is. -->
           <Tag v-if="tone === 'danger'" tone="danger" class="shrink-0">Failed</Tag>
           <!-- The chevron is part of the face: it follows the label's end, so it rolls with it rather than jumping to the new label's width. -->
-          <span v-if="isExpandable || chevron" class="-ml-1 shrink-0 text-xs">
+          <span v-if="isExpandable" class="-ml-1 shrink-0 text-xs">
             <FoldChevron
               :open="isOpen"
               class="text-fg-faint group-hover:text-fg-subtle"

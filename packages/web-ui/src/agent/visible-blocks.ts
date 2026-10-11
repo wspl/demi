@@ -1,5 +1,6 @@
 import type { Block } from '@demicodes/protocol'
 import { reportShown } from './command-reports'
+import type { MessageListBlock } from './pending-steers'
 
 /**
  * The blocks the transcript shows. The hidden input, `context`, reaches the
@@ -9,23 +10,28 @@ import { reportShown } from './command-reports'
  * A compaction shows where it was triggered: at its marker, appended at the
  * end when the pass finished. Its boundary, which the pass inserted earlier,
  * where the kept history begins, shows only when an edit removed the marker.
+ *
+ * With `cuts`, the places a turn went on after it was cut are kept too
+ * (`isRunCut`): they show nothing, but a run of steps ends at them.
  */
-export function getVisibleBlocks(blocks: readonly Block[]): Block[] {
+export function getVisibleBlocks(blocks: readonly Block[], { cuts = false } = {}): Block[] {
   const marked = markedBoundaries(blocks)
   const visible: Block[] = []
   for (const block of blocks) {
+    if (isRunCut(block)) {
+      if (cuts) {
+        visible.push(block)
+      }
+      continue
+    }
     if (
       block.type === 'redacted_thinking'
       || block.type === 'response'
-      || block.type === 'resume'
       || block.type === 'context'
     ) {
       continue
     }
     if (block.type === 'compaction_boundary' && marked.has(block.id)) {
-      continue
-    }
-    if (block.type === 'abort' && block.isResumed) {
       continue
     }
     // Reports of progress show nothing; a block of them alone has no row.
@@ -35,6 +41,18 @@ export function getVisibleBlocks(blocks: readonly Block[]): Block[] {
     visible.push(block)
   }
   return visible
+}
+
+/**
+ * A place where a turn went on after it was cut: a `resume` block, and a
+ * Stop the user continued. It shows nothing, yet the run of steps before it
+ * is done: the steps after it are a run of their own, which takes the place
+ * the Stopped row or the error record had, never steps that join the run
+ * above while the row under it goes (`product.md` § Following the agent's
+ * work).
+ */
+export function isRunCut(block: MessageListBlock): boolean {
+  return block.type === 'resume' || (block.type === 'abort' && block.isResumed)
 }
 
 /**

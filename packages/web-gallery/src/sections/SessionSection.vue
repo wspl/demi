@@ -25,7 +25,7 @@ import ToolShellBlock from '@demicodes/web-ui/agent/blocks/ToolShellBlock.vue'
 import ToolCallBlock from '@demicodes/web-ui/agent/blocks/ToolCallBlock.vue'
 import { parseToolInput } from '@demicodes/web-ui/agent/block-helpers'
 import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
-import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activity-slot'
+import type { ActivityKind } from '@demicodes/web-ui/agent/activity-slot'
 import { provideEditReads, provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
@@ -924,14 +924,6 @@ const compactionCases: { state: CompactionCase; variant: string }[] = [
   { state: 'failed', variant: 'failed' },
 ]
 const compactionSteers = [{ id: 'compaction-steer', content: [{ type: 'text' as const, text: 'Also run the whole auth suite.' }] }]
-const incomingThinking: HandoffBlock = {
-  type: 'thinking',
-  id: 'incoming-thinking',
-  createdAt: functionalThinkingStartedAt,
-  model: demoModel,
-  text: '',
-  signature: null,
-}
 
 /** The stand-in session an edit is sent to: it replaces the message and what follows with the edit and a reply. */
 const editHost: MessageEditHost = {
@@ -1980,7 +1972,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="ActivitySlot"
-        note="Requesting while the provider is asked, from the send of a message, its delivery included, and a Resume or Continue alike, so a slow model reads as the provider’s wait. The word and its clock stay through the server’s confirmation of the message and the agent’s own retries after a failed attempt: they are the same wait, and a row that changed its word with each attempt would flicker. Elapsed time shows after one second; incoming blocks roll into the same row."
+        note="Requesting while the provider is asked, from the send of a message, its delivery included, and a Resume or Continue alike, so a slow model reads as the provider’s wait. The word and its clock stay through the server’s confirmation of the message and the agent’s own retries after a failed attempt: they are the same wait, and a row that changed its word with each attempt would flicker. Elapsed time shows after one second. What ends the wait, a step, the answer, a failure or a Stop, takes the row’s place and rolls over it, as Continue and Resume roll the Stopped row or the error record into it: the Turn specimens show each."
       >
         <div class="specimen-stack">
           <GallerySpecimen
@@ -1991,30 +1983,6 @@ onBeforeUnmount(() => {
           >
             <div class="gallery-frame gallery-activity-frame bg-surface">
               <ActivitySlot :kind="kind" :since="activitySince" />
-            </div>
-          </GallerySpecimen>
-          <GallerySpecimen
-            variant="incoming · thinking"
-            wide
-          >
-            <div class="gallery-frame gallery-activity-frame bg-surface">
-              <ActivitySlot
-                kind="requesting"
-                :incoming="incomingThinking"
-                :since="activitySince"
-              />
-            </div>
-          </GallerySpecimen>
-          <GallerySpecimen
-            variant="incoming · shell"
-            wide
-          >
-            <div class="gallery-frame gallery-activity-frame bg-surface">
-              <ActivitySlot
-                kind="requesting"
-                :incoming="runningShellTool"
-                :since="activitySince"
-              />
             </div>
           </GallerySpecimen>
         </div>

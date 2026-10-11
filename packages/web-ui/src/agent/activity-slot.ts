@@ -1,8 +1,7 @@
 import type { SessionPhase } from '@demicodes/protocol'
-import { CHROME_ROLL_MS } from '../ui/chrome-roll'
 import type { MessageListBlock } from './pending-steers'
 import type { SessionLoad } from './session-status'
-import { isWorkStep, type WorkStep } from './work-groups'
+import { isRunCut } from './visible-blocks'
 
 /**
  * Why the transcript's tail row is waiting. `connecting` is the socket;
@@ -19,24 +18,13 @@ export type ActivityKind = 'connecting' | 'requesting'
  */
 export type PendingAction = 'resume' | null
 
-/**
- * A block that enters the transcript through the activity slot: a step of
- * the work, which rolls in as the slot's face, then the row becomes the
- * step's run (`runtime.md` § Work groups).
- */
-export type HandoffBlock = WorkStep
-
-/** The face roll, then a beat before the transcript row takes over. */
-export const ACTIVITY_HANDOFF_MS = CHROME_ROLL_MS + 80
-
-/** Tail blocks after which a running turn is waiting for the model; an abort stays visible until the server marks it resumed. */
+/** Tail blocks after which a running turn is waiting for the model; so is a place it went on after a cut (`isRunCut`). */
 const WAITING_TAIL_TYPES: ReadonlySet<MessageListBlock['type']> = new Set([
   'user',
   'steer',
   'agent_message',
   'wakeup',
   'compaction_marker',
-  'abort',
 ])
 
 export interface ActivitySlotInput {
@@ -48,14 +36,19 @@ export interface ActivitySlotInput {
    */
   backendAway: boolean
   phase: SessionPhase
-  pendingAction: PendingAction
+  /**
+   * A recovery this page asked for has not moved past the record it
+   * continues from: the server has not acknowledged it, or the turn it runs
+   * has shown nothing after the cut yet.
+   */
+  recovering: boolean
   /**
    * A message sent to start a turn is on its way to Demi: the wait for its
    * answer has begun, though the server has confirmed neither the message nor
    * the turn yet.
    */
   startingTurn: boolean
-  /** The visible transcript, including a record a pending recovery hides from the list. */
+  /** The visible transcript, with the places a turn went on after a cut (`isRunCut`). */
   transcriptBlocks: readonly MessageListBlock[]
   /**
    * The transcript's rows as the list draws them, the runs of steps grouped,
@@ -73,13 +66,17 @@ export interface ActivitySlotInput {
  * (`product.md` § Recovering an unfinished turn). A lost socket wins over
  * everything, since a recovery or a turn cannot progress without it: the row
  * says Connecting while the page still reaches the backend, and nothing while
- * the connection banner says the backend is away.
+ * the connection banner says the backend is away. A conversation that failed
+ * to open waits for nothing: the failure told at the tail says so.
  */
 export function activitySlotKind(input: ActivitySlotInput): ActivityKind | null {
   if (input.load === 'reconnecting') {
     return input.backendAway ? null : 'connecting'
   }
-  if (input.pendingAction === 'resume' || input.startingTurn) {
+  if (input.load === 'failed') {
+    return null
+  }
+  if (input.recovering || input.startingTurn) {
     return 'requesting'
   }
   return isWaitingForProvider(input) ? 'requesting' : null
@@ -106,11 +103,7 @@ function isWaitingForProvider(input: ActivitySlotInput): boolean {
   if (last.type === 'work_group') {
     return !last.live
   }
-  return WAITING_TAIL_TYPES.has(last.type)
-}
-
-export function isHandoffBlock(block: MessageListBlock | undefined): block is HandoffBlock {
-  return block !== undefined && isWorkStep(block)
+  return isRunCut(last) || WAITING_TAIL_TYPES.has(last.type)
 }
 
 function hasActiveOutput(blocks: readonly MessageListBlock[]): boolean {

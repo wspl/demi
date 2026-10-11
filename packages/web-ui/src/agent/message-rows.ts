@@ -1,14 +1,15 @@
 import { computed, ref, watch, type ComputedRef } from 'vue'
 import type { Block, PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { assistantFooterIds, replyEndIds } from './assistant-footer'
-import { isHandoffBlock, type PendingAction } from './activity-slot'
+import type { PendingAction } from './activity-slot'
 import { listTailBlocks } from './list-tail'
 import type { ActivitySlotRow, MessageListBlock } from './pending-steers'
-import type { SessionLoad } from './session-status'
+import { rowKey, succeedKeys, type DrawnRow } from './row-key'
+import type { SessionFailureNotice, SessionLoad } from './session-status'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import { useActivitySlot, type ActivitySlotState } from './useActivitySlot'
-import { getVisibleBlocks } from './visible-blocks'
-import { groupWork, workRowId } from './work-groups'
+import { getVisibleBlocks, isRunCut } from './visible-blocks'
+import { groupWork } from './work-groups'
 
 /** What a transcript list shows its rows from, as `AgentMessageList` takes it. */
 export interface MessageRowsSource {
@@ -23,6 +24,8 @@ export interface MessageRowsSource {
   load?: SessionLoad
   backendAway?: boolean
   pendingAction?: PendingAction
+  /** A session-level failure told at the tail of the transcript. */
+  failure?: SessionFailureNotice | null
   /** The messages sent and not yet confirmed, in the order they were sent. */
   pendingSubmissions?: readonly PendingSubmissionState[]
   /** The waiting messages whose Remove is on its way, by id, which show nowhere. */
@@ -35,20 +38,28 @@ export interface MessageRowsSource {
 export interface MessageRows {
   /** The transcript's blocks the list shows any of. */
   visibleBlocks: ComputedRef<Block[]>
-  /** The transcript's blocks that are rows or steps of a row, without the one rolling into the tail row. */
+  /** The transcript's blocks that are rows or steps of a row. */
   transcriptRows: ComputedRef<Block[]>
   /**
    * The list's rows, in order, the tail row among them right after the
-   * turn's own rows and above the messages that wait; `rowKey` names each
-   * across its forms.
+   * turn's own rows and above the messages that wait.
    */
   rows: ComputedRef<MessageListBlock[]>
-  /** The tail row: Requesting, Connecting, or a block rolling in; null when none shows. */
+  /**
+   * The key the list draws a row of `rows` under: its own (`rowKey`), or
+   * the key of the row it took the place of (`succeedKeys`).
+   */
+  keyOf: (row: MessageListBlock) => string
+  /** The tail row: Requesting or Connecting; null when none shows. */
   slot: ComputedRef<ActivitySlotState | null>
   /** The texts that end the agent's reply, which Copy and Fork close. */
   footerIds: ComputedRef<Set<string>>
-  /** The key of the row the block rolling into the tail row becomes, which the tail row already carried into place. */
-  heldKey: ComputedRef<string | null>
+}
+
+/** A recovery this page asked for: the record it continues from, and the block before it, where the turn goes on. */
+interface Recovery {
+  record: string
+  before: string | null
 }
 
 /**
@@ -58,21 +69,55 @@ export interface MessageRows {
  * grouped, then the tail, the tail row under them, and the footers. A row is
  * named by `rowKey`, which it keeps as it changes form: the message being
  * sent and the message confirmed, a run from its first step to its end.
- * The run at the end of a running turn is one row whose `live` says the
- * turn has not moved past it, and its face shimmers for as long; no
- * Requesting row shows under it. The messages that wait, the steers and the
- * queue, stay below the turn: the tail row stands above them, and its kind
- * is read from the transcript alone.
+ * Whatever replaces a row of another name takes its key (`keyOf`): the step
+ * that ends a wait, the Requesting row of a Continue, the answer that
+ * follows thinking without text. The run at the end of a running turn is
+ * one row whose `live` says the turn has not moved past it, and its face
+ * shimmers for as long; no Requesting row shows under it. The messages that
+ * wait, the steers and the queue, stay below the turn: the tail row stands
+ * above them, and its kind is read from the transcript alone.
+ *
+ * Continue after a Stop and Resume after an error take the place of the
+ * record they continue from: from the press, the record's row is the
+ * Requesting row, until the turn shows what comes after it, or the request
+ * is refused and the record shows again.
  */
 export function useMessageRows(source: () => MessageRowsSource): MessageRows {
   const visibleBlocks = computed(() => getVisibleBlocks(source().blocks))
-  // A recovery hides the record it recovers from: the tail row names the recovery, then the turn running.
-  const transcriptBlocks = computed(() => {
-    const { phase, pendingAction } = source()
-    const visible = visibleBlocks.value
-    const recovering = phase !== 'idle' || pendingAction === 'resume'
-    return recovering && visible.at(-1)?.type === 'error' ? visible.slice(0, -1) : visible
+  // The places a turn went on after a cut end the run before them.
+  const runBlocks = computed(() => getVisibleBlocks(source().blocks, { cuts: true }))
+
+  // A recovery this page asked for lasts from the press until the session
+  // is idle again with nothing pending: the turn it ran ended, or the server
+  // refused it, and the record shows again.
+  const recovery = ref<Recovery | null>(null)
+  watch(
+    [() => source().pendingAction, () => source().phase, () => source().conversationId],
+    ([action, phase, scope], previous) => {
+      if (previous && scope !== previous[2]) {
+        recovery.value = null
+      }
+      if (action === 'resume') {
+        recovery.value ??= recoveryFrom(runBlocks.value)
+      } else if (phase === 'idle') {
+        recovery.value = null
+      }
+    },
+    { immediate: true },
+  )
+  // Until the turn shows something after the cut, the record's place is the
+  // turn's tail: the run before it is done, and the tail row stands there.
+  const atCut = computed(() => {
+    const current = recovery.value
+    if (current === null || (source().pendingCalls?.length ?? 0) > 0) {
+      return false
+    }
+    const end = runBlocks.value.at(-1)
+    return end === undefined ? current.before === null : end.id === current.record || end.id === current.before
   })
+  const hiddenId = computed(() => atCut.value ? recovery.value?.record ?? null : null)
+  const transcriptRows = computed(() => visibleBlocks.value.filter((block) => block.id !== hiddenId.value))
+
   const tail = computed(() => {
     const input = source()
     return !input.latest ? { turn: [], waiting: [] } : listTailBlocks({
@@ -81,47 +126,36 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
       pendingCalls: input.pendingCalls ?? [],
       pendingSteers: input.pendingSteers,
       queue: input.queue,
-      pendingSubmissions: input.pendingSubmissions,
+      pendingSubmissions: input.pendingSubmissions ?? [],
       removing: input.removing,
     })
   })
-  // The calls the model is writing are the newest steps of the work: they join
-  // its group and, as any step, roll into the tail row first.
+  // The calls the model is writing are the newest steps of the work: they join its group.
   const pendingCallRows = computed(() => tail.value.turn.filter((block) => block.type === 'pending_call'))
   const otherTurnBlocks = computed(() => tail.value.turn.filter((block) => block.type !== 'pending_call'))
-  const workBlocks = computed<MessageListBlock[]>(() => [...transcriptBlocks.value, ...pendingCallRows.value])
-  const running = computed(() => source().phase === 'running')
+  const turnRows = computed(() => groupWork(
+    [...runBlocks.value, ...pendingCallRows.value],
+    source().phase === 'running' && !atCut.value,
+  ))
 
-  const { heldId, slot, startingTurn } = useActivitySlot({
+  const { slot, startingTurn } = useActivitySlot({
     input: () => {
       const input = source()
       return {
         load: input.load ?? 'ready',
         backendAway: input.backendAway ?? false,
         phase: input.phase,
-        pendingAction: input.pendingAction ?? null,
-        transcriptBlocks: visibleBlocks.value,
-        turnRows: groupWork(workBlocks.value, running.value),
+        recovering: input.pendingAction === 'resume' || atCut.value,
+        transcriptBlocks: runBlocks.value,
+        turnRows: turnRows.value,
       }
     },
     pendingSubmissions: () => source().pendingSubmissions ?? [],
     waitingSince: () => source().waitingSince ?? null,
-    tail: () => workBlocks.value.at(-1),
     scope: () => source().conversationId,
   })
 
-  /** The block rolling into the tail row, which is not a list row yet. */
-  const held = computed(() => {
-    const last = workBlocks.value.at(-1)
-    return heldId.value !== null && last?.id === heldId.value ? last : null
-  })
-  const transcriptRows = computed(() => held.value ? transcriptBlocks.value.filter((block) => block !== held.value) : transcriptBlocks.value)
-  const workRows = computed(() => groupWork(
-    held.value ? workBlocks.value.slice(0, -1) : workBlocks.value,
-    running.value,
-  ))
-  // Each wait the tail row shows is counted, so a new one enters as a row
-  // does, once, and a virtual row remounted by scrolling stays still.
+  // Each wait the tail row shows is counted, so a new one is a row of its own.
   const waits = ref(0)
   watch(() => slot.value !== null, (shown) => {
     if (shown) {
@@ -132,14 +166,36 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
   const slotRow = computed<ActivitySlotRow[]>(() => slot.value && source().latest
     ? [{ type: 'activity_slot', id: `tail-row:${waits.value}`, slot: slot.value }]
     : [])
-  const rows = computed<MessageListBlock[]>(() => [
-    ...(source().atStart ? [] : [{ type: 'history_edge', id: 'history-before' } as const]),
-    ...workRows.value,
-    ...otherTurnBlocks.value,
-    ...slotRow.value,
-    ...tail.value.waiting,
-    ...(source().atEnd ? [] : [{ type: 'history_edge', id: 'history-after' } as const]),
-  ])
+  const rows = computed<MessageListBlock[]>(() => {
+    const failure = source().failure
+    return [
+      ...(source().atStart ? [] : [{ type: 'history_edge', id: 'history-before' } as const]),
+      ...turnRows.value.filter((row) => !isRunCut(row) && row.id !== hiddenId.value),
+      ...otherTurnBlocks.value,
+      ...slotRow.value,
+      ...(failure ? [{ type: 'session_failure', id: 'session-failure', failure } as const] : []),
+      ...tail.value.waiting,
+      ...(source().atEnd ? [] : [{ type: 'history_edge', id: 'history-after' } as const]),
+    ]
+  })
+
+  // The keys the list last drew, which the next rows succeed. Each list of
+  // rows is keyed once, against the list keyed before it: a list no frame
+  // drew in between is one the reader never saw either.
+  let drawn: DrawnRow[] = []
+  let drawnScope: string | null = null
+  const keys = computed(() => {
+    const scope = source().conversationId
+    if (scope !== drawnScope) {
+      drawn = []
+      drawnScope = scope
+    }
+    const next = rows.value.map((row) => ({ natural: rowKey(row), fixed: row.type === 'history_edge' }))
+    const assigned = succeedKeys(drawn, next)
+    drawn = next.map((row, index) => ({ ...row, drawn: assigned[index]! }))
+    return new Map(rows.value.map((row, index) => [row, assigned[index]!]))
+  })
+  const keyOf = (row: MessageListBlock): string => keys.value.get(row) ?? rowKey(row)
 
   // A message on its way that starts a turn is the user's next message
   // already, so the answer before it keeps its footer while the turn starts
@@ -148,8 +204,19 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
     visibleBlocks.value,
     replyEndIds(visibleBlocks.value, source().phase, startingTurn.value),
   ))
-  const heldKey = computed(() => held.value && isHandoffBlock(held.value) ? workRowId(held.value) : null)
 
-  return { visibleBlocks, transcriptRows, rows, slot, footerIds, heldKey }
+  return { visibleBlocks, transcriptRows, rows, keyOf, slot, footerIds }
 }
 
+/**
+ * What a recovery continues from: the record that ends the transcript, a
+ * Stop or an error, and the block before it, where the turn goes on; null
+ * when the transcript ends otherwise.
+ */
+function recoveryFrom(blocks: readonly Block[]): Recovery | null {
+  const end = blocks.at(-1)
+  if (end?.type !== 'error' && !(end?.type === 'abort' && !end.isResumed)) {
+    return null
+  }
+  return { record: end.id, before: blocks.at(-2)?.id ?? null }
+}

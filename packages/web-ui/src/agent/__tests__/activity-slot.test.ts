@@ -2,7 +2,7 @@ import { expect, spyOn, test } from 'bun:test'
 import { effectScope, nextTick, reactive } from 'vue'
 import type { Block, SessionPhase, ToolCallStatus } from '@demicodes/protocol'
 import type { MessageListBlock } from '../pending-steers'
-import { activitySlotKind, type PendingAction } from '../activity-slot'
+import { activitySlotKind } from '../activity-slot'
 import { groupWork } from '../work-groups'
 import type { SessionLoad } from '../session-status'
 import type { PendingSubmissionState } from '../types'
@@ -12,13 +12,13 @@ function kind(
   phase: SessionPhase,
   transcriptBlocks: readonly MessageListBlock[],
   turnRows: readonly MessageListBlock[] = transcriptBlocks,
-  options: { load?: SessionLoad; backendAway?: boolean; pendingAction?: PendingAction } = {},
+  options: { load?: SessionLoad; backendAway?: boolean; recovering?: boolean } = {},
 ) {
   return activitySlotKind({
     load: options.load ?? 'ready',
     backendAway: options.backendAway ?? false,
     phase,
-    pendingAction: options.pendingAction ?? null,
+    recovering: options.recovering ?? false,
     startingTurn: false,
     transcriptBlocks,
     turnRows,
@@ -82,20 +82,29 @@ test('a materialized steer requests again before the model continues', () => {
   expect(kind('running', [thinkingBlock(), steerBlock()])).toBe('requesting')
 })
 
-test('a recovery in flight requests: the hidden record is the transcript tail, the list ends before it', () => {
-  const transcript = [userBlock(), errorBlock()]
-  expect(kind('running', transcript, [userBlock()])).toBe('requesting')
-  expect(kind('running', [userBlock(), abortBlock()])).toBe('requesting')
+// A recovery unwinds the turn before the model is asked: the Stop it
+// continues is marked resumed and a `resume` block says where the turn goes
+// on, and the model is waited for after either. A Stop being written, before
+// the phase goes idle, waits for nothing.
+test('a running turn requests after the place it went on after a cut, and not after a Stop being written', () => {
+  expect(kind('running', [userBlock(), abortBlock(true)])).toBe('requesting')
+  expect(kind('running', [userBlock(), abortBlock(true), resumeBlock()])).toBe('requesting')
+  expect(kind('running', [userBlock(), abortBlock()])).toBeNull()
 })
 
-test('a pending resume says Requesting, after an error record and after a Stop alike', () => {
-  expect(kind('idle', [userBlock(), errorBlock()], [userBlock()], { pendingAction: 'resume' })).toBe('requesting')
-  expect(kind('idle', [userBlock(), abortBlock()], undefined, { pendingAction: 'resume' })).toBe('requesting')
+test('a recovery this page asked for says Requesting, after an error record and after a Stop alike', () => {
+  expect(kind('idle', [userBlock(), errorBlock()], [userBlock()], { recovering: true })).toBe('requesting')
+  expect(kind('idle', [userBlock(), abortBlock()], undefined, { recovering: true })).toBe('requesting')
+  expect(kind('running', [userBlock(), errorBlock()], [userBlock()], { recovering: true })).toBe('requesting')
+})
+
+test('a conversation that failed to open waits for nothing: the failure told at the tail says so', () => {
+  expect(kind('running', [userBlock()], undefined, { load: 'failed' })).toBeNull()
 })
 
 test('connecting wins over a pending recovery and a running turn', () => {
   expect(kind('idle', [], undefined, { load: 'reconnecting' })).toBe('connecting')
-  expect(kind('idle', [errorBlock()], [], { load: 'reconnecting', pendingAction: 'resume' })).toBe('connecting')
+  expect(kind('idle', [errorBlock()], [], { load: 'reconnecting', recovering: true })).toBe('connecting')
   expect(kind('running', [thinkingBlock()], undefined, { load: 'reconnecting' })).toBe('connecting')
 })
 
@@ -103,7 +112,7 @@ test('while the connection banner says the backend is away, a reconnecting conve
   const away = { load: 'reconnecting', backendAway: true } as const
   expect(kind('idle', [], undefined, away)).toBeNull()
   expect(kind('running', [userBlock()], undefined, away)).toBeNull()
-  expect(kind('idle', [errorBlock()], [], { ...away, pendingAction: 'resume' })).toBeNull()
+  expect(kind('idle', [errorBlock()], [], { ...away, recovering: true })).toBeNull()
   // Its socket lost while the page still reaches the backend: the row says so.
   expect(kind('running', [userBlock()], undefined, { load: 'reconnecting' })).toBe('connecting')
 })
@@ -127,13 +136,12 @@ function slotOver(phase: SessionPhase, blocks: MessageListBlock[], opened = 0) {
       load: conversation.load,
       backendAway: false,
       phase: conversation.phase,
-      pendingAction: null,
+      recovering: false,
       transcriptBlocks: conversation.blocks,
       turnRows: conversation.blocks,
     }),
     pendingSubmissions: () => conversation.pendingSubmissions,
     waitingSince: () => conversation.waitingSince,
-    tail: () => conversation.blocks.at(-1),
     scope: () => 'conversation',
   }))!
   return {
@@ -159,20 +167,20 @@ test('a message sent to an idle conversation says Requesting from the send, thro
   at(5_000)
   conversation.pendingSubmissions = [sent()]
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 5_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
 
   // The backend starts the turn before it writes the message.
   at(6_000)
   conversation.phase = 'running'
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 5_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
 
   // The message's block confirms it; the page drops the pending message in the same update.
   at(8_000)
   conversation.blocks = [textBlock(), userBlock()]
   conversation.pendingSubmissions = []
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 5_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
 })
 
 test('a view shown during a wait counts from the start the server tells, not from when it opened', async () => {
@@ -181,11 +189,11 @@ test('a view shown during a wait counts from the start the server tells, not fro
   const { conversation, slot, at } = session
   conversation.waitingSince = 120_000
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 120_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: 120_000 })
 
   at(660_000)
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 120_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: 120_000 })
 })
 
 test('a message this page sent counts from its send, also once the server tells a later start', async () => {
@@ -198,7 +206,7 @@ test('a message this page sent counts from its send, also once the server tells 
   conversation.phase = 'running'
   conversation.waitingSince = 5_400
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 5_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
 
   // The answer streams, then its call ran: the wait for the model's next
   // answer is the server's, from when the call's result went back.
@@ -212,7 +220,7 @@ test('a message this page sent counts from its send, also once the server tells 
   conversation.blocks = [...conversation.blocks, toolCallBlock('completed')]
   conversation.waitingSince = 20_000
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 20_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: 20_000 })
 })
 
 test('a failed delivery ends the wait, and Retry starts it again from the retry', async () => {
@@ -227,7 +235,7 @@ test('a failed delivery ends the wait, and Retry starts it again from the retry'
   at(9_000)
   conversation.pendingSubmissions = [sent()]
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 9_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: 9_000 })
 })
 
 test('a message sent while the socket reconnects says Connecting, and Requesting starts once the socket is back', async () => {
@@ -241,7 +249,7 @@ test('a message sent while the socket reconnects says Connecting, and Requesting
   at(12_000)
   conversation.load = 'ready'
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 12_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: 12_000 })
 })
 
 test('a message sent during a turn joins the queue and adds no Requesting under the streaming answer', async () => {
@@ -329,14 +337,18 @@ function errorBlock(): MessageListBlock {
   }
 }
 
-function abortBlock(): MessageListBlock {
+function abortBlock(isResumed = false): MessageListBlock {
   return {
     type: 'abort',
     id: 'abort-1',
     createdAt,
     model,
-    isResumed: false,
+    isResumed,
   }
+}
+
+function resumeBlock(): MessageListBlock {
+  return { type: 'resume', id: 'resume-1', turnId: 'turn-1', createdAt, model, reason: null }
 }
 
 function textBlock(): MessageListBlock {

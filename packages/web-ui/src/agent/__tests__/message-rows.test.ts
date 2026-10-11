@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
 import { effectScope, nextTick, reactive } from 'vue'
 import type { Block } from '@demicodes/protocol'
-import { ACTIVITY_HANDOFF_MS } from '../activity-slot'
-import { useMessageRows, type MessageRowsSource } from '../message-rows'
+import { useMessageRows, type MessageRows, type MessageRowsSource } from '../message-rows'
 import { waitingAs, type MessageListBlock } from '../pending-steers'
 import { rowKey } from '../row-key'
 import { createdAt, model, userBlock } from './agent-harness'
@@ -13,8 +12,6 @@ import { createdAt, model, userBlock } from './agent-harness'
 // it, so a row lost between two steps is a frame in which the list is
 // shorter. Real heights and the frame they are drawn in are checked in the
 // product. Pure, with a fake clock: a few milliseconds.
-
-const TAIL_ROW = 'tail-row'
 
 const text = (id: string, body: string): Block => ({ type: 'text', id, createdAt, model, text: body })
 const thinking = (id: string): Block => ({ type: 'thinking', id, createdAt, model, text: '', signature: null })
@@ -31,9 +28,9 @@ const call = (id: string, status: 'executing' | 'completed'): Block => ({
   view: null,
 })
 
-/** What the list draws: its rows by key, each wait of the tail row as one. */
-function drawnRows(rows: readonly MessageListBlock[]): string[] {
-  return rows.map((row) => row.type === 'activity_slot' ? TAIL_ROW : rowKey(row))
+/** What the list draws: its rows by the keys it draws them under. */
+function drawnRows(list: MessageRows): string[] {
+  return list.rows.value.map(list.keyOf)
 }
 
 beforeEach(() => {
@@ -44,10 +41,13 @@ afterEach(() => {
   jest.useRealTimers()
 })
 
-// The run starts with thinking, or with a call the model is still writing:
-// either way its row is the same from that first step to the turn's end.
-test.each(['thinking', 'call being written'] as const)('a sent message, its run from %s and its answer only add rows, keep the answer before them closed, and the run is one shimmering row', async (first) => {
-  const state = reactive<MessageRowsSource>({
+const abort = (id: string, isResumed = false): Block => ({ type: 'abort', id, createdAt, model, isResumed })
+const failure = (id: string): Block => ({ type: 'error', id, createdAt, model, message: 'The provider request failed.', code: null })
+const resumed = (id: string): Block => ({ type: 'resume', id, turnId: 't-1', createdAt, model, reason: null })
+
+/** A conversation whose agent is idle after answering `m-1`. */
+function answered(): MessageRowsSource {
+  return reactive<MessageRowsSource>({
     conversationId: 'c-1',
     blocks: [userBlock('u-1', 'm-1', 'What is in the folder?'), text('a-1', 'Three files.')],
     pendingCalls: [],
@@ -59,37 +59,54 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
     atEnd: true,
     latest: true,
   })
+}
+
+/**
+ * Follows the rows the list draws over the changes the page receives, in
+ * the order it receives them. Whatever replaces a row takes its key, so a
+ * row drawn before is drawn still after any change the user did not make
+ * (`product.md` § Following the agent's work: what replaces a row takes its
+ * place), and no key is drawn twice.
+ */
+function follow(state: MessageRowsSource) {
   const scope = effectScope()
   const list = scope.run(() => useMessageRows(() => state))!
-  const drawn = () => drawnRows(list.rows.value)
-  const run = () => list.rows.value.find((row) => row.type === 'work_group')
-  let previous = drawn()
-  let runKey: string | null = null
-
-  async function step(name: string, change: () => void): Promise<void> {
+  let previous = drawnRows(list)
+  const step = async (name: string, change: () => void): Promise<string[]> => {
     change()
     await nextTick()
-    const now = drawn()
-    // Each row drawn before is drawn still: the list never draws a frame
-    // shorter, only to grow back. The tail row goes only as a row takes its place.
-    const lost = previous.filter((key) => !now.includes(key))
+    const now = drawnRows(list)
     expect({ name, twice: now.filter((key, index) => now.indexOf(key) !== index) }).toEqual({ name, twice: [] })
-    expect({ name, lost }).toEqual({ name, lost: lost.includes(TAIL_ROW) && now.length >= previous.length ? [TAIL_ROW] : [] })
+    expect({ name, lost: previous.filter((key) => !now.includes(key)) }).toEqual({ name, lost: [] })
+    previous = now
+    return now
+  }
+  return { list, step, stop: () => scope.stop() }
+}
+
+// The run starts with thinking, or with a call the model is still writing:
+// either way its row is the same from that first step to the turn's end.
+test.each(['thinking', 'call being written'] as const)('a sent message, its run from %s and its answer only add rows, keep the answer before them closed, and the run is one shimmering row in the tail row\'s place', async (first) => {
+  const state = answered()
+  const { list, step: follows, stop } = follow(state)
+  const run = () => list.rows.value.find((row) => row.type === 'work_group')
+  let tailKey: string | null = null
+  async function step(name: string, change: () => void): Promise<void> {
+    await follows(name, change)
     // The answer before the message keeps Copy and Fork while the message is delivered.
     expect({ name, footer: list.footerIds.value.has('a-1') }).toEqual({ name, footer: true })
-    // The run is one row from its first step on.
-    const key = run() ? rowKey(run()!) : null
-    if (runKey !== null) {
-      expect({ name, key }).toEqual({ name, key: runKey })
+    // The tail row, then the run that takes its place, is one row.
+    const key = list.keyOf(list.rows.value.at(-1)!)
+    if (tailKey !== null && list.rows.value.at(-1)?.type !== 'text') {
+      expect({ name, key }).toEqual({ name, key: tailKey })
     }
-    runKey = key ?? runKey
-    previous = now
   }
 
   await step('sent', () => {
     state.pendingSubmissions = [{ id: 'm-2', way: 'send', text: 'Run the command, then reply.', attachments: [], error: null }]
   })
-  expect(drawn().at(-1)).toBe(TAIL_ROW)
+  expect(list.rows.value.at(-1)?.type).toBe('activity_slot')
+  tailKey = list.keyOf(list.rows.value.at(-1)!)
   await step('running', () => {
     state.phase = 'running'
   })
@@ -107,10 +124,7 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
       state.pendingCalls = writing(null)
     }
   })
-  await step('handed over', () => {
-    jest.advanceTimersByTime(ACTIVITY_HANDOFF_MS)
-  })
-  expect(runKey).not.toBeNull()
+  expect(run()).toBeDefined()
   await step('call being written', () => {
     state.pendingCalls = writing('Wait two seconds')
   })
@@ -136,7 +150,234 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
     state.phase = 'idle'
   })
   expect(list.footerIds.value.has('a-2')).toBe(true)
-  scope.stop()
+  stop()
+})
+
+/** A change the page receives, or a user's action, by what it is called. */
+type Change = [name: string, change: (state: MessageRowsSource) => void]
+
+const append = (...blocks: Block[]) => (state: MessageRowsSource) => {
+  state.blocks = [...state.blocks, ...blocks]
+}
+const replace = (id: string, block: Block) => (state: MessageRowsSource) => {
+  state.blocks = state.blocks.map((each) => each.id === id ? block : each)
+}
+const drop = (id: string) => (state: MessageRowsSource) => {
+  state.blocks = state.blocks.filter((each) => each.id !== id)
+}
+const phase = (next: MessageRowsSource['phase']) => (state: MessageRowsSource) => {
+  state.phase = next
+}
+/** The user presses Continue or Resume: the page knows at once. */
+const recover: Change = ['Continue or Resume', (state) => {
+  state.pendingAction = 'resume'
+}]
+/** The server acknowledges the recovery with the phase, before the transcript says so. */
+const acknowledged: Change = ['acknowledged', (state) => {
+  state.phase = 'running'
+  state.pendingAction = null
+}]
+const sent: Change = ['sent', (state) => {
+  state.pendingSubmissions = [{ id: 'm-2', way: 'send', text: 'Go on.', attachments: [], error: null }]
+}]
+const sentAndWritten: Change[] = [
+  sent,
+  ['running', phase('running')],
+  ['written', append(userBlock('u-2', 'm-2', 'Go on.'))],
+  ['confirmed', (state) => {
+    state.pendingSubmissions = []
+  }],
+]
+
+/** The run the stopped or failed turn had done: the user's message and a command that ended. */
+const workedOn = (...end: Block[]): Block[] => [userBlock('u-1', 'm-1', 'Fix the login test.'), call('c-1', 'completed'), ...end]
+
+// Each way a row gives way to the next state without the user removing it
+// (`product.md` § Following the agent's work), as the events reach the page:
+// the row that showed the old state stays drawn, under its key, and the row
+// at the end keeps its key from `from` on.
+const transitions: { name: string; blocks: Block[]; phase?: MessageRowsSource['phase']; from: string; changes: Change[] }[] = [
+  {
+    name: 'Stop, then Continue, then the next step',
+    blocks: workedOn(),
+    phase: 'running',
+    from: 'stopped',
+    changes: [
+      ['stopped', append(abort('x-1'))],
+      ['idle', phase('idle')],
+      recover,
+      acknowledged,
+      ['marked resumed', replace('x-1', abort('x-1', true))],
+      ['resume written', append(resumed('r-1'))],
+      ['thinking', append(thinking('k-2'))],
+      ['answer', append(text('a-2', 'Fixed.'))],
+      ['ended', phase('idle')],
+    ],
+  },
+  {
+    name: 'an error at the end, then Resume, then the next step',
+    blocks: workedOn(failure('e-1')),
+    from: 'start',
+    changes: [
+      recover,
+      acknowledged,
+      ['error dropped', drop('e-1')],
+      ['resume written', append(resumed('r-1'))],
+      ['call', append(call('c-2', 'executing'))],
+    ],
+  },
+  {
+    name: 'a turn that failed before any output, then Resume, which runs it again',
+    blocks: [userBlock('u-1', 'm-1', 'Fix the login test.'), failure('e-1')],
+    from: 'start',
+    changes: [
+      recover,
+      acknowledged,
+      ['error dropped', drop('e-1')],
+      ['thinking', append(thinking('k-1'))],
+    ],
+  },
+  {
+    name: 'a refused Continue',
+    blocks: workedOn(abort('x-1')),
+    from: 'start',
+    changes: [
+      recover,
+      ['refused', (state) => {
+        state.pendingAction = null
+      }],
+    ],
+  },
+  {
+    name: 'a refused Resume',
+    blocks: workedOn(failure('e-1')),
+    from: 'start',
+    changes: [
+      recover,
+      ['refused', (state) => {
+        state.pendingAction = null
+      }],
+    ],
+  },
+  {
+    name: 'Requesting, then the answer',
+    blocks: [userBlock('u-1', 'm-1', 'Hello.')],
+    phase: 'running',
+    from: 'start',
+    changes: [['answer', append(text('a-1', 'Hi.'))]],
+  },
+  {
+    name: 'Requesting, then a failure',
+    blocks: [userBlock('u-1', 'm-1', 'Hello.')],
+    phase: 'running',
+    from: 'start',
+    changes: [
+      ['failed', append(failure('e-1'))],
+      ['idle', phase('idle')],
+    ],
+  },
+  {
+    name: 'Requesting, then a Stop',
+    blocks: [userBlock('u-1', 'm-1', 'Hello.')],
+    phase: 'running',
+    from: 'start',
+    changes: [
+      ['stopped', append(abort('x-1'))],
+      ['idle', phase('idle')],
+    ],
+  },
+  {
+    name: 'thinking without text, then the answer',
+    blocks: [userBlock('u-1', 'm-1', 'Hello.'), thinking('k-1')],
+    phase: 'running',
+    from: 'start',
+    changes: [['answer', append(text('a-1', 'Hi.'))]],
+  },
+  {
+    name: 'Compacting, then the divider',
+    blocks: [userBlock('u-1', 'm-1', 'Hello.'), text('a-1', 'Hi.')],
+    from: 'compacting',
+    changes: [
+      ['compacting', phase('compacting')],
+      ['divider', (state) => {
+        state.blocks = [
+          { type: 'compaction_boundary', id: 'b-1', createdAt, model, summary: 'The user said hello.', summaryTokens: 12 },
+          ...state.blocks,
+          { type: 'compaction_marker', id: 'cm-1', createdAt, model, boundaryId: 'b-1', compactedTokens: 400 },
+        ]
+        state.phase = 'idle'
+      }],
+    ],
+  },
+  {
+    name: 'a send whose delivery fails, then Retry',
+    blocks: [userBlock('u-1', 'm-1', 'Hello.'), text('a-1', 'Hi.')],
+    from: 'sent',
+    changes: [
+      sent,
+      ['not delivered', (state) => {
+        state.pendingSubmissions = state.pendingSubmissions!.map((each) => ({ ...each, error: 'The connection was lost.' }))
+      }],
+      ['Retry', (state) => {
+        state.pendingSubmissions = state.pendingSubmissions!.map((each) => ({ ...each, error: null }))
+      }],
+      ...sentAndWritten.slice(1),
+    ],
+  },
+  {
+    name: 'a failure told at the tail, then the session opened again',
+    blocks: [userBlock('u-1', 'm-1', 'Hello.')],
+    phase: 'running',
+    from: 'failed',
+    changes: [
+      ['failed', (state) => {
+        state.failure = { label: 'The conversation could not be opened.', retry: true }
+        state.load = 'failed'
+      }],
+      ['opened again', (state) => {
+        state.failure = null
+        state.load = 'ready'
+      }],
+    ],
+  },
+]
+
+test.each(transitions)('$name: no row goes while another takes its place, and the row at the end keeps its key', async ({ blocks, phase: initial, from, changes }) => {
+  const state = answered()
+  state.blocks = blocks
+  state.phase = initial ?? 'idle'
+  const { list, step, stop } = follow(state)
+  const tail = () => list.keyOf(list.rows.value.at(-1)!)
+  let kept = from === 'start' ? tail() : null
+  for (const [name, change] of changes) {
+    await step(name, () => change(state))
+    if (name === from) {
+      kept = tail()
+    } else if (kept !== null) {
+      expect({ name, tail: tail() }).toEqual({ name, tail: kept })
+    }
+  }
+  stop()
+})
+
+// Continue after a Stop: the run before the Stop is done, so the resumed
+// turn's steps are a run of their own in the Stopped row's place, never
+// steps that join the run above it while the row under it goes.
+test('a continued turn\'s steps are a run of their own, in the place of the Stopped row', async () => {
+  const state = answered()
+  state.blocks = workedOn(abort('x-1'))
+  const { list, step, stop } = follow(state)
+  const stopped = list.keyOf(list.rows.value.at(-1)!)
+  await step('Continue', recover[1].bind(null, state))
+  expect(list.rows.value.at(-1)?.type).toBe('activity_slot')
+  await step('acknowledged', acknowledged[1].bind(null, state))
+  await step('marked resumed', () => replace('x-1', abort('x-1', true))(state))
+  await step('resume written', () => append(resumed('r-1'))(state))
+  await step('call', () => append(call('c-2', 'executing'))(state))
+  const runs = list.rows.value.filter((row) => row.type === 'work_group')
+  expect(runs.map((row) => row.type === 'work_group' && row.steps.map((each) => each.id))).toEqual([['c-1'], ['c-2']])
+  expect(list.keyOf(runs[1]!)).toBe(stopped)
+  stop()
 })
 
 /** A conversation whose agent runs: the user's message, then a run whose last call ended. */
@@ -221,7 +462,7 @@ test('a steer waiting under a run the model is still writing adds no Requesting 
   const scope = effectScope()
   const list = scope.run(() => useMessageRows(() => state))!
   await nextTick()
-  expect(drawnRows(list.rows.value)).toEqual(['message:m-1', 'work:c-1-use', 'message:s-1'])
+  expect(drawnRows(list)).toEqual(['message:m-1', 'work:c-1-use', 'message:s-1'])
   expect(list.slot.value).toBeNull()
   scope.stop()
 })
@@ -235,7 +476,7 @@ test('while the model is waited for, the Requesting row stands right after the t
   const scope = effectScope()
   const list = scope.run(() => useMessageRows(() => state))!
   await nextTick()
-  expect(drawnRows(list.rows.value)).toEqual(['message:m-1', TAIL_ROW, 'message:s-1', 'queue-divider', 'message:q-1'])
+  expect(drawnRows(list)).toEqual(['message:m-1', 'tail-row:1', 'message:s-1', 'queue-divider', 'message:q-1'])
   scope.stop()
 })
 
@@ -247,7 +488,7 @@ test('a notice and a receipt join the running run, which stays one row under one
   state.pendingCalls = []
   const scope = effectScope()
   const list = scope.run(() => useMessageRows(() => state))!
-  const drawn = () => drawnRows(list.rows.value)
+  const drawn = () => drawnRows(list)
   const before = drawn()
   expect(before).toEqual(['message:m-1', 'work:c-1-use'])
 
