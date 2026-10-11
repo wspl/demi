@@ -5,7 +5,7 @@
 //! equal keys are the same Host, whichever connection serves them, and a
 //! handle made while its runner is away serves once it is back.
 
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+use std::{cell::RefCell, collections::BTreeMap, future::Future, rc::Rc, time::Duration};
 
 use bytes::{Bytes, BytesMut};
 use demi_command_protocol::{
@@ -381,19 +381,18 @@ impl RemoteHost {
     ) -> Result<String, HostError> {
         let link = self.link()?;
         let _lease = self.admit()?;
-        let written = link
-            .call(Expected::Fs("writeFile"), |id| Inbound::FsWriteFile {
-                id,
-                path: path.into(),
-                cwd: self.cwd(),
-                exists: match options.exists {
-                    WhenExists::Replace => wire::WriteExists::Replace,
-                    WhenExists::Refuse => wire::WriteExists::Refuse,
-                    WhenExists::Rename => wire::WriteExists::Rename,
-                },
-                input: input.wire_ref(),
-            })
-            .await?;
+        let written = link.call(Expected::Fs("writeFile"), |id| Inbound::FsWriteFile {
+            id,
+            path: path.into(),
+            cwd: self.cwd(),
+            exists: match options.exists {
+                WhenExists::Replace => wire::WriteExists::Replace,
+                WhenExists::Refuse => wire::WriteExists::Refuse,
+                WhenExists::Rename => wire::WriteExists::Rename,
+            },
+            input: input.wire_ref(),
+        });
+        let written = reply_after_input(input, path, written).await?;
         match written {
             Answer::Fs(FsResult::WriteFile(name)) => Ok(name),
             _ => Err(mismatch()),
@@ -441,6 +440,7 @@ impl RemoteHost {
             directory_mode,
             input: input.wire_ref(),
         });
+        let written = reply_after_input(&input, path, written);
         let ((), written) = tokio::join!(upload, written);
         if let Err(error) = &written {
             input.fail(&error.message);
@@ -1799,6 +1799,40 @@ fn broken(link: &Link, failure: impl ToString) -> HostError {
 
 fn pipe_error(error: PipeError) -> HostError {
     HostError::interrupted(error.to_string())
+}
+
+/// How long a write's reply may take once its input's last byte left
+/// (`runner.md` § File contents).
+const REPLY_AFTER_INPUT: Duration = Duration::from_secs(60);
+
+/// `reply`, the answer to a write whose bytes travel through `input`. Once
+/// the pipe drained, the runner has only what its connection still queues
+/// and its file left to finish; a reply not there within
+/// [`REPLY_AFTER_INPUT`] fails the write as interrupted and closes the
+/// connection that carried the pipe, which ends the runner's read, so the
+/// runner removes its temporary file.
+async fn reply_after_input<T>(
+    input: &Pipe,
+    path: &str,
+    reply: impl Future<Output = Result<T, HostError>>,
+) -> Result<T, HostError> {
+    let overdue = async {
+        match input.done().await {
+            Ok(()) => tokio::time::sleep(REPLY_AFTER_INPUT).await,
+            // A failed pipe ends the write on the runner, which answers so.
+            Err(_) => std::future::pending().await,
+        }
+    };
+    tokio::select! {
+        reply = reply => reply,
+        () = overdue => {
+            input.close_sink_connection();
+            Err(HostError::interrupted(format!(
+                "the Host did not finish writing {path} within {} seconds of receiving it",
+                REPLY_AFTER_INPUT.as_secs()
+            )))
+        }
+    }
 }
 
 fn protocol(message: &str) -> HostError {

@@ -166,6 +166,46 @@ async fn an_fs_reply_is_read_as_the_operation_the_caller_asked_for() {
     );
 }
 
+// A paused clock stands in for the minute the reply may take.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_write_whose_reply_is_overdue_once_its_bytes_left_fails_and_closes_their_connection() {
+    use futures_util::StreamExt as _;
+    let device = device();
+    let mut link = device.connect(None);
+    let host = device.host("/work", Admission::Free);
+    let write = tokio::task::spawn_local(async move {
+        demi_host_interface::Host::fs(&host)
+            .write_file(
+                "/work/file",
+                demi_host_interface::FileContents::Bytes(Bytes::from_static(b"contents")),
+                demi_host_interface::WriteOptions::default(),
+            )
+            .await
+    });
+    let Inbound::FsWriteFile { input, .. } = link.next().await else {
+        panic!("expected a write request")
+    };
+    let mut sink = device.pipes().claim_sink(&input.id, TEST_DEVICE).unwrap();
+    let connection = CancellationToken::new();
+    sink.closes_with(connection.clone());
+    sink.source_arrived().await.unwrap();
+    // The runner reads every byte and the end, and never answers, as when
+    // its read of the connection stalled before the end reached its file.
+    let read: Vec<Bytes> = sink.into_stream().map(Result::unwrap).collect().await;
+    assert_eq!(read.concat(), b"contents");
+
+    tokio::time::sleep(Duration::from_secs(59)).await;
+    assert!(!write.is_finished(), "the reply may still come");
+    assert!(!connection.is_cancelled());
+    let failed = tokio::time::timeout(Duration::from_secs(2), write)
+        .await
+        .expect("the overdue write ends")
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(failed.kind, HostErrorKind::Interrupted, "{failed:?}");
+    assert!(connection.is_cancelled(), "the runner's read ends with the connection");
+}
+
 #[tokio::test(flavor = "local")]
 async fn admission_holds_calls_and_process_lifetimes_and_a_refusal_sends_nothing() {
     let device = device();

@@ -19,7 +19,7 @@ use std::{
     io,
     pin::Pin,
     rc::{Rc, Weak},
-    sync::Arc,
+    sync::{Arc, OnceLock},
     task::{Context, Poll},
     time::Duration,
 };
@@ -31,7 +31,10 @@ use tokio::{
     sync::{mpsc, watch},
     time::Instant,
 };
-use tokio_util::{sync::PollSender, task::TaskTracker};
+use tokio_util::{
+    sync::{CancellationToken, PollSender},
+    task::TaskTracker,
+};
 
 /// How long a pipe waits for its ends.
 pub const ARRIVAL: Duration = Duration::from_secs(120);
@@ -75,6 +78,9 @@ enum End {
 struct Core {
     state: watch::Sender<Outcome>,
     source_arrived: watch::Sender<bool>,
+    /// Closes the HTTP connection a device's sink reads the pipe on, once
+    /// the device claimed it.
+    sink_connection: OnceLock<CancellationToken>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +139,7 @@ impl Core {
         Arc::new(Self {
             state: watch::Sender::new(Outcome::Open),
             source_arrived: watch::Sender::new(false),
+            sink_connection: OnceLock::new(),
         })
     }
 
@@ -545,6 +552,15 @@ impl Pipe {
         self.core.failure()
     }
 
+    /// Closes the HTTP connection a device's sink reads the pipe on, when a
+    /// device claimed it: the device's read ends, also after the pipe
+    /// drained, when its last bytes may still wait in the connection.
+    pub fn close_sink_connection(&self) {
+        if let Some(connection) = self.core.sink_connection.get() {
+            connection.cancel();
+        }
+    }
+
     /// Resolves only if the pipe fails.
     pub fn failed(&self) -> impl Future<Output = PipeFailure> + Send + 'static {
         self.core.failed()
@@ -796,6 +812,13 @@ pub struct DeviceSink {
 }
 
 impl DeviceSink {
+    /// Names the HTTP connection the response goes out on: cancelling
+    /// `connection` closes it.
+    pub fn closes_with(&self, connection: CancellationToken) {
+        // A sink is claimed once, so no other connection is named.
+        let _ = self.reader.core.sink_connection.set(connection);
+    }
+
     /// Waits until the source has something to send: the response's head
     /// goes out only then, and a pipe that fails first is the refusal.
     pub async fn source_arrived(&mut self) -> Result<(), PipeFailure> {
