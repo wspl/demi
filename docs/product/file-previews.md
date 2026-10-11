@@ -74,7 +74,7 @@ GitHub a file's own bar over its contents:
 
   | Kind | The bar says |
   | --- | --- |
-  | Text and Markdown | *TypeScript · 20 lines · 476 B* |
+  | Text and Markdown | *TypeScript · 19 lines · 476 B*, counting lines as GitHub does: the line break that ends the last line starts no line of its own, so a file of `a⏎b⏎` has 2 |
   | Image | *PNG Image · 1280 × 720 · 150% · 412 KB*, the zoom following the picture |
   | Video | *MP4 Video · 1280 × 720 · 4.2 MB* |
   | Audio, PDF | *M4A Audio · 3.1 MB*, *PDF Document · 812 KB* |
