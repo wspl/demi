@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { conversationSummarySchema } from '../api/generated/web-api'
 import { messageEditStateSchema } from '@demicodes/web-ui/agent/message-editing'
 import { modelSettingsSchema } from '@demicodes/web-ui/agent/model-selection'
+import { copiedStoredFileSchema } from '@demicodes/web-ui/agent/message-input/copied-message'
 
 /**
  * The upload the backend took: the attachment id a message names the file
@@ -15,6 +16,12 @@ const fileSchema = z.object({
   /** The bytes this page added; none for a file another page uploaded. */
   file: z.instanceof(File).nullable(),
   upload: uploadSchema.nullable(),
+  /**
+   * The stored file a pasted message names, while it is not attached yet,
+   * with the picture its copy carried for when the paste cannot use it
+   * (`product.md` § Writing a message).
+   */
+  claim: z.object({ file: copiedStoredFileSchema, picture: z.instanceof(File).nullable() }).optional(),
   /** A text file's opening, as the backend answered its upload. */
   snippet: z.string().optional(),
 })

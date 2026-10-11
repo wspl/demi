@@ -14,7 +14,7 @@ import type { MessageCapsule } from '../message-editor/capsules'
 export const COPIED_MESSAGE_ATTRIBUTE = 'data-demi-message'
 
 /** A file the message holds as a blob of the user's: the upload a paste makes of it sends no bytes. */
-const copiedStoredFileSchema = z.object({
+export const copiedStoredFileSchema = z.object({
   type: z.literal('stored'),
   name: z.string().min(1),
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
@@ -191,4 +191,21 @@ export function pasteMessage(message: CopiedMessage, image: File | null, host: P
 /** The picture a copy carried, under its file's name when it is that file's kind, as web browsers name every pasted picture `image.png`. */
 function namedPicture(image: File, file: CopiedStoredFile): File {
   return file.mediaType === image.type ? new File([image], file.name, { type: image.type }) : image
+}
+
+/**
+ * The toast that says which pasted files could not be added, their names
+ * pasted in their place; none when every file was.
+ */
+export function missingFilesToast(names: readonly string[]): { title: 'Couldn’t Attach'; message: string } | null {
+  if (!names.length) {
+    return null
+  }
+  const list = new Intl.ListFormat('en', { type: 'conjunction' }).format(names)
+  return {
+    title: 'Couldn’t Attach',
+    message: names.length === 1
+      ? `${list} couldn’t be added, so its name was pasted instead.`
+      : `${list} couldn’t be added, so their names were pasted instead.`,
+  }
 }
