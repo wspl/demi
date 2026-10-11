@@ -5,7 +5,6 @@
 
 pub mod backend;
 pub mod command_client;
-pub mod file_diff;
 pub mod job_shell;
 pub mod lines;
 pub mod pipes;
