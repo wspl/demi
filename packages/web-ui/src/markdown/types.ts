@@ -42,6 +42,11 @@ export interface MessageFileTarget {
  * messages).
  */
 export interface ConversationFiles {
+  /**
+   * The Host's home, which a path starting `~/` starts from; absent or null
+   * while it is not known, and such a path then names no file.
+   */
+  home?: string | null
   /** The URL an image at a Host path loads from. */
   imageUrl(path: string): string
   /**

@@ -188,7 +188,8 @@ const selectEdit = computed<EditSelectionHandler | undefined>(() => {
  * The Host files the conversation's messages name: images from its raw
  * route, files opened through the `file` intent while a plugin opens it, at
  * their lines, and which paths of a reply's inline code are files, from the
- * Host; and the attachments they name, from the attachment route.
+ * Host, whose home a `~/` path starts from; and the attachments they name,
+ * from the attachment route.
  */
 const files = computed<ConversationFiles | undefined>(() => {
   const current = conversation.value
@@ -197,6 +198,7 @@ const files = computed<ConversationFiles | undefined>(() => {
   }
   const contents = rawFileContents(conversationFileRoutes(current.id).raw)
   return {
+    home: resources.deviceById(executionFor(current).deviceId)?.home ?? null,
     imageUrl: (path) => contents.url(path),
     open: work.canOpen('file')
       ? ({ path, line }, clicks) => work.openIn(current.id, { intent: 'file', payload: line === null ? { path } : { path, line } }, clicks)
