@@ -11,7 +11,7 @@ import {
   type ProfilePatch,
   type SubagentProfile,
   type SubagentSettings,
-  type SubagentSwitch,
+  type SubagentsPatch,
 } from '../api/generated/web-api'
 import { useProduct, type Answer } from '../state/product'
 
@@ -28,16 +28,17 @@ function settingsAnswer(next: (current: SubagentSettings) => SubagentSettings): 
 }
 
 /**
- * The user's subagent settings as the Subagent section changes them
- * (`web-api.md` § Subagents). A switch shows at once and its write follows
- * the earlier ones of the same switch (`web-application.md` § Responding to
- * the user): the Subagents switch, or one profile's; a saved
+ * The user's subagent settings as the Subagents section changes them
+ * (`web-api.md` § Subagents). A switch or a limit shows at once and its
+ * write follows the earlier ones of the same setting (`web-application.md`
+ * § Responding to the user): the Subagents switch, a limit, or one
+ * profile's switch; a saved
  * or deleted profile shows its answer. The channel brings the same part to
  * every other page.
  */
 export const useSubagentSettings = defineStore('subagent-settings', () => {
   const product = useProduct()
-  /** The switches on their way, by what they switch: `subagents`, or `profile:<id>`. */
+  /** The writes on their way, by what they set: `subagents`, a limit's name, or `profile:<id>`. */
   const writes = new SerialQueue()
   const settings = computed(() => product.snapshot?.subagents ?? null)
 
@@ -64,18 +65,28 @@ export const useSubagentSettings = defineStore('subagent-settings', () => {
       })
   }
 
+  /** Sends `patch` of the switch and the limits, which answers nothing. */
+  async function putSubagents(patch: SubagentsPatch): Promise<undefined> {
+    await apiRequest('/subagents', { method: 'PUT', ...jsonBody(patch) })
+    return undefined
+  }
+
   function switchSubagents(enabled: boolean): Promise<void> {
     return switchSettings(
       'subagents',
       (current) => ({ ...current, enabled }),
-      async () => {
-        await apiRequest('/subagents', {
-          method: 'PUT',
-          ...jsonBody({ enabled } satisfies SubagentSwitch),
-        })
-        return undefined
-      },
+      () => putSubagents({ enabled }),
       enabled ? 'Could Not Turn Subagents On' : 'Could Not Turn Subagents Off',
+    )
+  }
+
+  /** Sets Maximum subagents or Maximum depth; null is Unlimited, which the page confirmed. */
+  function setLimit(limit: 'maxLive' | 'maxDepth', value: number | null): Promise<void> {
+    return switchSettings(
+      limit,
+      (current) => ({ ...current, [limit]: value }),
+      () => putSubagents({ [limit]: value }),
+      'Could Not Change the Limit',
     )
   }
 
@@ -131,6 +142,7 @@ export const useSubagentSettings = defineStore('subagent-settings', () => {
   return {
     settings,
     switchSubagents,
+    setLimit,
     switchProfile,
     saveProfile,
     deleteProfile,

@@ -10,6 +10,8 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import CommitTextInput from '@demicodes/web-ui/ui/CommitTextInput.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
+import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
+import LimitField from '@demicodes/web-ui/ui/LimitField.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import Segmented, { type SegmentedOption } from '@demicodes/web-ui/ui/Segmented.vue'
@@ -35,6 +37,8 @@ const protocols = ['Chat Completions', 'Responses', 'Messages'] as const
 
 const name = ref('explore')
 const baseUrl = ref('https://api.example.com/v1')
+const retries = ref<number | null>(3)
+const retriesProblem = ref<string | null>(null)
 const protocol = ref<(typeof protocols)[number]>('Responses')
 const fontSize = ref(DEFAULT_TRANSCRIPT_TEXT_SIZE)
 const theme = ref<Theme>('system')
@@ -61,6 +65,22 @@ function refreshUsage(): void {
         class="w-72 max-w-full"
         @commit="baseUrl = $event"
       />
+    </SettingsRow>
+    <SettingsRow label="Retries" description="A number, or Unlimited after a warning.">
+      <template v-if="retriesProblem" #detail>
+        <InlineError :message="retriesProblem" />
+      </template>
+      <LimitField
+        :model-value="retries"
+        label="Retries"
+        :overlay-store="appOverlayStore"
+        confirm-title="Allow unlimited retries?"
+        confirm-action="Allow Unlimited"
+        @commit="retries = $event"
+        @problem="retriesProblem = $event"
+      >
+        <p>A request that keeps failing is then tried again without end.</p>
+      </LimitField>
     </SettingsRow>
     <SettingsRow label="Transcript text size" description="Sizes the conversation’s messages and steps.">
       <Slider

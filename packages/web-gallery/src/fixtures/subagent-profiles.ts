@@ -58,6 +58,8 @@ export function demoSubagentProfiles(): SettingsSubagentProfile[] {
 export function createSubagentState(enabled = true) {
   return reactive({
     enabled,
+    maxLive: 10 as number | null,
+    maxDepth: 1 as number | null,
     profiles: demoSubagentProfiles(),
   })
 }

@@ -33,14 +33,13 @@ use tokio::sync::{Notify, watch};
 use tokio_util::task::AbortOnDropHandle;
 
 use super::Tree;
+use super::profiles::Limits;
 use crate::{
     Node,
     node::{self, NodeRole, NodeSpec, Origin},
     server::{AgentServer, commands::with_runtime_groups},
 };
 
-/// The most live children one node has at once.
-const MAX_LIVE_CHILDREN: usize = 8;
 /// The bound of a completion's result and of `show`'s last assistant text,
 /// in UTF-8 bytes.
 const RESULT_MAX_BYTES: usize = 32 * 1024;
@@ -196,13 +195,58 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
-    fn check_capacity(&self, owner: &NodeId) -> Result<(), String> {
-        if self.children_of(owner).len() >= MAX_LIVE_CHILDREN {
+    /// How many levels below the root `node` is: the root's children are
+    /// at 1. A closed ancestor's record is the store's.
+    async fn depth(&self, node: &Node<H>) -> Result<u32, String> {
+        let mut depth = 0;
+        let mut parent = node.record().parent.clone();
+        while let Some(id) = parent {
+            depth += 1;
+            parent = if &id == self.root.id() {
+                None
+            } else if let Some(child) = self.child(&id) {
+                child.node.record().parent.clone()
+            } else {
+                self.store
+                    .node(&id)
+                    .await
+                    .map_err(|error| error.to_string())?
+                    .ok_or_else(|| format!("subagent {id} is not in the store"))?
+                    .parent
+            };
+        }
+        Ok(depth)
+    }
+
+    /// Check 5 of a spawn (`subagents.md` § Profiles): `owner` is above the
+    /// deepest level the depth limit allows.
+    async fn check_depth(&self, owner: &Node<H>, limits: Limits) -> Result<(), String> {
+        let Some(max) = limits.max_depth else {
+            return Ok(());
+        };
+        if self.depth(owner).await? >= max.get() {
             return Err(format!(
-                "at most {MAX_LIVE_CHILDREN} running subagents per session; abort one or wait for a result"
+                "this agent is at the deepest level of subagents Settings > Subagents allows ({max}); do this work in this session."
             ));
         }
         Ok(())
+    }
+
+    /// Check 6 of a spawn, and of a resume: the conversation is under its
+    /// limit of live subagents, counting the starts that passed this check
+    /// and have not yet joined the directory. The slot answered holds the
+    /// new child's place until it joins the directory or its start fails.
+    fn reserve_live(self: &Rc<Self>, limits: Limits) -> Result<LiveSlot<H>, String> {
+        if let Some(max) = limits.max_live {
+            let live = self.children.borrow().len() + self.admitted.get();
+            if live >= max.get() as usize {
+                return Err(format!(
+                    "this conversation has {live} live subagents and Settings > Subagents allows {max}; wait for one to finish (`demi agent list`), or do this work in this session."
+                ));
+            }
+        }
+        self.admitted.set(self.admitted.get() + 1);
+        Ok(LiveSlot { tree: self.clone() })
     }
 
     /// Starts a child of `caller` for `demi agent spawn` or `resume`
@@ -260,7 +304,8 @@ impl<H: HostResolver> Tree<H> {
         let setup = self
             .spawn_setup(&server, owner, profile_name.as_deref())
             .await?;
-        self.check_capacity(owner.id())?;
+        self.check_depth(owner, setup.limits).await?;
+        let slot = self.reserve_live(setup.limits)?;
         let runtime = self
             .child_runtime(&server, owner, &setup.model)
             .await
@@ -289,7 +334,8 @@ impl<H: HostResolver> Tree<H> {
             model: setup.model,
             first_message: Some(self.text_message(prompt)),
         };
-        self.start_child(&server, owner, origin, runtime).await?;
+        self.start_child(&server, owner, origin, runtime, Some(slot))
+            .await?;
         Ok(number)
     }
 
@@ -349,11 +395,11 @@ impl<H: HostResolver> Tree<H> {
                 "no archived subagent {number} (see `demi agent list`)"
             ));
         }
-        self.check_capacity(owner.id())?;
         if !record.delivered {
             return Err("The previous completion is not saved by the parent yet; retry resume after receiving it".to_owned());
         }
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
+        let slot = self.reserve_live(self.limits(&server).await?)?;
         // The runtime comes first: a child whose provider entry is gone
         // stays archived.
         let archived = self.stored(&id).await?;
@@ -369,7 +415,8 @@ impl<H: HostResolver> Tree<H> {
             .map_err(|error| error.to_string())?;
         // The reopen queued the message in its checkpoint.
         let reopened = self.stored(&id).await?;
-        self.start_child(&server, owner, reopened, runtime).await?;
+        self.start_child(&server, owner, reopened, runtime, Some(slot))
+            .await?;
         Ok(number)
     }
 
@@ -396,13 +443,16 @@ impl<H: HostResolver> Tree<H> {
     /// assembly, new with its brief queued in the create commit or from the
     /// store, on `runtime`, with what it was spawned with; then its place in
     /// the directory and its frames, what it has yet to run, its own
-    /// children, and its supervision.
+    /// children, and its supervision. A spawn's or a resume's `slot` ends
+    /// once the child is in the directory, which counts it from then on; a
+    /// restore takes none, since it brings back what was live.
     async fn start_child(
         self: &Rc<Self>,
         server: &Rc<AgentServer<H>>,
         owner: &Rc<Node<H>>,
         origin: Origin,
         runtime: Box<dyn ProviderRuntime>,
+        slot: Option<LiveSlot<H>>,
     ) -> Result<NodeId, String> {
         let deps = &server.deps;
         let activity = self.admission.enter(Purpose::Demand).await;
@@ -442,6 +492,7 @@ impl<H: HostResolver> Tree<H> {
         .await
         .map_err(|error| error.to_string())?;
         let child = self.attach_child(assembled.node);
+        drop(slot);
         let id = child.id().clone();
         if let Some(continuation) = assembled.continuation
             && let Err(error) = child.node.continue_from(continuation).await
@@ -585,7 +636,7 @@ impl<H: HostResolver> Tree<H> {
                         continue;
                     }
                 };
-                if let Err(error) = self.start_child(&server, owner, origin, runtime).await {
+                if let Err(error) = self.start_child(&server, owner, origin, runtime, None).await {
                     self.delete_unbuilt(&id, &error).await;
                 }
             }
@@ -1116,6 +1167,20 @@ impl<H: HostResolver> Tree<H> {
             .into_iter()
             .find(|record| record.number == number)
             .map(|record| record.id))
+    }
+}
+
+/// A start's place among the conversation's live subagents, from the check
+/// of the live limit until its child is in the directory or the start
+/// fails ([`Tree::reserve_live`]).
+struct LiveSlot<H: HostResolver> {
+    tree: Rc<Tree<H>>,
+}
+
+impl<H: HostResolver> Drop for LiveSlot<H> {
+    fn drop(&mut self) {
+        let admitted = &self.tree.admitted;
+        admitted.set(admitted.get() - 1);
     }
 }
 
