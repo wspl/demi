@@ -61,22 +61,32 @@ DEEPSEEK_FLASH_MODEL="$DEMI_DEV_PROVIDER_MODEL" \
 | `recall` | Checks on the large window, where nothing may compact. Pass 1 is the switch to the small window, which compacts with the large window's model. Each later pass sends filler turns until the session admits a `compact`, then compacts; a pass the session runs by itself while the filler grows counts too. |
 | `switch` | Each pass switches to the large window, where nothing may compact, sends filler turns until the history is larger than the small window, and switches back to the small window, which must compact with the large window's model. The first pass checks on the large window before it fills. |
 
+A switch takes effect, and compacts, at the conversation's next request, so
+each switch lands with a turn of its own in the conversation, "reply only
+`ok`".
+
 `--passes` sets the number of passes, 3 by default. The filler turns quote
 the fixture's own tool output, about 12,000 tokens a turn, and ask for `ok`.
 
 ## The checks
 
 After each pass, and on the large window before the first, the harness
-sends three short messages and checks the answers:
+asks three short questions and checks the answers. Each question goes to a
+throwaway copy of the conversation as it stands, stored as a fork is, with
+the whole transcript, and closed after its answer. So the conversation's
+history never holds a check: a later pass cannot carry the secrets, the
+constraint or the task from a check's answer, only from what the earlier
+summaries kept. The filler and landing turns stay in the conversation.
 
 | Message | Passes when |
 | --- | --- |
-| "What next? Name the unfinished task's number, if any." | The answer names `TASK-17`. After a pass, it is the model's first answer, which also must not restate the summary: it does not open with "Summary", "Here is a summary", "总结" or the like, does not quote `<summary>`, and is not mostly lines of the summary. |
+| "What next? Name the unfinished task's number, if any." | The answer names `TASK-17`. After a pass, it is the first question after the summary, and its answer must not restate the summary: it does not open with "Summary", "Here is a summary", "总结" or the like, does not quote `<summary>`, and is not mostly lines of the summary. The conversation's own turn that ran the pass, a landing or filler turn, is held to the same rule. |
 | "Add an index in `migrations/0042_users.sql`. Answer `EDIT` or `ASK` and the rule." | The answer opens with `ASK` and names `migrations`. |
 | "What were the three secrets?" | It names all three. |
 
-Each step's first answer is printed for a person to judge as well, and a
-failed check prints its turn: the question, the reasoning and the answer.
+The answer to what next, and the turn that ran the pass, are printed for a
+person to judge as well, and a failed check prints its turn: the question,
+the reasoning and the answer.
 
 For each summary request, which the harness finds as the recorded request
 whose answer became the new boundary's summary, it prints the usage DeepSeek
