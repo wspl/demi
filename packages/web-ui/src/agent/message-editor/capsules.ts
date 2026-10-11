@@ -34,13 +34,15 @@ export interface MessageCapsule {
 }
 
 /** An image file's picture, from its bytes in the user's blobs; none for a file of another kind. */
-function blobImage(mediaType: string, sha256: string): ContentMediaSource | undefined {
+export function blobImage(mediaType: string, sha256: string): ContentMediaSource | undefined {
   return mediaType.startsWith('image/') ? { type: 'ref', ref: sha256, mediaType } : undefined
 }
 
 /** What is happening to a file the composer is still carrying to the Host. */
 export type MessageTransfer =
   | { phase: 'uploading'; progress: number }
+  /** A pasted message's stored file being attached, which has no progress to tell. */
+  | { phase: 'attaching' }
   | { phase: 'failed' }
 
 /**
@@ -121,6 +123,9 @@ export function composerTransfer(item: ComposerAttachment): MessageTransfer | un
   }
   if (item.phase === 'uploading') {
     return { phase: 'uploading', progress: attachmentProgress(item) }
+  }
+  if (item.phase === 'attaching') {
+    return { phase: 'attaching' }
   }
   return item.phase === 'failed' ? { phase: 'failed' } : undefined
 }

@@ -66,20 +66,18 @@ function addFiles(files: File[]) {
 
 /**
  * How a message pasted into the draft brings its files back: a stored file
- * as an upload without its bytes, a device file by its device and path, and
- * the picture a copy carried as a pasted file (`product.md` § Writing a
- * message).
+ * at once, attaching beside its capsule without its bytes, and a device file
+ * by its device and path (`product.md` § Writing a message).
  */
 const paste: PasteHost = {
-  claim: async (file) => {
-    const item = await store.claimFile(props.conversation, file)
-    return item && composerCapsule(item)
+  claim: (file, picture) => {
+    const { item, kept } = store.claimFile(props.conversation, file, picture)
+    return { capsule: composerCapsule(item), kept }
   },
   remote: (file) => {
     const item = store.attachDeviceFile(props.conversation, file)
     return item && composerCapsule(item)
   },
-  add: (files) => store.addFiles(props.conversation, files).map(composerCapsule),
 }
 
 /** The version of the draft a later save replaced, which the composer offers to restore. */

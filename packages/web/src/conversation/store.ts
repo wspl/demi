@@ -1900,11 +1900,11 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Takes a file a pasted message holds as a blob of the user's into the
-   * conversation's composer, without its bytes; null when the user's blobs do
-   * not hold it.
+   * conversation's composer at once, attaching beside its capsule
+   * (`ConversationUploads.claimFile`).
    */
-  function claimFile(conversation: Conversation, file: CopiedStoredFile): Promise<ProductAttachment | null> {
-    return uploads.claimFile(conversation, file, lifetime.signal)
+  function claimFile(conversation: Conversation, file: CopiedStoredFile, picture: File | null) {
+    return uploads.claimFile(conversation, file, picture)
   }
 
   /** Takes a file on a paired device a pasted message names; null when the composer has it already. */

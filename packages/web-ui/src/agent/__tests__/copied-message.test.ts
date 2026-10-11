@@ -47,22 +47,22 @@ const copied: CopiedMessage = {
   ],
 }
 
-/** A composer's taking of files that records what it was asked, claiming the blobs in `held`. */
-function composerHost(held: Set<string>) {
-  const added: File[] = []
-  const claimed: string[] = []
+/**
+ * A composer's taking of files: each stored file a capsule at once, whose
+ * attaching answers only when the test says, with the picture it was offered
+ * recorded; a device file the composer has already is refused.
+ */
+function composerHost(has: Set<string> = new Set()) {
+  const claims: { name: string; picture: File | null; answer: (kept: boolean) => void }[] = []
   const host: PasteHost = {
-    claim: async (file) => {
-      claimed.push(file.sha256)
-      return held.has(file.sha256) ? { id: `upload-${file.name}`, name: file.name } : null
+    claim: (file, picture) => {
+      const kept = Promise.withResolvers<boolean>()
+      claims.push({ name: file.name, picture, answer: kept.resolve })
+      return { capsule: { id: `claimed-${file.name}`, name: file.name }, kept: kept.promise }
     },
-    remote: (file) => ({ id: `remote-${file.name}`, name: file.name, host: file.host, path: file.path }),
-    add: (files) => {
-      added.push(...files)
-      return files.map((file) => ({ id: `pasted-${file.name}`, name: file.name }))
-    },
+    remote: (file) => has.has(file.path) ? null : { id: `remote-${file.name}`, name: file.name, host: file.host, path: file.path },
   }
-  return { host, added, claimed }
+  return { host, claims }
 }
 
 /** A document with each capsule as its file's name, to compare documents whose capsules have other ids. */
@@ -90,30 +90,33 @@ test('a copy of a lone image carries the picture itself; a file still on its way
   expect(uploading.message).toEqual({ text: 'Look shot.png', files: [] })
 })
 
-test('a pasted copy brings the same message back, each file a capsule where it stood, without uploading any', async () => {
-  const { host, added, claimed } = composerHost(new Set([BEFORE, AFTER]))
-  const pasted = await pasteMessage(copied, null, host)
-  expect(pasted.missing).toEqual([])
-  expect(added).toEqual([])
-  expect(claimed).toEqual([BEFORE, AFTER])
+test('a pasted copy lands at once as the same message, each file a capsule where it stood, before any file is attached', async () => {
+  const { host, claims } = composerHost()
+  const pasted = pasteMessage(copied, null, host)
+  // Nothing has answered: the document already holds every capsule.
   expect(named(parseUserMarkdown(pasted.markdown, pasted.capsules))).toEqual(named(sentDocument()))
+  expect(pasted.missing).toEqual([])
+  expect(claims.map((claim) => [claim.name, claim.picture])).toEqual([['before.png', null], ['after.png', null]])
+  expect(pasted.attaching.map(({ id, name }) => [id, name])).toEqual([['claimed-before.png', 'before.png'], ['claimed-after.png', 'after.png']])
+  // Each file's attaching answers on its own, under its capsule.
+  claims[1]!.answer(false)
+  claims[0]!.answer(true)
+  expect(await Promise.all(pasted.attaching.map(({ kept }) => kept))).toEqual([true, false])
 })
 
-test('a file the paste cannot claim comes from the picture the copy carried, or else stands as its name', async () => {
+test('a copy of a lone file offers its picture under the file\'s name for when the paste cannot use the file; a device file the composer has stands as its name', () => {
   const picture = new File(['png'], 'image.png', { type: 'image/png' })
-  const lone: CopiedMessage = { text: MARK, files: [copied.files[0]!] }
-  const withPicture = composerHost(new Set())
-  const fromPicture = await pasteMessage(lone, picture, withPicture.host)
+  const lone = composerHost()
+  pasteMessage({ text: MARK, files: [copied.files[0]!] }, picture, lone.host)
   // Under its own name, not the one a web browser gives every pasted picture.
-  expect(withPicture.added.map((file) => [file.name, file.size])).toEqual([['before.png', picture.size]])
-  expect(fromPicture).toEqual({ markdown: MARK, capsules: [{ id: 'pasted-before.png', name: 'before.png' }], missing: [] })
+  expect(lone.claims.map(({ picture }) => [picture?.name, picture?.size])).toEqual([['before.png', picture.size]])
 
-  // Another account's blob, and no picture: the name stands in the text, for the toast to name.
-  const { host } = composerHost(new Set([AFTER]))
-  const named = await pasteMessage(copied, null, host)
-  expect(named.markdown).toBe(`Compare **before** before.png with ${MARK}, notes in ${MARK}`)
-  expect(named.capsules.map((capsule) => capsule.name)).toEqual(['after.png', 'notes.md'])
-  expect(named.missing).toEqual(['before.png'])
+  // A picture belongs to a copy of one file only; a device file already attached is its name.
+  const { host, claims } = composerHost(new Set(['/Users/alex/notes.md']))
+  const pasted = pasteMessage(copied, picture, host)
+  expect(claims.map((claim) => claim.picture)).toEqual([null, null])
+  expect(pasted.markdown).toBe(`Compare **before** ${MARK} with ${MARK}, notes in notes.md`)
+  expect(pasted.missing).toEqual(['notes.md'])
 })
 
 test('Demi\'s own form is read only when it is one: JSON whose text has a mark for each file', () => {

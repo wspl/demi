@@ -39,6 +39,9 @@ const circumference = 2 * Math.PI * radius
 const loaded = useMediaUrl(() => typeof props.capsule.image === 'object' ? props.capsule.image : undefined)
 const image = computed(() => typeof props.capsule.image === 'string' ? props.capsule.image : loaded.value)
 const uploading = computed(() => props.transfer?.phase === 'uploading' ? props.transfer : null)
+const attaching = computed(() => props.transfer?.phase === 'attaching')
+/** On its way: an upload, which tells how far it has come, or an attaching, which goes round. */
+const busy = computed(() => !!uploading.value || attaching.value)
 const failed = computed(() => props.transfer?.phase === 'failed')
 const caption = computed(() => {
   const { host, path, name } = props.capsule
@@ -48,6 +51,9 @@ const caption = computed(() => {
   if (uploading.value) {
     return `Uploading ${Math.round(uploading.value.progress * 100)}% · ${name}`
   }
+  if (attaching.value) {
+    return `Attaching · ${name}`
+  }
   return host ? `${host} · ${path ?? name}` : path ?? name
 })
 
@@ -55,7 +61,7 @@ const caption = computed(() => {
 const preview = computed<
   { kind: 'picture'; src: string } | { kind: 'lines'; text: string } | { kind: 'caption' }
 >(() => {
-  if (uploading.value || failed.value) {
+  if (busy.value || failed.value) {
     return { kind: 'caption' }
   }
   if (image.value) {
@@ -79,16 +85,17 @@ const preview = computed<
       ]"
       :data-phase="transfer?.phase"
       :aria-label="caption"
-      :aria-busy="uploading ? true : undefined"
+      :aria-busy="busy ? true : undefined"
     >
       <svg
-        v-if="uploading"
+        v-if="busy"
         role="progressbar"
         :aria-valuemin="0"
         :aria-valuemax="100"
-        :aria-valuenow="Math.round(uploading.progress * 100)"
+        :aria-valuenow="uploading ? Math.round(uploading.progress * 100) : undefined"
         :aria-label="capsule.name"
         class="mx-px shrink-0 -rotate-90 self-center"
+        :class="attaching ? 'animate-spin' : ''"
         :width="RING"
         :height="RING"
         :viewBox="`0 0 ${RING} ${RING}`"
@@ -111,7 +118,7 @@ const preview = computed<
           :stroke-width="STROKE"
           stroke-linecap="round"
           :stroke-dasharray="circumference"
-          :stroke-dashoffset="circumference * (1 - uploading.progress)"
+          :stroke-dashoffset="circumference * (1 - (uploading ? uploading.progress : 0.25))"
           class="text-fg-muted transition-[stroke-dashoffset] duration-75 ease-linear"
         />
       </svg>
@@ -135,7 +142,7 @@ const preview = computed<
       />
       <span
         class="min-w-0 truncate"
-        :class="uploading ? 'text-fg-muted' : ''"
+        :class="busy ? 'text-fg-muted' : ''"
       >{{ capsule.name }}</span>
       <span
         v-if="capsule.host"
