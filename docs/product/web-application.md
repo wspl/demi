@@ -427,7 +427,11 @@ not broken. Likewise, the browser's word that it went offline counts only
 once it has held for a second: a network the system re-evaluates, as macOS
 does when it changes its primary interface, may report offline for a moment
 while every socket stays open, and the page neither shows the connection
-banner nor closes a socket for that moment.
+banner nor closes a socket for that moment. An offline that holds shows the
+banner and still closes no socket, since a socket that kept its connection,
+as through a VPN's tunnel, goes on working: a socket ends by its own close or
+its silence, and when the browser is online again the page checks each one
+as at a return.
 
 Each socket's end is recorded on both sides, so a drop the user saw can be
 traced afterwards. The backend logs, at `info`, each page socket it opens
