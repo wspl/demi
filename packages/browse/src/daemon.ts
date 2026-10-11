@@ -8,7 +8,7 @@
 // browser on `demi.stop()` or `demi.down()`, or after 30 minutes without a
 // call; the next call starts it again, and so one that crashed.
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, unlinkSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import net from 'node:net'
 import { createInterface } from 'node:readline'
 import { Browser } from './browser'
@@ -35,8 +35,22 @@ if (existsSync(paths.socket)) {
   unlinkSync(paths.socket)
 }
 
+/**
+ * The code a server runs: the tool's own folder, and the files it imports
+ * from other packages, the product's generated contracts it reads answers
+ * with. A slot's change of branch changes those too, and a server that kept
+ * the old ones would reject the new backend's answers.
+ */
+const webApi = Bun.resolveSync('@demicodes/web/src/api/generated/web-api', import.meta.dir)
+const code = [
+  import.meta.dir,
+  webApi,
+  Bun.resolveSync('@demicodes/web/src/__tests__/product-state', import.meta.dir),
+  Bun.resolveSync('@demicodes/protocol', dirname(webApi)),
+]
+
 /** When the tool's code last changed as this server started; a later change ends it. */
-const loadedCode = newestSource(import.meta.dir)
+const loadedCode = newestCode()
 
 let progress: (line: string) => void = (line) => console.log(line)
 const browser = new Browser(slot, (line) => progress(line))
@@ -59,12 +73,19 @@ browser.attachRunning().catch((error) => console.error(`the browser could not be
 process.on('SIGTERM', () => void end('with the browser'))
 process.on('SIGINT', () => void end('with the browser'))
 
-/** The newest modification time of the files under `folder`, in milliseconds. */
-function newestSource(folder: string): number {
+/** The newest modification time of the server's code, `code`'s files and the files under its folders, in milliseconds. */
+function newestCode(): number {
   let newest = 0
-  for (const entry of readdirSync(folder, { withFileTypes: true, recursive: true })) {
-    if (entry.isFile()) {
-      newest = Math.max(newest, statSync(join(entry.parentPath, entry.name)).mtimeMs)
+  for (const path of code) {
+    const stats = statSync(path)
+    if (stats.isFile()) {
+      newest = Math.max(newest, stats.mtimeMs)
+      continue
+    }
+    for (const entry of readdirSync(path, { withFileTypes: true, recursive: true })) {
+      if (entry.isFile()) {
+        newest = Math.max(newest, statSync(join(entry.parentPath, entry.name)).mtimeMs)
+      }
     }
   }
   return newest
@@ -110,7 +131,7 @@ async function serve(socket: net.Socket): Promise<void> {
       socket.write(`${JSON.stringify(reply)}\n`)
     }
   }
-  if (newestSource(import.meta.dir) > loadedCode) {
+  if (newestCode() > loadedCode) {
     // A call would run the code this server loaded, not the code as it is
     // now: the caller asks a new server instead, which can listen once this
     // one no longer does, and which goes on from what this one leaves.
