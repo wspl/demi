@@ -50,7 +50,7 @@ const deviceLabel = computed(() => {
 
 const phone = usePhone()
 
-// The marks the row's end shows at rest, each in a 24px box: the device's, then the pin.
+// The marks the row's end shows at rest, each in a 24px box: the pin, then the device's.
 const restMarks = computed(() => (props.conversation.device ? 1 : 0) + (props.conversation.pinned ? 1 : 0))
 
 // The title's end clears what the row's end shows: the marks at rest, each 24px with an 8px gap
@@ -147,21 +147,22 @@ const rowClass = computed(() => [
         />
       </Tooltip>
     </span>
-    <!-- The marks sit in the same 24px boxes as the actions: the device's mark, then the pinned
-         glyph at the end, which Unpin takes one place left of on hover. -->
+    <!-- The marks sit in the same 24px boxes as the actions: the pinned glyph, then the device's
+         mark at the end, so devices line up down the list; on hover Unpin takes the pin's place and
+         Archive the device's. -->
     <span
       v-if="restMarks && !menuOpen && !renaming"
       class="pointer-events-none absolute inset-y-0 right-0.5 flex items-center gap-0.5 text-fg-faint transition-opacity group-hover/row:opacity-0"
       :class="open ? 'phone:opacity-0' : ''"
     >
+      <span v-if="conversation.pinned" class="flex size-6 items-center justify-center phone:size-8">
+        <Pin :size="phone ? ICON_PX.in32 : ICON_PX.in20" />
+      </span>
       <span v-if="deviceLabel" class="flex size-6 items-center justify-center phone:size-8">
         <DeviceIcon
           :state="conversation.device?.kind === 'paired' ? conversation.device.state : null"
           :label="deviceLabel"
         />
-      </span>
-      <span v-if="conversation.pinned" class="flex size-6 items-center justify-center phone:size-8">
-        <Pin :size="phone ? ICON_PX.in32 : ICON_PX.in20" />
       </span>
     </span>
   </div>
