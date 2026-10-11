@@ -11,9 +11,87 @@ use demi_shared_types::Nullable;
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_with::rust::unwrap_or_skip;
 use typed_path::Utf8TypedPath;
 
+use crate::ids::DeviceId;
 use crate::query::StrictBool;
+
+/// One subscription a page asks of a conversation's file watch, under a
+/// key of its own: a [`PageSubscription`], on the attached host `host`
+/// names, or on the conversation's primary Host without one (`web-api.md`
+/// § File watch).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct ConversationSubscription {
+    #[garde(length(chars, min = 1, max = 1024))]
+    pub key: String,
+    #[garde(skip)]
+    pub kind: SubscriptionKind,
+    #[garde(length(chars, min = 1), custom(demi_command_protocol::without_nul))]
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "DeviceId")]
+    #[garde(skip)]
+    pub host: Option<DeviceId>,
+}
+
+impl ConversationSubscription {
+    /// The host it names, and the subscription as that Host's watch takes it.
+    pub fn into_parts(self) -> (Option<DeviceId>, PageSubscription) {
+        let Self {
+            key,
+            kind,
+            path,
+            host,
+        } = self;
+        (host, PageSubscription { key, kind, path })
+    }
+}
+
+impl From<FileWatchRequest> for ConversationWatchRequest {
+    /// A watch of one Host's message, whose subscriptions name no host.
+    fn from(request: FileWatchRequest) -> Self {
+        match request {
+            FileWatchRequest::Subscribe { subscriptions } => Self::Subscribe {
+                subscriptions: subscriptions
+                    .into_iter()
+                    .map(|PageSubscription { key, kind, path }| ConversationSubscription {
+                        key,
+                        kind,
+                        path,
+                        host: None,
+                    })
+                    .collect(),
+            },
+            FileWatchRequest::Unsubscribe { keys } => Self::Unsubscribe { keys },
+            FileWatchRequest::Renew { keys } => Self::Renew { keys },
+        }
+    }
+}
+
+/// A message the page sends on a conversation's file watch,
+/// `WS /conversations/:id/fs/watch`: a [`FileWatchRequest`] whose
+/// subscriptions may name an attached host.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ConversationWatchRequest {
+    /// Subscriptions the page holds from now on.
+    Subscribe {
+        #[garde(length(max = MAX_PAGE_SUBSCRIPTIONS), dive)]
+        subscriptions: Vec<ConversationSubscription>,
+    },
+    /// Subscriptions the page no longer holds, on whichever host.
+    Unsubscribe {
+        #[garde(length(max = MAX_PAGE_SUBSCRIPTIONS))]
+        keys: Vec<String>,
+    },
+    /// Every subscription the page still holds, whose leases run again.
+    Renew {
+        #[garde(length(max = MAX_PAGE_SUBSCRIPTIONS))]
+        keys: Vec<String>,
+    },
+}
 
 /// `{ path, home, entries }`: a directory as a Host lists it. `home` is the
 /// Host's home directory, null while it is unknown.
