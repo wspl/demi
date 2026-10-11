@@ -24,9 +24,9 @@ const opens = computed(() => {
   return !props.editor.isEditable && !capsule.value?.host && path && files()?.open ? path : null
 })
 
-function open(event: MouseEvent): void {
+function open(): void {
   if (opens.value) {
-    files()?.open?.({ path: opens.value, line: null }, event.detail)
+    files()?.open?.({ path: opens.value, line: null })
   }
 }
 // The wrapper breaks as the line around it does: tiptap's own `white-space:

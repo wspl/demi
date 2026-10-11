@@ -181,7 +181,7 @@ const selectEdit = computed<EditSelectionHandler | undefined>(() => {
   if (!current || !work.canOpen('edit')) {
     return undefined
   }
-  return (selection, clicks) => work.openIn(current.id, { intent: 'edit', payload: selection }, clicks)
+  return (selection) => work.openIn(current.id, { intent: 'edit', payload: selection })
 })
 
 /**
@@ -201,7 +201,7 @@ const files = computed<ConversationFiles | undefined>(() => {
     home: resources.deviceById(executionFor(current).deviceId)?.home ?? null,
     imageUrl: (path) => contents.url(path),
     open: work.canOpen('file')
-      ? ({ path, line }, clicks) => work.openIn(current.id, { intent: 'file', payload: line === null ? { path } : { path, line } }, clicks)
+      ? ({ path, line }) => work.openIn(current.id, { intent: 'file', payload: line === null ? { path } : { path, line } })
       : undefined,
     codeFiles: (paths) => lookupCodeFiles(current.id, paths, primaryHost.value?.state ?? 'offline'),
     attachment: (id) => lookupAttachment(current.id, id),
