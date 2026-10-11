@@ -241,7 +241,7 @@ impl<H: HostResolver> Tree<H> {
             let live = self.children.borrow().len() + self.admitted.get();
             if live >= max.get() as usize {
                 return Err(format!(
-                    "this conversation already has {max} live subagents, the most Settings > Subagents allows; wait for one to finish (`demi agent list`), or do this work in this session."
+                    "this conversation has {live} live subagents and Settings > Subagents allows {max}; wait for one to finish (`demi agent list`), or do this work in this session."
                 ));
             }
         }

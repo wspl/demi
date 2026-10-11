@@ -644,11 +644,10 @@ async fn at_the_live_limit_a_spawn_at_any_depth_and_a_resume_fail_and_unlimited_
     let model = Model::default();
     let gate = Gate::new();
     // Each completion may wake the root once.
-    model.root((0..5).map(|_| said("noted")));
-    model.child("task first", [said("first done"), said("again done")]);
+    model.root((0..4).map(|_| said("noted")));
+    model.child("task first", [said("first done"), held_said(&gate, "again done")]);
     model.child("task held a", [held_said(&gate, "a done")]);
     model.child("task held b", [held_said(&gate, "b done")]);
-    model.child("task third", [said("third done")]);
     let product = TestProduct::default();
     product.subagents.borrow_mut().max_live = NonZeroU32::new(2);
     let fixture = fixture(&model, product);
@@ -662,21 +661,32 @@ async fn at_the_live_limit_a_spawn_at_any_depth_and_a_resume_fail_and_unlimited_
 
     // Two live subagents, the limit: the root's third spawn, a child's
     // spawn one level down, and the resume of the closed first all fail.
-    let full = "this conversation already has 2 live subagents, the most Settings > Subagents allows; wait for one to finish (`demi agent list`), or do this work in this session.\n";
+    let full = |live: u32, max: u32| {
+        format!(
+            "this conversation has {live} live subagents and Settings > Subagents allows {max}; wait for one to finish (`demi agent list`), or do this work in this session.\n"
+        )
+    };
     let third = agent(&fixture.server, &root(), "spawn", json!({ "prompt": "task third" })).await;
-    assert_eq!(refused(&third), format!("demi agent spawn: {full}"));
+    assert_eq!(refused(&third), format!("demi agent spawn: {}", full(2, 2)));
     let below = agent(&fixture.server, &held_a, "spawn", json!({ "prompt": "task third" })).await;
-    assert_eq!(refused(&below), format!("demi agent spawn: {full}"));
+    assert_eq!(refused(&below), format!("demi agent spawn: {}", full(2, 2)));
     let resume = json!({ "id": fixture.number(&first), "message": "again" });
     let resumed = agent(&fixture.server, &root(), "resume", resume.clone()).await;
-    assert_eq!(refused(&resumed), format!("demi agent resume: {full}"));
+    assert_eq!(refused(&resumed), format!("demi agent resume: {}", full(2, 2)));
 
+    // Unlimited lets them through.
     change(&fixture, |settings| settings.max_live = None);
     let resumed = agent(&fixture.server, &root(), "resume", resume).await;
     assert_eq!(resumed.code, 0, "{resumed:?}");
-    spawn(&fixture, &root(), json!({ "prompt": "task third" })).await;
-    gate.open();
+
+    // Three live: a limit lowered to 2 ends none of them, and the refusal
+    // names the count apart from the limit.
+    change(&fixture, |settings| settings.max_live = NonZeroU32::new(2));
+    let over = agent(&fixture.server, &root(), "spawn", json!({ "prompt": "task third" })).await;
+    assert_eq!(refused(&over), format!("demi agent spawn: {}", full(3, 2)));
     let tree = fixture.server.tree(&root()).unwrap();
+    assert!(!tree.is_quiescent());
+    gate.open();
     until(|| tree.is_quiescent()).await;
-    assert_eq!(root_receipts(&fixture).len(), 5);
+    assert_eq!(root_receipts(&fixture).len(), 4);
 }
