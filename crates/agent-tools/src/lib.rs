@@ -244,8 +244,8 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             script: input.script,
             caller: JobCaller {
                 node: self.context.node.clone(),
+                tool_use_id: call.tool_use_id,
             },
-            tool_use_id: call.tool_use_id,
             viewable: Viewable {
                 model: call.model.model.id.clone(),
                 media_types: call.request_limits.tool_results.viewable(&call.model.model),
@@ -330,10 +330,10 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         let (_, environment) = self.environment(Handle::None).await?;
         environment.adopt(TakenUp {
             command: running.command.clone(),
-            tool_use_id: running.tool_use_id.clone(),
             job: running.job.clone(),
             caller: JobCaller {
                 node: self.context.node.clone(),
+                tool_use_id: running.tool_use_id.clone(),
             },
             running: ran,
             seen: running.place,

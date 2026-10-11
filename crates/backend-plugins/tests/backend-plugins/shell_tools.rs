@@ -192,6 +192,7 @@ fn agent_message(content: &str) -> AgentMessage {
         timestamp: Timestamp::UNIX_EPOCH,
         content: content.to_owned(),
         event: AgentMessageEvent::Message {},
+        origin: None,
     }
 }
 
@@ -882,7 +883,7 @@ async fn node_call(
         "stdin": false,
     }))
     .expect("the invocation is well formed");
-    invocation.caller = Some(root.job_caller());
+    invocation.caller = Some(root.job_caller("call"));
     let port = MemoryPort::new();
     let code = root
         .commands()

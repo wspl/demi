@@ -640,6 +640,7 @@ fn agent_message(id: &str) -> AgentMessage {
         timestamp: Timestamp::UNIX_EPOCH,
         content: format!("Result {id}"),
         event: AgentMessageEvent::Message {},
+        origin: None,
     }
 }
 

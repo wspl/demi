@@ -3,49 +3,44 @@ import { computed } from 'vue'
 import { Bot, MoveRight, ShieldCheck } from '@lucide/vue'
 import type { AgentMessage } from '@demicodes/protocol'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import { homePath } from '@demicodes/web-ui/files/paths'
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
-import FunctionalBlock from './FunctionalBlock.vue'
+import Tag from '@demicodes/web-ui/ui/Tag.vue'
+import NoticeRow from './NoticeRow.vue'
+import { receiptOrigin, receiptRow, useOriginRevealer } from '../agent-receipts'
 
+/**
+ * Input another agent, the user's decision or Demi sent the agent, as a
+ * notice row of the same form as a command's end (`subagents.md` § Product
+ * rendering): a click on the agent's name opens where it came from. It
+ * opens to the message or the result.
+ */
 const props = defineProps<{ message: AgentMessage }>()
 const isOpen = defineModel<boolean>('open', { default: false })
-const label = computed(() => {
-  const event = props.message.event
-  // The user's decision on a permission request, which reached the agent as this message.
-  if (event.type === 'permission') {
-    return event.outcome === 'allowed'
-      ? `You allowed this conversation to ${event.action}`
-      : `You denied this conversation permission to ${event.action}`
-  }
-  // The user's move of the conversation, which the user told the agent of.
-  if (event.type === 'moved') {
-    return `You moved this conversation to ${event.host} · ${homePath(event.path, event.home)}`
-  }
-  // Demi's notice that a move the agent asked for failed; the message says why.
-  if (event.type === 'move_failed') {
-    return 'Move failed'
-  }
-  const sender = props.message.sender
-  const name = sender?.description || sender?.id
-  // A finished child's outcome reads as its verb: completed, failed, aborted.
-  return `${name} ${event.type === 'message' ? 'sent an update' : event.outcome}`
+const row = computed(() => receiptRow(props.message))
+const reveal = useOriginRevealer()
+const go = computed(() => {
+  const origin = receiptOrigin(props.message)
+  return origin ? reveal(origin) : undefined
 })
 </script>
 
 <template>
   <div class="px-[var(--agent-pad-x,2rem)]">
-    <FunctionalBlock v-model:open="isOpen" expandable>
+    <NoticeRow v-model:open="isOpen" :notice="row.notice" :title="row.title" :go="go">
       <template #icon>
         <ShieldCheck v-if="message.event.type === 'permission'" :size="ICON_PX.in28" />
         <MoveRight v-else-if="message.event.type === 'moved' || message.event.type === 'move_failed'" :size="ICON_PX.in28" />
         <Bot v-else :size="ICON_PX.in28" />
       </template>
-      <span class="min-w-0 truncate">{{ label }}</span>
+      <template v-if="row.tag" #tag>
+        <Tag v-if="row.tag === 'failed'" tone="danger" class="shrink-0">Failed</Tag>
+        <Tag v-else class="shrink-0">Stopped</Tag>
+      </template>
       <template #body>
         <div class="px-3 py-2 text-[13px] leading-5 text-fg-subtle">
           <StreamedMarkdown :content="message.content" :streaming="false" />
         </div>
       </template>
-    </FunctionalBlock>
+    </NoticeRow>
   </div>
 </template>
