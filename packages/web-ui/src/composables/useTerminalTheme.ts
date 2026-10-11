@@ -94,25 +94,32 @@ export function cssColorToRgba(color: string, alpha: number): string {
 }
 
 /**
- * A CSS color as `rgb(r, g, b)`, whatever notation the token uses. Computed
+ * CSS colors as `rgb(r, g, b)`, whatever notation each token uses. Computed
  * style keeps a token's own notation (`oklch(…)`, `color(srgb …)`), which
- * xterm cannot paint, so the color is drawn on a one-pixel canvas and read
- * back as sRGB.
+ * xterm cannot paint, so each color is drawn on a one-pixel canvas and read
+ * back as sRGB. All of them are probed at once, so the page computes its
+ * style once for them, not once for each.
  */
-export function resolveCssColor(root: Element, value: string): string {
-  const probe = document.createElement('span')
-  probe.style.color = value
-  root.appendChild(probe)
-  const computed = getComputedStyle(probe).color
-  probe.remove()
+function resolveCssColors(root: Element, values: readonly string[]): string[] {
+  const probes = values.map((value) => {
+    const probe = document.createElement('span')
+    probe.style.color = value
+    root.appendChild(probe)
+    return probe
+  })
+  const computed = probes.map((probe) => getComputedStyle(probe).color)
+  probes.forEach((probe) => probe.remove())
   const context = document.createElement('canvas').getContext('2d', { willReadFrequently: true })
   // No 2D context (a headless renderer without one): keep what the style gave.
   if (!context)
     return computed
-  context.fillStyle = computed
-  context.fillRect(0, 0, 1, 1)
-  const [r, g, b] = context.getImageData(0, 0, 1, 1).data
-  return `rgb(${r}, ${g}, ${b})`
+  return computed.map((color) => {
+    context.clearRect(0, 0, 1, 1)
+    context.fillStyle = color
+    context.fillRect(0, 0, 1, 1)
+    const [r, g, b] = context.getImageData(0, 0, 1, 1).data
+    return `rgb(${r}, ${g}, ${b})`
+  })
 }
 
 /** A CSS `rgb()` color as the escape sequence that sets it as the foreground, or nothing for a color it cannot read. */
@@ -123,50 +130,50 @@ export function cssColorToAnsiForeground(color: string): string {
   return `\x1b[38;2;${Math.round(Number(match[1]))};${Math.round(Number(match[2]))};${Math.round(Number(match[3]))}m`
 }
 
-/** The live value of the color token `name` under `el`, or `fallback` when it does not resolve. */
-function tokenColor(el: HTMLElement, name: string, fallback: string): string {
-  const resolved = resolveCssColor(el, `var(${name})`)
-  return RGB.test(resolved) ? resolved : fallback
-}
-
 export function terminalPalette(mode: 'dark' | 'light'): TerminalTheme {
   return mode === 'light' ? lightTheme : darkTheme
 }
 
+/** The color tokens a terminal takes from the page. */
+const TERMINAL_TOKENS = ['--surface', '--fg-body', '--fg-emphasis', '--on-accent', '--fg-muted'] as const
+
 /**
- * ANSI 16 stay on the palette so red stays red when the accent is purple.
- * Ground, cursor and selection follow the live tokens (tone, accent, surface).
+ * A terminal's colors from the live tokens under `el`, in one look at the
+ * page's style. The theme: ANSI 16 stay on the palette so red stays red when
+ * the accent is purple; ground, cursor and selection follow the tokens
+ * (tone, accent, surface). The prompt line's colors (`promptLine`): the
+ * prompt in the muted text color, the script in the emphasized one. A token
+ * that does not resolve keeps the palette's color.
  */
-export function xtermThemeFromElement(el: HTMLElement, palette: TerminalTheme): TerminalTheme {
-  const token = (name: string, fallback: string) => tokenColor(el, name, fallback)
+export function terminalColors(
+  el: HTMLElement,
+  palette: TerminalTheme,
+): { theme: TerminalTheme; prompt: PromptColors } {
+  const resolved = resolveCssColors(el, TERMINAL_TOKENS.map((name) => `var(${name})`))
+  const token = (name: typeof TERMINAL_TOKENS[number], fallback: string): string => {
+    const color = resolved[TERMINAL_TOKENS.indexOf(name)]
+    return color !== undefined && RGB.test(color) ? color : fallback
+  }
   const background = token('--surface', palette.background)
-  const foreground = token('--fg-body', palette.foreground)
-  const emphasis = token('--fg-emphasis', palette.cursor)
   const accent = token('--on-accent', palette.blue)
   const selection = RGB.test(accent)
     ? cssColorToRgba(accent, 0.34)
     : palette.selectionBackground
   return {
-    ...palette,
-    background,
-    foreground,
-    cursor: emphasis,
-    cursorAccent: background,
-    selectionBackground: selection,
-    selectionInactiveBackground: selection,
-    overviewRulerBorder: background,
-  }
-}
-
-/**
- * A command's prompt line colors (`promptLine`), from the live tokens as the
- * terminal theme takes them: the prompt in the muted text color, the script
- * in the emphasized one.
- */
-export function terminalPromptColors(el: HTMLElement, palette: TerminalTheme): PromptColors {
-  return {
-    prompt: cssColorToAnsiForeground(tokenColor(el, '--fg-muted', palette.brightBlack)),
-    script: cssColorToAnsiForeground(tokenColor(el, '--fg-emphasis', palette.brightWhite)),
+    theme: {
+      ...palette,
+      background,
+      foreground: token('--fg-body', palette.foreground),
+      cursor: token('--fg-emphasis', palette.cursor),
+      cursorAccent: background,
+      selectionBackground: selection,
+      selectionInactiveBackground: selection,
+      overviewRulerBorder: background,
+    },
+    prompt: {
+      prompt: cssColorToAnsiForeground(token('--fg-muted', palette.brightBlack)),
+      script: cssColorToAnsiForeground(token('--fg-emphasis', palette.brightWhite)),
+    },
   }
 }
 
@@ -177,21 +184,16 @@ const BOLD = 2
 /**
  * Highlighted runs of code as the escape sequences that draw them in a
  * terminal: each run's color, read as sRGB under `el`, and its italic and
- * bold. A run without a color keeps the line's.
+ * bold. A run without a color keeps the line's. The distinct colors are read
+ * in one look at the page's style.
  */
 export function terminalCodeRuns(el: HTMLElement, runs: readonly CodeRun[]): PromptRun[] {
-  const colors = new Map<string, string>()
+  const distinct = [...new Set(runs.flatMap((run) => (run.color ? [run.color] : [])))]
+  const resolved = resolveCssColors(el, distinct)
+  const colors = new Map(distinct.map((color, index) => [color, cssColorToAnsiForeground(resolved[index] ?? '')]))
   return runs.flatMap((run) => {
     const style = run.fontStyle ?? 0
-    let ansi = `${style & ITALIC ? '\x1b[3m' : ''}${style & BOLD ? '\x1b[1m' : ''}`
-    if (run.color) {
-      let color = colors.get(run.color)
-      if (color === undefined) {
-        color = cssColorToAnsiForeground(resolveCssColor(el, run.color))
-        colors.set(run.color, color)
-      }
-      ansi += color
-    }
+    const ansi = `${style & ITALIC ? '\x1b[3m' : ''}${style & BOLD ? '\x1b[1m' : ''}${run.color ? colors.get(run.color) ?? '' : ''}`
     return ansi ? [{ from: run.from, to: run.to, ansi }] : []
   })
 }
