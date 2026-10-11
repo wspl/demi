@@ -140,7 +140,7 @@ import {
 } from '../fixtures/catalog'
 import { setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
 import { galleryBlobs } from '../fixtures/blobs'
-import { agentReceiptMessages, gallerySubagents } from '../fixtures/subagents'
+import { agentReceiptMessages, gallerySubagents, mainAgentMessage, workSubagent } from '../fixtures/subagents'
 import GalleryReceipts from '../components/GalleryReceipts.vue'
 import { galleryTerminals } from '../fixtures/terminals'
 import { demoDeviceStart } from '../fixtures/device-installation'
@@ -193,7 +193,7 @@ function receiptVariant(message: AgentMessage): string {
   const event = message.event
   switch (event.type) {
     case 'message':
-      return 'update'
+      return message.sender?.number === 0 ? 'the main agent’s message, in its child' : 'update'
     case 'moved':
       return 'moved, the agent told'
     case 'move_failed':
@@ -680,7 +680,7 @@ session.queue = [
 ]
 const streamFlow = useTurnFlow({ id: 'gallery-stream' })
 const turnFlow = useTurnFlow({ id: 'gallery-turn' })
-const workFlow = useTurnFlow({ id: 'gallery-work' })
+const workFlow = useTurnFlow({ id: 'gallery-work', subagents: [workSubagent()] })
 workFlow.settleWork()
 // The specimens' calls show their commands' output while they run: the live
 // call's and the Turn's, whose flow runs its own command.
@@ -1705,17 +1705,22 @@ onBeforeUnmount(() => {
         </div>
       </GallerySection>
 
-      <GallerySection title="AgentReceiptBlock" note="Agent updates and completion receipts read as a command’s notice: what happened, then the agent by its description, underlined with dots, with Failed or Stopped after it when it went wrong. A click on the agent’s name opens the Agents window over the specimens on that agent’s tab, a finished one as Completed picks it, and marks the block the receipt came from: the call that sent the update, the finished agent’s last answer; the stopped agent gave none, so its tab opens at its latest. Close (×) closes the window. The user’s decisions on permission requests, a move the user told the agent of, and Demi’s notice that a move the agent asked for failed name no agent and keep their wording. Expand any row to read the message; these rows have no human message controls.">
+      <GallerySection title="AgentReceiptBlock" note="Agent updates and completion receipts read as a command’s notice: what happened, then the agent by its description, underlined with dots, with Failed or Stopped after it when it went wrong. A click on the agent’s name opens the Agents window over the specimens on that agent’s tab, a finished one as Completed picks it, and marks the block the receipt came from: the call that sent the update, the finished agent’s last answer, the failed agent’s failure record; the stopped agent gave none, so its tab opens at its latest. Close (×) closes the window. In a child’s transcript, a message from the main agent reads Main agent sent a message, the main agent its subject, and its name brings the call that sent it into view in the main transcript. A row that opens has two controls side by side, each reached with Tab: the row, which opens and folds it, and the agent’s name. On a narrow row the name gives way first, down to a few characters, then the words. The user’s decisions on permission requests, a move the user told the agent of, and Demi’s notice that a move the agent asked for failed name no agent and keep their wording. Expand any row to read the message; these rows have no human message controls.">
         <div class="gallery-frame gallery-block-frame bg-surface">
           <GalleryReceipts :agents="agents" @abort="sessionFlow.abortSubagents" @abort-agent="sessionFlow.abortSubagent">
             <div class="specimen-stack [--agent-pad-x:0px]">
               <GallerySpecimen
-                v-for="(message, index) in [...agentReceiptMessages, ...permissionReceiptMessages, movedReceiptMessage, ...organizeReceiptMessages]"
+                v-for="(message, index) in [...agentReceiptMessages, mainAgentMessage, ...permissionReceiptMessages, movedReceiptMessage, ...organizeReceiptMessages]"
                 :key="message.id"
                 :variant="receiptVariant(message)"
                 wide
               >
                 <AgentReceiptBlock :message="message" :open="index === 1" />
+              </GallerySpecimen>
+              <GallerySpecimen variant="update, failed and the main agent’s message · narrow" wide>
+                <div class="flex w-[300px] flex-col">
+                  <AgentReceiptBlock v-for="message in [agentReceiptMessages[0]!, agentReceiptMessages[2]!, mainAgentMessage]" :key="message.id" :message="message" />
+                </div>
               </GallerySpecimen>
             </div>
           </GalleryReceipts>
@@ -2017,12 +2022,13 @@ onBeforeUnmount(() => {
     <template v-if="view === 'changes'">
       <GallerySection
         title="Work Groups"
-        note="Consecutive steps show as one row, the same row from the first step to the turn's end. While they run, each new step rolls over the one before: Requesting, thinking, a call being written and its description, the call. The row shimmers until the turn moves past it, also after a command ended, while the model's next output is waited for; no Requesting row shows under it. Thinking without text is covered by the step after it. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did, each kind of call once, in the order the run first made it, such as Ran 2 commands, checked 1 command, never a count of steps; a failure shows on its own call inside. Folded, the media the calls returned show under it, in order, and the files the steps changed, each once; open, each call shows its own."
+        note="Consecutive steps show as one row, the same row from the first step to the turn's end. While they run, each new step rolls over the one before: Requesting, thinking, a call being written and its description, the call. The row shimmers until the turn moves past it, also after a command ended, while the model's next output is waited for; no Requesting row shows under it. Thinking without text is covered by the step after it. A command's notice and an agent's receipt between the steps are steps of the run too: the replay's background build reports its end and a child sends an update between two calls, and the row stays one row, its face their notice row while they are the newest step; the agent's text, the user's messages and steers, and the receipts of the user's decisions end a run. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did, each kind of call once, in the order the run first made it, such as Ran 2 commands, checked 1 command, never a count of steps; a run without a call reads what its notices and receipts told, such as 2 commands finished, heard from 1 agent. A failure shows on its own call inside. Opened, the notice and the receipt are rows of their own among the calls: the notice's title brings the build's call into view, marking the group that holds it, and the agent's name opens the Agents window at the call that sent the update. Folded, the media the calls returned show under it, in order, and the files the steps changed, each once; open, each call shows its own."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="workFlow.play('work')">Replay</Button>
           <Button variant="ghost" size="sm" @click="workFlow.settleWork()">Show Ended</Button>
         </div>
+        <GalleryReceipts :agents="workFlow.state.subagents" @abort="workFlow.abortSubagents" @abort-agent="workFlow.abortSubagent">
         <div class="gallery-frame h-[26rem] bg-surface">
           <SessionSurface ref="workSurface">
             <div class="flex h-full min-h-0 flex-col">
@@ -2052,6 +2058,7 @@ onBeforeUnmount(() => {
             </template>
           </SessionSurface>
         </div>
+        </GalleryReceipts>
         <GallerySpecimen variant="runs that check a command, or run one and check" wide>
           <div class="gallery-frame h-[34rem] bg-surface">
             <AgentMessageList

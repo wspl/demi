@@ -238,3 +238,49 @@ test('while the model is waited for, the Requesting row stands right after the t
   expect(drawnRows(list.rows.value)).toEqual(['message:m-1', TAIL_ROW, 'message:s-1', 'queue-divider', 'message:q-1'])
   scope.stop()
 })
+
+// A command's notice and an agent's receipt that arrive while the agent works
+// are steps of its run (`runtime.md` § Work groups): the run stays one row
+// under its name, the turn's activity, with no Requesting row under it.
+test('a notice and a receipt join the running run, which stays one row under one name', async () => {
+  const state = running()
+  state.pendingCalls = []
+  const scope = effectScope()
+  const list = scope.run(() => useMessageRows(() => state))!
+  const drawn = () => drawnRows(list.rows.value)
+  const before = drawn()
+  expect(before).toEqual(['message:m-1', 'work:c-1-use'])
+
+  state.blocks = [...state.blocks, {
+    type: 'wakeup',
+    id: 'n-1',
+    turnId: 'n-1',
+    createdAt,
+    model,
+    placement: 'steer',
+    reports: [{ commandId: '17', title: 'Build the app', event: { kind: 'ended', exitCode: 0 }, output: '' }],
+  }]
+  await nextTick()
+  expect(drawn()).toEqual(before)
+  state.blocks = [...state.blocks, {
+    type: 'agent_message',
+    id: 'm-2',
+    turnId: 'n-1',
+    createdAt,
+    model,
+    message: {
+      id: 'm-2',
+      sender: { id: 'ag-2', number: 2, description: 'Check the logout path', round: 1 },
+      recipientId: 'c-1',
+      timestamp: createdAt,
+      content: 'Halfway there.',
+      event: { type: 'message' },
+    },
+  }]
+  await nextTick()
+  expect(drawn()).toEqual(before)
+  const run = list.rows.value.at(-1)
+  expect(run?.type === 'work_group' && run.live && run.steps.map((step) => step.id)).toEqual(['c-1', 'n-1', 'm-2'])
+  expect(list.slot.value).toBeNull()
+  scope.stop()
+})
