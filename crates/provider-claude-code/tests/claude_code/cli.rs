@@ -22,7 +22,7 @@ use demi_provider_common::credentials::{
 };
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_provider_common::quota::MemorySnapshots;
-use demi_provider_common::testing::{FixedClock, guarded, inference_request};
+use demi_provider_common::testing::{FixedClock, guarded, inference_request, titled_tool};
 pub use demi_provider_common::testing::{all_events, next_event};
 use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderRuntime, ResultPart, RuntimeEnv, ToolDefinition,
@@ -151,16 +151,9 @@ pub fn models_dev_client(url: &str) -> ModelsDevClient {
 
 /// The tool a request offers, as the agent builds it.
 pub fn shell_exec() -> ToolDefinition {
-    let schema = json!({
-        "type": "object",
-        "properties": { "script": { "type": "string" } },
-        "required": ["script"],
-        "additionalProperties": false,
-    });
     ToolDefinition {
         name: "shell_exec".into(),
-        description: "Execute a shell script".into(),
-        input_schema: schema.as_object().unwrap().clone(),
+        ..titled_tool()
     }
 }
 

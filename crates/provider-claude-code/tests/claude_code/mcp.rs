@@ -3,6 +3,7 @@
 
 use bytes::Bytes;
 use demi_host_interface::Signal;
+use demi_provider_common::testing::property_order;
 use demi_provider_common::{InferenceItem, MediaBytes, ProviderEvent, ResultPart, ToolCall};
 use demi_shared_types::{B64Bytes, TokenUsage};
 use serde_json::json;
@@ -53,6 +54,10 @@ async fn the_server_lists_the_requests_tools_and_a_call_before_any_streaming_is_
                 "description": tool.description,
                 "inputSchema": tool.input_schema,
             }])
+        );
+        assert_eq!(
+            property_order(&listed["result"]["tools"][0]["inputSchema"]),
+            ["description", "script", "intervalMs"]
         );
         cli.mcp(
             "ping",

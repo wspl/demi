@@ -5,7 +5,7 @@ use std::{num::NonZeroU32, sync::Arc};
 use demi_provider_common::{
     InferenceItem, MediaBytes, Medium, PromptCache, Provider, ProviderEvent, ResultPart,
     RuntimeEnv, ToolDefinition, UserPart, VendorPolicy,
-    testing::{MockVendor, inference_request},
+    testing::{MockVendor, inference_request, property_order, titled_tool},
 };
 use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, TokenUsage};
 use serde_json::{Value, json};
@@ -150,6 +150,20 @@ async fn the_body_groups_turns_and_carries_the_tools_system_prompt_and_tier() {
             "thinking": { "type": "enabled", "budget_tokens": 1024 },
             "service_tier": "standard_only",
         })
+    );
+}
+
+#[tokio::test]
+async fn a_tools_fields_reach_the_vendor_in_the_order_its_schema_lists_them() {
+    let vendor = MockVendor::start().await;
+    vendor.respond(stop());
+    let mut request = inference_request();
+    request.tools = Arc::new([titled_tool()]);
+    run(runtime(&vendor).as_mut(), request).await;
+    let body = vendor.requests()[0].json();
+    assert_eq!(
+        property_order(&body["tools"][0]["input_schema"]),
+        ["description", "script", "intervalMs"]
     );
 }
 
