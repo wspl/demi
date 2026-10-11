@@ -1411,7 +1411,20 @@ also needs a conversation the user owns, as every conversation route does:
 | The body is not JSON, or does not match the method's parameter schema | 400 `invalid_body`, naming the field and the reason |
 | The plugin refuses the call, such as a source already added or a tab the browser does not have | 409 `plugin_refused`, with the plugin's own `reason`, a snake_case word such as `tab_not_found`, and its message |
 | A port operation the plugin made was refused by the conversation's host access, and the plugin passes the refusal on | That refusal's own answer: 409 `conversation_archived`, `device_offline`, `host_stopped` or `conversation_busy` |
+| A package call the plugin made was refused because the package's service could not start on the Host, and the plugin says so in its own reason, as the browser plugin's `browser_unavailable` | 409 `plugin_refused`, with that reason and the runner's words as the message |
+| A package call's connection to the Host broke partway | 409 `host_operation_failed` |
 | The plugin fails, such as a value that does not read or a package call whose operation failed | 500 `plugin_failed`, with the plugin's message |
+
+A plugin whose page shows these failures declares the reasons it can give, its
+own and the ones above it passes on, as one closed set in its manifest; the
+page's types are generated from it ([Plugin pages](../architecture/plugin-pages.md)),
+so a page that words every reason is checked by the compiler. A call the page
+makes that ends without one of these answers rejects with the HTTP status it
+got, or with none when no answer came or the answer could not be read; the
+page says which: *The server didn't answer.*, *The server's answer could not
+be read.*, or *The server couldn't do that: 500 Internal Server Error.*, the
+status's standard phrase standing in where the answer carried none, as
+HTTP/2's do.
 
 A call changes only the calling user's state. What it changed reaches every
 page of the user as the plugin's new user state on the synchronization
