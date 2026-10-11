@@ -48,7 +48,7 @@ export type OpenWatchLink = (conversationId: string, handlers: WatchLinkHandlers
 export const relayWatchLink: OpenWatchLink = (conversationId, handlers) => {
   const url = new URL(apiUrl(`/conversations/${encodeURIComponent(conversationId)}/fs/watch`), window.location.href)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-  const socket = openSocket(url)
+  const socket = openSocket(url, 'file watch')
   socket.addEventListener('open', () => handlers.opened())
   socket.addEventListener('message', (event) => handlers.message(event.data))
   socket.addEventListener('close', () => handlers.closed())
@@ -191,7 +191,7 @@ export class ConversationWatch implements FileFollower {
     watch.link = this.openLink(this.conversationId, {
       opened: () => {
         if (this.current === watch)
-          watch.silence = watchSilence(() => this.lose(watch))
+          watch.silence = watchSilence('file watch', () => this.lose(watch))
       },
       message: (data) => {
         if (this.current !== watch)

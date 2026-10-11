@@ -6,7 +6,8 @@
  * names, so they stop going to a device once the conversation moved.
  */
 import { effectScope, reactive, ref, watch } from 'vue'
-import { defaultWindow, useEventListener } from '@vueuse/core'
+import { defaultWindow } from '@vueuse/core'
+import { browserOnline } from '@demicodes/web-ui/transport/liveness'
 import { useConversations } from '../conversation/store'
 import { useProduct } from '../state/product'
 import { executionFor } from '../targets/execution'
@@ -215,7 +216,10 @@ export function followDirect(): void {
       },
       { immediate: true },
     )
-    useEventListener(defaultWindow, 'online', () => {
+    // Back online after an offline that held, as the page counts it.
+    watch(browserOnline, (online) => {
+      if (!online)
+        return
       for (const device of used.values())
         device.direct.tryNow()
     })

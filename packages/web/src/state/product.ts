@@ -338,7 +338,7 @@ export const useProduct = defineStore('product', () => {
     clearRetry()
     const url = new URL(apiUrl('/sync'), window.location.href)
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-    const channel = openSocket(url)
+    const channel = openSocket(url, 'synchronization channel')
     socket = channel
     let opened = false
     channel.onopen = () => {
@@ -347,7 +347,7 @@ export const useProduct = defineStore('product', () => {
       }
       opened = true
       // A channel that brings nothing, heartbeats included, for too long is broken.
-      silence = watchSilence(replace)
+      silence = watchSilence('synchronization channel', replace)
     }
     channel.onmessage = (message) => {
       if (socket !== channel) {

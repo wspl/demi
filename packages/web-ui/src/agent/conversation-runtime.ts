@@ -289,12 +289,6 @@ export class ConversationRuntime {
     await this.ensureOpen()
   }
 
-  async reconnect(): Promise<void> {
-    this.releaseConnection()
-    this.options.state.load = 'reconnecting'
-    await this.connect()
-  }
-
   /**
    * Lets the connection go, and opens none until `connect`, keeping all the
    * conversation shows, as an archived conversation does, whose socket the
