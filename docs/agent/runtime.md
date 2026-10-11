@@ -1709,6 +1709,9 @@ commands*, and a click opens it to every step.
   a command it started earlier reports its end, a child reports that it
   finished, and the agent runs two more: one row, *Ran 5 commands*, which
   opens to the five calls, the notice and the receipt in their order.
+- Thinking that streams stays one row, *Thinking*, folded as any step, and
+  the reader opens it to read along; it never opens by itself, since folding
+  itself when it ends would shrink the list with nothing the reader did.
 - Thinking without text shows only while it is the newest block of a
   running turn, as what the agent does now; once anything follows it or the
   turn ends, it has nothing to show and goes, from the transcript and from
