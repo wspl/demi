@@ -30,7 +30,9 @@ use super::body::{JsonBody, page_socket};
 use super::error::ApiError;
 use super::gate::AuthUser;
 use super::hosts;
+use super::page_client::PageClient;
 use super::query::QueryParams;
+use demi_backend_user_shard::shard::page_socket::{PageSocketKind, PageSocketOrigin};
 use demi_backend_user_shard::conversation::titles::TitleRefusal;
 use demi_backend_user_shard::conversation::ForkRefusal;
 use demi_backend_user_shard::services::Services;
@@ -383,6 +385,7 @@ pub(super) async fn stream(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    client: PageClient,
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Result<Response, ApiError> {
     let record = owned(&state.services, &user.id, &id).await?;
@@ -400,11 +403,15 @@ pub(super) async fn stream(
             "The conversation stream is a WebSocket",
         )
     })?;
+    let origin = PageSocketOrigin {
+        conversation: Some(record.id.clone()),
+        ..client.origin(PageSocketKind::Conversation, user.id.clone())
+    };
     Ok(page_socket(upgrade).on_upgrade(move |socket| async move {
         let adopted = state
             .shards
             .of(&user.id)
-            .adopt(move |shard| shard.serve_conversation_socket(record, socket))
+            .adopt(move |shard| shard.serve_conversation_socket(record, socket, origin))
             .await;
         // A shard that is closing takes no socket: dropping it closes it.
         if adopted.is_err() {

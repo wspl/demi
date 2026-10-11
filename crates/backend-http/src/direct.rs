@@ -11,20 +11,21 @@
 use std::time::Duration;
 
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
-use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{CloseFrame, Message, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use demi_backend_remote_host::{DirectAnswer, PeerEvent};
 use demi_backend_runners::command_context::{Reported, reported};
-use demi_backend_user_shard::shard::page_socket::PageSocket;
+use demi_backend_user_shard::shard::page_socket::{
+    PageEnd, PageSocket, PageSocketKind, PageSocketOrigin, PageStream, open_page_socket,
+};
 use demi_runner_protocol::direct::{CONNECT_TIMEOUT, Introduction, OfferRefusal};
 use demi_web_api_protocol::devices::{DeviceKind, DirectMessage, DirectRequest, Unanswered};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{DeviceId, UserId};
 use futures_util::future::BoxFuture;
 use futures_util::{FutureExt as _, StreamExt as _};
-use futures_util::stream::SplitStream;
 use garde::Validate as _;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -34,6 +35,7 @@ use super::body::page_socket;
 use super::devices::owned_device;
 use super::error::ApiError;
 use super::gate::AuthUser;
+use super::page_client::PageClient;
 
 /// How long the backend waits for the runner's answer to an offer.
 const ANSWER_TIMEOUT: Duration = CONNECT_TIMEOUT;
@@ -45,6 +47,7 @@ pub(super) async fn open(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    client: PageClient,
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Result<Response, ApiError> {
     let device = owned_device(&state, &user.id, &id, None).await?;
@@ -75,15 +78,19 @@ pub(super) async fn open(
         return Err(ApiError::device_offline());
     }
     let tuning = state.services.pages;
+    let origin = PageSocketOrigin {
+        device: Some(device.clone()),
+        ..client.origin(PageSocketKind::DirectSignaling, user.id.clone())
+    };
     Ok(page_socket(upgrade).on_upgrade(move |socket| async move {
-        let (sink, from_page) = socket.split();
+        let (page, from_page) = open_page_socket(socket, tuning, origin);
         let signaling = Signaling {
             state,
             user: user.id,
             device,
             peer: uuid::Uuid::new_v4().simple().to_string(),
         };
-        signaling.serve(PageSocket::new(sink, tuning), from_page).await;
+        signaling.serve(page, from_page).await;
     }))
 }
 
@@ -115,8 +122,26 @@ enum End {
     PageClosed,
 }
 
+impl End {
+    /// How the socket ends: with the close frame the page hears, or as the
+    /// page left it.
+    fn page_end(self) -> PageEnd {
+        let frame = |code, reason: &'static str| {
+            PageEnd::Close(CloseFrame {
+                code,
+                reason: reason.into(),
+            })
+        };
+        match self {
+            Self::HostUnreachable => frame(1011, "host_unreachable"),
+            Self::Refused => frame(1003, "invalid_message"),
+            Self::PageClosed => PageEnd::Gone,
+        }
+    }
+}
+
 impl Signaling {
-    async fn serve(self, mut page: PageSocket, mut from_page: SplitStream<WebSocket>) {
+    async fn serve(self, mut page: PageSocket, mut from_page: PageStream) {
         let link_ended = self.link_ended();
         tokio::pin!(link_ended);
         let mut offered = false;
@@ -126,11 +151,7 @@ impl Signaling {
         // What the runner says of the peer: its candidates found after its
         // answer, and its answers to the page's probes.
         let Some(mut said) = self.peer_events().await else {
-            page.close(CloseFrame {
-                code: 1011,
-                reason: "host_unreachable".into(),
-            })
-            .await;
+            page.end(from_page, End::HostUnreachable.page_end()).await;
             return;
         };
         // The offer waiting for the runner's answer, which the page's other
@@ -238,18 +259,7 @@ impl Signaling {
             self.close_peer().await;
         }
         self.forget_peer().await;
-        let close = match end {
-            End::HostUnreachable => Some((1011, "host_unreachable")),
-            End::Refused => Some((1003, "invalid_message")),
-            End::PageClosed => None,
-        };
-        if let Some((code, reason)) = close {
-            let frame = CloseFrame {
-                code,
-                reason: reason.into(),
-            };
-            page.close(frame).await;
-        }
+        page.end(from_page, end.page_end()).await;
     }
 
     /// Resolves once the device's runner connection ends, or at once when

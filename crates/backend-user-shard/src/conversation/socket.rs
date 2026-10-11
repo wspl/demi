@@ -36,7 +36,8 @@ use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
 use super::failure_facts;
-use crate::shard::{PageSocket, Shard};
+use crate::shard::page_socket::{PageSocketOrigin, open_page_socket};
+use crate::shard::{PageEnd, PageSocket, Shard};
 use demi_backend_host_access::access::{Admitted, ConversationHost, Waits};
 use demi_backend_host_access::remote_files::RemoteFile;
 use demi_backend_host_access::root_of;
@@ -56,22 +57,26 @@ enum Ending {
     Lagged,
     /// The backend is shutting down.
     Closing,
+    /// The agent connection's outbox closed, so nothing more reaches the
+    /// page; the socket goes without a close frame.
+    Detached,
 }
 
 impl Ending {
-    /// The close frame the backend sends for it; none when the socket is
-    /// gone already.
-    fn close(self) -> Option<CloseFrame> {
-        let (code, reason) = match self {
-            Self::Gone => return None,
-            Self::NotJson => (close_code::INVALID, "not_json"),
-            Self::Lagged => (LAGGED, "lagged"),
-            Self::Closing => (close_code::AWAY, "backend_closing"),
-        };
-        Some(CloseFrame {
+    /// How the socket ends: with the close frame the backend sends, or
+    /// without one.
+    fn page_end(self) -> PageEnd {
+        let frame = |code, reason| CloseFrame {
             code,
             reason: Utf8Bytes::from_static(reason),
-        })
+        };
+        match self {
+            Self::Gone => PageEnd::Gone,
+            Self::NotJson => PageEnd::Close(frame(close_code::INVALID, "not_json")),
+            Self::Lagged => PageEnd::Fail(frame(LAGGED, "lagged")),
+            Self::Closing => PageEnd::Close(frame(close_code::AWAY, "backend_closing")),
+            Self::Detached => PageEnd::Dropped("agent connection closed"),
+        }
     }
 }
 
@@ -98,11 +103,13 @@ impl Shard {
     /// shard closes. A frame the socket has handed to the agent is handled to
     /// its end, even when the shard closes meanwhile; until then, the
     /// outbox's frames keep flowing to the page. A socket that has sent
-    /// nothing for the heartbeat interval sends a `heartbeat`.
+    /// nothing for the heartbeat interval sends a `heartbeat`. `origin` is
+    /// who opened it, which its log lines name.
     pub async fn serve_conversation_socket(
         self: Rc<Self>,
         conversation: ConversationRecord,
         socket: WebSocket,
+        origin: PageSocketOrigin,
     ) {
         // Counted before any wait, so the shard's close waits for this
         // socket; one adopted as the close begins ends at once.
@@ -128,8 +135,7 @@ impl Shard {
             host: RefCell::new(None),
         });
         let (connection, mut frames) = self.agent().connect(root_of(&id), cwd, resolver.clone());
-        let (sink, mut stream) = socket.split();
-        let mut page = PageSocket::new(sink, self.services().pages);
+        let (mut page, mut stream) = open_page_socket(socket, self.services().pages, origin);
         let mut handling: Option<LocalBoxFuture<'_, Handled>> = None;
         let relay = async {
             'relay: loop {
@@ -170,7 +176,7 @@ impl Shard {
                             }
                         }
                         Outgoing::Lagged => break Ending::Lagged,
-                        Outgoing::Closed => break Ending::Gone,
+                        Outgoing::Closed => break Ending::Detached,
                     },
                     () = page.silent() => {
                         if page.send(to_text(&ServerFrame::Heartbeat)).await.is_err() {
@@ -193,9 +199,7 @@ impl Shard {
         if let Some(handled) = handling.take() {
             handled.await;
         }
-        if let Some(close) = ending.close() {
-            page.close(close).await;
-        }
+        page.end(stream, ending.page_end()).await;
         // Dropping the connection, last, detaches it from its tree, whose
         // turns go on.
     }
