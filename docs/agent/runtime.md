@@ -1998,6 +1998,15 @@ whether the page holds them or not.
 
 - Client frames are strict: an unknown field is refused. The client accepts
   server frames with fields it does not know.
+- The backend sends the frames its outbox holds at once in one WebSocket
+  message: one frame as a JSON object, several as a JSON array in order, as
+  JSON-RPC batches do. The page applies a message's frames in order and draws
+  once, so frames ready together, such as the handshake's, are one change.
+- A response that asks for no tool holds the frames of its turn's end until
+  the turn goes on, by input, a compaction or a provider error the retry
+  decides on, or until the conversation goes idle after its closing save; the
+  last patch and `phase: idle` then go in one message. The hold waits only for
+  that save, never a timer, and a Stop releases it before `abort_result`.
 - A frame that does not match its schema is answered with an `error` whose code
   is `invalid_frame`, and the connection stays open. A message that is not JSON,
   or a binary one, closes the connection with close code 1007 `not_json`.
