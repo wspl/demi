@@ -1,24 +1,30 @@
 import { expect, test } from 'bun:test'
-import { limitStep, parseLimit, type LimitEvent, type LimitPhase, type LimitStep } from '../limit-field'
-
-test('Unlimited asks first: Cancel keeps the number, the confirmation commits null', () => {
-  const steps: [number | null, LimitPhase, LimitEvent, LimitStep][] = [
-    [10, 'shown', 'chooseUnlimited', { phase: 'confirming' }],
-    [10, 'confirming', 'cancel', { phase: 'shown' }],
-    [10, 'confirming', 'confirm', { phase: 'shown', commit: null }],
+import { limitStep, parseLimit, type LimitEvent, type LimitPhase, type LimitValue } from '../limit-field'
+test('Unlimited asks first and keeps the number, which Limited brings back as it was', () => {
+  // The user lifts a limit of 7, cancels once, confirms, then chooses Limited again.
+  const flow: [LimitEvent, LimitPhase, LimitValue][] = [
+    ['chooseUnlimited', 'confirming', { limit: 7, unlimited: false }],
+    ['cancel', 'shown', { limit: 7, unlimited: false }],
+    ['chooseUnlimited', 'confirming', { limit: 7, unlimited: false }],
+    ['confirm', 'shown', { limit: 7, unlimited: true }],
     // Already Unlimited: nothing to ask.
-    [null, 'shown', 'chooseUnlimited', { phase: 'shown' }],
-    // Limited from Unlimited opens an empty field; left empty, it stays Unlimited.
-    [null, 'shown', 'chooseLimited', { phase: 'typing' }],
-    [null, 'typing', 'leaveEmpty', { phase: 'shown' }],
-    [10, 'shown', 'chooseLimited', { phase: 'shown' }],
+    ['chooseUnlimited', 'shown', { limit: 7, unlimited: true }],
     // A confirmation that comes late commits nothing.
-    [10, 'shown', 'confirm', { phase: 'shown' }],
+    ['confirm', 'shown', { limit: 7, unlimited: true }],
+    ['chooseLimited', 'shown', { limit: 7, unlimited: false }],
+    // Already Limited: nothing changes.
+    ['chooseLimited', 'shown', { limit: 7, unlimited: false }],
   ]
-  for (const [value, phase, event, step] of steps) {
-    expect([value, phase, event, limitStep(value, phase, event)]).toEqual([value, phase, event, step])
+  let value: LimitValue = { limit: 7, unlimited: false }
+  let phase: LimitPhase = 'shown'
+  for (const [event, nextPhase, nextValue] of flow) {
+    const step = limitStep(value, phase, event)
+    phase = step.phase
+    value = step.commit ?? value
+    expect([event, phase, value]).toEqual([event, nextPhase, nextValue])
   }
 })
+
 
 test('a limit is a whole number from 1', () => {
   const cases: [string, number | null][] = [

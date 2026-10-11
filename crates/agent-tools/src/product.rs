@@ -59,8 +59,8 @@ pub struct Profile {
     pub description: String,
     /// The model settings a child infers with; none for its parent's model.
     pub model: Option<ProfileModel>,
-    /// The text that replaces the instructions in a child's system prompt;
-    /// none for its parent's.
+    /// The text added to a child's system prompt after the product's, which
+    /// it never replaces; none for no added text.
     pub instructions: Option<String>,
     /// Whether its children may spawn children of their own.
     pub can_spawn: bool,

@@ -10,7 +10,7 @@ use std::num::NonZeroU32;
 use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::{ProfileId, UserId};
 use demi_web_api_protocol::subagents::{
-    NewProfile, SubagentProfile, SubagentSettings, SubagentsPatch,
+    NewProfile, SubagentLimit, SubagentProfile, SubagentSettings, SubagentsPatch,
 };
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
@@ -21,18 +21,18 @@ use super::control::ControlService;
 const TABLE: &str = "subagent_profiles";
 
 /// Maximum subagents of a user who never set it (`subagents.md` § Limits);
-/// the `max_live` column's default says the same for a row stored before
-/// the column was.
-const DEFAULT_MAX_LIVE: NonZeroU32 = NonZeroU32::new(10).expect("10 is not zero");
-/// Maximum depth of a user who never set it; the `max_depth` column's
-/// default says the same.
-const DEFAULT_MAX_DEPTH: NonZeroU32 = NonZeroU32::MIN;
+/// the control schema's migration gives it to a limit stored as Unlimited
+/// before the number was kept.
+pub(crate) const DEFAULT_MAX_LIVE: NonZeroU32 = NonZeroU32::new(10).expect("10 is not zero");
+/// Maximum depth of a user who never set it; the migration gives it as
+/// Maximum subagents' default.
+pub(crate) const DEFAULT_MAX_DEPTH: NonZeroU32 = NonZeroU32::MIN;
 
 /// A user's switch and limits, as `user_subagents` holds them.
 struct Switches {
     enabled: bool,
-    max_live: Option<NonZeroU32>,
-    max_depth: Option<NonZeroU32>,
+    max_live: SubagentLimit,
+    max_depth: SubagentLimit,
 }
 
 impl Default for Switches {
@@ -40,8 +40,14 @@ impl Default for Switches {
     fn default() -> Self {
         Self {
             enabled: true,
-            max_live: Some(DEFAULT_MAX_LIVE),
-            max_depth: Some(DEFAULT_MAX_DEPTH),
+            max_live: SubagentLimit {
+                limit: DEFAULT_MAX_LIVE,
+                unlimited: false,
+            },
+            max_depth: SubagentLimit {
+                limit: DEFAULT_MAX_DEPTH,
+                unlimited: false,
+            },
         }
     }
 }
@@ -93,15 +99,19 @@ impl ControlService {
                 max_depth: patch.max_depth.unwrap_or(stored.max_depth),
             };
             transaction.execute(
-                "INSERT INTO user_subagents (user_id, enabled, max_live, max_depth)
-                 VALUES (?1, ?2, ?3, ?4)
+                "INSERT INTO user_subagents
+                   (user_id, enabled, max_live, max_live_unlimited, max_depth, max_depth_unlimited)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                  ON CONFLICT (user_id) DO UPDATE SET enabled = excluded.enabled,
-                   max_live = excluded.max_live, max_depth = excluded.max_depth",
+                   max_live = excluded.max_live, max_live_unlimited = excluded.max_live_unlimited,
+                   max_depth = excluded.max_depth, max_depth_unlimited = excluded.max_depth_unlimited",
                 params![
                     user.as_str(),
                     switches.enabled,
-                    switches.max_live.map(NonZeroU32::get),
-                    switches.max_depth.map(NonZeroU32::get),
+                    switches.max_live.limit.get(),
+                    switches.max_live.unlimited,
+                    switches.max_depth.limit.get(),
+                    switches.max_depth.unlimited,
                 ],
             )?;
             transaction.commit()?;
@@ -210,12 +220,13 @@ impl ControlService {
 fn stored_switches(connection: &Connection, user: &UserId) -> Result<Option<Switches>, StorageError> {
     let row = connection
         .query_row(
-            "SELECT enabled, max_live, max_depth FROM user_subagents WHERE user_id = ?1",
+            "SELECT enabled, max_live, max_live_unlimited, max_depth, max_depth_unlimited
+             FROM user_subagents WHERE user_id = ?1",
             [user.as_str()],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| Ok((row.get(0)?, (row.get(1)?, row.get(2)?), (row.get(3)?, row.get(4)?))),
         )
         .optional()?;
-    row.map(|(enabled, max_live, max_depth): (bool, Option<i64>, Option<i64>)| {
+    row.map(|(enabled, max_live, max_depth): (bool, (i64, bool), (i64, bool))| {
         Ok(Switches {
             enabled,
             max_live: limit("max_live", max_live)?,
@@ -225,17 +236,16 @@ fn stored_switches(connection: &Connection, user: &UserId) -> Result<Option<Swit
     .transpose()
 }
 
-/// A stored limit: a whole number from 1, or null for Unlimited.
-fn limit(column: &'static str, value: Option<i64>) -> Result<Option<NonZeroU32>, StorageError> {
-    value
-        .map(|value| {
-            let parsed = u32::try_from(value)
-                .ok()
-                .and_then(NonZeroU32::new)
-                .ok_or_else(|| format!("{value} is not a whole number from 1"));
-            decode("user_subagents", column, parsed)
-        })
-        .transpose()
+/// A stored limit: its whole number from 1, and whether it is lifted.
+fn limit(column: &'static str, (value, unlimited): (i64, bool)) -> Result<SubagentLimit, StorageError> {
+    let parsed = u32::try_from(value)
+        .ok()
+        .and_then(NonZeroU32::new)
+        .ok_or_else(|| format!("{value} is not a whole number from 1"));
+    Ok(SubagentLimit {
+        limit: decode("user_subagents", column, parsed)?,
+        unlimited,
+    })
 }
 
 /// `user`'s profile `id`, as stored.

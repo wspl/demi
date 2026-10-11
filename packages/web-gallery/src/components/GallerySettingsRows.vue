@@ -12,6 +12,7 @@ import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import LimitField from '@demicodes/web-ui/ui/LimitField.vue'
+import type { LimitValue } from '@demicodes/web-ui/ui/limit-field'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import Segmented, { type SegmentedOption } from '@demicodes/web-ui/ui/Segmented.vue'
@@ -37,7 +38,7 @@ const protocols = ['Chat Completions', 'Responses', 'Messages'] as const
 
 const name = ref('explore')
 const baseUrl = ref('https://api.example.com/v1')
-const retries = ref<number | null>(3)
+const retries = ref<LimitValue>({ limit: 3, unlimited: false })
 const retriesProblem = ref<string | null>(null)
 const protocol = ref<(typeof protocols)[number]>('Responses')
 const fontSize = ref(DEFAULT_TRANSCRIPT_TEXT_SIZE)
