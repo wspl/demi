@@ -1,9 +1,12 @@
 import type { UserContentBlock } from '@demicodes/protocol'
 import { delay } from '@demicodes/utils'
 import type { MessageEditContent } from '@demicodes/web-ui/agent/message-editing'
-import { clampUnit, type UploadedFile, type UploadFile } from '@demicodes/web-ui/agent/message-input/attachments'
+import { clampUnit, encodeRemoteReference, type ClaimFile, type UploadedFile, type UploadFile } from '@demicodes/web-ui/agent/message-input/attachments'
+import { galleryBlobUrl, galleryHoldsBlob } from './blobs'
 
 const PROTOTYPE_UPLOAD_MS = 1400
+/** How long the stand-in takes to answer a claim of a stored file, one request's round trip. */
+const CLAIM_MS = 150
 /** How much of a text file the backend's answer carries (`web-api.md` § Uploads and media). */
 const SNIPPET_CHARS = 160
 
@@ -42,12 +45,36 @@ export function galleryUploads() {
   }
 
   /**
+   * Makes an upload of a blob the gallery holds, a fixture's or one uploaded
+   * in this page, as the backend does for a pasted message's file; null for
+   * any other, as for a file of another account.
+   */
+  const claim: ClaimFile = async (file, signal) => {
+    await delay(CLAIM_MS, signal)
+    if (!galleryHoldsBlob(file.sha256) && !blobs.has(file.sha256)) {
+      return null
+    }
+    return { id: crypto.randomUUID(), mediaType: file.mediaType, sha256: file.sha256 }
+  }
+
+  /** Where a blob's picture loads from: one uploaded in this page, or a fixture's. */
+  function picture(sha256: string, mediaType: string): string | undefined {
+    if (!mediaType.startsWith('image/')) {
+      return undefined
+    }
+    return blobs.get(sha256)?.url ?? galleryBlobUrl(sha256, mediaType)
+  }
+
+  /**
    * An edit's content as the transcript would record it once the backend
    * took it: each file the edit added becomes its attachment record, with its
    * picture before it when it is one.
    */
   function received(content: readonly MessageEditContent[]): UserContentBlock[] {
     return content.flatMap((part): UserContentBlock[] => {
+      if (part.type === 'remote_file') {
+        return [{ type: 'reference', reference: encodeRemoteReference(part.host, part.path, part.deviceId) }]
+      }
       if (part.type !== 'upload') {
         return [part]
       }
@@ -75,5 +102,5 @@ export function galleryUploads() {
     blobs.clear()
   }
 
-  return { upload, received, release }
+  return { upload, claim, picture, received, release }
 }

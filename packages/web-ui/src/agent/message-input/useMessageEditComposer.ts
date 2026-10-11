@@ -15,8 +15,10 @@ import {
   attachmentFileError,
   attachmentSendBlockReason,
   filePreviewUrl,
+  type ClaimFile,
   type UploadFile,
 } from './attachments'
+import type { PasteHost } from './copied-message'
 import { joinMessageContent, splitMessageContent } from './message-content'
 
 /** A file the edit added: its bytes, its capsule, and its upload while it is not done. */
@@ -38,8 +40,11 @@ export function useMessageEditComposer(options: {
   state: () => MessageEditState | null | undefined
   update: (state: MessageEditState | null) => void
   upload: UploadFile
+  claim: ClaimFile
 }) {
   const uploads = new AttachmentUploadQueue()
+  /** Ends the claims of pasted files still under way once the composer goes. */
+  const claims = new AbortController()
   const attachmentError = ref<string | null>(null)
   /** The edit's files by capsule id: the message's records and media, or an added file's upload once done. */
   const files = shallowRef(new Map<string, MessageEditContent[]>())
@@ -89,7 +94,10 @@ export function useMessageEditComposer(options: {
     markdown.value = split.markdown
     order.value = ids
   }, { immediate: true })
-  onScopeDispose(release)
+  onScopeDispose(() => {
+    release()
+    claims.abort()
+  })
 
   /** Writes the edit's content as the editor shows it: its text, and each file that is ready to go. */
   function publish(): void {
@@ -198,6 +206,41 @@ export function useMessageEditComposer(options: {
     return taken
   }
 
+  /** Puts a file the edit carries without bytes to send under a new capsule id, and answers its capsule. */
+  function keep(content: MessageEditContent): MessageCapsule {
+    const id = crypto.randomUUID()
+    files.value = new Map(files.value).set(id, [content])
+    return capsuleOf(id)
+  }
+
+  /**
+   * How a message pasted into the edit brings its files: a stored file as an
+   * upload of the user's own blob, a device file by its device and path, and
+   * a picture the copy carried as an added file.
+   */
+  const paste: PasteHost = {
+    claim: async (file) => {
+      if (!editable.value) {
+        return null
+      }
+      const uploaded = await options.claim(file, claims.signal)
+      return uploaded
+        ? keep({
+            type: 'upload',
+            ref: uploaded.id,
+            fileName: file.name,
+            mediaType: uploaded.mediaType,
+            sha256: uploaded.sha256,
+            ...(uploaded.snippet ? { snippet: uploaded.snippet } : {}),
+          })
+        : null
+    },
+    remote: (file) => editable.value
+      ? keep({ type: 'remote_file', deviceId: file.deviceId, path: file.path, host: file.host })
+      : null,
+    add: addFiles,
+  }
+
   /** Whether the capsule is one of this edit's files. */
   function carries(id: string): boolean {
     return files.value.has(id) || added.value.has(id)
@@ -225,5 +268,6 @@ export function useMessageEditComposer(options: {
     change,
     cancel,
     addFiles,
+    paste,
   }
 }

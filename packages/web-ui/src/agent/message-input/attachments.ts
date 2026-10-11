@@ -71,6 +71,16 @@ export type UploadFile = (
   options: { signal: AbortSignal; progress: (fraction: number) => void },
 ) => Promise<UploadedFile>
 
+/**
+ * The product's upload of a file the user's blobs hold already, such as one a
+ * pasted message names: no bytes go, and the answer is an upload as any
+ * file's is; null when the user's blobs do not hold it.
+ */
+export type ClaimFile = (
+  file: { name: string; sha256: string; mediaType: string },
+  signal: AbortSignal,
+) => Promise<UploadedFile | null>
+
 export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
 
 /**
@@ -201,15 +211,24 @@ export function attachmentsReady(items: readonly ComposerAttachment[]): boolean 
   return items.every((item) => item.kind === 'reference' || item.phase === 'ready')
 }
 
-export function encodeRemoteReference(host: string, path: string): string {
+/** A file on a paired device as the backend names it in a message, for a specimen or a test. */
+export function encodeRemoteReference(host: string, path: string, deviceId?: string): string {
   const url = new URL('file:///')
   url.pathname = path.startsWith('/') ? path : `/${path}`
   url.searchParams.set('host', host)
+  if (deviceId) {
+    url.searchParams.set('deviceId', deviceId)
+  }
   return url.href
 }
 
+/**
+ * A file on a paired device as a message names it: a `file:` URL of its path
+ * with the device's name and, as the backend writes it, the device's id.
+ */
 export function decodeRemoteReference(reference: string): {
   host?: string
+  deviceId?: string
   path: string
   name: string
 } {
@@ -218,8 +237,10 @@ export function decodeRemoteReference(reference: string): {
       const url = new URL(reference)
       const path = decodeURIComponent(url.pathname)
       const host = url.searchParams.get('host') ?? undefined
+      const deviceId = url.searchParams.get('deviceId') ?? undefined
       return {
         host,
+        deviceId,
         path,
         name: baseName(path),
       }

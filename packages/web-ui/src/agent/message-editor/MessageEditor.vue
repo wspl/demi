@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
-import { Fragment, Slice, type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/model'
+import { DOMSerializer, Fragment, Slice, type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/model'
 import { Selection, TextSelection, type Transaction } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import { Editor, EditorContent } from '@tiptap/vue-3'
@@ -10,7 +10,16 @@ import { useMarkdownRenderVersion } from '../../markdown/highlight'
 import { useMessageFiles } from '../../markdown/message-files'
 import { parseUserMarkdown, serializeUserMarkdown } from '../../markdown/user-markdown'
 import { useAutofocus } from '../../ui/autofocus'
+import { reportError } from '../../infra/errors'
+import { useMediaAddress } from '../media-source'
 import { dataTransferFiles, pastedTextFile, pastedTextIsLong } from '../message-input/attachments'
+import {
+  COPIED_MESSAGE_ATTRIBUTE,
+  messageClipboard,
+  readCopiedMessage,
+  type CopiedMessage,
+  type MessageClipboard,
+} from '../message-input/copied-message'
 import { useTransfers, type MessageCapsule } from './capsules'
 import { composerExtensions, readOnlyExtensions, redrawDecorations } from './extensions'
 import type { PlaceholderText } from '../../ui/ui-text'
@@ -73,6 +82,12 @@ const emit = defineEmits<{
   cancel: []
   /** Files pasted, or a paste long enough to be one; their capsules land where the cursor was. */
   files: [files: File[]]
+  /**
+   * A copied message pasted, in Demi's own form, with the picture a copy of a
+   * lone image carried: the owner takes its files and gives the message back
+   * to `insertMessage`, where the cursor was.
+   */
+  message: [message: CopiedMessage, image: File | null]
   focus: []
   blur: []
 }>()
@@ -87,6 +102,7 @@ const files = useMessageFiles()
 const autofocus = useAutofocus()
 const editable = computed(() => !!props.composer && !props.disabled)
 const transfers = useTransfers()
+const mediaAddress = useMediaAddress()
 
 /** The Markdown the editor last showed or wrote, so the same text coming back as a prop is not shown again. */
 let shown = props.markdown
@@ -123,12 +139,15 @@ const editor = new Editor({
     }),
     handlePaste: (view, event) => props.composer && paste(view, event),
     handleDrop: (view, event, _slice, moved) => props.composer && drop(view, event, moved),
+    // A sent message copies with its files (`product.md` § Writing a message);
+    // the composer's own copy keeps ProseMirror's, which a paste in it reads.
+    handleDOMEvents: props.composer ? {} : { copy: (view, event) => copySelection(view, event) },
     transformPasted: (slice, view) => new Slice(keepCapsules(slice.content, view), slice.openStart, slice.openEnd),
-    clipboardTextSerializer: (slice) => {
-      const parts: string[] = []
-      slice.content.forEach((node) => parts.push(plainText(node)))
-      return parts.join(slice.content.firstChild?.isBlock ? '\n' : '')
-    },
+    // Copied text is the Markdown, each file by its name, wherever it is
+    // copied from; code copied from inside a code block is the code.
+    clipboardTextSerializer: (slice) => slice.openStart > 0 && slice.content.childCount === 1 && slice.content.firstChild?.type.spec.code
+      ? slice.content.textBetween(0, slice.content.size)
+      : messageClipboard({ type: 'doc', content: slice.content.toJSON() ?? [] }).plain,
   },
   onUpdate: write,
   onTransaction: ({ transaction }) => {
@@ -264,8 +283,8 @@ function inCode(view: EditorView): boolean {
 }
 
 /** Pasted text read as the dialect: a single line joins the line at the cursor, code blocks stand on their own. */
-function markdownSlice(schema: Schema, text: string): Slice {
-  const doc = schema.nodeFromJSON(parseUserMarkdown(text, []))
+function markdownSlice(schema: Schema, text: string, capsules: readonly MessageCapsule[] = []): Slice {
+  const doc = schema.nodeFromJSON(parseUserMarkdown(text, capsules))
   const opens = (node: ProseMirrorNode | null) => node?.type.name === 'paragraph' ? 1 : 0
   return new Slice(doc.content, opens(doc.firstChild), opens(doc.lastChild))
 }
@@ -284,6 +303,13 @@ function paste(view: EditorView, event: ClipboardEvent): boolean {
     return false
   }
   const pasted = dataTransferFiles(transfer)
+  // A copied message comes back with its files where they stood; code takes text alone.
+  const copied = inCode(view) ? null : copiedMessage(transfer.getData('text/html'))
+  if (copied) {
+    landAtSelection(view)
+    emit('message', copied, pasted.find((file) => file.type.startsWith('image/')) ?? null)
+    return true
+  }
   if (pasted.length) {
     landAtSelection(view)
     emit('files', pasted)
@@ -327,6 +353,102 @@ function drop(view: EditorView, event: DragEvent, moved: boolean): boolean {
   return true
 }
 
+/** Demi's own form of a copied message, which the outermost element of its HTML holds; null for HTML from elsewhere. */
+function copiedMessage(html: string): CopiedMessage | null {
+  if (!html.includes(COPIED_MESSAGE_ATTRIBUTE)) {
+    return null
+  }
+  const page = new DOMParser().parseFromString(html, 'text/html')
+  return readCopiedMessage(page.querySelector(`[${COPIED_MESSAGE_ATTRIBUTE}]`)?.getAttribute(COPIED_MESSAGE_ATTRIBUTE) ?? null)
+}
+
+/** A copy's forms: Demi's own and plain text, and its HTML, Demi's own form an attribute of its outermost element. */
+function clipboardForms(content: Fragment): { clipboard: MessageClipboard; html: string } {
+  const clipboard = messageClipboard({ type: 'doc', content: content.toJSON() ?? [] })
+  const wrapper = document.createElement('div')
+  wrapper.setAttribute(COPIED_MESSAGE_ATTRIBUTE, JSON.stringify(clipboard.message))
+  wrapper.append(htmlSerializer(editor.schema).serializeFragment(content))
+  return { clipboard, html: wrapper.outerHTML }
+}
+
+/** The message as HTML for mail, documents and chat apps: its formatting, each picture an image, every other file its name. */
+function htmlSerializer(schema: Schema): DOMSerializer {
+  const base = DOMSerializer.fromSchema(schema)
+  return new DOMSerializer({
+    ...base.nodes,
+    attachment: (node) => {
+      const capsule = capsuleOf(node)
+      const src = capsule ? pictureAddress(capsule) : null
+      const name = capsule?.name ?? ''
+      return src ? ['img', { src, alt: name }] : ['span', name]
+    },
+  }, base.marks)
+}
+
+/** Where a capsule's picture loads from, as an address any page can follow; null for a file without one. */
+function pictureAddress(capsule: MessageCapsule): string | null {
+  const image = capsule.image
+  if (!image) {
+    return null
+  }
+  return new URL(typeof image === 'string' ? image : mediaAddress(image), document.baseURI).href
+}
+
+/**
+ * The clipboard item of a copy: its forms, and the picture itself when it
+ * holds a lone image, so pasting it anywhere pastes the picture.
+ */
+function clipboardItem(forms: { clipboard: MessageClipboard; html: string }): ClipboardItem {
+  const image = forms.clipboard.image
+  const src = image ? pictureAddress(image) : null
+  return new ClipboardItem({
+    'text/plain': new Blob([forms.clipboard.plain], { type: 'text/plain' }),
+    'text/html': new Blob([forms.html], { type: 'text/html' }),
+    ...(src ? { 'image/png': pngOf(src) } : {}),
+  })
+}
+
+/** A picture as PNG, the one image type every web browser's clipboard takes. */
+async function pngOf(src: string): Promise<Blob> {
+  const response = await fetch(src, { credentials: 'include' })
+  if (!response.ok) {
+    throw new Error(`The picture did not load (${response.status}).`)
+  }
+  const blob = await response.blob()
+  if (blob.type === 'image/png') {
+    return blob
+  }
+  const bitmap = await createImageBitmap(blob)
+  try {
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+    canvas.getContext('2d')?.drawImage(bitmap, 0, 0)
+    return await canvas.convertToBlob({ type: 'image/png' })
+  } finally {
+    bitmap.close()
+  }
+}
+
+/** A selection in a sent message copies in every form; a lone picture also as itself. */
+function copySelection(view: EditorView, event: ClipboardEvent): boolean {
+  const transfer = event.clipboardData
+  const { selection } = view.state
+  // Code copied from inside a code block is the code, as ProseMirror copies it.
+  if (selection.empty || !transfer || (selection.$from.sameParent(selection.$to) && inCode(view))) {
+    return false
+  }
+  const forms = clipboardForms(selection.content().content)
+  event.preventDefault()
+  transfer.setData('text/plain', forms.clipboard.plain)
+  transfer.setData('text/html', forms.html)
+  // A picture cannot go into the copy event's data; the asynchronous
+  // clipboard takes it, with the forms above, while the copy is a gesture.
+  if (forms.clipboard.image) {
+    void navigator.clipboard.write([clipboardItem(forms)])
+      .catch((error: unknown) => reportError('Couldn’t Copy the Picture', error))
+  }
+  return true
+}
+
 /**
  * Pasted or dropped nodes keep the capsules of files this composer carries
  * and does not have already: a capsule cut from this message can be pasted
@@ -361,24 +483,6 @@ function keepCapsules(fragment: Fragment, view: EditorView): Fragment {
 /** The file a node stands for, when it is a capsule. */
 function capsuleOf(node: ProseMirrorNode): MessageCapsule | null {
   return node.type.name === 'attachment' ? node.attrs['capsule'] ?? null : null
-}
-
-/** Copied text: each capsule as its file's name, each image as its alt text. */
-function plainText(node: ProseMirrorNode): string {
-  if (node.isText) {
-    return node.text ?? ''
-  }
-  switch (node.type.name) {
-    case 'hardBreak':
-      return '\n'
-    case 'attachment':
-      return capsuleOf(node)?.name ?? ''
-    case 'image':
-      return String(node.attrs['alt'] ?? '')
-  }
-  const parts: string[] = []
-  node.forEach((child) => parts.push(plainText(child)))
-  return parts.join(node.isTextblock ? '' : '\n')
 }
 
 /**
@@ -447,6 +551,24 @@ defineExpose({
     tr.insert(at, capsules.map((capsule) => editor.schema.nodes['attachment']!.create({ capsule })))
     landing = null
     editor.view.dispatch(tr)
+  },
+  /**
+   * A pasted message, its files taken: its text and capsules go in where
+   * the paste landed, as one change.
+   */
+  insertMessage(markdown: string, capsules: readonly MessageCapsule[]): void {
+    if (editor.isDestroyed) {
+      return
+    }
+    const tr = editor.state.tr
+    const at = landing === null ? tr.selection.from : Math.min(landing, tr.doc.content.size)
+    tr.setSelection(TextSelection.create(tr.doc, at)).replaceSelection(markdownSlice(editor.schema, markdown, capsules))
+    landing = null
+    editor.view.dispatch(tr.scrollIntoView())
+  },
+  /** The whole message as the clipboard takes it, for its Copy control. */
+  clipboardItem(): ClipboardItem {
+    return clipboardItem(clipboardForms(editor.state.doc.content))
   },
   /** The names the message's files already have. */
   capsuleNames,
