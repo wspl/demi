@@ -73,7 +73,7 @@ test('finished text with nothing after it is followed by Requesting, and a call 
   const writing: MessageListBlock = {
     type: 'pending_call',
     id: 'pending-call:call-1',
-    call: { toolUseId: 'call-1', toolName: 'shell', description: null },
+    call: { toolUseId: 'call-1', toolName: 'shell', description: 'Write the categorizer' },
   }
   expect(kind('running', [finished], [finished, writing])).toBeNull()
   expect(kind('idle', [finished])).toBeNull()

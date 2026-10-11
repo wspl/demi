@@ -13,11 +13,14 @@ export interface PendingSteerRenderBlock {
   content: UserContentBlock[]
 }
 
-/** A call the model is writing, shown after the transcript (`runtime.md` § Calls being written). */
+/**
+ * A call the model is writing whose description it has written, shown after
+ * the transcript, titled by it (`runtime.md` § Calls being written).
+ */
 export interface PendingCallRenderBlock {
   type: 'pending_call'
   id: string
-  call: PendingCall
+  call: PendingCall & { description: string }
 }
 
 /**

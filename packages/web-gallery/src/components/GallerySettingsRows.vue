@@ -62,7 +62,7 @@ function refreshUsage(): void {
         @commit="baseUrl = $event"
       />
     </SettingsRow>
-    <SettingsRow label="Transcript text size" description="Messages only.">
+    <SettingsRow label="Transcript text size" description="Sizes the conversation’s messages and steps.">
       <Slider
         v-model="fontSize"
         :min="12"

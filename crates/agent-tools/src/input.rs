@@ -23,12 +23,15 @@ const INTERVAL: &str = "How to watch the command, required: a number of whole mi
 /// descriptions).
 pub(super) const DESCRIPTION: &str = "Short title of what this step does, as a command in the imperative, such as \"Install Chrome for Testing\", \"Start the browser with a blank tab\" or \"Run the type checker\". It is written before the step runs, so never state a result or a state reached (not \"Chrome for Testing installed\"). Do not describe waiting, pausing or tool mechanics; no generic action or bare noun; no scripts, output, protocol state, step numbers, tool names, ids, internal labels or reasons.";
 
+// `description` comes first: a model writes a call's fields in the schema's
+// order, so the title the page shows arrives before a long script
+// (`runtime.md` § Calls being written).
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ShellInput {
-    pub(super) script: String,
     #[schemars(length(min = 1), description = DESCRIPTION)]
     pub(super) description: NonEmpty,
+    pub(super) script: String,
     #[serde(deserialize_with = "interval")]
     #[schemars(description = INTERVAL)]
     pub(super) interval_ms: Interval,
@@ -135,14 +138,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_schema_requires_a_title_and_an_interval_that_may_be_null_and_nothing_else() {
+    fn the_schema_requires_a_title_first_and_an_interval_that_may_be_null_and_nothing_else() {
         let shell = schema::<ShellInput>();
         assert_eq!(shell["additionalProperties"], false);
         assert_eq!(
             shell["required"],
-            json!(["script", "description", "intervalMs"])
+            json!(["description", "script", "intervalMs"])
         );
         let properties = &shell["properties"];
+        // The title leads: serde_json keeps the order (`preserve_order`), so
+        // the schema a provider serializes lists it first too.
+        let order: Vec<&String> = properties.as_object().unwrap().keys().collect();
+        assert_eq!(order, ["description", "script", "intervalMs"]);
         assert_eq!(properties["intervalMs"]["type"], json!(["integer", "null"]));
         // A value outside the bounds is taken as the nearest one, not
         // refused, so the schema states them in words.

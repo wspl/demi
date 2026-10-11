@@ -579,8 +579,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       }
       const id = nextId('tool')
       let startedAt = ''
-      // The model writes the call first: its row shows as it opens, takes its
-      // description once written, and becomes the call's block when whole.
+      // The model writes the call first: it shows nothing until its
+      // description is written, then its row shows, and becomes the call's
+      // block when whole.
       at(run, t, () => {
         state.waitingSince = null
         state.pendingCalls = [{ toolUseId: `${id}-use`, toolName: 'shell', description: null }]
