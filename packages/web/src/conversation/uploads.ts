@@ -1,18 +1,30 @@
 import {
   applyAttachmentUpdate,
   arrangeCapsuleFiles,
+  attachingUpdate,
   attachmentFileError,
   AttachmentUploadQueue,
   composerAttachmentFromFile,
   composerFileNames,
+  filePreviewUrl,
   isComposerFile,
+  type UploadedFile,
 } from '@demicodes/web-ui/agent/message-input/attachments'
-import { uploadAttachment } from '../api/uploads'
+import type { CopiedStoredFile } from '@demicodes/web-ui/agent/message-input/copied-message'
+import { asError } from '@demicodes/utils'
+import { blobUrl, claimStoredFile, uploadAttachment } from '../api/uploads'
 import type { Conversation, ProductAttachment } from '../state/types'
 
 /** The files of the messages sent and not yet confirmed, which the composer carries until they are. */
 export function sendingFileIds(conversation: Pick<Conversation, 'pendingSends'>): Set<string> {
   return new Set(conversation.pendingSends.flatMap((pending) => pending.fileIds))
+}
+
+type ComposerFile = Extract<ProductAttachment, { kind: 'file' }>
+
+/** Where an uploaded picture loads from, for a file whose bytes this web browser does not have. */
+export function blobPicture(upload: { mediaType: string; sha256: string }): string | undefined {
+  return upload.mediaType.startsWith('image/') ? blobUrl(upload.sha256, upload.mediaType) : undefined
 }
 
 /** Owns file transfers and preview resources for one product account. */
@@ -21,31 +33,117 @@ export function createConversationUploads(
   onError: (error: unknown) => void,
 ) {
   const uploads = new AttachmentUploadQueue()
-  async function uploadFile(
-    item: Extract<ProductAttachment, { kind: 'file' }>,
-  ): Promise<void> {
-    const bytes = item.file
-    // A file another page uploaded has no bytes here, and needs none.
-    if (!bytes) {
-      return
+  /** Each file's upload under way, by its id, which a message sent meanwhile waits for. */
+  const running = new Map<string, Promise<void>>()
+
+  /**
+   * Uploads a file's bytes, or attaches the stored file a pasted message
+   * names, falling back to the picture its copy carried when the paste cannot
+   * use the file. A file another page uploaded has no bytes here, and needs
+   * none.
+   */
+  function uploadFile(item: ComposerFile): Promise<void> {
+    if (!item.file && !item.claim) {
+      return Promise.resolve()
     }
-    const ready = await uploads.start(
-      item.id,
-      async (signal, report) => {
-        const uploaded = await uploadAttachment(bytes, { signal, progress: report })
-        item.upload = { id: uploaded.id, mediaType: uploaded.mediaType, sha256: uploaded.sha256 }
-        // The capsule shows the opening the backend read, as the message will carry it.
-        item.snippet = uploaded.snippet
-      },
-      (update) => applyAttachmentUpdate(item, update),
-    ).catch((error: unknown) => {
-      // A failed upload keeps its capsule, which offers Retry; the caller toasts the reason.
-      applyAttachmentUpdate(item, { phase: 'failed' })
-      onChange()
-      throw error
+    const upload = (async () => {
+      const ready = await uploads.start(
+        item.id,
+        async (signal, report) => {
+          const uploaded = await transfer(item, signal, report)
+          item.upload = { id: uploaded.id, mediaType: uploaded.mediaType, sha256: uploaded.sha256 }
+          // The capsule shows the opening the backend read, as the message will carry it.
+          item.snippet = uploaded.snippet
+        },
+        (update) => applyAttachmentUpdate(item, attachingUpdate(update, !!item.file)),
+      ).catch((error: unknown) => {
+        // A failed upload keeps its capsule, which offers Retry; the caller toasts the reason.
+        applyAttachmentUpdate(item, { phase: 'failed' })
+        onChange()
+        throw error
+      })
+      if (ready)
+        onChange()
+    })()
+    running.set(item.id, upload)
+    const done = () => {
+      if (running.get(item.id) === upload) {
+        running.delete(item.id)
+      }
+    }
+    upload.then(done, done)
+    return upload
+  }
+
+  /** The upload a file's transfer makes: of its bytes, or of the stored file a paste names, else of its picture. */
+  async function transfer(item: ComposerFile, signal: AbortSignal, report: (fraction: number) => void): Promise<UploadedFile> {
+    const claim = item.claim
+    if (claim) {
+      // A claim that fails for any reason leaves the file one the paste cannot use.
+      const claimed = await claimStoredFile(claim.file, signal).catch(() => null)
+      if (claimed) {
+        item.claim = undefined
+        return claimed
+      }
+      if (!claim.picture) {
+        throw new Error(`It is not among this account's files.`)
+      }
+      item.claim = undefined
+      item.file = claim.picture
+      item.src = filePreviewUrl(claim.picture) ?? item.src
+    }
+    return uploadAttachment(item.file!, { signal, progress: report })
+  }
+
+  /**
+   * Waits until a file of a sent message is uploaded (`product.md` § Writing
+   * a message): the upload under way, or a new one of a file whose upload
+   * failed, as Retry asks. Rejects when the upload fails, or when the file
+   * has no upload and no bytes to make one, so the message is not delivered
+   * without it.
+   */
+  async function uploaded(item: ComposerFile): Promise<NonNullable<ComposerFile['upload']>> {
+    if (!item.upload) {
+      try {
+        await (running.get(item.id) ?? uploadFile(item))
+      } catch (error) {
+        throw new Error(`${item.name} did not upload. ${asError(error).message}`)
+      }
+    }
+    if (!item.upload) {
+      throw new Error(`${item.name} is not uploaded. Attach it again.`)
+    }
+    return item.upload
+  }
+
+  /**
+   * Takes a file a pasted message holds as a blob of the user's, at once: its
+   * capsule shows it attaching while the backend makes an upload of it
+   * without its bytes. `kept` answers whether it stays: true once attached,
+   * or when `picture`, the picture the copy carried, uploads in its place;
+   * false when the paste could not use the file and there is no picture.
+   */
+  function claimFile(
+    conversation: Conversation,
+    file: CopiedStoredFile,
+    picture: File | null,
+  ): { item: ComposerFile; kept: Promise<boolean> } {
+    const id = crypto.randomUUID()
+    conversation.files.push({
+      kind: 'file',
+      id,
+      name: file.name,
+      src: blobPicture(file),
+      phase: 'attaching',
+      file: null,
+      upload: null,
+      claim: { file, picture },
     })
-    if (ready)
-      onChange()
+    onChange()
+    const item = conversation.files.find((each): each is ComposerFile => each.id === id && isComposerFile(each))!
+    // A failure is the composer's to tell: it puts the name in place, or the bubble of a message sent meanwhile says it.
+    const kept = uploadFile(item).then(() => true, () => !!item.file)
+    return { item, kept }
   }
 
   /** Uploads a file that failed again. */
@@ -79,7 +177,13 @@ export function createConversationUploads(
         (attachment) => attachment.id === item.id,
       )!
       if (isComposerFile(reactiveItem)) {
-        void uploadFile(reactiveItem).catch(onError)
+        void uploadFile(reactiveItem).catch((error: unknown) => {
+          // A file of a message already sent tells its failure on the
+          // message's bubble, with Retry; only the composer's own needs a toast.
+          if (!sendingFileIds(conversation).has(reactiveItem.id)) {
+            onError(error)
+          }
+        })
       }
       taken.push(reactiveItem)
     }
@@ -180,6 +284,8 @@ export function createConversationUploads(
   }
   return {
     uploadFile,
+    uploaded,
+    claimFile,
     addFiles,
     retryFile,
     removeFile,

@@ -6,12 +6,13 @@ import { ArrowUp, File as FileIcon, HardDrive, Plus, RotateCcw, Square, X } from
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '../overlay/appOverlay'
 import {
-  attachmentsReady,
   attachmentSendBlockReason,
   isComposerFile,
+  type ClaimFile,
   type ComposerAttachment,
   type UploadFile,
 } from './message-input/attachments'
+import { missingFilesToast, pasteMessage, type CopiedMessage, type PasteHost } from './message-input/copied-message'
 import { useMessageEditComposer } from './message-input/useMessageEditComposer'
 import { draftPreview } from './message-input/draft-preview'
 import { editHasContent, useEditLastMessage, type MessageEditState } from './message-editing'
@@ -66,6 +67,13 @@ const props = withDefaults(
     messageEdit?: MessageEditState | null
     /** Uploads a file the edit composer adds, as the main composer's files are uploaded. */
     upload: UploadFile
+    /** Makes an upload of a file the user's blobs hold, for a message pasted into the edit composer. */
+    claim: ClaimFile
+    /**
+     * Takes the files of a message pasted into the draft (`product.md`
+     * § Writing a message): the host carries the draft's files.
+     */
+    paste: PasteHost
     /** The conversation has a host with files: the menu offers a remote file beside local ones. */
     remoteFiles?: boolean
     focused?: boolean
@@ -167,6 +175,7 @@ const edit = useMessageEditComposer({
   state: () => shownEdit.value,
   update: (state) => emit('update:messageEdit', state),
   upload: (file, options) => props.upload(file, options),
+  claim: (file, signal) => props.claim(file, signal),
 })
 /** Up Arrow in the empty draft opens the editor on the last message, where the page offers editing it. */
 const editLastMessage = useEditLastMessage()
@@ -256,6 +265,14 @@ const modelState = computed(() =>
 )
 /** The models are still loading: the page cannot tell yet whether the message can go. */
 const modelsLoading = computed(() => props.modelLoad === 'loading' && modelState.value.kind !== 'ready')
+/**
+ * The phases of the draft's uploads that keep it from going: a failed one.
+ * A message whose files are still uploading goes, and waits for them
+ * (`product.md` § Writing a message).
+ */
+const failedUploads = computed(() => carrying.value
+  .filter(isComposerFile)
+  .flatMap((item) => item.phase === 'failed' ? [item.phase] : []))
 const sendDisabled = computed(
   () =>
     props.disabled ||
@@ -263,7 +280,7 @@ const sendDisabled = computed(
     modelState.value.kind !== 'ready' ||
     (shownEdit.value
       ? shownEdit.value.phase === 'sending' || !!edit.sendBlockReason.value
-      : !attachmentsReady(carrying.value)),
+      : failedUploads.value.length > 0),
 )
 const sendBlockReason = computed(() => {
   if (modelState.value.kind === 'unavailable') {
@@ -277,7 +294,7 @@ const sendBlockReason = computed(() => {
   }
   return shownEdit.value
     ? edit.sendBlockReason.value
-    : attachmentSendBlockReason(carrying.value.filter(isComposerFile).map((item) => item.phase))
+    : attachmentSendBlockReason(failedUploads.value)
 })
 // The composer shows no failure text of its own: a file an edit could not
 // take or upload is a toast, a failed upload is its capsule's Retry, and a
@@ -385,6 +402,32 @@ function addFiles(files: File[]): void {
 /** Puts files the host took into the message, where the composer said they would land. */
 function insertCapsules(added: readonly MessageCapsule[]): void {
   editor.value?.insertCapsules(added)
+}
+
+/**
+ * A copied message pasted: it goes in where it was pasted at once, text and
+ * capsules, and each stored file attaches beside it as an upload does, so the
+ * message can be sent meanwhile (`product.md` § Writing a message). A file
+ * the paste could not add stands as its name where its capsule stood, and a
+ * toast names it once the paste's files have all answered.
+ */
+function pasteCopied(message: CopiedMessage, image: File | null): void {
+  // The editor the message was pasted into, which an edit opened or closed meanwhile does not change.
+  const target = editor.value
+  const pasted = pasteMessage(message, image, shownEdit.value ? edit.paste : props.paste)
+  target?.insertMessage(pasted.markdown, pasted.capsules)
+  void Promise.all(pasted.attaching.map(async ({ id, name, kept }) =>
+    // A file of a message sent meanwhile is no longer the composer's: its bubble tells it.
+    !await kept && target?.replaceCapsule(id, name) ? [name] : []))
+    .then((names) => missingFiles([...pasted.missing, ...names.flat()]))
+}
+
+/** Tells which pasted files could not be added, their names pasted instead. */
+function missingFiles(names: readonly string[]): void {
+  const toast = missingFilesToast(names)
+  if (toast) {
+    showToast({ ...toast, tone: 'danger' })
+  }
 }
 
 defineExpose({
@@ -500,6 +543,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             @submit="submit"
             @cancel="edit.cancel"
             @files="addFiles"
+            @message="pasteCopied"
             @focus="focused = true"
             @blur="focused = false"
           />
@@ -519,6 +563,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             @change="changeDraft"
             @submit="submit"
             @files="addFiles"
+            @message="pasteCopied"
             @focus="focused = true"
             @blur="focused = false"
           />

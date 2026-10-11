@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, reactive, ref } from 'vue'
 import AgentMessageVirtualBlock from '@demicodes/web-ui/agent/blocks/AgentMessageVirtualBlock.vue'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
-import { composerAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
+import { applyAttachmentUpdate, composerAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import type { Block, UserContentBlock } from '@demicodes/protocol'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import { useTurnFlow } from '../turn-flow'
 import { demoModel, errorTool } from '../fixtures/blocks'
+import { galleryBlobs, galleryBlobUrl } from '../fixtures/blobs'
+import { sweepUpload } from '../fixtures/upload-sweep'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 
@@ -20,8 +22,9 @@ import GallerySpecimen from './GallerySpecimen.vue'
  * sits in the dock above the composer.
  *
  * Nothing in or under the composer: a fork that failed, an edit the server
- * refused, a file that could not be read and an upload that failed are toasts,
- * and the failed file leaves the composer.
+ * refused and a file that could not be read are toasts, and a file whose
+ * upload failed keeps its capsule with Retry. A sent message whose upload
+ * failed is undelivered, in the transcript flow.
  *
  * Each record is named by its normalized code, which is also its id.
  */
@@ -102,6 +105,63 @@ function failDelivery(): void {
   )
 }
 failDelivery()
+
+// A message sent while its file uploads shows at once, the capsule telling
+// the upload, and goes once the upload is done; one whose upload fails is
+// undelivered, and Retry uploads the file again, then delivers the message.
+const captureText = `What goes wrong in this capture ${ATTACHMENT_MARK}?`
+const captureContent = joinMessageContent(captureText, [[
+  { type: 'image', source: { type: 'ref', ref: galleryBlobs.screenshot, mediaType: 'image/png' } },
+  {
+    type: 'attachment',
+    name: 'capture.png',
+    path: '/home/demi/.demi/attachments/gallery/capture.png',
+    mediaType: 'image/png',
+    sizeBytes: 48_213,
+    sha256: galleryBlobs.screenshot,
+  },
+] satisfies UserContentBlock[]])
+/** The sweeps of the specimens' uploads, which stop with the page. */
+const sweeps = new AbortController()
+onBeforeUnmount(() => sweeps.abort())
+
+/** The capture's upload sweeping to done, as a slow network uploads it; answers the message's content then. */
+function uploadCapture(capture: ReturnType<typeof composerAttachment>): Promise<UserContentBlock[]> {
+  return sweepUpload(sweeps.signal, (progress) => applyAttachmentUpdate(capture, { phase: 'uploading', progress }))
+    .then(() => {
+      applyAttachmentUpdate(capture, { phase: 'ready' })
+      return captureContent
+    })
+}
+
+function newCapture() {
+  return reactive(composerAttachment({
+    name: 'capture.png',
+    src: galleryBlobUrl(galleryBlobs.screenshot, 'image/png'),
+    phase: 'uploading',
+    progress: 0,
+  }))
+}
+
+const uploadingFlow = useTurnFlow({ id: 'gallery-sent-while-uploading' })
+function sendWhileUploading(): void {
+  const capture = newCapture()
+  uploadingFlow.turn(captureContent, { text: captureText, attachments: [capture], ready: uploadCapture(capture) })
+}
+sendWhileUploading()
+
+const uploadFailedFlow = useTurnFlow({ id: 'gallery-upload-failed' })
+let failedCapture = newCapture()
+function failUpload(): void {
+  failedCapture = newCapture()
+  applyAttachmentUpdate(failedCapture, { phase: 'failed' })
+  uploadFailedFlow.undelivered(
+    captureContent,
+    { text: captureText, attachments: [failedCapture] },
+    'capture.png did not upload. The server could not store it.',
+  )
+}
+failUpload()
 </script>
 
 <template>
@@ -158,6 +218,46 @@ failDelivery()
           />
         </div>
         <Button size="sm" class="mt-2" @click="failDelivery">Fail Again</Button>
+      </GallerySpecimen>
+      <GallerySpecimen wide variant="Sent while its file uploads">
+        <div class="flex h-[14rem] flex-col overflow-hidden rounded-lg bg-surface">
+          <AgentMessageList
+            class="min-h-0 flex-1"
+            :conversation-id="uploadingFlow.state.id"
+            :blocks="uploadingFlow.state.blocks"
+            :pending-steers="[]"
+            :queue="[]"
+            :phase="uploadingFlow.state.phase"
+            :load="uploadingFlow.state.load"
+            :pending-submissions="uploadingFlow.pendingSubmissions.value"
+            :removing="uploadingFlow.removing.value"
+            :bottom-offset="0"
+            :persisted-scroll-state="undefined"
+            read-only
+            @retry-submission="uploadingFlow.retrySubmission"
+          />
+        </div>
+        <Button size="sm" class="mt-2" @click="sendWhileUploading">Send Again</Button>
+      </GallerySpecimen>
+      <GallerySpecimen wide variant="Upload failed">
+        <div class="flex h-[16rem] flex-col overflow-hidden rounded-lg bg-surface">
+          <AgentMessageList
+            class="min-h-0 flex-1"
+            :conversation-id="uploadFailedFlow.state.id"
+            :blocks="uploadFailedFlow.state.blocks"
+            :pending-steers="[]"
+            :queue="[]"
+            :phase="uploadFailedFlow.state.phase"
+            :load="uploadFailedFlow.state.load"
+            :pending-submissions="uploadFailedFlow.pendingSubmissions.value"
+            :removing="uploadFailedFlow.removing.value"
+            :bottom-offset="0"
+            :persisted-scroll-state="undefined"
+            read-only
+            @retry-submission="(id) => uploadFailedFlow.retrySubmission(id, uploadCapture(failedCapture))"
+          />
+        </div>
+        <Button size="sm" class="mt-2" @click="failUpload">Fail Again</Button>
       </GallerySpecimen>
     </GallerySection>
   </div>
