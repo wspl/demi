@@ -94,7 +94,7 @@ The sidebar's two groups, Conversations and Projects, each fold under its
 label, as Finder's sidebar sections and Slack's do. A chevron after the
 label, in the label's faint color, points down while the group is open and
 right while it is folded; it shows while the pointer is over the label, and
-always on a touch screen, and a click on the label or the chevron folds or
+always on a phone, and a click on the label or the chevron folds or
 opens the group. A folded group shows its label alone, with two exceptions
 so that nothing the user needs hides in it: the conversation open in the
 page stays under the label, with its project's row above it in Projects so
