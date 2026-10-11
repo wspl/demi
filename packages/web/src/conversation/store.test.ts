@@ -681,6 +681,66 @@ test('Stop pressed while the first message is on its way stops the turn it start
   }
 })
 
+// Remove or Send Now pressed on a steer still on its way is the user's
+// latest wish, carried out once the session holds the steer, on what it
+// became: the steer, or the queued message a refused steer went as
+// (`web-application.md` § Responding to the user, `product.md` § Steer or queue).
+test.each([
+  { held: 'steer', press: 'Remove', request: 'deletePendingSteer' },
+  { held: 'steer', press: 'Send Now', request: 'interruptPendingSteer' },
+  { held: 'queue', press: 'Remove', request: 'dequeueMessage' },
+] as const)('$press pressed on a steer on its way is carried out once the session holds it as a $held', async ({ held, press, request }) => {
+  const store = useConversations()
+  const id = store.create()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  const restoreFetch = answerOpening(id)
+  const holds = deferred<void>()
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const steer = spyOn(ConversationRuntime.prototype, 'steer').mockImplementation(async () => {
+    await holds.promise
+  })
+  // Whether the session held the steer when each request went out.
+  const heldAtRequest: boolean[] = []
+  const carried = spyOn(ConversationRuntime.prototype, request).mockImplementation(async (messageId: string) => {
+    heldAtRequest.push([...conversation.pendingSteers, ...conversation.queue].some((message) => message.id === messageId))
+  })
+  try {
+    await chooseStubModel(conversation)
+    conversation.phase = 'running'
+    conversation.draft = 'Also check the sign-up page'
+    const sending = store.send(conversation, 'steer')
+    await waitFor(() => steer.mock.calls.length === 1, () => 'the steer was not sent')
+    const messageId = conversation.pendingSend!.id
+    // It shows as the steer it will be from the send.
+    expect(conversation.pendingSend?.way).toBe('steer')
+    if (press === 'Remove') {
+      store.removePendingSteer(conversation, messageId)
+    } else {
+      store.interruptWithSteer(conversation, messageId)
+    }
+    // One task's turn: a request sent at once has reached the runtime by now.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const content = [{ type: 'text' as const, text: 'Also check the sign-up page' }]
+    if (held === 'steer') {
+      conversation.pendingSteers = [{ id: messageId, content }]
+    } else {
+      conversation.queue = [{ id: messageId, content }]
+    }
+    holds.resolve()
+    await sending
+    await waitFor(() => carried.mock.calls.length === 1, () => `${request} was not called`)
+    expect(carried.mock.calls[0]?.[0]).toBe(messageId)
+    expect(heldAtRequest).toEqual([true])
+    expect(conversation.pendingSend).toBeNull()
+  } finally {
+    carried.mockRestore()
+    steer.mockRestore()
+    connect.mockRestore()
+    restoreFetch()
+  }
+})
+
 // The page hides the composer while a conversation loads: had the first send
 // shown the new conversation as loading, the composer the user sent from
 // would have gone, and the focus with it.

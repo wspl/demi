@@ -2,7 +2,8 @@
 import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, useAttrs } from 'vue'
 import { chromeEntrance } from '@demicodes/web-ui/ui/chrome-enter'
-import type { MessageListBlock } from '../pending-steers'
+import { waitingAs, type MessageListBlock } from '../pending-steers'
+import type { PendingSubmissionState } from '../types'
 import UserBlock from './UserBlock.vue'
 import ThinkingBlock from './ThinkingBlock.vue'
 import AgentReceiptBlock from './AgentReceiptBlock.vue'
@@ -16,6 +17,7 @@ import StoppedBlock from './StoppedBlock.vue'
 import CompactionBlock from './CompactionBlock.vue'
 import QueueDivider from './QueueDivider.vue'
 import PendingSubmission from '../PendingSubmission.vue'
+import ActivitySlot from './ActivitySlot.vue'
 import type { MessageForkState } from '../message-fork'
 import { provideBlockScope } from '../whole-blocks'
 import IndeterminateSpinner from '../../ui/IndeterminateSpinner.vue'
@@ -56,15 +58,39 @@ provideBlockScope(() => ('createdAt' in props.block ? props.block : undefined))
 /** Rows built on FunctionalBlock: the 28px chrome face. Text streams in on its own. */
 const entersAsChrome = computed(() =>
   props.entering
-  && (props.block.type === 'agent_message' || props.block.type === 'wakeup' || props.block.type === 'thinking' || props.block.type === 'tool_call' || props.block.type === 'pending_call' || props.block.type === 'work_group' || props.block.type === 'abort'),
+  && (props.block.type === 'agent_message' || props.block.type === 'wakeup' || props.block.type === 'thinking' || props.block.type === 'tool_call' || props.block.type === 'pending_call' || props.block.type === 'work_group' || props.block.type === 'abort' || props.block.type === 'activity_slot'),
 )
+
+/**
+ * Remove and Send Now on the message being sent: the same requests as on the
+ * steer or the queued message it will be, by the id it keeps, which the host
+ * carries out once the session holds it.
+ */
+function removeSubmission(submission: PendingSubmissionState): void {
+  if (submission.way === 'steer') {
+    emit('deletePendingSteer', submission.id)
+  } else {
+    emit('deleteQueued', submission.id)
+  }
+}
+
+function sendSubmissionNow(submission: PendingSubmissionState): void {
+  if (submission.way === 'steer') {
+    emit('interruptPendingSteer', submission.id)
+  } else {
+    emit('sendQueued', submission.id)
+  }
+}
 </script>
 
 <template>
   <PendingSubmission
     v-if="block.type === 'pending_submission'"
     v-bind="{ ...attrs, ...block.submission }"
+    :pending="waitingAs(block)"
     @retry="emit('retrySubmission')"
+    @remove="removeSubmission(block.submission)"
+    @send-now="sendSubmissionNow(block.submission)"
   />
   <UserBlock
     v-else-if="block.type === 'user'"
@@ -83,7 +109,7 @@ const entersAsChrome = computed(() =>
     v-else-if="block.type === 'pending_steer'"
     v-bind="attrs"
     :content="block.content"
-    pending="steer"
+    :pending="waitingAs(block)"
     @remove="emit('deletePendingSteer', block.pendingSteerId)"
     @send-now="emit('interruptPendingSteer', block.pendingSteerId)"
   />
@@ -91,7 +117,7 @@ const entersAsChrome = computed(() =>
     v-else-if="block.type === 'queued_message'"
     v-bind="attrs"
     :content="block.content"
-    pending="queued"
+    :pending="waitingAs(block)"
     @remove="emit('deleteQueued', block.queueId)"
     @send-now="emit('sendQueued', block.queueId)"
   />
@@ -183,6 +209,12 @@ const entersAsChrome = computed(() =>
     <CompactionBlock
       v-else-if="block.type === 'compaction_progress'"
       running
+    />
+    <ActivitySlot
+      v-else-if="block.type === 'activity_slot'"
+      :kind="block.slot.kind"
+      :incoming="block.slot.incoming"
+      :since="block.slot.since"
     />
   </div>
 </template>
