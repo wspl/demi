@@ -450,7 +450,10 @@ one only a single page could use stays in that page.
 A page's types are generated from its manifest into its package's
 `src/generated/`: its plugin's id; the schemas of its user and conversation
 state, of its methods' parameters and results, and of its streams' messages,
-such as the live view's frames; and the constants a stream's two ends share.
+such as the live view's frames; the closed set of reasons its calls and
+streams can fail with, which the page words in full
+([Plugin calls](../product/web-api.md#plugin-calls)); and the constants a
+stream's two ends share.
 `xtask contracts` reads them from the manifest and keeps no list of its own. A
 page never declares a schema by hand for a shape its manifest declares
 ([Generated TypeScript](contracts.md#generated-typescript)).
