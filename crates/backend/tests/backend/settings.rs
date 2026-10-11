@@ -8,7 +8,7 @@ use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::settings::{InstanceMode, Settings, UserPreferences};
 use demi_web_api_protocol::state::SyncEvent;
-use demi_web_api_protocol::subagents::{ProfileAnswer, SubagentSettings};
+use demi_web_api_protocol::subagents::{ProfileAnswer, SubagentLimit, SubagentSettings};
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
@@ -206,6 +206,14 @@ async fn a_reported_locale_is_checked_and_kept_in_canonical_form() {
 
 const PROFILES: &str = "/api/subagents/profiles";
 
+/// A limit of `limit`, lifted when `unlimited`.
+fn limit(limit: u32, unlimited: bool) -> SubagentLimit {
+    SubagentLimit {
+        limit: NonZeroU32::new(limit).unwrap(),
+        unlimited,
+    }
+}
+
 /// The subagent settings the next `subagents` message of `page` carries.
 async fn synced(page: &mut crate::support::SyncChannel) -> SubagentSettings {
     let events = page
@@ -335,22 +343,34 @@ async fn a_users_subagent_profiles_are_checked_written_and_reach_every_page_of_t
         .await;
     assert!(!settings.is_empty());
 
-    // The limits: a body names any of them, null for Unlimited, and the
-    // rest stay; a limit that is not a whole number from 1 is refused.
+    // The limits: a body names any of them, each its number and whether it
+    // is lifted, and the rest stay. A lifted limit keeps its number, which
+    // a limit set again brings back; a number that is not whole from 1 is
+    // refused, and so is a limit without its number.
     let limits = backend
-        .put("/api/subagents", &master, json!({ "maxLive": null, "maxDepth": 3 }))
+        .put(
+            "/api/subagents",
+            &master,
+            json!({
+                "maxLive": { "limit": 4, "unlimited": true },
+                "maxDepth": { "limit": 3, "unlimited": false }
+            }),
+        )
         .await;
     assert_eq!(limits.status, StatusCode::NO_CONTENT);
     let limited = synced(&mut page).await;
     assert_eq!(
         (limited.enabled, limited.max_live, limited.max_depth),
-        (false, None, NonZeroU32::new(3))
+        (false, limit(4, true), limit(3, false))
     );
     for body in [
-        json!({ "maxLive": 0 }),
-        json!({ "maxDepth": 1.5 }),
-        json!({ "maxLive": -1 }),
-        json!({ "maxDepth": "2" }),
+        json!({ "maxLive": { "limit": 0, "unlimited": false } }),
+        json!({ "maxDepth": { "limit": 1.5, "unlimited": false } }),
+        json!({ "maxLive": { "limit": -1, "unlimited": true } }),
+        json!({ "maxDepth": { "limit": "2", "unlimited": false } }),
+        json!({ "maxLive": { "unlimited": true } }),
+        json!({ "maxLive": null }),
+        json!({ "maxLive": 4 }),
     ] {
         let refused = backend.put("/api/subagents", &master, body.clone()).await;
         assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody), "{body}");
@@ -367,8 +387,8 @@ async fn a_users_subagent_profiles_are_checked_written_and_reach_every_page_of_t
         state.subagents,
         SubagentSettings {
             enabled: true,
-            max_live: NonZeroU32::new(10),
-            max_depth: NonZeroU32::new(1),
+            max_live: limit(10, false),
+            max_depth: limit(1, false),
             profiles: Vec::new()
         }
     );
@@ -382,7 +402,7 @@ async fn a_users_subagent_profiles_are_checked_written_and_reach_every_page_of_t
     assert!(!state.subagents.enabled);
     assert_eq!(
         (state.subagents.max_live, state.subagents.max_depth),
-        (None, NonZeroU32::new(3))
+        (limit(4, true), limit(3, false))
     );
     assert_eq!(state.subagents.profiles.len(), 1);
     assert_eq!(state.subagents.profiles[0].name, "reviewer");

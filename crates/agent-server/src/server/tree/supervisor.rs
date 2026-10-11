@@ -36,7 +36,7 @@ use super::Tree;
 use super::profiles::Limits;
 use crate::{
     Node,
-    node::{self, NodeRole, NodeSpec, Origin},
+    node::{self, Instructions, NodeRole, NodeSpec, Origin},
     server::{AgentServer, commands::with_runtime_groups},
 };
 
@@ -472,8 +472,13 @@ impl<H: HostResolver> Tree<H> {
         let deps = &server.deps;
         let activity = self.admission.enter(Purpose::Demand).await;
         let record = origin.record();
-        let instructions = match &record.instructions {
-            Some(instructions) => Rc::from(instructions.as_str()),
+        // A profile's child has the product's prompt with what its profile
+        // added; the inherit profile's copies its parent's whole.
+        let instructions = match &record.profile {
+            Some(_) => Instructions {
+                identity: deps.instructions.clone(),
+                added: record.instructions.as_deref().map(Rc::from),
+            },
             None => owner.instructions().clone(),
         };
         let inherited = owner.inherited_commands().clone();

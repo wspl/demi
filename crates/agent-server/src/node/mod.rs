@@ -233,8 +233,8 @@ impl<H: HostResolver> Node<H> {
     }
 
     /// The instructions of the node's system prompt, which a child without
-    /// a profile's inherits.
-    pub(crate) fn instructions(&self) -> &Rc<str> {
+    /// a profile inherits whole.
+    pub(crate) fn instructions(&self) -> &Instructions {
         &self.runtime.instructions
     }
 
@@ -297,8 +297,8 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     providers: Rc<dyn ProviderResolver>,
     cwd: String,
     hosts: Rc<H>,
-    /// The instructions of its system prompt, its identity.
-    instructions: Rc<str>,
+    /// The instructions of its system prompt.
+    instructions: Instructions,
     /// The product's harness guide.
     guide: Rc<str>,
     /// The capability index of its commands, rendered once.
@@ -496,10 +496,11 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                 id: &model.model.id,
             };
             Ok(system_prompt(
-                &self.instructions,
+                &self.instructions.identity,
                 &self.guide,
                 &self.index,
                 identity,
+                self.instructions.added.as_deref(),
             ))
         })
     }
@@ -784,6 +785,15 @@ impl Origin {
     }
 }
 
+/// The instructions of a node's system prompt (`system-prompt.md`
+/// § Identity): the product's, its identity, which every node has, and the
+/// text its subagent profile added after the model identity, if any.
+#[derive(Debug, Clone)]
+pub(crate) struct Instructions {
+    pub(crate) identity: Rc<str>,
+    pub(crate) added: Option<Rc<str>>,
+}
+
 /// What makes a node itself, and what it is built with.
 pub(crate) struct NodeSpec<H: HostResolver> {
     pub(crate) origin: Origin,
@@ -795,7 +805,7 @@ pub(crate) struct NodeSpec<H: HostResolver> {
     pub(crate) runtime: Box<dyn ProviderRuntime>,
     pub(crate) providers: Rc<dyn ProviderResolver>,
     pub(crate) hosts: Rc<H>,
-    pub(crate) instructions: Rc<str>,
+    pub(crate) instructions: Instructions,
     /// The product's harness guide, which every node carries.
     pub(crate) guide: Rc<str>,
     /// A child's identity, the text before each of its user turns.
