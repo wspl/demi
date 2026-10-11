@@ -182,7 +182,7 @@ const ringColor = computed(() => {
     <template v-if="hasDetails" #details="{ close }">
       <!-- The details scroll when the card would be taller than the room the
            page leaves it, as with every row of a long instructions list open. -->
-      <div class="w-80 max-w-full phone:w-full" :class="phone ? '' : 'context-details-bounded'">
+      <div class="w-[22rem] max-w-full phone:w-full" :class="phone ? '' : 'context-details-bounded'">
         <ScrollArea class="min-h-0 flex-1">
           <div v-if="rows.length" class="px-3 pt-2.5 pb-1.5">
             <div class="flex h-2 gap-px overflow-hidden rounded-full bg-overlay/8" aria-hidden="true">

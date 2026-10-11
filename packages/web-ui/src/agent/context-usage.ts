@@ -53,7 +53,7 @@ const LAYER_LABELS: Record<PromptLayerKind, string> = {
   harnessGuide: 'Harness guide',
   toolRules: 'Tool rules',
   modelIdentity: 'Model identity',
-  profileInstructions: 'Profile instructions',
+  profileInstructions: 'Instructions for this subagent',
 }
 
 /** What a context source is called where it is not a plugin's id. */
@@ -163,6 +163,8 @@ function cardPart(part: ContextPart, index: number): ContextCardPart {
       return plain('Thinking')
     case 'images':
       return plain('Images and documents')
+    case 'reports':
+      return plain('Reports and agent messages')
     case 'unattributed':
       return plain('Unattributed')
   }
