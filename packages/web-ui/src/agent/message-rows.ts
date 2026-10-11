@@ -28,7 +28,7 @@ export interface MessageRowsSource {
   failure?: SessionFailureNotice | null
   /** The messages sent and not yet confirmed, in the order they were sent. */
   pendingSubmissions?: readonly PendingSubmissionState[]
-  /** The waiting messages whose Remove is on its way, by id, which show nowhere. */
+  /** The waiting messages whose Undo Send is on its way, by id, which show nowhere. */
   removing?: readonly string[]
   atStart: boolean
   atEnd: boolean

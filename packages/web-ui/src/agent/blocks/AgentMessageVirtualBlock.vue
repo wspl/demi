@@ -47,9 +47,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  deletePendingSteer: [id: string]
+  undoSendSteer: [id: string]
   interruptPendingSteer: [id: string]
-  deleteQueued: [id: string]
+  undoSendQueued: [id: string]
   sendQueued: [id: string]
   editUser: [blockId: string]
   /** Retry on the message `id`, whose delivery failed. */
@@ -68,15 +68,15 @@ const entersAsChrome = computed(() =>
 )
 
 /**
- * Remove and Send Now on the message being sent: the same requests as on the
- * steer or the queued message it will be, by the id it keeps, which the host
- * carries out once the session holds it.
+ * Undo Send and Send Now on the message being sent: the same requests as on
+ * the steer or the queued message it will be, by the id it keeps, which the
+ * host carries out once the session holds it.
  */
-function removeSubmission(submission: PendingSubmissionState): void {
+function undoSendSubmission(submission: PendingSubmissionState): void {
   if (submission.way === 'steer') {
-    emit('deletePendingSteer', submission.id)
+    emit('undoSendSteer', submission.id)
   } else {
-    emit('deleteQueued', submission.id)
+    emit('undoSendQueued', submission.id)
   }
 }
 
@@ -97,7 +97,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-bind="{ ...attrs, ...block.submission }"
       :pending="waitingAs(block)"
       @retry="emit('retrySubmission', block.submission.id)"
-      @remove="removeSubmission(block.submission)"
+      @undo-send="undoSendSubmission(block.submission)"
       @send-now="sendSubmissionNow(block.submission)"
     />
     <UserBlock
@@ -118,7 +118,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-bind="attrs"
       :content="block.content"
       :pending="waitingAs(block)"
-      @remove="emit('deletePendingSteer', block.pendingSteerId)"
+      @undo-send="emit('undoSendSteer', block.pendingSteerId)"
       @send-now="emit('interruptPendingSteer', block.pendingSteerId)"
     />
     <UserBlock
@@ -126,7 +126,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-bind="attrs"
       :content="block.content"
       :pending="waitingAs(block)"
-      @remove="emit('deleteQueued', block.queueId)"
+      @undo-send="emit('undoSendQueued', block.queueId)"
       @send-now="emit('sendQueued', block.queueId)"
     />
     <QueueDivider

@@ -26,7 +26,7 @@ export function isRecordedTurnFailure(error: unknown): boolean {
 }
 
 /**
- * A Remove the session could not carry out, since the message went on
+ * An Undo Send the session could not carry out, since the message went on
  * first: the agent read the steer, or the queued message's turn began. The
  * transcript holds the message.
  */
@@ -35,8 +35,8 @@ export class RemovalRefusedError extends Error {}
 /** The refusal of a removal whose message went on: a steer the agent read, or a queued message whose turn began. */
 function refusedRemoval(steer: boolean): RemovalRefusedError {
   return new RemovalRefusedError(steer
-    ? 'The agent read it before it was removed.'
-    : 'Its turn began before it was removed.')
+    ? 'The agent had already read it.'
+    : 'Its turn had already begun.')
 }
 
 export type RuntimeState = Pick<

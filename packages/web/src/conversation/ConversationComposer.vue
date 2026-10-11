@@ -16,7 +16,6 @@ import {
   remoteAttachmentError,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
-import type { PasteHost } from '@demicodes/web-ui/agent/message-input/copied-message'
 import type { SendWay } from '@demicodes/web-ui/agent/send-way'
 import { executionFor, hostDeviceOptions, moveLocked, primaryHostOf } from '../targets/execution'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
@@ -65,21 +64,8 @@ function addFiles(files: File[]) {
   composer.value?.insertCapsules(store.addFiles(props.conversation, files).map(composerCapsule))
 }
 
-/**
- * How a message pasted into the draft brings its files back: a stored file
- * at once, attaching beside its capsule without its bytes, and a device file
- * by its device and path (`product.md` § Writing a message).
- */
-const paste: PasteHost = {
-  claim: (file, picture) => {
-    const { item, kept } = store.claimFile(props.conversation, file, picture)
-    return { capsule: composerCapsule(item), kept }
-  },
-  remote: (file) => {
-    const item = store.attachDeviceFile(props.conversation, file)
-    return item && composerCapsule(item)
-  },
-}
+/** How a message pasted into the draft brings its files back, as the store takes them. */
+const paste = computed(() => store.pasteHost(props.conversation))
 
 /** The version of the draft a later save replaced, which the composer offers to restore. */
 const replaced = computed(() => {

@@ -23,7 +23,7 @@ export interface ListTailInput {
   /** The messages sent and not yet confirmed, in the order they were sent. */
   pendingSubmissions?: readonly PendingSubmissionState[]
   /**
-   * The waiting messages whose Remove is on its way, by id: their rows are
+   * The waiting messages whose Undo Send is on its way, by id: their rows are
    * gone from the press (`product.md` § Steer or queue).
    */
   removing?: readonly string[]
@@ -52,7 +52,7 @@ export interface ListTail {
  * message the session holds already shows there alone, in the transcript, as
  * a steer or in the queue: the row it was waiting in becomes that one
  * (`row-key.ts`), so it never shows twice, whichever of the two the server
- * tells first. A message whose Remove is on its way shows nowhere. A message
+ * tells first. A message whose Undo Send is on its way shows nowhere. A message
  * whose delivery failed is followed by the row that tells it.
  */
 export function listTailBlocks(input: ListTailInput): ListTail {
