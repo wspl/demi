@@ -185,6 +185,45 @@ async fn the_tab_methods_run_the_browsers_operations_as_the_user_on_the_conversa
     backend.close().await;
 }
 
+/// A tab list the Host's browser service cannot give, because the service
+/// does not start, answers that the plugin failed and why (`web-api.md`
+/// § Plugin calls), not that the connection to the device broke: on prod
+/// the first listing after an upgrade waited for the new release's browser
+/// service, which did not start in time, and answered
+/// `host_operation_failed`. A paired device's real runner, about a second.
+#[tokio::test]
+async fn a_tab_list_whose_browser_service_does_not_start_answers_that_the_plugin_failed() {
+    let harness = Harness::new().with_browser_package_that_does_not_start();
+    let (backend, master) = harness.start_set_up().await;
+    let laptop = backend.pair(&master, "laptop").await;
+    let id = conversation(&backend, &master).await;
+    let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
+    let target = json!({ "target": { "kind": "device", "deviceId": laptop.id(), "path": home } });
+    let moved = backend
+        .patch(&format!("/api/conversations/{id}"), &master, target)
+        .await;
+    assert_eq!(
+        moved.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&moved.body)
+    );
+
+    let listed = tabs(&backend, &master, &id).await;
+    assert_eq!(
+        listed.refusal(),
+        (StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::PluginFailed),
+        "{}",
+        String::from_utf8_lossy(&listed.body)
+    );
+    let message = listed.error().message;
+    assert!(
+        message.contains("the browser service cannot start here"),
+        "{message}"
+    );
+    backend.close().await;
+}
+
 #[tokio::test]
 async fn a_stopped_cloud_is_not_woken_to_list_sync_or_move_its_tabs() {
     let harness = Harness::new().with_browser_package();
