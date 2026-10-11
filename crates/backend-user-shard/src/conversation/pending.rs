@@ -203,7 +203,9 @@ impl Shard {
             recipient_id: recipient.clone(),
             timestamp: at,
             content: content.clone(),
-            event: AgentMessageEvent::MoveFailed {},
+            event: AgentMessageEvent::MoveFailed {
+                reason: why.to_owned(),
+            },
             origin: None,
         };
         let root = root_of(&record.id);

@@ -41,7 +41,14 @@ test('the rows the user’s decisions and Demi make keep their wording and name 
     .toEqual({ notice: 'You allowed this conversation to manage skills', title: null, subject: false, tag: null })
   expect(receiptRow(plain({ type: 'moved', host: 'MacBook Pro', path: '/Users/alex/app', home: '/Users/alex' })))
     .toEqual({ notice: 'You moved this conversation to MacBook Pro · ~/app', title: null, subject: false, tag: null })
-  expect(receiptOrigin(plain({ type: 'move_failed' }))).toBeNull()
+  expect(receiptOrigin(plain({ type: 'move_failed', reason: 'the project no longer exists' }))).toBeNull()
+})
+
+test('a row that does not open says all there is in its words: a failed move says why', () => {
+  const plain = (event: AgentMessage['event']): AgentMessage =>
+    ({ id: 'move-failed:m1', recipientId: 'conversation-1', timestamp: '2026-10-11T12:00:00.000Z', content: 'Demi could not make the move.', event })
+  expect(receiptRow(plain({ type: 'move_failed', reason: 'the project no longer exists' })))
+    .toEqual({ notice: 'Move failed: the project no longer exists', title: null, subject: false, tag: null })
 })
 
 test('a receipt opens the block it names in its sender’s transcript, the root’s as the conversation’s own', () => {

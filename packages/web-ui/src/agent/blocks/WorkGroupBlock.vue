@@ -191,9 +191,7 @@ function pick(path: string, clicks: number): void {
   </BlockScope>
   <div v-else-if="loneNotice" class="[--agent-pad-x:0px]">
     <CommandReportBlock v-if="loneNotice.type === 'wakeup'" :reports="loneNotice.reports" :working="group.live" />
-    <BlockScope v-else :block="loneNotice">
-      <AgentReceiptBlock v-model:open="isOpen" :message="loneNotice.message" :working="group.live" />
-    </BlockScope>
+    <AgentReceiptBlock v-else :message="loneNotice.message" :working="group.live" />
   </div>
   <template v-else>
     <FunctionalBlock
@@ -237,9 +235,7 @@ function pick(path: string, clicks: number): void {
             </BlockScope>
             <PendingCallBlock v-else-if="step.type === 'pending_call'" :call="step.call" />
             <CommandReportBlock v-else-if="step.type === 'wakeup'" :reports="step.reports" />
-            <BlockScope v-else :block="step">
-              <AgentReceiptBlock :message="step.message" />
-            </BlockScope>
+            <AgentReceiptBlock v-else :message="step.message" />
           </div>
         </div>
       </template>
