@@ -952,6 +952,25 @@ not user input. The gallery shows every variant.
 - No receipt content is discarded to reduce visual noise; the collapsed row is
   the quiet default, and the complete message stays inspectable.
 
+### Linking an agent
+
+A message can link an agent of the conversation as `agent:<number>`, the
+number `demi agent spawn` printed, which no other agent of the conversation
+ever has; the root is `agent:0`. For example, the agent's reply says "I gave
+the icons to [File icons, CJK emphasis](agent:4)": the link shows as the
+agent's mark, the one its tab in the Agents window wears, the robot with the
+dot of its state on its corner, then the link's text, so it reads as an agent
+and its state shows without a mark of its own, changing as the agent runs and
+ends. Pointed at, it names the agent, *Subagent 4 · Finished*, and its
+description. A click opens the Agents window on that agent's tab, a finished
+one as its Completed menu picks it; a click when the window already shows
+that tab closes the window, as a control that opens what the work panel
+already shows closes it. `agent:0` in a subagent's transcript brings the
+conversation's own transcript into view. A number the conversation does not
+have shows the link's text alone, and pointed at, *No agent 9 in this
+conversation*. The product's instructions tell the model to link the agents
+it names this way ([System prompt](system-prompt.md)).
+
 Nested tool use renders from the same blocks on `subagent_transcript_*`, keyed
 by `subagentId` under the matching `subagent` `started` job, with
 `parentSessionId` giving the tree.
