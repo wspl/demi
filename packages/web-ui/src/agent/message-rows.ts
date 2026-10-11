@@ -23,7 +23,10 @@ export interface MessageRowsSource {
   load?: SessionLoad
   backendAway?: boolean
   pendingAction?: PendingAction
-  pendingSubmission?: PendingSubmissionState | null
+  /** The messages sent and not yet confirmed, in the order they were sent. */
+  pendingSubmissions?: readonly PendingSubmissionState[]
+  /** The waiting messages whose Remove is on its way, by id, which show nowhere. */
+  removing?: readonly string[]
   atStart: boolean
   atEnd: boolean
   latest: boolean
@@ -78,7 +81,8 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
       pendingCalls: input.pendingCalls ?? [],
       pendingSteers: input.pendingSteers,
       queue: input.queue,
-      pendingSubmission: input.pendingSubmission,
+      pendingSubmissions: input.pendingSubmissions,
+      removing: input.removing,
     })
   })
   // The calls the model is writing are the newest steps of the work: they join
@@ -100,7 +104,7 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
         turnRows: groupWork(workBlocks.value, running.value),
       }
     },
-    pendingSubmission: () => source().pendingSubmission ?? null,
+    pendingSubmissions: () => source().pendingSubmissions ?? [],
     waitingSince: () => source().waitingSince ?? null,
     tail: () => workBlocks.value.at(-1),
     scope: () => source().conversationId,

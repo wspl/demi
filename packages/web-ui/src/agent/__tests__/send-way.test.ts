@@ -2,7 +2,8 @@ import { expect, test } from 'bun:test'
 import { Editor, isMacOS, type JSONContent } from '@tiptap/core'
 import type { EditorView } from '@tiptap/pm/view'
 import { composerExtensions } from '../message-editor/extensions'
-import { chooseSendWay, type SendWay, type SendWhileRunning } from '../send-way'
+import { effectScope, nextTick, ref } from 'vue'
+import { chooseSendWay, useSendOnceLoaded, type SendWay, type SendWhileRunning } from '../send-way'
 
 // The composer's keys reach its real keymap, and what they ask goes through
 // the composer's choice of way (`product.md` § Steer or queue); an input
@@ -101,4 +102,42 @@ test("an input method's Enter sends nothing and its Escape ends no edit, in Chro
   // The next Enter is the user's own.
   expect(press(PARAGRAPH, ENTER)).toEqual({ sent: [false], cancelled: 0, reachesPage: true })
   expect(press(PARAGRAPH, { key: 'Escape', keyCode: 27 })).toEqual({ sent: [], cancelled: 1, reachesPage: true })
+})
+
+// Seen at 400 ms latency: Enter on a new conversation's first message right
+// after the page loaded did nothing, since the model list was still loading
+// and the send button had no reason to say (`product.md` § Writing a message).
+test('Enter while the models load waits, and the message goes the way Enter asked once they have loaded and it can', async () => {
+  const scope = effectScope()
+  const blocked = ref(true)
+  const loading = ref(true)
+  const sent: boolean[] = []
+  const wait = scope.run(() => useSendOnceLoaded({ blocked: () => blocked.value, loading: () => loading.value, send: (other) => sent.push(other) }))!
+  try {
+    expect(wait.keep(true)).toBe(true)
+    loading.value = false
+    blocked.value = false
+    await nextTick()
+    expect(sent).toEqual([true])
+    // Nothing waits any more: the next change sends nothing.
+    blocked.value = true
+    await nextTick()
+    blocked.value = false
+    await nextTick()
+    expect(sent).toEqual([true])
+    // Once loaded, Enter on a message that cannot go keeps nothing: the button says why.
+    blocked.value = true
+    expect(wait.keep(false)).toBe(false)
+    // Models that loaded and still cannot send end the wait; a model chosen later sends nothing.
+    loading.value = true
+    await nextTick()
+    expect(wait.keep(false)).toBe(true)
+    loading.value = false
+    await nextTick()
+    blocked.value = false
+    await nextTick()
+    expect(sent).toEqual([true])
+  } finally {
+    scope.stop()
+  }
 })

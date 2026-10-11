@@ -1,4 +1,5 @@
 import { isMacOS } from '@tiptap/core'
+import { watch } from 'vue'
 import type { TitleText } from '../ui/ui-text'
 
 /**
@@ -43,6 +44,51 @@ export function chooseSendWay(working: boolean, preferred: SendWhileRunning, ask
  */
 export function otherWayKeys(): string {
   return isMacOS() ? '⌘⏎' : 'Ctrl+Enter'
+}
+
+/**
+ * Enter on a message that cannot go only because what it needs is still
+ * loading, as the model list is right after the page loads
+ * (`product.md` § Writing a message): the send button says why, and the
+ * message goes by itself, the way Enter asked, once it can. What loaded and
+ * still cannot send, such as no usable model, ends the wait, and the button
+ * says why then. Call it in a component's setup, whose scope ends the watch.
+ */
+export function useSendOnceLoaded(options: {
+  /** Whether the message cannot go now. */
+  blocked: () => boolean
+  /** Whether what it waits for is still loading. */
+  loading: () => boolean
+  /** Sends the message, the other way when Enter asked for it. */
+  send: (asksOtherWay: boolean) => void
+}): {
+  /** Keeps Enter pressed on a message that cannot go yet, while what it waits for loads; answers whether it waits. */
+  keep: (asksOtherWay: boolean) => boolean
+} {
+  /** The Enter that waits, by whether it asked for the other way; null while none does. */
+  let waiting: boolean | null = null
+  watch(options.blocked, (blocked) => {
+    const asksOtherWay = waiting
+    if (blocked || asksOtherWay === null) {
+      return
+    }
+    waiting = null
+    options.send(asksOtherWay)
+  })
+  watch(options.loading, (loading) => {
+    if (!loading && options.blocked()) {
+      waiting = null
+    }
+  })
+  return {
+    keep: (asksOtherWay) => {
+      if (!options.loading()) {
+        return false
+      }
+      waiting = asksOtherWay
+      return true
+    },
+  }
 }
 
 /** Whether a click on the send button asks for the other way: ⌘-click on macOS, Ctrl-click elsewhere, as the key does. */

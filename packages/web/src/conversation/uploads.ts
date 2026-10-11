@@ -10,6 +10,11 @@ import {
 import { uploadAttachment } from '../api/uploads'
 import type { Conversation, ProductAttachment } from '../state/types'
 
+/** The files of the messages sent and not yet confirmed, which the composer carries until they are. */
+export function sendingFileIds(conversation: Pick<Conversation, 'pendingSends'>): Set<string> {
+  return new Set(conversation.pendingSends.flatMap((pending) => pending.fileIds))
+}
+
 /** Owns file transfers and preview resources for one product account. */
 export function createConversationUploads(
   onChange: () => void,
@@ -106,7 +111,7 @@ export function createConversationUploads(
    * (`arrangeCapsuleFiles`). The files of a message being sent are not its.
    */
   function arrangeFiles(conversation: Conversation, ids: readonly string[]): void {
-    const sending = new Set(conversation.pendingSend?.fileIds ?? [])
+    const sending = sendingFileIds(conversation)
     const next = arrangeCapsuleFiles(
       conversation.files,
       conversation.attachmentIds,
@@ -127,9 +132,12 @@ export function createConversationUploads(
     onChange()
   }
 
-  /** Lets go of the files no capsule stands for: nothing can bring them back now. */
+  /**
+   * Lets go of the files no capsule stands for, which nothing can bring back
+   * now; those of the messages still on their way stay with them.
+   */
   function releaseSpare(conversation: Conversation): void {
-    const has = new Set(conversation.attachmentIds)
+    const has = new Set([...conversation.attachmentIds, ...sendingFileIds(conversation)])
     for (const file of conversation.files) {
       if (!has.has(file.id)) {
         releaseFile(file)
@@ -145,7 +153,7 @@ export function createConversationUploads(
    * outside takes the place of what the composer held, its undo included.
    */
   function showFiles(conversation: Conversation, files: ProductAttachment[]): void {
-    const sending = new Set(conversation.pendingSend?.fileIds ?? [])
+    const sending = sendingFileIds(conversation)
     const shown = new Set(files.map((file) => file.id))
     for (const file of conversation.files) {
       if (!shown.has(file.id) && !sending.has(file.id)) {

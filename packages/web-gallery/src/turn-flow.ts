@@ -1,4 +1,4 @@
-import { onBeforeUnmount, reactive, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, shallowRef, watch } from 'vue'
 import type { Block, ContextUsage, UserContentBlock } from '@demicodes/protocol'
 import { ACTIVITY_HANDOFF_MS } from '@demicodes/web-ui/agent/activity-slot'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
@@ -147,18 +147,29 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     terminals: options.terminals ?? [],
   })
   const timers: number[] = []
-  /** The message sent and not yet confirmed, as `ChatSession` shows it. */
-  const pendingSubmission = shallowRef<PendingSubmissionState | null>(null)
-  /** What the pending message sends, which its user block holds once confirmed. */
-  let pendingContent: UserContentBlock[] = []
+  /** The messages sent and not yet confirmed, in the order they were sent, as `ChatSession` shows them. */
+  const pendingSubmissions = shallowRef<PendingSubmissionState[]>([])
+  /** What each pending message sends, by its id, which its block holds once confirmed. */
+  const contents = new Map<string, UserContentBlock[]>()
+  /** The waiting messages whose Remove is on its way, by id, which the list shows nowhere. */
+  const removing = shallowRef<string[]>([])
   /**
-   * The simulated server's answer to a steer or a queued message on its way,
-   * which a turn cut short or stopped does not cancel, as a session holds
-   * what it was sent whatever its turn does.
+   * The message that starts a turn is on its way: the turn is as good as
+   * running, so the composer shows Stop, and a message sent meanwhile
+   * steers it or waits in the queue, as the product's does.
    */
-  let delivery: number | undefined
-  /** Remove or Send Now pressed on the steer or queued message on its way, carried out once it is held. */
-  let wish: 'remove' | 'sendNow' | null = null
+  const startingTurn = computed(() =>
+    state.phase === 'idle' && pendingSubmissions.value.some((pending) => pending.error === null))
+  /**
+   * The simulated server's answers to the steers and queued messages on
+   * their way, by id, which a turn cut short or stopped does not cancel, as
+   * a session holds what it was sent whatever its turn does.
+   */
+  const deliveries = new Map<string, number>()
+  /** When the last message on its way is delivered, as `Date.now()`: the next one goes after it, never ahead. */
+  let deliveredBy = 0
+  /** Remove or Send Now pressed on a steer or queued message on its way, by id, carried out once it is held. */
+  const wishes = new Map<string, 'remove' | 'sendNow'>()
   let token = 0
   let sequence = 0
   /** The call of the turn that runs now, whose command a stop ends. */
@@ -517,7 +528,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   /** The `work` turn as it stands once it ended, as a page opened later shows it. */
   function settleWork(): void {
     cancel()
-    pendingSubmission.value = null
+    forgetSubmissions()
     state.pendingCalls = []
     state.phase = 'idle'
     const at = now()
@@ -552,64 +563,102 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   /**
    * The page holds a sent message until the server confirms it, with why its
    * delivery failed, as what it will be: the next message, a steer or a
-   * queued message.
+   * queued message. Answers its id.
    */
-  function holdMessage(content: UserContentBlock[], message: SentMessage, error: string | null, way: SendWay = 'send'): void {
-    pendingSubmission.value = { id: nextId('message'), way, ...message, error }
-    pendingContent = content
+  function holdMessage(content: UserContentBlock[], message: SentMessage, error: string | null, way: SendWay = 'send'): string {
+    const id = nextId('message')
+    pendingSubmissions.value = [...pendingSubmissions.value, { id, way, ...message, error }]
+    contents.set(id, content)
+    return id
+  }
+
+  function changeSubmission(id: string, change: Partial<PendingSubmissionState>): void {
+    pendingSubmissions.value = pendingSubmissions.value.map((pending) => pending.id === id ? { ...pending, ...change } : pending)
+  }
+
+  /** The message `id` is no longer on its way; answers what it sends. */
+  function dropSubmission(id: string): UserContentBlock[] {
+    pendingSubmissions.value = pendingSubmissions.value.filter((pending) => pending.id !== id)
+    const content = contents.get(id) ?? []
+    contents.delete(id)
+    return content
+  }
+
+  /** Lets go of every message on its way and what waits for one, as a fixture starting over does. */
+  function forgetSubmissions(): void {
+    for (const timer of deliveries.values()) {
+      window.clearTimeout(timer)
+    }
+    deliveries.clear()
+    wishes.clear()
+    contents.clear()
+    pendingSubmissions.value = []
+    removing.value = []
+    deliveredBy = 0
+  }
+
+  /** The simulated server answers a message on its way once it has answered the one before, as the product delivers them. */
+  function nextDelivery(): number {
+    deliveredBy = Math.max(Date.now(), deliveredBy) + CONFIRM_MS
+    return deliveredBy - Date.now()
   }
 
   /**
    * A steer or a queued message on its way, shown as what it will be from the
-   * send: after the delivery's wait the simulated server holds it, a steer
-   * in the running turn's steers and a queued message in the queue, under
-   * the id it was sent with; with nothing running, it is refused and goes
-   * as a message, which starts a turn, as the product sends it. Remove or
-   * Send Now pressed meanwhile is carried out then.
+   * send: once the simulated server has answered the messages before it,
+   * it holds this one, a steer in the running turn's steers and a queued
+   * message in the queue, under the id it was sent with; with nothing
+   * running, it is refused and goes as a message, which starts a turn, as
+   * the product sends it. Remove or Send Now pressed meanwhile is carried
+   * out then.
    */
   function deliverWaiting(content: UserContentBlock[], message: SentMessage, way: 'steer' | 'queue'): void {
-    holdMessage(content, message, null, way)
-    wish = null
-    window.clearTimeout(delivery)
-    delivery = window.setTimeout(() => {
-      delivery = undefined
-      const pending = pendingSubmission.value
-      if (!pending || pending.error !== null) {
-        return
-      }
-      if (state.phase === 'idle') {
-        wish = null
-        pendingSubmission.value = { ...pending, way: 'send' }
-        deliver(token, false)
-        return
-      }
-      pendingSubmission.value = null
-      const held = { id: pending.id, content: pendingContent }
-      if (pending.way === 'steer') {
-        state.pendingSteers = [...state.pendingSteers, held]
-      } else {
-        state.queue = [...state.queue, held]
-      }
-      const wished = wish
-      wish = null
-      if (wished === 'remove' && pending.way === 'steer') {
-        removePendingSteer(pending.id)
-      } else if (wished === 'remove') {
-        removeQueued(pending.id)
-      } else if (wished === 'sendNow' && pending.way === 'steer') {
-        interruptPendingSteer(pending.id)
-      } else if (wished === 'sendNow') {
-        sendQueued(pending.id)
-      }
-    }, CONFIRM_MS)
+    const id = holdMessage(content, message, null, way)
+    deliveries.set(id, window.setTimeout(() => arrive(id), nextDelivery()))
   }
 
-  /** Keeps Remove or Send Now pressed on the message on its way as the wish; false for any other message. */
+  function arrive(id: string): void {
+    deliveries.delete(id)
+    const pending = pendingSubmissions.value.find((each) => each.id === id)
+    if (!pending || pending.error !== null) {
+      return
+    }
+    const wished = wishes.get(id)
+    wishes.delete(id)
+    if (state.phase === 'idle') {
+      if (wished === 'remove') {
+        // A message removed before it went is gone with its delivery.
+        dropSubmission(id)
+        removing.value = removing.value.filter((each) => each !== id)
+        return
+      }
+      changeSubmission(id, { way: 'send' })
+      deliver(token, false)
+      return
+    }
+    const held = { id, content: dropSubmission(id) }
+    if (pending.way === 'steer') {
+      state.pendingSteers = [...state.pendingSteers, held]
+    } else {
+      state.queue = [...state.queue, held]
+    }
+    if (wished === 'remove' && pending.way === 'steer') {
+      removePendingSteer(id)
+    } else if (wished === 'remove') {
+      removeQueued(id)
+    } else if (wished === 'sendNow' && pending.way === 'steer') {
+      interruptPendingSteer(id)
+    } else if (wished === 'sendNow') {
+      sendQueued(id)
+    }
+  }
+
+  /** Keeps Remove or Send Now pressed on a message on its way as the wish; false for any other message. */
   function keepWish(id: string, wished: 'remove' | 'sendNow'): boolean {
-    if (pendingSubmission.value?.id !== id || delivery === undefined) {
+    if (!deliveries.has(id)) {
       return false
     }
-    wish = wished
+    wishes.set(id, wished)
     return true
   }
 
@@ -628,27 +677,33 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     at(run, ADMIT_MS, () => {
       state.phase = 'running'
     })
+    deliveredBy = Math.max(deliveredBy, Date.now() + CONFIRM_MS)
     at(run, CONFIRM_MS, () => {
       confirmMessage()
       body(run)
     })
   }
 
-  /** The pending message's user block is written, under the id it was sent with: the message is no longer pending. */
+  /**
+   * The message on its way that starts the turn, sent as the next message;
+   * a steer or a queued message on its way is not the turn's message.
+   */
+  function turnMessage(): PendingSubmissionState | undefined {
+    return pendingSubmissions.value.find((pending) => pending.error === null && pending.way === 'send')
+  }
+
+  /** The turn's message is written, under the id it was sent with: the message is no longer pending. */
   function confirmMessage(): void {
-    const pending = pendingSubmission.value
-    // A steer or a queued message on its way is not the turn's message.
-    if (pending?.error !== null || pending.way !== 'send') {
-      return
+    const pending = turnMessage()
+    if (pending) {
+      append(userBlock(dropSubmission(pending.id), pending.id))
     }
-    pendingSubmission.value = null
-    append(userBlock(pendingContent, pending.id))
   }
 
   function undeliver(error: string): void {
-    const pending = pendingSubmission.value
+    const pending = turnMessage()
     if (pending) {
-      pendingSubmission.value = { ...pending, error }
+      changeSubmission(pending.id, { error })
     }
   }
 
@@ -657,17 +712,27 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     cancel()
     state.phase = 'idle'
     state.blocks = []
+    forgetSubmissions()
     holdMessage(content, message, error)
   }
 
-  /** Retry sends the undelivered message again with its id, as the product's does; this time it arrives. */
-  function retrySubmission(): void {
-    const pending = pendingSubmission.value
+  /**
+   * Retry sends the undelivered message again with its id, as a message, as
+   * the product's does; this time it arrives: it starts a turn while nothing
+   * runs, and waits in the queue otherwise.
+   */
+  function retrySubmission(id: string): void {
+    const pending = pendingSubmissions.value.find((each) => each.id === id)
     if (!pending?.error) {
       return
     }
+    if (state.phase !== 'idle') {
+      changeSubmission(id, { error: null, way: 'queue' })
+      deliveries.set(id, window.setTimeout(() => arrive(id), nextDelivery()))
+      return
+    }
     cancel()
-    pendingSubmission.value = { ...pending, error: null }
+    changeSubmission(id, { error: null, way: 'send' })
     deliver(token, false)
   }
 
@@ -755,10 +820,11 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    * A message sent as a steer: it shows as one from the send, and once held
    * it waits as a pending steer until the turn's next boundary. With nothing
    * running, the steer is refused and the message goes as a message, as the
-   * product sends it.
+   * product sends it; a message on its way that starts a turn counts as
+   * running.
    */
   function steer(content: UserContentBlock[], message: SentMessage): void {
-    if (state.phase === 'idle') {
+    if (state.phase === 'idle' && !startingTurn.value) {
       turn(content, message)
       return
     }
@@ -770,11 +836,14 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     deliverWaiting(content, message, 'queue')
   }
 
+  /** Remove takes the row away at once, as the product's does; the simulated server holds the message no more right after. */
   function removeQueued(id: string): void {
     if (keepWish(id, 'remove')) {
+      removing.value = [...removing.value, id]
       return
     }
     state.queue = state.queue.filter((entry) => entry.id !== id)
+    removing.value = removing.value.filter((each) => each !== id)
   }
 
   /**
@@ -807,9 +876,11 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
   function removePendingSteer(id: string): void {
     if (keepWish(id, 'remove')) {
+      removing.value = [...removing.value, id]
       return
     }
     state.pendingSteers = state.pendingSteers.filter((entry) => entry.id !== id)
+    removing.value = removing.value.filter((each) => each !== id)
   }
 
   /**
@@ -879,15 +950,12 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   /** Reset to a fixture and play it. */
   function play(kind: TurnFlowKind = 'turn'): void {
     cancel()
-    window.clearTimeout(delivery)
-    delivery = undefined
-    wish = null
+    forgetSubmissions()
     const run = token
     state.lastError = null
     state.pendingAction = null
     state.load = 'ready'
     state.phase = 'idle'
-    pendingSubmission.value = null
     // A play starts over: what waited for the last one goes with it.
     state.pendingSteers = []
     state.queue = []
@@ -997,12 +1065,14 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
   onBeforeUnmount(() => {
     cancel()
-    window.clearTimeout(delivery)
+    forgetSubmissions()
   })
 
   return {
     state,
-    pendingSubmission,
+    pendingSubmissions,
+    removing,
+    startingTurn,
     play,
     settleWork,
     turn,

@@ -49,7 +49,8 @@ const emit = defineEmits<{
   deleteQueued: [id: string]
   sendQueued: [id: string]
   editUser: [blockId: string]
-  retrySubmission: []
+  /** Retry on the message `id`, whose delivery failed. */
+  retrySubmission: [id: string]
 }>()
 
 const attrs = useAttrs()
@@ -88,7 +89,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
     v-if="block.type === 'pending_submission'"
     v-bind="{ ...attrs, ...block.submission }"
     :pending="waitingAs(block)"
-    @retry="emit('retrySubmission')"
+    @retry="emit('retrySubmission', block.submission.id)"
     @remove="removeSubmission(block.submission)"
     @send-now="sendSubmissionNow(block.submission)"
   />

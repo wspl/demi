@@ -2,12 +2,12 @@ import { expect, jest, spyOn, test } from 'bun:test'
 import type { PendingSteer } from '@demicodes/protocol'
 import { deferred, delay, waitFor } from '@demicodes/utils'
 import { computed } from 'vue'
-import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
+import { ConversationRuntime, RemovalRefusedError, type RuntimeState } from '../conversation-runtime'
 import { ConversationSocketError, connectConversationClient } from '../../transport/conversation-socket'
 import { pageReturned } from '../../transport/liveness'
 import { playSockets } from '../../transport/__tests__/test-socket'
 import { EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
-import { clientHarness, model, userBlock } from './agent-harness'
+import { clientHarness, createdAt, model, userBlock } from './agent-harness'
 
 function state(): RuntimeState {
   return {
@@ -174,6 +174,110 @@ test('send now on a pending steer or a queued message stops nothing and never tu
     runtime.dispose()
   }
 })
+
+// Remove on a steer or a queued message (`product.md` § Steer or queue): the
+// session answers whether it removed the message or the message had gone on
+// (`runtime.md` § Pending steers), and the removal settles on that answer
+// alone, whatever frames come before it.
+test.each([
+  { kind: 'steer', outcome: 'removed' },
+  { kind: 'steer', outcome: 'gone_on' },
+  { kind: 'queued', outcome: 'removed' },
+  { kind: 'queued', outcome: 'gone_on' },
+] as const)('removing a $kind message settles on the session\'s answer: $outcome', async ({ kind, outcome }) => {
+  const h = clientHarness()
+  const current = state()
+  const runtime = new ConversationRuntime({ state: current, connect: async () => h.client })
+  const content = [{ type: 'text' as const, text: 'skip the e2e tests' }]
+  try {
+    await runtime.connect()
+    h.receive({ type: 'phase', phase: 'running' })
+    h.receive({ type: 'pending_steers', pendingSteers: kind === 'steer' ? [{ id: 'm', turnId: 'turn-1', model, content }] : [] })
+    h.receive({ type: 'queue', queue: kind === 'queued' ? [{ id: 'm', content }] : [] })
+    let settled = false
+    const removal = runtime.removeWaiting('m').then(() => 'removed', (error: unknown) => error).finally(() => {
+      settled = true
+    })
+    await waitFor(() => h.sent.length > 1)
+    expect(h.sent.at(-1)).toEqual(kind === 'steer' ? { type: 'cancel_pending_steer', steerId: 'm' } : { type: 'dequeue_message', messageId: 'm' })
+    // The list's frame comes first, and the agent going idle tells nothing.
+    h.receive(kind === 'steer' ? { type: 'pending_steers', pendingSteers: [] } : { type: 'queue', queue: [] })
+    h.receive({ type: 'phase', phase: 'idle' })
+    await turn()
+    expect(settled).toBe(false)
+    h.receive({ type: 'remove_result', id: 'm', outcome })
+    const result = await removal
+    if (outcome === 'removed') {
+      expect(result).toBe('removed')
+    } else {
+      expect(result).toBeInstanceOf(RemovalRefusedError)
+    }
+  } finally {
+    runtime.dispose()
+  }
+})
+
+for (const fate of ['removed', 'gone on', 'still listed'] as const) {
+  test(`a removal whose socket is lost before the answer settles from the reopened session: ${fate}`, async () => {
+    const sockets = playSockets()
+    const current = state()
+    const runtime = new ConversationRuntime({
+      state: current,
+      connect: (signal) => connectConversationClient('ws://fixture', signal),
+    })
+    jest.useFakeTimers()
+    const random = spyOn(Math, 'random').mockReturnValue(0)
+    const content = [{ type: 'text' as const, text: 'skip the e2e tests' }]
+    const steer: PendingSteer = { id: 's', turnId: 'turn', model, content }
+    try {
+      const opening = runtime.connect()
+      const lost = sockets.last()
+      lost.open()
+      await turn()
+      lost.receive({ type: 'opened' })
+      await opening
+      lost.receive({ type: 'phase', phase: 'running' })
+      lost.receive({ type: 'pending_steers', pendingSteers: [steer] })
+      const removal = runtime.removeWaiting('s').then(() => 'removed', (error: unknown) => error)
+      await turn()
+      expect(lost.sent.at(-1)).toEqual({ type: 'cancel_pending_steer', steerId: 's' })
+      lost.end()
+      await turn()
+      jest.advanceTimersByTime(1000)
+      await turn()
+      const next = sockets.last()
+      next.open()
+      await turn()
+      next.receive({ type: 'opened' })
+      await turn()
+      const written = { type: 'steer' as const, id: 's', turnId: 'turn', createdAt, model, content }
+      next.receive({ type: 'transcript_reset', start: 0, length: fate === 'gone on' ? 1 : 0, version: { epoch: 'epoch', revision: 1 }, blocks: fate === 'gone on' ? [written] : [] })
+      next.receive({ type: 'phase', phase: 'running' })
+      next.receive({ type: 'queue', queue: [] })
+      next.receive({ type: 'pending_steers', pendingSteers: fate === 'still listed' ? [steer] : [] })
+      await turn()
+      if (fate === 'still listed') {
+        // Asked again on the new connection, and settled on its answer.
+        expect(next.sent).toEqual([{ type: 'open' }, { type: 'cancel_pending_steer', steerId: 's' }])
+        next.receive({ type: 'pending_steers', pendingSteers: [] })
+        next.receive({ type: 'remove_result', id: 's', outcome: 'removed' })
+      } else {
+        expect(next.sent).toEqual([{ type: 'open' }])
+      }
+      const result = await removal
+      if (fate === 'gone on') {
+        expect(result).toBeInstanceOf(RemovalRefusedError)
+      } else {
+        expect(result).toBe('removed')
+      }
+    } finally {
+      random.mockRestore()
+      jest.useRealTimers()
+      runtime.dispose()
+      sockets.restore()
+    }
+  })
+}
 
 test('a steer the session accepts waits as a pending steer, and one it refuses, as an ending turn does, goes as a message with its id and no error', async () => {
   const h = clientHarness()
