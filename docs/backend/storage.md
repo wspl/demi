@@ -147,10 +147,11 @@ input, which the multi-worker control service also relies on
   context limit the user set on each model
   ([Context limit](../providers/models.md#context-limit)). A patch merges specified fields in one
   transaction so independent edits do not overwrite each other.
-- **Subagents:** `user_subagents` stores the
-  [Subagent switch](../agent/subagents.md#profiles) of each user who turned
-  it off or on again: user and whether subagents are on. A user with no row
-  has them on. `subagent_profiles` stores each user's
+- **Subagents:** `user_subagents` stores the subagent settings of each user
+  who changed them: user, whether subagents are on
+  ([Subagent switch](../agent/subagents.md#profiles)), and the two
+  [limits](../agent/subagents.md#limits), each a whole number from 1 or null
+  for Unlimited. A user with no row has them on, with limits 10 and 1. `subagent_profiles` stores each user's
   [subagent profiles](../agent/subagents.md#profiles), one per row: id, user,
   name, unique among the user's, description, the model settings as JSON or
   null for the parent's, the replacing instructions or null for the
