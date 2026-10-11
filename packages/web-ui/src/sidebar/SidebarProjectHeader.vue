@@ -73,8 +73,10 @@ const emit = defineEmits<{
             :aria-label="project.host"
             :size="phone ? ICON_PX.in32 : ICON_PX.in20"
           />
+          <!-- A device's state is the small dot, as on DeviceIcon, so a row's status dot is never mistaken for it. -->
           <StatusDot
             v-else
+            size="xs"
             :tone="DEVICE_STATE_TONE[project.state]"
             :label="DEVICE_STATE_LABEL[project.state]"
           />
