@@ -307,16 +307,36 @@ impl ControlService {
     }
 
     /// Records the operating system, the runner release and the instance
-    /// `device`'s runner reported in its hello.
+    /// `device`'s runner reported in its hello, and advances the execution
+    /// context of each conversation whose context the report changes
+    /// (`sessions-and-targets.md` § Resolve a target): when the system
+    /// changed, of those whose primary Host the device is; when
+    /// `home_changed`, the home its contexts named before differing from
+    /// the one reported, of those whose context names a directory under
+    /// that home: a Cloud conversation working in its session directory,
+    /// and one the device is attached to without a directory of its own.
     pub async fn set_device_runner(
         &self,
         device: DeviceId,
         os: OperatingSystem,
         runner_version: String,
         runner_instance: u64,
+        home_changed: bool,
     ) -> Result<(), StorageError> {
         self.call(move |connection, _| {
-            connection.execute(
+            let transaction = connection.transaction()?;
+            let before: Option<Option<String>> = transaction
+                .query_row(
+                    "SELECT os FROM devices WHERE id = ?1",
+                    [device.as_str()],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            let before: Option<OperatingSystem> = match before.flatten() {
+                Some(text) => Some(json("devices", "os", &text)?),
+                None => None,
+            };
+            transaction.execute(
                 "UPDATE devices SET os = ?1, runner_version = ?2, runner_instance = ?3 WHERE id = ?4",
                 params![
                     to_json(&os),
@@ -325,6 +345,31 @@ impl ControlService {
                     device.as_str()
                 ],
             )?;
+            let system_changed = before.as_ref() != Some(&os);
+            if system_changed || home_changed {
+                // A Cloud conversation names no device: the Cloud is its
+                // owner's managed one.
+                transaction.execute(
+                    "UPDATE conversations SET context_version = context_version + 1
+                     WHERE id IN (
+                       SELECT conversation.id FROM conversations conversation
+                         JOIN devices device ON device.id = ?1
+                       WHERE (?2 AND (
+                           conversation.target_device_id = device.id
+                           OR conversation.target_workspace_id IN
+                             (SELECT id FROM workspaces WHERE device_id = device.id)
+                           OR (conversation.target_kind = 'cloud' AND device.kind = 'managed'
+                             AND conversation.user_id = device.user_id)))
+                         OR (?3 AND (
+                           (conversation.target_kind = 'cloud' AND conversation.target_path IS NULL
+                             AND device.kind = 'managed' AND conversation.user_id = device.user_id)
+                           OR EXISTS (SELECT 1 FROM conversation_hosts host
+                             WHERE host.conversation_id = conversation.id
+                               AND host.device_id = device.id AND host.cwd IS NULL))))",
+                    params![device.as_str(), system_changed, home_changed],
+                )?;
+            }
+            transaction.commit()?;
             Ok(())
         })
         .await
