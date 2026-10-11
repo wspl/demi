@@ -38,8 +38,8 @@ import {
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { applyModelChange, type ModelSettings, type ModelSettingsChange } from '@demicodes/web-ui/agent/model-selection'
 import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
-import { demoModels, demoProviders, usageAt } from '../fixtures/catalog'
-import { setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
+import { demoProviders, usageAt } from '../fixtures/catalog'
+import { composerModels, setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
 import { productWould } from '../product-would'
 import type { SendWay, SendWhileRunning } from '@demicodes/web-ui/agent/send-way'
 import { galleryMessages } from '../fixtures/send-while-running'
@@ -538,7 +538,7 @@ onBeforeUnmount(() => {
     :claim="host.claim"
     :paste="paste"
     :providers="props.providers ?? demoProviders"
-    :models="withContextLimits(props.models ?? demoModels)"
+    :models="props.models ? withContextLimits(props.models) : composerModels"
     :can-configure="canConfigure !== false"
     :archived="archived"
     :hold="hold"

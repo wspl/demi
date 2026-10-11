@@ -1,24 +1,24 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount } from 'vue'
+import { onBeforeUnmount } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsSubagents from '@demicodes/web-ui/settings/SettingsSubagents.vue'
 import type { SettingsSubagentDraft } from '@demicodes/web-ui/settings/types'
 import type { LimitValue } from '@demicodes/web-ui/ui/limit-field'
-import { setGalleryContextLimit } from '../fixtures/context-limits'
-import { subagentModels, subagentProviders, type SubagentState } from '../fixtures/subagent-profiles'
+import { demoProviders } from '../fixtures/catalog'
+import { composerModels, setGalleryContextLimit } from '../fixtures/context-limits'
+import type { SubagentState } from '../fixtures/subagent-profiles'
 
 /**
  * The Subagents section over a specimen's state. Each write waits a beat, as
  * the product's does; a save with the reserved name or a name another
  * profile has is refused with the backend's message, so the editor shows
- * its error. The model menu's Context row sets the gallery's context limit,
- * as the composer's does.
+ * its error. The model menu offers the composer's models, and its Context
+ * row sets the gallery's context limit, as the composer's does.
  */
 const props = defineProps<{
   state: SubagentState
 }>()
 
-const models = computed(() => subagentModels())
 const timers = new Set<number>()
 
 /** Resolves after a beat, as a request to the backend would. */
@@ -83,9 +83,9 @@ async function deleteProfile(id: string) {
     :max-live="state.maxLive"
     :max-depth="state.maxDepth"
     :profiles="state.profiles"
-    :providers="subagentProviders"
-    :models="models"
-    :catalog-models="models"
+    :providers="demoProviders"
+    :models="composerModels"
+    :catalog-models="composerModels"
     catalog-ready
     :overlay-store="appOverlayStore"
     :save-profile="saveProfile"
