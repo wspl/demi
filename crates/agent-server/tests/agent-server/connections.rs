@@ -13,7 +13,7 @@ use demi_agent_server::{
 };
 use demi_agent_store::testing::{MemoryTreeStore, model_of};
 use demi_conversation_socket_protocol::{
-    ClientFrame, ClientFrameKind, EditOutcome, ServerFrame, SteerOutcome,
+    ClientFrame, ClientFrameKind, EditOutcome, RemoveOutcome, ServerFrame, SteerOutcome,
 };
 use demi_provider_common::{
     ProviderEvent,
@@ -462,18 +462,28 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
         client.send(frame).await;
     }
 
+    // A removal that reaches no session is answered `gone_on`, since nothing
+    // held it: the page shows the row again at once rather than after its
+    // wait for the answer runs out (`runtime.md` § Pending steers).
     assert_eq!(
         client.received(),
         [
             rejected(ClientFrameKind::Send, "No session is open"),
             rejected(ClientFrameKind::Abort, "No session is open"),
             rejected(ClientFrameKind::SyncTranscript, "No session is open"),
-            rejected(ClientFrameKind::DequeueMessage, "No session is open"),
+            ServerFrame::RemoveResult {
+                id: "m1".into(),
+                outcome: RemoveOutcome::GoneOn,
+            },
             ServerFrame::SteerResult {
-                steer_id,
+                steer_id: steer_id.clone(),
                 outcome: SteerOutcome::Rejected {
                     reason: "No session is open on this connection".into(),
                 },
+            },
+            ServerFrame::RemoveResult {
+                id: steer_id.into_string(),
+                outcome: RemoveOutcome::GoneOn,
             },
         ]
     );
