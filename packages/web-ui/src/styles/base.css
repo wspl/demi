@@ -18,6 +18,12 @@
   unicode-range: U+0600-06FF, U+0750-077F, U+0870-08FF, U+FB50-FDFF, U+FE70-FEFF;
 }
 
+/* The phone layout, below 768 px (`ui/phone.ts`, whose PHONE_QUERY is the
+   same query): one pane at a time, a finger's sizes, what a hover reveals
+   shown at rest. It is the one switch for touch behavior: a touch screen in
+   the desktop layout is treated as a desktop. */
+@custom-variant phone (@media (max-width: 767px));
+
 @theme {
   --font-mono: "Code Arabic", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --color-surface-base: var(--surface-base);
@@ -267,6 +273,57 @@ body,
   height: 100%;
 }
 
+/* A phone's edges the page keeps clear (`viewport-fit=cover`): the status
+   bar and the home indicator. Named, so the gallery's phone frames can give
+   them the iPhone's values. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+/* The keyboard covers the home indicator (`phone-page.ts`). */
+:root[data-keyboard] {
+  --safe-bottom: 0px;
+}
+
+/* The phone layout: the page is the app's and stays put. It never zooms (a
+   picture zooms itself), never rubber-bands or pulls as a whole, shows no
+   tap highlight, and is exactly the visible area, the on-screen keyboard's
+   part left out (`phone-page.ts`); only the scrollers inside it scroll. */
+@media (max-width: 767px) {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html,
+  body {
+    overscroll-behavior: none;
+    touch-action: pan-x pan-y;
+  }
+
+  #app {
+    position: fixed;
+    inset-inline: 0;
+    top: var(--app-top, 0px);
+    height: var(--app-height, 100dvh);
+  }
+}
+
+/* A phone's text fields are 16px at least, which iOS never zooms in on as it
+   focuses one; the composer's own rule says the same for its message. A
+   read-only text, such as a file's code, keeps its size. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
+  textarea,
+  select,
+  [contenteditable="true"]:not([aria-readonly="true"]),
+  [contenteditable="plaintext-only"] {
+    font-size: max(16px, 1em);
+  }
+}
+
 html {
   --icon-stroke-width: 1.75;
   /* --agent-text, the transcript's text size, is the user's choice: the page
@@ -288,6 +345,31 @@ button,
 [role="menuitem"],
 [role="option"] {
   cursor: default;
+}
+
+/* On a phone a control is pressed, not read: a long press on one selects no
+   text and brings up no callout, while a message's text stays selectable.
+   And a finger's target is 44 × 44 px at least: a smaller control's hit
+   area reaches past its edges, where nothing else of it draws. */
+@media (max-width: 767px) {
+  @layer base {
+    :where(button, [role="button"], [role="checkbox"], [role="switch"], [role="radio"], [role="tab"], [role="menuitem"], [role="option"]) {
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    :where(button, [role="button"], [role="tab"]) {
+      position: relative;
+    }
+
+    :where(button, [role="button"], [role="tab"])::before {
+      content: "";
+      position: absolute;
+      inset-block: min(0px, calc((100% - 44px) / 2));
+      inset-inline: min(0px, calc((100% - 44px) / 2));
+    }
+  }
 }
 
 button:disabled,
@@ -614,6 +696,47 @@ html[data-theme="light"] .file-pill {
   max-height: min(50vh, var(--overlay-available-height, 50vh));
 }
 
+/* A menu in a phone's bottom sheet (`Sheet.vue`) is the sheet's list: as
+   wide as the screen, as tall as its rows, each a finger's height, with no
+   panel of its own around it. */
+.popover-sheet > * {
+  width: 100%;
+  max-width: none;
+}
+
+.sheet .overlay-menu {
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  min-width: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.sheet .overlay-menu::after {
+  display: none;
+}
+
+.sheet .overlay-menu-scroll {
+  padding: 0 0.5rem 0.5rem;
+}
+
+.sheet [data-menu-item] {
+  --menu-row-h: 2.75rem;
+  --menu-row-px: 0.75rem;
+}
+
+.sheet .menu-row {
+  font-size: 16px;
+}
+
+/* Its icons grow with its text, as the sidebar's rows' do (ICON_PX.phoneRow). */
+.sheet .menu-row svg.lucide {
+  width: 18px;
+  height: 18px;
+}
+
 /* The list's ScrollArea viewport. */
 .overlay-menu-scroll {
   overscroll-behavior: contain;
@@ -837,6 +960,19 @@ html[data-theme="light"] .file-pill {
   font-size: var(--agent-text);
   line-height: var(--composer-line);
   overflow-wrap: anywhere;
+}
+
+/* On a phone the message is typed at 16px at least, as every field there is:
+   iOS zooms in on a smaller one as it takes the focus. */
+@media (max-width: 767px) {
+  .composer-shell-capsule .composer-editor .ProseMirror,
+  .composer-shell-expanded .composer-editor .ProseMirror {
+    font-size: max(16px, var(--agent-text));
+  }
+
+  .composer-shell-expanded .composer-editor .ProseMirror {
+    line-height: max(calc(16px * var(--agent-leading)), var(--composer-line));
+  }
 }
 
 .composer-shell-expanded .composer-editor .ProseMirror::-webkit-scrollbar {

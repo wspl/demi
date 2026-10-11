@@ -271,13 +271,13 @@ onKeyStroke('Escape', (event) => {
     height: 100%;
     max-height: none;
     border-radius: 0;
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
   }
 
   /* The close button keeps its corner inset inside the safe area. */
   .dialog-fill .dialog-close {
-    top: calc(0.75rem + env(safe-area-inset-top));
-    right: calc(0.75rem + env(safe-area-inset-right));
+    top: calc(0.75rem + var(--safe-top));
+    right: calc(0.75rem + var(--safe-right));
   }
 
   /* A panel that fills the window fades without scaling, so no scrim shows at its edges. */

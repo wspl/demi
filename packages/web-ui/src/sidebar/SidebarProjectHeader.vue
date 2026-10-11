@@ -5,6 +5,7 @@ import StatusDot from '@demicodes/web-ui/ui/StatusDot.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { usePhone } from '@demicodes/web-ui/ui/phone'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '@demicodes/web-ui/devices/state'
 import type { SidebarProject } from './types'
 
@@ -15,6 +16,8 @@ defineProps<{
   /** The keyboard cursor is here. */
   focused: boolean
 }>()
+
+const phone = usePhone()
 
 const emit = defineEmits<{
   create: []
@@ -27,17 +30,17 @@ const emit = defineEmits<{
   <div
     role="button"
     :aria-expanded="!collapsed"
-    class="group/project flex h-7 cursor-default select-none items-center gap-2 rounded-md pl-2.5 pr-0.5 text-chrome text-fg transition-colors duration-200 ease-out"
+    class="group/project flex h-7 cursor-default select-none items-center gap-2 rounded-md pl-2.5 pr-0.5 text-chrome text-fg transition-colors duration-200 ease-out phone:h-11 phone:gap-3 phone:rounded-lg phone:pl-3 phone:text-[16px]"
     :class="[focused ? 'ring-1 ring-inset ring-line-focus' : '']"
     @click="emit('toggle')"
     @contextmenu.prevent="emit('contextmenu', $event)"
   >
     <component
       :is="collapsed ? Folder : FolderOpen"
-      :size="ICON_PX.in28"
+      :size="phone ? ICON_PX.phoneRow : ICON_PX.in28"
       class="shrink-0 text-fg-muted"
     />
-    <!-- The text and the host's mark touch: the mark stands in its own button-sized box. -->
+    <!-- The text and the host's mark phone: the mark stands in its own button-sized box. -->
     <span class="flex min-w-0 flex-1 items-center">
       <!-- The project's name takes what the device's name leaves; the device's name takes its own
            width, at most half of the text's, and each is cut at its end. The hover chevron and
@@ -49,26 +52,26 @@ const emit = defineEmits<{
           <ChevronRight
             :size="ICON_PX.in20"
             aria-hidden="true"
-            class="shrink-0 text-fg-subtle opacity-0 transition-[opacity,rotate] duration-150 ease-out motion-reduce:transition-none group-hover/project:opacity-100"
+            class="shrink-0 text-fg-subtle opacity-0 transition-[opacity,rotate] duration-150 ease-out motion-reduce:transition-none group-hover/project:opacity-100 phone:opacity-100"
             :class="collapsed ? 'rotate-0' : 'rotate-90'"
           />
         </span>
         <TruncatedText
           v-if="project.hostKind === 'device'"
-          class="max-w-[calc(50%-10px)] flex-[0_1_auto] text-[11px] text-fg-subtle"
+          class="max-w-[calc(50%-10px)] flex-[0_1_auto] text-[11px] text-fg-subtle phone:text-[13px]"
           :text="project.host"
         />
       </span>
       <!-- The host's mark stands where New conversation appears, so it keeps the button's inset from the row's edges. -->
       <span class="grid shrink-0 items-center">
         <span
-          class="pointer-events-none col-start-1 row-start-1 flex size-hit-sm items-center justify-center text-fg-subtle transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0"
+          class="pointer-events-none col-start-1 row-start-1 flex size-hit-sm items-center justify-center text-fg-subtle transition-opacity phone:size-8 duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0 phone:opacity-0"
         >
           <Cloud
             v-if="project.hostKind === 'cloud'"
             role="img"
             :aria-label="project.host"
-            :size="ICON_PX.in20"
+            :size="phone ? ICON_PX.in32 : ICON_PX.in20"
           />
           <StatusDot
             v-else
@@ -77,12 +80,12 @@ const emit = defineEmits<{
           />
         </span>
         <span
-          class="col-start-1 row-start-1 flex items-center justify-self-end opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto"
+          class="col-start-1 row-start-1 flex items-center justify-self-end opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto phone:opacity-100 phone:pointer-events-auto"
         >
           <Tooltip content="New conversation" class="flex items-center">
             <IconButton
               :icon="SquarePen"
-              size="sm"
+              :size="phone ? 'lg' : 'sm'"
               variant="ghost"
               aria-label="New conversation"
               tabindex="0"

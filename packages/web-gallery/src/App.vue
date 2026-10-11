@@ -54,7 +54,10 @@ const mainClass = computed(() => {
 </script>
 
 <template>
+  <!-- A phone frame's page is the app alone, at the frame's size. -->
+  <RouterView v-if="route.meta.layout === 'frame'" />
   <SidebarLayout
+    v-else
     v-model:open="navOpen"
     v-model:width="navWidth"
     label="Demi Gallery"

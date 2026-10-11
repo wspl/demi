@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, watch } from 'vue'
-import { Copy, PanelRightClose, Plus, X } from '@lucide/vue'
+import { ChevronLeft, Copy, PanelRightClose, Plus, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TabItem from './TabItem.vue'
@@ -11,6 +11,7 @@ import MenuItem from '../ui/MenuItem.vue'
 import Popover from '../ui/Popover.vue'
 import { useContextMenuOwner } from '../composables/useContextMenuOwner'
 import { appOverlayStore } from '../overlay/appOverlay'
+import { usePhone } from '../ui/phone'
 import type { TitleText } from '../ui/ui-text'
 import { tabsToClose, type TabCloseScope } from './tab-close'
 import { keptContents, pinnedData, shownSelection, type PanelState, type PinnedTabs } from './panel-tabs'
@@ -23,6 +24,10 @@ import { resolvePanelTab, type PanelTabKind } from './panel-kinds/kind'
  * shows it through its kind and knows nothing else about it. A content once
  * shown stays on the page, hidden and told it is not shown, until its tab
  * closes or the panel binds other kinds, as for another conversation.
+ *
+ * On a phone it takes the whole screen (SidebarLayout) under one bar of its
+ * own: Conversation, which goes back to the conversation as it was, the
+ * strip, and the strip's controls; the desktop's close control is that back.
  */
 const props = defineProps<{
   /** The selection and the user's tabs. */
@@ -55,6 +60,7 @@ const pinnedTabs = computed(() =>
     .map((kind) => ({ kind, data: pinnedData(props.pinned, kind) })),
 )
 const selection = computed(() => shownSelection(props.panel, props.kinds))
+const phone = usePhone()
 
 /** Each tab with its kind and checked data, in the user's order. */
 const tabs = computed(() => props.panel.tabs.map((tab) => resolvePanelTab(tab, props.kinds)))
@@ -143,10 +149,26 @@ function reorder(from: number, to: number): void {
 </script>
 
 <template>
-  <aside class="flex h-full min-w-0 flex-col overflow-hidden border-l border-line bg-surface text-fg">
-    <div class="flex h-11 shrink-0 items-center gap-1 pl-2 pr-3">
+  <aside
+    class="flex h-full min-w-0 flex-col overflow-hidden bg-surface text-fg"
+    :class="phone ? 'pb-[var(--safe-bottom)]' : 'border-l border-line'"
+  >
+    <div
+      class="flex shrink-0 items-center gap-1"
+      :class="phone ? 'h-[calc(2.75rem+var(--safe-top))] pl-1 pr-1.5 pt-[var(--safe-top)]' : 'h-11 pl-2 pr-3'"
+    >
+      <button
+        v-if="phone"
+        type="button"
+        class="flex h-hit shrink-0 select-none items-center gap-0.5 rounded-md pr-1.5 text-[15px] text-fg-body active:bg-active"
+        @click="emit('close')"
+      >
+        <ChevronLeft :size="20" class="shrink-0" />
+        Conversation
+      </button>
       <TabStrip
         class="min-w-0 grow"
+        data-touch-menu
         surface="raised"
         @reorder="reorder"
       >
@@ -162,7 +184,7 @@ function reorder(from: number, to: number): void {
             tabindex="0"
             :aria-selected="item.kind.kind === selection"
             :title="item.kind.title(item.data)"
-            class="grid h-7 grid-flow-col grid-cols-[auto_minmax(0,auto)] auto-cols-auto items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome select-none hover:bg-surface-base hover:text-fg"
+            class="grid h-7 phone:h-9 phone:text-[15px] grid-flow-col grid-cols-[auto_minmax(0,auto)] auto-cols-auto items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome select-none hover:bg-surface-base hover:text-fg"
             :class="item.kind.kind === selection ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle'"
             @pointerdown.left="emit('select', item.kind.kind)"
             @keydown.enter.self="emit('select', item.kind.kind)"
@@ -206,7 +228,7 @@ function reorder(from: number, to: number): void {
           </Tooltip>
         </template>
       </TabStrip>
-      <Tooltip content="Close panel" class="shrink-0">
+      <Tooltip v-if="!phone" content="Close panel" class="shrink-0">
         <IconButton :icon="PanelRightClose" variant="ghost" aria-label="Close panel" @click="emit('close')" />
       </Tooltip>
     </div>
@@ -253,6 +275,7 @@ function reorder(from: number, to: number): void {
       :anchor-y="menu.anchorY.value"
       :anchor-context-el="menu.anchorContextEl.value"
       :offset="0"
+      sheet
       @close="menu.close"
     >
       <Menu>

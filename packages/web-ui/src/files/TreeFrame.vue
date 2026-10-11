@@ -6,6 +6,7 @@ import IconButton from '../ui/IconButton.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TooltipPlacement from '../ui/TooltipPlacement.vue'
+import { usePhone } from '../ui/phone'
 import { CONTENT_MIN_WIDTH, TREE_MOTION_MS, TREE_WIDTH } from './file-view'
 
 /**
@@ -26,6 +27,10 @@ import { CONTENT_MIN_WIDTH, TREE_MOTION_MS, TREE_WIDTH } from './file-view'
  * reading. The view learns how much of its end a tree shown over it covers,
  * so what it centres, such as an empty state, centres in the space beside
  * the tree.
+ *
+ * In the phone layout (`ui/phone.ts`) the tree never docks: it covers the
+ * view's whole width, sliding in from the end, and a pick in it slides it
+ * away again (`web-application.md` § The phone layout).
  */
 defineProps<{
   /** The tree in its control's words: `file tree` reads "Show file tree". */
@@ -48,11 +53,14 @@ const body = ref<HTMLElement | null>(null)
 const { width: bodyWidth } = useElementSize(body)
 /** The widest the tree can dock at: what the view leaves it. */
 const room = computed(() => Math.min(TREE_WIDTH.max, Math.floor(bodyWidth.value - CONTENT_MIN_WIDTH)))
-const docks = computed(() => width.value <= room.value)
+const phone = usePhone()
+const docks = computed(() => !phone.value && width.value <= room.value)
+/** The tree's width over the view: the divider's, or on a phone the view's whole width. */
+const overWidth = computed(() => (phone.value ? bodyWidth.value : Math.min(width.value, bodyWidth.value)))
 /** While the tree cannot dock: whether it is shown over the view. */
 const over = ref(false)
 const shown = computed(() => docks.value ? open.value : over.value)
-const overlap = computed(() => shown.value && !docks.value ? Math.min(width.value, bodyWidth.value) : 0)
+const overlap = computed(() => shown.value && !docks.value ? overWidth.value : 0)
 
 // A tree shown over the view does not come back by itself when the frame narrows again.
 watch(docks, () => {
@@ -200,8 +208,8 @@ defineExpose({ show, dismiss })
           <div
             v-show="shown"
             class="overflow-hidden border-l border-line"
-            :class="docks ? '' : 'absolute inset-y-0 right-0 z-10 max-w-full shadow-lg'"
-            :style="{ flex: `0 0 ${width}px`, width: `${width}px` }"
+            :class="docks ? '' : phone ? 'absolute inset-0 z-10 border-l-0' : 'absolute inset-y-0 right-0 z-10 max-w-full shadow-lg'"
+            :style="phone ? undefined : { flex: `0 0 ${width}px`, width: `${width}px` }"
           >
             <div class="h-full" :class="docks ? '' : 'w-full'" :style="docks ? { width: `${width}px` } : undefined">
               <slot name="tree" />

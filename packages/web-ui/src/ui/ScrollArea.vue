@@ -49,6 +49,14 @@ function start(): void {
   initialize(scrollbarsTarget(viewport.value, root.value))
 }
 
+// On a phone a scroller keeps its scrolling to itself along its axis: at its
+// end it pulls nothing behind it (`base.css`, the page stays put).
+const OVERSCROLL: Record<ScrollAxis, string> = {
+  x: 'phone:overscroll-x-contain',
+  y: 'phone:overscroll-y-contain',
+  both: 'phone:overscroll-contain',
+}
+
 // Before the bar is set up, the viewport clips the axis it does not scroll
 // along, as `scrollbarsOptions` has the bar do once it is.
 const nativeOverflow = computed((): CSSProperties => ({
@@ -84,7 +92,7 @@ defineExpose({
       ref="viewport"
       data-overlayscrollbars-initialize
       class="scroll-area-viewport z-0 min-h-0 flex-auto"
-      :class="viewportClass"
+      :class="[viewportClass, OVERSCROLL[axis]]"
       :style="started ? undefined : nativeOverflow"
       @scroll.passive="onScroll"
     >

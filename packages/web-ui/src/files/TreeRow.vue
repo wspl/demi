@@ -38,7 +38,7 @@ defineEmits<{
     role="treeitem"
     :aria-selected="selected"
     :aria-expanded="row.isDirectory ? row.open : undefined"
-    class="flex h-7 shrink-0 cursor-default select-none items-center rounded-md pr-2 text-chrome transition-colors duration-200 ease-out"
+    class="flex h-7 shrink-0 cursor-default select-none items-center rounded-md pr-2 text-chrome transition-colors duration-200 ease-out phone:h-11 phone:text-[16px]"
     :class="[
       selected ? 'bg-active text-fg-emphasis' : menuOpen ? 'bg-hover text-fg' : 'text-fg-body hover:bg-hover',
       cursor ? 'ring-1 ring-inset ring-line-focus' : '',

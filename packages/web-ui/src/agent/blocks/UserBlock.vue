@@ -194,7 +194,7 @@ useResizeObserver(bodyRef, measure)
     <div class="relative max-w-[80%] rounded-xl bg-surface-card px-4 py-2.5">
       <div
         v-if="actions.length > 0"
-        class="user-actions absolute bottom-2.5 left-0 flex -translate-x-[calc(100%+6px)] items-center transition-opacity group-hover/user:opacity-100 focus-within:opacity-100"
+        class="user-actions absolute bottom-2.5 left-0 flex -translate-x-[calc(100%+6px)] items-center transition-opacity group-hover/user:opacity-100 focus-within:opacity-100 phone:opacity-100"
         :class="actionsPinned ? 'opacity-100' : 'opacity-0'"
       >
         <Tooltip

@@ -10,6 +10,7 @@ import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Fold from '@demicodes/web-ui/ui/Fold.vue'
 import { FOLD_MS } from '@demicodes/web-ui/ui/fold'
+import { usePhone } from '@demicodes/web-ui/ui/phone'
 import { copyConversationId } from '../agent/copy-conversation-id'
 import type {
   ListLoad,
@@ -74,6 +75,9 @@ const emit = defineEmits<{
   signOut: []
   retryList: []
 }>()
+
+/** On a phone the list's rows are a finger's height (`ui/phone.ts`). */
+const phone = usePhone()
 
 const collapsedProjects = defineModel<string[]>('collapsedProjects', { default: () => [] })
 /** The groups folded under their label; the host keeps them per browser. */
@@ -440,7 +444,7 @@ function selectProjectConversations(project: SidebarProject): void {
   >
     <div class="flex h-11 shrink-0 items-center px-2">
       <span
-        class="min-w-0 flex-1 truncate pl-2.5 text-chrome font-medium text-fg-emphasis"
+        class="min-w-0 flex-1 truncate pl-2.5 text-chrome font-medium text-fg-emphasis phone:pl-3 phone:text-[17px] phone:font-semibold"
       >Demi</span>
     </div>
 
@@ -483,7 +487,7 @@ function selectProjectConversations(project: SidebarProject): void {
     <ScrollArea
       ref="scrollArea"
       class="mt-4 min-h-0 flex-1"
-      viewport-class="flex scroll-pt-[30px] flex-col px-2"
+      viewport-class="flex scroll-pt-[30px] flex-col px-2 phone:scroll-pt-[42px]"
     >
       <div
         ref="listRef"
@@ -527,12 +531,13 @@ function selectProjectConversations(project: SidebarProject): void {
             :class="[
               // A line its folded group hides gives back the 1px gap above it, so the label stands alone.
               entry.hidden ? '-mt-px' : entry.kind === 'project' && entry.id !== firstShownProject ? 'mt-3' : '',
-              // Headings stick to the top of the list; a project's header sticks just under the 30px Projects heading.
+              // Headings stick to the top of the list; a project's header sticks just under the Projects heading,
+              // 30px, and 42px on a phone, where rows are a finger's height.
               // The gap above Projects is a margin on the entry, outside the sticky box, so both headings stick the same.
-              entry.kind === 'heading' ? 'sticky top-0 z-20 bg-surface-base' : entry.kind === 'project' ? 'sticky top-[30px] z-10 bg-surface-base' : '',
+              entry.kind === 'heading' ? 'sticky top-0 z-20 bg-surface-base' : entry.kind === 'project' ? 'sticky top-[30px] z-10 bg-surface-base phone:top-[42px]' : '',
               entry.id === 'projects-heading' ? 'mt-4' : '',
               // A project's row scrolls into view below its project header, which sticks under the 30px heading.
-              entry.kind === 'conversation' && entry.projectId !== null ? 'scroll-mt-7' : '',
+              entry.kind === 'conversation' && entry.projectId !== null ? 'scroll-mt-7 phone:scroll-mt-11' : '',
               drag.source.value?.id === entry.id ? 'opacity-40' : '',
               drag.target.value?.id === entry.id ? (drag.target.value.after ? 'drop-after' : 'drop-before') : '',
             ]"
@@ -555,7 +560,7 @@ function selectProjectConversations(project: SidebarProject): void {
                 >
                   <IconButton
                     :icon="FolderPlus"
-                    size="xs"
+                    :size="phone ? 'lg' : 'xs'"
                     variant="ghost"
                     aria-label="Add project"
                     @click="emit('addProject')"
@@ -568,7 +573,7 @@ function selectProjectConversations(project: SidebarProject): void {
                 >
                   <IconButton
                     :icon="SquarePen"
-                    size="xs"
+                    :size="phone ? 'lg' : 'xs'"
                     variant="ghost"
                     aria-label="New conversation"
                     @click="emit('create', null)"
@@ -586,6 +591,7 @@ function selectProjectConversations(project: SidebarProject): void {
                 :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
                 @toggle="list.onProjectClick(entry.id)"
                 @create="emit('create', entry.id)"
+                data-touch-menu
                 @contextmenu="(event) => openProjectMenu(projectById.get(entry.id)!, event)"
               />
               <SidebarRow
@@ -597,6 +603,7 @@ function selectProjectConversations(project: SidebarProject): void {
                 :menu-open="rowMenuOpenFor(entry.id)"
                 :renaming="renamingId === entry.id"
                 @click="(event) => list.onRowClick(entry.id, event)"
+                data-touch-menu
                 @contextmenu="(event) => openRowMenu(entry.id, event)"
                 @archive="emit('archive', [entry.id])"
                 @rename-start="renamingId = entry.id"
@@ -622,7 +629,7 @@ function selectProjectConversations(project: SidebarProject): void {
 
     <!-- The account, and settings. -->
     <div
-      class="flex shrink-0 items-center gap-1 border-t border-line px-2 py-2"
+      class="flex shrink-0 items-center gap-1 border-t border-line px-2 py-2 phone:h-[52px] phone:py-0"
     >
       <SidebarAccountRow
         :account="account"
@@ -632,6 +639,7 @@ function selectProjectConversations(project: SidebarProject): void {
       <Tooltip content="Settings" placement="right">
         <IconButton
           :icon="Settings"
+          :size="phone ? 'lg' : 'md'"
           variant="ghost"
           aria-label="Settings"
           @click="emit('openSettings')"
@@ -647,6 +655,7 @@ function selectProjectConversations(project: SidebarProject): void {
       :anchor-y="rowMenu.anchorY.value"
       :anchor-context-el="rowMenu.anchorContextEl.value"
       :offset="0"
+      sheet
       @close="rowMenu.close()"
     >
       <SidebarSelectionMenu
@@ -692,6 +701,7 @@ function selectProjectConversations(project: SidebarProject): void {
       :anchor-y="projectMenu.anchorY.value"
       :anchor-context-el="projectMenu.anchorContextEl.value"
       :offset="0"
+      sheet
       @close="projectMenu.close()"
     >
       <SidebarProjectMenu
