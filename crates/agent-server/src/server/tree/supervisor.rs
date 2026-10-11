@@ -174,6 +174,21 @@ impl<H: HostResolver> Tree<H> {
         children
     }
 
+    /// The live children of `owner` that are not closing, in spawn order,
+    /// each by its agent number with its description: what a compaction of
+    /// `owner` names as still working (`compaction.md` § What the model
+    /// receives afterward).
+    pub(crate) fn live_children_of(&self, owner: &NodeId) -> Vec<(u64, String)> {
+        self.children_of(owner)
+            .into_iter()
+            .filter(|child| !child.closing.get())
+            .map(|child| {
+                let record = child.node.record();
+                (record.number, record.description.clone())
+            })
+            .collect()
+    }
+
     /// Whether `child` is a live child of `owner`.
     pub(crate) fn is_child_of(&self, child: &NodeId, owner: &NodeId) -> bool {
         self.child(child)
@@ -471,6 +486,7 @@ impl<H: HostResolver> Tree<H> {
             origin,
             role: NodeRole::Child,
             root: self.root.id().clone(),
+            server: Rc::downgrade(server),
             runtime,
             providers: deps.providers.clone(),
             hosts: deps.hosts.clone(),

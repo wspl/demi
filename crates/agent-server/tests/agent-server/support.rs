@@ -7,7 +7,10 @@ use std::{
     collections::VecDeque,
     rc::Rc,
     sync::Arc,
+    time::Duration,
 };
+
+use bytes::Bytes;
 
 use demi_agent_server::{
     AgentServer, ServerConfig, ServerDeps,
@@ -15,21 +18,25 @@ use demi_agent_server::{
 };
 use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
 use demi_agent_tools::{
-    ContextAnswer, ContextSource, HostResolver, NodeContext, SubagentSettings, SubagentSource, Toolset,
+    ContextAnswer, ContextSource, EnvironmentScope, HostResolver, NodeContext,
+    ShellEnvironmentFactory, SubagentSettings, SubagentSource, Toolset,
     testing::{NoHost, NoShells},
 };
 use demi_agent_transcript::testing::SequentialIds;
 use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_host_interface::{
-    CommandSet, GroupBuilder, LeafBuilder, PortError, PortRequest, PortResponse, PortTransport,
-    RpcError, RpcHandler, RpcInvocation, RpcPort,
+    CommandRecord, CommandSet, CommandStatus, DEFAULT_OUTPUT_LIMIT_BYTES, Ending, ExecRequest,
+    GroupBuilder, Host, HostError, HostFs, HostIdentity, HostKey, HostProcess, LeafBuilder,
+    PageFeed, PageView, PortError, PortRequest, PortResponse, PortTransport, RpcError, RpcHandler,
+    RpcInvocation, RpcPort, ShellEnvironment, ShellError, WholeOutput,
 };
 use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderRun, ProviderRuntime, RequestLimits, UserPart,
     testing::{FixedClock, ScriptedRuntime, Turn},
 };
 use demi_shared_types::{
-    Block, Clock, ModelSelection, NodeId, ProviderModel, ServiceTier, Timestamp, TurnId,
+    Block, Clock, CommandId, ModelSelection, NodeId, ProviderModel, ServiceTier, StreamKind,
+    Timestamp, TurnId,
 };
 use futures_util::{StreamExt, future::LocalBoxFuture, stream};
 use serde_json::{Value, json};
@@ -404,8 +411,8 @@ pub const AGENT_CALL: &str = "call";
 /// Runs `demi agent <verb>` with `args` as a job of `node`'s call
 /// [`AGENT_CALL`] would, through the node's commands; `cancel` is the
 /// call's cancellation.
-pub async fn agent_call(
-    server: &Rc<AgentServer<TestProduct>>,
+pub async fn agent_call<H: HostResolver>(
+    server: &Rc<AgentServer<H>>,
     node: &NodeId,
     verb: &str,
     args: Value,
@@ -462,8 +469,8 @@ pub async fn agent_call(
 }
 
 /// `demi agent <verb>` run to its end as a job of `node`.
-pub async fn agent(
-    server: &Rc<AgentServer<TestProduct>>,
+pub async fn agent<H: HostResolver>(
+    server: &Rc<AgentServer<H>>,
     node: &NodeId,
     verb: &str,
     args: Value,
@@ -724,5 +731,202 @@ pub fn listed_model(id: &str, efforts: &[&str], tiers: &[&str]) -> ProviderModel
             .collect(),
         default_service_tier_id: None,
         cost: None,
+    }
+}
+
+/// The Host the scripted environment runs on; nothing reaches its files or
+/// processes.
+#[derive(Debug)]
+pub struct ScriptedHost;
+
+impl Host for ScriptedHost {
+    fn key(&self) -> HostKey {
+        HostKey::new("scripted")
+    }
+
+    fn default_cwd(&self) -> &str {
+        "/workspace"
+    }
+
+    fn identity(&self) -> HostIdentity {
+        HostIdentity {
+            uid: 1000,
+            gid: 1000,
+            hostname: "scripted".into(),
+            home_dir: "/home/demi".into(),
+        }
+    }
+
+    fn fs(&self) -> &dyn HostFs {
+        unreachable!("the scripted environment reads no file")
+    }
+
+    fn process(&self) -> &dyn HostProcess {
+        unreachable!("the scripted environment starts no process")
+    }
+}
+
+/// Where the nodes' shell tools run: the scripted Host.
+pub struct LiveHosts;
+
+impl HostResolver for LiveHosts {
+    type Host = ScriptedHost;
+
+    async fn host(&self, _context: NodeContext<'_>) -> Result<Rc<ScriptedHost>, HostError> {
+        Ok(Rc::new(ScriptedHost))
+    }
+}
+
+/// One node's environment: its one command runs until the test ends, and
+/// prints what the test hands it, which it reports to the node's feed.
+pub struct ScriptedShell {
+    feed: Rc<dyn PageFeed>,
+    command: RefCell<Option<Rc<RefCell<CommandRecord>>>>,
+}
+
+impl ScriptedShell {
+    fn record(&self, command: &CommandId) -> Result<Rc<RefCell<CommandRecord>>, ShellError> {
+        self.command
+            .borrow()
+            .clone()
+            .filter(|record| record.borrow().command_id() == command)
+            .ok_or_else(|| ShellError::UnknownCommand(command.clone()))
+    }
+
+    /// The running command prints `text`.
+    pub fn print(&self, text: &str) {
+        let record = self.command.borrow().clone().expect("the command started");
+        record.borrow_mut().append_output(StreamKind::Stdout, text);
+        self.feed.changed(&record);
+    }
+
+    /// The running command ends.
+    pub fn end(&self) {
+        let record = self.command.borrow().clone().expect("the command started");
+        record.borrow_mut().mark_aborted();
+        self.feed.changed(&record);
+    }
+}
+
+impl ShellEnvironment for ScriptedShell {
+    fn start(
+        &self,
+        request: ExecRequest,
+        _cancel: CancellationToken,
+    ) -> LocalBoxFuture<'_, Result<CommandId, ShellError>> {
+        let command = CommandId::try_from("1").unwrap();
+        let record = Rc::new(RefCell::new(CommandRecord::new(
+            command.clone(),
+            request.caller.tool_use_id,
+            request.title,
+        )));
+        self.command.replace(Some(record.clone()));
+        self.feed.changed(&record);
+        Box::pin(async move { Ok(command) })
+    }
+
+    /// The command runs until the test ends; a watch of it ends with its
+    /// window.
+    fn ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<Ending, ShellError>> {
+        let ended = self.record(command).map(|record| record.borrow().ending());
+        Box::pin(async move {
+            match ended? {
+                Some(ending) => Ok(ending),
+                None => std::future::pending().await,
+            }
+        })
+    }
+
+    fn title(&self, command: &CommandId) -> Option<String> {
+        Some(self.record(command).ok()?.borrow().title().to_owned())
+    }
+
+    fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
+        let record = self.record(command)?;
+        let status = record.borrow_mut().status(DEFAULT_OUTPUT_LIMIT_BYTES, None, Vec::new());
+        Ok(status)
+    }
+
+    fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError> {
+        Ok(self.record(command)?.borrow().quiet())
+    }
+
+    fn outliving(&self, _: &CommandId) -> Vec<String> {
+        Vec::new()
+    }
+
+    fn unreachable(&self, _: &CommandId) -> Option<demi_host_interface::Unreachable> {
+        None
+    }
+
+    fn media(&self, command: &CommandId) -> Result<Vec<demi_host_interface::CommandMedium>, ShellError> {
+        Ok(self.record(command)?.borrow().media().to_vec())
+    }
+
+    fn read_output<'a>(
+        &'a self,
+        command: &'a CommandId,
+    ) -> LocalBoxFuture<'a, Result<WholeOutput, ShellError>> {
+        Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
+    }
+
+    fn write<'a>(
+        &'a self,
+        command: &'a CommandId,
+        _stdin: Bytes,
+    ) -> LocalBoxFuture<'a, Result<(), ShellError>> {
+        Box::pin(async move { Err(ShellError::NotRunning(command.clone())) })
+    }
+
+    fn abort<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<(), ShellError>> {
+        Box::pin(async move { Err(ShellError::NotRunning(command.clone())) })
+    }
+
+    fn page_views(&self) -> Vec<PageView> {
+        let command = self.command.borrow();
+        command
+            .iter()
+            .map(|record| record.borrow().page_view())
+            .collect()
+    }
+
+    fn release_command<'a>(&'a self, _command: &'a CommandId) -> LocalBoxFuture<'a, bool> {
+        Box::pin(async { false })
+    }
+
+    fn adopt(&self, _: demi_host_interface::TakenUp) {
+        unreachable!("the scripted shell takes up no command")
+    }
+
+    fn detach_all(&self) -> LocalBoxFuture<'_, ()> {
+        Box::pin(async {})
+    }
+
+    fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {
+        Box::pin(async {})
+    }
+
+    fn owns_command(&self, command: &CommandId) -> bool {
+        self.record(command).is_ok()
+    }
+}
+
+/// Makes each node's environment and keeps the last one made for the test
+/// to print through.
+#[derive(Default)]
+pub struct ScriptedShells(pub RefCell<Option<Rc<ScriptedShell>>>);
+
+impl ShellEnvironmentFactory<ScriptedHost> for ScriptedShells {
+    fn create<'a>(
+        &'a self,
+        scope: EnvironmentScope<'a>,
+        _host: Rc<ScriptedHost>,
+    ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>> {
+        let shell = Rc::new(ScriptedShell {
+            feed: scope.feed.clone(),
+            command: RefCell::default(),
+        });
+        self.0.replace(Some(shell.clone()));
+        Box::pin(async move { Ok(shell as Rc<dyn ShellEnvironment>) })
     }
 }

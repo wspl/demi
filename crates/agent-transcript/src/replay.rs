@@ -24,7 +24,7 @@ use demi_shared_types::{
 use serde::Serialize;
 use serde_json::Value;
 
-use super::{gone_text, latest_answer, replay_start};
+use super::{COMPACTION_NOTE, gone_text, latest_answer, replay_start, summary_text};
 
 /// What the model receives for a `resume` block.
 pub const RESUME_TEXT: &str = "Continue from where you left off.";
@@ -167,12 +167,26 @@ pub fn replay(request: &RequestView) -> Replay {
                     });
                 }
             }
-            Block::CompactionBoundary(boundary) => items.push(InferenceItem::UserMessage {
-                content: vec![bounded(&format!(
-                    "Previous conversation summary:\n{}",
-                    boundary.summary
-                ))],
-            }),
+            // The note, each message it kept as the user message it was,
+            // oldest first, then the summary (`compaction.md` § What the
+            // model receives afterward).
+            Block::CompactionBoundary(boundary) => {
+                items.push(InferenceItem::UserMessage {
+                    content: vec![UserPart::Text(COMPACTION_NOTE.to_owned())],
+                });
+                for kept in &boundary.kept {
+                    items.push(InferenceItem::UserMessage {
+                        content: kept
+                            .content
+                            .iter()
+                            .map(|part| request.user_part(part))
+                            .collect(),
+                    });
+                }
+                items.push(InferenceItem::UserMessage {
+                    content: vec![UserPart::Text(summary_text(&bound_text(&boundary.summary)))],
+                });
+            }
             Block::Abort(_) | Block::Response(_) | Block::Error(_) | Block::CompactionMarker(_) => {
             }
         }

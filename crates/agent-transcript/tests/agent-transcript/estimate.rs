@@ -90,6 +90,7 @@ fn a_compaction_after_the_latest_response_leaves_no_anchor() {
         model: test_model(),
         summary: "short summary".into(),
         summary_tokens: 4,
+        kept: Vec::new(),
     });
     let marker = Block::CompactionMarker(CompactionMarkerBlock {
         id: "m".try_into().unwrap(),

@@ -6,15 +6,13 @@
 //! the lifecycle policy.
 
 use std::{
-    rc::Rc,
+    rc::{Rc, Weak},
     sync::Arc,
 };
 
-
-
 use demi_agent_session::{
-    AgentSession, CommandLook, Continuation, NewContext, RestoreError, SeenContext, SessionConfig,
-    SessionDeps, SessionInit, SessionRuntime, StepOutcomes, ToolInvocation,
+    AgentSession, CommandLook, Continuation, NewContext, RestoreError, RunningWork, SeenContext,
+    SessionConfig, SessionDeps, SessionInit, SessionRuntime, StepOutcomes, ToolInvocation,
 };
 use demi_agent_store::{
     AgentTreeStore, Checkpoint, NodeRecord, RunningCommand, StoreError, StoredCommand, StoredOutput,
@@ -38,7 +36,7 @@ use demi_shared_types::{
 };
 use futures_util::{FutureExt, future::LocalBoxFuture};
 
-use crate::server::ProviderResolver;
+use crate::server::{AgentServer, ProviderResolver};
 
 /// What made Demi resume a child's turn the process interrupted, as its
 /// model reads it.
@@ -289,6 +287,9 @@ impl<H: HostResolver> Node<H> {
 pub(crate) struct NodeRuntime<H: HostResolver> {
     node: NodeId,
     root: NodeId,
+    /// The server whose tree the node is in; weak, since the tree holds the
+    /// node.
+    server: Weak<AgentServer<H>>,
     /// Where the window in use for a model comes from.
     providers: Rc<dyn ProviderResolver>,
     cwd: String,
@@ -554,6 +555,41 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         definitions()
     }
 
+    /// The commands the node's shells run, oldest first, each with its
+    /// call's title, and the node's live children in spawn order.
+    fn running_work(&self) -> LocalBoxFuture<'_, RunningWork> {
+        let mut views: Vec<PageView> = self
+            .environments
+            .page_views()
+            .into_iter()
+            .filter(|view| view.state == PageState::Running)
+            .collect();
+        views.sort_by_key(|view| std::cmp::Reverse(view.running_ms));
+        let commands = views
+            .into_iter()
+            .map(|view| {
+                let title = self
+                    .environments
+                    .owning(&view.command_id)
+                    .and_then(|environment| environment.title(&view.command_id))
+                    .unwrap_or_default();
+                (view.command_id, title)
+            })
+            .collect();
+        let subagents = self
+            .server
+            .upgrade()
+            .and_then(|server| server.tree(&self.root))
+            .map(|tree| tree.live_children_of(&self.node))
+            .unwrap_or_default();
+        Box::pin(async move {
+            RunningWork {
+                commands,
+                subagents,
+            }
+        })
+    }
+
     fn runs_together(&self, tool: &str) -> bool {
         runs_together(tool)
     }
@@ -750,6 +786,8 @@ pub(crate) struct NodeSpec<H: HostResolver> {
     pub(crate) origin: Origin,
     pub(crate) role: NodeRole,
     pub(crate) root: NodeId,
+    /// The server whose tree the node is in, which knows its live children.
+    pub(crate) server: Weak<AgentServer<H>>,
     /// A runtime that serves the origin's model selection's provider entry.
     pub(crate) runtime: Box<dyn ProviderRuntime>,
     pub(crate) providers: Rc<dyn ProviderResolver>,
@@ -806,6 +844,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         origin,
         role,
         root,
+        server,
         runtime,
         providers,
         hosts,
@@ -834,6 +873,7 @@ pub(crate) async fn assemble<H: HostResolver>(
     let node_runtime = Rc::new(NodeRuntime {
         node: record.id.clone(),
         root,
+        server,
         providers,
         cwd: cwd.clone(),
         hosts,

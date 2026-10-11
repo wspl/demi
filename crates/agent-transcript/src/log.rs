@@ -7,7 +7,7 @@ use demi_conversation_socket_protocol::{TranscriptPatch, TranscriptVersion};
 use demi_provider_common::ToolCall;
 use demi_shared_types::{
     AbortBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
-    CompactionMarkerBlock, ContextBlock, ErrorBlock, ErrorDevice, HOST_OFFLINE, InstructionEntry, ModelSelection, ProviderErrorDiagnostics,
+    CompactionMarkerBlock, ContextBlock, ErrorBlock, ErrorDevice, HOST_OFFLINE, InstructionEntry, KeptMessage, ModelSelection, ProviderErrorDiagnostics,
     RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock, TextBlock, ThinkingBlock,
     Timestamp, TokenUsage, ToolCallBlock, ToolCallStatus, ToolResultContentBlock, ToolView, TurnId,
     UserBlock, UserContentBlock, WakeupBlock, WakeupPlacement, CommandReport,
@@ -241,14 +241,15 @@ impl TranscriptLog {
         }
     }
 
-    /// Inserts compaction's summary at `index`, where the kept history
-    /// begins, and returns its id.
+    /// Inserts compaction's summary, with the user's messages it keeps, at
+    /// `index`, where the kept history begins, and returns its id.
     pub fn insert_compaction_boundary(
         &mut self,
         index: usize,
         model: &ModelSelection,
         summary: String,
         summary_tokens: u64,
+        kept: Vec<KeptMessage>,
     ) -> BlockId {
         let (id, created_at) = self.stamp();
         let block = Block::CompactionBoundary(CompactionBoundaryBlock {
@@ -257,6 +258,7 @@ impl TranscriptLog {
             model: model.clone(),
             summary,
             summary_tokens,
+            kept,
             entries: Vec::new(),
         });
         self.journal.add(index, &block);

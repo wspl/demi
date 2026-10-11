@@ -3,12 +3,13 @@
 //! vendor that records them, while the model's answers come from a script.
 //! Each request begins with the previous one, byte for byte apart from the
 //! Anthropic cache marks, which the vendor does not count as content; a
-//! summary request is the latest answered request with the instruction
-//! after it; after a summary only the messages change, and Anthropic leaves
-//! out the reasoning kept past it; a changed thinking setting changes its
-//! own fields alone.
+//! summary request is the answered request that ends at the cut point, here
+//! the latest, with the instruction after it; after a summary only the
+//! messages change, and Anthropic leaves out the reasoning kept past it; a
+//! changed thinking setting changes its own fields alone.
 
 use demi_agent_session::testing::COMPACTION_SUMMARY_INSTRUCTION;
+use demi_agent_transcript::COMPACTION_NOTE;
 use demi_agent_store::testing::png;
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
 use demi_provider_codex::{
@@ -522,7 +523,7 @@ async fn each_providers_requests_begin_with_the_one_before_and_a_summary_or_a_th
         );
         let instruction = summary_parts.last().unwrap().to_string();
         assert!(
-            instruction.contains(COMPACTION_SUMMARY_INSTRUCTION.split('.').next().unwrap()),
+            instruction.contains(COMPACTION_SUMMARY_INSTRUCTION.lines().next().unwrap()),
             "{family:?}: {instruction}"
         );
         // After the summary the messages start again at it, after the system
@@ -540,7 +541,7 @@ async fn each_providers_requests_begin_with_the_one_before_and_a_summary_or_a_th
         assert!(
             after_parts[system_messages]
                 .to_string()
-                .contains("Previous conversation summary:"),
+                .contains(COMPACTION_NOTE),
             "{family:?}: {after_parts:#?}"
         );
         // The reasoning of the kept answer: Anthropic leaves it out, and the
