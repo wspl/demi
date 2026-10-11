@@ -26,17 +26,21 @@ import Switch from '@demicodes/web-ui/ui/Switch.vue'
 const props = defineProps<{
   providers: ProviderInfo[]
   models: Record<string, ModelInfo[]>
-  /** The conversation's model settings; none while nothing is chosen. */
+  /**
+   * The conversation's model settings; none while nothing is chosen, or
+   * while Parent's model is, when the menu offers it.
+   */
   settings?: ModelSettings | null
   /**
-   * Leaves out the Context row, the user's limit on the model for all their
-   * conversations: for settings that hold only a model, its effort and its
-   * tier, such as a subagent profile's.
+   * Offers Parent's model at the top, chosen while `settings` is none: for
+   * a subagent profile, whose children may infer with their parent's model.
    */
-  withoutContext?: boolean
+  parentModel?: boolean
 }>()
 
 const emit = defineEmits<{
+  /** Parent's model was chosen. */
+  parentModel: []
   /** One change of the model settings, naming only the parts it changes. */
   change: [change: ModelSettingsChange]
   /** The user's context limit on the selected model, for all their conversations with it. */
@@ -44,8 +48,10 @@ const emit = defineEmits<{
 }>()
 
 const providersWithModels = computed(() => availableProviders(props.providers, props.models))
+/** Parent's model is chosen: no model of the menu's is, not even the first one. */
+const parentChosen = computed(() => props.parentModel === true && !props.settings)
 const selected = computed(
-  () => resolveSelectedModel(
+  () => parentChosen.value ? null : resolveSelectedModel(
     props.providers,
     props.models,
     props.settings?.providerId,
@@ -53,7 +59,7 @@ const selected = computed(
   )
 )
 const selectedModelLabel = computed(
-  () => selected.value?.model.name ?? composerModel(
+  () => parentChosen.value ? '' : selected.value?.model.name ?? composerModel(
     props.providers,
     props.models,
     props.settings?.providerId,
@@ -68,7 +74,7 @@ const fast = computed(() => isFastMode(selected.value?.model, props.settings?.se
 
 const contextOptions = computed(() => {
   const model = selected.value?.model
-  return model && !props.withoutContext ? contextLimitOptions(model) : []
+  return model ? contextLimitOptions(model) : []
 })
 const contextLabel = computed(() => formatTokens(contextWindowInUse(selected.value?.model)))
 
@@ -110,10 +116,24 @@ function selectModel(providerId: string, model: ModelInfo) {
     return
   emit('change', modelSwitch(props.settings, selected.value?.model, providerId, model))
 }
+
+function selectParent() {
+  if (!parentChosen.value)
+    emit('parentModel')
+}
 </script>
 
 <template>
   <Menu iconless>
+    <template v-if="parentModel">
+      <MenuItem
+        label="Parent’s Model"
+        choice
+        :is-selected="parentChosen"
+        @select="selectParent"
+      />
+      <MenuDivider />
+    </template>
     <MenuItem
       v-if="fastTier"
       label="Fast Mode"

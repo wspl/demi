@@ -16,6 +16,7 @@ import { useOverlayTarget } from '../overlay/overlayContainer'
 import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
 import { useFocusReturn } from '../overlay/focusReturn'
 import { useOverlay } from '../composables/useOverlay'
+import { stackAbove } from '../overlay/stacking'
 import { inwardAlignment, regionSpan } from './region'
 import { usePhone } from './phone'
 import Sheet from './Sheet.vue'
@@ -170,6 +171,8 @@ const placement = computed<Placement>(() => (
 // A panel confined to a host container never owns the page, so it is not exclusive, and the
 // container stands in for the viewport: the panel stays inside it the way it stays on screen.
 const { container, to: teleportTarget, ready } = useOverlayTarget()
+// Above the dialog or menu it opens from, a dialog stacked over another included.
+const z = stackAbove()
 const boundary = computed(() => container?.value ?? undefined)
 
 // A panel a catalog pins inside its host stays there; on a phone's page a menu is a sheet.
@@ -326,8 +329,8 @@ const overlayMotion = {
         v-if="isOpen"
         ref="floatingRef"
         data-overlay-panel
-        class="popover-floating z-50 w-max"
-        :style="{ ...floatingStyles, transformOrigin: transformOrigin }"
+        class="popover-floating w-max"
+        :style="{ ...floatingStyles, transformOrigin: transformOrigin, zIndex: z() }"
         @keydown="closeOnEscape"
         @focusin="panelFocusIn"
         @focusout="panelFocusOut"

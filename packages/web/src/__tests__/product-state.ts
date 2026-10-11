@@ -34,7 +34,12 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
       limits: { systemBytes: 16 * 1024 ** 3, homeBytes: 32 * 1024 ** 3 },
       newerImage: false,
     },
-    subagents: { enabled: true, maxLive: 10, maxDepth: 1, profiles: [] },
+    subagents: {
+      enabled: true,
+      maxLive: { limit: 10, unlimited: false },
+      maxDepth: { limit: 1, unlimited: false },
+      profiles: [],
+    },
     instructions: '',
     plugins: [{ id: 'skills', name: 'Skills', description: 'Skills the agent follows.', enabled: true, packages: [] }],
     pluginStates: { skills: { sources: [] } },

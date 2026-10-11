@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { TriangleAlert } from '@lucide/vue'
+import type { ContextLimitChange } from '../agent/context-limit'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import Button from '../ui/Button.vue'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import InlineError from '../ui/InlineError.vue'
 import LimitField from '../ui/LimitField.vue'
+import type { LimitValue } from '../ui/limit-field'
 import Switch from '../ui/Switch.vue'
 import Tag from '../ui/Tag.vue'
 import TagLine from '../ui/TagLine.vue'
@@ -23,23 +25,29 @@ import type { SettingsSubagentDraft, SettingsSubagentProfile } from './types'
 /**
  * The Subagents section (`subagents.md` § Profiles, § Limits): the switch
  * that turns subagents on or off for the user, the two limits, each a
- * number or Unlimited after a warning, and the user's profiles, each with a
- * switch of its own and an editor. A profile whose model settings name
- * something the catalog no longer offers is marked unavailable with the part
- * that is missing, which the page derives from the catalog it holds. The
- * host saves; the next spawn of every conversation uses a change.
+ * number or Unlimited after a warning, which keeps the number, and the
+ * user's profiles, each with a switch of its own and an editor. A profile
+ * whose model settings name something the catalog no longer offers is
+ * marked unavailable with the part that is missing, which the page derives
+ * from the catalog it holds. The host saves; the next spawn of every
+ * conversation uses a change.
  */
 const props = defineProps<{
   /** The Subagents switch. */
   enabled: boolean
-  /** Maximum subagents: how many of a conversation are live at once; null for Unlimited. */
-  maxLive: number | null
-  /** Maximum depth: how many levels below the main agent; null for Unlimited. */
-  maxDepth: number | null
+  /** Maximum subagents: how many of a conversation are live at once. */
+  maxLive: LimitValue
+  /** Maximum depth: how many levels below the main agent. */
+  maxDepth: LimitValue
   profiles: SettingsSubagentProfile[]
-  /** The providers and models the model menu offers. */
+  /** The providers and models the model menu offers, as the composer's does. */
   providers: ProviderInfo[]
   models: Record<string, ModelInfo[]>
+  /**
+   * Every model each provider's catalog lists, the ones the menu hides
+   * included: a profile's model is named, and marked as gone, from these.
+   */
+  catalogModels: Record<string, ModelInfo[]>
   /**
    * Whether the catalog the marks are read from has loaded; until it has,
    * no profile is marked unavailable.
@@ -53,9 +61,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   switch: [enabled: boolean]
-  /** A new limit; null for Unlimited, which the page confirmed first. */
-  setLimit: [limit: 'maxLive' | 'maxDepth', value: number | null]
+  /** A new limit; Unlimited only once the page confirmed it. */
+  setLimit: [limit: 'maxLive' | 'maxDepth', value: LimitValue]
   switchProfile: [id: string, enabled: boolean]
+  /** The user's context limit on a model, set from a profile's model menu as from the composer's. */
+  contextLimit: [change: ContextLimitChange]
 }>()
 
 /** What each limit's field says of text that is no limit. */
@@ -80,14 +90,14 @@ const NEW_PROFILE: SettingsSubagentDraft = {
 }
 
 function missing(profile: SettingsSubagentProfile): string | null {
-  return props.catalogReady ? profileMissing(profile.model, props.providers, props.models) : null
+  return props.catalogReady ? profileMissing(profile.model, props.providers, props.catalogModels) : null
 }
 
 /** What the row says of a profile besides its description. */
 function traits(profile: SettingsSubagentProfile): string[] {
   return [
-    profileModelLabel(profile.model, props.providers, props.models),
-    profile.instructions === null ? 'Parent’s prompt' : 'Own prompt',
+    profileModelLabel(profile.model, props.providers, props.catalogModels),
+    profile.instructions === null ? 'No instructions' : 'Own instructions',
     profile.canSpawn ? 'Children may spawn' : 'No spawning',
   ]
 }
@@ -264,11 +274,13 @@ const empty = computed(() => props.profiles.length === 0)
       :profile="editor.draft"
       :providers="providers"
       :models="models"
+      :catalog-models="catalogModels"
       :pending="editor.status.kind === 'saving'"
       :error="editor.status.kind === 'failed' ? editor.status.message : null"
       @close="editor.open = false"
       @save="save"
       @delete="deleteOpen = true"
+      @context-limit="emit('contextLimit', $event)"
     />
     <ConfirmDialog
       :is-open="deleteOpen"
