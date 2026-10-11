@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { MediaSource as ContentMediaSource, ToolMediaSource } from '@demicodes/protocol'
 import { useMediaViewer } from '../files/media-viewer'
 import { dropSource } from '../files/preview'
-import { declaredSize, loadedSize, THUMBNAIL_HEIGHT, thumbnailBox, type PixelSize } from '../files/thumbnail'
+import { declaredSize, loadedSize, thumbnailBox, thumbnailPlaceHeight, type PixelSize } from '../files/thumbnail'
 import { useMediaUrl } from './media-source'
 
 /**
@@ -30,9 +30,13 @@ const failed = ref(false)
 const element = ref<HTMLImageElement | HTMLVideoElement | null>(null)
 /** The medium's size once its bytes have loaded. */
 const loaded = ref<PixelSize | null>(null)
-/** The medium's size as far as the page knows it: loaded, else what its reference declares. */
-const known = computed(() => loaded.value ?? (props.source.type === 'ref' ? declaredSize(props.source) : null))
+/** The size its reference carries, known before its bytes arrive. */
+const declared = computed(() => (props.source.type === 'ref' ? declaredSize(props.source) : null))
+/** The medium's size as far as the page knows it: loaded, else declared. */
+const known = computed(() => loaded.value ?? declared.value)
 const box = computed(() => thumbnailBox(known.value, props.kind))
+/** Its place in the row, which its box never exceeds and which does not change when it loads. */
+const placeHeight = computed(() => thumbnailPlaceHeight(declared.value, props.kind))
 watch(src, () => {
   failed.value = false
   loaded.value = null
@@ -56,7 +60,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex max-w-full items-start" :style="{ height: `${THUMBNAIL_HEIGHT}px` }">
+  <div class="flex max-w-full items-start" :style="{ height: `${placeHeight}px` }">
     <div
       v-if="failed"
       class="flex h-full w-60 max-w-full items-center justify-center rounded-md border border-line-subtle px-3 text-center text-xs text-fg-muted"

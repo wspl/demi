@@ -119,6 +119,7 @@ import {
   returnedShellTool,
   returnedFailingShellTool,
   smallImageTool,
+  shortFramesTool,
   statusImageTool,
   thinkingText,
   steerPrompt,
@@ -891,6 +892,7 @@ const toolMediaSpecimens = [
   { variant: 'shell · tall image', block: fullPageTool },
   { variant: 'shell · wide image', block: wideImageTool },
   { variant: 'shell · small image', block: smallImageTool },
+  { variant: 'shell · short frames, rows as tall as they are', block: shortFramesTool },
   { variant: 'shell · video', block: recordingTool },
   { variant: 'shell · video of unknown size', block: unsizedRecordingTool },
   { variant: 'status · image', block: statusImageTool },
@@ -1914,7 +1916,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Tool Media"
-        note="The images and videos a call’s result carries show under its row, folded or open, side by side in the order of the result. Each is a thumbnail: 80px tall and 64 to 200px wide by its proportions, cropped beyond them (the tall page keeps its top, the wide timeline its middle), never enlarged (the icon keeps its size). Its reference carries its pixel size, so its box is final before its bytes arrive and nothing moves when they load; a video of unknown size is 16:9 until its first frame arrives. A video’s thumbnail is its first frame with a play mark; it never plays in place. A click opens the medium whole and large over the dimmed page: fitted and never enlarged; a click on an image toggles actual size, a video plays at once with the browser’s controls, whose full-screen control shows it larger, and closing stops it. Escape, the close control or a click on the dimmed page closes the viewer, and the picture stays until it has faded out. A medium that is gone shows one line where it was: that it was not stored, with the store’s reason, or the day it was removed. A medium the page cannot show says so at the same height. At a phone’s width a preview fits the column, an image opened large fills the screen, where a tap toggles actual size, and an iPhone plays a video full screen."
+        note="The images and videos a call’s result carries show under its row, folded or open, side by side in the order of the result. Each is a thumbnail: 80px tall and 64 to 200px wide by its proportions, cropped beyond them (the tall page keeps its top, the wide timeline its middle), never enlarged (the icon keeps its size). A row is as tall as its tallest thumbnail, so short frames leave no empty band under their row; only a medium whose size is unknown until it loads keeps 80px, so the row never shrinks when it arrives. Its reference carries its pixel size, so its box is final before its bytes arrive and nothing moves when they load; a video of unknown size is 16:9 until its first frame arrives. A video’s thumbnail is its first frame with a play mark; it never plays in place. A click opens the medium whole and large over the dimmed page: fitted and never enlarged; a click on an image toggles actual size, a video plays at once with the browser’s controls, whose full-screen control shows it larger, and closing stops it. Escape, the close control or a click on the dimmed page closes the viewer, and the picture stays until it has faded out. A medium that is gone shows one line where it was: that it was not stored, with the store’s reason, or the day it was removed. A medium the page cannot show says so at the same height. At a phone’s width a preview fits the column, an image opened large fills the screen, where a tap toggles actual size, and an iPhone plays a video full screen."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -2259,7 +2261,7 @@ onBeforeUnmount(() => {
       <GalleryCommandWakeup />
       <GallerySection
         title="Turn"
-        note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the message says so with Retry, which sends it again with the same ID and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay, the tail row says Connecting, never that it failed, and the message goes with its ID once the socket is back. Resume, Retry and Connect wait for the server first."
+        note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the message says so with Retry, which sends it again with the same ID and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay, the tail row says Connecting, never that it failed, and the message goes with its ID once the socket is back. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Send Now and Remove in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it; Send Now or Remove pressed before then is carried out once it is held. Resume, Retry and Connect wait for the server first."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button
@@ -2292,6 +2294,16 @@ onBeforeUnmount(() => {
             size="sm"
             @click="playTurn('connect')"
           >Connect</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            @click="playTurn('steer')"
+          >Steer</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            @click="playTurn('queue')"
+          >Queue</Button>
         </div>
         <div class="gallery-frame h-[20rem] bg-surface">
           <SessionSurface ref="turnSurface">
@@ -2301,8 +2313,8 @@ onBeforeUnmount(() => {
                 class="min-h-0 flex-1"
                 :conversation-id="turnFlow.state.id"
                 :blocks="turnFlow.state.blocks"
-                :pending-steers="[]"
-                :queue="[]"
+                :pending-steers="turnFlow.state.pendingSteers"
+                :queue="turnFlow.state.queue"
                 :phase="turnFlow.state.phase"
                 :load="turnFlow.state.load"
                 :pending-action="turnFlow.state.pendingAction"
@@ -2311,6 +2323,10 @@ onBeforeUnmount(() => {
                 :persisted-scroll-state="undefined"
                 read-only
                 @retry-submission="turnFlow.retrySubmission"
+                @delete-pending-steer="turnFlow.removePendingSteer"
+                @interrupt-pending-steer="turnFlow.interruptPendingSteer"
+                @delete-queued="turnFlow.removeQueued"
+                @send-queued="turnFlow.sendQueued"
               />
             </div>
             <template #dock>

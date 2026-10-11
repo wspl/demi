@@ -7,6 +7,7 @@ import type { TerminalRecord } from './terminals'
 import type { ComposerAttachment } from './message-input/attachments'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
 import type { ModelSettings } from './model-selection'
+import type { SendWay } from './send-way'
 
 export type { ModelSettings } from './model-selection'
 
@@ -16,6 +17,12 @@ export type PendingSteerMessage = Pick<PendingSteer, 'id' | 'content'>
 /** A message sent but not yet confirmed: the composer's own text and attachments, shown as the message they will become. */
 export interface PendingSubmissionState {
   id: string
+  /**
+   * How it was sent, which says what it will be: the next message, a steer
+   * waiting for the running turn, or a message in the queue
+   * (`product.md` § Steer or queue).
+   */
+  way: SendWay
   text: string
   attachments: ComposerAttachment[]
   /** Why the delivery failed; null while the message is on its way. */
