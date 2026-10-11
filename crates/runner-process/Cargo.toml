@@ -38,6 +38,9 @@ command-fds = "0.3"
 # The open-file limit, raised at start and restored in children (`runner.md` § Load).
 rlimit = "0.11"
 rustix = { version = "1", features = ["fs", "process"] }
+# The environments of the user's processes, where a stop finds a job's
+# processes that left its groups (`runner.md` § Cancellation and completion).
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 
 # The runner's umask, read without changing it (`src/process.rs`).
 [target.'cfg(target_os = "linux")'.dependencies]

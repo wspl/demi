@@ -10,6 +10,8 @@ use std::{
     sync::{Arc, Mutex, RwLock, RwLockReadGuard},
 };
 
+#[cfg(unix)]
+use demi_runner_process::process::Stray;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
@@ -271,6 +273,25 @@ impl Work {
             }
         }
         failure.map_or(Ok(()), Err)
+    }
+
+    /// The job's processes that a stop of job `job` signals one by one,
+    /// outside its process groups, which take its signals as groups
+    /// (`process::job_strays`): those that carry its id, those of `known`
+    /// that still run, and the descendants of those and of the groups'
+    /// members. It reads the process table, so it runs off the runtime's
+    /// threads.
+    #[cfg(unix)]
+    pub(crate) fn strays(&self, job: &str, known: &[Stray]) -> Vec<Stray> {
+        let grouped: std::collections::HashSet<i32> = self
+            .groups
+            .lock()
+            .expect("the group table is intact")
+            .running
+            .keys()
+            .copied()
+            .collect();
+        demi_runner_process::process::job_strays(job, &grouped, known)
     }
 
     /// Windows has no signals: any but 0 ends the part's shell work and
