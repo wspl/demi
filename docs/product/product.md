@@ -763,6 +763,14 @@ character the dialect would read as formatting, it carries a backslash
 (`\*args`); nothing else is escaped, so `snake_case` and `x < y` reach the
 model as typed.
 
+Copying and pasting never add line breaks of their own: a copy of a
+message, whole or a selection of it, holds no blank line before its first
+line or after its last, and a paste into a composer drops the blank lines at
+the start and end of what it pastes, keeping the lines between them and each
+line's indentation. For example, the user copies a sent message and pastes it
+back into the empty composer: the composer holds exactly the message, with no
+line under it.
+
 Copying a sent message, by its Copy control or by selecting part of it,
 copies its files with its text, and pasting that into a composer brings the
 files back as capsules, where they stood, without uploading them again. For
