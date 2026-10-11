@@ -107,6 +107,19 @@ test('a file added to an edit is uploaded and joins the content once the backend
   }
 })
 
+test('a file of a name the edit holds already joins it as a file of its own', () => {
+  const server = uploads()
+  const f = fixture(server.upload)
+  try {
+    const added = f.editor.addFiles([new File(['%PDF-3'], 'same.pdf', { type: 'application/pdf' })])
+    expect(added.map((capsule) => capsule.name)).toEqual(['same.pdf'])
+    expect(f.editor.attachmentError.value).toBeNull()
+    expect(server.calls.map((call) => call.file.name)).toEqual(['same.pdf'])
+  } finally {
+    f.close()
+  }
+})
+
 test('a failed upload keeps its capsule and blocks the edit until Retry uploads it', async () => {
   const server = uploads()
   const f = fixture(server.upload)

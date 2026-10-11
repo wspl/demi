@@ -36,7 +36,6 @@ import {
   composerAttachmentFromFile,
   composerRemoteAttachment,
   isComposerFile,
-  remoteAttachmentError,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import {
   contentCopy,
@@ -1977,14 +1976,7 @@ export const useConversations = defineStore('conversations', () => {
     return uploads.claimFile(conversation, file, picture)
   }
 
-  /** Takes a file on a paired device a pasted message names; null when the composer has it already. */
-  function attachDeviceFile(conversation: Conversation, file: CopiedDeviceFile): ProductAttachment | null {
-    if (remoteAttachmentError(file.path, file.host, conversation.files)) {
-      return null
-    }
-    return carryDeviceFile(conversation, file)
-  }
-
+  /** Takes a file on a paired device a pasted message names, as many times as messages name it. */
   function carryDeviceFile(conversation: Conversation, file: CopiedDeviceFile): ProductAttachment {
     conversation.files.push({ ...composerRemoteAttachment({ host: file.host, path: file.path }), deviceId: file.deviceId })
     return conversation.files.at(-1)!
@@ -2002,10 +1994,7 @@ export const useConversations = defineStore('conversations', () => {
         const { item, kept } = claimFile(conversation, file, picture)
         return { capsule: composerCapsule(item), kept }
       },
-      remote: (file) => {
-        const item = attachDeviceFile(conversation, file)
-        return item && composerCapsule(item)
-      },
+      remote: (file) => composerCapsule(carryDeviceFile(conversation, file)),
     }
   }
 
@@ -2191,11 +2180,7 @@ export const useConversations = defineStore('conversations', () => {
    * composer sent.
    */
   function resend(conversation: Conversation, copy: CopiedMessage, way: 'steer' | 'queue'): void {
-    const pasted = pasteMessage(copy, null, {
-      ...pasteHost(conversation),
-      // The message's own file, even when the draft holds it too.
-      remote: (file) => composerCapsule(carryDeviceFile(conversation, file)),
-    })
+    const pasted = pasteMessage(copy, null, pasteHost(conversation))
     const pending = addPendingSend(conversation, way, pasted.markdown, pasted.capsules.map((capsule) => capsule.id))
     void deliverInOrder(conversation, pending)
   }
@@ -2315,7 +2300,6 @@ export const useConversations = defineStore('conversations', () => {
       regenerateMessage(editHost(conversation), request),
     addFiles,
     claimFile,
-    attachDeviceFile,
     waitingForUploads,
     arrangeFiles,
     retryFile,

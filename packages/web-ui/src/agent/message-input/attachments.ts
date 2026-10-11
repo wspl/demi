@@ -93,7 +93,7 @@ export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
  */
 export const PASTE_AS_FILE_MIN_CHARS = 2000
 export const PASTE_AS_FILE_MIN_LINES = 40
-const PASTED_TEXT_BASENAME = 'pasted-text'
+const PASTED_TEXT_NAME = 'pasted-text.txt'
 
 export function pastedTextIsLong(text: string): boolean {
   if (text.length >= PASTE_AS_FILE_MIN_CHARS) {
@@ -111,14 +111,13 @@ export function pastedTextIsLong(text: string): boolean {
   return false
 }
 
-/** The file a long paste becomes; its name steps past the ones already attached. */
-export function pastedTextFile(text: string, existingNames: Iterable<string>): File {
-  const taken = new Set(existingNames)
-  let name = `${PASTED_TEXT_BASENAME}.txt`
-  for (let index = 2; taken.has(name); index += 1) {
-    name = `${PASTED_TEXT_BASENAME}-${index}.txt`
-  }
-  return new File([text], name, { type: 'text/plain' })
+/**
+ * The file a long paste becomes. Every one is `pasted-text.txt`, as every
+ * pasted picture is `image.png`: a message holds files of one name, and the
+ * Host keeps each under a suffix of its own (`product.md` § Attachments).
+ */
+export function pastedTextFile(text: string): File {
+  return new File([text], PASTED_TEXT_NAME, { type: 'text/plain' })
 }
 
 export function clampUnit(value: number): number {
@@ -204,15 +203,14 @@ export function composerAttachmentFromFile(file: File): ComposerFileAttachment {
   }
 }
 
-export function attachmentFileError(
-  file: File,
-  existingNames: Iterable<string>,
-): string | undefined {
+/**
+ * Why a file cannot join a message: only an empty one and one over 25 MB are
+ * refused. A name already in the message is no reason, since a name says
+ * nothing about a file's contents (`product.md` § Attachments).
+ */
+export function attachmentFileError(file: File): string | undefined {
   if (!file.size || file.size > ATTACHMENT_MAX_BYTES) {
     return `${file.name}: choose a nonempty file smaller than 25 MB.`
-  }
-  if ([...existingNames].includes(file.name)) {
-    return `${file.name} is already attached.`
   }
 }
 
@@ -273,25 +271,6 @@ export function attachmentSendBlockReason(
   if (phases.includes('uploading') || phases.includes('attaching')) {
     return 'Wait for attachments to finish uploading'
   }
-}
-
-export function remoteAttachmentError(
-  path: string,
-  host: string,
-  existing: readonly ComposerAttachment[],
-): string | undefined {
-  if (
-    existing.some(
-      (item) =>
-        item.kind === 'reference' && item.path === path && item.host === host,
-    )
-  ) {
-    return `${baseName(path)} is already attached.`
-  }
-}
-
-export function composerFileNames(items: readonly ComposerAttachment[]): string[] {
-  return items.filter(isComposerFile).map((item) => item.name)
 }
 
 /**

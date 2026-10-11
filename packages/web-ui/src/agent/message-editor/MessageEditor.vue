@@ -322,7 +322,7 @@ function paste(view: EditorView, event: ClipboardEvent): boolean {
   const text = transfer.getData('text/plain')
   if (pastedTextIsLong(text)) {
     landAtSelection(view)
-    emit('files', [pastedTextFile(text, capsuleNames())])
+    emit('files', [pastedTextFile(text)])
     return true
   }
   // Copied from a message: its own formatting and capsules.
@@ -516,18 +516,6 @@ function click(event: MouseEvent): void {
   }
 }
 
-/** The names of the files in the message, which a new one must not take again. */
-function capsuleNames(): string[] {
-  const names: string[] = []
-  editor.state.doc.descendants((node) => {
-    const capsule = capsuleOf(node)
-    if (capsule) {
-      names.push(capsule.name)
-    }
-  })
-  return names
-}
-
 defineExpose({
   /** Files are on their way: their capsules land where `event` dropped them, or at the cursor. */
   placeNextFiles(event?: DragEvent): void {
@@ -591,8 +579,6 @@ defineExpose({
   clipboardItem(): ClipboardItem {
     return clipboardItem(clipboardForms(editor.state.doc.content))
   },
-  /** The names the message's files already have. */
-  capsuleNames,
   focus(): void {
     editor.commands.focus()
   },
