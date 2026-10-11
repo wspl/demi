@@ -126,7 +126,7 @@ const groupLabels = computed(() => {
       group,
       text,
       folded,
-      waiting: labelWaiting(folded, conversations),
+      waiting: labelWaiting(folded, conversations, props.activeId),
     }
   }
   return {
@@ -144,6 +144,9 @@ const displayEntries = computed(() => [
     (line) => line.kind === 'project' || line.projectId !== null
   ),
 ])
+
+/** The first project header shown, which sits right under the Projects label without a gap. */
+const firstShownProject = computed(() => lines.value.find((line) => line.kind === 'project' && !line.hidden)?.id)
 
 function toggleGroup(group: SidebarGroup): void {
   foldedGroups.value = foldedGroups.value.includes(group)
@@ -518,12 +521,12 @@ function selectProjectConversations(project: SidebarProject): void {
           @leave="leaveEntry"
         >
           <div
-            v-for="(entry, index) in displayEntries"
+            v-for="entry in displayEntries"
             :key="entry.id"
             class="sidebar-entry relative"
             :class="[
               // A line its folded group hides gives back the 1px gap above it, so the label stands alone.
-              entry.hidden ? '-mt-px' : entry.kind === 'project' && displayEntries[index - 1]?.id !== 'projects-heading' ? 'mt-3' : '',
+              entry.hidden ? '-mt-px' : entry.kind === 'project' && entry.id !== firstShownProject ? 'mt-3' : '',
               // Headings stick to the top of the list; a project's header sticks just under the 30px Projects heading.
               // The gap above Projects is a margin on the entry, outside the sticky box, so both headings stick the same.
               entry.kind === 'heading' ? 'sticky top-0 z-20 bg-surface-base' : entry.kind === 'project' ? 'sticky top-[30px] z-10 bg-surface-base' : '',

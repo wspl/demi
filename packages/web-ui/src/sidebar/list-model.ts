@@ -23,8 +23,9 @@ export type ListLine = ListEntry & { hidden: boolean }
 /**
  * Every line the list holds, in display order: plain rows, then each project header and, unless
  * the project is folded, its rows. A folded group hides its lines but keeps the conversation open
- * in the page, which stays under the label even in a folded project; the hidden lines stay listed
- * so their fold can animate. The keyboard reaches the lines that are not hidden.
+ * in the page, which stays under the label even in a folded project, and in Projects its
+ * project's header above it, so its place still shows; the hidden lines stay listed so their fold
+ * can animate. The keyboard reaches the lines that are not hidden.
  */
 export function listLines(
   plain: readonly SidebarConversation[],
@@ -44,7 +45,8 @@ export function listLines(
     })
   )
   for (const group of groups) {
-    lines.push({ kind: 'project', id: group.project.id, hidden: projectsFolded })
+    const holdsOpen = group.items.some((conversation) => conversation.id === openId)
+    lines.push({ kind: 'project', id: group.project.id, hidden: projectsFolded && !holdsOpen })
     const projectFolded = foldedProjects.has(group.project.id)
     for (const conversation of group.items) {
       const open = conversation.id === openId
@@ -65,13 +67,17 @@ export function listLines(
 
 /**
  * The conversation whose yellow dot a group's label carries: while the group is folded, the
- * first of its conversations that waits for the user, so a request never hides in a fold.
+ * first of its conversations the fold hides that waits for the user, so a request never hides
+ * in a fold. The open conversation stays under the label with its own dot, so it lends none.
  */
 export function labelWaiting(
   folded: boolean,
   conversations: readonly SidebarConversation[],
+  openId: string | null,
 ): SidebarConversation | null {
-  return folded ? conversations.find((conversation) => conversation.needsYou) ?? null : null
+  if (!folded)
+    return null
+  return conversations.find((conversation) => conversation.needsYou && conversation.id !== openId) ?? null
 }
 
 export function entryIndex(entries: readonly ListEntry[], id: string | null): number {
