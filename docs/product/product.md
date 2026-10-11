@@ -84,7 +84,7 @@ an agent's tab and link wear, so one state has one look everywhere:
 | Running | Blue, the accent, breathing |
 | Finished, its answer read or not | Green |
 | Failed | Red |
-| A request waits for the user | Yellow with a halo, over every other dot ([Permissions](../agent/permissions.md)) |
+| A request waits for the user | Yellow, the same size as every other dot and with nothing around it, over every other dot ([Permissions](../agent/permissions.md)) |
 | Stopped by the user, or nothing run yet | The faint ring of a settled row |
 
 A Stop is the user's own decision, neither finished nor failed, and leaves
