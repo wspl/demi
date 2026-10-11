@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { baseName } from '@demicodes/utils'
 import HighlightText from '../ui/HighlightText.vue'
+import LineCounts from './LineCounts.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
 import Tree from './Tree.vue'
 import { relativePath, resolveHostPath } from './paths'
@@ -11,9 +12,9 @@ import type { TreeRow } from './tree'
 /**
  * A request's files beside the diff, in the order the request first changed
  * them, on a `Tree` of one level: each row the file's name, its folder from
- * the workspace after it, as VS Code's source control list shows them,
- * without line counts: only the diff a file shows can tell them right, and
- * the view's header gives them.
+ * the workspace after it and its All Changes' line counts, as VS Code's
+ * source control list shows them; a removed file struck through, and a
+ * renamed one under its new name, its old one in the tooltip.
  */
 const props = defineProps<{
   files: readonly RequestFile[]
@@ -56,14 +57,15 @@ const rootName = computed(() => props.rootName ?? (baseName(props.root) || '/'))
     :caption="rootName"
     :caption-title="root"
     :selected="selected"
-    :tooltip="(row) => row.file.path"
+    :tooltip="(row) => row.file.from ? `${row.file.from} → ${row.file.path}` : row.file.path"
     @activate="emit('select', $event.path)"
   >
     <template #name="{ row, highlight }">
       <!-- The name stays whole; the folder after it gives way first (the gallery's Writing page). -->
-      <span class="flex min-w-0 items-baseline gap-1.5">
-        <span class="shrink-0"><HighlightText :text="row.name" :indexes="highlight" /></span>
-        <TruncatedText v-if="row.folder" class="text-[11px] text-fg-subtle" :text="row.folder" />
+      <span class="flex min-w-0 flex-1 items-baseline gap-1.5">
+        <span class="shrink-0" :class="row.file.kind === 'deleted' ? 'line-through text-fg-muted' : ''"><HighlightText :text="row.name" :indexes="highlight" /></span>
+        <TruncatedText v-if="row.folder" class="min-w-0 text-[11px] text-fg-subtle" :text="row.folder" />
+        <LineCounts v-if="row.file.lines" class="ml-auto pr-1" :added="row.file.lines.added" :removed="row.file.lines.removed" />
       </span>
     </template>
     <template #empty>

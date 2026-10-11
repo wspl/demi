@@ -12,6 +12,7 @@ use demi_shared_types::{
     Timestamp, TokenUsage, ToolCallBlock, ToolCallStatus, ToolResultContentBlock, ToolView, TurnId,
     UserBlock, UserContentBlock, WakeupBlock, WakeupPlacement, CommandReport,
 };
+use demi_agent_store::changes::run_of;
 use serde_json::Value;
 
 use super::{
@@ -67,7 +68,7 @@ impl TranscriptLog {
     /// The block with this id, looked for from the end, where recent changes
     /// are.
     pub fn find(&self, id: &BlockId) -> Option<&Block> {
-        self.blocks.iter().rev().find(|block| block.id() == id)
+        self.position(id).map(|index| &self.blocks[index])
     }
 
     /// The patches recorded since the last call, as one batch that advances
@@ -148,6 +149,7 @@ impl TranscriptLog {
     ) {
         let created_at = self.clock.now();
         self.append(Block::Wakeup(WakeupBlock {
+            run: None,
             id,
             turn_id,
             created_at,
@@ -167,6 +169,7 @@ impl TranscriptLog {
     ) {
         let created_at = self.clock.now();
         self.append(Block::AgentMessage(AgentMessageBlock {
+            run: None,
             id: message.id.clone(),
             turn_id,
             created_at,
@@ -346,6 +349,7 @@ impl TranscriptLog {
     pub fn open_thinking(&mut self, model: &ModelSelection, text: String) {
         let (id, created_at) = self.stamp();
         self.append(Block::Thinking(ThinkingBlock {
+            run: None,
             id,
             created_at,
             model: model.clone(),
@@ -451,6 +455,7 @@ impl TranscriptLog {
         };
         let (id, created_at) = self.stamp();
         self.append(Block::ToolCall(ToolCallBlock {
+            run: None,
             id,
             created_at,
             model: model.clone(),
@@ -500,10 +505,7 @@ impl TranscriptLog {
         is_error: bool,
         view: Option<ToolView>,
     ) {
-        let Some(index) = self.blocks.iter().rposition(|block| {
-            matches!(block, Block::ToolCall(call)
-                if call.status == ToolCallStatus::Executing && call.tool_use_id == tool_use_id)
-        }) else {
+        let Some(index) = self.executing_call(tool_use_id) else {
             return;
         };
         if let Block::ToolCall(call) = &mut self.blocks[index] {
@@ -516,6 +518,41 @@ impl TranscriptLog {
             call.view = view;
         }
         self.record_replace(index);
+    }
+
+    /// Where the call `tool_use_id` that is still executing stands: the
+    /// latest such call, as [`complete_tool_call`](Self::complete_tool_call)
+    /// finds it.
+    pub fn executing_call(&self, tool_use_id: &str) -> Option<usize> {
+        self.blocks.iter().rposition(|block| {
+            matches!(block, Block::ToolCall(call)
+                if call.status == ToolCallStatus::Executing && call.tool_use_id == tool_use_id)
+        })
+    }
+
+    /// Where the latest call `tool_use_id` that completed stands.
+    pub fn completed_call(&self, tool_use_id: &str) -> Option<usize> {
+        self.blocks.iter().rposition(|block| {
+            matches!(block, Block::ToolCall(call)
+                if call.status != ToolCallStatus::Executing && call.tool_use_id == tool_use_id)
+        })
+    }
+
+    /// Where the block `id` stands, looked for from the end.
+    pub fn position(&self, id: &BlockId) -> Option<usize> {
+        self.blocks.iter().rposition(|block| block.id() == id)
+    }
+
+    /// Gives the call `id` the view `view`; a block that is gone, as after
+    /// an edit cut it, takes none.
+    pub fn replace_view(&mut self, id: &BlockId, view: ToolView) {
+        let Some(index) = self.position(id) else {
+            return;
+        };
+        if let Block::ToolCall(call) = &mut self.blocks[index] {
+            call.view = Some(view);
+            self.record_replace(index);
+        }
     }
 
     /// Adds `entries` after those the block `id` holds. A block that is
@@ -538,7 +575,10 @@ impl TranscriptLog {
         (id, self.clock.now())
     }
 
-    fn append(&mut self, block: Block) {
+    /// Appends `block` with the run of steps it joins, which the blocks
+    /// before it decide once (`runtime.md` § Work groups).
+    fn append(&mut self, mut block: Block) {
+        block.set_run(run_of(&self.blocks, &block));
         self.journal.add(self.blocks.len(), &block);
         self.blocks.push(block);
     }

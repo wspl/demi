@@ -23,8 +23,7 @@ import ImagePreview from './ImagePreview.vue'
 import MarkdownDocument from './MarkdownDocument.vue'
 import PreviewPair from './PreviewPair.vue'
 import TreeFrame from './TreeFrame.vue'
-import { emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources } from './changes'
-import { diffLineCounts } from './diff-counts'
+import { emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources, type ReadCallChange } from './changes'
 import {
   allChangesStart,
   editIndex,
@@ -46,9 +45,10 @@ import type { FileContents } from './types'
  * before the request's first edit of it to after its last, or one of its
  * edits, which a control steps through. The sidebar lists the working
  * tree's files, or the request's; the file, the edit and Back and Forward
- * are the host's to hold. An edit whose two sides were not kept leaves the
- * editor area empty. The sidebar docks, hides and shows over the diff as its
- * frame (`TreeFrame`) decides.
+ * are the host's to hold. An edit whose two sides were not kept, and a
+ * removed file whose contents before it were not, say so where the diff
+ * would be. The sidebar docks, hides and shows over the diff as its frame
+ * (`TreeFrame`) decides.
  *
  * Text shows as a diff. In Uncommitted mode an image, a video, an audio file
  * or a PDF shows its committed and working-tree versions side by side, and a
@@ -167,9 +167,9 @@ const heading = computed(() => {
   const shown = relativePath(props.root, absolutePath.value)
   const folder = shown.slice(0, shown.lastIndexOf('/') + 1)
   const start = startEdit.value
-  const renamed = mode.value === 'conversation'
-    ? start && start.path !== change.path ? start.path : undefined
-    : 'from' in change ? change.from : undefined
+  const renamed = mode.value === 'conversation' && start
+    ? start.path !== change.path ? start.path : undefined
+    : change.from
   const from = renamed ? relativePath(props.root, resolveHostPath(props.root, renamed)) : null
   return { folder, name: baseName(absolutePath.value), from, deleted: change.kind === 'deleted' }
 })
@@ -185,6 +185,11 @@ const idleText = computed(() => {
   }
   return workingTree.value.files.length > 0 ? 'Select a changed file.' : emptyText.value
 })
+
+/** What stands where the diff would, when the contents it needs were not kept. */
+const unkeptText = computed(() => selectedChange.value?.kind === 'deleted'
+  ? 'The contents before it was removed were not kept.'
+  : 'The contents of this change were not kept.')
 
 const kind = computed(() => selectedChange.value ? previewKind(selectedChange.value.path) : 'text')
 const sourceView = computed(() => selectedChange.value !== null && hasSourceView(selectedChange.value.path))
@@ -269,24 +274,38 @@ const staleBecause = computed(() => {
   return entry?.value !== undefined && entry.failure ? entry.failure.message ?? 'The read failed.' : null
 })
 
+/** All Changes of a file the request removed ends with nothing: the diff is its start against an empty file. */
+const endsRemoved = computed(() => requestFile.value?.kind === 'deleted' && editAt.value === null)
+const readRequest = computed<ReadCallChange | null>(() => {
+  const read = request.value?.read
+  if (!read)
+    return null
+  return endsRemoved.value
+    ? async (copies, signal) => {
+        const sides = await read(copies, signal)
+        return sides && { original: sides.original, modified: '' }
+      }
+    : read
+})
 // A request's file, read from the copies the selection names.
 const callSides = useRequestSides(
   () => request.value && requestFile.value ? shownKey.value : null,
   () => requestFile.value ? selectionCopies(requestFile.value, editAt.value) : null,
-  () => request.value?.read ?? null,
+  () => readRequest.value,
 )
 
 const state = computed<State>(() => mode.value === 'conversation' ? callSides.state.value : workingState.value)
 /**
  * The header's line counts: a working-tree file's as git counts them, and in
- * Conversation those of the diff shown, All Changes or one edit, once its
- * sides are read; none without them.
+ * Conversation those the request's latest call stored: All Changes', or the
+ * shown edit's call's when the edit is its only one of the file; none
+ * where they were not kept.
  */
 const counts = computed(() => {
   if (mode.value === 'uncommitted')
     return workingChange.value
-  const shown = callSides.state.value
-  return shown.phase === 'ready' ? diffLineCounts(shown.sides.original, shown.sides.modified) : null
+  const at = editAt.value
+  return (at === null ? requestFile.value?.lines : edits.value[at]?.lines) ?? null
 })
 
 function retry(): void {
@@ -446,11 +465,11 @@ function pick(path: string): void {
         :path="selectedChange.path"
       />
       <!-- It centres in the space beside a tree shown over the view. -->
-      <div v-else-if="state.phase !== 'unavailable'" class="h-full" :style="{ paddingInlineEnd: `${overlap}px` }">
+      <div v-else class="h-full" :style="{ paddingInlineEnd: `${overlap}px` }">
         <RegionStatus
           class="h-full"
           :status="state.phase === 'loading' || state.phase === 'failed' ? state.phase : 'note'"
-          :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'failed' ? 'Could not read this change.' : idleText"
+          :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'failed' ? 'Could not read this change.' : state.phase === 'unavailable' ? unkeptText : idleText"
           loading-label="Reading…"
           :detail="state.phase === 'failed' ? state.message : null"
           :on-retry="retry"

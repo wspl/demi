@@ -668,6 +668,7 @@ pub mod store_contract {
             origin: None,
         };
         Block::AgentMessage(AgentMessageBlock {
+            run: None,
             entries: Vec::new(),
             id: completion.block_id(),
             turn_id: TurnId::try_from("turn").expect("a test turn id is not empty"),

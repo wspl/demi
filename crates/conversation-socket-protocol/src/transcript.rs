@@ -71,11 +71,50 @@ pub const PAGE_BYTES: usize = 64 * 1024;
 /// call did (`runtime.md` § Work groups).
 pub const LIGHT_INPUT_BYTES: usize = 512;
 
-/// `block` in its light form (`web-api.md` § Light form): without what only
-/// its open row shows, nor the entries of the vendor's record, which never
-/// leave the backend. A tool call longer than [`LIGHT_INPUT_BYTES`] keeps of
-/// its input only its `description`, so its row is titled as the call whole.
-pub fn light(block: &Block) -> Block {
+/// Whole requests' `blocks` in their light form (`web-api.md` § Light
+/// form): each without what only its open row shows, and of the lists of
+/// changed files a shell call carries, only those a page shows: the run's
+/// on the latest call of each run, and the request's on the latest call of
+/// each request (`runtime.md` § Rendering boundary).
+pub fn light(blocks: &[Block]) -> Vec<Block> {
+    let mut light: Vec<Block> = blocks.iter().map(light_block).collect();
+    // From the end, the first call met with a run's or a request's list is
+    // the latest that carries it.
+    let mut runs_listed: Vec<BlockId> = Vec::new();
+    let mut request_listed = false;
+    for block in light.iter_mut().rev() {
+        if matches!(block, Block::User(_)) {
+            request_listed = false;
+            continue;
+        }
+        let run = block.run().cloned();
+        let Block::ToolCall(call) = block else {
+            continue;
+        };
+        let Some(ToolView::Shell(view)) = &mut call.view else {
+            continue;
+        };
+        if view.run_files.is_some() {
+            match run {
+                Some(run) if !runs_listed.contains(&run) => runs_listed.push(run),
+                _ => view.run_files = None,
+            }
+        }
+        if view.request_files.is_some() {
+            if request_listed {
+                view.request_files = None;
+            }
+            request_listed = true;
+        }
+    }
+    light
+}
+
+/// `block` in its light form: without what only its open row shows, nor
+/// the entries of the vendor's record, which never leave the backend. A
+/// tool call longer than [`LIGHT_INPUT_BYTES`] keeps of its input only its
+/// `description`, so its row is titled as the call whole.
+fn light_block(block: &Block) -> Block {
     let mut light = block.clone();
     if let Some(entries) = light.entries_mut() {
         entries.clear();
@@ -125,9 +164,13 @@ pub fn light(block: &Block) -> Block {
     light
 }
 
-/// The size of `block`'s light form as a page sends it.
-pub fn light_bytes(block: &Block) -> usize {
-    serde_json::to_vec(&light(block)).map_or(0, |json| json.len())
+/// The size of whole requests' `blocks` in their light form as a page
+/// sends them.
+pub fn light_bytes(blocks: &[Block]) -> usize {
+    light(blocks)
+        .iter()
+        .map(|block| serde_json::to_vec(block).map_or(0, |json| json.len()))
+        .sum()
 }
 
 /// The requests of a transcript of `length` blocks whose `user` blocks are
@@ -226,7 +269,7 @@ pub fn latest_page_start(blocks: &[Block]) -> usize {
         .collect();
     let requests = requests(blocks.len(), &users);
     page(&requests, PageAt::Latest, |range| {
-        blocks[range].iter().map(light_bytes).sum()
+        light_bytes(&blocks[range])
     })
     .start
 }

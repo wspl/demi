@@ -15,7 +15,6 @@ import { useProduct } from '../state/product'
 import { useWorkPanel } from './work'
 import { usePermissions } from './permissions'
 import { conversationFileRoutes, rawFileContents } from '../api/files'
-import { readEditCopies } from './changes'
 import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
 import { lookupAttachment } from '../api/attachments'
 import { lookupCodeFiles } from '../api/code-files'
@@ -227,7 +226,6 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :backend-away="product.connection !== null"
     :fork="fork"
     :select-edit="selectEdit"
-    :read-edit="readEditCopies"
     :files="files"
     :primary-host="primaryHost"
     :permission-requests="permissions.stateFor(conversation.id).requests"

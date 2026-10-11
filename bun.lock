@@ -149,6 +149,7 @@
       "name": "@demicodes/web-gallery",
       "version": "0.24.0",
       "dependencies": {
+        "@codemirror/state": "6.6.0",
         "@demicodes/plugin-browser": "workspace:^",
         "@demicodes/plugin-changes": "workspace:^",
         "@demicodes/plugin-file-browser": "workspace:^",

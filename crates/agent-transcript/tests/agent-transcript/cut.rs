@@ -48,6 +48,7 @@ fn completed(value: &str) -> Block {
 
 fn thinking() -> Block {
     Block::Thinking(ThinkingBlock {
+        run: None,
         entries: Vec::new(),
         id: id("thinking"),
         created_at: Timestamp::UNIX_EPOCH,
@@ -81,6 +82,7 @@ fn response() -> Block {
 
 fn tool_call(status: ToolCallStatus) -> Block {
     Block::ToolCall(ToolCallBlock {
+        run: None,
         entries: Vec::new(),
         id: id("call"),
         created_at: Timestamp::UNIX_EPOCH,

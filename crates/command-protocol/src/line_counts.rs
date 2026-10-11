@@ -1,6 +1,9 @@
-//! Line counting shared by working-tree changes and recorded edits.
+//! The line counts of a change to a file (`edit-tracking.md` § What the
+//! conversation shows): one algorithm, gix's blob diff, for the runner's
+//! report, its working tree and the backend's lists of a conversation's
+//! changes alike.
 
-use demi_command_protocol::is_binary;
+use crate::is_binary;
 
 fn line_count(bytes: &[u8]) -> u64 {
     if bytes.is_empty() {

@@ -82,6 +82,29 @@ pub struct ShellToolView {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
     pub path_changes: Vec<PathChange>,
+    /// The files of the call's run up to it (`runtime.md` § Work groups),
+    /// counted between before the run and after this call, which the
+    /// backend computes as it stores the block; a page's light form keeps
+    /// it only on the latest call of each run.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "Vec<ChangedFile>")]
+    #[garde(dive)]
+    pub run_files: Option<Vec<ChangedFile>>,
+    /// The files of the call's request up to it (`edit-tracking.md` § A
+    /// request), with All Changes' counts and their edits; a page's light
+    /// form keeps it only on the latest call of each request.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "Vec<ChangedFile>")]
+    #[garde(dive)]
+    pub request_files: Option<Vec<ChangedFile>>,
 }
 
 /// Where a command is: running, exited, or stopped.
@@ -119,7 +142,9 @@ serde_plain::derive_fromstr_from_deserialize!(StreamKind);
 
 /// A file a command changed (`edit-tracking.md` § Edit copies): its line
 /// counts and, per edit segment, the blobs of its two sides when they were
-/// stored.
+/// stored. One the command removed is `deleted`, and one it renamed
+/// `renamed` with its old path, without edits (`edit-tracking.md` § The
+/// report).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditedFile {
@@ -128,6 +153,15 @@ pub struct EditedFile {
     pub path: String,
     #[garde(skip)]
     pub kind: EditKind,
+    /// The path before a rename, with `renamed`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub from: Option<String>,
     #[garde(skip)]
     pub added: u32,
     #[garde(skip)]
@@ -138,16 +172,111 @@ pub struct EditedFile {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[garde(skip)]
     pub temporary: bool,
-    #[garde(length(min = 1), dive)]
+    /// At least one for a file the command wrote; none for one it removed
+    /// or only renamed.
+    #[garde(custom(segments_fit(&self.kind)), dive)]
     pub edits: Vec<EditSegment>,
 }
 
-/// Whether a command created a file or changed one that existed.
+/// A file the command wrote has its segments, and one it removed or only
+/// renamed has none.
+fn segments_fit(kind: &EditKind) -> impl FnOnce(&Vec<EditSegment>, &()) -> garde::Result + '_ {
+    move |edits, _| match (kind, edits.is_empty()) {
+        (EditKind::Added | EditKind::Modified, true) => {
+            Err(garde::Error::new("a file the command wrote has its segments"))
+        }
+        (EditKind::Deleted | EditKind::Renamed, false) => {
+            Err(garde::Error::new("a file the command removed or renamed has no segments"))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// How a file changed: created, changed where it was, removed, or moved
+/// from another path, the kinds the working tree uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EditKind {
     Added,
     Modified,
+    Deleted,
+    Renamed,
+}
+
+/// A file of a run's or a request's list (`edit-tracking.md` § What the
+/// conversation shows), as it stands after the call that stores the list:
+/// its kind, the lines added and removed between its two ends, and its
+/// edits in the order they were made.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChangedFile {
+    /// Absolute, as the Host names it.
+    #[garde(length(chars, min = 1))]
+    pub path: String,
+    #[garde(skip)]
+    pub kind: EditKind,
+    /// The path before a rename, with `renamed`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub from: Option<String>,
+    /// The lines between its two ends; absent when they were not kept.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "LineCounts")]
+    #[garde(dive)]
+    pub lines: Option<LineCounts>,
+    /// None for a file removed or renamed without an edit.
+    #[garde(dive)]
+    pub edits: Vec<FileEdit>,
+}
+
+/// Lines a change added and removed.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate,
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LineCounts {
+    #[garde(skip)]
+    pub added: u32,
+    #[garde(skip)]
+    pub removed: u32,
+}
+
+/// One edit of a listed file: one segment of one call's file, which the
+/// Change view steps through.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FileEdit {
+    /// The command of the call that made it.
+    #[garde(skip)]
+    pub call: CommandId,
+    /// The file's path in that call, which a later call may have renamed.
+    #[garde(length(chars, min = 1))]
+    pub path: String,
+    /// Which of the call's segments of the file it is.
+    #[garde(skip)]
+    pub segment: u32,
+    /// The segment created the file, so nothing came before it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[garde(skip)]
+    pub created: bool,
+    /// The file's two sides; absent when they were not stored.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "EditCopies")]
+    #[garde(skip)]
+    pub copies: Option<EditCopies>,
 }
 
 serde_plain::derive_display_from_serialize!(EditKind);
@@ -173,6 +302,11 @@ pub enum PathChange {
     Removed {
         #[garde(length(chars, min = 1))]
         path: String,
+        /// Whether `path` is in one of its Host's temporary directories;
+        /// absent means false.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[garde(skip)]
+        temporary: bool,
     },
 }
 

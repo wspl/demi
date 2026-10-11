@@ -5,6 +5,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use bytes::Bytes;
 use demi_backend_accounts::email_change::{AccountMail, CodeKey, EmailChanges};
 use demi_backend_accounts::login_limiter::LoginLimiter;
 use demi_backend_accounts::passwords::{HashError, PasswordHasher};
@@ -15,6 +16,8 @@ use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversations::{self, ConversationStores};
 use demi_backend_database::search::SearchIndexes;
+use demi_shared_types::BlobRef;
+use demi_web_api_protocol::ids::ConversationId;
 use demi_backend_host_access::stream::UserStreams;
 use demi_backend_page_sync::SyncRegistry;
 use demi_backend_plugins::{Registry, RegistryError};
@@ -177,6 +180,37 @@ pub struct Storage {
     pub blobs: BlobStores,
 }
 
+/// The blobs a conversation database's migration reads: those of the
+/// conversation owner's namespace.
+struct OwnersBlobs {
+    control: ControlService,
+    blobs: BlobStores,
+    /// The backend's runtime, which the reads run on.
+    runtime: tokio::runtime::Handle,
+}
+
+impl conversations::ConversationBlobs for OwnersBlobs {
+    fn read(&self, conversation: &ConversationId, blob: &BlobRef) -> Result<Option<Bytes>, String> {
+        // A migration runs on its database's thread, outside the runtime,
+        // and its transaction waits for the read: it blocks on it there.
+        self.runtime.block_on(async {
+            let record = self
+                .control
+                .conversation(conversation.clone())
+                .await
+                .map_err(|error| error.to_string())?;
+            let Some(record) = record else {
+                return Ok(None);
+            };
+            self.blobs
+                .for_user(&record.owner)
+                .get(blob)
+                .await
+                .map_err(|error| error.to_string())
+        })
+    }
+}
+
 /// A database that did not close.
 #[derive(Debug, thiserror::Error)]
 pub enum CloseError {
@@ -195,13 +229,18 @@ impl Storage {
     ) -> Result<Self, StorageError> {
         let control = ControlService::open(&data_dir.join(CONTROL_DATABASE), clock.clone()).await?;
         let rest = async {
+            let blobs = BlobStores::new(objects, clock.clone());
             let conversations = ConversationStores::open(
                 data_dir.join(CONVERSATION_DATABASES),
                 conversations::MAX_WRITERS,
+                Arc::new(OwnersBlobs {
+                    control: control.clone(),
+                    blobs: blobs.clone(),
+                    runtime: tokio::runtime::Handle::current(),
+                }),
             )
             .await?;
             let search = SearchIndexes::open(data_dir.join(SEARCH_INDEXES)).await?;
-            let blobs = BlobStores::new(objects, clock.clone());
             Ok::<_, StorageError>((conversations, search, blobs))
         }
         .await;

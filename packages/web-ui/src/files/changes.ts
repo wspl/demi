@@ -7,9 +7,9 @@ import type { RequestChangeSource } from './request-changes'
 import type { FileContents, FileWatchNote } from './types'
 
 /**
- * One changed file as the change view lists it: its path, how it changed,
- * and its line counts. A working-tree listing has every kind; a request's
- * file (`RequestFile`) is `added` or `modified` only.
+ * One changed file as the change view and the file pills list it: its
+ * path, how it changed, and its line counts, both zero when they are not
+ * known.
  */
 export interface ChangeFile {
   path: string
