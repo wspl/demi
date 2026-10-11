@@ -2,8 +2,8 @@
 import { computed } from 'vue'
 import { Brain } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
+import ThinkingText from './ThinkingText.vue'
 import { thinkingFaceLabel } from '../thinking-label'
 import { useElapsedTime } from '../../composables/useElapsedTime'
 
@@ -41,11 +41,7 @@ const rollKey = computed(() => (props.isStreaming ? 'live' : 'done'))
       </template>
       <span class="min-w-0 truncate">{{ label }}</span>
       <template v-if="hasContent" #body>
-        <StreamedMarkdown
-          :content="thinking"
-          :streaming="isStreaming"
-          class="px-3 py-1 text-[13px] leading-4.5 text-fg-subtle [--markdown-block-gap:--spacing(1)]"
-        />
+        <ThinkingText :content="thinking" :streaming="isStreaming" />
       </template>
     </FunctionalBlock>
   </div>
