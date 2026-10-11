@@ -33,9 +33,8 @@ export interface Box {
   height: number
 }
 
-/** The box of the region around `el`: its nearest marked region, else the viewport. */
-export function regionBox(el: Element | null): Box {
-  const region = el?.closest(REGION_SELECTOR)
+/** The box of `region`, or the viewport's without one. */
+function boxOf(region: Element | null | undefined): Box {
   if (!region) {
     const root = document.documentElement
     return { x: 0, y: 0, width: root.clientWidth, height: root.clientHeight }
@@ -44,8 +43,19 @@ export function regionBox(el: Element | null): Box {
   return { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
 }
 
+/**
+ * The box of the page's pane around `el`: the outermost marked region, such
+ * as the conversation for a trigger in a window over it, else the viewport.
+ */
+export function paneBox(el: Element | null): Box {
+  let pane = el?.closest(REGION_SELECTOR)
+  for (let outer = pane?.parentElement?.closest(REGION_SELECTOR); outer; outer = outer.parentElement?.closest(REGION_SELECTOR))
+    pane = outer
+  return boxOf(pane)
+}
+
 /** The extent of the region around `el`: its nearest marked region, else the viewport. */
 export function regionSpan(el: Element): Span {
-  const box = regionBox(el)
+  const box = boxOf(el.closest(REGION_SELECTOR))
   return { left: box.x, width: box.width }
 }

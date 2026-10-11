@@ -20,7 +20,6 @@ const chip = computed(() => agentsChip(props.agents))
 <template>
   <SessionDockChip
     v-if="chip"
-    data-session-overlay-toggle
     :dot="chip.running ? 'accent' : undefined"
     :breathing="chip.running"
     :aria-expanded="open === true"

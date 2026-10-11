@@ -18,13 +18,11 @@ const props = withDefaults(
     agents: readonly SubagentRecord[]
     /** The conversation's commands: a child's running calls show theirs. */
     terminals?: readonly TerminalRecord[]
-    dismissOutside?: boolean
     /** A block of a child's transcript to bring into view and mark for a moment, on that child's tab. */
     reveal?: TranscriptReveal | null
   }>(),
   {
     terminals: () => [],
-    dismissOutside: true,
   },
 )
 
@@ -101,7 +99,6 @@ function closeTab(id: string): void {
 <template>
   <SessionOverlay
     :open="open"
-    :dismiss-outside="dismissOutside"
     :still-tabs="replacing"
     @close="closePanel"
   >

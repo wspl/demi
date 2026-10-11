@@ -1,5 +1,5 @@
 import { inject, provide, shallowRef, type InjectionKey, type ShallowRef } from 'vue'
-import { regionBox } from '../ui/region'
+import { paneBox } from '../ui/region'
 import { initialWindowRect, type PageSize, type WindowRect } from '../ui/floating-window'
 import type { PixelSize } from './thumbnail'
 
@@ -13,7 +13,7 @@ export interface ShownMedium {
   name: string
   /** Its pixel size, when its reference or its thumbnail knows it. */
   size?: PixelSize | null
-  /** What opened it, a thumbnail or a link: the window first opens over its pane. */
+  /** What opened it, a thumbnail or a link: the window first opens centred over its pane. */
   from?: Element | null
 }
 
@@ -89,9 +89,9 @@ export function createMediaViewer(where: (from: Element | null) => ViewerPlace):
   }
 }
 
-/** The page's viewport, and the pane around `from`. */
+/** The page's viewport, and the pane around `from`, the conversation for a thumbnail in a window over it. */
 function pagePlace(from: Element | null): ViewerPlace {
-  return { page: { width: window.innerWidth, height: window.innerHeight }, over: regionBox(from) }
+  return { page: { width: window.innerWidth, height: window.innerHeight }, over: paneBox(from) }
 }
 
 const mediaViewerKey: InjectionKey<MediaViewerState> = Symbol('media-viewer')
