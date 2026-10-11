@@ -30,6 +30,10 @@ class Place {
 const page = new Place()
 const transcript = new Place(page)
 const sidebar = new Place(page)
+// The controls in the transcript that open or switch a window: a receipt's
+// sender, a command notice's title, a thumbnail, an agent link.
+const receiptSender = new Place(transcript, true)
+const thumbnail = new Place(transcript, true)
 const dock = new Place(page, true)
 const composer = new Place(dock)
 const agentsWindow = new Place(page)
@@ -83,6 +87,17 @@ test('a press in a window, in the composer or on its chips closes nothing', () =
   stack.open(viewer)
   for (const place of [composer, dock, childTranscript, picture])
     stack.press(place)
+  expect(closed).toEqual([])
+  expect(stack.windows.value).toEqual([agents, viewer])
+})
+
+test('a press on a control that opens or switches a window is that window’s, and closes none', () => {
+  const { stack, closed, agents, viewer } = session()
+  stack.open(agents)
+  stack.open(viewer)
+  // A receipt's sender switches the Agents window to its child; a second thumbnail shows in the viewer.
+  stack.press(receiptSender)
+  stack.press(thumbnail)
   expect(closed).toEqual([])
   expect(stack.windows.value).toEqual([agents, viewer])
 })
