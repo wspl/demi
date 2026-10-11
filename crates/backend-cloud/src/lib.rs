@@ -58,6 +58,13 @@ impl CloudServices {
             tuning,
         }
     }
+
+    /// The target the Cloud's executables are built for: the machine
+    /// manager runs the image of this machine's architecture, none on an
+    /// architecture no image is made for.
+    pub fn target(&self) -> Option<&'static str> {
+        demi_machine_manager_protocol::image::Architecture::host().map(|architecture| architecture.target())
+    }
 }
 
 /// What the Cloud needs of its user's shard: the handles its operations

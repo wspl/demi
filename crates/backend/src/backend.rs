@@ -47,6 +47,10 @@ pub struct Backend {
     /// Sources the runner executables of the paired devices' systems
     /// (`native-runtime.md` § Runner releases); a close ends it.
     runners: Option<AbortOnDropHandle<()>>,
+    /// Stores the package executables ahead for the targets of the Hosts
+    /// (`native-runtime.md` § Publish packages, then source artifacts on
+    /// demand); a close ends it.
+    ahead: AbortOnDropHandle<()>,
 }
 
 /// Why the backend did not start.
@@ -354,6 +358,16 @@ impl Backend {
                     .await;
             }))
         });
+        services.native.foresee(services.cloud.target());
+        let ahead = {
+            let services = services.clone();
+            AbortOnDropHandle::new(tokio::spawn(async move {
+                // The handle's drop aborts the task, which drops its need.
+                let cancel = tokio_util::sync::CancellationToken::new();
+                let native = &services.native;
+                tokio::join!(native.foresee_paired(&services.control), native.store_ahead(&cancel));
+            }))
+        };
         let state = AppState {
             services: services.clone(),
             shards: shards.shards(),
@@ -398,6 +412,7 @@ impl Backend {
             edge,
             deaths,
             runners,
+            ahead,
         })
     }
 
@@ -526,8 +541,10 @@ impl Backend {
         self.services.claims.close();
         // No shard is left to route a death to.
         drop(self.deaths);
-        // A runner executable still being sourced is no longer needed.
+        // A runner or package executable still being sourced is no longer
+        // needed.
         drop(self.runners);
+        drop(self.ahead);
         self.services.cloud.machines.close().await;
         if let Err(error) = self.edge.close().await {
             failures.push(ShutdownError::Edge(error));

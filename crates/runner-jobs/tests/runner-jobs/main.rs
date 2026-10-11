@@ -2,6 +2,7 @@
 //! local endpoint, in one process.
 
 mod command_client;
+mod connection;
 mod dispatch;
 mod load;
 mod local;

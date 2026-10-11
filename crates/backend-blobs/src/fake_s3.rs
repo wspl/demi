@@ -1,6 +1,7 @@
 //! An S3-compatible service in memory, for the tests of what reaches the
 //! object store: puts, conditional creation, reads with their metadata, and
-//! deletes of one bucket's objects. It checks no signature.
+//! deletes of one bucket's objects. It checks no signature. A test may hold
+//! its puts, to act while a write is under way.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -23,11 +24,53 @@ struct Object {
     metadata: Vec<(HeaderName, HeaderValue)>,
 }
 
-/// The bucket's objects, and the keys of the objects created, in order.
+/// The bucket's objects, the keys of the objects created, in order, and
+/// the hold on its puts, while a test holds them.
 #[derive(Default)]
 struct Bucket {
     objects: HashMap<String, Object>,
     written: Vec<String>,
+    hold: Option<Hold>,
+}
+
+/// Where each put reports its key as it arrives, and what it waits for.
+#[derive(Clone)]
+struct Hold {
+    arrived: tokio::sync::mpsc::UnboundedSender<String>,
+    released: tokio::sync::watch::Receiver<bool>,
+}
+
+/// The fake's puts held from [`FakeS3::hold_writes`] until
+/// [`WriteHold::release`] or the drop; while it lives, it hears of each
+/// put, held or not, as it arrives.
+pub struct WriteHold {
+    objects: Objects,
+    arrived: tokio::sync::mpsc::UnboundedReceiver<String>,
+    released: tokio::sync::watch::Sender<bool>,
+}
+
+impl WriteHold {
+    /// The key of the next put, once it arrives.
+    pub async fn arrived(&mut self) -> String {
+        self.arrived.recv().await.expect("the fake holds its puts while the hold lives")
+    }
+
+    /// The keys of the puts that arrived and were not taken yet.
+    pub fn more(&mut self) -> Vec<String> {
+        std::iter::from_fn(|| self.arrived.try_recv().ok()).collect()
+    }
+
+    /// Lets the held puts and every later one through.
+    pub fn release(&self) {
+        self.released.send_replace(true);
+    }
+}
+
+impl Drop for WriteHold {
+    fn drop(&mut self) {
+        self.objects.lock().unwrap().hold = None;
+        self.release();
+    }
 }
 
 type Objects = Arc<Mutex<Bucket>>;
@@ -96,6 +139,21 @@ impl FakeS3 {
         let bucket = self.objects.lock().unwrap();
         bucket.objects.get(key).map(|object| object.bytes.clone())
     }
+
+    /// Holds every put from now on until the hold is released or dropped.
+    pub fn hold_writes(&self) -> WriteHold {
+        let (arrived, heard) = tokio::sync::mpsc::unbounded_channel();
+        let (released, waits) = tokio::sync::watch::channel(false);
+        self.objects.lock().unwrap().hold = Some(Hold {
+            arrived,
+            released: waits,
+        });
+        WriteHold {
+            objects: self.objects.clone(),
+            arrived: heard,
+            released,
+        }
+    }
 }
 
 fn error(status: StatusCode, code: &str) -> Response {
@@ -121,6 +179,13 @@ async fn object(
     };
     match method {
         Method::PUT => {
+            let hold = objects.lock().unwrap().hold.clone();
+            if let Some(mut hold) = hold {
+                // A hold that went is no longer heard, and lets the put
+                // through.
+                let _ = hold.arrived.send(key.clone());
+                let _ = hold.released.wait_for(|released| *released).await;
+            }
             let mut bucket = objects.lock().unwrap();
             let create = headers
                 .get("if-none-match")
