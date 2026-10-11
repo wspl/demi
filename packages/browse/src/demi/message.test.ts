@@ -1,7 +1,8 @@
-// `demi.message` against a stand-in of the web app and its backend, in
-// Playwright's own Chromium, which `bun browse` installs on its first call:
-// about a second, the browser's start. No cheaper test shows what the page
-// shows, which is what the call reports.
+// `demi.message` and `demi.turn` against a stand-in of the web app and its
+// backend, in Playwright's own Chromium, which `bun browse` installs on its
+// first call: about a second, the browser's start, and `demi.turn`'s looks
+// at the backend, four a second. No cheaper test shows what the page shows,
+// which is what the calls report and wait for.
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { existsSync } from 'node:fs'
 import { chromium, type Browser } from 'playwright'
@@ -10,29 +11,56 @@ import { conversationSummary } from '@demicodes/web/src/__tests__/product-state'
 import { slotPorts, type Slot } from '../slot'
 import { Failure } from '../tool'
 import { messageOn } from './message'
+import { turnOn } from './turn'
 
 const UNDELIVERED = '00000000-0000-4000-8000-000000000001'
 const FAILING = '00000000-0000-4000-8000-000000000002'
 const HELPING = '00000000-0000-4000-8000-000000000003'
+const ON_ITS_WAY = '00000000-0000-4000-8000-000000000004'
 
 /** What the backend holds: a conversation is there once its message was delivered. */
 const conversations: ConversationSummary[] = [
   conversationSummary(HELPING, 'Helping', { revision: 1, lastTurn: { id: 'block-1', outcome: 'finished', answerStart: 'Hi' } }),
+  conversationSummary(ON_ITS_WAY, 'On its way', { revision: 1, lastTurn: { id: 'block-1', outcome: 'finished', answerStart: 'Hi' } }),
 ]
 
-/** The page of a conversation: a composer whose Enter sends, and the notice the send answers with. */
+/**
+ * The page of a conversation: a composer whose Enter sends, the Requesting
+ * row and the composer's Stop from the send until the backend answers, and
+ * the notice the send answers with.
+ */
 const PAGE = `<!doctype html>
-<textarea aria-label="Message"></textarea>
+<div class="composer-shell"><textarea aria-label="Message"></textarea></div>
 <div id="flow"></div>
 <script>
   const composer = document.querySelector('textarea')
   composer.addEventListener('keydown', async (event) => {
     if (event.key !== 'Enter') return
     event.preventDefault()
+    const flow = document.getElementById('flow')
+    const stop = document.createElement('button')
+    stop.setAttribute('aria-label', 'Stop')
+    composer.after(stop)
+    flow.innerHTML = '<div><span>Requesting</span></div>'
     const answer = await fetch(location.pathname + '/send', { method: 'POST', body: composer.value })
-    document.getElementById('flow').innerHTML = await answer.text()
+    flow.innerHTML = await answer.text()
+    stop.remove()
   })
 </script>`
+
+/** Delivers the message sent in ON_ITS_WAY, which the backend holds until then. */
+let deliver = () => {}
+const delivery = new Promise<void>((resolve) => {
+  deliver = resolve
+})
+
+/** Counts the backend's answers about the conversations once the message on its way was sent. */
+let looks = 0
+let lookedThrice = () => {}
+const thirdLook = new Promise<void>((resolve) => {
+  lookedThrice = resolve
+})
+let sent = false
 
 /** A notice as the page's `ErrorNotice` draws it: its sentence, the reason, and its controls. */
 function notice(label: string, detail: string, action: string): string {
@@ -42,10 +70,23 @@ function notice(label: string, detail: string, action: string): string {
 const server = Bun.serve({
   port: 0,
   hostname: '127.0.0.1',
-  fetch(request) {
+  async fetch(request) {
     const path = new URL(request.url).pathname
     if (path === '/api/conversations') {
+      if (sent && ++looks === 3) {
+        lookedThrice()
+      }
       return Response.json({ conversations })
+    }
+    if (path === `/chat/${ON_ITS_WAY}/send`) {
+      sent = true
+      await delivery
+      // The message's turn ran and ended by the time its delivery reached the page.
+      conversations[1] = conversationSummary(ON_ITS_WAY, 'On its way', {
+        revision: 2,
+        lastTurn: { id: 'block-2', outcome: 'finished', answerStart: 'Done' },
+      })
+      return new Response('')
     }
     if (path === `/chat/${UNDELIVERED}/send`) {
       // The backend refused the creation: it holds no conversation, and the page says so.
@@ -100,6 +141,21 @@ test.skipIf(!existsSync(chromium.executablePath()))(
     expect(await failure(FAILING)).toBe(
       `The turn of the message failed in conversation ${FAILING}: The provider returned an error. Rate limit exceeded`,
     )
+  },
+)
+
+test.skipIf(!existsSync(chromium.executablePath()))(
+  'a turn waits for the message on its way while the page shows Requesting, though the backend is idle',
+  async () => {
+    const page = await browser!.newPage()
+    await page.goto(`http://127.0.0.1:${server.port}/chat/${ON_ITS_WAY}`)
+    await messageOn(slot, page, 'Run the tests', { wait: false })
+    const turn = turnOn(slot, page)
+    // Before the message is delivered, the backend still reports the
+    // conversation idle after its earlier turn.
+    expect(await Promise.race([turn.then(() => 'ended'), thirdLook.then(() => 'waiting')])).toBe('waiting')
+    deliver()
+    expect(await turn).toEqual({ status: 'idle', revision: 2, lastTurn: { id: 'block-2', outcome: 'finished' } })
   },
 )
 
