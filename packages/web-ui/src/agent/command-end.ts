@@ -2,17 +2,18 @@ import type { ShellViewStatus } from '@demicodes/protocol'
 
 /**
  * Where a command is, as a stored view or the command's live frames say it:
- * running, exited with its code, or stopped (`aborted`).
+ * running, exited with its code, stopped (`aborted`), or lost with why.
  */
 export interface CommandEnd {
   status: ShellViewStatus
   exitCode?: number
+  lostReason?: string
 }
 
 /**
  * How a command ended, as a shell row or a report row marks it (`runtime.md`
  * § Rendering boundary, § Command reports): a row marks only what went
- * wrong. Only a report knows of a loss.
+ * wrong, and a call's row and its notice mark it alike.
  */
 export type CommandEndMark =
   | { kind: 'failed', exitCode: number }
@@ -28,6 +29,8 @@ export function commandEndMark(view: CommandEnd | null): CommandEndMark | null {
         : null
     case 'aborted':
       return { kind: 'stopped' }
+    case 'lost':
+      return { kind: 'lost', reason: view.lostReason ?? '' }
     default:
       return null
   }
@@ -35,7 +38,8 @@ export function commandEndMark(view: CommandEnd | null): CommandEndMark | null {
 
 /**
  * The end of the command `view` shows, in words, as an open row says it
- * above the output: only when it failed or was stopped, as the row's tag.
+ * above the output: only when it failed, was stopped or was lost, as the
+ * row's tag.
  */
 export function commandEndWords(view: CommandEnd | null): string | null {
   const mark = commandEndMark(view)
@@ -44,6 +48,8 @@ export function commandEndWords(view: CommandEnd | null): string | null {
       return `Exited with code ${mark.exitCode}`
     case 'stopped':
       return 'Stopped'
+    case 'lost':
+      return mark.reason ? `Lost: ${mark.reason}` : 'Lost'
     default:
       return null
   }

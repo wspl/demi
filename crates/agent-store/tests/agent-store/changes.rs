@@ -99,6 +99,7 @@ fn shell(command: &str, files: Vec<EditedFile>, changes: Vec<PathChange>) -> Blo
             status: ShellViewStatus::Exited,
             command_id: CommandId::try_from(command).unwrap(),
             exit_code: Some(0),
+            lost_reason: None,
             running_ms: 1,
             idle_ms: 0,
             chunks: Vec::new(),

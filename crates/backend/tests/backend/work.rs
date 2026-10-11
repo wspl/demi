@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use demi_agent_tools::testing::{field, shown_output};
 use demi_provider_common::testing::{MockResponse, MockVendor};
-use demi_shared_types::{Block, EditedFile, ToolView};
+use demi_shared_types::{Block, EditedFile, ShellViewStatus, ToolView};
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
@@ -550,6 +550,27 @@ async fn a_runner_that_ends_in_the_middle_of_a_command_loses_it_and_its_next_sta
         )),
         "{}",
         lost.received[0]
+    );
+    // The call's view says the loss, with its reason, as the notice's tag
+    // does, rather than an exit code its row would tag as a failure.
+    let lost_view = transcript(&backend, &master, FIRST)
+        .await
+        .blocks
+        .into_iter()
+        .find_map(|block| match block {
+            Block::ToolCall(call) if call.tool_use_id == "t2" => call.view,
+            _ => None,
+        });
+    let Some(ToolView::Shell(lost_view)) = lost_view else {
+        panic!("the lost call has no shell view: {lost_view:?}");
+    };
+    assert_eq!(
+        (lost_view.status, lost_view.exit_code, lost_view.lost_reason.as_deref()),
+        (
+            ShellViewStatus::Lost,
+            None,
+            Some(demi_backend_remote_host::RUNNER_RESTARTED)
+        )
     );
 
     let back = work

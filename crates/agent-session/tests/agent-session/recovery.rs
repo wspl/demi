@@ -507,6 +507,7 @@ fn host_tool(outcomes: &[&'static str]) -> (String, Invoke) {
                         status: ShellViewStatus::Exited,
                         command_id: CommandId::try_from("1").unwrap(),
                         exit_code: Some(0),
+                        lost_reason: None,
                         running_ms: 0,
                         idle_ms: 0,
                         chunks: Vec::new(),
