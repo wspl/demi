@@ -360,6 +360,44 @@ the call is folded or open, and a click opens it in the
   with `demi shell output`
   ([The whole output](../agent/runtime.md#the-whole-output)).
 
+### A picture's preview on hover
+
+The user rests the pointer on a screenshot in a call's row. After 300
+milliseconds a card rises over it with the picture large and a line under
+it, as a link preview does, so a glance needs no window:
+
+```text
+        ┌──────────────────────────┐
+        │                          │
+        │      the screenshot      │   fitted within 480 × 360
+        │                          │
+        ├──────────────────────────┤
+        │ Interacted with page     │   what the picture belongs to
+        └──────────────────────────┘
+ ▣ Click Sign In ›  [▭][▭] +3          the row; the pointer on the first
+```
+
+- **Which pictures.** Every picture the page shows smaller than this card
+  would: a call's, a notice's and a run's in their rows, a thumbnail in a
+  message's run of pictures, and an image or video capsule in a sent
+  message. A lone image in a message already shows at the card's size, so
+  it has none.
+- **The card.** The picture fitted within 480 × 360 pixels, never enlarged,
+  over the checkerboard where it is transparent; a video shows its first
+  frame and does not play. Under it, one line: the call's or notice's
+  title for a step's picture, the alt text for a message's, a capsule's
+  file name, cut at its end, then the pixel size in the faint text. The
+  card's box is known before the bytes arrive, from the medium's pixel
+  size, so it never grows as it loads.
+- **Where.** Above the picture, centered on it, moved to stay within the
+  page and below it when the page has no room above; it covers what is
+  under it and takes no pointer, so the pointer moving off the picture
+  closes it at once, and moving onto another picture shows that one's
+  without the delay, as tooltips after the first do.
+- **What it does not change.** A click on the picture still opens the
+  [media viewer](#the-media-viewer), which closes the card. A touch screen
+  has no hover and shows no card.
+
 ### The media viewer
 
 The user clicks a screenshot's thumbnail in the transcript. A small window
