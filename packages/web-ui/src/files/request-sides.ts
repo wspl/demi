@@ -16,8 +16,8 @@ export type RequestSidesState =
 
 export interface RequestSides {
   readonly state: Readonly<Ref<RequestSidesState>>
-  /** Reads the selection's sides again now, as Retry does. */
-  retry(): void
+  /** Reads the selection's sides again now, as Retry does; it settles when that read ends. */
+  retry(): Promise<void>
 }
 
 /**
@@ -86,5 +86,5 @@ export function useRequestSides(
   }, read], () => void load(), { immediate: true })
   onScopeDispose(() => controller?.abort())
 
-  return { state, retry: () => void load() }
+  return { state, retry: load }
 }
