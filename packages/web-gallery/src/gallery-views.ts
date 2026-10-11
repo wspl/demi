@@ -151,6 +151,12 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
       label: 'Markdown',
     },
   ],
+  '/phone': [
+    {
+      value: 'phone',
+      label: 'Phone',
+    },
+  ],
   '/roadmap': [
     {
       value: 'roadmap',

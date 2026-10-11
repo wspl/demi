@@ -17,6 +17,8 @@ import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
 import { useFocusReturn } from '../overlay/focusReturn'
 import { useOverlay } from '../composables/useOverlay'
 import { inwardAlignment, regionSpan } from './region'
+import { usePhone } from './phone'
+import Sheet from './Sheet.vue'
 
 const props = withDefaults(defineProps<{
   isOpen: boolean
@@ -44,6 +46,12 @@ const props = withDefaults(defineProps<{
   ignoreEls?: HTMLElement[]
   /** Skip enter/leave motion, e.g. when one submenu replaces a sibling. */
   instant?: boolean
+  /**
+   * A menu or a choice, which a phone opens as a bottom sheet (`Sheet.vue`)
+   * rather than beside its anchor; a hover card or a field's suggestions
+   * stay by what they belong to.
+   */
+  sheet?: boolean
 }>(), {
   anchorInset: 0,
   anchorX: 0,
@@ -164,6 +172,10 @@ const placement = computed<Placement>(() => (
 const { container, to: teleportTarget, ready } = useOverlayTarget()
 const boundary = computed(() => container?.value ?? undefined)
 
+// A panel a catalog pins inside its host stays there; on a phone's page a menu is a sheet.
+const phone = usePhone()
+const asSheet = computed(() => props.sheet === true && phone.value && !container)
+
 // Flip and size must agree on the edge inset: a smaller flip inset lets a panel that
 // almost fits be shrunk by size instead of flipped, and the last item gets cut off.
 const EDGE_PADDING = 16
@@ -254,7 +266,8 @@ watch(() => props.isOpen, (open) => {
 }, { flush: 'sync', immediate: true })
 
 onClickOutside(floatingRef, () => {
-  if (props.isOpen)
+  // A sheet's scrim takes the press outside it, and its grabber is outside the menu yet in the sheet.
+  if (props.isOpen && !asSheet.value)
     emit('close')
 }, {
   ignore: () => [
@@ -295,7 +308,19 @@ const overlayMotion = {
 </script>
 
 <template>
-  <Teleport v-if="ready" :to="teleportTarget">
+  <Sheet v-if="asSheet" :open="isOpen" @close="emit('close')">
+    <div
+      ref="floatingRef"
+      data-overlay-panel
+      class="popover-sheet"
+      @keydown="closeOnEscape"
+      @focusin="panelFocusIn"
+      @focusout="panelFocusOut"
+    >
+      <slot />
+    </div>
+  </Sheet>
+  <Teleport v-else-if="ready" :to="teleportTarget">
     <Transition v-bind="overlayMotion" :css="!instant">
       <div
         v-if="isOpen"

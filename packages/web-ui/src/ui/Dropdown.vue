@@ -144,6 +144,7 @@ defineExpose({ open, close })
         :offset="props.offset"
         :shift-padding="props.shiftPadding"
         :ignore-els="ignoreEls"
+        sheet
         @close="close"
       >
         <slot

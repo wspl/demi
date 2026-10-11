@@ -47,7 +47,7 @@ defineExpose({ dockHeight })
          dock, with what stands over its top, above it. -->
     <div
       ref="bottomAreaRef"
-      class="absolute bottom-0 left-0 right-0 px-[calc(var(--session-gutter)+0.75rem)] pb-3"
+      class="absolute bottom-0 left-0 right-0 px-[calc(var(--session-gutter)+0.75rem)] pb-[max(0.75rem,var(--safe-bottom))]"
     >
       <SessionBottomVeil />
       <div class="relative z-30">

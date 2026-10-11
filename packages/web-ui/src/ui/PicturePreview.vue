@@ -23,6 +23,7 @@ import { autoUpdate, flip, getOverflowAncestors, offset, shift, useFloating } fr
 import { fitScale } from '../files/image-zoom'
 import { loadedSize, type PixelSize } from '../files/thumbnail'
 import { useLayerElevation } from '../overlay/layerElevation'
+import { usePhone } from './phone'
 
 defineOptions({ inheritAttrs: false })
 
@@ -125,8 +126,11 @@ function close(): void {
   }
 }
 
+// A phone has no hover, and shows no card (`file-previews.md`); a finger's touch elsewhere hovers nothing either.
+const phone = usePhone()
+
 function onPointerenter(event: PointerEvent): void {
-  if (pressed || event.pointerType === 'touch')
+  if (pressed || phone.value || event.pointerType === 'touch')
     return
   clearOpenTimer()
   if (openCard !== null || performance.now() - closedAt < WARM_MS) {

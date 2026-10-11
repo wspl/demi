@@ -4,7 +4,7 @@ import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
-import { PanelRight, Play, TextCursorInput } from '@lucide/vue'
+import { ChevronDown, PanelLeft, PanelRight, Play, TextCursorInput } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/protocol'
 import {
   beginMessageEdit,
@@ -35,6 +35,16 @@ import type { MessageForkHandler } from './message-fork'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
+import Sheet from '../ui/Sheet.vue'
+import { appOverlayStore } from '../overlay/appOverlay'
+import RenameDialog from '../ui/RenameDialog.vue'
+import SidebarSelectionMenu from '../sidebar/SidebarSelectionMenu.vue'
+import ConversationDeleteDialog from '../sidebar/ConversationDeleteDialog.vue'
+import { copyConversationId } from './copy-conversation-id'
+import StatusDot from '../ui/StatusDot.vue'
+import { usePhone } from '../ui/phone'
+import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
+import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
 import { resumeWaitsFor, sessionFailureNotice, turnRecovery } from './session-status'
@@ -63,6 +73,12 @@ const props = withDefaults(defineProps<{
   fork?: MessageForkHandler
   /** Whether the app frame's work panel is open; absent when the host has none. */
   asideOpen?: boolean
+  /**
+   * The conversation as the sidebar lists it: on a phone its title sheet
+   * offers the sidebar row's menu for it. Absent, as for a conversation not
+   * saved yet or archived, the sheet offers only where it runs.
+   */
+  listed?: { pinned: boolean }
   /** The conversation's Host files its messages name; absent, their paths stay text. */
   files?: ConversationFiles
   /**
@@ -103,6 +119,10 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   openAside: []
   rename: [title: string]
+  /** The row menu's commands, from the phone's title sheet; Delete once the user confirmed it. */
+  pin: [pinned: boolean]
+  archive: []
+  delete: []
   retry: []
   retryLoad: []
   /** Retry on the message `id`, whose delivery failed. */
@@ -175,6 +195,30 @@ const TITLE_MAX_PX = 260
 /** The Rename button beside the title, and the gap before it. */
 const TITLE_ACTION_PX = 28 + 4
 const renaming = ref(false)
+
+// A phone shows one top bar (`SidebarLayout`): the sidebar's button, the
+// title, which opens the title sheet with what the desktop's header shows
+// beside the title, and the panel's button.
+const phone = usePhone()
+const drawer = useSidebarDrawer()
+const titleSheetOpen = ref(false)
+/** Where the title sheet shows the conversation's place, while it is open. */
+const workspaceTarget = ref<HTMLElement | null>(null)
+/** The primary Host's state on the title, while it is not ready to run. */
+const hostNotReady = computed(() => {
+  const host = props.primaryHost
+  return host && host.state !== 'online' ? host : null
+})
+/** On a phone, a rename asks in a dialog, as a phone's own apps do; the bar has no room for the field. */
+const renameAsked = computed(() => renaming.value && phone.value)
+
+/** Closes the title sheet, then does what its item chose. */
+function fromTitleSheet(then: () => void): void {
+  titleSheetOpen.value = false
+  then()
+}
+/** Delete… from the title sheet asks first, as the sidebar's does. */
+const deleteAsked = ref(false)
 
 /** The Rename button, or a double-click on the title, names it in place. */
 function beginRename(): void {
@@ -356,9 +400,91 @@ watch(
 
 <template>
   <section
-    class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-xl bg-surface"
+    class="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface md:rounded-tl-xl"
   >
     <header
+      v-if="phone"
+      class="flex h-[calc(2.75rem+var(--safe-top))] shrink-0 select-none items-center gap-1 px-1.5 pt-[var(--safe-top)]"
+    >
+      <IconButton
+        v-if="drawer"
+        :icon="PanelLeft"
+        variant="ghost"
+        aria-label="Open sidebar"
+        @click="drawer.open()"
+      />
+      <!-- The title is centered between the bar's two buttons, whichever of them shows. -->
+      <span v-else class="size-hit shrink-0" />
+      <button
+        type="button"
+        class="flex h-full min-w-0 flex-1 items-center justify-center gap-1.5 px-1 text-fg"
+        :aria-label="`${conversation.title}, conversation options`"
+        :aria-expanded="titleSheetOpen"
+        @click="titleSheetOpen = true"
+      >
+        <StatusDot
+          v-if="hostNotReady"
+          :tone="DEVICE_STATE_TONE[hostNotReady.state]"
+          :label="`${hostNotReady.name} is ${DEVICE_STATE_LABEL[hostNotReady.state].toLowerCase()}`"
+        />
+        <h1 class="min-w-0 truncate text-[15px] font-medium">{{ conversation.title }}</h1>
+        <ChevronDown :size="ICON_PX.in20" class="shrink-0 text-fg-subtle" />
+      </button>
+      <IconButton
+        v-if="asideOpen !== undefined"
+        :icon="PanelRight"
+        variant="ghost"
+        aria-label="Open panel"
+        @click="emit('openAside')"
+      />
+      <span v-else class="size-hit shrink-0" />
+      <Sheet :open="titleSheetOpen" :overlay-store="appOverlayStore" @close="titleSheetOpen = false">
+        <template #header>
+          <p class="break-words text-[15px] font-medium text-fg-emphasis">{{ conversation.title }}</p>
+        </template>
+        <SidebarSelectionMenu
+          v-if="listed"
+          :targets="[{ id: conversation.id, pinned: listed.pinned }]"
+          shown
+          @rename="fromTitleSheet(() => (renaming = true))"
+          @copy-id="fromTitleSheet(() => void copyConversationId(conversation.id))"
+          @pin="(_ids, pinned) => fromTitleSheet(() => emit('pin', pinned))"
+          @archive="fromTitleSheet(() => emit('archive'))"
+          @delete="fromTitleSheet(() => (deleteAsked = true))"
+        />
+        <!-- Where the conversation runs, as the desktop's header shows it beside the title. -->
+        <div v-if="$slots.workspace" class="px-4 pb-3 pt-1">
+          <p class="pb-1 text-[12px] text-fg-subtle">Runs On</p>
+          <div ref="workspaceTarget" />
+        </div>
+      </Sheet>
+      <!-- The place stays mounted while the sheet is closed, as the desktop's header keeps it: the
+           composer's offline card moves the conversation through it. The sheet shows it while open. -->
+      <div class="hidden">
+        <Teleport :to="workspaceTarget ?? 'body'" :disabled="workspaceTarget === null">
+          <slot name="workspace" />
+        </Teleport>
+      </div>
+      <RenameDialog
+        :is-open="renameAsked"
+        :overlay-store="appOverlayStore"
+        title="Rename Conversation"
+        label="Conversation title"
+        :name="conversation.title"
+        :max-length="null"
+        @close="renaming = false"
+        @rename="renaming = false; emit('rename', $event)"
+      />
+      <ConversationDeleteDialog
+        :is-open="deleteAsked"
+        :overlay-store="appOverlayStore"
+        :titles="[conversation.title]"
+        @close="deleteAsked = false"
+        @delete="deleteAsked = false; emit('delete')"
+      />
+    </header>
+    <header
+      v-else
       class="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-3 py-2"
     >
       <div ref="titleCell" class="col-span-2 flex min-w-0 items-center gap-1 sm:col-span-1">
