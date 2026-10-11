@@ -5,9 +5,9 @@ import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
 import { callBeingWrittenBlocks, commandLookBlocks, editedFile, viewedMediaBlocks, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
 import {
-  HELPER,
-  helperBlocks,
-  helperParentBlocks,
+  SUBAGENT,
+  subagentBlocks,
+  subagentParentBlocks,
   movedRequestBlocks,
   signInRequestBlocks,
   standaloneRequest,
@@ -732,12 +732,12 @@ const writingSpecimens = [
 ]
 const uncopiedBlocks = uncopiedRequestBlocks()
 const movedBlocks = movedRequestBlocks()
-const parentBlocks = helperParentBlocks()
-const childBlocks = helperBlocks()
+const parentBlocks = subagentParentBlocks()
+const childBlocks = subagentBlocks()
 useGalleryTranscripts(() => ({ blocks: signInBlocks, subagents: [] }))
 useGalleryTranscripts(() => ({ blocks: uncopiedBlocks, subagents: [] }))
 useGalleryTranscripts(() => ({ blocks: movedBlocks, subagents: [] }))
-useGalleryTranscripts(() => ({ blocks: parentBlocks, subagents: [{ id: HELPER, blocks: childBlocks }] }))
+useGalleryTranscripts(() => ({ blocks: parentBlocks, subagents: [{ id: SUBAGENT, blocks: childBlocks }] }))
 const changesSurface = ref<{ dockHeight: number }>()
 const changesList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
 const turnSurface = ref<{ dockHeight: number }>()
@@ -2196,8 +2196,8 @@ onBeforeUnmount(() => {
             <div class="gallery-frame h-[22rem] bg-surface">
               <AgentMessageList
                 class="h-full"
-                conversation-id="gallery-request-helper"
-                :node="HELPER"
+                conversation-id="gallery-request-subagent"
+                :node="SUBAGENT"
                 :blocks="childBlocks"
                 :pending-steers="[]"
                 :queue="[]"
