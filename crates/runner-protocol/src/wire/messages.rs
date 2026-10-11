@@ -1484,7 +1484,9 @@ pub enum WriteExists {
     Replace,
     /// Fail with `EEXIST`.
     Refuse,
-    /// Take the first free name of the form `name-2.ext`, `name-3.ext`.
+    /// Take the first free name of the form `name-2.ext`, `name-3.ext`; a
+    /// file of the same bytes under one of those names, the given one
+    /// first, is the file, and nothing is written.
     Rename,
 }
 
