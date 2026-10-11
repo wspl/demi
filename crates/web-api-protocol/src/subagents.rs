@@ -1,7 +1,9 @@
-//! The caller's subagent settings (`web-api.md` § Subagents): the Subagent
-//! switch and the subagent profiles, with the bodies that change them. The
+//! The caller's subagent settings (`web-api.md` § Subagents): the Subagents
+//! switch, the limits and the subagent profiles, with the bodies that change them. The
 //! name and text rules are the accounts service's, which checks a body
 //! before it is written.
+
+use std::num::NonZeroU32;
 
 use demi_shared_types::Nullable;
 use garde::Validate;
@@ -16,8 +18,18 @@ use crate::ids::ProfileId;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SubagentSettings {
-    /// The Subagent switch: true for a user who never turned it off.
+    /// The Subagents switch: true for a user who never turned it off.
     pub enabled: bool,
+    /// Maximum subagents: how many subagents of one conversation may be
+    /// live at once (`subagents.md` § Limits); null for Unlimited.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<NonZeroU32>")]
+    pub max_live: Option<NonZeroU32>,
+    /// Maximum depth: how many levels of subagents a tree may have below
+    /// its root; null for Unlimited.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<NonZeroU32>")]
+    pub max_depth: Option<NonZeroU32>,
     /// The caller's profiles, in name order.
     pub profiles: Vec<SubagentProfile>,
 }
@@ -45,12 +57,35 @@ pub struct SubagentProfile {
     pub enabled: bool,
 }
 
-/// `PUT /subagents { enabled }`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct SubagentSwitch {
+/// `PUT /subagents`: the fields it names change, and the others stay. A
+/// limit is a whole number from 1, or null for Unlimited.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SubagentsPatch {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
     #[garde(skip)]
-    pub enabled: bool,
+    pub enabled: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<NonZeroU32>")]
+    #[garde(skip)]
+    pub max_live: Option<Option<NonZeroU32>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<NonZeroU32>")]
+    #[garde(skip)]
+    pub max_depth: Option<Option<NonZeroU32>>,
 }
 
 /// `POST /subagents/profiles`: a new profile, which starts enabled.

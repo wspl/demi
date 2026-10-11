@@ -83,8 +83,8 @@ const rules: readonly ElementRule[] = [
     kind: 'Sidebar and settings navigation',
     where: 'SidebarNavItem label, a settings section’s name',
     style: 'title',
-    right: ['Models & Providers', 'Data & Privacy'],
-    wrong: ['Models & providers'],
+    right: ['Providers', 'Data & Privacy'],
+    wrong: ['Data & privacy'],
     source: { label: `${SYSTEM_SETTINGS}: Desktop & Dock, Login Items` },
   },
   {

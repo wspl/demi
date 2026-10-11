@@ -99,8 +99,8 @@ const anatomy: [string, string][] = [
     'Changing the email asks for the new address and the current password, then a code sent to the new address. Changing the password asks for the current one and the new one twice; length and the match are checked in the dialog, the current password by the server.'
   ],
   [
-    'Subagent',
-    'A switch that turns subagents on or off for the user, then the user’s profiles, each with its own switch. A row names the profile’s model, its prompt and whether its children spawn; a profile whose provider entry, model, effort or tier is gone carries Unavailable, with the missing part as its tooltip. The editor chooses the parent’s model or any provider’s with its effort and tier, and the parent’s prompt or text that replaces it.'
+    'Subagents',
+    'A switch that turns subagents on or off for the user; Maximum subagents and Maximum depth, each a number or Unlimited, which asks first in a dialog whose default button, Cancel, keeps the number; then the user’s profiles, each with its own switch. A row names the profile’s model, its prompt and whether its children spawn; a profile whose provider entry, model, effort or tier is gone carries Unavailable, with the missing part as its tooltip. The editor chooses the parent’s model or any provider’s with its effort and tier, and the parent’s prompt or text that replaces it.'
   ],
   [
     'Skills',
@@ -146,7 +146,7 @@ const fullNarrowTab = ref<SettingsTab | null>(null)
 const fullOpen = ref(true)
 const fullNarrowOpen = ref(true)
 
-// The Subagent section with subagents turned off: the profiles stay, muted.
+// The Subagents section with subagents turned off: the profiles stay, muted.
 const subagentsOff = createSubagentState(false)
 
 /** A profile pinned in its editor, which closes from its buttons and opens again from Open. */
@@ -313,7 +313,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
       </GallerySection>
 
       <GallerySection
-        title="Subagent · Off"
+        title="Subagents · Off"
         note="Subagents turned off: no agent spawns, the profiles stay and can still be edited. The disabled archivist’s model is gone too, and the scout’s effort is no longer offered."
       >
         <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">
@@ -362,7 +362,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Full · Narrow"
-        note="A phone-width window: the dialog fills it edge to edge with square corners and no scrim around it, the close button stays in its corner. It opens on the list of sections; a section opens as its own page with Settings to go back, and Models & Providers opens on its list of providers, not on one of them."
+        note="A phone-width window: the dialog fills it edge to edge with square corners and no scrim around it, the close button stays in its corner. It opens on the list of sections; a section opens as its own page with Settings to go back, and Providers opens on its list of providers, not on one of them."
       >
         <GalleryOverlayWell size="narrow">
           <Button v-if="!fullNarrowOpen" size="md" @click="fullNarrowOpen = true">Open</Button>

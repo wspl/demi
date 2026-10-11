@@ -284,6 +284,8 @@ async fn serving() -> (
         }),
         subagents: Rc::new(SubagentSettings {
             enabled: true,
+            max_live: None,
+            max_depth: None,
             profiles: Vec::new(),
         }),
         instructions: Rc::from("system prompt"),

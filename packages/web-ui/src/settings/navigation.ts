@@ -8,7 +8,7 @@ import type { TitleText } from '../ui/ui-text'
  * goes back to the screen before, and not to the list of sections.
  */
 export interface SettingsLevel {
-  /** The title of the page it returns to: "Models & Providers". */
+  /** The title of the page it returns to: "Providers". */
   label: TitleText
   back: () => void
 }

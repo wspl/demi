@@ -7,6 +7,7 @@
 //! it ends; and the heartbeat each of a page's sockets sends when it is
 //! quiet.
 
+use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
 
 use demi_backend_user_shard::sync::SyncStep;
@@ -165,9 +166,12 @@ async fn the_snapshot_is_the_users_product_state() {
                 },
                 newer_image: false,
             },
-            // A new user has subagents on and no profile.
+            // A new user has subagents on, at most 10 live and 1 level
+            // deep, and no profile.
             subagents: SubagentSettings {
                 enabled: true,
+                max_live: NonZeroU32::new(10),
+                max_depth: NonZeroU32::new(1),
                 profiles: Vec::new(),
             },
             // A new user has no personal instructions.

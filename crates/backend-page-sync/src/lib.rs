@@ -29,7 +29,7 @@ pub enum Part {
     Devices,
     Providers,
     Cloud,
-    /// The Subagent switch and the subagent profiles.
+    /// The Subagents switch, the limits and the subagent profiles.
     Subagents,
     /// The personal instructions.
     Instructions,
