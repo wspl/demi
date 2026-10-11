@@ -4,13 +4,13 @@ import { TriangleAlert } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import ModelMenu from '../agent/ModelMenu.vue'
+import type { ContextLimitChange } from '../agent/context-limit'
 import { isFastMode } from '../agent/fast-mode'
 import {
   applyModelChange,
-  composerModel,
-  firstEffort,
   initialModelSettings,
   offersEffort,
+  type ModelSettings,
   type ModelSettingsChange,
 } from '../agent/model-selection'
 import { buildReasoningState, reasoningOptionLabel } from '../agent/reasoning'
@@ -19,7 +19,6 @@ import Dialog from '../ui/Dialog.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import InlineError from '../ui/InlineError.vue'
-import Segmented from '../ui/Segmented.vue'
 import Switch from '../ui/Switch.vue'
 import TextArea from '../ui/TextArea.vue'
 import TextInput from '../ui/TextInput.vue'
@@ -30,8 +29,8 @@ import type { SettingsSubagentDraft } from './types'
 
 /**
  * One subagent profile, created or edited in its own dialog: its name and
- * when to use it, its model (the parent's, or any provider's with its effort
- * and tier), its system prompt (the parent's, or text that replaces it), and
+ * when to use it, its model, chosen with the composer's own model menu with
+ * Parent’s Model at its top, the instructions it adds to Demi's own, and
  * whether its children may spawn. The host saves; a refusal shows under the
  * fields, and the draft stays.
  */
@@ -40,9 +39,14 @@ const props = defineProps<{
   overlayStore: OverlayStore
   mode: 'create' | 'edit'
   profile: SettingsSubagentDraft
-  /** The providers and models the model menu offers. */
+  /** The providers and models the model menu offers, as the composer's does. */
   providers: ProviderInfo[]
   models: Record<string, ModelInfo[]>
+  /**
+   * Every model each provider's catalog lists, the ones the menu hides
+   * included, which name the profile's model and tell whether it is gone.
+   */
+  catalogModels: Record<string, ModelInfo[]>
   pending?: boolean
   error?: string | null
 }>()
@@ -51,53 +55,40 @@ const emit = defineEmits<{
   close: []
   save: [draft: SettingsSubagentDraft]
   delete: []
+  /** The user's context limit on a model, for all their conversations with it, as the composer's menu sets it. */
+  contextLimit: [change: ContextLimitChange]
 }>()
 
-type Source = 'parent' | 'own'
-
-/** The parts edited in place; the model and the prompt follow their source. */
+/** The draft as the dialog edits it: blank instructions stand for none. */
 function fields(profile: SettingsSubagentDraft) {
   return {
     name: profile.name,
     description: profile.description,
+    model: profile.model,
+    instructions: profile.instructions ?? '',
     canSpawn: profile.canSpawn,
   }
 }
 
 const draft = ref(fields(props.profile))
-const modelSource = ref<Source>(props.profile.model ? 'own' : 'parent')
-const promptSource = ref<Source>(props.profile.instructions === null ? 'parent' : 'own')
-/** What each part held before the user chose the parent's, so choosing it back restores it. */
-const ownModel = ref(props.profile.model ?? initialModelSettings())
-const ownPrompt = ref(props.profile.instructions ?? '')
 
 watch(
   () => [props.isOpen, props.profile] as const,
   ([open]) => {
-    if (!open) {
-      return
+    if (open) {
+      draft.value = fields(props.profile)
     }
-    draft.value = fields(props.profile)
-    modelSource.value = props.profile.model ? 'own' : 'parent'
-    promptSource.value = props.profile.instructions === null ? 'parent' : 'own'
-    ownModel.value = props.profile.model ?? initialModelSettings()
-    ownPrompt.value = props.profile.instructions ?? ''
   },
 )
 
-const sources = [
-  { value: 'parent', label: 'Parent’s' },
-  { value: 'own', label: 'Own' },
-] as const
-
-const modelChosen = computed(() => ownModel.value.providerId !== '' && ownModel.value.modelId !== '')
+/** What the menu's trigger reads: Parent’s Model, or the model with its provider, effort and Fast. */
 const modelLabel = computed(() => {
-  if (!modelChosen.value) {
-    return 'Choose a model'
+  const settings = draft.value.model
+  if (!settings) {
+    return 'Parent’s Model'
   }
-  const settings = ownModel.value
-  const listed = (props.models[settings.providerId] ?? []).find((model) => model.id === settings.modelId)
-  const parts = [profileModelLabel(settings, props.providers, props.models)]
+  const listed = (props.catalogModels[settings.providerId] ?? []).find((model) => model.id === settings.modelId)
+  const parts = [profileModelLabel(settings, props.providers, props.catalogModels)]
   const effort = settings.thinkingEffort
   const reasoning = buildReasoningState(listed)
   // An effort the model no longer offers reads as itself, never as the first one a menu would show.
@@ -111,31 +102,10 @@ const modelLabel = computed(() => {
   }
   return parts.join(' · ')
 })
-const missing = computed(() =>
-  modelSource.value === 'own' && modelChosen.value
-    ? profileMissing(ownModel.value, props.providers, props.models)
-    : null,
-)
-
-// Choosing an own model starts from the model a menu would show first, so the menu and the
-// field never disagree about what is chosen.
-watch(modelSource, (source) => {
-  if (source !== 'own' || modelChosen.value) {
-    return
-  }
-  const first = composerModel(props.providers, props.models, null, null).selected
-  if (first) {
-    ownModel.value = {
-      providerId: first.providerId,
-      modelId: first.modelId,
-      thinkingEffort: firstEffort(first.model),
-      serviceTierId: null,
-    }
-  }
-})
+const missing = computed(() => profileMissing(draft.value.model, props.providers, props.catalogModels))
 
 function changeModel(change: ModelSettingsChange): void {
-  ownModel.value = applyModelChange(ownModel.value, change)
+  draft.value.model = applyModelChange(draft.value.model ?? initialModelSettings(), change)
 }
 
 /** What breaks the name rule, said under the field as the name is typed. */
@@ -145,20 +115,19 @@ const canSave = computed(() =>
   !props.pending &&
   draft.value.name.trim() !== '' &&
   nameProblem.value === null &&
-  draft.value.description.trim() !== '' &&
-  (modelSource.value === 'parent' || modelChosen.value) &&
-  (promptSource.value === 'parent' || ownPrompt.value.trim() !== ''),
+  draft.value.description.trim() !== '',
 )
 
 function save(): void {
   if (!canSave.value) {
     return
   }
+  const model: ModelSettings | null = draft.value.model ? { ...draft.value.model } : null
   emit('save', {
     name: draft.value.name.trim(),
     description: draft.value.description.trim(),
-    model: modelSource.value === 'own' ? { ...ownModel.value } : null,
-    instructions: promptSource.value === 'own' ? ownPrompt.value : null,
+    model,
+    instructions: draft.value.instructions.trim() === '' ? null : draft.value.instructions,
     canSpawn: draft.value.canSpawn,
   })
 }
@@ -206,10 +175,7 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
               aria-label="Description"
             />
           </SettingsRow>
-          <SettingsRow label="Model" description="The parent’s, or one of any provider with its effort and tier.">
-            <Segmented v-model="modelSource" size="sm" :options="sources" />
-          </SettingsRow>
-          <SettingsRow v-if="modelSource === 'own'" label="Chosen model" inset>
+          <SettingsRow label="Model" description="The model its children infer with: the parent’s, or one of any provider.">
             <Dropdown
               :overlay-store="overlayStore"
               variant="field"
@@ -227,23 +193,23 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
                 <ModelMenu
                   :providers="providers"
                   :models="models"
-                  :settings="modelChosen ? ownModel : null"
-                  without-context
+                  :settings="draft.model"
+                  parent-model
+                  @parent-model="draft.model = null"
                   @change="changeModel"
+                  @context-limit="emit('contextLimit', $event)"
                 />
               </template>
             </Dropdown>
           </SettingsRow>
-          <SettingsRow label="System prompt" description="The parent’s instructions, or text that replaces them.">
-            <Segmented v-model="promptSource" size="sm" :options="sources" />
-          </SettingsRow>
-          <div v-if="promptSource === 'own'" class="px-4 py-3">
+          <SettingsRow label="Instructions" description="Optional. What this kind of subagent is for and how it works; added to Demi’s own instructions." />
+          <div class="px-4 pb-3">
             <TextArea
-              v-model="ownPrompt"
+              v-model="draft.instructions"
               mono
               :rows="7"
-              aria-label="System prompt"
-              placeholder="You find code and report where it is. You change nothing."
+              aria-label="Instructions"
+              placeholder="Find code and report where it is. Change nothing."
             />
           </div>
           <SettingsRow label="Children may spawn" description="Off removes spawn, abort and resume from its children’s demi agent commands.">

@@ -551,7 +551,12 @@ async fn a_spawn_reads_the_users_settings_and_builds_the_childs_model_from_the_c
     let child = last_asked(&scripts, |session| session != FIRST);
     assert!(child.contains("model=n "), "{child}");
     assert!(child.contains("effort: \"high\""), "{child}");
-    assert!(child.contains("system=\"You only report."), "{child}");
+    // The profile adds to Demi's prompt and replaces none of it.
+    assert!(child.contains("system=\"You are Demi, "), "{child}");
+    assert!(
+        child.contains("answer with this.\\n\\nInstructions for this subagent:\\n\\nYou only report.\" items="),
+        "{child}"
+    );
     let listed = &scripts.asked(|session| session == FIRST)[1];
     assert!(
         listed.contains("explore  Finds code; it changes nothing."),

@@ -7,6 +7,7 @@ import { useFocusReturn } from '../overlay/focusReturn'
 import { useBackClose } from '../overlay/back-close'
 import { dragCloses, dragVelocity } from './drag-close'
 import { inSheetKey } from './sheet-context'
+import { stackAbove } from '../overlay/stacking'
 
 /**
  * A bottom sheet, as a phone's own apps open a menu or a short choice: it
@@ -175,13 +176,18 @@ onBeforeUnmount(() => {
   holding.value = false
 })
 
-const panelStyle = computed(() => (offset.value === null ? undefined : { '--sheet-offset': `${offset.value}px` }))
+// Above the dialog or menu it opens from, as a popover stands.
+const z = stackAbove()
+const panelStyle = computed(() => ({
+  zIndex: z(),
+  ...(offset.value === null ? {} : { '--sheet-offset': `${offset.value}px` }),
+}))
 </script>
 
 <template>
   <Teleport to="body">
     <Transition name="sheet-scrim">
-      <div v-if="open" class="sheet-scrim fixed inset-0 z-50 bg-black/40" aria-hidden="true" @click="close" />
+      <div v-if="open" class="sheet-scrim fixed inset-0 bg-black/40" :style="{ zIndex: z() }" aria-hidden="true" @click="close" />
     </Transition>
     <Transition name="sheet">
       <div
@@ -191,7 +197,7 @@ const panelStyle = computed(() => (offset.value === null ? undefined : { '--shee
         aria-modal="true"
         :aria-label="label"
         tabindex="-1"
-        class="sheet fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-2xl bg-surface-dialog text-fg shadow-2xl outline-none"
+        class="sheet fixed inset-x-0 bottom-0 flex flex-col rounded-t-2xl bg-surface-dialog text-fg shadow-2xl outline-none"
         :class="{ 'sheet-dragging': holding }"
         :style="panelStyle"
         @touchstart.passive="onTouchStart"

@@ -1,20 +1,24 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsSubagents from '@demicodes/web-ui/settings/SettingsSubagents.vue'
 import type { SettingsSubagentDraft } from '@demicodes/web-ui/settings/types'
+import type { LimitValue } from '@demicodes/web-ui/ui/limit-field'
+import { setGalleryContextLimit } from '../fixtures/context-limits'
 import { subagentModels, subagentProviders, type SubagentState } from '../fixtures/subagent-profiles'
 
 /**
  * The Subagents section over a specimen's state. Each write waits a beat, as
  * the product's does; a save with the reserved name or a name another
  * profile has is refused with the backend's message, so the editor shows
- * its error.
+ * its error. The model menu's Context row sets the gallery's context limit,
+ * as the composer's does.
  */
 const props = defineProps<{
   state: SubagentState
 }>()
 
+const models = computed(() => subagentModels())
 const timers = new Set<number>()
 
 /** Resolves after a beat, as a request to the backend would. */
@@ -39,7 +43,7 @@ function switchSubagents(enabled: boolean) {
 }
 
 // A limit shows at once too; Unlimited comes here only once the page's dialog confirmed it.
-function setLimit(limit: 'maxLive' | 'maxDepth', value: number | null) {
+function setLimit(limit: 'maxLive' | 'maxDepth', value: LimitValue) {
   props.state[limit] = value
 }
 
@@ -80,7 +84,8 @@ async function deleteProfile(id: string) {
     :max-depth="state.maxDepth"
     :profiles="state.profiles"
     :providers="subagentProviders"
-    :models="subagentModels"
+    :models="models"
+    :catalog-models="models"
     catalog-ready
     :overlay-store="appOverlayStore"
     :save-profile="saveProfile"
@@ -88,5 +93,6 @@ async function deleteProfile(id: string) {
     @switch="switchSubagents"
     @set-limit="setLimit"
     @switch-profile="switchProfile"
+    @context-limit="setGalleryContextLimit"
   />
 </template>

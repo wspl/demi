@@ -218,8 +218,9 @@ pub struct NodeRecord {
     /// The name of the profile the node was spawned with; none for the root
     /// and for a node that inherits its parent's setup.
     pub profile: Option<String>,
-    /// The instructions its profile replaced its parent's with when it was
-    /// spawned; none when it has its parent's. Restore and resume read them
+    /// The instructions its profile added to its system prompt when it was
+    /// spawned; none when its profile added none, or it has its parent's
+    /// prompt. Restore and resume read them
     /// here, never from the user's profiles (`subagents.md` § Persistence).
     pub instructions: Option<String>,
     /// The node's current round: 1 for its first run, one more at each
