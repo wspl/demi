@@ -506,7 +506,7 @@ pub struct JobEnd {
     /// Each stream's length; none when bash never ran the script.
     pub output: Option<wire::OutputLengths>,
     pub files: Vec<wire::JobFileChange>,
-    pub path_changes: Vec<demi_command_protocol::PathChange>,
+    pub path_changes: Vec<wire::JobPathChange>,
     pub files_truncated: bool,
     /// Why the job counts as lost although its runner kept its output: it
     /// stopped the job once its connection stayed away (`runner.md`

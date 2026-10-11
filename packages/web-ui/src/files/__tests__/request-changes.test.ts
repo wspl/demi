@@ -10,6 +10,7 @@ import {
   findRequest,
   pillSelection,
   callFiles,
+  callPillFiles,
   fileLineCounts,
   selectionCopies,
   transcriptRequests,
@@ -19,6 +20,9 @@ import {
 
 /** A blob name, as the copies of an edit name the file's sides. */
 const blob = (n: number) => n.toString(16).padStart(64, '0')
+
+/** `file`, in a temporary directory of its Host. */
+const temporary = (file: EditedFile): EditedFile => ({ ...file, temporary: true })
 
 /** A file a call changed, each segment from blob `n` to `n + 1`. */
 function edited(path: string, from: number, segments = 1, kind: EditedFile['kind'] = 'modified'): EditedFile {
@@ -192,7 +196,7 @@ describe('the Change view on a request', () => {
     })
     const two = shellCall('two', 'Set x to 2', [edited('/w/a.ts', 1)])
     const three = shellCall('three', 'Set x to 3', [edited('/w/a.ts', 2), edited('/w/b.ts', 7, 1, 'added')])
-    const files = callFiles([two, three])
+    const files = callFiles([two, three], null)
     expect(files.map((file) => [file.path, file.kind])).toEqual([['/w/a.ts', 'modified'], ['/w/b.ts', 'added']])
     expect(selectionCopies(files[0]!, null)).toEqual({ original: blob(1), modified: blob(3) })
     expect(await fileLineCounts(files[0]!, read)).toEqual({ added: 1, removed: 1 })
@@ -228,7 +232,7 @@ describe('a request across renames and removals', () => {
    * workspace, the next moves it over the existing page, and a later one
    * makes a scratch file that the last removes.
    */
-  const write = shellCall('c1', 'Write the new page', [edited('/tmp/page.ts.new', 0, 1, 'added')])
+  const write = shellCall('c1', 'Write the new page', [temporary(edited('/tmp/page.ts.new', 0, 1, 'added'))])
   const place = shellCall('c2', 'Put the new page in place', [edited('/w/src/page.ts', 10)], [
     { kind: 'renamed', from: '/tmp/page.ts.new', to: '/w/src/page.ts' },
   ])
@@ -251,8 +255,9 @@ describe('a request across renames and removals', () => {
     expect(selectionCopies(page, null)).toEqual({ original: blob(10), modified: blob(11) })
   })
 
-  test('a pill opens its file under its new name, and a removed file’s opens nothing', () => {
+  test('a pill opens its file under its new name, though it was made in a temporary directory', () => {
     const requests = transcriptRequests([userBlock('u', 't', 'Replace the page'), write, place, scratch, clean])
+    expect(callPillFiles(requests, write).map((file) => file.path)).toEqual(['/tmp/page.ts.new'])
     const selection = pillSelection(null, requests, write, '/tmp/page.ts.new')
     expect(selection).toEqual({
       node: null,
@@ -261,7 +266,6 @@ describe('a request across renames and removals', () => {
       edit: { call: 'c1', path: '/tmp/page.ts.new', segment: 0 },
     })
     expect(editIndex(requests.requests[0]!.files[0]!, selection!.edit)).toBe(0)
-    expect(pillSelection(null, requests, scratch, '/w/scratch.txt')).toBeNull()
   })
 
   test('a folder moves and goes with everything in it, and a rename onto a listed file merges into it', () => {
@@ -288,7 +292,7 @@ describe('a request across renames and removals', () => {
     ])
     expect(files[3]!.edits.map((entry) => `${entry.call} ${entry.path}`)).toEqual(['e1 /w/b.ts', 'e1 /w/a.ts', 'e2 /w/b.ts'])
     // A work group of the later call alone knows nothing of the earlier one's files.
-    expect(callFiles([move]).map((file) => file.path)).toEqual(['/w/b.ts'])
+    expect(callFiles([move], null).map((file) => file.path)).toEqual(['/w/b.ts'])
   })
 
   test('a file made again after its removal starts anew', () => {
@@ -298,5 +302,59 @@ describe('a request across renames and removals', () => {
       shellCall('n2', 'Rewrite notes', [edited('/w/notes.md', 40, 1, 'added')], [{ kind: 'removed', path: '/w/notes.md' }]),
     ]).requests[0]!.files
     expect(files.map((file) => `${file.path} ${file.edits.map((entry) => entry.call).join()}`)).toEqual(['/w/notes.md n2'])
+  })
+})
+
+describe('what a request does not show', () => {
+  /**
+   * The design's example: the agent writes a script in /tmp and runs it,
+   * writes notes that stay and build notes it removes in a later call, and
+   * removes old notes that were there before the request.
+   */
+  const fix = shellCall('s1', 'Write the fix script', [temporary(edited('/tmp/fix.py', 0, 1, 'added'))])
+  const notes = shellCall('s2', 'Write the notes', [
+    edited('/w/notes.md', 10, 1, 'added'),
+    edited('/w/build-notes.md', 20, 1, 'added'),
+    edited('/w/old.md', 30),
+  ])
+  const tidy = shellCall('s3', 'Remove the build notes and the old notes', [], [
+    { kind: 'removed', path: '/w/build-notes.md' },
+    { kind: 'removed', path: '/w/old.md' },
+  ])
+  const requests = transcriptRequests([userBlock('u', 't', 'Fix the build'), fix, notes, tidy])
+
+  test('its list has neither a file in a temporary directory nor one it created and removed', () => {
+    expect(requests.requests[0]!.files.map((file) => file.path)).toEqual(['/w/notes.md'])
+  })
+
+  test('a call’s pills leave them out; a file that was there before keeps its pill, which opens nothing once removed', () => {
+    expect(callPillFiles(requests, fix)).toEqual([])
+    expect(callPillFiles(requests, notes).map((file) => file.path)).toEqual(['/w/notes.md', '/w/old.md'])
+    expect(pillSelection(null, requests, notes, '/w/old.md')).toBeNull()
+    // A call shown on its own has only its report: its file in /tmp.
+    expect(callPillFiles(null, fix)).toEqual([])
+  })
+
+  test('a run’s summed pills leave them out, also when a later run removed the file', () => {
+    expect(callFiles([fix, notes], requests).map((file) => file.path)).toEqual(['/w/notes.md', '/w/old.md'])
+    expect(callFiles([fix, notes, tidy], requests).map((file) => file.path)).toEqual(['/w/notes.md'])
+  })
+
+  test('a file moved out of a temporary directory shows where it went, with the edits made before', () => {
+    const write = shellCall('m1', 'Write the page', [temporary(edited('/tmp/page.new', 0, 1, 'added'))])
+    const place = shellCall('m2', 'Put the page in place', [], [{ kind: 'renamed', from: '/tmp/page.new', to: '/w/page.txt' }])
+    const away = shellCall('m3', 'Move the draft aside', [], [
+      { kind: 'renamed', from: '/w/draft.md', to: '/tmp/draft.md', temporary: true },
+    ])
+    const draft = shellCall('m0', 'Write the draft', [edited('/w/draft.md', 5, 1, 'added')])
+    const requests = transcriptRequests([userBlock('u', 't', 'Write the page'), draft, write, place, away])
+    const files = requests.requests[0]!.files
+    expect(files.map((file) => [file.path, file.kind])).toEqual([['/w/page.txt', 'added']])
+    expect(files[0]!.edits.map((edit) => `${edit.call} ${edit.path}`)).toEqual(['m1 /tmp/page.new'])
+    expect(callPillFiles(requests, write).map((file) => file.path)).toEqual(['/tmp/page.new'])
+    expect(callFiles([write], requests).map((file) => file.path)).toEqual(['/tmp/page.new'])
+    // And one moved into a temporary directory is not shown.
+    expect(callPillFiles(requests, draft)).toEqual([])
+    expect(callFiles([draft, write, place, away], requests).map((file) => file.path)).toEqual(['/w/page.txt'])
   })
 })

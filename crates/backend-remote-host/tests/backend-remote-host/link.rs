@@ -1372,6 +1372,7 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
         kind: EditKind::Modified,
         added: 1,
         removed: 1,
+        temporary: false,
         edits: vec![EditSegment {
             copies: Some(demi_shared_types::EditCopies {
                 original: BlobRef::of(b"before\n"),
@@ -1415,6 +1416,7 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
             }],
             added: 1,
             removed: 1,
+            temporary: false,
         }],
         path_changes: Vec::new(),
         files_truncated: true,

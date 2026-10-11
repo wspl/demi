@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use demi_command_protocol::{
     ArtifactLocation, CommandContext, EditCopies, EditKind, MAX_NUMBERS, PackageDescriptor,
-    PathChange, ServiceSequence, Viewable, conversation_name, digest, without_nul,
+    ServiceSequence, Viewable, conversation_name, digest, without_nul,
 };
 use demi_shared_types::BlobRef;
 use schemars::JsonSchema;
@@ -929,7 +929,7 @@ pub enum Outbound {
         /// The renames and removals of the job's embedded utilities, in
         /// order (`edit-tracking.md` § A request).
         #[garde(length(max = demi_command_protocol::EDIT_JOB_PATH_CHANGES), dive)]
-        path_changes: Vec<PathChange>,
+        path_changes: Vec<JobPathChange>,
         files_truncated: bool,
     },
     /// A medium `demi file view` handed to the job, once the job keeps it
@@ -1705,6 +1705,30 @@ pub struct JobFileChange {
     pub added: u64,
     #[garde(skip)]
     pub removed: u64,
+    /// Whether `path` is in one of the Host's temporary directories
+    /// (`edit-tracking.md` § Temporary files).
+    #[garde(skip)]
+    pub temporary: bool,
+}
+
+/// A rename or a removal of a job's embedded utilities, as its edit record
+/// names it, with whether a rename's `to` is in one of the Host's temporary
+/// directories (`edit-tracking.md` § The report).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
+pub enum JobPathChange {
+    Renamed {
+        #[garde(length(min = 1), custom(without_nul))]
+        from: String,
+        #[garde(length(min = 1), custom(without_nul))]
+        to: String,
+        #[garde(skip)]
+        temporary: bool,
+    },
+    Removed {
+        #[garde(length(min = 1), custom(without_nul))]
+        path: String,
+    },
 }
 
 /// One line of the Host's log: when it was written, which source wrote it,
