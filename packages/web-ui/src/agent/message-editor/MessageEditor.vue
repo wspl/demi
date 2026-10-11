@@ -566,6 +566,27 @@ defineExpose({
     landing = null
     editor.view.dispatch(tr.scrollIntoView())
   },
+  /**
+   * A pasted file the composer could not add: its name stands where its
+   * capsule did. Answers whether the message still held that capsule.
+   */
+  replaceCapsule(id: string, text: string): boolean {
+    if (editor.isDestroyed) {
+      return false
+    }
+    let at: number | null = null
+    editor.state.doc.descendants((node, pos) => {
+      if (at === null && capsuleOf(node)?.id === id) {
+        at = pos
+      }
+      return at === null
+    })
+    if (at === null) {
+      return false
+    }
+    editor.view.dispatch(editor.state.tr.replaceWith(at, at + 1, editor.schema.text(text)))
+    return true
+  },
   /** The whole message as the clipboard takes it, for its Copy control. */
   clipboardItem(): ClipboardItem {
     return clipboardItem(clipboardForms(editor.state.doc.content))

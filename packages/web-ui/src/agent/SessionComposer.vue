@@ -405,26 +405,36 @@ function insertCapsules(added: readonly MessageCapsule[]): void {
 }
 
 /**
- * A copied message pasted: the edit or the host takes its files, without
- * their bytes where the user's blobs hold them, and the message goes in where
- * it was pasted. A file the paste could not add stands as its name, and a
- * toast names it.
+ * A copied message pasted: it goes in where it was pasted at once, text and
+ * capsules, and each stored file attaches beside it as an upload does, so the
+ * message can be sent meanwhile (`product.md` § Writing a message). A file
+ * the paste could not add stands as its name where its capsule stood, and a
+ * toast names it once the paste's files have all answered.
  */
-async function pasteCopied(message: CopiedMessage, image: File | null): Promise<void> {
+function pasteCopied(message: CopiedMessage, image: File | null): void {
   // The editor the message was pasted into, which an edit opened or closed meanwhile does not change.
   const target = editor.value
-  const pasted = await pasteMessage(message, image, shownEdit.value ? edit.paste : props.paste)
+  const pasted = pasteMessage(message, image, shownEdit.value ? edit.paste : props.paste)
   target?.insertMessage(pasted.markdown, pasted.capsules)
-  if (pasted.missing.length) {
-    const names = new Intl.ListFormat('en', { type: 'conjunction' }).format(pasted.missing)
-    showToast({
-      title: 'Couldn’t Attach',
-      message: pasted.missing.length === 1
-        ? `${names} couldn’t be added, so its name was pasted instead.`
-        : `${names} couldn’t be added, so their names were pasted instead.`,
-      tone: 'danger',
-    })
+  void Promise.all(pasted.attaching.map(async ({ id, name, kept }) =>
+    // A file of a message sent meanwhile is no longer the composer's: its bubble tells it.
+    !await kept && target?.replaceCapsule(id, name) ? [name] : []))
+    .then((names) => missingFiles([...pasted.missing, ...names.flat()]))
+}
+
+/** Tells which pasted files could not be added, their names pasted instead. */
+function missingFiles(names: readonly string[]): void {
+  if (!names.length) {
+    return
   }
+  const list = new Intl.ListFormat('en', { type: 'conjunction' }).format(names)
+  showToast({
+    title: 'Couldn’t Attach',
+    message: names.length === 1
+      ? `${list} couldn’t be added, so its name was pasted instead.`
+      : `${list} couldn’t be added, so their names were pasted instead.`,
+    tone: 'danger',
+  })
 }
 
 defineExpose({

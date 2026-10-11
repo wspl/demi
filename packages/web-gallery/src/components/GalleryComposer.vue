@@ -5,7 +5,7 @@ import { previewMediaType, type ContextUsage, type UserContentBlock } from '@dem
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
-import type { PasteHost } from '@demicodes/web-ui/agent/message-input/copied-message'
+import type { CopiedStoredFile, PasteHost } from '@demicodes/web-ui/agent/message-input/copied-message'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
@@ -14,6 +14,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import {
   applyAttachmentUpdate,
   arrangeCapsuleFiles,
+  attachingUpdate,
   AttachmentUploadQueue,
   attachmentFileError,
   composerAttachment,
@@ -21,6 +22,7 @@ import {
   composerFileNames,
   composerRemoteAttachment,
   encodeRemoteReference,
+  filePreviewUrl,
   isComposerFile,
   remoteAttachmentError,
   type AttachmentUploadUpdate,
@@ -179,8 +181,8 @@ const picked = new Map<string, File>(
 const answers = new Map<string, UploadedFile>()
 /** Each file's upload under way, which a message sent meanwhile waits for. */
 const transfers = new Map<string, Promise<void>>()
-/** Ends the claims of pasted files still under way when the specimen goes. */
-const claims = new AbortController()
+/** The stored files pasted messages name, by their files' ids, with the picture each copy carried. */
+const pastedClaims = new Map<string, { file: CopiedStoredFile; picture: File | null }>()
 /** The specimen's model settings, which its model menu changes as the product's draft does. */
 const settings = ref<ModelSettings>({
   providerId: props.selectedProviderId,
@@ -213,6 +215,7 @@ function forget(id: string, release: boolean, keepsUpload = false) {
     uploads.cancel(id)
     picked.delete(id)
     answers.delete(id)
+    pastedClaims.delete(id)
   }
   const item = attached.value.find((file) => file.id === id)
   if (item && isComposerFile(item) && item.src?.startsWith('blob:')) {
@@ -286,6 +289,7 @@ function submit(way: SendWay) {
         for (const item of waiting) {
           picked.delete(item.id)
           answers.delete(item.id)
+          pastedClaims.delete(item.id)
         }
         return blocks
       })
@@ -317,19 +321,24 @@ function submit(way: SendWay) {
   }
 }
 
-function startUpload(id: string) {
-  const file = picked.get(id)
+/**
+ * Uploads a file, or attaches the stored file a pasted message names through
+ * the stand-in's claim, uploading the picture the copy carried when it cannot
+ * use the file, as the product's does. Answers the transfer, which a message
+ * sent meanwhile waits for.
+ */
+function startUpload(id: string): Promise<void> {
   const item = attached.value.find((each): each is ComposerFileAttachment => each.id === id && isComposerFile(each))
-  if (!file || !item) {
-    return
+  if (!item || (!picked.has(id) && !pastedClaims.has(id))) {
+    return Promise.resolve()
   }
-  // The stand-in never fails; were it to, the file would keep its capsule with Retry, as the product's does.
+  // The stand-in's upload never fails; were it to, the file would keep its capsule with Retry, as the product's does.
   // The item is held, not looked up, so a sent message's capsule goes on showing its upload.
   const transfer = uploads.start(id, async (signal, report) => {
-    const answer = await upload(file, { signal, progress: report })
+    const answer = await transferOf(id, item, signal, report)
     answers.set(id, answer)
     item.snippet = answer.snippet
-  }, (update) => applyAttachmentUpdate(item, update))
+  }, (update) => applyAttachmentUpdate(item, attachingUpdate(update, picked.has(id))))
     .then(() => {}, () => applyAttachmentUpdate(item, { phase: 'failed' }))
   transfers.set(id, transfer)
   void transfer.then(() => {
@@ -337,6 +346,32 @@ function startUpload(id: string) {
       transfers.delete(id)
     }
   })
+  return transfer
+}
+
+/** What a file's transfer answers: its upload, or the claim of the stored file a paste names, else its picture's upload. */
+async function transferOf(
+  id: string,
+  item: ComposerFileAttachment,
+  signal: AbortSignal,
+  report: (fraction: number) => void,
+): Promise<UploadedFile> {
+  const claim = pastedClaims.get(id)
+  if (claim) {
+    const answer = await host.claim(claim.file, signal)
+    if (answer) {
+      // The file's size, for the record a sent message keeps.
+      picked.set(id, new File([], claim.file.name, { type: claim.file.mediaType }))
+      return answer
+    }
+    if (!claim.picture) {
+      throw new Error(`${claim.file.name} is not among this account's files.`)
+    }
+    pastedClaims.delete(id)
+    picked.set(id, claim.picture)
+    item.src = filePreviewUrl(claim.picture) ?? item.src
+  }
+  return upload(picked.get(id)!, { signal, progress: report })
 }
 
 /** Takes files and puts their capsules in the message, where the composer said they would land. */
@@ -350,16 +385,12 @@ function addFiles(files: File[]) {
  * and the picture a copy carried as a pasted file.
  */
 const paste: PasteHost = {
-  claim: async (file) => {
-    const answer = await host.claim(file, claims.signal)
-    if (!answer) {
-      return null
-    }
-    const item = composerAttachment({ name: file.name, src: host.picture(file.sha256, file.mediaType), phase: 'ready' })
-    picked.set(item.id, new File([], file.name, { type: file.mediaType }))
-    answers.set(item.id, answer)
+  claim: (file, picture) => {
+    const item = composerAttachment({ name: file.name, src: host.picture(file.sha256, file.mediaType), phase: 'attaching' })
     attached.value.push(item)
-    return composerCapsule(item)
+    pastedClaims.set(item.id, { file, picture })
+    const kept = startUpload(item.id).then(() => answers.has(item.id) || picked.has(item.id))
+    return { capsule: composerCapsule(item), kept }
   },
   remote: (file) => {
     if (remoteAttachmentError(file.path, file.host, attached.value)) {
@@ -369,7 +400,6 @@ const paste: PasteHost = {
     attached.value.push(item)
     return composerCapsule(item)
   },
-  add: (files) => takeFiles(files).map(composerCapsule),
 }
 
 /** Takes files into the composer, each starting its upload, and answers the ones it took. */
@@ -435,7 +465,6 @@ function changeModel(change: ModelSettingsChange) {
 }
 onBeforeUnmount(() => {
   window.clearTimeout(reloadTimer)
-  claims.abort()
   uploads.cancelAll()
   host.release()
   while (attached.value.length) {
