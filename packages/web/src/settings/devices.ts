@@ -19,7 +19,10 @@ export const useDeviceSettings = defineStore('device-settings', () => {
   const product = useProduct()
   let lifetime = new AbortController()
   const revoking = ref<string[]>([])
-  /** The device changes on their way, which go one at a time in order. */
+  /**
+   * The device changes on their way, by device: each device's go one at a
+   * time in order, as the backend answers each with the whole device.
+   */
   const writes = new SerialQueue()
   const reset = ref<
     | { status: 'idle' | 'pending' }
@@ -76,7 +79,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
 
   /**
    * Changes a paired device as `body` says, at once, and sends the change
-   * after the earlier ones; the change lands with the device the backend
+   * after the earlier ones of the same device; the change lands with the device the backend
    * answers, the channel brings it to every other page, and a refusal gives
    * the device back with a toast titled `failed`.
    */
@@ -91,7 +94,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     }))
     const current = lifetime
     return writes
-      .run(async () => {
+      .run(id, async () => {
         current.signal.throwIfAborted()
         shown.send()
         const response = await apiRequest(`/devices/${encodeURIComponent(id)}`, {

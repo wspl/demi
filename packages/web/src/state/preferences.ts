@@ -65,6 +65,11 @@ function mergePatch(patch: PreferencesPatch, later: PreferencesPatch): Preferenc
 
 export const usePreferences = defineStore('preferences', () => {
   const product = useProduct()
+  /**
+   * The preference writes on their way, which go one at a time in order:
+   * the backend answers each with the whole document, so the document is
+   * the one thing they change.
+   */
   const writes = new SerialQueue()
   let timer: ReturnType<typeof setTimeout> | null = null
   let controller = new AbortController()
@@ -151,7 +156,7 @@ export const usePreferences = defineStore('preferences', () => {
   /** Sends the changes waiting for their write, as one, after the earlier writes. */
   async function flush(): Promise<void> {
     const current = controller
-    await writes.run(async () => {
+    await writes.run('preferences', async () => {
       if (current.signal.aborted || !queued.changes.length) {
         return
       }
@@ -213,7 +218,7 @@ export const usePreferences = defineStore('preferences', () => {
     }
     reporting = key
     const current = controller
-    await writes.run(async () => {
+    await writes.run('preferences', async () => {
       try {
         const sentAt = product.sent()
         product.answered(sentAt, await save(patch, current.signal))
@@ -239,7 +244,7 @@ export const usePreferences = defineStore('preferences', () => {
     const patch = { contextLimit: change }
     const shown = show(patch)
     const current = controller
-    await writes.run(async () => {
+    await writes.run('preferences', async () => {
       shown.send()
       try {
         shown.land(await save(patch, current.signal))

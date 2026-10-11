@@ -295,6 +295,20 @@ export class ConversationRuntime {
     await this.connect()
   }
 
+  /**
+   * Lets the connection go, and opens none until `connect`, keeping all the
+   * conversation shows, as an archived conversation does, whose socket the
+   * backend closes (`product.md` § Conversations and projects). A
+   * connection the runtime was trying to bring back stops being tried: the
+   * transcript it holds is what it shows.
+   */
+  suspend(): void {
+    this.releaseConnection()
+    if (this.options.state.load === 'reconnecting') {
+      this.options.state.load = 'ready'
+    }
+  }
+
   dispose(): void {
     this.disposed = true
     this.releaseConnection()

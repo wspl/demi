@@ -50,7 +50,10 @@ function productDevice(device: DeviceDto): Device {
 export const useResources = defineStore('resources', () => {
   const session = useSession()
   const product = useProduct()
-  /** The project moves on their way, which go one at a time in order. */
+  /**
+   * The project moves on their way, which go one at a time in order: each
+   * changes the one order of the projects.
+   */
   const moves = new SerialQueue()
   const preferences = usePreferences()
   const local = ref(emptyLocalState())
@@ -252,7 +255,7 @@ export const useResources = defineStore('resources', () => {
     })
     const { signal } = controller
     return moves
-      .run(async () => {
+      .run('workspace_order', async () => {
         change.send()
         await apiRequest('/sidebar/reorder', {
           method: 'POST',
