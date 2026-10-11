@@ -5,6 +5,7 @@ import {
   type MessageEditState,
 } from '../message-editing'
 import {
+  blobImage,
   contentCapsule,
   type MessageCapsule,
   type MessageTransfer,
@@ -12,18 +13,25 @@ import {
 } from '../message-editor/capsules'
 import {
   AttachmentUploadQueue,
+  attachingUpdate,
   attachmentFileError,
   attachmentSendBlockReason,
   filePreviewUrl,
   type ClaimFile,
+  type UploadedFile,
   type UploadFile,
 } from './attachments'
-import type { PasteHost } from './copied-message'
+import type { CopiedStoredFile, PasteHost } from './copied-message'
 import { joinMessageContent, splitMessageContent } from './message-content'
 
-/** A file the edit added: its bytes, its capsule, and its upload while it is not done. */
+/**
+ * A file the edit added: its bytes, or the stored file a pasted message
+ * names with the picture to upload when the paste cannot use it; its
+ * capsule; and its transfer while it is not done.
+ */
 interface AddedFile {
-  file: File
+  file: File | null
+  claim?: { file: CopiedStoredFile; picture: File | null }
   capsule: MessageCapsule
   transfer: MessageTransfer | null
 }
@@ -43,8 +51,6 @@ export function useMessageEditComposer(options: {
   claim: ClaimFile
 }) {
   const uploads = new AttachmentUploadQueue()
-  /** Ends the claims of pasted files still under way once the composer goes. */
-  const claims = new AbortController()
   const attachmentError = ref<string | null>(null)
   /** The edit's files by capsule id: the message's records and media, or an added file's upload once done. */
   const files = shallowRef(new Map<string, MessageEditContent[]>())
@@ -94,10 +100,7 @@ export function useMessageEditComposer(options: {
     markdown.value = split.markdown
     order.value = ids
   }, { immediate: true })
-  onScopeDispose(() => {
-    release()
-    claims.abort()
-  })
+  onScopeDispose(release)
 
   /** Writes the edit's content as the editor shows it: its text, and each file that is ready to go. */
   function publish(): void {
@@ -143,42 +146,86 @@ export function useMessageEditComposer(options: {
     }
   }
 
-  /** Uploads one added file; once the backend has it, the file is part of the edit. */
-  async function uploadFile(id: string): Promise<void> {
-    const file = added.value.get(id)?.file
+  /**
+   * Uploads one added file, or attaches the stored file a pasted message
+   * names, falling back to the picture the copy carried when the paste
+   * cannot use it; once the backend has it, the file is part of the edit.
+   * Answers false when it failed.
+   */
+  async function uploadFile(id: string): Promise<boolean> {
+    const entry = added.value.get(id)
     const operationId = options.state()?.request.operationId
-    if (!file) {
-      return
+    if (!entry || (!entry.file && !entry.claim)) {
+      return true
     }
+    const name = entry.capsule.name
     try {
       const ready = await uploads.start(
         id,
         async (signal, report) => {
-          const uploaded = await options.upload(file, { signal, progress: report })
+          const uploaded = await transfer(id, signal, report)
           signal.throwIfAborted()
           files.value = new Map(files.value).set(id, [{
             type: 'upload',
             ref: uploaded.id,
-            fileName: file.name,
+            fileName: name,
             mediaType: uploaded.mediaType,
             sha256: uploaded.sha256,
             ...(uploaded.snippet ? { snippet: uploaded.snippet } : {}),
           }])
         },
-        (update) => setTransfer(id, update.phase === 'ready'
-          ? null
-          : update.phase === 'uploading'
-            ? { phase: 'uploading', progress: update.progress ?? 0 }
-            : { phase: 'failed' }),
+        (update) => {
+          const shown = attachingUpdate(update, !!added.value.get(id)?.file)
+          setTransfer(id, shown.phase === 'ready'
+            ? null
+            : shown.phase === 'uploading'
+              ? { phase: 'uploading', progress: shown.progress ?? 0 }
+              : shown.phase === 'attaching' ? { phase: 'attaching' } : { phase: 'failed' })
+        },
       )
       if (ready && options.state()?.request.operationId === operationId) {
         publish()
       }
+      return true
     } catch (error) {
-      // A failed upload keeps its capsule, which offers Retry; the composer toasts the reason.
+      // A failed upload keeps its capsule, which offers Retry; the composer
+      // toasts the reason. A pasted file the paste could not use is the
+      // composer's to tell.
       setTransfer(id, { phase: 'failed' })
-      attachmentError.value = `${file.name}: ${error instanceof Error ? error.message : String(error)}`
+      if (added.value.get(id)?.file) {
+        attachmentError.value = `${name}: ${error instanceof Error ? error.message : String(error)}`
+      }
+      return false
     }
+  }
+
+  /** The upload a file's transfer makes: of its bytes, or of the stored file a paste names, else of its picture. */
+  async function transfer(
+    id: string,
+    signal: AbortSignal,
+    report: (fraction: number) => void,
+  ): Promise<UploadedFile> {
+    const entry = added.value.get(id)!
+    const claim = entry.claim
+    if (claim) {
+      // A claim that fails for any reason leaves the file one the paste cannot use.
+      const claimed = await options.claim(claim.file, signal).catch(() => null)
+      if (claimed) {
+        return claimed
+      }
+      if (!claim.picture) {
+        throw new Error(`${claim.file.name} is not among this account's files.`)
+      }
+      const image = filePreviewUrl(claim.picture)
+      added.value = new Map(added.value).set(id, {
+        ...entry,
+        file: claim.picture,
+        claim: undefined,
+        capsule: image ? { ...entry.capsule, image } : entry.capsule,
+      })
+      return options.upload(claim.picture, { signal, progress: report })
+    }
+    return options.upload(entry.file!, { signal, progress: report })
   }
 
   /** Takes files into the edit and answers with their capsules, for the editor to put in the message. */
@@ -214,31 +261,26 @@ export function useMessageEditComposer(options: {
   }
 
   /**
-   * How a message pasted into the edit brings its files: a stored file as an
-   * upload of the user's own blob, a device file by its device and path, and
-   * a picture the copy carried as an added file.
+   * How a message pasted into the edit brings its files: a stored file as a
+   * capsule at once, attaching beside it, and a device file by its device
+   * and path.
    */
   const paste: PasteHost = {
-    claim: async (file) => {
-      if (!editable.value) {
-        return null
-      }
-      const uploaded = await options.claim(file, claims.signal)
-      return uploaded
-        ? keep({
-            type: 'upload',
-            ref: uploaded.id,
-            fileName: file.name,
-            mediaType: uploaded.mediaType,
-            sha256: uploaded.sha256,
-            ...(uploaded.snippet ? { snippet: uploaded.snippet } : {}),
-          })
-        : null
+    claim: (file, picture) => {
+      const id = crypto.randomUUID()
+      const image = blobImage(file.mediaType, file.sha256)
+      const capsule: MessageCapsule = { id, name: file.name, ...(image ? { image } : {}) }
+      added.value = new Map(added.value).set(id, {
+        file: null,
+        claim: { file, picture },
+        capsule,
+        transfer: { phase: 'attaching' },
+      })
+      return { capsule, kept: uploadFile(id).then((done) => done || !!added.value.get(id)?.file) }
     },
     remote: (file) => editable.value
       ? keep({ type: 'remote_file', deviceId: file.deviceId, path: file.path, host: file.host })
       : null,
-    add: addFiles,
   }
 
   /** Whether the capsule is one of this edit's files. */

@@ -1188,31 +1188,76 @@ test('a message never goes without a file its text holds a place for', async () 
   })
 })
 
-test('a pasted message\'s stored file joins the composer from its blob, without an upload', async () => {
-  const store = useConversations()
-  const current = store.items[0]!
+/** Answers claims of stored files, once `gate` opens, with an upload of the blob `SHA` names; any other the user's blobs do not hold. */
+function answerClaims(gate: Promise<void>): () => void {
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
-    if (path.startsWith('/api/attachments?') && new URLSearchParams(path.split('?')[1]).get('sha256') === SHA) {
+    if (path.startsWith('/api/attachments?')) {
       requests.push({ path, body: null })
-      return Response.json({ attachment: {
-        id: 'att-held', mediaType: 'image/png', sizeBytes: 4, sha256: SHA, createdAt: '2026-09-09T00:00:00.000Z',
-      } }, { status: 201 })
+      await gate
+      if (new URLSearchParams(path.split('?')[1]).get('sha256') === SHA) {
+        return Response.json({ attachment: {
+          id: 'att-held', mediaType: 'image/png', sizeBytes: 4, sha256: SHA, createdAt: '2026-09-09T00:00:00.000Z',
+        } }, { status: 201 })
+      }
     }
     return originalFetch(input, init)
   }) as typeof fetch
-  const sendBytes = spyOn(FakeXhr.prototype, 'send')
-  try {
-    const held = await store.claimFile(current, { type: 'stored', name: 'before.png', sha256: SHA, mediaType: 'image/png' })
-    expect(held).toMatchObject({ kind: 'file', name: 'before.png', phase: 'ready', upload: { id: 'att-held', sha256: SHA } })
-    const missing = await store.claimFile(current, { type: 'stored', name: 'gone.png', sha256: 'c'.repeat(64), mediaType: 'image/png' })
-    expect(missing).toBeNull()
-    expect(sendBytes).not.toHaveBeenCalled()
-    expect(current.files.map((file) => file.name)).toEqual(['before.png'])
-  } finally {
-    sendBytes.mockRestore()
+  return () => {
     globalThis.fetch = originalFetch
+  }
+}
+
+// A pasted message's stored file is a capsule at once, attaching beside it
+// as an upload does; a message sent meanwhile waits for it
+// (`product.md` § Writing a message).
+test('a pasted message\'s stored file is the message\'s at once, and a send waits for its attaching, which sends no bytes', async () => {
+  await withSession(async (current, sent) => {
+    const gate = deferred()
+    const restore = answerClaims(gate.promise)
+    const sendBytes = spyOn(FakeXhr.prototype, 'send')
+    try {
+      const store = useConversations()
+      const { item, kept } = store.claimFile(current, { type: 'stored', name: 'before.png', sha256: SHA, mediaType: 'image/png' }, null)
+      // Before the backend answers, the composer carries it, attaching.
+      expect(item).toMatchObject({ name: 'before.png', phase: 'attaching', upload: null })
+      store.arrangeFiles(current, [item.id])
+      current.draft = `Compare ${ATTACHMENT_MARK}`
+      const sending = store.send(current)
+      expect(current.draft).toBe('')
+      expect(sent).toEqual([])
+      gate.resolve()
+      await sending
+      expect(await kept).toBe(true)
+      expect(sent).toEqual([[
+        { type: 'text', text: 'Compare ' },
+        { type: 'upload', ref: 'att-held', fileName: 'before.png' },
+      ]])
+      expect(sendBytes).not.toHaveBeenCalled()
+    } finally {
+      sendBytes.mockRestore()
+      restore()
+    }
+  })
+})
+
+test('a pasted file the user\'s blobs do not hold uploads the copy\'s picture in its place, or else is not kept', async () => {
+  const gate = deferred()
+  gate.resolve()
+  const restore = answerClaims(gate.promise)
+  try {
+    const store = useConversations()
+    const current = store.items[0]!
+    const gone = { type: 'stored' as const, name: 'gone.png', sha256: 'c'.repeat(64), mediaType: 'image/png' }
+    const withPicture = store.claimFile(current, gone, new File(['png'], 'gone.png', { type: 'image/png' }))
+    expect(await withPicture.kept).toBe(true)
+    expect(withPicture.item).toMatchObject({ phase: 'ready', upload: { id: expect.stringMatching(/^att-/) } })
+    const without = store.claimFile(current, { ...gone, name: 'other.png' }, null)
+    expect(await without.kept).toBe(false)
+    expect(without.item).toMatchObject({ phase: 'failed', upload: null })
+  } finally {
+    restore()
   }
 })
 

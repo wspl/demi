@@ -128,44 +128,54 @@ export function readCopiedMessage(value: string | null): CopiedMessage | null {
 }
 
 /**
- * How a composer takes the files of a pasted message. A stored file becomes
- * an upload of the user's own blob, which sends no bytes, and a device file
- * its reference; either answers null when the paste cannot use it, such as a
- * blob of another account or one since deleted. A picture the copy carried
- * is taken as any pasted file is.
+ * How a composer takes the files of a pasted message (`product.md` § Writing
+ * a message). A stored file is a capsule at once, and attaches beside it as
+ * an upload does: the backend makes an upload of the user's own stored file,
+ * sending no bytes. `kept` answers whether the capsule stays: true once the
+ * file is attached, or when the paste could not use it and `picture`, the
+ * picture the copy carried, uploads in its place under the file's name;
+ * false when neither could, and the composer puts the file's name where the
+ * capsule stood. A device file is its reference, or null when the composer
+ * has it already.
  */
 export interface PasteHost {
-  claim(file: CopiedStoredFile): Promise<MessageCapsule | null>
+  claim(file: CopiedStoredFile, picture: File | null): { capsule: MessageCapsule; kept: Promise<boolean> }
   remote(file: CopiedDeviceFile): MessageCapsule | null
-  add(files: File[]): MessageCapsule[]
 }
 
-/** A pasted message as the composer puts it in: its Markdown and capsules, and the names of the files it could not add. */
+/**
+ * A pasted message as the composer puts it in at once, its text and its
+ * capsules, with each stored file's attaching under its capsule's id and the
+ * names that stand in the text from the start.
+ */
 export interface PastedMessage {
   markdown: string
   capsules: MessageCapsule[]
+  attaching: { id: string; name: string; kept: Promise<boolean> }[]
   missing: string[]
 }
 
 /**
  * Brings a copied message back into a composer: each file a capsule where it
- * stood. A file the paste cannot use comes in from `image`, the picture a
- * copy of a lone image carried, and otherwise as its name in the text, which
- * `missing` lists for the composer to say so.
+ * stood, at once. A copy of a lone file offers its carried picture for the
+ * case the paste cannot use the file.
  */
-export async function pasteMessage(message: CopiedMessage, image: File | null, host: PasteHost): Promise<PastedMessage> {
-  // A claim that failed, as one the backend did not answer, leaves its file
-  // out as one the user's blobs do not hold: the toast names it, and the
-  // user can attach it again.
-  const taken = await Promise.all(message.files.map((file) =>
-    file.type === 'stored' ? host.claim(file).catch(() => null) : Promise.resolve(host.remote(file))))
+export function pasteMessage(message: CopiedMessage, image: File | null, host: PasteHost): PastedMessage {
   const parts = message.text.split(ATTACHMENT_MARK)
   let markdown = parts[0] ?? ''
   const capsules: MessageCapsule[] = []
+  const attaching: PastedMessage['attaching'] = []
   const missing: string[] = []
-  taken.forEach((claimed, index) => {
-    const file = message.files[index]!
-    const capsule = claimed ?? (image && message.files.length === 1 ? host.add([picture(image, file)])[0] ?? null : null)
+  message.files.forEach((file, index) => {
+    let capsule: MessageCapsule | null
+    if (file.type === 'stored') {
+      const picture = image && message.files.length === 1 ? namedPicture(image, file) : null
+      const taken = host.claim(file, picture)
+      capsule = taken.capsule
+      attaching.push({ id: capsule.id, name: file.name, kept: taken.kept })
+    } else {
+      capsule = host.remote(file)
+    }
     if (capsule) {
       markdown += ATTACHMENT_MARK
       capsules.push(capsule)
@@ -175,10 +185,10 @@ export async function pasteMessage(message: CopiedMessage, image: File | null, h
     }
     markdown += parts[index + 1] ?? ''
   })
-  return { markdown, capsules, missing }
+  return { markdown, capsules, attaching, missing }
 }
 
 /** The picture a copy carried, under its file's name when it is that file's kind, as web browsers name every pasted picture `image.png`. */
-function picture(image: File, file: CopiedFile): File {
-  return file.type === 'stored' && file.mediaType === image.type ? new File([image], file.name, { type: image.type }) : image
+function namedPicture(image: File, file: CopiedStoredFile): File {
+  return file.mediaType === image.type ? new File([image], file.name, { type: image.type }) : image
 }
