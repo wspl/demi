@@ -135,6 +135,8 @@ impl Dispatch {
         let control = self.control.clone();
         tokio::spawn(async move {
             while let Some(arrival) = arrived.recv().await {
+                // A command cancelled while it waited needs no answer.
+                let _ = arrival.written.send(());
                 if let Some(medium) = arrival.medium
                     && control.send(medium).await.is_err()
                 {

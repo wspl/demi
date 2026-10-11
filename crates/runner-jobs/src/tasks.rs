@@ -1240,8 +1240,9 @@ impl Logs {
     }
 
     /// Writes a medium's line into the job's stdout, on a line of its own,
-    /// and returns the frames that tell the backend: the line's part within
-    /// the stream's first `JOB_VIEW_BYTES`, then the medium's `job_medium`.
+    /// answers the command that returned it, and returns the frames that
+    /// tell the backend: the line's part within the stream's first
+    /// `JOB_VIEW_BYTES`, then the medium's `job_medium`.
     async fn arrive(
         &mut self,
         job: &str,
@@ -1252,6 +1253,8 @@ impl Logs {
         let line = Bytes::from(format!("{separator}{}\n", arrival.line));
         *line_start = true;
         let (offset, head) = self.write(OutputStream::Stdout, &line).await?;
+        // A command cancelled while it waited needs no answer.
+        let _ = arrival.written.send(());
         let mut frames = Vec::new();
         if !head.is_empty() {
             frames.push(
