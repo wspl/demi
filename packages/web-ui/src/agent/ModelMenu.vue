@@ -1,22 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
-import { buildReasoningState, reasoningOptionIndex, reasoningOptionLabel } from './reasoning'
-import { fastServiceTier, isFastMode } from './fast-mode'
-import {
-  contextLimitOptions,
-  contextWindowInUse,
-  type ContextLimitChange,
-} from './context-limit'
-import { formatTokens } from '../ui/token-count'
-import {
-  availableProviders,
-  composerModel,
-  modelSwitch,
-  resolveSelectedModel,
-  type ModelSettings,
-  type ModelSettingsChange,
-} from './model-selection'
+import type { ContextLimitChange } from './context-limit'
+import { modelSwitch, type ModelSettings, type ModelSettingsChange } from './model-selection'
+import { modelMenuRows } from './model-menu'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
@@ -47,56 +34,13 @@ const emit = defineEmits<{
   contextLimit: [change: ContextLimitChange]
 }>()
 
-const providersWithModels = computed(() => availableProviders(props.providers, props.models))
-/** Parent's model is chosen: no model of the menu's is, not even the first one. */
-const parentChosen = computed(() => props.parentModel === true && !props.settings)
-const selected = computed(
-  () => parentChosen.value ? null : resolveSelectedModel(
-    props.providers,
-    props.models,
-    props.settings?.providerId,
-    props.settings?.modelId,
-  )
-)
-const selectedModelLabel = computed(
-  () => parentChosen.value ? '' : selected.value?.model.name ?? composerModel(
-    props.providers,
-    props.models,
-    props.settings?.providerId,
-    props.settings?.modelId,
-  ).label
-)
-
-const effort = computed(() => props.settings?.thinkingEffort ?? null)
-const reasoningState = computed(() => buildReasoningState(selected.value?.model ?? null))
-const fastTier = computed(() => fastServiceTier(selected.value?.model))
-const fast = computed(() => isFastMode(selected.value?.model, props.settings?.serviceTierId))
-
-const contextOptions = computed(() => {
-  const model = selected.value?.model
-  return model ? contextLimitOptions(model) : []
-})
-const contextLabel = computed(() => formatTokens(contextWindowInUse(selected.value?.model)))
-
-const reasoningIndex = computed(() => {
-  const state = reasoningState.value
-  return state ? reasoningOptionIndex(state, effort.value) : 0
-})
-
-const reasoningLabel = computed(() => {
-  const state = reasoningState.value
-  return state ? reasoningOptionLabel(state, effort.value) : ''
-})
-
-function isSelectedModel(providerId: string, modelId: string): boolean {
-  return selected.value?.providerId === providerId && selected.value?.modelId === modelId
-}
+const rows = computed(() => modelMenuRows(props.providers, props.models, props.settings, props.parentModel === true))
 
 function setFast(enabled: boolean) {
-  const tier = fastTier.value
-  if (!tier)
+  const fast = rows.value.fast
+  if (!fast)
     return
-  emit('change', { serviceTierId: enabled ? tier.id : null })
+  emit('change', { serviceTierId: enabled ? fast.tier.id : null })
 }
 
 function setEffort(next: string) {
@@ -104,44 +48,44 @@ function setEffort(next: string) {
 }
 
 function setContextLimit(tokens: number | null) {
-  const current = selected.value
+  const current = rows.value.selected
   if (!current || current.model.contextLimit === tokens)
     return
   emit('contextLimit', { providerId: current.providerId, modelId: current.modelId, tokens })
 }
 
 // A switch is one change: the menu decides what of the settings the new model keeps.
-function selectModel(providerId: string, model: ModelInfo) {
-  if (isSelectedModel(providerId, model.id))
+function selectModel(providerId: string, model: ModelInfo, selected: boolean) {
+  if (selected)
     return
-  emit('change', modelSwitch(props.settings, selected.value?.model, providerId, model))
+  emit('change', modelSwitch(props.settings, rows.value.selected?.model, providerId, model))
 }
 
 function selectParent() {
-  if (!parentChosen.value)
+  if (!rows.value.parent?.selected)
     emit('parentModel')
 }
 </script>
 
 <template>
   <Menu iconless>
-    <template v-if="parentModel">
+    <template v-if="rows.parent">
       <MenuItem
         label="Parent’s Model"
         choice
-        :is-selected="parentChosen"
+        :is-selected="rows.parent.selected"
         @select="selectParent"
       />
       <MenuDivider />
     </template>
     <MenuItem
-      v-if="fastTier"
+      v-if="rows.fast"
       label="Fast Mode"
-      @select="setFast(!fast)"
+      @select="setFast(!rows.fast.on)"
     >
       <template #suffix>
         <Switch
-          :model-value="fast"
+          :model-value="rows.fast.on"
           size="sm"
           @click.stop
           @update:model-value="setFast"
@@ -149,57 +93,57 @@ function selectParent() {
       </template>
     </MenuItem>
     <MenuItem
-      v-if="reasoningState"
+      v-if="rows.reasoning"
       label="Reasoning"
-      :value="reasoningLabel"
+      :value="rows.reasoning.value"
     >
       <template #submenu>
         <Menu iconless>
           <MenuItem
-            v-for="(option, index) in reasoningState.options"
+            v-for="option in rows.reasoning.options"
             :key="option.label"
             :label="option.label"
             choice
-            :is-selected="reasoningIndex === index"
+            :is-selected="option.selected"
             @select="setEffort(option.effort)"
           />
         </Menu>
       </template>
     </MenuItem>
     <MenuItem
-      v-if="contextOptions.length"
+      v-if="rows.context"
       label="Context"
-      :value="contextLabel"
+      :value="rows.context.value"
     >
       <template #submenu>
         <Menu iconless>
           <MenuItem
-            v-for="option in contextOptions"
+            v-for="option in rows.context.options"
             :key="option.window"
-            :label="formatTokens(option.window)"
+            :label="option.label"
             choice
-            :is-selected="(selected?.model.contextLimit ?? null) === option.tokens"
+            :is-selected="option.selected"
             @select="setContextLimit(option.tokens)"
           />
         </Menu>
       </template>
     </MenuItem>
-    <MenuDivider v-if="fastTier || reasoningState || contextOptions.length" />
-    <MenuItem label="Model" :value="selectedModelLabel">
+    <MenuDivider v-if="rows.fast || rows.reasoning || rows.context" />
+    <MenuItem label="Model" :value="rows.model.value">
       <template #submenu>
         <Menu iconless>
           <MenuGroup
-            v-for="provider in providersWithModels"
-            :key="provider.id"
-            :label="provider.label"
+            v-for="group in rows.model.groups"
+            :key="group.provider.id"
+            :label="group.provider.label"
           >
             <MenuItem
-              v-for="model in models[provider.id] ?? []"
-              :key="`${provider.id}:${model.id}`"
-              :label="model.name"
+              v-for="item in group.models"
+              :key="`${group.provider.id}:${item.model.id}`"
+              :label="item.model.name"
               choice
-              :is-selected="isSelectedModel(provider.id, model.id)"
-              @select="selectModel(provider.id, model)"
+              :is-selected="item.selected"
+              @select="selectModel(group.provider.id, item.model, item.selected)"
             />
           </MenuGroup>
         </Menu>

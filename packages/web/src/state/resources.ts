@@ -182,23 +182,33 @@ export const useResources = defineStore('resources', () => {
     }))
   })
 
-  function modelsFor() {
-    return Object.fromEntries(
+  /**
+   * Every model each entry's catalog lists, with the context limit the user
+   * stored on it, the ones this browser hides included: they name a
+   * profile's model and tell whether it is gone.
+   */
+  const catalogModels = computed(() =>
+    Object.fromEntries(
       product.catalog.map((provider) => [
         provider.providerId,
-        provider.models
-          .filter(
-            (model) =>
-              !local.value.hiddenModels[provider.providerId]?.includes(model.id),
-          )
-          .map((model) =>
-            modelInfo(model, preferences.contextLimit(provider.providerId, model.id)),
-          ),
+        provider.models.map((model) =>
+          modelInfo(model, preferences.contextLimit(provider.providerId, model.id)),
+        ),
       ]),
-    )
-  }
-
-  const models = computed(() => modelsFor())
+    ),
+  )
+  /**
+   * The models the model menus offer, the composer's and a subagent
+   * profile's alike: the catalog's, less the ones this browser hides.
+   */
+  const models = computed(() =>
+    Object.fromEntries(
+      Object.entries(catalogModels.value).map(([providerId, list]) => [
+        providerId,
+        list.filter((model) => !local.value.hiddenModels[providerId]?.includes(model.id)),
+      ]),
+    ),
+  )
   const vendors = computed(() =>
     (product.vendors?.vendors ?? []).map((vendor) => ({
       id: vendor.id,
@@ -309,8 +319,8 @@ export const useResources = defineStore('resources', () => {
     providers,
     vendors,
     providerInfos,
+    catalogModels,
     models,
-    modelsFor,
     local,
     selectedProviderId,
     providerDetailOpen,

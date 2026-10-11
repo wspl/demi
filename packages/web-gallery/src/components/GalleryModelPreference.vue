@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
 import {
   applyModelChange,
@@ -7,8 +7,8 @@ import {
   type ModelSettingsChange,
 } from '@demicodes/web-ui/agent/model-selection'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import { demoModels, demoProviders } from '../fixtures/catalog'
-import { setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
+import { demoProviders } from '../fixtures/catalog'
+import { composerModels, setGalleryContextLimit } from '../fixtures/context-limits'
 
 // The gallery adapter substitutes an in-memory record for backend preferences.
 const saved = ref(initialModelSettings({
@@ -19,7 +19,6 @@ const saved = ref(initialModelSettings({
 }))
 const conversation = ref(initialModelSettings(saved.value))
 const generation = ref(1)
-const models = computed(() => withContextLimits(demoModels))
 
 function change(next: ModelSettingsChange): void {
   conversation.value = applyModelChange(conversation.value, next)
@@ -37,7 +36,7 @@ function create(): void {
     <p class="text-sm text-fg-subtle">Conversation {{ generation }}</p>
     <ModelSelector
       :providers="demoProviders"
-      :models="models"
+      :models="composerModels"
       :settings="conversation"
       @change="change"
       @context-limit="setGalleryContextLimit"
