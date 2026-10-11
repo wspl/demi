@@ -1796,8 +1796,12 @@ is whole, the row becomes the call's block, and the command runs.
   `pending_steers`.
 - The page shows each call as the newest step of the run at the transcript's
   end ([Work groups](#work-groups)), its tool's row, shimmering, titled by its
-  `description`. Until that is written the
-  title is *Preparing a command…*. A page drops a
+  `description`, from the moment its description is written; until then the
+  row goes on showing what it showed, Requesting or the step before, so no
+  placeholder title flashes. Every tool's input lists `description` first,
+  so a model, which writes a call's fields in the schema's order, writes the
+  title before a long script: the title shows within the call's first tokens,
+  and the row shimmers while the rest is written. A page drops a
   pending call whose `toolUseId` it already holds as a block.
 - A call's start completes the text before it
   ([Eligibility](conversation-fork.md#eligibility)).
