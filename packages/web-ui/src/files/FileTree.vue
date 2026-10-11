@@ -472,6 +472,7 @@ defineExpose({
     <Tree
       ref="tree"
       class="min-h-0 flex-1"
+      data-touch-menu
       :rows="rows"
       :caption="rootName"
       :caption-title="root"
@@ -547,6 +548,7 @@ defineExpose({
     :anchor-y="menu.anchorY.value"
     :anchor-context-el="menu.anchorContextEl.value"
     :offset="0"
+    sheet
     @close="menu.close()"
   >
     <Menu>

@@ -235,6 +235,8 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @retry-submission="store.retrySend(conversation, $event)"
     @retry="store.start(conversation)"
     @rename="store.rename(conversation.id, $event)"
+    :archivable="conversation.persistence === 'synced' && !conversation.archived"
+    @archive="void store.archive([conversation.id])"
     @retry-load="store.reloadSession(conversation.id)"
     @abort-subagents="store.abortSubagents(conversation)"
     @abort-subagent="store.abortSubagent(conversation, $event)"

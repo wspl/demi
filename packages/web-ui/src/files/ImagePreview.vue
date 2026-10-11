@@ -28,8 +28,8 @@ import type { PixelSize } from './thumbnail'
  * actual size about the clicked spot. A frame that changes size keeps a
  * fitted picture fitted and a zoomed one at its zoom; another picture opens
  * fitted. Transparency shows over a checkerboard. On a phone a tap toggles
- * and a drag moves the picture the same way, and a pinch zooms the page as
- * anywhere on it.
+ * and a drag moves the picture the same way, and a pinch zooms it about the
+ * fingers, which the page itself never does (`phone-page.ts`).
  *
  * It reports the picture's pixel size once loaded, and its zoom whenever it
  * changes, for the host to show beside it.
@@ -152,6 +152,10 @@ function onWheel(event: WheelEvent): void {
 
 /** Ends the press under way early, as its release would. */
 let stopPress: (() => void) | null = null
+/** Two fingers zoom the picture: their distance and midpoint as last seen. */
+let pinch: { distance: number; at: FramePoint } | null = null
+/** A pinch took over the press under way, whose release then neither toggles nor moves. */
+let pinched = false
 
 function onPress(event: PointerEvent): void {
   const size = natural.value
@@ -165,18 +169,60 @@ function onPress(event: PointerEvent): void {
   stopPress = startPointerDrag(event, {
     cursor: movable.value ? 'grabbing' : cursor.value,
     move(dx, dy) {
+      if (pinched)
+        return
       dragged ||= !isClick(dx, dy)
       if (dragged && room.value)
         view.value = pannedView(start, dx, dy, size, room.value)
     },
     end(cancelled) {
       stopPress = null
+      const wasPinched = pinched
+      pinched = false
+      if (wasPinched)
+        return
       if (cancelled)
         view.value = start
       else if (!dragged && room.value)
         view.value = toggledView(view.value ?? start, at, size, room.value)
     },
   })
+}
+
+/** The two fingers' distance and midpoint in the frame. */
+function fingers(event: TouchEvent): { distance: number; at: FramePoint } | null {
+  const [a, b] = [event.touches[0], event.touches[1]]
+  if (event.touches.length !== 2 || !a || !b)
+    return null
+  const box = frame.value?.getBoundingClientRect()
+  return {
+    distance: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+    at: { x: (a.clientX + b.clientX) / 2 - (box?.left ?? 0), y: (a.clientY + b.clientY) / 2 - (box?.top ?? 0) },
+  }
+}
+
+function onTouchStart(event: TouchEvent): void {
+  pinch = fingers(event)
+  if (pinch)
+    pinched = stopPress !== null
+}
+
+function onTouchMove(event: TouchEvent): void {
+  const next = fingers(event)
+  const size = natural.value
+  const shown = view.value
+  const now = room.value
+  if (!pinch || !next || !size || !shown || !now || pinch.distance === 0)
+    return
+  event.preventDefault()
+  // The picture grows about the fingers' midpoint and follows it as it moves.
+  const zoomed = zoomAbout(shown, shown.scale * (next.distance / pinch.distance), next.at, size, now)
+  view.value = pannedView(zoomed, next.at.x - pinch.at.x, next.at.y - pinch.at.y, size, now)
+  pinch = next
+}
+
+function onTouchEnd(event: TouchEvent): void {
+  pinch = fingers(event)
 }
 
 onBeforeUnmount(() => {
@@ -190,10 +236,14 @@ onBeforeUnmount(() => {
   <div class="h-full w-full" :class="flush ? '' : 'p-4'">
     <div
       ref="frame"
-      class="relative h-full w-full touch-pinch-zoom select-none overflow-hidden"
+      class="relative h-full w-full touch-none select-none overflow-hidden"
       :style="{ cursor }"
       @wheel="onWheel"
       @pointerdown="onPress"
+      @touchstart.passive="onTouchStart"
+      @touchmove="onTouchMove"
+      @touchend.passive="onTouchEnd"
+      @touchcancel.passive="onTouchEnd"
     >
       <img
         ref="image"
