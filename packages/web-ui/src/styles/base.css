@@ -1060,7 +1060,8 @@ html[data-theme="light"] .file-pill {
   color: var(--fg-body);
 }
 
-.markdown-body a {
+.markdown-body a,
+.markdown-body .agent-link {
   color: var(--on-accent);
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
@@ -1068,8 +1069,31 @@ html[data-theme="light"] .file-pill {
   transition: text-decoration-color 0.15s;
 }
 
-.markdown-body a:hover {
+.markdown-body a:hover,
+.markdown-body .agent-link:hover {
   text-decoration-color: currentColor;
+}
+
+/* A link to an agent opens a window rather than a page: a button that reads as the links around it. */
+.markdown-body .agent-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* The icon before a Host file's name and the mark before an agent's, which the page fills (`StreamedMarkdown`). */
+.markdown-body .message-file-icon,
+.markdown-body .agent-link-mark {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  margin-right: 0.25em;
+  vertical-align: -2px;
+  /* The dot on an agent's mark is cut out of the message's surface. */
+  --fill-color: var(--surface-current);
 }
 
 .markdown-body code {

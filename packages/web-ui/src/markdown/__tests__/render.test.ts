@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { holdUndecidedMedium, renderMarkdown } from '../render'
 import type { AttachmentLookup, MessageFiles } from '../types'
+import type { MessageAgents } from '../../agent/agent-links'
 
 // The files a message names (`file-previews.md` § Files named in messages).
 
@@ -8,6 +9,12 @@ const files: MessageFiles = {
   cwd: '/work',
   imageUrl: (path) => `/raw?path=${encodeURIComponent(path)}`,
   open: () => {},
+}
+
+/** A link of text to a Host file, as a message shows it: the file's icon, then the text. */
+function fileLink(path: string, text: string, line?: number): string {
+  const name = path.split('/').at(-1)
+  return `<a href="${path}" data-file-link${line ? ` data-line="${line}"` : ''}><span class="message-file-icon" data-file-icon="${name}" aria-hidden="true"></span>${text}</a>`
 }
 
 test('a link opens a Host file or a web page, and anything else stays text', () => {
@@ -23,12 +30,12 @@ test('a link opens a Host file or a web page, and anything else stays text', () 
     '[mail](mailto:someone@example.com)',
     '[word](README)',
   ].join('\n\n'), { files })
-  expect(html).toContain('<a href="/work/scripts/plot.py" data-file-link>plot</a>')
-  expect(html).toContain('<a href="/shared/a.md" data-file-link>up</a>')
-  expect(html).toContain('<a href="/home/demi/notes.md" data-file-link>notes</a>')
-  expect(html).toContain('<a href="C:/Users/alex/a.txt" data-file-link>windows</a>')
-  expect(html).toContain('<a href="/tmp/a.txt" data-file-link>url</a>')
-  expect(html).toContain('<a href="/work/out/my chart.png" data-file-link>spaced</a>')
+  expect(html).toContain(fileLink('/work/scripts/plot.py', 'plot', 12))
+  expect(html).toContain(fileLink('/shared/a.md', 'up'))
+  expect(html).toContain(fileLink('/home/demi/notes.md', 'notes'))
+  expect(html).toContain(fileLink('C:/Users/alex/a.txt', 'windows'))
+  expect(html).toContain(fileLink('/tmp/a.txt', 'url'))
+  expect(html).toContain(fileLink('/work/out/my chart.png', 'spaced'))
   expect(html).toContain('<a href="https://example.com/a" target="_blank" rel="noopener noreferrer">web</a>')
   for (const text of ['section', 'mail', 'word'])
     expect(html).toContain(`<p>${text}</p>`)
@@ -68,8 +75,28 @@ test('emphasis beside CJK text formats as a CJK writer means it', () => {
   expect(renderMarkdown('*强调：*文字 ~~删除：~~文字')).toBe('<p><em>强调：</em>文字 <del>删除：</del>文字</p>\n')
 })
 
-test('a path in code or plain text is not a link', () => {
-  expect(renderMarkdown('See `src/a.ts` and src/b.ts.', { files })).not.toContain('data-file-link')
+test('a link to a line opens the file there', () => {
+  expect(renderMarkdown('[runner.md](docs/execution/runner.md#L438) [range](/etc/hosts#L3-L9)', { files }))
+    .toBe(`<p>${fileLink('/work/docs/execution/runner.md', 'runner.md', 438)} ${fileLink('/etc/hosts', 'range', 3)}</p>\n`)
+})
+
+test('inline code that names a file the Host has opens it in its code look; any other code, and plain text, stay as they are', () => {
+  const reply = 'See `src/a.ts:42`, `src/gone.ts`, `README.md`, `runner` and src/b.ts.'
+  // Until the Host answers, all of it is code.
+  expect(renderMarkdown(reply, { files, codeFiles: null })).not.toContain('data-file-link')
+  const html = renderMarkdown(reply, { files, codeFiles: new Set(['/work/src/a.ts', '/work/README.md', '/work/src/b.ts']) })
+  expect(html).toBe(`<p>See ${fileLink('/work/src/a.ts', '<code>src/a.ts:42</code>', 42)}, <code>src/gone.ts</code>, ${fileLink('/work/README.md', '<code>README.md</code>')}, <code>runner</code> and src/b.ts.</p>\n`)
+})
+
+test('a link to an agent shows its mark and opens it; a number the conversation does not have is its text', () => {
+  const agents: MessageAgents = {
+    find: (number) => (number === 4 ? { number: 4, description: 'File icons', phase: 'running' } : null),
+    open: () => {},
+  }
+  expect(renderMarkdown('I gave the icons to [File icons](agent:4) and the rest to [Fonts](agent:9).', { files, agents }))
+    .toBe('<p>I gave the icons to <button type="button" class="agent-link" data-agent-link="4"><span class="agent-link-mark" data-agent-mark="4"></span>File icons</button> and the rest to <span class="agent-link-missing" data-agent-link="9">Fonts</span>.</p>\n')
+  // Outside a conversation, the text alone.
+  expect(renderMarkdown('[File icons](agent:4)')).toBe('<p>File icons</p>\n')
 })
 
 test('task boxes are read-only, and HTML shows as text', () => {

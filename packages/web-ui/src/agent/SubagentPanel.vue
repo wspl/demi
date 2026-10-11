@@ -8,8 +8,10 @@ import AgentMessageList from './AgentMessageList.vue'
 import SessionOverlay from './SessionOverlay.vue'
 import SubagentHistoryMenu from './SubagentHistoryMenu.vue'
 import TabItem from './TabItem.vue'
+import AgentMark from './AgentMark.vue'
+import { ICON_PX } from '../ui/icon-metrics'
 import { provideLiveCalls } from './live-calls'
-import { subagentPanelTabs, subagentStatus, type SubagentRecord } from './subagents'
+import { subagentPanelTabs, type SubagentRecord } from './subagents'
 import { callTerminal, type TerminalRecord } from './terminals'
 import { shownWindow, windowEdges, type TranscriptReveal } from './history'
 
@@ -108,12 +110,14 @@ function closeTab(id: string): void {
         :key="agent.id"
         :title="agent.name"
         :is-active="agent.id === active?.id"
-        :status="subagentStatus(agent.phase)"
-        mark="bot"
         :closable="false"
         @select="activate(agent.id)"
         @contextmenu="openTabMenu($event, agent.id)"
-      />
+      >
+        <template #mark>
+          <AgentMark :phase="agent.phase" :size="ICON_PX.markIn28" />
+        </template>
+      </TabItem>
     </template>
     <template #tabMenu="{ id }">
       <MenuItem

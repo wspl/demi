@@ -235,7 +235,12 @@ let revealing: AbortController | null = null
 /** The row that shows each block: a step's work group, or the block's own. */
 const rowOf = computed(() => new Map(renderBlocks.value.flatMap((row) =>
   row.type === 'work_group' ? row.steps.map((step) => [step.id, row.id] as const) : [[row.id, row.id] as const])))
-/** Brings the block `id`'s row into view and marks it for a moment; false when the list does not hold it. */
+/**
+ * Brings the block `id`'s row into view and marks it for a moment: inside a
+ * run that is open, its own step's row; inside a folded one, the run's row,
+ * which stays folded (`runtime.md` § Work groups). False when the list does
+ * not hold it.
+ */
 function revealAndMark(id: string): boolean {
   const scroller = scrollContainer.value
   const row = rowOf.value.get(id) ?? id
@@ -243,7 +248,10 @@ function revealAndMark(id: string): boolean {
     return false
   revealing?.abort()
   revealing = new AbortController()
-  highlightFound(scroller, `[data-block-id="${CSS.escape(row)}"]`, revealing.signal)
+  const rowSelector = `[data-block-id="${CSS.escape(row)}"]`
+  const stepSelector = `${rowSelector} [data-step-id="${CSS.escape(id)}"]`
+  const open = row !== id && scroller.querySelector(stepSelector) !== null
+  highlightFound(scroller, open ? stepSelector : rowSelector, revealing.signal)
   return true
 }
 watch(

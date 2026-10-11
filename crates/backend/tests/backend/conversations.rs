@@ -884,6 +884,13 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
         system.contains("You are Demi, an agent that does work for the user"),
         "{system}"
     );
+    // The files and the subagents a reply names are links the page opens
+    // (`file-previews.md` § Files named in messages).
+    assert!(
+        system.contains("`[runner.md](docs/execution/runner.md#L438)`")
+            && system.contains("`[File icons](agent:4)`"),
+        "{system}"
+    );
     assert!(
         system.contains("demi host"),
         "the backend's group is among the commands: {system}"

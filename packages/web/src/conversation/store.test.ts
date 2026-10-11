@@ -373,6 +373,7 @@ test('sidebar stays active until the last running child closes after its parent 
   const conversation = useConversations().items[0]!
   const job = {
     subagentId: 'child-one',
+    number: 1,
     parentSessionId: conversation.id,
     description: 'First child',
     profile: null,
@@ -444,7 +445,7 @@ test('a command\'s live frames build what the page shows of it, until its end', 
 
   // A subagent's command takes its call from the child's transcript; a call without a description is titled by its script.
   const job = {
-    subagentId: 'child', parentSessionId: conversation.id, description: 'Child', profile: null,
+    subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Child', profile: null,
     phase: 'running' as const, startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
   }
   applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
@@ -475,6 +476,7 @@ test('a child keeps the failure facts of its transcript, which resets and patche
   const conversation = useConversations().items[0]!
   const job = {
     subagentId: 'child',
+    number: 1,
     parentSessionId: conversation.id,
     description: 'Child',
     profile: null,
@@ -499,6 +501,7 @@ test('restored running children keep an idle parent active in the sidebar', () =
   conversation.phase = 'idle'
   conversation.subagents = [{
     id: 'restored-child',
+    number: 1,
     name: 'Restored child',
     phase: 'running',
     waitingSince: null,

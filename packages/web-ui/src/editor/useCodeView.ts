@@ -1,4 +1,4 @@
-import { onBeforeUnmount, onMounted, watch, type Ref } from 'vue'
+import { onBeforeUnmount, onMounted, shallowRef, watch, type Ref, type ShallowRef } from 'vue'
 import { ChangeSet, EditorState, type Extension, type StateEffect, type Text, type TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { getOriginalDoc, originalDocChangeEffect } from '@codemirror/merge'
@@ -67,22 +67,23 @@ export function codeViewUpdate(state: EditorState, file: CodeViewFile): Transact
  * and the selection and the folds outside what changed stay. The view is
  * built once the language has loaded, because a diff colors its removed
  * lines only as it builds them; `extensions` may be a function, which then
- * builds them at that moment from what the file is then.
+ * builds them at that moment from what the file is then. Returns the view,
+ * null until it is built and once it is gone.
  */
 export function useCodeView(
   container: Readonly<Ref<HTMLElement | undefined>>,
   file: CodeViewFile,
   extensions: Extension | (() => Extension),
   options: CodeViewOptions = {},
-): void {
-  let view: EditorView | null = null
+): Readonly<ShallowRef<EditorView | null>> {
+  const built = shallowRef<EditorView | null>(null)
   let unmounted = false
 
   onMounted(async () => {
     const language = await loadFileLanguage(file.path)
     if (unmounted)
       return
-    view = new EditorView({
+    const view = new EditorView({
       parent: container.value,
       state: EditorState.create({
         doc: file.text,
@@ -99,6 +100,7 @@ export function useCodeView(
       ...(options.scrollTo ? { scrollTo: options.scrollTo } : {}),
     })
     trackEditorView(view)
+    built.value = view
   })
 
   // Both sides of a diff arrive together and land in one transaction. The
@@ -109,6 +111,7 @@ export function useCodeView(
   // above would otherwise move it. A view out of sight, as in a tab not
   // selected, has no place on screen to keep: its scroll reads as its top.
   watch([() => file.text, () => file.original], () => {
+    const view = built.value
     const update = view && codeViewUpdate(view.state, file)
     if (view && update)
       view.dispatch(update, view.inView ? { effects: view.scrollSnapshot() } : {})
@@ -116,11 +119,13 @@ export function useCodeView(
 
   onBeforeUnmount(() => {
     unmounted = true
+    const view = built.value
     if (!view)
       return
     options.left?.(view.scrollSnapshot())
     untrackEditorView(view)
     view.destroy()
-    view = null
+    built.value = null
   })
+  return built
 }

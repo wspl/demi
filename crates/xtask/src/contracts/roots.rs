@@ -147,6 +147,8 @@ pub fn web() -> Vec<Root> {
         sends::<files::CreateDirectory>(),
         sends::<files::CreateDeviceDirectory>(),
         receives::<files::CreatedDirectory>(),
+        sends::<files::FileExistence>(),
+        receives::<files::ExistingFiles>(),
         receives::<files::FileText>(),
         receives::<files::FileWatchMessage>(),
         sends::<files::FileWatchRequest>(),

@@ -33,16 +33,19 @@ const writing = (id: string, toolName = 'shell'): MessageListBlock => ({
   call: { toolUseId: `${id}-use`, toolName, description: null },
 })
 const steps = (...blocks: (Block | MessageListBlock)[]) => blocks as WorkGroupBlock['steps']
-/** A command's notice: the end of each command it names. */
-const notice = (id: string, ...commandIds: string[]): Block => ({
+type CommandEvent = Extract<Block, { type: 'wakeup' }>['reports'][number]['event']
+/** A command's notice: the end of each command it names, each as `event` says it ended. */
+const ended = (id: string, event: CommandEvent, ...commandIds: string[]): Block => ({
   type: 'wakeup',
   id,
   turnId: 'turn-1',
   createdAt,
   model,
   placement: 'steer',
-  reports: commandIds.map((commandId) => ({ commandId, title: `Run ${commandId}`, event: { kind: 'ended', exitCode: 0 }, output: '' })),
+  reports: commandIds.map((commandId) => ({ commandId, title: `Run ${commandId}`, event, output: '' })),
 })
+/** A command's notice: each command it names finished. */
+const notice = (id: string, ...commandIds: string[]): Block => ended(id, { kind: 'ended', exitCode: 0 }, ...commandIds)
 /** A receipt from another agent: an update, or its end. */
 const receipt = (id: string, agent: string, event: Extract<Block, { type: 'agent_message' }>['message']['event'] = { type: 'message' }): Block => ({
   type: 'agent_message',
@@ -137,10 +140,23 @@ describe('the notices and receipts between the steps', () => {
       receipt('m2', 'ag-3'),
       receipt('m3', 'ag-3'),
       notice('n2', '17'),
-    ))).toBe('2 commands finished, 1 agent finished, heard from 1 agent')
+    ))).toBe('2 commands finished, 1 agent failed, heard from 1 agent')
     // A call says what the run did; its notices add nothing.
     expect(workSummary(steps(notice('n', '17'), check('s', 18)))).toBe('Checked 1 command')
     expect(workRunning(steps(notice('n', '17'), receipt('m', 'ag-2')))).toBe('1 command finished, heard from 1 agent')
+  })
+
+  test('a run without a call counts its commands and agents by how each ended', () => {
+    expect(workSummary(steps(
+      ended('n1', { kind: 'ended', exitCode: 2 }, '17'),
+      ended('n2', { kind: 'stopped' }, '18'),
+      notice('n3', '19'),
+      receipt('m1', 'ag-2', { type: 'completion', outcome: 'completed' }),
+      receipt('m2', 'ag-3', { type: 'completion', outcome: 'aborted' }),
+    ))).toBe('1 command failed, 1 command stopped, 1 command finished, 1 agent finished, 1 agent stopped')
+    // The first word is capitalized, as the row's start.
+    expect(workSummary(steps(receipt('m', 'ag-2'), receipt('c', 'ag-2', { type: 'completion', outcome: 'failed' }))))
+      .toBe('Heard from 1 agent, 1 agent failed')
   })
 })
 

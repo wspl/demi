@@ -1,3 +1,5 @@
+import type { MessageAgents } from '../agent/agent-links'
+
 /**
  * An attachment the agent uploaded to the conversation (`commands.md`
  * § Attachment commands), as a message shows it.
@@ -28,6 +30,12 @@ export type AttachmentLookup =
   | { state: 'missing' }
   | { state: 'failed' }
 
+/** A Host file a message names, by its absolute path, and the line it opens at, if any. */
+export interface MessageFileTarget {
+  path: string
+  line: number | null
+}
+
 /**
  * What the host offers for the files a conversation's messages name on its
  * Host and the attachments they name (`file-previews.md` § Files named in
@@ -37,14 +45,22 @@ export interface ConversationFiles {
   /** The URL an image at a Host path loads from. */
   imageUrl(path: string): string
   /**
-   * Shows the file at a Host path, through the `file` intent; absent while no
-   * plugin the user has on opens it, so a link to a file shows as text and a
-   * Host image only shows (`file-previews.md` § Files named in messages).
-   * `clicks`, the `detail` of the click of a control in the transcript that
-   * opens it: a click on what the panel already shows closes it
-   * (`openIntent`).
+   * Shows the file at a Host path, at its line when it names one, through
+   * the `file` intent; absent while no plugin the user has on opens it, so a
+   * link to a file shows as text and a Host image only shows
+   * (`file-previews.md` § Files named in messages). `clicks`, the `detail`
+   * of the click of a control in the transcript that opens it: a click on
+   * what the panel already shows closes it (`openIntent`).
    */
-  open?(path: string, clicks?: number): void
+  open?(target: MessageFileTarget, clicks?: number): void
+  /**
+   * Which of `paths`, the Host paths a reply's inline code names, are files
+   * there, as the Host answered one question about them all: null until it
+   * answered, or while it cannot, such as while the Cloud is stopped. A
+   * render reads it as it is now and renders again when the answer arrives;
+   * absent, inline code stays code.
+   */
+  codeFiles?(paths: readonly string[]): ReadonlySet<string> | null
   /**
    * The conversation's attachment `id`, such as `a3`. A render reads it as it
    * is now and renders again when the answer arrives; absent, an attachment
@@ -61,4 +77,8 @@ export interface MessageFiles extends ConversationFiles {
 export interface MarkdownRenderOptions {
   /** Absent, a message's paths stay text and its Host images show their alt text. */
   files?: MessageFiles
+  /** The paths of the message's inline code the Host has as files, which show as links to them. */
+  codeFiles?: ReadonlySet<string> | null
+  /** The conversation's agents, which `agent:4` links; absent, such a link shows its text alone. */
+  agents?: MessageAgents
 }
