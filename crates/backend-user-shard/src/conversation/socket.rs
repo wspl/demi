@@ -24,8 +24,8 @@ use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_page_sync::Part;
 use demi_conversation_socket_protocol::{
-    ClientContent, ClientFrame, EditOutcome, FrameError, ServerFrame, TranscriptPatch,
-    decode_client_frame,
+    ClientContent, ClientFrame, EditOutcome, FrameError, RemoveOutcome, ServerFrame,
+    TranscriptPatch, decode_client_frame,
 };
 use demi_shared_gates::{GateLease, Purpose};
 use demi_shared_types::{Block, UserContentBlock};
@@ -254,7 +254,7 @@ impl Shard {
     /// valid, one sent while the conversation is archived, an `open` of a
     /// conversation without a model or whose provider the user may not use,
     /// or a frame storage failed to prepare. A refused edit answers its
-    /// `edit_result`.
+    /// `edit_result`, and a refused removal its `remove_result`.
     async fn handle_message(
         &self,
         conversation: &ConversationId,
@@ -534,13 +534,23 @@ fn carries_uploads(frame: &ClientFrame) -> bool {
         .any(|part| matches!(part, ClientContent::Upload { .. }))
 }
 
-/// The answer to a frame the backend refused: an edit's `edit_result`, and
-/// an `error` frame for any other.
+/// The answer to a frame the backend refused: an edit's `edit_result`, a
+/// removal's `remove_result` `gone_on`, since it reached no session to hold
+/// what it names (`runtime.md` § Pending steers), and an `error` frame for
+/// any other.
 fn refused_frame(frame: ClientFrame, code: ErrorCode, message: String) -> ServerFrame {
     match frame {
         ClientFrame::EditAndSend { request } => ServerFrame::EditResult {
             operation_id: request.operation_id,
             outcome: EditOutcome::Rejected { reason: message },
+        },
+        ClientFrame::CancelPendingSteer { steer_id } => ServerFrame::RemoveResult {
+            id: steer_id.into_string(),
+            outcome: RemoveOutcome::GoneOn,
+        },
+        ClientFrame::DequeueMessage { message_id } => ServerFrame::RemoveResult {
+            id: message_id.into_string(),
+            outcome: RemoveOutcome::GoneOn,
         },
         _ => refusal(code, message),
     }
