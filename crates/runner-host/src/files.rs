@@ -653,7 +653,9 @@ fn chunks(
 /// `target`, making the directories above it that are missing, and the file
 /// is published there when the body ends cleanly, as `exists` says when the
 /// path is taken; any failure removes the staged file and leaves `target`
-/// as it was. Answers the name of the file written.
+/// as it was. Answers the name of the file written, or, for a write that
+/// takes another name, of the file of the same bytes found under one of the
+/// names it tries, which is then not written again.
 pub async fn write_file<B>(
     body: impl std::future::Future<Output = io::Result<B>>,
     target: &Path,
@@ -722,7 +724,7 @@ where
                 .chain((2..).map(move |number| numbered(&name, number)))
                 .map(move |name| directory.join(name));
             let written = staged
-                .publish_first_free(candidates)
+                .publish_first_free_or_same(candidates)
                 .await
                 .map_err(io_error)?;
             Ok(written
