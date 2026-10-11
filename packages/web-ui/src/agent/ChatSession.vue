@@ -4,7 +4,7 @@ import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
-import { PanelRight, Play, Radar, TextCursorInput } from '@lucide/vue'
+import { PanelRight, Play, TextCursorInput } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/protocol'
 import {
   beginMessageEdit,
@@ -34,10 +34,6 @@ import type { HostMenuHost } from '../hosts/types'
 import type { MessageForkHandler } from './message-fork'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
-import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
-import Menu from '@demicodes/web-ui/ui/Menu.vue'
-import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
-import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
@@ -65,13 +61,6 @@ const props = withDefaults(defineProps<{
   messageEdit?: MessageEditState | null
   selectEdit?: EditSelectionHandler
   fork?: MessageForkHandler
-  /**
-   * Detect Title in the Rename menu: `available` while a message is newer
-   * than the last generated title, `running` while the model writes one, which
-   * disables it. Absent, the title is current and there is nothing to detect.
-   * The title shows no progress: when the model's title arrives, it changes.
-   */
-  retitle?: 'available' | 'running' | null
   /** Whether the app frame's work panel is open; absent when the host has none. */
   asideOpen?: boolean
   /** The conversation's Host files its messages name; absent, their paths stay text. */
@@ -114,7 +103,6 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   openAside: []
   rename: [title: string]
-  retitle: []
   retry: []
   retryLoad: []
   /** Retry on the message `id`, whose delivery failed. */
@@ -188,7 +176,7 @@ const TITLE_MAX_PX = 260
 const TITLE_ACTION_PX = 28 + 4
 const renaming = ref(false)
 
-/** A double-click on the title names it in place, as the menu's Rename does. */
+/** The Rename button, or a double-click on the title, names it in place. */
 function beginRename(): void {
   if (!props.conversation.archived) {
     renaming.value = true
@@ -391,41 +379,15 @@ watch(
           >
             {{ conversation.title }}
           </h1>
-          <!-- Two ways to name the conversation behind one button. -->
-          <Dropdown
-            :overlay-store="appOverlayStore"
-            :disabled="conversation.archived"
-          >
-            <template #trigger="{ isOpen }">
-              <Tooltip content="Rename" class="shrink-0">
-                <IconButton
-                  :icon="TextCursorInput"
-                  variant="ghost"
-                  aria-label="Rename"
-                  :pressed="isOpen"
-                  :disabled="conversation.archived"
-                />
-              </Tooltip>
-            </template>
-            <template #content="{ close }">
-              <Menu>
-                <MenuItem
-                  :icon="Radar"
-                  label="Detect Title"
-                  :disabled="retitle !== 'available'"
-                  :disabled-reason="retitle === 'running'
-                    ? 'A title is being detected'
-                    : 'No new message since the last detected title'"
-                  @select="close(); emit('retitle')"
-                />
-                <MenuItem
-                  :icon="TextCursorInput"
-                  label="Rename"
-                  @select="close(); renaming = true"
-                />
-              </Menu>
-            </template>
-          </Dropdown>
+          <Tooltip content="Rename" class="shrink-0">
+            <IconButton
+              :icon="TextCursorInput"
+              variant="ghost"
+              aria-label="Rename"
+              :disabled="conversation.archived"
+              @click="beginRename"
+            />
+          </Tooltip>
         </template>
       </div>
       <div

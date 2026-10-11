@@ -1,11 +1,9 @@
 //! Generated conversation titles (`product.md` § Conversation titles): one
-//! model request beside the first turn, or when the user asks, through the
-//! same metered runtime a turn uses, which writes the title only while it is
-//! still the one the request began from. The shard keeps one request in
-//! flight per conversation; asking again while one runs joins it, and an
-//! archive or the shard's close aborts it.
+//! model request beside the first turn, through the same metered runtime a
+//! turn uses, which writes the title only while it is still the one the
+//! request began from. An archive or the shard's close aborts it.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -14,11 +12,10 @@ use demi_agent_server::title::{request_title, title_from_message};
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversation_index::ConversationRecord;
-use demi_backend_database::tree;
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_conversation_socket_protocol::ClientContent;
-use demi_shared_types::{Block, ModelSelection, UserContentBlock};
-use demi_web_api_protocol::ids::{ConversationId, ProviderId};
+use demi_shared_types::ModelSelection;
+use demi_web_api_protocol::ids::ConversationId;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
@@ -28,32 +25,23 @@ use demi_backend_host_access::root_of;
 
 /// What one request reads, and the state it began from.
 pub(crate) struct TitleRequest {
-    /// The text of the user's messages, oldest first.
-    pub messages: Vec<String>,
+    /// The text of the first message.
+    pub message: String,
     /// The title as the request begins; only that title is replaced.
     pub from: String,
-    /// How many messages the user had sent as the request begins.
-    pub seen: u64,
-}
-
-/// A request in flight: which one, and what stops it.
-struct InFlight {
-    request: u64,
-    cancel: CancellationToken,
 }
 
 /// The title requests of a shard's conversations.
 pub(crate) struct Titles {
     providers: Rc<ConversationProviders>,
     control: ControlService,
-    /// The user's pages, which show whether a request is in flight, and its
-    /// title.
+    /// The user's pages, which learn the title a request wrote.
     marks: UserMarks,
     /// Off, no request starts: titles stay the ones the first messages give.
     enabled: bool,
-    in_flight: Rc<RefCell<HashMap<ConversationId, InFlight>>>,
-    /// Numbers the requests, so a request that ends removes only itself.
-    started: Cell<u64>,
+    /// What stops each request in flight. A conversation has at most one,
+    /// since only its first message's send starts one.
+    in_flight: Rc<RefCell<HashMap<ConversationId, CancellationToken>>>,
 }
 
 impl Titles {
@@ -69,21 +57,13 @@ impl Titles {
             marks,
             enabled,
             in_flight: Rc::default(),
-            started: Cell::new(0),
         }
     }
 
-    /// Whether a request of the conversation `id` is in flight.
-    pub(crate) fn generating(&self, id: &ConversationId) -> bool {
-        self.in_flight
-            .borrow()
-            .get(id)
-            .is_some_and(|request| !request.cancel.is_cancelled())
-    }
-
     /// Starts a request of the conversation `id` on `tasks` and returns at
-    /// once, unless one is in flight already, which this joins. A failure
-    /// is logged and writes nothing.
+    /// once. A failure is logged and writes nothing; either way the
+    /// request's end marks the conversation, so its pages read the title it
+    /// ended with.
     pub fn start(
         &self,
         tasks: &TaskTracker,
@@ -91,20 +71,11 @@ impl Titles {
         selection: ModelSelection,
         request: TitleRequest,
     ) {
-        if !self.enabled || self.generating(&id) {
+        if !self.enabled {
             return;
         }
-        let number = self.started.get() + 1;
-        self.started.set(number);
         let cancel = CancellationToken::new();
-        self.in_flight.borrow_mut().insert(
-            id.clone(),
-            InFlight {
-                request: number,
-                cancel: cancel.clone(),
-            },
-        );
-        self.marks.mark(Part::Conversation(id.clone()));
+        self.in_flight.borrow_mut().insert(id.clone(), cancel.clone());
         let providers = self.providers.clone();
         let control = self.control.clone();
         let marks = self.marks.clone();
@@ -115,33 +86,22 @@ impl Titles {
             {
                 tracing::warn!(conversation = %id, %failure, "a title request wrote nothing");
             }
-            let ended = {
-                let mut in_flight = in_flight.borrow_mut();
-                let ours = in_flight
-                    .get(&id)
-                    .is_some_and(|request| request.request == number);
-                if ours {
-                    in_flight.remove(&id);
-                }
-                ours
-            };
-            if ended {
-                marks.mark(Part::Conversation(id));
-            }
+            in_flight.borrow_mut().remove(&id);
+            marks.mark(Part::Conversation(id));
         });
     }
 
     /// Aborts the request of the conversation `id`, as its archive does.
     pub fn abort(&self, id: &ConversationId) {
-        if let Some(request) = self.in_flight.borrow().get(id) {
-            request.cancel.cancel();
+        if let Some(cancel) = self.in_flight.borrow().get(id) {
+            cancel.cancel();
         }
     }
 
     /// Aborts every request, as the shard's close does.
     pub(crate) fn abort_all(&self) {
-        for request in self.in_flight.borrow().values() {
-            request.cancel.cancel();
+        for cancel in self.in_flight.borrow().values() {
+            cancel.cancel();
         }
     }
 }
@@ -174,7 +134,7 @@ async fn generate(
         id.as_str(),
         request_id,
         selection,
-        &request.messages,
+        &request.message,
         cancel.clone(),
     )
     .await;
@@ -186,38 +146,19 @@ async fn generate(
         return Ok(());
     }
     control
-        .generated_title(id.clone(), title, request.from, request.seen)
+        .generated_title(id.clone(), title, request.from)
         .await?;
     Ok(())
-}
-
-/// Why a title request was not started.
-#[derive(Debug, thiserror::Error)]
-pub enum TitleRefusal {
-    #[error("No such conversation")]
-    NotFound,
-    #[error("Restore the conversation before changing it")]
-    Archived,
-    #[error("No such provider")]
-    ProviderNotFound,
-    #[error("Choose a model for the conversation first")]
-    ModelNotSelected,
-    #[error("The conversation has no message to title")]
-    NoMessages,
-    #[error(transparent)]
-    Storage(#[from] StorageError),
 }
 
 impl Shard {
     /// Titles the user's conversation `record` after its first message, when
     /// its title is still the placeholder: the message's start at once, and
-    /// a request beside the first turn to the conversation's model. `seen`
-    /// counts the message.
+    /// a request beside the first turn to the conversation's model.
     pub(crate) async fn title_first_message(
         &self,
         record: &ConversationRecord,
         content: &[ClientContent],
-        seen: u64,
     ) -> Result<(), StorageError> {
         let text = content
             .iter()
@@ -238,80 +179,12 @@ impl Shard {
             .await?;
         if let (true, Some(selection)) = (titled, &record.model) {
             let request = TitleRequest {
-                messages: vec![text.to_owned()],
+                message: text.to_owned(),
                 from: title,
-                seen,
             };
             self.titles()
                 .start(self.tasks(), record.id.clone(), selection.clone(), request);
         }
         Ok(())
     }
-
-    /// Asks the conversation's model for a new title of the user's
-    /// conversation `id` from every message the user sent (`POST
-    /// /conversations/:id/title`); a request in flight is joined.
-    pub async fn ask_title(&self, id: &ConversationId) -> Result<(), TitleRefusal> {
-        let services = self.services();
-        let record = services.control.conversation(id.clone()).await?;
-        let Some(record) = record.filter(|record| record.owner == *self.user()) else {
-            return Err(TitleRefusal::NotFound);
-        };
-        if record.archived {
-            return Err(TitleRefusal::Archived);
-        }
-        let selection = record.model.clone().ok_or(TitleRefusal::ModelNotSelected)?;
-        let provider = ProviderId::try_from(selection.provider_id.as_str())
-            .map_err(|_| TitleRefusal::ProviderNotFound)?;
-        if services
-            .vault
-            .visible(self.user(), &provider)
-            .await?
-            .is_none()
-        {
-            return Err(TitleRefusal::ProviderNotFound);
-        }
-        // The live tree's history is newer than its last save.
-        let blocks = match self.agent().tree(&root_of(&record.id)) {
-            Some(tree) => tree.root().session().transcript().blocks,
-            None => {
-                services
-                    .conversations
-                    .read(&record.id, tree::root_blocks)
-                    .await?
-                    .unwrap_or_default()
-            }
-        };
-        let messages: Vec<String> = blocks.iter().filter_map(message_text).collect();
-        if messages.is_empty() {
-            return Err(TitleRefusal::NoMessages);
-        }
-        let request = TitleRequest {
-            messages,
-            from: record.title,
-            seen: record.user_messages,
-        };
-        self.titles()
-            .start(self.tasks(), record.id, selection, request);
-        Ok(())
-    }
-}
-
-/// The text of a message the user sent, without its files; none for any
-/// other block, or a message without text.
-pub(super) fn message_text(block: &Block) -> Option<String> {
-    let content = match block {
-        Block::User(user) => &user.content,
-        Block::Steer(steer) => &steer.content,
-        _ => return None,
-    };
-    let texts: Vec<&str> = content
-        .iter()
-        .filter_map(|part| match part {
-            UserContentBlock::Text { text } => Some(text.as_str()),
-            _ => None,
-        })
-        .collect();
-    let text = texts.join("\n");
-    (!text.trim().is_empty()).then_some(text)
 }

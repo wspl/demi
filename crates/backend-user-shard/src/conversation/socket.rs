@@ -415,23 +415,10 @@ impl Shard {
                 }
             }
             ClientFrame::Send { content, .. } => {
-                // Every message the user sends makes a generated title older
-                // than the conversation.
-                let seen = services
-                    .control
-                    .count_user_message(record.id.clone())
-                    .await?;
-                self.title_first_message(&record, content, seen).await?;
+                self.title_first_message(&record, content).await?;
                 services
                     .control
                     .touch_conversation(record.id.clone())
-                    .await?;
-                self.mark(Part::Conversation(record.id));
-            }
-            ClientFrame::Steer { .. } | ClientFrame::EditAndSend { .. } => {
-                services
-                    .control
-                    .count_user_message(record.id.clone())
                     .await?;
                 self.mark(Part::Conversation(record.id));
             }
