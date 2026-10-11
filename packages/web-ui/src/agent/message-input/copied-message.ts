@@ -1,7 +1,8 @@
 import type { JSONContent } from '@tiptap/core'
 import { z } from 'zod'
-import { ATTACHMENT_MARK, serializeUserMarkdown } from '../../markdown/user-markdown'
-import type { MessageCapsule } from '../message-editor/capsules'
+import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '../../markdown/user-markdown'
+import type { MessageEditContent } from '../message-editing'
+import { contentMessage, type MessageCapsule } from '../message-editor/capsules'
 
 // A sent message on the clipboard (`product.md` § Writing a message): its
 // Markdown with each file by name for plain text, its formatting for HTML,
@@ -97,6 +98,16 @@ export function messageClipboard(doc: JSONContent): MessageClipboard {
   })
   const lone = attachments.length === 1 && !parts.join('').trim() ? attachments[0] : null
   return { message: { text, files }, plain, image: lone?.image ? lone : null }
+}
+
+/**
+ * A message the session holds, from its content, as Demi's own form of a
+ * copy of it: what Undo Send pastes back into the composer, each file a
+ * capsule again without its bytes (`product.md` § Steer or queue).
+ */
+export function contentCopy(content: readonly MessageEditContent[]): CopiedMessage {
+  const { markdown, capsules } = contentMessage(content)
+  return messageClipboard(parseUserMarkdown(markdown, capsules)).message
 }
 
 /** A capsule's file as Demi's own form holds it; null when the message does not hold it yet. */

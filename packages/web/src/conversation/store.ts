@@ -37,7 +37,17 @@ import {
   isComposerFile,
   remoteAttachmentError,
 } from '@demicodes/web-ui/agent/message-input/attachments'
-import { missingFilesToast, type CopiedDeviceFile, type CopiedStoredFile } from '@demicodes/web-ui/agent/message-input/copied-message'
+import {
+  contentCopy,
+  missingFilesToast,
+  pasteMessage,
+  type CopiedDeviceFile,
+  type CopiedMessage,
+  type CopiedStoredFile,
+  type PasteHost,
+} from '@demicodes/web-ui/agent/message-input/copied-message'
+import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
+import { showUnsent } from '@demicodes/web-ui/agent/unsent-toast'
 import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '@demicodes/web-ui/markdown/user-markdown'
 import { connectConversationClient, takeConnection } from '@demicodes/web-ui/transport/conversation-socket'
 import { loadDraft } from '../api/drafts'
@@ -63,7 +73,7 @@ import {
   type Subagents,
   type TranscriptPage,
 } from '../api/generated/web-api'
-import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
+import { isEmptyMessage, joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { blobPicture, createConversationUploads, sendingFileIds } from './uploads'
 import { useResources } from '../state/resources'
 import { useProduct, type ProductChange } from '../state/product'
@@ -91,8 +101,17 @@ import {
  * file: the sidebar lists it only while it is open, and leaving it drops it.
  */
 function isEmptyDraft(conversation: Conversation): boolean {
-  return conversation.persistence === 'draft' && !conversation.draft.trim() && !conversation.attachmentIds.length
+  return conversation.persistence === 'draft' && isEmptyMessage(conversation.draft, conversation.attachmentIds.length)
 }
+
+/**
+ * What Undo Send did with a message the session held, until the session
+ * answers its removal: the composer it refilled, with what it put there, or
+ * the toast whose Undo sends the message again.
+ */
+type TakenBack =
+  | { kind: 'refilled'; text: string; fileIds: string[] }
+  | { kind: 'unsent'; toast: string }
 
 /** `state` with the conversation `id` as `change` makes it; one that is gone stays gone. */
 function withConversation(
@@ -188,12 +207,12 @@ export const useConversations = defineStore('conversations', () => {
    */
   let deliveries = new SerialQueue()
   /**
-   * Remove or Send Now pressed on a steer or a queued message still on its
-   * way, by its message id: the user's latest wish, carried out once the
+   * Undo Send or Send Now pressed on a steer or a queued message still on
+   * its way, by its message id: the user's latest wish, carried out once the
    * session holds the message (`web-application.md` § Responding to the
    * user).
    */
-  const wishes = new Map<string, 'remove' | 'sendNow'>()
+  const wishes = new Map<string, 'undoSend' | 'sendNow'>()
   /** The draft storage failures this page reported, each once. */
   const storageReported = new Set<'save' | 'restore' | 'unreadable'>()
 
@@ -1829,20 +1848,20 @@ export const useConversations = defineStore('conversations', () => {
     ) {
       return
     }
+    const pending = addPendingSend(conversation, way, conversation.draft, messageFiles(conversation).map((file) => file.id))
+    conversation.draft = ''
+    conversation.attachmentIds = []
+    await deliverInOrder(conversation, pending)
+  }
+
+  /** Holds a message as sent and not yet confirmed, after those still on their way; answers it as the conversation holds it. */
+  function addPendingSend(conversation: Conversation, way: SendWay, text: string, fileIds: string[]): PendingSend {
     if (conversation.persistence === 'draft') {
       conversation.persistence = 'pending'
     }
     const id = crypto.randomUUID()
-    conversation.pendingSends = [...conversation.pendingSends, {
-      id,
-      way,
-      text: conversation.draft,
-      fileIds: messageFiles(conversation).map((file) => file.id),
-      error: null,
-    }]
-    conversation.draft = ''
-    conversation.attachmentIds = []
-    await deliverInOrder(conversation, conversation.pendingSends.find((pending) => pending.id === id)!)
+    conversation.pendingSends = [...conversation.pendingSends, { id, way, text, fileIds, error: null }]
+    return conversation.pendingSends.find((pending) => pending.id === id)!
   }
 
   /**
@@ -1916,13 +1935,17 @@ export const useConversations = defineStore('conversations', () => {
       // The page let the conversations go, as a sign-out does, or the message is no longer one to send.
       if (!signal.aborted && current()) {
         const wish = wishes.get(pending.id)
-        // A message not delivered is no steer or queued message to act on:
-        // one the user removed meanwhile is gone with its delivery.
+        // A message not delivered is no steer or queued message to act on.
         wishes.delete(pending.id)
-        if (wish === 'remove') {
-          dropSubmission(conversation, pending.id)
-          stopRemoving(conversation, pending.id)
+        stopRemoving(conversation, pending.id)
+        if (wish === 'undoSend' && isEmptyMessage(conversation.draft, conversation.attachmentIds.length)) {
+          // One the user took back meanwhile goes back into the empty
+          // composer as it was, its files with it.
+          conversation.pendingSends = conversation.pendingSends.filter((each) => each.id !== pending.id)
+          refill(conversation, pending.text, pending.fileIds)
         } else {
+          // Its row comes back, undelivered with the reason: a draft the
+          // composer holds is not to be replaced, and the message is not lost.
           pending.error = error instanceof Error ? error.message : String(error)
         }
       }
@@ -1951,8 +1974,31 @@ export const useConversations = defineStore('conversations', () => {
     if (remoteAttachmentError(file.path, file.host, conversation.files)) {
       return null
     }
+    return carryDeviceFile(conversation, file)
+  }
+
+  function carryDeviceFile(conversation: Conversation, file: CopiedDeviceFile): ProductAttachment {
     conversation.files.push({ ...composerRemoteAttachment({ host: file.host, path: file.path }), deviceId: file.deviceId })
-    return conversation.files.at(-1) ?? null
+    return conversation.files.at(-1)!
+  }
+
+  /**
+   * How a message pasted into the conversation's composer brings its files
+   * back: a stored file at once, attaching beside its capsule without its
+   * bytes, and a device file by its device and path (`product.md` § Writing
+   * a message).
+   */
+  function pasteHost(conversation: Conversation): PasteHost {
+    return {
+      claim: (file, picture) => {
+        const { item, kept } = claimFile(conversation, file, picture)
+        return { capsule: composerCapsule(item), kept }
+      },
+      remote: (file) => {
+        const item = attachDeviceFile(conversation, file)
+        return item && composerCapsule(item)
+      },
+    }
   }
 
   /** How many files a message's text holds a place for. */
@@ -2003,10 +2049,10 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Keeps Remove or Send Now pressed on a message on its way as the user's
-   * wish, when `id` is one; false for any other.
+   * Keeps Undo Send or Send Now pressed on a message on its way as the
+   * user's wish, when `id` is one; false for any other.
    */
-  function keepWish(conversation: Conversation, id: string, wish: 'remove' | 'sendNow'): boolean {
+  function keepWish(conversation: Conversation, id: string, wish: 'undoSend' | 'sendNow'): boolean {
     if (!conversation.pendingSends.some((pending) => pending.id === id && pending.error === null)) {
       return false
     }
@@ -2021,9 +2067,9 @@ export const useConversations = defineStore('conversations', () => {
    * joined the queue; one already in the transcript is past both, which a
    * removal tells.
    */
-  function carryOut(conversation: Conversation, id: string, wish: 'remove' | 'sendNow'): void {
-    if (wish === 'remove') {
-      carryOutRemoval(conversation, id)
+  function carryOut(conversation: Conversation, id: string, wish: 'undoSend' | 'sendNow'): void {
+    if (wish === 'undoSend') {
+      carryOutUndoSend(conversation, id)
     } else if (conversation.pendingSteers.some((steer) => steer.id === id)) {
       action(conversation, (runtime) => runtime.interruptPendingSteer(id))
     } else if (conversation.queue.some((message) => message.id === id)) {
@@ -2032,30 +2078,118 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Remove on a steer or a queued message, or on a message on its way that
-   * will be one (`product.md` § Steer or queue): its row goes at once, and
-   * the request follows, once the session holds the message.
+   * Undo Send on a steer or a queued message, or on a message on its way
+   * that will be one (`product.md` § Steer or queue): its row goes at once,
+   * and the rest follows once the session holds the message.
    */
-  function removeWaiting(conversation: Conversation, id: string): void {
+  function undoSend(conversation: Conversation, id: string): void {
     if (conversation.removing.includes(id)) {
       return
     }
     conversation.removing = [...conversation.removing, id]
-    if (!keepWish(conversation, id, 'remove')) {
-      carryOutRemoval(conversation, id)
+    if (!keepWish(conversation, id, 'undoSend')) {
+      carryOutUndoSend(conversation, id)
     }
   }
 
   /**
-   * Removes the message `id` the session holds. A refusal, as when the agent
-   * read the steer meanwhile, brings its row back where it was, which is
-   * the transcript then, and a toast says why.
+   * Takes back the message `id` the session holds: the message goes back to
+   * the user at once (`takeBack`), and its removal follows. A refusal, as
+   * when the agent read the steer meanwhile, brings its row back where it
+   * was, which is the transcript then, takes back what `takeBack` did, and a
+   * toast says why.
    */
-  function carryOutRemoval(conversation: Conversation, id: string): void {
-    void runtimeFor(conversation)
-      .then((runtime) => runtime.removeWaiting(id))
-      .catch((error) => report('Could Not Remove the Message', error))
+  function carryOutUndoSend(conversation: Conversation, id: string): void {
+    const steer = conversation.pendingSteers.find((each) => each.id === id)
+    const waiting = steer ?? conversation.queue.find((each) => each.id === id)
+    const removal = runtimeFor(conversation).then((runtime) => runtime.removeWaiting(id))
+    const back = waiting ? takeBack(conversation, contentCopy(waiting.content), steer ? 'steer' : 'queue', removal) : null
+    void removal
+      .catch((error) => {
+        if (back) {
+          giveBack(conversation, back)
+        }
+        report('Could Not Unsend the Message', error)
+      })
       .finally(() => stopRemoving(conversation, id))
+  }
+
+  /**
+   * Gives a message Undo Send took back to the user (`product.md` § Steer or
+   * queue): into the composer when it is empty, its files coming back as a
+   * paste brings them, without their bytes; otherwise the draft stays as it
+   * is, and a toast's Undo sends the message again the way it was sent, once
+   * its removal is done.
+   */
+  function takeBack(conversation: Conversation, copy: CopiedMessage, way: 'steer' | 'queue', removal: Promise<void>): TakenBack {
+    if (!isEmptyMessage(conversation.draft, conversation.attachmentIds.length)) {
+      // A refused removal has its own toast, and dismisses this one.
+      const toast = showUnsent(() => void removal.then(() => resend(conversation, copy, way), () => {}))
+      return { kind: 'unsent', toast }
+    }
+    const pasted = pasteMessage(copy, null, pasteHost(conversation))
+    const fileIds = pasted.capsules.map((capsule) => capsule.id)
+    // As the editor writes the message out, so that a refusal finds it unchanged.
+    const text = serializeUserMarkdown(parseUserMarkdown(pasted.markdown, fileIds)).markdown
+    refill(conversation, text, fileIds)
+    // A file the paste cannot use stands as its name, as in a paste.
+    for (const { id, kept } of pasted.attaching) {
+      void kept.then((stays) => {
+        const file = conversation.files.find((each) => each.id === id)
+        if (!stays && file) {
+          unattached(conversation, file)
+        }
+      })
+    }
+    const missing = missingFilesToast(pasted.missing)
+    if (missing) {
+      showToast({ ...missing, tone: 'danger' })
+    }
+    return { kind: 'refilled', text, fileIds }
+  }
+
+  /** The empty composer holds the message `text` with the files `fileIds`, the caret at its end, in focus when it shows. */
+  function refill(conversation: Conversation, text: string, fileIds: string[]): void {
+    conversation.draft = text
+    arrangeFiles(conversation, fileIds)
+    conversation.draftShown += 1
+    if (conversation.id === product.activeConversationId) {
+      composerFocusRequests.value += 1
+    }
+  }
+
+  /**
+   * Takes back what `takeBack` did once the removal failed, as the row comes
+   * back: the toast goes, and the composer it refilled is empty again,
+   * unless the user changed it since, when it stays as they left it.
+   */
+  function giveBack(conversation: Conversation, back: TakenBack): void {
+    if (back.kind === 'unsent') {
+      dismissToast(back.toast)
+      return
+    }
+    if (conversation.draft !== back.text || conversation.attachmentIds.join('\n') !== back.fileIds.join('\n')) {
+      return
+    }
+    conversation.draft = ''
+    arrangeFiles(conversation, [])
+    releaseSpare(conversation)
+    conversation.draftShown += 1
+  }
+
+  /**
+   * Undo on the toast of a message Undo Send took back: it is sent again the
+   * way it was, its files attached again without their bytes, as one the
+   * composer sent.
+   */
+  function resend(conversation: Conversation, copy: CopiedMessage, way: 'steer' | 'queue'): void {
+    const pasted = pasteMessage(copy, null, {
+      ...pasteHost(conversation),
+      // The message's own file, even when the draft holds it too.
+      remote: (file) => composerCapsule(carryDeviceFile(conversation, file)),
+    })
+    const pending = addPendingSend(conversation, way, pasted.markdown, pasted.capsules.map((capsule) => capsule.id))
+    void deliverInOrder(conversation, pending)
   }
 
   function stopRemoving(conversation: Conversation, id: string): void {
@@ -2201,16 +2335,16 @@ export const useConversations = defineStore('conversations', () => {
     compact: (conversation: Conversation) =>
       action(conversation, (runtime) => runtime.compact()),
     // Send Now on a steer or a queued message still on its way waits for the
-    // session to hold it; on any other, it goes at once. Remove takes the
+    // session to hold it; on any other, it goes at once. Undo Send takes the
     // row away at once in either case.
-    removeQueued: removeWaiting,
+    undoSend,
+    pasteHost,
     sendQueued: (conversation: Conversation, id: string) =>
       {
         if (!keepWish(conversation, id, 'sendNow')) {
           action(conversation, (runtime) => runtime.sendQueuedNow(id))
         }
       },
-    removePendingSteer: removeWaiting,
     interruptWithSteer: (conversation: Conversation, id: string) =>
       {
         if (!keepWish(conversation, id, 'sendNow')) {

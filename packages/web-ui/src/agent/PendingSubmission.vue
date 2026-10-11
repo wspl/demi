@@ -21,7 +21,7 @@ const props = defineProps<PendingSubmissionState & {
   /** What it will be when it waits for the agent, which its line says (`waitingAs`). */
   pending?: 'steer' | 'queued'
 }>()
-const emit = defineEmits<{ retry: []; remove: []; sendNow: [] }>()
+const emit = defineEmits<{ retry: []; undoSend: []; sendNow: [] }>()
 /** The text as the message the server confirms holds it. */
 const markdown = computed(() => sentMarkdown(props.text, props.attachments.length))
 </script>
@@ -33,7 +33,7 @@ const markdown = computed(() => sentMarkdown(props.text, props.attachments.lengt
       :attachments="attachments"
       :editable="false"
       :pending="pending"
-      @remove="emit('remove')"
+      @undo-send="emit('undoSend')"
       @send-now="emit('sendNow')"
       @retry="emit('retry')"
     />

@@ -45,6 +45,7 @@ import GalleryMessageFiles from '../components/GalleryMessageFiles.vue'
 import GalleryAgentLinks from '../components/GalleryAgentLinks.vue'
 import { attachmentMarkdown } from '../fixtures/attachments'
 import { productWould } from '../product-would'
+import { showUnsent } from '@demicodes/web-ui/agent/unsent-toast'
 import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../generated/pages'
@@ -886,6 +887,15 @@ const stuckBubble = [
 ]
 const pendingSteerShown = ref(true)
 const queuedShown = ref(true)
+/**
+ * Undo Send on a waiting message's specimen, which has no composer, so it
+ * acts as the product's does beside a draft: the row goes, and the toast's
+ * Undo brings it back as sending it again would.
+ */
+function unsendSpecimen(show: (shown: boolean) => void): void {
+  show(false)
+  showUnsent(() => show(true))
+}
 const functionalCollapsed = ref(false)
 const functionalExpanded = ref(true)
 const functionalTool = ref(false)
@@ -1727,7 +1737,7 @@ onBeforeUnmount(() => {
                 v-if="pendingSteerShown"
                 :content="steerPrompt"
                 pending="steer"
-                @remove="pendingSteerShown = false"
+                @undo-send="unsendSpecimen((shown) => (pendingSteerShown = shown))"
                 @send-now="pendingSteerShown = false"
               />
             </div>
@@ -1743,7 +1753,7 @@ onBeforeUnmount(() => {
                 v-if="queuedShown"
                 :content="queuedBubble"
                 pending="queued"
-                @remove="queuedShown = false"
+                @undo-send="unsendSpecimen((shown) => (queuedShown = shown))"
                 @send-now="queuedShown = false"
               />
             </div>
@@ -2320,7 +2330,7 @@ onBeforeUnmount(() => {
       <GalleryCommandWakeup />
       <GallerySection
         title="Turn"
-        note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the message says so with Retry, which sends it again with the same ID and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay, the tail row says Connecting, never that it failed, and the message goes with its ID once the socket is back. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Send Now and Remove in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it; Remove takes it away at once, and Send Now pressed before then is carried out once it is held. Resume, Retry and Connect wait for the server first."
+        note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the message says so with Retry, which sends it again with the same ID and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay, the tail row says Connecting, never that it failed, and the message goes with its ID once the socket is back. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Send Now and Undo Send in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it. Undo Send takes it back at once: into the composer when that is empty, the caret at its end; when the composer holds a draft, the draft stays and a Message Unsent toast offers Undo, which sends it again the same way. Send Now or Undo Send pressed before the server holds it is carried out once it does. Resume, Retry and Connect wait for the server first."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button
@@ -2364,7 +2374,7 @@ onBeforeUnmount(() => {
             @click="playTurn('queue')"
           >Queue</Button>
         </div>
-        <div class="gallery-frame h-[20rem] bg-surface">
+        <div class="gallery-frame h-[28rem] bg-surface">
           <SessionSurface ref="turnSurface">
             <div class="flex h-full min-h-0 flex-col">
               <AgentMessageList
@@ -2383,9 +2393,9 @@ onBeforeUnmount(() => {
                 :persisted-scroll-state="undefined"
                 read-only
                 @retry-submission="turnFlow.retrySubmission"
-                @delete-pending-steer="turnFlow.removePendingSteer"
+                @undo-send-steer="turnFlow.undoSendSteer"
                 @interrupt-pending-steer="turnFlow.interruptPendingSteer"
-                @delete-queued="turnFlow.removeQueued"
+                @undo-send-queued="turnFlow.undoSendQueued"
                 @send-queued="turnFlow.sendQueued"
               />
             </div>
@@ -2393,7 +2403,19 @@ onBeforeUnmount(() => {
               <SessionDock
                 :show-scroll-to-bottom="!!turnList && !turnList.isAtBottom"
                 @scroll-to-bottom="turnList?.scrollToBottom()"
-              />
+              >
+                <GalleryComposer
+                  placeholder="Ask Demi…"
+                  :running="turnFlow.state.phase === 'running' || turnFlow.startingTurn.value"
+                  :compacting="turnFlow.state.phase === 'compacting'"
+                  :flow="turnFlow"
+                  @send="turnFlow.turn"
+                  @steer="turnFlow.steer"
+                  @queue="turnFlow.queue"
+                  @stop="turnFlow.stop"
+                  @compact="turnFlow.compact"
+                />
+              </SessionDock>
             </template>
           </SessionSurface>
         </div>
@@ -2459,7 +2481,7 @@ onBeforeUnmount(() => {
                 :bottom-offset="0"
                 :persisted-scroll-state="undefined"
                 read-only
-                @delete-pending-steer="productWould('Withdraw the Steer')"
+                @undo-send-steer="productWould('Unsend the Steer')"
                 @interrupt-pending-steer="productWould('Send the Steer Now')"
               />
             </div>
@@ -2816,9 +2838,9 @@ onBeforeUnmount(() => {
                 @abort-subagents="sessionFlow.abortSubagents"
                 @abort-subagent="sessionFlow.abortSubagent"
                 @abort-terminal="sessionFlow.abortTerminal"
-                @remove-queued="sessionFlow.removeQueued"
+                @undo-send-queued="sessionFlow.undoSendQueued"
                 @send-queued="sessionFlow.sendQueued"
-                @remove-pending-steer="sessionFlow.removePendingSteer"
+                @undo-send-steer="sessionFlow.undoSendSteer"
                 @interrupt-pending-steer="sessionFlow.interruptPendingSteer"
               >
                 <template #composer>
@@ -2826,10 +2848,11 @@ onBeforeUnmount(() => {
                     placeholder="Ask Demi about the failing login test…"
                     :running="session.phase === 'running' || sessionFlow.startingTurn.value"
                     :compacting="session.phase === 'compacting'"
-            :usage="session.contextUsage ?? undefined"
+                    :usage="session.contextUsage ?? undefined"
+                    :flow="sessionFlow"
                     @send="sessionFlow.turn"
                     @steer="sessionFlow.steer"
-            @queue="sessionFlow.queue"
+                    @queue="sessionFlow.queue"
                     @stop="sessionFlow.stop"
                     @compact="sessionFlow.compact"
                   />
@@ -3108,9 +3131,9 @@ onBeforeUnmount(() => {
         @abort-subagents="sessionFlow.abortSubagents"
         @abort-subagent="sessionFlow.abortSubagent"
         @abort-terminal="sessionFlow.abortTerminal"
-        @remove-queued="sessionFlow.removeQueued"
+        @undo-send-queued="sessionFlow.undoSendQueued"
         @send-queued="sessionFlow.sendQueued"
-        @remove-pending-steer="sessionFlow.removePendingSteer"
+        @undo-send-steer="sessionFlow.undoSendSteer"
         @interrupt-pending-steer="sessionFlow.interruptPendingSteer"
       >
         <template #composer>
@@ -3122,6 +3145,7 @@ onBeforeUnmount(() => {
             :compacting="session.phase === 'compacting'"
             :usage="session.contextUsage ?? undefined"
             :archived="session.archived"
+            :flow="sessionFlow"
             @restore="session.archived = false"
             @send="sessionFlow.turn"
             @steer="sessionFlow.steer"
