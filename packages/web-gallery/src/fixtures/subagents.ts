@@ -86,6 +86,8 @@ const COMMENTS_RESULT = [
 ].join('\n')
 /** Why Run the fixture server failed. */
 const FIXTURE_FAILURE = 'The fixture could not reach the test server. No files were changed.\n\n`ECONNREFUSED 127.0.0.1:3271`'
+/** What Find the old suite paths tells its parent while the parent fixes the mjsunit tests. */
+const SUITE_PATHS_UPDATE = 'The status file still lists the suites under `test/mjsunit/wasm-old/`; they moved to `test/mjsunit/wasm/`.'
 
 /**
  * The receipts the gallery's children sent their parent, one of each kind
@@ -119,7 +121,7 @@ export const agentReceiptMessages: AgentMessage[] = [
     timestamp: '2026-09-12T12:02:00.000Z',
     content: FIXTURE_FAILURE,
     event: { type: 'completion', outcome: 'failed' },
-    origin: 'ag-fixture-text',
+    origin: 'ag-fixture-error',
   },
   {
     id: 'subagent:ag-ci:1',
@@ -130,6 +132,64 @@ export const agentReceiptMessages: AgentMessage[] = [
     event: { type: 'completion', outcome: 'aborted' },
   },
 ]
+
+/**
+ * A message the main agent sent its child, in the child's transcript: the
+ * receipt names the main agent, whose name opens the call that sent it in
+ * the main transcript.
+ */
+export const mainAgentMessage: AgentMessage = {
+  id: 'receipt-main',
+  sender: { id: 'gallery-parent', number: 0, description: 'root session', round: 1 },
+  recipientId: 'ag-logout',
+  timestamp: '2026-09-12T12:04:00.000Z',
+  content: 'Also check that logout clears the CSRF cookie.',
+  event: { type: 'message' },
+  origin: 'parent-send',
+}
+
+/** The update Find the old suite paths sent while the `work` turn ran, naming the call that sent it. */
+export const suitePathsUpdate: AgentMessage = {
+  id: 'receipt-suite-paths',
+  sender: { id: 'ag-suite', number: 3, description: 'Find the old suite paths', round: 1 },
+  recipientId: 'gallery-work',
+  timestamp: '2026-09-12T12:05:00.000Z',
+  content: SUITE_PATHS_UPDATE,
+  event: { type: 'message' },
+  origin: 'ag-suite-send',
+}
+
+/** The child the `work` turn hears from, still at work: its search, and the call that sent its update. */
+export function workSubagent(): SubagentRecord {
+  return {
+    id: 'ag-suite',
+    name: 'Find the old suite paths',
+    phase: 'running',
+    startedAt: ago(60_000),
+    failures: {},
+    pendingCalls: [],
+    waitingSince: null,
+    history: wholeHistory([
+      user('ag-suite-user', ago(60_000), 'Find the suite paths test/mjsunit/mjsunit.status still names that no longer exist.'),
+      shell(
+        'ag-suite-tool',
+        ago(50_000),
+        'Find the suite paths the status file names',
+        'test/mjsunit/mjsunit.status:12:  wasm-old/*: [SKIP]\n',
+        'completed',
+        'rg -n "wasm-old" test/mjsunit/mjsunit.status',
+      ),
+      shell(
+        'ag-suite-send',
+        ago(40_000),
+        'Tell the parent where the old suite paths are',
+        'sent to 0\n',
+        'completed',
+        `demi agent send parent <<'EOF'\n${SUITE_PATHS_UPDATE}\nEOF`,
+      ),
+    ]),
+  }
+}
 
 export function gallerySubagents(): SubagentRecord[] {
   return [
@@ -273,6 +333,14 @@ export function gallerySubagents(): SubagentRecord[] {
           'Error: connect ECONNREFUSED 127.0.0.1:3271\n',
           'completed',
         ),
+        {
+          type: 'error',
+          id: 'ag-fixture-error',
+          createdAt: ago(270_000),
+          model: demoModel,
+          message: 'The fixture could not reach the test server: connect ECONNREFUSED 127.0.0.1:3271',
+          code: null,
+        },
       ]),
     },
     {

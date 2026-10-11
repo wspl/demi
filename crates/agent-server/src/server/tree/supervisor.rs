@@ -14,8 +14,8 @@ use demi_agent_session::{
     AgentMessageError, AgentSession, Execution, SessionEvent, Settle, Subscription,
 };
 use demi_agent_store::{ClosePhase, NodeClose, NodeRecord};
+use demi_agent_transcript::{last_answer, last_failure};
 use demi_agent_tools::HostResolver;
-use demi_agent_transcript::last_answer;
 use demi_conversation_socket_protocol::{
     JobPhase, ServerFrame, SubagentEvent, TranscriptPatch, index_u32, latest_page_start,
 };
@@ -562,8 +562,8 @@ impl<H: HostResolver> Tree<H> {
                 }
                 if let Some(close) = &record.closed {
                     if !record.delivered {
-                        let answer = self.stored_answer(&record.id).await;
-                        self.deliver(owner, &record, close, answer).await;
+                        let origin = self.stored_origin(&record.id, &close.phase).await;
+                        self.deliver(owner, &record, close, origin).await;
                     }
                     continue;
                 }
@@ -624,17 +624,22 @@ impl<H: HostResolver> Tree<H> {
             event: SubagentEvent::Closed,
             job: closed.job().expect("a child has a job"),
         });
-        let answer = self.stored_answer(&closed.id).await;
-        self.deliver(owner, &closed, &close, answer).await;
+        let origin = self.stored_origin(&closed.id, &close.phase).await;
+        self.deliver(owner, &closed, &close, origin).await;
     }
 
-    /// The last answer in the stored transcript of the closed child `id`,
-    /// which its completion names; none when it gave none, or when its
+    /// The block of the stored transcript of the closed child `id` its
+    /// completion names, by how it closed `phase`: its last answer, or a
+    /// failed child's failure record; none when it has none, or when its
     /// transcript does not load, which only costs the receipt its link.
-    async fn stored_answer(&self, id: &NodeId) -> Option<BlockId> {
+    async fn stored_origin(&self, id: &NodeId, phase: &ClosePhase) -> Option<BlockId> {
         match self.store.session_store(id).load().await {
-            Ok(checkpoint) => checkpoint
-                .and_then(|checkpoint| last_answer(&checkpoint.transcript, 0).map(|text| text.id.clone())),
+            Ok(checkpoint) => checkpoint.and_then(|checkpoint| match phase {
+                ClosePhase::Error { .. } => last_failure(&checkpoint.transcript).map(|error| error.id.clone()),
+                ClosePhase::Completed { .. } | ClosePhase::Aborted => {
+                    last_answer(&checkpoint.transcript, 0).map(|text| text.id.clone())
+                }
+            }),
             Err(error) => {
                 tracing::warn!(node = %id, %error, "a closed subagent's transcript did not load for its completion");
                 None
@@ -761,15 +766,23 @@ impl<H: HostResolver> Tree<H> {
             let _turn = self.starts.acquire(child.id().clone()).await;
             Box::pin(self.abort_children_of(child.id())).await;
         }
+        // The completion names the block of the child's transcript it comes
+        // from: the last answer, or a failed child's failure record.
         let answer = session.last_answer();
-        let phase = match kind {
-            CloseKind::Completed => ClosePhase::Completed {
-                result: bounded(answer.as_ref().map_or("", |(_, text)| text)).to_owned(),
-            },
-            CloseKind::Aborted => ClosePhase::Aborted,
-            CloseKind::Error => ClosePhase::Error {
-                failure: child.failure.borrow().clone().unwrap_or_default(),
-            },
+        let (phase, origin) = match kind {
+            CloseKind::Completed => (
+                ClosePhase::Completed {
+                    result: bounded(answer.as_ref().map_or("", |(_, text)| text)).to_owned(),
+                },
+                answer.map(|(id, _)| id),
+            ),
+            CloseKind::Aborted => (ClosePhase::Aborted, answer.map(|(id, _)| id)),
+            CloseKind::Error => (
+                ClosePhase::Error {
+                    failure: child.failure.borrow().clone().unwrap_or_default(),
+                },
+                session.last_failure(),
+            ),
         };
         if let Err(error) = session.dispose().await {
             self.report(format!(
@@ -796,7 +809,7 @@ impl<H: HostResolver> Tree<H> {
                     job: closed.job().expect("a child has a job"),
                 });
                 if let Some(owner) = &owner {
-                    self.deliver(owner, &record, &close, answer.map(|(id, _)| id)).await;
+                    self.deliver(owner, &record, &close, origin).await;
                 }
             }
             // The child stays live and quiescent in the store: the next
@@ -806,17 +819,18 @@ impl<H: HostResolver> Tree<H> {
         child.closed.send_replace(true);
     }
 
-    /// Hands a closed round's completion, which comes from the child's last
-    /// answer `answer`, to its parent; the parent's save marks it delivered.
-    /// A parent that is closing leaves it undelivered for its restore.
+    /// Hands a closed round's completion, which comes from the block
+    /// `origin` of the child's transcript, to its parent; the parent's save
+    /// marks it delivered. A parent that is closing leaves it undelivered
+    /// for its restore.
     async fn deliver(
         &self,
         owner: &Node<H>,
         record: &NodeRecord,
         close: &NodeClose,
-        answer: Option<BlockId>,
+        origin: Option<BlockId>,
     ) {
-        let message = completion(record, close, answer);
+        let message = completion(record, close, origin);
         match owner.session().accept_agent_message(message).await {
             Ok(()) | Err(AgentMessageError::Closed) => {}
             Err(error) => self.report(format!(
@@ -1228,9 +1242,9 @@ fn child_frames<H: HostResolver>(child: &Child<H>) -> [ServerFrame; 4] {
 
 /// A closed round's completion message (`subagents.md` § Message
 /// identity): its id names the round, and its body is the result, or the
-/// failure text, which can be empty; it comes from the child's last answer
-/// `answer`.
-fn completion(record: &NodeRecord, close: &NodeClose, answer: Option<BlockId>) -> AgentMessage {
+/// failure text, which can be empty; it comes from the block `origin` of
+/// the child's transcript.
+fn completion(record: &NodeRecord, close: &NodeClose, origin: Option<BlockId>) -> AgentMessage {
     let round = CompletionId {
         child: record.id.clone(),
         round: record.round,
@@ -1255,7 +1269,7 @@ fn completion(record: &NodeRecord, close: &NodeClose, answer: Option<BlockId>) -
         timestamp: close.at,
         content,
         event: AgentMessageEvent::Completion { outcome },
-        origin: answer,
+        origin,
     }
 }
 
