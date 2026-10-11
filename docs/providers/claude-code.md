@@ -462,9 +462,8 @@ with its error and carries no usage, so the
 [usage ledger](usage-and-quota.md#usage-ledger) has no row for it, while the
 account's quota still shows what the vendor counted. An `error` line, a failure
 the CLI reports outside a `result`, fails the run with the CLI's words. A line
-that fails to decode or is longer than 64 MiB, a `tool_use` block without an ID
-or a name, and a tool call in a request that offered no tools fail the run with
-that line as the failure record. A `rate_limit_event` line feeds the
+that fails to decode or is longer than 64 MiB, and a `tool_use` block without
+an ID or a name fail the run with that line as the failure record. A `rate_limit_event` line feeds the
 account's quota ([Vendor quota](usage-and-quota.md#claude-code)).
 
 ## The SDK MCP channel
@@ -512,6 +511,17 @@ tool-use IDs, before answering any call. The run ends there and keeps the
 process; the CLI waits on its open call. A `tools/call` that arrives before the
 model's message was streamed is yielded alone, as a batch of one.
 
+A `tool_use` block that names a tool the request does not offer is not part of
+the batch, and the page is not shown it being written. The model invents such
+names, a subagent's command line for one. The CLI has no tool of its own by
+that name, so it answers the call itself, with an error result that says no
+such tool is available, and asks the model again in the same process. The run
+reads on, as after any other result the CLI writes, and the model corrects
+itself within the turn. Failing the run instead would end the turn for a slip
+the model recovers from, and yielding the call would leave the agent holding a
+call that replay drops ([Replay](../agent/runtime.md#replay)) and that no
+result of Demi's can answer.
+
 The next run starts by delivering the batch's results. Every call of the held
 batch must have a result; a missing one fails the run and closes the process.
 The provider answers the calls already open, stores the other results, and
@@ -542,7 +552,7 @@ the agent stops reading a run at its failure.
 | The `result` line | The run ends with the response, or with the CLI's error | Kept |
 | `message_stop` after tool uses | The batch is yielded and the run ends | Kept |
 | The CLI's output ends | The run fails if stored results were never asked for, or if the process exited with a nonzero status and the run was not cancelled; the message is the tail of standard error, or "Claude Code exited with code N" | Gone |
-| A malformed line or tool use, or a tool call the request offered no tools for | The run fails with the line as its record | Closed |
+| A malformed line or tool use | The run fails with the line as its record | Closed |
 | An `error` line | The run fails with the CLI's words | Closed |
 | A `result` with `api_error_status` 401, before anything of the run reached the agent | The token is refreshed when the refused one is still the stored one, and the request is sent again once in a new process | Closed |
 | A request whose kept process holds a token expiring within 30 minutes | The token is refreshed and a new process takes the request | Closed |

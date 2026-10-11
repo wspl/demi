@@ -409,6 +409,12 @@ pub struct ToolDefinition {
     pub input_schema: serde_json::Map<String, serde_json::Value>,
 }
 
+/// Whether `tools` offer the tool `name`; a call of any other names a tool
+/// that is not there (`runtime.md` § Replay).
+pub fn offers(tools: &[ToolDefinition], name: &str) -> bool {
+    tools.iter().any(|tool| tool.name == name)
+}
+
 /// An event of a run (`providers.md` § A run). A run ends after `Response`,
 /// after `Error`, after the last `ToolCall` of a batch when the vendor needs
 /// the results before it can finish, or when its request's token is

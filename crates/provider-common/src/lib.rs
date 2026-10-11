@@ -31,7 +31,7 @@ pub use body::{encode_body, json_body};
 pub use contract::{
     Capabilities, CatalogError, EntriesOf, InferenceItem, InferenceRequest, MediaBytes, Medium, PromptCache,
     Provider, ProviderEvent, ProviderRun, ProviderRuntime, RequestBlock, RequestLimits, ResultPart, RuntimeEnv,
-    RuntimeError, ToolCall, ToolDefinition, ToolResultKinds, UserPart,
+    RuntimeError, ToolCall, ToolDefinition, ToolResultKinds, UserPart, offers,
 };
 pub use endpoint::endpoint_url;
 pub use failure::{EarlyEnd, ErrorCode, FailureReader, ProviderFailure};

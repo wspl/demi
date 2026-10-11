@@ -1024,14 +1024,19 @@ async fn a_vendor_error_fails_the_request_in_the_clis_words_and_the_kept_process
     world.backend.close().await;
 }
 
-// EXPLORE: what the CLI does with a call of a tool the request does not offer.
+// Several seconds: see the first scenario.
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
-async fn explore_a_call_of_an_unknown_tool() {
+async fn a_call_of_a_tool_the_request_does_not_offer_is_answered_by_the_cli_and_the_turn_goes_on() {
     let world = World::start().await;
     let mut socket = world.conversation().await;
+
+    // The model names a tool Demi does not offer: the CLI answers the call
+    // with an error, the model corrects itself in the same process, and the
+    // turn ends as any other (`claude-code.md` § Tool-call batches).
+    let unknown = "demi agent send parent";
     world.answers(message(
-        vec![tool_use_block(0, "toolu_suite_unknown", "demi agent send parent", &json!({}))],
+        vec![tool_use_block(0, "toolu_suite_unknown", unknown, &json!({}))],
         "tool_use",
         json!({ "input_tokens": 10, "output_tokens": 1 }),
         3,
@@ -1042,29 +1047,71 @@ async fn explore_a_call_of_an_unknown_tool() {
         json!({ "input_tokens": 12, "output_tokens": 1 }),
         2,
     ));
-    world.answers(message(
-        vec![text_block(0, &["Third."])],
-        "end_turn",
-        json!({ "input_tokens": 12, "output_tokens": 1 }),
-        2,
-    ));
     socket
         .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a41", "Tell the lead.")
         .await;
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     let blocks = world.blocks().await;
-    eprintln!("EXPLORE kinds {:?}", kinds(&blocks));
-    for block in &blocks {
-        let text = serde_json::to_string(block).unwrap();
-        eprintln!("EXPLORE block {}", &text[..text.len().min(500)]);
-    }
+    assert_eq!(kinds(&blocks), ["user", "context", "text", "response"]);
+    assert_eq!(last_text(&blocks), "Corrected.");
+    let refused = |request: &RecordedRequest, id: &str| {
+        let messages = request.json()["messages"].clone();
+        let result = messages
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|message| message["content"].as_array().cloned().unwrap_or_default())
+            .find(|block| block["type"] == "tool_result" && block["tool_use_id"] == id)
+            .unwrap_or_else(|| panic!("no result for {id}: {messages}"));
+        assert_eq!(result["is_error"], true, "{result}");
+        assert!(
+            result.to_string().contains("No such tool available"),
+            "{result}"
+        );
+    };
     let inferences = world.inferences();
-    eprintln!("EXPLORE {} requests", inferences.len());
-    for (index, request) in inferences.iter().enumerate() {
-        let tail: Vec<Value> = request.json()["messages"].as_array().unwrap().iter().rev().take(2).cloned().collect();
-        let text = Value::Array(tail).to_string();
-        eprintln!("EXPLORE request {index} last messages {}", &text[..text.len().min(1500)]);
-    }
+    let [called, corrected] = inferences.as_slice() else {
+        panic!("two requests: {inferences:?}");
+    };
+    assert_eq!(process(corrected), process(called));
+    refused(corrected, "toolu_suite_unknown");
+
+    // In a batch with a call of Demi's tool, that call runs through Demi and
+    // the other is the CLI's to answer.
+    let call = json!({ "description": "Print the text", "script": "printf 'one'", "intervalMs": 60_000 });
+    world.answers(message(
+        vec![
+            tool_use_block(0, "toolu_suite_shell", SHELL, &call),
+            tool_use_block(1, "toolu_suite_ghost", unknown, &json!({})),
+        ],
+        "tool_use",
+        json!({ "input_tokens": 20, "output_tokens": 1 }),
+        5,
+    ));
+    world.answers(message(
+        vec![text_block(0, &["One ran."])],
+        "end_turn",
+        json!({ "input_tokens": 30, "output_tokens": 1 }),
+        3,
+    ));
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a42", "Run it and tell the lead.")
+        .await;
+    let blocks = world.blocks().await;
+    assert_eq!(
+        kinds(&blocks[4..]),
+        ["user", "tool_call", "text", "response"],
+        "{:?}",
+        kinds(&blocks)
+    );
+    assert_eq!(last_text(&blocks), "One ran.");
+    let inferences = world.inferences();
+    let [.., answered] = inferences.as_slice() else {
+        unreachable!()
+    };
+    assert_eq!(inferences.len(), 4, "{inferences:?}");
+    refused(answered, "toolu_suite_ghost");
+    let ran = answered.json()["messages"].to_string();
+    assert!(ran.contains("toolu_suite_shell") && ran.contains("one"), "{ran}");
     drop(socket);
     world.backend.close().await;
 }

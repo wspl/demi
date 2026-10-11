@@ -170,6 +170,74 @@ async fn a_whole_batch_reaches_the_agent_before_any_answer_and_a_later_call_is_a
 }
 
 #[tokio::test(flavor = "local")]
+async fn a_call_of_a_tool_the_request_does_not_offer_is_left_out_of_the_batch_for_the_cli_to_answer()
+ {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let first = vec![user("run both")];
+    let (events, mut cli) = tokio::join!(all_events(runtime.run(request(first.clone()))), async {
+        let mut cli = starts.next().await;
+        cli.initialized().await;
+        cli.handshake().await;
+        cli.message_start();
+        cli.streamed_tool_use(1, "toolu_alpha", &["{\"script\": \"pwd\"}"]);
+        cli.tool_use("toolu_alpha", "pwd");
+        cli.call("call-alpha", 2, "toolu_alpha", "pwd");
+        // The model names a tool the request does not offer, which the CLI
+        // answers itself with an error, never through the server.
+        cli.say(json!({ "type": "stream_event", "event": {
+            "type": "content_block_start",
+            "index": 2,
+            "content_block": { "type": "tool_use", "id": "toolu_ghost", "name": "demi agent send parent", "input": {} },
+        } }));
+        cli.say(json!({ "type": "stream_event", "event": {
+            "type": "content_block_delta",
+            "index": 2,
+            "delta": { "type": "input_json_delta", "partial_json": "{}" },
+        } }));
+        cli.say(json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "toolu_ghost", "name": "demi agent send parent", "input": {} },
+        ] } }));
+        cli.message_stop();
+        cli
+    });
+    assert_eq!(
+        events,
+        [
+            ProviderEvent::ToolCallStart {
+                tool_use_id: "toolu_alpha".into(),
+                tool_name: "shell_exec".into(),
+            },
+            ProviderEvent::ToolCallInput {
+                tool_use_id: "toolu_alpha".into(),
+                partial_json: "{\"script\": \"pwd\"}".into(),
+            },
+            call("toolu_alpha", "pwd"),
+        ]
+    );
+
+    // The batch is the offered call alone, so its one result answers it.
+    let mut second = first.clone();
+    second.push(tool_use("toolu_alpha", "pwd"));
+    second.push(tool_result("toolu_alpha", "/tmp"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(second))), async {
+        let alpha = cli.mcp_reply("call-alpha").await;
+        assert_eq!(
+            alpha["result"]["content"],
+            json!([{ "type": "text", "text": "/tmp" }])
+        );
+        cli.text("both answered");
+        cli.result(3, 5);
+    });
+    assert_eq!(
+        events,
+        [ProviderEvent::TextDelta("both answered".into()), usage(3, 5)]
+    );
+    assert!(cli.signals().is_empty());
+}
+
+#[tokio::test(flavor = "local")]
 async fn a_tool_result_goes_back_as_mcp_content_with_images_as_base64_and_errors_flagged() {
     let provider = provider().await;
     let (placement, mut starts) = ScriptedPlacement::new();
