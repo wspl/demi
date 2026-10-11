@@ -1,6 +1,7 @@
 import type { Block, PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { pendingSteersToRenderBlocks, type MessageListBlock, type PendingCallRenderBlock } from './pending-steers'
 import { queuedMessagesToRenderBlocks } from './queued-messages'
+import { turnStartingMessage } from './send-way'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 
 /**
@@ -34,7 +35,8 @@ export interface ListTail {
   /**
    * The turn's own rows: a compaction in progress, the calls the model is
    * writing, and a message sent as a message, which is the user's next
-   * message, so the tail row's Requesting stands under it.
+   * message, so the tail row's Requesting stands under it; so is a steer
+   * that starts the turn.
    */
   turn: MessageListBlock[]
   /**
@@ -53,7 +55,10 @@ export interface ListTail {
  * a steer or in the queue: the row it was waiting in becomes that one
  * (`row-key.ts`), so it never shows twice, whichever of the two the server
  * tells first. A message whose Undo Send is on its way shows nowhere. A message
- * whose delivery failed is followed by the row that tells it.
+ * whose delivery failed is followed by the row that tells it. A steer on its
+ * way that starts the turn, as when nothing runs and the message before it
+ * was not delivered, is the user's next message (`product.md` § Following
+ * the agent's work): it stands in the turn's flow, in the row it keeps.
  */
 export function listTailBlocks(input: ListTailInput): ListTail {
   const written = new Set(input.blocks.flatMap((block) =>
@@ -64,28 +69,31 @@ export function listTailBlocks(input: ListTailInput): ListTail {
   const held = new Set([...written, ...input.pendingSteers.map((steer) => steer.id), ...input.queue.map((message) => message.id)])
   const sending = (input.pendingSubmissions ?? []).filter((submission) =>
     !held.has(submission.id) && !removing.has(submission.id))
+  const starting = turnStartingMessage(input.phase, input.pendingSubmissions ?? [])
+  const startsTurn = (submission: PendingSubmissionState) =>
+    submission.way === 'steer' && submission.id === starting?.id
   // A message whose delivery failed is told under it, as a row of its own:
   // the row Requesting gives way to, and which Retry rolls back into it.
-  const rows = (way: PendingSubmissionState['way']): MessageListBlock[] => sending
-    .filter((submission) => submission.way === way)
+  const rows = (shows: (submission: PendingSubmissionState) => boolean): MessageListBlock[] => sending
+    .filter(shows)
     .flatMap((submission): MessageListBlock[] => [
-      { type: 'pending_submission', id: `pending-submission:${submission.id}`, submission },
+      { type: 'pending_submission', id: `pending-submission:${submission.id}`, submission, startsTurn: startsTurn(submission) },
       ...(submission.error !== null
         ? [{ type: 'delivery_failure', id: `delivery-failure:${submission.id}`, submission } as const]
         : []),
     ])
-  const queued = [...queuedMessagesToRenderBlocks(queue), ...rows('queue')]
+  const queued = [...queuedMessagesToRenderBlocks(queue), ...rows((submission) => submission.way === 'queue')]
   return {
     turn: [
       ...(input.phase === 'compacting'
         ? [{ type: 'compaction_progress', id: 'compaction-progress' } as const]
         : []),
       ...pendingCallsToRenderBlocks(input.pendingCalls, input.blocks),
-      ...rows('send'),
+      ...rows((submission) => submission.way === 'send' || startsTurn(submission)),
     ],
     waiting: [
       ...pendingSteersToRenderBlocks(steers),
-      ...rows('steer'),
+      ...rows((submission) => submission.way === 'steer' && !startsTurn(submission)),
       ...(queued.length > 0
         ? [{ type: 'queue_divider', id: 'queue-divider', count: queued.filter((row) => row.type !== 'delivery_failure').length } as const, ...queued]
         : []),
