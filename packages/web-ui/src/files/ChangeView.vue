@@ -45,9 +45,10 @@ import type { FileContents } from './types'
  * before the request's first edit of it to after its last, or one of its
  * edits, which a control steps through. The sidebar lists the working
  * tree's files, or the request's; the file, the edit and Back and Forward
- * are the host's to hold. An edit whose two sides were not kept leaves the
- * editor area empty. The sidebar docks, hides and shows over the diff as its
- * frame (`TreeFrame`) decides.
+ * are the host's to hold. An edit whose two sides were not kept, and a
+ * removed file whose contents before it were not, say so where the diff
+ * would be. The sidebar docks, hides and shows over the diff as its frame
+ * (`TreeFrame`) decides.
  *
  * Text shows as a diff. In Uncommitted mode an image, a video, an audio file
  * or a PDF shows its committed and working-tree versions side by side, and a
@@ -184,6 +185,11 @@ const idleText = computed(() => {
   }
   return workingTree.value.files.length > 0 ? 'Select a changed file.' : emptyText.value
 })
+
+/** What stands where the diff would, when the contents it needs were not kept. */
+const unkeptText = computed(() => selectedChange.value?.kind === 'deleted'
+  ? 'The contents before it was removed were not kept.'
+  : 'The contents of this change were not kept.')
 
 const kind = computed(() => selectedChange.value ? previewKind(selectedChange.value.path) : 'text')
 const sourceView = computed(() => selectedChange.value !== null && hasSourceView(selectedChange.value.path))
@@ -459,11 +465,11 @@ function pick(path: string): void {
         :path="selectedChange.path"
       />
       <!-- It centres in the space beside a tree shown over the view. -->
-      <div v-else-if="state.phase !== 'unavailable'" class="h-full" :style="{ paddingInlineEnd: `${overlap}px` }">
+      <div v-else class="h-full" :style="{ paddingInlineEnd: `${overlap}px` }">
         <RegionStatus
           class="h-full"
           :status="state.phase === 'loading' || state.phase === 'failed' ? state.phase : 'note'"
-          :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'failed' ? 'Could not read this change.' : idleText"
+          :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'failed' ? 'Could not read this change.' : state.phase === 'unavailable' ? unkeptText : idleText"
           loading-label="Reading…"
           :detail="state.phase === 'failed' ? state.message : null"
           :on-retry="retry"
