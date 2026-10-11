@@ -843,6 +843,17 @@ archive, a target change or a detach ends the conversation's streams, a call
 still running is refused with `conversation_busy`
 ([Host operations](../execution/sessions-and-targets.md#host-operations)).
 
+The panel says every failure in words of its own: the reasons the methods,
+the stream and the host access can give are one closed set, which the page's
+table of sentences covers whole, so a reason with no sentence is a build
+error, not a fallback. For example, the browser package fails to start on
+the device: the tab says *The browser couldn't start on the device.*
+(`browser_unavailable`), never *The browser couldn't do that.* A failure that
+carries no reason, because the request itself did not reach the backend or
+its answer was not one of these, says which: *The server didn't answer.*
+for a network failure or a timeout, *The server couldn't do that: <status
+text>.* for another HTTP answer.
+
 ## Responsibilities
 
 [Crates and packages](../architecture/crates-and-packages.md) places each
