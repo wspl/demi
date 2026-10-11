@@ -314,14 +314,15 @@ for whichever page shows them. `usePage().files(conversation)` gives:
 
 The service keeps what it read and learns from the Host's own file system
 when that changes, the way VS Code, JetBrains IDEs and Zed keep a remote
-workspace: the Host watches the files and reports every path that changed
-([Watching files](../execution/runner.md#watching-files)), and what was read is
-current until such a report names it. For example, the user reads
-`src/app.ts`, picks `README.md`, and picks `src/app.ts` again: its text shows
-at once, with its scroll where it was, and nothing is asked, since the Host
-reported no change to it. The agent then edits it: the Host reports
-`src/app.ts` changed, and the shown text is read again and replaced in place,
-without a loading state.
+workspace: it subscribes to what it keeps, and the Host says when a
+subscription's subject changed ([Watching files](../execution/runner.md#watching-files)).
+For example, the user reads `src/app.ts`, picks `README.md`, and picks
+`src/app.ts` again: its text shows at once, with its scroll where it was, and
+nothing is asked, since its subscription did not change. The agent then edits
+`src/app.ts` and runs `cargo check`: the file's subscription and the working
+tree's change, the shown text is read again and replaced in place, without a
+loading state, and the 20,000 files the build writes under `target/` change
+nothing and read nothing.
 
 - **What it keeps.** Directory listings, file texts, file descriptions, the
   changes list, each changed file's two sides and its committed contents,
@@ -330,77 +331,89 @@ without a loading state.
   the signed-in page's lifetime and are gone after a reload, as the
   conversation cache is
   ([Backend communication](../product/web-application.md#backend-communication)).
-  At most 64 MiB of them stay, counted by their text; past that the ones shown
-  longest ago go first. An entry holds what was read, never a way to read it:
-  each view reads through its own route, a conversation's views through the
-  conversation's host access or its direct channel, a device's folder dialog
-  through device access, and every view that shows the entry sees what any
-  of them read. A read nobody asked for, after a report, a watch going live
-  or Refresh, goes through the view that came on screen last.
+  At most 64 MiB and 4,096 entries of them stay, counted by their text; past
+  that the ones shown longest ago go first. An entry holds what was read,
+  never a way to read it: each view reads through its own route, a
+  conversation's views through the conversation's host access or its direct
+  channel, a device's folder dialog through device access, and every view
+  that shows the entry sees what any of them read. A read nobody asked for,
+  after a change or Refresh, goes through the view that came on screen last.
+- **Every answer is a result.** A text, a file that is binary, one too large
+  to read as text, and one that is gone are each an answer with its version
+  and its number, kept and confirmed alike, and a view draws each as itself:
+  a binary file's card, a too-large file's notice. Only a read that could not
+  be made, a Host out of reach or a refusal, is a failure.
 - **A view keeps its place.** No update remounts or resets a view. A view is
   keyed by what the user chose, such as the mode, the file, the edit or All
   Changes, never by the version of its content. An update that changes
   nothing the view shows changes nothing on screen; one that changes its
   content replaces it in place, both sides of a diff in one step, with the
   line at the top of the window kept where it is, as an editor keeps its
-  place when the file changes on disk. Only another choice of the user's, or
-  Reload, shows a loading state; a loading state never replaces content
-  already shown. A value the page derives anew on each frame, such as the
-  transcript, is compared by what it holds, never by its identity, so a new
-  frame that changes nothing is no change.
-- **Confirmed entries.** An entry read while a watch covering its path was
-  live, and that no report named since, is the Host's content as its file
-  system knows it. Showing it asks nothing.
-- **A report names what changed; the page reads only what depends on it
-  and shows.** The Host signals which paths changed and the page reads
-  again what it needs, rather than the Host pushing the changed content: the
-  answer read is always the Host's whole truth, so a lost or reordered
-  report never leaves a wrong copy behind, and the Host keeps nothing per
-  page. Each entry depends on these alone:
+  place when the file changes on disk. Reading again never clears what is
+  shown: a binary file's card stays while it is checked. Only another choice
+  of the user's, or Reload, shows a loading state; a loading state never
+  replaces content already shown. A value the page derives anew on each
+  frame, such as the transcript, is compared by what it holds, never by its
+  identity, so a new frame that changes nothing is no change.
+- **Everything kept is subscribed; only what is shown is read.** Each entry
+  holds the subscriptions it depends on for as long as it is kept, whether a
+  view shows it or not, and gives them up when it leaves the cache:
 
-  | Entry | Read again when a report names |
+  | Entry | Subscriptions |
   | --- | --- |
-  | A file's text or description | The file |
-  | A folder's listing | An entry of it that came, went or was renamed (`entries`), or the folder itself; a file of it written in place changes no name, so its listing stays |
-  | The changes list of a working tree | A path in the tree git does not ignore; in its repository's git directory the index, `HEAD`, a ref under `refs/` or `packed-refs` |
-  | A changed file's two sides, the last commit's and the working tree's | The file; in its repository's git directory `HEAD`, a ref or `packed-refs`, which move the commit, and never the index, which neither side reads |
-  | A file's committed contents | In its repository's git directory `HEAD`, a ref or `packed-refs` |
+  | A file's text or description | `file` |
+  | A folder's listing in the file tree | `folder_names`: a file written in place changes no name, so its listing stays |
+  | A folder's listing with sizes and times, in the attachment picker or a device's folder dialog | `folder_details`; a listing both hold takes this one |
+  | The changes list of a working tree | `worktree` |
+  | A changed file's two sides, the last commit's and the working tree's | `file` and `head` |
+  | A file's committed contents | `head` |
 
-  Any other path in a git directory, such as an object, a log, a lock or
-  `FETCH_HEAD`, concerns no entry. A git directory concerns only its own
-  repository's entries: the changes list's answer names its repository's
-  git directory (`gitDir`), so in a checkout with nested repositories, such
-  as Chromium's, a commit in `src/v8` reads nothing of `src`. For example,
-  the user reads the diff of an unchanged `added.txt` while a build writes
-  tracked files and its scripts run `git status`, which rewrites the index:
-  the changes list is read again, and `added.txt`'s sides never are.
-- **Only what is on screen follows.** An entry is followed while a view
-  shows it on screen: a work panel tab the user switched away from, or a
-  panel that is closed, follows nothing, and what it holds is marked
-  unconfirmed as reports name it, unread. Shown again, it is shown at once
-  and checked once.
+  A change of an entry on screen reads it again; a change of an entry off
+  screen, in a work panel tab the user switched away from or a panel that is
+  closed, is only noted, and the entry is read when it comes on screen. The
+  Host keeps nothing per page and pushes no content: a change says only that
+  the answer kept may be out of date, and the answer read is always the
+  Host's whole truth.
+- **Whether an entry is current is worked out from numbers, never stored.**
+  Each answer carries the Host's number taken before it read, and each
+  subscription its `since` and the `at` of its last change
+  ([Numbers](../execution/runner.md#watching-files)). An entry is current when
+  its answer has the Host's present epoch, and each of its subscriptions is
+  live, started at or before the answer's number, changed last at or before
+  it, and within its lease as the page counts it
+  ([File watch](../product/web-api.md#file-watch)). For example, an answer read
+  at 40 and a change at 41 make the entry out of date, whichever reached the
+  page first; an answer read at 41 already holds a change at 41, and nothing
+  is read again. Showing a current entry asks nothing.
 - **Reading again costs little, and an unchanged answer changes nothing.**
-  A file text, the changes list and a changed file's sides are read again
-  with the version the service holds (`If-None-Match`), and one that has not
-  changed answers that it has not, without its content; the view then keeps
-  what it shows untouched. The changes list is read again at most once a
-  second, and a folder's listing too, as an editor's source control view and
-  Finder refresh while a build writes files: each changes list is a status
-  over the whole repository, which a large one cannot answer many times a
-  second. A report within that second is read with the ones after it when
-  the second ends, so the last is never dropped. Nothing is read on a timer
-  of its own: every read answers a report, a view that comes on screen, or
-  the user's Refresh.
-- **Unconfirmed entries are shown, then checked.** An entry read while no
-  watch covered it, or once the watch said it lost reports, or across a lost
-  connection to the Host or a watch stream that reconnected, may be out of
-  date without a report saying so. Showing it shows it at once and reads it
-  again in the background; an answer that differs replaces it in place.
-  Reads of one thing share one request, whichever view's route it took.
-- **A Host that cannot watch**, past an inotify limit or on a file system that
-  reports nothing, is a fact the watch says. The view then says quietly that
-  it shows files as they were last read and offers Refresh, and every entry
-  stays unconfirmed, so each showing checks it.
+  A file text, a listing, the changes list and a changed file's sides are
+  read again with the version the service holds (`If-None-Match`), and one
+  that has not changed answers that it has not, without its content; the
+  view then keeps what it shows untouched. The changes list is read again at
+  most once a second, and a folder's listing too, as an editor's source
+  control view and Finder refresh while a build writes files: each changes
+  list is a status over the whole repository, which a large one cannot answer
+  many times a second. A change within that second is read with the ones after
+  it when the second ends, so the last is never dropped. Nothing is read on a
+  timer of its own: every read answers a change, a view that comes on screen,
+  or the user's Refresh.
+- **Out-of-date entries are shown, then checked.** An entry that is not
+  current, after a change, a lapsed lease, a new epoch or a watch stream that
+  reconnected, shows at once and is read again in the background; an answer
+  that differs replaces it in place. Reads of one thing share one request,
+  whichever view's route it took.
+- **Leases.** The page renews every subscription its cache still holds in one
+  message every 3 minutes; the lease runs 10 minutes, which outlasts the
+  minute a background tab's timers may be held. A subscription whose lease
+  the page counts as over makes its entry out of date, and the page subscribes
+  again while the entry is kept. One that is refused, past the page's 4,096
+  subscriptions or 64 outside the working tree, leaves its entry out of date,
+  checked whenever it is shown.
+- **A Host that cannot watch** a subject, past an inotify limit or on a file
+  system that reports nothing, says so for that subscription alone. A view
+  whose entry has no live subscription says quietly that it shows the file as
+  it was last read and offers Refresh, and checks it each time it is shown;
+  every other entry stays as it is.
 - **Replacing in place.** The view keeps its scroll, selection and folded
   rows; a text view shows the new text as an editor reloads a file it has not
   changed. An answer that the file or folder is gone shows that, as a first
@@ -408,9 +421,8 @@ without a loading state.
   could not refresh, with Retry.
 - **The page's own writes** edit the listing they change at once, without
   listing it: an upload adds the entry with the name and size it sent, a new
-  folder adds itself, a deletion removes its entry. The watch's report then
-  lists the folder once. A listing with no watch, as in a device's folder
-  dialog, so still shows what the page just did.
+  folder adds itself, a deletion removes its entry. The subscription's change
+  then reads the folder once.
 
 ## The plugin kit
 

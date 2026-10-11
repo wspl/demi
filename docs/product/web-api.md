@@ -1549,50 +1549,72 @@ not have answers 404, and a file over 8 MiB answers 413 `file_too_large`,
 since git's copy is decoded whole before it is sent
 ([Runner](../execution/runner.md#working-tree)).
 
+Every answer of these routes that reads what a subscription covers, a
+listing, a file's text, the changes list, a changed file's sides and the
+committed contents, carries the Host's number taken before the read, as
+`X-Demi-Read-At: <epoch>.<number>`, in a 304 as much as a 200; a direct
+channel's answer carries the same
+([Direct channel](../execution/direct-channel.md)). The page decides from it
+whether what it keeps is current
+([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)).
+A binary file and one over the text limit are answers like any other, with
+their own ETag and number: 415 `not_text` and 413 `file_too_large` carry
+both.
+
 The page reads the list and a file's sides again only when the
-[file watch](#file-watch) reports a path they depend on, when a view showing
-them comes on screen, and on its Refresh control, as
+[file watch](#file-watch) reports a subscription they depend on changed, when
+a view showing them comes on screen, and on its Refresh control, as
 [What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)
 says. It never polls.
 
 ### File watch
 
-`WS /api/conversations/:id/fs/watch` carries the Host's reports of what
-changed in the conversation's files to a page that shows them. The page holds
-one while a component shows the conversation's files, and closes it when none
-does. The upgrade checks the session cookie and the `Origin` header as the
-browser stream does, and is admitted through the conversation's host access
-without waking a stopped Cloud.
+`WS /api/conversations/:id/fs/watch` carries the page's subscriptions to
+what it keeps of the conversation's Host files, and the Host's word that one
+of them changed ([Watching files](../execution/runner.md#watching-files)). The
+page holds one while it keeps any such entry, whether or not a view shows it
+([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)).
+The upgrade checks the session cookie and the `Origin` header as the browser
+stream does, and is admitted through the conversation's host access without
+waking a stopped Cloud. A device's folder dialog subscribes the same way on
+`WS /api/devices/:deviceId/fs/watch`, through device access
+([Every way to a Host](../execution/sessions-and-targets.md#every-way-to-a-host)).
 
-The backend watches the conversation's working tree on the Host for it, and,
-non-recursively, each folder or file outside that tree the page names, up to
-64 ([Watching files](../execution/runner.md#watching-files)). Pages that watch
-the same Host paths share one watch on the Host. The page sends JSON text
+The page names each subscription by a key of its own and sends JSON text
 messages:
 
 | Message | Carries |
 | --- | --- |
-| `paths` | `paths`, the folders and files outside the working tree the page shows now; each message replaces the last |
+| `subscribe` | `subscriptions`, each `{ key, kind, path }`, `kind` one of `file`, `folder_names`, `folder_details`, `worktree`, `head`, as the runner's kinds |
+| `unsubscribe` | `keys`, the subscriptions the page no longer holds, as when an entry leaves its cache |
+| `renew` | `keys`, every subscription the page still holds, once every 3 minutes |
 
 The backend sends:
 
 | Message | Carries | Sent when |
 | --- | --- | --- |
-| `state` | `state`: `live`, `lost`, `unavailable` or `offline`, and for `unavailable` the Host's `reason` | `live` once the Host's watches run, so what is read from then on is covered, and again once the watches of each `paths` message run, so the page trusts a path outside the working tree only after the `live` that answers the message naming it; `lost` when a watch lost reports, so nothing read before is confirmed, followed by `live` again; `unavailable` when the Host cannot watch, after which the socket sends no other state; `offline` while the Host is out of reach or a stopped Cloud |
-| `changed` | `paths`, absolute paths on the Host that changed; `entries`, those of them that came, went or were renamed, so a folder's listing reads again only for them; and `ignored`, those git ignores in the working tree's repository | The Host reports them, at most every 100 ms, a path once per message. More than 1,000 paths at once come as `lost`. An ignored path, such as a build output or a log a process appends to, changes what the File view shows but not the working tree's changes, as VS Code's Source Control ignores it |
+| `live` | `key`, `since` and `epoch` | The Host's watch behind the subscription runs ([Numbers](../execution/runner.md#watching-files)) |
+| `changed` | `changes`, each `[key, at]` | The Host reported them, at most every 100 ms, each key once per message |
+| `unavailable` | `key` and the Host's `reason` | The Host cannot watch it; the subscription is over |
+| `refused` | `key` and `reason`, `limit` | The page holds 4,096 subscriptions, or 64 outside the conversation's working tree |
+| `renewed` | `keys` | A `renew` reached the backend; the page counts each lease from when it sent the `renew` this answers |
+| `offline` | Nothing | The Host is out of reach or a stopped Cloud; no subscription is live until the next `live` |
 | `heartbeat` | Nothing | 30 seconds pass without another message, so the page tells a quiet watch from a dead one ([Liveness and reconnection](web-application.md#liveness-and-reconnection)) |
+
+Pages that subscribe to the same subject share one subscription on the Host,
+which the backend renews while any page still renews it and ends when the last
+one stops. A lease runs 10 minutes: the backend counts it from when a `renew`
+arrives, the page from when it sent it, so the page always believes a lease
+over first, and never trusts a subscription the backend has already let go.
 
 The backend closes the socket with the user streams' codes: 1011
 `host_unreachable` when the Host became unreachable, 4000
 `conversation_changed` when an archive, a target or directory change, or a
-detach ended the watch, and 1003 `invalid_message` for a message the page
-should not have sent.
-
-A watch that ends, by a closed socket, a lost connection to the Host or an
-archive, a target change or a detach, ends with the socket; the page opens a
-new one after its [reconnect waits](web-application.md#liveness-and-reconnection),
-and treats what it read before as unconfirmed until `live` arrives again.
-
+detach ended the subscriptions, and 1003 `invalid_message` for a message the
+page should not have sent. Every subscription ends with the socket; the page
+opens a new one after its
+[reconnect waits](web-application.md#liveness-and-reconnection) and
+subscribes again to what it keeps.
 
 ## Direct channel
 

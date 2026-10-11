@@ -385,8 +385,9 @@ The list never contains command reports or agent messages.
 reader and `pending_steers` events. It removes an entry once a `steer` block
 with the same id appears in the transcript; equal text does not make two
 steers the same. Closing or replacing the client's session clears the list.
-`cancelPendingSteer(id)` sends the request and returns; the caller watches the
-list and the transcript for the result.
+`cancelPendingSteer(id)` and `dequeueMessage(id)` resolve with the session's
+`remove_result`. A request that reaches no session, one the backend could not
+open, is answered `gone_on`, since nothing held it.
 
 A client can reconnect to a running session without losing a pending steer.
 Suppose the session has accepted steer S1 but has not written it yet, and a new
@@ -1612,7 +1613,14 @@ Renderers read them directly; there is no separate render model.
 A renderer uses the `tool_call` fields as [Transcript](#transcript) defines
 them: `toolName` selects the rendering, `input` is JSON text the renderer
 parses, `status` and `output` give the result, and `view` enriches the display
-with the command's own output and status.
+with the command's own output and status. A shell call's `view` also holds
+the lists the conversation shows of changed files, which the backend computes
+as it stores the block and never changes: `files`, the call's own; `runFiles`,
+its run's up to it; `requestFiles`, its request's up to it
+([What the conversation shows](../execution/edit-tracking.md#what-the-conversation-shows)).
+A page shows the latest call's lists and counts nothing itself. In light form,
+only the latest call of each run carries `runFiles`, and only the latest of
+each request `requestFiles`, since a page uses no other.
 
 A block the page read from a page of the transcript is in its light form,
 without what only its open row shows ([Light form](../product/web-api.md#light-form)).
@@ -1681,6 +1689,12 @@ thinking between. While it works, one row shows the newest step, each new one
 rolling over the one before; once the answer comes, the row reads *Ran 5
 commands*, and a click opens it to every step.
 
+- Which blocks make a run the backend decides, once: each block of a run
+  carries `run`, the id of the run's first block, set as the block is
+  stored, so a page groups by it and judges nothing; a run's start depends
+  only on the blocks before it, so `run` never changes. The calls being
+  written, which are not blocks, join the run at the transcript's end on the
+  page.
 - A step is a `thinking` block, a `tool_call` block, a call being written
   ([Calls being written](#calls-being-written)), a command's notice (a
   `wakeup` that shows, [Command reports](#command-reports)), or an agent's
