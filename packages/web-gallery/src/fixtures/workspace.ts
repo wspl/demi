@@ -24,6 +24,73 @@ export const WORKSPACE_ROOT = '/Users/alex/Projects/demi'
 
 const at = new Date(Date.UTC(2026, 8, 12, 9, 30)).toISOString()
 
+/**
+ * A Rust file and a Bash script that a reply quotes whole, so the gallery
+ * shows the same code in a message and in the File view (`file-previews.md`
+ * § Code).
+ */
+export const QUOTED_CODE = {
+  rust: {
+    path: 'crates/cli/src/main.rs',
+    text: `use std::env;
+use std::process::ExitCode;
+
+/// The port the backend listens on unless \`DEMI_PORT\` names another.
+const DEFAULT_PORT: u16 = 3300;
+
+#[derive(Debug)]
+struct Config {
+    port: u16,
+    verbose: bool,
+}
+
+fn config() -> Result<Config, String> {
+    let port = match env::var("DEMI_PORT") {
+        Ok(value) => value.parse().map_err(|_| format!("not a port: {value}"))?,
+        Err(_) => DEFAULT_PORT,
+    };
+    Ok(Config { port, verbose: env::args().any(|arg| arg == "--verbose") })
+}
+
+fn main() -> ExitCode {
+    match config() {
+        Ok(config) => {
+            println!("listening on 127.0.0.1:{}", config.port);
+            ExitCode::SUCCESS
+        }
+        Err(message) => {
+            eprintln!("demi: {message}");
+            ExitCode::from(2)
+        }
+    }
+}
+`,
+  },
+  bash: {
+    path: 'scripts/dev.sh',
+    text: `#!/usr/bin/env bash
+# Starts the backend and the web front end, and stops both on Ctrl-C.
+set -euo pipefail
+
+port="\${DEMI_PORT:-3300}"
+cd "$(dirname "$0")/.."
+
+cleanup() {
+  kill "$backend" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+cargo run --bin demi -- --port "$port" &
+backend=$!
+for attempt in {1..30}; do
+  curl -sf "http://127.0.0.1:$port/health" > /dev/null && break
+  sleep 1
+done
+bun run web:dev
+`,
+  },
+} as const
+
 /** Written without a final newline, as `printf` writes one. */
 const robotsTxt = 'User-agent: *\nDisallow: /admin'
 
@@ -295,7 +362,16 @@ function tree(): MemoryDirectory {
         'package.json': stub('packages/web-ui/package.json'),
       }),
     }),
-    scripts: dir(files('scripts', ['check-versions.ts', 'dev.sh', 'release.ts'])),
+    crates: dir({
+      cli: dir({
+        src: dir({ 'main.rs': textFile(QUOTED_CODE.rust.text, at) }),
+        'Cargo.toml': stub('crates/cli/Cargo.toml'),
+      }),
+    }),
+    scripts: dir({
+      ...files('scripts', ['check-versions.ts', 'release.ts']),
+      'dev.sh': textFile(QUOTED_CODE.bash.text, at),
+    }),
     src: dir({
       auth: dir({
         'cookie.ts': textFile(cookieTs, at),

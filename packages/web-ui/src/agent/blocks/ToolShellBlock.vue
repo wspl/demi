@@ -15,7 +15,7 @@ import { useLiveCalls } from '../live-calls'
 import { shellRowEnd, shellRowRunning } from '../terminals'
 import { shellTitle } from '../tool-rendering'
 import { toolMedia } from '../tool-media'
-import { codeStyles, useMarkdownRenderVersion } from '../../markdown/highlight'
+import { codeRuns, codeTextColor, useMarkdownRenderVersion } from '../../markdown/highlight'
 
 const props = defineProps<{
   block: ToolCallBlock
@@ -26,10 +26,14 @@ const props = defineProps<{
 
 const command = computed(() => (props.input['script'] as string) ?? '')
 const renderVersion = useMarkdownRenderVersion()
-/** The script highlighted as Bash, in the colors the conversation's code blocks use, once the highlighter is there and again in each mode. */
-const commandStyles = computed(() => {
+/**
+ * The script highlighted as Bash, in the colors all code shows in
+ * (`file-previews.md` § Code): its runs once Bash's parser is there, and its
+ * text color, again in each mode.
+ */
+const commandColors = computed(() => {
   void renderVersion.value
-  return codeStyles(command.value, 'bash')
+  return { runs: codeRuns(command.value, 'bash'), text: codeTextColor() }
 })
 const title = computed(() => shellTitle(props.input))
 const media = computed(() => toolMedia(props.block.output, title.value))
@@ -119,10 +123,11 @@ function toggleCommand(): void {
         --><CodeText
           ref="commandText"
           :text="command"
-          :styles="commandStyles"
+          :runs="commandColors.runs"
           class="min-w-0"
+          :style="{ color: commandColors.text }"
           :class="[
-            commandOverflows ? 'select-text transition-colors duration-200 ease-out hover:text-fg-body' : 'select-all',
+            commandOverflows ? 'select-text' : 'select-all',
             commandOverflows && commandWhole ? '' : 'line-clamp-2',
           ]"
           :role="commandOverflows ? 'button' : undefined"

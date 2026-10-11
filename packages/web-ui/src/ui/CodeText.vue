@@ -11,14 +11,14 @@ import { useResizeObserver } from '@vueuse/core'
  * The text keeps its spaces and line breaks and copies exactly as given.
  *
  * The caller lays the element out as a block, such as a flex item: the
- * line's width decides which words are longer than a line. `styles` colors
+ * line's width decides which words are longer than a line. `runs` colors
  * runs of the text, as a highlighter gives them, without changing where it
  * wraps.
  */
 const props = defineProps<{
   text: string
-  /** CSS for runs of the text, by where each starts and ends in it; the rest keeps the element's color. */
-  styles?: readonly { from: number; to: number; style: string }[] | null
+  /** CSS classes for runs of the text, by where each starts and ends in it; the rest keeps the element's color. */
+  runs?: readonly { from: number; to: number; classes: string }[]
 }>()
 
 const emit = defineEmits<{
@@ -41,10 +41,10 @@ useResizeObserver(element, (entries) => {
   lineWidth.value = entry.contentRect.width
 })
 
-/** A part of a piece in one style: the CSS of the run it falls in, or none. */
+/** A part of a piece in one style: the classes of the run it falls in, or none. */
 interface Segment {
   text: string
-  style: string | undefined
+  classes: string | undefined
 }
 
 interface Piece {
@@ -56,21 +56,21 @@ interface Piece {
   segments: Segment[]
 }
 
-/** The text from `from` to `to`, cut where the styled runs start and end. */
+/** The text from `from` to `to`, cut where the colored runs start and end. */
 function segmentsOf(from: number, to: number): Segment[] {
   const segments: Segment[] = []
   let at = from
-  for (const run of props.styles ?? []) {
+  for (const run of props.runs ?? []) {
     if (run.to <= at || run.from >= to)
       continue
     if (run.from > at)
-      segments.push({ text: props.text.slice(at, run.from), style: undefined })
+      segments.push({ text: props.text.slice(at, run.from), classes: undefined })
     const end = Math.min(run.to, to)
-    segments.push({ text: props.text.slice(Math.max(run.from, at), end), style: run.style })
+    segments.push({ text: props.text.slice(Math.max(run.from, at), end), classes: run.classes })
     at = end
   }
   if (at < to)
-    segments.push({ text: props.text.slice(at, to), style: undefined })
+    segments.push({ text: props.text.slice(at, to), classes: undefined })
   return segments
 }
 
@@ -117,5 +117,5 @@ function textWidth(text: string, font: string): number {
 </script>
 
 <template>
-  <code ref="element" class="whitespace-pre-wrap"><template v-for="(piece, index) in pieces" :key="index"><span v-if="piece.word" :class="piece.long ? 'terminal-wrap' : 'whitespace-nowrap'"><template v-for="(segment, part) in piece.segments" :key="part"><span v-if="segment.style" :style="segment.style">{{ segment.text }}</span><template v-else>{{ segment.text }}</template></template></span><template v-else>{{ piece.text }}</template></template></code>
+  <code ref="element" class="whitespace-pre-wrap"><template v-for="(piece, index) in pieces" :key="index"><span v-if="piece.word" :class="piece.long ? 'terminal-wrap' : 'whitespace-nowrap'"><template v-for="(segment, part) in piece.segments" :key="part"><span v-if="segment.classes" :class="segment.classes">{{ segment.text }}</span><template v-else>{{ segment.text }}</template></template></span><template v-else>{{ piece.text }}</template></template></code>
 </template>

@@ -1,10 +1,10 @@
-import { Compartment } from '@codemirror/state'
+import { Compartment, type Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
-import { tags } from '@lezer/highlight'
+import { syntaxHighlighting } from '@codemirror/language'
 import { appThemeStore } from '../../theme/appTheme'
 import { INTERACTED_CLASS } from '../activeLineVisibility'
 import { codeTheme, type CodeThemePalette } from '../../theme/codeTheme'
+import { codeHighlightStyle } from './highlightStyle'
 
 function buildEditorTheme(p: CodeThemePalette, isDark: boolean) {
   return EditorView.theme({
@@ -14,15 +14,16 @@ function buildEditorTheme(p: CodeThemePalette, isDark: boolean) {
       border: 'none',
     },
     '&.cm-editor.cm-focused': { outline: 'none' },
-    // Both code views are viewers: no caret, while the editor keeps the mouse
-    // and the keyboard, so a selection starts anywhere in it (the gutter, past
-    // a line's end, below the last line) and Mod-f finds.
+    // Both code views are read-only, but read with the keyboard as well as
+    // the mouse (`file-previews.md` § Code): focused, they blink a caret in
+    // the theme's color, which the arrows move and Shift extends a selection
+    // from; without the focus the editor draws none.
     '.cm-content': {
-      caretColor: 'transparent',
+      caretColor: p.caret,
       fontFamily: 'inherit',
       padding: '12px 0 0',
     },
-    '.cm-cursorLayer': { display: 'none' },
+    '.cm-cursor, .cm-dropCursor': { borderLeftColor: p.caret },
     // The app's code font (`styles/base.css`) in place of CodeMirror's bare
     // `monospace`, which leaves Arabic to a font that does not join it.
     '.cm-scroller': {
@@ -100,66 +101,30 @@ function buildEditorTheme(p: CodeThemePalette, isDark: boolean) {
   }, { dark: isDark })
 }
 
-function buildHighlightStyle(p: CodeThemePalette) {
-  return HighlightStyle.define([
-    { tag: tags.keyword, color: p.keyword },
-    { tag: [tags.controlKeyword, tags.moduleKeyword, tags.operatorKeyword], color: p.controlKeyword },
-    { tag: tags.variableName, color: p.variable },
-    { tag: tags.function(tags.variableName), color: p.function },
-    { tag: tags.definition(tags.variableName), color: p.variable },
-    { tag: tags.definition(tags.function(tags.variableName)), color: p.function },
-    { tag: [tags.propertyName], color: p.variable },
-    { tag: tags.function(tags.propertyName), color: p.function },
-    { tag: [tags.typeName, tags.className, tags.namespace], color: p.type },
-    { tag: tags.bool, color: p.keyword },
-    { tag: [tags.number, tags.inserted], color: p.number },
-    { tag: [tags.string, tags.special(tags.string)], color: p.string },
-    { tag: tags.regexp, color: p.regexp },
-    { tag: tags.comment, color: p.comment },
-    { tag: tags.operator, color: p.operator },
-    { tag: tags.punctuation, color: p.punctuation },
-    { tag: tags.separator, color: p.punctuation },
-    { tag: tags.angleBracket, color: p.punctuation },
-    { tag: tags.tagName, color: p.tag },
-    { tag: tags.attributeName, color: p.attribute },
-    { tag: tags.attributeValue, color: p.string },
-    { tag: [tags.atom, tags.constant(tags.variableName)], color: p.constant },
-    { tag: tags.meta, color: p.keyword },
-    { tag: tags.invalid, color: p.invalid },
-    { tag: tags.link, color: p.constant, textDecoration: 'underline' },
-    { tag: tags.heading, fontWeight: 'bold', color: p.keyword },
-    { tag: tags.strong, fontWeight: 'bold' },
-    { tag: tags.emphasis, fontStyle: 'italic' },
-  ])
-}
-
 const themeCompartment = new Compartment()
 const highlightCompartment = new Compartment()
 const trackedViews = new Map<EditorView, () => void>()
 
-/** The palette for the page's mode, from the app's theme. */
-function currentPalette(): { palette: CodeThemePalette; isDark: boolean } {
-  const isDark = appThemeStore.state.mode === 'dark'
-  return { palette: codeTheme[isDark ? 'dark' : 'light'].palette, isDark }
+/** The editor's look and its syntax colors in the page's mode. */
+function currentTheme(): { look: Extension; colors: Extension } {
+  const mode = appThemeStore.state.mode
+  return {
+    look: buildEditorTheme(codeTheme[mode].palette, mode === 'dark'),
+    colors: syntaxHighlighting(codeHighlightStyle(mode)),
+  }
 }
 
 function reconfigureView(view: EditorView) {
-  const { palette, isDark } = currentPalette()
+  const { look, colors } = currentTheme()
   view.dispatch({
-    effects: [
-      themeCompartment.reconfigure(buildEditorTheme(palette, isDark)),
-      highlightCompartment.reconfigure(syntaxHighlighting(buildHighlightStyle(palette))),
-    ],
+    effects: [themeCompartment.reconfigure(look), highlightCompartment.reconfigure(colors)],
   })
 }
 
 /** The editor's look and its syntax colors, in the page's mode. */
-export function editorTheme() {
-  const { palette, isDark } = currentPalette()
-  return [
-    themeCompartment.of(buildEditorTheme(palette, isDark)),
-    highlightCompartment.of(syntaxHighlighting(buildHighlightStyle(palette))),
-  ]
+export function editorTheme(): Extension {
+  const { look, colors } = currentTheme()
+  return [themeCompartment.of(look), highlightCompartment.of(colors)]
 }
 
 /** Follows the page's mode until `untrackEditorView`. */
