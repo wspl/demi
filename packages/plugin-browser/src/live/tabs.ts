@@ -141,6 +141,9 @@ export function reasonSentence(reason: PanelReason): SentenceText {
 /** What a failure with no reason says when no answer of the backend's came, as for a network failure or a timeout. */
 export const NO_ANSWER: SentenceText = 'The server didn’t answer.'
 
+/** What a failure with no reason says when the backend's answer could not be read. */
+export const UNREADABLE_ANSWER: SentenceText = 'The server’s answer could not be read.'
+
 /** What a failure with no reason says when the backend answered with `status`, such as `500 Internal Server Error`. */
 export function serverRefused(status: string): SentenceText {
   return `The server couldn’t do that: ${status}.`
