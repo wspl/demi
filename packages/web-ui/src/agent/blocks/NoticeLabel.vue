@@ -1,11 +1,17 @@
 <script setup lang="ts">
+import { KEEPS_WINDOWS } from '../../ui/window-stack'
+
 /**
  * What a notice row says (`runtime.md` § Command reports, `subagents.md`
  * § Product rendering): what happened, then what it happened to by its
  * title, the notice's object, underlined with dots; or, for a title that
  * can be the subject, such as *Main agent*, the title first. A click on the
  * title brings into view where it came from, as a control of its own; a
- * title nothing can show is plain text. On a narrow row the title gives way
+ * title nothing can show is plain text. Where it came from may lie in a
+ * child's transcript, which the Agents window opens on or switches to, so
+ * the title is that window's control, as its chip is: a press on it is not
+ * one outside the session's windows (`KEEPS_WINDOWS`, `product.md` § the
+ * dock's chips). On a narrow row the title gives way
  * first, down to a few characters, and then the words, each ending in an
  * ellipsis.
  */
@@ -33,6 +39,7 @@ defineProps<{
       v-if="go"
       type="button"
       class="notice-title cursor-pointer text-fg-muted underline decoration-dotted decoration-fg-faint underline-offset-3 transition-colors duration-200 ease-out hover:text-fg-body hover:decoration-current"
+      v-bind="{ [KEEPS_WINDOWS]: '' }"
       @click.stop="go"
     >{{ title }}</button>
     <span v-else class="notice-title text-fg-muted">{{ title }}</span>

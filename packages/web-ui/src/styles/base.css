@@ -1074,20 +1074,26 @@ html[data-theme="light"] .file-pill {
   text-decoration-color: currentColor;
 }
 
+/* A link that starts with an icon, a file's or an agent's mark
+   (`markdown/render.ts`), is a small object in the sentence, as a mention is
+   in Slack or Notion: it keeps 0.2em of space on each side, inside its hover
+   fill and outside its underline, which stays under the text, so the word
+   before its icon and the punctuation after its name never touch it. */
+.markdown-body .icon-link {
+  padding-inline: 0.2em;
+  border-radius: 0.3em;
+}
+
 /* A link to an agent opens a window rather than a page, so it is a button. It
    reads as part of the sentence, as a mention in Slack or Linear does: the
    prose's color at medium weight over a dotted underline in a line color, and
-   the hover fill behind the mark and the text. The fill reaches a little past
-   them on each side; the margin gives that back, so the text stays where it
-   would stand without it. The dot on the mark is cut out of the fill the link
-   sits on, the message's surface or the hovered fill. */
+   the hover fill behind the mark and the text. The dot on the mark is cut out
+   of the fill the link sits on, the message's surface or the hovered fill. */
 .markdown-body .agent-link {
   --fill-color: var(--surface-current);
   display: inline;
-  margin: 0 -0.2em;
-  padding: 0 0.2em;
+  margin: 0;
   border: 0;
-  border-radius: 0.3em;
   background: none;
   font: inherit;
   font-weight: 500;
@@ -1409,27 +1415,40 @@ html[data-theme="light"] .file-pill {
   text-decoration: line-through;
 }
 
-/* A message's image, and an attachment's video's first frame, fit the
-   message and 60% of the conversation's visible height, which the transcript
-   sets; outside one, the window's. */
+/* A message's image, and an attachment's video's first frame, is a picture
+   in the message, not the message: scaled down, its proportions kept, to at
+   most 480 × 320 and the message's width, never enlarged. */
 .markdown-body :is(img, video) {
-  max-width: 100%;
-  max-height: calc(var(--conversation-visible-height, 100svh) * 0.6);
+  max-width: min(100%, 480px);
+  max-height: 320px;
   border-radius: 0.375rem;
+}
+
+/* A lone medium and a run of them stand on lines of their own, 12px from the
+   text above and below, even where the Markdown put them in a paragraph of
+   words (`markdown/render.ts`). The picture sits on the line's top, so the
+   line adds no space under it. */
+.markdown-body :where(.media-lone, .media-run) {
+  margin-block: 12px;
+}
+
+.markdown-body .media-lone img {
+  vertical-align: top;
 }
 
 /* An attachment's video shows its first frame with a play mark, and a click
    plays it in the viewer (`markdown/render.ts`). A lone one is as large as
    its frame, within a lone image's bounds: its proportions and its width
-   come from its record, or from its first frame, and are 16:9 and the
-   message's width until either says. */
+   come from its record, or from its first frame, and are 16:9 at 480px wide
+   until either says. */
 .markdown-body .message-video {
   position: relative;
   display: block;
   width: min(
     100%,
-    var(--media-width, 100%),
-    calc(var(--conversation-visible-height, 100svh) * 0.6 * var(--media-ratio, 16 / 9))
+    480px,
+    var(--media-width, 480px),
+    calc(320px * var(--media-ratio, 16 / 9))
   );
   aspect-ratio: var(--media-ratio, 16 / 9);
 }
@@ -1589,7 +1608,9 @@ html[data-theme="light"] .file-pill {
   text-decoration: none;
 }
 
+/* A document's image is scaled down to the document's width alone; a tall one makes it longer, as on GitHub. */
 .markdown-document img {
+  max-width: 100%;
   max-height: none;
   border-radius: 0;
 }
