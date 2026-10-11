@@ -109,10 +109,35 @@ watch(
 )
 
 onBeforeUnmount(clearRollTimer)
+
+const root = ref<HTMLElement>()
+
+/**
+ * How wide the face is when nothing cuts it: its width now and what each
+ * text cut at its end hides. A copy of the face, the outgoing face of a roll
+ * or a shimmer's band, is inert and does not count. For a row that lays out
+ * more after the face, such as its pictures, and gives the face only the
+ * width it needs.
+ */
+function naturalWidth(): number {
+  const element = root.value
+  if (!element)
+    return 0
+  let hidden = 0
+  for (const part of element.querySelectorAll<HTMLElement>('*')) {
+    if (part.closest('[inert]') || getComputedStyle(part).textOverflow !== 'ellipsis')
+      continue
+    hidden += Math.max(0, part.scrollWidth - part.clientWidth)
+  }
+  return element.getBoundingClientRect().width + hidden
+}
+
+defineExpose({ root, naturalWidth })
 </script>
 
 <template>
   <div
+    ref="root"
     class="chrome-roll flex min-w-0 items-center gap-2"
     :style="{ '--chrome-roll-ms': `${CHROME_ROLL_MS}ms`, '--chrome-roll-easing': CHROME_ROLL_EASING }"
   >
@@ -126,6 +151,7 @@ onBeforeUnmount(clearRollTimer)
             v-if="outgoing"
             ref="outgoingRef"
             class="chrome-roll-face"
+            inert
           />
           <div ref="faceRef" class="chrome-roll-face">
             <slot />
@@ -139,6 +165,7 @@ onBeforeUnmount(clearRollTimer)
           v-if="outgoing"
           ref="outgoingRef"
           class="chrome-roll-face"
+          inert
         />
         <div class="chrome-roll-face">
           <div ref="faceRef" class="flex h-7 items-center gap-2">

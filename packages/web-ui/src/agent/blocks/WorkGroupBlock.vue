@@ -13,14 +13,14 @@ import CommandReportBlock from './CommandReportBlock.vue'
 import AgentReceiptBlock from './AgentReceiptBlock.vue'
 import NoticeStepFace from './NoticeStepFace.vue'
 import FileChangePills from './FileChangePills.vue'
-import ToolMedia from './ToolMedia.vue'
+import GoneMediaLines from './GoneMediaLines.vue'
 import { stepIcon } from './tool-row-icon'
 import { toolCallTitle } from '../block-helpers'
 import { thinkingFaceLabel } from '../thinking-label'
 import { isNoticeStep, stepKey, workRunning, workSummary, type NoticeStep, type WorkGroupBlock, type WorkStep } from '../work-groups'
 import { useEditSelection, useTranscript } from '../edit-selection'
 import { changeFile, pillSelection, runFiles } from '../../files/request-changes'
-import { foldedMedia } from '../tool-media'
+import { foldedMedia, splitMedia } from '../tool-media'
 import { useElapsedTime } from '../../composables/useElapsedTime'
 import BlockScope from './BlockScope.vue'
 import { provideBlockScope } from '../whole-blocks'
@@ -38,8 +38,9 @@ import { provideBlockScope } from '../whole-blocks'
  * own notice row likewise. Opening the row shows every step as its own row,
  * a command's notice and an agent's receipt among them; a step that joins
  * while it is open enters as a row joining the transcript does. Folded, the
- * media the calls and notices returned show under it, and below them the
- * files the steps changed; open, each under its own row.
+ * pictures the calls and notices returned stand in its line, and the files
+ * the steps changed under it; open, each with its own row. Open while it
+ * runs, its title says for how long once that is past 3 seconds.
  */
 const props = defineProps<{ group: WorkGroupBlock }>()
 const isOpen = defineModel<boolean>('open', { default: false })
@@ -77,6 +78,16 @@ const loneElapsed = useElapsedTime(
   },
 )
 const loneText = computed(() => lone.value?.text.trim() ?? '')
+/** The run is open while it runs: its row stands as a stack and says what runs, and for how long. */
+const stackRunning = computed(() => props.group.live && isOpen.value && !lone.value)
+/** How long the run has lasted, from its first step's start. */
+const runElapsed = useElapsedTime(
+  () => {
+    const first = props.group.steps.find((step) => step.type !== 'pending_call')
+    return first ? Date.parse(first.createdAt) : Number.NaN
+  },
+  () => stackRunning.value,
+)
 
 function stepTitle(step: Exclude<WorkStep, NoticeStep>): string {
   switch (step.type) {
@@ -116,7 +127,7 @@ const face = computed<Face>(() => {
   // change what the row shows, not how far the work got, so the face cuts
   // over at once rather than rolling.
   if (isOpen.value) {
-    return { icon: Layers, iconKey: 'stack', label: workRunning(props.group.steps), notice: null, rollKey: 'running' }
+    return { icon: Layers, iconKey: 'stack', label: workRunning(props.group.steps, runElapsed.value), notice: null, rollKey: 'running' }
   }
   const step = newest.value
   const { icon, key } = stepIcon(step)
@@ -141,7 +152,7 @@ const transcript = useTranscript()
 // ends were not kept is named alone.
 const changed = computed(() => runFiles(calls.value))
 const files = computed(() => changed.value.map(changeFile))
-const media = computed(() => foldedMedia(props.group.steps))
+const media = computed(() => splitMedia(foldedMedia(props.group.steps)))
 
 // A step enters once, as it first appears, the way a row joining the
 // transcript does: one that joins while the row is open slides in; opening
@@ -203,6 +214,7 @@ function pick(path: string, clicks: number): void {
       :icon-key="face.iconKey"
       :cut-key="isOpen && !lone ? 'open' : 'folded'"
       :loading="group.live"
+      :pictures="isOpen ? undefined : media.pictures"
     >
       <template #icon>
         <component :is="face.icon" :size="ICON_PX.in28" />
@@ -240,9 +252,9 @@ function pick(path: string, clicks: number): void {
         </div>
       </template>
     </FunctionalBlock>
-    <!-- The calls' media fold away as the group opens to show each under its own call, so none shows twice. -->
-    <Fold :open="!isOpen && media.length > 0">
-      <ToolMedia :media="media" />
+    <!-- The lines of gone media fold away as the group opens to show each under its own call, so none shows twice. -->
+    <Fold :open="!isOpen && media.gone.length > 0">
+      <GoneMediaLines :lines="media.gone" />
     </Fold>
     <!-- The summed pills fold in as the first file changes, and away as the group opens to show each call's own. -->
     <Fold :open="!isOpen && files.length > 0">

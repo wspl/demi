@@ -5,9 +5,9 @@ import { Bell } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import NoticeRow from './NoticeRow.vue'
 import CommandEndTag from './CommandEndTag.vue'
-import ToolMedia from './ToolMedia.vue'
+import GoneMediaLines from './GoneMediaLines.vue'
 import { reportMark, reportNotice, reportTitle, useCommandRevealer } from '../command-reports'
-import { reportMedia } from '../tool-media'
+import { reportMedia, splitMedia } from '../tool-media'
 import { provideBlockScope } from '../whole-blocks'
 
 /**
@@ -16,7 +16,7 @@ import { provideBlockScope } from '../whole-blocks'
  * command's end never appears without its cause. A report of progress shows
  * nothing; the agent's answer to it says what it learned. The notice names
  * the call that started the command, which a click brings into view. The
- * media an end report carries show under its row, as a call's do
+ * pictures an end report carries stand in its row's line, as a call's do
  * (`file-previews.md` § Media a tool returned).
  */
 const props = defineProps<{
@@ -38,7 +38,7 @@ const rows = computed(() => props.reports.flatMap((report, index) => {
         title: reportTitle(report),
         mark: reportMark(report),
         go: reveal(report.commandId),
-        media: reportMedia(report),
+        media: splitMedia(reportMedia(report)),
       }]
 }))
 </script>
@@ -49,7 +49,7 @@ const rows = computed(() => props.reports.flatMap((report, index) => {
       v-for="(row, index) in rows"
       :key="row.key"
     >
-      <NoticeRow :notice="row.notice" :title="row.title" :go="row.go" :loading="working && index === rows.length - 1">
+      <NoticeRow :notice="row.notice" :title="row.title" :go="row.go" :loading="working && index === rows.length - 1" :pictures="row.media.pictures">
         <template #icon>
           <Bell :size="ICON_PX.in28" />
         </template>
@@ -57,7 +57,7 @@ const rows = computed(() => props.reports.flatMap((report, index) => {
           <CommandEndTag :mark="row.mark" />
         </template>
       </NoticeRow>
-      <ToolMedia :media="row.media" />
+      <GoneMediaLines :lines="row.media.gone" />
     </template>
   </div>
 </template>

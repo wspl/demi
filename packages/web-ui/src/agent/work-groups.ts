@@ -2,6 +2,7 @@ import type { MessageListBlock } from './pending-steers'
 import { upperFirst } from '@demicodes/utils'
 import { parseToolCallInput } from './block-helpers'
 import { reportMark, reportShown } from './command-reports'
+import { runningTime } from './command-end'
 import { receiptRow } from './agent-receipts'
 import { shellStatusLooks, toolRenderKind } from './tool-rendering'
 
@@ -271,13 +272,17 @@ function describeNotices(steps: readonly WorkStep[]): string {
  * What an open group that still runs says it is doing: its steps show under
  * it, so it stands still. A run that starts commands says how many; one
  * that only checks commands or uses other tools says so as its ended row
- * would, in the present; a run of thinking alone is thinking.
+ * would, in the present; a run of thinking alone is thinking. Once the run
+ * has lasted more than 3 seconds, `elapsedMs`, it says for how long,
+ * Running 4 commands for 1m32s, as Thinking for 9s does.
  */
-export function workRunning(steps: readonly WorkStep[]): string {
+export function workRunning(steps: readonly WorkStep[], elapsedMs: number | null = null): string {
   const ran = callGroups(steps).find((group) => group.kind === 'run')?.touched.size ?? 0
-  if (ran > 0)
-    return `Running ${commands(ran)}`
-  return describeCalls(steps, 'running') || describeNotices(steps) || 'Thinking'
+  const what = ran > 0
+    ? `Running ${commands(ran)}`
+    : describeCalls(steps, 'running') || describeNotices(steps) || 'Thinking'
+  const time = runningTime(elapsedMs)
+  return time === null ? what : `${what} for ${time}`
 }
 
 /**

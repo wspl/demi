@@ -10,50 +10,68 @@ export interface PixelSize {
 export type ThumbnailKind = 'image' | 'video'
 
 /**
- * How tall a thumbnail is at most: a tool's image or video and one in a run
- * of a message's images and videos (`file-previews.md` § Media a tool
- * returned). A medium whose size is unknown until it loads keeps a place
- * this tall before it loads and after (`thumbnailPlaceHeight`).
+ * How tall a thumbnail is at most: one in a run of a message's images and
+ * videos (`file-previews.md` § Files named in messages). A medium whose
+ * size is unknown until it loads keeps a place this tall before it loads
+ * and after (`thumbnailPlaceHeight`).
  */
 export const THUMBNAIL_HEIGHT = 80
 
-/** The narrowest and the widest a thumbnail is; beyond them the medium is cropped. */
-const THUMBNAIL_MIN_WIDTH = 64
-const THUMBNAIL_MAX_WIDTH = 200
+/** The bounds of a thumbnail's box: its height at most, and its narrowest and widest, beyond which the medium is cropped. */
+export interface ThumbnailBounds {
+  height: number
+  minWidth: number
+  maxWidth: number
+}
+
+/** A thumbnail in a message's run of pictures: 80 pixels tall, 64 to 200 wide. */
+export const MESSAGE_THUMBNAIL: ThumbnailBounds = { height: THUMBNAIL_HEIGHT, minWidth: 64, maxWidth: 200 }
 
 /**
- * The box of a video's thumbnail while its size is unknown, until its first
- * frame arrives: 16:9, as most recordings are.
+ * A picture in a row's own line, a tool's or a notice's
+ * (`file-previews.md` § Media a tool returned): 20 pixels tall, 16 to 48
+ * wide.
  */
-const UNKNOWN_VIDEO_BOX: PixelSize = { width: Math.round(THUMBNAIL_HEIGHT * 16 / 9), height: THUMBNAIL_HEIGHT }
+export const ROW_PICTURE: ThumbnailBounds = { height: 20, minWidth: 16, maxWidth: 48 }
 
 /**
- * The box a thumbnail of a medium of `natural` size takes (`file-previews.md`
- * § Media a tool returned): 80 pixels tall, as wide as its proportions make
- * it within 64 and 200 pixels. A medium whose proportions fall outside that
- * range fills the box and is cropped (`object-fit: cover`), a tall one to its
- * top and a wide one to its middle. While its size is unknown, an image's
- * box is the narrowest one and a video's is 16:9.
+ * The box a thumbnail of a medium of `natural` size takes within `bounds`
+ * (`file-previews.md` § Media a tool returned): as tall as the bounds, as
+ * wide as its proportions make it within their widths. A medium whose
+ * proportions fall outside that range fills the box and is cropped
+ * (`object-fit: cover`), a tall one to its top and a wide one to its
+ * middle. While its size is unknown, an image's box is the narrowest one
+ * and a video's is 16:9, as most recordings are, until its first frame
+ * arrives.
  *
  * Never enlarged: the box is never taller or wider than the medium itself,
  * so one smaller than the box keeps its own size where it is narrower or
- * shorter. A 50 × 50 icon is 50 × 50, not widened to 64 or raised to 80; a
- * 300 × 40 strip is 200 × 40, cropped to its middle at its own scale.
+ * shorter. In a message's run, a 50 × 50 icon is 50 × 50, not widened to 64
+ * or raised to 80; a 300 × 40 strip is 200 × 40, cropped to its middle at
+ * its own scale.
  */
-export function thumbnailBox(natural: PixelSize | null, kind: ThumbnailKind = 'image'): PixelSize {
-  if (natural === null)
-    return kind === 'video' ? UNKNOWN_VIDEO_BOX : { width: THUMBNAIL_MIN_WIDTH, height: THUMBNAIL_HEIGHT }
-  const scale = Math.min(1, THUMBNAIL_HEIGHT / natural.height)
-  const width = clamp(natural.width * scale, THUMBNAIL_MIN_WIDTH, THUMBNAIL_MAX_WIDTH)
+export function thumbnailBox(
+  natural: PixelSize | null,
+  kind: ThumbnailKind = 'image',
+  bounds: ThumbnailBounds = MESSAGE_THUMBNAIL,
+): PixelSize {
+  if (natural === null) {
+    return kind === 'video'
+      ? { width: Math.round(bounds.height * 16 / 9), height: bounds.height }
+      : { width: bounds.minWidth, height: bounds.height }
+  }
+  const scale = Math.min(1, bounds.height / natural.height)
+  const width = clamp(natural.width * scale, bounds.minWidth, bounds.maxWidth)
   return {
     width: Math.round(Math.min(width, natural.width)),
-    height: Math.round(Math.min(THUMBNAIL_HEIGHT, natural.height)),
+    height: Math.round(Math.min(bounds.height, natural.height)),
   }
 }
 
 /**
- * How tall a thumbnail's place in its row is, a row being as tall as its
- * tallest place (`file-previews.md` § Media a tool returned), given the size
+ * How tall a thumbnail's place in a message's run is, a row of the run
+ * being as tall as its tallest place (`file-previews.md` § Files named in
+ * messages), given the size
  * `declared` known before the medium's bytes arrive, from its reference or
  * its attachment's record: its box's height when that size is known, so four
  * 171 × 40 frames stand in a row 40 pixels tall with no empty band under
