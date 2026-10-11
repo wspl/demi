@@ -1,6 +1,7 @@
 /** Chrome-like tab strip motion: lock the current width, then collapse or grow in flow. */
 
 import { clamp } from '@demicodes/utils'
+import { prefersReducedMotion } from '../ui/stream-reveal'
 
 export const TAB_TRANSITION = 'tabs'
 export const TAB_WIDTH_MS = 200
@@ -154,13 +155,6 @@ export function cutMarkCover(
     return 0
   }
   return Math.ceil(side === 'start' ? cut.right - edge : edge - cut.left)
-}
-
-function prefersReducedMotion(): boolean {
-  return (
-    typeof matchMedia === 'function' &&
-    matchMedia('(prefers-reduced-motion: reduce)').matches
-  )
 }
 
 function clearWidthLock(tab: HTMLElement): void {

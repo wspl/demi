@@ -12,6 +12,7 @@ import { useStreamReveal, type RevealStep } from '@demicodes/web-ui/composables/
 import {
   closeOpenInlineMarkdown,
   holdIncompleteMarkdown,
+  prefersReducedMotion,
   renderedLength,
   startOfLast,
   STREAM_PACE,
@@ -50,19 +51,30 @@ const renderedMarkdown = computed(() => {
   return md.render(visible.value + closeOpenInlineMarkdown(visible.value), { files: files() })
 })
 
+/** How a step's text fades in. */
+const FADE_IN: Keyframe[] = [{ opacity: 0 }, { opacity: 1 }]
+
 /**
  * Gives the text of each step still fading in a span that fades it, from the
- * render's end backwards. A render replaces the spans, so each starts its
- * fade as far in as the step's own has run, and the fade goes on unbroken.
- * A step's extent is its rendered length, counted from the end; code keeps
- * its place in the count but no span, as a code block's text shows at once.
+ * render's end backwards. A step's extent is its rendered length, counted
+ * from the end; code keeps its place in the count but no span, as a code
+ * block's text shows at once.
+ *
+ * Each fade is an animation of the document's timeline that starts when its
+ * step was shown (`performance.now()` and the timeline count from the same
+ * origin), so it goes on unbroken through a render, which replaces the spans,
+ * and through a move of the text in the page, which a CSS animation would
+ * start over: setting up a scroller's bars (`ScrollArea`) appends its
+ * content to it again, and the reply's last lines faded in a second time.
  */
 function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly RevealStep[]): void {
+  if (prefersReducedMotion())
+    return
   const now = performance.now()
   const marks = shownSteps
     .filter((step) => now - step.at < STREAM_PACE.fadeMs && step.start < text.length)
     .toSorted((a, b) => b.start - a.start)
-    .map((step) => ({ fromEnd: renderedLength(text.slice(step.start)), delay: step.at - now }))
+    .map((step) => ({ fromEnd: renderedLength(text.slice(step.start)), at: step.at }))
   if (marks.length === 0)
     return
   let counted = 0
@@ -83,7 +95,7 @@ function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly RevealSte
     let end = content.length
     let left = content.length - (content.match(/\n/g)?.length ?? 0)
     while (left > 0 && mark < marks.length) {
-      const { fromEnd, delay } = marks[mark]!
+      const { fromEnd, at } = marks[mark]!
       const take = Math.min(fromEnd - counted, left)
       const start = startOfLast(content.slice(0, end), take)
       if (take > 0 && !code) {
@@ -97,9 +109,9 @@ function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly RevealSte
           piece.replaceWith(inked)
           inked.append(piece)
         }
+        // The class marks the text still fading in, for whoever looks at the page.
         inked.classList.add('stream-ink')
-        inked.style.animationDuration = `${STREAM_PACE.fadeMs}ms`
-        inked.style.animationDelay = `${delay}ms`
+        inked.animate(FADE_IN, { duration: STREAM_PACE.fadeMs }).startTime = at
       }
       end = start
       left -= take
