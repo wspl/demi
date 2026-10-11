@@ -4,6 +4,12 @@ import AssistantTextBlock from '@demicodes/web-ui/agent/blocks/AssistantTextBloc
 import GalleryReceipts from './GalleryReceipts.vue'
 import { agentLinksMarkdown, gallerySubagents } from '../fixtures/subagents'
 
+/** The reply to show, the four agents' by default; `narrow` sets it in a column as narrow as a phone's. */
+const props = withDefaults(defineProps<{ markdown?: string; narrow?: boolean }>(), {
+  markdown: agentLinksMarkdown,
+  narrow: false,
+})
+
 /**
  * A reply that links the conversation's agents: running, finished, failed,
  * stopped, the main agent, and a number the conversation does not have. A
@@ -27,7 +33,7 @@ function stop(id: string): void {
   <GalleryReceipts :agents="agents" @abort="agents.forEach((agent) => stop(agent.id))" @abort-agent="stop">
     <!-- The reply ends the transcript below the window, as a session's latest reply does, so a link stays in reach while the window is open. -->
     <div class="gallery-frame flex h-[36rem] flex-col justify-end bg-surface py-3">
-      <AssistantTextBlock :content="agentLinksMarkdown" :created-at="createdAt" />
+      <AssistantTextBlock :class="props.narrow ? 'max-w-[22rem]' : ''" :content="props.markdown" :created-at="createdAt" />
     </div>
   </GalleryReceipts>
 </template>

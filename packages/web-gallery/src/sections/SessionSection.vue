@@ -144,7 +144,7 @@ import {
 } from '../fixtures/catalog'
 import { setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
 import { galleryBlobs } from '../fixtures/blobs'
-import { agentReceiptMessages, briefSubagent, gallerySubagents, mainAgentMessage, workSubagent } from '../fixtures/subagents'
+import { agentLinksWrapMarkdown, agentReceiptMessages, briefSubagent, gallerySubagents, mainAgentMessage, workSubagent } from '../fixtures/subagents'
 import GalleryReceipts from '../components/GalleryReceipts.vue'
 import { galleryTerminals } from '../fixtures/terminals'
 import { demoDeviceStart } from '../fixtures/device-installation'
@@ -1710,10 +1710,13 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Agents in a Message"
-        note="A reply links a subagent as agent:4, the number spawn printed: its mark, the robot with the dot of its state as its tab in the Agents window wears it, then the text. It is drawn in the text's own colors, not a web link's accent, as a mention in Slack or Linear reads as part of the sentence: the text in the prose's color at medium weight over a dotted underline and the mark in the secondary text color. It starts with an icon, so, as a file's link, it keeps 0.2em of space on each side, inside its hover fill and outside its underline: in the Chinese sentence the character before the mark and the colon after the name do not touch it. Pointed at, it shows the hover fill behind both and names the agent, Subagent 4 · Finished, and its description. A click opens the Agents window on that agent's tab, a finished one as Completed picks it, and a click when the window shows that tab closes it; stopping an agent there takes the dot off its mark, as a stopped conversation's row is settled. agent:0, the main agent, brings the main transcript into view. A number the conversation does not have is its text alone, which says so when pointed at."
+        note="A reply links a subagent as agent:4, the number spawn printed: its mark, the robot with the dot of its state as its tab in the Agents window wears it, then the text. It is drawn in the text's own colors, not a web link's accent, as a mention in Slack or Linear reads as part of the sentence: the text in the prose's color at medium weight over a dotted underline in the faintest text color, 1px, 3px below the text, and the mark in the secondary text color. It starts with an icon, so, as a file's link, it keeps 0.2em of space on each side, inside its hover fill and outside its underline: in the Chinese sentence the character before the mark and the colon after the name do not touch it. It flows as words do: a long name wraps at the line's end like any text, its first line starting where the text before it ends, the mark staying with the first word, and the hover fill and the underline following each line it spans, in a narrow column and a table's cell alike. It is reached with Tab and opened with Return or Space, as a button is. Pointed at, it shows the hover fill behind both and names the agent, Subagent 4 · Finished, and its description. A click opens the Agents window on that agent's tab, a finished one as Completed picks it, and a click when the window shows that tab closes it; stopping an agent there takes the dot off its mark, as a stopped conversation's row is settled. agent:0, the main agent, brings the main transcript into view. A number the conversation does not have is its text alone, which says so when pointed at."
       >
         <GallerySpecimen variant="running, finished, failed, stopped, main, unknown" wide>
           <GalleryAgentLinks />
+        </GallerySpecimen>
+        <GallerySpecimen variant="long names in a narrow column and a table's cell" wide>
+          <GalleryAgentLinks :markdown="agentLinksWrapMarkdown" narrow />
         </GallerySpecimen>
       </GallerySection>
       <GallerySection

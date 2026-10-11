@@ -1109,22 +1109,23 @@ html[data-theme="light"] .file-pill {
   border-radius: 0.3em;
 }
 
-/* A link to an agent opens a window rather than a page, so it is a button. It
-   reads as part of the sentence, as a mention in Slack or Linear does: the
-   prose's color at medium weight over a dotted underline in a line color, and
-   the hover fill behind the mark and the text. The dot on the mark is cut out
-   of the fill the link sits on, the message's surface or the hovered fill. */
+/* A link to an agent opens a window rather than a page, so it acts as a
+   button, but it flows as words do (`subagents.md` § Linking an agent): a long
+   name wraps at the line's end, its first line starting where the text before
+   it ends, and the hover fill, its rounded ends and its space (`icon-link`) and
+   the underline follow each line it spans. It reads as part of the sentence, as
+   a mention in Slack or Linear does: the prose's color at medium weight over a
+   dotted underline in the faintest text color, and the hover fill behind the
+   mark and the text. The dot on the mark is cut out of the fill the link sits
+   on, the message's surface or the hovered fill. */
 .markdown-body .agent-link {
   --fill-color: var(--surface-current);
-  display: inline;
-  margin: 0;
-  border: 0;
-  background: none;
-  font: inherit;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   font-weight: 500;
   color: var(--fg-body);
-  text-decoration: underline dotted;
-  text-decoration-color: var(--line-strong);
+  text-decoration: underline dotted 1px;
+  text-decoration-color: var(--fg-faint);
   text-underline-offset: 3px;
   cursor: pointer;
   transition: background-color 0.15s;
@@ -1132,6 +1133,16 @@ html[data-theme="light"] .file-pill {
 
 .markdown-body .agent-link:hover {
   @apply bg-hover;
+}
+
+.markdown-body .agent-link:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 1px;
+}
+
+/* The mark and the link's first word, which a line never parts. */
+.markdown-body .agent-link-lead {
+  white-space: nowrap;
 }
 
 /* The icon before a Host file's name and the mark before an agent's, which the page fills (`StreamedMarkdown`). */
