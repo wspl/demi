@@ -174,7 +174,10 @@ embedded utilities made, in the order they happened: `renamed` with `from`
 and `to`, whether or not the job changed the file, and `removed` with
 `path`, once per argument of `rm`, so `rm -r scratch/` is one entry. A
 removal also clears the job's own edits at or under its path, so a file made
-there again starts anew. Each entry of `files`:
+there again starts anew. A path the job itself created and then removed is
+not listed, since nothing of it was there before or is there after, as
+`printf x > scratch.txt; rm scratch.txt` lists nothing. A removal's `path`
+and a rename's `to` carry `temporary` the way a file does. Each entry of `files`:
 
 | Field | Meaning |
 | --- | --- |
