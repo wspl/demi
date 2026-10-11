@@ -258,6 +258,7 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
             outcome: decision.outcome,
             action: action.clone(),
         },
+        origin: None,
     };
     let admitted = shard
         .admit(&request.conversation, &request.agent.node, &message)

@@ -26,7 +26,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{
-    CommandRun, Fixture, Gate, Model, TestProduct, agent, agent_call, conversation, held, is_idle,
+    AGENT_CALL, CommandRun, Fixture, Gate, Model, TestProduct, agent, agent_call, conversation, held, is_idle,
     is_pending_steers, listed_model, named_node, open, request_text, send, texts, until,
 };
 
@@ -1064,6 +1064,70 @@ async fn a_child_whose_turn_fails_closes_as_an_error_and_a_silent_one_completes_
                 AgentMessageEvent::Completion {
                     outcome: CompletionOutcome::Completed
                 }
+            ),
+        ]
+    );
+}
+
+/// A receipt names the block of its sender's transcript it came from, which
+/// its row's name brings into view (`subagents.md` § Product rendering): an
+/// update, the call whose command sent it; a completion, the child's last
+/// answer.
+#[tokio::test(flavor = "local")]
+async fn a_receipt_names_the_call_that_sent_it_and_the_answer_that_completed() {
+    let model = Model::default();
+    let gate = Gate::new();
+    model.root([said("noted"), said("heard")]);
+    model.child(
+        "task",
+        [
+            Turn::Events(vec![
+                event::tool_call(AGENT_CALL, "shell", json!({ "script": "demi agent send parent" })),
+                event::response(1, 1),
+            ]),
+            held_said(&gate, "task done"),
+        ],
+    );
+    let fixture = fixture(&model, TestProduct::default());
+    let mut client = fixture.opened().await;
+    let child = spawn(&fixture, &root(), json!({ "prompt": "task" })).await;
+    // The call is in the child's transcript, and its turn goes on.
+    until(|| model.requests_of("task").len() == 2).await;
+
+    let sent = agent(
+        &fixture.server,
+        &child,
+        "send",
+        json!({ "id": "parent", "message": "halfway there" }),
+    )
+    .await;
+    gate.open();
+    client.next_until(is_closed(&child)).await;
+    until(|| root_receipts(&fixture).len() == 2).await;
+
+    assert_eq!(sent.code, 0, "{sent:?}");
+    let blocks = fixture.store.checkpoint(&child).unwrap().transcript;
+    let call = blocks.iter().find_map(|block| match block {
+        Block::ToolCall(call) if call.tool_use_id == AGENT_CALL => Some(call.id.clone()),
+        _ => None,
+    });
+    let answer = blocks.iter().find_map(|block| match block {
+        Block::Text(text) if text.text == "task done" => Some(text.id.clone()),
+        _ => None,
+    });
+    let origins: Vec<(AgentMessageEvent, Option<BlockId>)> = root_receipts(&fixture)
+        .into_iter()
+        .map(|message| (message.event, message.origin))
+        .collect();
+    assert_eq!(
+        origins,
+        [
+            (AgentMessageEvent::Message {}, call),
+            (
+                AgentMessageEvent::Completion {
+                    outcome: CompletionOutcome::Completed
+                },
+                answer
             ),
         ]
     );
