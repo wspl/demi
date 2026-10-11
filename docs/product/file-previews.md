@@ -189,7 +189,10 @@ images or videos with nothing but white space between them, in one
 paragraph or in paragraphs that follow each other; any text, list or heading
 ends it. In a run, each image and each video is a thumbnail, as a tool's are
 ([Media a tool returned](#media-a-tool-returned)); they stand 8 pixels apart
-in both directions. A lone image, and a lone video's first frame, keep the
+in both directions, and the run stands apart from the text as a lone image
+does. Text before the first image in the same paragraph does not stop the
+run: a list item whose words are followed by two images, one per line, shows
+its words, then the two side by side. A lone image, and a lone video's first frame, keep the
 rule above.
 
 A link to a file opens the `file` intent, and so does a click on a Host image;
