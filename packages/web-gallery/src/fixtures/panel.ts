@@ -4,7 +4,8 @@
  * `live-view.md` § A browser tab in the panel): the gallery's panels change
  * the way the product's do, a beat late, over the gallery's own browser.
  */
-import { BrowserTabsError, addedPanelTab, browserTabDataSchema, type BrowserTabData } from '@demicodes/plugin-browser/live/tabs'
+import { BrowserTabsError, addedPanelTab, browserTabDataSchema, type BrowserTabData, type TabFailure } from '@demicodes/plugin-browser/live/tabs'
+import { SERVER_FAILED } from './plugins'
 import { applyPanelChange, type PanelAnswer, type PanelBackend, type PanelChange, type PanelRead } from '@demicodes/web-ui/agent/panel-changes'
 import { openedTabIndex, type PanelTab } from '@demicodes/web-ui/agent/panel-tabs'
 import type { AnyPluginPage } from '@demicodes/web-ui/plugins/page'
@@ -164,10 +165,12 @@ export function galleryBrowserPlugin(
       try {
         opened = await browser.open(asked)
       } catch (error) {
-        // The browser's or the Host's own code, as the backend's plugin keeps it.
-        const code = error instanceof BrowserTabsError ? (error.code ?? 'failed') : 'failed'
+        // The browser's or the Host's own reason, as the backend's plugin keeps it, or the status a call would
+        // answer a failure without one with.
         const message = error instanceof Error ? error.message : String(error)
-        panel.apply({ type: 'update', id: panelTab, data: { failure: { code, message } } })
+        const reason = error instanceof BrowserTabsError ? error.reason : null
+        const failure: TabFailure = reason ? { code: reason, message } : { status: SERVER_FAILED, message }
+        panel.apply({ type: 'update', id: panelTab, data: { failure } })
         return null
       }
       panel.apply({ type: 'update', id: panelTab, data: { tab: opened.id, closed: null, failure: null } })

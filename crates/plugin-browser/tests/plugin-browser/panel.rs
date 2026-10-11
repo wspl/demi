@@ -233,13 +233,15 @@ async fn a_tab_whose_address_could_not_load_once_it_opened_says_why_and_loads_it
     }));
     let tab = created(&demi, "a", json!({ "url": "about:blank" }));
     told(&plugin, &demi, PanelTabChange::Created, tab).await;
+    // A failure without a reason the page has words for keeps the status a
+    // page call would answer it with, which the page says.
     assert_eq!(
         tab_data(&demi, "a"),
         json!({
             "url": "https://example.test/",
             "tab": "t1",
             "failure": {
-                "code": "failed",
+                "status": "500 Internal Server Error",
                 "message": "pipe failed: WebSocket protocol error: Connection reset without closing handshake",
             },
         })

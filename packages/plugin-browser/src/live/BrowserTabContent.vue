@@ -14,7 +14,7 @@ import { clientPlatform } from '@demicodes/utils'
 import type { LiveDownload } from '../generated/plugin'
 import LiveView from './LiveView.vue'
 import { browserShortcut } from './input'
-import { NEW_TAB_URL, STARTING_LABELS, refusalSentence, type BrowserTabData, type BrowserTabsController } from './tabs'
+import { NEW_TAB_URL, STARTING_LABELS, failureSentence, type BrowserTabData, type BrowserTabsController } from './tabs'
 import { BLANK_PAGE, deviceSnap, panelSize, viewportChoices, type PanelSize, type ViewportChoice } from './view'
 
 /**
@@ -377,7 +377,7 @@ watch(
         class="min-h-0 flex-1"
         status="failed"
         label="Couldn’t open this page."
-        :detail="refusalSentence(data.failure.code)"
+        :detail="failureSentence(data.failure)"
         :on-retry="reopen"
       />
       <div

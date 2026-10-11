@@ -34,7 +34,8 @@ import { galleryFiles, useGalleryWork, type GalleryWork } from '../fixtures/work
 import { changePath, firstChangeData, goBack as changeBack, goForward as changeForward, holdShownChange, showChange, showEdit, showRequestEdit } from '@demicodes/plugin-changes/data'
 import { selectedTab } from '@demicodes/web-ui/agent/panel-tabs'
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
-import { NEW_TAB_URL, STARTING_LABELS, browserTabDataSchema, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
+import { BrowserTabsError, NEW_TAB_URL, STARTING_LABELS, browserTabDataSchema, serverRefused, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
+import { SERVER_FAILED } from '../fixtures/plugins'
 import type { ChangeMode, ChangeSetSource, ChangeSources } from '@demicodes/web-ui/files/changes'
 import { storedRequests, type RequestChangeSource, type RequestEditRef, type RequestEditSelection } from '@demicodes/web-ui/files/request-changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
@@ -713,8 +714,18 @@ function openBlankAgain() {
 }
 /** The device refuses the next tab it would open, as an offline device does: a reopening shows Retry. */
 function failNextOpen() {
-  browserWork.browser.failNextOpen()
+  browserWork.browser.failNextOpen(BrowserTabsError.of('device_offline'))
   productWould('The Device Refuses the Next Tab It Opens')
+}
+/** The browser cannot start on the device for the next tab, as when its package or Chrome fails to start. */
+function failNextStart() {
+  browserWork.browser.failNextOpen(BrowserTabsError.of('browser_unavailable'))
+  productWould('The Browser Fails to Start for the Next Tab')
+}
+/** The server fails the next tab without a reason of the browser's, as a defect of the plugin would. */
+function failNextOnServer() {
+  browserWork.browser.failNextOpen(new BrowserTabsError(null, serverRefused(SERVER_FAILED)))
+  productWould('The Server Fails the Next Tab')
 }
 // The same conversation browser, viewed in a web browser that cannot decode H.264, such as a Chromium without
 // proprietary codecs.
@@ -726,7 +737,7 @@ const noBrowserWork = useWorkTabs('change', { path: '', browser: galleryBrowser(
 const uncapturedWork = useWorkTabs('browser-t1', { path: '', browser: galleryBrowser(undefined, { capture: false }) })
 /** What the Host's live view module does when it cannot deliver the viewer's input: it tells the viewer in a notice. */
 function failInput() {
-  browserWork.browser.fail('input_failed', 'Input.dispatchKeyEvent: the target closed')
+  browserWork.browser.fail('driver_error', 'Input.dispatchKeyEvent: the target closed')
 }
 /** The Host cannot even recreate its capture extension: the view stops trying, and its Retry asks again. */
 function stopCapture() {
@@ -3061,6 +3072,14 @@ onBeforeUnmount(() => {
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
               <Button size="sm" @click="failNextOpen">Refuse the Next Opening on the Device</Button>
               <span>Then end the browser: the reopening fails, and Retry loads again.</span>
+            </div>
+            <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
+              <Button size="sm" @click="failNextStart">Fail to Start the Browser</Button>
+              <span>Then end the browser: the reopening says so.</span>
+            </div>
+            <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
+              <Button size="sm" @click="failNextOnServer">Fail on the Server</Button>
+              <span>Then end the browser: the reopening says so.</span>
             </div>
             <!-- What the agent's `demi browser show` does once its job ends. -->
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">

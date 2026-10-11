@@ -524,17 +524,17 @@ test('a notice that leaves no picture stands in its place until a picture; any o
   expect(view.live.state.pictureless).toBe('capture_failed')
   view.receive(video(TAB.id, 1, 1, true, [0, 0, 0, 1]))
   expect(view.live.state.pictureless).toBeNull()
-  view.receive(moduleFrame({ type: 'notice', code: 'input_failed', message: 'the page went away' }))
+  view.receive(moduleFrame({ type: 'notice', code: 'driver_error', message: 'the page went away' }))
   view.receive(moduleFrame({ type: 'notice', code: 'timeout', message: 'screen: timed out' }))
   view.receive(video(TAB.id, 1, 2, false, [0, 0, 0, 1]))
   expect(view.live.state.pictureless).toBeNull()
-  expect(told).toEqual(['input_failed', 'timeout'])
+  expect(told).toEqual(['driver_error', 'timeout'])
   // A Host that cannot capture says so for each tab the page watches.
   view.receive(moduleFrame({ type: 'notice', code: 'capture_unavailable', message: 'this CPU reports SME without SVE' }))
   expect(view.live.state.pictureless).toBe('capture_unavailable')
   view.live.watch(null)
   expect(view.live.state.pictureless).toBeNull()
-  expect(told).toEqual(['input_failed', 'timeout'])
+  expect(told).toEqual(['driver_error', 'timeout'])
 })
 
 test('a Host that stopped trying to capture is asked again by Retry, and says it tries until a picture', () => {
