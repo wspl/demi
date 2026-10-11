@@ -336,7 +336,9 @@ it was, not dimmed, so the user can go on reading and typing beside it.
   about the clicked spot. Resizing the window keeps a fitted image fitted,
   and a zoomed one at its zoom; another picture opens fitted. A video plays at once in the player built into the user's
   browser, whose controls and full-screen control it keeps.
-- **Close.** The close control in the title bar closes it, and so does
+- **Close.** The close control in the title bar closes it; so does a press
+  outside every window while it is the newest one, by the rule the
+  session's windows share ([Recovering an unfinished turn](product.md#recovering-an-unfinished-turn)); and so does
   Escape, unless the focus is in a text field or in another layer that takes
   Escape, such as a menu or a dialog. Opening moves the focus into the
   window, so Escape right after a click closes it; closing returns the focus
