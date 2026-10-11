@@ -1,10 +1,12 @@
 import { inject, provide, type InjectionKey } from 'vue'
 import { z } from 'zod'
+import { baseName } from '@demicodes/utils'
 import type { MediaSource as ContentMediaSource } from '@demicodes/protocol'
 import { decodedTarget } from '../../markdown/filePath'
 import type { MessageEditContent } from '../message-editing'
 import type { MediaSource } from '../media-source'
 import { attachmentProgress, decodeRemoteReference, type ComposerAttachment } from '../message-input/attachments'
+import type { FileReference } from '../message-input/copied-message'
 
 /**
  * A file as its capsule in a message shows it, and as the message carries it
@@ -23,6 +25,12 @@ export interface MessageCapsule {
   host?: string
   /** Where the file is: on the Host, or on `host`. */
   path?: string
+  /**
+   * The file as a sent message holds it, which a copy of the message carries
+   * so that a paste brings the file back without its bytes; none for a file
+   * still on its way.
+   */
+  reference?: FileReference
 }
 
 /** An image file's picture, from its bytes in the user's blobs; none for a file of another kind. */
@@ -126,8 +134,10 @@ export function contentCapsule(id: string, blocks: readonly MessageEditContent[]
   let capsule: MessageCapsule = { id, name: 'file' }
   for (const block of blocks) {
     if (block.type === 'reference') {
-      const { host, path, name } = decodeRemoteReference(block.reference)
-      capsule = { ...capsule, name, host, path }
+      const { host, path, name, deviceId } = decodeRemoteReference(block.reference)
+      capsule = { ...capsule, name, host, path, ...(deviceId ? { reference: { type: 'device', deviceId } } : {}) }
+    } else if (block.type === 'remote_file') {
+      capsule = { ...capsule, name: baseName(block.path), host: block.host, path: block.path, reference: { type: 'device', deviceId: block.deviceId } }
     } else if (block.type === 'attachment') {
       // The media block before the record, fitted for the model, shows the
       // picture; without one, as for a model that reads no images, the
@@ -138,14 +148,21 @@ export function contentCapsule(id: string, blocks: readonly MessageEditContent[]
         path: block.path,
         snippet: block.snippet,
         image: capsule.image ?? blobImage(block.mediaType, block.sha256),
+        reference: { type: 'stored', sha256: block.sha256, mediaType: block.mediaType, size: block.sizeBytes },
       }
     } else if (block.type === 'document') {
-      capsule = { ...capsule, name: block.source.fileName }
+      capsule = {
+        ...capsule,
+        name: block.source.fileName,
+        reference: { type: 'stored', sha256: block.source.ref, mediaType: block.source.mediaType },
+      }
     } else if (block.type === 'image' || block.type === 'video') {
+      const { source } = block
       capsule = {
         ...capsule,
         name: mediaName(block),
-        image: block.type === 'image' ? block.source : undefined,
+        image: block.type === 'image' ? source : undefined,
+        ...(source.type === 'ref' ? { reference: { type: 'stored', sha256: source.ref, mediaType: source.mediaType } } : {}),
       }
     } else if (block.type === 'upload') {
       capsule = {
@@ -153,6 +170,7 @@ export function contentCapsule(id: string, blocks: readonly MessageEditContent[]
         name: block.fileName,
         snippet: block.snippet,
         image: blobImage(block.mediaType, block.sha256),
+        reference: { type: 'stored', sha256: block.sha256, mediaType: block.mediaType },
       }
     }
   }

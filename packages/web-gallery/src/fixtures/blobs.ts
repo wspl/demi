@@ -58,6 +58,11 @@ export const missingBlob = '0e'.repeat(32)
 /** Where a blob loads from in the gallery; one it does not hold fails to load at once. */
 export const galleryBlobUrl: BlobUrl = (ref) => blobs.get(ref) ?? 'data:,'
 
+/** Whether the gallery's blob route holds `ref`, as the user's blobs hold a file they sent. */
+export function galleryHoldsBlob(ref: string): boolean {
+  return blobs.has(ref)
+}
+
 /**
  * The texts the gallery's blob route holds, such as an edit's two sides,
  * each under one made-up name per text, as content addressing names bytes.
