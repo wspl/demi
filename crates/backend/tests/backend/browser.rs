@@ -23,6 +23,7 @@ use demi_provider_common::testing::MockVendor;
 use demi_web_api_protocol::conversations::{ConversationSummary, PluginRevision};
 
 use crate::cloud::{idle_after, the_cloud};
+use crate::holding_edge::HoldingEdge;
 use crate::conversations::{anthropic_at, create, on_device, summaries};
 use crate::support::{Harness, PATIENCE, Session, TestBackend};
 use crate::work::{Driven, say, shell};
@@ -263,6 +264,55 @@ async fn a_browser_whose_service_does_not_start_is_unavailable_to_the_list_the_m
         Some(&json!("browser_unavailable")),
         "{panel}"
     );
+    backend.close().await;
+}
+
+/// A tab call whose connection to the Host breaks partway says so, 409
+/// `host_operation_failed`, which the page words as a broken connection to
+/// the device (`web-api.md` § Plugin calls), not 500 `plugin_failed`, the
+/// plugin's own defect. The runner reaches the backend through an edge that
+/// drops every pipe WebSocket once cut, while the runner's own connection
+/// stays. A paired device's real runner, about a second.
+#[tokio::test]
+async fn a_tab_call_whose_connection_to_the_host_breaks_partway_says_the_connection_broke() {
+    let harness = Harness::new().with_browser_package();
+    let (backend, master) = harness.start_set_up().await;
+    let edge = HoldingEdge::start(backend.address()).await;
+    let laptop = backend.pair_through(&master, "laptop", &edge.url).await;
+    let id = conversation(&backend, &master).await;
+    let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
+    let target = json!({ "target": { "kind": "device", "deviceId": laptop.id(), "path": home } });
+    let moved = backend
+        .patch(&format!("/api/conversations/{id}"), &master, target)
+        .await;
+    assert_eq!(
+        moved.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&moved.body)
+    );
+    let listed = tabs(&backend, &master, &id).await;
+    assert_eq!(
+        listed.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&listed.body)
+    );
+
+    edge.cut_pipe_sockets();
+    let broken = tabs(&backend, &master, &id).await;
+    assert_eq!(
+        broken.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::HostOperationFailed),
+        "{}",
+        String::from_utf8_lossy(&broken.body)
+    );
+    let synced = call(&backend, &master, &id, "sync", json!({})).await;
+    assert_eq!(
+        synced.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::HostOperationFailed)
+    );
+    assert!(backend.online(&master, laptop.id()).await);
     backend.close().await;
 }
 

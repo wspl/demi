@@ -10,6 +10,7 @@
 // § The page context).
 export {
   PluginCallError,
+  type PluginCallAnswer,
   definePage,
   type AnyPluginPage,
   usePage,

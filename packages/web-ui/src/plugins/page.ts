@@ -37,18 +37,24 @@ import type { HeadlineText, SentenceText, TitleText } from '../ui/ui-text'
  * backend and the gallery over each specimen's fixtures.
  */
 
+/**
+ * What came back for a call that failed, which a page says for a reason it
+ * has no words for (`web-api.md` § Plugin calls): the backend's answer, by
+ * its status line such as `500 Internal Server Error`; none, as for a
+ * network failure or a timeout; or an answer the page could not read.
+ */
+export type PluginCallAnswer =
+  | { type: 'status'; status: string }
+  | { type: 'none' }
+  | { type: 'unreadable' }
+
 /** A call the plugin, or the host in front of it, refused: its reason word and message. */
 export class PluginCallError extends Error {
   constructor(
     /** The plugin's snake_case reason, or the host's code when the plugin did not answer. */
     readonly reason: string,
     message: SentenceText,
-    /**
-     * The status of the backend's answer, such as `500 Internal Server
-     * Error`, which a page says for a reason it has no words for; null when
-     * no answer came, or what came did not read.
-     */
-    readonly status: string | null = null,
+    readonly answer: PluginCallAnswer = { type: 'none' },
   ) {
     super(message)
   }
@@ -393,7 +399,7 @@ export function providePage(context: PageContext): void {
 
 /** The failure of a value that does not read with its schema: `reason`, and what did not read. */
 function unreadable(reason: string, error: z.ZodError): PluginCallError {
-  return new PluginCallError(reason, z.prettifyError(error))
+  return new PluginCallError(reason, z.prettifyError(error), { type: 'unreadable' })
 }
 
 /**

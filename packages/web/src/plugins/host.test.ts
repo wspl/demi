@@ -79,6 +79,14 @@ beforeEach(() => {
       // The backend's own answer, though its status is one a proxy also gives.
       return Response.json({ code: 'catalog_unavailable', message: 'The source could not be fetched' }, { status: 503 })
     }
+    if (path === '/api/plugins/skills/calls/check_source') {
+      // As over HTTP/2, whose answers carry no reason phrase.
+      return Response.json({ code: 'plugin_failed', message: 'The plugin failed' }, { status: 500 })
+    }
+    if (path === '/api/plugins/skills/calls/list_sources') {
+      // A proxy's page in place of the backend's JSON.
+      return new Response('<html>Gateway</html>', { status: 200 })
+    }
     if (path === '/api/plugins/skills/calls/remove_source') {
       return Response.json(
         { code: 'plugin_refused', reason: 'source_not_found', message: 'No skill source "src_2"' },
@@ -133,8 +141,23 @@ test("a refusal rejects with the plugin's own reason and the answer's status", a
   await expect(refused).rejects.toMatchObject({
     reason: 'source_not_found',
     message: 'No skill source "src_2"',
-    status: '409 Conflict',
+    answer: { type: 'status', status: '409 Conflict' },
   })
+})
+
+// `web-api.md` § Plugin calls: a page says the status's standard phrase where
+// the answer carried none, and an answer it could not read as such, never as
+// no answer.
+test('an answer without a status text names the standard phrase, and one that does not read rejects as unreadable', async () => {
+  const failed = page('skills').plugin.call('check_source', { source: 'src_1' }, z.null())
+  await expect(failed).rejects.toMatchObject({
+    reason: 'plugin_failed',
+    answer: { type: 'status', status: '500 Internal Server Error' },
+  })
+  const unread = page('skills').plugin.call('list_sources', {}, z.null())
+  await expect(unread).rejects.toMatchObject({ answer: { type: 'unreadable' } })
+  const mismatched = page('skills').plugin.call('set_enabled', {}, z.object({ enabled: z.boolean() }))
+  await expect(mismatched).rejects.toMatchObject({ reason: 'unreadable_answer', answer: { type: 'unreadable' } })
 })
 
 /** The backend goes away, as while it restarts: its channel closes, and no call reaches it. */
