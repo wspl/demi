@@ -33,7 +33,7 @@ current side.
 
 | Kind | Extensions | File view | Change view |
 | --- | --- | --- | --- |
-| Image | `png`, `jpg`, `jpeg`, `gif`, `webp`, `avif`, `bmp`, `ico`, `svg` | The picture, scaled down to fit and never enlarged; a click toggles actual size. Transparency shows over a checkerboard, with the pixel size and file size beside it. | Committed and current side by side, each with its pixel size and file size |
+| Image | `png`, `jpg`, `jpeg`, `gif`, `webp`, `avif`, `bmp`, `ico`, `svg` | The picture, fitted, zoomed and moved as in the [media viewer](#the-media-viewer), by the same component. Transparency shows over a checkerboard, with the pixel size, the zoom and the file size beside it. | Committed and current side by side, each with its pixel size and file size |
 | Video | `mp4`, `m4v`, `webm`, `mov` | The player in the user's browser | Side by side |
 | Audio | `mp3`, `wav`, `ogg`, `oga`, `opus`, `m4a`, `aac`, `flac` | The player in the user's browser | Side by side |
 | PDF | `pdf` | The PDF viewer in the user's browser | Side by side |
@@ -81,6 +81,24 @@ HEVC video when it lacks that codec; the card then says the user's browser
 cannot play it.
 A file the table does not name is read as text, and a `not_text` or
 `file_too_large` answer shows the card.
+
+## Code
+
+Code shows in one set of colors wherever it shows: the File view's source,
+the Change view's diff, a code block in a message or a rendered document,
+the script of a `shell` call's row and of its terminal. One highlighter
+reads it, the code editor's, with one theme, One Dark Pro or One Light by
+the page's mode, so the same line of Rust is the same colors in a reply and
+in the file it came from, as VS Code shows a Markdown preview's code in its
+editor's colors. A language the highlighter does not know shows as plain
+text in the theme's text color.
+
+The File view's source and the Change view's diff are read-only, but they
+are text the user reads with the keyboard as well as the mouse, as a
+read-only file is in VS Code or Xcode: a click puts a blinking caret there,
+in the theme's caret color in either mode, and the arrow keys move it,
+Shift extends the selection from it, and ⌘F finds from it. Without the
+focus the view shows no caret.
 
 ## Markdown
 
