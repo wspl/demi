@@ -215,10 +215,12 @@ function pick(path: string, clicks: number): void {
       <template v-if="!lone || loneText !== ''" #body>
         <ThinkingText v-if="lone" :content="lone.text" :streaming="thinkingLive" />
         <div v-else class="[--agent-pad-x:0px]">
-          <!-- Open, each step's row is named, so a block brought into view inside the run marks its own row. -->
+          <!-- Open, each step's row is named, so a block brought into view inside the run marks its own row;
+            the row stands in the column already, and its icon gives the mark room at its start. -->
           <div
             v-for="(step, index) in group.steps"
             :key="stepKey(step)"
+            class="[--found-inset-x:0px]"
             :data-step-id="isOpen ? step.id : undefined"
             v-bind="chromeEntrance(entering.has(stepKey(step)))"
           >
