@@ -4,6 +4,7 @@ import { errorFacts } from '@demicodes/web-ui/agent/error-detail'
 import ErrorNotice from '@demicodes/web-ui/ui/ErrorNotice.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
+import { CONVERSATION_UNREADABLE } from '@demicodes/web-ui/agent/session-status'
 import SessionNoticeBar from '@demicodes/web-ui/agent/SessionNoticeBar.vue'
 import GalleryComposer from './GalleryComposer.vue'
 import GallerySection from './GallerySection.vue'
@@ -79,7 +80,7 @@ const usageLimitPayload = JSON.stringify({
               status="failed"
               label="Couldn’t load this conversation."
               loading-label="Loading conversation…"
-              detail="The transcript could not be read: database disk image is malformed"
+              :detail="CONVERSATION_UNREADABLE"
               :on-retry="retryRestore"
             />
           </div>

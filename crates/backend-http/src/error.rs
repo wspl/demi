@@ -210,6 +210,27 @@ impl ApiError {
         }
     }
 
+    /// A conversation's database that could not be read: logged with its
+    /// causes, and answered 500 `conversation_unreadable`, whose words the
+    /// page chooses. The storage closing or its work not finishing is no
+    /// fault of the database, and answers as any storage failure does.
+    pub(crate) fn conversation_unreadable(error: StorageError) -> Self {
+        match error {
+            StorageError::Closed | StorageError::Interrupted(_) => error.into(),
+            error => {
+                tracing::error!(
+                    error = &error as &dyn std::error::Error,
+                    "a conversation's database could not be read"
+                );
+                Self::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ErrorCode::ConversationUnreadable,
+                    error.to_string(),
+                )
+            }
+        }
+    }
+
     /// A failure a request could not cause, in words: logged, and answered
     /// 500.
     pub(crate) fn internal_message(message: impl Into<String>) -> Self {
