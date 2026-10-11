@@ -1760,6 +1760,7 @@ dependencies = [
 name = "demi-backend-database"
 version = "0.1.21"
 dependencies = [
+ "bytes",
  "demi-agent-store",
  "demi-backend-remote-host",
  "demi-conversation-socket-protocol",

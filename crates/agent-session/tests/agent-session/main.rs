@@ -1,7 +1,8 @@
 //! The session's rules that only a session with tools shows: tool dispatch
 //! and its save, a failed save, stops and dispose while a tool runs,
 //! restore after a crash, the queue's saves, a switch to another provider
-//! inside a turn, the stream's blocks and the order of events. The server's
+//! inside a turn, the stream's blocks, the lists of changed files each
+//! shell call stores, and the order of events. The server's
 //! scenario tests cover the frames.
 
 use std::{
@@ -45,6 +46,7 @@ use demi_agent_transcript::{report_text, testing::SequentialIds};
 mod compaction;
 mod editing;
 mod input;
+mod lists;
 mod recovery;
 mod requests;
 
@@ -311,6 +313,8 @@ fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
             .map(|interval| u32::try_from(interval).unwrap());
         let title = call.input["description"].as_str().unwrap().to_owned();
         let view = ToolView::Shell(ShellToolView {
+            request_files: None,
+            run_files: None,
             status: ShellViewStatus::Running,
             command_id: command.clone(),
             exit_code: None,
