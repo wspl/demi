@@ -341,7 +341,7 @@ the call is folded or open, and a click opens it in the
   the user's browser, which an iPhone shows full screen.
 - **A medium that is gone.** A result can hold, in a medium's place, a part
   that says its bytes could not be stored ([Media](../agent/runtime.md#media)).
-  The page shows one line where the medium was, with the store's reason, such
+  The page shows one line under the row, with the store's reason, such
   as *Video not stored: the object store refused the write*. The model reads
   the same fact in a text of its own. A medium that was stored stays.
 - **A medium that cannot be shown.** When the page cannot show a medium,
