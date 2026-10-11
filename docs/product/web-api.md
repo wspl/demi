@@ -243,7 +243,10 @@ is empty, and every other field means what it means in the block whole
 `compaction_marker` blocks come whole. Live frames send blocks whole
 ([Frame protocol](../agent/runtime.md#frame-protocol)), so the page holds a
 block in light form only when it read it from a page, and it marks such a
-block as light until the block arrives whole.
+block as light until the block arrives whole. A running command's tab in the
+Running window needs its call's script: when the page holds that call light,
+with its input cut, or does not hold it because it lies before the pages
+read, the tab reads the call whole by its id, as an opened row does.
 
 `GET /api/conversations/:id/transcript/blocks/:blockId?node=` answers
 `{ block, failures }`, the block whole. The page reads it when the user opens
