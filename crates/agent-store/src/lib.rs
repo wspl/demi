@@ -240,6 +240,7 @@ impl NodeRecord {
         };
         Some(SubagentJob {
             subagent_id: self.id.clone(),
+            number: self.number,
             parent_session_id: parent,
             description: self.description.clone(),
             profile: self.profile.clone(),

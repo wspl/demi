@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bot, SquareTerminal, X } from '@lucide/vue'
+import { SquareTerminal, X } from '@lucide/vue'
 import type { ConversationStatus } from './conversation-status'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
@@ -33,8 +33,8 @@ const props = withDefaults(defineProps<{
   isActive: boolean
   /** The dot on the mark; none without it. */
   status?: ConversationStatus
-  /** The built-in mark; the `mark` slot replaces it. */
-  mark?: 'bot' | 'terminal'
+  /** The built-in mark; the `mark` slot replaces it, as an agent's tab's `AgentMark` does. */
+  mark?: 'terminal'
   /** The tab is at work, as a loading page is: a spinner stands in for its mark. */
   busy?: boolean
   /** A picture in place of the mark, such as a web page's icon, by its URL. */
@@ -117,13 +117,7 @@ function onMenuKey(event: KeyboardEvent): void {
       <IndeterminateSpinner v-if="busy" :size="ICON_PX.markIn28" class="text-fg-subtle" />
       <img v-else-if="icon" :src="icon" alt="" :width="ICON_PX.markIn28" :height="ICON_PX.markIn28" draggable="false">
       <slot v-else name="mark">
-        <Bot
-          v-if="mark === 'bot'"
-          :size="ICON_PX.markIn28"
-          class="text-fg-subtle"
-        />
         <SquareTerminal
-          v-else
           :size="ICON_PX.markIn28"
           class="text-fg-subtle"
         />

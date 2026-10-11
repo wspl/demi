@@ -23,7 +23,8 @@ provideBlobUrl(galleryBlobUrl)
 // A transcript shown outside a session still names the gallery workspace's
 // files, as a conversation's does; a file a click opens says what the product would do.
 const workspace = createGalleryWorkspace()
-const messageFiles = galleryConversationFiles(workspace.source, (path) => productWould(`Open ${baseName(path)}`))
+const messageFiles = galleryConversationFiles(workspace.source, ({ path, line }) =>
+  productWould(line === null ? `Open ${baseName(path)}` : `Open ${baseName(path)} at Line ${line}`))
 provideMessageFiles(() => ({ ...messageFiles, cwd: workspace.root }))
 const mediaViewer = provideMediaViewer()
 const route = useRoute()

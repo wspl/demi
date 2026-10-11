@@ -148,6 +148,9 @@ export const mainAgentMessage: AgentMessage = {
   origin: 'parent-send',
 }
 
+/** A reply that links the agents of `gallerySubagents` by their numbers, and one the conversation does not have. */
+export const agentLinksMarkdown = `I split the login work four ways. [Find the cookie assertion](agent:1) is still looking, [Update helper comments](agent:4) finished, [Run the fixture server](agent:6) failed on its port, and I stopped [CI screenshot review](agent:5) once the cause was clear. Each reports to the [main agent](agent:0); [Snapshot fonts](agent:9) was never started.`
+
 /** The update Find the old suite paths sent while the `work` turn ran, naming the call that sent it. */
 export const suitePathsUpdate: AgentMessage = {
   id: 'receipt-suite-paths',
@@ -163,6 +166,7 @@ export const suitePathsUpdate: AgentMessage = {
 export function workSubagent(): SubagentRecord {
   return {
     id: 'ag-suite',
+    number: 3,
     name: 'Find the old suite paths',
     phase: 'running',
     startedAt: ago(60_000),
@@ -195,6 +199,7 @@ export function gallerySubagents(): SubagentRecord[] {
   return [
     {
       id: 'ag-cookie',
+      number: 1,
       name: 'Find the cookie assertion',
       phase: 'running',
       startedAt: ago(134_000),
@@ -219,6 +224,7 @@ export function gallerySubagents(): SubagentRecord[] {
     },
     {
       id: 'ag-logout',
+      number: 2,
       name: 'Check the logout path',
       phase: 'running',
       startedAt: ago(48_000),
@@ -258,6 +264,7 @@ export function gallerySubagents(): SubagentRecord[] {
     },
     {
       id: 'ag-snapshot',
+      number: 7,
       name: 'Snapshot strings',
       phase: 'running',
       startedAt: ago(12_000),
@@ -274,6 +281,7 @@ export function gallerySubagents(): SubagentRecord[] {
     },
     {
       id: 'ag-comments',
+      number: 4,
       name: 'Update helper comments',
       phase: 'completed',
       startedAt: ago(420_000),
@@ -308,6 +316,7 @@ export function gallerySubagents(): SubagentRecord[] {
     },
     {
       id: 'ag-fixture',
+      number: 6,
       name: 'Run the fixture server',
       phase: 'error',
       startedAt: ago(300_000),
@@ -345,6 +354,7 @@ export function gallerySubagents(): SubagentRecord[] {
     },
     {
       id: 'ag-ci',
+      number: 5,
       name: 'CI screenshot review',
       phase: 'aborted',
       startedAt: ago(180_000),

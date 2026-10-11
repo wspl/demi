@@ -1,8 +1,11 @@
 import type { RendererObject, Token, Tokens } from 'marked'
 import { markdownReader } from './reader'
-import type { MarkdownRenderOptions, MessageAttachment } from './types'
+import { baseName } from '@demicodes/utils'
+import type { MarkdownRenderOptions, MessageAttachment, MessageFileTarget } from './types'
 import { codeBlockHtml } from './highlight'
-import { attachmentId, isHttpUrl, messageHostPath, messageImage } from './filePath'
+import { attachmentId, isHttpUrl, messageFileTarget, messageImage } from './filePath'
+import { codeFileTarget } from './code-paths'
+import { linkedAgent } from '../agent/agent-links'
 import { escapeHtml } from './html'
 import { mathExtensions } from './math'
 import { scrollingTable } from './table'
@@ -25,9 +28,32 @@ function webLink(url: string): string {
   return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">`
 }
 
-/** A link that opens a Host file through the `file` intent. */
-function fileLink(path: string): string {
-  return `<a href="${escapeHtml(path)}" data-file-link>`
+/**
+ * A link that opens a Host file through the `file` intent, at its line when
+ * it names one. A link of text names the file with its icon first, the one
+ * the file tree shows for it, which the page puts in its place
+ * (`StreamedMarkdown`), so it reads as a file and not as a web page.
+ */
+function fileLink({ path, line }: MessageFileTarget, named: boolean): string {
+  const at = line === null ? '' : ` data-line="${line}"`
+  const icon = named ? `<span class="message-file-icon" data-file-icon="${escapeHtml(baseName(path))}" aria-hidden="true"></span>` : ''
+  return `<a href="${escapeHtml(path)}" data-file-link${at}>${icon}`
+}
+
+/**
+ * A link to agent `number` of the conversation (`subagents.md` § Linking an
+ * agent), around its text: the agent's mark, which the page puts in its
+ * place with the agent's live state, then the text, and a click opens it in
+ * the Agents window. A number the conversation does not have shows the text
+ * alone; the page's tip says so. Outside a conversation, the text alone.
+ */
+function agentLink(number: number, body: string): string {
+  const agents = activeOptions?.agents
+  if (!agents)
+    return body
+  if (!agents.find(number))
+    return `<span class="agent-link-missing" data-agent-link="${number}">${body}</span>`
+  return `<button type="button" class="agent-link" data-agent-link="${number}"><span class="agent-link-mark" data-agent-mark="${number}"></span>${body}</button>`
 }
 
 /**
@@ -114,12 +140,6 @@ function attachmentTarget(
   }
 }
 
-/** The Host path a target names, when the message has a Host to resolve it on. */
-function hostPath(target: string): string | null {
-  const files = activeOptions?.files
-  return files ? messageHostPath(target, files.cwd) : null
-}
-
 /**
  * Where an image loads from, and the link a click on it follows to show it
  * whole. Null shows its alt text.
@@ -130,7 +150,7 @@ function imageSource(target: string): { src: string; link: string | null } | nul
     return null
   if (!image.opens)
     return { src: image.src, link: null }
-  return { src: image.src, link: 'web' in image.opens ? webLink(image.opens.web) : fileLink(image.opens.file) }
+  return { src: image.src, link: 'web' in image.opens ? webLink(image.opens.web) : fileLink({ path: image.opens.file, line: null }, false) }
 }
 
 /**
@@ -168,6 +188,17 @@ const messageRenderer: RendererObject = {
   code({ text, lang }) {
     return codeBlockHtml(text, lang ?? '')
   },
+  // Inline code that names a file the Host has opens it, in its code look
+  // (`file-previews.md` § Files named in messages).
+  codespan({ text }) {
+    const code = `<code>${escapeHtml(text)}</code>`
+    const files = activeOptions?.files
+    const existing = activeOptions?.codeFiles
+    if (!files?.open || !existing || openLinks > 0)
+      return code
+    const target = codeFileTarget(text, files.cwd)
+    return target && existing.has(target.path) ? `${fileLink(target, true)}${code}</a>` : code
+  },
   link(token) {
     openLinks += 1
     let body: string
@@ -181,9 +212,17 @@ const messageRenderer: RendererObject = {
     const attachment = attachmentId(token.href)
     if (attachment !== null)
       return attachmentTarget(attachment, body, (found) => `${attachmentLink(found)}${body}</a>`)
+    const agent = linkedAgent(token.href)
+    if (agent !== null)
+      return agentLink(agent, body)
     // A file nobody opens is named as text.
-    const path = activeOptions?.files?.open ? hostPath(token.href) : null
-    return path === null ? body : `${fileLink(path)}${body}</a>`
+    const files = activeOptions?.files
+    const target = files?.open ? messageFileTarget(token.href, files.cwd) : null
+    if (target === null)
+      return body
+    // A picture that links a file shows itself, not the file's icon.
+    const named = !(token.tokens ?? []).some((part) => part.type === 'image')
+    return `${fileLink(target, named)}${body}</a>`
   },
   image(token) {
     const attachment = attachmentId(token.href)
@@ -340,6 +379,16 @@ export function holdUndecidedMedium(text: string): string {
   const before = blocks.slice(0, start).map((block) => block.raw).join('')
   // The lexer reads a carriage return as a line feed; such text is shown as it is.
   return settled.startsWith(before) ? before : text
+}
+
+/** The text of each inline code span of an agent's message, in order, at any depth. */
+export function messageCodeSpans(src: string): string[] {
+  const spans: string[] = []
+  agentMarked.walkTokens(agentMarked.lexer(src), (token) => {
+    if (token.type === 'codespan')
+      spans.push(token.text)
+  })
+  return spans
 }
 
 /** An agent's message: GitHub Flavored Markdown with math. */

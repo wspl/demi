@@ -5,7 +5,7 @@ import { Selection, TextSelection, type Transaction } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import { Editor, EditorContent } from '@tiptap/vue-3'
 import { transferHasFiles } from '../../composables/useFileDrop'
-import { messageHostPath } from '../../markdown/filePath'
+import { messageFileTarget } from '../../markdown/filePath'
 import { useMarkdownRenderVersion } from '../../markdown/highlight'
 import { useMessageFiles } from '../../markdown/message-files'
 import { parseUserMarkdown, serializeUserMarkdown } from '../../markdown/user-markdown'
@@ -509,10 +509,10 @@ function click(event: MouseEvent): void {
     return
   }
   const current = files()
-  const path = kind === 'file' && current ? messageHostPath(target, current.cwd) : null
-  if (current?.open && path !== null) {
+  const file = kind === 'file' && current ? messageFileTarget(target, current.cwd) : null
+  if (current?.open && file !== null) {
     // Only the transcript's message closes the panel on what it already shows, not the composer.
-    current.open(path, editable.value ? undefined : event.detail)
+    current.open(file, editable.value ? undefined : event.detail)
   }
 }
 

@@ -18,6 +18,7 @@ import { conversationFileRoutes, rawFileContents } from '../api/files'
 import { readEditCopies } from './changes'
 import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
 import { lookupAttachment } from '../api/attachments'
+import { lookupCodeFiles } from '../api/code-files'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import type { Conversation } from '../state/types'
@@ -186,8 +187,9 @@ const selectEdit = computed<EditSelectionHandler | undefined>(() => {
 
 /**
  * The Host files the conversation's messages name: images from its raw
- * route, files opened through the `file` intent while a plugin opens it; and
- * the attachments they name, from the attachment route.
+ * route, files opened through the `file` intent while a plugin opens it, at
+ * their lines, and which paths of a reply's inline code are files, from the
+ * Host; and the attachments they name, from the attachment route.
  */
 const files = computed<ConversationFiles | undefined>(() => {
   const current = conversation.value
@@ -197,7 +199,10 @@ const files = computed<ConversationFiles | undefined>(() => {
   const contents = rawFileContents(conversationFileRoutes(current.id).raw)
   return {
     imageUrl: (path) => contents.url(path),
-    open: work.canOpen('file') ? (path, clicks) => work.openIn(current.id, { intent: 'file', payload: { path } }, clicks) : undefined,
+    open: work.canOpen('file')
+      ? ({ path, line }, clicks) => work.openIn(current.id, { intent: 'file', payload: line === null ? { path } : { path, line } }, clicks)
+      : undefined,
+    codeFiles: (paths) => lookupCodeFiles(current.id, paths, primaryHost.value?.state ?? 'offline'),
     attachment: (id) => lookupAttachment(current.id, id),
   }
 })

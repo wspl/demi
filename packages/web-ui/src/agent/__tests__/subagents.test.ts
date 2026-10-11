@@ -16,6 +16,7 @@ function agent(
   partial: Pick<SubagentRecord, 'id' | 'name' | 'phase'> & Partial<SubagentRecord>,
 ): SubagentRecord {
   return {
+    number: 1,
     startedAt: '2026-09-09T00:00:00.000Z',
     history: EMPTY_TRANSCRIPT,
     pendingCalls: [],
