@@ -14,14 +14,22 @@ device's runner connection, and a shell environment on that Host.
 
 | Selection | Device | Initial directory |
 | --- | --- | --- |
-| Cloud, the default | The user's unique managed device | `/home/demi/sessions/<conversationId>` |
+| Cloud, the default | The user's unique managed device | `<home>/sessions/<conversationId>`: `/home/demi/sessions/<conversationId>` on a Cloud |
 | Paired device | The selected device | The selected directory or reported home |
 | Workspace | The workspace's device | The workspace path |
 
 A reported home is the one the device's runner sent when it last connected.
 The backend keeps it in memory only, so after a backend restart the home is
 unknown until the runner connects again; no operation reaches the device before
-then.
+then. The Cloud's directory is under the home its runner reports, which is
+`/home/demi` on every Cloud; until its runner has reported, as before the
+Cloud's first wake, the backend names `/home/demi` without having heard it. A
+development Cloud, a runner on the developer's machine, reports a temporary
+directory instead. When a report changes what an execution context said, the
+directory shells start in or the Host's system, the execution context
+advances, as an attachment change does, so each node's next inference names
+the directory its shells really start in: an agent never hands on a path that
+does not exist on its Host.
 
 A workspace is a named `(user, device, path)` record. It groups conversations but
 does not own a sandbox or restrict filesystem access. Revoking its device
