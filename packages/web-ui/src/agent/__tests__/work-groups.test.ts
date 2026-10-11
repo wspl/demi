@@ -30,7 +30,7 @@ const check = (id: string, ...commandIds: number[]): Block =>
 const writing = (id: string, toolName = 'shell'): MessageListBlock => ({
   type: 'pending_call',
   id: `pending-call:${id}-use`,
-  call: { toolUseId: `${id}-use`, toolName, description: null },
+  call: { toolUseId: `${id}-use`, toolName, description: `Write ${id}` },
 })
 const steps = (...blocks: (Block | MessageListBlock)[]) => blocks as WorkGroupBlock['steps']
 type CommandEvent = Extract<Block, { type: 'wakeup' }>['reports'][number]['event']
