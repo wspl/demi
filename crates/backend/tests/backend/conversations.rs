@@ -19,7 +19,8 @@ use demi_backend_providers::llm::families::{
     FamilyArgs, FamilyCredential, FamilyError, ProviderFamily,
 };
 use demi_conversation_socket_protocol::{
-    ClientFrame, EditOutcome, EditRequest, Failures, ServerFrame, SubagentJob, TranscriptVersion,
+    ClientFrame, EditOutcome, EditRequest, Failures, RemoveOutcome, ServerFrame, SubagentJob,
+    TranscriptVersion,
 };
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_provider_common::{
@@ -1316,6 +1317,26 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
             },
         }
     );
+    // A removal reaches no session either, so nothing held what it names.
+    socket
+        .send(&ClientFrame::CancelPendingSteer {
+            steer_id: "s1".try_into().unwrap(),
+        })
+        .await;
+    socket
+        .send(&ClientFrame::DequeueMessage {
+            message_id: "m2".try_into().unwrap(),
+        })
+        .await;
+    for id in ["s1", "m2"] {
+        assert_eq!(
+            socket.frame().await,
+            ServerFrame::RemoveResult {
+                id: id.into(),
+                outcome: RemoveOutcome::GoneOn,
+            }
+        );
+    }
     assert!(vendor.requests().is_empty());
     assert_eq!(
         Socket::try_connect(&backend, &master, FIRST).await.err(),

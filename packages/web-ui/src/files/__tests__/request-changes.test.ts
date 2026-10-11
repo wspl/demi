@@ -171,6 +171,8 @@ describe('the Change view on a request', () => {
     expect(diffLineCounts('a\nb\nc\n', 'a\nB2\nc\nd\n')).toEqual({ added: 2, removed: 1 })
     expect(diffLineCounts('', 'x\ny\n')).toEqual({ added: 2, removed: 0 })
     expect(diffLineCounts('same\n', 'same\n')).toEqual({ added: 0, removed: 0 })
+    // Its final newline removed changes the last line, as git counts it, and nothing past it.
+    expect(diffLineCounts('a\nb\n', 'a\nb')).toEqual({ added: 1, removed: 1 })
   })
 
   test('a file counts its All Changes, not the sum of its calls’, when two calls change one line', async () => {
