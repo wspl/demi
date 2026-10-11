@@ -234,15 +234,16 @@ relative to the working directory or absolute, and a bare name such as
 never turned into a link. The answer is kept with the reply; a stopped Cloud
 is not woken for it, and its code stays text until the Host runs.
 
-An image is a picture in the message, not the message: it is scaled down,
-its proportions kept, to at most 480 pixels wide and 320 tall, and the
-message's width where that is less; a smaller image keeps its size. For
-example, a 2560 × 1720 screenshot shows 476 × 320, a 1280 × 720 one
-480 × 270, and a 1000 × 8000 page 40 × 320, as chat apps show a picture in
-a message and leave the detail to the click. An image always stands on a
+An image is a picture in the message, not the message: it is a tile, scaled
+down with its proportions kept to fit a box a third of the message's width,
+less the two 8-pixel gaps between three tiles, and 240 pixels tall, never
+enlarged, so three pictures fill a line. For example, in a message 760
+pixels wide a tile's box is 248 × 240: a 2560 × 1720 screenshot shows
+248 × 167, and a 1000 × 8000 page 30 × 240. An image always stands on a
 line of its own, with 12 pixels between it and the text above and below it,
 even where the Markdown puts it in the same paragraph as the text, such as
-on the line after a list item's words. A click shows the image whole: a Host image in the File
+on the line after a list item's words. Resting the pointer on it shows it
+large ([A picture's preview on hover](#a-pictures-preview-on-hover)). A click shows the image whole: a Host image in the File
 view, a web image in a new tab of the user's browser. An image inside a link
 follows the link.
 
@@ -252,13 +253,12 @@ they stand in a row, left to right in their order, as many as the message's
 width holds, and the rest wrap onto the next row. A run is two or more
 images or videos with nothing but white space between them, in one
 paragraph or in paragraphs that follow each other; any text, list or heading
-ends it. In a run, each image and each video is a thumbnail, 80 pixels tall, as the next section sizes it
+ends it. In a run, each image and each video's first frame is a tile, as above
 ([Media a tool returned](#media-a-tool-returned)); they stand 8 pixels apart
 in both directions, and the run stands apart from the text as a lone image
 does. Text before the first image in the same paragraph does not stop the
 run: a list item whose words are followed by two images, one per line, shows
-its words, then the two side by side. A lone image, and a lone video's first frame, keep the
-rule above.
+its words, then the two side by side. 
 
 A link to a file opens the `file` intent, and so does a click on a Host image;
 while no plugin the user has on opens it, a file link is shown as text and a
@@ -296,7 +296,7 @@ the call is folded or open, and a click opens it in the
 - **Where.** In the row's own line, 8 pixels after the last part of its
   face, the chevron or a tag, side by side 4 pixels apart in the order of
   the result. Each is 20 pixels tall, as wide as its proportions make it
-  within 16 and 48 pixels, cropped as a thumbnail is (below), with 4-pixel
+  within 16 and 48 pixels, cropped as below, with 4-pixel
   corners. They never wrap and the row stays one line: as many show as fit
   in the width the title leaves, and the title gives way, truncating, only
   down to half the row; the rest are counted after the last one shown, *+5*,
@@ -309,25 +309,16 @@ the call is folded or open, and a click opens it in the
   `[image 1: image/png, 1280 × 720 px, 412000 bytes]` stands for the
   original file the job viewed, and `<binary stdout: 412000 bytes>` for bytes
   the model did not see.
-- **An image** in a message's run of pictures
-  ([Files named in messages](#files-named-in-messages)) is a thumbnail: 80 pixels tall, as wide as its proportions
-  make it within 64 and 200 pixels, never enlarged. An image whose
-  proportions fall outside that range is cropped to it: a tall one, such as
-  a whole page's screenshot, keeps its top, and a wide one its middle. For
-  example, a 1280 × 720 screenshot is 142 × 80, and a 360 × 2400 page shows
-  the top 64 × 80 of it scaled down. Never enlarged wins over the range: the
-  box is no larger than the image either way, so a 50 × 50 icon stays
-  50 × 50 and a 300 × 40 strip shows its middle 200 × 40. The medium's
-  reference, and an attachment's record, carry an image's pixel size, so its
-  box is known before its bytes arrive. A row of thumbnails is as tall as
-  its tallest box, not 80 pixels whatever they are: four 171 × 40 frames
-  stand in a row 40 pixels tall, with no empty band under them before the
-  next row. Only a medium whose size is unknown until it loads, such as a
-  video before its first frame, keeps the 80-pixel box, so the transcript
-  never shrinks when it arrives. A click opens it in the
-  [media viewer](#the-media-viewer).
+- **An image** in a row, whose proportions fall outside its box's range, is
+  cropped, not squeezed: a tall one, such as a whole page's screenshot,
+  keeps its top, and a wide one its middle. It is never enlarged, so a
+  16 × 16 icon stays 16 × 16. The medium's reference, and an attachment's
+  record, carry an image's pixel size, so its box is known before its bytes
+  arrive; only a medium whose size is unknown until it loads, such as a
+  video before its first frame, takes the largest box, so nothing shrinks
+  when it arrives. A click opens it in the [media viewer](#the-media-viewer).
 - **A video** never plays in place. Its thumbnail is its first frame, sized
-  as an image's, in a row or in a message,, with a play mark over its middle. A click opens it in the
+  as an image's, in a row or in a message, with a play mark over its middle. A click opens it in the
   [media viewer](#the-media-viewer), scaled down to fit and never enlarged, where it
   plays at once in the player built into the user's browser, whose controls
   and full-screen control it keeps; closing the viewer stops it. A video's
@@ -378,10 +369,9 @@ it, as a link preview does, so a glance needs no window:
 ```
 
 - **Which pictures.** Every picture the page shows smaller than this card
-  would: a call's, a notice's and a run's in their rows, a thumbnail in a
-  message's run of pictures, and an image or video capsule in a sent
-  message. A lone image in a message already shows at the card's size, so
-  it has none.
+  would: a call's, a notice's and a run's in their rows, a picture in a message,
+  and an image or video capsule in a sent message. Every picture in a message is a tile smaller than the card, so
+  each has one.
 - **The card.** The picture fitted within 480 × 360 pixels, never enlarged,
   over the checkerboard where it is transparent; a video shows its first
   frame and does not play. Under it, one line: the call's or notice's
