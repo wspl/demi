@@ -139,9 +139,9 @@ function backendLeaves(): void {
 }
 
 /** The backend is back with `state`: the page connects again at once, and the channel's snapshot ends the banner. */
-function backendReturns(state = productState({ pluginStates: { skills } })): void {
+async function backendReturns(state = productState({ pluginStates: { skills } })): Promise<void> {
   away = false
-  pageReturned()
+  await pageReturned()
   channels.last().connect(state)
 }
 
@@ -153,7 +153,7 @@ test('a call the page cannot send while the backend restarts goes once it is bac
   const review = { source: 'src_1', skill: 'review', enabled: true }
   const call = page('skills').plugin.call('set_enabled', review, z.null())
   await waitFor(() => unanswered === 1, () => 'the call was not tried')
-  backendReturns()
+  await backendReturns()
   expect(await call).toBeNull()
   expect(calls).toEqual([['/api/plugins/skills/calls/set_enabled', review]])
 })
@@ -175,7 +175,7 @@ test("a read of a conversation's plugin state while the backend restarts shows n
   const tabs = scope.run(() => page('browser').plugin.conversation(CONVERSATION).state(z.object({ tabs: z.array(z.string()) })))!
   await waitFor(() => unanswered === 1, () => 'the state was not read')
   // A snapshot that names no newer revision, so only the read that waited reads.
-  backendReturns()
+  await backendReturns()
   await until(tabs.value).toMatch((state) => state?.tabs[0] === 't1')
   expect(tabs.error.value).toBeNull()
   scope.stop()
@@ -191,7 +191,7 @@ test('a waiting call whose caller leaves rejects with the abort and is never sen
   leave.abort()
   await expect(left).rejects.toMatchObject({ name: 'AbortError' })
   // The call that stayed goes when the backend is back, and the one that left would have gone with it.
-  backendReturns()
+  await backendReturns()
   expect(await staying).toBeNull()
   expect(calls).toEqual([['/api/plugins/skills/calls/set_enabled', kept]])
 })

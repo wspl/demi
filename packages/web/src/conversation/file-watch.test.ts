@@ -239,6 +239,8 @@ test('a watch that brings nothing, not even a heartbeat, for 75 s is broken and 
     expect(sockets).toHaveLength(1)
     // Silent for 75 s: broken, closed, and what it covered is unconfirmed.
     jest.advanceTimersByTime(1)
+    // The judgement waits for the messages already queued.
+    jest.advanceTimersByTime(0)
     expect(first.closed).toBe(true)
     shown.release()
     files.show(spec('text', '/w/a.ts')).release()

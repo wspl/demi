@@ -633,7 +633,7 @@ test('a first send while the backend is away waits without failing and goes once
     expect(submit).not.toHaveBeenCalled()
     away = false
     // The page connects again at once rather than after its wait, and the channel's snapshot ends the banner.
-    pageReturned()
+    await pageReturned()
     channels.last().connect({ ...backendState(), providers: [stubProvider] })
     await sending
     expect(submit).toHaveBeenCalledTimes(1)
@@ -1526,7 +1526,7 @@ test('a conversation opened while the backend is away loads once it is back, wit
     expect(first.load).toBe('loading')
     expect(first.lastError).toBeNull()
     away = false
-    pageReturned()
+    await pageReturned()
     channels.last().connect(backendState())
     await opened
     expect(first.load).toBe('ready')
