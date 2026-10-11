@@ -984,6 +984,14 @@ Nested tool use renders from the same blocks on `subagent_transcript_*`, keyed
 by `subagentId` under the matching `subagent` `started` job, with
 `parentSessionId` giving the tree.
 
+A child's task brief, the `user` block its spawn or resume writes, is Markdown
+an agent wrote, not text the user typed: it renders as an answer does, in full
+Markdown, headings, lists, tables and code blocks included, inside the user
+bubble that marks it as the child's input. The user dialect, which keeps a
+`#` or a `-` at a line's start as typed
+([Writing a message](../product/product.md#writing-a-message)), is for what
+the user types.
+
 Root assistant text is the only user-visible reply stream. A child's `text`
 blocks are for nested UI, such as cards and inspection, not a second
 user-facing reply.
