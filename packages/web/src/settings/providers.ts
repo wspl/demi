@@ -8,6 +8,7 @@ import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refres
 import type { ProviderLoginPhase } from '@demicodes/web-ui/settings/types'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { defaultEndpointUrl } from '@demicodes/web-ui/settings/provider-defaults'
+import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import {
   WIRE_API_LABELS,
   type SettingsModelDraft,
@@ -214,7 +215,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       enabled: true,
       models: [],
       accounts: [],
-      logo: null,
+      // A subscription not yet configured goes by its type; an added vendor's draft takes its mark below.
+      logo: providerLogo({ kind, providerType: id, vendorId: null }),
     }
   }
 
@@ -228,6 +230,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     provider.vendorId = vendor.id
     provider.baseUrl = vendor.baseUrl ?? ''
     provider.wireApi = vendor.wireApi
+    provider.logo = vendor.logo
     return provider
   }
 

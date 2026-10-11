@@ -134,7 +134,8 @@ export interface SettingsVendor {
   wireApi: SettingsWireApi
   /** Null when the runtime knows the vendor's endpoint itself. */
   baseUrl: string | null
-  logo: string
+  /** The vendor mark (`vendorLogo`); null falls back to an initial. */
+  logo: string | null
 }
 
 /** `unconfigured` is a fresh entry that still needs its key or login. */
@@ -215,7 +216,7 @@ export interface SettingsProviderEntry {
   accounts: SettingsProviderAccount[]
   /** The vendor supports a free quota request when an account becomes visible. */
   autoRefreshUsage?: boolean
-  /** The vendor mark; null falls back to an initial. */
+  /** The vendor mark (`providerLogo`); null falls back to an initial. */
   logo: string | null
 }
 
