@@ -944,7 +944,23 @@ decodes to and anything else by itself, against the size and SHA-256 the
 descriptor or the runner manifest gives, stores them, and answers the request.
 Needs of one artifact that arrive together share one fetch. When no source
 holds the artifact, or a download fails, the request fails with the reason,
-and the next need tries again. For example, the first `demi file edit` on a
+and the next need tries again. A need waits as long as that fetch takes: a runner's
+`artifact_location` request has no deadline of its own while its connection
+lives, as a download has none ([Install artifacts](#install-artifacts)),
+since a fetch that runs on a small server's slow disk or link is not a
+failure.
+
+So that a first command does not wait for a fetch at all, the backend
+stores ahead what it can foresee. When it starts, and when a Host of a
+target it has not stored for pairs or wakes, it stores, in the background
+and one artifact at a time, every package executable of its release for the
+targets of the Hosts it knows: the Cloud's and every paired device's. For
+example, after an upgrade to a release with a new `demi-browser`, the
+backend stores it for `x86_64-unknown-linux-musl` and `aarch64-apple-darwin`
+while it starts, and the first browser command on the user's Mac finds it in
+the store, where before it waited 11 seconds for the copy and could fail.
+A need that arrives while the ahead-of-time fetch of the same artifact runs
+shares it. For example, the first `demi file edit` on a
 Windows laptop paired with a server that runs a published release: the
 runner asks where `demi-file` for `x86_64-pc-windows-msvc` downloads from; the
 store does not hold it yet, so the backend downloads
