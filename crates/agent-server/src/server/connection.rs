@@ -291,7 +291,9 @@ impl<H: HostResolver> Connection<H> {
         self.send(ServerFrame::Closed);
     }
 
-    /// The answer to a frame that needs a session when none is open.
+    /// The answer to a frame that needs a session when none is open. A
+    /// removal is answered `gone_on`, since nothing held what it names
+    /// (`runtime.md` § Pending steers).
     fn refuse(&self, frame: ClientFrame) {
         match frame {
             ClientFrame::Steer { steer_id, .. } => {
@@ -302,8 +304,13 @@ impl<H: HostResolver> Connection<H> {
                     },
                 });
             }
-            ClientFrame::CancelPendingSteer { .. }
-            | ClientFrame::SteerNow { .. }
+            ClientFrame::CancelPendingSteer { steer_id } => {
+                self.remove_result(steer_id.into_string(), false);
+            }
+            ClientFrame::DequeueMessage { message_id } => {
+                self.remove_result(message_id.into_string(), false);
+            }
+            ClientFrame::SteerNow { .. }
             | ClientFrame::AbortSubagents {}
             | ClientFrame::AbortSubagent { .. } => {}
             frame => self.reject(frame.kind(), NO_SESSION),
