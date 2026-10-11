@@ -140,6 +140,9 @@ conversation no longer runs, its subagents and background jobs included.
   Device, or reuses the one it paired; `demi.runner.stop()` and `.start()`
   stop and start that same runner, as a device that goes away and comes back,
   and `demi.runner({ fresh: true })` pairs a new one.
+- **Frames.** `demi.frames(probe)` runs `probe` in the page at every frame the
+  page draws and returns what it read each time, for a check that a list never
+  shrinks or a row keeps its place across a transition.
 - **Watching.** `demi.log.console()`, `.network()` and `.sockets()` return
   what the page logged, requested, and sent or received since the browser
   started or since `demi.log.mark(name)`, including what goes over a
