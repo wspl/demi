@@ -215,7 +215,9 @@ async fn the_snapshot_is_the_users_product_state() {
 /// A conversation whose database cannot be opened, as one a build that
 /// does not know its schema made, takes nothing else down: the page's
 /// channel sends the product state with every conversation, the others
-/// open, and only that one's history fails.
+/// open, and only that one's history fails. Its history answers
+/// `conversation_unreadable`, from which the page words the failure, never
+/// with the storage error, which names the file and an operator's command.
 // About a second: one backend with two conversations.
 #[tokio::test]
 async fn a_conversation_database_that_cannot_be_opened_fails_only_that_conversation() {
@@ -242,7 +244,15 @@ async fn a_conversation_database_that_cannot_be_opened_fails_only_that_conversat
     assert_eq!(listed, expected);
     let history = |id: &str| format!("/api/conversations/{id}/transcript");
     assert_eq!(backend.get(&history(FIRST), Some(&master)).await.status, StatusCode::OK);
-    assert_ne!(backend.get(&history(SECOND), Some(&master)).await.status, StatusCode::OK);
+    // The two reads a page opens a conversation with.
+    for path in [history(SECOND), format!("/api/conversations/{SECOND}/subagents")] {
+        let answer = backend.get(&path, Some(&master)).await;
+        assert_eq!(
+            (answer.status, answer.json::<serde_json::Value>()["code"].as_str()),
+            (StatusCode::INTERNAL_SERVER_ERROR, Some("conversation_unreadable")),
+            "{path}"
+        );
+    }
     // A change of the broken one reaches the page as its summary, and the
     // channel stays open.
     rename(&backend, &master, SECOND, "Broken").await;

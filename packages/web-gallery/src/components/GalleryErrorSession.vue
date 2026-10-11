@@ -5,6 +5,7 @@ import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
+import { CONVERSATION_UNREADABLE } from '@demicodes/web-ui/agent/session-status'
 import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import type { ConnectionProblem } from '@demicodes/web-ui/transport/connection'
 import type { Block } from '@demicodes/protocol'
@@ -112,14 +113,11 @@ async function forkFromAnswer(): Promise<void> {
   productWould('Fork the conversation from this answer')
 }
 
-/** The backend's own answer to the transcript read: a 500 with its error body, never the connection. */
-const LOAD_ERROR = 'The transcript could not be read: database disk image is malformed'
-
 const cases: SessionCase[] = [
   {
     variant: 'Initial load failed · nothing to keep',
-    note: 'The backend answered the transcript read with its own error. The status pane replaces the transcript and carries the reason and Retry. Nothing else says it; there is no composer. A read that cannot reach the backend never ends here: it waits under the banner, as the next specimen shows.',
-    session: state('initial', { load: 'failed', lastError: LOAD_ERROR }),
+    note: 'The backend answered the transcript read with its own error, here that it could not read the conversation’s database. The status pane replaces the transcript and carries the reason, in the page’s words, and Retry; the backend’s message, which names its files, goes to the console. Nothing else says it; there is no composer. A read that cannot reach the backend never ends here: it waits under the banner, as the next specimen shows.',
+    session: state('initial', { load: 'failed', lastError: CONVERSATION_UNREADABLE }),
     composer: 'none',
   },
   {

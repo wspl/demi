@@ -5,6 +5,7 @@ import { ConversationRuntime, RemovalRefusedError } from '@demicodes/web-ui/agen
 import { listTailBlocks } from '@demicodes/web-ui/agent/list-tail'
 import { rowKey } from '@demicodes/web-ui/agent/row-key'
 import { toasts } from '@demicodes/web-ui/infra/toast'
+import { CONVERSATION_UNREADABLE } from '@demicodes/web-ui/agent/session-status'
 import { pageReturned } from '@demicodes/web-ui/transport/liveness'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick, toRaw, watch } from 'vue'
@@ -2038,6 +2039,32 @@ test('a conversation the backend does not have fails to open at once', async () 
     expect(first.load).toBe('failed')
     expect(first.lastError).toBe('Conversation not found')
   } finally {
+    restoreFetch()
+  }
+})
+
+// The backend's message names its files and an operator's command: the
+// page says it in its own words and keeps the message for the console.
+test('a conversation the server cannot read fails to open in the page’s words', async () => {
+  const store = useConversations()
+  const first = store.items.find((item) => item.id === FIRST)!
+  const restoreFetch = answerOpening(FIRST)
+  const served = globalThis.fetch
+  const message = '/srv/demi/conversations/c.sqlite was made by a newer release or another build of Demi: return to the release that made it, or restore the databases of this release with `demi-server rollback`'
+  globalThis.fetch = (async (input, init) => {
+    if (String(input).endsWith('/transcript')) {
+      return Response.json({ code: 'conversation_unreadable', message }, { status: 500 })
+    }
+    return served(input, init)
+  }) as typeof fetch
+  const logged = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    await store.activate(FIRST)
+    expect(first.load).toBe('failed')
+    expect(first.lastError).toBe(CONVERSATION_UNREADABLE)
+    expect(logged.mock.calls.some((call) => call.some((value) => value instanceof Error && value.message === message))).toBe(true)
+  } finally {
+    logged.mockRestore()
     restoreFetch()
   }
 })

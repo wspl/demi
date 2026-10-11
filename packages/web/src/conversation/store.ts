@@ -15,6 +15,7 @@ import {
   type MessageEditRequest,
 } from '@demicodes/web-ui/agent/message-editing'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { CONVERSATION_UNREADABLE } from '@demicodes/web-ui/agent/session-status'
 import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { showRefused, type Refusal } from '@demicodes/web-ui/sidebar/refused-toast'
@@ -1052,10 +1053,17 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  /** The conversation did not open: the pane or the transcript's tail says why, with Retry. */
+  /**
+   * The conversation did not open: the pane or the transcript's tail says
+   * why, with Retry. A database the server could not read is said in the
+   * page's words; the error itself goes to the console.
+   */
   function failOpening(conversation: Conversation, error: unknown): void {
+    console.error('The conversation did not open', error)
     conversation.load = 'failed'
-    conversation.lastError = error instanceof Error ? error.message : String(error)
+    conversation.lastError = error instanceof ApiError && error.code === 'conversation_unreadable'
+      ? CONVERSATION_UNREADABLE
+      : error instanceof Error ? error.message : String(error)
   }
 
   /**
