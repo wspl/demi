@@ -265,8 +265,9 @@ html {
   --agent-text: 14px;
   --agent-leading: 1.5;
   --agent-chrome: 14px;
-  /* A transcript's rows, a step under its prose. */
-  --agent-row: calc(var(--agent-text) - 1px);
+  /* A transcript's rows read at its prose's size, whatever size the user
+     picked; their lighter colour (--fg-row) keeps them under the prose. */
+  --agent-row: var(--agent-text);
 }
 
 button,
