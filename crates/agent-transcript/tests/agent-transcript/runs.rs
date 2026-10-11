@@ -162,17 +162,37 @@ fn text_the_users_words_and_decisions_end_a_run() {
 }
 
 #[test]
-fn the_steps_after_a_continued_stop_or_a_resume_are_a_run_of_their_own() {
+fn the_steps_after_the_systems_resume_join_the_run_before_it() {
+    // A deploy command is lost when the backend restarts, the turn
+    // resumes, and the agent runs four more commands: one run.
+    let mut log = log();
+    log.push_user(turn(), &test_model(), text("Deploy"), None);
+    call(&mut log, "deploy");
+    log.push_resume(turn(), &test_model(), Some("The backend restarted.".into()));
+    report(&mut log, "progress", false);
+    call(&mut log, "b");
+    call(&mut log, "c");
+    call(&mut log, "d");
+    call(&mut log, "e");
+    assert_eq!(
+        runs(&log),
+        [None, Some(1), None, None, Some(1), Some(1), Some(1), Some(1)]
+    );
+}
+
+#[test]
+fn the_steps_after_a_continued_stop_join_the_run_before_it() {
     // The agent runs a command, the user stops it and continues: the next
-    // calls stand where Stopped stood, a run of their own; a resume after a
-    // cut turn starts one too.
+    // call joins the run, and after a Stop the user did not continue, a
+    // command's end that arrives starts a run of its own.
     let mut log = log();
     log.push_user(turn(), &test_model(), text("Go"), None);
     call(&mut log, "a");
     log.push_abort(&test_model());
     log.mark_latest_abort_resumed();
-    call(&mut log, "b");
     log.push_resume(turn(), &test_model(), None);
-    call(&mut log, "c");
-    assert_eq!(runs(&log), [None, Some(1), None, Some(3), None, Some(5)]);
+    call(&mut log, "b");
+    log.push_abort(&test_model());
+    report(&mut log, "end", true);
+    assert_eq!(runs(&log), [None, Some(1), None, None, Some(1), None, Some(6)]);
 }
