@@ -581,13 +581,17 @@ few milliseconds reads as the list twitching.
   beside it. One rule, for every such change: the message being sent and the
   message confirmed; Connecting, Requesting and the step that arrives;
   thinking without text and the text or step that follows it; a call being
-  written and its call; a retry's notice and the answer it waited for; a
-  failure told at the tail and the turn its Retry starts; *Compacting* and the
-  compaction's divider; a run's live face and its summary. For example, the
+  written and its call; a message that could not be delivered and the turn
+  its Retry starts; a conversation that failed to open and the tail row once
+  it opens; *Compacting* and the compaction's divider; a run's live face and
+  its summary. For example, the
   user presses Continue after a Stop: the *Stopped* row rolls into
   *Requesting* in that place, and Requesting into the turn's next step; Resume
   after an error rolls the error record the same way. A change the backend
-  refuses rolls the row back to what it said. A row moves only when the
+  refuses rolls the row back to what it said. A taller row that rolls into a
+  shorter one, as an error record into Requesting, narrows over the roll:
+  the user's Continue, Resume or Retry asked for it, so the list may shrink
+  then, and only then. A row moves only when the
   message it shows moves, as a steer the turn took leaves the waiting messages
   for its place in the transcript.
 - **Messages that wait stay out of the turn's flow.** A pending steer and a
