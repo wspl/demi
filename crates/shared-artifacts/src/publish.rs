@@ -78,9 +78,11 @@ impl Staged {
     }
 
     /// Makes the staged bytes the file at the first of `candidates` where
-    /// nothing is, and answers that path; nothing is replaced. Each
+    /// nothing is, and answers that path; nothing is replaced. A candidate
+    /// that is a file of the very same bytes is the file already published:
+    /// the staged bytes are dropped and that path is the answer. Each
     /// candidate must be beside the staged path, in its directory.
-    pub async fn publish_first_free(
+    pub async fn publish_first_free_or_same(
         mut self,
         candidates: impl Iterator<Item = PathBuf> + Send + 'static,
     ) -> Result<PathBuf, Error> {
@@ -96,6 +98,10 @@ impl Staged {
                     Ok(()) => return Ok(candidate),
                     Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {
                         temporary = error.path;
+                        if same_bytes(&temporary, &candidate) {
+                            // Dropping the staged file removes it.
+                            return Ok(candidate);
+                        }
                     }
                     Err(error) => return Err(Error::Io(error.error)),
                 }
@@ -108,6 +114,39 @@ impl Staged {
         .await
         .map_err(std::io::Error::other)?
     }
+}
+
+/// Whether `taken` is a file of the same bytes as the file `staged`. A file
+/// that cannot be read counts as different, which costs at most a copy under
+/// the next name.
+fn same_bytes(staged: &Path, taken: &Path) -> bool {
+    use std::io::Read as _;
+
+    let file = |path: &Path| {
+        let metadata = std::fs::symlink_metadata(path).ok()?;
+        let file = std::fs::File::open(path).ok()?;
+        metadata.is_file().then(|| (metadata.len(), file))
+    };
+    let (Some((size, mut staged)), Some((taken_size, mut taken))) = (file(staged), file(taken))
+    else {
+        return false;
+    };
+    if size != taken_size {
+        return false;
+    }
+    let (mut one, mut other) = (vec![0; 64 * 1024], vec![0; 64 * 1024]);
+    let mut left = size;
+    while left > 0 {
+        let part = left.min(one.len() as u64) as usize;
+        let read = staged
+            .read_exact(&mut one[..part])
+            .and(taken.read_exact(&mut other[..part]));
+        if read.is_err() || one[..part] != other[..part] {
+            return false;
+        }
+        left -= part as u64;
+    }
+    true
 }
 
 /// Publishes what `input` yields at `path`. Once `cancel` fires, nothing is
