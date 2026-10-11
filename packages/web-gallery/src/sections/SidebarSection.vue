@@ -74,7 +74,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Conversations',
-    'Plain conversations that run in no checkout. Manual order, pinned on top. The group folds under its label, as Projects does (Folded Groups). One on a paired device shows that device at its row’s end: the device’s icon with a dot for its state, or without a dot once the device is removed, left of the pin when the row is pinned; a row on the Cloud shows none. On hover Archive takes the row’s end, and a pinned row shows Unpin before it, so the pin moves one place left; a row that is not pinned offers Pin in its menu. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
+    'Plain conversations that run in no checkout. Manual order, pinned on top. The group folds under its label, as Projects does (Folded Groups). One on a paired device shows that device at its row’s end: the device’s icon with a dot for its state, or without a dot once the device is removed, right of the pin when the row is pinned, so devices line up down the list; a row on the Cloud shows none. On hover Archive takes the row’s end, and a pinned row shows Unpin before it, in the pin’s own place on a row with a device and one place left of it on a row without; a row that is not pinned offers Pin in its menu. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
   ],
   [
     'Projects',
@@ -507,7 +507,7 @@ onBeforeUnmount(() => {
 
     <GallerySection
       title="Row Hover"
-      note="Hover a row: Archive takes its end. A pinned row shows Unpin before Archive, so its pin moves one place left; a row that is not pinned offers Pin in its menu, as right-click shows. A device’s mark gives its place to the actions as the pin does. Archive drops the row, and the toast’s Undo brings it back; Reset gives the specimen its rows again."
+      note="Hover a row: Archive takes its end. A pinned row shows Unpin before Archive, in the pin’s own place on a row with a device and one place left of it on a row without; a row that is not pinned offers Pin in its menu, as right-click shows. A device’s mark gives its place to the actions as the pin does. Archive drops the row, and the toast’s Undo brings it back; Reset gives the specimen its rows again."
     >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="pinned and not · live">
