@@ -2,6 +2,7 @@
 import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useTouchOnly } from '@demicodes/web-ui/ui/touch-only'
+import CapCentered from '@demicodes/web-ui/ui/CapCentered.vue'
 import ConversationDot from './ConversationDot.vue'
 import type { SidebarConversation } from './types'
 
@@ -36,17 +37,22 @@ const touchOnly = useTouchOnly()
     <!-- The button starts where the rows' content does, so the label stays on the list's line. -->
     <button
       type="button"
-      class="group/fold flex h-full min-w-0 items-center gap-1 rounded-md pl-2.5 pr-1 uppercase"
+      class="group/fold flex h-full min-w-0 items-center rounded-md pl-2.5 pr-1 uppercase"
       :aria-expanded="!folded"
       @click="emit('toggle')"
     >
-      <span class="truncate">{{ label }}</span>
-      <ConversationDot v-if="waiting" :conversation="waiting" />
-      <span
-        class="flex items-center transition-opacity duration-150 motion-reduce:transition-none"
-        :class="touchOnly ? '' : 'opacity-0 group-hover/heading:opacity-100 group-focus-visible/fold:opacity-100'"
-      >
-        <FoldChevron :open="!folded" :size="ICON_PX.in20" />
+      <!-- The dot and the chevron sit on the middle of the label's capitals. -->
+      <span class="flex min-w-0 items-baseline gap-1">
+        <span class="truncate">{{ label }}</span>
+        <CapCentered v-if="waiting">
+          <ConversationDot :conversation="waiting" />
+        </CapCentered>
+        <CapCentered
+          class="transition-opacity duration-150 motion-reduce:transition-none"
+          :class="touchOnly ? '' : 'opacity-0 group-hover/heading:opacity-100 group-focus-visible/fold:opacity-100'"
+        >
+          <FoldChevron :open="!folded" :size="ICON_PX.in20" />
+        </CapCentered>
       </span>
     </button>
     <span class="flex-1" />

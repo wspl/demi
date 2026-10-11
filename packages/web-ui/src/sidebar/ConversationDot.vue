@@ -4,8 +4,8 @@ import StatusDot from '@demicodes/web-ui/ui/StatusDot.vue'
 import { statusTone } from '@demicodes/web-ui/agent/conversation-status'
 import type { SidebarConversation } from './types'
 
-// One quiet mark (`product.md` § Conversations and projects): yellow with a halo while a
-// permission request waits for the user, over every other mark and whether the row is open or
+// One quiet mark (`product.md` § Conversations and projects): yellow while a permission
+// request waits for the user, the same size as every other dot and with nothing around it, over every other mark and whether the row is open or
 // read; otherwise the tone the conversation's state wears on its tab too, the accent breathing
 // while it runs, green once finished and red once failed, read or not. A turn the user stopped is
 // their own decision, and like a conversation that ran nothing it leaves the row settled: a faint
@@ -20,10 +20,9 @@ const tone = computed(() => statusTone(props.conversation.status))
 
 <template>
   <span class="flex size-3.5 shrink-0 items-center justify-center">
-    <!-- The halo keeps it apart from the failed mark in dark mode. -->
     <span
       v-if="conversation.needsYou"
-      class="size-1.5 rounded-full bg-on-attention ring-2 ring-on-attention/35"
+      class="size-1.5 rounded-full bg-on-attention"
       role="img"
       aria-label="Needs your decision"
     />
