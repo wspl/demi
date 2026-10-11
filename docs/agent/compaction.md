@@ -120,7 +120,10 @@ request after the pass.
    threshold is reached after the fortieth's result: the window ends where
    the request that carried the thirty-sixth call's result ended, and the
    last four calls, their results and the answers between them are kept as
-   written. What came after the cut point is kept. When no request has been answered since the last compaction, there
+   written. A cut point is a request the current model answered: after a
+   switch, until the new model has answered one, the latest answered
+   request's end serves, since an earlier model's request is not one the
+   current model's vendor cached. What came after the cut point is kept. When no request has been answered since the last compaction, there
    is no such request, and the window ends where the input that no request
    has answered begins: at the last `user` block after the latest `response`
    block, or, when no `user` block came after it, right after that
@@ -136,7 +139,9 @@ request after the pass.
    it.
 3. The pass keeps the user's own words. From the window's `user` and `steer`
    blocks, with the messages the previous boundary kept before them, it takes
-   the newest first, in full, while they fit 20,000 tokens; the one that
+   the newest first, in full, while they fit 20,000 tokens, or 10% of the
+   window in use when that is less, so that with the kept work they stay far
+   under the threshold of a small window; the one that
    crosses the budget keeps its text up to it, without its media, and older
    ones are left to the summary. A receipt of the user's decision, an agent's
    message and a command report are not the user's words, and the summary
@@ -209,7 +214,9 @@ its subagents that are live, each with its number and description; an agent
 with neither gets no block. For example, the agent started a build and a
 subagent an hour before: after the pass, its next request says that command
 42, *Build the release*, runs, and that subagent 3, *Check the migrations*,
-works, though the summary mentions neither.
+works, though the summary mentions neither. The block's source is
+`execution`, and it reads one line each, *[Still running after compaction]
+Command 42 (Build the release) is still running.*
 
 The kept blocks often hold the reasoning of the latest answer, which the model
 produced after a history that the summary has now replaced. Replay marks that
@@ -312,7 +319,7 @@ them.
 | `response` | Its usage as JSON |
 | `error` | Its message |
 | `abort` | `aborted` |
-| `compaction_boundary` | The summary |
+| `compaction_boundary` | The note, the messages it keeps and the summary |
 | `compaction_marker` | The summarized token count, in decimal |
 
 | Media the request carries | Weight in tokens |
@@ -427,7 +434,7 @@ its only use.
 | System prompt, tools, thinking | The session's |
 | Provider runtime | A fresh runtime from the same provider: the same configuration and credentials, none of the session's execution state, such as a retained CLI process or a pending tool call ([Providers](../providers/providers.md)) |
 | Compaction | Never; the copy does not compact itself |
-| Store | None; nothing of the copy is saved, and a medium its tool returns is named by its SHA-256 and held, never stored |
+| Store | None; nothing of the copy is saved |
 | Admission | None of its own; it runs inside the session's action |
 
 Closing the copy closes its provider runtime and never touches the session's.
