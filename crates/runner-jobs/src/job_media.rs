@@ -16,7 +16,7 @@ use bytes::Bytes;
 use demi_command_protocol::MediumFacts;
 use demi_runner_protocol::wire;
 use sha2::{Digest, Sha256};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 /// The directory of a job's directory that holds its media.
 pub const MEDIA_DIRECTORY: &str = "media";
@@ -28,10 +28,14 @@ pub const JOB_MEDIA: u32 = 32;
 pub const JOB_MEDIA_BYTES: u64 = 64 * 1024 * 1024;
 
 /// A medium as it reaches the job's output: its line, then the
-/// `job_medium` that announces it when the job keeps it.
+/// `job_medium` that announces it when the job keeps it. `written` is
+/// answered once its line is in the job's output: the command that returned
+/// the medium ends only then, so nothing the job prints after the command
+/// overtakes the line.
 pub struct Arrival {
     pub line: String,
     pub medium: Option<wire::Frame>,
+    pub written: oneshot::Sender<()>,
 }
 
 /// One job's media.
@@ -40,8 +44,8 @@ pub struct JobMedia {
     /// `media/` in the job's directory, made with the first medium.
     directory: PathBuf,
     /// Where each medium's arrival goes: the job's own loop, which writes
-    /// its line into the job's output and sends its `job_medium` before the
-    /// job's exit.
+    /// its line into the job's output, answers its `written`, and sends its
+    /// `job_medium` before the job's exit.
     arrivals: mpsc::UnboundedSender<Arrival>,
     counts: Mutex<Counts>,
 }
@@ -71,7 +75,8 @@ impl JobMedia {
     /// Takes `bytes`, a checked medium that `facts` describe, as the job's
     /// next medium: within the job's bounds it writes it to its file, and
     /// its line, from the facts, and the announcement of one it keeps, which
-    /// carries them on, go to the job's output.
+    /// carries them on, go to the job's output. It returns once the line is
+    /// in the job's output.
     pub async fn keep(&self, facts: MediumFacts, bytes: Bytes) -> io::Result<()> {
         let size = bytes.len() as u64;
         let (number, kept) = {
@@ -87,12 +92,14 @@ impl JobMedia {
         };
         let kind = kind(&facts.media_type);
         if !kept {
-            return self.arrive(Arrival {
-                line: format!(
-                    "[{kind} {number}: not kept: a job keeps at most {JOB_MEDIA} media and 64 MiB]"
-                ),
-                medium: None,
-            });
+            return self
+                .arrive(
+                    format!(
+                        "[{kind} {number}: not kept: a job keeps at most {JOB_MEDIA} media and 64 MiB]"
+                    ),
+                    None,
+                )
+                .await;
         }
         let directory = self.directory.clone();
         let sha256 = tokio::task::spawn_blocking(move || {
@@ -115,16 +122,22 @@ impl JobMedia {
             duration_ms: facts.duration_ms,
         })
         .map_err(io::Error::other)?;
-        self.arrive(Arrival {
-            line,
-            medium: Some(medium),
-        })
+        self.arrive(line, Some(medium)).await
     }
 
-    fn arrive(&self, arrival: Arrival) -> io::Result<()> {
+    /// Hands a medium's line and announcement to the job, and waits until
+    /// the line is in its output.
+    async fn arrive(&self, line: String, medium: Option<wire::Frame>) -> io::Result<()> {
+        let ended = || io::Error::other("the job has ended");
+        let (written, done) = oneshot::channel();
         self.arrivals
-            .send(arrival)
-            .map_err(|_| io::Error::other("the job has ended"))
+            .send(Arrival {
+                line,
+                medium,
+                written,
+            })
+            .map_err(|_| ended())?;
+        done.await.map_err(|_| ended())
     }
 }
 

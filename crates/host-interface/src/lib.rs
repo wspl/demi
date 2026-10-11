@@ -50,7 +50,7 @@ pub use output::{
     Backward, Forward, Missing, OutputRecord, OutputText, Piece, Seen, Streams, WholeOutput,
     binary_line,
 };
-pub use record::{CommandRecord, Ending, LOST_EXIT_CODE, PageState, PageView, TAIL_CHARS};
+pub use record::{CommandRecord, Ending, PageState, PageView, TAIL_CHARS};
 pub use reserved::{RESERVED_NAMES, is_reserved};
 pub use rpc::{
     PortError, PortRequest, PortResponse, PortTransport, RelayedPipes, RpcError, RpcHandler,

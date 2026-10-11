@@ -1,5 +1,5 @@
 import { readonly, shallowRef } from 'vue'
-import { bundledLanguagesInfo, createHighlighter, getTokenStyleObject, stringifyTokenStyle, type Highlighter } from 'shiki'
+import { bundledLanguagesInfo, createHighlighter, getTokenStyleObject, stringifyTokenStyle, type Highlighter, type ThemedToken } from 'shiki'
 import { reportError } from '../infra/errors'
 import { appThemeStore } from '../theme/appTheme'
 import { codeTheme } from '../theme/codeTheme'
@@ -94,11 +94,17 @@ export function codeBlockHtml(code: string, lang: string): string {
   return `<div class="code-block">${label}${codeToHtml(code, fence)}</div>`
 }
 
+/** A highlighted run of code: where it starts and ends in the code, and its color and font style as the theme gives them. */
+export interface CodeRun extends Pick<ThemedToken, 'color' | 'fontStyle'> {
+  from: number
+  to: number
+}
+
 /**
- * Code's highlighted runs in the app's mode: where each starts and ends in
- * the code, and the CSS that colors it. Null until the highlighter arrives.
+ * Code's highlighted runs in the app's mode, as the conversation's code
+ * blocks color them. Null until the highlighter arrives.
  */
-export function codeStyles(code: string, lang: string): { from: number; to: number; style: string }[] | null {
+export function codeRuns(code: string, lang: string): CodeRun[] | null {
   const instance = highlighter.value
   if (!instance)
     return null
@@ -106,10 +112,24 @@ export function codeStyles(code: string, lang: string): { from: number; to: numb
     lang: resolveLang(lang),
     theme: codeTheme[appThemeStore.state.mode].shikiTheme,
   })
-  return tokens.flat().flatMap((token) => {
-    const style = stringifyTokenStyle(getTokenStyleObject(token))
-    return style ? [{ from: token.offset, to: token.offset + token.content.length, style }] : []
-  })
+  return tokens.flat().map((token) => ({
+    from: token.offset,
+    to: token.offset + token.content.length,
+    color: token.color,
+    fontStyle: token.fontStyle,
+  }))
+}
+
+/**
+ * Code's highlighted runs in the app's mode with the CSS that colors each;
+ * a run the theme leaves as it is has none. Null until the highlighter
+ * arrives.
+ */
+export function codeStyles(code: string, lang: string): { from: number; to: number; style: string }[] | null {
+  return codeRuns(code, lang)?.flatMap((run) => {
+    const style = stringifyTokenStyle(getTokenStyleObject(run))
+    return style ? [{ from: run.from, to: run.to, style }] : []
+  }) ?? null
 }
 
 /** Changes when rendered code should render again: the highlighter's arrival and the page's mode. */

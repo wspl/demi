@@ -95,7 +95,7 @@ test('a link to an agent shows its mark and opens it; a number the conversation 
     open: () => {},
   }
   expect(renderMarkdown('I gave the icons to [File icons](agent:4) and the rest to [Fonts](agent:9).', { files, agents }))
-    .toBe('<p>I gave the icons to <button type="button" class="agent-link icon-link" data-agent-link="4" data-keeps-windows><span class="agent-link-mark" data-agent-mark="4"></span>File icons</button> and the rest to <span class="agent-link-missing" data-agent-link="9">Fonts</span>.</p>\n')
+    .toBe('<p>I gave the icons to <span role="button" tabindex="0" class="agent-link icon-link" data-agent-link="4" data-keeps-windows><span class="agent-link-lead"><span class="agent-link-mark" data-agent-mark="4"></span>File</span> icons</span> and the rest to <span class="agent-link-missing" data-agent-link="9">Fonts</span>.</p>\n')
   // Outside a conversation, the text alone.
   expect(renderMarkdown('[File icons](agent:4)')).toBe('<p>File icons</p>\n')
 })

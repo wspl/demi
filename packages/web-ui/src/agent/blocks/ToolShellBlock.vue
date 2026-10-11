@@ -15,6 +15,7 @@ import { useLiveCalls } from '../live-calls'
 import { shellRowEnd, shellRowRunning } from '../terminals'
 import { shellTitle } from '../tool-rendering'
 import { toolMedia } from '../tool-media'
+import { codeStyles, useMarkdownRenderVersion } from '../../markdown/highlight'
 
 const props = defineProps<{
   block: ToolCallBlock
@@ -24,6 +25,12 @@ const props = defineProps<{
 }>()
 
 const command = computed(() => (props.input['script'] as string) ?? '')
+const renderVersion = useMarkdownRenderVersion()
+/** The script highlighted as Bash, in the colors the conversation's code blocks use, once the highlighter is there and again in each mode. */
+const commandStyles = computed(() => {
+  void renderVersion.value
+  return codeStyles(command.value, 'bash')
+})
 const title = computed(() => shellTitle(props.input))
 const media = computed(() => toolMedia(props.block.output, title.value))
 // A call whose command ran says how it ended in its tag and above its output,
@@ -112,6 +119,7 @@ function toggleCommand(): void {
         --><CodeText
           ref="commandText"
           :text="command"
+          :styles="commandStyles"
           class="min-w-0"
           :class="[
             commandOverflows ? 'select-text transition-colors duration-200 ease-out hover:text-fg-body' : 'select-all',

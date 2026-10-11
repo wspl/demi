@@ -240,14 +240,14 @@ const rowOf = computed(() => new Map(renderBlocks.value.flatMap((row) =>
 function revealAndMark(id: string): boolean {
   const scroller = scrollContainer.value
   const row = rowOf.value.get(id) ?? id
-  if (!scroller || !reveal(row))
+  if (!scroller || !reveal(row, props.bottomOffset))
     return false
   revealing?.abort()
   revealing = new AbortController()
   const rowSelector = `[data-block-id="${CSS.escape(row)}"]`
   const stepSelector = `${rowSelector} [data-step-id="${CSS.escape(id)}"]`
   const open = row !== id && scroller.querySelector(stepSelector) !== null
-  highlightFound(scroller, open ? stepSelector : rowSelector, revealing.signal)
+  highlightFound(scroller, open ? stepSelector : rowSelector, revealing.signal, { scroll: false })
   return true
 }
 watch(
@@ -363,7 +363,7 @@ defineExpose({
             :data-block-id="renderBlocks[item.index]!.id"
             :data-row-key="String(item.key)"
             :ref="(el) => measureElement(el as Element)"
-            class="absolute inset-x-0 top-0"
+            class="absolute inset-x-0 top-0 [--found-inset-x:max(0px,calc(var(--agent-pad-x,2rem)-0.5rem))]"
             :style="{ transform: `translateY(${item.start}px)` }"
           >
             <MessageEditRegion :muted="mutedIds.has(renderBlocks[item.index]!.id)">

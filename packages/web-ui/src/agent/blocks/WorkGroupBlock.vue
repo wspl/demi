@@ -191,9 +191,7 @@ function pick(path: string, clicks: number): void {
   </BlockScope>
   <div v-else-if="loneNotice" class="[--agent-pad-x:0px]">
     <CommandReportBlock v-if="loneNotice.type === 'wakeup'" :reports="loneNotice.reports" :working="group.live" />
-    <BlockScope v-else :block="loneNotice">
-      <AgentReceiptBlock v-model:open="isOpen" :message="loneNotice.message" :working="group.live" />
-    </BlockScope>
+    <AgentReceiptBlock v-else :message="loneNotice.message" :working="group.live" />
   </div>
   <template v-else>
     <FunctionalBlock
@@ -215,10 +213,12 @@ function pick(path: string, clicks: number): void {
       <template v-if="!lone || loneText !== ''" #body>
         <ThinkingText v-if="lone" :content="lone.text" :streaming="thinkingLive" />
         <div v-else class="[--agent-pad-x:0px]">
-          <!-- Open, each step's row is named, so a block brought into view inside the run marks its own row. -->
+          <!-- Open, each step's row is named, so a block brought into view inside the run marks its own row;
+            the row stands in the column already, and its icon gives the mark room at its start. -->
           <div
             v-for="(step, index) in group.steps"
             :key="stepKey(step)"
+            class="[--found-inset-x:0px]"
             :data-step-id="isOpen ? step.id : undefined"
             v-bind="chromeEntrance(entering.has(stepKey(step)))"
           >
@@ -235,9 +235,7 @@ function pick(path: string, clicks: number): void {
             </BlockScope>
             <PendingCallBlock v-else-if="step.type === 'pending_call'" :call="step.call" />
             <CommandReportBlock v-else-if="step.type === 'wakeup'" :reports="step.reports" />
-            <BlockScope v-else :block="step">
-              <AgentReceiptBlock :message="step.message" />
-            </BlockScope>
+            <AgentReceiptBlock v-else :message="step.message" />
           </div>
         </div>
       </template>

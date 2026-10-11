@@ -1,6 +1,6 @@
 import { DEMO_BUN_TEST, DEMO_GIT_DIFF, DEMO_RG } from './terminal-output'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-import { RUNNING_SHELL_DESCRIPTION, RUNNING_SHELL_SCRIPT, returnedShellTool, runningShellTool } from './blocks'
+import { BASH_SCRIPT, RUNNING_SHELL_DESCRIPTION, RUNNING_SHELL_SCRIPT, returnedShellTool, runningShellTool } from './blocks'
 import { ago } from './time'
 
 /**
@@ -37,6 +37,14 @@ export function galleryTerminals(): TerminalRecord[] {
       phase: 'running',
       startedAt: ago(30_000),
       output: DEMO_GIT_DIFF,
+    },
+    {
+      id: 'term-bash',
+      title: 'Count the old cookie name and list the changed files',
+      script: BASH_SCRIPT,
+      phase: 'running',
+      startedAt: ago(20_000),
+      output: '4\nchanged: packages/web/src/auth.test.ts\nchanged: packages/web/src/cookie.ts\n',
     },
     {
       id: LIVE_TERMINAL_ID,

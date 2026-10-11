@@ -150,7 +150,7 @@ export const organizeReceiptMessages: AgentMessage[] = [
     timestamp: '2026-09-12T12:08:00.000Z',
     content:
       "Demi could not make the move this conversation's agent asked for: the project no longer exists. The conversation still runs on Cloud (/home/demi/sessions/0f4e7597-e889-4baa-ac98-93fa61b68d28).",
-    event: { type: 'move_failed' as const },
+    event: { type: 'move_failed' as const, reason: 'the project no longer exists' },
   },
 ]
 
@@ -347,6 +347,30 @@ export const longScriptShellTool = toolCall({
         ).join(''),
       },
     ],
+  }),
+})
+
+/**
+ * A script of a few lines, as Bash highlights it: a variable with a default,
+ * quotes, a pipe, a loop and a heredoc.
+ */
+export const BASH_SCRIPT = [
+  'SERVICE="${1:-auth}"',
+  'grep -rn "sid" "packages/web/src/$SERVICE" | wc -l',
+  'for file in $(git diff --name-only); do echo "changed: $file"; done',
+  "cat > /tmp/check.sh <<'EOF'",
+  'bun test "$SERVICE" --bail',
+  'EOF',
+].join('\n')
+
+export const bashScriptShellTool = toolCall({
+  id: 'tool-shell-bash',
+  toolName: 'shell',
+  status: 'completed',
+  input: JSON.stringify({ script: BASH_SCRIPT, description: 'Count the old cookie name and list the changed files' }),
+  view: shellView({
+    commandId: 'cmd-bash',
+    chunks: [{ stream: 'stdout', text: '4\nchanged: packages/web/src/auth.test.ts\nchanged: packages/web/src/cookie.ts\n' }],
   }),
 })
 
@@ -973,19 +997,22 @@ export const errorTool = toolCall({
 
 /**
  * The calls the end specimens show: commands that succeeded, failed, were
- * stopped or still run, one with a title too long for a narrow row, looks
- * at them, and calls that ran nothing: the repeat guard's and a refused
- * input's.
+ * stopped, were lost or still run, one with a title too long for a narrow
+ * row, looks at them, and calls that ran nothing: the repeat guard's and a
+ * refused input's.
  */
 export function commandEndBlocks(): ToolCallBlock[] {
-  type End = { status: 'exited', exitCode: number } | { status: 'running' | 'aborted' }
-  const failed = (end: End) => end.status === 'aborted' || (end.status === 'exited' && end.exitCode !== 0)
+  type End =
+    | { status: 'exited', exitCode: number }
+    | { status: 'running' | 'aborted' }
+    | { status: 'lost', lostReason: string }
+  const failed = (end: End) => end.status === 'aborted' || end.status === 'lost' || (end.status === 'exited' && end.exitCode !== 0)
   const run = (id: string, commandId: string, description: string, end: End) => toolCall({
     id,
     toolName: 'shell',
     status: failed(end) ? 'error' : 'completed',
     input: JSON.stringify({ script: 'bun test', description, intervalMs: 15_000 }),
-    output: [{ type: 'text', text: `status: ${end.status}\ncommandId: ${commandId}\noutput:\n` }],
+    output: [{ type: 'text', text: `status: ${end.status === 'lost' ? `lost: ${end.lostReason}` : end.status}\ncommandId: ${commandId}\noutput:\n` }],
     view: shellView({ commandId, ...end, chunks: [] }),
   })
   return [
@@ -993,6 +1020,7 @@ export function commandEndBlocks(): ToolCallBlock[] {
     run('end-long', '32', 'Run the whole test suite and collect coverage for every package in the workspace', { status: 'running' }),
     run('end-failed', '33', 'Run the login test', { status: 'exited', exitCode: 1 }),
     run('end-stopped', '34', 'Start the dev server', { status: 'aborted' }),
+    run('end-lost', '37', 'Run the deploy', { status: 'lost', lostReason: 'Demi was upgraded and the Host\'s runner replaced itself' }),
     lookCall('end-look', 'Check the first short sleep', '31', '35', statusText('31', 'exited', 'slept 2 s\n')),
     lookCall('end-look-several', 'Check the test suite and the dev server', '32 34', '36', statusText('32', 'running', '[412/980] packages/web\n')),
     toolCall({
@@ -1513,5 +1541,35 @@ So on a slow network every attempt times out before the server can answer, and t
 - \`withRetry\` retries a **504** as it retries a timeout.
 
 All 12 checkout tests pass, including the slow-network one that failed before.`),
+  ]
+}
+
+/**
+ * A transcript to bring blocks into view in: a short call, an answer taller
+ * than a session's view, and a short answer after it.
+ */
+export function foundMarkBlocks(): Block[] {
+  const user = (id: string, at: number, text: string): Block => ({
+    type: 'user', id, turnId: `${id}-turn`, createdAt: iso(at), model: demoModel,
+    content: [{ type: 'text', text }], preamble: null,
+  })
+  const reply = (id: string, at: number, text: string): Block => ({
+    type: 'text', id, createdAt: iso(at), model: demoModel, text,
+  })
+  const steps = [
+    'The session cookie was renamed from `sid` to `session` in the cookie helper, and the login test still reads the old name.',
+    'The helper writes the cookie once per sign-in, and every request after it reads the cookie back through `readSessionCookie`.',
+    'The test drives the login page, submits the form, and reads the `Set-Cookie` header of the response.',
+    'Its assertion compares the parsed cookie with a literal that names `sid`, so it fails while the page itself works.',
+    'I changed the literal to `session` and left the helper alone, as you asked.',
+    'The expired-cookie case now has a test of its own: it signs in, moves the clock past the cookie’s age, and expects the sign-in page again.',
+    'Both tests pass, and the whole suite passes in 41 seconds.',
+  ]
+  return [
+    user('found-ask', 600_000, 'Why does the login test fail?'),
+    { ...shellTool, id: 'found-call', createdAt: iso(590_000) },
+    reply('found-long', 580_000, steps.map((step) => `${step} ${'Each step follows from the one before it, and the next one reads its result. '.repeat(3)}`).join('\n\n')),
+    user('found-thanks', 100_000, 'Thanks. Is anything left?'),
+    reply('found-short', 90_000, 'Nothing is left: both tests pass.'),
   ]
 }

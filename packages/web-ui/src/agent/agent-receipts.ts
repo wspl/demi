@@ -34,9 +34,9 @@ export function receiptRow(message: AgentMessage): ReceiptRow {
     // The user's move of the conversation, which the user told the agent of.
     case 'moved':
       return plain(`You moved this conversation to ${event.host} · ${homePath(event.path, event.home)}`)
-    // Demi's notice that a move the agent asked for failed; the message says why.
+    // Demi's notice that a move the agent asked for failed, and why, as the row's own words.
     case 'move_failed':
-      return plain('Move failed')
+      return plain(`Move failed: ${event.reason}`)
     // A message from the main agent reaches one of its children.
     case 'message':
       return message.sender?.number === 0

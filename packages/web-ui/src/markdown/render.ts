@@ -62,7 +62,29 @@ function agentLink(number: number, body: string): string {
     return body
   if (!agents.find(number))
     return `<span class="agent-link-missing" data-agent-link="${number}">${body}</span>`
-  return `<button type="button" class="agent-link icon-link" data-agent-link="${number}" ${KEEPS_WINDOWS}><span class="agent-link-mark" data-agent-mark="${number}"></span>${body}</button>`
+  // A button element lays out as one block, so a long name would move whole
+  // to a line of its own: the link is inline text that acts as a button.
+  const lead = firstWord(body.slice(0, body.search(/<|$/)))
+  return `<span role="button" tabindex="0" class="agent-link icon-link" data-agent-link="${number}" ${KEEPS_WINDOWS}>`
+    + `<span class="agent-link-lead"><span class="agent-link-mark" data-agent-mark="${number}"></span>${lead}</span>`
+    + `${body.slice(lead.length)}</span>`
+}
+
+/**
+ * The first word of `html`, text that holds no tag, which an agent link's
+ * mark keeps with it on its line (a word joiner holds no inline box to the
+ * text after it): a word as the language breaks words, so a long name in a
+ * language written without spaces still wraps after it. An entity is never
+ * cut.
+ */
+function firstWord(html: string): string {
+  const [first] = new Intl.Segmenter(undefined, { granularity: 'word' }).segment(html)
+  const word = first?.segment ?? ''
+  const entity = word.lastIndexOf('&')
+  if (entity < 0 || word.includes(';', entity))
+    return word
+  const end = html.indexOf(';', entity)
+  return end < 0 ? html : html.slice(0, end + 1)
 }
 
 /**
