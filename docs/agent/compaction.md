@@ -500,8 +500,9 @@ levels.
    stated, and an open task; after each of several passes the model recalls
    the facts, keeps the constraint, and continues the task without restating
    the summary, and the summary request's usage shows the vendor's cache read
-   covering the repeated request. It is run against each vendor family the
-   product supports before a release that changes compaction.
+   covering the repeated request. It is run against DeepSeek, before a release
+   that changes compaction; the other vendors' requests are covered by the
+   first two levels.
 4. **The product.** A conversation on the development backend with a small
    context limit set, so that it compacts within minutes, runs a long task
    with a command left running and a subagent working, through several
