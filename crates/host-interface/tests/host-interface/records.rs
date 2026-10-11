@@ -127,10 +127,22 @@ fn the_end_gives_the_whole_output_once_with_what_the_model_had_seen() {
     );
 }
 
+/// A stop shows the command stopping, and still running, until its runner
+/// says that the job ended; that end is the stop (`runner.md`
+/// § Cancellation and completion). Before, a stop the runner had not
+/// confirmed marked the command stopped after ten seconds while it ran on.
 #[test]
-fn a_stop_ends_the_command_aborted_and_one_whose_streams_never_ended_keeps_its_views() {
+fn a_stop_shows_the_command_stopping_until_its_end_which_is_the_stop() {
     let mut record = new_record();
     record.append_output(StreamKind::Stderr, "partial");
+    assert!(record.mark_stopping());
+    assert!(!record.mark_stopping());
+    assert!(record.is_running());
+    assert_eq!(record.page_view().state, PageState::Stopping);
+    assert!(matches!(
+        record.status(0, None, Vec::new()).state,
+        CommandState::Running { .. }
+    ));
     assert!(record.settle(
         Ending::Aborted,
         Arc::new(WholeOutput::default()),
@@ -142,17 +154,8 @@ fn a_stop_ends_the_command_aborted_and_one_whose_streams_never_ended_keeps_its_v
         record.status(0, None, Vec::new()).state,
         CommandState::Aborted
     ));
-
-    let long = "x".repeat(TAIL_CHARS) + "é";
-    let mut record = new_record();
-    record.append_output(StreamKind::Stdout, &long);
-    record.mark_aborted();
-    let status = record.status(1, None, Vec::new());
-    assert!(matches!(status.state, CommandState::Aborted));
-    assert!(status.whole.is_none());
-    assert_eq!(status.stdout.tail.chars().count(), TAIL_CHARS);
-    assert!(status.stdout.tail.ends_with('é'));
-    assert_eq!(status.output.tail.chars().count(), TAIL_CHARS);
+    assert_eq!(record.page_view().state, PageState::Aborted);
+    assert!(!record.mark_stopping());
 }
 
 /// The pages' view keeps the last characters of the output in the order it
@@ -188,7 +191,7 @@ async fn the_pages_view_keeps_the_newest_characters_and_their_count_until_the_en
         "end\n"
     ));
     assert!(!record.append_output(StreamKind::Stderr, "late"));
-    assert!(!record.mark_aborted());
+    assert!(!record.mark_stopping());
     let view = record.page_view();
     assert_eq!(view.state, PageState::Exited { exit_code: 2 });
     assert!(

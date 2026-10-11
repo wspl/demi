@@ -23,10 +23,6 @@ use tokio_util::task::AbortOnDropHandle;
 
 use super::Registered;
 
-/// How long jobs stopped with `TERM` have before they are killed
-/// (`runner.md` § Cancellation and completion).
-const KILL_AFTER: Duration = Duration::from_secs(5);
-
 /// The jobs' messages a connection has not taken yet.
 const OUTPUT_QUEUE: usize = 8;
 
@@ -220,7 +216,7 @@ impl Kept {
                 self.lost = None;
                 self.reach.send_replace(Reach::Unreached);
                 self.jobs.stop_jobs(true);
-                self.kill_at = Some(Instant::now() + KILL_AFTER);
+                self.kill_at = Some(Instant::now() + wire::STOP_GRACE);
                 registered.services.stop_all().await;
             }
             Event::Kill => {
@@ -234,7 +230,7 @@ impl Kept {
     /// runner that replaces itself does (`runner.md` § Runner updates).
     pub async fn stop_jobs(&mut self, registered: &Registered) {
         self.jobs.stop_jobs(false);
-        let killed = Instant::now() + KILL_AFTER;
+        let killed = Instant::now() + wire::STOP_GRACE;
         while !self.jobs.running_jobs().is_empty() {
             tokio::select! {
                 () = tokio::time::sleep_until(killed) => self.jobs.kill_jobs(),

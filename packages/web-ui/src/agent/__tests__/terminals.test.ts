@@ -226,6 +226,10 @@ test('a returned call marks its command\'s end once the end arrives, and not fro
   const command = terminal({ id: 'cmd', title: 'Watch', phase: 'running', toolUseId: 'call-1' })
   // It runs on: no end yet, whatever the call stored.
   expect(commandEndMark(shellRowEnd(returned, command))).toBeNull()
+  // A stop waits for its runner's word: the row says so, also while the call watches.
+  expect(commandEndMark(shellRowEnd(returned, { ...command, stopping: true }))).toEqual({ kind: 'stopping' })
+  expect(commandEndMark(shellRowEnd({ ...returned, status: 'executing' }, { ...command, stopping: true })))
+    .toEqual({ kind: 'stopping' })
   // Its end arrives in a frame: exit 1 is Failed, a stop is Stopped, exit 0 is nothing.
   expect(commandEndMark(shellRowEnd(returned, { ...command, phase: 'exited', exitCode: 1 })))
     .toEqual({ kind: 'failed', exitCode: 1 })
