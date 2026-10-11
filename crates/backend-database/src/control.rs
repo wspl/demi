@@ -38,7 +38,7 @@ impl ControlService {
         control
             .call(move |connection, _| {
                 sqlite::configure(connection)?;
-                schema::CONTROL.apply(connection, &path)
+                schema::CONTROL.apply(connection, &path, &schema::NoBlobs)
             })
             .await?;
         Ok(control)

@@ -1126,6 +1126,7 @@ pub fn edited_file(
     mut copies: impl FnMut(usize) -> Option<EditCopies>,
 ) -> EditedFile {
     EditedFile {
+        from: None,
         path: file.path.clone(),
         kind: match file.kind {
             JobEditKind::Added => EditKind::Added,

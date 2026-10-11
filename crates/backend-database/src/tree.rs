@@ -1184,7 +1184,7 @@ pub fn read_page(
     let range = page(&requests, at, |request| {
         match blocks_in(connection, node, request.clone()) {
             Ok(blocks) => {
-                let bytes = blocks.iter().map(light_bytes).sum();
+                let bytes = light_bytes(&blocks);
                 read.insert(request.start, blocks);
                 bytes
             }
@@ -1313,6 +1313,7 @@ mod tests {
         let stores = ConversationStores::open(
             data.path().join("conversations"),
             NonZeroUsize::new(4).unwrap(),
+            std::sync::Arc::new(crate::schema::NoBlobs),
         )
         .await
         .unwrap();

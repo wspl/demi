@@ -80,8 +80,8 @@ pub use schema::Nullable;
 pub use session::{ContextUsage, PendingCall, PendingSteer, QueuedMessage, SessionPhase};
 pub use time::{Clock, SystemClock, Timestamp, TimestampError};
 pub use view::{
-    BinaryStdout, EditCopies, EditKind, EditSegment, EditedFile, OutputChunk, OutputView,
-    PathChange, ShellToolView, ShellViewStatus, StreamKind, StreamView, ToolView,
+    BinaryStdout, ChangedFile, EditCopies, EditKind, EditSegment, EditedFile, FileEdit, LineCounts,
+    OutputChunk, OutputView, PathChange, ShellToolView, ShellViewStatus, StreamKind, StreamView, ToolView,
 };
 
 use serde::de::DeserializeOwned;

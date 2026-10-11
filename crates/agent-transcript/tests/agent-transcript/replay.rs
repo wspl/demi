@@ -52,6 +52,7 @@ fn reasoning_between_the_last_boundary_and_its_marker_is_marked_as_kept_past_a_s
     let id = |value: &str| BlockId::try_from(value).unwrap();
     let thinking = |value: &str| {
         Block::Thinking(ThinkingBlock {
+            run: None,
             entries: Vec::new(),
             id: id(value),
             created_at: Timestamp::UNIX_EPOCH,
@@ -199,6 +200,7 @@ fn a_call_of_a_tool_the_request_no_longer_declares_is_replayed_with_its_result_a
     let model = test_model();
     let call = |id: &str, tool: &str, input: &str, result: &str| {
         Block::ToolCall(ToolCallBlock {
+            run: None,
             entries: Vec::new(),
             id: BlockId::try_from(id).unwrap(),
             created_at: Timestamp::UNIX_EPOCH,
@@ -258,6 +260,7 @@ fn each_request_replays_a_tool_results_media_only_where_its_provider_carries_the
     let pdf = B64Bytes::from(&b"%PDF-1.7\n%%EOF\n"[..]);
     let (png_blob, pdf_blob) = (BlobRef::of(png.as_bytes()), BlobRef::of(pdf.as_bytes()));
     let call = Block::ToolCall(ToolCallBlock {
+        run: None,
         entries: Vec::new(),
         id: BlockId::try_from("c1").unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
@@ -354,6 +357,7 @@ fn reports_that_arrived_together_reach_the_model_as_their_text_one_paragraph_eac
         media: Vec::new(),
     };
     let wakeup = Block::Wakeup(WakeupBlock {
+        run: None,
         id: BlockId::try_from("w1").unwrap(),
         turn_id: TurnId::try_from("t1").unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
