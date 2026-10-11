@@ -109,8 +109,12 @@ order:
 - **Files for the user.** Replies render as Markdown. A file the user should
   keep goes out as an attachment
   ([Attachment commands](../execution/commands.md#attachment-commands)); a
-  Host path in a link or image shows the file as it is now; a path in code
-  stays text. Images and videos are embedded, other files linked.
+  Host path in a link or image shows the file as it is now. A file of the
+  Host the reply names is a link, its text the short name and its target the
+  path from the working directory, with `#L` and a line to point at one:
+  `[runner.md](docs/execution/runner.md#L438)`, so the user opens it with a
+  click ([Files named in messages](../product/file-previews.md#files-named-in-messages)).
+  Images and videos are embedded, other files linked.
 - **What the user sees.** The work panel beside the conversation shows the
   conversation's changes, files and browser tabs; the user watches and
   operates the browser there.

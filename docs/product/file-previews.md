@@ -137,7 +137,7 @@ The chart loads from the Host the way a document's image does, and a click on
 
 | Target | A link | An image |
 | --- | --- | --- |
-| Relative path | Resolved against the conversation's working directory, where the agent's commands run; the file opens in the File view | Resolved the same way and loaded from the Host |
+| Relative path | Resolved against the conversation's working directory, where the agent's commands run; the file opens in the File view, and a `#L42` after the path opens it at line 42, scrolled there and marked for a moment as a search result is | Resolved the same way and loaded from the Host |
 | Absolute path, or a `file://` URL | The file at that path, opened in the File view | Loaded from the Host |
 | `http` or `https` URL | Opens in a new tab of the user's browser | Loaded from that URL |
 | `attachment:a3`, an attachment of the conversation ([Attachment commands](../execution/commands.md#attachment-commands)) | Opens it: an image or a video in the [media viewer](#the-media-viewer), any other file as a download | An image shows; a video shows its first frame with a play mark, at an image's bounds, and a click plays it in the viewer |
@@ -151,8 +151,20 @@ a copy that stays; a Host path suits a file of the workspace the user should
 see as it is, such as a chart the repository keeps. An attachment number the
 conversation does not have shows its alt text with *No attachment a9 in this
 conversation*. The product's instructions tell the model that its messages
-render as Markdown, which of the two to use, and that a path in code or plain
-text stays text.
+render as Markdown, which of the two to use, and that a file it names is a
+link ([System prompt](../agent/system-prompt.md)).
+
+A path the agent writes as code rather than as a link opens too, when it
+names a file that is there. For example, the reply says
+`` `docs/execution/runner.md` `` or `` `src/app.ts:42` ``: the page asks the
+conversation's Host, once for the reply's code spans together, which of them
+are files, and those show as links, `src/app.ts:42` opening at line 42; the
+others stay text. Only inline code that reads as a path is asked about, one
+with a `/` or a name with an extension, and an optional `:line`: a path is
+relative to the working directory or absolute, and a bare name such as
+`runner.md`, which may name several files, is never guessed. Plain text is
+never turned into a link. The answer is kept with the reply; a stopped Cloud
+is not woken for it, and its code stays text until the Host runs.
 
 An image is scaled down, its proportions kept, to at most the message's width
 and 60 percent of the conversation's visible height, the part the composer
