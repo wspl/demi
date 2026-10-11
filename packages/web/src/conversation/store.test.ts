@@ -479,6 +479,33 @@ test('a command\'s live frames build what the page shows of it, until its end', 
   })
 })
 
+// The command's id stands in for its title only until the transcript has its
+// call, and a call the page then holds light, without its script, takes away
+// no script the command's record had.
+test('a command named by its id takes its call\'s title and script once the transcript has the call', () => {
+  const conversation = useConversations().items[0]!
+  conversation.history = wholeHistory([])
+  conversation.terminals = []
+  const frame = (tail: string, chars: number) => ({
+    type: 'shell_output' as const,
+    status: { status: 'running' as const, commandId: 'cmd', toolUseId: 'call-1', tail, chars, runningMs: 10 },
+  })
+  applyConversationEvent(conversation, frame('one\n', 4))
+  expect(toRaw(conversation.terminals)).toMatchObject([{ id: 'cmd', title: 'cmd' }])
+  expect(conversation.terminals[0]?.script).toBeUndefined()
+  conversation.history = wholeHistory([execCall('call-1', 'bun run web:gallery', 'completed', 'Start the gallery')])
+  applyConversationEvent(conversation, frame('two\n', 8))
+  expect(toRaw(conversation.terminals)).toMatchObject([
+    { id: 'cmd', title: 'Start the gallery', script: 'bun run web:gallery', output: 'one\ntwo\n' },
+  ])
+  const light = { ...execCall('call-1', 'bun run web:gallery', 'completed'), input: JSON.stringify({ description: 'Start the gallery' }), light: true as const }
+  conversation.history = wholeHistory([light])
+  applyConversationEvent(conversation, frame('three\n', 14))
+  expect(toRaw(conversation.terminals)).toMatchObject([
+    { title: 'Start the gallery', script: 'bun run web:gallery', output: 'one\ntwo\nthree\n' },
+  ])
+})
+
 // A command the user or the agent stopped shows as stopped, never as done.
 test('a stopped command stays stopped', () => {
   const conversation = useConversations().items[0]!
@@ -1857,6 +1884,63 @@ test('an archive the backend refuses keeps the open conversation\'s transcript a
   expect(latestBlocks(conversation.history).map((block) => block.id)).toEqual(['shown'])
   expect(transcriptReads()).toBe(1)
   expect(loads).toEqual([])
+})
+
+// `web-api.md` § Light form: a running command's tab needs its call's
+// script, which the page reads whole when it holds the call light with its
+// input cut, or finds by the command when it does not hold the call at all.
+test('a running command\'s tab reads its call whole when the page holds it light or not at all', async () => {
+  const { conversation, sockets } = await openWithSession(FIRST)
+  const longScript = `for i in $(seq 1 25); do echo "line $i"; done\n${'# keep serving\n'.repeat(40)}exec bun run web:gallery`
+  const lightCall = {
+    ...execCall('call-light', longScript, 'completed', 'Start the gallery from the main checkout'),
+    input: JSON.stringify({ description: 'Start the gallery from the main checkout' }),
+    light: true as const,
+  }
+  conversation.history = wholeHistory([shownBlock, lightCall])
+  const older = execCall('call-old', 'python3 -m http.server 18915', 'completed', 'Serve the folder')
+  const reads: string[] = []
+  const answering = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path === `/api/conversations/${FIRST}/transcript/blocks/${lightCall.id}`) {
+      reads.push(path)
+      return Response.json({ block: execCall('call-light', longScript, 'completed', 'Start the gallery from the main checkout'), failures: {} })
+    }
+    if (path === `/api/conversations/${FIRST}/commands/cmd-old`) {
+      reads.push(path)
+      return Response.json({ commandId: 'cmd-old', subagentId: null, blockId: older.id })
+    }
+    if (path === `/api/conversations/${FIRST}/transcript/blocks/${older.id}`) {
+      reads.push(path)
+      return Response.json({ block: older, failures: {} })
+    }
+    return answering(input, init)
+  }) as typeof fetch
+  const frame = (commandId: string, toolUseId: string, tail: string, chars: number) => ({
+    type: 'shell_output' as const,
+    status: { status: 'running' as const, commandId, toolUseId, tail, chars, runningMs: 1_800_000 },
+  })
+  sockets[0]!.receive(frame('cmd-light', 'call-light', 'VITE ready\n', 11))
+  sockets[0]!.receive(frame('cmd-old', 'call-old', 'Serving HTTP\n', 13))
+  await waitFor(
+    () => conversation.terminals.every((terminal) => terminal.script !== undefined),
+    () => `a tab has no script: ${JSON.stringify(conversation.terminals.map(({ id, title, script }) => ({ id, title, script })))}`,
+  )
+  expect(toRaw(conversation.terminals)).toMatchObject([
+    { id: 'cmd-light', title: 'Start the gallery from the main checkout', script: longScript, output: 'VITE ready\n' },
+    { id: 'cmd-old', title: 'Serve the folder', script: 'python3 -m http.server 18915', output: 'Serving HTTP\n' },
+  ])
+  // The light call the page held is whole now, and later frames read nothing again.
+  expect(latestBlocks(conversation.history).find((block) => block.id === lightCall.id)?.light).toBeUndefined()
+  sockets[0]!.receive(frame('cmd-light', 'call-light', 'VITE ready\nhmr update\n', 22))
+  sockets[0]!.receive(frame('cmd-old', 'call-old', 'Serving HTTP\nGET /\n', 19))
+  await waitFor(() => conversation.terminals[1]?.output.endsWith('GET /\n') === true)
+  expect(reads).toEqual([
+    `/api/conversations/${FIRST}/transcript/blocks/${lightCall.id}`,
+    `/api/conversations/${FIRST}/commands/cmd-old`,
+    `/api/conversations/${FIRST}/transcript/blocks/${older.id}`,
+  ])
 })
 
 test('deleted rows leave at once, and a deletion that fails brings its row back and says why', async () => {
