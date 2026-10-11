@@ -39,6 +39,15 @@ const UTILITIES: &str = "Standard utilities (sed, grep, cp, ls, find, …) are G
 /// Where a Mac keeps its own, BSD utilities, which a block for a Mac adds.
 const MACOS_UTILITIES: &str = "macOS's own are in /usr/bin";
 
+/// The line of a block after the conversation's attached hosts changed.
+const ATTACHED_CHANGED: &str = "[Attached hosts changed]";
+
+/// What opens a block's line of attached hosts.
+const ATTACHED: &str = "Attached hosts: ";
+
+/// What follows each attached host's connection in that line.
+const STARTS_IN: &str = ", shells start in ";
+
 /// What a node learns once the user's Cloud was reset.
 const CLOUD_RESET: &str = "Cloud was reset: system packages and configuration were rebuilt from the base image. Files under /home remain. Running processes, temporary files, and previous shell state are gone; check the environment before continuing.";
 
@@ -91,12 +100,16 @@ impl Shard {
             }
             None => None,
         };
-        // A node that read an earlier revision learns what changed since;
-        // one reading its first block learns the context as it stands.
-        let earlier = seen.iter().any(|text| text.contains(CONTEXT));
+        // A node that read an earlier revision learns that the attached
+        // hosts changed since, when they did; a block a runner's report
+        // caused names no change, and one a node reads first learns the
+        // context as it stands.
+        let earlier = seen.iter().rev().find(|text| text.contains(CONTEXT));
         match announced {
             Some(announcement) => lines.extend(announcement),
-            None if earlier => lines.push("[Attached hosts changed]".into()),
+            None if earlier.is_some_and(|text| attached_changed(text, &attached)) => {
+                lines.push(ATTACHED_CHANGED.to_owned());
+            }
             None => {}
         }
         lines.push(self.attached_hosts_line(&attached));
@@ -198,7 +211,7 @@ impl Shard {
     fn attached_hosts_line(&self, attached: &[AttachedHostRecord]) -> String {
         const LIST: &str = "`demi host list` shows every host this conversation can reach.";
         if attached.is_empty() {
-            return format!("Attached hosts: none. {LIST}");
+            return format!("{ATTACHED}none. {LIST}");
         }
         let entries: Vec<String> = attached
             .iter()
@@ -213,14 +226,31 @@ impl Shard {
                     .clone()
                     .or_else(|| self.devices().home(&host.device))
                     .unwrap_or_else(|| "its home directory".into());
-                format!("\"{}\" ({state}, shells start in {directory})", host.name)
+                format!("{}{state}{STARTS_IN}{directory})", entry(host))
             })
             .collect();
         format!(
-            "Attached hosts: {}. `demi host shell --host <name> <script>` runs a shell string on one; {LIST}",
+            "{ATTACHED}{}. `demi host shell --host <name> <script>` runs a shell string on one; {LIST}",
             entries.join(", ")
         )
     }
+}
+
+/// How an attached host's entry in a block's line of attached hosts opens:
+/// its name, which stays while it is attached.
+fn entry(host: &AttachedHostRecord) -> String {
+    format!("\"{}\" (", host.name)
+}
+
+/// Whether the hosts `attached` now are others than the ones the block
+/// `seen`, a node's latest, listed: a host joined or left. A host's
+/// connection or directory is no change of the attached hosts.
+fn attached_changed(seen: &str, attached: &[AttachedHostRecord]) -> bool {
+    let Some(listed) = seen.lines().find(|line| line.starts_with(ATTACHED)) else {
+        return true;
+    };
+    listed.matches(STARTS_IN).count() != attached.len()
+        || attached.iter().any(|host| !listed.contains(&entry(host)))
 }
 
 /// A switch's announcement: what changed, that no file moved, and how to
