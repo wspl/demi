@@ -247,9 +247,9 @@ const exploratoryMarks: {
 
     <GallerySection
       title="Found Mark"
-      note="A block a search result, a notice, a receipt or a link brings into view: one that fits the view stands in its middle, one taller than the view starts near its top, so it reads from its first line. It is marked for a moment by the accent’s faint fill, with a row’s rounded corners, within the column the transcript’s text stands in, and fades out. The same mark shows on a line a link opens in the File view and on a setting a search finds."
+      note="A block a search result, a notice, a receipt or a link brings into view: one that fits the view stands in its middle, one taller than the view starts near its top, so it reads from its first line. It is marked for a moment by the accent’s faint fill, with a row’s rounded corners, within the column the transcript’s text stands in, and fades out. A block folded in a run opens the run, as a tree opens the folders above a search result, and its own row is the one brought into view and marked, never the run’s; the run stays open after. The notice at the end does so for the fifth of the run’s seven calls, as Mark the Call in the Run does. The same mark shows on a line a link opens in the File view and on a setting a search finds."
     >
-      <GallerySpecimen variant="a call, an answer taller than the view, a short answer" wide>
+      <GallerySpecimen variant="a call, an answer taller than the view, a short answer, a folded run of seven commands and a notice for one of them" wide>
         <div class="gallery-frame h-[22rem] bg-surface">
           <AgentMessageList
             class="h-full"
@@ -270,6 +270,7 @@ const exploratoryMarks: {
         <Button size="sm" @click="foundReveal = 'found-call'">Mark the Call</Button>
         <Button size="sm" @click="foundReveal = 'found-long'">Mark the Long Answer</Button>
         <Button size="sm" @click="foundReveal = 'found-short'">Mark the Short Answer</Button>
+        <Button size="sm" @click="foundReveal = 'found-suite-65'">Mark the Call in the Run</Button>
       </div>
     </GallerySection>
 
