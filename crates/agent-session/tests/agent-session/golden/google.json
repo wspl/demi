@@ -1,0 +1,109 @@
+{
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Continue the work from where it stands; do not mention or restate the summary."
+        },
+        {
+          "text": "The release build fails; here is the screen."
+        },
+        {
+          "inlineData": {
+            "mimeType": "image/png",
+            "data": "iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAYAAACddGYaAAAAJUlEQVR4AQEaAOX/AAAAB/8BAAf/AgAH/wAAAQf/AQEH/wIBB/9HPgYu4Em3zwAAAABJRU5ErkJggg=="
+          }
+        },
+        {
+          "text": "Use the release profile."
+        },
+        {
+          "text": "Fix it, and don't touch the migration files."
+        },
+        {
+          "text": "<summary>\n## Goal\n- Fix the release build.\n## Constraints and preferences\n- \"don't touch the migration files\"\n## Progress\n- `libssl` added to the link line; tests pass.\n## Next step\n- Ship it.\n</summary>"
+        }
+      ]
+    },
+    {
+      "role": "model",
+      "parts": [
+        {
+          "functionCall": {
+            "name": "test",
+            "args": {
+              "suite": "release"
+            },
+            "id": "call-test"
+          },
+          "thoughtSignature": "sig-the fix"
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "functionResponse": {
+            "name": "test",
+            "id": "call-test",
+            "response": {
+              "output": "running 40 tests\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest result: ok"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "role": "model",
+      "parts": [
+        {
+          "text": "I added `libssl` to the link line; the tests pass."
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "Ship it."
+        }
+      ]
+    }
+  ],
+  "systemInstruction": {
+    "parts": [
+      {
+        "text": "system prompt"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "functionDeclarations": [
+        {
+          "name": "look",
+          "description": "",
+          "parameters": {}
+        },
+        {
+          "name": "note",
+          "description": "",
+          "parameters": {}
+        },
+        {
+          "name": "test",
+          "description": "",
+          "parameters": {}
+        }
+      ]
+    }
+  ],
+  "generationConfig": {
+    "maxOutputTokens": 32000,
+    "thinkingConfig": {
+      "includeThoughts": true
+    }
+  }
+}

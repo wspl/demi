@@ -13,7 +13,7 @@ use demi_agent_transcript::{
     COMPACTION_NOTE, RequestView, estimate::block_tokens, testing::RESUME_TEXT,
 };
 use demi_provider_common::{PromptCache, ProviderFailure, RequestLimits, testing::TokioClock};
-use demi_shared_types::{BlockId, ContextUsage, QueuedMessage, TokenUsage};
+use demi_shared_types::{BlockId, ContextUsage, MediaSource, QueuedMessage, TokenUsage};
 
 use super::*;
 
@@ -2602,5 +2602,282 @@ async fn a_switch_to_a_vendor_that_takes_fewer_images_compacts_with_the_model_be
             ],
         ]
         .concat()
+    );
+}
+
+/// A round that calls `work` and reports `input_tokens` of usage.
+fn work_round(call: &str, input_tokens: u64) -> Turn {
+    Turn::Events(vec![
+        event::tool_call(call, "work", json!({})),
+        event::response(input_tokens, 0),
+    ])
+}
+
+// Four sessions of four scripted requests each: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn each_models_token_threshold_leaves_room_for_its_answer_and_the_summary_request() {
+    for (window, output_limit, threshold) in [
+        (1_000_000, 128_000, 967_000),
+        (200_000, 64_000, 167_000),
+        (128_000, 8_000, 107_000),
+        // Half the window: room for the answer and the summary request
+        // would leave less.
+        (32_000, 32_000, 16_000),
+    ] {
+        // A usage one token under the threshold goes on; one at it compacts
+        // after the round's tool.
+        let provider = ScriptedRuntime::new([
+            work_round("c1", threshold - 1),
+            work_round("c2", threshold),
+            answer("summary"),
+            answer("done"),
+        ]);
+        let store = MemoryTreeStore::new();
+        let work = tool("work", |_| Box::pin(async { Ok(output("worked")) }));
+        let session = start(&provider, vec![work], &store, SessionConfig::default()).await;
+        let mut model = model_of("stub", "sized-model");
+        model.model.context_window = window;
+        model.model.output_limit = Some(output_limit);
+        session
+            .update_model(ModelSwitch {
+                model: Box::new(model),
+                runtime: None,
+            })
+            .unwrap();
+
+        session.send(text("go"), turn("t1")).unwrap().await.unwrap();
+
+        let copies: Vec<bool> = provider.requests().iter().map(is_copy).collect();
+        assert_eq!(copies, [false, false, true, false], "{window}: {threshold}");
+    }
+}
+
+/// A turn of five calls in a 1,000-token window, each returning `output`;
+/// the fifth round's usage reaches the threshold, so a pass follows its
+/// call. Returns the session's requests.
+async fn five_calls(output_text: String) -> Vec<demi_provider_common::InferenceRequest> {
+    let provider = ScriptedRuntime::new([
+        work_round("c1", 0),
+        work_round("c2", 0),
+        work_round("c3", 0),
+        work_round("c4", 0),
+        work_round("c5", 600),
+        answer("summary of the first calls"),
+        answer("done"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let work = tool("work", move |_| {
+        let text = output_text.clone();
+        Box::pin(async move { Ok(output(&text)) })
+    });
+    let session = small_session(&provider, vec![work], &store).await;
+    session.send(text("go"), turn("t1")).unwrap().await.unwrap();
+    assert_eq!(
+        kinds(&session.transcript().blocks)
+            .iter()
+            .filter(|kind| *kind == "compaction_boundary")
+            .count(),
+        1
+    );
+    provider.requests()
+}
+
+// Two sessions of seven scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn the_cut_keeps_the_recent_work_at_the_end_of_an_answered_request() {
+    // Each call and its result weigh about 80 estimated tokens, so the
+    // last two leave the 150 a 1,000-token window keeps: the window ends
+    // where the request that carried the third call's result ended, and the
+    // fourth and fifth calls stay as they were, each with its result.
+    let requests = five_calls("o".repeat(240)).await;
+    let (fourth, summary, continuation) = (&requests[3], &requests[5], &requests[6]);
+    assert_eq!(
+        summary.items.as_ref(),
+        [
+            fourth.items.to_vec(),
+            vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]
+        ]
+        .concat()
+    );
+    assert_eq!(
+        item_kinds(&continuation.items),
+        [
+            "user_message",
+            "user_message",
+            "user_message",
+            "tool_use",
+            "tool_result",
+            "tool_use",
+            "tool_result",
+            "user_message"
+        ]
+    );
+    assert_eq!(
+        continuation.items[..3],
+        boundary_items(&["go"], "summary of the first calls")
+    );
+
+    // When no end leaves that much, the window ends where the latest
+    // answered request's content ended: only the fifth call stays.
+    let requests = five_calls("ok".to_owned()).await;
+    let (fifth, summary, continuation) = (&requests[4], &requests[5], &requests[6]);
+    assert_eq!(
+        summary.items.as_ref(),
+        [
+            fifth.items.to_vec(),
+            vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]
+        ]
+        .concat()
+    );
+    assert_eq!(
+        item_kinds(&continuation.items[3..]),
+        ["tool_use", "tool_result", "user_message"]
+    );
+}
+
+/// The content a kept message replays as.
+fn kept_texts(boundary: &Block) -> Vec<Vec<String>> {
+    let Block::CompactionBoundary(boundary) = boundary else {
+        panic!("not a boundary: {boundary:?}");
+    };
+    boundary
+        .kept
+        .iter()
+        .map(|kept| {
+            kept.content
+                .iter()
+                .map(|part| match part {
+                    UserContentBlock::Text { text } => text.clone(),
+                    other => format!("{other:?}"),
+                })
+                .collect()
+        })
+        .collect()
+}
+
+// One session, two passes and messages of about 200 KB: a few
+// milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_pass_keeps_the_users_newest_words_within_their_budget_beside_its_summary() {
+    let (slow, releases, started) = gated_tool("slow");
+    let provider = ScriptedRuntime::new([
+        answer("noted"),
+        answer("seen"),
+        Turn::Events(vec![
+            event::tool_call("call-1", "slow", json!({})),
+            event::response(0, 0),
+        ]),
+        answer("done"),
+        // A long report, which the window keeps after its cut.
+        answer(&"r".repeat(64_000)),
+        answer("summary one"),
+        answer("going on"),
+        answer("summary two"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let config = SessionConfig {
+        compaction: only_when_asked(),
+        ..SessionConfig::default()
+    };
+    let session = start(&provider, vec![slow], &store, config).await;
+    session
+        .update_model(ModelSwitch {
+            model: Box::new(model_reading("stub", "model-a", &[FileExtension::Png])),
+            runtime: None,
+        })
+        .unwrap();
+    let photo = png(4, 3, 1);
+    let mut held = HeldMedia::default();
+    held.hold(BlobRef::of(&photo), photo.clone());
+    session.hold_media(held);
+    // 12,000 tokens and a screenshot; then 9,000 tokens.
+    let second = format!("Second {}", "s".repeat(47_993));
+    let third = format!("Third {}", "t".repeat(35_994));
+    session.send(text("Keep the old rule."), turn("t1")).unwrap().await.unwrap();
+    let mut with_image = text(&second);
+    with_image.push(UserContentBlock::Image {
+        source: MediaSource::Ref {
+            r#ref: BlobRef::of(&photo),
+            media_type: "image/png".into(),
+            width: None,
+            height: None,
+        },
+    });
+    session.send(with_image, turn("t2")).unwrap().await.unwrap();
+    let running = session.send(text(&third), turn("t3")).unwrap();
+    started.await.unwrap();
+    session
+        .steer(text("Mind the tests."), BlockId::try_from("s1").unwrap())
+        .unwrap();
+    session
+        .accept_agent_message(agent_message("m1"))
+        .await
+        .unwrap();
+    let _ = releases.borrow_mut().remove(0).send(());
+    running.await.unwrap();
+    session.send(text("Now report."), turn("t4")).unwrap().await.unwrap();
+
+    session.compact().unwrap().await.unwrap();
+
+    // Newest first: the last message, the steer and the third message
+    // whole; the second crosses the 20,000 tokens and keeps its text up to
+    // them, without its screenshot; the first is left to the summary, and
+    // so is the agent's message.
+    let blocks = session.transcript().blocks;
+    let boundary = blocks
+        .iter()
+        .find(|block| matches!(block, Block::CompactionBoundary(_)))
+        .expect("the pass inserted a boundary");
+    let kept = kept_texts(boundary);
+    let edge = 20_000 - (third.len() / 4 + 4 + 3);
+    assert_eq!(
+        kept,
+        [
+            vec![second[..edge * 4].to_owned()],
+            vec![third.clone()],
+            vec!["Mind the tests.".to_owned()],
+            vec!["Now report.".to_owned()],
+        ]
+    );
+    session.send(text("Go on."), turn("t5")).unwrap().await.unwrap();
+    let requests = provider.requests();
+    let next = requests.last().unwrap();
+    // The next request carries the note, the kept messages oldest first,
+    // each as a user message with the replay's bound on its text, then the
+    // summary.
+    let starts = |item: &InferenceItem, start: &str| {
+        matches!(item, InferenceItem::UserMessage { content }
+            if matches!(content.as_slice(), [UserPart::Text(text)] if text.starts_with(start)))
+    };
+    assert_eq!(next.items[0], user_item(COMPACTION_NOTE));
+    assert!(starts(&next.items[1], "Second "), "{:?}", next.items[1]);
+    assert!(starts(&next.items[2], "Third "), "{:?}", next.items[2]);
+    assert_eq!(
+        next.items[3..6],
+        [
+            user_item("Mind the tests."),
+            user_item("Now report."),
+            summary_item("summary one")
+        ]
+    );
+
+    // The next pass starts from what this boundary kept, and the new
+    // message pushes the edge further.
+    session.compact().unwrap().await.unwrap();
+    let blocks = session.transcript().blocks;
+    let boundary = blocks
+        .iter()
+        .rfind(|block| matches!(block, Block::CompactionBoundary(_)))
+        .expect("the pass inserted a boundary");
+    let edge = edge - 2;
+    assert_eq!(
+        kept_texts(boundary),
+        [
+            vec![second[..edge * 4].to_owned()],
+            vec![third.clone()],
+            vec!["Mind the tests.".to_owned()],
+            vec!["Now report.".to_owned()],
+            vec!["Go on.".to_owned()],
+        ]
     );
 }

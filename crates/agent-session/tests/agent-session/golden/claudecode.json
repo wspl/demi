@@ -1,0 +1,93 @@
+[
+  {
+    "type": "user",
+    "timestamp": "2026-10-11T12:00:00.000Z",
+    "isSidechain": false,
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Continue the work from where it stands; do not mention or restate the summary."
+        }
+      ]
+    },
+    "sessionId": "4813494d-137e-4631-bba3-01d5acab6e7b"
+  },
+  {
+    "type": "assistant",
+    "timestamp": "2026-10-11T12:00:00.000Z",
+    "isSidechain": false,
+    "message": {
+      "id": "msg_demi_1",
+      "type": "message",
+      "role": "assistant",
+      "model": "model-a",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "call-test",
+          "name": "mcp__main__test",
+          "input": {
+            "suite": "release"
+          }
+        }
+      ]
+    },
+    "sessionId": "4813494d-137e-4631-bba3-01d5acab6e7b"
+  },
+  {
+    "type": "user",
+    "timestamp": "2026-10-11T12:00:00.000Z",
+    "isSidechain": false,
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "call-test",
+          "content": [
+            {
+              "type": "text",
+              "text": "running 40 tests\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest ... ok\ntest result: ok"
+            }
+          ]
+        }
+      ]
+    },
+    "sessionId": "4813494d-137e-4631-bba3-01d5acab6e7b"
+  },
+  {
+    "type": "assistant",
+    "timestamp": "2026-10-11T12:00:00.000Z",
+    "isSidechain": false,
+    "message": {
+      "id": "msg_demi_3",
+      "type": "message",
+      "role": "assistant",
+      "model": "model-a",
+      "content": [
+        {
+          "type": "text",
+          "text": "I added `libssl` to the link line; the tests pass."
+        }
+      ]
+    },
+    "sessionId": "4813494d-137e-4631-bba3-01d5acab6e7b"
+  },
+  {
+    "type": "user",
+    "timestamp": "2026-10-11T12:00:00.000Z",
+    "isSidechain": false,
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Ship it."
+        }
+      ]
+    },
+    "sessionId": "4813494d-137e-4631-bba3-01d5acab6e7b"
+  }
+]

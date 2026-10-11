@@ -38,12 +38,13 @@ tokio-util.workspace = true
 
 [dev-dependencies]
 demi-agent-session = { path = ".", features = ["testing"] }
-# Each provider's format of a session's requests (`requests.rs`,
-# `providers.md` § The rule).
-demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
+# Each provider's format of a session's requests (`requests.rs`, `generated.rs`,
+# `golden.rs`, `providers.md` § The rule).
+demi-provider-anthropic-api = { path = "../provider-anthropic-api", features = ["testing"] }
+demi-provider-claude-code = { path = "../provider-claude-code", features = ["testing"] }
 demi-provider-codex = { path = "../provider-codex", features = ["testing"] }
-demi-provider-google = { path = "../provider-google" }
-demi-provider-grok-build = { path = "../provider-grok-build" }
-demi-provider-openai-api = { path = "../provider-openai-api" }
+demi-provider-google = { path = "../provider-google", features = ["testing"] }
+demi-provider-grok-build = { path = "../provider-grok-build", features = ["testing"] }
+demi-provider-openai-api = { path = "../provider-openai-api", features = ["testing"] }
 reqwest.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
