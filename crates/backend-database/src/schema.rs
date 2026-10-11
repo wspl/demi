@@ -781,6 +781,20 @@ impl Schema {
         path: &Path,
         blobs: &dyn ReadBlob,
     ) -> Result<(), StorageError> {
+        self.apply_with(connection, path, blobs, || {})
+    }
+
+    /// [`Schema::apply`], which calls `migrating` once its transaction holds
+    /// the database's write lock and before it migrates a database of a
+    /// schema in the history: where a test holds a conversation's migration
+    /// (`conversations::MigrationHold`).
+    pub(crate) fn apply_with(
+        &self,
+        connection: &mut Connection,
+        path: &Path,
+        blobs: &dyn ReadBlob,
+        migrating: impl FnOnce(),
+    ) -> Result<(), StorageError> {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let recorded: i32 =
             transaction.pragma_query_value(None, "user_version", |row| row.get(0))?;
@@ -795,6 +809,7 @@ impl Schema {
                 .ok_or_else(|| StorageError::OtherSchema {
                     path: path.to_owned(),
                 })?;
+            migrating();
             for shipped in migrations {
                 let migrated = match shipped.migration {
                     Migration::Sql(sql) => transaction.execute_batch(sql),
