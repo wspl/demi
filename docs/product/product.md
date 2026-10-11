@@ -90,6 +90,20 @@ an agent's tab and link wear, so one state has one look everywhere:
 A Stop is the user's own decision, neither finished nor failed, and leaves
 the row settled ([Recovering an unfinished turn](#recovering-an-unfinished-turn)).
 
+The sidebar's two groups, Conversations and Projects, each fold under its
+label, as Finder's sidebar sections and Slack's do. A chevron after the
+label, in the label's faint color, points down while the group is open and
+right while it is folded; it shows while the pointer is over the label, and
+always on a touch screen, and a click on the label or the chevron folds or
+opens the group. A folded group shows its label alone, with two exceptions
+so that nothing the user needs hides in it: the conversation open in the
+page stays under the label, and while a conversation in the group waits
+for the user, the label carries that conversation's yellow dot. For
+example, the user folds Projects to see more conversations; a subagent in a
+project asks for a permission, and the dot appears after *PROJECTS* until
+the user answers. Which groups are folded is the browser's, as the
+sidebar's width is, and stays across reloads.
+
 On hover a row shows Archive at its end, and a pinned row shows Unpin
 before it. Pin is in the row's context menu, beside the other changes of a
 conversation; a row that is not pinned offers no Pin button on hover, as
