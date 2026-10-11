@@ -546,7 +546,12 @@ or a subagent ends, the work it waits for wakes it.
   started the command into view and marks it for a moment, as a search
   result does, reading the page around it when the page does not hold it
   ([Transcript windows](../product/web-application.md#transcript-windows)):
-  the call's row is where the command's script and output are. A report of
+  the call's row is where the command's script and output are. A call
+  folded inside a run is never stood in for by the run's row: the run opens,
+  and the call's own row comes into view and is marked, as a file opens its
+  folders in a tree to show a search result. The same holds for every reveal
+  of a block, a search result's and a receipt's sender's included. The run
+  stays open after, as the reader's own opening would leave it. A report of
   progress shows nothing, and a block of progress reports alone has no row:
   the answer it wakes says what the model learned, and a row for every
   interval would outnumber the answers it caused. So the block holds each report as data, its
