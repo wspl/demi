@@ -119,10 +119,16 @@ why.
   shows what the backend has, and the refusal is reported as any failed
   write is. One mechanism serves every such action; no action keeps its own
   copy of a value it is waiting for.
-- **Changes to one thing go in order.** Changes are sent one at a time, in
-  the order the user made them, so a later one never overtakes an earlier
-  one, and a control is never disabled while an earlier change of the same
-  thing is on its way.
+- **Changes to one thing go in order; changes to different things do not
+  wait for each other.** The changes of one thing, such as one
+  conversation, are sent one at a time, in the order the user made them, so
+  a later one never overtakes an earlier one: an Undo pressed right after
+  Archive reaches the backend after the archive, never before it. Changes of
+  different things go out side by side, so marking one conversation read
+  never waits behind another's archive, which may wait for a paired device.
+  A change of several things, such as archiving a selection, waits for the
+  changes on its way of each of them. A control is never disabled while an
+  earlier change of the same thing is on its way.
 - **What it covers.** Archive and restore, pin and unpin, deletion once the
   user confirmed it, renaming, reordering, marking read, and the switches and
   fields of the settings: plugins, subagents, a device's settings,
