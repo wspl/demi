@@ -395,7 +395,7 @@ it, as a link preview does, so a glance needs no window:
   closes it at once, and moving onto another picture shows that one's
   without the delay, as tooltips after the first do.
 - **What it does not change.** A click on the picture still opens the
-  [media viewer](#the-media-viewer), which closes the card. A touch screen
+  [media viewer](#the-media-viewer), which closes the card. A phone
   has no hover and shows no card.
 
 ### The media viewer
