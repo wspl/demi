@@ -1033,15 +1033,6 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
         "later Chrome tab until its page shows",
         started.elapsed(),
     );
-    // Chrome keeps its own sandbox: its renderers run under seccomp.
-    let renderers = run(
-        &mut first,
-        "renderers",
-        "for pid in $(pgrep -f -- '--type=renderer'); do grep '^Seccomp:' /proc/$pid/status; done",
-    )
-    .await;
-    assert!(renderers.contains("Seccomp:\t2"), "{renderers}");
-
     let device = the_device(&backend, &master).await;
     measure_memory(TEST, &environment, &device);
     let manager = environment.manager();

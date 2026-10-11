@@ -717,20 +717,13 @@ or privileged nested Docker. Unsupported operations return errors; they never
 widen isolation.
 
 The runtime inputs are pinned in the runtime release manifest,
-`crates/machine-manager/runtime/release.json`. The manager is built with that manifest
-and refuses to start unless the configured `runsc` reports exactly the pinned
-version. amd64 uses the verified upstream distribution. arm64 uses the same
-source with the shipped `SECCOMP_RET_TRAP` register fix: Linux preserves the
-first argument in X0 when delivering SIGSYS, while the upstream implementation
-overwrites it with the syscall number.
-Chrome's sandbox signal handler depends on that argument and crashes without
-the fix. The ARM build has its own version and a native-versus-sandbox ABI
-regression probe. It retains both gVisor isolation and Chrome's sandbox. See
-the upstream
-[trap handling](https://github.com/google/gvisor/blob/master/pkg/sentry/kernel/seccomp.go)
-and [Chrome's signal handler](https://github.com/chromium/chromium/blob/main/sandbox/linux/seccomp-bpf-helpers/sigsys_handlers.cc).
-Runtime upgrades require the same acceptance matrix, but do not change user
-storage format.
+`crates/machine-manager/runtime/release.json`: upstream's gVisor release, the
+same version on amd64 and arm64, and the SHA-512 of each architecture's
+archive. The manager is built with that manifest and refuses to start unless
+the configured `runsc` reports exactly the pinned version. A new pin passes
+the acceptance below on both architectures and the probes of the bugs earlier
+versions had, which `crates/machine-manager/runtime/README.md` lists; it does
+not change user storage format.
 
 The runtime profile fixes `--platform=systrap`, `--network=sandbox`,
 `--allow-suid=true`, `--sidecar-usage-policy=STRICT` and `--host-uds=open`,
@@ -749,7 +742,8 @@ the `CAP_` prefix). The initial UID 1000 process has empty effective,
 permitted, inheritable, and ambient sets; setuid sudo may acquire privileges
 only within that bounding set. The profile excludes host administration, module
 loading, raw devices, and network administration. Test sudo and Chrome with this
-exact set. Chrome's own sandbox remains enabled. No privileged mode, host
+exact set; Chrome runs without its own sandbox on Linux
+([Native driver](../browser/browser.md#native-driver)). No privileged mode, host
 networking, unconfined runtime seccomp, host PID namespace, or runtime socket is
 exposed. Keep runsc's standard Directfs security profile; changes require a
 design and acceptance update, not a per-user escape hatch.
@@ -906,7 +900,7 @@ how the suite runs; a run must show the following:
 | Identity and files | Jobs and Host file operations run as UID 1000; every conversation of a user reaches the same device; sudo works; files larger than the sandbox reads at once arrive whole, many in a row. |
 | Persistence | A system package and home files survive stop and wake; a stop leaves no job directory in the generation it saves; home survives a reset; reset succeeds with a broken runner and with a broken system, such as disabled bash. |
 | Tools | Installers run in the login shell (rustup, nvm), and later jobs find the tools they installed (cargo, node). |
-| Browser | Chrome opens with its own sandbox, and closes at the release of its conversation while the Cloud runs on; the live view receives frames and delivers input. |
+| Browser | Chrome opens, and closes at the release of its conversation while the Cloud runs on; the live view receives frames and delivers input. |
 | Checkpoint | A live checkpoint with a running conversation browser publishes both images; the saved image contains pages a live process wrote through a writable mapping and never flushed. |
 | Growth and space | Online growth records the actual capacity; it needs `CAP_SYS_RESOURCE` ([Linux requirements](setup.md#linux-requirements)). A full disk fails the operation and keeps working data. |
 | Recovery | A restart at each publication boundary loses neither published nor newer working data; runtime and out-of-memory loss report a death. |
