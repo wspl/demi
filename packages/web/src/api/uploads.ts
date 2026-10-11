@@ -96,7 +96,7 @@ function sendBytes(
     xhr.onabort = () => fail(new Error('Upload cancelled.'))
     xhr.onload = () => {
       if (xhr.status < 200 || xhr.status >= 300) {
-        fail(apiError(xhr.status, xhr.responseText))
+        fail(apiError(xhr.status, xhr.responseText, undefined, xhr.statusText))
         return
       }
       try {

@@ -19,6 +19,7 @@ import { encodeVideo } from '@demicodes/plugin-browser/live/frames'
 import type { OpenUserStream, UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
 import { CONTROL, META } from '@demicodes/plugin-browser/live/input'
 import { BrowserTabsError, type BrowserTabList, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
+import type { PanelReason } from '@demicodes/plugin-browser/generated/plugin'
 import type { HostArtifact } from '@demicodes/web-ui/devices/installed'
 import { WORKSPACE_ROOT } from './workspace'
 
@@ -596,14 +597,14 @@ export interface GalleryBrowser {
   closeOnDevice(tab: string): void
   /** The browser ends on the device and takes its tabs with it, as a release or a stopped Cloud does. */
   end(): void
-  /** The next tab the browser opens is refused, as an offline device refuses it. */
-  failNextOpen(): void
+  /** The next tab the browser opens fails with `failure`, as an offline device or a browser that cannot start fails it. */
+  failNextOpen(failure: BrowserTabsError): void
   /** The agent shows the tab to the user, as `demi browser show` does: its count of showings rises. */
   show(tab: string): void
   /** The agent opens a tab, as `demi browser open` does, and shows it with `show`, as `--show` does. */
   agentOpens(url: string, options: { show: boolean }): void
   /** The Host fails what a viewer asked, such as its input, and tells every view, as the module's notice does. */
-  fail(code: string, message: string): void
+  fail(reason: PanelReason, message: string): void
   /** Even recreating the capture extension fails on the Host: every view loses its pictures and says so, until Retry. */
   stopCapture(): void
   stream: OpenUserStream
@@ -689,7 +690,7 @@ export function galleryBrowser(
   function found(id: string): LiveTab {
     const tab = tabs.find((item) => item.id === id)
     if (!tab) {
-      throw new BrowserTabsError('tab_not_found', 'The browser has no such tab')
+      throw BrowserTabsError.of('tab_not_found')
     }
     return tab
   }
@@ -819,8 +820,8 @@ export function galleryBrowser(
     }
   }
 
-  /** Whether the next open is refused. */
-  let refuseOpen = false
+  /** How the next open fails, once `failNextOpen` said so. */
+  let failOpen: BrowserTabsError | null = null
 
   const hostStarting = shallowRef(holding === 'cloud')
   const held = shallowRef<StartingPhase | null>(holding)
@@ -880,12 +881,13 @@ export function galleryBrowser(
     load(tab, url)
   }
 
-  /** The browser opens a tab on `url`, after a Host's moment; refused once `failNextOpen` said so. */
+  /** The browser opens a tab on `url`, after a Host's moment; fails once `failNextOpen` said so. */
   function opened(url: string): Promise<BrowserTab> {
     return later(() => {
-      if (refuseOpen) {
-        refuseOpen = false
-        throw new BrowserTabsError('device_offline', 'The device is offline')
+      if (failOpen) {
+        const failure = failOpen
+        failOpen = null
+        throw failure
       }
       const tab: LiveTab = {
         id: `t${next++}`,
@@ -914,7 +916,7 @@ export function galleryBrowser(
       const tab = found(id)
       // The Host's own refusal of an address no browser tab opens for the agent or the user.
       if (!['http:', 'https:', 'file:'].includes(URL.parse(url)?.protocol ?? '') && url !== 'about:blank') {
-        throw new BrowserTabsError('invalid_input', 'navigation accepts http:, https:, file:, or about:blank')
+        throw BrowserTabsError.of('invalid_input')
       }
       const history = historyOf(tab)
       return loadLater(tab, url, () => {
@@ -932,7 +934,7 @@ export function galleryBrowser(
       const url = history.entries[index]
       // The Host's own refusal at either end of the history.
       if (url === undefined) {
-        throw new BrowserTabsError('history_boundary', 'no navigation entry in that direction')
+        throw BrowserTabsError.of('history_boundary')
       }
       return loadLater(tab, url, () => {
         history.index = index
@@ -951,8 +953,8 @@ export function galleryBrowser(
     closedOnPurpose,
     closeOnDevice: remove,
     end,
-    failNextOpen: () => {
-      refuseOpen = true
+    failNextOpen: (failure) => {
+      failOpen = failure
     },
     show: (id) => {
       shows.set(id, (shows.get(id) ?? 0) + 1)
@@ -976,9 +978,9 @@ export function galleryBrowser(
       }
       changed()
     },
-    fail: (code, message) => {
+    fail: (reason, message) => {
       for (const view of views) {
-        view.notice(code, message)
+        view.notice(reason, message)
       }
     },
     stopCapture: () => {
