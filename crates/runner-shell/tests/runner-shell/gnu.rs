@@ -318,6 +318,17 @@ async fn permission_and_file_system_utilities_take_paths_in_the_jobs_directory()
     }
 }
 
+/// A utility that writes from a worker thread of its own, as `du` prints
+/// from one, writes to the job's output when nothing else in the job has
+/// waited on a file yet. Before, `du` alone in a job failed with "there is
+/// no reactor running", since that thread is outside the shell's runtime.
+/// Runs in about 5 ms.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_utilitys_worker_thread_writes_the_jobs_output() {
+    let root = fixture();
+    assert_eq!(job(root.path(), "du -b a").await, (0, "4\ta\n".into(), String::new()));
+}
+
 /// Two directory trees, `a` and `b`, that differ in a file at the top, in a
 /// file two levels down, in entries on one side only, and in an entry that
 /// is a directory on one side and a file on the other.
@@ -490,13 +501,15 @@ async fn expect_cases(setup: &str, cases: &[(&str, u8, &str, &str)]) {
 /// coreutils printed "Broken pipe" and exited 1 or 2, and `du`'s walk
 /// reported its printer's end as "sending on a closed channel". Each
 /// output is well over a 64 KiB pipe buffer, so the reader is gone before
-/// the writer ends. Runs in about 1 s.
+/// the writer ends: `cmp -l` lists each differing byte, so it compares `l1`
+/// with `l0`, which differs in every zero (1.7 MB), not with `l2`, which
+/// differs in one byte a line (30 KB). Runs in about 1 s.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_closed_pipe_ends_utilities_quietly_as_sigpipe_does() {
-    let setup = "seq -f '%060g' 1 2000 > l1; seq -f '%060g' 2001 4000 > l2; \
+    let setup = "seq -f '%060g' 1 2000 > l1; seq -f '%060g' 2001 4000 > l2; tr 0 1 < l1 > l0; \
                  mkdir t; seq -f 't/%060g' 1 3000 | xargs touch";
     let cases: Vec<(String, u8, &str, &str)> = [
-        "diff l1 l2", "diff -u l1 l2", "diff -y l1 l2", "cmp -l l1 l2", "cat l1 l1 l1", "sort l1", "du -a t",
+        "diff l1 l2", "diff -u l1 l2", "diff -y l1 l2", "cmp -l l1 l0", "cat l1 l1 l1", "sort l1", "du -a t",
     ]
     .into_iter()
     .map(|producer| (format!("{producer} | head -n 1 >/dev/null; echo ${{PIPESTATUS[0]}}"), 0, "141\n", ""))
