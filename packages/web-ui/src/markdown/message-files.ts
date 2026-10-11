@@ -32,7 +32,7 @@ export function openMessageLink(
   agents: MessageAgents | undefined,
 ): void {
   const target = event.target instanceof Element ? event.target : null
-  const agent = target?.closest('button[data-agent-link]')
+  const agent = target?.closest('[data-agent-link][role="button"]')
   if (agent && agents) {
     event.preventDefault()
     agents.open(Number(agent.getAttribute('data-agent-link')))
@@ -56,4 +56,15 @@ export function openMessageLink(
   event.preventDefault()
   const line = Number(link.getAttribute('data-line'))
   files.open({ path: link.getAttribute('href') ?? '', line: line > 0 ? line : null }, event.detail)
+}
+
+/** Return or Space on an agent's link, inline text that acts as a button, clicks it as on a button. */
+export function pressMessageLink(event: KeyboardEvent): void {
+  if (event.key !== 'Enter' && event.key !== ' ')
+    return
+  const link = event.target instanceof HTMLElement && event.target.matches('[data-agent-link][role="button"]') ? event.target : null
+  if (!link)
+    return
+  event.preventDefault()
+  link.click()
 }
