@@ -3,6 +3,9 @@ import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, useAttrs } from 'vue'
 import { chromeEntrance } from '@demicodes/web-ui/ui/chrome-enter'
 import { waitingAs, type MessageListBlock } from '../pending-steers'
+import { rowFace } from '../row-key'
+import RowRoll from '../../ui/RowRoll.vue'
+import ErrorNotice from '../../ui/ErrorNotice.vue'
 import type { PendingSubmissionState } from '../types'
 import UserBlock from './UserBlock.vue'
 import ThinkingBlock from './ThinkingBlock.vue'
@@ -51,6 +54,8 @@ const emit = defineEmits<{
   editUser: [blockId: string]
   /** Retry on the message `id`, whose delivery failed. */
   retrySubmission: [id: string]
+  /** Retry on a session-level failure: the session opens again. */
+  retryLoad: []
 }>()
 
 const attrs = useAttrs()
@@ -85,137 +90,160 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
 </script>
 
 <template>
-  <PendingSubmission
-    v-if="block.type === 'pending_submission'"
-    v-bind="{ ...attrs, ...block.submission }"
-    :pending="waitingAs(block)"
-    @retry="emit('retrySubmission', block.submission.id)"
-    @remove="removeSubmission(block.submission)"
-    @send-now="sendSubmissionNow(block.submission)"
-  />
-  <UserBlock
-    v-else-if="block.type === 'user'"
-    v-bind="attrs"
-    :content="block.content"
-    :editable="editable"
-    @edit="emit('editUser', block.id)"
-  />
-  <UserBlock
-    v-else-if="block.type === 'steer'"
-    v-bind="attrs"
-    :content="block.content"
-    :editable="false"
-  />
-  <UserBlock
-    v-else-if="block.type === 'pending_steer'"
-    v-bind="attrs"
-    :content="block.content"
-    :pending="waitingAs(block)"
-    @remove="emit('deletePendingSteer', block.pendingSteerId)"
-    @send-now="emit('interruptPendingSteer', block.pendingSteerId)"
-  />
-  <UserBlock
-    v-else-if="block.type === 'queued_message'"
-    v-bind="attrs"
-    :content="block.content"
-    :pending="waitingAs(block)"
-    @remove="emit('deleteQueued', block.queueId)"
-    @send-now="emit('sendQueued', block.queueId)"
-  />
-  <QueueDivider
-    v-else-if="block.type === 'queue_divider'"
-    v-bind="attrs"
-    :count="block.count"
-  />
-  <!-- The edge of a window that does not reach the transcript's own, while its next page comes. -->
-  <div
-    v-else-if="block.type === 'history_edge'"
-    v-bind="attrs"
-    class="flex h-9 items-center justify-center text-fg-faint"
-    role="status"
-    aria-label="Loading"
-  >
-    <IndeterminateSpinner :size="14" />
-  </div>
-  <div
-    v-else
-    v-bind="{ ...attrs, ...chromeEntrance(entersAsChrome) }"
-  >
-    <AgentReceiptBlock
-      v-if="block.type === 'agent_message'"
-      :message="block.message"
+  <!-- A row that takes another's place rolls its face over the one it replaces (`rowFace`). -->
+  <RowRoll :face-key="rowFace(block)">
+    <PendingSubmission
+      v-if="block.type === 'pending_submission'"
+      v-bind="{ ...attrs, ...block.submission }"
+      :pending="waitingAs(block)"
+      @retry="emit('retrySubmission', block.submission.id)"
+      @remove="removeSubmission(block.submission)"
+      @send-now="sendSubmissionNow(block.submission)"
     />
-    <CommandReportBlock
-      v-else-if="block.type === 'wakeup'"
-      :reports="block.reports"
+    <UserBlock
+      v-else-if="block.type === 'user'"
+      v-bind="attrs"
+      :content="block.content"
+      :editable="editable"
+      @edit="emit('editUser', block.id)"
     />
-    <ThinkingBlock
-      v-else-if="block.type === 'thinking'"
-      :thinking="block.text"
-      :is-streaming="isThinkingStreaming"
-      :created-at="block.createdAt"
-      :ended-at="thinkingEndedAt"
+    <UserBlock
+      v-else-if="block.type === 'steer'"
+      v-bind="attrs"
+      :content="block.content"
+      :editable="false"
     />
-    <AssistantTextBlock
-      v-else-if="block.type === 'text'"
-      :content="block.text"
-      :is-streaming="isTextStreaming"
-      :show-footer="showAssistantFooter"
-      :created-at="block.createdAt"
-      :fork="block.forkable ? fork : undefined"
-      :fork-state="forkState"
-      :regenerate="regenerate"
+    <UserBlock
+      v-else-if="block.type === 'pending_steer'"
+      v-bind="attrs"
+      :content="block.content"
+      :pending="waitingAs(block)"
+      @remove="emit('deletePendingSteer', block.pendingSteerId)"
+      @send-now="emit('interruptPendingSteer', block.pendingSteerId)"
     />
+    <UserBlock
+      v-else-if="block.type === 'queued_message'"
+      v-bind="attrs"
+      :content="block.content"
+      :pending="waitingAs(block)"
+      @remove="emit('deleteQueued', block.queueId)"
+      @send-now="emit('sendQueued', block.queueId)"
+    />
+    <QueueDivider
+      v-else-if="block.type === 'queue_divider'"
+      v-bind="attrs"
+      :count="block.count"
+    />
+    <!-- The edge of a window that does not reach the transcript's own, while its next page comes. -->
     <div
-      v-else-if="block.type === 'tool_call'"
-      class="overflow-hidden px-[var(--agent-pad-x,2rem)]"
+      v-else-if="block.type === 'history_edge'"
+      v-bind="attrs"
+      class="flex h-9 items-center justify-center text-fg-faint"
+      role="status"
+      aria-label="Loading"
     >
-      <ToolCallBlock
-        :block="block"
-      />
+      <IndeterminateSpinner :size="14" />
     </div>
     <div
-      v-else-if="block.type === 'pending_call'"
-      class="overflow-hidden px-[var(--agent-pad-x,2rem)]"
+      v-else
+      v-bind="{ ...attrs, ...chromeEntrance(entersAsChrome) }"
     >
-      <PendingCallBlock :call="block.call" />
-    </div>
-    <div
-      v-else-if="block.type === 'work_group'"
-      class="overflow-hidden px-[var(--agent-pad-x,2rem)]"
-    >
-      <WorkGroupBlock :group="block" />
-    </div>
-    <div
-      v-else-if="block.type === 'error'"
-      class="px-[var(--agent-pad-x,2rem)] py-1.5"
-    >
-      <ErrorBlock
+      <AgentReceiptBlock
+        v-if="block.type === 'agent_message'"
         :message="block.message"
-        :code="block.code"
-        :diagnostics="block.diagnostics"
-        :retry-at="failure?.retryAt ?? null"
       />
+      <CommandReportBlock
+        v-else-if="block.type === 'wakeup'"
+        :reports="block.reports"
+      />
+      <ThinkingBlock
+        v-else-if="block.type === 'thinking'"
+        :thinking="block.text"
+        :is-streaming="isThinkingStreaming"
+        :created-at="block.createdAt"
+        :ended-at="thinkingEndedAt"
+      />
+      <AssistantTextBlock
+        v-else-if="block.type === 'text'"
+        :content="block.text"
+        :is-streaming="isTextStreaming"
+        :show-footer="showAssistantFooter"
+        :created-at="block.createdAt"
+        :fork="block.forkable ? fork : undefined"
+        :fork-state="forkState"
+        :regenerate="regenerate"
+      />
+      <div
+        v-else-if="block.type === 'tool_call'"
+        class="overflow-hidden px-[var(--agent-pad-x,2rem)]"
+      >
+        <ToolCallBlock
+          :block="block"
+        />
+      </div>
+      <div
+        v-else-if="block.type === 'pending_call'"
+        class="overflow-hidden px-[var(--agent-pad-x,2rem)]"
+      >
+        <PendingCallBlock :call="block.call" />
+      </div>
+      <div
+        v-else-if="block.type === 'work_group'"
+        class="overflow-hidden px-[var(--agent-pad-x,2rem)]"
+      >
+        <WorkGroupBlock :group="block" />
+      </div>
+      <div
+        v-else-if="block.type === 'error'"
+        class="px-[var(--agent-pad-x,2rem)] py-1.5"
+      >
+        <ErrorBlock
+          :message="block.message"
+          :code="block.code"
+          :diagnostics="block.diagnostics"
+          :retry-at="failure?.retryAt ?? null"
+        />
+      </div>
+      <div
+        v-else-if="block.type === 'abort'"
+        class="px-[var(--agent-pad-x,2rem)]"
+      >
+        <StoppedBlock />
+      </div>
+      <CompactionBlock
+        v-else-if="block.type === 'compaction_marker' || block.type === 'compaction_boundary'"
+        :summary-tokens="summaryTokens"
+      />
+      <CompactionBlock
+        v-else-if="block.type === 'compaction_progress'"
+        running
+      />
+      <ActivitySlot
+        v-else-if="block.type === 'activity_slot'"
+        :kind="block.slot.kind"
+        :since="block.slot.since"
+      />
+      <div
+        v-else-if="block.type === 'delivery_failure'"
+        class="px-[var(--agent-pad-x,2rem)]"
+      >
+        <ErrorNotice
+          label="This message was not delivered."
+          :detail="block.submission.error"
+          action="Retry"
+          @action="emit('retrySubmission', block.submission.id)"
+        />
+      </div>
+      <div
+        v-else-if="block.type === 'session_failure'"
+        class="px-[var(--agent-pad-x,2rem)] py-1.5"
+      >
+        <ErrorNotice
+          :label="block.failure.label"
+          :action="block.failure.retry ? 'Retry' : undefined"
+          @action="emit('retryLoad')"
+        />
+      </div>
     </div>
-    <div
-      v-else-if="block.type === 'abort'"
-      class="px-[var(--agent-pad-x,2rem)]"
-    >
-      <StoppedBlock />
-    </div>
-    <CompactionBlock
-      v-else-if="block.type === 'compaction_marker' || block.type === 'compaction_boundary'"
-      :summary-tokens="summaryTokens"
-    />
-    <CompactionBlock
-      v-else-if="block.type === 'compaction_progress'"
-      running
-    />
-    <ActivitySlot
-      v-else-if="block.type === 'activity_slot'"
-      :kind="block.slot.kind"
-      :incoming="block.slot.incoming"
-      :since="block.slot.since"
-    />
-  </div>
+  </RowRoll>
 </template>

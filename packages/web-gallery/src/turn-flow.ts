@@ -1,6 +1,6 @@
 import { computed, onBeforeUnmount, reactive, shallowRef, watch } from 'vue'
 import type { AgentMessage, Block, ContextUsage, UserContentBlock } from '@demicodes/protocol'
-import { ACTIVITY_HANDOFF_MS } from '@demicodes/web-ui/agent/activity-slot'
+import { CHROME_ROLL_MS } from '@demicodes/web-ui/ui/chrome-roll'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
@@ -56,6 +56,8 @@ const STEER_TEXT = 'Also check the sign-up test.'
 const RETRY_ERROR = 'Anthropic API request failed with HTTP 529: Overloaded. The upstream service is temporarily unavailable.'
 /** The simulated server's acknowledgement of a recovery or a reconnect. */
 const ACK_MS = 800
+/** How long a replay shows the Stop or the error before it presses Continue or Resume, so the row is seen to roll. */
+const PRESS_MS = 900
 /** The simulated server admits a sent message: the turn starts before the message is written, as the backend's does. */
 const ADMIT_MS = 400
 /** The simulated server writes the sent message to the transcript, which confirms its delivery; past a second, so the wait shows its clock first. */
@@ -342,7 +344,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     return startMs + Math.max(0, prefixes.length - 1) * FEED_MS
   }
 
-  /** An empty thinking block arrives at `startMs`; its text streams after the handoff. Returns when the text is complete. */
+  /** An empty thinking block arrives at `startMs`; its text streams once its row has rolled in. Returns when the text is complete. */
   function think(run: number, startMs: number, text: string): number {
     const id = nextId('think')
     let createdAt = ''
@@ -350,7 +352,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       createdAt = now()
       append(thinkingBlock(id, createdAt, ''))
     })
-    return streamTextInto(run, startMs + ACTIVITY_HANDOFF_MS, text, (partial) => {
+    return streamTextInto(run, startMs + CHROME_ROLL_MS, text, (partial) => {
       replace(id, thinkingBlock(id, createdAt, partial))
     })
   }
@@ -626,16 +628,25 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     ]
   }
 
-  /** The server acknowledges a recovery: the recovered record settles, the turn runs. */
+  /** The server acknowledges a recovery with the phase, before the transcript says so, as the backend does. */
   function acknowledgeRecovery(): void {
+    state.pendingAction = null
+    state.phase = 'running'
+  }
+
+  /**
+   * The recovery unwinds the turn, as the backend's does: the Stop it
+   * continues is marked resumed, or the error it recovers from goes, and a
+   * `resume` block says where the turn goes on.
+   */
+  function unwindRecovery(): void {
     const tail = state.blocks.at(-1)
     if (tail?.type === 'abort') {
       replace(tail.id, { ...tail, isResumed: true })
     } else if (tail?.type === 'error') {
       state.blocks = state.blocks.slice(0, -1)
     }
-    state.pendingAction = null
-    state.phase = 'running'
+    append({ type: 'resume', id: nextId('resume'), turnId: nextId('turn'), createdAt: now(), model: demoModel, reason: null })
   }
 
   /** Send a message on the current transcript; its turn runs once the server confirms it. */
@@ -853,6 +864,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     state.lastError = null
     state.pendingAction = 'resume'
     at(run, ACK_MS, acknowledgeRecovery)
+    at(run, ACK_MS + WAIT_MS / 2, unwindRecovery)
     thinkThenReply(run, ACK_MS + WAIT_MS, THINK_2)
   }
 
@@ -1126,7 +1138,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
           isResumed: false,
         },
       ]
-      resume()
+      at(run, PRESS_MS, resume)
       return
     }
 
@@ -1147,8 +1159,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
           },
         },
       ]
-      state.lastError = RETRY_ERROR
-      resume()
+      at(run, PRESS_MS, resume)
       return
     }
 
