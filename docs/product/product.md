@@ -609,7 +609,7 @@ few milliseconds reads as the list twitching.
   the transcript alone: the tail row, Requesting or Connecting, stands right
   after the transcript, above the messages that wait, and only when the
   transcript's end waits for the model. For example, the agent is writing a
-  command, its row shimmering *Preparing a command…*, and the user sends a
+  command, its row shimmering *Install the test runner*, and the user sends a
   steer: the steer shows under that row with *Will be sent to the agent at
   its next step*, and nothing shows under the steer, since the run's row
   already says the agent works.
