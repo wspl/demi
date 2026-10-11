@@ -10,9 +10,10 @@
  * that double. Timers stop while a laptop sleeps, so when the page becomes
  * visible again or comes back online, this module checks every socket once
  * the page has read what its sockets hold. The browser's word that it went
- * offline counts once it has held for a second: then every open socket is
- * let go, and the page says it is offline. The page reports why it replaced
- * a socket through its error reports.
+ * offline counts once it has held for a second: then the page says it is
+ * offline, and closes no socket, since one that kept its connection, as
+ * through a VPN's tunnel, goes on working; coming back online is a return.
+ * The page reports why it replaced a socket through its error reports.
  */
 import { readonly, ref } from 'vue'
 import { defaultDocument, defaultNavigator, defaultWindow, useEventListener } from '@vueuse/core'
@@ -39,25 +40,16 @@ const OFFLINE_HOLD_MS = 1_000
 const HANDSHAKE_MS = 10_000
 
 /** Why the page let an open socket go that had not closed. */
-type Break = 'silence' | 'return' | 'offline'
+type Break = 'silence' | 'return'
 
 /** What the page's report says of each, after the socket's name. */
 const BREAK_WORDS: Record<Break, string> = {
   silence: 'brought nothing for 75 seconds',
   return: 'had brought nothing for 75 seconds by the clock when the page returned',
-  offline: 'was let go as the browser went offline',
 }
 
-/** An open socket's watch, as the page's return and its going offline reach it. */
-interface Watched {
-  /** Breaks the socket when it has been silent too long by the clock. */
-  check(): void
-  /** Breaks the socket for `why`. */
-  lose(why: Break): void
-}
-
-/** The page's open sockets, each by its watch. */
-const watched = new Set<Watched>()
+/** The page's open sockets, each by the check of its silence that the page's return makes. */
+const watched = new Set<() => void>()
 /** The page's closed sockets, each by what connects it at once instead of after its wait. */
 const waiting = new Set<() => void>()
 
@@ -157,9 +149,8 @@ export interface SilenceWatch {
  * timer slept. Either judges only once the page has read the messages
  * waiting for it, so a heartbeat a frozen tab held keeps its socket; a
  * judgement that finds less silence counts on from the last message by the
- * clock. It calls `broken` as well once the browser's offline has held
- * (`OFFLINE_HOLD_MS`). Each break is reported under `name`. The socket's
- * owner stops the watch when it lets the socket go, whatever the reason.
+ * clock. Each break is reported under `name`. The socket's owner stops the
+ * watch when it lets the socket go, whatever the reason.
  */
 export function watchSilence(name: string, broken: () => void): SilenceWatch {
   // The wall clock, which goes on while the machine sleeps.
@@ -202,10 +193,7 @@ export function watchSilence(name: string, broken: () => void): SilenceWatch {
       afterQueuedTasks(() => judge('silence'))
     }, ms)
   }
-  const watch: Watched = {
-    check: () => judge('return'),
-    lose,
-  }
+  const watch = () => judge('return')
   arm(SILENCE_MS)
   watched.add(watch)
   return {
@@ -277,8 +265,8 @@ export function waitWhileRestarting(connect: () => void): ReconnectWait {
 export function pageReturned(): Promise<void> {
   return new Promise((resolve) => {
     afterQueuedTasks(() => {
-      for (const watch of [...watched]) {
-        watch.check()
+      for (const check of [...watched]) {
+        check()
       }
       connectWaiting()
       // Left to run: it only connects the sockets that wait by then.
@@ -322,8 +310,7 @@ export const browserOnline = readonly(online)
 
 /**
  * The browser said it went offline. Once that has held for a second, the
- * page is offline: each open socket is let go, to connect again when the
- * page comes back online.
+ * page is offline, and says so; its sockets stay as they are.
  */
 export function browserWentOffline(): void {
   if (offlineHold !== null || !online.value) {
@@ -332,9 +319,6 @@ export function browserWentOffline(): void {
   offlineHold = setTimeout(() => {
     offlineHold = null
     online.value = false
-    for (const watch of [...watched]) {
-      watch.lose('offline')
-    }
   }, OFFLINE_HOLD_MS)
 }
 
