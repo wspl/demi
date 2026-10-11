@@ -144,7 +144,7 @@ import {
 } from '../fixtures/catalog'
 import { setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
 import { galleryBlobs } from '../fixtures/blobs'
-import { agentReceiptMessages, gallerySubagents, mainAgentMessage, workSubagent } from '../fixtures/subagents'
+import { agentReceiptMessages, briefSubagent, gallerySubagents, mainAgentMessage, workSubagent } from '../fixtures/subagents'
 import GalleryReceipts from '../components/GalleryReceipts.vue'
 import { galleryTerminals } from '../fixtures/terminals'
 import { demoDeviceStart } from '../fixtures/device-installation'
@@ -274,6 +274,17 @@ const finishedOnly = agents.filter((agent) => agent.phase !== 'running')
 const exhibitOpen = ref(true)
 const exhibitAgentId = ref<string | null>(firstRunningSubagentId(agents))
 const exhibitTerminalId = ref<string | null>(firstRunningTerminalId(terminals))
+const briefAgents = reactive([briefSubagent()])
+const briefOpen = ref(true)
+const briefAgentId = ref<string | null>(briefAgents[0]!.id)
+/** Stop Agent or Stop All on the brief's child: it stops, and its tab stays while the window shows it. */
+function stopBriefAgent(): void {
+  const agent = briefAgents[0]!
+  if (agent.phase === 'running') {
+    agent.phase = 'aborted'
+    agent.endedAt = new Date().toISOString()
+  }
+}
 /** Run Them Again: the windows' agents and jobs run again as the fixtures start them, each window open on its first. */
 function resetWindows(): void {
   const freshAgents = gallerySubagents()
@@ -1641,7 +1652,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="SessionDockChip"
-        note="28px capsule with status dots. The Agents chip counts the live children, and its dot breathes gently while they run; once none runs, a conversation that has had children keeps the chip as Agents with no count, so their history stays one click away, and one that never had a child shows none. Running and Agents open their windows; a second click closes them (Agents Chip in Windows)."
+        note="28px capsule with status dots. The Agents chip counts the live children, its dot breathing gently, and shows only while one runs, as Running shows only while a command runs; a finished child opens from its receipt's name or a link to it. Running and Agents open their windows; a second click closes them (Agents Chip in Windows)."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="resume">
@@ -1662,11 +1673,8 @@ onBeforeUnmount(() => {
           <GallerySpecimen variant="agents · running">
             <AgentsChip :agents="agents" @open="productWould('Open the Agents Window')" />
           </GallerySpecimen>
-          <GallerySpecimen variant="agents · none running">
+          <GallerySpecimen variant="agents · none running · hidden">
             <AgentsChip :agents="finishedOnly" @open="productWould('Open the Agents Window')" />
-          </GallerySpecimen>
-          <GallerySpecimen variant="agents · never had one · hidden">
-            <AgentsChip :agents="[]" @open="productWould('Open the Agents Window')" />
           </GallerySpecimen>
         </div>
       </GallerySection>
@@ -2545,10 +2553,30 @@ onBeforeUnmount(() => {
         </div>
       </GallerySection>
       <GallerySection
-        title="Agents Chip"
-        note="The dock's Agents chip opens this window and a second click closes it. While children run it counts them and the window opens on the oldest running one. Once none runs the chip reads Agents with no count and the window opens empty, its finished children under Completed. A conversation that never had a child has no chip."
+        title="A Child's Brief"
+        note="A child's task brief, the message its spawn wrote, is Markdown an agent wrote: it renders as an answer does, headings, lists and tables included, inside the bubble that marks it as the child's input, folded behind Show More when long. Copy puts its Markdown on the clipboard; it has no Edit. What the user types keeps the user dialect (UserBlock). Close (×) closes the window and Open Again opens it; Stop Agent and Stop All stop the child."
       >
-        <div class="grid grid-cols-1 gap-3 xl:grid-cols-3">
+        <div class="mb-3 flex flex-wrap gap-2">
+          <Button variant="ghost" size="sm" :disabled="briefOpen" @click="briefOpen = true">Open Again</Button>
+        </div>
+        <div class="relative h-[32rem] min-h-0">
+          <SubagentPanel
+            v-model:open="briefOpen"
+            v-model:active-id="briefAgentId"
+            :agents="briefAgents"
+            @abort="stopBriefAgent"
+            @abort-agent="stopBriefAgent"
+          />
+        </div>
+      </GallerySection>
+      <GallerySection
+        title="Agents Chip"
+        note="The dock's Agents chip opens this window and a second click closes it. While children run it counts them and the window opens on the oldest running one. Once none runs there is no chip: Stop All in the window ends them, and the window, still open, keeps the tab it showed; closing that tab leaves it saying no agent is running. A finished child opens from a link to it in the reply, on its tab, as Completed picks it. Run Them Again starts the children again."
+      >
+        <div class="mb-3 flex flex-wrap gap-2">
+          <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
+        </div>
+        <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
           <GallerySpecimen variant="children running" wide>
             <GalleryAgentsChip
               :agents="agents"
@@ -2560,14 +2588,6 @@ onBeforeUnmount(() => {
           <GallerySpecimen variant="none running" wide>
             <GalleryAgentsChip
               :agents="finishedOnly"
-              :terminals="terminals"
-              @abort="sessionFlow.abortSubagents"
-              @abort-agent="sessionFlow.abortSubagent"
-            />
-          </GallerySpecimen>
-          <GallerySpecimen variant="never had one" wide>
-            <GalleryAgentsChip
-              :agents="[]"
               :terminals="terminals"
               @abort="sessionFlow.abortSubagents"
               @abort-agent="sessionFlow.abortSubagent"
