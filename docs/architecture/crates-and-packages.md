@@ -177,6 +177,9 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     (`Completion`), service information (`ServiceInfo`), the conversation
     release and status requests, and the conversation numbers stream's
     messages (`NumbersRequest`, `NumbersAnswer`);
+  - the line counts of a change (`line_counts`, with `gix-imara-diff`), which
+    the runner's edit report and the stored lists of changed files share
+    ([What the conversation shows](../execution/edit-tracking.md#what-the-conversation-shows));
   - record framing (`Record`, `RecordDecoder`), with the medium records a
     handler returns media in;
   - the media a command returns: their bound (`MAX_MEDIUM_BYTES`), the
@@ -592,6 +595,10 @@ Each crate implements the provider contract for one vendor family.
     [retention](../backend/storage.md#retention); the fitting of an image as
     it enters, with the `image` crate (`images`,
     [Images in the transcript](../agent/runtime.md#images-in-the-transcript));
+  - the run and request rules and the lists of changed files a shell call
+    stores (`changes`), from the edit copies through a blob reader, for the
+    session and for the block format 3 migration alike
+    ([What the conversation shows](../execution/edit-tracking.md#what-the-conversation-shows));
     and the blocks an upload becomes with its recorded media type and opening
     (`attachments`).
 - **Public boundary:** the items above; `agent_store::testing` supplies an
