@@ -1015,7 +1015,7 @@ async fn a_detached_tree_with_a_live_child_is_not_evicted_and_one_without_is() {
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_child_whose_turn_fails_closes_as_an_error_and_a_silent_one_completes_empty() {
+async fn a_child_whose_turn_fails_closes_as_an_error_naming_its_failure_and_a_silent_one_completes_empty() {
     let model = Model::default();
     model.root([said("noted"), said("noted")]);
     model.child(
@@ -1052,7 +1052,7 @@ async fn a_child_whose_turn_fails_closes_as_an_error_and_a_silent_one_completes_
         outcomes,
         [
             (
-                failing,
+                failing.clone(),
                 "the vendor refused".to_owned(),
                 AgentMessageEvent::Completion {
                     outcome: CompletionOutcome::Failed
@@ -1067,6 +1067,24 @@ async fn a_child_whose_turn_fails_closes_as_an_error_and_a_silent_one_completes_
             ),
         ]
     );
+    // The failed child's receipt names its failure record, which its row's
+    // name brings into view; the silent one gave no answer to name.
+    let failure = fixture
+        .store
+        .checkpoint(&failing)
+        .unwrap()
+        .transcript
+        .iter()
+        .find_map(|block| match block {
+            Block::Error(error) => Some(error.id.clone()),
+            _ => None,
+        });
+    assert!(failure.is_some(), "the failed child's transcript records its failure");
+    let origins: Vec<Option<BlockId>> = root_receipts(&fixture)
+        .into_iter()
+        .map(|message| message.origin)
+        .collect();
+    assert_eq!(origins, [failure, None]);
 }
 
 /// A receipt names the block of its sender's transcript it came from, which
