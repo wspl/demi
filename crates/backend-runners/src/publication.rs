@@ -432,7 +432,7 @@ mod tests {
         let fixture = Fixture::new(TARGETS);
         let catalog = fixture.publish(&objects).await.unwrap();
         assert!(catalog.package("example.commands").is_some());
-        // No executable is stored before something needs it.
+        // Publishing stores no executable.
         let written = fake.written();
         assert_eq!(written.len(), 2, "{written:?}");
         assert!(written[0].starts_with("native/descriptors/"), "{written:?}");
@@ -511,6 +511,55 @@ mod tests {
         };
         let refused = resolver.resolve(&unnamed, TARGETS[0], cancel).await.err().unwrap();
         assert!(refused.contains("not in the published"), "{refused}");
+    }
+
+    /// After an upgrade, the backend stores the release's executables for
+    /// the targets of the Hosts it knows before a command needs them, and a
+    /// device of another target has its own stored as it pairs. A runner
+    /// that asks for an executable while it is being stored waits for that
+    /// one fetch.
+    #[tokio::test]
+    async fn executables_are_stored_ahead_for_the_hosts_targets_and_a_need_shares_the_fetch() {
+        let fake = FakeS3::start().await;
+        let objects = Objects {
+            store: Arc::new(fake.client()),
+            signer: None,
+        };
+        let fixture = Fixture::new(&TARGETS[..2]);
+        let catalog = fixture.publish(&objects).await.unwrap();
+        let mut writes = fake.hold_writes();
+        let cancel = CancellationToken::new();
+        // The backend starts knowing a Host of the first target.
+        catalog.foresee([TARGETS[0]]);
+        let ahead = {
+            let catalog = catalog.clone();
+            let cancel = cancel.clone();
+            tokio::spawn(async move { catalog.store_ahead(&cancel).await })
+        };
+        let first = artifact(TARGETS[0]);
+        let key = |artifact: &PackageArtifact| blob(&artifact.sha256).unwrap().to_string();
+        assert_eq!(writes.arrived().await, key(&first));
+
+        // The first command's runner asks while the store is being written,
+        // and waits for its turn.
+        let resolver = catalog.resolver(&backend());
+        let mut need = resolver.resolve(&first, TARGETS[0], CancellationToken::new());
+        assert!(futures_util::poll!(&mut need).is_pending());
+        writes.release();
+        let ArtifactLocation::Url(location) = need.await.unwrap() else {
+            panic!("a runner downloads from a URL");
+        };
+        assert!(location.url.ends_with(&first.sha256), "{}", location.url);
+        assert_eq!(writes.more(), Vec::<String>::new(), "the need fetched again");
+        // No Host of the second target is known, so nothing stored it.
+        let second = artifact(TARGETS[1]);
+        assert!(fake.object(&key(&second)).is_none());
+
+        // A device of the second target pairs.
+        catalog.foresee([TARGETS[1]]);
+        assert_eq!(writes.arrived().await, key(&second));
+        cancel.cancel();
+        ahead.await.unwrap();
     }
 
     #[tokio::test]
