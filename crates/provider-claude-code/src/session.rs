@@ -248,8 +248,21 @@ fn block_entries(
     let split = kept.iter().position(is_result).unwrap_or(kept.len());
     let results = kept.split_off(split);
     let (mut calls, mut results) = (kept, results);
+    // What an item is covered by: the block's own entries, never one written
+    // for an earlier item of the block, since a `compaction_boundary` gives
+    // several user messages (`runtime.md` § Replay).
+    let (own_calls, own_results) = (calls.len(), results.len());
+    let mut users_before = 0;
     for item in block_items {
-        if covered(item, calls.iter().chain(&results)) {
+        let own = calls[..own_calls].iter().chain(&results[..own_results]);
+        let covered = covered(item, users_before, own);
+        if matches!(
+            item,
+            InferenceItem::UserMessage { .. } | InferenceItem::UserSteer { .. }
+        ) {
+            users_before += 1;
+        }
+        if covered {
             continue;
         }
         if matches!(item, InferenceItem::ToolResult { .. }) {
@@ -270,6 +283,13 @@ fn is_reasoning(entry: &Value) -> bool {
             entry["message"]["content"][0]["type"].as_str(),
             Some("thinking" | "redacted_thinking")
         )
+}
+
+/// Whether an entry stands for a user message: a message, or one the CLI
+/// folded into a running turn.
+fn is_user_message(entry: &Value) -> bool {
+    (entry["type"] == "user" && entry["isMeta"] != true && !is_result(entry))
+        || entry["attachment"]["type"] == "queued_command"
 }
 
 /// Whether an entry is the result of a tool call.
@@ -294,14 +314,18 @@ fn assistant_kind(entry: &Value) -> Option<&str> {
         .flatten()
 }
 
-/// Whether one of `entries` stands for `item`.
-fn covered<'a>(item: &InferenceItem, mut entries: impl Iterator<Item = &'a Value>) -> bool {
+/// Whether one of `entries` stands for `item`, after `users_before` user
+/// messages of its block: the entries stand for a block's user messages one
+/// each, in order.
+fn covered<'a>(
+    item: &InferenceItem,
+    users_before: usize,
+    mut entries: impl Iterator<Item = &'a Value>,
+) -> bool {
     match item {
-        // A message, or one the CLI folded into a running turn.
-        InferenceItem::UserMessage { .. } | InferenceItem::UserSteer { .. } => entries.any(|entry| {
-            (entry["type"] == "user" && entry["isMeta"] != true && !is_result(entry))
-                || entry["attachment"]["type"] == "queued_command"
-        }),
+        InferenceItem::UserMessage { .. } | InferenceItem::UserSteer { .. } => {
+            entries.filter(|entry| is_user_message(entry)).count() > users_before
+        }
         InferenceItem::AssistantText { .. } => {
             entries.any(|entry| assistant_kind(entry) == Some("text"))
         }

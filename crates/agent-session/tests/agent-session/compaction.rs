@@ -227,7 +227,9 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
     assert_eq!(
         second.items.as_ref(),
         [
-            boundary_items(&[&"x".repeat(3_000)], "summary of the first turn"),
+            // The message, cut to the 100 tokens of the user's words a
+            // 1,000-token window keeps.
+            boundary_items(&[&"x".repeat(400)], "summary of the first turn"),
             vec![
                 answer_item("small-model", "first answer"),
                 user_item(&"y".repeat(400)),
@@ -667,7 +669,7 @@ async fn a_failed_turn_compacted_afterwards_is_resumed_after_the_summary_and_kee
     assert_eq!(
         requests[3].items.as_ref(),
         [
-            boundary_items(&[&"x".repeat(3_000)], "summary"),
+            boundary_items(&[&"x".repeat(400)], "summary"),
             vec![
                 answer_item("small-model", "first"),
                 user_item("again"),
@@ -1411,7 +1413,7 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
     assert_eq!(
         rerun.items.as_ref(),
         [
-            boundary_items(&[&question], "retry summary"),
+            boundary_items(&[&question[..400]], "retry summary"),
             vec![
                 answer_item("small-model", "old answer"),
                 user_item("retry this"),
@@ -2035,7 +2037,7 @@ async fn input_that_arrives_during_a_pass_waits_outside_the_summary_for_the_firs
     // window keeps after the end of the second request, which the pass
     // ends at.
     let third = "z".repeat(600);
-    let fourth = "w".repeat(400);
+    let fourth = "w".repeat(200);
     for (message, id) in [("first", "t1"), ("second", "t2")] {
         session.send(text(message), turn(id)).unwrap().await.unwrap();
     }
@@ -2110,8 +2112,11 @@ async fn input_that_arrives_during_a_pass_waits_outside_the_summary_for_the_firs
     assert_eq!(
         provider.requests()[6].items.as_ref(),
         [
+            // Newest first within the 100 tokens a 1,000-token window keeps:
+            // the fourth message and the steer whole, the third cut to what
+            // is left, and the first two left to the summary.
             boundary_items(
-                &["first", "second", &third, "mind the tests", &fourth],
+                &[&third[..184], "mind the tests", &fourth],
                 "summary two"
             ),
             vec![
@@ -2195,7 +2200,9 @@ async fn an_edit_before_or_after_compaction_boundaries_replays_only_the_summarie
             "C",
             8,
             [
-                boundary_items(&[&question("A"), &question("B")], "summary one"),
+                // B's question, cut to the 100 tokens of the user's words
+                // a 1,000-token window keeps; A's is left to the summary.
+                boundary_items(&[&question("B")[..400]], "summary one"),
                 vec![answer_item("small-model", "answer B")],
             ]
             .concat(),
@@ -2281,7 +2288,7 @@ async fn an_edit_that_cuts_a_marker_anchors_no_estimate_on_a_usage_measured_befo
     assert_eq!(
         provider.requests().last().unwrap().items.as_ref(),
         [
-            boundary_items(&[&question("A")], "summary one"),
+            boundary_items(&[&question("A")[..400]], "summary one"),
             vec![
                 answer_item("small-model", "answer A"),
                 user_item(&question("B")),
@@ -2335,7 +2342,7 @@ async fn a_pass_after_an_edit_summarizes_only_the_history_the_edit_kept() {
     assert_eq!(
         replacement.items.as_ref(),
         [
-            boundary_items(&[&first], "summary of A"),
+            boundary_items(&[&first[..400]], "summary of A"),
             vec![answer_item("small-model", "answer A"), user_item("B2")],
         ]
         .concat()
@@ -2820,16 +2827,17 @@ async fn a_pass_keeps_the_users_newest_words_within_their_budget_beside_its_summ
     session.compact().unwrap().await.unwrap();
 
     // Newest first: the last message, the steer and the third message
-    // whole; the second crosses the 20,000 tokens and keeps its text up to
-    // them, without its screenshot; the first is left to the summary, and
-    // so is the agent's message.
+    // whole; the second crosses the 10,000 tokens a 100,000-token window
+    // keeps, 10% of it, and keeps its text up to them, without its
+    // screenshot; the first is left to the summary, and so is the agent's
+    // message.
     let blocks = session.transcript().blocks;
     let boundary = blocks
         .iter()
         .find(|block| matches!(block, Block::CompactionBoundary(_)))
         .expect("the pass inserted a boundary");
     let kept = kept_texts(boundary);
-    let edge = 20_000 - (third.len() / 4 + 4 + 3);
+    let edge = 10_000 - (third.len() / 4 + 4 + 3);
     assert_eq!(
         kept,
         [

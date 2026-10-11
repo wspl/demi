@@ -1,8 +1,10 @@
 //! The request after a pass, pinned whole for each provider (`compaction.md`
 //! § Acceptance, level 2): a short recorded conversation, of a message with
 //! an image, signed reasoning, calls with their results, a steer and the
-//! user's constraint, is compacted, and the next request each provider's
-//! builder makes of it is compared with its golden file in
+//! user's constraint, is compacted in a 2,000-token window, whose 200
+//! tokens of the user's words keep the first message without its image,
+//! and the next request each provider's builder makes of it is compared
+//! with its golden file in
 //! `golden/<builder>.json`. Any change to what the model receives after a
 //! pass shows there in review. With `DEMI_GOLDEN_UPDATE=1` the test writes
 //! the files instead of comparing them.
