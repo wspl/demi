@@ -7,14 +7,12 @@ import type { SessionLoad } from './session-status'
  * them across their forms (`row-key.ts`). Rows present when the list opens
  * or finishes loading are history and do not move. A row that joins
  * afterwards enters once, then is settled, so a virtual row remounted by
- * scrolling stays still, and a row that changes form stays still too. A
- * block handed off through the activity slot is settled before it becomes a
- * row, `heldKey` naming that row: the slot already carried it into place. A
+ * scrolling stays still, and a row that changes form stays still too, as
+ * does a row that takes another's place under its key (`succeedKeys`). A
  * new conversation in the same list starts over from its own history.
  */
 export function useChromeEntrance(
   keys: () => readonly string[],
-  heldKey: () => string | null,
   scope: () => string,
   load: () => SessionLoad,
 ): { isEntering: (key: string) => boolean } {
@@ -45,12 +43,6 @@ export function useChromeEntrance(
     }
     timers.clear()
   }
-
-  watch(heldKey, (key) => {
-    if (key !== null) {
-      settled.add(key)
-    }
-  }, { flush: 'sync' })
 
   watch(
     () => [scope(), load(), keys()] as const,
