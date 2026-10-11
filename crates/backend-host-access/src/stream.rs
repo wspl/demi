@@ -149,7 +149,7 @@ impl dyn HostShard + '_ {
         binding: &ServiceBinding,
         cancel: &CancellationToken,
     ) -> Result<UserStream, StreamError> {
-        let access = self.admit_stream(id, Attention::Watches, cancel).await?;
+        let access = self.admit_stream(id, None, Attention::Watches, cancel).await?;
         let request = self
             .service_request(&access.conversation, &access.host, binding, None)
             .await?;
@@ -221,7 +221,7 @@ impl dyn HostShard + '_ {
         };
         // Registered with the conversation's transfers until the answer is
         // in, so a transition ends the call.
-        let access = self.admit_stream(id, attention, cancel).await?;
+        let access = self.admit_stream(id, None, attention, cancel).await?;
         let request = self
             .service_request(
                 &access.conversation,
@@ -253,7 +253,7 @@ impl dyn HostShard + '_ {
         cancel: &CancellationToken,
         operation: impl AsyncFnOnce(&ConversationHost) -> T,
     ) -> Result<T, HostAccessError> {
-        let access = self.admit_stream(id, Attention::Looks, cancel).await?;
+        let access = self.admit_stream(id, None, Attention::Looks, cancel).await?;
         let waits = Waits::until_ended(cancel, &access.open.ended);
         waits.wait(operation(&access.host)).await
     }

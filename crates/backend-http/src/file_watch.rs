@@ -1,8 +1,9 @@
 //! The file watch at the edge (`web-api.md` § File watch): the upgrades of
 //! a conversation's watch and of a device's folder dialog's, and the relay
-//! of the Host's reports to the page and of the page's `subscribe`,
-//! `unsubscribe` and `renew` messages to the shard, which holds the Host's
-//! subscriptions.
+//! of the Hosts' reports to the page and of the page's `subscribe`,
+//! `unsubscribe` and `renew` messages to the shard, which holds the Hosts'
+//! subscriptions. Only a conversation's watch takes a subscription that
+//! names a host.
 
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{CloseFrame, Message, WebSocketUpgrade};
@@ -15,9 +16,9 @@ use axum::response::Response;
 use demi_backend_host_access::file_watch::{FileWatchChannel, OpenedWatch};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::devices::DeviceKind;
-use demi_web_api_protocol::files::{FileWatchMessage, FileWatchRequest};
+use demi_web_api_protocol::files::{ConversationWatchRequest, FileWatchMessage, FileWatchRequest};
 use futures_util::StreamExt as _;
-use garde::Validate as _;
+use garde::Validate;
 
 use super::AppState;
 use super::body::page_socket;
@@ -29,7 +30,7 @@ use super::page_client::PageClient;
 
 /// `WS /conversations/:id/fs/watch`: a conversation that is not the user's,
 /// or is archived or changing, answers before the upgrade; a Host out of
-/// reach answers after it, with `offline`.
+/// reach answers after it, with `offline`, once a subscription names it.
 pub(super) async fn open(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -49,25 +50,17 @@ pub(super) async fn open(
         conversation: Some(record.id.clone()),
         ..client.origin(PageSocketKind::FileWatch, user.id.clone())
     };
-    let opened = state
+    let channel = state
         .shards
         .of(&user.id)
-        .call(move |shard, cancel| async move {
-            shard
-                .host_shard()
-                .open_file_watch(&record.id, &cancel)
-                .await
-        })
+        .call(move |shard, _| async move { shard.host_shard().open_file_watch(&record.id).await })
         .await??;
     let tuning = state.services.pages;
     // An upgrade that never completes drops the channel, which ends the
     // watch.
     Ok(page_socket(upgrade).on_upgrade(move |socket| async move {
         let (to_page, from_page) = open_page_socket(socket, tuning, origin);
-        match opened {
-            OpenedWatch::Watching(channel) => relay(to_page, from_page, channel).await,
-            OpenedWatch::Offline => offline(to_page, from_page).await,
-        }
+        relay(to_page, from_page, channel, request_of::<ConversationWatchRequest>).await;
     }))
 }
 
@@ -105,7 +98,9 @@ pub(super) async fn open_device(
     Ok(page_socket(upgrade).on_upgrade(move |socket| async move {
         let (to_page, from_page) = open_page_socket(socket, tuning, origin);
         match opened {
-            OpenedWatch::Watching(channel) => relay(to_page, from_page, channel).await,
+            OpenedWatch::Watching(channel) => {
+                relay(to_page, from_page, channel, request_of::<FileWatchRequest>).await;
+            }
             OpenedWatch::Offline => offline(to_page, from_page).await,
         }
     }))
@@ -158,8 +153,14 @@ async fn offline(mut page: PageSocket, page_in: PageStream) {
 
 /// Relays an open watch until either side ends it or a transition does,
 /// with a `heartbeat` after 30 seconds without another message; dropping
-/// the lease then ends it in the shard.
-async fn relay(mut page: PageSocket, mut page_in: PageStream, channel: FileWatchChannel) {
+/// the lease then ends it in the shard. `read` reads a page's message as
+/// the watch's route takes it.
+async fn relay(
+    mut page: PageSocket,
+    mut page_in: PageStream,
+    channel: FileWatchChannel,
+    read: fn(&str) -> Option<ConversationWatchRequest>,
+) {
     let FileWatchChannel {
         mut to_page,
         from_page,
@@ -186,7 +187,7 @@ async fn relay(mut page: PageSocket, mut page_in: PageStream, channel: FileWatch
             loop {
                 match page_in.next().await {
                     Some(Ok(Message::Text(message))) => {
-                        let Some(request) = request_of(message.as_str()) else {
+                        let Some(request) = read(message.as_str()) else {
                             return End::Refused;
                         };
                         if from_page.send(request).await.is_err() {
@@ -210,11 +211,14 @@ async fn relay(mut page: PageSocket, mut page_in: PageStream, channel: FileWatch
     drop(lease);
 }
 
-/// A valid message of the page's.
-fn request_of(message: &str) -> Option<FileWatchRequest> {
-    let request: FileWatchRequest = serde_json::from_str(message).ok()?;
+/// A valid message of the page's, as `R`, the route's message, takes it.
+fn request_of<R>(message: &str) -> Option<ConversationWatchRequest>
+where
+    R: serde::de::DeserializeOwned + Validate<Context = ()> + Into<ConversationWatchRequest>,
+{
+    let request: R = serde_json::from_str(message).ok()?;
     request.validate().ok()?;
-    Some(request)
+    Some(request.into())
 }
 
 fn text(message: &FileWatchMessage) -> String {
