@@ -16,8 +16,11 @@ import SidebarSection from './sections/SidebarSection.vue'
 import SettingsSection from './sections/SettingsSection.vue'
 import MarkdownSection from './sections/MarkdownSection.vue'
 import RoadmapSection from './sections/RoadmapSection.vue'
+import PhoneSection from './sections/PhoneSection.vue'
+import PhoneFrameView from './phone/PhoneFrameView.vue'
 
-export type GalleryLayout = 'catalog' | 'session' | 'preview'
+/** `frame`: a page alone, with no gallery around it, as a phone frame shows it. */
+export type GalleryLayout = 'catalog' | 'session' | 'preview' | 'frame'
 
 export const NAV: {
   path: string;
@@ -38,6 +41,7 @@ export const NAV: {
   { path: '/sidebar', label: 'Sidebar' },
   { path: '/settings', label: 'Settings' },
   { path: '/markdown', label: 'Markdown' },
+  { path: '/phone', label: 'Phone' },
   { path: '/roadmap', label: 'Roadmap' },
 ]
 
@@ -85,6 +89,8 @@ export const router = createRouter({
       meta: { layout: 'preview' }
     },
     { path: '/roadmap', component: RoadmapSection, meta: { layout: 'catalog' } },
+    { path: '/phone', component: PhoneSection, meta: { layout: 'catalog' } },
+    { path: '/phone-frame', component: PhoneFrameView, meta: { layout: 'frame' } },
     { path: '/:pathMatch(.*)*', redirect: '/overview' },
   ],
 })

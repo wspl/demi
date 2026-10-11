@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { useElementSize } from '@vueuse/core'
+import { useElementSize, useResizeObserver } from '@vueuse/core'
 import type { Block, PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { compactionSummaryTokens } from './visible-blocks'
@@ -333,6 +333,17 @@ watch(
   },
   { flush: 'post' },
 )
+
+// The list's own height changes, as when a phone's on-screen keyboard opens over the page and the
+// app shrinks above it (`phone-page.ts`): a reader at the end stays there, with the latest in view.
+let listHeight: number | null = null
+useResizeObserver(scrollContainer, ([entry]) => {
+  const height = entry?.contentRect.height ?? null
+  const changed = listHeight !== null && height !== listHeight
+  listHeight = height
+  if (changed && isAtBottom.value)
+    scrollToBottom()
+})
 
 defineExpose({
   isAtBottom,

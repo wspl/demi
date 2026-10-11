@@ -47,7 +47,7 @@ function pinLeavingToast(el: Element) {
       v-bind="overlayMotion"
       tag="div"
       class="pointer-events-none fixed right-3 z-[55] flex flex-col-reverse items-end gap-2"
-      :style="{ top: `${props.below + 8}px` }"
+      :style="{ top: `calc(${props.below + 8}px + var(--safe-top))` }"
       @before-leave="pinLeavingToast"
     >
       <div

@@ -57,7 +57,7 @@ const touchOnly = useTouchOnly()
     </button>
     <span class="flex-1" />
     <span
-      class="flex items-center opacity-0 transition-opacity group-hover/heading:opacity-100 focus-within:opacity-100"
+      class="flex items-center opacity-0 transition-opacity group-hover/heading:opacity-100 focus-within:opacity-100 touch:opacity-100"
     >
       <slot name="action" />
     </span>

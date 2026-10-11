@@ -11,6 +11,8 @@ import {
   applyThemeToDocument,
   setThemeChoice,
 } from '@demicodes/web-ui/theme/appTheme'
+import { installPhonePage } from '@demicodes/web-ui/ui/phone-page'
+import { historySettled } from '@demicodes/web-ui/overlay/back-close'
 import { useConversations } from './conversation/store'
 import { closeDraftStorage } from './conversation/drafts'
 import { useResources } from './state/resources'
@@ -62,6 +64,8 @@ const router = createRouter({
     },
   ],
 })
+// A navigation waits while a closed phone sheet takes its entry off the history (`back-close.ts`).
+router.beforeEach(() => historySettled())
 const resources = useResources(pinia)
 const conversations = useConversations(pinia)
 const session = useSession(pinia)
@@ -227,6 +231,7 @@ const refreshVisible = () => {
 }
 window.addEventListener('focus', refreshVisible)
 document.addEventListener('visibilitychange', refreshVisible)
+const stopPhonePage = installPhonePage()
 const app = createApp(App).use(pinia).use(router)
 app.mount('#app')
 if (import.meta.hot) {
@@ -249,6 +254,7 @@ if (import.meta.hot) {
     window.removeEventListener('beforeunload', askBeforeLeaving)
     window.removeEventListener('focus', refreshVisible)
     document.removeEventListener('visibilitychange', refreshVisible)
+    stopPhonePage()
     app.unmount()
     disposePinia(pinia)
   })

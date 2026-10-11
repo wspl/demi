@@ -7,6 +7,7 @@ import { Check, ChevronRight } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import HighlightText from './HighlightText.vue'
 import Popover from './Popover.vue'
+import { inSheetKey } from './sheet-context'
 import Tooltip from './Tooltip.vue'
 import { ICON_PX } from './icon-metrics'
 import { disabledTooltip } from './disabled'
@@ -132,6 +133,22 @@ provide(menuSubmenuKeysKey, {
   },
 })
 
+// In a phone's sheet a submenu is a sheet of its own over the menu, which a
+// hover would raise over the row under the pointer: there a press opens it.
+const inSheet = inject(inSheetKey, false)
+/** The submenu this item is in, as its parent item gives it; null in a menu of its own. */
+const parentSubmenu = inject(menuSubmenuKeysKey, null)
+
+function hoverSubmenu() {
+  if (!inSheet)
+    openSubmenu()
+}
+
+function leaveSubmenu() {
+  if (!inSheet)
+    scheduleCloseSubmenu()
+}
+
 function openSubmenu() {
   if (!showsSubmenu.value || isDisabled.value)
     return
@@ -165,6 +182,9 @@ function handleClick(event: MouseEvent) {
     })
   ) {
     menuRoot?.dismiss()
+  } else if (inSheet && isChoice.value && parentSubmenu) {
+    // A choice in a sheet's submenu goes back to the menu it came from, as a phone's picker does.
+    parentSubmenu.leave()
   }
 }
 
@@ -213,8 +233,8 @@ const toneClass = computed(() => {
       :aria-haspopup="showsSubmenu ? 'menu' : undefined"
       :aria-expanded="showsSubmenu ? submenuOpen : undefined"
       @click="handleClick"
-      @mouseenter="openSubmenu"
-      @mouseleave="scheduleCloseSubmenu"
+      @mouseenter="hoverSubmenu"
+      @mouseleave="leaveSubmenu"
     >
       <span
         v-if="showIconGutter"
@@ -286,9 +306,10 @@ const toneClass = computed(() => {
     :anchor-el="triggerRef"
     placement="right-start"
     :offset="6"
+    sheet
     @close="closeSubmenu"
   >
-    <div @mouseenter="openSubmenu" @mouseleave="scheduleCloseSubmenu">
+    <div @mouseenter="hoverSubmenu" @mouseleave="leaveSubmenu">
       <slot name="submenu" />
     </div>
   </Popover>

@@ -59,13 +59,15 @@ const titleMargin = computed(() => {
   if (props.menuOpen) {
     return pinned ? 'mr-[50px]' : 'mr-6'
   }
+  // A touch device has no hover: the open row, which a tap opened, shows the actions instead.
+  const touched = props.open ? (pinned ? 'touch:mr-[50px]' : 'touch:mr-6') : ''
   if (restMarks.value === 2) {
-    return 'mr-[58px]'
+    return `mr-[58px] ${touched}`
   }
   if (restMarks.value === 1) {
-    return pinned ? 'mr-8 group-hover/row:mr-[50px]' : 'mr-8'
+    return `${pinned ? 'mr-8 group-hover/row:mr-[50px]' : 'mr-8'} ${touched}`
   }
-  return 'group-hover/row:mr-6'
+  return `group-hover/row:mr-6 ${touched}`
 })
 
 // Selected rows are lit; the open one is also emphasized, so it stays visible inside a wider selection.
@@ -115,7 +117,7 @@ const rowClass = computed(() => [
     <span
       v-if="!renaming"
       class="on-fill absolute inset-y-0 right-0.5 flex items-center gap-0.5 transition-opacity"
-      :class="menuOpen ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100'"
+      :class="menuOpen ? 'opacity-100' : ['opacity-0 group-hover/row:opacity-100 focus-within:opacity-100', open ? 'touch:opacity-100' : '']"
     >
       <!-- A pinned row offers Unpin before Archive; Pin is in the row's menu
            (`product.md` § Conversations and projects). -->
@@ -145,6 +147,7 @@ const rowClass = computed(() => [
     <span
       v-if="restMarks && !menuOpen && !renaming"
       class="pointer-events-none absolute inset-y-0 right-0.5 flex items-center gap-0.5 text-fg-faint transition-opacity group-hover/row:opacity-0"
+      :class="open ? 'touch:opacity-0' : ''"
     >
       <span v-if="deviceLabel" class="flex size-6 items-center justify-center">
         <DeviceIcon
