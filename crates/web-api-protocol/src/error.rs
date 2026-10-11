@@ -258,8 +258,6 @@ pub enum ErrorCode {
     /// The Fork's text is not a completed assistant text of the source's
     /// history.
     InvalidForkTarget,
-    /// The conversation has no message with text to title.
-    NoMessages,
     /// The caller has no upload of that id.
     UploadNotFound,
     /// The draft's replaced version is not the one the request names any

@@ -283,7 +283,6 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             patch(conversations::patch).delete(conversations::delete),
         )
         .route("/conversations/{id}/fork", post(conversations::fork))
-        .route("/conversations/{id}/title", post(conversations::title))
         .route("/conversations/{id}/transcript", get(history::transcript))
         .route(
             "/conversations/{id}/transcript/blocks/{block}",

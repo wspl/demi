@@ -168,12 +168,6 @@ pub struct ConversationSummary {
     pub last_turn: Option<LastTurn>,
     /// Whether output is newer than the read revision.
     pub unread: bool,
-    /// Whether the title has read every message the user sent, so asking
-    /// for a new one could say nothing the last did not
-    /// (`product.md` § Conversation titles).
-    pub title_current: bool,
-    /// Whether a title request of the conversation is in flight.
-    pub title_generating: bool,
     /// Whether the conversation's tree is open with commands of plugins the
     /// user has since turned on or off, so a reload would change them
     /// (`plugins.md` § A user's plugins).
