@@ -132,6 +132,7 @@ impl Edge {
         let connections = CancellationToken::new();
         let stop = CancellationToken::new();
         let serving_runners = runner_socket.map(|socket| {
+            let socket = socket.tap_io(listener::within_one_sandbox_read);
             let listener = EdgeListener::new(socket, closing.clone(), connections.clone());
             let app = runner_socket_router(state.clone(), closing.clone());
             tokio::spawn(listener::serve(listener, stop.clone(), move |peer, request| {

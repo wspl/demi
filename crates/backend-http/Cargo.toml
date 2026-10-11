@@ -55,6 +55,9 @@ mime = "0.3"
 # A local store's command artifact, served as it was stored.
 object_store.workspace = true
 percent-encoding = "2"
+# The send buffer of a runner socket connection (`managed-hosts.md` § Backend
+# socket).
+rustix = { version = "1", features = ["net"] }
 serde.workspace = true
 serde_json.workspace = true
 # The content ETag of the web app files a page revalidates.
