@@ -211,7 +211,6 @@ function pick(path: string, clicks: number): void {
       v-model:open="isOpen"
       :expandable="!lone || loneText !== ''"
       :flow="!lone"
-      :open-while="lone ? thinkingLive && loneText !== '' : undefined"
       :stick-bottom="lone ? thinkingLive : false"
       :roll-key="face.rollKey"
       :icon-key="face.iconKey"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, useId, useSlots, watch } from 'vue'
+import { computed, ref, useId, useSlots, watch } from 'vue'
 import { CircleX } from '@lucide/vue'
 import ChromeRoll from '@demicodes/web-ui/ui/ChromeRoll.vue'
 import Fold from '@demicodes/web-ui/ui/Fold.vue'
@@ -10,8 +10,6 @@ import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useFollowEnd } from '../../composables/useFollowEnd'
 import { useWholeBlock } from '../whole-blocks'
-
-const ACTIVE_OUTPUT_CLOSE_DELAY_MS = 1000
 
 const props = defineProps<{
   label?: string
@@ -25,8 +23,6 @@ const props = defineProps<{
   stickBottom?: boolean
   /** Draw the body as a box, as a shell call's command and output. */
   framed?: boolean
-  /** Keep the block open while active output is being produced. */
-  openWhile?: boolean
   /** Force expandability instead of inferring it from the body slot (slot presence isn't reactive). */
   expandable?: boolean
   /** When this changes, the 28px label rolls. Omit to keep the face still. */
@@ -54,48 +50,15 @@ const isLoading = computed(() => props.loading || whole.loading.value)
 const bodyArea = ref<InstanceType<typeof ScrollArea>>()
 const bodyScroll = computed(() => bodyArea.value?.el)
 const bodyContent = ref<HTMLElement>()
-let closeTimer: ReturnType<typeof setTimeout> | undefined
 
+// Only the reader opens and folds a row (or its owner, through `open`): a
+// row that opened and folded by itself as its content streamed and ended
+// would move the transcript with nothing the reader did.
 function toggle(): void {
   if (isExpandable.value) {
     isOpen.value = !isOpen.value
   }
 }
-
-function clearCloseTimer() {
-  if (!closeTimer)
-    return
-  clearTimeout(closeTimer)
-  closeTimer = undefined
-}
-
-// Only changes while mounted open a block; a transcript opened later shows every block folded.
-function closeAfterActiveOutputSettles() {
-  if (!isOpen.value)
-    return
-  clearCloseTimer()
-  closeTimer = setTimeout(() => {
-    closeTimer = undefined
-    if (!props.openWhile)
-      isOpen.value = false
-  }, ACTIVE_OUTPUT_CLOSE_DELAY_MS)
-}
-
-watch(
-  [() => props.openWhile, isExpandable],
-  ([openWhile, expandable]) => {
-    clearCloseTimer()
-    if (openWhile === undefined)
-      return
-    if (openWhile && expandable) {
-      isOpen.value = true
-      return
-    }
-    closeAfterActiveOutputSettles()
-  },
-)
-
-onBeforeUnmount(clearCloseTimer)
 
 // However the row opens, by its face or by its owner, a light block is read whole.
 watch(isOpen, (open) => {
