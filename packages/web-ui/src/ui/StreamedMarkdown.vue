@@ -9,6 +9,8 @@ import { openMessageLink, pressMessageLink, useMessageFiles } from '@demicodes/w
 import { replyCodeFiles } from '@demicodes/web-ui/markdown/code-files'
 import { useMessageAgents } from '@demicodes/web-ui/agent/agent-links'
 import AgentLinkTip from '@demicodes/web-ui/agent/AgentLinkTip.vue'
+import PicturePreview from '@demicodes/web-ui/ui/PicturePreview.vue'
+import { runPicture, type RunPicture } from '@demicodes/web-ui/markdown/media-run'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
@@ -143,11 +145,14 @@ function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly RevealSte
 const codeBlocks = shallowRef<HTMLElement[]>([])
 const fileIcons = shallowRef<HTMLElement[]>([])
 const agentLinks = shallowRef<HTMLElement[]>([])
+/** The thumbnails of the message's runs of pictures, each with its preview on hover. */
+const runPictures = shallowRef<RunPicture[]>([])
 
 function findPlaces(el: HTMLElement): void {
   codeBlocks.value = [...el.querySelectorAll<HTMLElement>('.code-block')]
   fileIcons.value = [...el.querySelectorAll<HTMLElement>('[data-file-icon]')]
   agentLinks.value = [...el.querySelectorAll<HTMLElement>('[data-agent-link]')]
+  runPictures.value = [...el.querySelectorAll<HTMLImageElement | HTMLVideoElement>('.media-run img, .media-run video')].map(runPicture)
 }
 
 // A render replaces the images and videos, which take their box before they
@@ -160,8 +165,13 @@ onMounted(() => {
 })
 
 function onMediumLoad(event: Event): void {
-  if (event.target instanceof HTMLImageElement || event.target instanceof HTMLVideoElement)
-    fitMessageMedium(event.target)
+  const medium = event.target
+  if (!(medium instanceof HTMLImageElement || medium instanceof HTMLVideoElement))
+    return
+  fitMessageMedium(medium)
+  // A thumbnail whose size its render did not know has it now, for its preview's box.
+  if (runPictures.value.some((picture) => picture.element === medium))
+    runPictures.value = runPictures.value.map((picture) => (picture.element === medium ? runPicture(medium) : picture))
 }
 
 watch(
@@ -198,6 +208,15 @@ watch(
   <Teleport v-for="(place, index) in fileIcons" :key="index" :to="place">
     <FileIcon :name="place.dataset.fileIcon ?? ''" :is-directory="false" :size="ICON_PX.in28" />
   </Teleport>
+  <PicturePreview
+    v-for="(picture, index) in runPictures"
+    :key="index"
+    :trigger="picture.element"
+    :kind="picture.kind"
+    :src="picture.src"
+    :size="picture.size"
+    :caption="picture.caption"
+  />
   <AgentLinkTip
     v-for="(link, index) in agentLinks"
     :key="index"

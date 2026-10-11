@@ -28,6 +28,7 @@ import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
 import SettingsRow from '@demicodes/web-ui/settings/SettingsRow.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import PicturePreview from '@demicodes/web-ui/ui/PicturePreview.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { reactive, ref } from 'vue'
 import type { HostDeviceOption } from '@demicodes/web-ui/hosts/types'
@@ -35,7 +36,6 @@ import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDial
 import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
 import GalleryHostMenu from '../components/GalleryHostMenu.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
-import { demoImageUrl } from '../fixtures/blocks'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { useGalleryView } from '../gallery-views'
@@ -111,6 +111,30 @@ const viewerPictures = [
   { name: 'dashboard-full.png', variant: 'a whole page, 360 × 2400', blob: galleryBlobs.fullPage },
 ]
 const mediaViewer = useMediaViewer()
+
+/** The pictures the PicturePreview specimens show large on hover, and open in the viewer on a click. */
+const previewPictures = [
+  { name: 'login.png', caption: 'Take a screenshot of the login page', variant: 'a screenshot, 480 × 300', kind: 'image', blob: galleryBlobs.screenshot },
+  { name: 'dashboard-full.png', caption: 'Capture the whole dashboard page, with every panel open and the long table scrolled to its end', variant: 'a whole page, cut caption', kind: 'image', blob: galleryBlobs.fullPage },
+  { name: 'favicon.png', caption: 'favicon.png', variant: 'an icon, never enlarged', kind: 'image', blob: galleryBlobs.icon },
+  { name: 'checkout.webm', caption: 'Record the checkout flow', variant: 'a video’s first frame', kind: 'video', blob: galleryBlobs.recording },
+] as const
+
+/** A gallery blob's pixel size, as its reference carries it. */
+function blobSize(blob: string): { width: number; height: number } | null {
+  const size = galleryBlobSize(blob)
+  return size.width && size.height ? { width: size.width, height: size.height } : null
+}
+
+function showPreviewed(picture: (typeof previewPictures)[number], event: MouseEvent): void {
+  mediaViewer.show({
+    kind: picture.kind,
+    src: galleryBlobUrl(picture.blob, picture.kind === 'video' ? 'video/webm' : 'image/png'),
+    name: picture.name,
+    size: blobSize(picture.blob),
+    from: event.currentTarget instanceof Element ? event.currentTarget : null,
+  })
+}
 
 function showPicture(picture: (typeof viewerPictures)[number], event: MouseEvent): void {
   const size = galleryBlobSize(picture.blob)
@@ -208,7 +232,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
     <template v-if="view === 'menus'">
       <GallerySection
         title="Tooltip"
-        note="Hover, placement, rich overlay, a picture framed evenly, and suppressed. Copy: the verb alone for a control on the thing it acts on (Archive, Pin, Copy, Edit); the object only away from it (Add project, New folder); a reason is a full sentence."
+        note="Hover, placement, rich overlay, and suppressed. Copy: the verb alone for a control on the thing it acts on (Archive, Pin, Copy, Edit); the object only away from it (Add project, New folder); a reason is a full sentence."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="hover">
@@ -237,22 +261,48 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
               </template>
             </Tooltip>
           </GallerySpecimen>
-          <GallerySpecimen variant="picture">
-            <Tooltip placement="right" picture>
-              <Button size="md" @click="productWould('Open before.png')">Picture</Button>
-              <template #overlay>
-                <img
-                  :src="demoImageUrl"
-                  alt="before.png"
-                  class="block max-h-48 max-w-full rounded object-contain"
-                />
-              </template>
-            </Tooltip>
-          </GallerySpecimen>
           <GallerySpecimen variant="disabled">
             <Tooltip content="Never shows" disabled>
               <Button size="md" disabled>Suppressed</Button>
             </Tooltip>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="PicturePreview"
+        note="A picture shown smaller than 480 × 360 shows large in a card after the pointer rests on it for 300 ms: above it, centered, or below it when the page has no room above, kept within the page. The picture is fitted within 480 × 360 and never enlarged (the icon keeps its 48 × 48), over the checkerboard where it is transparent; a video shows its first frame and does not play. Under it, one line: what the picture belongs to, cut at its end, then its pixel size, faint. The card's box comes from the picture's size, known before its bytes arrive. It takes no pointer: leaving the picture closes it at once, and moving to the next picture shows that one's without the delay. A click opens the picture in the viewer and closes the card. A touch screen shows none. A row's pictures, a message run's thumbnails and a sent message's capsules all show this card: the Session page shows each.">
+        <div class="specimen-row specimen-row-wide items-start">
+          <GallerySpecimen v-for="picture in previewPictures" :key="picture.name" :variant="picture.variant">
+            <PicturePreview
+              :kind="picture.kind"
+              :src="galleryBlobUrl(picture.blob, picture.kind === 'video' ? 'video/webm' : 'image/png')"
+              :size="blobSize(picture.blob)"
+              :caption="picture.caption"
+            >
+              <button
+                type="button"
+                class="block cursor-zoom-in overflow-hidden rounded outline outline-1 -outline-offset-1 outline-line"
+                :aria-label="`Open ${picture.name} large`"
+                v-bind="{ [KEEPS_WINDOWS]: '' }"
+                @click="showPreviewed(picture, $event)"
+              >
+                <video
+                  v-if="picture.kind === 'video'"
+                  :src="galleryBlobUrl(picture.blob, 'video/webm')"
+                  muted
+                  playsinline
+                  preload="metadata"
+                  class="block h-5 w-9 object-cover"
+                />
+                <img
+                  v-else
+                  :src="galleryBlobUrl(picture.blob, 'image/png')"
+                  :alt="picture.caption"
+                  class="block h-5 w-9 object-cover object-top"
+                >
+              </button>
+            </PicturePreview>
           </GallerySpecimen>
         </div>
       </GallerySection>

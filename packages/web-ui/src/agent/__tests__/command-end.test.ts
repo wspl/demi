@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { ShellToolView } from '../block-types'
-import { commandEndMark, commandEndWords } from '../command-end'
+import { commandEndMark, commandStatusLine, runningTime } from '../command-end'
 import { reportMark } from '../command-reports'
 
 function view(parts: Partial<ShellToolView>): ShellToolView {
@@ -16,16 +16,35 @@ function view(parts: Partial<ShellToolView>): ShellToolView {
   }
 }
 
-test('a row marks only a command that failed or was stopped, and an open row says only those ends', () => {
+test('a row marks only a command that failed or was stopped', () => {
   expect(commandEndMark(view({ status: 'exited', exitCode: 1 }))).toEqual({ kind: 'failed', exitCode: 1 })
   expect(commandEndMark(view({ status: 'aborted' }))).toEqual({ kind: 'stopped' })
   expect(commandEndMark(view({ status: 'exited', exitCode: 0 }))).toBeNull()
   expect(commandEndMark(view({ status: 'running' }))).toBeNull()
   expect(commandEndMark(null)).toBeNull()
-  expect(commandEndWords(view({ status: 'exited', exitCode: 1 }))).toBe('Exited with code 1')
-  expect(commandEndWords(view({ status: 'aborted' }))).toBe('Stopped')
-  expect(commandEndWords(view({ status: 'exited', exitCode: 0 }))).toBeNull()
-  expect(commandEndWords(view({ status: 'running' }))).toBeNull()
+})
+
+// An open shell row says above its output how long the command has run or
+// ran (`runtime.md` § Rendering boundary), however it ended.
+test('an open row says how long its command has run, or how it ended and after how long', () => {
+  expect(commandStatusLine(null, 88_000)).toBe('Running for 1m28s')
+  expect(commandStatusLine(view({ status: 'exited', exitCode: 0 }), 133_000)).toBe('Exited with 0 after 2m13s')
+  expect(commandStatusLine(view({ status: 'exited', exitCode: 1 }), 47_000)).toBe('Failed with exit code 1 after 47s')
+  expect(commandStatusLine(view({ status: 'aborted' }), 5_000)).toBe('Stopped after 5s')
+  // A command whose time the page does not know, as one that ran on after
+  // its call returned and ended while no page watched, says nothing.
+  expect(commandStatusLine(null, null)).toBeNull()
+})
+
+// A running command wears its time as a tag only past 3 seconds, so a quick
+// one does not flash one; a running run's title says it from the same point.
+test('a running row shows its time only once it has run more than 3 seconds', () => {
+  expect(runningTime(null)).toBeNull()
+  expect(runningTime(2_900)).toBeNull()
+  expect(runningTime(3_000)).toBeNull()
+  expect(runningTime(3_400)).toBe('3s')
+  expect(runningTime(92_000)).toBe('1m32s')
+  expect(runningTime(3_720_000)).toBe('1h2m')
 })
 
 test('a lost command\'s call row carries its notice\'s tag, Lost with why, not a failure', () => {
@@ -34,5 +53,5 @@ test('a lost command\'s call row carries its notice\'s tag, Lost with why, not a
   const notice = reportMark({ commandId: '17', title: 'Run the dev server', event: { kind: 'lost', reason }, output: '' })
   expect(commandEndMark(lost)).toEqual(notice)
   expect(notice).toEqual({ kind: 'lost', reason })
-  expect(commandEndWords(lost)).toBe(`Lost: ${reason}`)
+  expect(commandStatusLine(lost, 12_000)).toBe(`Lost: ${reason}`)
 })

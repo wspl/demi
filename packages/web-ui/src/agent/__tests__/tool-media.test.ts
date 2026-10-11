@@ -4,11 +4,10 @@ import { foldedMedia, toolMedia } from '../tool-media'
 import type { WorkStep } from '../work-groups'
 import { createdAt, model } from './agent-harness'
 
-// What a call shows under its row (`file-previews.md` § Media a tool
-// returned), read off its result as the transcript stores it: a shell
+// What a call shows of its result's media (`file-previews.md` § Media a
+// tool returned), read off its result as the transcript stores it: a shell
 // result's status and note stay the call's own, the media show in the order
-// of the result, and a medium that is gone shows a line that says why where
-// it was.
+// of the result, and a medium that is gone shows a line that says why.
 
 const shot: ToolMediaSource = { type: 'ref', ref: 'a'.repeat(64), mediaType: 'image/png' }
 const clip: ToolMediaSource = { type: 'ref', ref: 'b'.repeat(64), mediaType: 'video/mp4' }
@@ -63,12 +62,12 @@ const cases: { name: string; output: ToolResultContentBlock[]; shows: ReturnType
 ]
 
 for (const { name, output, shows } of cases) {
-  test(`under its row, a call shows ${name}`, () => {
+  test(`a call shows ${name}`, () => {
     expect(toolMedia(output, 'Look')).toEqual(shows)
   })
 }
 
-// A call inside a folded group still shows its media, under the group's row
+// A call inside a folded group still shows its media, in the group's row
 // (`runtime.md` § Work groups): the loop that viewed two screenshots shows
 // both, named by its call, after the media of the call before it.
 const second: ToolMediaSource = { type: 'ref', ref: 'd'.repeat(64), mediaType: 'image/png' }
@@ -85,7 +84,7 @@ const call = (id: string, description: string, output: ToolResultContentBlock[])
   view: null,
 })
 
-test('under a folded group, its calls show their media in order', () => {
+test('a folded group shows its calls\' media in order', () => {
   const steps: WorkStep[] = [
     { type: 'thinking', id: 't', createdAt, model, text: 'Look at the page twice.', signature: null },
     call('a', 'Open the page', [status]),

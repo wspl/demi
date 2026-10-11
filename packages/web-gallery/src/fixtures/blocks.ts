@@ -554,6 +554,66 @@ export const screenshotsTool = screenshotsCall(
   [imageLine(4, 480, 300, 9_120, 'image/webp')],
 )
 
+/** `count` screenshots of the login page, alternating between the page and its chart, as a loop over tabs takes them. */
+function captures(count: number): Capture[] {
+  return Array.from({ length: count }, (_, index) => index % 2 === 0
+    ? { tab: `t${index + 1}`, width: 480, height: 300, bytes: 15_822, medium: blobImage(galleryBlobs.screenshot) }
+    : { tab: `t${index + 1}`, width: 480, height: 300, bytes: 16_078, medium: blobImage(galleryBlobs.chart) })
+}
+
+/** Four screenshots in one call: they stand in the call's line, beside its title. */
+export const fourScreenshotsTool = screenshotsCall(
+  {
+    id: 'tool-four-screenshots',
+    toolName: 'shell',
+    input: JSON.stringify({
+      script: 'for t in t1 t2 t3 t4; do demi browser screenshot "$t" | demi file view; done',
+      description: 'Take screenshots of the login page in four tabs',
+    }),
+  },
+  'cmd-four-shots',
+  captures(4),
+)
+
+/** Twelve screenshots in one call: as many as fit in the call's line, the rest counted as +N. */
+export const twelveScreenshotsTool = screenshotsCall(
+  {
+    id: 'tool-twelve-screenshots',
+    toolName: 'shell',
+    input: JSON.stringify({
+      script: 'for i in $(seq 12); do demi browser screenshot t1 | demi file view; demi browser scroll t1 --by 600; done',
+      description: 'Take a screenshot of every screenful of the sign-in flow as it scrolls down the page',
+    }),
+  },
+  'cmd-twelve-shots',
+  captures(12),
+)
+
+/**
+ * A run that opened a page and took twelve screenshots of it: folded, the
+ * run's row holds its steps' pictures in its own line, as many as fit.
+ */
+export function screenshotRunBlocks(): Block[] {
+  const open = toolCall({
+    id: 'shots-run-open',
+    createdAt: iso(590_000),
+    toolName: 'shell',
+    status: 'completed',
+    input: JSON.stringify({ script: 'demi browser open http://localhost:5173/login', description: 'Open the sign-in page' }),
+    output: [{ type: 'text', text: 'status: exited\nexitCode: 0\ncommandId: 71\noutput:\nt1\n' }],
+    view: shellView({ commandId: '71', chunks: [{ stream: 'stdout', text: 't1\n' }] }),
+  })
+  const shots = { ...twelveScreenshotsTool, id: 'shots-run-shots', toolUseId: 'shots-run-shots', createdAt: iso(585_000) }
+  return [
+    {
+      type: 'user', id: 'shots-run-ask', turnId: 'shots-run-turn', createdAt: iso(600_000), model: demoModel,
+      content: [{ type: 'text', text: 'Screenshot the whole sign-in flow.' }], preamble: null,
+    },
+    ...inRun(open, shots),
+    { type: 'text', id: 'shots-run-answer', createdAt: iso(580_000), model: demoModel, text: 'Twelve screenshots, one per screenful: the form, its errors, and the dashboard after it.' },
+  ]
+}
+
 /** A capture of a whole page: taller than a thumbnail's proportions, so the thumbnail keeps its top. */
 export const fullPageTool = viewedCall(
   {

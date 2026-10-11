@@ -45,3 +45,31 @@ export function fitMessageMedia(root: ParentNode): void {
   for (const element of root.querySelectorAll<HTMLImageElement | HTMLVideoElement>('.media-run img, video'))
     fitMessageMedium(element)
 }
+
+/** A thumbnail of a message's run of pictures, as its preview on hover shows it. */
+export interface RunPicture {
+  element: HTMLImageElement | HTMLVideoElement
+  kind: 'image' | 'video'
+  src: string
+  /** Its size from its render, else from its bytes once loaded; null before either. */
+  size: PixelSize | null
+  /** Its alt text. */
+  caption: string
+}
+
+/**
+ * The preview of a thumbnail `element` of a message's run
+ * (`file-previews.md` § A picture's preview on hover): its picture, its
+ * size, known from its attachment's record before its bytes arrive, and its
+ * alt text.
+ */
+export function runPicture(element: HTMLImageElement | HTMLVideoElement): RunPicture {
+  const isVideo = element instanceof HTMLVideoElement
+  return {
+    element,
+    kind: isVideo ? 'video' : 'image',
+    src: element.getAttribute('src') ?? '',
+    size: renderedSize(element) ?? loadedSize(element),
+    caption: (isVideo ? element.getAttribute('aria-label') : element.getAttribute('alt')) ?? '',
+  }
+}

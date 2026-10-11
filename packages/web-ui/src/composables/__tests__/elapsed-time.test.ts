@@ -54,3 +54,27 @@ test('live intervals tick, freeze to their persisted end, reset and release cloc
     clear.mockRestore()
   }
 })
+
+// Every running row reads one clock (`runtime.md` § Rendering boundary: a
+// page of running commands ticks together): the second row adds no timer,
+// and the timer goes only when the last row stops running or unmounts.
+test('running rows share one clock, released by the last of them', () => {
+  const intervals = spyOn(globalThis, 'setInterval')
+  const clear = spyOn(globalThis, 'clearInterval')
+  const first = effectScope()
+  const second = effectScope()
+  try {
+    first.run(() => useElapsedTime(() => 0, () => true))
+    second.run(() => useElapsedTime(() => 0, () => true))
+    expect(intervals).toHaveBeenCalledTimes(1)
+    first.stop()
+    expect(clear).not.toHaveBeenCalled()
+    second.stop()
+    expect(clear).toHaveBeenCalledTimes(1)
+  } finally {
+    first.stop()
+    second.stop()
+    intervals.mockRestore()
+    clear.mockRestore()
+  }
+})
