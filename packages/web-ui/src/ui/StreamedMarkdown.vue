@@ -35,9 +35,10 @@ const props = withDefaults(defineProps<{
 
 const root = ref<HTMLElement>()
 useContentScrollers(root)
+const files = useMessageFiles()
 /** The part of a text that renders as it will stay: no markdown left half open, no medium still undecided. */
 function settled(text: string): string {
-  return holdUndecidedMedium(holdIncompleteMarkdown(text).visible)
+  return holdUndecidedMedium(holdIncompleteMarkdown(text).visible, files())
 }
 const { shown, steps } = useStreamReveal(() => props.content, () => props.streaming, settled)
 
@@ -46,7 +47,6 @@ const { shown, steps } = useStreamReveal(() => props.content, () => props.stream
 const visible = computed(() => (props.streaming ? settled(shown.value) : shown.value))
 
 const renderVersion = useMarkdownRenderVersion()
-const files = useMessageFiles()
 const agents = useMessageAgents()
 const viewer = useMediaViewer()
 // The files the reply's inline code names, asked about once it is complete.

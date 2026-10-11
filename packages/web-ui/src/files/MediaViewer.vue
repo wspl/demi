@@ -7,17 +7,18 @@ import RegionStatus from '../ui/RegionStatus.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import ImagePreview from './ImagePreview.vue'
 import MediaPreview from './MediaPreview.vue'
+import { formatZoom } from './image-zoom'
 import type { MediaViewerState, ShownMedium } from './media-viewer'
 import type { PixelSize } from './thumbnail'
 
 /**
  * The page's one media viewer (`file-previews.md` § The media viewer): a
  * small window over the page that the user moves, resizes and closes, while
- * the page stays usable. An image fits it, scaled down and never enlarged,
- * over a checkerboard where it is transparent, and a click toggles its
- * actual size; a video plays at once in the web browser's player, and
- * closing the viewer stops it. The title bar names the medium and gives its
- * pixel size. Opening another medium shows it in the same window.
+ * the page stays usable. An image opens fitted to it, and zooms and moves as
+ * in an image viewer (`ImagePreview`); a video plays at once in the web
+ * browser's player, and closing the viewer stops it. The title bar names the
+ * medium and gives its pixel size, and an image's zoom, *1280 × 720 · 150%*.
+ * Opening another medium shows it in the same window, fitted.
  *
  * On a phone, the medium fills the screen instead, with its close control
  * (§ Media a tool returned, On a phone). The page draws it beside the viewer
@@ -34,6 +35,8 @@ const phone = useMediaQuery('(max-width: 767.98px)')
 // The last medium stays while the viewer closes, so its leave shows the picture.
 const medium = ref<ShownMedium | null>(null)
 const size = ref<PixelSize | null>(null)
+/** An image's zoom, which its preview reports; none for a video. */
+const zoom = ref<number | null>(null)
 const failed = ref(false)
 const floating = ref<InstanceType<typeof FloatingWindow>>()
 const open = computed(() => props.viewer.shown.value !== null)
@@ -43,6 +46,7 @@ watch(() => props.viewer.shown.value, (shown, previous) => {
     return
   medium.value = shown
   size.value = shown.size ?? null
+  zoom.value = null
   failed.value = false
   // A medium shown in place of another moves the focus into the window again, from the thumbnail that showed it.
   if (previous)
@@ -66,6 +70,7 @@ function onSize(width: number, height: number): void {
         :name="medium.name"
         :flush="flush"
         @size="onSize"
+        @zoom="zoom = $event"
         @failed="failed = true"
       />
       <MediaPreview
@@ -111,7 +116,7 @@ function onSize(width: number, height: number): void {
     @close="viewer.close()"
   >
     <template #title>{{ medium?.name }}</template>
-    <template v-if="size" #trailing>{{ size.width }} × {{ size.height }}</template>
+    <template v-if="size" #trailing>{{ size.width }} × {{ size.height }}{{ zoom === null ? '' : ` · ${formatZoom(zoom)}` }}</template>
     <ReuseMedium flush />
   </FloatingWindow>
 </template>

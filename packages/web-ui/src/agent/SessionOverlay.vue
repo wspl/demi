@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Ellipsis, X } from '@lucide/vue'
-import { floatingWindowInFront } from '../ui/floating-window'
+import { useStackedWindow } from '../ui/window-stack'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { useContextMenuOwner } from '../composables/useContextMenuOwner'
 import Dropdown from '../ui/Dropdown.vue'
@@ -23,15 +23,17 @@ import TabStrip from './TabStrip.vue'
  * window with no such action has neither. The window is a region
  * (`ui/region.ts`): its menus grow toward its inside.
  *
- * It stays open while the user works elsewhere (`product.md`, the dock's
- * chips under § Recovering an unfinished turn): a click outside it, and
- * whatever it opens itself, such as the media viewer, leave it open. It
- * closes by its chip, its close control, or Escape while the focus is in
- * it; the panel takes the focus from a click in it. Escape leaves it open
- * when something in it used the key, a menu is open, or a floating window,
- * such as the media viewer, stands in front of it and takes the key first.
+ * It stands in the page's stack of windows with what it opens, such as the
+ * media viewer (`product.md`, the dock's chips under § Recovering an
+ * unfinished turn; `window-stack.ts`): while it is the newest, a press
+ * outside every window closes it, though not one in the composer or on its
+ * chips. It also closes by its chip, its close control, or Escape while the
+ * focus is in it; the panel takes the focus from a click in it. Escape
+ * leaves it open when something in it used the key, a menu is open, or a
+ * newer window, such as the media viewer, stands in front of it and takes
+ * the key first.
  */
-defineProps<{
+const props = defineProps<{
   open: boolean
   /** The tabs change at once, with no motion, as `TabStrip`'s `still` says. */
   stillTabs?: boolean
@@ -60,8 +62,16 @@ const tabMenu = useContextMenuOwner(() => {
 })
 const stripMenu = useContextMenuOwner()
 
+const root = ref<HTMLElement>()
+const stacked = useStackedWindow({
+  isOpen: () => props.open,
+  element: () => root.value,
+  otherLayerOpen: () => appOverlayStore.hasExclusive(),
+  close: () => emit('close'),
+})
+
 function closeOnEscape(event: KeyboardEvent): void {
-  if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || appOverlayStore.hasExclusive() || floatingWindowInFront())
+  if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || appOverlayStore.hasExclusive() || !stacked.isNewest())
     return
   event.preventDefault()
   emit('close')
@@ -94,6 +104,7 @@ function openStripMenu(event: MouseEvent): void {
   >
     <div
       v-if="open"
+      ref="root"
       data-region
       tabindex="-1"
       class="overlay-window pointer-events-auto absolute inset-0 z-10 flex min-h-0 origin-bottom flex-col overflow-hidden rounded-xl bg-surface outline-none"

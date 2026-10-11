@@ -9,11 +9,11 @@ import {
   escapeClosesWindow,
   moveWindowRect,
   resizeWindowRect,
-  useOpenWindowCount,
   WINDOW_TITLE_BAR_PX,
   type WindowEdges,
   type WindowRect,
 } from './floating-window'
+import { useStackedWindow } from './window-stack'
 import { useFocusReturn } from '../overlay/focusReturn'
 import { provideLayerElevation } from '../overlay/layerElevation'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -36,10 +36,12 @@ import type { OverlayStore } from '../overlay/overlayStore'
  * the window. `activate` does both again when the host shows something new
  * in an open window.
  *
- * Escape closes it, unless the focus is in a field the user types in, or a
- * menu or a dialog of `overlayStore` is open and takes the key
- * (`escapeClosesWindow`). The window is not one of the store's layers: a menu
- * opened beside it does not close it, and it does not close a menu.
+ * It stands in the page's stack of windows (`window-stack.ts`), as the
+ * session's windows do: while it is the newest, a press outside every window
+ * closes it, and so does Escape, unless the focus is in a field the user
+ * types in, or a menu or a dialog of `overlayStore` is open and takes the
+ * key (`escapeClosesWindow`). The window is not one of the store's layers: a
+ * menu opened beside it does not close it, and it does not close a menu.
  *
  * The title bar holds the `title`, then what the `trailing` slot gives, such
  * as a picture's size, then the close control at the bar's end, as far from
@@ -95,6 +97,8 @@ const ZONES: ResizeZone[] = [
   { edges: { bottom: true, right: true }, cursor: 'nwse-resize', class: '-bottom-1 -right-1 size-3' },
 ]
 
+/** The window with its resize zones, which hold every press in it. */
+const frame = ref<HTMLElement>()
 const panel = ref<HTMLElement>()
 /** Ends the drag under way early, as its release would. */
 let stopDrag: (() => void) | null = null
@@ -133,12 +137,21 @@ function startResize(event: PointerEvent, zone: ResizeZone): void {
   drag(event, zone.cursor, (start, dx, dy) => resizeWindowRect(start, zone.edges, dx, dy, page.value))
 }
 
-useOpenWindowCount(() => props.open)
+const stacked = useStackedWindow({
+  isOpen: () => props.open,
+  element: () => frame.value,
+  otherLayerOpen: () => props.overlayStore.hasExclusive(),
+  close: () => emit('close'),
+})
 
 const focusReturn = useFocusReturn((active) => panel.value?.contains(active) === true)
 
-/** Remembers what has the focus now, to give it back on close, and moves the focus into the window. */
+/**
+ * Remembers what has the focus now, to give it back on close, and moves the
+ * focus into the window, which comes to the front of the stack.
+ */
 function activate(): void {
+  stacked.raise()
   focusReturn.open()
   panel.value?.focus({ preventScroll: true })
 }
@@ -156,7 +169,8 @@ watch(() => props.open, (open) => {
 
 onKeyStroke('Escape', (event) => {
   // Escape during a drag never gets here: the drag takes it to put the window back.
-  if (!props.open)
+  // A newer window in front takes it first.
+  if (!props.open || !stacked.isNewest())
     return
   const target = event.target instanceof Element ? event.target : null
   if (!escapeClosesWindow({ defaultPrevented: event.defaultPrevented, isComposing: event.isComposing, target }, props.overlayStore.hasExclusive()))
@@ -178,6 +192,7 @@ defineExpose({ activate })
     <Transition name="floating-window">
       <div
         v-if="open"
+        ref="frame"
         class="fixed z-40"
         :style="{ left: `${shown.x}px`, top: `${shown.y}px`, width: `${shown.width}px`, height: `${shown.height}px` }"
       >
