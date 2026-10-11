@@ -915,13 +915,34 @@ transcript_patch                 parent + agent_message (completion receipt), at
 
 ## Product rendering
 
-Agent-originated inputs render as receipts: collapsed agent rows that name the
-sender and the event, such as "UI implementation sent an update", "UI
-implementation completed", or "UI implementation failed", and expand to show
-only the message or the result. Sender IDs, rounds, and timestamps stay in the
-data. A receipt never renders as a user bubble and offers no pending-steer,
-edit, or Fork control: it is inspectable context, not user input. The gallery
-shows every variant.
+Agent-originated inputs render as receipts, notice rows of the same form as a
+command's end ([Command reports](runtime.md#command-reports)):
+what happened, in the user's words, then the agent named by its
+description, dotted-underlined, as a command's notice names its call. A
+child's description is an imperative title, so it is the notice's object,
+never its subject; joined as the subject it read wrongly, *Socket liveness
+fixes and logging completed*.
+
+| Event | Row |
+| --- | --- |
+| `message` | *Agent sent an update: Fix the socket liveness* |
+| `completion`, `completed` | *Agent finished: Fix the socket liveness* |
+| `completion`, `failed` | *Agent failed: Fix the socket liveness*, with the red *Failed* tag |
+| `completion`, `aborted` | *Agent stopped: Fix the socket liveness*, with the grey *Stopped* tag |
+
+The row carries the agent's mark where a command's carries its bell, and it
+opens, as today, to the message or the result. A click on the agent's name
+opens the Agents window on that agent's tab, a finished one as the
+Completed menu picks it, and brings into view and marks for a moment, as a
+search result does, the block of the agent's transcript the receipt came
+from: for an update, the call that sent it; for a completion, the agent's
+last answer, which is its result. The receipt names that block, so the page
+never guesses it from the text. Rows the user's own decisions make, *You
+allowed this conversation to manage skills* and *You moved this conversation
+to MacBook Pro*, name no agent and keep their wording. Sender IDs, rounds,
+and timestamps stay in the data. A receipt never renders as a user bubble and
+offers no pending-steer, edit, or Fork control: it is inspectable context,
+not user input. The gallery shows every variant.
 
 - A receipt appears once, where it entered context. A child's `closed` event
   updates the dock's agents chip and the children's history; it does not add a
