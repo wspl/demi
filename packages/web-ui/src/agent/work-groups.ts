@@ -65,8 +65,15 @@ export function stepKey(step: WorkStep): string {
   }
 }
 
+/**
+ * A thinking without text. One a page holds light comes without its text
+ * and tells how long it is (`web-api.md` § Light form).
+ */
 function isEmptyThinking(block: MessageListBlock): boolean {
-  return block.type === 'thinking' && block.text.trim() === ''
+  if (block.type !== 'thinking') {
+    return false
+  }
+  return 'light' in block && block.light ? block.textLength === 0 : block.text.trim() === ''
 }
 
 /**

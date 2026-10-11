@@ -1267,6 +1267,25 @@ export function transcriptDemoBlocks(): Block[] {
 }
 
 /**
+ * A question the agent thought about, then answered: its thinking is a row
+ * of its own, which a page read after a reload holds without its text
+ * (`web-api.md` § Light form).
+ */
+export function thoughtAnswerBlocks(): Block[] {
+  return [
+    {
+      type: 'user', id: 'thought-ask', turnId: 'thought-ask-turn', createdAt: iso(120_000), model: demoModel,
+      content: [{ type: 'text', text: 'Is 1001 prime?' }], preamble: null,
+    },
+    ...inRun({
+      type: 'thinking', id: 'thought-think', createdAt: iso(119_000), model: demoModel,
+      text: '1001 = 7 × 11 × 13, so it is not prime.', signature: null,
+    }),
+    { type: 'text', id: 'thought-answer', createdAt: iso(114_000), model: demoModel, text: 'No: 1001 is 7 × 11 × 13.' },
+  ]
+}
+
+/**
  * Runs that only check a command, and ones that run one too (`runtime.md`
  * § Work groups): the agent starts the end-to-end suite and ends its turn;
  * asked, it checks the suite twice; the suite's end report wakes it, a row
