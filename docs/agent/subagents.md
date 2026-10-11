@@ -929,6 +929,7 @@ fixes and logging completed*.
 | `completion`, `completed` | *Agent finished: Fix the socket liveness* |
 | `completion`, `failed` | *Agent failed: Fix the socket liveness*, with the red *Failed* tag |
 | `completion`, `aborted` | *Agent stopped: Fix the socket liveness*, with the grey *Stopped* tag |
+| A message from the parent, in the child's transcript | *Main agent sent a message*, *Main agent* the name |
 
 The row carries the agent's mark where a command's carries its bell, and it
 opens, as today, to the message or the result. A click on the agent's name
@@ -936,7 +937,9 @@ opens the Agents window on that agent's tab, a finished one as the
 Completed menu picks it, and brings into view and marks for a moment, as a
 search result does, the block of the agent's transcript the receipt came
 from: for an update, the call that sent it; for a completion, the agent's
-last answer, which is its result. The receipt names that block, so the page
+last answer, which is its result, or, for one that failed, its last error
+record, which says why; for a message from the parent, the call that sent
+it in the parent's transcript. The receipt names that block, so the page
 never guesses it from the text. Rows the user's own decisions make, *You
 allowed this conversation to manage skills* and *You moved this conversation
 to MacBook Pro*, name no agent and keep their wording. Sender IDs, rounds,
