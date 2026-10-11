@@ -3,17 +3,15 @@ import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import type { Block, PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
-import { BLOCK_GAP, useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
+import { useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { compactionSummaryTokens } from './visible-blocks'
 import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streaming'
 import { rowKey } from './row-key'
 import type { PendingAction } from './activity-slot'
 import { useMessageRows } from './message-rows'
 import { useChromeEntrance } from './useChromeEntrance'
-import { chromeEntrance } from '../ui/chrome-enter'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import AgentMessageVirtualBlock from './blocks/AgentMessageVirtualBlock.vue'
-import ActivitySlot from './blocks/ActivitySlot.vue'
 import SessionStatus from './SessionStatus.vue'
 import ErrorNotice from '../ui/ErrorNotice.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
@@ -115,7 +113,6 @@ const {
   visibleBlocks,
   transcriptRows: visibleTranscriptBlocks,
   rows: renderBlocks,
-  slot,
   footerIds,
   heldKey,
 } = useMessageRows(() => props)
@@ -155,8 +152,9 @@ const { isEntering } = useChromeEntrance(
   () => props.load ?? 'ready',
 )
 
+// The tail row alone is no transcript: it waits for one.
 const paneStatus = computed(() =>
-  props.pendingSubmission ? null : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.length > 0),
+  props.pendingSubmission ? null : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.some((row) => row.type !== 'activity_slot')),
 )
 const mutedIds = computed(() => messageEditSuffixIds(renderBlocks.value, props.editTargetId))
 // Every streamed delta re-renders the visible rows; the lookup must not rescan the transcript per row.
@@ -206,7 +204,7 @@ function thinkingEndedAt(index: number): string | null {
 
 const scrollArea = ref<InstanceType<typeof ScrollArea>>()
 const scrollContainer = computed(() => scrollArea.value?.el)
-/** What the list shows after its rows: the tail row and a failure notice. */
+/** What the list shows after its rows: a failure notice. */
 const listTail = ref<HTMLElement>()
 
 const {
@@ -380,15 +378,6 @@ defineExpose({
           </div>
         </div>
         <div ref="listTail">
-          <ActivitySlot
-            v-if="slot"
-            :key="conversationId"
-            v-bind="chromeEntrance(true)"
-            :kind="slot.kind"
-            :incoming="slot.incoming"
-            :since="slot.since"
-            :style="{ marginTop: renderBlocks.length ? `${BLOCK_GAP}px` : '0' }"
-          />
           <div v-if="failure" class="px-[var(--agent-pad-x,2rem)] py-1.5">
             <ErrorNotice
               :label="failure.label"

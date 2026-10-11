@@ -5,6 +5,7 @@ import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { ChatSessionState, ConversationState, PendingSubmissionState } from '@demicodes/web-ui/agent/types'
+import type { SendWay } from '@demicodes/web-ui/agent/send-way'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
 import { demoModel, editedFile, shellView, type ShellView } from './fixtures/blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
@@ -22,7 +23,7 @@ import { printLive } from './live-command'
  * the way the product's runtime does: the transcript's tail row, its faces and
  * the handoff into a block are `web-ui`'s.
  */
-export type TurnFlowKind = 'turn' | 'undelivered' | 'offline' | 'resume' | 'retry' | 'connect' | 'stream' | 'work'
+export type TurnFlowKind = 'turn' | 'undelivered' | 'offline' | 'resume' | 'retry' | 'connect' | 'stream' | 'work' | 'steer' | 'queue'
 
 /** A sent message as the composer showed it: what the page holds until the server confirms it. */
 export type SentMessage = Pick<PendingSubmissionState, 'text' | 'attachments'>
@@ -43,6 +44,7 @@ const TOOL_LINES = [
   'packages/web/src/auth.test.ts:57:    expect(readHeader()).not.toContain("sid=")',
 ]
 const USER_TEXT = 'The login test in packages/web/src/auth.test.ts is failing after the session cookie rename.'
+const STEER_TEXT = 'Also check the sign-up test.'
 const RETRY_ERROR = 'Anthropic API request failed with HTTP 529: Overloaded. The upstream service is temporarily unavailable.'
 /** The simulated server's acknowledgement of a recovery or a reconnect. */
 const ACK_MS = 800
@@ -149,6 +151,14 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   const pendingSubmission = shallowRef<PendingSubmissionState | null>(null)
   /** What the pending message sends, which its user block holds once confirmed. */
   let pendingContent: UserContentBlock[] = []
+  /**
+   * The simulated server's answer to a steer or a queued message on its way,
+   * which a turn cut short or stopped does not cancel, as a session holds
+   * what it was sent whatever its turn does.
+   */
+  let delivery: number | undefined
+  /** Remove or Send Now pressed on the steer or queued message on its way, carried out once it is held. */
+  let wish: 'remove' | 'sendNow' | null = null
   let token = 0
   let sequence = 0
   /** The call of the turn that runs now, whose command a stop ends. */
@@ -539,10 +549,68 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     deliver(token, false)
   }
 
-  /** The page holds a sent message until the server confirms it, with why its delivery failed. */
-  function holdMessage(content: UserContentBlock[], message: SentMessage, error: string | null): void {
-    pendingSubmission.value = { id: nextId('message'), ...message, error }
+  /**
+   * The page holds a sent message until the server confirms it, with why its
+   * delivery failed, as what it will be: the next message, a steer or a
+   * queued message.
+   */
+  function holdMessage(content: UserContentBlock[], message: SentMessage, error: string | null, way: SendWay = 'send'): void {
+    pendingSubmission.value = { id: nextId('message'), way, ...message, error }
     pendingContent = content
+  }
+
+  /**
+   * A steer or a queued message on its way, shown as what it will be from the
+   * send: after the delivery's wait the simulated server holds it, a steer
+   * in the running turn's steers and a queued message in the queue, under
+   * the id it was sent with; with nothing running, it is refused and goes
+   * as a message, which starts a turn, as the product sends it. Remove or
+   * Send Now pressed meanwhile is carried out then.
+   */
+  function deliverWaiting(content: UserContentBlock[], message: SentMessage, way: 'steer' | 'queue'): void {
+    holdMessage(content, message, null, way)
+    wish = null
+    window.clearTimeout(delivery)
+    delivery = window.setTimeout(() => {
+      delivery = undefined
+      const pending = pendingSubmission.value
+      if (!pending || pending.error !== null) {
+        return
+      }
+      if (state.phase === 'idle') {
+        wish = null
+        pendingSubmission.value = { ...pending, way: 'send' }
+        deliver(token, false)
+        return
+      }
+      pendingSubmission.value = null
+      const held = { id: pending.id, content: pendingContent }
+      if (pending.way === 'steer') {
+        state.pendingSteers = [...state.pendingSteers, held]
+      } else {
+        state.queue = [...state.queue, held]
+      }
+      const wished = wish
+      wish = null
+      if (wished === 'remove' && pending.way === 'steer') {
+        removePendingSteer(pending.id)
+      } else if (wished === 'remove') {
+        removeQueued(pending.id)
+      } else if (wished === 'sendNow' && pending.way === 'steer') {
+        interruptPendingSteer(pending.id)
+      } else if (wished === 'sendNow') {
+        sendQueued(pending.id)
+      }
+    }, CONFIRM_MS)
+  }
+
+  /** Keeps Remove or Send Now pressed on the message on its way as the wish; false for any other message. */
+  function keepWish(id: string, wished: 'remove' | 'sendNow'): boolean {
+    if (pendingSubmission.value?.id !== id || delivery === undefined) {
+      return false
+    }
+    wish = wished
+    return true
   }
 
   /**
@@ -569,11 +637,12 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   /** The pending message's user block is written, under the id it was sent with: the message is no longer pending. */
   function confirmMessage(): void {
     const pending = pendingSubmission.value
-    if (pending?.error !== null) {
+    // A steer or a queued message on its way is not the turn's message.
+    if (pending?.error !== null || pending.way !== 'send') {
       return
     }
     pendingSubmission.value = null
-    append(userBlock(pendingContent, pending?.id))
+    append(userBlock(pendingContent, pending.id))
   }
 
   function undeliver(error: string): void {
@@ -683,24 +752,28 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   }
 
   /**
-   * A message sent as a steer: it waits as a pending steer until the turn's
-   * next boundary. With nothing running, the steer is refused and the
-   * message goes as a message, as the product sends it.
+   * A message sent as a steer: it shows as one from the send, and once held
+   * it waits as a pending steer until the turn's next boundary. With nothing
+   * running, the steer is refused and the message goes as a message, as the
+   * product sends it.
    */
   function steer(content: UserContentBlock[], message: SentMessage): void {
     if (state.phase === 'idle') {
       turn(content, message)
       return
     }
-    state.pendingSteers = [...state.pendingSteers, { id: nextId('pending'), content }]
+    deliverWaiting(content, message, 'steer')
   }
 
-  /** A message sent while a turn runs waits in the queue, as the product's does. */
-  function queue(content: UserContentBlock[]): void {
-    state.queue = [...state.queue, { id: nextId('queued'), content }]
+  /** A message sent while a turn runs waits in the queue, as the product's does, and shows there from the send. */
+  function queue(content: UserContentBlock[], message: SentMessage): void {
+    deliverWaiting(content, message, 'queue')
   }
 
   function removeQueued(id: string): void {
+    if (keepWish(id, 'remove')) {
+      return
+    }
     state.queue = state.queue.filter((entry) => entry.id !== id)
   }
 
@@ -711,6 +784,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    * moves to the front of the queue.
    */
   function sendQueued(id: string): void {
+    if (keepWish(id, 'sendNow')) {
+      return
+    }
     const item = state.queue.find((entry) => entry.id === id)
     if (!item) {
       return
@@ -730,6 +806,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   }
 
   function removePendingSteer(id: string): void {
+    if (keepWish(id, 'remove')) {
+      return
+    }
     state.pendingSteers = state.pendingSteers.filter((entry) => entry.id !== id)
   }
 
@@ -739,6 +818,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    * goes on with it.
    */
   function interruptPendingSteer(id: string): void {
+    if (keepWish(id, 'sendNow')) {
+      return
+    }
     const pending = state.pendingSteers.find((entry) => entry.id === id)
     if (!pending) {
       return
@@ -797,12 +879,18 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   /** Reset to a fixture and play it. */
   function play(kind: TurnFlowKind = 'turn'): void {
     cancel()
+    window.clearTimeout(delivery)
+    delivery = undefined
+    wish = null
     const run = token
     state.lastError = null
     state.pendingAction = null
     state.load = 'ready'
     state.phase = 'idle'
     pendingSubmission.value = null
+    // A play starts over: what waited for the last one goes with it.
+    state.pendingSteers = []
+    state.queue = []
 
     if (kind === 'stream') {
       // Thinking is the tail from the first running frame, so nothing is waited for.
@@ -814,6 +902,26 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
         replace(id, thinkingBlock(id, createdAt, partial))
       })
       reply(run, thought + 240, REPLY)
+      return
+    }
+
+    if (kind === 'steer' || kind === 'queue') {
+      // The agent's command runs; the user sends a steer, or a message to
+      // the queue, which shows as one from the send, its line and controls
+      // in view while it is delivered.
+      const toolId = nextId('tool')
+      state.blocks = [userBlock([{ type: 'text', text: USER_TEXT }]), tool(toolId, now(), 'executing')]
+      state.phase = 'running'
+      runningTool = toolId
+      at(run, ACK_MS, () => {
+        const content: UserContentBlock[] = [{ type: 'text', text: STEER_TEXT }]
+        const message: SentMessage = { text: STEER_TEXT, attachments: [] }
+        if (kind === 'steer') {
+          steer(content, message)
+        } else {
+          queue(content, message)
+        }
+      })
       return
     }
 
@@ -887,7 +995,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     deliver(run, kind === 'undelivered')
   }
 
-  onBeforeUnmount(cancel)
+  onBeforeUnmount(() => {
+    cancel()
+    window.clearTimeout(delivery)
+  })
 
   return {
     state,

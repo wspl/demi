@@ -14,18 +14,13 @@ test('a compaction in progress shows at the end of the transcript, before the st
     queue: [{ id: 'queued-1', content: [{ type: 'text', text: 'next' }] }],
   })
 
-  expect(tail.map((block) => block.type)).toEqual([
-    'compaction_progress',
-    'pending_steer',
-    'queue_divider',
-    'queued_message',
-  ])
+  expect(tail.turn.map((block) => block.type)).toEqual(['compaction_progress'])
+  expect(tail.waiting.map((block) => block.type)).toEqual(['pending_steer', 'queue_divider', 'queued_message'])
 })
 
 test('the divider in progress goes once the pass ends, so the finished one takes its place', () => {
   for (const phase of ['idle', 'running'] as const) {
-    expect(listTailBlocks({ phase, blocks: [], pendingCalls: [], pendingSteers: [steer], queue: [] }).map((block) => block.type))
-      .toEqual(['pending_steer'])
+    expect(listTailBlocks({ phase, blocks: [], pendingCalls: [], pendingSteers: [steer], queue: [] }).turn).toEqual([])
   }
 })
 
@@ -35,14 +30,15 @@ test("the calls being written follow the transcript, before the steers, and leav
     { toolUseId: 'call-2', toolName: 'shell', description: null },
   ]
   const tail = listTailBlocks({ phase: 'running', blocks: [], pendingCalls: writing, pendingSteers: [steer], queue: [] })
-  expect(tail.map((block) => block.id)).toEqual(['pending-call:call-1', 'pending-call:call-2', 'pending-steer:steer-1'])
+  expect(tail.turn.map((block) => block.id)).toEqual(['pending-call:call-1', 'pending-call:call-2'])
+  expect(tail.waiting.map((block) => block.id)).toEqual(['pending-steer:steer-1'])
   // The block arrived before the list without it: the call shows once.
   const held: Block = {
     type: 'tool_call', id: 'b1', toolUseId: 'call-1', toolName: 'shell', input: '{}', status: 'executing',
     output: [], view: null, createdAt, model,
   }
   const after = listTailBlocks({ phase: 'running', blocks: [held], pendingCalls: writing, pendingSteers: [], queue: [] })
-  expect(after.map((block) => block.id)).toEqual(['pending-call:call-2'])
+  expect(after.turn.map((block) => block.id)).toEqual(['pending-call:call-2'])
 })
 
 // The row of a message waiting to be confirmed becomes the confirmed message:
@@ -57,7 +53,33 @@ test('a message the transcript holds shows there alone, not again in the tail', 
     pendingCalls: [],
     pendingSteers: [],
     queue: [{ id: 'm-2', content: [{ type: 'text', text: 'next' }] }],
-    pendingSubmission: { id: 'm-2', text: 'next', attachments: [], error: null },
+    pendingSubmission: { id: 'm-2', way: 'queue', text: 'next', attachments: [], error: null },
   })
-  expect(tail).toEqual([])
+  expect(tail).toEqual({ turn: [], waiting: [] })
+})
+
+// A message on its way shows as what it will be from the send
+// (`product.md` § Steer or queue): the next message in the turn's flow, a
+// steer after the steers, or a queued message counted under the queue's
+// divider; once the session holds it, its confirmed row alone shows.
+test('a message on its way stands where what it will be stands, and leaves once the session holds it', () => {
+  const queued = { id: 'q-1', content: [{ type: 'text' as const, text: 'later' }] }
+  const tail = (way: 'send' | 'steer' | 'queue', held: { steers?: typeof steer[]; queue?: typeof queued[] } = {}) => listTailBlocks({
+    phase: 'running',
+    blocks: [],
+    pendingCalls: [],
+    pendingSteers: held.steers ?? [steer],
+    queue: held.queue ?? [queued],
+    pendingSubmission: { id: 'm-3', way, text: 'also', attachments: [], error: null },
+  })
+  const ids = (way: 'send' | 'steer' | 'queue', held?: Parameters<typeof tail>[1]) => {
+    const { turn, waiting } = tail(way, held)
+    return { turn: turn.map((block) => block.id), waiting: waiting.map((block) => block.type === 'queue_divider' ? `divider:${block.count}` : block.id) }
+  }
+  expect(ids('send')).toEqual({ turn: ['pending-submission:m-3'], waiting: ['pending-steer:steer-1', 'divider:1', 'queued:q-1'] })
+  expect(ids('steer')).toEqual({ turn: [], waiting: ['pending-steer:steer-1', 'pending-submission:m-3', 'divider:1', 'queued:q-1'] })
+  expect(ids('queue')).toEqual({ turn: [], waiting: ['pending-steer:steer-1', 'divider:2', 'queued:q-1', 'pending-submission:m-3'] })
+  const confirmed = { id: 'm-3', content: [{ type: 'text' as const, text: 'also' }] }
+  expect(ids('steer', { steers: [steer, confirmed] })).toEqual({ turn: [], waiting: ['pending-steer:steer-1', 'pending-steer:m-3', 'divider:1', 'queued:q-1'] })
+  expect(ids('queue', { queue: [queued, confirmed] })).toEqual({ turn: [], waiting: ['pending-steer:steer-1', 'divider:2', 'queued:q-1', 'queued:m-3'] })
 })

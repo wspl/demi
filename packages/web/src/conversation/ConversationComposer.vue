@@ -92,7 +92,7 @@ function openProviders() {
 }
 function send(way: SendWay) {
   if (canSend.value) {
-    void store.send(props.conversation, way === 'steer' ? 'steer' : 'message')
+    void store.send(props.conversation, way)
   }
 }
 

@@ -6,15 +6,19 @@ import { attachmentId, isHttpUrl, messageHostPath, messageImage } from './filePa
 import { escapeHtml } from './html'
 import { mathExtensions } from './math'
 import { scrollingTable } from './table'
-import { declaredSize, THUMBNAIL_HEIGHT, thumbnailBox, type PixelSize, type ThumbnailKind } from '../files/thumbnail'
+import { declaredSize, THUMBNAIL_HEIGHT, thumbnailBox, thumbnailPlaceHeight, type PixelSize, type ThumbnailKind } from '../files/thumbnail'
 
 // Parsing is synchronous, so the renderers read the options of the parse in flight instead of
 // building a Marked instance (and re-registering KaTeX) per call.
 let activeOptions: MarkdownRenderOptions | undefined
 /** Links open around the renderer: an image inside one follows it instead of opening itself. */
 let openLinks = 0
-/** Whether the renderer is inside a run of a message's media, where each one is a thumbnail. */
-let inRun = false
+/**
+ * Inside a run of a message's media, where each one is a thumbnail, the
+ * height of the place the medium being rendered takes in the run's row;
+ * null outside a run.
+ */
+let runPlace: number | null = null
 
 /** A link that leaves for the web, in a new tab. */
 function webLink(url: string): string {
@@ -50,9 +54,13 @@ function sizeAttributes(size: PixelSize | null): string {
   return size ? ` data-width="${size.width}" data-height="${size.height}"` : ''
 }
 
-/** A thumbnail's box, as the inline style of a medium in a run. */
-function thumbnailStyle(size: PixelSize | null, kind: ThumbnailKind): string {
+/**
+ * A medium in a run as a thumbnail of `size`, known before its bytes arrive:
+ * its box as its inline style, and the height of its place in the run.
+ */
+function runThumbnail(size: PixelSize | null, kind: ThumbnailKind): string {
   const box = thumbnailBox(size, kind)
+  runPlace = thumbnailPlaceHeight(size, kind)
   return ` style="width: ${box.width}px; height: ${box.height}px"`
 }
 
@@ -74,7 +82,8 @@ function loneVideoStyle(size: PixelSize | null): string {
  */
 function attachmentVideo(attachment: MessageAttachment, alt: string, title: string): string {
   const size = declaredSize(attachment)
-  const frame = inRun ? thumbnailStyle(size, 'video') : ''
+  const inRun = runPlace !== null
+  const frame = inRun ? runThumbnail(size, 'video') : ''
   const video = `<video src="${escapeHtml(attachment.url)}" muted playsinline preload="metadata" aria-label="${alt}"${title}${sizeAttributes(size)}${frame}></video>`
   const mark = '<span class="media-play-mark" aria-hidden="true"></span>'
   const wrapper = ` class="message-video"${inRun ? '' : loneVideoStyle(size)}`
@@ -139,7 +148,7 @@ function attachmentMedium(attachment: MessageAttachment, token: Tokens.Image): s
   if (!attachment.mediaType.startsWith('image/'))
     return openLinks > 0 ? alt : `${attachmentLink(attachment)}${alt}</a>`
   const size = declaredSize(attachment)
-  const box = inRun ? thumbnailStyle(size, 'image') : ''
+  const box = runPlace !== null ? runThumbnail(size, 'image') : ''
   const image = `<img src="${escapeHtml(attachment.url)}" alt="${alt}"${title}${sizeAttributes(size)}${box} />`
   return openLinks > 0 ? image : `${attachmentLink(attachment)}${image}</a>`
 }
@@ -184,7 +193,7 @@ const messageRenderer: RendererObject = {
     if (source === null)
       return escapeHtml(token.text)
     const title = token.title ? ` title="${escapeHtml(token.title)}"` : ''
-    const box = inRun ? thumbnailStyle(null, 'image') : ''
+    const box = runPlace !== null ? runThumbnail(null, 'image') : ''
     const image = `<img src="${escapeHtml(source.src)}" alt="${escapeHtml(token.text)}"${title}${box} />`
     return openLinks > 0 || source.link === null ? image : `${source.link}${image}</a>`
   },
@@ -277,12 +286,18 @@ agentMarked.use({
   extensions: [{
     name: MEDIA_RUN,
     renderer(token) {
-      inRun = true
-      let items: string[]
+      // Each medium's place is as tall as its thumbnail's renderer says; one
+      // that shows as text, while its attachment is asked for or missing,
+      // keeps the place of a medium whose size is unknown.
+      const items: string[] = []
       try {
-        items = (token.tokens ?? []).map((medium) => `<span style="height: ${THUMBNAIL_HEIGHT}px">${this.parser.parseInline([medium])}</span>`)
+        for (const medium of token.tokens ?? []) {
+          runPlace = THUMBNAIL_HEIGHT
+          const html = this.parser.parseInline([medium])
+          items.push(`<span style="height: ${runPlace}px">${html}</span>`)
+        }
       } finally {
-        inRun = false
+        runPlace = null
       }
       return `<p class="media-run">${items.join('')}</p>\n`
     },
