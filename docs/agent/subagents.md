@@ -692,7 +692,7 @@ Never copied into a child:
 - the parent transcript and tool results;
 - files already in the parent's context;
 - the parent's output style or product-user voice;
-- a system prompt built for the child when a profile names a model or instructions of its own.
+- the parent's system prompt, when a profile builds the child's own.
 
 ## Abort
 
