@@ -31,7 +31,7 @@ import {
   type ModelSettingsChange,
 } from '@demicodes/web-ui/agent/model-selection'
 import { hasAcceptedSubmission } from '@demicodes/web-ui/agent/submission'
-import type { SendWay } from '@demicodes/web-ui/agent/send-way'
+import { agentWorks, turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
 import {
   composerAttachmentFromFile,
   composerRemoteAttachment,
@@ -1876,14 +1876,14 @@ export const useConversations = defineStore('conversations', () => {
    * Retry on a message whose delivery failed: it goes again with its id,
    * after the messages on their way, as a message. A steer the session
    * already holds is not sent again, and one it does not hold is answered
-   * next, or queued while a turn runs.
+   * next, or queued while a turn runs or a message on its way starts one.
    */
   async function retrySend(conversation: Conversation, id: string): Promise<void> {
     const pending = conversation.pendingSends.find((each) => each.id === id)
     if (conversation.archived || pending?.error == null) {
       return
     }
-    pending.way = conversation.phase === 'idle' ? 'send' : 'queue'
+    pending.way = agentWorks(conversation.phase, conversation.pendingSends) ? 'queue' : 'send'
     pending.error = null
     await deliverInOrder(conversation, pending)
   }
@@ -2233,9 +2233,7 @@ export const useConversations = defineStore('conversations', () => {
    * that was not delivered started nothing.
    */
   async function stop(conversation: Conversation): Promise<void> {
-    const starting = conversation.phase === 'idle'
-      ? conversation.pendingSends.find((pending) => pending.way === 'send' && pending.error === null)?.id
-      : undefined
+    const starting = turnStartingMessage(conversation.phase, conversation.pendingSends)?.id
     await deliveries.run(conversation.id, async () => {})
     if (starting !== undefined && conversation.pendingSends.some((pending) => pending.id === starting)) {
       return

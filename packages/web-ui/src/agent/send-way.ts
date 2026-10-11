@@ -1,5 +1,6 @@
 import { isMacOS } from '@tiptap/core'
 import { watch } from 'vue'
+import type { SessionPhase } from '@demicodes/protocol'
 import type { TitleText } from '../ui/ui-text'
 
 /**
@@ -35,6 +36,42 @@ export function chooseSendWay(working: boolean, preferred: SendWhileRunning, ask
     return 'send'
   }
   return asksOtherWay ? otherWay(preferred) : preferred
+}
+
+/** A message the user sent that the session has not confirmed: how it was sent, and why its delivery failed, null while it is on its way. */
+export interface MessageOnItsWay {
+  way: SendWay
+  error: string | null
+}
+
+/**
+ * The message on its way that starts a turn, or undefined while none does:
+ * the one reading for the composer's Stop and its way of sending, the
+ * transcript's Requesting row, Stop's wait and Retry's way. Its turn is as
+ * good as running from the send (`product.md` § Recovering an unfinished
+ * turn), so the composer shows Stop and a message sent meanwhile steers it
+ * or waits in the queue (§ Steer or queue).
+ *
+ * It is the first message on its way that was sent as the next message,
+ * which the session's phase leaves the starting one through its delivery
+ * and confirmation, since the backend starts the turn before it writes the
+ * message. While nothing runs, it is the first message on its way, whichever
+ * way it was sent: the session answers any message next then, a steer it
+ * refuses because its turn ended included, which goes as a message, and a
+ * queued message whose turn ended. A message whose delivery failed starts
+ * nothing.
+ */
+export function turnStartingMessage<T extends MessageOnItsWay>(phase: SessionPhase, sent: readonly T[]): T | undefined {
+  return sent.find((message) => message.error === null && (message.way === 'send' || phase === 'idle'))
+}
+
+/**
+ * Whether the agent works as far as a message sent now is concerned: a
+ * turn or a compaction runs, or a message on its way starts a turn, so the
+ * message steers or waits in the queue rather than going as the next one.
+ */
+export function agentWorks(phase: SessionPhase, sent: readonly MessageOnItsWay[]): boolean {
+  return phase !== 'idle' || turnStartingMessage(phase, sent) !== undefined
 }
 
 /**

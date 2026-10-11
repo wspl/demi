@@ -5,6 +5,7 @@ import type { MessageListBlock } from '../pending-steers'
 import { activitySlotKind } from '../activity-slot'
 import { groupWork } from '../work-groups'
 import type { SessionLoad } from '../session-status'
+import { turnStartingMessage } from '../send-way'
 import type { PendingSubmissionState } from '../types'
 import { useActivitySlot } from '../useActivitySlot'
 
@@ -252,10 +253,50 @@ test('a message sent while the socket reconnects says Connecting, and Requesting
   expect(slot.value).toEqual({ kind: 'requesting', since: 12_000 })
 })
 
+// Back-to-back sends 400 ms apart, the first one failing: the composer's
+// Stop and the transcript's Requesting read one rule, so the one shows
+// exactly while the other does. Before, the composer kept Stop for the
+// second message, a steer that goes as the next message, while the row
+// showed nothing. About 1 ms.
+test('the composer shows Stop exactly while the row says Requesting for a message that starts a turn', async () => {
+  using session = slotOver('idle', [textBlock()])
+  const { conversation, slot } = session
+  // As ConversationComposer passes it: running, or a message on its way
+  // that starts a turn; SessionComposer shows Stop while running or compacting.
+  const stopShown = () =>
+    conversation.phase !== 'idle'
+    || turnStartingMessage(conversation.phase, conversation.pendingSubmissions) !== undefined
+  const shown = async () => {
+    await nextTick()
+    return { stop: stopShown(), requesting: slot.value?.kind === 'requesting' }
+  }
+  const message = (id: string, way: PendingSubmissionState['way'], error: string | null = null): PendingSubmissionState =>
+    ({ id, way, text: id, attachments: [], error })
+  const both = (shownNow: boolean) => ({ stop: shownNow, requesting: shownNow })
+
+  expect(await shown()).toEqual(both(false))
+  conversation.pendingSubmissions = [message('a', 'send')]
+  expect(await shown()).toEqual(both(true))
+  // Sent while the first is on its way: it steers the turn the first starts.
+  conversation.pendingSubmissions = [message('a', 'send'), message('b', 'steer')]
+  expect(await shown()).toEqual(both(true))
+  // The first is not delivered: the session answers the steer as the next message.
+  conversation.pendingSubmissions = [message('a', 'send', 'Upload failed'), message('b', 'steer')]
+  expect(await shown()).toEqual(both(true))
+  conversation.pendingSubmissions = [message('a', 'send', 'Upload failed'), message('b', 'steer', 'Upload failed')]
+  expect(await shown()).toEqual(both(false))
+  // Retry sends the first again as the next message.
+  conversation.pendingSubmissions = [message('a', 'send'), message('b', 'steer', 'Upload failed')]
+  expect(await shown()).toEqual(both(true))
+  // The backend starts its turn before it writes the message.
+  conversation.phase = 'running'
+  expect(await shown()).toEqual(both(true))
+})
+
 test('a message sent during a turn joins the queue and adds no Requesting under the streaming answer', async () => {
   using session = slotOver('running', [userBlock(), textBlock()])
   const { conversation, slot } = session
-  conversation.pendingSubmissions = [sent()]
+  conversation.pendingSubmissions = [{ ...sent(), way: 'queue' }]
   await nextTick()
   expect(slot.value).toBeNull()
 })
