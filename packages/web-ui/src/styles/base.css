@@ -959,23 +959,6 @@ html[data-theme="light"] .file-pill {
   }
 }
 
-/* A streamed step fading in (`ui/StreamedMarkdown.vue`): its duration and how
-   far in it starts come from the step, so a re-render carries the fade on. */
-.stream-ink {
-  animation-name: stream-ink;
-  animation-timing-function: linear;
-  animation-fill-mode: both;
-}
-
-@keyframes stream-ink {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
 /* What a find opened, a settings row or a message a search found, flashed once (`ui/found-highlight.ts`). */
 .found-highlight {
   animation: found-highlight 1.6s ease-out;
@@ -1005,7 +988,6 @@ html[data-theme="light"] .file-pill {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .stream-ink,
   .chrome-enter {
     animation: none;
   }
