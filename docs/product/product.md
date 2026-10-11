@@ -715,19 +715,53 @@ and Korean write without a space.
 The model receives the message's Markdown. Where the user typed literally a
 character the dialect would read as formatting, it carries a backslash
 (`\*args`); nothing else is escaped, so `snake_case` and `x < y` reach the
-model as typed. Copying a sent message gives its Markdown, each file by its
-name.
+model as typed.
+
+Copying a sent message, by its Copy control or by selecting part of it,
+copies its files with its text, and pasting that into a composer brings the
+files back as capsules, where they stood, without uploading them again. For
+example, the user copies "Compare `before.png` with `after.png`" from a sent
+bubble and pastes it into the composer of another conversation of theirs:
+the composer holds the same text and two image capsules, ready to send. The
+clipboard carries the copy in three forms, each for the place it is pasted:
+
+| Form | What it holds | Who reads it |
+| --- | --- | --- |
+| Demi's own | The message's content: its text, and each file as the reference the message holds (its stored file, name, kind and size, or its device and path) | A composer of the same Demi; it rebuilds each capsule from its reference, so the file is not sent again |
+| HTML | The text formatted, each image as an image | Mail, documents, chat apps |
+| Plain text | The Markdown, each file by its name | Terminals, code editors, anything else |
+
+Demi's own form travels inside the HTML, as an attribute of its outermost
+element, since every browser keeps HTML on the clipboard and none keeps a
+format of its own across pages; a paste reads it there first. A copy that
+holds a single image and no text also carries the image itself, so pasting
+it anywhere pastes the picture. A file whose reference the paste cannot use,
+one of another account or since deleted, comes in from the image the copy
+carried when there is one, uploaded as any pasted image is, and otherwise
+as its name in the text, with a toast that says which file could not be
+added. Copying never puts a file's bytes on the clipboard for the composer's
+sake; the reference is the file.
 
 Enter sends and Shift+Enter breaks the line; in a code block Enter breaks the
 line and ⌘/Ctrl+Enter sends. While the agent works, ⌘/Ctrl+Enter outside a
 code block sends the other way than Enter
 ([Steer or queue](#steer-or-queue)); in a code block it is the send key and
 sends the way Enter does elsewhere. An input method's Enter never sends, and
-its Escape never ends an edit ([Typing with an input method](#typing-with-an-input-method)). Enter on a
-message that cannot go yet does not send in silence: the send button says why
-it cannot, in the words it says when it is pointed at — an upload still
-running, one that failed, a model that cannot send — and the answer goes by
-itself. A message sent or queued, by Enter or by the send button, leaves the
+its Escape never ends an edit ([Typing with an input method](#typing-with-an-input-method)). A
+message whose files are still uploading is sent like any other: it leaves
+the composer, shows at once as the user's bubble with each capsule showing
+how far its upload has come, and the tail row says Requesting from that
+moment; it reaches the agent once every upload has finished, and never
+without one of its files. For example, the user drops a 40 MB recording,
+types "what goes wrong here?" and presses Enter: the bubble shows the
+recording's capsule at 30%, and the turn starts when it reaches 100%. An
+upload that fails leaves the message undelivered, its bubble saying so with
+Retry, which retries the upload and then delivers the message; no file of it
+is dropped. A page closed while such a message waits asks first, as a mail
+client does while it sends attachments. Enter on a message that cannot go
+yet for another reason does not send in silence: the send button says why it
+cannot, in the words it says when it is pointed at — an upload that failed,
+a model that cannot send — and the answer goes by itself. A message sent or queued, by Enter or by the send button, leaves the
 focus in the composer, so the next one is typed at once. An edit sent with
 Save and resend takes no typing while it is saved; once it ends, the
 composer's draft takes the focus, unless the user has put it elsewhere
