@@ -389,7 +389,7 @@ viewer first when that window is in front. For example, the user opens
 *2 Agents*, clicks a screenshot in the child's transcript, closes the viewer,
 and reads on in the same window.
 
-Its label follows the cause, because the user's expectation differs:
+The recovery control's label follows the cause, because the user's expectation differs:
 
 | How the turn ended | Control | What the user expects |
 | --- | --- | --- |
