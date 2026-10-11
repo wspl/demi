@@ -288,17 +288,17 @@ turn or waits in the queue, one or the other, and stays what it was sent as:
 
 A message shows what it was sent as from the moment it is sent, since the
 page chose the way: a steer shows at once with *Will be sent to the agent at
-its next step*, Send Now and Undo Send, and a queued message with its own
+its next step*, Send Now and Recall, and a queued message with its own
 line, while the backend has not confirmed it yet, in the same row and at the
-same height it keeps once confirmed. Send Now or Undo Send pressed before the
+same height it keeps once confirmed. Send Now or Recall pressed before the
 confirmation is kept as the user's wish and carried out once the message is
 confirmed ([Responding to the user](web-application.md#responding-to-the-user)).
-Undo Send takes the message back, as iMessage's does: it leaves the row at
+Recall takes the message back, as Outlook recalls a sent mail: it leaves the row at
 once, confirmed or not, and its request follows. When the composer is empty,
 the message goes back into it, its text and its files, the caret at its
 end, ready to change and send again; when the composer holds a draft, the
 draft is kept as it is and the message is not put back, and a toast,
-*Message Unsent*, offers Undo, which sends it again the way it was sent. A
+*Message Recalled*, offers Undo, which sends it again the way it was sent. A
 refusal, as when the agent read the steer meanwhile, brings the row back
 where it was with a toast, and takes back out of the composer what it had put
 there, unless the user changed it since. A message taken back before it was
@@ -625,6 +625,10 @@ few milliseconds reads as the list twitching.
 - **A message that was not delivered** waits at the end, after the turn a
   later message started, with Retry: it is the message still to send, and
   Retry sends it next.
+- **One size for the reading.** The agent's text, the user's messages and
+  the transcript's rows, a step, a notice, a receipt, read at one size, the
+  size the user picks in Settings › Appearance, 14 pixels unless they pick
+  another; the rows stand apart by their color, not their size.
 - **The message being sent** is drawn as the message it will become, at its
   height: whether it is still on its way shows in the Requesting row, and a
   lost connection in the Connecting row or the connection banner, never as
@@ -902,7 +906,7 @@ user's `~/.demi/attachments/<conversation>/`, adding a numeric suffix to avoid
 an existing name of other contents; a file of the same name and the same
 contents already there is the same file, and is not written again. The suffix
 belongs to the Host path alone: the attachment keeps the name the user gave
-it, so a file sent again, pasted or put back by Undo Send keeps its name,
+it, so a file sent again, pasted or put back by Recall keeps its name,
 `login-before.png`, and never grows `-2-2`. It does not put attachment files in the project directory.
 A Cloud target may need to wake before this write.
 
