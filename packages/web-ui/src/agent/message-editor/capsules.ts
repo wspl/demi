@@ -7,6 +7,7 @@ import type { MessageEditContent } from '../message-editing'
 import type { MediaSource } from '../media-source'
 import { attachmentProgress, decodeRemoteReference, type ComposerAttachment } from '../message-input/attachments'
 import type { FileReference } from '../message-input/copied-message'
+import { splitMessageContent } from '../message-input/message-content'
 
 /**
  * A file as its capsule in a message shows it, and as the message carries it
@@ -180,6 +181,12 @@ export function contentCapsule(id: string, blocks: readonly MessageEditContent[]
     }
   }
   return capsule
+}
+
+/** A message the session holds as its editor shows it: its Markdown, and a capsule for each file in the order of their marks. */
+export function contentMessage(content: readonly MessageEditContent[]): { markdown: string; capsules: MessageCapsule[] } {
+  const { markdown, files } = splitMessageContent(content)
+  return { markdown, capsules: files.map((blocks, index) => contentCapsule(String(index), blocks)) }
 }
 
 /** A media block's name, when no record names it: the leaf of its address, or its kind. */

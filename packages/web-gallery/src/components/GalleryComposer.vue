@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import type { PlaceholderText } from '@demicodes/web-ui/ui/ui-text'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { previewMediaType, type ContextUsage, type UserContentBlock } from '@demicodes/protocol'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
-import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
+import { isEmptyMessage, joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
-import type { CopiedStoredFile, PasteHost } from '@demicodes/web-ui/agent/message-input/copied-message'
+import {
+  missingFilesToast,
+  pasteMessage,
+  type CopiedStoredFile,
+  type PasteHost,
+} from '@demicodes/web-ui/agent/message-input/copied-message'
+import { showToast } from '@demicodes/web-ui/infra/toast'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
@@ -40,7 +46,7 @@ import { productWould } from '../product-would'
 import type { SendWay, SendWhileRunning } from '@demicodes/web-ui/agent/send-way'
 import { galleryMessages } from '../fixtures/send-while-running'
 import { demoInstructions, demoOpenInstruction } from '../fixtures/instructions'
-import type { SentMessage } from '../turn-flow'
+import type { SentMessage, UndoSendComposer } from '../turn-flow'
 import { createGalleryRemoteFileHosts } from '../fixtures/files'
 import { galleryUploads } from '../fixtures/upload-sweep'
 
@@ -90,6 +96,8 @@ const props = withDefaults(
     onSteer?: (content: UserContentBlock[], message: SentMessage) => void
     /** Queues a message behind the specimen's running turn; without it, a toast says what the product would do. */
     onQueue?: (content: UserContentBlock[], message: SentMessage) => void
+    /** The specimen's flow, whose Undo Send gives a message back into this composer, as the product's does. */
+    flow?: { attachComposer(host: UndoSendComposer): () => void }
   }>(),
   {
     draft: '',
@@ -199,6 +207,7 @@ const composerProps = computed(() => {
     onCompact: _compact,
     onSteer: _steer,
     onQueue: _queue,
+    flow: _flow,
     sendWhileRunning: _sendWhileRunning,
     offlineHost: _offlineHost,
     ...rest
@@ -274,10 +283,26 @@ function sentBlocks(item: ComposerAttachment): UserContentBlock[] {
  */
 function submit(way: SendWay) {
   const sent = carried.value.flatMap((id) => attached.value.filter((item) => item.id === id))
-  const text = draft.value
+  if (!handOn(draft.value, sent, way)) {
+    return
+  }
+  draft.value = ''
+  carried.value = []
+  // What the composer carried for an undo goes with the message.
+  while (attached.value.length) {
+    forget(attached.value[0]!.id, false)
+  }
+}
+
+/**
+ * Hands the message `text` with the files `sent` on the way the composer
+ * chose, and lets its files go from the composer, those still uploading
+ * going on for it; false when it has nothing to send.
+ */
+function handOn(text: string, sent: ComposerAttachment[], way: SendWay): boolean {
   const content = joinMessageContent(text, sent.map(sentBlocks))
   if (!content.length) {
-    return
+    return false
   }
   const waiting = sent.filter((item) => isComposerFile(item) && item.phase !== 'ready')
   const ready = waiting.length
@@ -296,30 +321,61 @@ function submit(way: SendWay) {
     : undefined
   // The message as the composer shows it, which the page holds until the server confirms it.
   const message: SentMessage = { text, attachments: sent, ready }
-  draft.value = ''
-  carried.value = []
-  while (attached.value.length) {
-    const id = attached.value[0]!.id
-    forget(id, false, waiting.some((item) => item.id === id))
+  for (const item of sent) {
+    forget(item.id, false, waiting.includes(item))
   }
-  const handOn = (hand: (content: UserContentBlock[], message: SentMessage) => void) =>
-    ready ? void ready.then((blocks) => hand(blocks, message), () => productWould('Retry the Upload')) : hand(content, message)
+  const hand = (to: (content: UserContentBlock[], message: SentMessage) => void) =>
+    ready ? void ready.then((blocks) => to(blocks, message), () => productWould('Retry the Upload')) : to(content, message)
   if (way === 'steer') {
     if (props.onSteer) {
-      handOn(props.onSteer)
+      hand(props.onSteer)
     } else {
       productWould('Steer the Running Turn')
     }
   } else if (way === 'queue') {
     if (props.onQueue) {
-      handOn(props.onQueue)
+      hand(props.onQueue)
     } else {
       productWould('Queue the Message')
     }
   } else {
     emit('send', content, message)
   }
+  return true
 }
+
+/**
+ * Undo Send gives a message back into this composer when it is empty, as
+ * the product's does (`product.md` § Steer or queue): its text, and its
+ * files as capsules a paste brings back, the caret at its end; a draft it
+ * holds stays as it is.
+ */
+const undoSend: UndoSendComposer = {
+  takeBack(message) {
+    if (!isEmptyMessage(draft.value, carried.value.length)) {
+      return false
+    }
+    const pasted = pasteMessage(message, null, paste)
+    carried.value = pasted.capsules.map((capsule) => capsule.id)
+    draft.value = pasted.markdown
+    shown.value += 1
+    composer.value?.focusDraft()
+    const missing = missingFilesToast(pasted.missing)
+    if (missing) {
+      showToast({ ...missing, tone: 'danger' })
+    }
+    return true
+  },
+  sendAgain(message, way) {
+    const pasted = pasteMessage(message, null, paste)
+    const sent = pasted.capsules.flatMap((capsule) => attached.value.filter((item) => item.id === capsule.id))
+    handOn(pasted.markdown, sent, way)
+  },
+}
+let detach: (() => void) | undefined
+onMounted(() => {
+  detach = props.flow?.attachComposer(undoSend)
+})
 
 /**
  * Uploads a file, or attaches the stored file a pasted message names through
@@ -464,6 +520,7 @@ function changeModel(change: ModelSettingsChange) {
   settings.value = applyModelChange(settings.value, change)
 }
 onBeforeUnmount(() => {
+  detach?.()
   window.clearTimeout(reloadTimer)
   uploads.cancelAll()
   host.release()

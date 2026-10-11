@@ -136,9 +136,9 @@ function detach(id: string): void {
         @abort-subagents="flow.abortSubagents"
         @abort-subagent="flow.abortSubagent"
         @abort-terminal="flow.abortTerminal"
-        @remove-queued="flow.removeQueued"
+        @undo-send-queued="flow.undoSendQueued"
         @send-queued="flow.sendQueued"
-        @remove-pending-steer="flow.removePendingSteer"
+        @undo-send-steer="flow.undoSendSteer"
         @interrupt-pending-steer="flow.interruptPendingSteer"
       >
         <template #workspace>
@@ -174,6 +174,7 @@ function detach(id: string): void {
             :archived="session.archived"
             @restore="session.archived = false"
             :attachments="[{ name: 'ready-example.png', phase: 'ready' }]"
+            :flow="flow"
             @send="flow.turn"
             @steer="flow.steer"
             @queue="flow.queue"

@@ -7,10 +7,9 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { reportError } from '../../infra/errors'
 import type { MessageEditContent } from '../message-editing'
-import { composerCapsule, composerTransfer, contentCapsule, provideTransfers } from '../message-editor/capsules'
+import { composerCapsule, composerTransfer, contentMessage, provideTransfers } from '../message-editor/capsules'
 import MessageEditor from '../message-editor/MessageEditor.vue'
 import type { ComposerAttachment } from '../message-input/attachments'
-import { splitMessageContent } from '../message-input/message-content'
 
 const props = defineProps<{
   content: readonly MessageEditContent[]
@@ -25,7 +24,7 @@ const props = defineProps<{
    * it said under it and its controls in view: a steer, which the running
    * turn reads at its next step, or a queued message, which runs after it.
    * Send Now delivers either at once (`product.md` § Steer or queue);
-   * Remove takes it back.
+   * Undo Send takes it back, into the composer when that is empty.
    */
   pending?: 'steer' | 'queued'
   /** Keep the hover actions visible (a catalog specimen, not a hover). */
@@ -35,7 +34,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  remove: []
+  undoSend: []
   sendNow: []
   /** Open this message's editor. */
   edit: []
@@ -78,13 +77,8 @@ interface BubbleAction {
 
 /** The message as its editor shows it: its Markdown, and a capsule for each file in the order of their marks. */
 const message = computed(() => {
-  const { markdown, files } = splitMessageContent(props.content)
-  return {
-    markdown,
-    capsules: props.attachments
-      ? props.attachments.map(composerCapsule)
-      : files.map((blocks, index) => contentCapsule(String(index), blocks)),
-  }
+  const held = contentMessage(props.content)
+  return props.attachments ? { ...held, capsules: props.attachments.map(composerCapsule) } : held
 })
 
 // Sent messages get copy and edit on hover.
@@ -251,7 +245,7 @@ useResizeObserver(bodyRef, measure)
       <!-- A queued message stands under the queue's divider, which already says so. -->
       <span v-if="pending === 'steer'" class="mr-1">Will be sent to the agent at its next step</span>
       <Button size="xs" variant="ghost" @click.stop="emit('sendNow')">Send Now</Button>
-      <Button size="xs" variant="ghost" @click.stop="emit('remove')">Remove</Button>
+      <Button size="xs" variant="ghost" @click.stop="emit('undoSend')">Undo Send</Button>
     </div>
   </div>
 </template>

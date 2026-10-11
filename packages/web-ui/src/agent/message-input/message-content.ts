@@ -42,6 +42,11 @@ export function splitMessageContent<Block extends { type: string; text?: unknown
   return { markdown, files }
 }
 
+/** A message with nothing in it, no text and no file, as an empty composer holds. */
+export function isEmptyMessage(markdown: string, fileCount: number): boolean {
+  return !markdown.trim() && fileCount === 0
+}
+
 /**
  * The content a message sends: its text around each file, in the order the
  * composer shows them. The message's first and last text are trimmed, and a
