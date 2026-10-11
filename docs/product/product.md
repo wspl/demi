@@ -574,6 +574,13 @@ few milliseconds reads as the list twitching.
   list never draws a frame in which it is shorter, only to grow back. Only
   what the user does shrinks it: folding a row, editing a message, which
   replaces what follows it, or deleting.
+- **A turn that goes on takes the place of its end.** When the user presses
+  Continue after a Stop, or Resume after an error, the row that said how the
+  turn ended, *Stopped* or the error record, rolls over into the Requesting
+  row in that place, as a step rolls over the one before, and Requesting then
+  rolls into the turn's next step: one row throughout, never one that goes
+  while another appears under it. A recovery the backend refuses rolls the
+  row back to what it said.
 - **Messages that wait stay out of the turn's flow.** A pending steer and a
   queued message wait below the turn, and what the turn is doing is read from
   the transcript alone: the tail row, Requesting or Connecting, stands right
