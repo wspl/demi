@@ -81,6 +81,9 @@
   --fg-code: #ec7e7e;
   /* A transcript row's text: quieter than the prose around it, still read. */
   --fg-row: var(--fg-subtle);
+  /* The shimmer band's text (`ui/Shimmer.vue`): on dark, the strongest text,
+     which lights the row up. */
+  --fg-shimmer: var(--fg-emphasis);
   /* How much lighter each floating layer is than the one it floats over (floating layers, below). */
   --elevation-step: 8%;
   --overlay: white;
@@ -184,6 +187,10 @@
   /* Light layers are white; they part by their hairline and shadow, not by fill. */
   --elevation-step: 0%;
   --overlay: black;
+  /* On light, the strongest text is darker than the prose, and a row lit to
+     it read as heavier than the answer under it: the band reaches the
+     prose's colour and no further. */
+  --fg-shimmer: var(--fg-body);
   --fg-emphasis: #1a1d24;
   --fg: #2e3138;
   --fg-body: #404550;
@@ -930,7 +937,7 @@ html[data-theme="light"] .file-pill {
   gap: inherit;
   overflow: hidden;
   pointer-events: none;
-  mask-image: linear-gradient(90deg, transparent, black 35%, black 65%, transparent);
+  mask-image: linear-gradient(90deg, transparent, black 30%, black 70%, transparent);
   mask-size: var(--shimmer-band) 100%;
   mask-repeat: no-repeat;
   animation: shimmer-sweep var(--shimmer-ms) linear infinite;
@@ -938,8 +945,8 @@ html[data-theme="light"] .file-pill {
 
 .shimmer-band,
 .shimmer-band * {
-  color: var(--fg-emphasis) !important;
-  text-decoration-color: var(--fg-emphasis) !important;
+  color: var(--fg-shimmer) !important;
+  text-decoration-color: var(--fg-shimmer) !important;
 }
 
 @keyframes shimmer-sweep {
