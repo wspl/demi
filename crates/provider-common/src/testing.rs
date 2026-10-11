@@ -31,8 +31,37 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use crate::{
     InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, ProviderFailure,
-    ProviderRun, ProviderRuntime, RequestLimits, ToolCall, ToolResultKinds, UserPart,
+    ProviderRun, ProviderRuntime, RequestLimits, ToolCall, ToolDefinition, ToolResultKinds,
+    UserPart,
 };
+
+/// A tool whose input lists its fields as `shell`'s does: `description`
+/// first, then the rest out of alphabetical order, so a request that sorts
+/// or otherwise reorders a schema's properties shows (`runtime.md` § Calls
+/// being written).
+pub fn titled_tool() -> ToolDefinition {
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "description": { "type": "string" },
+            "script": { "type": "string" },
+            "intervalMs": { "type": "integer" },
+        },
+    });
+    ToolDefinition {
+        name: "shell".into(),
+        description: "Run a script".into(),
+        input_schema: schema.as_object().unwrap().clone(),
+    }
+}
+
+/// The names of `schema`'s properties in the order its JSON carries them.
+pub fn property_order(schema: &serde_json::Value) -> Vec<&str> {
+    schema["properties"]
+        .as_object()
+        .map(|properties| properties.keys().map(String::as_str).collect())
+        .unwrap_or_default()
+}
 
 /// Builders of the events a scripted run yields.
 pub mod event {
