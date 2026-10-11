@@ -178,13 +178,13 @@ const folderKey = ref(0)
 // Open file: the composer's remote attachment, opening inside a project.
 const fileHostId = ref('mac')
 const fileHost = computed(() => hosts.find((host) => host.id === fileHostId.value)!)
-// The address bar at shrinking widths: a file deep in the workspace, as the File view shows it.
+// The address bar at shrinking widths: a file deep in the workspace, its whole path from the Host's root, as the File view shows it.
 const addressWorkspace = createGalleryWorkspace()
 const addressPath = `${addressWorkspace.root}/packages/web-ui/src/files/FileBrowserAddressBar.vue`
 const addressWidths = [
-  { variant: 'every name', width: '40rem' },
-  { variant: 'names go from the left', width: '28rem' },
-  { variant: 'glyphs only', width: '15rem' },
+  { variant: 'every name', width: '56rem' },
+  { variant: 'names go from the left', width: '44rem' },
+  { variant: 'glyphs only', width: '26rem' },
   { variant: 'the left clipped', width: '9rem' },
 ] as const
 const narrowHostId = ref(hosts[0]!.id)
@@ -739,7 +739,7 @@ onMounted(() => {
 
       <GallerySection
         title="Address Bar"
-        note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the file’s crumb keeps its name longest, then the bar clips its left and never its right. The last frame resizes from its corner. A crumb opens the entries beside it; the menu takes the keyboard, so typing a name moves to the first entry that starts with it and Enter opens it. A click beside the crumbs turns the bar into a field that completes from the workspace, a relative path starting at its root."
+        note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the file’s crumb keeps its name longest, then the bar clips its left and never its right. The last frame resizes from its corner. A crumb opens the entries beside it; the menu takes the keyboard, so typing a name moves to the first entry that starts with it and Enter opens it. The crumbs start at the Host’s root, the root and the home wearing their glyphs. A click beside the crumbs turns the bar into a field with the whole path that completes as it is typed, a relative path starting at the workspace and ~ naming the home."
       >
         <GallerySpecimen v-for="entry in addressWidths" :key="entry.variant" :variant="entry.variant" wide>
           <div class="flex" :style="{ width: entry.width }">
@@ -747,7 +747,7 @@ onMounted(() => {
               class="min-w-0 flex-1"
               mode="browse"
               :path="addressPath"
-              :root="addressWorkspace.root"
+              :base="addressWorkspace.root"
               :source="addressWorkspace.source"
               leaf="file"
               @navigate="productWould(`Show ${$event}`)"
@@ -761,7 +761,7 @@ onMounted(() => {
               class="min-w-0 flex-1"
               mode="browse"
               :path="addressPath"
-              :root="addressWorkspace.root"
+              :base="addressWorkspace.root"
               :source="addressWorkspace.source"
               leaf="file"
               @navigate="productWould(`Show ${$event}`)"

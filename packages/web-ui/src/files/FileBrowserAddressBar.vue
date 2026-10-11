@@ -10,24 +10,24 @@ import DirectoryMenu from './DirectoryMenu.vue'
 import FileIcon from './FileIcon.vue'
 import PathInput from './PathInput.vue'
 import { ICON_PX } from '../ui/icon-metrics'
-import { fitCrumbs, type CrumbFit } from './crumb-fit'
-import { landmarkIcon } from './file-icons'
-import { normalizePath, parentPath, pathSegments, relativePath, typedPath } from './paths'
+import { fitCrumbs, pathCrumbs, type CrumbFit } from './crumb-fit'
+import { parentPath, typedPath } from './paths'
 import type { FileBrowserSource } from './types'
 
 /**
- * The path as crumbs, each its folder glyph, in one of two modes. `navigate`
+ * The whole path as crumbs from the Host's root, each its folder glyph, the
+ * root and the home their landmark glyphs, in one of two modes. `navigate`
  * (a file dialog): a crumb jumps there. `browse` (a file view): a crumb opens
  * a menu of what lies beside it, directories unfolding into their own, so
  * another file is a pick away. In both, a click anywhere on the bar but a
- * crumb turns it into a text field with the path, the way the Windows
- * address bar edits, and Enter asks the host to go where it says; a bar with
- * a `root` shows the path from there, as its crumbs do, and a relative path
- * starts from `root`; `~` names the source's home. While it is a field it completes the path from the
- * source's listings (`PathInput`): a completed directory keeps the field
- * open on its entries, a completed file goes there as Enter would. A bar with a `root` starts its crumbs there, the
- * way a file view shows a path inside its workspace; `leaf` says what the last
- * crumb is, so a file shows its file glyph.
+ * crumb turns it into a text field with the absolute path, the way the
+ * Windows address bar edits, and Enter asks the host to go where it says: a
+ * relative path starts from `base`, as a File view's starts from its
+ * workspace, and `~` names the source's home. While it is a field it
+ * completes the path from the source's listings (`PathInput`): a completed
+ * directory keeps the field open on its entries, a completed file goes there
+ * as Enter would. `leaf` says what the last crumb is, so a file shows its
+ * file glyph.
  *
  * A bar too narrow for every name turns crumbs into their glyphs, one at a
  * time from the left, the name kept in a tooltip; the last crumb keeps its
@@ -40,13 +40,11 @@ const props = withDefaults(
     /** Where the root and the home are, for their glyphs; `browse` also lists through it. */
     source: Pick<FileBrowserSource, 'platform' | 'home'> & Partial<Pick<FileBrowserSource, 'showListing'>>
     mode?: 'navigate' | 'browse'
-    /** The first crumb; the ancestors above it are not shown. */
-    root?: string
-    /** What the root crumb says in place of its directory's name. */
-    rootName?: string
+    /** Where a relative path typed into the field starts; without it, the Host's root. */
+    base?: string
     leaf?: 'directory' | 'file'
   }>(),
-  { mode: 'navigate', root: undefined, rootName: undefined, leaf: 'directory' },
+  { mode: 'navigate', base: undefined, leaf: 'directory' },
 )
 
 const emit = defineEmits<{
@@ -111,16 +109,7 @@ const menuSource = computed(() => {
 const bar = ref<HTMLElement>()
 const ruler = ref<HTMLElement>()
 
-const crumbs = computed(() => {
-  const all = pathSegments(props.path)
-  if (props.root === undefined)
-    return all
-  const start = all.findIndex((crumb) => crumb.path === normalizePath(props.root!))
-  const fromRoot = start < 0 ? all : all.slice(start)
-  if (props.rootName === undefined || start < 0)
-    return fromRoot
-  return [{ ...fromRoot[0]!, name: props.rootName }, ...fromRoot.slice(1)]
-})
+const crumbs = computed(() => pathCrumbs(props.path, props.source))
 /** What a crumb is laid out as, shown or measured: the classes that decide its width. */
 const CRUMB_LAYOUT = 'flex h-5 shrink-0 items-center gap-1 rounded px-1 text-chrome'
 
@@ -152,8 +141,7 @@ const { width: rulerWidth } = useElementSize(ruler)
 watch([barWidth, rulerWidth, crumbs], measure, { flush: 'post', immediate: true })
 
 function startEdit() {
-  // The path as the crumbs read it: from the workspace when the bar has one, so the Host's own directories stay out of sight.
-  draft.value = props.root === undefined ? props.path : relativePath(props.root, props.path)
+  draft.value = props.path
   editing.value = true
   nextTick(() => {
     input.value?.focus()
@@ -163,7 +151,7 @@ function startEdit() {
 
 function commit() {
   editing.value = false
-  const next = typedPath(draft.value, { home: props.source.home, root: props.root })
+  const next = typedPath(draft.value, { home: props.source.home, root: props.base })
   if (next !== props.path)
     emit('navigate', next)
 }
@@ -191,7 +179,7 @@ watch(() => props.path, () => {
     ref="input"
     v-model="draft"
     :source="source"
-    :base="root"
+    :base="base"
     kind="any"
     aria-label="Path"
     @keydown="onKeydown"
@@ -233,7 +221,7 @@ watch(() => props.path, () => {
             <FileIcon
               :name="crumb.name"
               :is-directory="!(leaf === 'file' && index === crumbs.length - 1)"
-              :icon="landmarkIcon(crumb.path, source)"
+              :icon="crumb.icon"
             />
             <span v-if="index >= fit.collapsed" class="whitespace-nowrap">{{ crumb.name }}</span>
           </span>

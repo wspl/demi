@@ -20,6 +20,7 @@ function isFile(root: MemoryDirectory, path: string): boolean {
  */
 export function galleryConversationFiles(source: MemoryFileSource, open: NonNullable<ConversationFiles['open']>): ConversationFiles {
   return {
+    home: source.home,
     imageUrl: (path) => source.contents.url(path),
     attachment: galleryAttachment,
     codeFiles: (paths) => new Set(paths.filter((path) => isFile(source.root, path))),
@@ -31,6 +32,6 @@ export function galleryConversationFiles(source: MemoryFileSource, open: NonNull
  * A reply that names the workspace's files: links, one at a line, and
  * paths written as code, of which the workspace has some and not others.
  */
-export const namedFilesMarkdown = `The cookie is renamed in [cookie.ts](src/auth/cookie.ts), and [session.ts](src/auth/session.ts#L5) reads it under the new name. The setup steps the [README](README.md#L42) lists still hold.
+export const namedFilesMarkdown = `The cookie is renamed in [cookie.ts](src/auth/cookie.ts), and [session.ts](src/auth/session.ts#L5) reads it under the new name. The setup steps the [README](README.md#L42) lists still hold; from the home it is [~/Projects/demi/README.md](~/Projects/demi/README.md).
 
 Written as code, \`src/auth/cookie.ts\` and \`tests/login/auth.test.ts\` open, and \`README.md:42\` opens at its line; \`src/auth/token.ts\` is not in the workspace and stays code, and a bare name such as \`cookie\` is never asked about.`
