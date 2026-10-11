@@ -159,6 +159,8 @@ import { useGalleryView } from '../gallery-views'
 
 const { view } = useGalleryView()
 const historyModelBlocks = transcriptDemoBlocks()
+/** The models the specimen's composer waits for have loaded: a message sent with Enter meanwhile goes then. */
+const historyModelsLoaded = ref(false)
 /** The calls the Command Ends specimens show, and calls of tools the runtime no longer has. */
 const endBlocks = commandEndBlocks()
 const removedBlocks = removedToolBlocks()
@@ -2036,7 +2038,8 @@ onBeforeUnmount(() => {
                 :phase="workFlow.state.phase"
                 :load="workFlow.state.load"
                 :pending-action="workFlow.state.pendingAction"
-                :pending-submission="workFlow.pendingSubmission.value"
+                :pending-submissions="workFlow.pendingSubmissions.value"
+                :removing="workFlow.removing.value"
                 :pending-calls="workFlow.state.pendingCalls"
                 :waiting-since="workFlow.state.waitingSince"
                 :bottom-offset="workSurface?.dockHeight ?? 0"
@@ -2266,7 +2269,7 @@ onBeforeUnmount(() => {
       <GalleryCommandWakeup />
       <GallerySection
         title="Turn"
-        note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the message says so with Retry, which sends it again with the same ID and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay, the tail row says Connecting, never that it failed, and the message goes with its ID once the socket is back. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Send Now and Remove in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it; Send Now or Remove pressed before then is carried out once it is held. Resume, Retry and Connect wait for the server first."
+        note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the message says so with Retry, which sends it again with the same ID and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay, the tail row says Connecting, never that it failed, and the message goes with its ID once the socket is back. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Send Now and Remove in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it; Remove takes it away at once, and Send Now pressed before then is carried out once it is held. Resume, Retry and Connect wait for the server first."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button
@@ -2323,7 +2326,8 @@ onBeforeUnmount(() => {
                 :phase="turnFlow.state.phase"
                 :load="turnFlow.state.load"
                 :pending-action="turnFlow.state.pendingAction"
-                :pending-submission="turnFlow.pendingSubmission.value"
+                :pending-submissions="turnFlow.pendingSubmissions.value"
+                :removing="turnFlow.removing.value"
                 :bottom-offset="turnSurface?.dockHeight ?? 0"
                 :persisted-scroll-state="undefined"
                 read-only
@@ -2556,7 +2560,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Session Load"
-        note="First opening uses the loading pane until history arrives. History stays readable while models load or the connection opens. Switching back to a cached session is immediate and reuses its connection. A dropped connection in an open session uses the “Connecting” tail row. An unconfirmed send keeps its user message as it will stay; Retry sends it again with the same ID and says Requesting from then, through the confirmation, until the answer begins. New conversation opens a local draft immediately."
+        note="First opening uses the loading pane until history arrives. History stays readable while models load or the connection opens. Switching back to a cached session is immediate and reuses its connection. A dropped connection in an open session uses the “Connecting” tail row. Enter while the models load says why on the send button, and the message goes once they have (Finish Loading). An unconfirmed send keeps its user message as it will stay, and the next message can be sent meanwhile, after it; Retry sends it again with the same ID and says Requesting from then, through the confirmation, until the answer begins. New conversation opens a local draft immediately."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen variant="unconfirmed send · retry the same message" wide>
@@ -2569,7 +2573,8 @@ onBeforeUnmount(() => {
                 :queue="[]"
                 :phase="deliveryFlow.state.phase"
                 :load="deliveryFlow.state.load"
-                :pending-submission="deliveryFlow.pendingSubmission.value"
+                :pending-submissions="deliveryFlow.pendingSubmissions.value"
+                :removing="deliveryFlow.removing.value"
                 :bottom-offset="0"
                 :persisted-scroll-state="undefined"
                 read-only
@@ -2605,12 +2610,16 @@ onBeforeUnmount(() => {
               <div class="px-3 pb-3">
                 <GalleryComposer
                   placeholder="Ask Demi…"
-                  :providers="[]"
-                  :models="{}"
-                  model-load="loading"
+                  :providers="historyModelsLoaded ? undefined : []"
+                  :models="historyModelsLoaded ? undefined : {}"
+                  :model-load="historyModelsLoaded ? 'ready' : 'loading'"
+                  @send="productWould('Send the Message')"
                 />
               </div>
             </div>
+            <Button size="sm" class="mt-2" @click="historyModelsLoaded = !historyModelsLoaded">
+              {{ historyModelsLoaded ? 'Load Models Again' : 'Finish Loading' }}
+            </Button>
           </GallerySpecimen>
           <GallerySpecimen variant="switching · cached sessions" wide>
             <GalleryCachedSessions />
@@ -2748,7 +2757,8 @@ onBeforeUnmount(() => {
                 :select-edit="panelWork.selectEdit"
                 :files="sessionFiles"
                 @open-aside="panelAsideOpen = true"
-                :pending-submission="sessionFlow.pendingSubmission.value"
+                :pending-submissions="sessionFlow.pendingSubmissions.value"
+                :removing="sessionFlow.removing.value"
                 @retry-submission="sessionFlow.retrySubmission"
                 @retry="sessionFlow.resume()"
                 @rename="session.title = $event"
@@ -2763,7 +2773,7 @@ onBeforeUnmount(() => {
                 <template #composer>
                   <GalleryComposer
                     placeholder="Ask Demi about the failing login test…"
-                    :running="session.phase === 'running'"
+                    :running="session.phase === 'running' || sessionFlow.startingTurn.value"
                     :compacting="session.phase === 'compacting'"
             :usage="session.contextUsage ?? undefined"
                     @send="sessionFlow.turn"
@@ -3035,7 +3045,8 @@ onBeforeUnmount(() => {
         @decide-permission="(id, decision) => (sessionRequests = decidePermission(sessionRequests, id, decision))"
         v-model:message-edit="messageEdit"
         @regenerate="regenerateMessage(editHost, $event)"
-        :pending-submission="sessionFlow.pendingSubmission.value"
+        :pending-submissions="sessionFlow.pendingSubmissions.value"
+        :removing="sessionFlow.removing.value"
         @retry-submission="sessionFlow.retrySubmission"
         @retry="sessionFlow.resume()"
         @rename="session.title = $event"
@@ -3056,7 +3067,7 @@ onBeforeUnmount(() => {
             v-model:message-edit="messageEdit"
             @submit-edit="submitEdit"
             placeholder="Ask Demi about the failing login test…"
-            :running="session.phase === 'running'"
+            :running="session.phase === 'running' || sessionFlow.startingTurn.value"
             :compacting="session.phase === 'compacting'"
             :usage="session.contextUsage ?? undefined"
             :archived="session.archived"

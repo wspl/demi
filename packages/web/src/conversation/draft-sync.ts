@@ -81,7 +81,7 @@ export function sameContent(content: DraftContent, draft: Pick<ConversationDraft
  */
 export function hasUnsavedDraft(conversation: Conversation): boolean {
   const { content, complete } = draftContent(conversation)
-  if (conversation.pendingSend || !complete) {
+  if (conversation.pendingSends.length > 0 || !complete) {
     return true
   }
   const held = conversation.savedDraft
@@ -94,7 +94,7 @@ export function hasUnsavedDraft(conversation: Conversation): boolean {
 /** Whether a save has something to send now; a send not yet accepted holds it back. */
 function needsSave(conversation: Conversation): boolean {
   const held = conversation.savedDraft
-  if (conversation.persistence !== 'synced' || conversation.archived || conversation.pendingSend || !held) {
+  if (conversation.persistence !== 'synced' || conversation.archived || conversation.pendingSends.length > 0 || !held) {
     return false
   }
   return conversation.draftBase !== held.revision || !sameContent(draftContent(conversation).content, held)
@@ -194,7 +194,7 @@ export function createDraftSync(options: {
     const unsaved = hasUnsavedDraft(conversation)
     const { content, complete } = draftContent(conversation)
     conversation.savedDraft = draft
-    if (!conversation.pendingSend && complete && sameContent(content, draft)) {
+    if (conversation.pendingSends.length === 0 && complete && sameContent(content, draft)) {
       // The composer holds this draft already, whichever page saved it.
       conversation.draftBase = draft.revision
     } else if (!unsaved) {

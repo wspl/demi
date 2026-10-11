@@ -62,12 +62,12 @@ import {
   type TranscriptPage,
 } from '../api/generated/web-api'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
-import { createConversationUploads } from './uploads'
+import { createConversationUploads, sendingFileIds } from './uploads'
 import { useResources } from '../state/resources'
 import { useProduct, type ProductChange } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { useSession } from '../auth/session'
-import type { Conversation, ProductAttachment } from '../state/types'
+import type { Conversation, PendingSend, ProductAttachment } from '../state/types'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 import { createDraftSync, hasUnsavedDraft } from './draft-sync'
 import { createHistoryReads } from './history'
@@ -177,8 +177,13 @@ export const useConversations = defineStore('conversations', () => {
    * once, then clears.
    */
   const reveal = ref<(TranscriptReveal & { conversationId: string }) | null>(null)
-  /** The delivery of each conversation's sent message, while it is on its way. */
-  const sending = new Map<string, Promise<void>>()
+  /**
+   * The deliveries of the messages sent, by conversation: each
+   * conversation's go one at a time, in the order they were sent, so a
+   * message never overtakes the one before it (`product.md` § Steer or
+   * queue).
+   */
+  let deliveries = new SerialQueue()
   /**
    * Remove or Send Now pressed on a steer or a queued message still on its
    * way, by its message id: the user's latest wish, carried out once the
@@ -320,7 +325,8 @@ export const useConversations = defineStore('conversations', () => {
       draftShown: 0,
       files: [],
       attachmentIds: [],
-      pendingSend: null,
+      pendingSends: [],
+      removing: [],
       messageEdit: null,
       scroll: null,
       attachedHosts: [],
@@ -455,7 +461,7 @@ export const useConversations = defineStore('conversations', () => {
     // The web browser keeps the composer's text only while the backend does not
     // have it: a new conversation's, or a change not yet confirmed.
     const unsaved = local || hasUnsavedDraft(conversation)
-    const sending = new Set(conversation.pendingSend?.fileIds ?? [])
+    const sending = sendingFileIds(conversation)
     const files = [
       ...(unsaved ? messageFiles(conversation) : []),
       ...conversation.files.filter((file) => sending.has(file.id)),
@@ -464,9 +470,7 @@ export const useConversations = defineStore('conversations', () => {
       messageEdit: conversation.messageEdit
         ? structuredClone(toRaw(conversation.messageEdit))
         : null,
-      pendingSend: conversation.pendingSend
-        ? structuredClone(toRaw(conversation.pendingSend))
-        : null,
+      pendingSends: conversation.pendingSends.map((pending) => structuredClone(toRaw(pending))),
       local:
         conversation.persistence === 'synced'
           ? null
@@ -533,7 +537,7 @@ export const useConversations = defineStore('conversations', () => {
     for (const entry of changed) {
       const operation =
         entry.draft.local?.phase === 'draft' &&
-        !entry.draft.pendingSend &&
+        !entry.draft.pendingSends.length &&
         !entry.draft.text.trim() &&
         !entry.draft.files.length
           ? deleteDraft(userId, entry.id)
@@ -694,13 +698,11 @@ export const useConversations = defineStore('conversations', () => {
       if (draft) {
         // A delivery the page did not see end is a message to try again,
         // which Retry sends as a message.
-        conversation.pendingSend = draft.pendingSend
-          ? {
-              ...draft.pendingSend,
-              way: 'send',
-              error: draft.pendingSend.error || 'Delivery was interrupted. Retry to confirm it.',
-            }
-          : null
+        conversation.pendingSends = draft.pendingSends.map((pending) => ({
+          ...pending,
+          way: 'send',
+          error: pending.error || 'Delivery was interrupted. Retry to confirm it.',
+        }))
         conversation.messageEdit = restoreMessageEdit(draft.messageEdit ?? null)
         // A draft holds model settings only for a conversation without a
         // record.
@@ -715,8 +717,8 @@ export const useConversations = defineStore('conversations', () => {
         conversation.draftBase = draft.base
         conversation.files = draft.files.map(savedAttachment)
         // The files of the message, in the order of its capsules; the rest
-        // are those of the send not yet accepted.
-        const sending = new Set(draft.pendingSend?.fileIds ?? [])
+        // are those of the sends not yet accepted.
+        const sending = sendingFileIds(conversation)
         conversation.attachmentIds = conversation.files
           .filter((file) => !sending.has(file.id))
           .map((file) => file.id)
@@ -1749,57 +1751,63 @@ export const useConversations = defineStore('conversations', () => {
    * Sends the draft the way the composer chose (`product.md` § Steer or
    * queue): as the next message, as a steer of the running turn, or into the
    * queue, which is a message sent while a turn runs. The message shows as
-   * what it will be from the send. A delivery tried again, as Retry does,
-   * goes as a message: a steer the session already holds is not sent again,
-   * and one it does not hold is answered next, or queued while a turn runs.
+   * what it will be from the send, and goes after the messages still on
+   * their way, never ahead of them.
    */
   async function send(conversation: Conversation, way: SendWay = 'send'): Promise<void> {
     if (
       conversation.archived ||
-      conversation.pendingSend?.error === null ||
-      (!conversation.pendingSend && !attachmentsReady(messageFiles(conversation))) ||
-      (!conversation.pendingSend &&
-        !conversation.draft.trim() &&
-        !conversation.attachmentIds.length)
+      !attachmentsReady(messageFiles(conversation)) ||
+      (!conversation.draft.trim() && !conversation.attachmentIds.length)
     ) {
       return
     }
     if (conversation.persistence === 'draft') {
       conversation.persistence = 'pending'
     }
-    if (!conversation.pendingSend) {
-      conversation.pendingSend = {
-        id: crypto.randomUUID(),
-        way,
-        text: conversation.draft,
-        fileIds: messageFiles(conversation).map((file) => file.id),
-        error: null,
-      }
-      conversation.draft = ''
-      conversation.attachmentIds = []
-    } else {
-      conversation.pendingSend.way = conversation.phase === 'idle' ? 'send' : 'queue'
-    }
-    const pending = conversation.pendingSend
-    const delivery = deliver(conversation, pending, pending.way === 'steer' ? 'steer' : 'message')
-    sending.set(conversation.id, delivery)
-    try {
-      await delivery
-    } finally {
-      if (sending.get(conversation.id) === delivery) {
-        sending.delete(conversation.id)
-      }
-    }
+    const id = crypto.randomUUID()
+    conversation.pendingSends = [...conversation.pendingSends, {
+      id,
+      way,
+      text: conversation.draft,
+      fileIds: messageFiles(conversation).map((file) => file.id),
+      error: null,
+    }]
+    conversation.draft = ''
+    conversation.attachmentIds = []
+    await deliverInOrder(conversation, conversation.pendingSends.find((pending) => pending.id === id)!)
   }
 
   /**
-   * Delivers the message the conversation holds as sent: makes its record
+   * Retry on a message whose delivery failed: it goes again with its id,
+   * after the messages on their way, as a message. A steer the session
+   * already holds is not sent again, and one it does not hold is answered
+   * next, or queued while a turn runs.
+   */
+  async function retrySend(conversation: Conversation, id: string): Promise<void> {
+    const pending = conversation.pendingSends.find((each) => each.id === id)
+    if (conversation.archived || pending?.error == null) {
+      return
+    }
+    pending.way = conversation.phase === 'idle' ? 'send' : 'queue'
+    pending.error = null
+    await deliverInOrder(conversation, pending)
+  }
+
+  /** Delivers the message once the conversation's messages sent before it are delivered or failed. */
+  function deliverInOrder(conversation: Conversation, pending: PendingSend): Promise<void> {
+    return deliveries.run(conversation.id, () =>
+      deliver(conversation, pending, pending.way === 'steer' ? 'steer' : 'message'))
+  }
+
+  /**
+   * Delivers a message the conversation holds as sent: makes its record
    * first when it has none, then gives the message to the session with its
    * id, which takes it once, as a message or as a steer.
    */
   async function deliver(
     conversation: Conversation,
-    pending: NonNullable<Conversation['pendingSend']>,
+    pending: PendingSend,
     way: 'message' | 'steer',
   ): Promise<void> {
     const signal = lifetime.signal
@@ -1814,7 +1822,7 @@ export const useConversations = defineStore('conversations', () => {
     // to open, and goes with its id once the backend answers again
     // (`web-application.md` § A page of another build). Only a refusal is a
     // failed delivery.
-    const current = () => conversation.pendingSend?.id === pending.id
+    const current = () => conversation.pendingSends.some((each) => each.id === pending.id)
     try {
       await persistConversation(conversation)
       const references = files.map((file): ClientContent => {
@@ -1832,11 +1840,18 @@ export const useConversations = defineStore('conversations', () => {
       await (way === 'steer' ? runtime.steer(content, pending.id) : runtime.submit(content, pending.id))
       clearSubmission(conversation, pending.id)
     } catch (error) {
-      // The page let the conversations go, as a sign-out does, or the message is no longer the one to send.
+      // The page let the conversations go, as a sign-out does, or the message is no longer one to send.
       if (!signal.aborted && current()) {
-        pending.error = error instanceof Error ? error.message : String(error)
-        // A message not delivered is no steer or queued message to act on.
+        const wish = wishes.get(pending.id)
+        // A message not delivered is no steer or queued message to act on:
+        // one the user removed meanwhile is gone with its delivery.
         wishes.delete(pending.id)
+        if (wish === 'remove') {
+          dropSubmission(conversation, pending.id)
+          stopRemoving(conversation, pending.id)
+        } else {
+          pending.error = error instanceof Error ? error.message : String(error)
+        }
       }
     }
     if (!signal.aborted) {
@@ -1851,35 +1866,47 @@ export const useConversations = defineStore('conversations', () => {
     )
   }
 
+  /** The session holds the message `id`: it leaves the messages on their way, and a wish kept for it is carried out. */
   function clearSubmission(conversation: Conversation, id: string): void {
-    const pending = conversation.pendingSend
-    if (pending?.id !== id) {
+    if (!dropSubmission(conversation, id)) {
       return
     }
-    conversation.pendingSend = null
     const wish = wishes.get(id)
     wishes.delete(id)
     if (wish) {
       carryOut(conversation, id, wish)
     }
+  }
+
+  /**
+   * Takes the message `id` out of those on their way, with its files;
+   * answers whether it was one.
+   */
+  function dropSubmission(conversation: Conversation, id: string): boolean {
+    const pending = conversation.pendingSends.find((each) => each.id === id)
+    if (!pending) {
+      return false
+    }
+    conversation.pendingSends = conversation.pendingSends.filter((each) => each.id !== id)
     for (const fileId of pending.fileIds) {
       removeFile(conversation, fileId)
     }
     // The message is gone: what its composer still held for an undo goes with it.
     releaseSpare(conversation)
     saveDrafts()
-    // The backend accepted the message: the draft it was written in goes too,
-    // everywhere, and a change another page made meanwhile stays to restore.
+    // Once no message is on its way, the backend has accepted them all: the
+    // draft they were written in goes too, everywhere, and a change another
+    // page made meanwhile stays to restore.
     void draftSync.save(conversation).catch((error) => report('Could Not Clear the Draft', error))
+    return true
   }
 
   /**
-   * Keeps Remove or Send Now pressed on the message on its way as the user's
-   * wish, when `id` is that message; false for any other.
+   * Keeps Remove or Send Now pressed on a message on its way as the user's
+   * wish, when `id` is one; false for any other.
    */
   function keepWish(conversation: Conversation, id: string, wish: 'remove' | 'sendNow'): boolean {
-    const pending = conversation.pendingSend
-    if (pending?.id !== id || pending.error !== null) {
+    if (!conversation.pendingSends.some((pending) => pending.id === id && pending.error === null)) {
       return false
     }
     wishes.set(id, wish)
@@ -1890,20 +1917,55 @@ export const useConversations = defineStore('conversations', () => {
    * Carries out the wish kept for the message `id`, which the session now
    * holds: on the steer or the queued message it became, as the controls on
    * those do. A steer the session refused went as a message, which may have
-   * joined the queue; one already in the transcript is past both.
+   * joined the queue; one already in the transcript is past both, which a
+   * removal tells.
    */
   function carryOut(conversation: Conversation, id: string, wish: 'remove' | 'sendNow'): void {
-    if (conversation.pendingSteers.some((steer) => steer.id === id)) {
-      action(conversation, (runtime) => wish === 'remove' ? runtime.deletePendingSteer(id) : runtime.interruptPendingSteer(id))
+    if (wish === 'remove') {
+      carryOutRemoval(conversation, id)
+    } else if (conversation.pendingSteers.some((steer) => steer.id === id)) {
+      action(conversation, (runtime) => runtime.interruptPendingSteer(id))
     } else if (conversation.queue.some((message) => message.id === id)) {
-      action(conversation, (runtime) => wish === 'remove' ? runtime.dequeueMessage(id) : runtime.sendQueuedNow(id))
+      action(conversation, (runtime) => runtime.sendQueuedNow(id))
     }
   }
 
+  /**
+   * Remove on a steer or a queued message, or on a message on its way that
+   * will be one (`product.md` § Steer or queue): its row goes at once, and
+   * the request follows, once the session holds the message.
+   */
+  function removeWaiting(conversation: Conversation, id: string): void {
+    if (conversation.removing.includes(id)) {
+      return
+    }
+    conversation.removing = [...conversation.removing, id]
+    if (!keepWish(conversation, id, 'remove')) {
+      carryOutRemoval(conversation, id)
+    }
+  }
+
+  /**
+   * Removes the message `id` the session holds. A refusal, as when the agent
+   * read the steer meanwhile, brings its row back where it was, which is
+   * the transcript then, and a toast says why.
+   */
+  function carryOutRemoval(conversation: Conversation, id: string): void {
+    void runtimeFor(conversation)
+      .then((runtime) => runtime.removeWaiting(id))
+      .catch((error) => report('Could Not Remove the Message', error))
+      .finally(() => stopRemoving(conversation, id))
+  }
+
+  function stopRemoving(conversation: Conversation, id: string): void {
+    conversation.removing = conversation.removing.filter((each) => each !== id)
+  }
+
   function reconcileSubmission(conversation: Conversation): void {
-    const id = conversation.pendingSend?.id
-    if (id && hasAcceptedSubmission(conversation, id)) {
-      clearSubmission(conversation, id)
+    for (const pending of conversation.pendingSends) {
+      if (hasAcceptedSubmission(conversation, pending.id)) {
+        clearSubmission(conversation, pending.id)
+      }
     }
   }
 
@@ -1924,11 +1986,15 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * Stops the conversation's turn. A Stop pressed while the message that
    * starts the turn is still on its way stops that turn once the session
-   * holds the message; a message that was not delivered started nothing.
+   * holds the message, after the messages sent before the press; a message
+   * that was not delivered started nothing.
    */
   async function stop(conversation: Conversation): Promise<void> {
-    await sending.get(conversation.id)
-    if (conversation.pendingSend) {
+    const starting = conversation.phase === 'idle'
+      ? conversation.pendingSends.find((pending) => pending.way === 'send' && pending.error === null)?.id
+      : undefined
+    await deliveries.run(conversation.id, async () => {})
+    if (starting !== undefined && conversation.pendingSends.some((pending) => pending.id === starting)) {
       return
     }
     action(conversation, (runtime) => runtime.abort())
@@ -1940,7 +2006,7 @@ export const useConversations = defineStore('conversations', () => {
     earlyReads.clear()
     restoringLocalDrafts.value = false
     madeHere.clear()
-    sending.clear()
+    deliveries = new SerialQueue()
     wishes.clear()
     draftSync.stop()
     lifetime.abort()
@@ -2000,6 +2066,7 @@ export const useConversations = defineStore('conversations', () => {
       ),
     changeModel,
     send,
+    retrySend,
     editVersion: (conversation: Conversation) =>
       cache.get(conversation.id)?.runtime?.transcriptVersion() ?? null,
     submitEdit: (conversation: Conversation) => submitMessageEdit(editHost(conversation)),
@@ -2029,26 +2096,17 @@ export const useConversations = defineStore('conversations', () => {
     stop,
     compact: (conversation: Conversation) =>
       action(conversation, (runtime) => runtime.compact()),
-    // Remove and Send Now on a steer or a queued message still on its way
-    // wait for the session to hold it; on any other, they go at once.
-    removeQueued: (conversation: Conversation, id: string) =>
-      {
-        if (!keepWish(conversation, id, 'remove')) {
-          action(conversation, (runtime) => runtime.dequeueMessage(id))
-        }
-      },
+    // Send Now on a steer or a queued message still on its way waits for the
+    // session to hold it; on any other, it goes at once. Remove takes the
+    // row away at once in either case.
+    removeQueued: removeWaiting,
     sendQueued: (conversation: Conversation, id: string) =>
       {
         if (!keepWish(conversation, id, 'sendNow')) {
           action(conversation, (runtime) => runtime.sendQueuedNow(id))
         }
       },
-    removePendingSteer: (conversation: Conversation, id: string) =>
-      {
-        if (!keepWish(conversation, id, 'remove')) {
-          action(conversation, (runtime) => runtime.deletePendingSteer(id))
-        }
-      },
+    removePendingSteer: removeWaiting,
     interruptWithSteer: (conversation: Conversation, id: string) =>
       {
         if (!keepWish(conversation, id, 'sendNow')) {

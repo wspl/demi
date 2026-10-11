@@ -149,7 +149,8 @@ failDelivery()
             :queue="[]"
             :phase="undeliveredFlow.state.phase"
             :load="undeliveredFlow.state.load"
-            :pending-submission="undeliveredFlow.pendingSubmission.value"
+            :pending-submissions="undeliveredFlow.pendingSubmissions.value"
+            :removing="undeliveredFlow.removing.value"
             :bottom-offset="0"
             :persisted-scroll-state="undefined"
             read-only
