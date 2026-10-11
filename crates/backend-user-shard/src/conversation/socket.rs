@@ -171,8 +171,30 @@ impl Shard {
                     },
                     outgoing = frames.recv() => match outgoing {
                         Outgoing::Frame(frame) => {
-                            if !self.send_frame(&mut page, frame).await {
+                            // The frames the outbox holds at once, as a
+                            // turn's end, go in one message, which the page
+                            // applies as one change (`product.md`
+                            // § Following the agent's work).
+                            let mut batch = vec![frame];
+                            let mut after = None;
+                            while let Some(next) = frames.try_recv() {
+                                match next {
+                                    Outgoing::Frame(frame) => batch.push(frame),
+                                    Outgoing::Lagged => {
+                                        after = Some(Ending::Lagged);
+                                        break;
+                                    }
+                                    Outgoing::Closed => {
+                                        after = Some(Ending::Detached);
+                                        break;
+                                    }
+                                }
+                            }
+                            if !self.send_frames(&mut page, batch).await {
                                 break Ending::Gone;
+                            }
+                            if let Some(ending) = after {
+                                break ending;
                             }
                         }
                         Outgoing::Lagged => break Ending::Lagged,
@@ -427,9 +449,25 @@ impl Shard {
     /// Sends one server frame, presented as the page receives it; false when
     /// the socket is gone.
     async fn send_frame(&self, page: &mut PageSocket, frame: ServerFrame) -> bool {
-        let frame = self.present(frame).await;
-        let Some(text) = serialize(frame).await else {
-            return false;
+        self.send_frames(page, vec![frame]).await
+    }
+
+    /// Sends `frames` as one message: a frame alone as itself, several as
+    /// a JSON array of them in order, which the page applies as one change
+    /// (`product.md` § Following the agent's work).
+    async fn send_frames(&self, page: &mut PageSocket, frames: Vec<ServerFrame>) -> bool {
+        let mut texts = Vec::with_capacity(frames.len());
+        for frame in frames {
+            let frame = self.present(frame).await;
+            let Some(text) = serialize(frame).await else {
+                return false;
+            };
+            texts.push(text);
+        }
+        let text = if texts.len() == 1 {
+            texts.remove(0)
+        } else {
+            format!("[{}]", texts.join(","))
         };
         page.send(text).await.is_ok()
     }
