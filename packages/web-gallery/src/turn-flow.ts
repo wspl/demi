@@ -54,6 +54,11 @@ const DELIVERY_ERROR = 'Connection closed before confirmation'
 /** How long the simulated backend stays out of reach after an offline send. */
 const OFFLINE_MS = 2500
 const WAIT_MS = 80
+/**
+ * How long the model takes to answer a step's result in the work replay: long
+ * enough to see the run's row go on shimmering while it is waited for.
+ */
+const STEP_ANSWER_MS = 1500
 /** Time the model takes before its first output in a turn. */
 const FIRST_OUTPUT_MS = 1000
 const TOOL_RUN_MS = 1400
@@ -494,7 +499,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
         writeSteers()
         waitForModel()
       })
-      t = done + WAIT_MS
+      t = done + STEP_ANSWER_MS
     }
     reply(run, t, WORK_REPLY)
   }
