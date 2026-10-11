@@ -545,7 +545,11 @@ scrolls, and its field stays where it is as the list grows and shrinks, as
 in Spotlight and Raycast. ↑ and ↓ move through the
 list; Return or a click opens the selected conversation at the message that
 matched, which scrolls into view and is marked for a moment; Escape closes the
-window, as ⌘K does in Slack, Linear and ChatGPT. The mark is the accent's
+window, as ⌘K does in Slack, Linear and ChatGPT. A block brought into view
+stands in the middle of the view when it fits there, and from its start, near
+the top of the view, when it is taller than the view, so the reader reads it
+from its first line, as a browser brings a long section's heading into view.
+The mark is the accent's
 faint fill behind the row as the row's own hover fill covers it, with its
 rounded corners and within the conversation's column, fading out; every
 place that marks a block for a moment, a notice's call, a link to a line or
@@ -615,7 +619,9 @@ few milliseconds reads as the list twitching.
   its summary. For example, the
   user presses Continue after a Stop: the *Stopped* row rolls into
   *Requesting* in that place, and Requesting into the turn's next step; Resume
-  after an error rolls the error record the same way. A change the backend
+  after an error rolls the error record the same way, and when the turn's
+  first step arrives it joins the run above, and the Requesting row gives way
+  ([Work groups](../agent/runtime.md#work-groups)). A change the backend
   refuses rolls the row back to what it said. A taller row that rolls into a
   shorter one, as an error record into Requesting, narrows over the roll:
   the user's Continue, Resume or Retry asked for it, so the list may shrink

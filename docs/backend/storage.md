@@ -98,13 +98,14 @@ is migrated as the backend starts, before it serves
 ([Startup and shutdown](backend.md#startup-and-shutdown)); a conversation's
 database when its conversation is next opened, so a start does not wait for
 every conversation a server ever had. For example, transcript block format 3
-gives each block of a run its `run` and each shell call's view its
+gave each block of a run its `run` and each shell call's view its
 `runFiles` and `requestFiles`
 ([What the conversation shows](../execution/edit-tracking.md#what-the-conversation-shows)):
 its migration walks the conversation's stored blocks in order and computes
 them from the edit copies already in the blob store, by the same code that
 computes them for a new block, so a conversation stored before shows what a
-new one would.
+new one would; format 4 changed what `run` means, a resume no longer
+ending a run, and its migration relists them by the same code.
 The [upgrade](../delivery/upgrades.md#the-upgrade) copies every database
 that will migrate before the new release first opens it.
 
